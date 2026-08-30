@@ -435,9 +435,11 @@ Stated so nobody reads this document as a description of a clean tree.
    | `routes/settings.tsx:158,163` | two `<p>` rows on `border-t border-border px-4 py-2.5`, popping into the card unanimated |
    | `alpha-bar.tsx:50-51` | full-bleed `border-b border-status-info/40 bg-status-info/15 px-3 py-0.5 text-[11px]`. Deliberately last, and possibly never: it is a static build fact that never appears or disappears, so it cannot shift anything, and it is the family's visual precedent rather than a violation of it. |
 
-   Also unconverted, by design order rather than oversight: `status-area.tsx` still carries its own
-   fixed wrappers per route instead of `ui/toast-viewport.tsx`, and nothing mounts a `StripHost`
-   yet — the band is indivisible and lands in one change.
+   **Closed:** `status-area.tsx` used to carry its own fixed wrapper per route. All three now mount
+   `ui/toast-viewport.tsx` — `routes/home.tsx` and `routes/space.tsx` at `dock="bottom"`, the pane
+   screen at `dock="top"`. Three copies of the same four utility classes, each drifting a gutter and
+   a z-rung from the others, are one call now. Still unconverted, by design order rather than
+   oversight: nothing mounts a `StripHost` yet — the band is indivisible and lands in one change.
 2. **`space-overview.tsx:136`** — an `outline-none` on the filter `<input>` with no
    replacement focus mark on it or its `<label>`. Trap 2 in its plain form: keyboard focus
    on that field is invisible.
@@ -484,13 +486,49 @@ Two questions, answered in order. Read only the row you land on.
 | **yes** | this route or view | **Scope notice.** `<Collapse open={…}><Notice variant="box">`, the caller supplying only the gutter. |
 | **yes** | one control | **Contextual notice.** `<Notice variant="box">` anchored in the control's chrome, not the viewport — it pushes the *input*, which is correct: the operator is acting there. |
 
+### The four acknowledgement channels
+
+The table above answers *which surface*. This one answers a different question that kept getting
+confused with it: when the operator acts, what tells them it worked. There are four channels and
+they answer four different questions. **One channel per question.** A control that reaches for two
+says the same thing twice; a control that reaches for none has told the operator nothing, which is
+the failure three call sites were shipping.
+
+| Channel | Question it answers | Owner |
+| --- | --- | --- |
+| **Haptic buzz** | "Did the glass register my tap?" | `hooks/use-action-echo.ts` and `hooks/use-hold-repeat.ts` only. On the press, never on the outcome. |
+| **Per-control echo** (✓ / spinner / busy tone) | "Did the bridge accept MY action?" | every fire-and-forget user mutation, at the control it was tapped on |
+| **Floating status** (`lib/status.ts` → Event) | "What happened, and why not?" | failures ALWAYS; success only when the outcome is not visible at the point of action |
+| **Collie orbit round** | "Something happened — look up" | every status the app publishes, one round per burst |
+
+The orbit round is the one with a rejected alternative worth recording. It was narrowed to
+*unattended* events only — the world moving while the operator was not acting — on the argument that
+a tap is already answered at the control, with the eye on the thumb rather than on the header. Good
+theory, wrong eye: the send is the moment the operator looks UP, because the reply is what they are
+waiting for. The flag that carried the distinction was deleted rather than left unread. The rule is
+now the simple one — **if it was worth a notice, it is worth a round** — which also keeps the notice
+and the mark from ever disagreeing about what happened. `components/collie-home.tsx` holds the full
+argument at the line that would change.
+
+Failure is the floating status for everything, always — the one exception being a control whose
+refusal is a **contextual notice** in its own chrome, which moved the failure rather than deleting
+it. `lib/mutate.ts` is the wrapper that keeps a thrown mutation from being swallowed where a call
+site has no error surface of its own, and `lib/ack-manifest.ts` records which channel every
+mutating export of `lib/api.ts` actually uses. That manifest is paired with a test, on the
+pack-wire guard's philosophy (ADR 0025): it cannot verify an acknowledgement renders, but a
+mutation added next month fails the test until its author writes one classified line — and that
+line gets reviewed.
+
 ### Why not "always on top"
 
 The ask was that notices float over content always. That is right for events and wrong for
 standing conditions, and **both failure modes are lived experience in this repo**. The pane screen
 once floated the status line over the mirror; it covered the terminal tail — the newest output, the
-reason the screen is open — so it was moved in-flow (`agent-chat.tsx:779-783`), and that in-flow fix
-is what shrinks the mirror today. The two failures belong to two categories. A 2.5s toast over the
+reason the screen is open. The fix was to move it off the tail, not out of the overlay: it floats at
+the top of the pane's content region, over the tab and pane strips (`agent-chat.tsx:990-1004`), and
+shrinks nothing. It was briefly an in-flow row instead, and that was worse in the other direction —
+every "Sent" pushed the strips and the whole mirror down 30px and pulled them back 2.5s later, so
+the page moved twice to say one word. The two failures belong to two categories. A 2.5s toast over the
 tail is bad precisely because it fires while you are watching the tail; a minutes-long "you are
 read-only" box, floated, is bad the other way — it either occludes for minutes or fades and leaves
 the composer inexplicably dead, which is a lie by omission. Hence the ruling: **a notice that will

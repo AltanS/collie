@@ -134,7 +134,8 @@ export function NavTray({
   // Send the whole queue as one ordered call, then reset any stray confirm. No echo on the strip's
   // Send, deliberately: `take()` empties the queue synchronously, so the chips vanishing IS the
   // receipt (and the strip itself unmounts unless a locked modifier holds it open) — a spinner there
-  // would have nothing left to render on.
+  // would have nothing left to render on. That sentence is also quoted at `sendKeys` in
+  // lib/ack-manifest.ts, which is where a "this control says nothing" claim is now reviewed.
   function sendQueue() {
     if (disabled) return;
     const keys = take();

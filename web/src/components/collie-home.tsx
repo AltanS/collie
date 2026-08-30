@@ -48,15 +48,28 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
   useLocale();
   const bloom = trouble && !lost;
 
-  // ONE FULL ROUND OF THE ORBIT whenever a status is published (a send, a kill, an error —
-  // lib/status.ts). The notice itself no longer moves the page to announce itself: it floats now,
-  // and a thing that floats in at the top of a busy screen is easy to miss. The mark is the second
-  // half of that announcement — it is already where the eye goes for connection state, so the round
-  // lands where the reader is watching, and it costs no layout.
+  // ONE FULL ROUND OF THE ORBIT whenever the app publishes a status — a send landing, an agent
+  // finishing somewhere in the herd, a refusal, the pane closing under you.
+  //
+  // UNATTENDED-ONLY WAS BUILT AND REVERTED, and the argument is worth keeping because it is a good
+  // argument that lost to the operator's own eye. It ran: a tap is already answered where the tap
+  // happened — a ✓ on the send button, a spinner on the option, the draft leaving the box — and the
+  // eye that would read the mark is on the thumb at the bottom of the screen, not on the header at
+  // the top; so spend the round only on things that arrive from elsewhere, where nothing else can
+  // fetch the eye. A `lib/status.ts` flag carried that distinction and four call sites set it.
+  //
+  // The operator used it and asked for the round back on their own sends. Reported plainly: the send
+  // is the moment they look UP, because the reply is what they are waiting for — the thumb leaves
+  // the box and the whole screen becomes the thing being watched. The theory put the eye where the
+  // last touch was; in use it goes where the next change will be. The flag is gone rather than left
+  // unread: a boolean nothing branches on is a lie the next reader has to disprove.
+  //
+  // So the rule is the simple one, and `lib/status.ts` is its whole definition: if it was worth a
+  // notice, it is worth a round. That also keeps the two from ever disagreeing about what happened.
   //
   // It is the ORBIT that turns, not the mark. The whole SVG was rotated first and that was wrong:
   // the head span round with it, which is not a thing the drawing does. So this uses the mark's own
-  // `loading` input instead — the same beads on the same path, at 20x the resting drift. The mark
+  // `loading` input instead — the same beads on the same path, at 27x the resting drift. The mark
   // carries the phase across the rate change by hand (collie-mark.tsx says how), so the round joins
   // the drift where it left it and rejoins it where it lands. Nothing jumps at either end.
   //
@@ -67,17 +80,18 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
   // It never fights the connection state. `bloom` is already the loading input and outranks this —
   // a round would tell the reader nothing there — and while `lost` the mark stays still and muted,
   // which is a state a passing event must not overwrite.
-  // ONE round per burst, not one per status. A single action often publishes more than one — a send
-  // acknowledges, then the pane's own lifecycle moves — and restarting the timer on each of them
-  // ran the orbit on and on, which is a STATE again and the exact thing the round must not look
-  // like. So a status that lands while a round is already turning is dropped: the round it would
-  // have started is already on screen, saying the same thing.
+  //
+  // ONE round per burst, not one per status. A single action often publishes more than one, and a
+  // herd finishing together publishes several within a poll; each one restarting the timer would run
+  // the orbit on and on, which is a STATE again and the exact thing the round must not look like. A
+  // status that lands while a round is already turning is dropped: the round it would have started
+  // is already on screen, saying the same thing.
   const status = useStatus();
-  const statusId = status?.id ?? 0;
+  const roundId = status?.id ?? 0;
   const [round, setRound] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (statusId === 0 || timer.current !== null) return;
+    if (roundId === 0 || timer.current !== null) return;
     setRound(true);
     timer.current = setTimeout(() => {
       timer.current = null;
@@ -85,10 +99,10 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
     }, ORBIT_TURN_MS);
     // NO CLEANUP HERE, deliberately. React runs an effect's cleanup on every dependency change,
     // before the next run — so a cleanup that cleared the timer would clear the very thing the
-    // guard above reads, and the second status of a burst would find the coast clear and restart
+    // guard above reads, and the second event of a burst would find the coast clear and restart
     // the round. That is the bug this guard exists to stop. The timer is torn down on UNMOUNT
     // instead, by the effect below.
-  }, [statusId]);
+  }, [roundId]);
   useEffect(() => () => (timer.current === null ? undefined : clearTimeout(timer.current)), []);
   return (
     <button

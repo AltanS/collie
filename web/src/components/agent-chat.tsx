@@ -17,6 +17,7 @@ import { RouteHeader } from "@/components/app-header";
 import { AnsiOutput } from "@/components/ansi-output";
 import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
 import { cn } from "@/lib/utils";
+import { paneTag } from "@/lib/pane-tag";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { adapterFor } from "@/lib/harness";
@@ -33,6 +34,7 @@ import { HostStaleBanner } from "@/components/host-stale-banner";
 import { useHostHealth } from "@/components/pack-provider";
 import { writeRefusal } from "@/lib/host-health";
 import { StatusArea } from "@/components/status-area";
+import { ToastViewport } from "@/components/ui/toast-viewport";
 import { StatusDot } from "@/components/status-badge";
 import { submitPromptFeedback, submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
@@ -150,6 +152,46 @@ export function AgentChat({
         agent.sessionName ??
         `${agent.workspaceLabel}${tabLabel !== undefined && tabLabel !== "" ? ` › ${tabLabel}` : ""}`);
   const cwd = agent === undefined ? null : cwdBeyondName(agent.cwd, paneName);
+  // The panes that share this tab (agents + shells), in stable order. Computed once, HERE, because
+  // two things far apart in this file must agree about it: <PaneStrip> below renders nothing under
+  // two panes, and line 1's discriminator (next) appears in exactly the case where it does render.
+  // Derived twice, the header can grow a `p3` on a screen with no pill row for `p3` to point at.
+  const tabPanes = useMemo(
+    () =>
+      agent === undefined
+        ? []
+        : [...agents, ...shellPanes]
+            .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
+            .toSorted((a, b) => a.paneId.localeCompare(b.paneId)),
+    [agent, agents, shellPanes],
+  );
+  // A hand-set name — the operator's `pane.rename` label, or Claude's own `/rename` session name —
+  // names THIS PANE and nothing else. `undefined` and not falsiness, to match how `paneName` above
+  // picks with `??`: an empty label is a label the operator set, and the two must agree on that.
+  const namedByHand = agent?.paneLabel !== undefined || agent?.sessionName !== undefined;
+  /**
+   * The pane's own short id (`p3`) for line 1 — null in the common case, which is most panes.
+   *
+   * THE FAULT IT CLOSES. When `paneName` falls all the way through to `space › tab`, line 1 names a
+   * TAB while the status dot badged next to it reports ONE PANE. And a tab is precisely the thing
+   * that holds several panes — a multi-pane tab is what makes the pane strip appear below — so the
+   * header can read as "this tab is done" when only the pane you have open is done.
+   *
+   * THE FIX IS ON THE NAME, NOT ON THE DOT, and that was a ruling rather than a convenience. This
+   * screen is a pane surface end to end: the mirror, the composer and that dot all scope to the one
+   * pane. The app's dot ladder widens by one level per step and is right at every step —
+   * `pane-strip.tsx` per pane, `tab-strip.tsx` worst-in-tab, `space-strip.tsx` worst-in-space. Making
+   * this dot worst-in-tab would leave the pane screen as the only place where the dot and the screen
+   * it sits on disagree about what they describe. Naming the pane makes line 1 true instead, which is
+   * both the smaller change and the honest one.
+   *
+   * TWO GATES, EACH LOAD-BEARING. Only on the fallback, because a hand-set name was never ambiguous
+   * and decorating it would add an id to a string the operator chose. And only above one pane,
+   * because with a single pane the tab's name effectively names the pane, there is no sibling to
+   * confuse it with, and there is no pill row below carrying the matching suffix.
+   */
+  const discriminator =
+    agent !== undefined && !namedByHand && tabPanes.length > 1 ? paneTag(agent.paneId) : null;
   // This device may not type into agents: the backend rejects every write, so the composer drops to
   // read-only (and shows a banner). The mirror still polls (reading is fine). Either write gate puts
   // us here — the proxy-asserted allowlist, or a missing/rejected pairing credential — and the
@@ -882,6 +924,41 @@ export function AgentChat({
                   <span data-slot="pane-name" className="block truncate font-semibold leading-5">
                     {paneName}
                   </span>
+                  {/* The pane's own short id, when line 1 fell back to naming the TAB and the tab
+                      holds more than one pane — see `discriminator` above for why the name moves and
+                      the dot does not.
+
+                      A SEPARATE SPAN, never joined into `paneName`, for `lib/pane-name.ts`'s reason
+                      one level down: a tail-truncated join eats its own tail first, so at 390px the
+                      one part that discriminates would be the first part to go and the header would
+                      truncate to the run every sibling shares. `shrink-0` states it — the name gives
+                      up width, the suffix survives, which is the whole point of showing it.
+
+                      The pill row below prints this same suffix in this same face (`font-mono
+                      text-[10px]`, lib/pane-tag.ts), so the eye matches header to pill without being
+                      told. Not the pill's `/60` alpha though: that is calibrated against the pill's
+                      own `bg-muted` fill, and here the suffix sits 4px above a `text-muted-foreground`
+                      cwd line on the page ground, where two alphas of one grey read as a rendering
+                      fault rather than as a hierarchy.
+
+                      `leading-5` is stated, not inherited, for the reason every other line box here
+                      states its own: the block is a SUM of boxes (20 + 4 + 12) that app-header.tsx's
+                      row floor is sized against, and a span that falls back to the body's 1.45 strut
+                      grows line 1 past 20px and the header row with it — on the pane route alone.
+
+                      It is not in the button's aria-label, and that is not an omission: the label
+                      names what the button DOES ("Open webapp overview — needs you"), not what the
+                      pane is called, and a suffix that exists to be matched against pills two rows
+                      down has nothing to say to a reader who is hearing the row rather than seeing
+                      it. */}
+                  {discriminator !== null && (
+                    <span
+                      data-slot="pane-tag"
+                      className="shrink-0 font-mono text-[10px] leading-5 text-muted-foreground"
+                    >
+                      {discriminator}
+                    </span>
+                  )}
                 </div>
                 {/* Line 2, conditional: the path, but only when it names a segment line 1 does not
                     already show — see cwdBeyondName. Gated against the RENDERED NAME rather than
@@ -905,21 +982,32 @@ export function AgentChat({
         </RouteHeader>
 
         {/* Content region below the header — the mirror inside is the scroller. `relative` is load-
-            bearing: it is the containing block for the status overlay directly below. */}
+            bearing and stays: <ToastViewport dock="top"> below is `absolute`, so THIS element is the
+            positioned ancestor it resolves against. That is also how the toast lands below the sticky
+            header — by geometry, because it sits in the region the header ends at, rather than by
+            anyone measuring the header's height and keeping the number in sync. */}
         <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          {/* Status line — a slim notice pinned directly below the header (NOT the scrolling mirror),
-              so a "Sent" / "changed" notice reads at the top instead of floating over the terminal
-              tail (prompt/cursor + up-levelled prompt buttons) it used to cover.
+          {/* The status line — "Sent", "wrap changed", a send error. An EVENT in DESIGN.md §11's
+              sense: it passes on its own, so it FLOATS and never holds space. It was an ordinary row
+              in this column once, and that is the whole argument — every "Sent" pushed the tab strip,
+              the pane strip and the mirror down ~30px and pulled them back up 2.5s later, so the page
+              jumped twice to say one word.
 
-              It FLOATS. It was an ordinary row in the column, which meant every "Sent" pushed the tab
-              strip, the pane strip and the whole mirror down 30px, and pulled them back up 2.5s
-              later — the page jumped twice to say one word. So it is an absolute overlay now: it
-              covers the top of the tab strip for as long as it shows and moves nothing. The wrapper
-              takes no pointer events; StatusArea re-enables them for itself when the notice is a
-              dismissable error. Renders nothing when idle. */}
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pt-1.5">
+              `dock="top"`, and this is the screen that makes the choice. The other two routes float
+              their toasts at the bottom; here the bottom is the composer, and covering the control
+              you just pressed to make the toast appear is the worst square on the page. The top of
+              this region is the tab strip and the pane strip — chrome nobody reads while waiting on a
+              send, and the cheapest real estate here. Floating it over the TERMINAL TAIL instead (the
+              newest output, the reason the screen is open) was tried on this very screen and
+              reverted; that is the experiment ToastViewport's own doc cites, and everything else —
+              the z-40 rung, the pointer-events split StatusArea completes, why absolute and not fixed
+              — is stated there once and deliberately not repeated here.
+
+              No wrapper of ours and no className: ToastViewport states the gutter and the top inset
+              itself, and a second set here would add to them rather than replace them. */}
+          <ToastViewport dock="top">
             <StatusArea />
-          </div>
+          </ToastViewport>
 
           {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
           <ReadOnlyBanner device={device} className="mx-3 mt-1.5" />
@@ -957,9 +1045,9 @@ export function AgentChat({
               tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
           {agent && (
             <PaneStrip
-              panes={[...agents, ...shellPanes]
-                .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
-                .toSorted((a, b) => a.paneId.localeCompare(b.paneId))}
+              // The SAME list the header's discriminator is gated on, and hoisted for that reason —
+              // this row appearing and line 1 gaining a `pN` are one decision, taken once.
+              panes={tabPanes}
               currentPaneId={paneId}
               onSelect={switchTo}
               scope={scope}
@@ -1124,8 +1212,25 @@ export function AgentChat({
           {/* Bottom region, in the order it paints: the agent's own statusline (the mirror's last row),
               the pane-switch handle, the composer. The connection status line USED to float here as an
               overlay just above the composer, but it covered the terminal tail (the prompt/cursor and
-              up-levelled prompt buttons) — it now lives as a slim row just below the header. */}
-          <div className="relative">
+              up-levelled prompt buttons) — it now lives as a slim row just below the header.
+
+              ── `shrink-0`, STATED, AND WHY IT IS NOT `min-h-0` ──────────────────────────
+              This is the flex sibling of the mirror inside a `h-[100dvh]` column. The mirror above
+              carries `min-h-0 flex-1`, so IT is the row that gives — and it gives all the way to
+              zero. What happens after that is what the operator reported as "the bottom is cut off":
+              nothing else in this column can shrink, so the surplus paints past the bottom edge of
+              the viewport, under the soft keyboard, and the send button becomes unreachable.
+
+              `min-h-0` here would be the wrong repair. It would let this region shrink too — and
+              since nothing inside it scrolls, it would clip the composer from the bottom instead of
+              overflowing it, which is the same loss with a tidier edge. The region must keep its
+              size; the fix is that its size must be BOUNDED. So every part of it that can grow is
+              capped as a fraction of the viewport rather than at a constant: the agent statusline
+              just below, and the draft field (`ui/chat/chat-input.tsx`, `min(10rem,30dvh)`). `dvh`
+              already tracks the keyboard — the viewport meta is `interactive-widget=resizes-content`
+              (hooks/use-keyboard.ts) — so the bound follows the real device instead of encoding one
+              phone's pixels. `shrink-0` is what makes that bound the whole story. */}
+          <div className="relative shrink-0">
 
             {/* The agent's statusline, re-surfaced as app chrome (its branch/model/ctx/permission mode
                 would otherwise vanish with the stripped input box). It is the LAST ROW OF THE MIRROR,
@@ -1139,12 +1244,20 @@ export function AgentChat({
                 exists to surface; wrapping makes the strip's height depend on the pane width and turns
                 a column-aligned statusline into ragged prose. Stacking also preserves the shape the
                 user themselves configured in the TUI, so it reads as the same thing they know.
-                Height is bounded upstream (MAX_STATUS_LINES caps the run stripChrome will claim), so
-                there is no second cap here; the mirror is a flex child that shrinks, never pushed off. */}
+                THE UPSTREAM CAP IS A ROW COUNT, AND A ROW COUNT IS NOT A HEIGHT. `MAX_STATUS_LINES`
+                bounds what stripChrome will claim (8), which was read here as "bounded, nothing more
+                to do" — and that held only while the viewport was tall. With the soft keyboard up the
+                page is ~440px on a phone, so eight rows of `CTX:44% CACHE:100% LIMITS…` is a quarter
+                of everything on screen, held against a mirror that is already showing zero rows of
+                what the agent actually SAID. So there is a second cap now, and it is a fraction of
+                the viewport rather than a number of pixels: `max-h-[18dvh]`, which `dvh` keeps
+                honest on every device and through the keyboard. `overflow-y-auto` rather than
+                `overflow-hidden` so a row past the cap is scrolled to, never destroyed — this strip
+                carries the permission mode, and silently eating that row is worse than any height. */}
             {statusLines.length > 0 && (
               <div
                 className={cn(
-                  "border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight",
+                  "max-h-[18dvh] overflow-y-auto border-t border-border/40 px-3 py-1 font-mono text-[11px] leading-tight",
                   // The strip carries the agent's OWN terminal colour, so it renders in the mirror's
                   // dark space and inverts in light with it (ADR 0002) — a bright statusline colour is
                   // chosen against a near-black background and is illegible re-themed onto app chrome.

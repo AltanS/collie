@@ -10,6 +10,7 @@ import { AgentList } from "@/components/agent-list";
 import { SpaceOverview } from "@/components/space-overview";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
 import { StatusArea } from "@/components/status-area";
+import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
 import { PackFooterLink } from "@/components/pack-footer-link";
 import { UpdateBanner } from "@/components/update-banner";
@@ -123,10 +124,15 @@ export function HomeRoute() {
       </PullToRefresh>
 
       {/* Status overlay, anchored to the bottom of the viewport (no input here) — same slim line,
-          floating so it never shifts the list. Stays outside the scroller so it never scrolls away. */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-screen-sm px-4 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)]">
+          floating so it never shifts the list. Stays outside the scroller so it never scrolls away.
+
+          `dock="bottom"` because this screen has no composer for a toast to collide with; the pane
+          screen docks its own to the top for the opposite reason. The positioning — the portal, the
+          z-rung, the safe-area inset — belongs to ToastViewport and is stated there once, which is
+          what stopped it being three hand-rolled copies of the same four utilities. DESIGN.md §1. */}
+      <ToastViewport dock="bottom">
         <StatusArea />
-      </div>
+      </ToastViewport>
 
       <NewSpaceSheet open={newSpaceOpen} onClose={() => setNewSpaceOpen(false)} onCreate={newSpace} />
     </div>

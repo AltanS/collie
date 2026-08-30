@@ -6,6 +6,27 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.36] - 2026-08-30
+
+### Added
+
+- The Collie mark turns its orbit one full round whenever the app has something to tell you — a send landing, an agent finishing or needing you, a pane closing under you. A burst turns it once, not once each
+- `lib/ack-manifest.ts` and its test — every mutating call the app can make must name the channel that acknowledges it, so a new one cannot be added without that decision being written down and reviewed
+
+### Changed
+
+- The pane's status notice floats at the top of the content region instead of holding a row. A "Sent" no longer pushes the tab strip, the pane strip and the whole mirror down 30px and back again 2.5s later
+- The status notice is a pill that hugs its text, not a bar across the column — a floating slab read as a standing condition arriving rather than a note passing
+- All three screens now mount the shared `ui/toast-viewport.tsx` rather than hand-rolling the same overlay
+- The mark's loading orbit turns in 1.8s, was 2.4s, and the header weight keeps both accent beads at any size — the 40px mark used to drop the rose one and show a single violet dot
+- A pane header that falls back to naming its tab now carries the pane's own tag as well, but only when the tab holds more than one pane
+
+### Fixed
+
+- A failed notification snooze is reported instead of being swallowed
+- A notification preference that fails to save says so, instead of silently flipping the switch back
+- Closing a pane or a tab acknowledges the tap at the control, instead of waiting for the row to disappear on the next poll
+
 ## [1.0.0-beta.35] - 2026-08-30
 
 ### Added

@@ -24,6 +24,10 @@ function emit() {
 /**
  * Publish a transient status. Latest wins. Errors persist until dismissed (tap the bar); everything
  * else auto-clears. Pass an explicit `ttlMs` (or `null` to persist) to override the per-tone default.
+ *
+ * EVERY publish here also turns the Collie mark's orbit one round (components/collie-home.tsx), so
+ * this channel is the app's one definition of "worth telling the operator about". A second, narrower
+ * channel was built and removed — see that file for what was tried.
  */
 export function setStatus(text: string, tone: StatusTone = "info", ttlMs?: number | null): void {
   if (timer) clearTimeout(timer);

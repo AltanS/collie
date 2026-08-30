@@ -41,7 +41,7 @@ export interface ToastViewportProps {
    * the content region below the sticky header. Deliberately NOT fixed: covering the tab and pane
    * strips for two seconds is the cheapest real estate on that screen, while covering the terminal
    * tail — the newest output, the reason the screen is open — was tried on this very screen and
-   * reverted (agent-chat.tsx:777-781). Being absolute inside the content region also puts it below
+   * reverted (agent-chat.tsx:1000-1002). Being absolute inside the content region also puts it below
    * the header by geometry rather than by measuring the header's height, which nothing has to
    * maintain.
    */

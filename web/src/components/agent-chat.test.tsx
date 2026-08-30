@@ -334,6 +334,73 @@ describe("AgentChat — the pane header's identity block", () => {
       "~/webapp",
     );
   });
+
+  // LINE 1 NAMES A TAB, THE DOT BESIDE IT REPORTS A PANE — and only on the fallback branch, which is
+  // exactly the branch a multi-pane tab lands on. So the header could read "this tab is done" while
+  // only the open pane is done. The fix names the PANE and leaves the dot per-pane: the mirror, the
+  // composer and the dot on this screen all scope to one pane, and the dot ladder elsewhere
+  // (pane strip per pane, tab strip worst-in-tab, space strip worst-in-space) is right as it stands.
+  //
+  // `base` has no paneLabel and no sessionName, so its name is the `space › tab` fallback.
+  const solo = fixtureAgents[0]!; // w1:p1, workspaceLabel "webapp", tab w1:t1
+  const sibling: AgentView = { ...solo, paneId: "w1:p7", status: "working" };
+
+  it("appends the pane's own suffix to the fallback name when the tab holds several panes", () => {
+    const { container } = renderChat({ agent: solo, agents: [solo, sibling] });
+    // The suffix is `lib/pane-tag.ts`'s rule — the trailing segment of the pane id — and it is the
+    // same string the pill row below prints, which is the whole reason it discriminates: the reader
+    // matches the header to a pill without being told to.
+    expect(slot(container, "tag")?.textContent).toBe("p1");
+    // And it is its OWN span, not glued onto the name. A joined string tail-truncates at 390px, so
+    // the one part that discriminates would be the first part to disappear (lib/pane-name.ts states
+    // the same rule one level down). The name gives up width; the suffix is `shrink-0`.
+    expect(slot(container, "name")?.textContent).toBe("webapp");
+    expect(slot(container, "tag")?.className).toMatch(/(^|\s)shrink-0(?=\s|$)/);
+  });
+
+  it("keeps the clean name when the tab holds ONE pane", () => {
+    // Nothing to disambiguate: the tab's name effectively names the pane, and PaneStrip renders no
+    // pill row below for a suffix to be matched against. Both facts come off the same list, on
+    // purpose — a header decorated over an absent pill row is the failure that would look like.
+    const { container } = renderChat({ agent: solo, agents: [solo] });
+    expect(slot(container, "tag")).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull();
+  });
+
+  it("never decorates a name the operator or the agent chose, even in a multi-pane tab", () => {
+    // A `pane.rename` label and Claude's own `/rename` session name each name THIS PANE already, so
+    // there is no tab/pane mismatch to correct — appending an id would only add noise to a string
+    // somebody picked deliberately.
+    const labelled = { ...solo, paneLabel: "logs" };
+    const { container: byLabel } = renderChat({ agent: labelled, agents: [labelled, sibling] });
+    expect(slot(byLabel, "name")?.textContent).toBe("logs");
+    expect(slot(byLabel, "tag")).toBeNull();
+
+    const session = { ...solo, sessionName: "refactor the parser" };
+    const { container: bySession } = renderChat({ agent: session, agents: [session, sibling] });
+    expect(slot(bySession, "name")?.textContent).toBe("refactor the parser");
+    expect(slot(bySession, "tag")).toBeNull();
+  });
+
+  it("adds the suffix without growing line 1, so the header row does not grow on this route alone", () => {
+    // The coupling the two-line test above pins, restated for the one element that can break it: the
+    // block is a SUM of line boxes (20 + 4 + 12) and app-header.tsx's row floor is sized against it.
+    // A span with no stated line-height inherits the body's 1.45 strut, which takes line 1 past 20px
+    // and grows the header on the pane route only — the route-local jump `min-h-15` exists to kill.
+    const { container } = renderChat({ agent: solo, agents: [solo, sibling] });
+    const box = (name: string, cls: string) => {
+      const m = /(?:^|\s)leading-(\d+)(?=\s|$)/.exec(cls);
+      expect(m, `leading-* on the ${name} span, in "${cls}"`).not.toBeNull();
+      return Number(m![1]) * 4; // Tailwind's --spacing is 0.25rem, and the app's root is 16px
+    };
+    expect(box("tag", slot(container, "tag")?.className ?? "")).toBe(
+      box("name", slot(container, "name")?.className ?? ""),
+    );
+    // And it rides ON line 1 rather than becoming a line of its own — same parent as the name, so
+    // the block stays the run of boxes the floor was sized against. (The cwd line is absent here:
+    // `~/webapp` under the name `webapp` is the same word twice, which the gate above covers.)
+    expect(slot(container, "tag")?.parentElement).toBe(slot(container, "name")?.parentElement);
+  });
 });
 
 describe("AgentChat — read-only device", () => {
@@ -1259,5 +1326,72 @@ describe("AgentChat — closing the current tab", () => {
 
     await waitFor(() => expect(onBack).toHaveBeenCalledOnce());
     expect(onSelect).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE BOTTOM FITS THE SCREEN IT IS ON — and the screen is measured, never assumed.
+//
+// The operator's report: "here for example the bottom is cut off, and when the keyboard is open…".
+// It is arithmetic, not a padding bug. The route column is `h-[100dvh]` (routes/root.tsx). Inside
+// it the mirror carries `min-h-0 flex-1`, so the mirror is the row that gives — and it gives all
+// the way to zero. Everything below it is content-sized, so once the mirror is at zero the surplus
+// paints past the bottom edge of the viewport, under the soft keyboard, and the send button becomes
+// unreachable. With the keyboard up a phone has ~440px of page and the un-shrinkable rows wanted
+// ~454px.
+//
+// The repair is NOT to let the bottom shrink — nothing inside it scrolls, so it would clip the
+// composer instead of overflowing it, which is the same loss with a tidier edge. The repair is to
+// BOUND the two parts of it that grow, and to bound them as a fraction of the viewport rather than
+// at a constant. `dvh` already tracks the soft keyboard, because the viewport meta is
+// `interactive-widget=resizes-content` (hooks/use-keyboard.ts says so from the other side), so one
+// unit does the job on every device instead of encoding one phone's pixels.
+//
+// These three assertions are the whole argument, and each one fails on the edit that would undo it.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("the pane fits its viewport", () => {
+  it("holds the bottom region's size and bounds what grows inside it — never the reverse", () => {
+    const { container } = renderChat({ text: STATUS_TEXT });
+    const block = container.querySelector('[data-slot="chrome-block"]')!;
+    const bottom = block.parentElement!;
+    // The mirror is the bottom region's own previous sibling — taken that way rather than by a
+    // selector, so this asserts the ADJACENCY the argument rests on instead of merely finding two
+    // elements that happen to match.
+    const mirror = bottom.previousElementSibling!;
+
+    // The two are flex siblings in the same column: one gives, one does not.
+    expect(mirror.getAttribute("role")).toBe("presentation");
+    expect(mirror.parentElement).toBe(bottom.parentElement);
+    expect(mirror.className).toMatch(/(?:^|\s)min-h-0(?=\s|$)/);
+    expect(mirror.className).toMatch(/(?:^|\s)flex-1(?=\s|$)/);
+
+    // STATED, not inherited. `shrink-0` is what makes the bound below the whole story.
+    expect(bottom.className).toMatch(/(?:^|\s)shrink-0(?=\s|$)/);
+    // And explicitly NOT the tempting repair: `min-h-0` here clips the composer from the bottom.
+    expect(bottom.className).not.toMatch(/(?:^|\s)min-h-0(?=\s|$)/);
+  });
+
+  it("caps the agent statusline against the viewport, and scrolls rather than eating a row", () => {
+    // `MAX_STATUS_LINES` (8) is a ROW COUNT, and a row count is not a height: eight rows of
+    // `CTX:44% CACHE:100% LIMITS…` is a quarter of a keyboard-open phone, held against a mirror
+    // already showing zero rows of what the agent actually SAID.
+    const { container } = renderChat({ text: STATUS_TEXT });
+    const strip = container.querySelector('[data-slot="chrome-block"]')!.previousElementSibling!;
+    // The cap is relative — a `dvh` fraction, so it follows the device and the keyboard.
+    expect(strip.className).toMatch(/max-h-\[\d+dvh\]/);
+    // …and scrolled, not clipped: this strip carries the permission mode, and silently eating that
+    // row is worse than any height.
+    expect(strip.className).toMatch(/(?:^|\s)overflow-y-auto(?=\s|$)/);
+  });
+
+  it("caps the draft field as a fraction of the viewport, not at a constant", () => {
+    // `max-h-40` was 160px, chosen against a full-height screen — a THIRD of everything visible
+    // with the keyboard up, and the growth that pushed the send button off the bottom. `10rem` IS
+    // that 160px, so at rest on any ordinary screen this field is byte-identical to before; only
+    // the case that was broken changes.
+    renderChat({ text: STATUS_TEXT });
+    const field = screen.getByRole("textbox");
+    expect(field.className).toMatch(/max-h-\[min\(10rem,\d+dvh\)\]/);
+    expect(field.className).not.toMatch(/(?:^|\s)max-h-40(?=\s|$)/);
   });
 });

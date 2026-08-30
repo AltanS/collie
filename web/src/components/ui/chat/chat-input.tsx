@@ -45,8 +45,25 @@ function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea"
         // and a string that overruns it is a copy bug to fix in the locale file, not a layout to
         // absorb.
         // The typed VALUE is untouched — `::placeholder` styles the placeholder only, and a wrapping
-        // draft still grows the field up to `max-h-40`, which is the growth this field is for.
-        "field-sizing-content max-h-40 min-h-11 w-full resize-none rounded-md border border-input bg-transparent px-3 py-2.5 text-base shadow-xs transition-[color,box-shadow] placeholder:overflow-hidden placeholder:whitespace-nowrap placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
+        // draft still grows the field up to the cap below, which is the growth this field is for.
+        //
+        // ── THE CAP IS A FRACTION OF THE VIEWPORT, NOT A CONSTANT ───────────────────
+        // It was `max-h-40` — 160px, chosen against a full-height screen. That number is wrong in
+        // the only viewport where it matters. With the soft keyboard up the page is ~440px tall on
+        // a phone, so a maxed field claims a THIRD of everything the operator can see, the mirror
+        // is squeezed to zero rows, and the surplus lands under the keyboard: the send button and
+        // the field's own bottom border are then unreachable. That is the "the bottom is cut off"
+        // report, and it is arithmetic, not a padding bug.
+        //
+        // `min(10rem,30dvh)` fixes it WITHOUT naming a second number. `dvh` already tracks the
+        // keyboard — the viewport meta is `interactive-widget=resizes-content`, so the layout
+        // viewport shrinks with it (hooks/use-keyboard.ts states the same fact from the other
+        // side) — so the cap follows the real screen on every device instead of encoding one.
+        // `10rem` IS the old 160px, so at rest, on any screen taller than ~533px, this field
+        // behaves byte-identically to before and the placeholder budget above is untouched. Only
+        // the case that was broken changes. A longer draft scrolls inside the textarea, which is
+        // what a textarea does; a draft you cannot see the bottom of is not a trade, it is a bug.
+        "field-sizing-content max-h-[min(10rem,30dvh)] min-h-11 w-full resize-none rounded-md border border-input bg-transparent px-3 py-2.5 text-base shadow-xs transition-[color,box-shadow] placeholder:overflow-hidden placeholder:whitespace-nowrap placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}

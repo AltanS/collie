@@ -9,6 +9,7 @@ import { SpaceView } from "@/components/space-view";
 import { TabStrip } from "@/components/tab-strip";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
 import { StatusArea } from "@/components/status-area";
+import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
 import { UpdateBanner } from "@/components/update-banner";
 import { useSpaceActions } from "@/hooks/use-spaces";
@@ -138,10 +139,12 @@ export function SpaceRoute() {
         <BuildStamp className="px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
       </PullToRefresh>
 
-      {/* Status overlay, anchored to the bottom of the viewport. Stays outside the scroller. */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 mx-auto w-full max-w-screen-sm px-4 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)]">
+      {/* Status overlay, anchored to the bottom of the viewport. Stays outside the scroller. Same
+          call as the dashboard's, and for the same reason: no composer down there to collide with.
+          ToastViewport owns the position — see the note on home.tsx's copy. */}
+      <ToastViewport dock="bottom">
         <StatusArea />
-      </div>
+      </ToastViewport>
 
       <NewSpaceSheet open={newSpaceOpen} onClose={() => setNewSpaceOpen(false)} onCreate={newSpace} />
     </div>

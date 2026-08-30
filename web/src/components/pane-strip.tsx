@@ -7,6 +7,7 @@ import { StatusDot } from "@/components/status-badge";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { useLongPress } from "@/hooks/use-long-press";
 import { paneDisplayName } from "@/lib/types";
+import { paneTag } from "@/lib/pane-tag";
 import type { AgentView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { t } from "@/lib/i18n";
@@ -116,8 +117,10 @@ function PanePill({
   onTapActive?: () => void;
 }) {
   const isShell = pane.kind === "shell";
-  // The "pN" suffix of the pane id disambiguates same-named panes (two claudes in one tab).
-  const tag = pane.paneId.split(":").pop();
+  // The "pN" suffix of the pane id disambiguates same-named panes (two claudes in one tab). The rule
+  // is `lib/pane-tag.ts` and not an expression here, because the pane header directly above this row
+  // appends the same suffix to its own fallback name — the two are read together and may not drift.
+  const tag = paneTag(pane.paneId);
   // A user label, then Claude's /rename session name, then the agent/shell name (see paneDisplayName)
   // — the icon still conveys which agent it is.
   const name = paneDisplayName(pane);

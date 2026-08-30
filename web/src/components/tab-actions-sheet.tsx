@@ -5,6 +5,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { HostChip } from "@/components/host-chip";
 import { useAmbientHost, useHostWriteBlock } from "@/components/pack-provider";
+import { useActionEcho } from "@/hooks/use-action-echo";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
@@ -54,7 +55,12 @@ export function TabActionsSheet({
   const [mode, setMode] = useState<Mode>("actions");
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
-  const [closing, setClosing] = useState(false);
+  // Same press echo as the pane sheet's close row, for the same reason and deliberately in the same
+  // shape — these two sheets are required to stay identical, which is why their rows are shared
+  // components. See components/pane-actions-sheet.tsx for the full argument; the short form is that
+  // a spinner alone acknowledged nothing until the next poll dropped the tab out of the strip, and
+  // this tap kills every pane in the tab, so it is the last one that should feel unheard.
+  const closeEcho = useActionEcho();
   const { pending, confirm, reset } = usePendingConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -96,23 +102,30 @@ export function TabActionsSheet({
   }
 
   // Two-tap: the first tap arms (row flips to the blast-radius confirm), the second closes.
+  //
+  // Both failure branches stay at this call site — the refusal is already reported in this sheet's
+  // own words, so it is not a `lib/mutate.ts` swallow site. No success `setStatus`: the tab leaving
+  // the strip is the outcome, and the echo is the acceptance. `tab` is copied to a local first,
+  // because narrowing does not survive into the async closure.
   async function requestClose() {
-    if (!tab || closing) return;
-    if (!confirm(tab.tabId)) return;
-    setClosing(true);
-    try {
-      const res = await api.closeTab(tab.tabId, scope);
-      if (res.ok) {
+    if (!tab || closeEcho.pending) return;
+    const target = tab;
+    if (!confirm(target.tabId)) return;
+    await closeEcho.run(target.tabId, async () => {
+      try {
+        const res = await api.closeTab(target.tabId, scope);
+        if (!res.ok) {
+          setStatus(describeApiError(res, t("space.tab.closeFailed")), "error");
+          return false;
+        }
         onClose();
-        onClosed(tab.tabId);
-      } else {
-        setStatus(describeApiError(res, t("space.tab.closeFailed")), "error");
+        onClosed(target.tabId);
+        return true;
+      } catch (e) {
+        setStatus(describeThrownError(e), "error");
+        return false;
       }
-    } catch (e) {
-      setStatus(describeThrownError(e), "error");
-    } finally {
-      setClosing(false);
-    }
+    });
   }
 
   const confirming = !!tab && pending === tab.tabId;
@@ -165,7 +178,9 @@ export function TabActionsSheet({
               confirmLabel={confirmLabel}
               closingLabel={t("space.tab.closing")}
               armed={confirming}
-              closing={closing}
+              // The only member of this echo group, so the group flag says the same thing as
+              // `phaseOf(tabId)` without needing a tab that may be null here.
+              closing={closeEcho.pending}
               onClick={() => void requestClose()}
             />
           )}

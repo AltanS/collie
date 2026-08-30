@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { useLocale } from "@/hooks/use-locale";
 import { t, type MessageKey } from "@/lib/i18n";
 import { setSnooze } from "@/lib/api";
+import { mutate } from "@/lib/mutate";
 
 // "Do not disturb" for push: a global snooze with quick presets. Server-enforced (the bridge sends
 // nothing while a deadline is active and self-resumes), so it quiets every device — for when you're
@@ -29,14 +30,20 @@ export function SnoozeControl({ snoozedUntil }: { snoozedUntil: number | null })
   const [busy, setBusy] = useState(false);
   const snoozed = snoozedUntil !== null && snoozedUntil > Date.now();
 
+  // The spinner beside the title is this control's echo — it says the tap was taken, and it is the
+  // ONLY acknowledgement a success gets, because the outcome is visible right here: the revalidation
+  // rewrites the description line under the title with the new deadline (or back to "not snoozed").
+  //
+  // A FAILURE cannot ride that. This used to be `try { … } finally { setBusy(false) }` with no catch
+  // at all, so a refused snooze stopped the spinner, left the description saying the old thing, and
+  // said nothing — and the operator walked away believing push was quiet when it was not. Snooze is
+  // exactly the setting where that silence costs something. `mutate` publishes the refusal on the
+  // status channel; the revalidation is skipped, so the description keeps stating the truth.
   async function apply(next: number | null) {
     setBusy(true);
-    try {
-      await setSnooze(next);
-      revalidator.revalidate();
-    } finally {
-      setBusy(false);
-    }
+    const res = await mutate(() => setSnooze(next));
+    if (res.ok) revalidator.revalidate();
+    setBusy(false);
   }
 
   return (

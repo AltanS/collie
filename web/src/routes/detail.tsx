@@ -66,6 +66,10 @@ export function DetailRoute() {
   // transient poll failure or reconnect doesn't evict a still-valid pane.
   useEffect(() => {
     if (gone && root.bridge === "connected" && !root.error) {
+      // The operator did not close this pane from this phone. It went away under them — from
+      // another device, from the terminal itself, or because the agent exited — and a poll is what
+      // noticed. The status (and the orbit round it turns) is what stops the eviction that follows
+      // being the first thing they see.
       setStatus("Pane closed", "info");
       navigate(homePath(scope), { replace: true });
     }

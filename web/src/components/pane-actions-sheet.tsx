@@ -5,6 +5,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { HostChip } from "@/components/host-chip";
 import { useHostWriteBlock, usePack } from "@/components/pack-provider";
+import { useActionEcho } from "@/hooks/use-action-echo";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useLocale } from "@/hooks/use-locale";
 import * as api from "@/lib/api";
@@ -73,7 +74,15 @@ export function PaneActionsSheet({
   const [mode, setMode] = useState<Mode>("actions");
   const [label, setLabel] = useState("");
   const [saving, setSaving] = useState(false);
-  const [closing, setClosing] = useState(false);
+  // Close runs under the shared press echo (hooks/use-action-echo.ts) rather than a bare `closing`
+  // boolean. The bare boolean acknowledged the tap with a spinner and NOTHING else; on success the
+  // sheet slid away and the row itself did not disappear from the strip until the next poll landed
+  // (up to ~1.5s later), so the gap between "I confirmed a kill" and any visible consequence was
+  // long enough to re-tap. The echo closes that gap at the control: `run` buzzes and goes `pending`
+  // synchronously with the tap, before any network wait. The ✓ phase is never reached here — the
+  // success branch closes the sheet — and that is correct: the pane VANISHING is the outcome, and a
+  // success `setStatus` on top of it would announce a fact the screen is already making.
+  const closeEcho = useActionEcho();
   const { pending, confirm, reset } = usePendingConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
   // Rename and close are writes, and both are §10.3 writes to a specific machine — the PANE's, read
@@ -137,23 +146,30 @@ export function PaneActionsSheet({
   }
 
   // Two-tap: the first tap arms (row flips to "Tap again to close"), the second closes.
+  //
+  // The echo's `action` must resolve the bridge's verdict as a boolean, and BOTH failure branches
+  // stay here rather than moving to `lib/mutate.ts`: this row already reports every refusal in its
+  // own words (`closeFailed` is the fallback for a body that carried none), so it is not a swallow
+  // site. `pane` is copied to a local first — narrowing does not survive into the async closure.
   async function requestClose() {
-    if (!pane || closing) return;
-    if (!confirm(pane.paneId)) return;
-    setClosing(true);
-    try {
-      const res = await api.closePane(pane.paneId, scope);
-      if (res.ok) {
+    if (!pane || closeEcho.pending) return;
+    const target = pane;
+    if (!confirm(target.paneId)) return;
+    await closeEcho.run(target.paneId, async () => {
+      try {
+        const res = await api.closePane(target.paneId, scope);
+        if (!res.ok) {
+          setStatus(describeApiError(res, t("paneActions.status.closeFailed")), "error");
+          return false;
+        }
         onClose();
-        onClosed(pane.paneId);
-      } else {
-        setStatus(describeApiError(res, t("paneActions.status.closeFailed")), "error");
+        onClosed(target.paneId);
+        return true;
+      } catch (e) {
+        setStatus(describeThrownError(e), "error");
+        return false;
       }
-    } catch (e) {
-      setStatus(describeThrownError(e), "error");
-    } finally {
-      setClosing(false);
-    }
+    });
   }
 
   /**
@@ -295,7 +311,9 @@ export function PaneActionsSheet({
               confirmLabel={t("paneActions.close.confirm")}
               closingLabel={t("paneActions.close.closing")}
               armed={confirming}
-              closing={closing}
+              // `pending` rather than `phaseOf(id)`: close is the only member of this echo group,
+              // so the group flag says the same thing without needing a pane that may be null here.
+              closing={closeEcho.pending}
               onClick={() => void requestClose()}
             />
           )}

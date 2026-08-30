@@ -5,9 +5,9 @@ import { clearStatus, setStatus } from "@/lib/status";
 import { markIsLive } from "@/test/collie-mark";
 import { CollieHome } from "./collie-home";
 
-// THE ROUND IS AN EVENT, NOT A STATE. A status published anywhere in the app (a send, a kill, an
-// error) turns the mark's orbit exactly once, at the loading rate, and then hands it back to the
-// resting drift. These cases hold the two halves of that sentence: exactly once, and back.
+// THE ROUND IS AN EVENT, NOT A STATE. Any status the app publishes turns the orbit exactly once, at
+// the loading rate, before handing it back to the resting drift. These cases hold the two halves of
+// that sentence — exactly once, and back — plus the two states that outrank it.
 describe("CollieHome — the event round", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -22,7 +22,7 @@ describe("CollieHome — the event round", () => {
     const { container } = render(<CollieHome trouble={false} />);
     expect(markIsLive(container)).toBe(false);
 
-    act(() => setStatus("Sent ✓", "success"));
+    act(() => setStatus("claude is done · moonward", "success"));
     expect(markIsLive(container)).toBe(true);
 
     // Still turning one tick short of the round.
@@ -39,9 +39,9 @@ describe("CollieHome — the event round", () => {
   it("does not extend the round when more statuses land while it is turning", () => {
     const { container } = render(<CollieHome trouble={false} />);
 
-    act(() => setStatus("Sent ✓", "success"));
+    act(() => setStatus("claude is done · moonward", "success"));
     act(() => void vi.advanceTimersByTime(900));
-    act(() => setStatus("working", "info"));
+    act(() => setStatus("claude needs you · herdr", "warn"));
     expect(markIsLive(container)).toBe(true);
 
     act(() => void vi.advanceTimersByTime(900));
@@ -52,7 +52,7 @@ describe("CollieHome — the event round", () => {
   // tell the reader something is working when the connection has been given up on.
   it("stays still while the connection is lost", () => {
     const { container } = render(<CollieHome trouble lost />);
-    act(() => setStatus("Sent ✓", "success"));
+    act(() => setStatus("claude is done · moonward", "success"));
     expect(markIsLive(container)).toBe(false);
   });
 
@@ -62,7 +62,7 @@ describe("CollieHome — the event round", () => {
     const { container } = render(<CollieHome trouble />);
     expect(markIsLive(container)).toBe(true);
 
-    act(() => setStatus("Sent ✓", "success"));
+    act(() => setStatus("claude is done · moonward", "success"));
     act(() => void vi.advanceTimersByTime(2000));
     expect(markIsLive(container)).toBe(true);
   });
