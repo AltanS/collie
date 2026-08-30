@@ -23,18 +23,34 @@ type Gate = "pairing" | "device";
 //     real refusal rather than polled, because reads are ungated — a poll can never discover it.
 //
 // This file knows the CONDITION and the words for it, and after the ui/notice.tsx migration it owns
-// no styling at all: the tinted box, its floor, its radius and its live region are the primitive's,
-// and the `className` it forwards is the caller's GUTTER and nothing else (DESIGN.md §1). If a
-// future change wants a different-looking box here, the change belongs in ui/notice.tsx where every
-// notice gets it, not in a className passed from this file.
+// no styling at all: the tinted band, its floor and its live region are the primitive's. It takes no
+// `className` either, which is the strip contract rather than an omission — a strip is full-bleed
+// viewport chrome and there is no gutter for a caller to set (DESIGN.md §4). If a future change
+// wants this to look different, the change belongs in ui/notice.tsx where every notice gets it.
+//
+// ── A STRIP, NOT A BOX, AND THAT IS A SPACE DECISION WITH A REASON ───────────
+// It was a box: 42px minimum, wrapping to two lines in five of six locales, ~50px, plus a 12px
+// gutter. On a phone with the soft keyboard up that is more vertical space than the pane-switch
+// handle and the agent's statusline COMBINED — and this is a standing condition that never changes
+// for the life of the device, sitting above a mirror that had been squeezed to zero rows. A box is
+// for a fact you must read and act on; a strip is for a condition you must be able to SEE. This is
+// the second kind: nothing about it is actionable from here except the pairing case, whose remedy
+// is named in the sentence and lives in Settings.
+//
+// It is also stated twice already. The composer is disabled and its own placeholder reads
+// "Read-only — not authorised" at the exact point of refusal, which DESIGN.md calls the stronger
+// place. This strip is the standing disclosure; the placeholder is the answer at the moment it
+// matters.
+//
+// The copy is the SHORT pair, `space.readOnly.*`, which was already written and already translated
+// into all six locales for the space route and used by nothing. A strip never wraps, by contract
+// (ui/notice.tsx), so long copy would truncate rather than fit — and the short strings are what the
+// contract asks for. The one thing they drop is the device NAME suffix, which was answering "which
+// device is this?" on the device you are holding.
 //
 // tone="caution": a refused write gate is a degraded capability, not a neutral fact — the composer
 // and the tab strip are dead while it stands, and the operator has to know why. It maps to
 // `--status-working`, which is the exact token this banner already used, so no colour changes here.
-// The SIZE changes in one case, deliberately: this box wraps to two lines in five of six locales
-// (50px at 390px, unchanged), and the one locale that fits on one line — Chinese — went from 34px to
-// the primitive's 42px floor. That 8px is the floor doing the job it was written for: two one-line
-// notices anywhere in the app are now the same height whether or not one of them carries a button.
 //
 // announce="status": role="status", polite, which is what the `<output>` element this replaces
 // already meant implicitly. Polite and not "alert" because the usual case is a box that is TRUE AT
@@ -42,20 +58,13 @@ type Gate = "pairing" | "device";
 // worth announcing is the mid-session pairing latch, and interrupting the operator assertively
 // mid-keystroke to say a key they just pressed did nothing is louder than the fact deserves. Not
 // "none", because that latch is a real change and dropping the region would make it silent.
-export function ReadOnlyBanner({
-  device,
-  className,
-}: {
-  device: DeviceAuth | undefined;
-  className?: string;
-}) {
+export function ReadOnlyBanner({ device }: { device: DeviceAuth | undefined }) {
   useLocale();
   const { refused } = usePairing();
 
   // The pairing latch is checked FIRST and outranks the device gate: both can be true at once, and
   // only the pairing one names a remedy the phone can actually carry out.
   const gate: Gate | null = refused ? "pairing" : isReadOnly(device) ? "device" : null;
-  const deviceSuffix = device?.device ? ` (${device.device})` : "";
 
   return (
     // Nothing at all is rendered inside once the gate lifts, and that is the whole shape of a
@@ -64,31 +73,23 @@ export function ReadOnlyBanner({
     // carry its own ref for that, latched in an effect; the primitive carries it now, because the
     // six conversions after this one would each have hand-rolled the same ref.
     //
-    // The gutter, and only the gutter — `mx-4 mt-3` on the routes, `mx-3 mt-1.5` in the pane. It
-    // rides the NOTICE now, not the Collapse: the ROW is the thing whose height animates, but the
-    // row's own margin sits OUTSIDE the box it grows — `grid-template-rows` interpolates the height
-    // of the grid ITEM (the inner `min-h-0 overflow-hidden` wrapper in ui/collapse.tsx), and a margin
-    // on the grid CONTAINER around that item is never part of what is being measured. That was the
-    // fault: `mt-3` arrived in full the instant the row mounted, so 12px of space appeared at once
-    // and the 50px box slid in behind it. Putting the margin on the Notice instead puts it INSIDE the
-    // measured item — the collapse wrapper's `overflow-hidden` forms a block-formatting context, so
-    // the Notice's top margin does not collapse through it and is counted in the wrapper's own
-    // height, the same height the collapse's `0fr`↔`1fr` grid-row transition animates. The whole
-    // 50px + 12px now arrives as one continuous slide. (The box still carries no width utility —
-    // ui/notice.tsx's BOX — so `mx-4` on it measures 358px with 16px on both sides at 390px, the
-    // same reading the pilot took.)
+    // THE GUTTER IS GONE, AND ITS WHOLE ARGUMENT WITH IT. A box carried `mx-4 mt-3` on the routes
+    // and `mx-3 mt-1.5` in the pane, and that margin had to ride the NOTICE rather than the Collapse
+    // — `grid-template-rows` interpolates the height of the grid ITEM, so a margin on the container
+    // around it was never part of what animated, and 12px of space arrived at once with the box
+    // sliding in behind it. A strip is full-bleed and has no margin at all, so there is nothing left
+    // outside the measured item and the slide is one continuous movement by construction.
     <Collapse open={gate !== null}>
       {gate ? (
         <Notice
-          variant="box"
+          variant="strip"
           tone="caution"
           announce="status"
           icon={gate === "pairing" ? <KeyRound /> : <Lock />}
-          className={className}
         >
           {gate === "pairing"
-            ? t("connection.readOnly.notPaired")
-            : t("connection.readOnly.device", { deviceSuffix })}
+            ? t("space.readOnly.notPaired")
+            : t("space.readOnly.deviceUnauthorised")}
         </Notice>
       ) : null}
     </Collapse>

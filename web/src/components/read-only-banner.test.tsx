@@ -39,11 +39,18 @@ describe("ReadOnlyBanner — the two write gates, one notice", () => {
     expect(render(<ReadOnlyBanner device={undefined} />).container).toBeEmptyDOMElement();
   });
 
-  it("appears for the HEADER gate, and names the device the proxy asserted", () => {
+  it("appears for the HEADER gate — and no longer spells the device name", () => {
     // Nothing on the phone can fix this one, so the copy explains rather than offering a remedy.
+    //
+    // THE DEVICE NAME IS DELIBERATELY GONE. A strip never wraps, by contract (ui/notice.tsx), so it
+    // gets the SHORT copy — the `space.readOnly.*` pair, already written and already translated into
+    // all six locales for the space route, where it was used by nothing. The suffix it drops was
+    // answering "which device is this?" on the device the operator is holding, and the name is still
+    // in Settings for the case where a proxy asserts something surprising. That is the price of the
+    // ~30px, named here rather than discovered later.
     render(<ReadOnlyBanner device={REFUSED} />);
     expect(screen.getByText(/Read-only/)).toBeInTheDocument();
-    expect(screen.getByText(/pixel-9/)).toBeInTheDocument();
+    expect(screen.queryByText(/pixel-9/)).toBeNull();
   });
 
   it("appears for the PAIRING gate, and that gate outranks the header gate", () => {
@@ -64,36 +71,30 @@ describe("ReadOnlyBanner — the two write gates, one notice", () => {
     const { container } = render(<ReadOnlyBanner device={REFUSED} />);
     expect(box(container)?.className).toContain("border-status-working/40");
     expect(box(container)?.className).toContain("bg-status-working/15");
-    // The primitive's floor, which this feature may not lower — two one-line notices anywhere in
-    // the app are the same height because of it.
-    expect(box(container)).toHaveClass("min-h-[42px]");
+    // The STRIP's floor, not the box's 42px: the primitive derives it from the 24px tap target its
+    // action button is built to, and this feature may not lower it either.
+    expect(box(container)).toHaveClass("min-h-[33px]");
   });
 
-  it("owns no styling: the className it is handed is the caller's GUTTER, on the BOX inside the row", () => {
-    // The seam the pilot exists to prove. The routes pass `mx-4 mt-3` and the pane passes
-    // `mx-3 mt-1.5`; the caller supplies the gutter because only the caller knows what the box sits
-    // between (DESIGN.md §1). It now lands on the NOTICE, inside the animated row, and NOT on the
-    // Collapse root: `grid-template-rows` interpolates the height of the grid ITEM (the row Collapse
-    // measures), and a margin on the grid CONTAINER around that item is never part of what is
-    // measured — it would arrive in full the instant the row mounts, instead of animating with it.
-    // Putting the margin on the box instead puts it inside the item the wrapper measures, so the
-    // whole height, margin included, animates as one movement.
-    const { container } = render(<ReadOnlyBanner device={REFUSED} className="mx-4 mt-3" />);
-    // The Collapse root carries no gutter of its own — that would put the margin back outside the
-    // animated row, reintroducing the jump this change closes.
-    expect(container.firstElementChild).not.toHaveClass("mx-4");
-    expect(container.firstElementChild).not.toHaveClass("mt-3");
-    expect(box(container)).toHaveClass("mx-4", "mt-3");
-    // And nothing else: this file adds no class of its own on top of the primitive's, beyond the
-    // gutter it was handed.
-    const bare = render(<ReadOnlyBanner device={REFUSED} />).container.querySelector(
-      '[data-slot="collapse"] > div > div',
-    )?.className;
-    const withGutter = box(container)
-      ?.className?.split(/\s+/)
-      .filter((cls) => !/^m[xt]-/.test(cls))
-      .join(" ");
-    expect(withGutter).toBe(bare);
+  it("owns no styling AND takes no gutter — a strip is full-bleed by contract", () => {
+    // THE GUTTER IS GONE, AND SO IS THE PROP THAT CARRIED IT. This was a box: the routes passed
+    // `mx-4 mt-3`, the pane passed `mx-3 mt-1.5`, and the caller supplied it because only the caller
+    // knew what the box sat between. A box wrapping to two lines in five of six locales plus that
+    // margin was ~62px of a phone — more than the pane-switch handle and the agent statusline
+    // combined — spent on a standing condition that never changes for the life of the device.
+    //
+    // A strip is viewport chrome (DESIGN.md §4): full-bleed, one line, no margin, and therefore
+    // nothing for a caller to set. Removing the PROP rather than merely stopping passing it is what
+    // makes that permanent — a gutter cannot come back one call site at a time.
+    const { container } = render(<ReadOnlyBanner device={REFUSED} />);
+    const strip = box(container);
+    // No margin anywhere: not on the animated row, not on the strip inside it.
+    expect(container.firstElementChild?.className).not.toMatch(/(?:^|\s)m[xty]?-/);
+    expect(strip?.className).not.toMatch(/(?:^|\s)m[xty]?-/);
+    // …and it is the primitive's strip, not the primitive's box: full width, and a bottom rule
+    // rather than a rounded outline.
+    expect(strip).toHaveClass("w-full");
+    expect(strip?.className).not.toMatch(/(?:^|\s)rounded-/);
   });
 
   it("announces politely, with a role and no aria-live", () => {

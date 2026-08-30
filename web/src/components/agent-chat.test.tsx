@@ -407,9 +407,12 @@ describe("AgentChat — read-only device", () => {
   it("disables the composer and shows the banner when the device isn't authorised", () => {
     renderChat({ device: { enforced: true, device: "spare-phone", authorized: false } });
 
-    // The banner names the read-only state (and the device id), and the composer is locked.
+    // The strip names the read-only state and the composer is locked. It no longer spells the
+    // device id: a strip never wraps, so it carries the short copy (read-only-banner.tsx says why,
+    // and its own test pins the trade). The fact is still stated at the point of refusal below —
+    // the placeholder — which is the stronger of the two places.
     expect(screen.getByText(/read-only/i)).toBeInTheDocument();
-    expect(screen.getByText(/spare-phone/)).toBeInTheDocument();
+    expect(screen.queryByText(/spare-phone/)).toBeNull();
     const box = screen.getByPlaceholderText(/read-only — not authorised/i);
     expect(box).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();

@@ -1034,7 +1034,7 @@ export function AgentChat({
           </ToastViewport>
 
           {/* Read-only notice when this device isn't allowlisted (the composer below is disabled too). */}
-          <ReadOnlyBanner device={device} className="mx-3 mt-1.5" />
+          <ReadOnlyBanner device={device} />
 
           {/* The pane's MACHINE is not answering the lead — the mirror below is last-good and the
               composer is locked. Its tier-1 twin (the app-wide ConnectionBanner) lives up in

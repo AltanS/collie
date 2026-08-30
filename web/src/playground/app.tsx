@@ -1056,7 +1056,7 @@ function WriteGateCard() {
           nobody has. The gutter rides the component the way home.tsx and space.tsx pass it. */}
       <div className="mx-auto w-[390px] max-w-full">
         <Stage>
-          <ReadOnlyBanner device={deviceRefused} className="mx-4 mt-3" />
+          <ReadOnlyBanner device={deviceRefused} />
           <div className="h-3" />
         </Stage>
       </div>

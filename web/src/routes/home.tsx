@@ -86,7 +86,7 @@ export function HomeRoute() {
         {/* A notice BELOW the header is content, not viewport chrome: it is an inset box on the
             page gutter, not a full-bleed strip. Full-bleed it ran its left edge 16px outside the
             list it sat on top of — two left edges stacked, the loudest misalignment on the page. */}
-        <ReadOnlyBanner device={data.device} className="mx-4 mt-3" />
+        <ReadOnlyBanner device={data.device} />
 
         <main className="flex-1">
           {/* One list, every section, in triage order. It used to be split in two so "Needs you"

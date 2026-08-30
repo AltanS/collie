@@ -89,7 +89,7 @@ export function SpaceRoute() {
       <PullToRefresh scope={data.scope} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {/* Below the header, so it is content, not viewport chrome: an inset box on this route's
             gutter, like the dashboard's. See read-only-banner.tsx. */}
-        <ReadOnlyBanner device={data.device} className="mx-4 mt-3" />
+        <ReadOnlyBanner device={data.device} />
 
         {selectedWs && (
           <>
