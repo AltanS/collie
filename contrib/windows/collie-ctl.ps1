@@ -223,7 +223,13 @@ function Register-CollieTask {
   $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" -TaskConfigDir "{1}" -TaskSocketPath "{2}" _exec-bridge' -f $ctl, $script:ConfigDir, $script:SocketPath
   $identity = [Security.Principal.WindowsIdentity]::GetCurrent().Name
 
-  $action = New-ScheduledTaskAction -Execute $powershell -Argument $arguments -WorkingDirectory $script:PluginRoot
+  # No console, so the bridge is not a closable Windows Terminal tab; the launcher is still $powershell.
+  $conhost = Join-Path $env:SystemRoot "System32\conhost.exe"
+  $action = if (Test-Path -LiteralPath $conhost) {
+    New-ScheduledTaskAction -Execute $conhost -Argument ('--headless "{0}" {1}' -f $powershell, $arguments) -WorkingDirectory $script:PluginRoot
+  } else {
+    New-ScheduledTaskAction -Execute $powershell -Argument $arguments -WorkingDirectory $script:PluginRoot
+  }
   $trigger = New-ScheduledTaskTrigger -AtLogOn -User $identity
   $principal = New-ScheduledTaskPrincipal -UserId $identity -LogonType Interactive -RunLevel (Get-CollieTaskRunLevel)
   $settings = New-ScheduledTaskSettingsSet `
