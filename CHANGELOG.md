@@ -6,6 +6,16 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.35] - 2026-08-30
+
+### Added
+
+- "All sessions" in the session switcher — one triage list across every Herdr session on a machine, each row tagged with the session it lives in (364f113)
+
+### Changed
+
+- A row is opened with its own session as well as its own machine, so a widened list can never point a reply at an identically-numbered pane elsewhere (364f113)
+
 ## [1.0.0-beta.34] - 2026-08-30
 
 ### Added
