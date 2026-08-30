@@ -399,8 +399,10 @@ describe("updateCheckout", () => {
   test("a managed checkout detaches onto the newest TAG of its major, shallow and forced", () => {
     const h = managed();
     expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    // A STORING refspec, not the bare ref: the bare form writes FETCH_HEAD and stores no local tag,
+    // after which `vite.config.ts` finds no `refs/tags/v0.32.0` at HEAD and stamps the build `-dev`.
     expect(gitRuns(h.exec)).toEqual([
-      `${GIT} fetch --depth 1 origin refs/tags/v0.32.0`,
+      `${GIT} fetch --depth 1 origin +refs/tags/v0.32.0:refs/tags/v0.32.0`,
       `${GIT} checkout -q --detach --force FETCH_HEAD`,
     ]);
     expect(h.io.stdout.join("\n")).toContain("detach onto v0.32.0");
@@ -427,7 +429,7 @@ describe("updateCheckout", () => {
   test("--major on a managed checkout detaches onto the next major's tag", () => {
     const h = managed([], "0.31.1");
     expect(updateCheckout(h.deps, { crossMajor: true })).toBe(EXIT.OK);
-    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch --depth 1 origin refs/tags/v1.0.0`);
+    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch --depth 1 origin +refs/tags/v1.0.0:refs/tags/v1.0.0`);
     expect(h.io.stdout.join("\n")).toContain("crossing to Collie 1.0.0");
   });
 
@@ -451,7 +453,7 @@ describe("updateCheckout", () => {
     });
     expect(updateCheckout(h.deps)).toBe(EXIT.OK);
     // v1.0.0, NOT v1.0.0-beta.10: the release supersedes every beta that led to it.
-    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch --depth 1 origin refs/tags/v1.0.0`);
+    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch --depth 1 origin +refs/tags/v1.0.0:refs/tags/v1.0.0`);
     expect(h.io.stdout.join("\n")).toContain("detach onto v1.0.0");
   });
 
@@ -469,7 +471,7 @@ describe("updateCheckout", () => {
     expect(updateCheckout(h.deps)).toBe(EXIT.OK);
     // A prerelease tag name reaches `refs/tags/` untouched — it is a ref like any other.
     expect(gitRuns(h.exec)).toEqual([
-      `${GIT} fetch --depth 1 origin refs/tags/v1.0.0-beta.10`,
+      `${GIT} fetch --depth 1 origin +refs/tags/v1.0.0-beta.10:refs/tags/v1.0.0-beta.10`,
       `${GIT} checkout -q --detach --force FETCH_HEAD`,
     ]);
     expect(h.io.stdout.join("\n")).toContain("detach onto v1.0.0-beta.10");
@@ -534,7 +536,7 @@ describe("updateCheckout", () => {
     });
     expect(updateCheckout(h.deps)).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([
-      `${GIT} fetch --depth 1 origin refs/tags/v1.0.0`,
+      `${GIT} fetch --depth 1 origin +refs/tags/v1.0.0:refs/tags/v1.0.0`,
       `${GIT} checkout -q --detach --force FETCH_HEAD`,
     ]);
     expect(h.io.stdout.join("\n")).toContain("pinning to newest release tag v1.0.0");
@@ -563,7 +565,8 @@ describe("updateCheckout", () => {
       ...FULL,
     ] });
     expect(updateCheckout(h.deps)).toBe(EXIT.OK);
-    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch origin refs/tags/v0.32.0`);
+    // …and the storing refspec rides along on the full-clone variant too.
+    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch origin +refs/tags/v0.32.0:refs/tags/v0.32.0`);
   });
 
   test("a non-git checkout names the reinstall command and fails", () => {
@@ -586,7 +589,7 @@ describe("updateCheckout", () => {
   test("a failed fetch stops before the checkout", () => {
     const h = managed([[`${ROOT}$ ${GIT} fetch`, { code: 1 }]]);
     expect(updateCheckout(h.deps)).toBe(EXIT.FAIL);
-    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch --depth 1 origin refs/tags/v0.32.0`]);
+    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch --depth 1 origin +refs/tags/v0.32.0:refs/tags/v0.32.0`]);
   });
 });
 

@@ -344,7 +344,7 @@ function updateManaged(
     deps.io.out(
       `updating Collie (Herdr-managed checkout: no readable version — pinning to newest release tag ${plan.newest.tag})…`,
     );
-    return detachOnto(deps, git, `refs/tags/${plan.newest.tag}`);
+    return detachOnto(deps, git, plan.newest.tag);
   }
   if (plan.kind === "no-higher-major") {
     deps.io.out(`no release above major ${plan.major} exists yet — nothing to cross to.`);
@@ -369,19 +369,46 @@ function updateManaged(
       ? `crossing to Collie ${plan.target.version} (--major given: consented)…`
       : `updating Collie (Herdr-managed checkout: fetch + detach onto ${plan.target.tag})…`,
   );
-  const code = detachOnto(deps, git, `refs/tags/${plan.target.tag}`);
+  const code = detachOnto(deps, git, plan.target.tag);
   if (code === EXIT.OK && !plan.crossesMajor) announceMajor(deps, plan.higher);
   return code;
 }
 
-/** Fetch `ref` and re-detach onto it, the way Herdr got this checkout here. */
-function detachOnto(deps: UpdateDeps, git: (args: readonly string[]) => number, ref: string): number {
+/** Fetch the release tag `tag` and re-detach onto it, the way Herdr got this checkout here. */
+function detachOnto(deps: UpdateDeps, git: (args: readonly string[]) => number, tag: string): number {
   const root = deps.ctx.root;
+  const ref = `refs/tags/${tag}`;
+  // An EXPLICIT, STORING refspec — `+<ref>:<ref>` — so the tag exists LOCALLY afterwards.
+  //
+  // This used to fetch the bare ref (`git fetch origin refs/tags/v1.0.0`). Git accepts that and
+  // writes FETCH_HEAD, which is all the `checkout --detach FETCH_HEAD` below needs — and stores NO
+  // local tag at all. So the checkout landed on the right commit and the local tag set never learned
+  // it had, leaving `refs/tags/v<version>` in one of two states, neither of them the truth:
+  //
+  //   ABSENT — a checkout Herdr installed and only ever updated this way carries no tags at all.
+  //     `web/vite.config.ts`'s `isReleaseBuild` runs `git rev-parse -q --verify` on the tag, that
+  //     FAILS, and its catch path returns true — so the stamp comes out clean. The right answer,
+  //     reached by a failure rather than by evidence: git still cannot say which release this is.
+  //   STALE — a checkout that DOES carry a `v<version>` tag from some earlier fetch, pointing at an
+  //     older commit. Now `isReleaseBuild` compares it against HEAD, they differ, and a genuine
+  //     release is stamped `<version>-dev`. Measured in the VM lab on a guest whose clone carried an
+  //     older `v1.0.0`: `collie version` → `1.0.0-dev+8d57cc8`. The PWA footer and the
+  //     `X-Collie-Build` header then call a release a development build, and `cli/pack-update.ts`'s
+  //     `answersThisBuild` reads the `-dev` tail as "not that commit" — so a pack member updated
+  //     this way looks like it never took the push it did take.
+  //
+  // Storing the ref replaces absent-or-stale with true, in both shapes.
+  // The leading `+` forces the update. It is the right sign HERE and only here: this function
+  // already discards local work wholesale (see `--force` below), because a reinstall replaces the
+  // managed checkout. A tag that was moved upstream must follow the same rule, or a re-cut release
+  // would fail the fetch and strand the update on the old tag object.
+  //
   // `--depth 1` ONLY when we are already shallow, so an update never truncates the history of a full
   // clone someone happens to have detached.
+  const spec = `+${ref}:${ref}`;
   const fetch = isShallow(deps.exec, root)
-    ? ["fetch", "--depth", "1", "origin", ref]
-    : ["fetch", "origin", ref];
+    ? ["fetch", "--depth", "1", "origin", spec]
+    : ["fetch", "origin", spec];
   if (git(fetch) !== EXIT.OK) return EXIT.FAIL;
   // `--force` because `build` runs `bun install`, which can rewrite the TRACKED lockfiles: a plain
   // checkout would then refuse on the dirty tree and re-break the very update path this fixes.

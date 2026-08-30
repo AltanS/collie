@@ -941,15 +941,14 @@ bld() {
     COLLIE_PLUGIN_ROOT="$B_ROOT" "$@"
 }
 
-# The happy path: the steps, in order, each in the right tree. The mux-name gate sits INSIDE the
-# lint step (M10/06) — same escape hatch, so it is one gate with two greps, not a seventh step.
+# The happy path: the steps, in order, each in the right tree. NO lint step and no mux-name gate —
+# both left the operator build in 1.0.0-beta.44, because oxlint's allocator aborts below ~7 GB of RAM
+# and bricked installs there. CI and the pre-commit hook are where they are enforced now.
 bld "$BIN" build || fail "\`collie build\` failed: ${STDERR}"
 assert_eq "$(cat "$B_CALLS")" "$(cat <<EOF
 gate
 ${B_ROOT}\$ bun install
 ${B_ROOT}/web\$ bun install
-${B_ROOT}\$ bun run lint
-mux-names
 ${B_ROOT}\$ bun run typecheck
 ${B_ROOT}/web\$ bun run typecheck
 ${B_ROOT}\$ bun build --compile --target=bun ./cli/main.ts --outfile ${B_ROOT}/bin/collie.new
@@ -1112,6 +1111,10 @@ assert_eq "$(git -C "$MANAGED" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse HE
 assert_eq "$(cat "${MANAGED}/VERSION")" "v2"
 assert_eq "$(cat "${MANAGED}/bun.lock")" "lock-v1"          # --force discarded the build's rewrite
 assert_eq "$(git -C "$MANAGED" rev-parse --is-shallow-repository)" "true"
+# The fetch STORES the tag, it does not merely resolve it. A bare `fetch origin refs/tags/v9.10.0`
+# writes FETCH_HEAD and no local ref, and `web/vite.config.ts` then finds no `refs/tags/v<version>`
+# at HEAD and stamps a real release `-dev` — measured in the VM lab as `1.0.0-dev+8d57cc8`.
+assert_eq "$(git -C "$MANAGED" tag --points-at HEAD)" "v9.10.0"
 git -C "$MANAGED" symbolic-ref -q HEAD >/dev/null 2>&1 &&
   fail "the managed checkout should still be detached"
 # The post-pull half runs the code that was just fetched, not the code that started the update.
