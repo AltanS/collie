@@ -6,6 +6,7 @@ import { SectionHeader } from "@/components/section-header";
 import { ListGroup } from "@/components/ui/list-group";
 import { flipDir, sectionHeaderProps, triage, type RecentDir, type TriageKey } from "@/lib/triage";
 import type { AgentView, BridgeStatus } from "@/lib/types";
+import { paneRowKey } from "@/lib/hosts";
 import { AgentCard } from "./agent-card";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -134,7 +135,12 @@ export function AgentList({
         // restates it and costs the width the title needs.
         const rows = s.agents.map((a) => (
           <AgentCard
-            key={a.paneId}
+            // The FULL row identity, not the pane id — see `paneRowKey`. A pane id is unique only
+            // within one session on one machine, so a merged or widened list holds several rows that
+            // answer to `w1:p1`; keyed by the id alone React recycles one row's element for
+            // another's between polls, and the card you are looking at acquires a different row's
+            // `onClick`. On this list, that is a tap landing in another terminal.
+            key={paneRowKey(a)}
             agent={a}
             onClick={() => onOpen(a)}
             statusStyle="dot"

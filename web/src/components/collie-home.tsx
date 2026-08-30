@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { CollieMark } from "@/components/collie-mark";
@@ -38,9 +38,11 @@ interface CollieHomeProps {
 // the mark stands alone (the breadcrumb carries the context). Both headers render THIS component —
 // the consistency is structural, not a convention two files have to keep agreeing on.
 // One full round of the orbit at the mark's LOADING rate, in milliseconds. <CollieMark/> owns that
-// rate (`TURN.live` = 2.4s, collie-mark.tsx) and does not export it, so this number is a copy and
-// has to stay in step with it: shorter cuts the round off part way, longer starts a second one.
-const ORBIT_TURN_MS = 2400;
+// rate (`TURN.live`, collie-mark.tsx) and does not export it, so this number is a copy and has to
+// stay in step with it: shorter cuts the round off part way, longer starts a second one. The rate
+// is set in the collie-brand repo (`SPRINT` in src/geometry.ts) — a change there has to be walked
+// over to here by hand, and this is the only thing on this side that knows the number.
+const ORBIT_TURN_MS = 1800;
 
 export function CollieHome({ onHome, trouble, lost = false, wordmark = false, className }: CollieHomeProps) {
   useLocale();
@@ -65,15 +67,29 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
   // It never fights the connection state. `bloom` is already the loading input and outranks this —
   // a round would tell the reader nothing there — and while `lost` the mark stays still and muted,
   // which is a state a passing event must not overwrite.
+  // ONE round per burst, not one per status. A single action often publishes more than one — a send
+  // acknowledges, then the pane's own lifecycle moves — and restarting the timer on each of them
+  // ran the orbit on and on, which is a STATE again and the exact thing the round must not look
+  // like. So a status that lands while a round is already turning is dropped: the round it would
+  // have started is already on screen, saying the same thing.
   const status = useStatus();
   const statusId = status?.id ?? 0;
   const [round, setRound] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    if (statusId === 0) return;
+    if (statusId === 0 || timer.current !== null) return;
     setRound(true);
-    const timer = setTimeout(() => setRound(false), ORBIT_TURN_MS);
-    return () => clearTimeout(timer);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      setRound(false);
+    }, ORBIT_TURN_MS);
+    // NO CLEANUP HERE, deliberately. React runs an effect's cleanup on every dependency change,
+    // before the next run — so a cleanup that cleared the timer would clear the very thing the
+    // guard above reads, and the second status of a burst would find the coast clear and restart
+    // the round. That is the bug this guard exists to stop. The timer is torn down on UNMOUNT
+    // instead, by the effect below.
   }, [statusId]);
+  useEffect(() => () => (timer.current === null ? undefined : clearTimeout(timer.current)), []);
   return (
     <button
       type="button"

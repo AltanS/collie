@@ -39,6 +39,23 @@ export function paneSpaceKey(pane: { host?: string; workspaceId: string }): stri
 }
 
 /**
+ * A pane's identity as a ROW in a list — the full `(host, session, paneId)` triple, which is the
+ * only thing unique about it.
+ *
+ * This is a React `key`, and a React key is not decoration. A pane id is unique only within one
+ * session on one machine, so a merged or widened list holds several rows that answer to `w1:p1`.
+ * Keyed by the id alone, React recycles one row's element for another's between polls: the card you
+ * are looking at keeps its position and quietly acquires a different row's `onClick`. On a list whose
+ * whole purpose is "tap the thing that needs you", that is a tap landing in another terminal.
+ *
+ * Untagged panes degrade to `"\0\0" + paneId`, a pure prefix extension of the bare id, so a solo
+ * un-widened list keys exactly as it always did.
+ */
+export function paneRowKey(pane: { host?: string; session?: string; paneId: string }): string {
+  return `${hostKey(pane)}${KEY_SEP}${pane.session ?? ""}${KEY_SEP}${pane.paneId}`;
+}
+
+/**
  * True when the snapshot describes more than one machine — the ONE predicate that decides whether
  * any host chrome renders at all. Absent `servers` (solo, i.e. every install today) is false; so is
  * a one-entry array, which a lead with zero live peers can legitimately report.
@@ -221,6 +238,44 @@ export function sessionsOnHost<T extends { host?: string }>(
 ): T[] {
   const want = scopeHostKey(scope, servers);
   return sessions.filter((s) => s.host === undefined || hostKey(s) === want);
+}
+
+/** The two pane lists, narrowed to one address. Named so the return type is a contract, not a shape. */
+export interface AmbientPanes<T> {
+  agents: T[];
+  shellPanes: T[];
+}
+
+/**
+ * The panes belonging to the AMBIENT address — the `(host, session)` the URL names — out of a body
+ * that may hold more.
+ *
+ * The space navigator needs this and the triage lists must not have it. The lists are the whole
+ * point of widening: one "what needs me?" across every session. The navigator is a TREE, and its
+ * keys (`spaceKey`) carry a host and no session, because Herdr workspace ids collide across sessions
+ * exactly as they collide across machines. Fed a widened body it would paint another session's
+ * blocked dot and recency onto the ambient space of the same number, and drilling in would show a
+ * space with nothing blocked in it — a screen contradicting itself.
+ *
+ * Both predicates are the same "untagged is ambient" rule the rest of this module uses, so on every
+ * un-widened body this is the identity function and the arrays come back untouched — worth stating,
+ * because it is what keeps a solo install's render allocation-for-allocation what it was.
+ */
+export function ambientPanes<T extends { host?: string; session?: string }>(
+  agents: readonly T[],
+  shellPanes: readonly T[],
+  scope: { host?: string; session?: string },
+  servers: readonly ServerSummary[] | undefined,
+  sessions: readonly SessionSummary[] | undefined,
+): AmbientPanes<T> {
+  const wantHost = scopeHostKey(scope, servers);
+  const wantSession =
+    scope.session ?? primarySession(sessions && sessionsOnHost(sessions, scope, servers));
+  const here = (p: T): boolean =>
+    (p.host === undefined || hostKey(p) === wantHost) &&
+    (p.session === undefined || wantSession === undefined || p.session === wantSession);
+  const pick = (panes: readonly T[]): T[] => (panes.every(here) ? [...panes] : panes.filter(here));
+  return { agents: pick(agents), shellPanes: pick(shellPanes) };
 }
 
 /** Per-host agent counts, derived from the merged snapshot (a `ServerSummary` carries none). */

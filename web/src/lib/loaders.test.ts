@@ -873,3 +873,95 @@ describe("packLoader", () => {
     expect(await packLoader()).toEqual({ status: null, error: true });
   });
 });
+
+// ── THE BREADTH, at the loader ───────────────────────────────────────────────
+//
+// `?all=1` in the browser becomes `?sessions=all` on the wire. The two spellings differ on purpose:
+// the wire word is the one the bridge already uses for the dimension, the url word is the one an
+// operator might read. What matters here is that the breadth reaches the fetch, lands on the DATA,
+// and does not disturb the address or the caches around it.
+describe("loaders — the widened view", () => {
+  const captureAll = () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.get("/api/snapshot", ({ request }) => {
+        seen.push(new URL(request.url).searchParams.get("sessions"));
+        return HttpResponse.json(fixtureSnapshot);
+      }),
+    );
+    return seen;
+  };
+
+  it("asks for `sessions=all`, and surfaces the breadth on the data", async () => {
+    const seen = captureAll();
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader({ request: new Request("http://localhost/?all=1") });
+    expect(seen).toEqual(["all"]);
+    expect(data.viewAll).toBe(true);
+    // The BREADTH is not the address: the scope read back off that url names neither dimension.
+    expect(data.scope).toEqual({ host: undefined, session: undefined });
+  });
+
+  it("asks for nothing when nobody widened — every request that exists today", async () => {
+    const seen = captureAll();
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader({ request: new Request("http://localhost/") });
+    expect(seen).toEqual([null]);
+    expect(data.viewAll).toBe(false);
+  });
+
+  it("carries the address alongside it, both halves", async () => {
+    let url = "";
+    server.use(
+      http.get("/api/snapshot", ({ request }) => {
+        url = new URL(request.url).search;
+        return HttpResponse.json(fixtureSnapshot);
+      }),
+    );
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/?h=badger&s=demo&all=1") });
+    expect(url).toContain("host=badger");
+    expect(url).toContain("session=demo");
+    expect(url).toContain("sessions=all");
+  });
+
+  // The nav-vs-revalidate discriminator is a full-URL string compare, so a third param has to be
+  // part of that string on BOTH runs or a poll would read as a navigation — and a navigation during
+  // a known outage returns cached data instead of really fetching, which is how recovery is found.
+  it("reads a second run at the same widened url as a POLL, not a navigation", async () => {
+    const seen = captureAll();
+    const { rootLoader } = await import("./loaders");
+    await rootLoader({ request: new Request("http://localhost/?all=1") });
+    await rootLoader({ request: new Request("http://localhost/?all=1") });
+    // Both really fetched: a navigation is only short-circuited during a latched outage, but the
+    // discriminator itself is what this pins — same url twice, so the second is a revalidation.
+    expect(seen).toEqual(["all", "all"]);
+  });
+
+  // The two breadths are different BODIES for one address. Sharing a cache entry would let an
+  // offline fallback answer a narrow view with a widened herd — rows from sessions it does not claim
+  // to show, and no fetch on the way to correct them.
+  it("does not serve a widened body to a narrow view when the fetch fails", async () => {
+    const { rootLoader } = await import("./loaders");
+    // Prime ONLY the widened cache with a real herd…
+    await rootLoader({ request: new Request("http://localhost/?all=1") });
+    // …then fail a narrow read. It must come back empty-and-flagged, not with the widened herd.
+    failSnapshot();
+    const narrow = await rootLoader({ request: new Request("http://localhost/") });
+    expect(narrow.error).toBe(true);
+    expect(narrow.agents).toEqual([]);
+  });
+});
+
+// The snapshot cache key and the per-pane cache key are built by two helpers that both NUL-join a
+// scope. They live in disjoint stores today (separate Maps, separate storage prefixes), so a
+// collision between them is harmless — but it is harmless by accident, and this pins the accident.
+describe("the two cache-key families stay apart", () => {
+  it("keeps the widened snapshot key out of the per-pane namespace", async () => {
+    const { snapshotKey } = await import("@/lib/scope");
+    // Byte-equal by construction: `snapshotKey(scope, true)` is `scopeKey(scope) + "\0all"`, which is
+    // also what a pane literally named `all` would key to. Neither store can see the other's keys.
+    expect(snapshotKey({}, true)).toBe(paneScopeKey({}, "all"));
+    expect(snapshotKey({})).toBe(scopeKey({}));
+  });
+});

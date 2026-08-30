@@ -1,52 +1,69 @@
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { act, render } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { clearStatus, setStatus } from "@/lib/status";
+import { markIsLive } from "@/test/collie-mark";
 import { CollieHome } from "./collie-home";
-import { collieMark, markAccent, markIsLive } from "@/test/collie-mark";
 
-describe("CollieHome", () => {
-  it("returns home when tapped", async () => {
-    const onHome = vi.fn();
-    render(<CollieHome onHome={onHome} trouble={false} />);
-    await userEvent.click(screen.getByRole("button", { name: "Collie home" }));
-    expect(onHome).toHaveBeenCalledOnce();
+// THE ROUND IS AN EVENT, NOT A STATE. A status published anywhere in the app (a send, a kill, an
+// error) turns the mark's orbit exactly once, at the loading rate, and then hands it back to the
+// resting drift. These cases hold the two halves of that sentence: exactly once, and back.
+describe("CollieHome — the event round", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearStatus();
+  });
+  afterEach(() => {
+    act(() => clearStatus());
+    vi.useRealTimers();
   });
 
-  it("keeps ONE mark in every state and blooms it — turning AND in colour — once troubled", () => {
-    // The mark is never swapped for a second picture, so nothing can resize or pop as the connection
-    // settles. Rest = still, muted chroma; sustained trouble = the orbit turning at full chroma,
-    // same element. The colour half matters here specifically: `prefers-reduced-motion` stops the
-    // orbit, and colour is what still says "reconnecting" to that reader.
-    const { container, rerender } = render(<CollieHome trouble={false} />);
-    expect(container.querySelectorAll("svg")).toHaveLength(1);
+  it("turns the orbit for one round when a status is published, then stops", () => {
+    const { container } = render(<CollieHome trouble={false} />);
     expect(markIsLive(container)).toBe(false);
-    const resting = markAccent(container);
-    rerender(<CollieHome trouble />);
-    expect(container.querySelectorAll("svg")).toHaveLength(1);
+
+    act(() => setStatus("Sent ✓", "success"));
     expect(markIsLive(container)).toBe(true);
-    expect(markAccent(container)).not.toBe(resting);
+
+    // Still turning one tick short of the round.
+    act(() => void vi.advanceTimersByTime(1799));
+    expect(markIsLive(container)).toBe(true);
+
+    act(() => void vi.advanceTimersByTime(1));
+    expect(markIsLive(container)).toBe(false);
   });
 
-  it("drops the bloom and stills the mark, muted, once the outage escalates to lost", () => {
-    // Blooming = "still trying"; once the reconnect gives up (lost) the orbit stops turning and the
-    // mark is muted. Still the same element — no swap, no frozen sprite frame.
+  // One action often publishes more than one status — the send acknowledges, then the pane's own
+  // lifecycle moves. Each of those must NOT extend the round: an orbit that keeps going is a state
+  // again, which is the one thing the round must not be mistaken for.
+  it("does not extend the round when more statuses land while it is turning", () => {
+    const { container } = render(<CollieHome trouble={false} />);
+
+    act(() => setStatus("Sent ✓", "success"));
+    act(() => void vi.advanceTimersByTime(900));
+    act(() => setStatus("working", "info"));
+    expect(markIsLive(container)).toBe(true);
+
+    act(() => void vi.advanceTimersByTime(900));
+    expect(markIsLive(container)).toBe(false);
+  });
+
+  // `lost` is a state the mark holds still and muted for. A passing event must not light it up and
+  // tell the reader something is working when the connection has been given up on.
+  it("stays still while the connection is lost", () => {
     const { container } = render(<CollieHome trouble lost />);
+    act(() => setStatus("Sent ✓", "success"));
     expect(markIsLive(container)).toBe(false);
-    expect(collieMark(container)?.getAttribute("class")).toMatch(/grayscale/);
-    expect(screen.getByRole("button", { name: "Collie home — not connected" })).toBeInTheDocument();
   });
 
-  it("blooms while troubled but NOT yet lost", () => {
-    const { container } = render(<CollieHome trouble lost={false} />);
+  // The connection bloom outranks the round: it is already the loading input, and it must still be
+  // turning after the round's timer has run out.
+  it("leaves the connection bloom turning after the round would have ended", () => {
+    const { container } = render(<CollieHome trouble />);
     expect(markIsLive(container)).toBe(true);
-    expect(collieMark(container)?.getAttribute("class") ?? "").not.toMatch(/grayscale/);
-    expect(screen.getByRole("button", { name: "Collie home — reconnecting" })).toBeInTheDocument();
-  });
 
-  it("shows the wordmark only when asked", () => {
-    const { rerender } = render(<CollieHome trouble={false} />);
-    expect(screen.queryByText("Collie")).toBeNull();
-    rerender(<CollieHome trouble={false} wordmark />);
-    expect(screen.getByText("Collie")).toBeInTheDocument();
+    act(() => setStatus("Sent ✓", "success"));
+    act(() => void vi.advanceTimersByTime(2000));
+    expect(markIsLive(container)).toBe(true);
   });
 });

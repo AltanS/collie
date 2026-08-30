@@ -624,6 +624,30 @@ export function AgentChat({
     if (target) switchTo(target.paneId);
   }
 
+  // Closing the tab you are IN must not read as "leave the pane view" — it should read as closing a
+  // browser tab: you stay put and land on another tab of the same space. "Neighbouring" means what
+  // the strip on screen shows: TabStrip's own order, `tabs` filtered to this workspaceId (see
+  // tab-strip.tsx's `wsTabs`) — not `tabs` unfiltered, which would jump you across spaces.
+  //
+  // Preference order is next-in-strip first, previous only when the closed tab was last (so closing
+  // the middle of three lands right, closing the last lands left, matching how a browser tab bar
+  // behaves). Beyond that immediate neighbour, keep walking the same directions — forward through the
+  // rest, then backward through what's left before it — because a neighbouring tab can be a bare
+  // empty tab with no pane to land on (goToTab silently no-ops for one), and the empty tab must not
+  // strand the close. onBack() (Home) is the last resort, only when no tab in the space resolves to
+  // an open pane at all.
+  function closeCurrentTab(tabId: string) {
+    if (!agent) return onBack();
+    const wsTabs = tabs.filter((tab) => tab.workspaceId === agent.workspaceId);
+    const closedIndex = wsTabs.findIndex((tab) => tab.tabId === tabId);
+    const candidates = [...wsTabs.slice(closedIndex + 1), ...wsTabs.slice(0, closedIndex).toReversed()];
+    for (const candidate of candidates) {
+      const target = [...agents, ...shellPanes].find((p) => p.tabId === candidate.tabId);
+      if (target) return switchTo(target.paneId);
+    }
+    onBack();
+  }
+
   // Open a space from the nav hub — go to its detail route (its tabs + panes, incl. shells). A step
   // back up out of the pane, so it slides backward.
   function openSpace(workspaceId: string) {
@@ -921,9 +945,11 @@ export function AgentChat({
               scope={scope}
               readOnly={readOnly}
               onRenamed={() => revalidator.revalidate()}
-              // Closing the tab this pane lives in kills the pane too — leave for Home the same way a
-              // pane-close does (onBack); closing any other tab just revalidates so it drops out.
-              onClosed={(tabId) => (agent?.tabId === tabId ? onBack() : revalidator.revalidate())}
+              // Closing the tab this pane lives in must not eject you to Home — see closeCurrentTab:
+              // it lands you on a neighbouring tab of this space, and only falls back to onBack() when
+              // the space has nothing left to land on. Closing any other tab just revalidates so it
+              // drops out of the strip.
+              onClosed={(tabId) => (agent?.tabId === tabId ? closeCurrentTab(tabId) : revalidator.revalidate())}
             />
           )}
 

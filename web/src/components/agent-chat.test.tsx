@@ -22,7 +22,7 @@ import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs } from "@/test/handlers";
 import { PackProvider } from "./pack-provider";
-import type { AgentStatus, ServerSummary } from "@/lib/types";
+import type { AgentStatus, AgentView, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
 import { AgentChat } from "./agent-chat";
 
@@ -1153,5 +1153,111 @@ describe("AgentChat — the mirror's top edge", () => {
     // sheet order is what lets the later `pt-0` beat it, so dropping the class restores 16px.
     expect(scroller?.className).toMatch(/\bpt-0\b/);
     expect(scroller?.className).toMatch(/\bpb-3\b/);
+  });
+});
+
+// Closing the in-pane TabStrip's CURRENT tab used to read as "leave the pane view" (onBack ->
+// dashboard). It must instead read as closing a browser tab: land on another tab of the same space,
+// via closeCurrentTab's goToTab-style resolution, and only fall back to onBack() when the space has
+// nothing left to land on. Each test drives the real two-tap close UI (long-press -> "Close tab" ->
+// confirm) so the wiring from TabStrip's onClosed through to onSelect/onBack is exercised end to end,
+// not just the helper in isolation.
+describe("AgentChat — closing the current tab", () => {
+  // A folder tab's accessible name is its (optional) status word immediately followed by its label
+  // — e.g. "workingcode" for a tab named "code" with a working agent inside (tab-strip.tsx renders
+  // an sr-only status word ahead of the label with no separating whitespace). Match on the label
+  // trailing the name rather than the name in full, so a test doesn't have to track each fixture's
+  // triage status.
+  async function closeTab(user: User, label: string, confirmName: RegExp | string) {
+    fireEvent.contextMenu(screen.getByRole("button", { name: new RegExp(`${label}$`) }));
+    await user.click(screen.getByRole("button", { name: "Close tab" }));
+    await user.click(screen.getByRole("button", { name: confirmName }));
+  }
+
+  it("moves to the neighbouring tab in the strip's own order, not the dashboard", async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    const onSelect = vi.fn();
+    server.use(
+      http.post(/\/api\/tab\/[^/]+\/close$/, () => HttpResponse.json({ ok: true })),
+    );
+    // w2 has two tabs (fixtureTabs): "code" (w2:t1, the current pane's tab) and "shell" (w2:t2,
+    // fixtureShellPanes' pane). Closing "code" — the current tab, and the FIRST of the two — must
+    // land on its one neighbour, "shell", not eject to Home.
+    renderChat({
+      agent: fixtureAgents[1], // w2:p1, tabId w2:t1 ("code")
+      agents: fixtureAgents,
+      shellPanes: fixtureShellPanes, // w2:p2, tabId w2:t2 ("shell")
+      tabs: fixtureTabs,
+      onBack,
+      onSelect,
+    });
+
+    await closeTab(user, "code", "Tap again to close 1 pane");
+
+    await waitFor(() => expect(onSelect).toHaveBeenCalledExactlyOnceWith("w2:p2"));
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it("closing the LAST tab in the strip falls back to the previous one", async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    const onSelect = vi.fn();
+    server.use(
+      http.post(/\/api\/tab\/[^/]+\/close$/, () => HttpResponse.json({ ok: true })),
+    );
+    const agentIn = (paneId: string, tabId: string): AgentView => ({
+      paneId,
+      workspaceId: "w2",
+      workspaceLabel: "collie",
+      workspaceNumber: 2,
+      tabId,
+      agent: "claude",
+      status: "idle",
+      cwd: "/home/you/collie",
+      focused: false,
+    });
+    const threeTabs: TabView[] = [
+      { tabId: "w2:t1", workspaceId: "w2", number: 1, label: "a", focused: false, paneCount: 1 },
+      { tabId: "w2:t2", workspaceId: "w2", number: 2, label: "b", focused: false, paneCount: 1 },
+      { tabId: "w2:t3", workspaceId: "w2", number: 3, label: "c", focused: true, paneCount: 1 },
+    ];
+    const current = agentIn("w2:p3", "w2:t3");
+    renderChat({
+      agent: current,
+      agents: [agentIn("w2:p1", "w2:t1"), agentIn("w2:p2", "w2:t2"), current],
+      shellPanes: [],
+      tabs: threeTabs,
+      onBack,
+      onSelect,
+    });
+
+    // "c" (w2:t3) is last in the strip's own order, so there is no next tab — the previous one, "b"
+    // (w2:t2), is what a browser tab bar would land on.
+    await closeTab(user, "c", "Tap again to close 1 pane");
+
+    await waitFor(() => expect(onSelect).toHaveBeenCalledExactlyOnceWith("w2:p2"));
+    expect(onBack).not.toHaveBeenCalled();
+  });
+
+  it("falls back to onBack() when the space has no other tab to go to", async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    const onSelect = vi.fn();
+    server.use(
+      http.post(/\/api\/tab\/[^/]+\/close$/, () => HttpResponse.json({ ok: true })),
+    );
+    // w1 (fixtureAgents[0], tabId w1:t1) has exactly one tab — fixtureTabs' w1 entry.
+    renderChat({
+      agent: fixtureAgents[0],
+      tabs: [fixtureTabs[0]!],
+      onBack,
+      onSelect,
+    });
+
+    await closeTab(user, "1", "Tap again to close 1 pane");
+
+    await waitFor(() => expect(onBack).toHaveBeenCalledOnce());
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });

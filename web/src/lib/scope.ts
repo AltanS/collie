@@ -29,8 +29,13 @@ export const SESSION_PARAM = "s";
 export const HOST_PARAM = "h";
 
 /**
- * The browser URL query key that WIDENS the home view to every session on the addressed host
+ * The browser URL query key that WIDENS the home view to every Herdr session on ONE machine
  * (`?all=1`). Absent, and anything other than `1`, means "no".
+ *
+ * WHICH machine, precisely: today it is the collie the phone is connected to, NOT the machine `?h=`
+ * names. `/api/snapshot` resolves `session=` against the lead's own registry and does not read
+ * `host=` at all — a pre-existing gap, and the one the pack half of this feature closes. Until then
+ * a widened view on `?h=peer` widens the lead. Do not write code that assumes otherwise.
  *
  * IT IS DELIBERATELY NOT PART OF {@link Scope}, and that is the load-bearing decision in this
  * feature. A scope is an ADDRESS — it says which pane a read or a write lands on, and it is threaded

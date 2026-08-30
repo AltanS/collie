@@ -7,6 +7,8 @@ import {
   hostName,
   isMultiHost,
   leadHost,
+  ambientPanes,
+  paneRowKey,
   paneScope,
   paneSpaceKey,
   primarySession,
@@ -280,5 +282,72 @@ describe("hostCounts", () => {
     expect(countsFor(counts, "bluefin")).toEqual({ agents: 1, working: 1, blocked: 0 });
     expect(countsFor(counts, "workshop")).toEqual({ agents: 3, working: 0, blocked: 2 });
     expect(countsFor(counts, "nobody")).toEqual({ agents: 0, working: 0, blocked: 0 });
+  });
+});
+
+// ── A ROW'S IDENTITY ─────────────────────────────────────────────────────────
+//
+// This is a React `key`, and on this list a React key is a safety property. A pane id is unique only
+// within one session on one machine, so a merged or widened list holds several rows answering to
+// `w1:p1`. Keyed by the id alone React recycles one row's element for another's between polls: the
+// card keeps its position and acquires a different row's `onClick` — a tap landing in another
+// terminal, on the list whose whole purpose is "tap the thing that needs you".
+describe("paneRowKey", () => {
+  it("separates the same id across sessions and across machines", () => {
+    const keys = [
+      paneRowKey(inSession(pane("w1:p1"), "default")),
+      paneRowKey(inSession(pane("w1:p1"), "work")),
+      paneRowKey(inSession(pane("w1:p1", "workshop"), "default")),
+      paneRowKey(pane("w1:p1", "workshop")),
+      paneRowKey(pane("w1:p1")),
+    ];
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("degrades to a pure prefix of the bare id when nothing is tagged", () => {
+    // A solo, un-widened list keys exactly as it always did — no re-mount on the upgrade.
+    expect(paneRowKey(pane("w1:p1"))).toBe("\u0000\u0000w1:p1");
+  });
+});
+
+// ── THE NAVIGATION TREE STAYS AMBIENT ────────────────────────────────────────
+//
+// The triage lists are what widening is for. The space navigator is a TREE, and its keys carry a
+// host and no session — Herdr workspace ids collide across sessions exactly as they collide across
+// machines. Fed a widened body it would paint another session's blocked dot onto the ambient space
+// of the same number, and drilling in would show a space with nothing blocked in it.
+describe("ambientPanes", () => {
+  const widened = [
+    inSession(pane("w1:p1"), "default"),
+    inSession(pane("w1:p2", undefined, "blocked"), "work"),
+  ];
+
+  it("drops the panes belonging to another session", () => {
+    const out = ambientPanes(widened, [], {}, undefined, registry);
+    expect(out.agents.map((p) => p.paneId)).toEqual(["w1:p1"]);
+  });
+
+  it("keeps the named session's panes when the url names it", () => {
+    const out = ambientPanes(widened, [], { session: "work" }, undefined, registry);
+    expect(out.agents.map((p) => p.paneId)).toEqual(["w1:p2"]);
+  });
+
+  it("is the identity on an un-widened body, contents and all", () => {
+    // Untagged is ambient by definition, so a solo install's render is what it always was.
+    const plain = [pane("w1:p1"), pane("w1:p2")];
+    const out = ambientPanes(plain, [], { session: "work" }, undefined, registry);
+    expect(out.agents).toEqual(plain);
+    expect(out.shellPanes).toEqual([]);
+  });
+
+  it("filters shell panes on the same rule", () => {
+    const out = ambientPanes([], widened, {}, undefined, registry);
+    expect(out.shellPanes.map((p) => p.paneId)).toEqual(["w1:p1"]);
+  });
+
+  it("narrows by host as well, so a peer's spaces never reach the lead's tree", () => {
+    const mixed = [pane("w1:p1", "bluefin"), pane("w1:p1", "workshop")];
+    const out = ambientPanes(mixed, [], {}, pack, registry);
+    expect(out.agents.map((p) => p.host)).toEqual(["bluefin"]);
   });
 });

@@ -44,7 +44,7 @@ const homeData = (snap: Partial<SnapshotResponse>, scope: HomeData["scope"] = {}
   authError: false,
 });
 
-function renderHome(data: HomeData) {
+function renderHome(data: HomeData, initialPath?: string) {
   const router = createMemoryRouter(
     [
       {
@@ -52,7 +52,12 @@ function renderHome(data: HomeData) {
         path: "/",
         loader: () => data,
         element: withHeaderHost(
-          <PackProvider servers={data.servers} ts={data.ts} pollMs={1500}>
+          <PackProvider
+            servers={data.servers}
+            sessions={data.sessions}
+            ts={data.ts}
+            pollMs={1500}
+          >
             <HomeRoute />
           </PackProvider>,
         ),
@@ -60,7 +65,7 @@ function renderHome(data: HomeData) {
       { path: "/pane/:paneId", element: <div data-testid="pane" /> },
       { path: "/pack", element: <div data-testid="pack" /> },
     ],
-    { initialEntries: [data.scope.host ? `/?h=${data.scope.host}` : "/"] },
+    { initialEntries: [initialPath ?? (data.scope.host ? `/?h=${data.scope.host}` : "/")] },
   );
   render(<RouterProvider router={router} />);
   return router;
@@ -226,5 +231,75 @@ describe("the pack line in the dashboard footer", () => {
     const router = renderHome(packed());
     await userEvent.click(await screen.findByLabelText(/open the pack overview/i));
     await waitFor(() => expect(url(router)).toBe("/pack"));
+  });
+});
+
+// ── THE WIDENED DASHBOARD ────────────────────────────────────────────────────
+//
+// One list across every Herdr session on this machine. The hazard it brings is the pack's hazard one
+// dimension down: `w1:p1` is a different terminal in every session, and here BOTH of them are on
+// screen at once, in the same section, under the same name.
+describe("the dashboard across sessions", () => {
+  const sessions = [
+    { name: "default", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 1 },
+    { name: "work", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 1 },
+  ];
+  const blocked = fixtureAgents[0]!; // w1:p1, blocked, in the "webapp" space
+  const widened = () =>
+    homeData({
+      agents: [
+        { ...blocked, session: "default" },
+        { ...blocked, session: "work" },
+      ],
+      sessions,
+    });
+  /** The rows in the NEEDS YOU section — scoped, because the space navigator below also names
+   *  `webapp` and this test is about how many TERMINALS are listed, not how many spaces. */
+  const rows = () => {
+    const body = document.getElementById("agent-section-needs");
+    if (!body) throw new Error("the Needs you section did not render");
+    return within(body).getAllByRole("button", { name: /webapp/i });
+  };
+
+  it("renders BOTH colliding rows, not one recycled row", async () => {
+    // A React key of `paneId` alone silently collapses these two — or worse, recycles one element
+    // for the other between polls, so the card you are looking at acquires the other row's onClick.
+    renderHome(widened(), "/?all=1");
+    await settled();
+    expect(rows().length).toBe(2);
+  });
+
+  it("marks the row that is NOT in the primary session, and only that one", async () => {
+    renderHome(widened(), "/?all=1");
+    await settled();
+    expect(screen.getByLabelText("In session: work")).toBeInTheDocument();
+    // The primary needs no mark: an absent `?s=` already means it.
+    expect(screen.queryByLabelText("In session: default")).toBeNull();
+  });
+
+  it("opens each row in its OWN session", async () => {
+    // THE GUARD, end to end. Both rows say `w1:p1`; the one from `work` must carry `?s=work`, and
+    // the primary one must carry no session param at all — today's bare url.
+    const router = renderHome(widened(), "/?all=1");
+    await settled();
+    await userEvent.click(rows()[1]!);
+    expect(url(router)).toBe("/pane/w1%3Ap1?s=work");
+  });
+
+  it("opens the primary row at today's bare url", async () => {
+    const router = renderHome(widened(), "/?all=1");
+    await settled();
+    await userEvent.click(rows()[0]!);
+    expect(url(router)).toBe("/pane/w1%3Ap1");
+  });
+
+  it("keeps the space navigator on the ambient session", async () => {
+    // The lists widen; the tree does not. Workspace ids collide across sessions too, and the tree
+    // keys by `(host, workspaceId)` with no session in it — so an unfiltered widened body would
+    // paint the `work` session's panes onto the ambient space of the same number and count them
+    // twice. One row per workspace, never one per (workspace × session).
+    renderHome(widened(), "/?all=1");
+    await settled();
+    expect(screen.getAllByLabelText(/1 pane/i).length).toBe(1);
   });
 });

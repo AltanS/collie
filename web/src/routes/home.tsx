@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
@@ -15,7 +15,7 @@ import { PackFooterLink } from "@/components/pack-footer-link";
 import { UpdateBanner } from "@/components/update-banner";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useSpaceActions } from "@/hooks/use-spaces";
-import { leadHost, paneScope, sessionsOnHost } from "@/lib/hosts";
+import { ambientPanes, leadHost, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { panePath, spacePath } from "@/lib/nav";
 import type { AgentView } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
@@ -47,6 +47,18 @@ export function HomeRoute() {
   const navHost = leadHost(data.servers);
   // Sessions are a per-host registry, so the session switcher only ever lists this host's.
   const sessionsHere = sessionsOnHost(data.sessions ?? [], data.scope, data.servers);
+  // …AND LEAD-LOCAL IS ALSO SESSION-LOCAL, which is the half the widened view would otherwise break.
+  // Workspace ids collide across sessions exactly as they collide across machines, and the space
+  // navigator keys by `(host, workspaceId)` with no session in it — so on a widened body another
+  // session's `w1` panes would paint their blocked dot and their recency onto the AMBIENT `w1` row,
+  // and drilling in would show a space with nothing blocked in it. The list widens; the navigation
+  // tree does not (that is the whole shape of this feature, and the shape the pack merge already
+  // has), so the tree is fed ambient panes only. Untagged panes are ambient by definition, which
+  // makes this the identity filter on every un-widened body.
+  const navPanes = useMemo(
+    () => ambientPanes(data.agents, data.shellPanes, data.scope, data.servers, data.sessions),
+    [data.agents, data.shellPanes, data.scope, data.servers, data.sessions],
+  );
 
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
@@ -92,8 +104,8 @@ export function HomeRoute() {
           />
           <SpaceOverview
             workspaces={data.workspaces}
-            agents={data.agents}
-            shellPanes={data.shellPanes}
+            agents={navPanes.agents}
+            shellPanes={navPanes.shellPanes}
             host={navHost}
             onOpen={drillInto}
             onNewSpace={() => setNewSpaceOpen(true)}
