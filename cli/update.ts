@@ -1,10 +1,11 @@
 import { join } from "node:path";
 
 import { compareSemver, followsTrain, majorOf, parsePrereleaseTag } from "../bridge/update.ts";
-import { manifestVersionFrom } from "../bridge/version.ts";
+import { manifestVersionFrom, readBuildInfo } from "../bridge/version.ts";
 import { type BuildDeps, cmdBuild } from "./build.ts";
 import { EXIT } from "./io.ts";
 import type { Exec } from "./sys.ts";
+import { collieBinary } from "./unit.ts";
 
 // `update`, `_apply-update` and the checkout logic behind them, ported from
 // the pre-shim `collie-ctl.sh`. ADR 0006 is this module's specification: Collie is a link-mode
@@ -239,6 +240,21 @@ function announceMajor(deps: UpdateDeps, higher: ReleaseTag | null): void {
 }
 
 /**
+ * What advancing the checkout came to. `code` is the verb's exit status; the other two are what
+ * `cmdUpdate` needs and cannot re-derive once the git calls are behind it.
+ */
+export interface CheckoutOutcome {
+  /** {@link EXIT.OK} or {@link EXIT.FAIL} — unchanged from what this function used to return. */
+  code: number;
+  /**
+   * True only when a commit actually landed. False for every "nothing to take" verdict, for a
+   * refused major crossing, and for a `git pull --ff-only` that found nothing to fast-forward.
+   * `cmdUpdate` skips the rebuild on false, so this must never be optimistic.
+   */
+  moved: boolean;
+}
+
+/**
  * Advance the checkout, in whichever shape it was installed — and never across a major without
  * `--major` (ADR 0020).
  *
@@ -249,7 +265,10 @@ function announceMajor(deps: UpdateDeps, higher: ReleaseTag | null): void {
  * gate is a pre-flight: fetch, read the manifest at the branch's OWN upstream, and refuse before
  * pulling.
  */
-export function updateCheckout(deps: UpdateDeps, opts: { crossMajor: boolean } = { crossMajor: false }): number {
+export function updateCheckout(
+  deps: UpdateDeps,
+  opts: { crossMajor: boolean } = { crossMajor: false },
+): CheckoutOutcome {
   const root = deps.ctx.root;
   const git = (args: readonly string[]): number => {
     const r = deps.exec.runIn("git", gitArgs(root, args), root);
@@ -263,7 +282,7 @@ export function updateCheckout(deps: UpdateDeps, opts: { crossMajor: boolean } =
   if (!isGitCheckout(deps.exec, root)) {
     deps.io.err(`error: ${root} is not a git checkout — refresh it with:`);
     deps.io.err("       herdr plugin install AltanS/collie --yes");
-    return EXIT.FAIL;
+    return { code: EXIT.FAIL, moved: false };
   }
 
   const installed = installedVersion(deps);
@@ -278,15 +297,17 @@ function updateLinked(
   git: (args: readonly string[]) => number,
   installed: string | null,
   crossMajor: boolean,
-): number {
+): CheckoutOutcome {
   const root = deps.ctx.root;
+  const headNow = (): string => deps.exec.capture("git", gitArgs(root, ["rev-parse", "HEAD"])).stdout.trim();
+  const before = headNow();
   // Plain `git fetch origin` — the configured refspec, so every remote-tracking ref advances. NOT
   // `fetch origin HEAD`: that resolves the remote's DEFAULT branch, and the pull below takes the
   // current branch's own upstream. On a clone kept on a maintenance or integration branch those are
   // different commits, and a gate that judged one while the pull took the other would refuse a
   // fast-forward that never leaves the major (and, after 1.0 lands on `main`, would refuse EVERY
   // pull on a 0.x branch). Judge exactly the commit the pull will land on.
-  if (git(["fetch", "origin"]) !== EXIT.OK) return EXIT.FAIL;
+  if (git(["fetch", "origin"]) !== EXIT.OK) return { code: EXIT.FAIL, moved: false };
   const upstream = deps.exec.capture(
     "git",
     gitArgs(root, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]),
@@ -305,11 +326,15 @@ function updateLinked(
       deps.io.out("A major means you have to change something — so it is never taken by a routine update.");
       deps.io.out(`Read its release notes, then consent to it with:  ${MAJOR_ACTION}`);
       deps.io.out("(nothing was pulled — this checkout is unchanged)");
-      return EXIT.OK;
+      return { code: EXIT.OK, moved: false };
     }
   }
   deps.io.out("updating Collie (git pull --ff-only)…");
-  return git(["pull", "--ff-only"]);
+  const code = git(["pull", "--ff-only"]);
+  // A `--ff-only` pull that finds nothing to take succeeds and moves no commit — the linked-clone
+  // spelling of "already current". Compare HEAD across the pull rather than parsing git's wording:
+  // "Already up to date." is a translated, version-dependent sentence, and the sha is neither.
+  return { code, moved: code === EXIT.OK && headNow() !== before };
 }
 
 /**
@@ -323,12 +348,12 @@ function updateManaged(
   git: (args: readonly string[]) => number,
   installed: string | null,
   crossMajor: boolean,
-): number {
+): CheckoutOutcome {
   const root = deps.ctx.root;
   const ls = deps.exec.capture("git", gitArgs(root, ["ls-remote", "--tags", "origin"]));
   if (!ls.found || ls.code !== 0) {
     deps.io.err("error: could not list the upstream release tags — is the remote reachable?");
-    return EXIT.FAIL;
+    return { code: EXIT.FAIL, moved: false };
   }
   const head = deps.exec.capture("git", gitArgs(root, ["rev-parse", "HEAD"])).stdout.trim();
   const plan = planUpdate({ tags: parseRemoteTags(ls.stdout), installed, head, crossMajor });
@@ -339,21 +364,22 @@ function updateManaged(
     // branch points at today", which is unreleased work nobody consented to.
     if (plan.newest === null) {
       deps.io.err("error: no release tags on origin — cannot pin an unversioned checkout.");
-      return EXIT.FAIL;
+      return { code: EXIT.FAIL, moved: false };
     }
     deps.io.out(
       `updating Collie (Herdr-managed checkout: no readable version — pinning to newest release tag ${plan.newest.tag})…`,
     );
-    return detachOnto(deps, git, plan.newest.tag);
+    const pinned = detachOnto(deps, git, plan.newest.tag);
+    return { code: pinned, moved: pinned === EXIT.OK };
   }
   if (plan.kind === "no-higher-major") {
     deps.io.out(`no release above major ${plan.major} exists yet — nothing to cross to.`);
-    return EXIT.OK;
+    return { code: EXIT.OK, moved: false };
   }
   if (plan.kind === "no-release") {
     deps.io.out(`no release of major ${plan.major} yet — leaving this checkout where it is.`);
     announceMajor(deps, plan.higher);
-    return EXIT.OK;
+    return { code: EXIT.OK, moved: false };
   }
   if (plan.kind === "current") {
     deps.io.out(
@@ -362,7 +388,7 @@ function updateManaged(
         : `already current — v${plan.at.version} is the newest on the major ${plan.at.major} prerelease train.`,
     );
     announceMajor(deps, plan.higher);
-    return EXIT.OK;
+    return { code: EXIT.OK, moved: false };
   }
   deps.io.out(
     plan.crossesMajor
@@ -371,7 +397,7 @@ function updateManaged(
   );
   const code = detachOnto(deps, git, plan.target.tag);
   if (code === EXIT.OK && !plan.crossesMajor) announceMajor(deps, plan.higher);
-  return code;
+  return { code, moved: code === EXIT.OK };
 }
 
 /** Fetch the release tag `tag` and re-detach onto it, the way Herdr got this checkout here. */
@@ -451,6 +477,38 @@ export function refreshRegistry(deps: UpdateDeps): void {
 }
 
 /**
+ * The version with its BUILD METADATA and its non-release marker taken off — `1.0.0-beta.46+ab12cd3`
+ * and `1.0.0-beta.46-dev` both read as `1.0.0-beta.46`.
+ *
+ * Both tails have to go before the built bundle can be compared against the manifest. `+<sha>` is the
+ * commit the bundle came from, which the manifest never carries. `-dev`/`-dirty` are `vite.config.ts`
+ * saying "this bundle is not a tagged release" — true on a linked clone mid-development, and true on
+ * any checkout whose local `v<version>` tag is STALE, and in NEITHER case evidence that the build is
+ * of a different version. A prerelease tail (`-beta.46`) is part of the version and stays.
+ */
+const releaseCore = (v: string): string => (v.split("+")[0] ?? v).replace(/-(?:dev|dirty)$/, "");
+
+/**
+ * Is there a working Collie on disk built from the version the manifest names?
+ *
+ * This is the second half of the "nothing to take" decision. A no-op verdict alone must not skip the
+ * rebuild, because the half-crossed checkout — detached onto the new tag with a build that failed —
+ * reports exactly the same verdict on the re-run the operator was TOLD to make ("Fix the build and
+ * re-run"). That path has to keep repairing, so anything short of a complete, matching install
+ * builds anyway.
+ *
+ * Both facts are read through `bridge/version.ts`, the one place that parses either file.
+ */
+function installIsIntact(deps: UpdateDeps): boolean {
+  const root = deps.ctx.root;
+  if (!deps.files.exists(collieBinary(root))) return false;
+  const manifest = manifestVersionFrom(deps.files.read(join(root, "herdr-plugin.toml")));
+  const built = readBuildInfo(deps.files.read(join(root, "web", "dist", "build-info.json")));
+  if (manifest === null || built === null) return false;
+  return releaseCore(built) === releaseCore(manifest);
+}
+
+/**
  * The second half of `update`, run FROM THE CODE THAT WAS JUST FETCHED. `build` re-runs the version
  * gate (a half-bumped release can't go live) and recompiles both the binary and `web/dist`;
  * `restart` picks up the new bridge AND the new binary (the swap gave `bin/collie` a fresh inode,
@@ -489,10 +547,17 @@ export async function cmdApplyUpdate(deps: UpdateDeps): Promise<number> {
  */
 export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []): Promise<number> {
   const advanced = updateCheckout(deps, { crossMajor: wantsMajor(args) });
-  if (advanced !== EXIT.OK) return advanced;
-  // The rebuild runs even when the checkout did not move: an update whose BUILD failed last time is
-  // re-run by exactly this command, and skipping the handoff there would leave the fix on disk and
-  // out of service forever.
+  if (advanced.code !== EXIT.OK) return advanced.code;
+  // Nothing was taken AND what is on disk is whole: stop here. This used to fall through, so
+  // "already current" and "nothing to cross to" were each followed by two installs, two typechecks,
+  // a full Vite build and a bridge restart — minutes of work and a service interruption for a no-op,
+  // ending on `✓ update complete`, which contradicted the verb's own first line.
+  //
+  // The rebuild is still unconditional when the install is NOT intact. An update whose build failed
+  // leaves the checkout advanced with no binary, and the recovery the operator is told to run is this
+  // very command — which by then reports "already current", because the checkout really did move. So
+  // the verdict alone may never be what skips the build.
+  if (!advanced.moved && installIsIntact(deps)) return EXIT.OK;
   if (deps.exec.which("bun") === null) {
     deps.io.err("error: bun not found — the checkout advanced, but rebuilding needs Bun.");
     deps.io.err("       Install it from https://bun.sh and re-run update.");

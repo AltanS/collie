@@ -345,7 +345,7 @@ describe("updateCheckout", () => {
 
   test("a linked clone fast-forwards its branch, after reading the manifest it would land on", () => {
     const h = linked("main", "0.32.0");
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     // Plain `fetch origin` (the configured refspec), so the remote-tracking ref the pull uses is the
     // one that advanced — `fetch origin HEAD` would only have moved FETCH_HEAD.
     expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`, `${GIT} pull --ff-only`]);
@@ -357,7 +357,7 @@ describe("updateCheckout", () => {
     // `main` a clone kept on a 0.x maintenance branch would see main's major and refuse a pull that
     // only ever fast-forwards within major 0.
     const h = linked("v0.x", "0.32.0");
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`, `${GIT} pull --ff-only`]);
     expect(h.exec.calls).toContain(`${GIT} show origin/v0.x:herdr-plugin.toml`);
     expect(h.exec.calls.some((c) => c.includes("FETCH_HEAD:herdr-plugin.toml"))).toBe(false);
@@ -366,7 +366,7 @@ describe("updateCheckout", () => {
 
   test("a linked clone refuses to be pulled across a major, and pulls NOTHING", () => {
     const h = linked("main", "1.0.0");
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`]); // fetched to look; never pulled
     expect(h.io.stdout.join("\n")).toContain("crosses a MAJOR version");
     expect(h.io.stdout.join("\n")).toContain("(origin/main)");
@@ -375,7 +375,7 @@ describe("updateCheckout", () => {
 
   test("--major lets the same clone through, on its branch and with its ff-only pull", () => {
     const h = linked("main", "1.0.0");
-    expect(updateCheckout(h.deps, { crossMajor: true })).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps, { crossMajor: true }).code).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`, `${GIT} pull --ff-only`]);
   });
 
@@ -391,14 +391,14 @@ describe("updateCheckout", () => {
         [`${ROOT}$ ${GIT} pull`, { code: 1 }],
       ],
     });
-    expect(updateCheckout(h.deps)).toBe(EXIT.FAIL);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.FAIL);
     expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`, `${GIT} pull --ff-only`]);
     expect(h.exec.calls.some((c) => c.includes("herdr-plugin.toml"))).toBe(false);
   });
 
   test("a managed checkout detaches onto the newest TAG of its major, shallow and forced", () => {
     const h = managed();
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     // A STORING refspec, not the bare ref: the bare form writes FETCH_HEAD and stores no local tag,
     // after which `vite.config.ts` finds no `refs/tags/v0.32.0` at HEAD and stamps the build `-dev`.
     expect(gitRuns(h.exec)).toEqual([
@@ -420,7 +420,7 @@ describe("updateCheckout", () => {
         [`${GIT} rev-parse HEAD`, { stdout: "b2peeled\n" }],
       ],
     });
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([]);
     expect(h.io.stdout.join("\n")).toContain("already current");
     expect(h.io.stdout.join("\n")).toContain("update-major --plugin herdr.collie");
@@ -428,14 +428,14 @@ describe("updateCheckout", () => {
 
   test("--major on a managed checkout detaches onto the next major's tag", () => {
     const h = managed([], "0.31.1");
-    expect(updateCheckout(h.deps, { crossMajor: true })).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps, { crossMajor: true }).code).toBe(EXIT.OK);
     expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch --depth 1 origin +refs/tags/v1.0.0:refs/tags/v1.0.0`);
     expect(h.io.stdout.join("\n")).toContain("crossing to Collie 1.0.0");
   });
 
   test("--major with nothing above the installed major acts on nothing", () => {
     const h = managed([], "1.0.0");
-    expect(updateCheckout(h.deps, { crossMajor: true })).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps, { crossMajor: true }).code).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([]);
     expect(h.io.stdout.join("\n")).toContain("no release above major 1");
   });
@@ -451,7 +451,7 @@ describe("updateCheckout", () => {
         [`${GIT} log -1`, { stdout: "d0d0d0d the release\n" }],
       ],
     });
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     // v1.0.0, NOT v1.0.0-beta.10: the release supersedes every beta that led to it.
     expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch --depth 1 origin +refs/tags/v1.0.0:refs/tags/v1.0.0`);
     expect(h.io.stdout.join("\n")).toContain("detach onto v1.0.0");
@@ -468,7 +468,7 @@ describe("updateCheckout", () => {
         [`${GIT} log -1`, { stdout: "c0c0c0c the next beta\n" }],
       ],
     });
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     // A prerelease tag name reaches `refs/tags/` untouched — it is a ref like any other.
     expect(gitRuns(h.exec)).toEqual([
       `${GIT} fetch --depth 1 origin +refs/tags/v1.0.0-beta.10:refs/tags/v1.0.0-beta.10`,
@@ -486,7 +486,7 @@ describe("updateCheckout", () => {
         [`${GIT} rev-parse HEAD`, { stdout: "c0c0c0c0\n" }],
       ],
     });
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([]);
     expect(h.io.stdout.join("\n")).toContain(
       "already current — v1.0.0-beta.10 is the newest on the major 1 prerelease train.",
@@ -504,7 +504,7 @@ describe("updateCheckout", () => {
         [`${GIT} rev-parse HEAD`, { stdout: "cccccccc\n" }],
       ],
     });
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([]);
     expect(h.io.stdout.join("\n")).toContain("already current — v1.0.0 is the newest release of major 1.");
   });
@@ -519,7 +519,7 @@ describe("updateCheckout", () => {
         [`${GIT} rev-parse HEAD`, { stdout: "zzz\n" }],
       ],
     });
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([]);
     expect(h.io.stdout.join("\n")).toContain("no release of major 1 yet");
   });
@@ -534,7 +534,7 @@ describe("updateCheckout", () => {
         [`${GIT} log -1`, { stdout: "abc1234 tip\n" }],
       ],
     });
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([
       `${GIT} fetch --depth 1 origin +refs/tags/v1.0.0:refs/tags/v1.0.0`,
       `${GIT} checkout -q --detach --force FETCH_HEAD`,
@@ -550,7 +550,7 @@ describe("updateCheckout", () => {
         [`${GIT} rev-parse HEAD`, { stdout: "zzz\n" }],
       ],
     });
-    expect(updateCheckout(h.deps)).toBe(EXIT.FAIL);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.FAIL);
     expect(gitRuns(h.exec)).toEqual([]);
     expect(h.io.stderr.join("\n")).toContain("no release tags on origin");
   });
@@ -564,14 +564,14 @@ describe("updateCheckout", () => {
       [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
       ...FULL,
     ] });
-    expect(updateCheckout(h.deps)).toBe(EXIT.OK);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     // …and the storing refspec rides along on the full-clone variant too.
     expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch origin +refs/tags/v0.32.0:refs/tags/v0.32.0`);
   });
 
   test("a non-git checkout names the reinstall command and fails", () => {
     const h = harness({ answers: [[`${GIT} rev-parse --git-dir`, { code: 128 }]] });
-    expect(updateCheckout(h.deps)).toBe(EXIT.FAIL);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("herdr plugin install AltanS/collie --yes");
     expect(gitRuns(h.exec)).toEqual([]);
   });
@@ -581,14 +581,14 @@ describe("updateCheckout", () => {
       installed: "0.31.1",
       answers: [...MANAGED, [`${GIT} ls-remote --tags origin`, { code: 128 }]],
     });
-    expect(updateCheckout(h.deps)).toBe(EXIT.FAIL);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.FAIL);
     expect(gitRuns(h.exec)).toEqual([]);
     expect(h.io.stderr.join("\n")).toContain("could not list the upstream release tags");
   });
 
   test("a failed fetch stops before the checkout", () => {
     const h = managed([[`${ROOT}$ ${GIT} fetch`, { code: 1 }]]);
-    expect(updateCheckout(h.deps)).toBe(EXIT.FAIL);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.FAIL);
     expect(gitRuns(h.exec)).toEqual([`${GIT} fetch --depth 1 origin +refs/tags/v0.32.0:refs/tags/v0.32.0`]);
   });
 });
@@ -643,10 +643,15 @@ describe("_apply-update", () => {
 });
 
 describe("update", () => {
+  /** `git pull --ff-only` took a commit: HEAD reads differently either side of it. */
+  const PULLED: Scripted["answers"] = [
+    [`${GIT} rev-parse HEAD`, { perCall: (n) => ({ stdout: n === 1 ? "aaaaaaa\n" : "bbbbbbb\n" }) }],
+  ];
+
   test("advances the checkout, then hands the rest to the code it just fetched", async () => {
     // The post-pull half MUST run the new build logic, and the new binary does not exist yet —
     // `build` is what produces it. So the handoff re-execs the fetched SOURCE with Bun.
-    const h = harness({ answers: [...LINKED] });
+    const h = harness({ answers: [...PULLED, ...LINKED] });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain(`${ROOT}$ bun ${ROOT}/cli/main.ts _apply-update`);
     // Nothing of the second half ran in THIS process.
@@ -661,8 +666,103 @@ describe("update", () => {
   });
 
   test("no Bun: the checkout advanced, and the failure says exactly that", async () => {
-    const h = harness({ absent: ["bun"], answers: LINKED });
+    const h = harness({ absent: ["bun"], answers: [...PULLED, ...LINKED] });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("the checkout advanced, but rebuilding needs Bun");
+  });
+
+  // ── Nothing to take + an intact install ⇒ no build, no restart ────────────
+  // The verdict alone is NOT the rule. A half-crossed checkout — advanced onto the new tag by an
+  // update whose build then failed — reports "already current" on the very re-run the operator was
+  // told to make, so the second half of the rule (is there a whole install on disk?) is what keeps
+  // that recovery path repairing.
+
+  /** A managed checkout already on the newest tag of major 0, with 1.0.0 published above it. */
+  const noop = () =>
+    harness({
+      installed: "0.32.0",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "b2peeled\n" }],
+      ],
+    });
+  /** Stamp the built bundle as `version` — what `web/dist/build-info.json` carries after a build. */
+  const stamp = (h: Harness, version: string): void =>
+    void h.files.entries.set(`${DIST}/build-info.json`, {
+      text: JSON.stringify({ version, sha: "ab12cd3" }),
+    });
+  const built = (h: Harness): boolean => h.exec.calls.some((c) => c.includes("_apply-update"));
+
+  test("nothing to take and the install is intact: no build, no restart, and the verdict stands", async () => {
+    const h = noop();
+    stamp(h, "0.32.0");
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(built(h)).toBe(false);
+    expect(h.restarts).toBe(0);
+    expect(h.io.stdout.join("\n")).toContain("already current");
+    // …and the transcript never claims otherwise.
+    expect(h.io.stdout.join("\n")).not.toContain("update complete");
+  });
+
+  test("a `-dev` stamp is still the same version — the marker is stripped before comparing", async () => {
+    // True of every managed install made before the tag fetch started STORING the tag, and of any
+    // linked clone built mid-development. It says "not a tagged release", not "a different version".
+    const h = noop();
+    stamp(h, "0.32.0-dev");
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(built(h)).toBe(false);
+  });
+
+  test("nothing to take but no bin/collie: build anyway — this is the half-crossed checkout", async () => {
+    const h = noop();
+    stamp(h, "0.32.0");
+    h.files.entries.delete(BINARY);
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(built(h)).toBe(true);
+  });
+
+  test("nothing to take but the bundle is of another version: build anyway", async () => {
+    const h = noop();
+    stamp(h, "0.31.1");
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(built(h)).toBe(true);
+  });
+
+  test("nothing to take and nothing built at all: build anyway", async () => {
+    const h = noop(); // no build-info.json seeded
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(built(h)).toBe(true);
+  });
+
+  test("a checkout that MOVED always builds, however intact the old install looked", async () => {
+    const h = harness({
+      installed: "0.31.1",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+        ...SHALLOW,
+      ],
+    });
+    stamp(h, "0.31.1"); // matches the manifest — the install was whole before the checkout advanced
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(built(h)).toBe(true);
+  });
+
+  test("a linked clone whose ff-only pull took nothing is the same no-op", async () => {
+    const h = harness({
+      installed: "0.32.0",
+      answers: [
+        [`${GIT} rev-parse HEAD`, { stdout: "same\n" }],
+        ...LINKED,
+        [`${GIT} rev-parse --abbrev-ref --symbolic-full-name @{u}`, { stdout: "origin/main\n" }],
+        [`${GIT} show origin/main:herdr-plugin.toml`, { stdout: 'version = "0.32.0"\n' }],
+      ],
+    });
+    stamp(h, "0.32.0");
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`, `${GIT} pull --ff-only`]);
+    expect(built(h)).toBe(false);
   });
 });

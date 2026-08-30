@@ -65,7 +65,15 @@ export function bareVersionFrom(buildInfo: string | null, manifest: string | nul
   return resolve(buildInfo, manifest).version ?? "unknown";
 }
 
-function readBuildInfo(text: string): string | null {
+/**
+ * The built bundle's stamp — `1.0.0-beta.46`, or `1.0.0-beta.46+ab12cd3` when the file names a sha.
+ * Null when there is no bundle, or none this can read a version out of.
+ *
+ * Exported for the same reason {@link manifestVersionFrom} is: `cli/update.ts` compares what is BUILT
+ * against what the manifest names, and a second reader of this file would agree today and drift.
+ */
+export function readBuildInfo(text: string | null): string | null {
+  if (text === null) return null;
   let version: string | undefined;
   let sha: string | undefined;
   try {
