@@ -66,6 +66,7 @@ describe("composerBottomText", () => {
 describe("composerGhost — omp's inline completion suggestion", () => {
   const CORNER = "\x1b[38;2;74;80;88m";
   const SUGGEST = "\x1b[38;2;111;115;119m";
+  const DRAFT = "\x1b[38;2;242;244;248m"; // omp 18 paints the draft itself while the agent is working
   const PAD = " ".repeat(10);
 
   it("claims the trailing coloured run that follows the operator's own text", () => {
@@ -73,16 +74,30 @@ describe("composerGhost — omp's inline completion suggestion", () => {
     expect(composerGhost(splitLines(parseAnsi(row))[0]!)).toBe("sitory");
   });
 
-  it("reads it off the real capture, and leaves the plain one alone", () => {
+  // omp 18's busy shape, and the regression this rule was rewritten for: the draft is no longer
+  // unstyled, so "coloured run after unstyled text" saw nothing and the suggestion stayed in the
+  // draft. What separates the two runs is that their colours DIFFER, not that one of them is absent.
+  it("claims it just the same when the draft carries a foreground of its own", () => {
+    const row = `${CORNER}╰─ ${DRAFT}list the files in this repo${SUGGEST}sitory\x1b[0m${PAD}${CORNER} ─╯\x1b[0m`;
+    expect(composerGhost(splitLines(parseAnsi(row))[0]!)).toBe("sitory");
+  });
+
+  it("reads it off the real captures, and leaves the plain one alone", () => {
     expect(composerGhost(styledRow("omp--draft-ghost-suggestion.txt", 27))).toBe("sitory");
+    expect(composerGhost(styledRow("omp--draft-ghost-suggestion-busy.txt", 27))).toBe("sitory");
     expect(composerGhost(styledRow("omp--draft-single.txt", 27))).toBe("");
     expect(composerGhost(styledRow("omp--fresh-idle.txt", 27))).toBe("");
   });
 
   // Both of these keep a real draft whole. A wrongly-claimed ghost SHORTENS the text the reply guard
   // verifies, so every ambiguous row must claim nothing.
-  it("claims nothing when the row carries no unstyled text to anchor the run against", () => {
+  it("claims nothing when the row is painted in one foreground end to end", () => {
     const row = `${SUGGEST}╰─ list the files in this repo${PAD} ─╯\x1b[0m`;
+    expect(composerGhost(splitLines(parseAnsi(row))[0]!)).toBe("");
+  });
+
+  it("claims nothing when the draft and the run share one colour", () => {
+    const row = `${CORNER}╰─ ${DRAFT}list the files in this repo${DRAFT}sitory\x1b[0m${PAD}${CORNER} ─╯\x1b[0m`;
     expect(composerGhost(splitLines(parseAnsi(row))[0]!)).toBe("");
   });
 

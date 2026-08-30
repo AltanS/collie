@@ -51,6 +51,7 @@ const COMPOSER_FIXTURES = [
   "omp--done--tool-result.txt",
   "omp--done.txt",
   "omp--draft-ghost-suggestion.txt",
+  "omp--draft-ghost-suggestion-busy.txt",
   "omp--draft-single.txt",
   "omp--draft-wrapped.txt",
   "omp--fresh-idle.txt",
@@ -73,6 +74,9 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     // The same screen with omp's inline suggestion painted after the draft: the ghost changes what
     // the row SAYS, never where the box is.
     { fixture: "omp--draft-ghost-suggestion.txt", top: 26, bottom: 27, suggestEnd: 28 },
+    // The same ghost again, on the shape omp 18 draws while the agent is WORKING: the draft carries an
+    // explicit foreground of its own, so the ghost is no longer "colour after no colour".
+    { fixture: "omp--draft-ghost-suggestion-busy.txt", top: 26, bottom: 27, suggestEnd: 28 },
     // A draft long enough to wrap: two continuation rows ABOVE the bottom border (omp folds the
     // other way from Claude, which indents continuations BELOW its `❯` line).
     { fixture: "omp--draft-wrapped.txt", top: 26, bottom: 29, suggestEnd: 30 },
@@ -123,6 +127,10 @@ describe("extractInputDraft", () => {
     // buffer, so it is not the draft: returning `list the files in this repository` here stalled
     // every send with "Message didn't reach the input box" (markers.ts `composerGhost`).
     { fixture: "omp--draft-ghost-suggestion.txt", draft: "list the files in this repo" },
+    // The same row with the draft painted in omp 18's explicit foreground. The first ghost rule
+    // anchored on the draft being UNSTYLED and returned `list the files in this repository` here,
+    // which brought the stall back verbatim on every busy pane.
+    { fixture: "omp--draft-ghost-suggestion-busy.txt", draft: "list the files in this repo" },
     {
       fixture: "omp--draft-wrapped.txt",
       // Three fragments folded into one line: the two continuation rows, top-down, then the tail off
