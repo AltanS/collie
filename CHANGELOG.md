@@ -17,6 +17,15 @@ All notable changes to Collie are recorded here. The format follows
 - **Aldrich is the shipped default face.** Every default mechanism moved with it — the preload, the boot splash, the pre-paint class list, the operator-font fallback — so a device that never opens the Typeface setting now dresses in Aldrich at first paint with no layout shift. Space Grotesk stays a shipped choice. (36f67b8)
 - **The composer's draft field renders in the terminal font** — the mirror's family, following the Terminal font setting, since what you type there is bound for the terminal. (62bb1cd)
 
+### Fixed
+
+- **`pack add --peer-address` takes a bare host, and says so before it touches the far machine.** A `host:port` value was concatenated with `--port` and written into the member's `COLLIE_HOST` as `192.168.77.2:8787` — an address the bridge can never bind — leaving the machine half-enrolled with a dead service and nothing naming the cause. A scheme, a port, a path, a `user@` and brackets are all refused now, at parse time on the lead, before a byte crosses ssh (d41619f)
+- **An `http://` lead address is refused up front, and the refusal names a remedy that exists.** It used to arrive from `collie join` on the far machine — after the bundle push, the remote build, the `.env` write and two lead restarts — and it named `--insecure`, which `pack add` does not accept; re-running with the flag repeated it. `pack add` will not grow that flag: the consent belongs where the token is spent, so the message points at `collie join … --insecure` on the peer (d686c99)
+- **`collie leave` no longer leaves a `pack add`-installed machine crash-looping.** The wide `COLLIE_HOST` the pack needed is refused by solo mode, so the service failed every five seconds forever under a banner that said "activating" and "yet". Leaving now retires that bind and the machine comes back on loopback; a bind you set yourself (`COLLIE_ALLOW_NON_LOOPBACK_BIND=1`) is untouched, and one Collie cannot reach is explained instead of ignored. ADR 0013 is why the exemption lapses rather than being made permanent (b4f1dde)
+- **`pack remove` prints the `ssh … collie leave` line that finishes the tear-down, and keeps the record it is built from.** It used to delete `pack-ops.json`'s row for the member in the same breath as saying that machine keeps its copy of the pack until someone runs `collie leave` there — throwing away the ssh destination that sentence needs (f344eeb)
+- **The start banner prints the address the bridge actually bound.** With `COLLIE_HOST` set the `local` row still said `http://127.0.0.1:8787`, two lines under a readiness probe that had resolved the same bind correctly and reported the machine as running (43d6f80)
+- **`collie --version` and `collie pack --help` work.** Both answered `error: unknown command` and exited 2 (9bc8133)
+
 ## [1.0.0-beta.48] - 2026-08-30
 
 ### Added
