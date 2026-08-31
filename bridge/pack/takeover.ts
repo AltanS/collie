@@ -3,6 +3,7 @@ import type { PinnedDeputy } from "./admission.ts";
 import type { PackChange, RosterEntry } from "./enrollment.ts";
 import { fingerprintOfCert } from "./identity.ts";
 import type { PackLink, PeerOutcome } from "./peer-client.ts";
+import { dialTls, type PackTlsOptions } from "./transport.ts";
 import type { RosterRow, TrustedMember, TrustStoreData, Warrant } from "./trust-store.ts";
 import { currentWarrant, parseWarrant, verifyWarrantSignature, warrantExpired } from "./warrant.ts";
 
@@ -438,6 +439,48 @@ export async function runTakeover(deps: TakeoverDeps): Promise<TakeoverOutcome> 
   const committed = await deps.commit(confirmed);
   if (committed.kind === "refused") return committed;
   return { kind: "committed", repinned: [...confirmed], pending: committed.pending };
+}
+
+/**
+ * The TLS material ONE takeover dial carries — or `undefined`, which is a dial that pins nothing.
+ *
+ * A deputy is a peer: it holds exactly one roster entry of its own (its lead) plus the roster that
+ * rode the warrant push (RFC §7.4), and it reaches both kinds from here. The two kinds are not
+ * dialled the same way.
+ *
+ *   • A **WITNESS** — any row of `standbyRoster` — is pinned to the certificate that row carries.
+ *     A peer's listener enforces its own pin (§8.1), so the certificate on the wire really is that
+ *     member's and the anchor really can match.
+ *   • The **LEAD** is dialled with no TLS material at all. `bridge/pack/transport.ts`'s design note
+ *     states the law: "A LEAD does not pin its listener at all. Its pack surface rides the front
+ *     door, and `tailscale serve` (or any conforming proxy, DEPLOYMENT.md Variant C) terminates TLS
+ *     before the process sees the connection — no client certificate can survive to it under ANY
+ *     design." So the certificate a takeover meets in the deputy→lead direction is the front door's,
+ *     never the lead's own, and `ca: [lead.certPem]` could not match at any address a lead can
+ *     publish. Same bug class as F10, fixed for the CLI's dials in `b126989`, and keyed the same
+ *     way: on the roster's LEAD ENTRY, never on the shape of its address. An address is an
+ *     operator-owned hint (§4), so a lead at a bare `host:port` is still a lead whose listener pins
+ *     nothing, and a witness behind the operator's own TLS proxy is still a peer whose listener
+ *     demands the pin.
+ *
+ * **Why it matters more here than anywhere else.** The lead dial is step (a) — the one patient
+ * `hello` whose ANSWER refuses the takeover. A pin that can never match makes every lead look dead,
+ * and a two-machine pack has no witness to catch it (RFC §16, decision 8): the crown would be taken
+ * from a lead that was answering the whole time. Takeover is exactly the moment this path must work.
+ *
+ * The second factor is relocated, not lost. The takeover client signs no request BODY (it is in
+ * nobody's roster, so a §8.6 body signature could only fail to verify), but the pack secret and the
+ * dial attestation ride every call `PeerClient` makes — see `takeoverClient` in `bridge/index.ts`.
+ *
+ * An unknown member — one in neither place — also pins nothing, which is the shape this had before
+ * and the only honest answer: there is no certificate to anchor.
+ */
+export function takeoverDialTls(data: TrustStoreData | null, memberId: string): PackTlsOptions | undefined {
+  if (data === null) return undefined;
+  if (data.lead !== null && data.lead.memberId === memberId) return undefined;
+  const row = data.standbyRoster?.find((r) => r.memberId === memberId);
+  if (row === undefined) return undefined;
+  return dialTls(data, { certPem: row.certPem }) ?? undefined;
 }
 
 /**

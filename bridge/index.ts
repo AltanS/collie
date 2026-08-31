@@ -88,6 +88,7 @@ import {
   pendingRePin,
   runTakeover,
   rosterRowsOf,
+  takeoverDialTls,
   takeoverMessage,
   TAKEOVER_RESTART_EXIT,
   type CommitOutcome,
@@ -1054,14 +1055,12 @@ if (packLead) registry.get()?.engine.onTick(() => (deposed === null ? void packL
  * else. It signs no request bodies: the deputy is in nobody's roster, so a §8.6 signature could only
  * ever fail to verify and become a refusal. What authenticates it is the pinned handshake against the
  * certificate the receiver anchored, plus the dial attestation naming which anchor is calling.
+ *
+ * **Except toward the LEAD, where there is no handshake to pin** — its pack surface rides a front
+ * door that terminates TLS before the process ({@link takeoverDialTls}). There the pack secret and
+ * the dial attestation are the whole of it, and both ride EVERY call this client makes.
  */
 function takeoverClient(data: TrustStoreData): PeerClient {
-  const certOf = (memberId: string): string | null => {
-    const held = trustStore.current();
-    if (held === null) return null;
-    if (held.lead !== null && held.lead.memberId === memberId) return held.lead.certPem;
-    return held.standbyRoster?.find((r) => r.memberId === memberId)?.certPem ?? null;
-  };
   return new PeerClient({
     self: data.self.memberId,
     secret: () => trustStore.current()?.pack?.secret ?? null,
@@ -1069,10 +1068,12 @@ function takeoverClient(data: TrustStoreData): PeerClient {
     patientTimeoutMs: packHelloBudget(cfg.pollMs),
     fetch: (url, init) => fetch(url, init),
     dialSign: (parts) => signDial(trustStore.current()?.self.keyPem ?? data.self.keyPem, parts),
-    tls: (link) => {
-      const certPem = certOf(link.memberId);
-      return certPem === null ? undefined : (dialTls(trustStore.current(), { certPem }) ?? undefined);
-    },
+    // Re-read from the store on every dial, and NOT the same answer for every member: a witness is
+    // pinned to the certificate the warrant push carried, and the LEAD is dialled with no pin at all,
+    // because a lead's address is a front door that terminates TLS before the process
+    // (`bridge/pack/transport.ts`'s note; the CLI's dials were fixed the same way in `b126989`).
+    // The rule is a pure function of the store, so it is decided — and tested — in `takeover.ts`.
+    tls: (link) => takeoverDialTls(trustStore.current(), link.memberId),
   });
 }
 

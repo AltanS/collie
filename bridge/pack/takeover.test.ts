@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import type { PinnedDeputy } from "./admission.ts";
-import { fp, leadStore, material, member, peerStore, T0 } from "./fixtures.ts";
-import type { PackLink, PeerOutcome } from "./peer-client.ts";
+import { MEMBER_HEADER, PROTOCOL_HEADER, type PinnedDeputy } from "./admission.ts";
+import { fp, leadStore, material, member, PACK, peerStore, T0 } from "./fixtures.ts";
+import { PeerClient, type PackFetch, type PackLink, type PeerOutcome } from "./peer-client.ts";
 import type { RosterRow, StoredWarrant, TrustStoreData, Warrant } from "./trust-store.ts";
-import { signCanonical } from "./signing.ts";
+import { DIAL_HEADER, signCanonical, signDial, verifyDial } from "./signing.ts";
+import type { PackRequestInit } from "./transport.ts";
 import { canonicalWarrant, mintWarrant, WARRANT_TTL_MS } from "./warrant.ts";
 import {
   adoptLeadership,
@@ -18,6 +19,7 @@ import {
   readProbeAnswer,
   rosterRowsOf,
   runTakeover,
+  takeoverDialTls,
   takeoverMessage,
   LEAD_IS_ALIVE,
   TAKEOVER_RESTART_EXIT,
@@ -497,4 +499,76 @@ test("rosterRowsOf carries public material only, and drops tombstones", () => {
     { memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787" },
   ]);
   expect(JSON.stringify(rows)).not.toContain("PRIVATE KEY");
+});
+
+// ── which takeover dials carry a pin, and which cannot (F10's sibling) ───────
+
+describe("takeoverDialTls — the deputy pins its witnesses and cannot pin its lead", () => {
+  test("the dial to the OLD LEAD carries no TLS material at all", () => {
+    // Step (a) of the exchange dials exactly this member. `ca: [desk.certPem]` here can never match:
+    // a lead's address is its front door, which terminates TLS before the lead's process sees it.
+    expect(takeoverDialTls(deputyStore(), "desk")).toBeUndefined();
+  });
+
+  test("…and that is a fact about the roster's LEAD ENTRY, not about the shape of its address", () => {
+    // `desk.example:8787` (the fixture's default) has no scheme and is unpinned above. A published
+    // front door has one, and is unpinned for the same reason — the role decides, the address never does.
+    const behindAFrontDoor = deputyStore({
+      lead: member({ memberId: "desk", role: "lead", address: "https://desk.tailnet.ts.net" }),
+    });
+    expect(takeoverDialTls(behindAFrontDoor, "desk")).toBeUndefined();
+  });
+
+  test("a WITNESS is still pinned to the certificate the warrant push carried", () => {
+    const tls = takeoverDialTls(deputyStore(), "nas");
+    // Whose certificate, not merely that something was returned: a peer's listener enforces its own
+    // pin, so this anchor is the one that must match — and it is not the deputy's or the lead's.
+    expect(tls?.ca).toEqual([material("nas").certPem]);
+    expect(tls?.cert).toBe(material("laptop").certPem);
+    expect(tls?.rejectUnauthorized).toBe(true);
+  });
+
+  test("a member in neither place, and a store that is not there, pin nothing", () => {
+    expect(takeoverDialTls(deputyStore(), "nobody")).toBeUndefined();
+    expect(takeoverDialTls(null, "desk")).toBeUndefined();
+  });
+
+  test("the unpinned lead dial still carries §8.1's second factor, on the wire", async () => {
+    const data = deputyStore();
+    const calls: { url: string; init: PackRequestInit }[] = [];
+    const fetch: PackFetch = async (url, init) => {
+      calls.push({ url, init });
+      return new Response(JSON.stringify({ protocol: 1, member: "desk" }), {
+        status: 200,
+        headers: { "content-type": "application/json", [PROTOCOL_HEADER]: "1", [MEMBER_HEADER]: "desk" },
+      });
+    };
+    // The takeover client's wiring, exactly (bridge/index.ts): no body signature, a dial attestation
+    // on every call, and the anchor rule under test.
+    const client = new PeerClient({
+      self: data.self.memberId,
+      secret: () => PACK.secret,
+      timeoutMs: 500,
+      patientTimeoutMs: 500,
+      now: () => T0,
+      fetch,
+      dialSign: (parts) => signDial(data.self.keyPem, parts),
+      tls: (link) => takeoverDialTls(data, link.memberId),
+    });
+
+    const outcome = await client.hello({ memberId: "desk", address: data.lead!.address });
+    expect(outcome.ok).toBe(true);
+    const call = calls[0]!;
+    expect(call.init.tls).toBeUndefined();
+    const headers = new Headers(call.init.headers);
+    // Factor one is gone from the transport, so these two are the whole of the deputy's claim.
+    expect(headers.get("authorization")).toBe(`Bearer ${PACK.secret}`);
+    const attestation = headers.get(DIAL_HEADER);
+    expect(attestation).not.toBeNull();
+    // And it really verifies against this deputy's certificate, bound to the member being dialled —
+    // so a captured lead dial cannot be replayed at a witness.
+    const parts = { method: "GET", path: "/pack/v1/hello", timestamp: T0, to: "desk" };
+    expect(verifyDial(material("laptop").certPem, attestation!, parts)).toBe(true);
+    expect(verifyDial(material("laptop").certPem, attestation!, { ...parts, to: "nas" })).toBe(false);
+  });
 });
