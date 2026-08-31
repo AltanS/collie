@@ -436,6 +436,16 @@ describe("collie pack add", () => {
     expect(h.calls[4]!.script).toContain("'--address' '100.64.0.9:8787'");
   });
 
+  // Q2: the probe is one `ss -ltn` at one instant. Over a unit that crash-loops on a five-second
+  // timer the port is genuinely idle for most of every cycle, so `free` claimed a durable property
+  // the probe never observed. It now reports what it saw, and when.
+  test("an idle port is reported as an observation, not as a property", async () => {
+    const h = harness();
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("nothing was listening just now");
+    expect(text(h.io)).not.toContain("8787 free");
+  });
+
   test("a COLLIE_PUBLIC_URL lead address is used, and named once so it is not a silent steer", async () => {
     const h = harness({ env: { COLLIE_PUBLIC_URL: "https://collie.example.com" } });
     expect(await run(h)).toBe(EXIT.OK);

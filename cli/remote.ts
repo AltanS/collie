@@ -347,6 +347,22 @@ export function probeScript(opts: { readonly path: string | null; readonly port:
     'if [ -n "$TS" ]; then ADDR=$("$TS" ip -4 2>/dev/null | head -n 1) || ADDR=""; fi',
     'say address "$ADDR"',
     // The port, probed BEFORE anything is installed rather than discovered at first start.
+    //
+    // ── WHAT THIS ANSWER IS, AND WHAT IT IS NOT (Q2) ─────────────────────────
+    // One `ss -ltn` at one instant. `busy` is therefore a fact — something WAS listening — and the
+    // negative is only "nothing was listening just now", which is why the operator is told it in
+    // those words rather than as `free`.
+    //
+    // The case that exposed the gap: a Collie whose unit crash-loops on a five-second timer is
+    // absent from `ss` for most of every cycle, so the honest instantaneous answer is "nothing
+    // listening" and the durable answer is "occupied by a service that keeps coming back".
+    //
+    // **Collie cannot close that gap from here, and does not pretend to.** "Refused now but a unit
+    // is active" is not a remote observation: it needs the far machine's supervisor, and which
+    // supervisor that is (systemd user, launchd, unsupervised) is exactly what `pack add` has not
+    // yet decided at probe time — it is decided by the install leg, after this. Sampling the port
+    // repeatedly would only lengthen the coin flip. So the limitation is stated, not papered over;
+    // a genuine collision still surfaces at first start, which is where the supervisor is known.
     "PORTSTATE=unknown",
     'SS=$(collie_tool ss) || SS=""',
     'NETSTAT=$(collie_tool netstat) || NETSTAT=""',
@@ -819,7 +835,9 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
     deps.emit({
       kind: "fact",
       name: "port",
-      value: `${port} ${probe.port === "busy" ? "already carries this collie" : "free"}`,
+      // "nothing was listening just now", not "free" (Q2). See {@link probeScript}: this is one
+      // `ss -ltn` at one instant, and `free` claims a durable property the probe cannot observe.
+      value: `${port} ${probe.port === "busy" ? "already carries this collie" : "nothing was listening just now"}`,
     });
   }
   deps.emit({ kind: "leg-done", leg: "probe", ok: true, detail: `${host} is ready` });
