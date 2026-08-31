@@ -87,6 +87,76 @@ describe("the command it writes", () => {
     expect(resolveHookCommand(d.ctx, d.fs).source).toBe("checkout");
   });
 
+  // ── A binary install: the hook must survive `collie update` (issue: dangling versioned hooks) ──
+  //
+  // The layout is `<root>/versions/X.Y.Z` with a `current` symlink beside it, and `update` keeps only
+  // the PREVIOUS version — so a hook pinned to `versions/1.0.0-beta.49/bin/collie` is deleted out from
+  // under itself after one or two updates and fires into nothing, silently. Nothing here may write a
+  // `versions/` path.
+
+  const INSTALL_ROOT = `${HOME}/.local/share/collie`;
+  const VERSION_ROOT = `${INSTALL_ROOT}/versions/1.0.0-beta.49`;
+  const VERSIONED = `${VERSION_ROOT}/bin/collie`;
+  const CURRENT = `${INSTALL_ROOT}/current/bin/collie`;
+
+  /** A binary install: the process runs from the version directory, `current` points at it. */
+  function binaryDeps(published?: string): ReturnType<typeof deps> {
+    const d = deps();
+    const ctx = context({}, { root: VERSION_ROOT });
+    d.fs.entries.set(`${INSTALL_ROOT}/current`, { kind: "symlink", target: VERSION_ROOT });
+    if (published !== undefined) d.fs.entries.set(PUBLISHED, { kind: "symlink", target: published });
+    return { ...d, ctx };
+  }
+
+  test("on a binary install, prefers the published name — which resolves THROUGH `current` (realpath, not string equality)", () => {
+    const d = binaryDeps(CURRENT);
+    expect(resolveHookCommand(d.ctx, d.fs)).toEqual({
+      binary: PUBLISHED,
+      source: "path-link",
+      command: `${PUBLISHED} beacon emit ${HOOK_MARKER}`,
+    });
+  });
+
+  test("on a binary install with no published name, writes `current/bin/collie` — never the version directory", () => {
+    const d = binaryDeps();
+    const resolved = resolveHookCommand(d.ctx, d.fs);
+    expect(resolved).toEqual({
+      binary: CURRENT,
+      source: "install-current",
+      command: `${CURRENT} beacon emit ${HOOK_MARKER}`,
+    });
+    expect(resolved.command).not.toContain("/versions/");
+  });
+
+  test("a published name pointing straight at THIS version is still the published name, not the version path", () => {
+    const d = binaryDeps(VERSIONED);
+    const resolved = resolveHookCommand(d.ctx, d.fs);
+    expect(resolved.binary).toBe(PUBLISHED);
+    expect(resolved.command).not.toContain("/versions/");
+  });
+
+  test("a published name left over at a GC'd version falls back to `current`, never to the dangling path", () => {
+    const d = binaryDeps(`${INSTALL_ROOT}/versions/1.0.0-beta.47/bin/collie`);
+    expect(resolveHookCommand(d.ctx, d.fs).binary).toBe(CURRENT);
+  });
+
+  test("a published name belonging to another install is refused on a binary install too", () => {
+    const d = binaryDeps("/opt/collie-v1/bin/collie");
+    expect(resolveHookCommand(d.ctx, d.fs).binary).toBe(CURRENT);
+  });
+
+  test("re-installing REPLACES a marked entry whose command is a stale versioned path", () => {
+    const stale = `${VERSIONED} beacon emit ${HOOK_MARKER}`;
+    const before: JsonValue = { hooks: { Stop: [THEIRS, { hooks: [{ type: "command", command: stale, timeout: 10 }] }] } };
+    const outcome = installDocument(before, `${CURRENT} beacon emit ${HOOK_MARKER}`);
+    const stop = outcome.kind === "document" ? JSON.parse(serializeSettings(outcome.document)).hooks.Stop : [];
+    // The operator's own entry keeps its place; ours is replaced where it stood, not appended.
+    expect(stop[0]).toEqual(THEIRS);
+    expect(stop).toHaveLength(2);
+    expect(markedCommandIn(stop[1])).toBe(`${CURRENT} beacon emit ${HOOK_MARKER}`);
+    expect(JSON.stringify(stop)).not.toContain("/versions/");
+  });
+
   test("carries a version-prefixed ownership marker", () => {
     expect(HOOK_MARKER).toMatch(/# collie-beacon v\d+$/);
     expect(markedCommandIn({ hooks: [{ type: "command", command: COMMAND }] })).toBe(COMMAND);
