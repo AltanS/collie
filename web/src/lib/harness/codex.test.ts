@@ -10,6 +10,7 @@ import { isStatusRow, lineText, PLACEHOLDER } from "./codex/markers";
 import { detectApprovalRegion } from "./codex/approval";
 import { detectAskRegion } from "./codex/ask";
 import { detectTrustRegion } from "./codex/trust";
+import { decorateCodexDisplay } from "./codex/display";
 import { describeAdapterConformance } from "./conformance";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
@@ -571,5 +572,27 @@ describe("codexBuildBlocks", () => {
       "  Press enter to continue",
     ].join("\n");
     expect(detectTrustRegion(splitLines(parseAnsi(spoof)))).toBeNull();
+  });
+});
+
+describe("Codex mobile display cleanup", () => {
+  it("clips long labelled rules without changing their text", () => {
+    const rule = `─ Worked for 31m 11s ${"─".repeat(80)}`;
+    const [decorated] = decorateCodexDisplay(splitLines(parseAnsi(rule)));
+
+    expect(decorated!.noWrap).toBe(true);
+    expect(lineText(decorated!)).toBe(rule);
+  });
+
+  it("marks only Codex's observed user-message fill for mobile transparency", () => {
+    const user = `${String.fromCharCode(27)}[48;2;240;240;240m› submitted message${" ".repeat(40)}${String.fromCharCode(27)}[0m`;
+    const diff = `${String.fromCharCode(27)}[48;2;33;58;43m+ semantic diff${String.fromCharCode(27)}[0m`;
+    const [userLine, diffLine] = decorateCodexDisplay(splitLines(parseAnsi(`${user}\n${diff}`)));
+
+    expect(userLine!.segments[0]!.bg).toBe("rgb(240,240,240)");
+    expect(userLine!.segments[0]!.style.backgroundColor).toBe("rgb(240,240,240)");
+    expect(userLine!.segments[0]!.mobileTransparentBg).toBe(true);
+    expect(diffLine!.segments[0]!.bg).toBe("rgb(33,58,43)");
+    expect(diffLine!.segments[0]!.mobileTransparentBg).toBeUndefined();
   });
 });

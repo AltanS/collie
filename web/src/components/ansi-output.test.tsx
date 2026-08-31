@@ -135,6 +135,29 @@ describe("mirror line wrapping", () => {
     expect(pannedPre.querySelector("span.inline-block")).toBeNull();
     expect(pannedPre.textContent).toBe(`${border}\n`);
   });
+  it("clips Codex's labelled rules and tags only its terminal-wide user fill for mobile transparency", () => {
+    const user = `${ESC}[48;2;240;240;240m› submitted message${" ".repeat(32)}${ESC}[0m`;
+    const diff = `${ESC}[48;2;33;58;43m+ semantic diff${ESC}[0m`;
+    const rule = `─ Worked for 31m ${"─".repeat(32)}`;
+    const { container } = render(<AnsiOutput text={`${user}\n${diff}\n${rule}\n`} agent="codex" />);
+    const userSpan = container.querySelector(".terminal-mobile-transparent-bg") as HTMLElement;
+
+    expect(userSpan.textContent).toContain("submitted message");
+    // Desktop keeps Codex's native fill; the max-width CSS rule overrides it only on a phone.
+    expect(userSpan.style.backgroundColor).toBe("rgb(240, 240, 240)");
+    const diffSpan = [...container.querySelectorAll("span")].find((node) =>
+      node.textContent?.includes("semantic diff"),
+    )!;
+    expect(diffSpan.classList.contains("terminal-mobile-transparent-bg")).toBe(false);
+    expect(diffSpan.getAttribute("style")).toContain("rgb(33, 58, 43)");
+    expect(container.querySelector("span.inline-block")?.textContent).toBe(rule);
+  });
+
+  it("does not suppress the same ANSI background for an unknown agent", () => {
+    const user = `${ESC}[48;2;240;240;240mordinary terminal output${ESC}[0m`;
+    const { container } = render(<AnsiOutput text={user} agent="shell" />);
+    expect(container.querySelector(".terminal-mobile-transparent-bg")).toBeNull();
+  });
 });
 
 // URLs printed by an agent are plain characters — the mirror finds them and wraps those ranges in
