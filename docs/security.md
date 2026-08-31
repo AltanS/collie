@@ -13,8 +13,9 @@ The sharp edges:
   answer to that ([below](#pair-a-device--the-write-credential)); the idle lock is not — it pauses an
   unattended screen and gates nothing (details:
   [ADR 0007](../.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)).
-- **Every uid on the host can reach it.** Herdr's socket is a file, so its permissions keep other
-  local users out; Collie's port is TCP, so they're all in. Pairing or the per-device gate closes the
+- **Every uid on the host can reach it.** Your multiplexer's socket is a file (Herdr's, tmux's and
+  zellij's alike), so its permissions keep other local users out; Collie's port is TCP, so they're
+  all in. Pairing or the per-device gate closes the
   write half of that; reads stay open, so it bounds damage, not disclosure (details:
   [ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
 - **One collie fronts _every_ session** under your config root by default, sandbox ones included

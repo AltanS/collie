@@ -88,7 +88,7 @@ sh scripts/collie-ctl.sh build
 bin/collie link
 ```
 
-Then the steps the script ends by printing, which are yours either way:
+Then the same finishing steps the script prints, with this route's paths:
 
 ```bash
 mkdir -p ~/.config/collie
