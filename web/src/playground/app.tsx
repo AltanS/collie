@@ -24,6 +24,7 @@ import { ConnectionBanner } from "@/components/connection-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
 import { IdleLock } from "@/components/idle-lock";
 import { NoEchoNotice } from "@/components/no-echo-notice";
+import { Collapse } from "@/components/ui/collapse";
 import { PackFooterLink } from "@/components/pack-footer-link";
 import { PaneStrip } from "@/components/pane-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -1221,6 +1222,10 @@ const NO_ECHO_OPTIONS = [
  * (`res.noEcho`). `typed` picks which of the four sentences shows; the ✕ is wired to REAL local state
  * — this is the only notice in the app with a real dismiss, so tapping it here has to remove the
  * notice, not just prove a class toggled.
+ *
+ * THROUGH `Collapse`, because that is how the composer mounts it (DESIGN.md §1) and the dismiss is
+ * the one interaction on this page that shows the exit. A card that popped the notice in and out
+ * would be showing a surface the app does not have.
  */
 function NoEchoNoticeHarness() {
   const [typed, setTyped] = useState<NoEchoTyped>("untyped");
@@ -1232,7 +1237,15 @@ function NoEchoNoticeHarness() {
       </div>
       <Stage>
         <div className="p-3">
-          {dismissed ? (
+          <Collapse open={!dismissed}>
+            <NoEchoNotice
+              prompt={noEchoPrompt}
+              typed={typed === "typed"}
+              onUseType={() => {}}
+              onDismiss={() => setDismissed(true)}
+            />
+          </Collapse>
+          {dismissed && (
             <button
               type="button"
               className="text-[11px] text-muted-foreground underline underline-offset-4"
@@ -1240,13 +1253,6 @@ function NoEchoNoticeHarness() {
             >
               dismissed — tap to show it again
             </button>
-          ) : (
-            <NoEchoNotice
-              prompt={noEchoPrompt}
-              typed={typed === "typed"}
-              onUseType={() => {}}
-              onDismiss={() => setDismissed(true)}
-            />
           )}
         </div>
       </Stage>

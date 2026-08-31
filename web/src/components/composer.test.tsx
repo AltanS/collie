@@ -28,6 +28,26 @@ function replyHandler(onTyped: (text: string) => void, onSubmit?: () => void) {
   });
 }
 
+/**
+ * A footer strip whose condition has just lifted.
+ *
+ * Every in-flow strip in this composer arrives and leaves through `ui/collapse.tsx` (DESIGN.md §1),
+ * which HOLDS its last child for the 240ms exit so the box slides shut on the words that explain it
+ * rather than on nothing. So "gone" is two frames, not one: still in the tree, inside a `Collapse`
+ * whose `data-state` is `closed`. A bare `not.toBeInTheDocument()` on the tick after the tap is the
+ * assertion that would pass again if someone reverted the wrapper — it says "torn out of the flow",
+ * which is the exact fault the wrapper exists to stop.
+ *
+ * jsdom runs no transitions and measures no heights, so the state attribute is the thing there IS to
+ * read; the height half is CSS (`grid-rows-[0fr]`) and `collapse.test.tsx` pins that.
+ */
+function expectLeaving(el: HTMLElement | null) {
+  if (el === null) return; // the exit already finished and it unmounted — also gone
+  const row = el.closest('[data-slot="collapse"]');
+  expect(row).not.toBeNull();
+  expect(row!.getAttribute("data-state")).toBe("closed");
+}
+
 // Composer owns the send flow (draft → api.sendReply → clear/error) plus the destructive-command
 // two-tap guard. It uses useRevalidator, so it needs a data router like AgentChat's tests.
 
@@ -1050,6 +1070,64 @@ describe("Composer — blocked pre-flight override", () => {
   }, 15000);
 });
 
+// ── §1: EVERY IN-FLOW STRIP IN THIS FOOTER ARRIVES THROUGH `Collapse` ─────────────────────────
+//
+// These were bare conditionals, so each one teleported the composer up by its own height the moment
+// its condition flipped — reported from the outside as "a notification in the footer pushed content
+// up". The rule is DESIGN.md §1's: an in-flow surface appears and disappears through
+// `ui/collapse.tsx` and through nothing else.
+//
+// PINNED STRUCTURALLY, because jsdom measures no heights and runs no transitions: the assertion
+// walks up from the strip's own text to the nearest `[data-slot="collapse"]` and requires it to be
+// there and OPEN. Every other test in this file passes with the wrapper removed; these do not.
+describe("Composer — the footer's strips animate in, never jump in", () => {
+  const rowOf = (el: HTMLElement) => el.closest('[data-slot="collapse"]');
+
+  // `open` lands one tick after the mount, deliberately: `Collapse` paints the collapsed state
+  // first so the browser has something to transition FROM (setting both in one commit is a jump with
+  // extra steps). So the wait is the animation being real, not test flake.
+  async function expectArrivedThroughCollapse(el: HTMLElement) {
+    const row = rowOf(el);
+    expect(row).not.toBeNull();
+    await waitFor(() => expect(row!.getAttribute("data-state")).toBe("open"));
+  }
+
+  it("wraps the oversize-draft line", async () => {
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    fireEvent.change(box, { target: { value: "# heading\n".repeat(1200) } });
+    await expectArrivedThroughCollapse(
+      await screen.findByText(/too long to keep as a saved draft/i),
+    );
+  });
+
+  it("wraps the armed-mode slot the direct-typing strip stands in", async () => {
+    renderComposerWithStatus();
+    fireEvent.click(screen.getByRole("button", { name: /^type into terminal$/i }));
+    // The strip's own words, not the button that armed it — the button is in the controls row and
+    // is not in flow the way the strip is.
+    await expectArrivedThroughCollapse(await screen.findByText(/typing into terminal/i));
+  });
+
+  it("wraps the pending-send preview, which stays in the footer as a VERIFICATION surface", async () => {
+    // It is not moved to the top pills, and the reason is in composer.tsx at the strip: the "sent"
+    // EVENT is already a pill (`composer.status.sent`, asserted here too), while this half holds the
+    // words that were sent on screen until the mirror echoes them back, so the operator can check
+    // what landed rather than tapping Send twice. That outlives a pill's 2.5s and would be truncated
+    // by one.
+    const user = userEvent.setup();
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "ship it");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    const preview = await screen.findByText(/ship it/i, { selector: "span" });
+    await expectArrivedThroughCollapse(preview);
+    // The event half really is in the pills, so the footer is carrying only the verification half.
+    expect(screen.getByTestId("status")).toHaveTextContent(/sent/i);
+  }, 15000);
+});
+
 // A draft too big for the disk tier survives a pane switch but not the app closing, and the only
 // thing that makes that difference visible is this row. Before it, the oversize write was skipped
 // and a remount silently restored an OLDER, SHORTER draft — text the user never wrote.
@@ -1136,7 +1214,7 @@ describe("Composer — password prompt", () => {
       expect(screen.getByPlaceholderText(/type into the terminal/i)).toHaveValue(""),
     );
     expect(localStorage.getItem("collie:draft:default:w1:p1")).toBeNull();
-    expect(screen.queryByRole("button", { name: /use type/i })).not.toBeInTheDocument();
+    expectLeaving(screen.queryByRole("button", { name: /use type/i }));
     expect(calls).toEqual([]); // nothing was ever typed by the reply path
   });
 
@@ -1733,7 +1811,7 @@ describe("Composer — terminal-draft preview", () => {
 
     await user.click(screen.getByRole("button", { name: /take over/i }));
     expect(box).toHaveValue("take me over"); // the text lands, one-shot
-    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument(); // preview hidden
+    expectLeaving(screen.queryByText(/draft in terminal/i)); // preview sliding shut
     expect(keyCalls).toEqual([]); // takeover writes NOTHING to the terminal
   });
 
@@ -1744,7 +1822,7 @@ describe("Composer — terminal-draft preview", () => {
     await screen.findByText(/draft in terminal/i);
 
     await user.click(screen.getByRole("button", { name: /take over/i }));
-    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+    expectLeaving(screen.queryByText(/draft in terminal/i));
 
     // The host keeps typing → a DIFFERENT draft → the preview returns with the new text.
     strandDraft("original plus more");
@@ -1761,7 +1839,7 @@ describe("Composer — terminal-draft preview", () => {
     await screen.findByText(/draft in terminal/i);
 
     await user.click(screen.getByRole("button", { name: /take over/i }));
-    expect(screen.queryByText(/draft in terminal/i)).not.toBeInTheDocument();
+    expectLeaving(screen.queryByText(/draft in terminal/i));
 
     strandDraft(""); // the host line empties (submitted/wiped on the host)
     strandDraft("continue"); // …and later the very same text strands again

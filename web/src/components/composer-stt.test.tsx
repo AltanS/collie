@@ -274,8 +274,14 @@ describe("Composer — a finished clip", () => {
     await waitFor(() => expect(box).toHaveValue("hello there world"));
     // One clip, one POST, and the container names itself so the bridge can pick a demuxer.
     expect(posted).toMatch(/^audio\//);
-    // The armed strip is gone and the microphone is idle again.
-    expect(screen.queryByRole("button", { name: /discard recording/i })).toBeNull();
+    // The armed strip is gone and the microphone is idle again. AWAITED, because the strip now
+    // leaves through `Collapse` (DESIGN.md §1) — which holds its child for the 240ms exit so the box
+    // slides shut on the words rather than on nothing, and only unmounts at the end. Asserting on
+    // the tick after the transcript would be asserting that the strip is torn out of the flow, which
+    // is the fault the wrapper exists to stop; composer.test.tsx pins the wrapper structurally.
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /discard recording/i })).toBeNull(),
+    );
   });
 
   it("is discarded — and never uploaded — when the pane changes mid-recording", async () => {

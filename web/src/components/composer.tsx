@@ -20,6 +20,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { QuickActionsContent } from "@/components/quick-actions";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
+import { Collapse } from "@/components/ui/collapse";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { commandsFor } from "@/lib/agent-commands";
@@ -974,15 +975,23 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         )}
       >
         {/* Pending-send preview: visible from send until the mirror echoes back (or 6s). Shows the
-            user what landed so they don't double-tap while waiting for the terminal to update. */}
-        {lastSent && (
+            user what landed so they don't double-tap while waiting for the terminal to update.
+            IT STAYS IN THE FOOTER, AND IT IS NOT A PILL. The "sent" ping already IS one — send()
+            publishes `composer.status.sent` on the same line, and the top pills carry it. What is
+            left here is the other half, and it is a VERIFICATION surface: the ✓ says the text was
+            seen in the input box before the submit key went out (see send()), and this holds the
+            words themselves on screen until the mirror echoes them back, so the operator can check
+            what landed instead of tapping Send a second time. That is a CONDITION with a real
+            duration — the echo gap — and the gap regularly outlives a pill's 2.5s. A pill would also
+            truncate to a line of chrome, which is the one thing this must not do. */}
+        <Collapse open={lastSent !== null}>
           <div className="mb-2 flex items-center gap-1.5 rounded-md bg-muted/40 px-2.5 py-1.5 text-xs text-muted-foreground">
             <Loader2 className="size-3 shrink-0 animate-spin" />
             <span className="truncate">
               <span className="font-medium">{translate("composer.sentPreview.label")}</span> {lastSent}
             </span>
           </div>
-        )}
+        </Collapse>
 
         {/* File input stays mounted here (not inside the keyboard-only key row) so the picker
             callback survives the keyboard collapsing. Attach-image fires it from the reply-input row
@@ -1246,6 +1255,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <Settings2 className="size-4" />
           </Button>
         </div>
+        {/* ── THE FOOTER'S NOTICE STRIPS, SORTED BY KIND (DESIGN.md §1, §2) ─────────────────────
+            Every strip below arrives and leaves through `Collapse`, which is the only sanctioned way
+            an in-flow surface appears at all. Before this they were bare conditionals, so each one
+            TELEPORTED the composer up by its own height the moment its condition flipped — reported
+            from the outside as "a notification in the footer pushed content up".
+            WHAT BELONGS HERE AND WHAT BELONGS IN THE TOP PILLS. An EVENT — a transient confirmation
+            with no controls — belongs in the pills (lib/status, `setStatus`), where it costs the
+            layout nothing and dismisses itself. A CONDITION belongs here, at the surface it is about,
+            for as long as it is true. Sorted that way, every strip in this footer is a condition and
+            each one carries its own controls: the take-over preview (Take over), the password notice
+            (Use Type / ✕), the two armed-mode strips (Stop / ✕), and the draft-too-long line, which
+            lasts as long as the text does and would re-fire on every keystroke as a pill. The one
+            genuine event in this region — "sent" — is ALREADY a pill (`composer.status.sent`); what
+            stays here under that name is the verification half, and the strip itself says why. */}
         {/* Terminal-draft preview: a read-only view of a stranded "❯"-line draft (a message queued
             then recalled on the HOST, which stripChrome hides from the mirror). It appears only after
             the draft stabilises (never a blip/self-echo), then its text tracks the live line — host
@@ -1253,65 +1276,79 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             Take over copies the text here. No dismiss — it's honest state and persists until the user
             takes over, sends, or the host line clears. Same zinc/text-xs chrome as the "You sent:"
             strip above. */}
-        {showPreview && effectiveRaw !== null && (
-          <TerminalDraftPreview
-            text={effectiveRaw}
-            // No Take over when the line is only the harness's own opaque token (Claude's
-            // `[Pasted text #N +M lines]`): pulling that into the composer would send the literal
-            // string. The preview keeps showing it — the screen really does say that.
-            onTakeOver={adapter?.draftIsOpaque?.(effectiveRaw) ? null : takeOverDraft}
-          />
-        )}
+        <Collapse open={showPreview && effectiveRaw !== null}>
+          {showPreview && effectiveRaw !== null && (
+            <TerminalDraftPreview
+              text={effectiveRaw}
+              // No Take over when the line is only the harness's own opaque token (Claude's
+              // `[Pasted text #N +M lines]`): pulling that into the composer would send the literal
+              // string. The preview keeps showing it — the screen really does say that.
+              onTakeOver={adapter?.draftIsOpaque?.(effectiveRaw) ? null : takeOverDraft}
+            />
+          )}
+        </Collapse>
         {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other two
             strips, because that is where the eye already is when a send is refused — and it is a
             NOTICE beside the unchanged "Type anyway?" override, never a replacement for it. */}
-        {noEcho !== null && !direct.active && (
-          <NoEchoNotice
-            prompt={noEcho.prompt}
-            typed={noEcho.typed}
-            // Withdrawn, not disabled, when the mode can't be armed at all: a gone pane, a read-only
-            // device, the idle pause. Offering a control that would refuse is worse than offering none.
-            onUseType={
-              locked
-                ? null
-                : () => {
-                    // The draft is a password we know the pane never accepted, and it is already in
-                    // localStorage. Clear it BEFORE arming — both because leaving a secret in a 48h
-                    // store is the leak this issue asked about, and because `activate` refuses while
-                    // any draft is present, which would make the offered remedy fail on the spot.
-                    updateInput("");
-                    requestDrawer(null);
-                    direct.activate();
-                  }
-            }
-            onDismiss={() => noticeNoEcho(null)}
-          />
-        )}
-        {/* Armed indicator for direct typing. In the same in-flow slot as the "You sent:" strip,
-            deliberately NOT only on the button and textarea — see the component. */}
-        {direct.active && <DirectTypingStrip onStop={() => direct.deactivate()} />}
-        {/* The microphone's armed strip, in the same in-flow slot and for the same reason. Stop and
-            ✕ are different actions: one transcribes the clip, the other throws it away. */}
-        {recorder.busy && recorder.phase !== "requesting" && (
-          <RecordingStrip
-            elapsed={recorder.elapsedLabel}
-            transcribing={recorder.phase === "transcribing"}
-            handsFree={handsFree && input.trim() === "" && noEcho === null}
-            onStop={recorder.stopAndSend}
-            onDiscard={recorder.discard}
-          />
-        )}
+        <Collapse open={noEcho !== null && !direct.active}>
+          {noEcho !== null && !direct.active && (
+            <NoEchoNotice
+              prompt={noEcho.prompt}
+              typed={noEcho.typed}
+              // Withdrawn, not disabled, when the mode can't be armed at all: a gone pane, a
+              // read-only device, the idle pause. Offering a control that would refuse is worse
+              // than offering none.
+              onUseType={
+                locked
+                  ? null
+                  : () => {
+                      // The draft is a password we know the pane never accepted, and it is already
+                      // in localStorage. Clear it BEFORE arming — both because leaving a secret in a
+                      // 48h store is the leak this issue asked about, and because `activate` refuses
+                      // while any draft is present, which would make the offered remedy fail on the
+                      // spot.
+                      updateInput("");
+                      requestDrawer(null);
+                      direct.activate();
+                    }
+              }
+              onDismiss={() => noticeNoEcho(null)}
+            />
+          )}
+        </Collapse>
+        {/* THE ARMED-MODE SLOT — one Collapse, two strips, because they are one idea: a mode this
+            composer is holding open, said in words where the eye already looks. Grouping them keeps
+            the arrival to a single 240ms slide when one hands over to the other (stop typing, start
+            dictating), instead of two boxes fighting over the same row. Both are CONDITIONS with
+            their own controls — Stop, and the recorder's separate ✕ — so neither belongs in the top
+            pills, which carry no controls at all. */}
+        <Collapse open={direct.active || (recorder.busy && recorder.phase !== "requesting")}>
+          {/* Armed indicator for direct typing, deliberately NOT only on the button and textarea —
+              see the component. */}
+          {direct.active && <DirectTypingStrip onStop={() => direct.deactivate()} />}
+          {/* The microphone's armed strip. Stop and ✕ are different actions: one transcribes the
+              clip, the other throws it away. */}
+          {recorder.busy && recorder.phase !== "requesting" && (
+            <RecordingStrip
+              elapsed={recorder.elapsedLabel}
+              transcribing={recorder.phase === "transcribing"}
+              handsFree={handsFree && input.trim() === "" && noEcho === null}
+              onStop={recorder.stopAndSend}
+              onDiscard={recorder.discard}
+            />
+          )}
+        </Collapse>
         {/* A draft too large for the disk tier (lib/drafts.ts). It survives a pane switch — the
             memory tier holds it whole — but not the app closing, and that difference is invisible
             without saying so: the old behaviour silently restored an OLDER, SHORTER draft instead.
             Derived at render rather than pushed through setStatus, because this is a CONDITION that
             lasts as long as the text does, and a status auto-clears in 2.5s and would re-fire on
             every keystroke. Self-clearing: trim the draft or send it and the row is simply gone. */}
-        {!direct.active && !fitsDraftStore(input) && (
+        <Collapse open={!direct.active && !fitsDraftStore(input)}>
           <p className="px-1 pb-1 text-xs leading-snug text-muted-foreground">
             {translate("composer.draft.tooLong")}
           </p>
-        )}
+        </Collapse>
         {/* gap-3, not gap-2: with the attach button moved inside the field this row is only the
             field and Send, and the old spacing left them looking joined. */}
         <div className="flex items-end gap-3">
@@ -1418,6 +1455,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             // The pre-flight refused and the user is being offered the override. Labelled for what it
             // actually does — TYPE the text into whatever is on screen — not "send", because the
             // submit key is still conditional on the verify step behind it.
+            //
+            // NOT a `Collapse`, and that is not an exception to the rule above. The explanation of
+            // WHY the send was refused is already in the top pills — send() publishes it through
+            // `composer.status.tapAgainToType`, carrying the adapter's own reason — so there is no
+            // in-flow strip here to animate. What is left is one control swapped for another in a
+            // slot that already exists, on the horizontal axis; `Collapse` animates a row's HEIGHT,
+            // so wrapping it would animate nothing and add a wrapper between the flex row and its
+            // child. §2 is kept by the button box being the same height in all four branches.
             <Button
               variant="destructive"
               className="h-11 shrink-0 rounded-md px-4 text-sm font-semibold"
