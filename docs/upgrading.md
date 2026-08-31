@@ -390,6 +390,40 @@ note: Herdr-managed install — registry left alone (re-linking would block `her
 ✓ update complete
 ```
 
+## When collie will not run
+
+**This section is for a binary install** — `~/.local/share/collie` (or `$COLLIE_DIR`), with a
+`versions/x.y.z/` layout and a `current` symlink. If the binary is too broken to run any verb at
+all, `collie update`, `collie doctor` and `collie update --rollback` are unreachable — they need a
+working binary to run them.
+
+**Run the previous version's binary directly.** List what's on disk:
+
+```bash
+ls ~/.local/share/collie/versions/
+```
+
+Then invoke the one before the broken one, by its own path:
+
+```bash
+~/.local/share/collie/versions/<previous>/bin/collie update --rollback
+```
+
+**No good previous version on disk?** Pin forward to a known-good release instead, by re-running
+the installer with `COLLIE_TAG` set:
+
+```bash
+COLLIE_TAG=v1.0.0 curl -fsSL https://colliepwa.dev/install.sh | sh
+```
+
+This lays the pinned version beside the current one and flips the `current` symlink — a rescue
+route, not just a pin.
+
+**On a Herdr-managed install or a linked clone (a git checkout), this section doesn't apply.**
+There's no `versions/` layout to fall back into. Take a known-good ref directly:
+`herdr plugin install AltanS/collie --ref vX.Y.Z --yes`, or on a plain checkout,
+`git checkout <tag>`.
+
 ## You run a fork
 
 **`collie update` refuses to run in a fork checkout, and says so.** The verb talks to the git remote

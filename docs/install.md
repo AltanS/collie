@@ -68,6 +68,17 @@ touch an install that is already there — `collie update` is the tool for one o
 take the newest prerelease instead, which is the deliberate opt-in described in
 [Testing the v1 beta](upgrading.md#testing-the-v1-beta).
 
+Set `COLLIE_TAG=vX.Y.Z` to pin an exact release tag instead of taking the newest one — a
+prerelease tag works too, and it skips the GitHub tags API entirely:
+
+```bash
+COLLIE_TAG=v1.0.0-beta.49 curl -fsSL https://colliepwa.dev/install.sh | sh
+```
+
+`COLLIE_TAG` also works over an existing binary install, as a rescue: it lays the pinned version
+beside the current one and flips the `current` symlink, without touching anything else — see
+[When collie will not run](upgrading.md#when-collie-will-not-run).
+
 #### The same result, from source
 
 The script is a convenience and must never be the only door. Building from source is fully supported

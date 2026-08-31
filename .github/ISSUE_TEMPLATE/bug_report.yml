@@ -1,0 +1,42 @@
+name: Bug report
+description: Something in Collie is broken
+labels:
+  - bug
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened, and what did you expect?
+      description: Describe the bug. Include steps to reproduce if you have them.
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor-output
+    attributes:
+      label: Output of `collie doctor --json`
+      description: Paste the whole block. It contains no secrets.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: wont-start
+    attributes:
+      label: If collie will not start at all
+      description: >
+        Run the previous version's binary directly and paste its output, for example
+        `~/.local/share/collie/versions/<previous>/bin/collie version`. See
+        docs/upgrading.md → "When collie will not run" for the full recovery steps.
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: install-output
+    attributes:
+      label: If this is an install problem
+      description: Paste the full output of the install script.
+      render: shell
+    validations:
+      required: false
