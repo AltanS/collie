@@ -314,7 +314,7 @@ export function AgentChat({
   // with a reason. It is 14px, the cheapest row on the screen, and it is the only place the pane's
   // state is spelled as a WORD rather than a coloured dot — which is why it exists (WCAG 1.4.1,
   // status-badge.tsx holds the measurement). It is also read at exactly this moment: it answers
-  // "is this agent even waiting for me?" while the thumb is over Send. The 34px handle and the
+  // "is this agent even waiting for me?" while the thumb is over Send. The 30px handle and the
   // 21–112px statusline are 4–8x the pixels at none of the cost.
   //
   // Read once and passed down, never called again in a child: two components calling this hook
@@ -1522,7 +1522,10 @@ export function AgentChat({
                   and unchanged at rgb(235) in light, where --card would be pure white and land
                   1.04:1 against the inverted mirror. index.css states the whole argument. */}
               <div data-slot="chrome-block" className="border-t border-rule bg-chrome">
-                {/* …and stands down while the keyboard is up, for 34px. Switching panes is a
+                {/* …and stands down while the keyboard is up, for 30px (`py-3` around the 6px
+                    grip — it was py-3.5/34px until the 2026-08-31 shave; the swipe threshold is
+                    24px and the strip is full-width, so the gesture still lands). Switching panes
+                    is a
                     BEFORE-typing act, so the row costs its height at the one moment it cannot be
                     wanted. Nothing is stranded: the tab strip above still switches, the sheet is still
                     reachable the instant the keyboard closes, and `Collapse` unmounts the button at
@@ -1533,7 +1536,7 @@ export function AgentChat({
                     aria-label={t("chat.switcher.aria")}
                     {...swipe}
                     onClick={() => setDrawer("switcher")}
-                    className="flex w-full touch-none items-center justify-center py-3.5 transition-colors active:bg-muted/50"
+                    className="flex w-full touch-none items-center justify-center py-3 transition-colors active:bg-muted/50"
                   >
                     <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
                   </button>

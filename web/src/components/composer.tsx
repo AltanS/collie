@@ -1109,6 +1109,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             the terminal rather than as a band of chrome. It is gone; the band is unpainted, and the
             two rules are what tell it apart from what stands either side of it.
 
+            THE RULES ARE `--border`, NOT `--rule`, SINCE THE 2026-08-31 ROUND. The operator read
+            the pair as too loud — two 24% hairlines 14px apart make a bright sandwich around 10px
+            type — and the token doctrine agrees with the eye: --rule cuts BETWEEN regions of
+            chrome, and both of this band's neighbours are the same chrome surface (the handle
+            above, the controls below; the regional cut against the terminal is the chrome block's
+            own top rule in agent-chat.tsx). These are component edges inside one surface, which is
+            what --border (12%) is for. Nothing about the geometry below changes: the centring fix
+            was the SYMMETRY of `border-y`, never the weight of the lines.
+
             IT IS BOUNDED ON BOTH EDGES NOW — `border-y`, and that is the round's actual fix. The
             band had a rule below it and 10px of the dock's own `pt-2.5` above it, which is why it
             read as uncentred no matter what the numbers said: the box the EYE draws ran from the
@@ -1118,8 +1127,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             there was nothing to centre BETTER. There was a box to state. The band now states it:
             a rule above, a rule below, nothing between them but the two runs.
 
-            The 10px did not vanish, it moved BELOW the band, onto the controls row as `mt-2.5`,
-            where it separates the band from the buttons instead of pretending to be part of it.
+            The 10px did not vanish, it moved BELOW the band, onto the controls row — `mt-2.5`
+            then, `mt-2` since the 2026-08-31 shave (with `mb-2` going to `mb-1.5` beside it, 4px
+            returned in all) — where it separates the band from the buttons instead of pretending
+            to be part of it.
             The dock therefore takes NO top padding at all, and its top rule and fill moved out to
             the chrome block in `agent-chat.tsx` — the swipe handle stands on that same ground, so
             the boundary against the terminal is drawn once, above everything the thumb operates.
@@ -1156,7 +1167,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             `-mx-0.5`, a 2px overhang that was invisible on this unpainted strip either way. */}
         <div
           data-slot="composer-status"
-          className="-mx-3 flex h-[14px] items-center justify-end gap-1.5 border-y border-rule px-2.5 text-[10px]/3"
+          className="-mx-3 flex h-[14px] items-center justify-end gap-1.5 border-y border-border px-2.5 text-[10px]/3"
         >
           <HostChip host={writeHost} variant="caption" className="min-w-0" />
           <StatusWordSlot status={statusWord} stale={stale} />
@@ -1175,7 +1186,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           data-slot="composer-controls"
           role="group"
           aria-labelledby="composer-controls-label"
-          className="-mx-0.5 mb-2 mt-2.5 flex items-center gap-1.5"
+          className="-mx-0.5 mb-1.5 mt-2 flex items-center gap-1.5"
         >
           <SectionLabel id="composer-controls-label" className="sr-only">
             {translate("composer.controls.label")}

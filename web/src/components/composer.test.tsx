@@ -1512,7 +1512,11 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // drawn once above everything the thumb operates. agent-chat.test.tsx pins that half.
     renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" }, fixtureServers);
     expect(band().className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
-    expect(band().className).toMatch(/(?:^|\s)border-rule(?=\s|$)/);
+    // `border-border`, not `border-rule` — the band's edges are component edges inside ONE chrome
+    // surface (handle above, controls below); the regional cut is the chrome block's top rule. The
+    // operator read the 24% pair as too loud around 10px type; 12% still states the box.
+    expect(band().className).toMatch(/(?:^|\s)border-border(?=\s|$)/);
+    expect(band().className).not.toMatch(/(?:^|\s)border-rule(?=\s|$)/);
     // …stated as ONE utility. `border-b border-t` would paint the same two lines and read as two
     // decisions, and a later `border-b` in the same cn() would silently drop the top one.
     expect(band().className).not.toMatch(/(?:^|\s)border-[bt](?=\s|$)/);
@@ -1523,7 +1527,7 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     expect(dock.className).not.toMatch(/(?:^|\s)border/);
     // The 10px the dock used to spend above the band is now below it, on the controls row.
     expect(dock.className).not.toMatch(/(?:^|\s)pt-/);
-    expect(row().className).toMatch(/(?:^|\s)mt-2\.5(?=\s|$)/);
+    expect(row().className).toMatch(/(?:^|\s)mt-2(?=\s|$)/);
     // A border colour with no width paints nothing (DESIGN.md §7 trap 1) — so the width is asserted
     // beside the colour, and this pin fails if either is dropped.
   });
@@ -1594,7 +1598,8 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // drew ran from the dock's top rule to the band's bottom rule — about 23px of unbroken surface
     // with the two runs sitting in the last 13 of it. No amount of centring inside the 13px can fix
     // a 23px box. `border-y` states the box instead, and the 10px goes below the band as the
-    // controls row's `mt-2.5`, where it separates rather than pretending to belong.
+    // controls row's top margin (mt-2 since the 2026-08-31 shave), separating rather than
+    // pretending to belong.
     //
     // AND THE 1px NUDGE GOES WITH IT. `pt-px` existed to pay for a hairline on ONE edge. With both
     // edges ruled the box is symmetric by construction and a compensation still applied tips it the
