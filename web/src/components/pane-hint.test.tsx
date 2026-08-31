@@ -32,6 +32,13 @@ describe("PaneHint", () => {
     const { container } = render(<PaneHint hint="" />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  // The operator's rule: a card row must not grow past one line for the hint. The sentence
+  // truncates with an ellipsis instead of wrapping, so every row in a list keeps the same pitch.
+  it("truncates the sentence instead of wrapping it", () => {
+    render(<PaneHint hint={SENTENCE} />);
+    expect(screen.getByText(SENTENCE)).toHaveClass("truncate");
+  });
 });
 
 describe("AgentCard carries the hint", () => {

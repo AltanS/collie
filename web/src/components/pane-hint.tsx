@@ -14,10 +14,15 @@ import { Info } from "lucide-react";
 export function PaneHint({ hint }: { hint?: string }) {
   if (!hint) return null;
   return (
-    <p className="mt-1 flex items-start gap-1.5 text-xs leading-snug text-muted-foreground">
+    <p className="mt-1 flex items-start gap-1.5 overflow-hidden text-xs leading-snug text-muted-foreground">
       <Info className="mt-px size-3.5 shrink-0" aria-hidden />
-      {/* Wrapped, not truncated: it is one sentence and half of it explains nothing. */}
-      <span className="min-w-0">{hint}</span>
+      {/* Truncated, not wrapped: a card row is a summary, and rows must hold one pitch —
+          a sentence that wrapped would make its card taller than every other row in the
+          list, for no reason a glance can see. The full sentence is still one tap away,
+          in the pane view, and `title` keeps it a hover away on desktop. */}
+      <span className="min-w-0 truncate" title={hint}>
+        {hint}
+      </span>
     </p>
   );
 }
