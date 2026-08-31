@@ -742,6 +742,49 @@ A **pack** is several machines' Collies linked together, one of them the **lead*
 every herd through one URL. All of it is CLI-only — no Herdr actions — and the wire between the
 machines is [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md).
 
+**Two machines, one pack.** The lead is the machine whose URL your phone already opens; the joiner
+needs its own Collie, installed and running. On the **lead**:
+
+```bash
+collie pack invite        # prints one line: <token>.<lead-fingerprint>
+```
+
+Single-use, ten minutes, shown exactly once — only its hash is kept. `invite` restarts the lead
+itself, so it can answer the enrollment that is coming. Carry that whole line to the other machine
+and join from there:
+
+```bash
+collie join lead.tail1234.ts.net -        # then paste the token on stdin
+```
+
+The address is the lead's, spelled however *this* machine can reach it — a hostname or `host:port`,
+with `https://` assumed when you give no scheme. A plaintext `http://` lead is refused unless you
+add `--insecure`, which is you owning the assumption out loud: the token and the pack secret would
+otherwise cross the network in the clear. The token argument is `-` for stdin or `@<file>`; a
+literal token works and warns, because `ps` shows every local uid what you typed
+([`PACK_PROTOCOL.md` §8.3](./PACK_PROTOCOL.md)).
+
+`join` ends by naming the one step left: **`collie restart` on the lead.** The enrollment did land
+in the lead's trust store, but the running lead read that roster at boot, so it merges nothing from
+the new machine until it is restarted. Do that, then ask:
+
+```bash
+collie pack status        # the new member, its address, and whether the link answered
+```
+
+`collie pack add <ssh-host>` is that same pair of verbs, driven over **your own SSH** — it mints the
+invite here, installs and configures Collie there, and runs `collie join` on the far side for you.
+Use one route or the other for a given machine, never both. Two things decide which: `pack add`
+requires **Herdr already installed on the remote host** and refuses without it, and it has no
+`--insecure` and never will — a plaintext lead address is exactly the case where you enroll by hand,
+typing `--insecure` on the machine that is joining.
+
+**Which multiplexer a member runs is that machine's own business.** Its `.env` decides, through
+`COLLIE_MUX`, and the pack protocol carries no multiplexer vocabulary at all. Be warned, though:
+no peer in v1 has fronted anything but Herdr, so that seam is a promise rather than a verified
+property ([`PACK_PROTOCOL.md` §16](./PACK_PROTOCOL.md)).
+
+
 | Command | What it does |
 | --- | --- |
 | `collie pack invite` | Mint a single-use, 10-minute enrollment token (**on the lead**) |
