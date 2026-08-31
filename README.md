@@ -316,12 +316,19 @@ The `✓` is a real probe — Collie connected to the bridge's port and got an a
 `stop` merely pauses the service; `uninstall` reverses 2 + 3 and keeps your `.env` and the checkout.
 Why a service and not a Herdr pane: [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3.
 
+Two questions are still open at this point, and each has one answer: *who* may reach it is
+`COLLIE_TRUSTED_USER` ([Configure](#configure)), and *which devices* may write is
+[pairing](#pair-a-device--the-write-credential) — one command, `bin/collie pair`.
+
 ### Open it on your phone
 
 The URL is the banner's `tailnet` line — print it again anytime with `bin/collie url`, or
 `bin/collie qr` to print it as a QR code you can scan rather than type a MagicDNS name into a phone
 keyboard. It resolves for any device on your tailnet, so the phone needs the Tailscale app installed
-and connected to the same tailnet as the host.
+and connected to the same tailnet as the host. **Pair this phone while you are holding it** —
+`bin/collie pair` on the host, then Settings → Paired devices — because pairing the first device is
+what turns the requirement on for every other one
+([Pair a device](#pair-a-device--the-write-credential)).
 
 Then install it as an app: **iOS** — Safari → share sheet → *Add to Home Screen*. **Android** —
 Chrome → ⋮ menu → *Add to Home screen* (or *Install app*). Installing (and Web Push) needs the
@@ -353,9 +360,11 @@ $ bin/collie logs        # journal timestamps trimmed here
 ```
 
 **That WARNING is expected on a fresh install** — identity is still open. Host-header validation is
-already on (`collie start` wrote this node's tailnet name into the unit). [Configure](#configure) sets the
-identity. (The loopback URL in the log is also correct: Collie itself only ever binds `127.0.0.1` —
-`tailscale serve` is what makes it reachable.) `[push] disabled` is expected too: notifications are
+already on (`collie start` wrote this node's tailnet name into the unit). Closing it is one line in
+your `.env` — `COLLIE_TRUSTED_USER=you@example.com`, your own tailnet login — followed by
+`bin/collie restart`; [Configure](#configure) puts it in context. (The loopback URL in the log is
+also correct: Collie itself only ever binds `127.0.0.1` — `tailscale serve` is what makes it
+reachable.) `[push] disabled` is expected too: notifications are
 opt-in, and [Web Push](#web-push-optional) is three commands.
 
 On the phone: your agents are listed, and the footer build stamp (`v0.9.0 · debcff9 · …`) matches
@@ -401,7 +410,15 @@ One caveat lives here too: on tmux below 3.7 with `window-size` set to `manual`,
 crashes the server, so Collie refuses to open one — see
 [Requirements](#requirements) for the one-line fix.
 
-Restart after any `.env` edit — `bin/collie restart` — then start an agent in a window Collie can see:
+Then, in order:
+
+1. **Restart after any `.env` edit** — `bin/collie restart`.
+2. **Install the beacon hooks** — `bin/collie hooks install claude`, once per host. Without them a
+   pane is only a shell and the dashboard names every one of them `bash`; it edits your *global*
+   `~/.claude/settings.json` and never a project's
+   ([the detail](#collie-writes-hooks-into-claudes-own-settings)).
+3. **Start an agent in a window Collie can see** — and relaunch any Claude that was already running,
+   because a running Claude does not reload its hooks:
 
 ```bash
 tmux -S /run/user/1000/collie-tmux.sock new-window -n claude
@@ -431,7 +448,15 @@ running session is what Collie drives. On a host you never sit at, `zellij attac
 collie-zellij` starts the same session with no terminal at all (probed on zellij 0.44.2). Collie
 itself never creates a session and never resurrects one.
 
-Restart with `bin/collie restart`, then start an agent in a tab Collie can see:
+Then, in order:
+
+1. **Restart after any `.env` edit** — `bin/collie restart`.
+2. **Install the beacon hooks** — `bin/collie hooks install claude`, once per host. Without them a
+   pane is only a shell and the dashboard names every one of them `bash`; it edits your *global*
+   `~/.claude/settings.json` and never a project's
+   ([the detail](#collie-writes-hooks-into-claudes-own-settings)).
+3. **Start an agent in a tab Collie can see** — and relaunch any Claude that was already running,
+   because a running Claude does not reload its hooks:
 
 ```bash
 zellij --session collie-zellij action new-tab --name claude
@@ -536,6 +561,19 @@ and [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) does the sa
 What comes back is the **windows**, their layout and their working directories. **The agents inside do
 not come back running** — start Claude Code again by hand. Picking its old conversation back up is
 Claude's own feature (`claude --resume` / `claude --continue`), not the plugin's.
+
+### zellij tips — after a reboot there is nothing to restore
+
+zellij has no tpm-and-resurrect story for Collie to lean on. What it has is its own: a session that
+outlived its terminal is listed as `(EXITED - attach to resurrect)`, and attaching re-runs the
+commands that session was built from. That is an operator's act with side effects, so **Collie never
+attaches and never resurrects** — an exited session reads as *unreachable*, not as an empty herd, and
+the phone shows the disconnected banner naming the session rather than a herd that has lost its tabs.
+
+So after a reboot the two steps are yours: start the session again — `zellij -s collie-zellij`, or
+`zellij attach --create-background collie-zellij` on a host you never sit at — and start the agents
+in it by hand, the same way you did the first time. Picking a conversation back up is again Claude's
+own `--resume` / `--continue`.
 
 ## Configure
 
@@ -1493,7 +1531,8 @@ Symptoms below, in order — search the page for yours. **`Os { NotFound }` from
 **`update` says "not currently on a branch"** · **`tailscale serve failed`** · **isn't answering
 (service won't start)** · **phone can't open the URL** · **page loads but stays empty (blank page,
 403)** · **a password prompt won't take your reply** · **no push notifications** · **gone after a
-reboot** · **`herdr plugin list` shows the old version** · **stale UI after a rebuild**.
+reboot** · **Collie refuses to open a tmux window** · **`herdr plugin list` shows the old version** ·
+**stale UI after a rebuild**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
 directory" }`** (plugin install fails, action invoke fails)**.** This is *not* a Collie problem — it
@@ -1572,6 +1611,14 @@ plain-HTTP origin, which is not a secure context — Settings flags it `insecure
 [Surviving reboots](#surviving-reboots) for the one command. On macOS the launchd agent starts at
 **login**, so check you're actually logged in (not sitting at the login window) and that the agent is
 loaded: `launchctl print gui/$(id -u)/herdr.collie`.
+
+**Collie refuses to open a tmux window** (the phone's *new tab* comes back declining, naming
+`window-size`)**.** Not a fault in the request: on tmux below 3.7, spawning a window while the
+server's `window-size` is `manual` crashes the whole server (tmux #4849, fixed in 3.7), and a crashed
+server takes every window with it. Collie declines instead, and names the tmux it saw. The fix is the
+line it prints — `tmux set -g window-size latest` on that server — or tmux 3.7. Nothing else is
+affected: every other action on those panes keeps working
+([Requirements](#requirements) carries the same caveat).
 
 **`herdr plugin list` shows the old version after an `update`.** Expected — Herdr caches the manifest
 it read at install or link time. The authority on what's running is the footer build stamp, or
