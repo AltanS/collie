@@ -10,6 +10,8 @@ All notable changes to Collie are recorded here. The format follows
 
 ### Fixed
 
+- **The composer footer sits quieter and 8px shorter.** The status band's two rules dropped from the regional-cut weight to the component-edge weight — they bound a band inside one chrome surface, and at 24% they made a bright sandwich around 10px type. The grab handle gives back 4px (30px strip, still well past the 24px swipe threshold) and the controls row 4px more (096734d)
+
 - **`collie doctor` no longer fails a healthy tmux or zellij host.** The Herdr-only findings — the socket, `herdr --version`, the five `herdr integration` lines and the python3 hunt its hooks need — are scoped by the chosen multiplexer and dropped where Herdr drives nothing, rather than reported red about software the install does not use. A Herdr binary on PATH does not bring them back: presence is not relevance (3e5b4c1)
 - **tmux 3.4 no longer shows an empty herd.** That tmux prints Collie's invisible field separator as visible text, so every listing line failed to parse and the app sat blind while the bridge said connected. The wire is un-escaped now (only the separator, never a pane title's own text), and a listing that parses to zero rows on non-empty output is refused as an error instead of stored as an empty herd — the same fault can never be silent again (30add9a)
 - **Beacon hooks survive updates on a binary install.** `collie hooks install claude` pinned the versioned path `versions/X.Y.Z/bin/collie`, which the updater's cleanup deletes — every hook then dangled. The hook command now resolves through realpath to the published name or `current/bin/collie`, and a re-run replaces a stale pinned entry while keeping the operator's own hooks (885951d)
