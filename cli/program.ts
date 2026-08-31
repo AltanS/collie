@@ -64,7 +64,7 @@ import { loadUi, renderInputs, takePlainFlag, type Ui, wantsRich } from "./rende
 import { cmdPackDeputy } from "./pack-deputy.ts";
 import { cmdPackUpdate } from "./pack-update.ts";
 import { cmdPackAdd, packAddDeps, type PackAddDeps } from "./remote.ts";
-import { cmdServe, cmdUnserve } from "./serve.ts";
+import { cmdServe, cmdServeVerb, cmdUnserve } from "./serve.ts";
 import {
   cmdStt,
   cmdSttOff,
@@ -75,7 +75,6 @@ import {
   type SttDeps,
 } from "./stt.ts";
 import { realExec, realFiles } from "./sys.ts";
-import { bridgeUrl } from "./tailnet.ts";
 import { cmdApplyUpdate, cmdUpdate } from "./update.ts";
 
 // The `collie` binary's dispatch: argv in, exit code out. This module owns ONLY the dispatch —
@@ -312,13 +311,9 @@ export const COMMANDS: readonly Command[] = [
     cmdBuild,
   ),
   // Invoked directly, `serve` also prints where to point a phone (the pre-shim collie-ctl.sh) —
-  // `start` does not, because its banner already carries the URL.
-  lifecycleCommand("serve", "publish the single managed `tailscale serve` front door", (deps) => {
-    const code = cmdServe(deps);
-    if (code !== EXIT.OK) return code;
-    deps.io.out(`open: ${bridgeUrl(deps.exec, deps.ctx)}`);
-    return EXIT.OK;
-  }),
+  // `start` does not, because its banner already carries the URL. That extra line is `cmdServeVerb`,
+  // which lives beside the publish decision it depends on (a peer prints none — F24).
+  lifecycleCommand("serve", "publish the single managed `tailscale serve` front door", cmdServeVerb),
   lifecycleCommand("unserve", "tear down the front door we published", cmdUnserve),
   lifecycleCommand("status", "is it running, and on what URLs", cmdStatus, { rich: true }),
   lifecycleCommand("url", "print the bridge URL", cmdUrl),

@@ -17,6 +17,7 @@ import {
 import { EXIT } from "./io.ts";
 import {
   cmdServe,
+  cmdServeVerb,
   cmdUnserve,
   fingerprintRoot,
   formatRecord,
@@ -417,6 +418,23 @@ describe("serve — a peer publishes no front door (ADR 0013, §3)", () => {
     expect(cmdServe(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain("tailscale serve --https=443 --set-path=/ off");
     expect(h.files.exists(HANDLER_FILE)).toBe(false);
+  });
+
+  // F24: `collie serve` typed by hand ends on "where to point a phone". On a peer that line landed
+  // one row under the sentence saying a peer publishes no front door, and offered a loopback URL
+  // that is not even a peer's bind — the refusal contradicted in the next breath.
+  test("the refusal stands alone — a peer's `serve` prints no `open:` line", () => {
+    const h = harness({ files: peerOnDisk() });
+    expect(cmdServeVerb(h.deps)).toBe(EXIT.OK);
+    const out = h.io.stdout.join("\n");
+    expect(out).toContain("a peer publishes no front");
+    expect(out).not.toContain("open:");
+  });
+
+  test("…and a solo collie still gets it, unchanged", () => {
+    const h = harness();
+    expect(cmdServeVerb(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("open: ");
   });
 
   test("a LEAD publishes exactly as it always did", () => {

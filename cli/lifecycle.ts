@@ -4,7 +4,7 @@ import { ensureBuild } from "./build.ts";
 import { collieVersion, type CliContext, type Environment, type EnvVars } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { StatusView, Ui } from "./render.ts";
-import { cmdUnserve, type ServeDeps } from "./serve.ts";
+import { cmdUnserve, packModeOnDisk, type ServeDeps } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import {
   bridgeUrl,
@@ -543,7 +543,15 @@ export async function statusView(deps: LifecycleDeps): Promise<StatusView> {
   rows.push({ label: "service", value: serviceDescription(deps) });
   // F13: the address the bridge BOUND, not a hardcoded loopback string — see `localBridgeUrl`.
   rows.push({ label: "local", value: localBridgeUrl(deps.ctx.env, deps.ctx.port) });
-  if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {
+  // The front-door row, and the one machine that has no front door to describe. A PEER publishes
+  // none (ADR 0013) — `cmdServe` refuses the publish and says so — so a `tailnet` row here was a row
+  // about a door that is not there, offering a loopback URL that is not even a peer's bind (the
+  // `local` row above says what is). Asked of the same function that takes the publish decision, so
+  // the banner and the refusal can never disagree. The pack's door is named instead, because "where
+  // do I point my phone?" still has an answer on a peer: the lead's (F24).
+  if (packModeOnDisk(deps) === "peer") {
+    rows.push({ label: "pack", value: "peer — no front door here; the lead's door serves the pack (ADR 0013)" });
+  } else if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {
     const url = configuredPublicUrl(deps.ctx.env);
     rows.push({
       label: "proxy",

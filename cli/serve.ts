@@ -17,7 +17,7 @@ import { deriveMode, type PackMode } from "../bridge/pack/mode.ts";
 import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/pack/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
-import { localBridgeHostPort, tailnetName } from "./tailnet.ts";
+import { bridgeUrl, localBridgeHostPort, tailnetName } from "./tailnet.ts";
 
 // The single managed front door, ported from the pre-shim `collie-ctl.sh`. ADR 0001 is the whole
 // point of it: Collie manages exactly ONE `tailscale serve` mapping, records it, and only ever tears
@@ -175,7 +175,7 @@ export function cmdServe(deps: ServeDeps): number {
   // Teardown still runs, exactly as it does under `COLLIE_SKIP_SERVE=1` and for the same reason: a
   // machine that has just become a peer must drop the door it published as a lead, and skipping the
   // teardown would leave it reachable by a path the operator believes is closed.
-  if (packMode(deps) === "peer") {
+  if (packModeOnDisk(deps) === "peer") {
     const torn = stopTailscaleServe(deps);
     if (torn !== EXIT.OK) return torn;
     deps.io.out(
@@ -240,13 +240,36 @@ export function cmdServe(deps: ServeDeps): number {
 }
 
 /**
+ * `collie serve` as an operator TYPES it: publish the front door, then say where to point a phone.
+ *
+ * The `open:` line is the whole difference from {@link cmdServe}, which `start` calls — `start`'s own
+ * banner already carries the URL, so printing it there would say it twice.
+ *
+ * **A peer prints no such line.** A peer publishes no front door (ADR 0013), which is what the
+ * refusal one line above just said; following that sentence with `open: http://127.0.0.1:8787` — an
+ * address that is not even a peer's bind, and answers no phone — contradicted it in the next breath.
+ * The refusal stands alone (F24).
+ */
+export function cmdServeVerb(deps: ServeDeps): number {
+  const code = cmdServe(deps);
+  if (code !== EXIT.OK) return code;
+  if (packModeOnDisk(deps) === "peer") return EXIT.OK;
+  deps.io.out(`open: ${bridgeUrl(deps.exec, deps.ctx)}`);
+  return EXIT.OK;
+}
+
+/**
  * This collie's mode as the trust store on disk decides it (§3) — `solo` when there is no store, no
  * readable store, or no enrollment, which is every instance that never joined a pack.
+ *
+ * Exported for the ONE other surface that must agree with the publish decision: the status banner,
+ * whose `tailnet` row is a row about the front door this function decides never to publish
+ * (`cli/lifecycle.ts`). Two answers to "is this a peer?" would be two banners.
  *
  * Sync and file-shaped because `cmdServe` is: it runs inside `start`, which has no `await` to spare
  * for a `TrustStore` handle it would otherwise have to thread through four call sites.
  */
-function packMode(deps: ServeDeps): PackMode {
+export function packModeOnDisk(deps: ServeDeps): PackMode {
   const raw = deps.files.read(trustStorePath(deps.ctx.stateDir));
   return deriveMode(enrollmentOf(raw === null ? null : parseTrustStore(raw))).mode;
 }
