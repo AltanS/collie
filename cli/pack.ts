@@ -209,11 +209,34 @@ export function clientFor(deps: ProbeDeps, data: TrustStoreData, secret: string)
     patientTimeoutMs: patientTimeoutFor(deps.ctx),
     fetch: deps.fetch,
     now: deps.now,
-    // Pin whichever member this dial is aimed at (§8.1). A verb only ever dials a member already in
-    // this store, so the lookup is total in practice and a miss is a member we must not dial pinless.
+    // Pin whichever member this dial is aimed at (§8.1) — EXCEPT this store's lead, which is dialled
+    // with no TLS material at all.
+    //
+    // **Why the lead is the exception, and why the test is its ROLE.** `bridge/pack/transport.ts`'s
+    // design note states the law this obeys: "A LEAD does not pin its listener at all. Its pack
+    // surface rides the front door, and `tailscale serve` (or any conforming proxy, DEPLOYMENT.md
+    // Variant C) terminates TLS before the process sees the connection — no client certificate can
+    // survive to it under ANY design." So the certificate on the wire in the peer→lead direction is
+    // the front door's, never the lead's own, and pinning `ca: [lead.certPem]` here could not match
+    // at any address the lead can publish: against the front door it is `unable to verify the first
+    // certificate`, and against the lead's own (unpinned, §8.1) listener it is `unknown certificate
+    // verification error`. Returning `undefined` hands the dial to the platform's ordinary
+    // verification of a publicly-trusted certificate, which is what a front door is FOR.
+    //
+    // The second factor is not lost, it is relocated: §8.6 re-establishes it at the application
+    // layer, and `sign`/`dialSign` below run on EVERY call this client makes, carrying the pack
+    // secret and this member's signature. §8.1's two factors are still two.
+    //
+    // Keyed on the roster's LEAD ENTRY — `memberById` resolves `data.lead` first, and only that
+    // entry carries `role: "lead"` — and never on the shape of the address. An address is an
+    // operator-owned hint (§4); a lead reachable at a bare `host:port` is still a lead whose
+    // listener pins nothing, and a peer behind the operator's own TLS proxy is still a peer whose
+    // listener demands the pin. Sniffing for a scheme would get both of those backwards.
     tls: (link) => {
       const member = memberById(data, link.memberId);
-      return member === undefined ? undefined : (dialTls(data, member) ?? undefined);
+      if (member === undefined) return undefined;
+      if (member.role === "lead") return undefined;
+      return dialTls(data, member) ?? undefined;
     },
     // EVERY CLI-ORIGINATED CALL IS SIGNED (§8.6), not only the two that require it. The verbs are the
     // peer→lead direction, where the transport cannot pin (`bridge/pack/transport.ts`); signing the

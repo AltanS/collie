@@ -9,6 +9,7 @@ import {
   type EnrollResponse,
 } from "../bridge/pack/enrollment.ts";
 import { fp, leadStore, material, member, PACK, peerStore, T0 } from "../bridge/pack/fixtures.ts";
+import type { PackTlsOptions } from "../bridge/pack/transport.ts";
 import {
   serializeTrustStore,
   TrustStore,
@@ -49,8 +50,15 @@ interface Harness {
   exec: ReturnType<typeof fakeExec>;
   files: ReturnType<typeof fakeFiles>;
   audit: AuditEntry[];
-  /** Every request the verbs made: method, URL, headers and body. */
-  requests: { url: string; method: string; headers: Record<string, string>; body: string }[];
+  /** Every request the verbs made: method, URL, headers, body — and whether it carried a TLS pin. */
+  requests: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body: string;
+    /** `init.tls` as `clientFor` built it. `undefined` is an UNPINNED dial (§8.1's lead exception). */
+    tls: PackTlsOptions | undefined;
+  }[];
   data(): TrustStoreData | null;
   restarts: number[];
   serves: number[];
@@ -114,6 +122,9 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
         // Every pack verb sends a `JSON.stringify` string; anything else is recorded as its text so
         // the assertion that follows fails loudly rather than silently reading "".
         body: init.body === undefined || init.body === null ? "" : String(init.body),
+        // The pin itself, not merely its presence: an assertion that a peer dial is still pinned has
+        // to see WHOSE certificate is anchored, or it would pass on any non-empty object.
+        tls: init.tls,
       });
       const reply = replies[n++];
       if (reply === undefined) return jsonReply({});
@@ -674,6 +685,63 @@ describe("collie join", () => {
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.UNREACHABLE);
     expect(text(h.io)).toContain("https:// was assumed");
     expect(text(h.io)).toContain("--insecure");
+  });
+});
+
+// ── the peer→lead dial is not pinned (F10) ───────────────────────────────────
+
+describe("clientFor — which dials carry a pin (§8.1) and which cannot", () => {
+  // The lab's front door, and every real one: a `tailscale serve` or a conforming reverse proxy
+  // (DEPLOYMENT.md Variant C) that terminates TLS with a certificate that is NOT the lead's own.
+  const behindAFrontDoor = (): TrustStoreData =>
+    peerStore({ lead: member({ memberId: "desk", role: "lead", address: "https://desk.tailnet.ts.net" }) });
+
+  test("a dial to this store's LEAD carries no TLS material at all", async () => {
+    const h = harness(behindAFrontDoor(), [jsonReply({ removed: "laptop" }, 200, "desk")]);
+    expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
+    expect(h.requests[0]!.url).toBe("https://desk.tailnet.ts.net/pack/v1/leave");
+    // Pinning `ca: [desk.certPem]` here is the one thing that can never work: the certificate on the
+    // wire belongs to the front door. Unpinned means the platform verifies it the ordinary way.
+    expect(h.requests[0]!.tls).toBeUndefined();
+    // …and §8.6's second factor is on the request instead, so the link is still two-factor.
+    expect(h.requests[0]!.headers.authorization).toBe(`Bearer ${PACK.secret}`);
+    expect(h.requests[0]!.headers["x-pack-signature"]).toBeDefined();
+  });
+
+  test("…and that is a fact about its ROLE, not about its address carrying a scheme", async () => {
+    const bare = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")]);
+    expect(await cmdLeave(bare.deps)).toBe(EXIT.OK);
+    // `desk.example:8787` has no scheme, and it is still the lead — whose listener pins nothing.
+    expect(bare.requests[0]!.url).toBe("https://desk.example:8787/pack/v1/leave");
+    expect(bare.requests[0]!.tls).toBeUndefined();
+  });
+
+  test("a dial to a PEER still carries that peer's certificate as the anchor", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+      jsonReply({ protocol: 1, member: "nas" }, 200, "nas"),
+    ]);
+    expect(await cmdReconnect(h.deps, ["nas", "nas.other:1"])).toBe(EXIT.OK);
+    expect(h.requests[0]!.tls?.ca).toEqual([material("nas").certPem]);
+    expect(h.requests[0]!.tls?.cert).toBe(material("desk").certPem);
+  });
+
+  test("`pack status` on a peer probes its lead through the front door, unpinned", async () => {
+    const h = harness(behindAFrontDoor(), [jsonReply({ protocol: 1, member: "desk" }, 200, "desk")]);
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(h.requests[0]!.url).toBe("https://desk.tailnet.ts.net/pack/v1/hello");
+    expect(h.requests[0]!.tls).toBeUndefined();
+    expect(text(h.io)).toContain("reachable");
+  });
+
+  test("`reconnect` re-points a peer at a new front door and reaches it there", async () => {
+    const h = harness(behindAFrontDoor(), [
+      jsonReply({ protocol: 1, member: "desk" }, 200, "desk"),
+      jsonReply({}, 200, "desk"),
+    ]);
+    expect(await cmdReconnect(h.deps, ["https://desk.other.ts.net"])).toBe(EXIT.OK);
+    expect(h.requests[0]!.url).toBe("https://desk.other.ts.net/pack/v1/hello");
+    expect(h.requests.every((r) => r.tls === undefined)).toBe(true);
+    expect(text(h.io)).toContain("it answered there.");
   });
 });
 
