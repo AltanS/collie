@@ -10,6 +10,7 @@ All notable changes to Collie are recorded here. The format follows
 
 ### Fixed
 
+- **Hybrid favicon — head on dark paper in the tab, the full app tile at 96.** Matches the home-screen icon now.
 - **The app icon's accent beads carry colour again.** Refreshed from the finalized brand tile — the beads were baked black by an oklch-blind rasteriser; the new bakes read `accent: 0.7` correctly.
 - **The mark's accents carry visible colour at rest now.** Rest moved to the operator-chosen 0.7 blend point, instead of the muted third-chroma pair it used to sit at between blooms.
 - **`.env` still wins over an exported variable, but says so now.** The precedence is deliberate — every entry point (a shell, a Herdr action, the systemd unit) must compute the same config — but the override was silent, so an exported `COLLIE_PORT` just vanished. One stderr note per shadowed variable names both values; credential-shaped names are named without values; past five the notes collapse into a summary (cf9d206)
