@@ -8,10 +8,13 @@ import {
   fakeExec,
   type FakeFiles,
   fakeFiles,
+  type FakeLinkFs,
+  fakeLinkFs,
   ROOT,
   type Scripted,
   type SeededFiles,
 } from "./fakes.ts";
+import type { Net } from "./sys.ts";
 import { EXIT } from "./io.ts";
 import { latestUpdateInMajor } from "../bridge/update.ts";
 import {
@@ -20,8 +23,10 @@ import {
   isManagedCheckout,
   majorVerdict,
   nextMajorRelease,
+  parseApiTags,
   parseRemoteTags,
   planUpdate,
+  platformId,
   refreshRegistry,
   releaseInMajor,
   trainInMajor,
@@ -67,11 +72,24 @@ interface Harness {
   io: ReturnType<typeof capture>;
   exec: FakeExec;
   files: FakeFiles;
+  link: FakeLinkFs;
   restarts: number;
 }
 
+/** A `Net` that reaches nothing: every case scripts the two GETs it expects. */
+const deadNet: Net = {
+  getJson: () => Promise.resolve({ ok: false, failure: { status: null, message: "no network in tests" } }),
+  download: () => Promise.resolve({ ok: false, failure: { status: null, message: "no network in tests" } }),
+};
+
 /** `git symbolic-ref -q HEAD` answering non-zero is what "detached, i.e. Herdr-managed" means. */
 const MANAGED: Scripted["answers"] = [[`${GIT} symbolic-ref -q HEAD`, { code: 1 }]];
+/** What `git remote get-url origin` answers on a checkout of Collie itself. Every case needs one:
+ *  `update` refuses to fetch a remote that is not the configured update source, so a fixture with no
+ *  origin would be refused before it reached the strategy under test. */
+const ORIGIN: NonNullable<Scripted["answers"]> = [
+  [`${GIT} remote get-url origin`, { stdout: "https://github.com/AltanS/collie.git\n" }],
+];
 const LINKED: Scripted["answers"] = [[`${GIT} symbolic-ref -q HEAD`, { code: 0, stdout: "refs/heads/main\n" }]];
 const SHALLOW: Scripted["answers"] = [
   [`${GIT} rev-parse --is-shallow-repository`, { stdout: "true\n" }],
@@ -91,22 +109,28 @@ function harness(
   > = {},
 ): Harness {
   const io = capture();
-  const exec = fakeExec(over);
+  const exec = fakeExec({ ...over, answers: [...(over.answers ?? []), ...ORIGIN] });
   const seed: SeededFiles = { [`${DIST}/index.html`]: "OLD", [BINARY]: "OLD BINARY" };
   if (over.installed !== undefined) {
     seed[`${ROOT}/herdr-plugin.toml`] = `id = "herdr.collie"\nversion = "${over.installed}"\n`;
   }
   const files = fakeFiles(seed);
+  const link = fakeLinkFs();
   const h: Harness = {
     io,
     exec,
     files,
+    link,
     restarts: 0,
     deps: {
       ctx: context(over.env ?? {}),
       io,
       exec,
       files,
+      link,
+      net: deadNet,
+      platform: "linux",
+      arch: "x64",
       restart: () => {
         h.restarts++;
         return Promise.resolve(over.restart ?? EXIT.OK);
@@ -815,4 +839,308 @@ describe("update", () => {
     expect(h.io.stdout.join("\n")).not.toContain("NEW MAJOR");
   });
 
+});
+
+// ── The fork guard (M14/02 amendment §1) ─────────────────────────────────────
+// `update` talks to a hardcoded `origin` and one of its two strategies force-checks-out onto that
+// remote's tags. On a fork that discards local work — measured on youngsecurity/collie at
+// 0.35.0+ys.2 — so the remote is asserted BEFORE anything is fetched.
+
+describe("the origin assertion", () => {
+  const forked: Scripted["answers"] = [
+    [`${GIT} remote get-url origin`, { stdout: "git@github.com:youngsecurity/collie.git\n" }],
+  ];
+
+  test("a fork's origin is refused before any fetch, and the refusal names the fork docs", async () => {
+    const h = harness({ answers: [...forked, ...MANAGED], installed: "1.0.0" });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    const said = h.io.stderr.join("\n");
+    expect(said).toContain("youngsecurity/collie");
+    expect(said).toContain("AltanS/collie");
+    expect(said).toContain("COLLIE_UPDATE_REPO=youngsecurity/collie");
+    expect(said).toContain("docs/upgrading.md");
+    // Nothing was fetched and nothing was checked out — the whole point of asserting first.
+    expect(gitRuns(h.exec).join("\n")).not.toContain("fetch");
+    expect(gitRuns(h.exec).join("\n")).not.toContain("checkout");
+  });
+
+  test("a checkout that cannot say where it came from is refused too", async () => {
+    const h = harness({
+      answers: [[`${GIT} remote get-url origin`, { code: 2 }], ...MANAGED],
+      installed: "1.0.0",
+    });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("unreadable");
+    expect(gitRuns(h.exec).join("\n")).not.toContain("fetch");
+  });
+
+  test("COLLIE_UPDATE_REPO moves the assertion — one override, banner and updater together", async () => {
+    const h = harness({
+      answers: [...forked, ...MANAGED, [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }]],
+      installed: "1.0.0",
+      env: { COLLIE_UPDATE_REPO: "youngsecurity/collie" },
+    });
+    // A self-consistent fork operator gets a working updater: already current, not a refusal.
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("already current");
+  });
+});
+
+// ── The binary install path (M14/01 §3) ──────────────────────────────────────
+
+describe("parseApiTags", () => {
+  test("produces exactly what parseRemoteTags produces, from the other document", () => {
+    expect(
+      parseApiTags([
+        { name: "v0.32.0", sha: "b2peeled" },
+        { name: "nightly", sha: "eeeeeeee" },
+        { name: "v1.0.0", sha: "cccccccc" },
+        { name: "v1.0.0-", sha: "junk" },
+      ]),
+    ).toEqual([
+      { tag: "v0.32.0", version: "0.32.0", major: 0, prerelease: null, commit: "b2peeled" },
+      { tag: "v1.0.0", version: "1.0.0", major: 1, prerelease: null, commit: "cccccccc" },
+    ]);
+    // The same anchor as the git path and the banner: a tag one would drop, all three drop.
+    expect(parseApiTags([{ name: "release-v1.0.0", sha: "x" }])).toEqual([]);
+  });
+});
+
+describe("platformId", () => {
+  test("names the four designed targets and refuses everything else", () => {
+    expect(platformId("linux", "x64")).toBe("linux-x64");
+    expect(platformId("linux", "arm64")).toBe("linux-arm64");
+    expect(platformId("darwin", "arm64")).toBe("macos-arm64");
+    expect(platformId("darwin", "x64")).toBe("macos-x64");
+    expect(platformId("win32", "x64")).toBeNull();
+    expect(platformId("linux", "riscv64")).toBeNull();
+  });
+});
+
+const INST = "/inst";
+const BROOT = `${INST}/versions/1.0.0`;
+const NEW = "1.1.0";
+const PAYLOAD = `collie-${NEW}-linux-x64`;
+const DIGEST = "3f786850e387550fdab836ed7e6dc881de23001b9d9dbb3b9b2b0b0f1a2c3d4e";
+
+/** The `/tags` payload as GitHub actually answers it — the document `parseTagsResponse` reads. */
+const apiTags = (...names: string[]) => names.map((name) => ({ name, commit: { sha: `sha-${name}` } }));
+
+const manifestDoc = (over: Record<string, unknown> = {}) => ({
+  schemaVersion: 1,
+  repo: "AltanS/collie",
+  tag: `v${NEW}`,
+  version: NEW,
+  artifacts: [
+    {
+      name: `${PAYLOAD}.tar.gz`,
+      platform: "linux-x64",
+      sha256: DIGEST,
+      size: 4,
+      payloadRoot: PAYLOAD,
+    },
+  ],
+  ...over,
+});
+
+interface BinaryOptions {
+  tags?: readonly { name: string; commit: { sha: string } }[];
+  manifest?: Record<string, unknown> | null;
+  /** The digest the download reports — a different one is the corruption case. */
+  digest?: string;
+  tagsFailure?: { status: number | null; message: string };
+  downloadFailure?: { status: number | null; message: string };
+  restart?: number;
+  smoke?: { pre?: boolean; post?: boolean };
+  /** What `<root>/current/bin/collie version` answers — the post-flip check reads it. */
+  currentSays?: string;
+  env?: Record<string, string | undefined>;
+  /** Versions already on disk beside the running one. */
+  others?: readonly string[];
+}
+
+function binaryHarness(over: BinaryOptions = {}): Harness {
+  const io = capture();
+  const version = (v: string, out = v): [string, Partial<import("./sys.ts").ExecResult>] => [
+    `/inst/versions/${v}/bin/collie version`,
+    { stdout: `${out}\n` },
+  ];
+  const answers: NonNullable<Scripted["answers"]> = [
+    // Not a git checkout: the whole point of this shape.
+    [`git -C ${BROOT} rev-parse --git-dir`, { code: 1 }],
+    [`/inst/versions/${NEW}/bin/collie version`, { stdout: over.smoke?.pre === false ? "boom\n" : `${NEW}\n` }],
+    [
+      `${INST}/current/bin/collie version`,
+      { stdout: over.smoke?.post === false ? "boom\n" : `${over.currentSays ?? NEW}\n` },
+    ],
+    version("1.0.0"),
+  ];
+  const exec = fakeExec({ answers });
+  const seed: SeededFiles = {
+    [`${BROOT}/herdr-plugin.toml`]: 'id = "herdr.collie"\nversion = "1.0.0"\n',
+    [`${BROOT}/bin/collie`]: "OLD BINARY",
+    [`${BROOT}/web/dist/index.html`]: "OLD",
+  };
+  for (const v of over.others ?? []) seed[`${INST}/versions/${v}/bin/collie`] = "OLDER BINARY";
+  const files = fakeFiles(seed);
+  const link = fakeLinkFs({ [`${INST}/current`]: { kind: "symlink", target: BROOT } });
+  const net: Net = {
+    getJson: (url) => {
+      if (url.includes("api.github.com")) {
+        return Promise.resolve(
+          over.tagsFailure === undefined
+            ? { ok: true as const, value: over.tags ?? apiTags("v1.0.0", `v${NEW}`) }
+            : { ok: false as const, failure: over.tagsFailure },
+        );
+      }
+      const manifest = over.manifest === undefined ? manifestDoc() : over.manifest;
+      return Promise.resolve(
+        manifest === null
+          ? { ok: false as const, failure: { status: 404, message: "HTTP 404" } }
+          : { ok: true as const, value: manifest },
+      );
+    },
+    download: (_url, dest) => {
+      if (over.downloadFailure !== undefined) {
+        return Promise.resolve({ ok: false as const, failure: over.downloadFailure });
+      }
+      files.write(dest, "tarball bytes");
+      // The fake `tar` cannot write, so the unpacked payload is seeded here — after the scratch
+      // sweep, which is the only ordering that matters to the code under test.
+      const at = `${INST}/.staging/x/${PAYLOAD}`;
+      files.write(`${at}/bin/collie`, "NEW BINARY");
+      files.write(`${at}/web/dist/index.html`, "NEW");
+      files.write(`${at}/herdr-plugin.toml`, `version = "${NEW}"\n`);
+      files.write(`${at}/package.json`, `{"version":"${NEW}"}`);
+      return Promise.resolve({ ok: true as const, sha256: over.digest ?? DIGEST, size: 4 });
+    },
+  };
+  const h: Harness = {
+    io,
+    exec,
+    files,
+    link,
+    restarts: 0,
+    deps: {
+      ctx: context(over.env ?? {}, { root: BROOT }),
+      io,
+      exec,
+      files,
+      link,
+      net,
+      platform: "linux",
+      arch: "x64",
+      restart: () => {
+        h.restarts++;
+        return Promise.resolve(over.restart ?? EXIT.OK);
+      },
+    },
+  };
+  return h;
+}
+
+describe("collie update on a binary install", () => {
+  test("lays the version down, flips `current` with one rename, restarts, then collects", async () => {
+    const h = binaryHarness({ others: ["0.9.0"] });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain(`✓ updated to ${NEW}`);
+    // The payload landed as ONE rename into versions/<version>…
+    expect(h.files.ops).toContain(`mv ${INST}/.staging/x/${PAYLOAD} ${INST}/versions/${NEW}`);
+    // …and the symlink was built beside `current` and renamed ONTO it, never removed first.
+    expect(h.link.ops).toContain(`symlink versions/${NEW} ${INST}/.current.new`);
+    expect(h.files.ops).toContain(`mv ${INST}/.current.new ${INST}/current`);
+    expect(h.restarts).toBe(1);
+    // Nothing was compiled and nothing re-exec'd: no `bun` anywhere on this path.
+    expect(h.exec.calls.join("\n")).not.toContain("bun ");
+    // GC: `current` plus one older is kept, so 0.9.0 goes and 1.0.0 stays.
+    expect(h.files.ops.join("\n")).toContain(`${INST}/.trash/0.9.0.`);
+    expect(h.files.ops.join("\n")).not.toContain(`${INST}/versions/1.0.0 ${INST}/.trash`);
+  });
+
+  test("a checksum mismatch changes nothing — no version directory, no flip", async () => {
+    const h = binaryHarness({ digest: "9c1a04".padEnd(64, "0") });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("checksum mismatch");
+    expect(h.io.stderr.join("\n")).toContain("Nothing was changed");
+    expect(h.link.ops).toEqual([]);
+    expect(h.files.exists(`${INST}/versions/${NEW}`)).toBe(false);
+    expect(h.restarts).toBe(0);
+  });
+
+  test("a manifest schemaVersion it cannot read stops the update loudly", async () => {
+    const h = binaryHarness({ manifest: manifestDoc({ schemaVersion: 2 }) });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("schemaVersion 2");
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("a release with no artifact for this platform sends the operator to the source build", async () => {
+    const h = binaryHarness({
+      manifest: manifestDoc({ artifacts: [{ name: "x", platform: "macos-arm64", sha256: DIGEST, size: 1, payloadRoot: "x" }] }),
+    });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("no artifact for linux-x64");
+    expect(h.io.stderr.join("\n")).toContain("From source");
+  });
+
+  test("a rate-limited tag check says so and stops — it never falls back to another endpoint", async () => {
+    const h = binaryHarness({ tagsFailure: { status: 403, message: "HTTP 403" } });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("rate-limited");
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("already current reads exactly as it does on a checkout — the paths are indistinguishable", async () => {
+    const h = binaryHarness({ tags: apiTags("v1.0.0") });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("already current — v1.0.0 is the newest release of major 1.");
+    expect(h.restarts).toBe(0);
+  });
+
+  test("a version that does not come up after the flip is rolled back, and says so", async () => {
+    const h = binaryHarness({ smoke: { post: false } });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("failed its post-install check — rolled back to 1.0.0");
+    // Two flips (forward, then back) and two restarts.
+    expect(h.link.ops.filter((o) => o.startsWith("symlink")).length).toBe(2);
+    expect(h.restarts).toBe(2);
+  });
+
+  test("a version that does not even run is discarded BEFORE the flip", async () => {
+    const h = binaryHarness({ smoke: { pre: false } });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("did not run here");
+    expect(h.link.ops).toEqual([]);
+    expect(h.restarts).toBe(0);
+  });
+
+  test("COLLIE_UPDATE_REPO is announced before the first fetch — a redirected updater is never silent", async () => {
+    const h = binaryHarness({ env: { COLLIE_UPDATE_REPO: "my/collie" } });
+    await cmdUpdate(h.deps);
+    expect(h.io.stdout[0]).toBe("update source: github.com/my/collie (COLLIE_UPDATE_REPO)");
+  });
+});
+
+describe("collie update --rollback", () => {
+  test("flips back to the newest older version, restarts, and never collects", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], currentSays: "0.9.0" });
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(h.link.ops).toContain(`symlink versions/0.9.0 ${INST}/.current.new`);
+    expect(h.restarts).toBe(1);
+    // The version rolled away from is the one the operator is most likely to want back.
+    expect(h.files.ops.join("\n")).not.toContain(".trash");
+  });
+
+  test("with nothing older, it says so rather than doing something", async () => {
+    const h = binaryHarness();
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("nothing to roll back to");
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("on a git checkout it is refused — there is no symlink to flip", async () => {
+    const h = harness({ answers: MANAGED, installed: "1.0.0" });
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("binary install's verb");
+  });
 });

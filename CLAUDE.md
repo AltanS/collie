@@ -93,10 +93,13 @@ today would claim a release nobody ever tested.
 
 **Update notice (user-facing).** The app's in-app update banner links to the newest release's GitHub
 page and shows the command to run. Pushing a `v*` tag auto-creates that GitHub Release (with the
-commands) via `.github/workflows/release.yml`. **Always express user-facing update/restart
-instructions as Herdr plugin actions** — `herdr plugin action invoke update --plugin herdr.collie`
-(or `restart`) — never `bin/collie …` / `systemctl … collie`, which depend on the caller's cwd and
-the unit name; the Herdr action runs from anywhere.
+commands) via `.github/workflows/release.yml`. **On a Herdr-managed install, always express
+user-facing update/restart instructions as Herdr plugin actions** — `herdr plugin action invoke
+update --plugin herdr.collie` (or `restart`) — never `bin/collie …` / `systemctl … collie`, which
+depend on the caller's cwd and the unit name; the Herdr action runs from anywhere. A **binary
+install** (`scripts/install.sh`'s versioned layout) is not a Herdr plugin and has no such actions:
+there the spelling is `collie update` / `collie restart`, and a string that may be read on either
+kind must come from the install kind (`cli/install-kind.ts`), never assume one.
 
 ## Build / run (operational facts that are easy to forget)
 

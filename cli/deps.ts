@@ -3,7 +3,8 @@ import type { Io } from "./io.ts";
 import { loadContext } from "./context.ts";
 import type { Ui } from "./render.ts";
 import { cmdServe } from "./serve.ts";
-import { realExec, realFiles, waitReady } from "./sys.ts";
+import { realLinkFs } from "./link.ts";
+import { realExec, realFiles, realNet, waitReady } from "./sys.ts";
 import type { UpdateDeps } from "./update.ts";
 
 // The dependency sets a verb is handed, built from the real seams. They live HERE, and not in the
@@ -48,5 +49,15 @@ export function lifecycleDeps(io: Io, ui: Ui | null = null): LifecycleDeps {
  */
 export function updateDeps(io: Io): UpdateDeps {
   const deps = lifecycleDeps(io);
-  return { ...deps, restart: () => cmdRestart(deps) };
+  return {
+    ...deps,
+    restart: () => cmdRestart(deps),
+    // The binary-install path's three extra seams: the symlink writer `current` is flipped with (the
+    // same one `collie link` publishes the PATH name through), the two anonymous HTTPS GETs, and the
+    // running platform the artifact is chosen by.
+    link: realLinkFs,
+    net: realNet,
+    platform: process.platform,
+    arch: process.arch,
+  };
 }

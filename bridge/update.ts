@@ -287,28 +287,118 @@ export function githubReleaseUrl(repo: string, version: string): string {
   return `https://github.com/${repo}/releases/tag/v${version}`;
 }
 
-/** Anonymous HTTPS fetch of a GitHub repo's tags → their names (`["v0.11.0", …]`). Throws on a
- *  non-OK response or timeout so the caller keeps its previous result and retries next tick. */
-export function githubTagsFetcher(repo: string): () => Promise<string[]> {
-  const url = `https://api.github.com/repos/${repo}/tags?per_page=100`;
+/** One tag as GitHub's `/tags` endpoint reports it: the ref name and the commit it points at. */
+export interface ApiTag {
+  name: string;
+  /** `commit.sha` — carried so the CLI can fill a `ReleaseTag` without a second request. */
+  sha: string;
+}
+
+/** The endpoint the banner AND the binary updater read — never `releases/latest`, which hides
+ *  prereleases and stalls a whole beta train (docs/upgrading.md). */
+export function githubTagsUrl(repo: string): string {
+  return `https://api.github.com/repos/${repo}/tags?per_page=100`;
+}
+
+/**
+ * GitHub's `/tags` payload → {@link ApiTag}[]. The ONE parser of that document: the bridge's banner
+ * fetches it over `fetch`, and `collie update`'s binary path fetches it through the CLI's `net`
+ * seam, and both land here (M14/01 §2.3).
+ *
+ * A tag with no readable name is dropped, and so is one with no `commit.sha`: an EMPTY sha is worse
+ * than a missing tag, because `planUpdate`'s "already there" arm compares the candidate's commit
+ * against the installed head — and on a binary install that head is `""`, so an empty sha would
+ * match it and report a real update as "already current".
+ */
+export function parseTagsResponse(data: JsonValue): ApiTag[] {
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((t) => {
+    if (t === null || typeof t !== "object" || Array.isArray(t)) return [];
+    if (typeof t.name !== "string" || t.name === "") return [];
+    const commit = t.commit;
+    if (commit === null || typeof commit !== "object" || Array.isArray(commit)) return [];
+    if (typeof commit.sha !== "string" || commit.sha === "") return [];
+    return [{ name: t.name, sha: commit.sha }];
+  });
+}
+
+/** Anonymous HTTPS fetch of a GitHub repo's tags. Throws on a non-OK response or timeout so the
+ *  caller keeps its previous result and retries next tick. */
+export function githubTagsFetcher(repo: string): () => Promise<ApiTag[]> {
+  const url = githubTagsUrl(repo);
   return async () => {
     const res = await fetch(url, {
       headers: { accept: "application/vnd.github+json", "user-agent": "collie-update-check" },
       signal: AbortSignal.timeout(TAGS_TIMEOUT_MS),
     });
     if (!res.ok) throw new Error(`github tags: HTTP ${res.status}`);
-    // SAFETY: `Response.json()` output IS a JsonValue by construction; every tag name below is
-    // checked to be a string before it is kept.
-    const data = (await res.json()) as JsonValue;
-    if (!Array.isArray(data)) return [];
-    return data
-      .map((t) =>
-        t !== null && typeof t === "object" && !Array.isArray(t) && typeof t.name === "string"
-          ? t.name
-          : "",
-      )
-      .filter(Boolean);
+    // SAFETY: `Response.json()` output IS a JsonValue by construction; every field below is checked
+    // before it is kept.
+    return parseTagsResponse((await res.json()) as JsonValue);
   };
+}
+
+// ── The per-release integrity manifest (M14/01 §2.1) ─────────────────────────
+// One document per release, attached to the GitHub Release and copied into every tarball as
+// `RELEASE.json`. It carries NO URLs: every download URL is constructed from (repo, version, name),
+// so a manifest can never redirect a download to another host. The trust boundary stays "which
+// repo", which is exactly what COLLIE_UPDATE_REPO names.
+
+/** The schema this build understands. An unknown one aborts loudly — never "try anyway". */
+export const MANIFEST_SCHEMA_VERSION = 1;
+
+export interface ReleaseArtifact {
+  /** The release asset's filename, e.g. `collie-1.1.0-linux-x64.tar.gz`. */
+  name: string;
+  /** The canonical platform id (`linux-x64`, `macos-arm64`) — see `cli/update.ts`'s `platformId`. */
+  platform: string;
+  sha256: string;
+  /** Byte length, cross-checked against the download. Null when the manifest omits it. */
+  size: number | null;
+  /** The single top-level directory inside the tarball — asserted after extraction. */
+  payloadRoot: string;
+}
+
+export interface ReleaseManifest {
+  schemaVersion: number;
+  version: string;
+  tag: string;
+  artifacts: ReleaseArtifact[];
+}
+
+export type ManifestVerdict =
+  | { ok: true; manifest: ReleaseManifest }
+  /** Readable JSON, wrong shape — a truncated or foreign document. */
+  | { ok: false; reason: "unreadable" }
+  /** A schema this build does not understand. `schemaVersion` is reported so the message can say so. */
+  | { ok: false; reason: "schema"; schemaVersion: number };
+
+/** The release manifest, parsed and schema-gated. Unknown FIELDS are ignored — additive is free;
+ *  a `schemaVersion` we do not know is not. */
+export function parseReleaseManifest(data: JsonValue): ManifestVerdict {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) return { ok: false, reason: "unreadable" };
+  const schema = data.schemaVersion;
+  if (typeof schema !== "number") return { ok: false, reason: "unreadable" };
+  if (schema !== MANIFEST_SCHEMA_VERSION) return { ok: false, reason: "schema", schemaVersion: schema };
+  const { version, tag, artifacts } = data;
+  if (typeof version !== "string" || typeof tag !== "string" || !Array.isArray(artifacts)) {
+    return { ok: false, reason: "unreadable" };
+  }
+  const parsed = artifacts.flatMap((a) => {
+    if (a === null || typeof a !== "object" || Array.isArray(a)) return [];
+    if (typeof a.name !== "string" || typeof a.platform !== "string" || typeof a.sha256 !== "string") return [];
+    if (typeof a.payloadRoot !== "string") return [];
+    return [
+      {
+        name: a.name,
+        platform: a.platform,
+        sha256: a.sha256,
+        size: typeof a.size === "number" ? a.size : null,
+        payloadRoot: a.payloadRoot,
+      },
+    ];
+  });
+  return { ok: true, manifest: { schemaVersion: schema, version, tag, artifacts: parsed } };
 }
 
 // ── Persistence (edge-trigger de-dupe across restarts) ────────────────────────
@@ -367,8 +457,10 @@ export interface UpdateMonitorDeps {
   current: string;
   /** The bridge source stamp captured at process start (see {@link bridgeStampSync}). */
   startupStamp: string;
-  /** Fetch the upstream release tag names (throws on failure — the monitor is fail-soft). */
-  fetchTags: () => Promise<string[]>;
+  /** Fetch the upstream release tags (throws on failure — the monitor is fail-soft). One fetcher and
+   *  one JSON parser, shared with `collie update`'s binary path; this consumer maps to names at its
+   *  own edge and its pure resolver chain is untouched. */
+  fetchTags: () => Promise<readonly ApiTag[]>;
   /** Recompute the on-disk bridge source stamp for the staleness check. */
   bridgeStamp: () => string;
   store: UpdateStore;
@@ -411,7 +503,7 @@ export class UpdateMonitor {
   private async runCheck(): Promise<void> {
     let tags: string[];
     try {
-      tags = await this.deps.fetchTags();
+      tags = (await this.deps.fetchTags()).map((t) => t.name);
     } catch {
       return; // network / timeout — keep prior state, retry next tick
     }

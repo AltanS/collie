@@ -73,6 +73,10 @@ const INTEGRATION_OK = [
 
 const HEALTHY_ANSWERS: Scripted["answers"] = [
   ["herdr --version", { stdout: "herdr 0.8.2\n" }],
+  // A healthy checkout can say where it came from: `update` asserts `origin` against the configured
+  // update source before it fetches, so an origin-less checkout is a real (reported) problem.
+  [`git -C ${ROOT} remote get-url origin`, { stdout: "https://github.com/AltanS/collie.git\n" }],
+  [`git -C ${ROOT} symbolic-ref --short HEAD`, { stdout: "main\n" }],
   ["herdr integration status", { stdout: INTEGRATION_OK }],
   ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } }) }],
   ["tailscale serve status --json", { stdout: SERVE_OK }],
@@ -257,6 +261,8 @@ describe("collie doctor — the contract", () => {
     expect([...byCheck.keys()]).toEqual([
       "web-dist",
       "path-link",
+      "install",
+      "update-source",
       "herdr-socket",
       "bind",
       "bind-wildcard",
@@ -593,6 +599,66 @@ describe("collie doctor — the local checks", () => {
     expect(f?.status).toBe("skipped");
     expect(f?.detail).toContain("records no version");
     expect(f?.remedy).toContain("collie restart");
+    expect(code).toBe(EXIT.OK);
+  });
+
+  // ── install / update-source (M14/01 §4.3) ──────────────────────────────────
+  // Reported, never repaired, from the SAME classifier `collie update` forks on — so the two verbs
+  // cannot disagree about what they are looking at.
+
+  test("install: a linked clone names its branch and its origin", async () => {
+    const f = (await findings(harness(null))).byCheck.get("install");
+    expect(f?.status).toBe("ok");
+    expect(f?.detail).toContain("linked clone");
+    expect(f?.detail).toContain("branch main");
+    expect(f?.detail).toContain("AltanS/collie");
+  });
+
+  test("install: a Herdr-managed checkout is named as one", async () => {
+    const h = harness(null, [], {
+      answers: [...HEALTHY_ANSWERS, [`git -C ${ROOT} symbolic-ref -q HEAD`, { code: 1 }]],
+    });
+    expect((await findings(h)).byCheck.get("install")?.detail).toContain("Herdr-managed checkout");
+  });
+
+  test("install: an install it cannot name warns and points at the docs", async () => {
+    const h = harness(null, [], {
+      answers: [...HEALTHY_ANSWERS, [`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }]],
+    });
+    const { byCheck, code } = await findings(h);
+    expect(byCheck.get("install")?.status).toBe("warn");
+    expect(byCheck.get("install")?.detail).toContain("cannot tell how this Collie was installed");
+    expect(byCheck.get("install")?.remedy).toContain("docs/install.md");
+    // A warning, never an error: an install doctor cannot name still runs.
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("update-source: an origin that is not the update source is an ERROR naming the fork docs", async () => {
+    const h = harness(null, [], {
+      answers: [
+        ...HEALTHY_ANSWERS.filter(([prefix]) => !prefix.includes("remote get-url")),
+        [`git -C ${ROOT} remote get-url origin`, { stdout: "git@github.com:youngsecurity/collie.git\n" }],
+      ],
+    });
+    const { byCheck, code } = await findings(h);
+    const f = byCheck.get("update-source");
+    expect(f?.status).toBe("error");
+    expect(f?.detail).toContain("youngsecurity/collie");
+    expect(f?.remedy).toContain("docs/upgrading.md");
+    expect(code).toBe(EXIT.FAIL);
+  });
+
+  test("update-source: a fork the operator chose is a warning, not a failure", async () => {
+    const h = harness(null, [], {
+      env: { COLLIE_UPDATE_REPO: "youngsecurity/collie" },
+      answers: [
+        ...HEALTHY_ANSWERS.filter(([prefix]) => !prefix.includes("remote get-url")),
+        [`git -C ${ROOT} remote get-url origin`, { stdout: "git@github.com:youngsecurity/collie.git\n" }],
+      ],
+    });
+    const { byCheck, code } = await findings(h);
+    expect(byCheck.get("update-source")?.status).toBe("warn");
+    expect(byCheck.get("update-source")?.detail).toContain("COLLIE_UPDATE_REPO");
     expect(code).toBe(EXIT.OK);
   });
 });

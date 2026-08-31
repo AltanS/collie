@@ -359,18 +359,33 @@ note: Herdr-managed install — registry left alone (re-linking would block `her
 
 ## You run a fork
 
-**Do not run `collie update` in a fork checkout.** The verb talks to the git remote named `origin`
-and never looks at its URL, so in a fork every question it asks, it asks of *your* repo. What that
-costs depends on which of the two checkout shapes you have:
+**`collie update` refuses to run in a fork checkout, and says so.** The verb talks to the git remote
+named `origin`, and before it fetches anything it checks that `origin` IS the repo updates are
+configured to come from (`COLLIE_UPDATE_REPO`, default `AltanS/collie`). On a mismatch it stops,
+names both repos, and changes nothing:
 
-- **A fork clone on a branch** — `update` fetches `origin` and runs `git pull --ff-only`, which
+```
+error: this checkout's origin is github.com/you/collie, but updates are configured to
+       come from github.com/AltanS/collie.
+       `collie update` would fetch that remote's tags and force-checkout onto them,
+       discarding local work — it will not do that.
+       If you run a fork on purpose:      set COLLIE_UPDATE_REPO=you/collie
+       To take an upstream release by hand: docs/upgrading.md → "You run a fork"
+```
+
+That refusal is what the two checkout shapes would otherwise have cost you:
+
+- **A fork clone on a branch** — `update` would fetch `origin` and `git pull --ff-only`, which
   fast-forwards your branch onto your own fork. Nothing from upstream arrives, and the command
   still reports success.
-- **A detached fork checkout** — `update` lists `origin`'s tags with `git ls-remote`, picks one, and
-  re-detaches onto it with `git checkout --detach --force`. With no `vX.Y.Z` tags on your fork it
-  tells you no release of your major exists there and leaves the checkout alone. With tags of your
-  own it lands you on *your* tag, not upstream's — and that forced checkout discards uncommitted
-  work in the tree.
+- **A detached fork checkout** — `update` would list `origin`'s tags with `git ls-remote`, pick one,
+  and re-detach onto it with `git checkout --detach --force`. With tags of your own it lands you on
+  *your* tag, not upstream's — and that forced checkout discards uncommitted work in the tree.
+
+**Setting `COLLIE_UPDATE_REPO` to your fork is consent, not a workaround.** It makes the updater
+self-consistent — your fork's tags, your fork's releases, your fork's banner — and it is the right
+setting for a fork you genuinely release from. It does not merge anything from upstream; that is the
+manual path below.
 
 **The supported path is a manual merge.** Add upstream as a second remote, fetch its tags, and merge
 the release tag you decided to take into your branch:
@@ -393,9 +408,10 @@ route — you merge instead — but everything
 [Upgrading from 0.x to 1.x](#upgrading-from-0x-to-1x) says about what the crossing changes for you
 applies as written.
 
-**`COLLIE_UPDATE_REPO` moves the banner and nothing else.** It names the repo whose tags the in-app
-update notice watches (default `AltanS/collie`). `collie update` never reads it, and still fetches
-from `origin`.
+**`COLLIE_UPDATE_REPO` is one override for both halves.** It names the repo whose tags the in-app
+update notice watches AND the repo `collie update` takes releases from (default `AltanS/collie`) —
+on a git checkout as the assertion against `origin` described above, and on a downloaded binary
+install as the source of the tags, the manifest and every download URL. `collie doctor` prints it.
 
 ## Surviving reboots
 

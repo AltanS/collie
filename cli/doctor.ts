@@ -42,13 +42,23 @@ import { bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./findi
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { historyFindings } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
+import {
+  binaryLayout,
+  classifyInstall,
+  DEFAULT_UPDATE_REPO,
+  type InstallKind,
+  originMatches,
+  originOf,
+  probeInstall,
+  publishedBinary,
+  updateRepoOf,
+} from "./install-kind.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs } from "./link.ts";
 import type { Ui } from "./render.ts";
 import { failureLine, type MemberReach, parsePackArgs, probeMemberReach, VERSION_REPORTED_SINCE } from "./pack.ts";
 import { fingerprintRoot, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import { tailnetInboundBlocked, tailnetName } from "./tailnet.ts";
-import { collieBinary } from "./unit.ts";
 
 // `collie doctor` — one read-only pass over the traps that fail silently (M7/02).
 //
@@ -145,9 +155,15 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   // An unknown mux name reads as `true` here — `mux` is already an error about exactly that, and a
   // second red line derived from the same typo teaches an operator to skim.
   const declaration = muxDeclaration(muxSettings(deps));
+  // How this Collie got here, and where its updates come from — read once, and by the same functions
+  // `collie update` decides on, so the two verbs can never disagree about what they are looking at.
+  const install = classifyInstall(probeInstall(deps, deps.ctx.root));
   const local: Finding[] = [
     webDist(deps),
     pathLink(deps),
+    installKind(deps, install),
+    updateSource(deps, install),
+    ...quarantine(deps, install),
     herdrSocket(deps),
     bindCheck(deps, mode),
     bindWildcard(deps),
@@ -165,7 +181,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
       files: deps.files,
       snapshot: () => ownSnapshot(deps),
     })),
-    restartPending(),
+    restartPending(install),
     clock(inPack, probes),
   ];
   const pack: Finding[] =
@@ -263,7 +279,7 @@ function webDist(deps: DoctorDeps): Finding {
  */
 function pathLink(deps: DoctorDeps): Finding {
   const at = linkPath(deps.ctx.home);
-  const own = collieBinary(deps.ctx.root);
+  const own = publishedBinary(deps.ctx.root, deps.link);
   const verdict = classifyLink(deps.link.probe(at), own);
   switch (verdict.action) {
     case "create":
@@ -292,6 +308,126 @@ function pathLink(deps: DoctorDeps): Finding {
         `move it aside yourself, then \`collie link\``,
       );
   }
+}
+
+/**
+ * **How this Collie was installed.** Structural, never a marker file: a git dir makes it a checkout
+ * (detached is the Herdr-managed shape), a `versions/X.Y.Z` parent with a `current` symlink beside it
+ * makes it a binary install, and anything else is reported as unknown rather than guessed at. The
+ * verdict comes from `classifyInstall`, which is also the one `collie update` forks on.
+ */
+function installKind(deps: DoctorDeps, install: InstallKind): Finding {
+  const root = deps.ctx.root;
+  const version = collieVersionBare(root, (p) => deps.files.read(p));
+  switch (install.kind) {
+    case "binary": {
+      const layout = binaryLayout(root);
+      const kept = deps.files.list(layout.versionsDir).filter((v) => v !== layout.version).length;
+      return ok(
+        "install",
+        `binary install, version ${layout.version} at ${layout.installRoot} (${kept} previous kept)`,
+      );
+    }
+    case "linked-clone":
+    case "detached-checkout": {
+      if (install.alsoLayout) {
+        // Both signals. `update` takes the git path — a `.git` means a human put a working tree
+        // there, and the binary path would rename it into `.trash/`. Printed rather than hidden.
+        return warn(
+          "install",
+          `a git checkout inside a binary layout (${root})`,
+          "`collie update` will use the git path and leave the versions/ layout alone",
+        );
+      }
+      if (install.kind === "detached-checkout") {
+        return ok("install", `Herdr-managed checkout at ${root} (detached at ${version})`);
+      }
+      const branch = deps.exec.capture("git", ["-C", root, "symbolic-ref", "--short", "HEAD"]);
+      const origin = originOf(deps.exec, root);
+      const from = origin.kind === "repo" ? origin.repo : origin.kind === "other" ? origin.url : "no origin";
+      return ok("install", `linked clone at ${root} (branch ${branch.stdout.trim() || "?"}, origin ${from})`);
+    }
+    case "unknown":
+      if (install.why === "orphan-layout") {
+        return warn(
+          "install",
+          `binary layout with no \`current\` symlink (${binaryLayout(root).installRoot})`,
+          "reinstall: curl -fsSL https://colliepwa.dev/install.sh | sh",
+        );
+      }
+      return warn(
+        "install",
+        install.why === "no-marker"
+          ? `cannot tell how this Collie was installed (no herdr-plugin.toml at ${root})`
+          : `cannot tell how this Collie was installed (${root} is neither a git checkout nor a versions/ layout)`,
+        "`collie update` cannot run here; see docs/install.md",
+      );
+  }
+}
+
+/**
+ * Where updates come from — the trust boundary, said out loud. On a binary install
+ * `COLLIE_UPDATE_REPO` IS the source (it selects the tags endpoint and every constructed download
+ * URL), and on a git install it is an assertion against `origin` that `collie update` refuses on.
+ */
+function updateSource(deps: DoctorDeps, install: InstallKind): Finding {
+  const repo = updateRepoOf(deps.ctx.env);
+  const isGit = install.kind === "linked-clone" || install.kind === "detached-checkout";
+  if (!isGit) {
+    return repo === DEFAULT_UPDATE_REPO
+      ? ok("update-source", `github.com/${repo}`)
+      : warn(
+          "update-source",
+          `github.com/${repo} (COLLIE_UPDATE_REPO) — updates come from a fork`,
+          "unset COLLIE_UPDATE_REPO to take Collie's own releases",
+        );
+  }
+  const origin = originOf(deps.exec, deps.ctx.root);
+  if (originMatches(origin, repo)) {
+    return repo === DEFAULT_UPDATE_REPO
+      ? ok("update-source", `github.com/${repo}`)
+      : warn(
+          "update-source",
+          `github.com/${repo} (COLLIE_UPDATE_REPO) — updates come from a fork`,
+          "unset COLLIE_UPDATE_REPO to take Collie's own releases",
+        );
+  }
+  if (origin.kind === "unresolvable") {
+    return warn(
+      "update-source",
+      `this checkout cannot say where it came from (no \`origin\` remote, or no git), and updates are` +
+        ` configured to come from github.com/${repo}`,
+      "`collie update` will refuse rather than force-checkout; add an origin, or reinstall",
+    );
+  }
+  const named = origin.kind === "repo" ? `github.com/${origin.repo}` : origin.url;
+  return bad(
+    "update-source",
+    `origin is ${named} but updates are configured to come from github.com/${repo}`,
+    '`collie update` will refuse; see docs/upgrading.md → "You run a fork"',
+  );
+}
+
+/**
+ * macOS only, and only on a binary install: a browser-downloaded artifact carries
+ * `com.apple.quarantine` and Gatekeeper then refuses the ad-hoc-signed binary with "the developer
+ * cannot be verified". `curl` and `tar` do not set it, so the installer's path is unaffected — this
+ * check exists to turn the one confusing macOS failure into a command. Gated on `xattr` existing,
+ * which is how this stays a no-op everywhere else; reading an xattr changes nothing.
+ */
+function quarantine(deps: DoctorDeps, install: InstallKind): Finding[] {
+  if (install.kind !== "binary") return [];
+  if (deps.exec.which("xattr") === null) return [];
+  const binary = join(binaryLayout(deps.ctx.root).currentLink, "bin", "collie");
+  const r = deps.exec.capture("xattr", ["-p", "com.apple.quarantine", binary]);
+  if (!r.found || r.code !== 0) return [];
+  return [
+    warn(
+      "quarantine",
+      `${binary} carries com.apple.quarantine — Gatekeeper will refuse to run it`,
+      `xattr -d com.apple.quarantine ${binary}`,
+    ),
+  ];
 }
 
 /**
@@ -560,7 +696,20 @@ const SNAPSHOT_BUDGET_MS = 3000;
  * `skipped` rather than approximating. A diagnostic that overstates its coverage invites someone to
  * skip a real check on its strength.
  */
-function restartPending(): Finding {
+function restartPending(install: InstallKind): Finding {
+  // On a binary install the question does not arise. The payload ships no `bridge/` — the bridge is
+  // compiled INTO `bin/collie` — so `bridgeStampSync` reads an empty stamp at boot and every time
+  // after, `bridgeStale` is permanently false, and that is correct rather than broken: there is no
+  // on-disk source for the process to be behind, and the only way the code changes is an update,
+  // which restarts the service itself (M14/01 §4.4). Written here so nobody "fixes" it later.
+  if (install.kind === "binary") {
+    return skipped(
+      "restart-pending",
+      "a binary install ships no bridge/ source, so there is nothing for the running process to be" +
+        " behind — `collie update` restarts the service itself",
+      "`collie logs` dates the running process",
+    );
+  }
   return skipped(
     "restart-pending",
     "the running bridge records no version — `pack-runtime.json` carries its boot time, pid, mode and" +

@@ -1146,11 +1146,17 @@ exit 0
 EOF
 chmod +x "${U_BIN}/herdr" "${U_BIN}/systemctl" "${U_BIN}/tailscale"
 
+# COLLIE_UPDATE_REPO names the remote these fixtures actually have. `update` asserts that `origin`
+# is the configured update source BEFORE it fetches — on a fork it would otherwise read the fork's
+# tags and `checkout --detach --force` onto them, discarding local work (M14/02 amendment). These
+# checkouts' origin is a throwaway path, so the override is what makes them self-consistent; the
+# refusal itself is pinned right below.
 upd() {
   local root="$1"; shift
   : > "$U_CALLS"
   run_stripped HOME="${TMP_ROOT}/update-home" HERDR_PLUGIN_CONFIG_DIR="${TMP_ROOT}/update-config" \
-    PATH="${U_BIN}:${BASE_PATH}" COLLIE_MUX=herdr COLLIE_PORT="$PORT" COLLIE_PLUGIN_ROOT="$root" "$@"
+    PATH="${U_BIN}:${BASE_PATH}" COLLIE_MUX=herdr COLLIE_PORT="$PORT" COLLIE_PLUGIN_ROOT="$root" \
+    COLLIE_UPDATE_REPO="$ORIGIN" "$@"
 }
 
 # Shape 1 — the Herdr-managed checkout, created verbatim the way herdr's plugin_install does.
@@ -1206,6 +1212,18 @@ assert_contains "$STDERR" "herdr plugin install AltanS/collie --yes"
 case "$(cat "$U_CALLS")" in
   *_apply-update*) fail "a checkout that could not advance still tried to rebuild" ;;
 esac
+
+# The fork guard: `origin` must BE the configured update source, and the check runs before any fetch.
+# A mismatch names the fork docs and leaves the checkout exactly where it was — no fetch, no
+# force-checkout, which is the whole point (M14/02 amendment §1).
+MANAGED_BEFORE_FORK="$(git -C "$MANAGED" rev-parse HEAD)"
+if run_stripped HOME="${TMP_ROOT}/update-home" HERDR_PLUGIN_CONFIG_DIR="${TMP_ROOT}/update-config" \
+  PATH="${U_BIN}:${BASE_PATH}" COLLIE_MUX=herdr COLLIE_PORT="$PORT" COLLIE_PLUGIN_ROOT="$MANAGED" \
+  COLLIE_UPDATE_REPO="AltanS/collie" "$BIN" update; then
+  fail "update did not refuse a checkout whose origin is not the update source"
+fi
+assert_contains "$STDERR" "docs/upgrading.md"
+assert_eq "$(git -C "$MANAGED" rev-parse HEAD)" "$MANAGED_BEFORE_FORK"
 
 # A MAJOR appears upstream (ADR 0020). A routine `update` must not take it — in EITHER shape — and
 # must name the action that does; `--major` is the whole consent, because a Herdr plugin action has

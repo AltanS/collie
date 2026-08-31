@@ -1,10 +1,34 @@
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
-import { compareSemver, followsTrain, majorOf, parsePrereleaseTag } from "../bridge/update.ts";
+import type { JsonValue } from "../bridge/json.ts";
+import {
+  type ApiTag,
+  compareSemver,
+  followsTrain,
+  githubTagsUrl,
+  majorOf,
+  MANIFEST_SCHEMA_VERSION,
+  parsePrereleaseTag,
+  parseReleaseManifest,
+  parseTagsResponse,
+} from "../bridge/update.ts";
 import { manifestVersionFrom, readBuildInfo } from "../bridge/version.ts";
 import { type BuildDeps, cmdBuild } from "./build.ts";
+import {
+  binaryLayout,
+  type BinaryLayout,
+  detectInstall,
+  gitArgs,
+  isGitCheckout,
+  isManagedCheckout,
+  originOf,
+  originMatches,
+  updateRepoOf,
+  DEFAULT_UPDATE_REPO,
+} from "./install-kind.ts";
 import { EXIT } from "./io.ts";
-import type { Exec } from "./sys.ts";
+import type { LinkWriter } from "./link.ts";
+import type { Exec, Net, NetFailure } from "./sys.ts";
 import { collieBinary } from "./unit.ts";
 
 // `update`, `_apply-update` and the checkout logic behind them, ported from
@@ -22,9 +46,23 @@ import { collieBinary } from "./unit.ts";
 export interface UpdateDeps extends BuildDeps {
   /** `restart` over the same context — injected because `update`'s own tests must never start a service. */
   restart: () => Promise<number>;
+  /**
+   * The symlink seam (`cli/link.ts`), which the binary path flips `current` with. The same writer
+   * `link` publishes the PATH name through — one implementation of "make a symlink", never two.
+   */
+  link: LinkWriter;
+  /** The two anonymous HTTPS GETs the binary path makes (`cli/sys.ts`). No test may reach a network. */
+  net: Net;
+  /** `process.platform` / `process.arch`, injected so a test pins a platform rather than inheriting
+   *  the host's — the artifact this install may take is decided from them. */
+  platform: string;
+  arch: string;
 }
 
-const gitArgs = (root: string, args: readonly string[]): string[] => ["-C", root, ...args];
+// One predicate for the checkout shape, one for "is this a git checkout at all", both in
+// `cli/install-kind.ts` now that `doctor` asks them too. Re-exported because every caller and test
+// already spells them `from "./update.ts"`.
+export { isManagedCheckout };
 
 /** The command that consents to a major crossing — printed wherever one is refused. */
 export const MAJOR_ACTION = "herdr plugin action invoke update-major --plugin herdr.collie";
@@ -204,32 +242,68 @@ export function wantsMajor(args: readonly string[]): boolean {
   return args.includes("--major");
 }
 
-/**
- * True when the checkout has no branch — exactly how `herdr plugin install` leaves it.
- *
- * ONE predicate decides BOTH how we advance the checkout ({@link updateCheckout}) and whether we
- * re-link ({@link refreshRegistry}). Two detections would eventually disagree, and the disagreement
- * would be silent: an install that advances correctly and then re-registers itself as `local`, after
- * which Herdr refuses `plugin install` and the operator has no way back.
- */
-export function isManagedCheckout(exec: Exec, root: string): boolean {
-  const r = exec.capture("git", gitArgs(root, ["symbolic-ref", "-q", "HEAD"]));
-  return !r.found || r.code !== 0;
-}
-
-function isGitCheckout(exec: Exec, root: string): boolean {
-  const r = exec.capture("git", gitArgs(root, ["rev-parse", "--git-dir"]));
-  return r.found && r.code === 0;
-}
-
 function isShallow(exec: Exec, root: string): boolean {
   const r = exec.capture("git", gitArgs(root, ["rev-parse", "--is-shallow-repository"]));
   return r.found && r.code === 0 && r.stdout.trim() === "true";
 }
 
+/**
+ * The fork guard on the git paths: `origin` must be the repo updates are configured to come from.
+ *
+ * Both git strategies talk to a hardcoded `origin` and one of them force-checks-out onto its tags.
+ * On a fork that reads the FORK's tags and `checkout --detach --force` discards local work — which
+ * is exactly what happened to youngsecurity/collie at 0.35.0+ys.2. So the check runs BEFORE
+ * `git fetch origin` and before `git ls-remote origin`, and a mismatch fails there: no fetch, no
+ * checkout, nothing changed. An unresolvable origin is a mismatch too — a checkout that cannot say
+ * where it came from is not one to force-checkout.
+ *
+ * The remedy is one line of consent, not a flag to disable the guard: a fork operator sets
+ * `COLLIE_UPDATE_REPO` to their own fork, which moves the banner and the updater TOGETHER.
+ */
+function assertOrigin(deps: UpdateDeps): boolean {
+  const configured = updateRepoOf(deps.ctx.env);
+  const origin = originOf(deps.exec, deps.ctx.root);
+  if (originMatches(origin, configured)) return true;
+  const named =
+    origin.kind === "repo"
+      ? `github.com/${origin.repo}`
+      : origin.kind === "other"
+        ? origin.url
+        : "unreadable (no `origin` remote, or no git)";
+  deps.io.err(`error: this checkout's origin is ${named}, but updates are configured to`);
+  deps.io.err(`       come from github.com/${configured}.`);
+  deps.io.err("       `collie update` would fetch that remote's tags and force-checkout onto them,");
+  deps.io.err("       discarding local work — it will not do that.");
+  if (origin.kind === "repo") {
+    deps.io.err(`       If you run a fork on purpose:      set COLLIE_UPDATE_REPO=${origin.repo}`);
+  }
+  deps.io.err('       To take an upstream release by hand: docs/upgrading.md → "You run a fork"');
+  return false;
+}
+
 /** The version in the checkout's own `herdr-plugin.toml` — the installed major is read from here. */
 function installedVersion(deps: UpdateDeps): string | null {
   return manifestVersionFrom(deps.files.read(join(deps.ctx.root, "herdr-plugin.toml")));
+}
+
+// The sentences a "nothing to take" verdict prints. They live here, once, because BOTH update paths
+// print them — a user must not be able to tell the git path from the binary one by its wording
+// (M14/01 §3.2 step 4).
+
+function printNoHigherMajor(deps: UpdateDeps, major: number): void {
+  deps.io.out(`no release above major ${major} exists yet — nothing to cross to.`);
+}
+
+function printNoRelease(deps: UpdateDeps, major: number, tail: string): void {
+  deps.io.out(`no release of major ${major} yet — ${tail}.`);
+}
+
+function printCurrent(deps: UpdateDeps, at: ReleaseTag): void {
+  deps.io.out(
+    at.prerelease === null
+      ? `already current — v${at.version} is the newest release of major ${at.major}.`
+      : `already current — v${at.version} is the newest on the major ${at.major} prerelease train.`,
+  );
 }
 
 /** Say a higher major is out, and name the one command that takes it. Never acts. */
@@ -289,6 +363,9 @@ export function updateCheckout(
     deps.io.err("       herdr plugin install AltanS/collie --yes");
     return { code: EXIT.FAIL, moved: false, higher: null };
   }
+
+  // BEFORE any fetch, and therefore before any `checkout --detach --force`. See {@link assertOrigin}.
+  if (!assertOrigin(deps)) return { code: EXIT.FAIL, moved: false, higher: null };
 
   const installed = installedVersion(deps);
   return isManagedCheckout(deps.exec, root)
@@ -378,20 +455,16 @@ function updateManaged(
     return { code: pinned, moved: pinned === EXIT.OK, higher: null };
   }
   if (plan.kind === "no-higher-major") {
-    deps.io.out(`no release above major ${plan.major} exists yet — nothing to cross to.`);
+    printNoHigherMajor(deps, plan.major);
     return { code: EXIT.OK, moved: false, higher: null };
   }
   if (plan.kind === "no-release") {
-    deps.io.out(`no release of major ${plan.major} yet — leaving this checkout where it is.`);
+    printNoRelease(deps, plan.major, "leaving this checkout where it is");
     announceMajor(deps, plan.higher);
     return { code: EXIT.OK, moved: false, higher: plan.higher };
   }
   if (plan.kind === "current") {
-    deps.io.out(
-      plan.at.prerelease === null
-        ? `already current — v${plan.at.version} is the newest release of major ${plan.at.major}.`
-        : `already current — v${plan.at.version} is the newest on the major ${plan.at.major} prerelease train.`,
-    );
+    printCurrent(deps, plan.at);
     announceMajor(deps, plan.higher);
     return { code: EXIT.OK, moved: false, higher: plan.higher };
   }
@@ -568,6 +641,27 @@ export async function cmdApplyUpdate(deps: UpdateDeps): Promise<number> {
  * `bin/collie` and swaps it in; the restart that follows is what puts it into service.
  */
 export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []): Promise<number> {
+  // The fork on install kind, and the ONLY one. Every path below it is the path that kind's shape
+  // supports: a git checkout advances and rebuilds; a binary install fetches, verifies and flips a
+  // symlink; an install we cannot name does neither, and says so rather than guessing (M14/01 §3.1).
+  const install = detectInstall(deps);
+  if (args.includes("--rollback")) {
+    if (install.kind !== "binary") {
+      deps.io.err("error: `--rollback` is a binary install's verb — it flips the `current` symlink back to");
+      deps.io.err("       the previous version, and a git checkout has no such thing.");
+      deps.io.err("       On a checkout, take a specific release with `git checkout v<version>` and rebuild.");
+      return EXIT.FAIL;
+    }
+    return await rollbackBinary(deps);
+  }
+  if (install.kind === "binary") return await updateBinary(deps, args);
+  if (install.kind === "unknown") {
+    deps.io.err(`error: cannot tell how this Collie was installed (${unknownEvidence(deps, install.why)}).`);
+    deps.io.err("       `collie update` will not guess. A git checkout refreshes with:");
+    deps.io.err("       herdr plugin install AltanS/collie --yes");
+    deps.io.err("       A downloaded install lives under a `versions/` layout — see docs/install.md.");
+    return EXIT.FAIL;
+  }
   const advanced = updateCheckout(deps, { crossMajor: wantsMajor(args) });
   if (advanced.code !== EXIT.OK) return advanced.code;
   // Nothing was taken AND what is on disk is whole: stop here. This used to fall through, so
@@ -597,5 +691,382 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
   // `_apply-update` ran as a child with our own stdio, so its `✓ update complete` is already on the
   // screen. This lands after it — the last line of the transcript.
   closeWithMajor(deps, advanced.higher);
+  return EXIT.OK;
+}
+
+// ── The binary install path (M14/01 §3) ──────────────────────────────────────
+// A binary install has no `.git` to pull and nothing to compile: it is a versioned directory and a
+// symlink. `<root>/versions/X.Y.Z/` holds a complete payload (the compiled binary, `web/dist`, the
+// manifest, `package.json`, `.env.example`, `docs/`), and `<root>/current` is a RELATIVE symlink at
+// exactly one of them. An update lays a new version down beside the old one and flips that symlink;
+// two atomic renames, and the previous version is still on disk afterwards, which is what makes
+// `--rollback` almost free.
+//
+// The running bridge is pinned to the version directory it was started from — `process.execPath` is
+// realpath-resolved, so `resolvePluginRoot` returns `versions/X.Y.Z`, never `current` — so it keeps
+// serving its own `web/dist` until the restart. There is no instant at which a new binary serves an
+// old bundle or the reverse (`cli/install-kind.test.ts` pins that assumption).
+//
+// Nothing here re-execs. `cmdUpdate`'s `_apply-update` handoff exists because the source path must
+// run the NEW build logic and the new binary does not exist yet; here nothing is compiled and the
+// old binary can perform every step.
+
+/**
+ * GitHub's `/tags` payload → the same `ReleaseTag[]` {@link parseRemoteTags} produces from
+ * `git ls-remote --tags`. Same anchor (`parsePrereleaseTag`), so a tag the banner would not announce
+ * is a tag this can never land on, and everything downstream — `planUpdate`, `compareSemver`,
+ * `followsTrain`, `releaseInMajor`, `trainInMajor` — is the code the git paths already run.
+ */
+export function parseApiTags(tags: readonly ApiTag[]): ReleaseTag[] {
+  return tags.flatMap((t) => {
+    const name = t.name.trim();
+    const parsed = parsePrereleaseTag(name);
+    if (parsed === null) return [];
+    return [
+      {
+        tag: name,
+        version: name.slice(1),
+        major: parsed.triple[0],
+        prerelease: parsed.prerelease,
+        commit: t.sha,
+      },
+    ];
+  });
+}
+
+/**
+ * The canonical platform id for a running process, or null where Collie publishes no artifact.
+ * `linux-x64` ships as Bun's BASELINE target: the default requires AVX2 and dies with SIGILL on
+ * older hardware, which is exactly the hardware a self-hosted tool lives on, and Collie is I/O-bound
+ * so the baseline penalty is not observable here.
+ */
+export function platformId(platform: string, arch: string): string | null {
+  const os = platform === "linux" ? "linux" : platform === "darwin" ? "macos" : null;
+  const cpu = arch === "x64" ? "x64" : arch === "arm64" ? "arm64" : null;
+  return os === null || cpu === null ? null : `${os}-${cpu}`;
+}
+
+/** `collie-<version>.manifest.json` — CONSTRUCTED from the version, never read from a document. */
+export const manifestAssetName = (version: string): string => `collie-${version}.manifest.json`;
+
+/** A release asset's URL, built from (repo, tag, name) alone — see `parseReleaseManifest`'s header
+ *  on why the manifest carries no URLs of its own. */
+export const releaseAssetUrl = (repo: string, tag: string, name: string): string =>
+  `https://github.com/${repo}/releases/download/${tag}/${name}`;
+
+/** The evidence line `doctor` and the refusal above both quote for an install we cannot name. */
+function unknownEvidence(deps: UpdateDeps, why: "no-marker" | "orphan-layout" | "loose-binary"): string {
+  const root = deps.ctx.root;
+  switch (why) {
+    case "no-marker":
+      return `no herdr-plugin.toml at ${root}`;
+    case "orphan-layout":
+      return `a versions/ layout at ${binaryLayout(root).installRoot} with no \`current\` symlink`;
+    case "loose-binary":
+      return `${root} is neither a git checkout nor a versions/ layout`;
+  }
+}
+
+/** One sentence for a failed HTTPS GET, with the rate limit named because it is the likely one. */
+function netError(deps: UpdateDeps, what: string, failure: NetFailure): void {
+  if (failure.status === 403 || failure.status === 429) {
+    deps.io.err(`error: GitHub rate-limited ${what} (HTTP ${failure.status}). Wait an hour, or follow`);
+    deps.io.err("       docs/upgrading.md. Nothing was changed.");
+    return;
+  }
+  if (failure.status !== null) {
+    deps.io.err(`error: ${what} failed (HTTP ${failure.status}). Nothing was changed.`);
+    return;
+  }
+  deps.io.err(`error: could not reach github.com — ${what} failed (${failure.message}). Nothing was changed.`);
+}
+
+/** Everything under `.staging`, and everything in `.trash`. A killed update leaves scratch; entering
+ *  with a clean one costs nothing and removes a class of half-state. */
+function sweepScratch(deps: UpdateDeps, layout: BinaryLayout): void {
+  deps.files.removeTree(layout.stagingDir);
+  for (const entry of deps.files.list(layout.trashDir)) {
+    deps.files.removeTree(join(layout.trashDir, entry));
+  }
+}
+
+/** Move a version directory out of the way before it is deleted, so a half-deleted tree can never be
+ *  mistaken for an installable version. */
+function toTrash(deps: UpdateDeps, layout: BinaryLayout, version: string): void {
+  deps.files.mkdirp(layout.trashDir);
+  const held = join(layout.trashDir, `${version}.${Date.now().toString(36)}`);
+  deps.files.rename(join(layout.versionsDir, version), held);
+  deps.files.removeTree(held);
+}
+
+/** The versions on disk that are actually installable — a readable version name AND a binary. */
+function installedVersions(deps: UpdateDeps, layout: BinaryLayout): string[] {
+  return deps.files
+    .list(layout.versionsDir)
+    .filter((name) => parsePrereleaseTag(`v${name}`) !== null)
+    .filter((name) => deps.files.exists(join(layout.versionsDir, name, "bin", "collie")))
+    .sort((a, b) => compareSemver(a, b));
+}
+
+/** The version `current` points at, or null when it points nowhere we laid down. */
+function currentVersion(deps: UpdateDeps, layout: BinaryLayout): string | null {
+  const probe = deps.link.probe(layout.currentLink);
+  if (probe.kind !== "symlink") return null;
+  const name = basename(probe.target);
+  return name === "" ? null : name;
+}
+
+/**
+ * Point `current` at `versions/<version>` with ONE rename. `rename(2)` replaces the existing symlink
+ * atomically, so no window exists in which `current` is absent — which is why the new link is built
+ * beside it under a scratch name first. The target is RELATIVE, so the whole install root stays
+ * movable.
+ */
+function flipCurrent(deps: UpdateDeps, layout: BinaryLayout, version: string): boolean {
+  const staged = join(layout.installRoot, ".current.new");
+  try {
+    deps.link.remove(staged);
+    deps.link.symlink(join("versions", version), staged);
+    deps.files.rename(staged, layout.currentLink);
+    return true;
+  } catch (err) {
+    deps.io.err(`error: could not point ${layout.currentLink} at versions/${version} — ${String(err)}`);
+    return false;
+  }
+}
+
+/** `<dir>/bin/collie version` must exit 0 and name `version`. This is where a wrong architecture, a
+ *  truncated payload and a Gatekeeper refusal all surface.
+ *
+ *  The design's 20 s bound is not expressible through the `Exec` seam (`Bun.spawnSync` takes no
+ *  timeout), so a binary that HANGS on `version` hangs the update instead of failing it. Recorded
+ *  here rather than papered over; every other failure mode is caught. */
+function smoke(deps: UpdateDeps, dir: string, version: string): boolean {
+  const r = deps.exec.capture(join(dir, "bin", "collie"), ["version"]);
+  return r.found && r.code === 0 && r.stdout.includes(version);
+}
+
+/**
+ * `collie update` on a binary install: fetch the release tags, plan with the SAME pure functions the
+ * git paths use, download and verify the platform artifact, lay it down, flip, restart, verify, and
+ * only then collect old versions.
+ */
+async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<number> {
+  const layout = binaryLayout(deps.ctx.root);
+  const repo = updateRepoOf(deps.ctx.env);
+  // 1. A redirected updater is never silent — the repo IS the trust boundary on this path.
+  if (repo !== DEFAULT_UPDATE_REPO) deps.io.out(`update source: github.com/${repo} (COLLIE_UPDATE_REPO)`);
+  const platform = platformId(deps.platform, deps.arch);
+  if (platform === null) {
+    deps.io.err("error: Collie publishes no release artifact for this platform.");
+    deps.io.err("       Update by pulling and rebuilding a checkout — see docs/install.md.");
+    return EXIT.FAIL;
+  }
+  // 2. Sweep scratch before anything else.
+  sweepScratch(deps, layout);
+
+  // 3. One HTTPS GET. Never a second endpoint, never a guessed version.
+  const tagsResponse = await deps.net.getJson(githubTagsUrl(repo));
+  if (!tagsResponse.ok) {
+    netError(deps, "the release check", tagsResponse.failure);
+    return EXIT.FAIL;
+  }
+  // SAFETY: `Net.getJson` hands back what `Response.json()` produced, which IS a JsonValue by
+  // construction; `parseTagsResponse` checks every field it keeps.
+  const tags = parseApiTags(parseTagsResponse(tagsResponse.value as JsonValue));
+
+  // 4. The same plan the git paths make. `head: ""` is correct rather than a fudge: a binary install
+  //    has no checked-out commit, so `planUpdate`'s commit arm must never fire and the VERSION
+  //    comparison decides — which is the right question for an install whose identity IS its version.
+  const installed = installedVersion(deps);
+  const plan = planUpdate({ tags, installed, head: "", crossMajor: wantsMajor(args) });
+  if (plan.kind === "no-higher-major") {
+    printNoHigherMajor(deps, plan.major);
+    return EXIT.OK;
+  }
+  if (plan.kind === "no-release") {
+    printNoRelease(deps, plan.major, "leaving this install where it is");
+    announceMajor(deps, plan.higher);
+    return EXIT.OK;
+  }
+  if (plan.kind === "current") {
+    printCurrent(deps, plan.at);
+    announceMajor(deps, plan.higher);
+    return EXIT.OK;
+  }
+  const target = plan.kind === "unknown-version" ? plan.newest : plan.target;
+  if (target === null) {
+    deps.io.err(`error: github.com/${repo} publishes no release tags — there is nothing to install.`);
+    return EXIT.FAIL;
+  }
+  const higher = plan.kind === "advance" && !plan.crossesMajor ? plan.higher : null;
+  deps.io.out(
+    plan.kind === "advance" && plan.crossesMajor
+      ? `crossing to Collie ${target.version} (--major given: consented)…`
+      : `updating Collie (binary install: ${target.tag} for ${platform})…`,
+  );
+
+  // 5. The manifest, and this platform's artifact inside it.
+  const manifestUrl = releaseAssetUrl(repo, target.tag, manifestAssetName(target.version));
+  const manifestResponse = await deps.net.getJson(manifestUrl);
+  if (!manifestResponse.ok) {
+    netError(deps, `the release manifest for ${target.version}`, manifestResponse.failure);
+    return EXIT.FAIL;
+  }
+  // SAFETY: as above — a parsed JSON document, and `parseReleaseManifest` checks every field.
+  const verdict = parseReleaseManifest(manifestResponse.value as JsonValue);
+  if (!verdict.ok) {
+    if (verdict.reason === "schema") {
+      deps.io.err(
+        `error: this Collie cannot read release ${target.version}'s manifest (schemaVersion ` +
+          `${verdict.schemaVersion}; this build understands ${MANIFEST_SCHEMA_VERSION}).`,
+      );
+      deps.io.err("       Reinstall to get an updater that can: curl -fsSL https://colliepwa.dev/install.sh | sh");
+      return EXIT.FAIL;
+    }
+    deps.io.err(`error: release ${target.version}'s manifest could not be read. Nothing was changed.`);
+    return EXIT.FAIL;
+  }
+  const artifact = verdict.manifest.artifacts.find((a) => a.platform === platform);
+  if (artifact === undefined) {
+    deps.io.err(`error: release ${target.version} publishes no artifact for ${platform}.`);
+    deps.io.err('       Build from source instead: docs/install.md → "From source". Nothing was changed.');
+    return EXIT.FAIL;
+  }
+
+  // 6. Download into scratch — same filesystem as `versions/`, so every rename below is a real one.
+  const tarball = join(layout.stagingDir, artifact.name);
+  deps.files.mkdirp(layout.stagingDir);
+  const got = await deps.net.download(releaseAssetUrl(repo, target.tag, artifact.name), tarball);
+  if (!got.ok) {
+    deps.files.removeTree(layout.stagingDir);
+    netError(deps, `downloading ${artifact.name}`, got.failure);
+    return EXIT.FAIL;
+  }
+  // 7. Verify. Hard fail, and there is no flag to skip it.
+  if (got.sha256 !== artifact.sha256 || (artifact.size !== null && got.size !== artifact.size)) {
+    deps.files.removeTree(layout.stagingDir);
+    deps.io.err(`error: checksum mismatch for ${artifact.name}`);
+    deps.io.err(`       expected ${artifact.sha256}  got ${got.sha256}`);
+    deps.io.err("       The download was discarded. Nothing was changed. If this repeats, report it —");
+    deps.io.err("       a mismatch is either a corrupt download or something worse.");
+    return EXIT.FAIL;
+  }
+
+  // 8. Lay down: extract, check the payload is whole, then ONE rename into `versions/<version>`.
+  const unpacked = join(layout.stagingDir, "x");
+  deps.files.mkdirp(unpacked);
+  const untar = deps.exec.capture("tar", ["-xzf", tarball, "-C", unpacked]);
+  if (!untar.found || untar.code !== 0) {
+    deps.files.removeTree(layout.stagingDir);
+    deps.io.err(`error: could not unpack ${artifact.name}${untar.found ? "" : " — tar is not installed"}.`);
+    deps.io.err("       Nothing was changed.");
+    return EXIT.FAIL;
+  }
+  const payload = join(unpacked, artifact.payloadRoot);
+  const required = ["bin/collie", "web/dist/index.html", "herdr-plugin.toml", "package.json"];
+  const missing = required.filter((rel) => !deps.files.exists(join(payload, ...rel.split("/"))));
+  if (missing.length > 0) {
+    deps.files.removeTree(layout.stagingDir);
+    deps.io.err(`error: ${artifact.name} is not a complete Collie payload (missing ${missing.join(", ")}).`);
+    deps.io.err("       Nothing was changed.");
+    return EXIT.FAIL;
+  }
+  // tar carries the mode, and every runner that builds one sets it — but a umask or a re-packed
+  // archive can still land a non-executable binary, and the cost of being sure is one call.
+  deps.exec.capture("chmod", ["0755", join(payload, "bin", "collie")]);
+  const laid = join(layout.versionsDir, target.version);
+  if (deps.files.exists(laid)) toTrash(deps, layout, target.version);
+  deps.files.mkdirp(layout.versionsDir);
+  deps.files.rename(payload, laid);
+  deps.files.removeTree(layout.stagingDir);
+
+  // 9. Smoke BEFORE the flip: nothing the operator can see has moved yet.
+  if (!smoke(deps, laid, target.version)) {
+    toTrash(deps, layout, target.version);
+    deps.io.err(`error: ${target.version} did not run here (\`collie version\` failed before the swap).`);
+    deps.io.err(`       Nothing was changed — this install is still ${installed ?? "where it was"}.`);
+    return EXIT.FAIL;
+  }
+
+  // 10-11. Flip, then restart. The old bridge served its own pinned version until this moment.
+  const previous = currentVersion(deps, layout);
+  if (!flipCurrent(deps, layout, target.version)) return EXIT.FAIL;
+  const restarted = await deps.restart();
+
+  // 12. Verify after the flip, through `current` this time. Either failure rolls back.
+  const live = smoke(deps, layout.currentLink, target.version);
+  if (restarted !== EXIT.OK || !live) {
+    if (previous === null || !flipCurrent(deps, layout, previous)) {
+      deps.io.err(`error: ${target.version} failed its post-install check and there is no previous version`);
+      deps.io.err(`       to fall back to. ${layout.currentLink} points at ${target.version}.`);
+      return EXIT.FAIL;
+    }
+    await deps.restart();
+    deps.io.err(`error: ${target.version} failed its post-install check — rolled back to ${previous}.`);
+    deps.io.err(`       Your Collie is running ${previous} again. The failure output is above.`);
+    return EXIT.FAIL;
+  }
+
+  // 13. GC, only now, and never fatally.
+  collectOldVersions(deps, layout, target.version);
+  deps.io.out(`✓ updated to ${target.version}`);
+  closeWithMajor(deps, higher);
+  return EXIT.OK;
+}
+
+/**
+ * Keep `current` plus the newest older versions, and remove the rest. Two hard guards, checked per
+ * candidate: never the target of `current`, and never the directory the running updater is executing
+ * from. A failure here is a warning — a successful update must not report failure because a stale
+ * directory was busy.
+ */
+function collectOldVersions(deps: UpdateDeps, layout: BinaryLayout, keepVersion: string): void {
+  const asked = Number.parseInt(deps.ctx.env.COLLIE_KEEP_VERSIONS ?? "", 10);
+  const keep = Number.isFinite(asked) && asked >= 1 ? asked : 2;
+  // Newest first, the version just installed excluded — it is `current` and is retained by
+  // definition, so `keep` counts it and the list below holds only the ones that follow it.
+  const candidates = installedVersions(deps, layout)
+    .filter((v) => v !== keepVersion)
+    .reverse();
+  const guards = new Set([keepVersion, layout.version, currentVersion(deps, layout) ?? keepVersion]);
+  const doomed = candidates.slice(Math.max(0, keep - 1)).filter((v) => !guards.has(v));
+  for (const v of doomed) {
+    try {
+      toTrash(deps, layout, v);
+    } catch (err) {
+      deps.io.out(`note: could not remove the old version ${v} (${String(err)}) — it is harmless where it is.`);
+    }
+  }
+}
+
+/**
+ * `collie update --rollback` — no network, no manifest, no tags. The version list on disk IS the
+ * record; nothing is written to a state file.
+ *
+ * GC never runs here: the version just rolled away from is the one the operator is most likely to
+ * want back once the bug is understood.
+ */
+async function rollbackBinary(deps: UpdateDeps): Promise<number> {
+  const layout = binaryLayout(deps.ctx.root);
+  const at = currentVersion(deps, layout) ?? layout.version;
+  const older = installedVersions(deps, layout).filter((v) => compareSemver(v, at) < 0);
+  const target = older[older.length - 1];
+  if (target === undefined) {
+    deps.io.err(`error: nothing to roll back to — ${at} is the only version installed.`);
+    return EXIT.FAIL;
+  }
+  deps.io.out(`rolling back ${at} → ${target}…`);
+  if (!flipCurrent(deps, layout, target)) return EXIT.FAIL;
+  const restarted = await deps.restart();
+  if (restarted !== EXIT.OK || !smoke(deps, layout.currentLink, target)) {
+    // Roll FORWARD again to where this started, and say so: a rollback that half-lands is worse than
+    // one that never happened.
+    flipCurrent(deps, layout, at);
+    await deps.restart();
+    deps.io.err(`error: ${target} did not come up — rolled forward to ${at} again. Nothing was changed.`);
+    return EXIT.FAIL;
+  }
+  deps.io.out(`✓ rolled back to ${target}`);
   return EXIT.OK;
 }

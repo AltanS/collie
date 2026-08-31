@@ -85,6 +85,82 @@ export interface Files {
   rename(from: string, to: string): void;
 }
 
+/**
+ * Why a download fails, in the two words a message needs: the HTTP status when there was one (`403`
+ * is the rate limit the updater must name), and the text of the failure otherwise.
+ */
+export interface NetFailure {
+  /** The HTTP status, or null when the request never got one (DNS, TLS, timeout). */
+  status: number | null;
+  message: string;
+}
+
+export type NetJson = { ok: true; value: unknown } | { ok: false; failure: NetFailure };
+/** A finished download, with the digest computed AS IT WAS WRITTEN — the bytes are never re-read. */
+export type NetDownload =
+  | { ok: true; sha256: string; size: number }
+  | { ok: false; failure: NetFailure };
+
+/**
+ * The third seam, and the only one that leaves the machine: two anonymous HTTPS GETs, one for JSON
+ * and one that streams a release asset to a path. It is an interface for the same reason `Exec` and
+ * `Files` are — `bun test` drives the whole binary-update path (fetch, verify, lay down, flip,
+ * roll back) without a network, and no test may reach github.com.
+ *
+ * `download` hashes while it writes rather than handing bytes back, so a ~100 MB artifact never
+ * exists in memory and the verification in `cli/update.ts` stays a string comparison.
+ */
+export interface Net {
+  getJson(url: string): Promise<NetJson>;
+  download(url: string, dest: string): Promise<NetDownload>;
+}
+
+/** Same budget as the bridge's tag check — a hung request must never wedge a verb. */
+const NET_TIMEOUT_MS = 20_000;
+
+const netFailure = (err: unknown): NetFailure => ({
+  status: null,
+  message: err instanceof Error ? err.message : String(err),
+});
+
+export const realNet: Net = {
+  async getJson(url) {
+    try {
+      const res = await fetch(url, {
+        headers: { accept: "application/json", "user-agent": "collie-update" },
+        signal: AbortSignal.timeout(NET_TIMEOUT_MS),
+      });
+      if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
+      return { ok: true, value: await res.json() };
+    } catch (err) {
+      return { ok: false, failure: netFailure(err) };
+    }
+  },
+  async download(url, dest) {
+    try {
+      const res = await fetch(url, {
+        headers: { "user-agent": "collie-update" },
+        signal: AbortSignal.timeout(NET_TIMEOUT_MS),
+      });
+      if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
+      if (res.body === null) return { ok: false, failure: { status: res.status, message: "empty response" } };
+      mkdirSync(dirname(dest), { recursive: true });
+      const hasher = new Bun.CryptoHasher("sha256");
+      const sink = Bun.file(dest).writer();
+      let size = 0;
+      for await (const chunk of res.body) {
+        hasher.update(chunk);
+        size += chunk.byteLength;
+        sink.write(chunk);
+      }
+      await sink.end();
+      return { ok: true, sha256: hasher.digest("hex"), size };
+    } catch (err) {
+      return { ok: false, failure: netFailure(err) };
+    }
+  },
+};
+
 export function realExec(env: Environment, home: string): Exec {
   const resolve = (tool: string): string | null => findTool(tool, env, home);
   return {

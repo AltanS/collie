@@ -4,7 +4,7 @@ import { delimiter, dirname, isAbsolute, join, resolve } from "node:path";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Files } from "./sys.ts";
-import { collieBinary } from "./unit.ts";
+import { publishedBinary } from "./install-kind.ts";
 
 // `collie link` / `collie unlink` — publish the checkout's compiled binary under a name on the
 // operator's PATH, and take it back.
@@ -149,7 +149,7 @@ function pathNote(deps: LinkDeps, dir: string): void {
 
 /** `collie link` — publish `~/.local/bin/collie` → this checkout's `bin/collie`. */
 export function cmdLink(deps: LinkDeps): number {
-  const own = collieBinary(deps.ctx.root);
+  const own = publishedBinary(deps.ctx.root, deps.fs);
   if (!deps.files.exists(own)) {
     deps.io.err(`error: no binary at ${own} — run the build first (\`bin/collie build\`).`);
     return EXIT.FAIL;
@@ -190,7 +190,7 @@ export function cmdLink(deps: LinkDeps): number {
 
 /** `collie unlink` — remove the published name, but only when it is this checkout's. */
 export function cmdUnlink(deps: LinkDeps): number {
-  const own = collieBinary(deps.ctx.root);
+  const own = publishedBinary(deps.ctx.root, deps.fs);
   const at = linkPath(deps.ctx.home);
   const verdict = classifyUnlink(deps.fs.probe(at), own);
 

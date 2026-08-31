@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
 import {
+  type ApiTag,
   compareSemver,
   followsTrain,
   githubReleaseUrl,
@@ -11,7 +12,9 @@ import {
   latestReleaseTag,
   majorOf,
   parsePrereleaseTag,
+  parseReleaseManifest,
   parseSemverTag,
+  parseTagsResponse,
   shouldNotify,
   stampOf,
   UpdateMonitor,
@@ -202,6 +205,10 @@ function fakeStore(initial: string | null = null): UpdateStore & { saved: string
   };
 }
 
+/** Tag names as the `/tags` endpoint reports them — one parser, so the monitor's fixtures name what
+ *  the CLI's binary updater reads too. The sha is arbitrary here: the banner never looks at it. */
+const apiTags = (...names: string[]): ApiTag[] => names.map((name) => ({ name, sha: `sha-${name}` }));
+
 function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
   const notified: string[] = [];
   const store = fakeStore();
@@ -210,7 +217,7 @@ function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
     repo: "AltanS/collie",
     current: "0.11.0",
     startupStamp: "STAMP@boot",
-    fetchTags: async () => ["v0.12.0"],
+    fetchTags: async () => apiTags("v0.12.0"),
     bridgeStamp: () => "STAMP@boot",
     store,
     now: () => clock,
@@ -226,7 +233,7 @@ describe("UpdateMonitor", () => {
     // Use a REAL Collie release (v0.10.3) with `current` below it, so the asserted release URL exists.
     const { monitor } = makeMonitor({
       current: "0.9.0",
-      fetchTags: async () => ["v0.2.0", "v0.10.0", "v0.10.3"],
+      fetchTags: async () => apiTags("v0.2.0", "v0.10.0", "v0.10.3"),
     });
     expect(monitor.status()).toMatchObject({ current: "0.9.0", latest: null, latestUrl: null, releaseAvailable: false, checkedAt: null });
     await monitor.checkRelease();
@@ -243,7 +250,7 @@ describe("UpdateMonitor", () => {
     // refuses the other, so one field could not carry both.
     const { monitor } = makeMonitor({
       current: "0.31.1",
-      fetchTags: async () => ["v0.31.1", "v0.32.0", "v1.0.0", "v1.0.1"],
+      fetchTags: async () => apiTags("v0.31.1", "v0.32.0", "v1.0.0", "v1.0.1"),
     });
     await monitor.checkRelease();
     expect(monitor.status()).toMatchObject({
@@ -257,7 +264,7 @@ describe("UpdateMonitor", () => {
   it("a 1.x install sees only 1.x releases, and no major above it", async () => {
     const { monitor } = makeMonitor({
       current: "1.0.0-beta.5",
-      fetchTags: async () => ["v0.32.0", "v1.0.0"],
+      fetchTags: async () => apiTags("v0.32.0", "v1.0.0"),
     });
     await monitor.checkRelease();
     expect(monitor.status()).toMatchObject({
@@ -272,7 +279,7 @@ describe("UpdateMonitor", () => {
     // The banner and the verb share `latestUpdateInMajor`, so this is the same rule, not a copy of it.
     const { monitor, notified } = makeMonitor({
       current: "1.0.0-beta.44",
-      fetchTags: async () => ["v0.32.0", "v1.0.0-beta.44", "v1.0.0-beta.45", "nightly"],
+      fetchTags: async () => apiTags("v0.32.0", "v1.0.0-beta.44", "v1.0.0-beta.45", "nightly"),
     });
     await monitor.checkRelease();
     expect(monitor.status()).toMatchObject({
@@ -287,7 +294,7 @@ describe("UpdateMonitor", () => {
   it("a beta install already on the newest beta is offered nothing", async () => {
     const { monitor, notified } = makeMonitor({
       current: "1.0.0-beta.45",
-      fetchTags: async () => ["v1.0.0-beta.44", "v1.0.0-beta.45"],
+      fetchTags: async () => apiTags("v1.0.0-beta.44", "v1.0.0-beta.45"),
     });
     await monitor.checkRelease();
     expect(monitor.status()).toMatchObject({ latest: "1.0.0-beta.45", releaseAvailable: false });
@@ -297,7 +304,7 @@ describe("UpdateMonitor", () => {
   it("a beta install is pointed at the RELEASE once it exists, skipping the betas after it", async () => {
     const { monitor } = makeMonitor({
       current: "1.0.0-beta.44",
-      fetchTags: async () => ["v1.0.0-beta.45", "v1.0.0", "v1.1.0-rc.1"],
+      fetchTags: async () => apiTags("v1.0.0-beta.45", "v1.0.0", "v1.1.0-rc.1"),
     });
     await monitor.checkRelease();
     // v1.0.0, not beta.45 (superseded) and not v1.1.0-rc.1 (the consent ended at the release).
@@ -307,7 +314,7 @@ describe("UpdateMonitor", () => {
   it("a STABLE install stays blind to prereleases — no banner for a beta, ever", async () => {
     const { monitor, notified } = makeMonitor({
       current: "1.0.0",
-      fetchTags: async () => ["v1.0.0", "v1.1.0-beta.1", "v1.1.0-rc.2"],
+      fetchTags: async () => apiTags("v1.0.0", "v1.1.0-beta.1", "v1.1.0-rc.2"),
     });
     await monitor.checkRelease();
     expect(monitor.status()).toMatchObject({ latest: "1.0.0", releaseAvailable: false });
@@ -356,7 +363,7 @@ describe("UpdateMonitor", () => {
   });
 
   it("does not notify when latest is not newer than current", async () => {
-    const { monitor, notified } = makeMonitor({ fetchTags: async () => ["v0.11.0", "v0.10.0"] });
+    const { monitor, notified } = makeMonitor({ fetchTags: async () => apiTags("v0.11.0", "v0.10.0") });
     await monitor.checkRelease();
     expect(monitor.status().releaseAvailable).toBe(false);
     expect(notified).toEqual([]);
@@ -364,8 +371,8 @@ describe("UpdateMonitor", () => {
 
   it("de-dupes concurrent checks — one fetch backs both callers, then the guard clears", async () => {
     let calls = 0;
-    let release!: (tags: string[]) => void;
-    const gate = new Promise<string[]>((r) => {
+    let release!: (tags: ApiTag[]) => void;
+    const gate = new Promise<ApiTag[]>((r) => {
       release = r;
     });
     const { monitor } = makeMonitor({
@@ -376,7 +383,7 @@ describe("UpdateMonitor", () => {
     });
     const a = monitor.checkRelease();
     const b = monitor.checkRelease(); // lands while the first is still in flight → same promise
-    release(["v0.12.0"]);
+    release(apiTags("v0.12.0"));
     await Promise.all([a, b]);
     expect(calls).toBe(1); // NOT two hits on the API
     expect(monitor.status().latest).toBe("0.12.0");
@@ -394,5 +401,88 @@ describe("UpdateMonitor", () => {
     expect(monitor.status().bridgeStale).toBe(false);
     tick(6_000); // ...past it, the recompute sees the divergence.
     expect(monitor.status().bridgeStale).toBe(true);
+  });
+});
+
+describe("parseTagsResponse", () => {
+  it("keeps a tag's name and the commit it points at, and drops anything it cannot read", () => {
+    expect(
+      parseTagsResponse([
+        { name: "v1.0.0", commit: { sha: "abc" } },
+        { name: "v1.1.0", commit: { sha: "def" }, zipball_url: "ignored" },
+        { name: 7, commit: { sha: "x" } },
+        { name: "v1.2.0" },
+        { name: "v1.3.0", commit: { sha: "" } },
+        "not an object",
+      ]),
+    ).toEqual([
+      { name: "v1.0.0", sha: "abc" },
+      { name: "v1.1.0", sha: "def" },
+    ]);
+    expect(parseTagsResponse({ message: "rate limited" })).toEqual([]);
+  });
+
+  // An EMPTY sha is worse than a dropped tag: `planUpdate` compares a candidate's commit against the
+  // installed head, and a binary install's head is `""` — so an empty sha would report a real update
+  // as "already current".
+  it("never emits an empty sha", () => {
+    expect(parseTagsResponse([{ name: "v1.0.0", commit: { sha: "" } }])).toEqual([]);
+  });
+});
+
+describe("parseReleaseManifest", () => {
+  const doc = {
+    schemaVersion: 1,
+    repo: "AltanS/collie",
+    tag: "v1.1.0",
+    version: "1.1.0",
+    artifacts: [
+      {
+        name: "collie-1.1.0-linux-x64.tar.gz",
+        platform: "linux-x64",
+        os: "linux",
+        sha256: "deadbeef",
+        size: 42,
+        payloadRoot: "collie-1.1.0-linux-x64",
+      },
+    ],
+    extras: [{ name: "web-dist-1.1.0.tar.gz", role: "web-bundle", sha256: "cafe" }],
+  };
+
+  it("reads the fields it needs and ignores the ones it does not — additive is free", () => {
+    const v = parseReleaseManifest(doc);
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.manifest.version).toBe("1.1.0");
+    expect(v.manifest.artifacts).toEqual([
+      {
+        name: "collie-1.1.0-linux-x64.tar.gz",
+        platform: "linux-x64",
+        sha256: "deadbeef",
+        size: 42,
+        payloadRoot: "collie-1.1.0-linux-x64",
+      },
+    ]);
+  });
+
+  it("a schemaVersion it does not know is reported, never attempted", () => {
+    expect(parseReleaseManifest({ ...doc, schemaVersion: 2 })).toEqual({
+      ok: false,
+      reason: "schema",
+      schemaVersion: 2,
+    });
+  });
+
+  it("a document of the wrong shape is unreadable, not half-believed", () => {
+    expect(parseReleaseManifest({ schemaVersion: 1, version: "1.1.0" })).toEqual({ ok: false, reason: "unreadable" });
+    expect(parseReleaseManifest("nope")).toEqual({ ok: false, reason: "unreadable" });
+    expect(parseReleaseManifest(null)).toEqual({ ok: false, reason: "unreadable" });
+  });
+
+  it("drops an artifact entry that cannot name itself, keeping the rest", () => {
+    const v = parseReleaseManifest({ ...doc, artifacts: [{ name: "x" }, ...doc.artifacts] });
+    expect(v.ok).toBe(true);
+    if (!v.ok) return;
+    expect(v.manifest.artifacts).toHaveLength(1);
   });
 });

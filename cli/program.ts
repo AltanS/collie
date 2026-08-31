@@ -290,7 +290,8 @@ export const COMMANDS: readonly Command[] = [
   ),
   {
     name: "update",
-    summary: "advance to the newest release of this major, rebuild, restart (--major crosses one)",
+    summary:
+      "advance to the newest release of this major (--major crosses one; --rollback returns a binary install to its previous version)",
     run: (args, s) => cmdUpdate(updateDeps(s.io), args),
   },
   {

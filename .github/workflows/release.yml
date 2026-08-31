@@ -1,7 +1,11 @@
 name: Release
 
-# Every pushed vX.Y.Z tag becomes a GitHub Release whose notes carry the update commands — the
-# in-app update banner links here, so the page a user lands on tells them exactly how to update.
+# Every pushed vX.Y.Z tag becomes a GitHub Release carrying, for each supported platform, a tarball
+# of `bin/collie` + `web/dist` + the files the bridge reads at boot; a per-release integrity manifest
+# listing every asset and its sha256; and a `.sha256` sidecar beside every one of them so a user can
+# verify a download by hand with `sha256sum -c`. The in-app update banner links here, and
+# `scripts/install.sh` and `collie update`'s binary path both read these assets — over constructed
+# URLs only, so nothing here may ever emit a download URL into a document (M14/01 §2.1).
 on:
   push:
     tags: ["v*.*.*"]
@@ -10,10 +14,205 @@ permissions:
   contents: write # create the release
 
 jobs:
+  # ── The per-platform payloads ──────────────────────────────────────────────
+  # One job per artifact, because two of the constraints are hard:
+  #   * macOS artifacts are BUILT ON macOS. A cross-produced Mach-O is unsigned, and an unsigned
+  #     arm64 binary does not execute on Apple Silicon at all — the kernel refuses it.
+  #   * linux-x64 ships Bun's BASELINE target. The default `bun-linux-x64` requires AVX2 and dies
+  #     with SIGILL on older hardware, which is exactly the hardware a self-hosted tool lives on.
+  #     Collie is I/O-bound (a Unix socket and static files), so the baseline penalty is not
+  #     observable here.
+  # The matrix is written for the full four-target set and SHIPS two; a user on a fast-follow
+  # platform gets `collie update`'s honest "no artifact for your platform, build from source"
+  # rather than a wrong binary. Uncomment a row to publish it.
+  payload:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux-x64
+            runs-on: ubuntu-latest
+            bun-target: bun-linux-x64-baseline
+          - platform: macos-arm64
+            runs-on: macos-14
+            bun-target: bun-darwin-arm64
+          # - platform: linux-arm64
+          #   runs-on: ubuntu-24.04-arm
+          #   bun-target: bun-linux-arm64
+          # - platform: macos-x64
+          #   runs-on: macos-13
+          #   bun-target: bun-darwin-x64
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Build the payload
+        id: build
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          BUN_TARGET: ${{ matrix.bun-target }}
+        run: |
+          set -eu
+          version="${GITHUB_REF_NAME#v}"
+          root="collie-$version-$PLATFORM"
+          stage="$RUNNER_TEMP/$root"
+          mkdir -p "$stage/bin" "$stage/web"
+
+          # The version gate `collie build` runs, run here too: a release whose four version files
+          # disagree must not become a downloadable artifact.
+          bash scripts/check-version.sh
+
+          bun install --frozen-lockfile
+          (cd web && bun install --frozen-lockfile && bun run build)
+
+          # NO LINT STEP, here or anywhere on an operator's path: oxlint's allocator SIGABRTs below
+          # roughly 7 GB of RAM and bricked real installs (1.0.0-beta.44). CI lints in its own
+          # workflow, over the full tree, which is the only run that defines "passing".
+          bun build --compile --target="$BUN_TARGET" ./cli/main.ts --outfile "$stage/bin/collie"
+          chmod 0755 "$stage/bin/collie"
+
+          # Ad-hoc codesign makes the binary RUNNABLE on Apple Silicon. It makes no claim about who
+          # produced it — notarization is a recorded gap (M14/01 §6.2), and the quarantine attribute
+          # a BROWSER download sets is documented in docs/install.md with its one-line removal.
+          case "$PLATFORM" in
+            macos-*)
+              codesign --force --sign - --timestamp=none "$stage/bin/collie"
+              codesign -dv "$stage/bin/collie"
+              ;;
+          esac
+
+          cp -R web/dist "$stage/web/dist"
+          # The files the bridge and the installer's closing text read at run time. `herdr-plugin.toml`
+          # is bridge/root.ts's MARKER and the canonical version; `package.json` is what
+          # bridge/index.ts reads `currentVersion` from — without it the bridge crashes at boot.
+          cp herdr-plugin.toml package.json .env.example CHANGELOG.md LICENSE README.md "$stage/"
+          cp -R docs "$stage/docs"
+
+          tar -czf "$RUNNER_TEMP/$root.tar.gz" -C "$RUNNER_TEMP" "$root"
+          echo "root=$root" >> "$GITHUB_OUTPUT"
+          echo "tarball=$RUNNER_TEMP/$root.tar.gz" >> "$GITHUB_OUTPUT"
+
+      - name: Describe the artifact
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          BUN_TARGET: ${{ matrix.bun-target }}
+          TARBALL: ${{ steps.build.outputs.tarball }}
+          PAYLOAD_ROOT: ${{ steps.build.outputs.root }}
+        run: |
+          set -eu
+          # One entry of the manifest's `artifacts[]`, emitted per platform and merged in the release
+          # job. The hasher is resolved rather than assumed: Linux runners have `sha256sum`, macOS
+          # has `shasum`, and a missing one must FAIL here — a pipeline into `cut` would hide it and
+          # publish a manifest with an empty digest.
+          if command -v sha256sum >/dev/null 2>&1; then SHA="sha256sum"; else SHA="shasum -a 256"; fi
+          line="$($SHA "$TARBALL")"
+          sha="${line%% *}"
+          [ ${#sha} -eq 64 ] || { echo "no usable sha256 tool on this runner" >&2; exit 1; }
+          size="$(wc -c < "$TARBALL" | tr -d ' ')"
+          name="$(basename "$TARBALL")"
+          os="${PLATFORM%-*}"; arch="${PLATFORM##*-}"
+          mkdir -p "$RUNNER_TEMP/out"
+          cp "$TARBALL" "$RUNNER_TEMP/out/$name"
+          printf '%s  %s\n' "$sha" "$name" > "$RUNNER_TEMP/out/$name.sha256"
+          case "$os" in
+            linux) libc='"glibc"'; variant='"baseline"'; extra='' ;;
+            *)     libc='null';    variant='null';       extra=', "codesign": "adhoc", "notarized": false' ;;
+          esac
+          cat > "$RUNNER_TEMP/out/$PLATFORM.artifact.json" <<JSON
+          {
+            "name": "$name",
+            "platform": "$PLATFORM",
+            "os": "$os",
+            "arch": "$arch",
+            "libc": $libc,
+            "variant": $variant,
+            "bunTarget": "$BUN_TARGET",
+            "size": $size,
+            "sha256": "$sha",
+            "payloadRoot": "$PAYLOAD_ROOT"$extra
+          }
+          JSON
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: payload-${{ matrix.platform }}
+          path: ${{ runner.temp }}/out/*
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── The release ────────────────────────────────────────────────────────────
   release:
+    needs: payload
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: payload-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/assets
+
+      # The built frontend, published as an asset. It is what colliepwa.dev's demo runs: a pinned
+      # release bundle whose network calls are answered in the browser, so the demo shows the real
+      # app without this repo carrying a line of demo code. Collie itself never consumes it — a
+      # binary install gets `web/dist` inside its own payload — and it is listed under the manifest's
+      # `extras`, not its `artifacts`, for exactly that reason.
+      - name: Build and package web/dist
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          (cd web && bun install --frozen-lockfile && bun run build)
+          tar -czf "$RUNNER_TEMP/assets/web-dist-$version.tar.gz" -C web dist
+
+      - name: Write the integrity manifest
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          cd "$RUNNER_TEMP/assets"
+          # `prerelease` follows the tag's own hyphen, the same rule `gh release create` is given
+          # below — one fact, spelled twice, never derived two ways.
+          prerelease=false
+          case "$GITHUB_REF_NAME" in *-*) prerelease=true ;; esac
+          {
+            printf '{\n'
+            printf '  "schemaVersion": 1,\n'
+            printf '  "repo": "%s",\n' "$GITHUB_REPOSITORY"
+            printf '  "tag": "%s",\n' "$GITHUB_REF_NAME"
+            printf '  "version": "%s",\n' "$version"
+            printf '  "prerelease": %s,\n' "$prerelease"
+            printf '  "releasedAt": "%s",\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            printf '  "commit": "%s",\n' "$GITHUB_SHA"
+            printf '  "artifacts": [\n'
+            first=1
+            for f in *.artifact.json; do
+              [ "$first" -eq 1 ] || printf ',\n'
+              first=0
+              sed 's/^/    /' "$f"
+            done
+            printf '\n  ],\n'
+            printf '  "extras": [\n'
+            printf '    {\n'
+            printf '      "name": "web-dist-%s.tar.gz",\n' "$version"
+            printf '      "role": "web-bundle",\n'
+            printf '      "size": %s,\n' "$(wc -c < "web-dist-$version.tar.gz" | tr -d ' ')"
+            printf '      "sha256": "%s"\n' "$(sha256sum "web-dist-$version.tar.gz" | cut -d' ' -f1)"
+            printf '    }\n'
+            printf '  ]\n'
+            printf '}\n'
+          } > "collie-$version.manifest.json"
+          rm -f ./*.artifact.json
+          # Machine-readable proof that the document we just wrote is JSON, before anyone downloads
+          # it: a manifest that does not parse fails the release, not the operator's update.
+          bun -e 'JSON.parse(await Bun.file(process.argv[1]).text())' "collie-$version.manifest.json"
+          # A sidecar beside EVERY asset, including the manifest — `sha256sum -c <asset>.sha256` on
+          # Linux, `shasum -a 256 -c` on macOS, both unmodified.
+          for f in *.tar.gz *.manifest.json; do
+            [ -e "$f.sha256" ] || sha256sum "$f" > "$f.sha256"
+          done
+          ls -l
 
       - name: Assemble release notes (CHANGELOG section + update commands)
         id: notes
@@ -34,7 +233,16 @@ jobs:
             fi
             echo "## Update"
             echo
-            echo "Update the plugin — advances the checkout, rebuilds, restarts (runs from any directory):"
+            # Two spellings, because there are two kinds of install and neither command works on the
+            # other: a Herdr-managed checkout has plugin actions, a downloaded binary install has
+            # `collie` on PATH (M14/01 §8).
+            echo "**A downloaded install** (\`install.sh\`, or a tarball below):"
+            echo
+            echo '```'
+            echo "collie update"
+            echo '```'
+            echo
+            echo "**A Herdr plugin install** — advances the checkout, rebuilds, restarts (runs from any directory):"
             echo
             echo '```'
             echo "herdr plugin action invoke update --plugin herdr.collie"
@@ -45,25 +253,19 @@ jobs:
             echo '```'
             echo "herdr plugin action invoke restart --plugin herdr.collie"
             echo '```'
+            echo
+            echo "## Verify a download by hand"
+            echo
+            echo '```'
+            echo "curl -fLO https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/collie-$version-linux-x64.tar.gz"
+            echo "curl -fLO https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/collie-$version-linux-x64.tar.gz.sha256"
+            echo "sha256sum -c collie-$version-linux-x64.tar.gz.sha256   # macOS: shasum -a 256 -c"
+            echo '```'
+            echo
+            echo "A sha256 catches a corrupt or truncated download. It does not prove who built the file —"
+            echo "HTTPS and the pinned github.com host carry that."
           } > "$notes"
           echo "file=$notes" >> "$GITHUB_OUTPUT"
-
-      # The built frontend, published as an asset. It is what colliepwa.dev's demo runs: a pinned
-      # release bundle whose network calls are answered in the browser, so the demo shows the real
-      # app without this repo carrying a line of demo code. Nothing in Collie consumes it, and an
-      # operator never downloads it — `collie build` still builds web/ from source on the host.
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Build and package web/dist
-        id: bundle
-        run: |
-          set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
-          (cd web && bun install --frozen-lockfile && bun run build)
-          tar -czf "$RUNNER_TEMP/web-dist-$version.tar.gz" -C web dist
-          (cd "$RUNNER_TEMP" && sha256sum "web-dist-$version.tar.gz" > "web-dist-$version.tar.gz.sha256")
-          echo "tarball=$RUNNER_TEMP/web-dist-$version.tar.gz" >> "$GITHUB_OUTPUT"
-          echo "checksum=$RUNNER_TEMP/web-dist-$version.tar.gz.sha256" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
         env:
@@ -78,5 +280,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
             --title "Collie $GITHUB_REF_NAME" \
             --notes-file "${{ steps.notes.outputs.file }}" \
-            "${{ steps.bundle.outputs.tarball }}" \
-            "${{ steps.bundle.outputs.checksum }}"
+            "$RUNNER_TEMP"/assets/*

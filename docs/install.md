@@ -41,9 +41,9 @@ Herdr. All four end in the same place: a checkout, a built UI, and a `collie` bi
 
 ### The install script
 
-The short way. It clones, checks out the newest release, builds, and puts `collie` on your PATH —
-then stops and prints what is left, because choosing a multiplexer and seeding a config are
-decisions, not steps:
+The short way. It downloads the newest release for your platform, verifies its sha256, lays it down
+and puts `collie` on your PATH — then stops and prints what is left, because choosing a multiplexer
+and seeding a config are decisions, not steps:
 
 ```bash
 curl -fsSL https://colliepwa.dev/install.sh | sh
@@ -58,15 +58,19 @@ curl -fsSL https://raw.githubusercontent.com/AltanS/collie/main/scripts/install.
 curl -fsSL https://raw.githubusercontent.com/AltanS/collie/main/scripts/install.sh | sh
 ```
 
-It clones into `~/.local/share/collie` (`COLLIE_DIR` moves that), takes the newest **stable** tag,
-and refuses to touch a checkout that is already there — `collie update` is the tool for one of those.
-Pass `--beta` to take the newest prerelease of that major instead, which is the deliberate opt-in
-described in [Testing the v1 beta](upgrading.md#testing-the-v1-beta).
+It installs into `~/.local/share/collie` (`COLLIE_DIR` moves that) as
+`versions/<x.y.z>/` with a `current` symlink, takes the newest **stable** release, and refuses to
+touch an install that is already there — `collie update` is the tool for one of those. It needs
+`curl`, `tar` and a sha256 tool, and no toolchain: the payload is already built. Pass `--beta` to
+take the newest prerelease instead, which is the deliberate opt-in described in
+[Testing the v1 beta](upgrading.md#testing-the-v1-beta).
 
-#### The same thing by hand
+#### The same result, from source
 
-The script is a convenience and must never be the only door, so here is every line of it spelled out.
-Run these and you have exactly what the script leaves behind:
+The script is a convenience and must never be the only door. Building from source is fully supported
+— it is the route for musl systems, for platforms the release matrix does not publish yet, and for
+anyone who will not run a downloaded binary — and it leaves you with the same three things: a
+checkout, a built UI and a `collie` on your PATH.
 
 ```bash
 # 1. clone, and check out the newest stable release — the tags are the contract
