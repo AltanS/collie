@@ -14,6 +14,7 @@ import type { Environment } from "./context.ts";
 import { EXIT } from "./io.ts";
 import { cmdPack, type PackDeps } from "./pack.ts";
 import {
+  bindOverwriteConfirmation,
   cmdPackAdd,
   composeStdin,
   configureScript,
@@ -692,6 +693,46 @@ describe("prompts", () => {
     expect(text(h.io)).toContain("git stash");
     expect(text(h.io)).toContain("will not");
     expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+  });
+
+  // ── F23: what an UNSET bind means, and what it does not ───────────────────
+  // `collie leave` removes COLLIE_HOST and keeps COLLIE_PORT, so a machine torn down properly reads
+  // back `envhost=""`, `envport="8787"`. That used to prompt `configured to bind (unset):8787` and
+  // hard-stop every non-interactive run — `ssh -tt` included, since a piped `y` is not a terminal.
+  describe("the bind confirmation guards an operator's value, not the absence of one", () => {
+    const probed = (over: Record<string, string>): string =>
+      probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, ...over });
+
+    test("re-adding a machine that LEFT needs no terminal at all", async () => {
+      // `confirm: null` is exactly a run with nowhere to ask — the shape that hard-stopped.
+      const h = harness({ confirm: null, answers: { probe: { stdout: probed({ envport: "8787" }) } } });
+      expect(await run(h)).toBe(EXIT.OK);
+      expect(h.calls.map((c) => c.leg)).toContain("configure");
+      const rendered = text(h.io);
+      expect(rendered).toContain("no COLLIE_HOST");
+      expect(rendered).not.toContain("(unset)");
+    });
+
+    test("an operator's own non-loopback bind is still guarded, port agreeing or not", async () => {
+      const h = harness({ confirm: null, answers: { probe: { stdout: probed({ envhost: "10.9.9.9", envport: "8787" }) } } });
+      expect(await run(h)).toBe(EXIT.FAIL);
+      expect(h.calls.map((c) => c.leg)).not.toContain("configure");
+    });
+
+    test("the predicate, case by case", () => {
+      const probe = (over: Record<string, string>) => parseProbe(probed(over))!;
+      // Nothing there to preserve — the post-leave state, and a fresh machine's.
+      expect(bindOverwriteConfirmation(probe({ envport: "8787" }), "100.64.0.9", 8787)).toBeNull();
+      expect(bindOverwriteConfirmation(probe({}), "100.64.0.9", 8787)).toBeNull();
+      // Already where this run would put it: nothing changes, so nothing is asked.
+      expect(bindOverwriteConfirmation(probe({ envhost: "100.64.0.9" }), "100.64.0.9", 8787)).toBeNull();
+      // A value somebody chose, about to be replaced by a different one.
+      expect(bindOverwriteConfirmation(probe({ envhost: "127.0.0.1", envport: "8787" }), "100.64.0.9", 8787)).toBe(
+        "127.0.0.1:8787",
+      );
+      // The port is a decision too, and it is named without a placeholder for the host.
+      expect(bindOverwriteConfirmation(probe({ envport: "9000" }), "100.64.0.9", 8787)).toBe("100.64.0.9:9000");
+    });
   });
 
   test("a disagreeing bind is a prompt; N is STATE", async () => {

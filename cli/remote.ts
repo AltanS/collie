@@ -980,6 +980,35 @@ function bindIsCurrent(probe: Probe, peerHost: string, port: number): boolean {
   return probe.envhost === peerHost && configuredPort(probe) === port;
 }
 
+/**
+ * The bind this run would OVERWRITE, when overwriting it is a decision the operator has to take —
+ * `null` when it is not, and the write may just happen.
+ *
+ * The confirmation exists for one case: the far machine already carries a bind somebody chose, and
+ * this run is about to replace it with a different one. That case is untouched here, wide binds
+ * included — a non-loopback COLLIE_HOST somebody set is exactly the value that must not vanish under
+ * a re-run without a yes.
+ *
+ * **An UNSET COLLIE_HOST is not that case.** It is the state a solo collie is in by default, and the
+ * state `collie leave` deliberately restores (F12: the pack's wide bind is admitted by the pack's two
+ * factors and lapses with them). There is nothing there to preserve, so there is nothing to confirm —
+ * and asking anyway made `pack add` non-idempotent in the one direction that matters: the first add
+ * of a fresh machine asked nothing, while the re-add of a machine torn down properly always asked,
+ * and hard-stopped every non-interactive run on `configured to bind (unset):8787` (F23). `ssh -tt`
+ * did not get past it, because a piped `y` is not a terminal either.
+ *
+ * The port half keeps its own guard for the same reason the host half does: a COLLIE_PORT the far
+ * machine already carries was chosen there, and moving a listener is a decision too.
+ */
+export function bindOverwriteConfirmation(probe: Probe, peerHost: string, port: number): string | null {
+  const hostDisagrees = probe.envhost !== "" && probe.envhost !== peerHost;
+  const portDisagrees = probe.envport !== "" && configuredPort(probe) !== port;
+  if (!hostDisagrees && !portDisagrees) return null;
+  // No `(unset)` placeholder: every value named here is one the far machine really carries. When only
+  // the port disagrees the host is the one this run is about to write, and the line reads as such.
+  return `${probe.envhost === "" ? peerHost : probe.envhost}:${probe.envport === "" ? port : probe.envport}`;
+}
+
 /** Leg 3, as its own step: skip, prompt, or write the peer's `.env`. */
 async function configureLeg(
   deps: Wired,
@@ -998,8 +1027,8 @@ async function configureLeg(
     deps.emit({ kind: "leg-done", leg: "configure", ok: true, detail: `already ${o.peerHost}:${o.port}` });
     return null;
   }
-  if (probe.envhost !== "" || probe.envport !== "") {
-    const current = `${probe.envhost || "(unset)"}:${probe.envport || "(unset)"}`;
+  const current = bindOverwriteConfirmation(probe, o.peerHost, o.port);
+  if (current !== null) {
     const answer = await ask(deps, `${o.host} is configured to bind ${current}; change it to ${o.peerHost}:${o.port}?`);
     if (answer === "aborted") return EXIT.FAIL;
     if (!answer) {
@@ -1007,6 +1036,16 @@ async function configureLeg(
       deps.io.err("       A peer the lead cannot dial stays provisional forever (`collie doctor` there).");
       return EXIT.STATE;
     }
+  } else if (probe.envhost === "") {
+    // Said out loud, because a step that stopped asking is otherwise a step that silently changed.
+    deps.emit({
+      kind: "line",
+      stream: "out",
+      tone: "info",
+      text:
+        `  ${o.host} has no COLLIE_HOST — the default state of a solo collie, and the one` +
+        " `collie leave` restores. Nothing to preserve there, so nothing to confirm.",
+    });
   }
   const written = await runner.run(
     configureScript({ configDir: o.configDir, host: o.peerHost, port: o.port, instance: o.instance }),
