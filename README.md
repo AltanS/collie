@@ -213,6 +213,9 @@ herdr plugin install AltanS/collie
 herdr plugin action invoke start --plugin herdr.collie
 ```
 
+That bare `install` line above tracks the STABLE line only. For the v1 prerelease train, see
+[Testing the v1 beta](#testing-the-v1-beta).
+
 **From a local clone (for development)** — registered by path:
 
 ```bash
@@ -928,9 +931,11 @@ along that major until its release lands (see below). Take it by one of two rout
 **Herdr-managed — install one beta tag; that is the whole opt-in:**
 
 ```bash
-# Fetches that one tag and detaches the checkout onto it, then builds the UI right there
-# (the manifest's [[build]] step, GitHub installs only) — see above.
-herdr plugin install AltanS/collie --ref v1.0.0-beta.46 --yes
+# Resolve the newest beta tag, then fetch and detach the checkout onto it, building the UI
+# right there (the manifest's [[build]] step, GitHub installs only) — see above.
+tag=$(git ls-remote --tags --refs https://github.com/AltanS/collie | \
+  sed 's#.*refs/tags/##' | grep -E '^v1\.0\.0-beta\.[0-9]+$' | sort -V | tail -1)
+herdr plugin install AltanS/collie --ref "$tag" --yes
 herdr plugin action invoke restart --plugin herdr.collie   # reinstall doesn't restart the service
 
 # NEW in v1: every verb now lives at <checkout>/bin/collie. Putting `collie` on your PATH is
@@ -956,10 +961,9 @@ So **take the next beta with a plain `bin/collie update`** — not by installing
 update with nothing to take now stops on its verdict — four lines, no rebuild, no restart — so
 running it to check costs you nothing.
 
-**The tag in that command is re-pinned at every beta release, so it may be one behind by the time you
-read it.** Nothing breaks if it is: `update` catches you up on the first run. To start on the newest
-one instead, resolve it the same way as [above](#resolving-the-newest-release-from-a-script), keeping
-the `-beta` tail this time:
+**The command above always resolves the current newest beta tag, so there is no literal tag to go
+stale.** If you just want the tag name — say, to record it somewhere else — resolve it the same way
+as [above](#resolving-the-newest-release-from-a-script), keeping the `-beta` tail this time:
 
 ```bash
 git ls-remote --tags --refs https://github.com/AltanS/collie | \
