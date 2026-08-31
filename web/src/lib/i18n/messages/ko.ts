@@ -25,6 +25,9 @@ export const ko: Dictionary = {
 
   // --- settings.zen ---
   // Availability only: the toggle decides whether the pane menu offers zen at all.
+  "settings.install.title": "앱 설치",
+  "settings.install.description": "Collie를 홈 화면에 추가합니다. 전체 화면과 전용 아이콘으로 실행됩니다.",
+  "settings.install.button": "설치",
   "settings.zen.title": "젠 모드",
   "settings.zen.description": "터미널만 남기고 모두 숨기는 항목을 페인 메뉴에 추가합니다.",
 

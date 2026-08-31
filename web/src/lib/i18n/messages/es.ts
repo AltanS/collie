@@ -24,6 +24,9 @@ export const es: Dictionary = {
 
   // --- settings.zen ---
   // Availability only: the toggle decides whether the pane menu offers zen at all.
+  "settings.install.title": "Instalar la aplicación",
+  "settings.install.description": "Añade Collie a tu pantalla de inicio: pantalla completa y su propio icono.",
+  "settings.install.button": "Instalar",
   "settings.zen.title": "Modo zen",
   "settings.zen.description": "Añade una fila al menú del panel que oculta todo excepto el terminal.",
 

@@ -25,6 +25,9 @@ export const de: Dictionary = {
 
   // --- settings.zen ---
   // Availability only: the toggle decides whether the pane menu offers zen at all.
+  "settings.install.title": "App installieren",
+  "settings.install.description": "Collie zum Startbildschirm hinzufügen — Vollbild, eigenes Symbol.",
+  "settings.install.button": "Installieren",
   "settings.zen.title": "Zen-Modus",
   "settings.zen.description": "Fügt dem Bereichsmenü eine Zeile hinzu, die alles außer dem Terminal ausblendet.",
 

@@ -141,10 +141,11 @@
       }
     },
     {
-      // localStorage-backed preference stores: the browser's untyped string store is the phone's disk, and each file's `typeof` is either its own `coerce`/`load` parse of `JSON.parse(raw)` or the `typeof localStorage === "undefined"` probe these modules need to also evaluate under jsdom and in the service worker. `lib/design.ts` and `lib/operator-fonts.ts` add the `typeof document === "undefined"` form of the same probe — both write to the DOM (a root class, a <style> element) and both are imported by modules the worker tsconfig compiles. `public/theme-init.js` is the extreme case of the same thing: it runs before the module graph exists, so it can import no parser at all, and its two `typeof` checks ARE its parse (ADR 0033).
+      // localStorage-backed preference stores: the browser's untyped string store is the phone's disk, and each file's `typeof` is either its own `coerce`/`load` parse of `JSON.parse(raw)` or the `typeof localStorage === "undefined"` probe these modules need to also evaluate under jsdom and in the service worker. `lib/design.ts` and `lib/operator-fonts.ts` add the `typeof document === "undefined"` form of the same probe — both write to the DOM (a root class, a <style> element) and both are imported by modules the worker tsconfig compiles. `lib/install.ts` carries the `typeof window` form: its listener attaches at import time, and the module also evaluates under jsdom and the worker tsconfig. `public/theme-init.js` is the extreme case of the same thing: it runs before the module graph exists, so it can import no parser at all, and its two `typeof` checks ARE its parse (ADR 0033).
       "files": [
         "**/web/public/theme-init.js",
         "**/web/src/lib/design.ts",
+        "**/web/src/lib/install.ts",
         "**/web/src/lib/operator-fonts.ts",
         "**/web/src/hooks/use-display-prefs.ts",
         "**/web/src/hooks/use-dash-prefs.ts",

@@ -34,6 +34,9 @@ export const en = {
 
   // --- settings.zen ---
   // Availability only: the toggle decides whether the pane menu offers zen at all.
+  "settings.install.title": "Install the app",
+  "settings.install.description": "Add Collie to your home screen — full screen, its own icon.",
+  "settings.install.button": "Install",
   "settings.zen.title": "Zen mode",
   "settings.zen.description": "Adds a row to the pane menu that hides everything but the terminal.",
 

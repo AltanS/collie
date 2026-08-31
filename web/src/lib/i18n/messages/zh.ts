@@ -25,6 +25,9 @@ export const zh: Dictionary = {
 
   // --- settings.zen ---
   // Availability only: the toggle decides whether the pane menu offers zen at all.
+  "settings.install.title": "安装应用",
+  "settings.install.description": "把 Collie 添加到主屏幕——全屏运行，拥有自己的图标。",
+  "settings.install.button": "安装",
   "settings.zen.title": "禅模式",
   "settings.zen.description": "在窗格菜单中加入一项，隐藏除终端以外的一切。",
 

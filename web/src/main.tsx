@@ -8,6 +8,9 @@ import "./index.css";
 // Registers the service worker (precaches the app shell, enables install) and wires auto/manual
 // updates. Guards on `serviceWorker in navigator`, so over plain HTTP (insecure context) it no-ops.
 import "./lib/pwa";
+// Side-effect import: the install-offer listener must be attached before the browser fires
+// `beforeinstallprompt`, which is long before any Settings component mounts (lib/install.ts).
+import "./lib/install";
 
 // RECONCILES the typeface class, it does not apply it: public/theme-init.js has already put the
 // right one on <html> before first paint for every shipped face. This call is what covers the two

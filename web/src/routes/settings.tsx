@@ -16,6 +16,7 @@ import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HandsFreeControl } from "@/components/hands-free-control";
 import { ZenControl } from "@/components/zen-control";
+import { InstallControl } from "@/components/install-control";
 import { LanguageControl } from "@/components/language-control";
 import { FontSettingsControl } from "@/components/font-settings";
 import { TypefaceControl } from "@/components/typeface-control";
@@ -109,8 +110,15 @@ export function SettingsRoute() {
           deep in this page would otherwise escape the scroller and grow the document's own
           scrollbar. */}
       <main className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">
-        {/* First: it's the setting people come here to change, and below the notification stack it
-            sat off-screen on a phone, a scroll into a 1240px page. */}
+        {/* Above even Theme, because it is not a setting: it is a one-shot offer the browser makes
+            and then stops making. Renders NOTHING unless that offer is actually on the table
+            (lib/install.ts), so on most visits this line costs the page no height at all — and when
+            the card does exist, burying a one-time action under the standing preferences would be
+            the one way to guarantee it is never seen. */}
+        <InstallControl />
+
+        {/* First of the SETTINGS: it's the one people come here to change, and below the
+            notification stack it sat off-screen on a phone, a scroll into a 1240px page. */}
         <ThemeControl />
 
         {/* Language sits right beside appearance — both are "how this phone presents itself" — and

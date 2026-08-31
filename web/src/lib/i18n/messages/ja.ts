@@ -24,6 +24,9 @@ export const ja: Dictionary = {
 
   // --- settings.zen ---
   // Availability only: the toggle decides whether the pane menu offers zen at all.
+  "settings.install.title": "アプリをインストール",
+  "settings.install.description": "Collieをホーム画面に追加します。全画面表示、専用アイコン付き。",
+  "settings.install.button": "インストール",
   "settings.zen.title": "Zen モード",
   "settings.zen.description": "ターミナル以外をすべて隠す項目をペインのメニューに追加します。",
 
