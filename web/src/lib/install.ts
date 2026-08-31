@@ -83,3 +83,37 @@ export function __resetInstall(): void {
   offer = null;
   emit();
 }
+
+/**
+ * True when this browser installs ONLY through the share sheet: an Apple touch device (iPhone or
+ * iPad — iPadOS reports its platform as "MacIntel", so the touch half is what separates it from a
+ * desktop Mac, same reasoning as `inputFocusZoomsPage`) running in an ordinary browser tab. Chromium's
+ * offer never fires there, so without this fact the Settings card has nothing to say to exactly the
+ * people with the least-known install path. Pure, with the facts passed in, so both branches are
+ * testable in jsdom — which reports no touch points and would otherwise only exercise one.
+ */
+export function installsViaShareSheet(touch: boolean, apple: boolean, standalone: boolean): boolean {
+  return touch && apple && !standalone;
+}
+
+/**
+ * The browser's own answers for {@link installsViaShareSheet}. Probed at call time but stable for
+ * the page's whole life: a share-sheet install launches a NEW standalone context rather than
+ * changing this one, so there is no event to subscribe to and nothing to re-check.
+ */
+export function probeShareSheetInstall(): boolean {
+  if (typeof navigator === "undefined" || typeof window === "undefined") return false;
+  const touch = navigator.maxTouchPoints > 0;
+  const apple = /iPhone|iPad|iPod|Mac/.test(`${navigator.platform} ${navigator.userAgent}`);
+  // Standalone is either half: the display-mode media query (the PWA spec's answer) or WebKit's
+  // nonstandard `navigator.standalone` (the older answer iOS itself gives). Either one true means
+  // the app is already installed and running as itself, and the hint would be noise.
+  if (!touch || !apple) return false;
+  // Only reached on a real Apple touch device, which always has matchMedia — the guard is for
+  // jsdom, which does not, and answers false above anyway (no touch points).
+  const standalone =
+    (typeof window.matchMedia === "function" &&
+      window.matchMedia("(display-mode: standalone)").matches) ||
+    (navigator as Navigator & { standalone?: unknown }).standalone === true;
+  return installsViaShareSheet(touch, apple, standalone);
+}

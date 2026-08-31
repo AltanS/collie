@@ -28,6 +28,7 @@ export const zh: Dictionary = {
   "settings.install.title": "安装应用",
   "settings.install.description": "把 Collie 添加到主屏幕——全屏运行，拥有自己的图标。",
   "settings.install.button": "安装",
+  "settings.install.iosHint": "在 iPhone 或 iPad 上，通过浏览器分享菜单安装：点按分享，然后选择「添加到主屏幕」。",
   "settings.zen.title": "禅模式",
   "settings.zen.description": "在窗格菜单中加入一项，隐藏除终端以外的一切。",
 

@@ -27,6 +27,7 @@ export const ja: Dictionary = {
   "settings.install.title": "アプリをインストール",
   "settings.install.description": "Collieをホーム画面に追加します。全画面表示、専用アイコン付き。",
   "settings.install.button": "インストール",
+  "settings.install.iosHint": "iPhoneやiPadでは、ブラウザの共有メニューからインストールします。共有をタップし、「ホーム画面に追加」を選択してください。",
   "settings.zen.title": "Zen モード",
   "settings.zen.description": "ターミナル以外をすべて隠す項目をペインのメニューに追加します。",
 
