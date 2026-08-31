@@ -357,6 +357,46 @@ note: Herdr-managed install — registry left alone (re-linking would block `her
 ✓ update complete
 ```
 
+## You run a fork
+
+**Do not run `collie update` in a fork checkout.** The verb talks to the git remote named `origin`
+and never looks at its URL, so in a fork every question it asks, it asks of *your* repo. What that
+costs depends on which of the two checkout shapes you have:
+
+- **A fork clone on a branch** — `update` fetches `origin` and runs `git pull --ff-only`, which
+  fast-forwards your branch onto your own fork. Nothing from upstream arrives, and the command
+  still reports success.
+- **A detached fork checkout** — `update` lists `origin`'s tags with `git ls-remote`, picks one, and
+  re-detaches onto it with `git checkout --detach --force`. With no `vX.Y.Z` tags on your fork it
+  tells you no release of your major exists there and leaves the checkout alone. With tags of your
+  own it lands you on *your* tag, not upstream's — and that forced checkout discards uncommitted
+  work in the tree.
+
+**The supported path is a manual merge.** Add upstream as a second remote, fetch its tags, and merge
+the release tag you decided to take into your branch:
+
+```bash
+git remote add upstream https://github.com/AltanS/collie.git
+git fetch upstream --tags
+git merge v1.0.0                                            # the tag you decided to take
+# resolve the conflicts, commit the merge, then rebuild and restart:
+sh scripts/collie-ctl.sh build
+herdr plugin action invoke restart --plugin herdr.collie    # or, in the checkout: bin/collie restart
+```
+
+**Expect that merge to be real work** wherever you patched a file upstream also moved. Git hands you
+the conflict and nothing resolves it for you; that is what carrying your own commits costs, not a
+fault in the merge.
+
+**Crossing 0.x to 1.x as a fork is the same merge, with a `v1.*` tag.** `update --major` is not your
+route — you merge instead — but everything
+[Upgrading from 0.x to 1.x](#upgrading-from-0x-to-1x) says about what the crossing changes for you
+applies as written.
+
+**`COLLIE_UPDATE_REPO` moves the banner and nothing else.** It names the repo whose tags the in-app
+update notice watches (default `AltanS/collie`). `collie update` never reads it, and still fetches
+from `origin`.
+
 ## Surviving reboots
 
 A `systemd --user` service only runs while you have a login session. On a host that should serve
