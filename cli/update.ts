@@ -835,14 +835,15 @@ function flipCurrent(deps: UpdateDeps, layout: BinaryLayout, version: string): b
   }
 }
 
-/** `<dir>/bin/collie version` must exit 0 and name `version`. This is where a wrong architecture, a
- *  truncated payload and a Gatekeeper refusal all surface.
- *
- *  The design's 20 s bound is not expressible through the `Exec` seam (`Bun.spawnSync` takes no
- *  timeout), so a binary that HANGS on `version` hangs the update instead of failing it. Recorded
- *  here rather than papered over; every other failure mode is caught. */
+/** The design's 20 s bound on the smoke test: `version` answers in milliseconds, so a binary still
+ *  silent after this long is not slow, it is hung — and a hung candidate must FAIL the smoke, not
+ *  hang the update with it. */
+const SMOKE_TIMEOUT_MS = 20_000;
+
+/** `<dir>/bin/collie version` must exit 0, name `version`, and answer within the bound. This is
+ *  where a wrong architecture, a truncated payload, a Gatekeeper refusal and a hang all surface. */
 function smoke(deps: UpdateDeps, dir: string, version: string): boolean {
-  const r = deps.exec.capture(join(dir, "bin", "collie"), ["version"]);
+  const r = deps.exec.capture(join(dir, "bin", "collie"), ["version"], SMOKE_TIMEOUT_MS);
   return r.found && r.code === 0 && r.stdout.includes(version);
 }
 

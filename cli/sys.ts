@@ -37,8 +37,12 @@ const NOT_FOUND: ExecResult = { code: 127, stdout: "", stderr: "", found: false 
 export interface Exec {
   /** Absolute path of `tool`, or null when it isn't installed. */
   which(tool: string): string | null;
-  /** Run `tool`, capturing both streams. */
-  capture(tool: string, args: readonly string[]): ExecResult;
+  /**
+   * Run `tool`, capturing both streams. `timeoutMs` bounds the wall clock: on expiry the child is
+   * killed and the result reads as an ordinary failure (code 124, the coreutils `timeout`
+   * convention) — a caller probing a binary it does not yet trust must never hang with it.
+   */
+  capture(tool: string, args: readonly string[], timeoutMs?: number): ExecResult;
   /** Run `tool` with our own stdio — for `journalctl`, whose output IS the result. */
   inherit(tool: string, args: readonly string[]): ExecResult;
   /**
@@ -165,12 +169,13 @@ export function realExec(env: Environment, home: string): Exec {
   const resolve = (tool: string): string | null => findTool(tool, env, home);
   return {
     which: resolve,
-    capture(tool, args) {
+    capture(tool, args, timeoutMs) {
       const bin = resolve(tool);
       if (bin === null) return NOT_FOUND;
-      const r = Bun.spawnSync([bin, ...args], { env });
+      const r = Bun.spawnSync([bin, ...args], { env, timeout: timeoutMs });
       return {
-        code: r.exitCode,
+        // A timed-out child has no exit code — it was killed. 124 keeps the seam's "number" contract.
+        code: r.exitCode ?? 124,
         stdout: r.stdout.toString(),
         stderr: r.stderr.toString(),
         found: true,

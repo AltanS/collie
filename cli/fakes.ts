@@ -28,6 +28,8 @@ export interface FakeExec extends Exec {
   calls: string[];
   killed: number[];
   spawned: { command: string[]; env: Record<string, string>; logPath: string }[];
+  /** Every {@link Exec.capture} call that named a timeout — the call line and the bound it passed. */
+  timeouts: { call: string; ms: number }[];
 }
 
 /**
@@ -53,6 +55,7 @@ export interface Scripted {
 export function fakeExec(scripted: Scripted = {}): FakeExec {
   const calls: string[] = [];
   const killed: number[] = [];
+  const timeouts: { call: string; ms: number }[] = [];
   const spawned: { command: string[]; env: Record<string, string>; logPath: string }[] = [];
   const absent = new Set(scripted.absent ?? []);
   const seen = new Map<string, number>();
@@ -73,8 +76,13 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
     calls,
     killed,
     spawned,
+    timeouts,
     which: (tool) => (absent.has(tool) ? null : `/fake/${tool}`),
-    capture: (tool, args) => answer(tool, args),
+    capture: (tool, args, timeoutMs) => {
+      const r = answer(tool, args);
+      if (timeoutMs !== undefined) timeouts.push({ call: [tool, ...args].join(" "), ms: timeoutMs });
+      return r;
+    },
     inherit: (tool, args) => answer(tool, args),
     runIn: (tool, args, cwd) => answer(tool, args, cwd),
     spawnDetached(command, opts) {

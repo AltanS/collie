@@ -1114,6 +1114,15 @@ describe("collie update on a binary install", () => {
     expect(h.restarts).toBe(0);
   });
 
+  test("every smoke run is bounded — a candidate that hangs on `version` fails, not hangs, the update", async () => {
+    const h = binaryHarness();
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    const smokes = h.exec.timeouts.filter((t) => t.call.endsWith("bin/collie version"));
+    // Pre-flip on the laid payload, post-flip through the current link — both bounded.
+    expect(smokes.length).toBe(2);
+    for (const s of smokes) expect(s.ms).toBe(20_000);
+  });
+
   test("COLLIE_UPDATE_REPO is announced before the first fetch — a redirected updater is never silent", async () => {
     const h = binaryHarness({ env: { COLLIE_UPDATE_REPO: "my/collie" } });
     await cmdUpdate(h.deps);
