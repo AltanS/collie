@@ -10,6 +10,7 @@ All notable changes to Collie are recorded here. The format follows
 
 ### Added
 
+- **`scripts/install.sh` — one command installs Collie.** POSIX sh, curl-pipeable and readable in a minute: it checks git and Bun, clones into `${COLLIE_DIR:-~/.local/share/collie}`, checks out the newest stable tag (`--beta` takes the major's prerelease train instead), builds through the shim and links the binary onto PATH. No sudo, ever; an existing checkout is left alone and named `collie update` instead. It ends by printing the three steps that are decisions — seed the config, choose `COLLIE_MUX`, `collie start` — rather than taking them. Interim: M14 swaps the clone-and-build for a binary artifact behind the same contract, which `scripts/install.test.ts` pins (8674f31)
 - **An Install card in Settings, present exactly while the browser offers to install.** Tapping it shows the browser's own install dialog; an already-installed app, iOS Safari and an insecure origin all show nothing rather than a dead button. (015f18b)
 - **The mark spins while your work is in flight.** A send, an upload, a transcription or a tapped link waiting on its loader now drives the orbit, so the mark says "still going" instead of resting through the wait. It is its own counter, not the busy bar's: the 1.5s background poll is excluded, because an orbit that never comes to rest says nothing. While the connection is given up on the mark stays still — a send fired into a dead link must not look like a retry (92bcfdf)
 - **The header stacks the brand over the multiplexer's name.** One 18px line — "Collie on <mux>" — ran out of room on a phone inside the one word there the reader does not already know; a screenshot had it down to a single letter. The brand is now an 11px eyebrow on the app's existing label tier, the name gets the whole 16px line, and the row still measures 60px on every route. The multiplexer's slot is reserved before its name arrives, so nothing jumps when `/api/config` lands (9a792ab)
@@ -17,6 +18,7 @@ All notable changes to Collie are recorded here. The format follows
 
 ### Changed
 
+- **The README is a hub and the how-to lives in `docs/`.** Nine scoped pages — install, security, configure, commands, multiplexers, pack, voice-and-push, upgrading, troubleshooting — moved out of a 1715-line README, prose carried across whole; what is left is 262 lines of tagline, demo, security summary, quickstart and a map. `docs/upgrading.md` gains "Upgrading from 0.x to 1.x". Every reference that named a moved heading follows, and `scripts/check-doc-links.ts` is the gate: it resolved seven broken links that predate the split (7b8d52d)
 - **Aldrich is the shipped default face.** Every default mechanism moved with it — the preload, the boot splash, the pre-paint class list, the operator-font fallback — so a device that never opens the Typeface setting now dresses in Aldrich at first paint with no layout shift. Space Grotesk stays a shipped choice. (36f67b8)
 - **The composer's draft field renders in the terminal font** — the mirror's family, following the Terminal font setting, since what you type there is bound for the terminal. (62bb1cd)
 
