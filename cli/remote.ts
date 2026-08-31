@@ -553,7 +553,9 @@ export function parseMembership(stdout: string): RemoteMembership | null {
  * The token never reaches argv, an environment variable or a file this verb writes (§8.3) — it is
  * spliced into a quoted heredoc, so it exists only in the ssh stream and in the shell's heredoc
  * buffer. `--insecure` is never passed on the operator's behalf: the far side refuses `http://`
- * exactly as it would for a hand-typed join.
+ * exactly as it would for a hand-typed join — and since F9 this verb no longer LETS that refusal be
+ * the one the operator meets, because it arrived after the far machine had already been rebuilt.
+ * {@link leadAddressRefusal} takes the same decision from the lead's own argv, before leg 1.
  */
 export function enrollScript(opts: {
   readonly root: string;
@@ -707,6 +709,11 @@ async function packAddRun(deps: Wired, args: readonly string[]): Promise<number>
       for (const line of peerHostRefusalLines(peerAddress, refusal)) deps.io.err(line);
       return EXIT.USAGE;
     }
+  }
+  const leadAddress = leadAddressRefusal(flags.address, deps.ctx.env.COLLIE_PUBLIC_URL);
+  if (leadAddress !== null) {
+    for (const line of leadAddress) deps.io.err(line);
+    return EXIT.USAGE;
   }
 
   const existing = await deps.store.load();
@@ -1344,6 +1351,51 @@ async function resolvePeerHost(
 
 /** Named once so the prompt and the flag's refusal cannot describe different things. */
 const PEER_HOST_PORT_HINT = "--port";
+
+/**
+ * The refusal for a lead address a peer must not be told to enroll over, or `null` when it may stand.
+ *
+ * **Two things were wrong, and they compounded (F9).** The `http://` refusal is `collie join`'s, on
+ * the far machine — so it ran at the END of leg 4, after the bundle push, the remote build, the
+ * `.env` write and two full lead restarts, and it ended by naming `--insecure`: a flag `join` has and
+ * `pack add` does not. Re-running with it produced the identical refusal. A closed loop with no exit,
+ * paid for with a rebuilt member.
+ *
+ * So the check moves here, to parse time on the lead, and the remedy it names is one that exists.
+ * **`pack add` will not grow `--insecure`**: this verb mints the token and pushes it down an ssh pipe
+ * on the operator's behalf, and a flag that made it ship that token over plaintext would be Collie
+ * accepting the risk for a machine it is not standing at. The consent belongs where the token is
+ * spent — `collie join … --insecure`, typed on the peer, which is exactly what `cli/pack.ts` already
+ * implements and what `cli/remote.ts`'s enroll leg says it never passes on the operator's behalf.
+ *
+ * Both sources of the address are checked, and neither costs anything: the flag, and
+ * `COLLIE_PUBLIC_URL` (which `resolveSelfAddress` would otherwise pick up silently later). A derived
+ * tailnet address carries no scheme and is dialled `https://`, so there is no third plaintext path.
+ */
+export function leadAddressRefusal(
+  flag: string | undefined,
+  publicUrl: string | undefined,
+): string[] | null {
+  const [address, source] =
+    flag !== undefined && flag !== ""
+      ? ([flag, "--address"] as const)
+      : ([publicUrl?.trim() ?? "", "COLLIE_PUBLIC_URL"] as const);
+  if (address === "") return null;
+  if (!/^http:\/\//i.test(address)) return null;
+  return [
+    `error: refusing to enroll a peer over ${source}=${address} — the invite token and the pack`,
+    "       secret would cross the wire in the clear. An on-path attacker who reads the token can",
+    "       enroll THEIR OWN certificate as a member before your peer does (the lead admits on the",
+    "       token alone), then holds the pack secret and a pinned link.",
+    "       Give an encrypted address: https:// via `tailscale serve`, or your own TLS front door",
+    "       (DEPLOYMENT.md Variant C).",
+    "       `pack add` has no --insecure and will not get one — it would ship the token over",
+    "       plaintext on behalf of a machine you are not standing at. If this hop really is trusted,",
+    "       own it where the token is spent: install Collie on that machine, run `collie pack invite`",
+    "       here, and run `collie join <lead-address> <token> --insecure` THERE.",
+    "       Nothing was pushed, built or restarted.",
+  ];
+}
 
 /**
  * Why this `--peer-address` cannot be a member's bind, or `null` when it may stand.

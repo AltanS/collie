@@ -499,6 +499,33 @@ describe("collie pack add", () => {
     }
   });
 
+  // F9: the refusal came from `collie join` on the FAR machine, after the bundle push, the remote
+  // build, the .env write and two lead restarts — and it named `--insecure`, which `pack add` does
+  // not accept. Re-running with the flag produced the identical refusal: a closed loop with no exit.
+  test("an http:// lead address is refused at parse time, naming a remedy that exists", async () => {
+    for (const [args, env] of [
+      [["nas.example", "--address", "http://192.168.77.1:8787"], {}],
+      [["nas.example"], { COLLIE_PUBLIC_URL: "http://192.168.77.1:8787" }],
+    ] as const) {
+      const h = harness({ env });
+      expect(await run(h, [...args])).toBe(EXIT.USAGE);
+      expect(h.calls).toHaveLength(0);
+      expect(h.restarts).toBe(0);
+      const said = text(h.io);
+      expect(said).toContain("in the clear");
+      expect(said).toContain("`pack add` has no --insecure and will not get one");
+      expect(said).toContain("collie join <lead-address> <token> --insecure` THERE");
+      expect(said).toContain("Nothing was pushed, built or restarted.");
+    }
+  });
+
+  test("https:// and a scheme-less address are untouched", async () => {
+    const flagged = harness();
+    expect(await run(flagged, ["nas.example", "--address", "https://collie.example.com"])).toBe(EXIT.OK);
+    const bare = harness();
+    expect(await run(bare, ["nas.example", "--address", "collie.example.com:8787"])).toBe(EXIT.OK);
+  });
+
   test("a value typed at the prompt is held to the same rule", async () => {
     const h = harness({ prompt: "192.168.77.2:8787", answers: { probe: { stdout: probeOut({ address: "" }) } } });
     expect(await run(h)).toBe(EXIT.FAIL);
