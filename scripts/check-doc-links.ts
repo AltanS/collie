@@ -51,6 +51,7 @@ function eachLine(content: string, fn: (line: string, lineNo: number, inFence: b
   const lines = content.split("\n");
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    if (line === undefined) continue;
     if (/^\s*(```|~~~)/.test(line)) {
       fn(line, i + 1, inFence);
       inFence = !inFence;
@@ -73,13 +74,20 @@ function getAnchors(path: string): FileAnchors {
     if (inFence) return;
     const heading = line.match(/^(#{1,6})\s+(.*)$/);
     if (heading) {
-      const base = slugify(heading[2].replace(/#+\s*$/, ""));
+      const headingText = heading[2] ?? "";
+      const base = slugify(headingText.replace(/#+\s*$/, ""));
       const count = seenBase.get(base) ?? 0;
       seenBase.set(base, count + 1);
       headingSlugs.add(count === 0 ? base : `${base}-${count}`);
     }
-    for (const m of line.matchAll(/<a\s[^>]*name=["']([^"']+)["']/gi)) htmlAnchors.add(m[1]);
-    for (const m of line.matchAll(/\bid=["']([^"']+)["']/gi)) htmlAnchors.add(m[1]);
+    for (const m of line.matchAll(/<a\s[^>]*name=["']([^"']+)["']/gi)) {
+      const name = m[1];
+      if (name !== undefined) htmlAnchors.add(name);
+    }
+    for (const m of line.matchAll(/\bid=["']([^"']+)["']/gi)) {
+      const id = m[1];
+      if (id !== undefined) htmlAnchors.add(id);
+    }
   });
   const result = { headingSlugs, htmlAnchors };
   anchorCache.set(path, result);
@@ -113,7 +121,10 @@ function checkFile(file: string, failures: Failure[]) {
     if (inFence) return;
     // Inline links only: `[text](target)`, not preceded by `!` (that's an image).
     for (const m of line.matchAll(/(?<!!)\[[^\]]*\]\(([^)]+)\)/g)) {
-      const raw = m[1].trim().split(/\s+/)[0]; // drop an optional `"title"` after the target
+      const captured = m[1];
+      if (captured === undefined) continue;
+      const raw = captured.trim().split(/\s+/)[0]; // drop an optional `"title"` after the target
+      if (raw === undefined) continue;
       if (/^(https?:|mailto:|#!)/.test(raw)) continue;
 
       const hashIdx = raw.indexOf("#");
