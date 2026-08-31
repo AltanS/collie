@@ -135,21 +135,24 @@ Off unless you opt in. Three steps, and nothing to install — the sender (`web-
 optional dependency, installed by the build:
 
 ```bash
-herdr plugin action invoke push-keys --plugin herdr.collie   # 1. generate + write the VAPID keys
-herdr plugin action invoke restart   --plugin herdr.collie   # 2. Collie reads them at start
-#                                                              3. on your phone: Settings → notifications
+collie push-keys     # 1. generate + write the VAPID keys
+collie restart       # 2. Collie reads them at start
+#                      3. on your phone: Settings → notifications
 ```
 
 Step 1 is the one that used to be fiddly. `push-keys` generates the keypair *and* writes
 `COLLIE_VAPID_PUBLIC` / `_PRIVATE` into the `.env` the service actually reads, at mode 600.
 
 **Worth one extra keystroke:** pass a *subject* — the contact address RFC 8292 wants, so a push
-service has a way to reach whoever is sending. An action carries no arguments, so this form is the
-shell one:
+service has a way to reach whoever is sending:
 
 ```bash
-bin/collie push-keys mailto:you@example.com
+collie push-keys mailto:you@example.com
 ```
+
+On a Herdr-managed install both steps are also actions (`herdr plugin action invoke push-keys
+--plugin herdr.collie`, and `restart` likewise) — but an action carries no arguments, so a subject
+has to be passed in the shell form above.
 
 Two behaviours worth knowing. It **refuses to replace keys that are already live** unless you pass
 `--force`, because new keys invalidate every existing subscription: each device must re-enable
@@ -167,7 +170,7 @@ so fixing a typo never costs you your subscribers.
 block:
 
 ```bash
-bin/collie push-test                 # or: push-test "Title" "Body"
+collie push-test                     # or: push-test "Title" "Body"
 ```
 
 You should get it within a second or two. If it says push is disabled, Collie didn't get the keys

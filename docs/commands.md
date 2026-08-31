@@ -1,44 +1,37 @@
 # Commands
 
-Every command works two ways: the **`collie` binary** in the checkout (`bin/collie <cmd>`) or the
-equivalent **Herdr action** (`herdr plugin action invoke <cmd> --plugin herdr.collie`, written below
-as `invoke <cmd>`). The ones you'll actually use:
+Every verb is spelled **`collie <verb>`** — that is the canonical spelling on every install, and
+every verb is implemented once, in the binary (`cli/`). Before `collie` is on your PATH
+([below](#put-collie-on-your-path)), spell it `bin/collie <verb>` from the checkout. On a
+Herdr-managed install the same verbs are also registered as Herdr actions
+([below](#herdr-actions)); nothing else changes.
 
-| Action | `collie` CLI | Herdr action |
+| Verb | Command | What it does |
 | --- | --- | --- |
-| **Start** — build if needed, serve, print the URL | `collie start` | `invoke start` |
-| **Stop** — pause the bridge; removes nothing | `collie stop` | `invoke stop` |
-| **Restart** | `collie restart` | `invoke restart` |
-| **Status** — the *Collie is running* banner + URLs | `collie status` | `invoke status` |
-| **URL** — print the tailnet URL | `collie url` | `invoke url` |
-| **QR** — the same URL as a scannable code | `collie qr` | — (CLI only) |
-| **Version** — the running version (`0.x.y+sha`) | `collie version` | `invoke version` |
-| **Update** — advance the checkout + rebuild + restart | `collie update` | `invoke update` |
-| **Uninstall** — remove the service; keep `.env` + checkout | `collie uninstall` | `invoke uninstall` |
-| **Pair** — mint a code so a phone can be [paired](security.md#pair-a-device--the-write-credential) | `collie pair` | — (CLI only) |
-| **Devices** — list / revoke paired devices | `collie devices list` · `collie devices revoke <label>` | — (CLI only) |
-| **Link** — put `collie` on your PATH ([below](#put-collie-on-your-path)) | `collie link` · `collie unlink` | — (CLI only) |
-| **Logs** — tail the journal / log file | `collie logs` | — (CLI only) |
-| **Voice** — configure / check / disable [voice input](voice-and-push.md#voice-input-optional) | `collie stt setup` · `stt test` · `stt status` · `stt off` | — (CLI only) |
-| **Push keys** — generate the VAPID keypair into your `.env` | `collie push-keys` | `invoke push-keys` |
-| **Push test** — send one notification to prove it works | `collie push-test` | `invoke push-test` |
+| **Start** | `collie start` | Build if needed, serve, print the URL |
+| **Stop** | `collie stop` | Pause the bridge; removes nothing |
+| **Restart** | `collie restart` | Stop, then start |
+| **Status** | `collie status` | The *Collie is running* banner + URLs |
+| **URL** | `collie url` | Print the tailnet URL |
+| **QR** | `collie qr` | The same URL as a scannable code |
+| **Version** | `collie version` | The running version (`0.x.y+sha`) |
+| **Update** | `collie update` | Advance to the newest release of your major, rebuild and restart (`--major` crosses one) |
+| **Rollback** | `collie update --rollback` | **Binary install only** — put the previous version back |
+| **Uninstall** | `collie uninstall` | Remove the service; keep `.env` and the install |
+| **Pair** | `collie pair` | Mint a code so a phone can be [paired](security.md#pair-a-device--the-write-credential) |
+| **Devices** | `collie devices list` · `collie devices revoke <label>` | List / revoke paired devices |
+| **Link** | `collie link` · `collie unlink` | Put `collie` on your PATH ([below](#put-collie-on-your-path)) |
+| **Logs** | `collie logs` | Tail the journal / log file |
+| **Voice** | `collie stt setup` · `stt test` · `stt status` · `stt off` | Configure / check / disable [voice input](voice-and-push.md#voice-input-optional) |
+| **Push keys** | `collie push-keys` | Generate the VAPID keypair into your `.env` |
+| **Push test** | `collie push-test` | Send one notification to prove it works |
+
+`build` · `serve` · `unserve` · `doctor` · `pack …` are verbs too — they just aren't ones you reach
+for daily.
 
 `start` and `status` end with the **Collie is running** banner — annotated line by line in
 [First run](install.md#first-run--what-youll-see). Its version comes from the *served* bundle stamp, so it's
-the authoritative "what's running" — note `herdr plugin list --json` shows a different value cached
-at `plugin link` time; for a linked clone `update` re-links automatically so that self-heals (to
-force it: `herdr plugin link "$(pwd)"`), and on Herdr ≥0.8.0 the manifest is re-read from disk
-anyway. **Through a Herdr action you get Herdr's JSON envelope, not the
-banner** — the human-readable output is the action's *captured stdout*, read with
-`herdr plugin log list --plugin herdr.collie` (or run `bin/collie <cmd>` directly to see it inline).
-`build` · `serve` · `unserve` are CLI-only too.
-
-> **`scripts/collie-ctl.sh <cmd>` still works, and always will.** It is a bootstrap shim: it finds
-> Bun, compiles `bin/collie` if the checkout hasn't got one yet, and hands it your argv. That is how
-> a freshly linked clone gets its first binary, and it is why the Herdr actions keep naming the
-> script — a Herdr <0.8.0 install invokes the action set cached at install time, so that path is
-> frozen ([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md)). Every verb is
-> implemented once, in the binary (`cli/`).
+the authoritative "what's running".
 
 **Ink or plain text.** `start`, `status`, `doctor`, `pack add` and `pack status` draw a terminal view
 when stdout is a TTY; `--plain` (and any pipe, file, journal or CI runner) prints the plain lines
@@ -65,22 +58,45 @@ profile. `collie doctor`'s `path-link` line tells you which checkout a bare `col
 
 ## Herdr actions
 
+**Only on a Herdr-managed install** — one made with `herdr plugin install AltanS/collie` or
+`herdr plugin link`. Herdr is one of Collie's three multiplexers, and this route is that adapter's
+convenience, not a second product: every action below hands the verb straight to the same `collie`
+binary the table above documents. On a binary install (the one `scripts/install.sh` lays down) there
+are no plugin actions, and `collie <verb>` is the only spelling.
+
 Collie registers these actions in `herdr-plugin.toml`; invoke any with
 `herdr plugin action invoke <id> --plugin herdr.collie` (list them live with
 `herdr plugin action list --plugin herdr.collie`):
 
-| `<id>` | Title | What it does |
+| `<id>` | Equivalent verb | What it does |
 | --- | --- | --- |
-| `start` | Start Collie | Build if needed, start the service, `tailscale serve`, print URL + banner |
-| `stop` | Stop Collie | Pause the bridge; removes nothing |
-| `restart` | Restart Collie | `stop` + `start` |
-| `status` | Collie status | The *Collie is running* banner — readiness ✓/⚠, version, URLs |
-| `url` | Show Collie URL | Print the tailnet URL |
-| `version` | Show version | Print the running version (`0.x.y+sha`) |
-| `update` | Update plugin | Advance the checkout (pull, or fetch + re-detach) + rebuild + restart |
-| `uninstall` | Uninstall Collie (remove service) | Tear down the service (keeps `.env` + checkout) |
-| `push-keys` | Generate push keys | Write a VAPID keypair into the `.env` the service reads |
-| `push-test` | Send a test notification | Push one notification to every subscribed device |
+| `start` | `collie start` | Build if needed, start the service, `tailscale serve`, print URL + banner |
+| `stop` | `collie stop` | Pause the bridge; removes nothing |
+| `restart` | `collie restart` | `stop` + `start` |
+| `status` | `collie status` | The *Collie is running* banner — readiness ✓/⚠, version, URLs |
+| `url` | `collie url` | Print the tailnet URL |
+| `version` | `collie version` | Print the running version (`0.x.y+sha`) |
+| `update` | `collie update` | Advance the checkout (pull, or fetch + re-detach) + rebuild + restart |
+| `uninstall` | `collie uninstall` | Tear down the service (keeps `.env` + checkout) |
+| `push-keys` | `collie push-keys` | Write a VAPID keypair into the `.env` the service reads |
+| `push-test` | `collie push-test` | Push one notification to every subscribed device |
+
+`qr`, `pair`, `devices`, `link`, `logs` and `stt` have no action: they want a terminal, arguments or
+both. Run them as `collie <verb>`.
+
+**Through a Herdr action you get Herdr's JSON envelope, not the banner** — the human-readable output
+is the action's *captured stdout*, read with `herdr plugin log list --plugin herdr.collie`. Run
+`collie <verb>` directly to see it inline. Note too that `herdr plugin list --json` shows a version
+cached at `plugin link` time, not the running one; for a linked clone `update` re-links automatically
+so that self-heals (to force it: `herdr plugin link "$(pwd)"`), and on Herdr ≥0.8.0 the manifest is
+re-read from disk anyway.
+
+> **`scripts/collie-ctl.sh <verb>` still works, and always will.** It is a bootstrap shim: it finds
+> Bun, compiles `bin/collie` if the checkout hasn't got one yet, and hands it your argv. That is how
+> a freshly linked clone gets its first binary, and it is why the Herdr actions keep naming the
+> script — a Herdr <0.8.0 install invokes the action set cached at install time, so that path is
+> frozen ([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md)). Every verb is
+> implemented once, in the binary (`cli/`).
 
 
 ---

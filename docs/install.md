@@ -6,17 +6,18 @@ by design.
 
 ## Requirements
 
-On the **host** (the tailnet node your agents run on). **One multiplexer is required — which one
-decides whether you need Herdr at all.** Herdr is the default, and that route wants Herdr 0.7.0+
-(check with `herdr --version`); on tmux or zellij, Herdr has to be neither installed nor running.
+On the **host** (the tailnet node your agents run on). Two things decide what you need: **which
+install route you take** (the script ships a built binary, so it needs no toolchain; building from
+source needs one) and **which multiplexer you mirror** (only the Herdr one needs Herdr).
 
-| Tool | Why |
-| --- | --- |
-| [**Bun**](https://bun.sh) | Runs the bridge and builds the web UI — the only hard dependency. |
-| [**Herdr**](https://herdr.dev) ≥ 0.7.0 | **Only when Herdr is your multiplexer** — the default one, and one of three. The herd Collie mirrors. On tmux or zellij, not needed at all. |
-| **A multiplexer** — Herdr (default), [tmux](https://github.com/tmux/tmux) or [zellij](https://zellij.dev) | What Collie mirrors, one per install, picked with `COLLIE_MUX` — or by the first `start`, which probes for all three and asks when that key is unset. **tmux and zellij are experimental in 1.0** — set them up from [Using the app on tmux or zellij](multiplexers.md#using-the-app-on-tmux-or-zellij). What each one can answer: [`MUX_CONTRACT.md`](../MUX_CONTRACT.md). |
-| [**Tailscale**](https://tailscale.com) | Front door for the default variant (`tailscale serve`); optional if you run [Variant C](../DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, Collie is `127.0.0.1`-only. |
-| **git** | Clone, and the `update` command. |
+| Tool | Needed for | Why |
+| --- | --- | --- |
+| **`curl`, `tar`, and a sha256 tool** (`sha256sum` or `shasum`) | the install script, and every later `collie update` on a binary install | Download the release for your platform and verify its digest before anything is laid down. The payload is already built, so there is no toolchain and nothing to compile. |
+| [**Bun**](https://bun.sh) | building from source | Runs the bridge and builds the web UI. A binary install carries its own runtime and does not need Bun on the host. |
+| **git** | building from source, and both Herdr routes | Clone the repository, and let `update` advance that checkout. A binary install updates by fetching a release, not by pulling. |
+| **A multiplexer** — Herdr, [tmux](https://github.com/tmux/tmux) or [zellij](https://zellij.dev) | every install | What Collie mirrors, one per install, picked with `COLLIE_MUX` — or by the first `start`, which probes for all three and asks when that key is unset. **tmux and zellij are experimental in 1.0** — set them up from [Using the app on tmux or zellij](multiplexers.md#using-the-app-on-tmux-or-zellij). What each one can answer: [`MUX_CONTRACT.md`](../MUX_CONTRACT.md). |
+| [**Herdr**](https://herdr.dev) ≥ 0.7.0 | only when Herdr is your multiplexer | One of the three, and the default the first `start` offers. Check with `herdr --version`. On tmux or zellij it need be neither installed nor running. |
+| [**Tailscale**](https://tailscale.com) | the default front door | `tailscale serve` publishes Collie on your tailnet. Optional if you run [Variant C](../DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, Collie is `127.0.0.1`-only. |
 
 **No minimum tmux or zellij version is enforced** — the adapters were probed on tmux 3.6b and zellij
 0.44.2, and neither declares a floor. One tmux caveat is checked at runtime: on a server whose

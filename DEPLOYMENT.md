@@ -107,7 +107,7 @@ Two consequences worth knowing before you turn this on:
   replace your header): `curl -H 'X-Device-Id: my-laptop' http://127.0.0.1:$COLLIE_PORT/api/...`
 
 Revoke a device by dropping its id from `COLLIE_DEVICE_ALLOWLIST` and restarting
-(`herdr plugin action invoke restart --plugin herdr.collie`). With the header set but the allowlist
+(`collie restart`). With the header set but the allowlist
 **empty**, every device is read-only (fail-closed), and so is a request that arrives without the
 header. In that state nothing can drive a pane, including a hand-made `curl`; recovery is an `.env`
 edit plus a restart.

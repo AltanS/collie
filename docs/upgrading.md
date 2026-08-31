@@ -5,7 +5,7 @@
 Pause Collie without removing anything (a later `start` brings it right back):
 
 ```bash
-bin/collie stop      # or: herdr plugin action invoke stop --plugin herdr.collie
+collie stop
 ```
 
 To tear the service down completely — stop + disable it, remove the service definition (the
@@ -14,35 +14,49 @@ Collie's own `tailscale serve` mapping (port-scoped, so other tailnet mappings o
 use `uninstall`. It leaves your `.env` and the checkout untouched:
 
 ```bash
-bin/collie uninstall # or: herdr plugin action invoke uninstall --plugin herdr.collie
+collie uninstall
 ```
 
-Then `herdr plugin uninstall herdr.collie` (or, for a linked clone, just deleting the directory)
-removes the plugin registration itself.
+That leaves the install itself on disk. Delete the directory to finish the job — for a binary
+install, `~/.local/share/collie` (or wherever you pointed `COLLIE_DIR`), plus the `collie` symlink
+`collie unlink` takes down.
+
+On a **Herdr-managed install** the same two verbs are also actions —
+`herdr plugin action invoke stop --plugin herdr.collie`, and `uninstall` likewise — and the
+registration is removed with `herdr plugin uninstall herdr.collie` (or, for a linked clone, by
+deleting the directory).
 
 ## Update to a new release
 
-The checkout *is* the plugin, and Herdr has no `plugin update` of its own. One command does the lot:
+One command does the lot, on every install:
 
 ```bash
-herdr plugin action invoke update --plugin herdr.collie   # or, in the checkout: bin/collie update
+collie update
 ```
 
-It advances the checkout, rebuilds the UI and restarts the bridge (re-execing itself from the
-fetched source, so it's safe even when the update rewrites the code that's running). Confirm via the
-footer build stamp. Pinned to a version with `--ref`? Keep refreshing with
-`herdr plugin install --ref …`.
+On a binary install it fetches the newest release for your platform, verifies its sha256, swaps the
+`current` symlink and restarts — keeping the version you were on, so `collie update --rollback` can
+put it back. On a checkout it advances the checkout and rebuilds the UI. Either way it restarts the
+bridge, re-execing itself from the new code, so it is safe even when the update rewrites the program
+that is running. Confirm via the footer build stamp.
+
+On a **Herdr-managed install** the same verb is the action
+`herdr plugin action invoke update --plugin herdr.collie`. Herdr has no `plugin update` of its own —
+the checkout is the plugin, so this verb is the refresh. Pinned to a version with `--ref`? Keep
+refreshing with `herdr plugin install --ref …`.
 
 **`update` goes to the newest release of the major you are on, and never crosses one.** A major
 means you have to change something, so it is never inherited from a routine update: the command says
 a new major is out and names the one that takes it —
 
 ```bash
-herdr plugin action invoke update-major --plugin herdr.collie   # or: bin/collie update --major
+collie update --major
 ```
 
-The flag is the whole consent; there is no prompt, because a Herdr action has no terminal to answer
-one on. The reasoning is [ADR 0020](../.adr/0020-a-major-upgrade-is-consented-by-flag.md).
+The flag is the whole consent; there is no prompt, because the same verb has to work where nothing
+can answer one — a Herdr action, a systemd unit, a provisioning run. The reasoning is
+[ADR 0020](../.adr/0020-a-major-upgrade-is-consented-by-flag.md). On a Herdr-managed install it is
+the action `update-major` (`herdr plugin action invoke update-major --plugin herdr.collie`).
 
 ### If that fails with *"You are not currently on a branch"*
 
@@ -63,7 +77,11 @@ survive.
 
 ### What `update` actually does to the checkout
 
-The two install routes differ in *when* the UI builds — a GitHub install at install time, via the
+**This part is about the two checkout-shaped installs — a Herdr-managed one and a linked clone.** A
+binary install has no checkout at all: `update` fetches a built release, verifies it, and swaps the
+`current` symlink, which is why `--rollback` exists there and nowhere else.
+
+The two checkout routes differ in *when* the UI builds — a GitHub install at install time, via the
 manifest's `[[build]]` step; a linked clone on first `start`.
 
 They also leave two different shapes on disk, which is what `update` has to cope with.
@@ -125,6 +143,19 @@ update` and the in-app banner offer it strict releases and nothing else, so on 0
 0.x and `update --major` answers *"no release above major 0 exists yet — nothing to cross to."*
 Installing a beta is what opts you in, and from then on both the verb and the banner keep you moving
 along that major until its release lands (see below). Take it by one of two routes.
+
+**Binary install — take the beta with the install script's opt-in flag:**
+
+```bash
+curl -fsSL https://colliepwa.dev/install.sh | sh -s -- --beta
+```
+
+`--beta` widens the release search to prerelease tags; without it the script takes the newest stable
+release. Once you are on a beta, `collie update` keeps you on the train — that is the paragraph
+below. A **stable** binary install is never pulled onto a beta: `update` offers it strict releases
+only, and the script refuses to touch an install that is already there. To rehearse the beta beside
+it, install a second copy under its own `COLLIE_DIR`; to cross for real once `v1.0.0` is published,
+`collie update --major`.
 
 **Herdr-managed — install one beta tag; that is the whole opt-in:**
 
@@ -272,10 +303,12 @@ Going from there to 1.0 crosses a major, so a routine `update` will not do it. O
 published, `update` says so and names this command instead:
 
 ```bash
-herdr plugin action invoke update-major --plugin herdr.collie   # or: bin/collie update --major
+collie update --major
 ```
 
-No reinstall, no re-link, no config edit, no manual `bun install`.
+On a Herdr-managed install that is the action `update-major`
+(`herdr plugin action invoke update-major --plugin herdr.collie`). Either way: no reinstall, no
+re-link, no config edit, no manual `bun install`.
 
 **One thing to do first: if `BUN_INSTALL` lives only in your `.env`, move it to the environment.**
 1.0's shim no longer sources `.env` to find Bun. Left in `.env` it fails at the worst possible
@@ -396,7 +429,7 @@ git fetch upstream --tags
 git merge v1.0.0                                            # the tag you decided to take
 # resolve the conflicts, commit the merge, then rebuild and restart:
 sh scripts/collie-ctl.sh build
-herdr plugin action invoke restart --plugin herdr.collie    # or, in the checkout: bin/collie restart
+bin/collie restart                                          # Herdr-managed: invoke the `restart` action
 ```
 
 **Expect that merge to be real work** wherever you patched a file upstream also moved. Git hands you

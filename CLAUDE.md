@@ -25,7 +25,7 @@ mark it superseded and write the next one.
 
 ## Versioning — MANDATORY
 
-This plugin is **SemVer**ed, and the version is **enforced**, so it never silently drifts.
+Collie is **SemVer**ed, and the version is **enforced**, so it never silently drifts.
 
 **The version lives in three files that must always agree, plus a matching CHANGELOG entry:**
 `herdr-plugin.toml` (canonical — Herdr reads it) · `package.json` · `web/package.json` ·

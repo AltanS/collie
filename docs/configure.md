@@ -10,16 +10,22 @@ COLLIE_PUBLIC_HOSTS=myhost.tail1234.ts.net    # only behind your OWN proxy; on a
                                               # start` discovers this for you
 ```
 
-Config is a `.env` in the plugin's config dir — find it with
-`herdr plugin config-dir herdr.collie` (typically `~/.config/herdr/plugins/config/herdr.collie`;
-without Herdr, `~/.config/collie`). The CLI resolves this same dir whether you run it directly or
-via a Herdr action:
+Config is a `.env` in Collie's config dir, which is **`~/.config/collie`** unless Herdr says
+otherwise: on a Herdr-managed install the CLI asks Herdr for the plugin's config dir and uses that
+(typically `~/.config/herdr/plugins/config/herdr.collie`). The same dir is resolved whichever way you
+run a verb, so a `.env` you seed here is the one the service reads:
 
 ```bash
+mkdir -p ~/.config/collie && cp .env.example ~/.config/collie/.env
+
+# on a Herdr-managed install, seed Herdr's plugin config dir instead:
 cp .env.example "$(herdr plugin config-dir herdr.collie)/.env"
 ```
 
-Collie reads `.env` only at startup — after any edit, `bin/collie restart`. See
+Every config path below is written as `~/.config/collie/…`; on a Herdr-managed install, substitute
+`$(herdr plugin config-dir herdr.collie)`.
+
+Collie reads `.env` only at startup — after any edit, `collie restart`. See
 [`.env.example`](../.env.example) for the full option list — commonly `COLLIE_PORT`,
 `COLLIE_SERVE_MODE=http` (Headscale / `.internal` domains) or `COLLIE_SERVE_PORT` (publish the
 https front door somewhere other than :443 — see
@@ -42,11 +48,11 @@ COLLIE_ALLOWED_ORIGINS=https://collie.example.com
 
 ## Your own slash commands
 
-Commands only this machine has (a plugin's `/fork-in-herdr`, your own `/deploy`) go in
+Commands only this machine has (a Herdr plugin's `/fork-in-herdr`, your own `/deploy`) go in
 `commands.toml`:
 
 ```bash
-cp commands.toml.example "$(herdr plugin config-dir herdr.collie)/commands.toml"
+cp commands.toml.example ~/.config/collie/commands.toml
 ```
 
 ```toml
@@ -66,7 +72,7 @@ first screen. Syntax error? `journalctl --user -u collie -n 20` names the line.
 The Keys tray's **Presets** row is yours to replace, in `keys.toml` next to `commands.toml`:
 
 ```bash
-cp keys.toml.example "$(herdr plugin config-dir herdr.collie)/keys.toml"
+cp keys.toml.example ~/.config/collie/keys.toml
 ```
 
 ```toml
@@ -89,7 +95,7 @@ open a pane, tap **Keys → Presets**, your buttons are there. Rejected row?
 The Quick dock's one-tap phrases are yours to replace, in `quick-replies.toml` next to the other two:
 
 ```bash
-cp quick-replies.toml.example "$(herdr plugin config-dir herdr.collie)/quick-replies.toml"
+cp quick-replies.toml.example ~/.config/collie/quick-replies.toml
 ```
 
 ```toml
@@ -113,9 +119,9 @@ Grotesk (the default) and Aldrich. You can add your own in `theme.toml`, the fou
 other three:
 
 ```bash
-cp theme.toml.example "$(herdr plugin config-dir herdr.collie)/theme.toml"
-mkdir -p "$(herdr plugin config-dir herdr.collie)/fonts"
-cp departure.woff2 "$(herdr plugin config-dir herdr.collie)/fonts/"
+cp theme.toml.example ~/.config/collie/theme.toml
+mkdir -p ~/.config/collie/fonts
+cp departure.woff2 ~/.config/collie/fonts/
 ```
 
 ```toml

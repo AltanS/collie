@@ -110,7 +110,7 @@ the Herdr routes, the requirements table, and what the first `start` leaves on t
 | [**Install**](./docs/install.md) | Requirements, the four install routes, first run, and opening it on your phone |
 | [**Security**](./docs/security.md) | What a Collie exposes, the defenses, and pairing a device as the write credential |
 | [**Configure**](./docs/configure.md) | The `.env`, your own slash commands, keys, quick replies and typefaces; appearance, Zen mode, language |
-| [**Commands**](./docs/commands.md) | Every `collie` verb, the equivalent Herdr actions, and putting `collie` on your PATH |
+| [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
 | [**tmux and zellij**](./docs/multiplexers.md) | Running Collie without Herdr — both walkthroughs, what each multiplexer can answer, and agent beacons |
 | [**Packs**](./docs/pack.md) | Several machines' Collies behind one URL: invite, join, deputy, failover |
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
@@ -185,7 +185,8 @@ can be exercised — and regression-tested — without a Windows box; `bridge/di
 
 ## Architecture
 
-A small Bun process sits between your phone and Herdr — the browser never touches the socket.
+A small Bun process sits between your phone and your multiplexer — the browser never touches the
+multiplexer.
 
 ```
   phone (PWA)
@@ -194,19 +195,21 @@ A small Bun process sits between your phone and Herdr — the browser never touc
   tailscale serve        terminates TLS, injects the identity header
      │  127.0.0.1:PORT    (the bridge binds loopback only)
      ▼
-  Collie bridge (Bun)    serves the UI + a small JSON API; polls Herdr
-     │  one-shot JSON-RPC over a Unix socket
+  Collie bridge (Bun)    serves the UI + a small JSON API; polls the multiplexer
+     │  one mux adapter, chosen per install
      ▼
-  Herdr server           owns the panes, agents and terminal state
+  the multiplexer        owns the panes, agents and terminal state
+  Herdr · tmux · zellij
 ```
 
 Under [Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) a
 reverse proxy replaces the `tailscale serve` box; everything below the front door is identical.
 
-- **One module touches the socket** (`bridge/mux/herdr/client.ts`); everything else speaks the bridge's HTTP API.
-- **Polling is still the model** — the bridge polls Herdr (via `session.snapshot`, one RPC per tick) and the browser polls `/api/snapshot`; a long-lived Herdr event stream only pokes the bridge's poll to go faster, it never replaces it. No resync logic.
-- **Actions are plain HTTP** — a reply or key `POST`s to `/api/pane/:id/{reply,keys}` → Herdr `pane.send_keys`, which types into a real terminal (hence the security posture).
+- **Only the adapter touches the multiplexer** (`bridge/mux/<name>/` — Herdr dials a Unix socket, tmux and zellij shell out to their CLIs); everything else speaks the bridge's HTTP API. What every adapter must answer is [`MUX_CONTRACT.md`](./MUX_CONTRACT.md).
+- **Polling is still the model** — the bridge takes one snapshot per tick from the adapter and the browser polls `/api/snapshot`; where the multiplexer offers an event stream (Herdr does) it only pokes the bridge's poll to go faster, it never replaces it. No resync logic.
+- **Actions are plain HTTP** — a reply or key `POST`s to `/api/pane/:id/{reply,keys}`, and the adapter types it into a real terminal (hence the security posture).
 - **The UI is a static PWA** — Vite builds `web/dist`, served from disk, so a rebuild is live with no restart.
+- **A second Collie is a peer, not a second bridge** — one machine's bridge mirrors one multiplexer, and a lead reads its peers over the pack link ([`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md)).
 
 Full design rationale in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
@@ -215,17 +218,20 @@ Full design rationale in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 Clone it and build it ([Install → the same result, from
 source](./docs/install.md#the-same-result-from-source)), then edit in place.
 
-- **The manifest is the plugin.** `herdr-plugin.toml` declares the actions listed in
-  [Herdr actions](./docs/commands.md#herdr-actions), and each one reaches — through the bootstrap shim
-  `scripts/collie-ctl.sh` — the same `collie` binary [Commands](./docs/commands.md) documents. Every verb
-  is implemented once, in `cli/`. Both files are commented — read them, not a paraphrase of them
-  here.
+- **Every verb is implemented once, in `cli/`,** and spelled `bin/collie <verb>`
+  ([Commands](./docs/commands.md)). Nothing else implements a verb: `scripts/collie-ctl.sh` is a
+  bootstrap shim that compiles the binary and hands it your argv, and the Herdr adapter's
+  `herdr-plugin.toml` is a thin registration whose `[[actions]]` call that shim
+  ([Herdr actions](./docs/commands.md#herdr-actions)). Both files are commented — read them, not a
+  paraphrase of them here.
 - **One asymmetry in the dev loop:** `web/` rebuilds go live with no restart (the bridge serves
   `web/dist` from disk); `bridge/` changes need `systemctl --user restart collie`. Build, test and
   versioning rules are in [`CLAUDE.md`](./CLAUDE.md) — versioning is hook-enforced, so skim it before
   your first commit.
-- **Why a supervised service and not a plugin pane** — [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3.
-  That decision is why the manifest uses `[[actions]]` and `[[build]]` and nothing else.
+- **Adding or changing a multiplexer adapter** — [`MUX_CONTRACT.md`](./MUX_CONTRACT.md) says what an
+  adapter must answer, and [`MUX_CONTRIBUTING.md`](./MUX_CONTRIBUTING.md) walks the seam. Why Collie
+  is a supervised service and not a plugin pane is [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3 — the
+  decision that keeps the Herdr manifest down to `[[actions]]` and `[[build]]`.
 - **Sending a PR?** [`CONTRIBUTING.md`](./CONTRIBUTING.md) is the short version — which branch to
   open against (bugfixes on `main`, features on `v1`), the gates, and the version-bump rule.
 
@@ -248,10 +254,11 @@ of the PWA precache. `src/playground/playground-entry.test.ts` pins that.
 To add a new state, add a `<Section>` in `src/playground/app.tsx` and its fixtures in
 `src/playground/fixtures.ts`.
 
-Herdr's plugin system itself is upstream's to document:
+Working on the Herdr adapter specifically? Herdr's own plugin system is upstream's to document:
 [authoring](https://herdr.dev/docs/plugins/) ·
 [CLI reference](https://herdr.dev/docs/cli-reference/) ·
-[example plugins](https://github.com/ogulcancelik/herdr-plugin-examples).
+[example plugins](https://github.com/ogulcancelik/herdr-plugin-examples). Collie's verified use of
+the socket is [`HERDR_API.md`](./HERDR_API.md).
 
 ## See also
 
