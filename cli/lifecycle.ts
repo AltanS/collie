@@ -1,13 +1,19 @@
 import { join } from "node:path";
 
-import { resolveBridgeHost } from "../bridge/config.ts";
 import { ensureBuild } from "./build.ts";
 import { collieVersion, type CliContext, type Environment, type EnvVars } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, type ServeDeps } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
-import { bridgeUrl, configuredPublicUrl, localBridgeHostPort, localBridgeUrl, tailnetHosts } from "./tailnet.ts";
+import {
+  bridgeUrl,
+  configuredPublicUrl,
+  dialableBridgeHost,
+  localBridgeHostPort,
+  localBridgeUrl,
+  tailnetHosts,
+} from "./tailnet.ts";
 import {
   AGENT_FILE_MODE,
   agentFilePath,
@@ -515,11 +521,19 @@ export async function statusBanner(deps: LifecycleDeps): Promise<string[]> {
  */
 export async function statusView(deps: LifecycleDeps): Promise<StatusView> {
   const version = collieVersion(deps.ctx.root);
-  // The bridge binds `resolveBridgeHost`, not always loopback (a peer sets COLLIE_HOST to its
-  // tailnet address — the documented Variant-E shape). Probing 127.0.0.1 there would find nothing
-  // home and print "isn't answering" against a bridge that is in fact up; probe — and, in the
-  // warning, name — whatever address it actually bound.
-  const host = resolveBridgeHost(deps.ctx.env);
+  // The bridge does not always bind loopback (a peer sets COLLIE_HOST to its tailnet address — the
+  // documented Variant-E shape). Probing 127.0.0.1 there would find nothing home and print "isn't
+  // answering" against a bridge that is in fact up; probe — and, in the warning, name — whatever
+  // address it actually bound.
+  //
+  // Resolved ONCE, through F13's `dialableBridgeHost`, which is also what the `local` row three
+  // lines down reads: the two halves of this banner must never name two different addresses, and a
+  // WILDCARD bind has to probe loopback rather than the literal `0.0.0.0` the operator wrote.
+  //
+  // It reads the env as it stands NOW. `collie leave` rewrites COLLIE_HOST out of both the `.env`
+  // and this process's env before it restarts (F12/F22), so the banner that closes a tear-down
+  // describes the machine the tear-down left behind — not the peer it used to be.
+  const host = dialableBridgeHost(deps.ctx.env);
   const probedAddress = host === "127.0.0.1" ? `:${deps.ctx.port}` : `${host}:${deps.ctx.port}`;
   const running = await deps.ready(deps.ctx.port, host);
   const rows: { label: string; value: string }[] = [];

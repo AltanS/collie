@@ -899,6 +899,14 @@ function retirePackBind(deps: PackDeps): string[] {
     ];
   }
   deps.files.write(envPath, next, 0o600);
+  // …and out of THIS process's view of the environment, which is the half F22 was missing. The
+  // restart on the next line prints the health banner, and that banner resolves the bind it probes
+  // from `ctx.env` — the env as this process read it at start-up, still carrying the value just
+  // deleted from disk. So the tear-down ended on `⚠ Collie isn't answering on <the bind it had just
+  // removed> yet` about a machine that was healthy on loopback: the probe dialled an address the
+  // machine no longer binds, and blamed the machine. `leave` is the one verb that knowingly changes
+  // COLLIE_HOST underneath itself, so it is the one verb that must re-seat it here.
+  delete deps.ctx.env.COLLIE_HOST;
   return [
     `  COLLIE_HOST=${host} removed from ${envPath} — it was the address the LEAD dialled, and a`,
     "  wide bind is admitted only by the pack's two factors (ADR 0013), which this machine no longer",

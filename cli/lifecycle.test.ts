@@ -435,6 +435,20 @@ describe("the status banner", () => {
     expect(lines).not.toContain("local     http://127.0.0.1");
   });
 
+  // F22's other half: one resolution behind the probe and the `local` row. A wildcard bind means
+  // EVERY interface, so loopback is one of the addresses it answers on and the only one this machine
+  // can promise reaches itself — probing the literal `0.0.0.0` is a dial nobody asked for.
+  test("a WILDCARD bind is probed on loopback, and the banner says so once", async () => {
+    const h = harness({ ready: true, env: { COLLIE_HOST: "0.0.0.0" } });
+    const lines = (await statusBanner(h.deps)).join("\n");
+    expect(h.readyCalls).toEqual([{ port: 8787, host: "127.0.0.1" }]);
+    expect(lines).toContain("local     http://127.0.0.1:8787");
+
+    const cold = harness({ ready: false, env: { COLLIE_HOST: "" } });
+    expect((await statusBanner(cold.deps)).join("\n")).toContain("⚠ Collie isn't answering on :8787 yet");
+    expect(cold.readyCalls).toEqual([{ port: 8787, host: "127.0.0.1" }]);
+  });
+
   test("reads the unit's state, not merely that a unit exists", () => {
     const h = harness({ answers: [["systemctl --user is-active", { stdout: "active\n" }]] });
     expect(serviceDescription(h.deps)).toBe("systemd --user (collie) · active");

@@ -36,6 +36,7 @@ import {
   selfAddress,
 } from "./pack.ts";
 import type { PackAddDeps } from "./remote.ts";
+import { dialableBridgeHost } from "./tailnet.ts";
 
 // The pack verbs, against fakes for every seam. NOTHING here reaches a service manager, a tailnet, a
 // real trust store or a network: `restart`/`serve`/`unserve` are counters, the transport is a
@@ -861,6 +862,37 @@ describe("collie leave", () => {
     expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
     expect(text(h.io)).toContain("every five seconds, forever");
     expect(text(h.io)).toContain("COLLIE_ALLOW_NON_LOOPBACK_BIND=1");
+  });
+
+  // F22: the restart below prints the health banner, and the banner resolves what it probes from
+  // `ctx.env`. Left at the value this run started with, the documented tear-down ended on
+  // `⚠ Collie isn't answering on 192.168.77.2:8787 yet` about a machine that was healthy on
+  // loopback — the same alarm F12 used to raise, now false, at the end of the same command.
+  test("the closing banner probes the bind as REWRITTEN, not the one this run started with", async () => {
+    const ctx = context({ COLLIE_HOST: "192.168.77.2", COLLIE_PACK_TIMEOUT_MS: "60000" });
+    const probed: (string | undefined)[] = [];
+    const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")], {
+      ctx,
+      // The banner is built INSIDE this seam (`cmdRestart` → `cmdStart`), so what it would resolve
+      // is exactly what `ctx.env` says at the instant the restart runs.
+      restart: () => {
+        probed.push(dialableBridgeHost(ctx.env));
+        return Promise.resolve(EXIT.OK);
+      },
+    });
+    h.files.write(`${CONFIG}/.env`, "COLLIE_HOST=192.168.77.2\nCOLLIE_PORT=8787\n");
+    expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
+    expect(probed).toEqual(["127.0.0.1"]);
+    expect(ctx.env.COLLIE_HOST).toBeUndefined();
+  });
+
+  test("a bind Collie could NOT remove is still the bind — the env keeps it", async () => {
+    // The other half of the same rule: the machine really does still bind that address, so a banner
+    // that probed loopback here would be the mirror-image lie. Nothing was rewritten; nothing moves.
+    const ctx = context({ COLLIE_HOST: "192.168.77.2", COLLIE_PACK_TIMEOUT_MS: "60000" });
+    const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")], { ctx });
+    expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
+    expect(ctx.env.COLLIE_HOST).toBe("192.168.77.2");
   });
 
   test("a lead refuses to leave — that would strand its peers", async () => {
