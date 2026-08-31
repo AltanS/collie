@@ -4,6 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
 import {
+  DRAFT_FONT_MAX,
+  DRAFT_FONT_MIN,
   FONT_FAMILIES,
   FONT_MAX,
   FONT_MIN,
@@ -16,7 +18,13 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-// The Terminal font card. It configures the mirror's face and its size, and nothing else.
+// The Terminal font card. It configures the mirror's face and size, and the composer draft field's
+// size — the two surfaces that render terminal-bound text in the terminal face. Not the app's own
+// typeface (see below), and nothing else.
+//
+// THE DRAFT HAS ITS OWN SIZE ROW rather than following the mirror's number, because the two are read
+// differently: the mirror is output you scan and wants to be dense, the draft is a sentence you are
+// writing and re-reading and wants to be comfortable. One knob would make every choice a compromise.
 //
 // THE APP'S OWN TYPEFACE IS NOT HERE, and that is still true — but for the opposite reason it used
 // to be. This comment said the app face was "the maker's choice" with no setting and no hook
@@ -52,7 +60,7 @@ const SAMPLE = "~/collie  0O1lI │ ok";
 /** Settings card: the terminal mirror's font family and size. Device-local, like every display pref. */
 export function FontSettingsControl() {
   useLocale();
-  const { prefs, setFontFamily, stepFontSize } = useDisplayPrefs();
+  const { prefs, setFontFamily, stepFontSize, stepDraftFontSize } = useDisplayPrefs();
 
   const sampleFace = mirrorFont(prefs.fontFamily);
 
@@ -127,6 +135,50 @@ export function FontSettingsControl() {
               disabled={prefs.fontSize >= FONT_MAX}
               onClick={() => stepFontSize(1)}
               aria-label={t("settings.display.textSize.increase")}
+            >
+              <AArrowUp className="size-4" />
+            </Button>
+          </div>
+        </div>
+
+        {/* THE SECOND SIZE ROW: the composer's draft field, which is not the mirror.
+            Same stepper grammar as the row above — 44px buttons, a fixed tabular slot so the number
+            cannot resize its own box as it steps (§2), each end disabled at its own limit — because
+            it is the same question asked of a second surface, and a second shape would say the two
+            were different kinds of setting.
+            IT CARRIES A HINT AND THE ROW ABOVE DOES NOT, for a reason the operator will otherwise
+            discover by tapping: on iOS the lower half of this range does nothing. `applyDraftFontSize`
+            raises anything under 16px there, because Safari zooms the page into a smaller focused
+            field and never zooms back out. A stepper that silently ignores three of its four values
+            is worse than one that says so. */}
+        <div className="flex items-start justify-between gap-4 px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">{t("settings.fonts.draftSize")}</div>
+            <p className="mt-0.5 text-xs leading-snug text-muted-foreground">
+              {t("settings.fonts.draftSize.hint")}
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-11"
+              disabled={prefs.draftFontSize <= DRAFT_FONT_MIN}
+              onClick={() => stepDraftFontSize(-1)}
+              aria-label={t("settings.fonts.draftSize.decrease")}
+            >
+              <AArrowDown className="size-4" />
+            </Button>
+            <span className="w-8 text-center text-xs tabular-nums text-muted-foreground">
+              {prefs.draftFontSize}
+            </span>
+            <Button
+              variant="outline"
+              size="icon"
+              className="size-11"
+              disabled={prefs.draftFontSize >= DRAFT_FONT_MAX}
+              onClick={() => stepDraftFontSize(1)}
+              aria-label={t("settings.fonts.draftSize.increase")}
             >
               <AArrowUp className="size-4" />
             </Button>

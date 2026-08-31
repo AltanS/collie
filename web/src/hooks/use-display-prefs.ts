@@ -13,6 +13,26 @@ export interface DisplayPrefs {
   wrap: boolean;
   /** Font size in px for the mirror pre (default: 12, range: 9–16). */
   fontSize: number;
+  /**
+   * Font size in px for the COMPOSER's draft field (default: 14, range: 13–16).
+   *
+   * Its own number, and not the mirror's: the two surfaces are read differently. The mirror is a
+   * wall of agent output you scan, so it wants to be small and dense; the draft is a line or two you
+   * are writing and re-reading, so it wants to be comfortable. One knob would make every choice a
+   * compromise between the two.
+   *
+   * The default drops from the fixed 16 the field used to wear. 16 is not a design choice — it is
+   * the primitive's size, kept because a sub-16px focused input makes iOS Safari zoom the whole page
+   * (see {@link applyDraftFontSize}, which is where that fact is now handled honestly). At 16 the
+   * field runs out of width sooner than the sentence does, and a wrapped two-line draft costs the
+   * mirror above it a row. 14 reads the same on a phone and buys back roughly an eighth of the line.
+   *
+   * The RANGE is narrower than the mirror's at both ends and that is deliberate. Below 13 a field
+   * you type into stops being comfortable on a phone at arm's length, and above 16 the draft would
+   * out-shout the terminal text it is a reply to. Nothing here can produce an iOS zoom either: 13 is
+   * a stored preference, and the clamp at the call site is what the browser sees.
+   */
+  draftFontSize: number;
   /** Terminal mirror font family, as a key into FONT_STACKS (default: "system" — the app's own
    *  `--font-mono`, i.e. exactly what every install rendered before this setting existed). */
   fontFamily: FontFamily;
@@ -146,9 +166,14 @@ export function mirrorFont(family: FontFamily): MirrorFont {
 const STORAGE_KEY = "collie:display-prefs:v4";
 export const FONT_MIN = 9;
 export const FONT_MAX = 16;
+/** The draft field's own range — see `draftFontSize` on {@link DisplayPrefs} for why it is narrower
+ *  than the mirror's at both ends. */
+export const DRAFT_FONT_MIN = 13;
+export const DRAFT_FONT_MAX = 16;
 const DEFAULTS: DisplayPrefs = {
   wrap: true,
   fontSize: 12,
+  draftFontSize: 14,
   fontFamily: "system",
   rawTerminal: false,
   tapToFocus: true,
@@ -162,6 +187,64 @@ function clampFont(n: number): number {
   return Math.max(FONT_MIN, Math.min(FONT_MAX, Math.round(n)));
 }
 
+function clampDraftFont(n: number): number {
+  return Math.max(DRAFT_FONT_MIN, Math.min(DRAFT_FONT_MAX, Math.round(n)));
+}
+
+/**
+ * The smallest `font-size` a focused text field may carry on iOS without the page zooming.
+ *
+ * Mobile Safari zooms the viewport to the focused field whenever that field's computed font-size is
+ * under 16px, and it does NOT zoom back out when the field blurs — so one tap on the composer
+ * leaves the operator's whole screen magnified, with the mirror above it cropped, and the way back
+ * is a manual pinch. It is not a preference, a setting or a bug we can file: it is what the engine
+ * does, and every engine on iOS is that engine.
+ */
+export const IOS_NO_ZOOM_FONT_PX = 16;
+
+/**
+ * Whether this browser zooms the page when a small field takes focus — i.e. whether it is WebKit on
+ * an Apple touch device.
+ *
+ * DELIBERATELY CONSERVATIVE, in the direction that costs the least. A false positive costs an iPhone
+ * user 2px of draft text they asked to give up; a false negative costs an iOS user a zoomed, cropped
+ * screen they cannot get out of without pinching. So the predicate demands BOTH halves — an Apple
+ * platform AND a touch digitiser — rather than either alone:
+ *
+ *   • `maxTouchPoints > 0` alone matches a Windows laptop with a touchscreen, which does not zoom.
+ *   • An Apple platform alone matches a desktop Mac, which has no viewport zoom to trigger.
+ *   • iPadOS reports its platform as "MacIntel" and is indistinguishable from a desktop Mac by
+ *     platform string. The touch half is exactly what separates them, which is the other reason the
+ *     two are ANDed rather than ORed.
+ *
+ * `navigator.platform` is deprecated and still the only string here that is not routinely spoofed by
+ * a "request desktop site" toggle, so the user-agent is consulted as well and either may carry the
+ * Apple half. Absent both (SSR, a stub in tests) the answer is false and the operator's own number
+ * applies untouched.
+ */
+export function inputFocusZoomsPage(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const touch = navigator.maxTouchPoints > 0;
+  const apple = /iPhone|iPad|iPod|Mac/.test(`${navigator.platform} ${navigator.userAgent}`);
+  return touch && apple;
+}
+
+/**
+ * The px the draft field actually renders at: the operator's preference, raised to
+ * {@link IOS_NO_ZOOM_FONT_PX} where a smaller one would zoom the page.
+ *
+ * Pure, with the browser fact passed IN rather than probed here, so both branches are testable in
+ * jsdom — which reports no touch points and would otherwise only ever exercise one of them. The
+ * clamp is a floor and never a ceiling: it can only ever make the text bigger, so an operator on iOS
+ * who wants 16 gets exactly what they asked for and one who asked for 13 gets a readable field
+ * instead of a magnified screen. The setting's own description says so, because a stepper whose
+ * lower half silently does nothing is worse than one that explains itself.
+ */
+export function applyDraftFontSize(pref: number, zoomsOnSmallInput: boolean): number {
+  const size = clampDraftFont(pref);
+  return zoomsOnSmallInput ? Math.max(size, IOS_NO_ZOOM_FONT_PX) : size;
+}
+
 function loadPrefs(): DisplayPrefs {
   try {
     const raw = typeof localStorage !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
@@ -169,9 +252,14 @@ function loadPrefs(): DisplayPrefs {
     const p = parseJsonObject(raw);
     if (!p) return DEFAULTS;
     const fontSize = asJsonNumber(p.fontSize);
+    const draftFontSize = asJsonNumber(p.draftFontSize);
     return {
       wrap: asJsonBoolean(p.wrap) ?? DEFAULTS.wrap,
       fontSize: fontSize === undefined ? DEFAULTS.fontSize : clampFont(fontSize),
+      // Same independent-default rule as every field around it: a payload written before the draft
+      // had its own size reads 14, which is the change this shipped. Nobody's mirror size moves.
+      draftFontSize:
+        draftFontSize === undefined ? DEFAULTS.draftFontSize : clampDraftFont(draftFontSize),
       // Same independent-default rule as the fields above it, so a payload written before the
       // family existed reads "system" — an existing install sees no change at all.
       fontFamily: readFontFamily(asJsonString(p.fontFamily)),
@@ -203,6 +291,8 @@ export interface UseDisplayPrefsReturn {
   setFontFamily: (family: FontFamily) => void;
   /** Step font size by delta (positive = larger), clamped to 9–16. */
   stepFontSize: (delta: number) => void;
+  /** Step the draft field's size by delta (positive = larger), clamped to 13–16. */
+  stepDraftFontSize: (delta: number) => void;
   /** Toggle or explicitly set the raw-terminal escape hatch. */
   setRawTerminal: (raw: boolean) => void;
   /** Toggle or explicitly set whether a mirror tap focuses the composer. */
@@ -244,6 +334,14 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     });
   }, []);
 
+  const stepDraftFontSize = useCallback((delta: number) => {
+    setPrefs((p) => {
+      const next: DisplayPrefs = { ...p, draftFontSize: clampDraftFont(p.draftFontSize + delta) };
+      savePrefs(next);
+      return next;
+    });
+  }, []);
+
   const setRawTerminal = useCallback((rawTerminal: boolean) => {
     setPrefs((p) => {
       const next: DisplayPrefs = { ...p, rawTerminal };
@@ -266,6 +364,7 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     setFontSize,
     setFontFamily,
     stepFontSize,
+    stepDraftFontSize,
     setRawTerminal,
     setTapToFocus,
   };

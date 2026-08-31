@@ -151,9 +151,14 @@ export const ja: Dictionary = {
 
   // --- settings.fonts ---
   "settings.fonts.title": "ターミナルのフォント",
-  "settings.fonts.description": "この端末のターミナル表示のみに適用されます。",
+  "settings.fonts.description": "この端末のターミナル表示と入力欄に適用されます。",
   "settings.fonts.family": "書体",
-  "settings.fonts.size": "サイズ",
+  "settings.fonts.size": "ターミナルの文字",
+  "settings.fonts.draftSize": "入力欄の文字",
+  "settings.fonts.draftSize.hint":
+    "iOS では 16 に固定されます。Safari は 16 未満の入力欄にフォーカスするとページを拡大し、元には戻しません。",
+  "settings.fonts.draftSize.decrease": "入力欄の文字を小さくする",
+  "settings.fonts.draftSize.increase": "入力欄の文字を大きくする",
   "settings.fonts.system": "システム標準",
 
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---

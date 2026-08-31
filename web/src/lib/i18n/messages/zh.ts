@@ -142,9 +142,14 @@ export const zh: Dictionary = {
 
   // --- settings.fonts ---
   "settings.fonts.title": "终端字体",
-  "settings.fonts.description": "仅影响本设备的终端镜像。",
+  "settings.fonts.description": "仅影响本设备的终端镜像和输入框。",
   "settings.fonts.family": "字体",
-  "settings.fonts.size": "字号",
+  "settings.fonts.size": "镜像文字",
+  "settings.fonts.draftSize": "输入框文字",
+  "settings.fonts.draftSize.hint":
+    "iOS 会固定为 16：在更小的输入框中输入时，Safari 会放大页面，且不会自动还原。",
+  "settings.fonts.draftSize.decrease": "缩小输入框文字",
+  "settings.fonts.draftSize.increase": "放大输入框文字",
   "settings.fonts.system": "系统默认",
 
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---

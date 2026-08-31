@@ -154,9 +154,14 @@ export const es: Dictionary = {
 
   // --- settings.fonts ---
   "settings.fonts.title": "Fuente de la terminal",
-  "settings.fonts.description": "Solo el espejo de la terminal, en este dispositivo.",
+  "settings.fonts.description": "El espejo de la terminal y el campo de mensaje, en este dispositivo.",
   "settings.fonts.family": "Familia",
-  "settings.fonts.size": "Tamaño",
+  "settings.fonts.size": "Texto del espejo",
+  "settings.fonts.draftSize": "Texto del mensaje",
+  "settings.fonts.draftSize.hint":
+    "iOS lo mantiene en 16: Safari amplía la página al escribir en cualquier campo más pequeño, y nunca vuelve a reducirla.",
+  "settings.fonts.draftSize.decrease": "Reducir el texto del mensaje",
+  "settings.fonts.draftSize.increase": "Aumentar el texto del mensaje",
   "settings.fonts.system": "Predeterminada del sistema",
 
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---

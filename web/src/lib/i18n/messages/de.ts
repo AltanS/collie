@@ -155,9 +155,14 @@ export const de: Dictionary = {
 
   // --- settings.fonts ---
   "settings.fonts.title": "Terminal-Schrift",
-  "settings.fonts.description": "Nur der Terminal-Spiegel, auf diesem Gerät.",
+  "settings.fonts.description": "Terminal-Spiegel und Eingabefeld, auf diesem Gerät.",
   "settings.fonts.family": "Schriftart",
-  "settings.fonts.size": "Größe",
+  "settings.fonts.size": "Spiegeltext",
+  "settings.fonts.draftSize": "Eingabetext",
+  "settings.fonts.draftSize.hint":
+    "iOS behält hier 16 bei — Safari zoomt die Seite in jedes kleinere Eingabefeld hinein und wieder heraus zoomt es nie.",
+  "settings.fonts.draftSize.decrease": "Eingabetext verkleinern",
+  "settings.fonts.draftSize.increase": "Eingabetext vergrößern",
   "settings.fonts.system": "Systemstandard",
 
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---

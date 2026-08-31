@@ -150,9 +150,14 @@ export const ko: Dictionary = {
 
   // --- settings.fonts ---
   "settings.fonts.title": "터미널 글꼴",
-  "settings.fonts.description": "이 기기의 터미널 화면에만 적용돼요.",
+  "settings.fonts.description": "이 기기의 터미널 화면과 입력란에 적용돼요.",
   "settings.fonts.family": "글꼴",
-  "settings.fonts.size": "크기",
+  "settings.fonts.size": "터미널 글자",
+  "settings.fonts.draftSize": "입력란 글자",
+  "settings.fonts.draftSize.hint":
+    "iOS에서는 16으로 고정돼요. 사파리는 16보다 작은 입력란에 커서를 두면 화면을 확대하고, 다시 되돌리지 않아요.",
+  "settings.fonts.draftSize.decrease": "입력란 글자 작게",
+  "settings.fonts.draftSize.increase": "입력란 글자 크게",
   "settings.fonts.system": "시스템 기본",
 
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---

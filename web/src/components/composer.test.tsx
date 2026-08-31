@@ -67,7 +67,7 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { wrap: true, fontSize: 11, fontFamily: "system", rawTerminal: false, tapToFocus: true },
+    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true },
     setWrap: vi.fn(),
     stepFontSize: vi.fn(),
     setRawTerminal: vi.fn(),
@@ -118,7 +118,7 @@ function renderComposerWithStatus(
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { wrap: true, fontSize: 11, fontFamily: "system", rawTerminal: false, tapToFocus: true },
+    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true },
     setWrap: vi.fn(),
     stepFontSize: vi.fn(),
     setRawTerminal: vi.fn(),
@@ -467,7 +467,7 @@ describe("Composer — send", () => {
               text="pane output"
               terminalDraft={null}
               rawTerminalDraft="leftover"
-              prefs={{ wrap: true, fontSize: 11, fontFamily: "system", rawTerminal: false, tapToFocus: true }}
+              prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true }}
               setWrap={vi.fn()}
               stepFontSize={vi.fn()}
               setRawTerminal={vi.fn()}
@@ -560,7 +560,7 @@ describe("Composer — send", () => {
       text: "pane output",
       terminalDraft: null,
       rawTerminalDraft: null,
-      prefs: { wrap: true, fontSize: 11, fontFamily: "system", rawTerminal: false, tapToFocus: true },
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true },
       setWrap: vi.fn(),
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),
@@ -656,7 +656,7 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ wrap: true, fontSize: 11, fontFamily: "system", rawTerminal: false, tapToFocus: true }}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true }}
             setWrap={vi.fn()}
             stepFontSize={vi.fn()}
             setRawTerminal={vi.fn()}
@@ -788,7 +788,7 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ wrap: true, fontSize: 11, fontFamily: "system", rawTerminal: false, tapToFocus: true }}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true }}
             setWrap={vi.fn()}
             stepFontSize={vi.fn()}
             setRawTerminal={vi.fn()}
@@ -979,7 +979,7 @@ describe("Composer — typing into the terminal", () => {
             text="pane output"
             terminalDraft={null}
             rawTerminalDraft={null}
-            prefs={{ wrap: true, fontSize: 11, fontFamily: "system", rawTerminal: false, tapToFocus: true }}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true }}
             setWrap={vi.fn()}
             stepFontSize={vi.fn()}
             setRawTerminal={vi.fn()}
@@ -1068,6 +1068,53 @@ describe("Composer — blocked pre-flight override", () => {
     expect(box).toHaveValue("use fable please");
     await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
   }, 15000);
+});
+
+// ── THE DRAFT FIELD'S SIZE ────────────────────────────────────────────────────────────────────
+//
+// The field used to be pinned to the primitive's 16px — not as a design choice, but because a
+// sub-16px focused input makes iOS Safari zoom the whole page and never zoom back. That fact is now
+// a floor inside `applyDraftFontSize`, so everywhere else gets the operator's own number.
+//
+// PINNED ON THE STYLE, not on a measurement: jsdom lays nothing out, so `getComputedStyle` would
+// only read back the inline value anyway. The inline style IS the contract here — it is what
+// outranks the `.font-mono` class (hooks/use-display-prefs.ts says why that class cannot be
+// re-pointed with a custom property).
+describe("Composer — the draft field wears its own size", () => {
+  it("applies the operator's draft size, merged with the terminal face and not replacing it", () => {
+    renderComposerWithStatus({
+      prefs: {
+        wrap: true,
+        fontSize: 11,
+        draftFontSize: 13,
+        fontFamily: "jetbrains",
+        rawTerminal: false,
+        tapToFocus: true,
+      },
+    });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    expect(box.style.fontSize).toBe("13px");
+    expect(box.style.fontFamily).toContain("JetBrains Mono");
+  });
+
+  it("writes the size even for the default family, where no font-family is written at all", () => {
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    expect(box.style.fontSize).toBe("14px"); // the fixture's default
+    // The stylesheet's own `--font-mono` still applies, byte for byte as before the size existed.
+    expect(box.style.fontFamily).toBe("");
+    expect(box.className).toMatch(/(?:^|\s)font-mono(?=\s|$)/);
+  });
+
+  // The three things the field's class list already promises, unchanged by the size landing on it:
+  // the attach button's reserved strip, the wrap rule, and the fact that only ONE pr-* may exist
+  // (tailwind-merge keeps the last, DESIGN.md §7).
+  it("leaves the attach-button gutter and the wrap rule exactly where they were", () => {
+    renderComposerWithStatus();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    expect(box.className.match(/(?:^|\s)pr-\S+/g)).toHaveLength(1);
+    expect(box.className).toMatch(/(?:^|\s)pr-11(?=\s|$)/);
+  });
 });
 
 // ── §1: EVERY IN-FLOW STRIP IN THIS FOOTER ARRIVES THROUGH `Collapse` ─────────────────────────
@@ -1645,7 +1692,7 @@ function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> 
       readOnly: false,
       dialogPresent: false,
       text: "pane output",
-      prefs: { wrap: true, fontSize: 11, fontFamily: "system", rawTerminal: false, tapToFocus: true },
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true },
       setWrap: vi.fn(),
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),
@@ -1916,7 +1963,7 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
       text: "pane output",
       terminalDraft: draft,
       rawTerminalDraft: draft,
-      prefs: { wrap: true, fontSize: 11, fontFamily: "system", rawTerminal: false, tapToFocus: true },
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true },
       setWrap: vi.fn(),
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),
@@ -2458,7 +2505,7 @@ describe("Composer — draft persistence", () => {
       text: "pane output",
       terminalDraft: null,
       rawTerminalDraft: null,
-      prefs: { wrap: true, fontSize: 11, fontFamily: "system", rawTerminal: false, tapToFocus: true },
+      prefs: { wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true },
       setWrap: vi.fn(),
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),

@@ -165,11 +165,16 @@ export const en = {
   "settings.typeface.note.aldrich": "One weight — bold is thickened by your browser.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
 
-  // --- settings.fonts (the terminal mirror's face and size; NOT the app's own typeface) ---
+  // --- settings.fonts (the terminal face: the mirror's size and the draft field's; NOT the app's own typeface) ---
   "settings.fonts.title": "Terminal font",
-  "settings.fonts.description": "The terminal mirror only, on this device.",
+  "settings.fonts.description": "The terminal mirror and the draft field, on this device.",
   "settings.fonts.family": "Family",
-  "settings.fonts.size": "Size",
+  "settings.fonts.size": "Mirror text",
+  "settings.fonts.draftSize": "Draft text",
+  "settings.fonts.draftSize.hint":
+    "iOS keeps this at 16 — Safari zooms the page into any smaller field you type in, and never zooms back out.",
+  "settings.fonts.draftSize.decrease": "Decrease draft text size",
+  "settings.fonts.draftSize.increase": "Increase draft text size",
   "settings.fonts.system": "System default",
 
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
