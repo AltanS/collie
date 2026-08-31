@@ -326,15 +326,16 @@ describe("the header — the stacked identity", () => {
     expect(container.querySelector('img[src*="logo"]')).toBeNull();
   });
 
-  // THE SHAPE, AND THE BROWSER FACT UNDER IT. The two runs used to share one line, so the brand's
-  // ~55px came out of the multiplexer name's budget and the name was what got the ellipsis — the
-  // operator's screenshot had it down to a single letter. Stacked, they no longer compete: a flex
-  // COLUMN's max-content width is its WIDEST child's, so the 11px brand line can neither raise nor
-  // lower the width this block asks the row for. That measurement is the mux line's alone, and the
-  // brand — the shorter run inside a box the longer run sized — is what clips first if anything
-  // does. Pinned as classes because that is where the fact lives: `flex-col` is the inversion,
-  // `min-w-0` is what lets the block shrink instead of pushing the gear off the row, and `truncate`
-  // on BOTH lines is the promise that neither overflows it.
+  // THE SHAPE. The two runs used to share one line, so the brand's ~55px came out of the
+  // multiplexer name's budget and the name was what got the ellipsis — the operator's screenshot
+  // had it down to a single letter. Stacked, they no longer compete — and the brand is OUT OF FLOW
+  // (`absolute bottom-full`), so the block's width and height are the mux line's alone. That is
+  // what parks "on <mux>" on the row's one centred line, shared with the chips and the gear, with
+  // the eyebrow riding above it (see the identity comment in app-header.tsx for the arithmetic).
+  // Pinned as classes because that is where the fact lives: `relative` on the block anchors the
+  // eyebrow, `min-w-0` is what lets the block shrink instead of pushing the gear off the row,
+  // `max-w-full` clips the eyebrow to the width the mux line sized, and `truncate` on BOTH lines
+  // is the promise that neither overflows it.
   it("stacks the brand over the multiplexer instead of racing it for one line's width", async () => {
     server.use(
       http.get("/api/config", () =>
@@ -351,10 +352,12 @@ describe("the header — the stacked identity", () => {
     await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
     const block = container.querySelector<HTMLElement>('[data-slot="header-identity"]');
     expect(block).not.toBeNull();
-    expect(block?.className).toContain("flex-col");
+    expect(block?.className).toContain("relative");
     expect(block?.className).toContain("min-w-0");
     const [brand, muxLine] = Array.from(block?.children ?? []);
-    expect(brand?.textContent).toBe("Collie"); // the brand is the TOP line
+    expect(brand?.textContent).toBe("Collie"); // the brand is the TOP line…
+    expect(brand?.className).toContain("bottom-full"); // …and out of flow, above the block
+    expect(brand?.className).toContain("max-w-full");
     expect(muxLine?.textContent).toBe("on reference");
     expect(brand?.className).toContain("truncate");
     expect(muxLine?.className).toContain("truncate");
@@ -362,12 +365,13 @@ describe("the header — the stacked identity", () => {
 
   // THE HEIGHT CONTRACT, which the stack had to fit inside rather than grow (DESIGN.md §2, §6).
   // The row is `min-h-15` — 60px — with `py-1`, so its content box is 52px and its tallest child is
-  // the mark's 44px tap box. The brand line is an arbitrary 11px and therefore takes the inherited
-  // 1.5 body leading: a 16.5px line box. The mux line is `text-base` — 16px on a 24px line box.
-  // 16.5 + 24 = 40.5px, under the mark's 44px, so the block is NOT the tallest child and the row
-  // still measures 60px on every route. jsdom lays nothing out, so what is asserted is the two
-  // sizes that arithmetic is made of: raise either tier and this fails, which is the point — the
-  // number has to be re-measured before the row is allowed to grow.
+  // the mark's 44px tap box. The block contributes only the mux line — `text-base`, 16px on a 24px
+  // line box — because the brand is out of flow; the brand is an arbitrary 11px at `leading-none`
+  // (the inherited 1.5 would draw 16.5px and put its top 5.5px higher, past the row's top padding).
+  // From the centred block's top at 18px, 11px of eyebrow reaches to 7px from the row's edge —
+  // inside the box. jsdom lays nothing out, so what is asserted is the sizes that arithmetic is
+  // made of: raise either tier or drop `leading-none` and this fails, which is the point — the
+  // numbers have to be re-measured before the row is allowed to change.
   it("spends the two lines inside the row's existing 60px floor", async () => {
     server.use(
       http.get("/api/config", () =>
@@ -384,8 +388,9 @@ describe("the header — the stacked identity", () => {
     await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
     const block = container.querySelector<HTMLElement>('[data-slot="header-identity"]');
     const [brand, muxLine] = Array.from(block?.children ?? []);
-    expect(brand?.className).toContain("text-[11px]"); // 16.5px line box
-    expect(muxLine?.className).toContain("text-base"); // 24px line box
+    expect(brand?.className).toContain("text-[11px]"); // 11px…
+    expect(brand?.className).toContain("leading-none"); // …on an 11px line box, not 16.5px
+    expect(muxLine?.className).toContain("text-base"); // 24px line box — the block's whole height
     const row = container.querySelector('header [data-slot="header-row"]');
     expect(row?.className).toContain("min-h-15");
     expect(row?.className).not.toMatch(/(^|\s)h-\d/);

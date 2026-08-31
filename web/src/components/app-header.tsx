@@ -256,12 +256,11 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                     line ran out of room inside the multiplexer's NAME, the one word here the reader
                     does not already know; the operator's screenshot had it down to a single letter.
                     Stacking inverts what gives way. The two runs no longer compete for one line's
-                    width, so the brand costs the name nothing and the name gets the whole block.
-                    THE BROWSER FACT this rests on: a flex COLUMN's max-content width is its widest
-                    child's, so the 11px brand line can neither raise nor lower the width this block
-                    asks the row for — that measurement is the mux line's alone. Both lines still
-                    carry `truncate`, and the brand is the one that clips first in practice, because
-                    it is the shorter run inside a box the longer run sized.
+                    width, so the brand costs the name nothing and the name gets the whole block —
+                    the width this block asks the row for is the mux line's alone (the brand is out
+                    of flow, see below). Both lines still carry `truncate`, and the brand is the one
+                    that clips first, because it is the shorter run inside a box the longer run
+                    sized.
 
                     The brand wears the app's EXISTING 11px uppercase tracked tier — `SectionLabel`,
                     DESIGN.md §1 — and not a new type style. It reads as the eyebrow over the line
@@ -269,16 +268,29 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                     under this collie is what a support question needs; that the app is called Collie
                     is not.
 
-                    THE ROW'S HEIGHT DOES NOT MOVE, and this is the arithmetic (DESIGN.md §2, §6).
-                    The row is `min-h-15` (60px) with `py-1`, so its content box is 52px and its
-                    tallest child is the mark's 44px tap box. The brand line is an arbitrary 11px and
-                    therefore takes the inherited 1.5 body leading — a 16.5px line box; the mux line
-                    is `text-base`, 16px on a 24px line box. 16.5 + 24 = 40.5px, under the mark's
-                    44px, so this block is not the tallest child and the row still measures exactly
-                    60px on every route. Neither line needed its leading tightened. The mux logo does
-                    not change that either: it is 1.15em on a -0.2em baseline shift, so it reaches
-                    15.2px above the baseline against the 16px text's own 16.8px — inside the line
-                    box the type already asked for.
+                    THE MUX LINE IS THE BLOCK'S ONLY FLOW CHILD; the brand rides above it out of
+                    flow. This is what puts "on <mux>" on the same visual line as the row's other
+                    centred children (the host/session chips, the gear): the row centres every
+                    child, so whatever height this block CONTRIBUTES is what gets centred — and
+                    when it contributed both lines (40.5px), the mux line's centre landed 8px below
+                    everything else's, which read as the right cluster floating on its own line
+                    between the two left ones. With the eyebrow absolute (`bottom-full`), the block
+                    contributes exactly the mux line's 24px box, so that line's centre IS the row's
+                    centre, shared with every chip. The alignment holds by construction, not by a
+                    compensating offset that would drift the next time a size changes.
+
+                    THE ROW'S HEIGHT STILL DOES NOT MOVE (DESIGN.md §2, §6). The row is `min-h-15`
+                    (60px) with `py-1`, a 52px content box, and its tallest child is the mark's 44px
+                    tap box — this block now contributes 24px, less than before, so nothing grows.
+                    The eyebrow is 11px at `leading-none` (the arbitrary size would otherwise take
+                    the body's 1.5 and draw 16.5px): from the block's top at 18px it reaches up to
+                    7px from the row's top edge, inside the row's own box with the top padding to
+                    spare. An out-of-flow child adds no width either — this block is sized by the
+                    mux line alone, which the old flex column already guaranteed in practice (the
+                    brand is the shorter run) and this makes true by construction; `max-w-full`
+                    keeps the eyebrow clipping to that width, so it still truncates first. The mux
+                    logo changes none of it: 1.15em on a -0.2em baseline shift stays inside the
+                    line box the type already asked for.
 
                     It rides WITH the wordmark claim (dashboard + space, never the pane, where the
                     breadcrumb owns the width) and sits OUTSIDE the home button, as the mux line
@@ -287,8 +299,10 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                     is the mark's own 44px box and nothing else — the floor §6 asks for, and the same
                     box the gear at the other end of the row has. */}
                 {claim.wordmark && (
-                  <div data-slot="header-identity" className="flex min-w-0 flex-col">
-                    <SectionLabel className="truncate">Collie</SectionLabel>
+                  <div data-slot="header-identity" className="relative min-w-0">
+                    <SectionLabel className="absolute bottom-full left-0 max-w-full truncate leading-none">
+                      Collie
+                    </SectionLabel>
                     {/* The line the freed width is FOR — "on <mux>", the sentence the brand line
                         above starts. `min-h-6` RESERVES it whether or not a name has arrived:
                         nothing renders until a bridge has actually named one (an old bridge, a
@@ -301,7 +315,7 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                         that makes two stacked runs one sentence rather than two loose labels, and it
                         is the only translated word here — the brand and the multiplexer's own name
                         are names, and names are not translated. */}
-                    <span className="min-h-6 truncate text-base">
+                    <span className="block min-h-6 truncate text-base">
                       {mux !== "" && (
                         <>
                           {t("nav.mux.onPrefix")}{" "}
