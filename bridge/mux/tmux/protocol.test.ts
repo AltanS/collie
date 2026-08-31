@@ -139,6 +139,32 @@ describe("parseListing", () => {
     expect(parsed.panes).toHaveLength(1);
   });
 
+  test("tmux 3.4 prints the separator as the text `\\037`, and it parses to the same records", () => {
+    // Byte-exact from a tmux 3.4 herd (Ubuntu 24.04), where `od -c` showed `\ 0 3 7` as four
+    // separate characters where the byte should be. 3.6b does not escape it, which is the whole
+    // reason this shape was never seen: on 3.4 every line failed the split, the listing parsed to
+    // ZERO rows at exit code 0, and the bridge stored an empty herd while reporting `connected`.
+    const escaped = listing.replaceAll(SEP, "\\037");
+    expect(escaped).toContain("S\\037$0\\0372");
+    expect(escaped).not.toContain(SEP);
+    expect(parseListing(escaped)).toEqual(parseListing(listing));
+  });
+
+  test("only the separator is un-escaped — a title that spells it is left alone", () => {
+    // On an escaping tmux a real backslash arrives doubled, so `\\037` is the operator's text and
+    // not a separator. Un-escaping the vis alphabet wholesale would rewrite it on a guess.
+    const line = ["P", "%2", "@0", "$0", "0", "0", "0", "24", "0", "host", "/tmp", "bash", "spells \\\\037 here"]
+      .join(SEP)
+      .replaceAll(SEP, "\\037");
+    expect(parseListing(line).panes.at(0)?.title).toBe("spells \\\\037 here");
+  });
+
+  test("a line that carries the raw byte is never rewritten by the escape reader", () => {
+    // This tmux is not escaping anything, so a literal `\037` in a title is text the operator typed.
+    const line = ["P", "%3", "@0", "$0", "0", "0", "0", "24", "0", "host", "/tmp", "bash", "literal \\037 text"].join(SEP);
+    expect(parseListing(line).panes.at(0)?.title).toBe("literal \\037 text");
+  });
+
   test("a client record carries its tty — the only handle `switch-client` accepts", () => {
     const client = parseListing(["C", "collie-tmux", "0", "42", "/dev/pts/3"].join(SEP)).clients.at(0);
     expect(client).toEqual({ sessionId: "collie-tmux", control: false, activity: 42, tty: "/dev/pts/3" });
@@ -162,6 +188,11 @@ describe("parseCreated", () => {
       sessionName: "collie-live",
       cwd: "/tmp",
     });
+  });
+
+  test("a create line escaped the tmux 3.4 way is the same creation", () => {
+    const raw = ["%17", "@16", "$5", "collie-live", "/tmp"].join(SEP);
+    expect(parseCreated(raw.replaceAll(SEP, "\\037"))).toEqual(parseCreated(raw));
   });
 
   test("anything without a pane id is not a creation", () => {

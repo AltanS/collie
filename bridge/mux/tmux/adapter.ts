@@ -290,8 +290,39 @@ export class TmuxMux implements MuxAdapter {
       throw new Error(`tmux list: ${result.stderr.trim() || `exited ${String(result.code)}`}`);
     }
     const listing = parseListing(result.stdout);
+    // PARSED TO ZERO IS NOT AN EMPTY HERD. tmux said something and none of it became a record, so
+    // this adapter is reading a dialect it does not know — the tmux 3.4 case that started this
+    // (protocol.ts § unescapeSeparators), or the next one after it. Stored as an empty herd it is
+    // invisible: no log line, `bridge: connected`, doctor green, app blind. Thrown, it takes the
+    // same path a non-zero exit takes — the bridge marks the mux disconnected and prints one line.
+    if (isParsedToNothing(listing, result.stdout)) {
+      throw new Error(`tmux list: ${await this.unparsableDetail(result.stdout)}`);
+    }
     this.forgetGonePanes(listing);
     return listing;
+  }
+
+  /**
+   * The one sentence the operator gets when tmux answered and nothing parsed.
+   *
+   * It names the likeliest cause and the version it happened on, because the version IS the
+   * diagnosis here: the escaping is tmux's, not this herd's. Asked only on this path, and only when
+   * it is not already known — a probe that fails leaves the sentence version-less rather than
+   * turning one fault into two.
+   */
+  private async unparsableDetail(stdout: string): Promise<string> {
+    const version = this.tmuxVersion ?? (await this.probeVersion());
+    const named = version === null ? "an unreported tmux version" : `tmux ${version}`;
+    return `output did not parse — unexpected separator escaping? ${named}, ${String(countLines(stdout))} lines, 0 rows`;
+  }
+
+  /** Ask the server its version, best-effort. Never throws — it is only ever decorating an error. */
+  private async probeVersion(): Promise<string | null> {
+    const probe = await this.attemptRun([...TMUX_VERSION_ARGS]);
+    if (!probe.ok) return null;
+    const version = readVersion(probe.value.stdout.split("\n").at(0));
+    if (version !== null) this.tmuxVersion = version;
+    return version;
   }
 
   /** Drop the remembered label of every pane tmux no longer lists. The map's only shrink path. */
@@ -644,6 +675,28 @@ function refusalFor(result: TmuxRunResult): MuxRefusalOutcome {
   if (saysMissing(detail)) return muxGone(detail);
   if (saysNoServer(detail)) return muxUnreachable(detail);
   return muxRefused(detail);
+}
+
+/** Lines of tmux output that actually carried something. Blank lines are not an answer. */
+function countLines(stdout: string): number {
+  return stdout.split("\n").filter((line) => line.length > 0).length;
+}
+
+/**
+ * tmux answered with text, and not one line of it became a record.
+ *
+ * The two halves are both needed. An EMPTY stdout is a real, ordinary answer — a server with no
+ * sessions at all — and must stay an empty herd. Text with zero rows never is: the listing asks for
+ * four sections and tmux prints at least one line per session it has.
+ */
+function isParsedToNothing(listing: TmuxListing, stdout: string): boolean {
+  if (countLines(stdout) === 0) return false;
+  return (
+    listing.sessions.length === 0 &&
+    listing.windows.length === 0 &&
+    listing.panes.length === 0 &&
+    listing.clients.length === 0
+  );
 }
 
 /** What `display-message -p -F '#{version}'` said, trimmed, or `null` when it said nothing usable. */

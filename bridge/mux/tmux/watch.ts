@@ -30,7 +30,7 @@
 
 import type { MuxSubscription, MuxWatchOptions } from "../types.ts";
 import type { TmuxControlClient, TmuxExec } from "./exec.ts";
-import { classifyControlLine, controlArgs, SEP, saysNoServer } from "./protocol.ts";
+import { classifyControlLine, controlArgs, SEP, saysNoServer, unescapeSeparators } from "./protocol.ts";
 
 /**
  * How often the census poll runs.
@@ -182,7 +182,10 @@ export class TmuxWatch implements MuxSubscription {
     if (result.code !== 0 && saysNoServer(result.stderr)) return null;
     // A non-zero exit that is NOT "no server" (an empty server answers `no current session`) still
     // tells the truth: no panes. An empty herd is a state, not a failure.
-    const listing = result.code === 0 ? result.stdout : "";
+    // Un-escaped here rather than at each split: tmux 3.4 prints the separator as the five
+    // characters `\037` (protocol.ts § unescapeSeparators), and `lastListing` is read again by
+    // {@link worthAttaching}.
+    const listing = result.code === 0 ? unescapeSeparators(result.stdout) : "";
     const sessionIds: string[] = [];
     for (const line of listing.split("\n")) {
       const sessionId = line.split(SEP).at(2);

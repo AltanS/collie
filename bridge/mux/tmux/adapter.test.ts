@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { TmuxMux } from "./adapter.ts";
+import type { TmuxControlClient, TmuxExec, TmuxRunResult } from "./exec.ts";
 import { FakeTmux } from "./fixture.ts";
 
 // THE THINGS CONFORMANCE CANNOT ASK FOR, pinned here on the real adapter over the real fake.
@@ -279,5 +280,50 @@ describe("focus follows a real terminal, not this adapter's own watch", () => {
     if (moved.ok) throw new Error("unreachable");
     expect(moved.reason).toBe("gone");
     expect(fake.invocations().some((invocation) => invocation.at(0) === "select-window")).toBe(false);
+  });
+});
+
+/**
+ * A tmux that answers every command with one fixed page of text, at exit code 0.
+ *
+ * The one thing FakeTmux cannot be: a tmux whose OUTPUT SHAPE this adapter does not understand.
+ * The fake speaks the adapter's own dialect by construction, so the fault below — a real herd, a
+ * clean exit, and not one parsable row — has to be staged with a transport this thin.
+ */
+class TalkativeTmux implements TmuxExec {
+  constructor(private readonly stdout: string) {}
+
+  run(): Promise<TmuxRunResult> {
+    return Promise.resolve({ code: 0, stdout: this.stdout, stderr: "" });
+  }
+
+  control(): TmuxControlClient {
+    return { kill: () => undefined };
+  }
+}
+
+describe("a tmux whose output does not parse", () => {
+  test("a listing that yields no rows is an error, never an empty herd", async () => {
+    // The tmux 3.4 fault in one assertion. tmux answered, exit code 0, three sessions' worth of
+    // text — and the separator arrived vis-escaped, so every line failed the split. Returned as an
+    // empty herd it is invisible: no log line, `bridge: connected`, doctor green, the app blind.
+    const garbage = ["not a record at all", "nor this one", "or this"].join("\n");
+    await expect(new TmuxMux(new TalkativeTmux(garbage)).snapshot()).rejects.toThrow(/did not parse/u);
+  });
+
+  test("the error names the likely cause and the version it happened on", async () => {
+    // The version IS the diagnosis: the escaping is tmux's, not this herd's. `#{version}` is the
+    // only field this stub answers, so the sentence carries it.
+    await expect(new TmuxMux(new TalkativeTmux("3.4")).snapshot()).rejects.toThrow(
+      /unexpected separator escaping\? tmux 3\.4/u,
+    );
+  });
+
+  test("a server with no sessions at all stays an ordinary empty herd", async () => {
+    // The other half of the guard, and the reason it is not "zero rows is always a fault": tmux
+    // prints NOTHING for a server with no sessions, and that is a true answer.
+    const snapshot = await new TmuxMux(new TalkativeTmux("")).snapshot();
+    expect(snapshot.panes).toEqual([]);
+    expect(snapshot.spaces).toEqual([]);
   });
 });

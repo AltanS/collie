@@ -21,6 +21,43 @@
 /** Field separator inside one `-F` record. See the header for why it is this byte. */
 export const SEP = "\u001f";
 
+/**
+ * The same separator as tmux 3.4 PRINTS it: the four characters `\037`, not the byte.
+ *
+ * tmux vis-escapes non-printable bytes on their way out of a `-F` format. 3.6b — the version this
+ * adapter was probed on — does not, which is why this went unseen until a tmux 3.4 herd parsed to
+ * ZERO rows at exit code 0: every line failed the split, the bridge stored an empty herd and still
+ * reported `connected`. Both shapes are accepted now, and the listing's caller refuses a non-empty
+ * output that yielded nothing (adapter.ts § listing) so the same fault can never be silent again.
+ */
+const ESCAPED_SEP = /(\\+)037/gu;
+
+/**
+ * Put tmux's PRINTED separator back to the byte, and touch nothing else.
+ *
+ * Only the separator is un-escaped, never the whole vis alphabet: decoding a pane title's own
+ * escapes would need tmux's exact `vis` dialect and would rewrite operator text on a guess. The
+ * separator is the one sequence the parse cannot survive without.
+ *
+ * Two guards keep an honest field safe. A line that already carries the raw byte came from a tmux
+ * that is NOT escaping, so a literal `\037` in a title there is the operator's own text and stays.
+ * And on an escaping tmux a real backslash arrives doubled, so only an ODD run of backslashes is
+ * the escape — a title that spells `\037` arrives as `\\037` and stays.
+ */
+export function unescapeSeparators(stdout: string): string {
+  if (!stdout.includes("\\0")) return stdout;
+  return stdout
+    .split("\n")
+    .map((line) =>
+      line.includes(SEP)
+        ? line
+        : line.replace(ESCAPED_SEP, (match, slashes: string) =>
+            slashes.length % 2 === 1 ? `${slashes.slice(0, -1)}${SEP}` : match,
+          ),
+    )
+    .join("\n");
+}
+
 /** Which section a `-F` line belongs to. The first field of every record. */
 const SESSION_TAG = "S";
 const WINDOW_TAG = "W";
@@ -214,7 +251,7 @@ export function parseListing(stdout: string): TmuxListing {
   const windows: TmuxWindow[] = [];
   const panes: TmuxPaneRecord[] = [];
   const clients: TmuxClient[] = [];
-  for (const line of stdout.split("\n")) {
+  for (const line of unescapeSeparators(stdout).split("\n")) {
     if (line.length === 0) continue;
     if (line.startsWith(SESSION_TAG + SEP)) {
       const [, id, windowCount, activity, name] = fields(line, 5);
@@ -271,7 +308,9 @@ export function parseListing(stdout: string): TmuxListing {
 
 /** Parse the one line a `-P -F` create call prints, or null when tmux printed something else. */
 export function parseCreated(stdout: string): TmuxCreated | null {
-  const line = stdout.split("\n").find((candidate) => candidate.length > 0);
+  const line = unescapeSeparators(stdout)
+    .split("\n")
+    .find((candidate) => candidate.length > 0);
   if (line === undefined) return null;
   const [paneId, windowId, sessionId, sessionName, cwd] = fields(line, 5);
   if (paneId === undefined || windowId === undefined || sessionId === undefined) return null;
