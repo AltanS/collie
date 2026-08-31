@@ -214,7 +214,15 @@ export function SpaceOverview({
                     )}
                     <span className="min-w-0 flex-1 truncate font-medium">{w.label}</span>
                     {/* One count plus a relative time is what a 390px row has room for — the tab
-                        count went, the pane count is the useful one. */}
+                        count went, the pane count is the useful one. Time before count, count last:
+                        matches every other list in the app, and the count chip anchors the right
+                        edge whether or not a row has a timestamp, so rows with and without one
+                        still line up. */}
+                    {seen > 0 && (
+                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                        {timeAgo(seen)}
+                      </span>
+                    )}
                     <span
                       aria-label={tn("space.overview.paneCount", w.paneCount)}
                       className="inline-flex shrink-0 items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
@@ -222,11 +230,6 @@ export function SpaceOverview({
                       <LayoutGrid className="size-3.5" aria-hidden />
                       {w.paneCount}
                     </span>
-                    {seen > 0 && (
-                      <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                        {timeAgo(seen)}
-                      </span>
-                    )}
                   </div>
                 </button>
               );

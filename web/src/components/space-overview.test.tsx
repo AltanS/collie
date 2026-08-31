@@ -174,4 +174,18 @@ describe("SpaceOverview — recency", () => {
     render(view({ workspaces: [ws("w1", "alpha", 1, 1)] }));
     expect(screen.queryByText(/ago|just now/i)).not.toBeInTheDocument();
   });
+
+  // Consistency rule: a time sits left of the counts in every list, so the pane-count
+  // chip must render after the relative-time text within the row.
+  it("places the relative time before the pane-count chip in the row", () => {
+    render(
+      view({
+        workspaces: [ws("w1", "alpha", 1, 1)],
+        agents: [pane({ paneId: "w1:p1", workspaceId: "w1", lastSeenAt: 100 })],
+      }),
+    );
+    const time = screen.getByText(/ago|just now/i);
+    const count = screen.getByLabelText("1 pane");
+    expect(time.compareDocumentPosition(count) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
