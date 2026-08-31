@@ -1,6 +1,16 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Codex paints submitted user messages onto a near-white terminal-width row. The mirror's light
+   theme inversion turns that fill nearly black; on a narrow phone it reads as a heavy black bar
+   rather than message emphasis. The codex adapter marks only that exact ANSI fill. Desktop keeps
+   the native TUI background, while phone width makes it transparent without touching diff colours. */
+@media (max-width: 640px) {
+  .terminal-mobile-transparent-bg {
+    background-color: transparent !important;
+  }
+}
+
 /* `dark:` must fire for BOTH an explicitly-pinned dark root and a system-dark root the user hasn't
    pinned to light — otherwise the handful of literal `dark:` utilities silently stop working for
    everyone on System (the default). Token-driven colors don't need this; these are the literals. */

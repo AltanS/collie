@@ -22,6 +22,10 @@ export interface AnsiSegment {
   style: CSSProperties;
   /** True when the segment contains only box-drawing/rule glyphs; the renderer mutes it. */
   muted: boolean;
+  /** Adapter-owned presentation hint: retain the ANSI background on desktop, but suppress it at
+   *  phone width. Codex uses this for its terminal-wide near-white user-message fill, which the
+   *  light-theme mirror inversion otherwise turns into a solid black bar. */
+  mobileTransparentBg?: true;
 }
 
 // The 16 indexed ANSI slots, emitted as CSS variables rather than literal hex. index.css defines
