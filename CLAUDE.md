@@ -1,9 +1,11 @@
 # CLAUDE.md — working agreement for this repo
 
-**Collie** (repo `AltanS/collie`) — a phone web UI for your Herdr agent herd, served over
-Tailscale. A mobile-first PWA (Vite + React + TS + Tailwind v4 + shadcn) plus a Bun/TS bridge that
-talks to Herdr's Unix socket, letting you monitor and reply to agents from a phone. The Herdr
-plugin id is `herdr.collie` (manifest: `herdr-plugin.toml`). Orientation:
+**Collie** (repo `AltanS/collie`) — a phone web UI for the AI agents running in your terminal,
+served over Tailscale. A mobile-first PWA (Vite + React + TS + Tailwind v4 + shadcn) plus a Bun/TS
+bridge that mirrors ONE multiplexer per install — Herdr, tmux or zellij — letting you monitor and
+reply to agents from a phone. Herdr is one adapter among the three, not the product: it is the
+default, it is the only one that talks over a Unix socket, and its plugin route stays supported —
+plugin id `herdr.collie` (manifest: `herdr-plugin.toml`). Orientation:
 [`README.md`](./README.md) · [`ARCHITECTURE.md`](./ARCHITECTURE.md) · the UI's visual
 language [`DESIGN.md`](./DESIGN.md) · verified API [`HERDR_API.md`](./HERDR_API.md) ·
 decisions [`.adr/`](./.adr/) · adding a harness

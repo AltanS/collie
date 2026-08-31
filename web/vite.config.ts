@@ -161,7 +161,7 @@ export default defineConfig({
       manifest: {
         name: "Collie",
         short_name: "Collie",
-        description: "Monitor and reply to your Herdr agent herd from your phone",
+        description: "Monitor and reply to your terminal AI agents from your phone",
         id: "/",
         start_url: "/",
         scope: "/",

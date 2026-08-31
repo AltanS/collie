@@ -12,8 +12,10 @@ beacons that tell Collie an agent is in a pane at all.
 > `zellij: …` and say which multiplexer and version, which OS, and what you saw — what worked as much
 > as what did not.
 
-Collie drives **one** multiplexer per install, named by `COLLIE_MUX`. The two walkthroughs below get
-you from a `.env` to a dashboard listing your own windows. The reference for every key is
+Collie drives **one** multiplexer per install, named by `COLLIE_MUX` — or picked at the first
+`start`, which probes for Herdr, tmux and zellij and asks when that key is unset, then writes your
+answer into the `.env`. The two walkthroughs below get you from a `.env` to a dashboard listing your
+own windows. The reference for every key is
 [`MUX_CONTRACT.md` → Pointing a collie at a multiplexer](../MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer);
 this section is the path through it, not a copy of it.
 

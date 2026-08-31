@@ -13,8 +13,8 @@ decides whether you need Herdr at all.** Herdr is the default, and that route wa
 | Tool | Why |
 | --- | --- |
 | [**Bun**](https://bun.sh) | Runs the bridge and builds the web UI — the only hard dependency. |
-| [**Herdr**](https://herdr.dev) ≥ 0.7.0 | **Only when Herdr is your multiplexer** — the default. The herd Collie mirrors; its CLI registers the plugin. On tmux or zellij, not needed at all. |
-| **A multiplexer** — Herdr (default), [tmux](https://github.com/tmux/tmux) or [zellij](https://zellij.dev) | What Collie mirrors, one per install, picked with `COLLIE_MUX`. **tmux and zellij are experimental in 1.0** — set them up from [Using the app on tmux or zellij](multiplexers.md#using-the-app-on-tmux-or-zellij). What each one can answer: [`MUX_CONTRACT.md`](../MUX_CONTRACT.md). |
+| [**Herdr**](https://herdr.dev) ≥ 0.7.0 | **Only when Herdr is your multiplexer** — the default one, and one of three. The herd Collie mirrors. On tmux or zellij, not needed at all. |
+| **A multiplexer** — Herdr (default), [tmux](https://github.com/tmux/tmux) or [zellij](https://zellij.dev) | What Collie mirrors, one per install, picked with `COLLIE_MUX` — or by the first `start`, which probes for all three and asks when that key is unset. **tmux and zellij are experimental in 1.0** — set them up from [Using the app on tmux or zellij](multiplexers.md#using-the-app-on-tmux-or-zellij). What each one can answer: [`MUX_CONTRACT.md`](../MUX_CONTRACT.md). |
 | [**Tailscale**](https://tailscale.com) | Front door for the default variant (`tailscale serve`); optional if you run [Variant C](../DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, Collie is `127.0.0.1`-only. |
 | **git** | Clone, and the `update` command. |
 
@@ -36,8 +36,10 @@ Push](voice-and-push.md#web-push-optional)).
 
 ## Install
 
-On the host, not your phone. Four ways in — a script, a clone you drive yourself, and two through
-Herdr. All four end in the same place: a checkout, a built UI, and a `collie` binary to run it with.
+On the host, not your phone. Four ways in — a script, a build you drive yourself, and two through
+Herdr. All four end in the same place: a `collie` on your PATH, a built UI, and one multiplexer to
+mirror. Herdr is the last two routes, not the first: it is one of the three multiplexers Collie
+drives, never a dependency of the program.
 
 ### The install script
 
@@ -85,12 +87,13 @@ sh scripts/collie-ctl.sh build
 bin/collie link
 ```
 
-Then the three steps the script ends by printing, which are yours either way:
+Then the steps the script ends by printing, which are yours either way:
 
 ```bash
 mkdir -p ~/.config/collie
 cp ~/.local/share/collie/.env.example ~/.config/collie/.env
-# name COLLIE_MUX in that file — herdr, tmux or zellij; or let the first `start` ask
+# optional: name COLLIE_MUX in that file — herdr, tmux or zellij.
+# Leave it out and the first `start` probes for all three and asks you.
 collie start
 ```
 

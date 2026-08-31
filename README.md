@@ -10,8 +10,10 @@
   <sub>A real Collie build running in the page against faked data.</sub>
 </p>
 
-A phone web UI for your [Herdr](https://herdr.dev) agent herd, served over Tailscale. Open a URL, see
-which agent is waiting on you, and answer it with your phone's keyboard.
+A phone web UI for the AI agents running in your terminal, served over Tailscale. Collie mirrors one
+multiplexer per install — [Herdr](https://herdr.dev), [tmux](https://github.com/tmux/tmux) or
+[zellij](https://zellij.dev) — so you can open a URL, see which agent is waiting on you, and answer it
+with your phone's keyboard.
 
 The reply box is an ordinary text field, so your phone's own voice dictation works in it — and if you
 want a mic that doesn't depend on the keyboard, Collie has its own
@@ -66,9 +68,9 @@ one thumb. Collie is that.
 
 ## Who is this for
 
-You, if you run [Herdr](https://herdr.dev) agents on a machine and want to pick a session back up
-from your phone. It assumes a **[Tailscale](https://tailscale.com) tailnet**: your phone and the host
-are on the same tailnet, and `tailscale serve` is the default way in. It is **single-user** — one
+You, if you run AI agents in a terminal on a machine — under Herdr, tmux or zellij — and want to
+pick a session back up from your phone. It assumes a **[Tailscale](https://tailscale.com) tailnet**:
+your phone and the host are on the same tailnet, and `tailscale serve` is the default way in. It is **single-user** — one
 operator, one tailnet, no multi-tenant auth. If you need shared or public access, Collie isn't built
 for it. Read the security note below either way.
 
@@ -87,17 +89,19 @@ the one page to read before you run anything below.
 
 ## Quickstart
 
-On the host, not your phone. Bun and git have to be there already; nothing here asks for `sudo`:
+On the host, not your phone. It needs `curl`, `tar` and a sha256 tool, no toolchain, and nothing
+here asks for `sudo`:
 
 ```bash
 curl -fsSL https://colliepwa.dev/install.sh | sh
 ```
 
-It clones, checks out the newest release, builds, puts `collie` on your PATH, and then stops and
-prints the three steps that are yours — seed a config, choose a multiplexer, `collie start`. The
-script is a convenience and never the only door: **[`docs/install.md`](./docs/install.md)** has the
-same steps spelled out by hand, plus the two Herdr routes and the Herdr-less one, the requirements
-table, and what the first `start` leaves on the host.
+It downloads the newest release for your platform, verifies its sha256, lays it down and puts
+`collie` on your PATH — then stops and prints the two steps that are yours: seed a config, and
+`collie start`. Naming a multiplexer is optional, because that first `start` probes for Herdr, tmux
+and zellij and asks you. The script is a convenience and never the only door:
+**[`docs/install.md`](./docs/install.md)** builds the same result from source right below it, plus
+the Herdr routes, the requirements table, and what the first `start` leaves on the host.
 
 ## Documentation
 
@@ -206,9 +210,10 @@ reverse proxy replaces the `tailscale serve` box; everything below the front doo
 
 Full design rationale in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
-## Developing this plugin
+## Developing
 
-Clone it and `herdr plugin link` it ([Install](./docs/install.md#install)), then edit in place.
+Clone it and build it ([Install → the same result, from
+source](./docs/install.md#the-same-result-from-source)), then edit in place.
 
 - **The manifest is the plugin.** `herdr-plugin.toml` declares the actions listed in
   [Herdr actions](./docs/commands.md#herdr-actions), and each one reaches — through the bootstrap shim

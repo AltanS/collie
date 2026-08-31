@@ -3,7 +3,7 @@
   "version": "1.0.0-beta.49",
   "private": true,
   "license": "MIT",
-  "description": "Collie — a mobile web UI to monitor and reply to your Herdr agent herd over Tailscale",
+  "description": "Collie — a mobile web UI to monitor and reply to the AI agents in your terminal, over Tailscale",
   "type": "module",
   "scripts": {
     "start": "bun run bridge/index.ts",
