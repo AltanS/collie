@@ -3,7 +3,7 @@
 // WHY THIS CARD BREAKS THE PAGE'S "MOUNT THE REAL COMPONENT" RULE, ON PURPOSE. Every other card
 // mounts real components with real props. This one cannot: the whole point is to see FOUR faces at
 // once, and there is only ever one app. So the specimen below is a rebuild of the app's own chrome —
-// the header and wordmark, a section label, status chips, a settings row, buttons, and the
+// the header's stacked identity, a section label, status chips, a settings row, buttons, and the
 // counts-heavy list that is most of the dashboard — using the same sizes, weights, tracking and
 // tokens the real components use. It is a stand-in, and it says so on the card.
 //
@@ -17,7 +17,8 @@
 // a subset in build-ui-font.sh, a computed fallback twin, an @font-face in index.css, an entry in
 // UI_FONT_URLS and a translated note in six dictionaries. This page is where you find out whether a
 // face is worth all of that, at real sizes, against the faces already there. Judge it at the 11px
-// uppercase tracked label and at the 18px wordmark, on a phone, in BOTH themes — that is where these
+// uppercase tracked label — which the header's own brand line now wears — and at the 16px
+// multiplexer line beside the mark, on a phone, in BOTH themes — that is where these
 // faces actually differ. The counts column is there because the dashboard is full of "14m", "(6)",
 // "p1", and a face whose figures are proportional makes that column jitter row to row.
 //
@@ -103,13 +104,18 @@ function Specimen({ face }: { face: FaceId }) {
       style={{ fontFamily: FACES[face].stack }}
       className="w-full overflow-hidden rounded-lg border border-border bg-background text-foreground"
     >
-      {/* Header + wordmark — the 18px tier, beside the mark it has to sit next to. */}
+      {/* The header's identity, STACKED as the real one is (app-header.tsx): the 11px uppercase
+          brand tier over the multiplexer line at 16px, both beside the mark. It is two lines here
+          for the same reason it is two there — a face has to be judged on the chrome the app
+          actually draws, and the app stopped drawing an 18px wordmark in this row. */}
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <CollieMark size={28} weight="header" />
-        <span className="text-lg font-semibold tracking-tight">Collie</span>
-        {/* The real header prints the multiplexer's own name from /api/config; the specimen
-            stands in for it, because the frontend never spells one (check-mux-names.sh). */}
-        <span className="text-[11px] text-muted-foreground">on the mux</span>
+        <div className="flex min-w-0 flex-col">
+          <SectionLabel>Collie</SectionLabel>
+          {/* The real header prints the multiplexer's own name from /api/config; the specimen
+              stands in for it, because the frontend never spells one (check-mux-names.sh). */}
+          <span className="truncate text-base">on the mux</span>
+        </div>
         <span className="ml-auto rounded-sm bg-muted px-2 py-1 text-[11px] font-medium">
           bluefin
         </span>

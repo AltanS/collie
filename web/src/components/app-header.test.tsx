@@ -67,14 +67,16 @@ describe("the header — the one shared shell", () => {
     expect(container.querySelector(".dog-gallop")).toBeNull(); // mark at rest (static icon)
     expect(screen.getByText("webapp › main")).toBeInTheDocument(); // the breadcrumb slot
     expect(screen.getByText("working")).toBeInTheDocument(); // the agent status badge
-    expect(screen.queryByText("Collie")).toBeNull(); // no wordmark in a pane
+    expect(screen.queryByText("Collie")).toBeNull(); // no brand line in a pane
+    // …and no identity block at all, not an empty one: the pane's width belongs to the breadcrumb.
+    expect(container.querySelector('[data-slot="header-identity"]')).toBeNull();
   });
 
-  it("is calm in the DASHBOARD variant while live — wordmark + settings gear, resting mark", () => {
+  it("is calm in the DASHBOARD variant while live — identity + settings gear, resting mark", () => {
     const { container } = renderHeader(
       <Header bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
     );
-    expect(screen.getByText("Collie")).toBeInTheDocument(); // wordmark
+    expect(screen.getByText("Collie")).toBeInTheDocument(); // the identity's brand line
     expect(container.querySelector(".dog-gallop")).toBeNull(); // mark at rest while live
     expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument();
   });
@@ -238,18 +240,21 @@ describe("the header — a quiet pack member is not the phone's connection", () 
   });
 });
 
-// "Collie on <mux>" — the header says what this collie drives, and the name arrives as DATA on the
-// one /api/config read. The fabricated name below is not any real multiplexer's, deliberately: it is
-// the standing proof that the line is PRINTED rather than recognised. A component that had learned a
-// name — a lookup table, a branch, a per-mux glyph — could not render this one at all.
-describe("the header — the multiplexer line", () => {
+// "Collie" over "on <mux>" — the header says what this collie drives, and the name arrives as DATA
+// on the one /api/config read. The fabricated name below is not any real multiplexer's, deliberately:
+// it is the standing proof that the line is PRINTED rather than recognised. A component that had
+// learned a name — a lookup table, a branch, a per-mux glyph — could not render this one at all.
+//
+// The block is TWO STACKED LINES, not one 18px sentence: on a phone the single line ran out of room
+// inside the multiplexer's own name. The structure cases below pin the shape that fixed it.
+describe("the header — the stacked identity", () => {
   beforeEach(() => {
     __resetConnectionHealth();
     __resetOperatorCommands(); // the store caches one read for the life of a page; each case is a page
   });
   afterEach(() => __resetOperatorCommands());
 
-  it("names whatever the bridge published, beside the wordmark", async () => {
+  it("names whatever the bridge published, under the brand line", async () => {
     server.use(
       http.get("/api/config", () =>
         HttpResponse.json({
@@ -261,7 +266,7 @@ describe("the header — the multiplexer line", () => {
     );
     renderHeader(<Header bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />);
     await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
-    expect(screen.getByText("Collie")).toBeInTheDocument(); // the wordmark it completes, still there
+    expect(screen.getByText("Collie")).toBeInTheDocument(); // the brand line it completes, still there
   });
 
   it("says nothing extra when the bridge published no mux block", async () => {
@@ -319,6 +324,87 @@ describe("the header — the multiplexer line", () => {
     );
     await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
     expect(container.querySelector('img[src*="logo"]')).toBeNull();
+  });
+
+  // THE SHAPE, AND THE BROWSER FACT UNDER IT. The two runs used to share one line, so the brand's
+  // ~55px came out of the multiplexer name's budget and the name was what got the ellipsis — the
+  // operator's screenshot had it down to a single letter. Stacked, they no longer compete: a flex
+  // COLUMN's max-content width is its WIDEST child's, so the 11px brand line can neither raise nor
+  // lower the width this block asks the row for. That measurement is the mux line's alone, and the
+  // brand — the shorter run inside a box the longer run sized — is what clips first if anything
+  // does. Pinned as classes because that is where the fact lives: `flex-col` is the inversion,
+  // `min-w-0` is what lets the block shrink instead of pushing the gear off the row, and `truncate`
+  // on BOTH lines is the promise that neither overflows it.
+  it("stacks the brand over the multiplexer instead of racing it for one line's width", async () => {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "reference", capabilities: {}, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+    const { container } = renderHeader(
+      <Header bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+    );
+    await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
+    const block = container.querySelector<HTMLElement>('[data-slot="header-identity"]');
+    expect(block).not.toBeNull();
+    expect(block?.className).toContain("flex-col");
+    expect(block?.className).toContain("min-w-0");
+    const [brand, muxLine] = Array.from(block?.children ?? []);
+    expect(brand?.textContent).toBe("Collie"); // the brand is the TOP line
+    expect(muxLine?.textContent).toBe("on reference");
+    expect(brand?.className).toContain("truncate");
+    expect(muxLine?.className).toContain("truncate");
+  });
+
+  // THE HEIGHT CONTRACT, which the stack had to fit inside rather than grow (DESIGN.md §2, §6).
+  // The row is `min-h-15` — 60px — with `py-1`, so its content box is 52px and its tallest child is
+  // the mark's 44px tap box. The brand line is an arbitrary 11px and therefore takes the inherited
+  // 1.5 body leading: a 16.5px line box. The mux line is `text-base` — 16px on a 24px line box.
+  // 16.5 + 24 = 40.5px, under the mark's 44px, so the block is NOT the tallest child and the row
+  // still measures 60px on every route. jsdom lays nothing out, so what is asserted is the two
+  // sizes that arithmetic is made of: raise either tier and this fails, which is the point — the
+  // number has to be re-measured before the row is allowed to grow.
+  it("spends the two lines inside the row's existing 60px floor", async () => {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: { name: "reference", capabilities: {}, unsupportedKeys: [], notes: {} },
+        }),
+      ),
+    );
+    const { container } = renderHeader(
+      <Header bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+    );
+    await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
+    const block = container.querySelector<HTMLElement>('[data-slot="header-identity"]');
+    const [brand, muxLine] = Array.from(block?.children ?? []);
+    expect(brand?.className).toContain("text-[11px]"); // 16.5px line box
+    expect(muxLine?.className).toContain("text-base"); // 24px line box
+    const row = container.querySelector('header [data-slot="header-row"]');
+    expect(row?.className).toContain("min-h-15");
+    expect(row?.className).not.toMatch(/(^|\s)h-\d/);
+  });
+
+  // A box with no line box inside it is 0px tall, so an absent name would let the brand line jump
+  // 24px upward the moment /api/config landed — content moved by a state, which DESIGN.md §2 forbids
+  // and which is exactly what `ui/one-of.tsx` reserves a slot for elsewhere. The mux line keeps its
+  // slot while it has nothing to say.
+  it("reserves the multiplexer's line before any name has arrived", async () => {
+    // The default handler publishes no mux block — an old bridge, or a read still in flight.
+    const { container } = renderHeader(
+      <Header bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+    );
+    await waitFor(() => expect(screen.getByText("Collie")).toBeInTheDocument());
+    const block = container.querySelector<HTMLElement>('[data-slot="header-identity"]');
+    const [, muxLine] = Array.from(block?.children ?? []);
+    expect(muxLine?.textContent).toBe(""); // no "on unknown" placeholder
+    expect(muxLine?.className).toContain("min-h-6"); // 24px, held open anyway
   });
 
   it("keeps the mux line out of the pane header, where the breadcrumb owns the width", async () => {

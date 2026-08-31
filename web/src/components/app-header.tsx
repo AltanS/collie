@@ -25,6 +25,7 @@ import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
 import { AlphaBar } from "@/components/alpha-bar";
 import { Collapse } from "@/components/ui/collapse";
+import { SectionLabel } from "@/components/ui/section-label";
 import type { BridgeStatus } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 
@@ -33,7 +34,7 @@ import type { Scope } from "@/lib/scope";
  *  a primitive — which is what makes the claim safe to hold in state: `setClaim` bails out when the
  *  incoming value is equal, so a route re-rendering ten times a second never re-renders the header. */
 interface HeaderClaim {
-  /** Show the "Collie" wordmark (and, with it, the "on <mux>" caption) beside the mark. */
+  /** Show the stacked identity beside the mark: the "Collie" brand line over the "on <mux>" line. */
   wordmark: boolean;
   /** `column` = the header is as wide as the route's own `max-w-screen-sm` content column, which is
    *  what the dashboard, space, Settings and Pack screens have always been; `full` = edge to edge,
@@ -249,38 +250,84 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                   onHome={() => home.current?.fn?.()}
                   trouble={trouble}
                   lost={lost}
-                  wordmark={claim.wordmark}
                 />
-                {/* "on <mux>" — a plain sentence completing the wordmark, so the top-left reads
-                    "Collie on <mux>". It rides WITH the wordmark (dashboard + space, never the pane,
-                    where the breadcrumb owns the width) and sits OUTSIDE the home button so it isn't
-                    part of that tap target and stays readable to a screen reader, which the button's
-                    aria-label would otherwise replace. Text only, one size down and muted, so it reads
-                    as a caption to the wordmark rather than a second brand. Nothing renders until a
-                    bridge has actually named one: an old bridge, a cached page or a read still in
-                    flight all leave the header exactly as it was, never a "on unknown" placeholder. */}
-                {claim.wordmark && mux !== "" && (
-                  <span className="-ml-1 min-w-0 truncate text-xs text-muted-foreground">
-                    {t("nav.mux.onPrefix")}{" "}
-                    {/* The multiplexer's own mark, between "on" and its name. `alt=""` and nothing else:
-                        the name is right there in the same sentence, so a screen reader announcing the
-                        picture too would read the multiplexer twice — this is decoration OF that word.
-                        An `<img>` and never inline SVG: these bytes come from an adapter, and the one
-                        way to be certain adapter-supplied markup can never become document markup is to
-                        never put it in the document (the mirror's XSS boundary, same rule). The bridge
-                        serves it sandboxed. Sized in `em` so it tracks this caption's own line rather
-                        than a pixel guess, and inline so the line stays ONE text run — the sentence is
-                        still "on <name>" to a screen reader and to a text query. Nothing renders when
-                        the bridge published no URL. */}
-                    {muxLogo !== "" && (
-                      <img
-                        src={muxLogo}
-                        alt=""
-                        className="mr-1 inline-block size-[1.15em] align-[-0.2em]"
-                      />
-                    )}
-                    {mux}
-                  </span>
+                {/* THE IDENTITY, STACKED: the brand over the multiplexer this collie drives, both
+                    beside the mark. It was ONE 18px line — "Collie on <mux>" — and on a phone that
+                    line ran out of room inside the multiplexer's NAME, the one word here the reader
+                    does not already know; the operator's screenshot had it down to a single letter.
+                    Stacking inverts what gives way. The two runs no longer compete for one line's
+                    width, so the brand costs the name nothing and the name gets the whole block.
+                    THE BROWSER FACT this rests on: a flex COLUMN's max-content width is its widest
+                    child's, so the 11px brand line can neither raise nor lower the width this block
+                    asks the row for — that measurement is the mux line's alone. Both lines still
+                    carry `truncate`, and the brand is the one that clips first in practice, because
+                    it is the shorter run inside a box the longer run sized.
+
+                    The brand wears the app's EXISTING 11px uppercase tracked tier — `SectionLabel`,
+                    DESIGN.md §1 — and not a new type style. It reads as the eyebrow over the line
+                    that carries the information, which is the right emphasis: which multiplexer is
+                    under this collie is what a support question needs; that the app is called Collie
+                    is not.
+
+                    THE ROW'S HEIGHT DOES NOT MOVE, and this is the arithmetic (DESIGN.md §2, §6).
+                    The row is `min-h-15` (60px) with `py-1`, so its content box is 52px and its
+                    tallest child is the mark's 44px tap box. The brand line is an arbitrary 11px and
+                    therefore takes the inherited 1.5 body leading — a 16.5px line box; the mux line
+                    is `text-base`, 16px on a 24px line box. 16.5 + 24 = 40.5px, under the mark's
+                    44px, so this block is not the tallest child and the row still measures exactly
+                    60px on every route. Neither line needed its leading tightened. The mux logo does
+                    not change that either: it is 1.15em on a -0.2em baseline shift, so it reaches
+                    15.2px above the baseline against the 16px text's own 16.8px — inside the line
+                    box the type already asked for.
+
+                    It rides WITH the wordmark claim (dashboard + space, never the pane, where the
+                    breadcrumb owns the width) and sits OUTSIDE the home button, as the mux line
+                    always has: that button's aria-label would otherwise replace both lines for a
+                    screen reader. The brand word moved out of the button with it, so the tap target
+                    is the mark's own 44px box and nothing else — the floor §6 asks for, and the same
+                    box the gear at the other end of the row has. */}
+                {claim.wordmark && (
+                  <div data-slot="header-identity" className="flex min-w-0 flex-col">
+                    <SectionLabel className="truncate">Collie</SectionLabel>
+                    {/* The line the freed width is FOR — "on <mux>", the sentence the brand line
+                        above starts. `min-h-6` RESERVES it whether or not a name has arrived:
+                        nothing renders until a bridge has actually named one (an old bridge, a
+                        cached page or a read still in flight all leave it empty, never an "on
+                        unknown" placeholder), and a box with no line box inside it is 0px tall — so
+                        without the reservation the brand line would jump 24px upward the moment
+                        /api/config landed. DESIGN.md §2: a state with nothing to say keeps its slot.
+
+                        The prefix stays a dictionary string and stays on this line. It is the word
+                        that makes two stacked runs one sentence rather than two loose labels, and it
+                        is the only translated word here — the brand and the multiplexer's own name
+                        are names, and names are not translated. */}
+                    <span className="min-h-6 truncate text-base">
+                      {mux !== "" && (
+                        <>
+                          {t("nav.mux.onPrefix")}{" "}
+                          {/* The multiplexer's own mark, between "on" and its name. `alt=""` and
+                              nothing else: the name is right there in the same sentence, so a screen
+                              reader announcing the picture too would read the multiplexer twice —
+                              this is decoration OF that word. An `<img>` and never inline SVG: these
+                              bytes come from an adapter, and the one way to be certain adapter-
+                              supplied markup can never become document markup is to never put it in
+                              the document (the mirror's XSS boundary, same rule). The bridge serves
+                              it sandboxed. Sized in `em` so it tracks this line's own type rather
+                              than a pixel guess, and inline so the line stays ONE text run — the
+                              sentence is still "on <name>" to a screen reader and to a text query.
+                              Nothing renders when the bridge published no URL. */}
+                          {muxLogo !== "" && (
+                            <img
+                              src={muxLogo}
+                              alt=""
+                              className="mr-1 inline-block size-[1.15em] align-[-0.2em]"
+                            />
+                          )}
+                          {mux}
+                        </>
+                      )}
+                    </span>
+                  </div>
                 )}
                 {/* Center region: the breadcrumb (or, on the dashboard/space, an empty flex-1 spacer that
                     pushes the right cluster to the edge). min-w-0 so the breadcrumb truncates when tight.
@@ -315,8 +362,9 @@ interface RouteHeaderProps {
   /** Tapping the Collie mark returns to the dashboard. A callback, not a `<Link to="/">`: the
    *  dashboard and the drilled-in space view share the "/" route, so a same-route link would no-op. */
   onHome?: () => void;
-  /** Show the "Collie" wordmark beside the mark (dashboard + space). Omit inside a pane — the
-   *  breadcrumb in `children` carries the context there, and the mark stands alone to save width. */
+  /** Show the stacked identity beside the mark — "Collie" over "on <mux>" (dashboard + space). Omit
+   *  inside a pane: the breadcrumb in `children` carries the context there, and the mark stands alone
+   *  to save width. */
   wordmark?: boolean;
   /** Whether this route's header is as wide as its `max-w-screen-sm` content column or edge to edge.
    *  See `HeaderClaim.width`. Defaults to `full`, which is the plainer of the two. */

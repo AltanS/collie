@@ -18,8 +18,6 @@ interface CollieHomeProps {
    *  the mark goes still again, muted — a mark that blooms forever reads as "still trying" when
    *  we've in fact given up; muted says "not connected" at a glance, matching the boot splash. */
   lost?: boolean;
-  /** Show the "Collie" wordmark beside the mark (dashboard header). Omit inside a pane to save space. */
-  wordmark?: boolean;
   className?: string;
 }
 
@@ -35,8 +33,12 @@ interface CollieHomeProps {
 // "Collie is fetching" looks the same wherever it appears. <DogGallop/> is untouched but no longer
 // mounted anywhere in the app (see components/dog-gallop.tsx).
 //
-// Tapping it returns to the dashboard. The dashboard shows the "Collie" wordmark too; inside a pane
-// the mark stands alone (the breadcrumb carries the context). Both headers render THIS component —
+// Tapping it returns to the dashboard, and the MARK IS THE WHOLE BUTTON. The brand word used to sit
+// inside it on the dashboard; it moved out when the header's identity became two stacked lines —
+// "Collie" over "on <mux>" — because the mux line has always had to stay OUTSIDE this button (the
+// aria-label below would replace it for a screen reader) and the two lines cannot be stacked beside
+// the mark with one of them trapped in here. See app-header.tsx, which now owns both lines. What is
+// left is exactly the 44px tap box DESIGN.md §6 asks for, and every header renders THIS component —
 // the consistency is structural, not a convention two files have to keep agreeing on.
 // One full round of the orbit at the mark's LOADING rate, in milliseconds. <CollieMark/> owns that
 // rate (`TURN.live`, collie-mark.tsx) and does not export it, so this number is a copy and has to
@@ -112,7 +114,7 @@ export function spinRate(elapsedMs: number, totalMs = ORBIT_TURN_MS): number {
   return (1 - Math.cos(2 * Math.PI * u)) * du;
 }
 
-export function CollieHome({ onHome, trouble, lost = false, wordmark = false, className }: CollieHomeProps) {
+export function CollieHome({ onHome, trouble, lost = false, className }: CollieHomeProps) {
   useLocale();
   const bloom = trouble && !lost;
 
@@ -304,7 +306,7 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
             : t("nav.home.aria.reconnecting")
       }
       className={cn(
-        "-mx-1 flex items-center gap-2 rounded px-1 transition-opacity active:opacity-70",
+        "-mx-1 flex items-center rounded px-1 transition-opacity active:opacity-70",
         className,
       )}
     >
@@ -341,7 +343,6 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
           className={cn("transition-opacity", lost && "opacity-40 grayscale")}
         />
       </span>
-      {wordmark && <span className="text-lg font-semibold tracking-tight">Collie</span>}
     </button>
   );
 }

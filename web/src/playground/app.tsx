@@ -275,9 +275,9 @@ function BrandSection() {
       </Card>
 
       <Card
-        label="“Collie on <mux>” — the header wordmark"
-        reach="open the dashboard or a space view. The caption rides WITH the wordmark and never appears inside a pane, where the breadcrumb owns the middle of the bar."
-        note="Real <AppHeaderHost>+<RouteHeader wordmark/>. The name and the logo come from this bridge's own /api/config — so with no bridge behind the dev proxy the caption renders NOTHING, deliberately: “on unknown” would be a worse header than no line at all."
+        label="“Collie” over “on <mux>” — the header's stacked identity"
+        reach="open the dashboard or a space view. The block rides WITH the wordmark claim and never appears inside a pane, where the breadcrumb owns the middle of the bar."
+        note="Real <AppHeaderHost>+<RouteHeader wordmark/>. Two lines beside the mark: the 11px uppercase brand tier over the multiplexer at 16px, which is the line the width is for — stacked, the brand costs the name nothing. The name and the logo come from this bridge's own /api/config, so with no bridge behind the dev proxy the second line renders NOTHING, deliberately: “on unknown” would be a worse header than no line at all. The slot is reserved either way, so the brand line does not move when the read lands."
         span={2}
       >
         <Stage>
@@ -406,9 +406,9 @@ function BootSection({ clock }: { clock: ClockMode }) {
       >
         <Stage>
           <div className="flex flex-col gap-1 bg-muted p-2">
-            <CollieHome trouble={false} wordmark />
-            <CollieHome trouble wordmark />
-            <CollieHome trouble lost wordmark />
+            <CollieHome trouble={false} />
+            <CollieHome trouble />
+            <CollieHome trouble lost />
           </div>
         </Stage>
       </Card>
