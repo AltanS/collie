@@ -3,6 +3,7 @@ import type { ChangeEvent, ClipboardEvent, ReactNode } from "react";
 import { useRevalidator } from "react-router";
 import { Check, ImagePlus, Keyboard, Loader2, Mic, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
 
+import { fontStack } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import type { AgentStatus } from "@/lib/types";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
@@ -227,6 +228,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 ) {
   const revalidator = useRevalidator();
   useLocale();
+  // The mirror-family stack for the draft field, or undefined when the operator kept the default
+  // (the stylesheet's `font-mono` then answers alone). Derived once; the ChatInput below wears it.
+  const terminalFace = fontStack(prefs.fontFamily);
   // Every write affordance is off when the pane is gone, this device is read-only, OR the pane's
   // machine is unreachable from the lead. All three are "the write cannot land"; only the copy below
   // differs, because only the copy tells you what to do about it.
@@ -1359,9 +1363,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // not stack — tailwind-merge keeps only the last padding-right (DESIGN.md §7) — which
               // is why nothing else may reserve space by adding one here.
               "block pr-11",
+              // The draft is terminal-bound text, so the field wears the TERMINAL face — the same
+              // family the mirror above it renders in, not the app's chrome face. `font-mono` is
+              // the mirror's own default; the style below follows the operator's mirror-family
+              // choice (Settings → Terminal font), exactly as the mirror itself does. The SIZE is
+              // deliberately not followed: the field stays at the primitive's 16px, because a
+              // sub-16px input makes iOS zoom the page on focus.
+              "font-mono",
               direct.active &&
                 "border-primary focus-visible:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             )}
+            style={terminalFace === undefined ? undefined : { fontFamily: terminalFace }}
             disabled={locked}
             rows={1}
           />
