@@ -12,6 +12,7 @@ import {
   findCommand,
   helpText,
   type Io,
+  normalizeArgv,
   run,
   usageLine,
 } from "./program.ts";
@@ -381,6 +382,28 @@ describe("exit codes", () => {
     expect(io.stdout).toHaveLength(1);
     expect(io.stdout[0]!.trim()).toBe(io.stdout[0]!);
     expect(io.stdout[0]).not.toBe("");
+  });
+
+  // F20: both of these answered `error: unknown command \`--version\`` — a verb table that knows
+  // `version` refusing the flag spelling of it is a distinction only the implementer can see.
+  for (const spelling of ["--version", "-V"]) {
+    test(`\`collie ${spelling}\` prints the version, exactly as \`collie version\` does`, async () => {
+      const plain = capture();
+      const flagged = capture();
+      expect(await run(["version"], plain)).toBe(EXIT.OK);
+      expect(await run([spelling], flagged)).toBe(EXIT.OK);
+      expect(flagged.stdout).toEqual(plain.stdout);
+      expect(flagged.stderr).toEqual([]);
+    });
+  }
+
+  test("only the FIRST argument is rewritten — a verb keeps its own flags", () => {
+    expect(normalizeArgv(["--version"])).toEqual(["version"]);
+    expect(normalizeArgv(["-V"])).toEqual(["version"]);
+    expect(normalizeArgv(["logs", "--version"])).toEqual(["logs", "--version"]);
+    // `-v` is left for a future `--verbose`; a flag that changes meaning later is worse than none.
+    expect(normalizeArgv(["-v"])).toEqual(["-v"]);
+    expect(normalizeArgv([])).toEqual([]);
   });
 });
 

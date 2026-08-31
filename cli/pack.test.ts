@@ -1429,6 +1429,19 @@ describe("collie pack", () => {
     expect(text(h.io)).not.toContain("unknown pack subcommand");
   });
 
+  // F20: `collie pack --help` answered `error: unknown pack subcommand \`--help\``. It is a spelling
+  // of the block `collie pack` already prints, not a typo and not a second surface.
+  test("`help`, `--help` and `-h` all print the block, and accuse nobody", async () => {
+    const bare = harness(leadStore());
+    expect(await cmdPack(bare.deps, [])).toBe(EXIT.USAGE);
+    for (const spelling of ["help", "--help", "-h"]) {
+      const h = harness(leadStore());
+      expect(await cmdPack(h.deps, [spelling])).toBe(EXIT.USAGE);
+      expect(text(h.io)).not.toContain("unknown pack subcommand");
+      expect(text(h.io)).toBe(text(bare.io));
+    }
+  });
+
   test("it routes to the verbs", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     expect(await cmdPack(h.deps, ["status", "--no-probe"])).toBe(EXIT.OK);

@@ -1704,6 +1704,17 @@ export function packUsage(): string {
   return `usage: collie pack {${PACK_SUBCOMMANDS.join("|")}}`;
 }
 
+/**
+ * The spellings that ASK for the block below rather than mistype a subcommand.
+ *
+ * `--help`/`-h` reach here as arguments, not as options: the parent verb turns commander's own help
+ * off so every flag grammar stays in the verb (`cli/program.ts`), which used to make `collie pack
+ * --help` — the most ordinary thing anyone types — answer `error: unknown pack subcommand`. They
+ * print exactly what `collie pack` and `collie pack help` print, and share their exit code: this is a
+ * spelling, not a second surface.
+ */
+const PACK_HELP_SPELLINGS: ReadonlySet<string> = new Set(["help", "--help", "-h"]);
+
 export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promise<number> {
   const [sub, ...rest] = args;
   switch (sub) {
@@ -1740,7 +1751,7 @@ export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promi
     case "approve-promote":
       return cmdPackApprovePromote(deps, rest);
     default:
-      if (sub !== undefined && sub !== "" && sub !== "help") {
+      if (sub !== undefined && sub !== "" && !PACK_HELP_SPELLINGS.has(sub)) {
         deps.io.err(`error: unknown pack subcommand \`${sub}\``);
       }
       deps.io.err(packUsage());

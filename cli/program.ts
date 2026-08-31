@@ -609,6 +609,25 @@ export function helpText(commands: readonly Command[] = COMMANDS): string[] {
   return lines;
 }
 
+/**
+ * The two reflexes every operator has, spelled as the verbs they mean.
+ *
+ * `collie --version` used to print `error: unknown command \`--version\`` and the usage line — a verb
+ * table where `version` exists and `--version` is a typo is a distinction only the implementer cares
+ * about. `-V` is the long option's conventional short form; `-v` is left alone, because it is the one
+ * a future `--verbose` would want and a flag that changed meaning later is worse than one that never
+ * existed.
+ *
+ * Only the FIRST argument is rewritten. `collie logs --version` is an argument to `logs`, exactly as
+ * every other flag reaching a verb is (`buildProgram` turns commander's own `-h` off for the same
+ * reason), and this must not start guessing at it.
+ */
+export function normalizeArgv(argv: readonly string[]): readonly string[] {
+  const first = argv[0];
+  if (first === "--version" || first === "-V") return ["version", ...argv.slice(1)];
+  return argv;
+}
+
 /** Feed a commander write (one string, possibly multi-line, usually newline-terminated) to `Io`. */
 function emit(sink: (line: string) => void, chunk: string): void {
   const lines = chunk.split("\n");
@@ -707,7 +726,7 @@ export async function run(
     code = c;
   });
   try {
-    await program.parseAsync(rest, { from: "user" });
+    await program.parseAsync(normalizeArgv(rest), { from: "user" });
     return code;
   } catch (err) {
     if (err instanceof CommanderError) {

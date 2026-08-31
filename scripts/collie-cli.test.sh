@@ -152,6 +152,28 @@ mkdir -p "$EMPTY_ROOT"
 run_stripped COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" "$BIN" version || fail "version failed on an empty root"
 assert_eq "$STDOUT" "unknown"
 
+# F20: the two reflexes every operator has. Both used to answer `error: unknown command` / `error:
+# unknown pack subcommand` and exit 2 — a table that knows the verb refusing the flag spelling of it.
+for spelling in --version -V; do
+  run_stripped COLLIE_PLUGIN_ROOT="$FAKE_ROOT" "$BIN" "$spelling" \
+    || fail "\`collie $spelling\` failed (rc=$?)"
+  assert_eq "$STDOUT" "9.9.9+deadbee"
+  case "$STDERR" in *"unknown command"*) fail "\`collie $spelling\` still reads as a typo" ;; esac
+done
+
+# `collie pack --help` prints the subcommand block; `pack`'s own usage exit code (2) is unchanged.
+for spelling in --help -h; do
+  set +e
+  env -i "$BIN" pack "$spelling" >"${TMP_ROOT}/out" 2>"${TMP_ROOT}/err"
+  rc=$?
+  set -e
+  assert_eq "$rc" "2"
+  assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie pack {"
+  case "$(cat "${TMP_ROOT}/err")" in
+    *"unknown pack subcommand"*) fail "\`collie pack $spelling\` still reads as a typo" ;;
+  esac
+done
+
 # ── Exit codes ───────────────────────────────────────────────────────────────
 set +e
 env -i "$BIN" nonsense >"${TMP_ROOT}/out" 2>"${TMP_ROOT}/err"
