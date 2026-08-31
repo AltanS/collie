@@ -37,7 +37,7 @@ want a mic that doesn't depend on the keyboard, Collie has its own
 - [Security — read first](#%EF%B8%8F-security--read-before-you-run-it) ·
   [Pair a device](#pair-a-device--the-write-credential)
 - [Requirements](#requirements)
-- [Install](#install)
+- [Install](#install) · [Without Herdr (tmux or zellij)](#without-herdr-tmux-or-zellij)
 - [First run — what you'll see](#first-run--what-youll-see) ·
   [Using the app on tmux or zellij](#using-the-app-on-tmux-or-zellij) (experimental)
 - [Configure](#configure) · [Your own slash commands](#your-own-slash-commands) ·
@@ -172,13 +172,14 @@ to run `collie pair` again.
 
 ## Requirements
 
-On the **host** (the tailnet node your agents run on). Need Herdr 0.7.0+ — check with
-`herdr --version`.
+On the **host** (the tailnet node your agents run on). **One multiplexer is required — which one
+decides whether you need Herdr at all.** Herdr is the default, and that route wants Herdr 0.7.0+
+(check with `herdr --version`); on tmux or zellij, Herdr has to be neither installed nor running.
 
 | Tool | Why |
 | --- | --- |
 | [**Bun**](https://bun.sh) | Runs the bridge and builds the web UI — the only hard dependency. |
-| [**Herdr**](https://herdr.dev) ≥ 0.7.0 | The herd Collie mirrors; its CLI registers the plugin. |
+| [**Herdr**](https://herdr.dev) ≥ 0.7.0 | **Only when Herdr is your multiplexer** — the default. The herd Collie mirrors; its CLI registers the plugin. On tmux or zellij, not needed at all. |
 | **A multiplexer** — Herdr (default), [tmux](https://github.com/tmux/tmux) or [zellij](https://zellij.dev) | What Collie mirrors, one per install, picked with `COLLIE_MUX`. **tmux and zellij are experimental in 1.0** — set them up from [Using the app on tmux or zellij](#using-the-app-on-tmux-or-zellij). What each one can answer: [`MUX_CONTRACT.md`](./MUX_CONTRACT.md). |
 | [**Tailscale**](https://tailscale.com) | Front door for the default variant (`tailscale serve`); optional if you run [Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, Collie is `127.0.0.1`-only. |
 | **git** | Clone, and the `update` command. |
@@ -201,14 +202,17 @@ Push](#web-push-optional)).
 
 ## Install
 
-On the host, not your phone. Two ways in.
+On the host, not your phone. Three ways in — two through Herdr, and one that never mentions it.
 
-**Herdr's server has to be running first** — start the Herdr TUI (`herdr`), or `herdr server &`.
-Without it the `invoke start` line below fails on the socket with `server_not_running`.
+**The two Herdr routes need Herdr's server running first** — start the Herdr TUI (`herdr`), or
+`herdr server &`. Without it the `invoke start` lines below fail on the socket with
+`server_not_running`. None of that applies to the third route,
+[Without Herdr (tmux or zellij)](#without-herdr-tmux-or-zellij).
 
 **From GitHub (turnkey)** — Herdr fetches and builds for you:
 
 ```bash
+# needs Herdr 0.7.0+ (`herdr --version`), with its server already running
 herdr plugin install AltanS/collie
 herdr plugin action invoke start --plugin herdr.collie
 ```
@@ -219,6 +223,7 @@ That bare `install` line above tracks the STABLE line only. For the v1 prereleas
 **From a local clone (for development)** — registered by path:
 
 ```bash
+# needs Herdr 0.7.0+ (`herdr --version`), with its server already running
 git clone https://github.com/AltanS/collie.git && cd collie
 herdr plugin link "$(pwd)"
 herdr plugin action invoke start --plugin herdr.collie
@@ -233,9 +238,46 @@ Either way, `start` does four things:
 4. **prints the banner** with the URL to open — walked through line by line in
    [First run](#first-run--what-youll-see).
 
-> No Herdr? Run `scripts/collie-ctl.sh start` from the checkout — same effect (config then lives in
-> `~/.config/collie/.env`). That first run compiles `bin/collie`, which is how you spell every
-> command from then on — see [Commands](#commands).
+### Without Herdr (tmux or zellij)
+
+The third route. Herdr is Collie's **default** multiplexer, not a dependency of the program: with
+`COLLIE_MUX=tmux` or `COLLIE_MUX=zellij` the bridge builds only the adapter you named and never
+dials Herdr's socket, so Herdr need not be installed. Choose that **before the first start** —
+nothing asks you, and the default answers for you.
+
+```bash
+git clone https://github.com/AltanS/collie.git && cd collie
+mkdir -p ~/.config/collie          # `start` would create it later; the `cp` below needs it now
+cp .env.example ~/.config/collie/.env
+```
+
+`~/.config/collie/` is where a Herdr-less Collie ends up: it asks Herdr where the plugin's config
+dir is, and with no Herdr to ask, that is the directory it falls back to. Nothing seeds the `.env`
+for you — the copy above is the whole of it. Now name your multiplexer in that file, and the
+endpoint that says *which* tmux server or *which* zellij session:
+
+```bash
+COLLIE_MUX=tmux                                           # or: zellij
+COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock  # zellij: COLLIE_MUX_ENDPOINT_ZELLIJ=<session>
+```
+
+What each endpoint accepts, and how to give the multiplexer something worth mirroring, is
+[Using the app on tmux or zellij](#using-the-app-on-tmux-or-zellij) — worth reading before you
+start rather than after. Then start it:
+
+```bash
+scripts/collie-ctl.sh start
+```
+
+That first run compiles `bin/collie` — the full build, typecheck and web bundle, so give it a
+minute — and every command from then on is spelled `bin/collie <verb>` ([Commands](#commands)).
+`start` itself does the same four things listed above.
+
+**Skip the `.env` and you have not chosen tmux; you have chosen Herdr**, because `COLLIE_MUX`
+defaults to `herdr`. What you get then is not a legible complaint: Collie starts, finds no socket to
+mirror, and passes the dial's own error through as it stands — `herdr read failed: …` on the phone,
+one warning line in `bin/collie logs`. `bin/collie doctor` is the one that says it plainly, naming
+the socket it looked for.
 
 ## First run — what you'll see
 
