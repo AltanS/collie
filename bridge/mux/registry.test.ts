@@ -109,7 +109,7 @@ describe("createMux", () => {
 describe("describeMux", () => {
   const registry = buildMuxRegistry();
 
-  // The startup line an operator reads back with `collie logs` (README → "Did it work?").
+  // The startup line an operator reads back with `collie logs` (docs/multiplexers.md → "Did it work?").
   test("each shipped adapter words its own endpoint", () => {
     expect(describeMux(registry, "herdr", "/home/you/.config/herdr/herdr.sock")).toBe(
       "herdr · socket /home/you/.config/herdr/herdr.sock",

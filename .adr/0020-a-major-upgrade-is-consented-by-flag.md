@@ -83,7 +83,7 @@ flagged act.**
 > Two mechanics support this. A prerelease tag is now published as a GitHub **prerelease**
 > (`.github/workflows/release.yml`), so it cannot take the Latest badge from the shipped 0.x line; and
 > because `releases/latest` therefore keeps answering the old stable tag for the whole train, anything
-> resolving "the newest Collie" must read git tags instead — README → *Resolving the newest release
+> resolving "the newest Collie" must read git tags instead — docs/upgrading.md → *Resolving the newest release
 > from a script*.
 
 > **Amended (2026-08-30, prerelease-following is a property of the installed version).** The first

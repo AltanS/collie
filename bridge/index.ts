@@ -539,7 +539,7 @@ const muxRegistry = buildMuxRegistry();
 
 // Say what this collie drives, once, before anything dials it. A reachable multiplexer used to be
 // silent — the log named one only when it could not be reached — so `collie logs` could not answer
-// the first question a tmux or zellij operator asks (README → "Did it work?").
+// the first question a tmux or zellij operator asks (docs/multiplexers.md → "Did it work?").
 console.log(`[bridge] mux: ${describeMux(muxRegistry, cfg.mux, cfg.muxEndpoint)}`);
 
 // Are the agent's own hooks installed (M11/02)? Probed through `cli/hooks.ts`'s definition of

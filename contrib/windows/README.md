@@ -48,7 +48,7 @@ release from Windows.
 
 ## Security defaults
 
-The posture is the one in [§Security](../../README.md#%EF%B8%8F-security--read-before-you-run-it) —
+The posture is the one in [docs/security.md](../../docs/security.md) —
 nothing is relaxed here.
 
 - **The scheduled task runs at limited privilege.** `COLLIE_TASK_RUN_LEVEL=highest` is an explicit

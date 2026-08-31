@@ -14,9 +14,9 @@ four shapes here are for everything else. Pick one.
 
 Not a variant, but it crosses all of them: [Several Collies on one host](#several-collies-on-one-host).
 
-The security rules in [README → Security](./README.md#%EF%B8%8F-security--read-before-you-run-it)
+The security rules in [docs/security.md](./docs/security.md)
 are not relaxed by any of them. None of these is a prerequisite for authorising individual devices —
-[pairing](./README.md#pair-a-device--the-write-credential) does that with no proxy at all, and
+[pairing](./docs/security.md#pair-a-device--the-write-credential) does that with no proxy at all, and
 composes with every variant here.
 
 ## Variant B — identity-aware proxy + per-device authorisation
@@ -394,7 +394,7 @@ Three things to get right, none of them Collie-specific:
    install each time and makes `COLLIE_PUBLIC_HOSTS` unpinnable.
 
 > ⚠️ **Anything that publishes to the open internet is a `funnel` by another name.** The rule in
-> [README → Security](./README.md#%EF%B8%8F-security--read-before-you-run-it) isn't about Tailscale,
+> [docs/security.md](./docs/security.md) isn't about Tailscale,
 > it's about reachability: this socket is a shell running as you. If your tunnel offers a public URL,
 > the auth in front of it is the only thing between a stranger and that shell, so treat a shared PIN
 > the way you'd treat a root password — and prefer a tunnel scoped to your own devices over a public
@@ -439,7 +439,7 @@ fully separate Collie** on the host: its own config dir, its own service unit (`
 own pidfile and log, and a state dir you give it — sharing nothing with the first. Each developer
 above wants the first, because
 they already have their own Unix user; one operator running v1 beside their live 0.x wants the second
-([README → Side by side](./README.md#side-by-side-if-the-herd-is-real)). A named instance still needs
+([docs/upgrading.md → Side by side](./docs/upgrading.md#side-by-side-if-the-herd-is-real)). A named instance still needs
 a `COLLIE_SERVE_PORT` of its own if it is to have a front door on the same machine name.
 
 Ports are free-form here: `tailscale serve --https=<port>` takes any port. Only `funnel` — which

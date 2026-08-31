@@ -51,7 +51,7 @@ const STALE_TTL_MS = 5_000;
  *  still strict-only.
  *
  *  Anything outside Collie resolving "the newest release" must read git tags, never
- *  `releases/latest`: README -> *Resolving the newest release from a script*. */
+ *  `releases/latest`: docs/upgrading.md -> *Resolving the newest release from a script*. */
 export function parseSemverTag(tag: string): [number, number, number] | null {
   const m = SEMVER_TAG.exec(tag.trim());
   return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;

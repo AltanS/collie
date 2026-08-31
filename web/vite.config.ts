@@ -63,7 +63,7 @@ const playgroundOnlyPlugin: Plugin | null =
 // Build stamp. A unique id is baked into the bundle (shown in the UI footer via __BUILD_INFO__) AND
 // emitted to dist/build-info.json, which the bridge reads for the `X-Collie-Build` header and
 // `/api/config`. Comparing the two tells you instantly whether a browser is running a stale,
-// service-worker-cached bundle (caches are per-origin) — see README → Troubleshooting. The id mixes
+// service-worker-cached bundle (caches are per-origin) — see docs/troubleshooting.md. The id mixes
 // version + git sha + build time so it changes on every rebuild, even between commits.
 // Shared by gitSha() and isReleaseBuild() below.
 const git = (cmd: string) =>

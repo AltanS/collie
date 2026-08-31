@@ -1527,12 +1527,12 @@ the protocol, and a reader who wants the reason reads this.
 
 Status: **Proposed** (2026-08-20)
 
-Generalises: [ADR 0014](./0014-promote-is-a-confirm-on-the-lead.md) — promotion-is-a-confirm becomes
+Generalises: [ADR 0014](./.adr/0014-promote-is-a-confirm-on-the-lead.md) — promotion-is-a-confirm becomes
 the no-deputy instance of a broader rule. 0014 is not superseded and its gate is unchanged.
 Subordinate: ADR 0027 (deputy and warrant), ADR 0028 (the standby door).
-Related: [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) ·
-[ADR 0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) ·
-contract: [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §14, §15, §18
+Related: [ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md) ·
+[ADR 0012](./.adr/0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) ·
+contract: [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md) §14, §15, §18
 
 #### Context
 

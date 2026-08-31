@@ -385,7 +385,7 @@ BREAKING note below. One v1-only exemption: a collie **in a pack** may bind off 
 of [#91](https://github.com/AltanS/collie/pull/91) (@en-ver) and
 [#115](https://github.com/AltanS/collie/pull/115) (@ardaaltinors), both previously declined;
 [ADR 0029](./.adr/0029-speech-to-text-is-a-provider-seam-collie-owns.md) records what changed, and
-[`README.md`](./README.md#voice-input-optional) has the setup.
+[`docs/voice-and-push.md`](./docs/voice-and-push.md#voice-input-optional) has the setup.
 
 ### Added
 
@@ -1120,7 +1120,7 @@ top. Thank you: measured rather than estimated, with the reasoning written down 
 argued about again.
 
 ### Added
-- **Light and system themes.** Collie follows your phone's appearance by default; pin Light or Dark from **Settings → Appearance**. Per device, and documented under [Dark mode / light mode](./README.md#dark-mode--light-mode) (#41, 59bcfe1, df47112)
+- **Light and system themes.** Collie follows your phone's appearance by default; pin Light or Dark from **Settings → Appearance**. Per device, and documented under [Dark mode / light mode](./docs/configure.md#dark-mode--light-mode) (#41, 59bcfe1, df47112)
 - ANSI slots 0–15 are now CSS variables (`--ansi-*`), so indexed terminal colour is defined in one place and reaches the mirror through both `31m` and `38;5;1` spellings (59bcfe1)
 - **The dashboard is triaged, not listed.** Needs you → Ready · unseen → Working → Recent; the first three are pinned, Recent sorts by when you last used each pane (#42, da4f44c)
 - **Ready · unseen** — agents that finished while you weren't looking. Opening one clears it, on every device (2f4d691)

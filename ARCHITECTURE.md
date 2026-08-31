@@ -163,7 +163,7 @@ Product details that shaped the loop:
   field, so the phone keyboard's own mic works in it with nothing built, and Send stays an explicit
   button — dictated text is reviewable before it goes. Beyond that, `collie stt setup` switches on
   Collie's own record button through a provider seam (`bridge/stt/`, CLI `cli/stt.ts`,
-  [README → Voice input](./README.md#voice-input-optional)). The seam is **absent until that verb
+  [docs/voice-and-push.md → Voice input](./docs/voice-and-push.md#voice-input-optional)). The seam is **absent until that verb
   runs**: no key, no outbound path, no child process, no button. Turning it on is what buys the
   credential in the state dir and the outbound path carrying microphone audio — a local engine keeps
   that egress on loopback, and hands-free sends go through the same guarded reply path a typed reply
