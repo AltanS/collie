@@ -1219,6 +1219,10 @@ async function convergeAnchor(
  * A failure here is the interesting line on this whole surface: the machine IS there — it just
  * answered — so the remedy is a budget, not a `reconnect`. It names both knobs, because raising one
  * without the other is silently clamped ({@link packTimeoutClampWarning}).
+ *
+ * **Silent when no data request was sent at all** — `--no-probe`, a `hello` that never answered, or a
+ * member that is this store's LEAD, which is asked one question and no more ({@link MemberReach.data}).
+ * The lead's row therefore rests on `link` alone, which is the whole of what a peer can know.
  */
 function dataLines(reach: MemberReach | undefined): TonedLine[] {
   const data = reach?.data;
@@ -1263,8 +1267,18 @@ export interface MemberReach {
   readonly hello: PeerOutcome<HelloResult>;
   /**
    * One real data request — `GET /pack/v1/snapshot`, a read — under the budget rules the bridge's own
-   * poll uses. `null` when `hello` never answered: a member that is not there has already failed, and
-   * asking it a second question teaches nothing while doubling the wait.
+   * poll uses. `null` when the question was not asked, which is two cases and only two.
+   *
+   * **`hello` never answered.** A member that is not there has already failed, and asking it a second
+   * question teaches nothing while doubling the wait.
+   *
+   * **The member is this store's LEAD.** A peer never polls its lead for a snapshot — the flow runs
+   * the other way — and the route is not on the closed peer → lead set at all
+   * (`bridge/pack/router.ts`'s `SIGNABLE_PATHS`, RFC §8.6: `leave`, `lead`, `hello` and the two
+   * warrant deliveries; *"the proxy surface is not on this list and must not be"*). So the lead
+   * ANSWERS a snapshot request with §8.1's bare 401, which is a correct refusal and not a fact about
+   * the link. Asking it produced a red `STARVED` line, on a healthy pack, under a remedy — raise two
+   * budgets — that cannot move an authorization refusal (F21).
    */
   readonly data: PeerOutcome<JsonValue> | null;
   /** How long the data request took, by this collie's clock, or `null` when none was sent. */
@@ -1290,9 +1304,17 @@ export async function probeMemberReach(
   members: readonly TrustedMember[],
 ): Promise<Map<string, MemberReach>> {
   const client = clientFor(deps, data, data.pack?.secret ?? "");
-  return sweepPeers<MemberReach>(members.filter((m) => m.status === "enrolled").map(linkOf), async (link) => {
+  const enrolled = members.filter((m) => m.status === "enrolled");
+  // The role travels beside the link because a `PackLink` is address material only (§4) — and the
+  // role is what decides whether the second question exists to be asked. See {@link MemberReach.data}.
+  const roles = new Map(enrolled.map((m) => [m.memberId, m.role]));
+  return sweepPeers<MemberReach>(enrolled.map(linkOf), async (link) => {
     const hello = await client.hello(link);
     if (!hello.ok) return { hello, data: null, dataMs: null };
+    // A peer's one roster entry is its LEAD, and `snapshot` is not on the peer → lead route set the
+    // lead admits (§8.6) — so the only answer this request can ever get is a refusal. Not asking is
+    // the fix; classifying the refusal more kindly would still be one wasted round trip per poll.
+    if (roles.get(link.memberId) === "lead") return { hello, data: null, dataMs: null };
     const startedAt = deps.now();
     const snapshot = await client.snapshot(link);
     return { hello, data: snapshot, dataMs: deps.now() - startedAt };

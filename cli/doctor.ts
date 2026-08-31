@@ -1055,6 +1055,10 @@ function reach(data: TrustStoreData, members: readonly TrustedMember[], reaches:
       silent.push(`${m.memberId} at ${m.address} — ${failureLine(answered.hello)}`);
       continue;
     }
+    // F21: on a peer the one enrolled member is the LEAD, and a peer asks its lead for no snapshot —
+    // `/pack/v1/snapshot` is not on the closed peer → lead route set (`bridge/pack/router.ts`, RFC
+    // §8.6), so the question has no answer but a refusal. `hello` is the whole verdict for that row.
+    if (m.role === "lead") continue;
     if (answered.data === null || !answered.data.ok) {
       const why = answered.data === null ? "no data request was sent" : failureLine(answered.data);
       starved.push(`${m.memberId} at ${m.address} — ${why}`);
@@ -1079,7 +1083,12 @@ function reach(data: TrustStoreData, members: readonly TrustedMember[], reaches:
         " second), then `collie restart`",
     );
   }
-  const slowest = served.length === 0 ? 0 : Math.max(...served);
+  // `lead-reach` sends no data request (above), so there is no timing to report and claiming one
+  // would be an invention. The two checks say what each of them actually asked.
+  if (served.length === 0) {
+    return ok(check, `${enrolled.length} of ${enrolled.length} answered \`hello\` (a peer asks its lead nothing else, §8.6)`);
+  }
+  const slowest = Math.max(...served);
   return ok(check, `${enrolled.length} of ${enrolled.length} answered and served a snapshot (slowest ${slowest}ms)`);
 }
 

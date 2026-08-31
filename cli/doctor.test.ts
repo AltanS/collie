@@ -702,6 +702,23 @@ describe("collie doctor — the pack checks", () => {
     expect(code).toBe(EXIT.FAIL);
   });
 
+  // F21: the peer's side of the same check. `/pack/v1/snapshot` is not on the closed peer → lead
+  // route set (§8.6), so the only answer the second question can get is §8.1's bare 401 — which this
+  // check reported as "answered but served no data", with the budget remedy, on a healthy pack.
+  test("lead-reach: a peer asks its lead `hello` and nothing else", async () => {
+    const peer = peerStore();
+    const h = harness(peer, [hello({ memberId: "desk" })], {
+      env: { COLLIE_HOST: "laptop.tail.ts.net" },
+      files: without({ ...healthyFiles(), ...markerFile(peer) }, HANDLER),
+    });
+    const { byCheck } = await findings(h);
+    expect(h.requests).not.toContain("https://desk.example:8787/pack/v1/snapshot");
+    const f = byCheck.get("lead-reach");
+    expect(f?.status).toBe("ok");
+    expect(f?.detail).toContain("answered `hello`");
+    expect(f?.detail).not.toContain("served a snapshot");
+  });
+
   test("member-reach: a healthy member reports both answers, and the data half is a REAL request", async () => {
     const h = harness(LEAD, [hello(), hello()], { files: { ...healthyFiles(), ...markerFile(LEAD) } });
     const { byCheck } = await findings(h);

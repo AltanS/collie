@@ -935,6 +935,43 @@ describe("collie pack status", () => {
     expect(rendered).toContain("COLLIE_POLL_MS");
   });
 
+  // F21: on a PEER the roster's one entry is the LEAD, and `/pack/v1/snapshot` is deliberately not on
+  // the closed peer → lead route set (`bridge/pack/router.ts`, RFC §8.6). Asking anyway got §8.1's
+  // bare 401 back and rendered a healthy pack as `data STARVED`, under a two-budget remedy that
+  // cannot move an authorization refusal.
+  test("a peer asks its LEAD one question, and rests the row on it", async () => {
+    const h = harness(peerStore(), [jsonReply({ protocol: 1, member: "desk" }, 200, "desk")]);
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(h.requests.map((r) => r.url)).toEqual(["https://desk.example:8787/pack/v1/hello"]);
+    const rendered = text(h.io);
+    expect(rendered).toContain("link    reachable");
+    expect(rendered).not.toContain("data    ");
+    expect(rendered).not.toContain("STARVED");
+    expect(rendered).not.toContain("COLLIE_POLL_MS`");
+  });
+
+  test("…and the refusal it would have got is never rendered as a starved link", async () => {
+    // What the lab saw: `hello` 200, then the 401 the closed route set guarantees. Even handed that
+    // reply, the peer must not ASK — so the reply is never read, and the budget remedy never prints.
+    const h = harness(peerStore(), [
+      jsonReply({ protocol: 1, member: "desk" }, 200, "desk"),
+      jsonReply({ error: "unauthorized" }, 401, "desk"),
+    ]);
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(h.requests).toHaveLength(1);
+    expect(text(h.io)).not.toContain("not arriving inside the per-poll budget");
+  });
+
+  test("a LEAD still asks BOTH questions of every peer — the poll really does run that way", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+      jsonReply({ protocol: 1, member: "nas" }, 200, "nas"),
+      jsonReply({ servers: [] }, 200, "nas"),
+    ]);
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(h.requests).toHaveLength(2);
+    expect(text(h.io)).toContain("served a snapshot");
+  });
+
   test("--no-probe asks neither question", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     expect(await cmdPackStatus(h.deps, ["--no-probe"])).toBe(EXIT.OK);
