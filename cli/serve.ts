@@ -15,7 +15,7 @@ import {
 } from "../bridge/front-door.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
-import { tailnetName } from "./tailnet.ts";
+import { localBridgeHostPort, tailnetName } from "./tailnet.ts";
 
 // The single managed front door, ported from the pre-shim `collie-ctl.sh`. ADR 0001 is the whole
 // point of it: Collie manages exactly ONE `tailscale serve` mapping, records it, and only ever tears
@@ -147,7 +147,9 @@ export function cmdServe(deps: ServeDeps): number {
     const torn = stopTailscaleServe(deps);
     if (torn !== EXIT.OK) return torn;
     deps.io.out(
-      `tailscale serve skipped (COLLIE_SKIP_SERVE=1) — bridge is on 127.0.0.1:${deps.ctx.port} only`,
+      // F13: name the bind, not loopback — under Variant C a peer is routinely bound elsewhere
+      // and this line was the one telling the operator to go and look at a dead port.
+      `tailscale serve skipped (COLLIE_SKIP_SERVE=1) — bridge is on ${localBridgeHostPort(deps.ctx.env, deps.ctx.port)} only`,
     );
     return EXIT.OK;
   }

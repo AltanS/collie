@@ -1,4 +1,6 @@
+import { resolveBridgeHost } from "../bridge/config.ts";
 import type { JsonValue } from "../bridge/json.ts";
+import { bindIsWildcard } from "../bridge/pack/config.ts";
 import type { CliContext, Environment, ServeMode } from "./context.ts";
 import { DEFAULT_SERVE_PORT } from "./context.ts";
 import type { Exec } from "./sys.ts";
@@ -103,6 +105,41 @@ export function bridgeUrlFrom(
   if (name === null) return `http://127.0.0.1:${port} (Tailscale name unavailable)`;
   if (mode === "http") return `http://${name}:${port}`;
   return servePort === DEFAULT_SERVE_PORT ? `https://${name}` : `https://${name}:${servePort}`;
+}
+
+/**
+ * The address this machine's own bridge answers on — the one it actually BOUND, never a hardcoded
+ * loopback string.
+ *
+ * `COLLIE_HOST` moves the bind (`resolveBridgeHost`), and a peer is routinely bound to a tailnet or
+ * LAN address with nothing at all on loopback (ADR 0013's F3 amendment: `Bun.serve` takes one
+ * hostname, and it is the operator's). The `local` row and the `COLLIE_SKIP_SERVE` line used to
+ * print `127.0.0.1` regardless, so on such a host every "here is where it is" line named a port that
+ * refuses to connect — while the readiness probe two lines up, which resolves the bind properly,
+ * reported the machine as UP. One banner, two answers.
+ *
+ * A WILDCARD bind is shown as loopback, and that is not a fudge: `0.0.0.0`/`::`/empty means *every*
+ * interface, so loopback is one of the addresses it answers on and the only one this machine can
+ * promise reaches itself. `cli/doctor.ts` dials it the same way for the same reason.
+ */
+export function dialableBridgeHost(env: Environment): string {
+  const host = resolveBridgeHost(env);
+  return bindIsWildcard(host) ? "127.0.0.1" : host.trim();
+}
+
+/** {@link dialableBridgeHost} as `host:port`, with an IPv6 literal bracketed for a URL. */
+export function localBridgeHostPort(env: Environment, port: number): string {
+  const host = dialableBridgeHost(env);
+  // A bare IPv6 address in an authority is ambiguous with the port separator — `[::1]:8787`. Only a
+  // literal needs it: a name or an IPv4 address carries no colon, and an already-bracketed value is
+  // left as the operator wrote it.
+  const authority = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return `${authority}:${port}`;
+}
+
+/** {@link localBridgeHostPort} as the URL a browser on this machine would open. */
+export function localBridgeUrl(env: Environment, port: number): string {
+  return `http://${localBridgeHostPort(env, port)}`;
 }
 
 /** {@link selfDnsName} over a live `tailscale status --json`. A missing CLI reads as no name. */

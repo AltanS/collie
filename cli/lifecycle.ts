@@ -7,7 +7,7 @@ import { EXIT, type Io } from "./io.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, type ServeDeps } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
-import { bridgeUrl, configuredPublicUrl, tailnetHosts } from "./tailnet.ts";
+import { bridgeUrl, configuredPublicUrl, localBridgeHostPort, localBridgeUrl, tailnetHosts } from "./tailnet.ts";
 import {
   AGENT_FILE_MODE,
   agentFilePath,
@@ -327,7 +327,7 @@ export async function cmdStart(deps: LifecycleDeps): Promise<number> {
   // `serve` reports its own reason.
   if ((await deps.serve(deps.io)) !== EXIT.OK) {
     deps.io.err(
-      `note: the tailnet front door did not come up; the bridge is still on 127.0.0.1:${deps.ctx.port}`,
+      `note: the tailnet front door did not come up; the bridge is still on ${localBridgeHostPort(deps.ctx.env, deps.ctx.port)}`,
     );
   }
   await printStatusBanner(deps);
@@ -527,7 +527,8 @@ export async function statusView(deps: LifecycleDeps): Promise<StatusView> {
   // this is the line that says WHICH Collie answered (the unit name on the next line agrees).
   if (deps.ctx.instance !== null) rows.push({ label: "instance", value: deps.ctx.instance });
   rows.push({ label: "service", value: serviceDescription(deps) });
-  rows.push({ label: "local", value: `http://127.0.0.1:${deps.ctx.port}` });
+  // F13: the address the bridge BOUND, not a hardcoded loopback string — see `localBridgeUrl`.
+  rows.push({ label: "local", value: localBridgeUrl(deps.ctx.env, deps.ctx.port) });
   if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {
     const url = configuredPublicUrl(deps.ctx.env);
     rows.push({

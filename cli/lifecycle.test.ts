@@ -420,6 +420,21 @@ describe("the status banner", () => {
     expect(lines).toContain("⚠ Collie isn't answering on 100.64.0.8:8787 yet");
   });
 
+  // F13: the probe already resolved the bind; the `local` row two lines under it did not, so a peer
+  // bound to its tailnet address was reported UP with a loopback URL that refuses to connect.
+  test("the `local` row is the bind, and the two halves of the banner agree", async () => {
+    const solo = (await statusBanner(harness({ ready: true }).deps)).join("\n");
+    expect(solo).toContain("local     http://127.0.0.1:8787");
+
+    const moved = harness({ ready: false, env: { COLLIE_HOST: "192.168.77.1" } });
+    const lines = (await statusBanner(moved.deps)).join("\n");
+    expect(lines).toContain("local     http://192.168.77.1:8787");
+    expect(lines).toContain("isn't answering on 192.168.77.1:8787");
+    // Not "no 127.0.0.1 anywhere": the `tailnet` row's no-name fallback names loopback on purpose,
+    // and says why on the same line. The `local` row is the one that claimed it silently.
+    expect(lines).not.toContain("local     http://127.0.0.1");
+  });
+
   test("reads the unit's state, not merely that a unit exists", () => {
     const h = harness({ answers: [["systemctl --user is-active", { stdout: "active\n" }]] });
     expect(serviceDescription(h.deps)).toBe("systemd --user (collie) · active");

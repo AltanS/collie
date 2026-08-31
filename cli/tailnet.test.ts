@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
-import { bridgeUrlFrom, configuredPublicUrl, selfDnsName, selfHosts } from "./tailnet.ts";
+import {
+  bridgeUrlFrom,
+  configuredPublicUrl,
+  dialableBridgeHost,
+  localBridgeHostPort,
+  localBridgeUrl,
+  selfDnsName,
+  selfHosts,
+} from "./tailnet.ts";
 
 // The shell piped `tailscale status --json` through a one-liner interpreter to get at one field —
 // the runtime dependency the compiled binary exists to remove. Same answers, in process.
@@ -88,5 +96,31 @@ describe("configuredPublicUrl", () => {
     expect(configuredPublicUrl({})).toBeNull();
     expect(configuredPublicUrl({ COLLIE_PUBLIC_URL: "" })).toBeNull();
     expect(configuredPublicUrl({ COLLIE_PUBLIC_URL: "   " })).toBeNull();
+  });
+});
+
+// F13: `collie start`'s banner printed `local http://127.0.0.1:8787` on a machine bound to
+// 192.168.77.1, where loopback carried nothing at all — a URL that refuses to connect, printed
+// two lines under a readiness probe that had resolved the bind correctly and said "running".
+describe("the local bridge address", () => {
+  test("an absent COLLIE_HOST is loopback, exactly as it always was", () => {
+    expect(localBridgeUrl({}, 8787)).toBe("http://127.0.0.1:8787");
+    expect(localBridgeHostPort({}, 8787)).toBe("127.0.0.1:8787");
+  });
+
+  test("a moved bind is the address the bridge actually bound", () => {
+    expect(localBridgeUrl({ COLLIE_HOST: "192.168.77.1" }, 8787)).toBe("http://192.168.77.1:8787");
+    expect(localBridgeHostPort({ COLLIE_HOST: "192.168.77.1" }, 8787)).toBe("192.168.77.1:8787");
+  });
+
+  test("a wildcard bind answers on loopback too, so loopback is what it promises", () => {
+    for (const host of ["", "0.0.0.0", "::"]) {
+      expect(dialableBridgeHost({ COLLIE_HOST: host })).toBe("127.0.0.1");
+    }
+  });
+
+  test("an IPv6 literal is bracketed, and one already bracketed is left alone", () => {
+    expect(localBridgeUrl({ COLLIE_HOST: "fd7a::1" }, 8787)).toBe("http://[fd7a::1]:8787");
+    expect(localBridgeUrl({ COLLIE_HOST: "[fd7a::1]" }, 8787)).toBe("http://[fd7a::1]:8787");
   });
 });
