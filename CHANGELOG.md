@@ -16,6 +16,10 @@ All notable changes to Collie are recorded here. The format follows
 - **`collie doctor` introduces itself first.** The first finding is this Collie's own version and platform, so a `doctor --json` block pasted into an issue never needs the follow-up question "which version was this" (38aacaa)
 - **A way out when the binary will not run at all.** `docs/upgrading.md` gains "When collie will not run": run the previous version's on-disk binary directly for `update --rollback`, or pin forward with `COLLIE_TAG`. A GitHub bug-report form asks for the `doctor --json` block and, when collie will not start, that previous binary's output (ea8f5e3)
 
+### Fixed
+
+- **The header's right cluster sits on the mux line.** The host and session chips and the gear centred against the identity block's full two-line height, so they floated 8px above "on <mux>" and the row read as three loose shelves. The brand eyebrow now rides above the block out of flow, the block contributes only the mux line, and every centred child of the row shares that one visual line (8528e8b)
+
 ## [1.0.0-beta.49] - 2026-08-31
 
 ### Added
