@@ -6,6 +6,17 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [1.0.0-beta.49] - 2026-08-31
+
+### Added
+
+- **An Install card in Settings, present exactly while the browser offers to install.** Tapping it shows the browser's own install dialog; an already-installed app, iOS Safari and an insecure origin all show nothing rather than a dead button. (015f18b)
+
+### Changed
+
+- **Aldrich is the shipped default face.** Every default mechanism moved with it — the preload, the boot splash, the pre-paint class list, the operator-font fallback — so a device that never opens the Typeface setting now dresses in Aldrich at first paint with no layout shift. Space Grotesk stays a shipped choice. (36f67b8)
+- **The composer's draft field renders in the terminal font** — the mirror's family, following the Terminal font setting, since what you type there is bound for the terminal. (62bb1cd)
+
 ## [1.0.0-beta.48] - 2026-08-30
 
 ### Added
