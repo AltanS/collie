@@ -71,3 +71,7 @@ holding first. Revoking the last one turns it back off — there is no state in 
 out of your own collie. A wrong code is worth five attempts before the code is destroyed and you have
 to run `collie pair` again.
 
+
+---
+
+[← back to the README](../README.md)

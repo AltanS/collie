@@ -49,9 +49,9 @@ decisions, not steps:
 curl -fsSL https://colliepwa.dev/install.sh | sh
 ```
 
-That URL is a copy the site serves. **The canonical source is the file in this repository**, and
-reading it before you run it is the right instinct — it is one page of POSIX `sh`, and it never asks
-for `sudo`:
+That URL is a copy the site serves. **The canonical source is `scripts/install.sh` in Collie's
+repository**, and reading it before you run it is the right instinct — it is one page of POSIX `sh`,
+and it never asks for `sudo`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AltanS/collie/main/scripts/install.sh | less
