@@ -9,6 +9,7 @@ import {
 import { HerdrMux } from "./mux/herdr/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
 import type { MuxAdapter, MuxPane } from "./mux/types.ts";
+import { toPaneWire } from "./types.ts";
 import type { AgentStatus } from "./types.ts";
 
 // HerdrClient carries private socket fields, so no fake can ever *be* one structurally — every fake
@@ -877,5 +878,70 @@ describe("StateEngine — attention", () => {
     engine.noteAttention(NOW);
     engine.noteAttention(NOW + 4000);
     expect(engine.attention(NOW + ATTENTION_WINDOW_MS + 1)).toBe("watched");
+  });
+});
+
+// THE PANE A DEAD AGENT LEFT BEHIND (M11/03) — a shell to the operator, a journal key to the bridge.
+//
+// The decorator stops naming an agent the moment its beacon expires, and hands the pane the harness
+// that wrote the ref instead (`MuxPane.sessionAgent`). Two things have to hold at this layer: the
+// pane sorts as a SHELL, and neither the ref nor its harness reaches the wire — a History affordance
+// on a pane the herd calls a shell is the same ghost in a smaller shape.
+describe("StateEngine — an expired agent's pane", () => {
+  const deadAgentPane: MuxPane = {
+    paneId: "%9",
+    spaceId: "$0",
+    spaceLabel: "collie",
+    spaceNumber: 1,
+    tabId: "@0",
+    cwd: "/home/dev/collie",
+    focused: false,
+    alive: true,
+    // What the decorator leaves: no agent, no status claim.
+    agent: "shell",
+    status: "unknown",
+    agentSession: { kind: "id", value: "abc-123" },
+    sessionAgent: "claude",
+  };
+
+  /** A multiplexer reporting exactly that one pane. */
+  function engineOver(only: MuxPane): StateEngine {
+    const stub: Partial<MuxAdapter> = {
+      reachable: () => Promise.resolve(true),
+      snapshot: () => Promise.resolve({ panes: [only], spaces: [], tabs: [] }),
+    };
+    // SAFETY: a poll over a herd of one SHELL reaches `reachable()` and `snapshot()` and nothing
+    // else — the session-name scrape runs for claude panes only, and this pane names no agent at
+    // all. Every member left off `stub` is unobservable here.
+    return new StateEngine(stub as MuxAdapter, 1500);
+  }
+
+  test("it is listed as a shell, not as an agent of unknown status", async () => {
+    const engine = engineOver(deadAgentPane);
+    await engine["poll"]();
+    const snap = engine.current();
+    expect(snap.agents).toEqual([]);
+    expect(snap.shellPanes.map((view) => view.paneId)).toEqual(["%9"]);
+    expect(snap.shellPanes[0]!.kind).toBe("shell");
+  });
+
+  test("its journal key survives the poll, server-side", async () => {
+    const engine = engineOver(deadAgentPane);
+    await engine["poll"]();
+    const view = engine.current().shellPanes[0]!;
+    expect(view.agentSession).toEqual({ kind: "id", value: "abc-123" });
+    expect(view.sessionAgent).toBe("claude");
+  });
+
+  test("and reaches the wire as a plain shell pane — no key, no History affordance", async () => {
+    const engine = engineOver(deadAgentPane);
+    await engine["poll"]();
+    // `hasJournal` is the real registry's shape — it knows claude and nothing else — so the flag
+    // would light if the strip keyed off the DEAD agent's harness instead of the pane's own.
+    // Membership asked with `hasOwn`: an absent key, not an undefined value.
+    const wire = toPaneWire(engine.current().shellPanes[0]!, (agent) => agent === "claude");
+    expect(Object.hasOwn(wire, "agentSession")).toBe(false);
+    expect(Object.hasOwn(wire, "sessionAgent")).toBe(false);
+    expect(wire.hasSession).toBeUndefined();
   });
 });

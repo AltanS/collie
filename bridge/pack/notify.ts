@@ -121,10 +121,11 @@ export class PeerNotifier<H = unknown> {
     const diff = diffPeerAgents(entry.statuses, body.agents);
     entry.statuses = diff.statuses;
     for (const t of diff.transitions) {
-      // `PaneWire` is `AgentView` minus the server-only session ref, so it is exactly what the
+      // `PaneWire` is `AgentView` minus the server-only session fields, so it is exactly what the
       // coordinator reads (agent, workspaceLabel, cwd, paneId) — no re-hydration, no second shape.
-      // SAFETY: `PaneWire` IS `AgentView` minus the server-only `agentSession`, and the coordinator
-      // reads only agent/workspaceLabel/cwd/paneId — every one of them present and typed on both.
+      // SAFETY: `PaneWire` IS `AgentView` minus `agentSession` and `sessionAgent`, both server-only,
+      // and the coordinator reads only agent/workspaceLabel/cwd/paneId — every one of them present
+      // and typed on both.
       entry.coordinator.onTransition(t.pane as AgentView, t.from, t.to);
     }
     for (const id of diff.removed) entry.coordinator.onRemove(id);

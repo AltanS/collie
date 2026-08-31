@@ -1191,9 +1191,12 @@ function beaconHooks(
 /**
  * `beacons` — how many agents have identified themselves here, and how many of those are gone.
  *
- * An expired beacon is ORDINARY and never a warning: agents end, and an expired one is still the key
- * to that pane's history (M11/04). What this finding answers is the question `hooks status` cannot —
- * whether anything has actually been written since the emitter was installed.
+ * An expired beacon is ORDINARY and never a warning: agents end. Its pane goes back to reading as a
+ * shell the moment the agent's pid dies (M11/03), and the conversation it left behind stays readable
+ * (M11/04). What this finding answers is the question `hooks status` cannot — whether anything has
+ * actually been written since the emitter was installed.
+ *
+ * Nothing here removes a file. The sweep is a READ, on this path as on the bridge's.
  */
 async function beacons(deps: DoctorDeps, installed: boolean): Promise<Finding> {
   const readings = await readBeacons(deps.beacons);
@@ -1212,7 +1215,7 @@ async function beacons(deps: DoctorDeps, installed: boolean): Promise<Finding> {
   }
   return ok(
     "beacons",
-    `${String(live)} live, ${String(expired)} expired — an expired one still keys that pane's history`,
+    `${String(live)} live, ${String(expired)} expired — an expired one's agent has ended, and its pane reads as a shell again`,
   );
 }
 

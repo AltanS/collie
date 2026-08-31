@@ -46,6 +46,15 @@ export interface AgentView {
    */
   agentSession?: AgentSessionRef;
   /**
+   * Which harness wrote {@link agentSession}, when the pane no longer names one — the pane whose
+   * agent EXITED (its beacon expired, so it reads as a plain shell again). SERVER-SIDE ONLY, and
+   * carried for one consumer: the history route's journal lookup, which is keyed by harness name.
+   *
+   * Deliberately invisible. Nothing on the wire is derived from it, so a pane holding one is
+   * byte-identical to any other shell pane (see `bridge/beacon/decorate.ts` § decoratePane).
+   */
+  sessionAgent?: string;
+  /**
    * Upper bound on the lines a `recent` read of this pane can return — Herdr's scrollback depth plus
    * the viewport. This is the ONLY reliable "is there more scrollback" signal: `PaneRead.truncated`
    * is always false even when a read cut history off, which is why the mirror's "Load older" button
@@ -114,7 +123,7 @@ export interface AgentView {
  * NOTE the `Omit` is opt-OUT: a future server-only field on AgentView goes on the wire unless it is
  * added to the omit list here. If you add one, strip it here in the same change.
  */
-export type PaneWire = Omit<AgentView, "agentSession"> & {
+export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
   /** True when this pane's history is actually offerable: the agent named a session AND its harness
    *  has a journal adapter. Says nothing about whether the log is readable — a named session whose
    *  file is missing still answers `available:false` with reason `no-log`. */
@@ -150,8 +159,24 @@ export type PaneWire = Omit<AgentView, "agentSession"> & {
  * read it (Herdr detects more agents than Collie has journals for). Keying the flag on the ref alone
  * would advertise a History affordance that always comes back empty, so the registry gets a vote.
  */
+/**
+ * Which harness's journal adapter reads THIS pane's transcript.
+ *
+ * The pane's own agent, all but one time. The exception is the pane whose agent EXITED: it reads as
+ * a shell again (its beacon expired — `bridge/beacon/decorate.ts`), and the conversation it left is
+ * still on disk under the harness that wrote it. Asking `agent` alone would answer `"shell"` and
+ * lose a readable log the moment the process ended.
+ *
+ * It is a LOOKUP KEY and nothing else. Nothing display-facing may be derived from it — `toPaneWire`
+ * deliberately keys `hasSession` off `agent`, so a dead agent's pane offers no History affordance
+ * and reads exactly like every other shell pane.
+ */
+export function journalAgentOf(pane: AgentView): string {
+  return pane.sessionAgent ?? pane.agent;
+}
+
 export function toPaneWire(pane: AgentView, hasJournal: (agent: string) => boolean): PaneWire {
-  const { agentSession, ...rest } = pane;
+  const { agentSession, sessionAgent: _sessionAgent, ...rest } = pane;
   return agentSession && hasJournal(pane.agent) ? { ...rest, hasSession: true } : rest;
 }
 

@@ -188,6 +188,19 @@ export interface MuxPane extends MuxIdentity {
    */
   readonly agentSession?: AgentSessionRef;
   /**
+   * WHICH harness wrote {@link agentSession}, when that is no longer {@link agent}.
+   *
+   * One case sets it: a pane whose agent has EXITED. Its beacon expired, so the pane reads as a
+   * plain shell again (`agent` is `"shell"`, no status) — and the conversation it left behind is
+   * still on disk. The journal registry is keyed by harness name, so without this the ref would name
+   * a log no adapter could open.
+   *
+   * Server-side only, exactly as `agentSession` is, and INVISIBLE: nothing on the wire is derived
+   * from it, so a pane carrying one is byte-identical to any other shell pane. It is a lookup key
+   * and never an identity — reading it as one would put the ghost back.
+   */
+  readonly sessionAgent?: string;
+  /**
    * Upper bound on the lines one read of this pane can return. The only reliable "is there more"
    * signal, and it means something only with `gridScrollback`.
    */

@@ -143,6 +143,9 @@ export interface BeaconIdentity {
  * beacon still supplies `harness` and `session`, because a finished conversation is still readable
  * (M11/04), and supplies NO status, because it has not been able to make a claim since it died. So
  * the session ref survives expiry and the status does not.
+ *
+ * The expired identity is a LOOKUP, not a label. `decoratePane` spends it on the journal key alone
+ * and puts none of it on the pane the operator reads — see that function.
  */
 export function identityOf(reading: BeaconReading): BeaconIdentity | null {
   const agent = reading.harness.trim().toLowerCase();
@@ -212,7 +215,25 @@ function beaconForPane(
   return matched.length === 1 ? (matched[0] ?? null) : null;
 }
 
-/** One pane, with whatever its beacon says about it. Absent or ambiguous ⇒ returned untouched. */
+/**
+ * One pane, with whatever its beacon says about it. Absent or ambiguous ⇒ returned untouched.
+ *
+ * ── AN EXPIRED BEACON DOES NOT NAME AN AGENT ──────────────────────────────────────────────────────
+ *
+ * The agent whose pid is dead is GONE, and the pane it left behind is a shell again. It is listed as
+ * a shell, it carries no harness name and it shows no status chip — exactly the pane an absent
+ * beacon produces, which is what .adr/0024 already says an expired beacon is ("expired ... is
+ * absent"). The alternative is what the operator saw in the VM rehearsal: a `claude` pane stuck at
+ * `unknown` in the herd for the whole TTL, hours after the process ended.
+ *
+ * WHAT SURVIVES IS THE JOURNAL KEY, and only server-side. The conversation is still on disk and
+ * still worth opening, so the ref rides along with the harness that wrote it ({@link
+ * MuxPane.sessionAgent}). Neither reaches the wire — `toPaneWire` strips the ref, and `hasSession`
+ * is keyed off `agent`, so this pane is byte-identical to any other shell pane.
+ *
+ * The file itself is left alone. This whole path is a READ (the sweep's rule, and doctor's promise),
+ * so expiry deletes nothing.
+ */
 function decoratePane(
   pane: MuxPane,
   readings: readonly BeaconReading[],
@@ -225,6 +246,9 @@ function decoratePane(
   if (identity === null) return pane;
   // Assigned onto a copy, never conditionally spread, so a field the beacon does not supply stays
   // absent — the rule every adapter in this tree follows for `MuxPane`.
+  if (reading.liveness === "expired") {
+    return { ...pane, agentSession: identity.session, sessionAgent: identity.agent };
+  }
   return { ...pane, agent: identity.agent, status: identity.status, agentSession: identity.session };
 }
 

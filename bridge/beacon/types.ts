@@ -133,6 +133,10 @@ export interface BeaconRecord {
  * is the only one that carries the field at all, so there is no way to read a stale status by
  * accident. It asserts no liveness of any kind.
  *
+ * What that harness name is SPENT ON is the join's decision, and the join spends it on the journal
+ * lookup alone: an expired beacon does not label its pane, which goes back to reading as a shell
+ * (`bridge/beacon/decorate.ts` § decoratePane, .adr/0024 "expired ... is absent").
+ *
  * ABSENT is the third case and it is not in this union on purpose: the reader simply returns nothing
  * for that pane, and the pane reads as a shell with `unknown` status exactly as it does today.
  * "No beacon" and "the agent is resting" look identical from outside and mean opposite things to a

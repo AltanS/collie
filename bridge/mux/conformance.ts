@@ -556,6 +556,9 @@ const undeclaredPaneFactsAreAbsent: MuxReadCheck = {
     if (!declares(adapter, "agentSessionRef")) {
       for (const pane of snapshot.panes) {
         if (pane.agentSession !== undefined) problems.push(`pane "${pane.paneId}" carries an agent session without agentSessionRef`);
+        // Its lookup key travels with it and is meaningless without it — a pane naming the harness
+        // that wrote a ref it does not carry is an adapter half-filling the same fact.
+        if (pane.sessionAgent !== undefined) problems.push(`pane "${pane.paneId}" names a session harness without agentSessionRef`);
       }
     }
     return problems;

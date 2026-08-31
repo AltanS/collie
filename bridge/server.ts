@@ -47,7 +47,7 @@ import type { PackTlsOptions } from "./pack/transport.ts";
 import { createSttAdmission, sttCapability, transcribeRequest } from "./stt/http.ts";
 import type { SttProvider } from "./stt/provider.ts";
 import { MAX_UPLOAD_BYTES, uploadTooLarge } from "./uploads.ts";
-import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, toPaneWire } from "./types.ts";
+import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, journalAgentOf, toPaneWire } from "./types.ts";
 import type {
   ActionResponse,
   AgentView,
@@ -1486,7 +1486,10 @@ async function paneHistory(
   if (!pane?.agentSession) return unavailable("no-session");
   // An agent with no adapter has no journal. Same answer — the UI shouldn't distinguish "this
   // harness isn't supported" from "this pane never started one"; both mean there's nothing to show.
-  const adapter = adapterFor(journals, pane.agent);
+  // NOT `pane.agent`: a pane whose agent EXITED reads as a shell, and the harness that wrote the ref
+  // is the only thing that can key its journal adapter. A live pane answers `agent` exactly as it
+  // always did — see `journalAgentOf`.
+  const adapter = adapterFor(journals, journalAgentOf(pane));
   if (adapter === undefined) return unavailable("no-session");
 
   try {

@@ -1251,6 +1251,16 @@ describe("beacons", () => {
     expect(finding.detail).toContain("installed");
   });
 
+  test("an agent that has ended leaves an expired beacon, and that is still `ok`", async () => {
+    const finding = (await findings(harness(null, [], { beacons: [beacon(11, false)] }))).byCheck.get("beacons")!;
+    // The pane it belonged to is a shell again (M11/03) — which is the ORDINARY end of an agent, so
+    // the only honest verdict is `ok`. Doctor writes nothing either way: the sweep is a read.
+    expect(finding.status).toBe("ok");
+    expect(finding.detail).toContain("0 live");
+    expect(finding.detail).toContain("1 expired");
+    expect(finding.detail).toContain("reads as a shell");
+  });
+
   test("counts live against expired, and an expired one is never a warning", async () => {
     const beacons = [beacon(11, true), beacon(12, false), beacon(13, false)];
     const finding = (await findings(harness(null, [], { beacons }))).byCheck.get("beacons")!;

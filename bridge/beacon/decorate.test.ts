@@ -432,12 +432,41 @@ describe("the beacon status map", () => {
     expect(pane.agentSession).toEqual({ kind: "id", value: "session-1" });
   });
 
-  test("an expired beacon keeps its session but reads unknown — it can claim nothing since it died", async () => {
+  test("an expired beacon names NO agent — the pane the dead agent left behind is a shell again", async () => {
     const decorated = decorate(new StubAdapter(), [beacon([marker("%1")], "working", 1, false)]);
     const pane = await paneOf(decorated, "%1");
+    // Exactly what an ABSENT beacon produces, which is what an expired one is (.adr/0024). A pane
+    // stuck at `claude` / `unknown` for the whole TTL is the ghost this rule exists to prevent.
+    expect(pane.agent).toBe("shell");
     expect(pane.status).toBe("unknown");
-    expect(pane.agent).toBe("claude");
+  });
+
+  test("an expired beacon still keys the pane's history, invisibly", async () => {
+    const decorated = decorate(new StubAdapter(), [beacon([marker("%1")], "working", 1, false)]);
+    const pane = await paneOf(decorated, "%1");
+    // The conversation is still on disk and the journal registry is keyed by harness name, so the
+    // ref and the harness that wrote it survive — server-side only, and off the wire entirely.
     expect(pane.agentSession).toEqual({ kind: "id", value: "session-1" });
+    expect(pane.sessionAgent).toBe("claude");
+  });
+
+  test("a live pane carries no session harness — the field is the dead agent's alone", async () => {
+    const decorated = decorate(new StubAdapter(), [beacon([marker("%1")], "working", 1)]);
+    expect((await paneOf(decorated, "%1")).sessionAgent).toBeUndefined();
+  });
+
+  test("an agent that dies drops out of the herd on the next sweep", async () => {
+    const markers = [marker("%1")];
+    const live = decorate(new StubAdapter(), [beacon(markers, "working", 1)]);
+    const before = await paneOf(live, "%1");
+    expect(before.agent).toBe("claude");
+    expect(before.status).toBe("working");
+    // The same beacon FILE, unchanged on disk — only the pid is gone. Nothing deletes it: the sweep
+    // is a read, and the next snapshot is where the pane goes quiet.
+    const after = await paneOf(decorate(new StubAdapter(), [beacon(markers, "working", 1, false)]), "%1");
+    expect(after.agent).toBe("shell");
+    expect(after.status).toBe("unknown");
+    expect(after.agentSession).toEqual(before.agentSession);
   });
 
   test("an absent beacon reads unknown and never idle", async () => {

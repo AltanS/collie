@@ -7,6 +7,8 @@ import { fakeBeaconReader, type FakeBeacon } from "./beacon/fake.ts";
 import { readBeacons } from "./beacon/reader.ts";
 import { BEACON_SCHEMA_VERSION, type BeaconMarker, type BeaconReading, type BeaconRecord } from "./beacon/types.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
+import { journalAgentOf } from "./types.ts";
+import type { AgentView } from "./types.ts";
 import type { AgentSessionRef, JournalAdapter } from "./journal/types.ts";
 
 // WHERE A BEACON'S REF MEETS THE JOURNAL (M11/04). Nothing under `bridge/journal/` changes to make
@@ -25,9 +27,11 @@ import type { AgentSessionRef, JournalAdapter } from "./journal/types.ts";
 //
 // Two rules are pinned here and they are the two a later change could break with no type error:
 //
-//  1. AN EXPIRED BEACON STILL YIELDS HISTORY. Expiry retires a status claim, never a session ref — a
-//     finished conversation is still readable, and the pane whose agent exited an hour ago is exactly
-//     the pane an operator opens history on.
+//  1. AN EXPIRED BEACON STILL YIELDS HISTORY. Expiry retires an IDENTITY — the status claim and the
+//     agent label both go, and the pane reads as a shell again (M11/03) — but never the session ref.
+//     A finished conversation is still on disk and still readable, so the ref and the harness that
+//     wrote it travel on with the pane, server-side and invisible: `journalAgentOf` is what the
+//     history route asks, and it is the only consumer.
 //
 //  2. A PATH-KIND REF IS CONFINED, WITH NO CARVE-OUT FOR "THE OPERATOR INSTALLED THE HOOK". Today's
 //     Claude emitter writes `id` refs only, so the path case here is synthetic on purpose: it is the
@@ -150,6 +154,22 @@ async function fixture() {
   return { base, claude, pi, piLog, escape, outside: `${base}/outside/secrets.jsonl`, registry };
 }
 
+/** The pane a dead agent left behind, before its ref and harness are put back on it. */
+function shellView(): AgentView {
+  return {
+    paneId: "%7",
+    workspaceId: "$0",
+    workspaceLabel: "repo",
+    workspaceNumber: 1,
+    tabId: "@0",
+    agent: "shell",
+    status: "unknown",
+    cwd: "/var/home/you/repo",
+    focused: false,
+    kind: "shell",
+  };
+}
+
 describe("a beacon's session ref, read by the journal registry", () => {
   // THE LOAD-BEARING TEST OF M11/04. Nothing in bridge/journal/ knows a beacon exists; the ref simply
   // arrives from a different place than Herdr's `agent_session` record and is read the same way.
@@ -176,6 +196,32 @@ describe("a beacon's session ref, read by the journal registry", () => {
     expect(live).toEqual(dead);
     expect(live?.turns).toBe(1);
     await rm(fx.base, { recursive: true, force: true });
+  });
+
+  // WHAT THE HISTORY ROUTE ACTUALLY ASKS, for the pane whose agent has ended. That pane reads as a
+  // shell (M11/03) — no agent name on it at all — so the route keys the registry off the harness the
+  // decorator kept beside the ref. Reading `agent` here would answer "shell", find no adapter, and
+  // turn every finished conversation into `no-session` the moment its process exited.
+  test("a dead agent's pane is a shell, and its transcript is still reachable", async () => {
+    const fx = await fixture();
+    const reading = await onlyReading({ record: record({}), alive: false });
+    const identity = identityOf(reading);
+    // The pane the decorator produced: a shell to the operator, a lookup key underneath.
+    expect(identity).not.toBeNull();
+    // SAFETY: the assertion above is the invariant — a `claude` beacon always names an identity.
+    const named = identity!;
+    const pane: AgentView = { ...shellView(), agentSession: named.session, sessionAgent: named.agent };
+    expect(journalAgentOf(pane)).toBe("claude");
+    const adapter = adapterFor(fx.registry, journalAgentOf(pane));
+    expect(await adapter?.source.resolve(named.session)).toBe(
+      `${fx.claude}/-var-home-you-repo/${CLAUDE_SESSION}.jsonl`,
+    );
+    await rm(fx.base, { recursive: true, force: true });
+  });
+
+  // A LIVE pane is unchanged by that rule: it carries no `sessionAgent`, so the key is its own agent.
+  test("a live pane keys its journal off its own agent, exactly as before", () => {
+    expect(journalAgentOf({ ...shellView(), agent: "claude", kind: "agent" })).toBe("claude");
   });
 
   // The second of the three `no-session` causes: a harness registered for identity and not for
