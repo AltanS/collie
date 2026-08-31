@@ -51,7 +51,7 @@ export const FACES = {
   aldrich: {
     label: "Aldrich",
     stack: '"Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, sans-serif',
-    note: "8 KB. Squared industrial sans, single 400 weight — every bold here is the browser faking it, not the font drawing it. Shipped; selectable in Settings.",
+    note: "8 KB. Squared industrial sans, single 400 weight — every bold here is the browser faking it, not the font drawing it. The shipped DEFAULT since beta.49.",
   },
   // The three below are dev-only long shots: Google CDN, no metric-matched fallback, so first paint
   // shows the system face and the swap shifts layout. Declared in playground.css, never index.css.
@@ -102,7 +102,7 @@ const accentIds = Object.keys(ACCENTS) as AccentId[];
 
 export const ACCENT_IDS: readonly AccentId[] = accentIds;
 
-let face: FaceId = "system";
+let face: FaceId = "aldrich"; // the app's shipped default, so the page opens in its real dress
 let accent: AccentId = "default";
 const listeners = new Set<() => void>();
 

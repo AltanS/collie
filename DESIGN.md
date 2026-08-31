@@ -251,8 +251,8 @@ full-bleed; only viewport chrome above the header is — the two-placement rule 
 
 ## 5. Type
 
-**The app's face is a per-device preference with a shipped default.** Space Grotesk (27 KB
-subset) is that default; Aldrich (8 KB) and the system face are the other shipped choices, and
+**The app's face is a per-device preference with a shipped default.** Aldrich (8 KB subset)
+is that default; Space Grotesk (27 KB) and the system face are the other shipped choices, and
 an operator may add their own through `theme.toml`. It is set on the Typeface card in
 Settings, stored in `collie:design:v1`, and applied **before first paint** as a root class by
 `web/public/theme-init.js` — `:root.font-*` in `index.css` owns every stack, and JavaScript

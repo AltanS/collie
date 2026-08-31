@@ -44,6 +44,12 @@ been the easy mistake.
 Three shipped choices: `system`, `grotesk` (Space Grotesk — **stays the default**) and `aldrich`
 (new, self-hosted, 8 KB subset). The Typeface card in Settings writes `collie:design:v1`.
 
+> **Amended 2026-08-31:** the maker moved the default to **Aldrich**. Everything below about "the
+> default" still holds — the default wears no class, is preloaded, and keeps JavaScript off the
+> first-paint path — the face filling that role changed, and every mechanism named here followed it
+> (`DEFAULT_UI_FONT_URL`, the index.html preload, the splash mirror, the operator `var()` fallback).
+> `:root.font-grotesk` now exists instead of `:root.font-aldrich`.
+
 **Space Grotesk stays the default, and the default costs nothing.** A device that never opens the
 card gets byte-for-byte the first paint it got before this feature existed: the same preloaded
 file, the same metric-matched twin, and — because the default is spelled as the absence of a class

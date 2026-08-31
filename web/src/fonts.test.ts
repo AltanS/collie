@@ -89,7 +89,7 @@ describe("the UI typefaces", () => {
   // stack. Put the stand-in last and it never renders; leave it out and the swap reflows.
   it("puts the stand-in between the webfont and the plain system stack", () => {
     const stack = /--font-sans:\s*([\s\S]*?);/.exec(css)?.[1] ?? "";
-    expect(stack).toMatch(/^\s*"Space Grotesk",\s*"Space Grotesk Fallback",/);
+    expect(stack).toMatch(/^\s*"Aldrich",\s*"Aldrich Fallback",/);
     expect(stack).toContain("system-ui");
   });
 
@@ -123,7 +123,7 @@ describe("the UI typefaces", () => {
   // face declared above is never actually selected for the caption.
   it("mirrors the typeface root classes into the boot splash", () => {
     expect(html).toContain(":root.font-system");
-    expect(html).toContain(":root.font-aldrich");
+    expect(html).toContain(":root.font-grotesk");
   });
 
   it("is small enough to sit on the critical path", () => {
@@ -221,7 +221,7 @@ describe("operator fonts stay off the shipped path", () => {
     const sheet = operatorFontCss([{ family: "Departure Mono", basename: "d.woff2" }], "op:gone.woff2");
     expect(sheet).not.toContain("--font-operator-family");
     expect(sheet).toContain('font-family: "Departure Mono";');
-    expect(cssRootOperatorStack()).toContain('var(--font-operator-family, "Space Grotesk")');
+    expect(cssRootOperatorStack()).toContain('var(--font-operator-family, "Aldrich")');
   });
 
   function cssRootOperatorStack(): string {

@@ -31,7 +31,7 @@ const STORAGE_KEY = "collie:design:v1";
  * concatenated into `classList.add()` — and a closed list is the answer that cannot be got wrong,
  * where a sanitiser is one someone has to keep right.
  *
- * `grotesk` is the DEFAULT and adds no class at all: no class means the `--font-sans` already in
+ * `aldrich` is the DEFAULT and adds no class at all: no class means the `--font-sans` already in
  * index.css's @theme block, which is the stack index.html preloads. A device that never opens the
  * setting runs no JavaScript before its first paint.
  */
@@ -40,7 +40,7 @@ export const SHIPPED_FONTS = ["system", "grotesk", "aldrich"] as const;
 export type ShippedFont = (typeof SHIPPED_FONTS)[number];
 
 /** The face a device gets before it says otherwise. */
-export const DEFAULT_FONT: ShippedFont = "grotesk";
+export const DEFAULT_FONT: ShippedFont = "aldrich";
 
 export interface DesignPrefs {
   /** A {@link ShippedFont}, or `op:<basename>`. Never validated by its type — always by a predicate. */
@@ -84,12 +84,12 @@ export function isDesignFont(value: string): boolean {
  */
 export function fontClass(font: string): string {
   if (font === "system") return "font-system";
-  if (font === "aldrich") return "font-aldrich";
+  if (font === "grotesk") return "font-grotesk";
   if (font.startsWith(OPERATOR_FONT_PREFIX)) return "font-operator";
   return "";
 }
 
-const FONT_CLASSES = ["font-system", "font-aldrich", "font-operator"] as const;
+const FONT_CLASSES = ["font-system", "font-grotesk", "font-operator"] as const;
 
 function load(): DesignPrefs {
   try {

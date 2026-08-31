@@ -305,8 +305,8 @@
      below hold the others. See the @font-face block for what "chrome only" means and why the
      stand-in family in the middle of the stack is not optional. */
   --font-sans:
-    "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
-    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    "Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
   /* The CONTENT stack: exactly what the app rendered in before the UI typeface arrived. Anything an
      agent or a machine authored wears this, so the custom face never dresses someone else's words
@@ -401,8 +401,8 @@
  * families below are the local system face re-declared with Space Grotesk's own metrics:
  * `size-adjust` matches the average advance width over the app's real charset, and the
  * ascent/descent overrides restore the line box after that scaling. A glyph changes shape at swap;
- * no box changes size. index.html preloads the file as well, so on a warm tailnet the swap usually
- * never happens at all. Measured in Chrome by forcing the swap with an observer running: see the
+ * no box changes size. index.html preloads the DEFAULT face's file (Aldrich, since the default
+ * moved there), so on a warm tailnet its swap usually never happens at all. Measured in Chrome by forcing the swap with an observer running: see the
  * stand-in's own comment below for what it is matching and why one table covers every platform.
  *
  * Space Grotesk is SIL OFL 1.1 — public/fonts/LICENSE-space-grotesk.txt. The two other candidates
@@ -479,7 +479,7 @@
  * a font list, sets a family, or writes a custom property — because a font stack in JavaScript is a
  * second source of truth for something this file already states, and the two would drift.
  *
- * The DEFAULT (Space Grotesk) is deliberately NOT a class: no class means the `--font-sans` in the
+ * The DEFAULT (Aldrich) is deliberately NOT a class: no class means the `--font-sans` in the
  * @theme block above, which is the stack index.html preloads and the boot splash re-declares. A
  * device that never opens the setting therefore has no JavaScript in its first-paint path at all.
  *
@@ -498,10 +498,10 @@
     "Helvetica Neue", Arial, "Noto Sans", sans-serif;
   --default-font-family: var(--font-sans);
 }
-:root.font-aldrich {
+:root.font-grotesk {
   --font-sans:
-    "Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, -apple-system,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --default-font-family: var(--font-sans);
 }
 /* An operator's own face (theme.toml, ADR 0033). The FAMILY NAME is the one thing this file cannot
@@ -512,17 +512,17 @@
  * THE `var()` FALLBACK IS THE OFFLINE STORY, and it is not decoration. A device set to an operator
  * face that cannot be resolved — first paint before /api/config answers, offline, or the operator
  * deleted the row — has no `--font-operator-family`, so the stack starts at "Space Grotesk": the
- * DEFAULT SHIPPED FACE, never a bare `sans-serif`. Space Grotesk is named a second time after the
+ * DEFAULT SHIPPED FACE, never a bare `sans-serif`. Aldrich is named a second time after the
  * var() so that a resolved-but-unfetchable face lands there too rather than on the metric twin,
- * which is Arial wearing Space Grotesk's measurements and not the same thing at all.
+ * which is Arial wearing Aldrich's measurements and not the same thing at all.
  *
  * The preference is NOT cleared when this happens. A phone that is briefly offline must not
  * silently forget a choice it will be able to honour again in a minute. */
 :root.font-operator {
   --font-sans:
-    var(--font-operator-family, "Space Grotesk"), "Space Grotesk",
-    "Space Grotesk Fallback", ui-sans-serif, system-ui, -apple-system,
-    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    var(--font-operator-family, "Aldrich"), "Aldrich", "Aldrich Fallback",
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
   --default-font-family: var(--font-sans);
 }
 

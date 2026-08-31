@@ -43,7 +43,7 @@
          fonts.test.ts pins all three. -->
     <link
       rel="preload"
-      href="/fonts/ui-space-grotesk-2.000-latin.woff2"
+      href="/fonts/ui-aldrich-1.002-latin.woff2"
       as="font"
       type="font/woff2"
       crossorigin
@@ -94,12 +94,12 @@
         descent-override: 27.16%;
         line-gap-override: 0%;
       }
-      /* Aldrich, for the same reason and on the same terms — theme-init.js has already put
-         `font-aldrich` on <html> by the time this parses, so a reader who chose it must find the
-         face declared here or the splash paints in the system font and the hand-off to React
-         changes the voice under them. One weight; the synthesized bold is index.css's note. Not
-         preloaded (only the default face is), so this costs a fetch for the readers who chose it
-         and nothing at all for everyone else. Keep in step with index.css. */
+      /* Aldrich is the DEFAULT face now, so this is the block the preload above warms — the
+         splash and React's first paint resolve to it on any device that never opened the setting.
+         One weight; the synthesized bold is index.css's note. Space Grotesk above it stays on the
+         same terms it always had, but the roles flipped: theme-init.js has already put
+         `font-grotesk` on <html> for a reader who chose it, and that face now costs its own fetch
+         while Aldrich rides the preload. Keep in step with index.css. */
       @font-face {
         font-family: "Aldrich";
         src: url("/fonts/ui-aldrich-1.002-latin.woff2") format("woff2");
@@ -142,18 +142,18 @@
          index.css. */
       :root {
         --font-sans:
-          "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
-          -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          "Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, -apple-system,
+          "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
       :root.font-system {
         --font-sans:
           ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
           "Helvetica Neue", Arial, "Noto Sans", sans-serif;
       }
-      :root.font-aldrich {
+      :root.font-grotesk {
         --font-sans:
-          "Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, -apple-system,
-          "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          "Space Grotesk", "Space Grotesk Fallback", ui-sans-serif, system-ui,
+          -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
       }
       .boot-splash__dog {
         --dog-size: 4rem;

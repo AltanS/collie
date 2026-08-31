@@ -47,11 +47,11 @@
     if (!raw) return;
     var d = JSON.parse(raw);
     if (!d || typeof d !== "object") return;
-    // The closed list, and the whole of it. `grotesk` is the default and wears NO class — no class
+    // The closed list, and the whole of it. `aldrich` is the default and wears NO class — no class
     // means the --font-sans already in index.css, which is the stack index.html preloads. Anything
     // else, including an `op:` value, falls through and leaves the element bare.
     if (d.font === "system") root.classList.add("font-system");
-    else if (d.font === "aldrich") root.classList.add("font-aldrich");
+    else if (d.font === "grotesk") root.classList.add("font-grotesk");
   } catch {
     // A truncated write, a hand-edited blob, or private mode. The default face is the right answer
     // to all three, and it is the one already in the stylesheet.

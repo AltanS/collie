@@ -95,13 +95,13 @@ export const NAVIGATION_NETWORK_ONLY = [
  * offline on a device that has never loaded the app is not a font problem.
  */
 /**
- * The UI face a device gets when it has never touched the Typeface setting — Space Grotesk.
+ * The UI face a device gets when it has never touched the Typeface setting — Aldrich.
  *
  * Named separately because it is the one URL that is on the CRITICAL PATH: index.html preloads it,
  * the boot splash re-declares it, and `fonts.test.ts` holds it to the ~60 KB budget. The other
  * shipped faces are opt-in, so they are fetched when a reader picks one and never before.
  */
-export const DEFAULT_UI_FONT_URL = "/fonts/ui-space-grotesk-2.000-latin.woff2";
+export const DEFAULT_UI_FONT_URL = "/fonts/ui-aldrich-1.002-latin.woff2";
 
 /**
  * Every SHIPPED UI face — the ones the Typeface setting can be set to (ADR 0033). In the order
@@ -111,7 +111,7 @@ export const DEFAULT_UI_FONT_URL = "/fonts/ui-space-grotesk-2.000-latin.woff2";
  * from the network like any other API call, and are neither precached nor swept. A URL added here
  * that does not sit under `/fonts/` would be swept out of the font cache on every activate.
  */
-export const UI_FONT_URLS = [DEFAULT_UI_FONT_URL, "/fonts/ui-aldrich-1.002-latin.woff2"] as const;
+export const UI_FONT_URLS = ["/fonts/ui-space-grotesk-2.000-latin.woff2", DEFAULT_UI_FONT_URL] as const;
 
 export const FONT_URLS = [
   "/fonts/nerd-symbols-3.5.0-pua.woff2",
