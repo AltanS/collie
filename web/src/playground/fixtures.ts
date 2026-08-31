@@ -864,6 +864,30 @@ export const paneWorking: PaneFixture = {
   revision: 4_517,
 };
 
+/**
+ * The HOST PATH an image upload appends, verbatim in shape: one unbroken run with no space, no
+ * hyphen and no other break opportunity in it. `composer.tsx`'s `uploadImage()` writes exactly this
+ * into the draft, so it is the widest token the field can be handed — and it arrives without the
+ * operator typing a character.
+ */
+export const uploadedImagePath =
+  "/home/operator/.local/share/collie/uploads/2026-08-31T09-14-22-a1b2c3d4e5f6.png";
+
+/**
+ * Mid-tool-run, with {@link uploadedImagePath} already in the composer.
+ *
+ * ITS OWN `paneId`, and that is not cosmetic: the card seeds the REAL draft store, which is keyed by
+ * pane and backed by localStorage. Sharing `paneWorking`'s id would put this path in the other
+ * mid-tool-run card's box on the next page load, which is a card lying about its own state.
+ */
+export const paneUploadDraft: PaneFixture = {
+  // SAFETY: `structuredClone` of an `AgentView` — a plain data record of strings, numbers and
+  // booleans — is an `AgentView`. Same shape `onHost` below clones.
+  pane: { ...structuredClone(working[0]!), paneId: `${working[0]!.paneId}-upload` },
+  text: claudeWorking,
+  revision: 4_517,
+};
+
 /** A bare shell — no agent, no grammar, a ShellBadge in place of the status chip. */
 export const paneShell: PaneFixture = {
   pane: shells[0]!,

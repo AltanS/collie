@@ -16,6 +16,16 @@ import { cn } from "@/lib/utils";
  *  2. **`min-h-0 overflow-hidden` on the inner wrapper.** A grid item's automatic minimum size is
  *     its content, so without `min-h-0` the row refuses to go below its content height and 0fr
  *     does nothing at all. The clip is what hides the content while the row is short.
+ *
+ *     **`min-w-0` on the same wrapper, for the same reason on the other axis.** The automatic
+ *     minimum is not a height rule; it is `auto` on BOTH sides, so this item also refuses to be
+ *     narrower than its min-content width — and then paints out past the grid's right edge, because
+ *     the clip comes off the moment the row settles open. Anything a caller wraps that can produce
+ *     one very wide unbreakable run therefore pushed the whole box off the screen: the measured case
+ *     was the agent-chat bottom region, where a host path appended by an image upload carried the
+ *     composer's Send button past the right edge (`ui/chat/chat-input.tsx` states that half). The
+ *     rule belongs HERE and not at that call site — every Collapse wraps a caller's arbitrary
+ *     content, so every Collapse has the same exposure, and one of them fixed is not a rule.
  *  3. **Delayed unmount.** `open` going false must not remove the child, or there is nothing left
  *     to animate out. The child stays mounted for one duration and leaves after.
  *  4. **A held copy of that child.** Keeping the child MOUNTED is not the same promise as keeping
@@ -173,7 +183,9 @@ export function Collapse({ open, children, className }: CollapseProps) {
         className,
       )}
     >
-      <div className={cn("min-h-0", settled ? "overflow-visible" : "overflow-hidden")}>{content}</div>
+      <div className={cn("min-h-0 min-w-0", settled ? "overflow-visible" : "overflow-hidden")}>
+        {content}
+      </div>
     </div>
   );
 }

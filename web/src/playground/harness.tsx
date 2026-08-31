@@ -16,6 +16,7 @@ import { PackProvider } from "@/components/pack-provider";
 import { UpdateAvailableBanner } from "@/components/update-available-banner";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth, markLive } from "@/lib/connection-health";
+import { saveDraft } from "@/lib/drafts";
 import { ROOT_ROUTE_ID, type DevicesData, type HomeData, type PackData } from "@/lib/loaders";
 import type { DeviceAuth } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -212,13 +213,26 @@ export function PaneRouter({
   home,
   fixture,
   readOnly = false,
+  draft,
 }: {
   home: HomeData;
   fixture: PaneFixture;
   /** Mount with the write gate refusing, which is what locks the composer and raises its banner. */
   readOnly?: boolean;
+  /**
+   * Seed the pane's composer draft, so a card can be looked at with text already in the box.
+   *
+   * Written into the real draft store rather than pushed in as a prop, because the composer has no
+   * such prop and must not grow one for this page: it restores its own draft on mount
+   * (`lib/drafts.ts`), so writing the store IS how a draft arrives in the app. This runs in the
+   * `useState` initialiser above the composer's own, which is the ordering that makes it land.
+   */
+  draft?: string;
 }) {
   const [router] = useState(() => {
+    // Undefined scope: this harness hands `AgentChat` no `scope`, so the composer below reads the
+    // solo key, and that is the key this must write.
+    if (draft !== undefined) saveDraft(undefined, fixture.pane.paneId, draft);
     const data: HomeData = readOnly
       ? { ...home, device: { enforced: true, device: "kitchen-phone", authorized: false } }
       : home;

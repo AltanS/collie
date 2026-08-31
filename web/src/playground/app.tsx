@@ -69,6 +69,7 @@ import {
   paneHostUnreachable,
   paneShell,
   paneStack,
+  paneUploadDraft,
   paneWorking,
   rosterFive,
   spaces,
@@ -77,6 +78,7 @@ import {
   updateMajor,
   updateRelease,
   updateRestart,
+  uploadedImagePath,
 } from "./fixtures";
 import {
   Card,
@@ -594,6 +596,23 @@ function PaneSection() {
       >
         <PhoneFrameCard height={760}>
           <PaneRouter home={homeSolo} fixture={paneWorking} />
+        </PhoneFrameCard>
+      </Card>
+
+      <Card
+        label="pane — a just-uploaded image path in the draft"
+        reach="attach a picture. `uploadImage()` appends the HOST path the bridge returns, which is one
+          unbroken 70-odd-character token with no break opportunity in it — the widest thing that can
+          ever land in this box, and it arrives without the operator typing a character."
+        note="THE REGRESSION CARD for the Send button walking off the right edge. The field must wrap
+          the path mid-token and Send must stay at the row's right edge, inside the frame. Two classes
+          hold it: `wrap-anywhere` on the field (ui/chat/chat-input.tsx) and `min-w-0` on the Collapse
+          grid item the whole bottom region sits in (ui/collapse.tsx). jsdom cannot see either work —
+          it computes no layout — so this frame is where they are actually looked at."
+        span={2}
+      >
+        <PhoneFrameCard height={760}>
+          <PaneRouter home={homeSolo} fixture={paneUploadDraft} draft={uploadedImagePath} />
         </PhoneFrameCard>
       </Card>
 

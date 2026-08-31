@@ -213,6 +213,26 @@ describe("Collapse — animated presence for anything in flow", () => {
     expect(screen.getByText("You are read-only.")).toBeInTheDocument();
   });
 
+  it("lets its grid item be narrower than its content, on the width axis too", () => {
+    // A COUPLING TEST, and the class is the whole point: jsdom computes no layout, so what is
+    // pinned here is a fact about a REAL browser that only a class can carry into this file.
+    //
+    // The fact: a grid item's automatic minimum size is `auto` on BOTH axes. `min-h-0` is already
+    // pinned above because without it the 0fr row never collapses. `min-w-0` is the same rule
+    // sideways — without it this item refuses to be narrower than its min-content width, and since
+    // the clip comes off the moment the row settles open (the test above), the overflow paints out
+    // past the grid's right edge instead of being hidden. The measured victim was the agent-chat
+    // bottom region: a host path appended by an image upload widened the composer row and carried
+    // its Send button off the screen. Every Collapse wraps arbitrary caller content, so the rule
+    // lives in the primitive; `ui/chat/chat-input.tsx` holds the other half of that fix.
+    const { container } = render(
+      <Collapse open>
+        <p>copy</p>
+      </Collapse>,
+    );
+    expect(container.querySelector(".min-h-0")).toHaveClass("min-w-0");
+  });
+
   it("styles nothing about its child", () => {
     // It owns presence and geometry. Tone, padding, borders and text belong to the Notice inside,
     // so the same wrapper can carry a full-bleed strip and an inset box without knowing which.

@@ -63,7 +63,29 @@ function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea"
         // behaves byte-identically to before and the placeholder budget above is untouched. Only
         // the case that was broken changes. A longer draft scrolls inside the textarea, which is
         // what a textarea does; a draft you cannot see the bottom of is not a trade, it is a bug.
-        "field-sizing-content max-h-[min(10rem,30dvh)] min-h-11 w-full resize-none rounded-md border border-input bg-transparent px-3 py-2.5 text-base shadow-xs transition-[color,box-shadow] placeholder:overflow-hidden placeholder:whitespace-nowrap placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
+        //
+        // ── `wrap-anywhere` ON THE VALUE, AND WHY `break-word` IS NOT THE SAME CLASS ────
+        // `overflow-wrap: anywhere` and `overflow-wrap: break-word` PAINT the same: both break a
+        // token that has no break opportunity rather than let it run out of the box. They differ in
+        // one place only, and it is the place this field lives: `anywhere` participates in INTRINSIC
+        // SIZING and `break-word` does not. So under `break-word` — which is the textarea's own UA
+        // default, i.e. what this field had — the min-content width of the box is still the width of
+        // the longest unbreakable token, and `field-sizing-content` is precisely the property that
+        // turns an intrinsic width into a laid-out one. A difference that is normally invisible
+        // becomes the layout.
+        //
+        // The token is not hypothetical. `composer.tsx`'s `uploadImage()` appends the HOST path the
+        // bridge returns for an attached image — one unbroken run of `/`-joined characters, easily
+        // 60+ chars and never a break opportunity. That min-content width propagates up the bottom
+        // region (the enclosing `Collapse`'s grid item, `ui/collapse.tsx`, which carries `min-w-0`
+        // for this reason), the composer row is laid out wider than the screen, and Send — the last
+        // thing in that row — lands off the right edge. Reported as "the Send button disappeared
+        // after I uploaded a picture". One class on the value fixes it at the source.
+        //
+        // It does NOT touch the placeholder: `::placeholder` above still says `whitespace-nowrap`,
+        // and `white-space` beats any `overflow-wrap` there is — nothing may wrap what may not have
+        // a line break. The one-line, clipped placeholder contract above stands unchanged.
+        "field-sizing-content wrap-anywhere max-h-[min(10rem,30dvh)] min-h-11 w-full resize-none rounded-md border border-input bg-transparent px-3 py-2.5 text-base shadow-xs transition-[color,box-shadow] placeholder:overflow-hidden placeholder:whitespace-nowrap placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}

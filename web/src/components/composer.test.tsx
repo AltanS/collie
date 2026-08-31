@@ -2481,3 +2481,50 @@ describe("Composer — the placeholder cannot resize the field", () => {
     expect(box.className).toMatch(/placeholder:overflow-hidden/);
   });
 });
+
+// An uploaded host path may not push Send off the screen.
+//
+// A COUPLING TEST. jsdom computes no layout, so neither of the classes below can be *observed*
+// working here — what each one pins is a fact about a real browser that only a class can carry
+// into this file.
+//
+// The fact behind `wrap-anywhere`: `overflow-wrap: anywhere` and `overflow-wrap: break-word` paint
+// identically, and differ in exactly one place — `anywhere` participates in INTRINSIC sizing and
+// `break-word` (the textarea's UA default) does not. `ui/chat/chat-input.tsx` carries
+// `field-sizing-content`, which is the property that turns an intrinsic width into a laid-out one,
+// so under the default the field's min-content width was the width of the longest unbreakable
+// token. `uploadImage()` appends exactly such a token — the bridge's host path for the attached
+// image — so the composer row was laid out wider than the screen and Send, its last element,
+// landed past the right edge. Measured in Chrome at 390px; reported as "the Send button
+// disappeared after I uploaded a picture".
+//
+// The other half is on the wrapper (`ui/collapse.tsx`, pinned in `collapse.test.tsx`): the bottom
+// region is a Collapse grid item, and a grid item's automatic minimum is `auto` on the width axis
+// too, so the giant intrinsic width propagated all the way up. Both classes are needed and both
+// look like tidy-away decoration at their call sites.
+describe("Composer — a long upload path cannot widen the field", () => {
+  it("wraps the VALUE anywhere, so no unbreakable token sets the field's intrinsic width", () => {
+    renderComposer();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+
+    expect(box.className).toMatch(/(?:^|\s)wrap-anywhere(?:\s|$)/);
+    // …and the placeholder contract above is untouched by it: `white-space` beats `overflow-wrap`,
+    // so the placeholder is still the one clipped line it was.
+    expect(box.className).toMatch(/placeholder:whitespace-nowrap/);
+  });
+
+  it("still takes the appended path verbatim — the fix is layout, not the text", async () => {
+    const path = "/home/operator/.local/share/collie/uploads/2026-08-31T09-14-22-a1b2c3d4e5f6.png";
+    server.use(http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path })));
+    renderComposer();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    const file = new File(["x"], "shot.png", { type: "image/png" });
+
+    fireEvent.paste(box, {
+      clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => file }] },
+    });
+
+    await waitFor(() => expect(box).toHaveValue(path));
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+  });
+});
