@@ -259,6 +259,7 @@ describe("collie doctor — the contract", () => {
     const { code, byCheck, raw } = await findings(h);
     expect(code).toBe(EXIT.OK);
     expect([...byCheck.keys()]).toEqual([
+      "collie",
       "web-dist",
       "path-link",
       "install",
@@ -284,6 +285,22 @@ describe("collie doctor — the contract", () => {
       "clock",
     ]);
     expect(raw.filter((f) => f.status !== "ok" && f.status !== "skipped")).toEqual([]);
+  });
+
+  test("the FIRST finding is `collie`'s own version and platform — self-identifying, always ok", async () => {
+    const h = harness(null);
+    const { raw } = await findings(h);
+    expect(raw[0]?.check).toBe("collie");
+    expect(raw[0]?.status).toBe("ok");
+    expect(raw[0]?.remedy).toBeNull();
+    // "v1.0.0-beta.49 · linux-x64" — a version and a platform, nothing else.
+    expect(raw[0]?.detail).toMatch(/^v\S+ · [a-z]+-[a-z0-9]+$/);
+
+    const code = await cmdDoctor(h.deps, []);
+    expect(code).toBe(EXIT.OK);
+    const first = h.io.stdout.find((l) => l.includes("collie") && l.trim().startsWith("✓"));
+    expect(first).toBeDefined();
+    expect(first).toMatch(/v\S+ · [a-z]+-[a-z0-9]+/);
   });
 
   test("`remedy` is null EXACTLY when the status is ok — including for a skipped check", async () => {

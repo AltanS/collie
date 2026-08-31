@@ -58,6 +58,7 @@ import type { Ui } from "./render.ts";
 import { failureLine, type MemberReach, parsePackArgs, probeMemberReach, VERSION_REPORTED_SINCE } from "./pack.ts";
 import { fingerprintRoot, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
+import { platformId } from "./update.ts";
 import { tailnetInboundBlocked, tailnetName } from "./tailnet.ts";
 
 // `collie doctor` — one read-only pass over the traps that fail silently (M7/02).
@@ -159,6 +160,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   // `collie update` decides on, so the two verbs can never disagree about what they are looking at.
   const install = classifyInstall(probeInstall(deps, deps.ctx.root));
   const local: Finding[] = [
+    identity(deps),
     webDist(deps),
     pathLink(deps),
     installKind(deps, install),
@@ -256,6 +258,17 @@ function line(f: Finding): string {
 }
 
 // ── Local checks ─────────────────────────────────────────────────────────────
+
+/**
+ * The very first line: this Collie's own version and platform. Not a check — there is nothing to
+ * pass or fail — but an operator pasting a `doctor --json` block into a GitHub issue should never
+ * have to be asked "which version was this" as a follow-up question.
+ */
+function identity(deps: DoctorDeps): Finding {
+  const version = collieVersionBare(deps.ctx.root, (p) => deps.files.read(p));
+  const platform = platformId(process.platform, process.arch) ?? `${process.platform}-${process.arch}`;
+  return ok("collie", `v${version} · ${platform}`);
+}
 
 /** The bundle the bridge serves from disk at request time. Absent means a blank app, not an error page. */
 function webDist(deps: DoctorDeps): Finding {
