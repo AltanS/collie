@@ -6,6 +6,14 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [Unreleased]
+
+### Added
+
+- **`COLLIE_TAG` pins the installer to one exact release.** An environment variable, not a flag, so it survives `curl … | sh`: it skips the GitHub tags API entirely and, over an existing binary install, lays the pinned version down beside the broken one and flips `current` — the rescue for the day the installed binary cannot run its own `update`. A rate-limited tags call now says so plainly (60 unauthenticated calls an hour, shared per network address) and names the pin as the way around it (5fa3e21)
+- **`collie doctor` introduces itself first.** The first finding is this Collie's own version and platform, so a `doctor --json` block pasted into an issue never needs the follow-up question "which version was this" (27da722)
+- **A way out when the binary will not run at all.** `docs/upgrading.md` gains "When collie will not run": run the previous version's on-disk binary directly for `update --rollback`, or pin forward with `COLLIE_TAG`. A GitHub bug-report form asks for the `doctor --json` block and, when collie will not start, that previous binary's output (1016008)
+
 ## [1.0.0-beta.49] - 2026-08-31
 
 ### Added
