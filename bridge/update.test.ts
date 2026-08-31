@@ -216,6 +216,7 @@ function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
   const monitor = new UpdateMonitor({
     repo: "AltanS/collie",
     current: "0.11.0",
+    installKind: "detached-checkout",
     startupStamp: "STAMP@boot",
     fetchTags: async () => apiTags("v0.12.0"),
     bridgeStamp: () => "STAMP@boot",
@@ -243,6 +244,11 @@ describe("UpdateMonitor", () => {
       releaseAvailable: true,
     });
     expect(monitor.status().checkedAt).not.toBeNull();
+  });
+
+  it("reports the install kind it was constructed with — the banner spells its commands from it", () => {
+    const { monitor } = makeMonitor({ installKind: "binary" });
+    expect(monitor.status().installKind).toBe("binary");
   });
 
   it("splits the answer: the newest release of MY major, and a higher major named apart from it", async () => {

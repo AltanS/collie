@@ -66,6 +66,36 @@ describe("updateNotice", () => {
   it("stays silent when a release is flagged but no version is known", () => {
     expect(updateNotice(someUpdate({ releaseAvailable: true, latest: null }))).toBeNull();
   });
+
+  // The command spelling follows the install kind (M14/01 §5.3): Herdr's plugin actions reach only a
+  // Herdr-managed (detached) checkout. A binary install, a linked dev clone and an unknown layout are
+  // told the `collie` verbs; an ABSENT kind is an older, git-era bridge and keeps the Herdr spelling.
+  it("spells the collie verbs on a binary install", () => {
+    expect(updateNotice(someUpdate({ bridgeStale: true, installKind: "binary" }))?.command).toBe(
+      "collie restart",
+    );
+    expect(
+      updateNotice(someUpdate({ majorAvailable: "1.0.0", installKind: "binary" }))?.command,
+    ).toBe("collie update --major");
+  });
+
+  it("spells the collie verbs on a linked clone and an unknown layout", () => {
+    expect(updateNotice(someUpdate({ bridgeStale: true, installKind: "linked-clone" }))?.command).toBe(
+      "collie restart",
+    );
+    expect(updateNotice(someUpdate({ bridgeStale: true, installKind: "unknown" }))?.command).toBe(
+      "collie restart",
+    );
+  });
+
+  it("keeps the Herdr actions on a Herdr-managed checkout, named or absent (older bridge)", () => {
+    expect(
+      updateNotice(someUpdate({ bridgeStale: true, installKind: "detached-checkout" }))?.command,
+    ).toBe("herdr plugin action invoke restart --plugin herdr.collie");
+    expect(
+      updateNotice(someUpdate({ majorAvailable: "1.0.0", installKind: undefined }))?.command,
+    ).toBe("herdr plugin action invoke update-major --plugin herdr.collie");
+  });
 });
 
 function homeData(update: UpdateInfo | undefined): HomeData {

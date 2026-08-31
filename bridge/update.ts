@@ -463,6 +463,9 @@ export interface UpdateMonitorDeps {
   fetchTags: () => Promise<readonly ApiTag[]>;
   /** Recompute the on-disk bridge source stamp for the staleness check. */
   bridgeStamp: () => string;
+  /** How this Collie is installed, probed once at startup — it cannot change under a running process
+   *  (an update restarts the service), so the monitor just reports it. */
+  installKind: UpdateStatus["installKind"];
   store: UpdateStore;
   now: () => number;
   /** Whether update pushes are enabled (the `updates` notify pref — the user's off-switch). */
@@ -552,6 +555,7 @@ export class UpdateMonitor {
         this.majorAvailable === null
           ? null
           : githubReleaseUrl(this.deps.repo, this.majorAvailable),
+      installKind: this.deps.installKind,
       bridgeStale: this.bridgeStale(),
       checkedAt: this.checkedAt,
     };

@@ -3,6 +3,9 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
 
+import { classifyInstall, probeInstall } from "../cli/install-kind.ts";
+import { realLinkFs } from "../cli/link.ts";
+import { realExec, realFiles } from "../cli/sys.ts";
 import { ActivityLedger } from "./activity.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
@@ -504,9 +507,17 @@ await updateStore.load();
 // The repo the release check + release links point at. Defaults to Collie's own; overridable for a
 // fork (or a synthetic test target) via COLLIE_UPDATE_REPO.
 const updateRepo = process.env.COLLIE_UPDATE_REPO?.trim() || "AltanS/collie";
+// How this Collie is installed — the ONE shared classifier (`cli/install-kind.ts`), probed once at
+// startup because the answer cannot change under a running process (an update restarts the service).
+// The banner spells its commands from this: Herdr actions for a Herdr-managed checkout, the `collie`
+// verbs for everything else (M14/01 §5.3).
+const installKind = classifyInstall(
+  probeInstall({ exec: realExec(process.env, homedir()), files: realFiles, link: realLinkFs }, rootDir),
+).kind;
 const updateMonitor = new UpdateMonitor({
   repo: updateRepo,
   current: currentVersion,
+  installKind,
   startupStamp: bridgeStampSync(bridgeDir, rootDir),
   fetchTags: githubTagsFetcher(updateRepo),
   bridgeStamp: () => bridgeStampSync(bridgeDir, rootDir),

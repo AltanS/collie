@@ -158,6 +158,7 @@ const updateStatus: UpdateStatus = {
   releaseAvailable: false,
   majorAvailable: null,
   majorUrl: null,
+  installKind: "detached-checkout",
   bridgeStale: false,
   checkedAt: null,
 };
@@ -312,6 +313,7 @@ const UPDATE_STATUS_KEYS = {
   releaseAvailable: true,
   majorAvailable: true,
   majorUrl: true,
+  installKind: true,
   bridgeStale: true,
   checkedAt: true,
 } satisfies Record<keyof UpdateStatus, true>;

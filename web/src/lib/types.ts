@@ -380,6 +380,12 @@ export interface UpdateInfo {
   majorAvailable: string | null;
   /** GitHub release page for `majorAvailable`, or null when there is none. */
   majorUrl: string | null;
+  /**
+   * How this Collie is installed — decides the banner's command spelling: Herdr actions reach only a
+   * Herdr-managed (detached) checkout, every other kind is told the `collie` verbs. Absent on an
+   * older bridge (pre-M14, the git-install era), which reads as Herdr-managed.
+   */
+  installKind?: "linked-clone" | "detached-checkout" | "binary" | "unknown";
   /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
   bridgeStale: boolean;
   /** When the upstream check last ran (epoch ms), or null if it hasn't. */

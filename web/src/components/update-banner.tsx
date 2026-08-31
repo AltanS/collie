@@ -14,9 +14,10 @@ import { useOptionalRootData } from "@/lib/route-data";
 export interface UpdateNotice {
   /** The human line, e.g. "Bridge restart needed" / "Collie 0.12.0 available". */
   line: string;
-  /** A copyable command that resolves it — a Herdr plugin action, so it runs from ANY directory
-   *  (Herdr resolves the plugin's checkout). Only the RESTART case carries one: it has no page to link
-   *  to. The release case sends you to `href` instead, where the release notes carry the commands. */
+  /** A copyable command that resolves it, spelled for the install kind — the Herdr plugin action on a
+   *  Herdr-managed checkout (Herdr resolves the plugin's checkout, so it runs from ANY directory), the
+   *  `collie` verb everywhere else. Only the RESTART and MAJOR cases carry one; the release case sends
+   *  you to `href` instead, where the release notes carry the commands. */
   command?: string;
   /** GitHub release page for the available version — the line links to it. Absent for the restart case. */
   href?: string;
@@ -30,11 +31,19 @@ export interface UpdateNotice {
  */
 export function updateNotice(update: UpdateInfo | undefined): UpdateNotice | null {
   if (!update) return null;
+  // The command spelling is a function of the install kind (M14/01 §5.3): Herdr's plugin actions
+  // reach only a Herdr-managed (detached) checkout — on a binary install, a linked dev clone or an
+  // unknown layout they name a plugin Herdr does not manage, so those get the `collie` verbs, which
+  // work everywhere the CLI is on PATH. An absent kind is an older bridge from the git-install era,
+  // which is read as Herdr-managed so the advice never regresses mid-upgrade.
+  const herdrManaged = update.installKind === undefined || update.installKind === "detached-checkout";
   if (update.bridgeStale) {
-    // No release page for "restart needed" — show the Herdr restart action to copy.
+    // No release page for "restart needed" — show the one command that restarts it, to copy.
     return {
       line: t("settings.updateBanner.restart"),
-      command: "herdr plugin action invoke restart --plugin herdr.collie",
+      command: herdrManaged
+        ? "herdr plugin action invoke restart --plugin herdr.collie"
+        : "collie restart",
     };
   }
   // Guard on `latest` too: without a version string there's nothing meaningful to name. The release
@@ -52,7 +61,9 @@ export function updateNotice(update: UpdateInfo | undefined): UpdateNotice | nul
     return {
       line: t("settings.updateBanner.majorAvailable", { version: update.majorAvailable }),
       href: update.majorUrl ?? undefined,
-      command: "herdr plugin action invoke update-major --plugin herdr.collie",
+      command: herdrManaged
+        ? "herdr plugin action invoke update-major --plugin herdr.collie"
+        : "collie update --major",
     };
   }
   return null;
