@@ -39,6 +39,7 @@ import { packRuntimePath, parseMarker, rosterDrift } from "../bridge/pack/stalen
 import { enrollmentOf, TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
+import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { historyFindings } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs } from "./link.ts";
@@ -627,30 +628,71 @@ function clock(inPack: boolean, probes: Map<string, PeerOutcome<HelloResult>>): 
 // multiplexer cannot leave this file quietly reporting a stale set. What is written out per mux —
 // the argv of the liveness probe — is exactly what cannot be shared: each one has its own CLI.
 
+/**
+ * What decided the multiplexer this collie drives — the other half of the `mux` line since M14/03.
+ *
+ * `undecided` is a real state and not an error state to hide: with no `COLLIE_MUX` and no single
+ * multiplexer running, `collie start` REFUSES, and a doctor that reported a cheerful "herdr" for that
+ * host would be reporting a bridge that is never going to come up.
+ */
+type MuxOrigin =
+  | { readonly kind: "explicit" }
+  | { readonly kind: "auto"; readonly evidence: string }
+  | { readonly kind: "undecided"; readonly found: readonly MuxSighting[] };
+
 /** The mux settings, read from the CLI's merged env exactly as `bridge/config.ts` reads them. */
 interface MuxSettings {
   readonly name: string;
   readonly endpoint: string;
   readonly tmuxBin: string;
   readonly zellijBin: string;
+  readonly origin: MuxOrigin;
 }
 
 /**
- * `COLLIE_MUX` and the endpoint it addresses, resolved as the BRIDGE resolves them.
+ * `COLLIE_MUX` and the endpoint it addresses, resolved as `collie start` resolves them.
  *
  * Herdr's endpoint IS the Herdr socket path (`bridge/config.ts`), so it comes from the context that
  * already resolved `HERDR_SOCKET_PATH` — the same value `herdr-socket` probes, which is why the
  * `mux` line defers to that check instead of stating a path twice.
+ *
+ * With nothing configured this asks `cli/mux.ts`'s probe rather than falling to `DEFAULT_MUX`, so
+ * `doctor` names the multiplexer the next `start` would actually pick, and the evidence for it. The
+ * probe is a read (see that module's header); running it costs one listing per installed adapter.
  */
 function muxSettings(deps: DoctorDeps): MuxSettings {
   const env = deps.ctx.env;
-  const name = (env.COLLIE_MUX ?? "").trim() || DEFAULT_MUX;
+  const tmuxBin = (env.COLLIE_TMUX_BIN ?? "").trim();
+  const zellijBin = (env.COLLIE_ZELLIJ_BIN ?? "").trim();
+  const named = explicitMux(env);
+  if (named !== null) {
+    return {
+      name: named,
+      endpoint: named === DEFAULT_MUX ? deps.ctx.socket : (env[muxEndpointVar(named)] ?? "").trim(),
+      tmuxBin,
+      zellijBin,
+      origin: { kind: "explicit" },
+    };
+  }
+  const found = probeMuxes(deps);
+  const only = found.length === 1 ? found[0] : undefined;
+  if (only === undefined) {
+    return { name: DEFAULT_MUX, endpoint: "", tmuxBin, zellijBin, origin: { kind: "undecided", found } };
+  }
   return {
-    name,
-    endpoint: name === DEFAULT_MUX ? deps.ctx.socket : (env[muxEndpointVar(name)] ?? "").trim(),
-    tmuxBin: (env.COLLIE_TMUX_BIN ?? "").trim(),
-    zellijBin: (env.COLLIE_ZELLIJ_BIN ?? "").trim(),
+    name: only.mux,
+    endpoint: only.mux === DEFAULT_MUX ? deps.ctx.socket : only.endpoint,
+    tmuxBin,
+    zellijBin,
+    origin: { kind: "auto", evidence: only.evidence },
   };
+}
+
+/** How the name was arrived at, appended to whatever the per-mux branch found. */
+function originSuffix(origin: MuxOrigin): string {
+  if (origin.kind === "explicit") return " · set by COLLIE_MUX";
+  if (origin.kind === "auto") return ` · no COLLIE_MUX, so \`start\` picks it: ${origin.evidence}`;
+  return "";
 }
 
 /** The target the bridge would build for these settings (`bridge/index.ts`), minus nothing. */
@@ -689,6 +731,10 @@ function muxDeclaration(settings: MuxSettings): MuxCapabilityDeclaration | null 
 function mux(deps: DoctorDeps): Finding {
   const settings = muxSettings(deps);
   const registry = buildMuxRegistry();
+  if (settings.origin.kind === "undecided") {
+    const { detail, remedy } = refusedMux(settings.origin.found, deps.ctx.configDir);
+    return bad("mux", `${detail}, so \`collie start\` refuses`, remedy);
+  }
   if (factoryFor(registry, settings.name) === undefined) {
     return bad(
       "mux",
@@ -697,7 +743,9 @@ function mux(deps: DoctorDeps): Finding {
         " then `collie restart`",
     );
   }
-  if (settings.name === DEFAULT_MUX) return ok("mux", `${DEFAULT_MUX} — see herdr-socket`);
+  if (settings.name === DEFAULT_MUX) {
+    return ok("mux", `${DEFAULT_MUX} — see herdr-socket${originSuffix(settings.origin)}`);
+  }
   if (settings.name === TMUX_MUX) return tmuxMux(deps, settings);
   if (settings.name === ZELLIJ_MUX) return zellijMux(deps, settings);
   // Registered, and this verb has no probe for it. `skipped` rather than a pass, for the reason
@@ -756,7 +804,11 @@ function tmuxMux(deps: DoctorDeps, settings: MuxSettings): Finding {
   const lines = asked.stdout.split("\n").map((l) => l.trim()).filter((l) => l !== "");
   const version = lines[0] ?? "?";
   const sessions = lines.length === 0 ? 0 : lines.length - 1;
-  return ok("mux", `tmux ${version} · ${where} · ${String(sessions)} session${sessions === 1 ? "" : "s"}`);
+  return ok(
+    "mux",
+    `tmux ${version} · ${where} · ${String(sessions)} session${sessions === 1 ? "" : "s"}` +
+      originSuffix(settings.origin),
+  );
 }
 
 /**
@@ -806,7 +858,8 @@ function zellijMux(deps: DoctorDeps, settings: MuxSettings): Finding {
   }
   return ok(
     "mux",
-    `zellij · session ${choice.session} · ${String(running)} running of ${String(sessions.length)} listed`,
+    `zellij · session ${choice.session} · ${String(running)} running of ${String(sessions.length)} listed` +
+      originSuffix(settings.origin),
   );
 }
 

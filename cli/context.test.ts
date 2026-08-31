@@ -21,6 +21,7 @@ import {
   instanceSuffix,
   resolveInstance,
   tightenEnvFile,
+  upsertEnvVars,
   type Environment,
 } from "./context.ts";
 
@@ -242,6 +243,40 @@ describe("parseEnvFile", () => {
 
   test("a later assignment wins, as re-assignment would in a sourced file", () => {
     expect(parseEnvFile("A=1\nA=2")).toEqual({ A: "2" });
+  });
+});
+
+// The other direction, and the only writer of a `.env` in the tree (`collie start`'s first-run mux
+// pick, M14/03). What it writes must be what `parseEnvFile` reads back, so the round trip is the
+// assertion in every case here.
+describe("upsertEnvVars", () => {
+  test("replaces an assignment where it stands and leaves everything else alone", () => {
+    const written = upsertEnvVars("# mine\nCOLLIE_PORT=8788\nCOLLIE_MUX=herdr\n# after\n", {
+      COLLIE_MUX: "tmux",
+    });
+    expect(written).toBe("# mine\nCOLLIE_PORT=8788\nCOLLIE_MUX=tmux\n# after\n");
+  });
+
+  test("appends what was not there, and ends on exactly one newline", () => {
+    expect(upsertEnvVars("", { COLLIE_MUX: "zellij" })).toBe("COLLIE_MUX=zellij\n");
+    expect(upsertEnvVars("A=1", { B: "2" })).toBe("A=1\nB=2\n");
+    expect(upsertEnvVars("A=1\n\n\n", { B: "2" })).toBe("A=1\nB=2\n");
+  });
+
+  test("an `export` prefix and indentation are kept — the operator's file, in their shape", () => {
+    expect(upsertEnvVars("  export A=1\n", { A: "2" })).toBe("  A=2\n");
+  });
+
+  test("quotes exactly what parseEnvFile would need quoted, and the pair round-trips", () => {
+    const vars = { A: "/run/user/1000/collie.sock", B: "a session", C: 'say "hi" $NOPE', D: "two\nlines" };
+    expect(upsertEnvVars("", vars)).toContain("A=/run/user/1000/collie.sock");
+    expect(parseEnvFile(upsertEnvVars("", vars))).toEqual(vars);
+  });
+
+  test("a value that looks like a comment survives the round trip", () => {
+    expect(parseEnvFile(upsertEnvVars("", { A: "8787 # not a comment" }))).toEqual({
+      A: "8787 # not a comment",
+    });
   });
 });
 

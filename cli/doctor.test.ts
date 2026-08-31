@@ -839,12 +839,45 @@ const zellijAnswers = (stdout: string, code = 0): Scripted["answers"] => [
 
 describe("mux", () => {
   test("herdr states the name and defers — the socket is `herdr-socket`'s question, asked once", async () => {
+    const { byCheck, code } = await findings(harness(null, [], { env: { COLLIE_MUX: "herdr" } }));
+    const finding = byCheck.get("mux")!;
+    expect(finding.status).toBe("ok");
+    expect(finding.detail).toBe("herdr — see herdr-socket · set by COLLIE_MUX");
+    expect(finding.remedy).toBeNull();
+    expect(code).toBe(EXIT.OK);
+  });
+
+  // Since M14/03 an unset COLLIE_MUX is not silently "herdr" — `collie start` probes and decides, so
+  // `doctor` names the multiplexer that decision would land on, and the evidence for it.
+  test("with nothing configured it names what `start` would pick, and why", async () => {
     const { byCheck, code } = await findings(harness(null));
     const finding = byCheck.get("mux")!;
     expect(finding.status).toBe("ok");
-    expect(finding.detail).toBe("herdr — see herdr-socket");
-    expect(finding.remedy).toBeNull();
+    expect(finding.detail).toContain("no COLLIE_MUX");
+    expect(finding.detail).toContain(`a Herdr socket at ${SOCKET}`);
     expect(code).toBe(EXIT.OK);
+  });
+
+  test("nothing configured and nothing running is an error — that `start` refuses is the finding", async () => {
+    const h = harness(null, [], { files: without(healthyFiles(), SOCKET) });
+    const { byCheck } = await findings(h);
+    const finding = byCheck.get("mux")!;
+    expect(finding.status).toBe("error");
+    expect(finding.detail).toContain("no multiplexer is running here");
+    expect(finding.remedy).toContain("set COLLIE_MUX to one of herdr, tmux, zellij");
+  });
+
+  test("nothing configured and two multiplexers running is an error naming both", async () => {
+    const h = harness(null, [], {
+      files: { ...healthyFiles(), [TMUX_BIN]: "" },
+      answers: [[`${TMUX_BIN} list-sessions`, { stdout: "work\n" }], ...HEALTHY_ANSWERS!],
+    });
+    const { byCheck } = await findings(h);
+    const finding = byCheck.get("mux")!;
+    expect(finding.status).toBe("error");
+    expect(finding.detail).toContain("2 multiplexers are running");
+    expect(finding.detail).toContain("herdr");
+    expect(finding.detail).toContain("tmux");
   });
 
   test("tmux: a server that answers reports its version, its socket and its session count", async () => {
@@ -856,7 +889,7 @@ describe("mux", () => {
     const { byCheck, code } = await findings(h);
     const finding = byCheck.get("mux")!;
     expect(finding.status).toBe("ok");
-    expect(finding.detail).toBe(`tmux 3.6b · socket ${TMUX_SOCKET} · 2 sessions`);
+    expect(finding.detail).toBe(`tmux 3.6b · socket ${TMUX_SOCKET} · 2 sessions · set by COLLIE_MUX`);
     // One invocation, not two: the version and the listing are `;`-joined as the adapter joins its own.
     expect(h.calls.filter((c) => c.startsWith(TMUX_BIN))).toEqual([
       `${TMUX_BIN} -S ${TMUX_SOCKET} display-message -p -F #{version} ; list-sessions -F #{session_name}`,
@@ -895,7 +928,9 @@ describe("mux", () => {
       harness(null, [], { env: ON_ZELLIJ, files, answers: zellijAnswers("work\nscratch (EXITED - attach to resurrect)\n") }),
     );
     expect(live.byCheck.get("mux")?.status).toBe("ok");
-    expect(live.byCheck.get("mux")?.detail).toBe("zellij · session work · 1 running of 2 listed");
+    expect(live.byCheck.get("mux")?.detail).toBe(
+      "zellij · session work · 1 running of 2 listed · set by COLLIE_MUX",
+    );
     expect(live.code).toBe(EXIT.OK);
 
     const gone = await findings(harness(null, [], { env: ON_ZELLIJ, files, answers: zellijAnswers("scratch\n") }));

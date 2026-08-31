@@ -147,6 +147,52 @@ export function parseEnvFile(text: string): EnvVars {
   return out;
 }
 
+/**
+ * `text` with every name in `vars` assigned: an assignment already there is REPLACED where it
+ * stands, a new one is appended.
+ *
+ * In place rather than appended-and-shadowed, because a `.env` is a file the operator reads and
+ * edits: two `COLLIE_MUX=` lines where the last one silently wins is a file that lies to whoever
+ * opens it next. Comments, blank lines and every other setting survive untouched — this is the only
+ * writer of a file nobody else in Collie writes, and it must not become a rewriter of one.
+ */
+export function upsertEnvVars(text: string, vars: EnvVars): string {
+  const lines = text === "" ? [] : text.split("\n");
+  const pending = new Map(Object.entries(vars));
+  const written = lines.map((line) => {
+    const m = /^(\s*)(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=/.exec(line);
+    const key = m?.[2];
+    if (key === undefined || !pending.has(key)) return line;
+    const value = pending.get(key)!;
+    pending.delete(key);
+    return `${m?.[1] ?? ""}${key}=${quoteEnvValue(value)}`;
+  });
+  if (pending.size > 0) {
+    // Past the last line that says anything, so an appended key lands under the file's content
+    // rather than under whatever blank lines the last editor left at the bottom.
+    written.length = written.findLastIndex((line) => line.trim() !== "") + 1;
+    for (const [key, value] of pending) written.push(`${key}=${quoteEnvValue(value)}`);
+  }
+  if (written.length === 0) return "";
+  // Exactly one trailing newline, whatever the file arrived with: the next append must not land on
+  // the end of somebody else's assignment.
+  return `${written.join("\n").replace(/\n+$/u, "")}\n`;
+}
+
+/** The bare characters {@link parseEnvFile} reads back unquoted, exactly as it reads them. */
+const BARE_ENV_VALUE = /^[A-Za-z0-9_@%+=:,./-]*$/;
+
+/**
+ * A value as {@link parseEnvFile} would read it back — the round trip is the contract, and
+ * `context.test.ts` pins it. Double quotes rather than single, because the escapes the parser
+ * already understands live in that branch and a single-quoted value has no way to carry a `'`.
+ */
+function quoteEnvValue(value: string): string {
+  if (BARE_ENV_VALUE.test(value)) return value;
+  const escaped = value.replaceAll(/([\\"$`])/gu, "\\$1").replaceAll("\n", "\\n").replaceAll("\r", "\\r");
+  return `"${escaped}"`;
+}
+
 // ── Config dir ───────────────────────────────────────────────────────────────
 
 export interface ConfigDirDeps {

@@ -86,16 +86,16 @@ Then the three steps the script ends by printing, which are yours either way:
 ```bash
 mkdir -p ~/.config/collie
 cp ~/.local/share/collie/.env.example ~/.config/collie/.env
-# choose COLLIE_MUX in that file — herdr (the default), tmux or zellij
+# name COLLIE_MUX in that file — herdr, tmux or zellij; or let the first `start` ask
 collie start
 ```
 
 ### Without Herdr (tmux or zellij)
 
-The route that never mentions Herdr. Herdr is Collie's **default** multiplexer, not a dependency of the program: with
-`COLLIE_MUX=tmux` or `COLLIE_MUX=zellij` the bridge builds only the adapter you named and never
-dials Herdr's socket, so Herdr need not be installed. Choose that **before the first start** —
-nothing asks you, and the default answers for you.
+The route that never mentions Herdr. Herdr is one of Collie's three multiplexers, not a dependency of
+the program: with `COLLIE_MUX=tmux` or `COLLIE_MUX=zellij` the bridge builds only the adapter you
+named and never dials Herdr's socket, so Herdr need not be installed. Name it **before the first
+start** and nothing is asked; leave it out and the first `start` asks.
 
 ```bash
 git clone https://github.com/AltanS/collie.git && cd collie
@@ -125,11 +125,11 @@ That first run compiles `bin/collie` — the full build, typecheck and web bundl
 minute — and every command from then on is spelled `bin/collie <verb>` ([Commands](commands.md)).
 `start` itself does the same four things the Herdr routes below list.
 
-**Skip the `.env` and you have not chosen tmux; you have chosen Herdr**, because `COLLIE_MUX`
-defaults to `herdr`. What you get then is not a legible complaint: Collie starts, finds no socket to
-mirror, and passes the dial's own error through as it stands — `herdr read failed: …` on the phone,
-one warning line in `bin/collie logs`. `bin/collie doctor` is the one that says it plainly, naming
-the socket it looked for.
+**Skip the `.env` and the first `start` asks you.** It looks for a live Herdr socket, a running tmux
+server and zellij sessions, prints what it found, and writes your answer into the `.env` for you. With
+no terminal to ask at — a provisioning run, a systemd unit — it takes the only multiplexer it found
+and says which and why; with none or with several it refuses to start and names `COLLIE_MUX` as the
+one line that settles it. `bin/collie doctor` reports the same decision, and the evidence behind it.
 
 ### Through Herdr
 

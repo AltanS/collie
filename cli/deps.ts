@@ -28,6 +28,11 @@ export function lifecycleDeps(io: Io, ui: Ui | null = null): LifecycleDeps {
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     uid: () => process.getuid?.() ?? 0,
     platform: process.platform,
+    // The first-run multiplexer question (`cli/mux.ts`), asked through Bun's built-in behind a tty
+    // check exactly as `stt setup` and `pack add` guard theirs: a question nobody can answer must
+    // refuse legibly rather than read EOF as an answer.
+    interactive: process.stdin.isTTY === true,
+    prompt: (question) => (process.stdin.isTTY === true ? prompt(question) : null),
     // The front door, over the same resolved context. `start` calls this and tolerates its failure;
     // `collie serve` is the same function plus the `open:` line. `into` mirrors `restart`'s optional
     // `io` (see `LifecycleDeps.serve`) — unused on this plain path, where `start` always passes back

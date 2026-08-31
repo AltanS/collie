@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { ensureBuild } from "./build.ts";
 import { collieVersion, type CliContext, type Environment, type EnvVars } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+import { ensureMuxChosen } from "./mux.ts";
 import type { StatusView, Ui } from "./render.ts";
 import { cmdUnserve, packModeOnDisk, type ServeDeps } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
@@ -63,6 +64,15 @@ export interface LifecycleDeps extends ServeDeps {
   serve: (io?: Io) => Promise<number>;
   /** The terminal renderer, when this run landed on one (`cli/render.ts`). Absent ⇒ plain lines. */
   ui?: Ui | null;
+  /**
+   * Whether there is a terminal to ask the first-run multiplexer question at (`cli/mux.ts`).
+   *
+   * Optional, and absent reads as "nobody is there" — the branch that refuses rather than the one
+   * that asks. Every verb here but `start` ignores it.
+   */
+  interactive?: boolean;
+  /** The free-text ask the first-run picker uses. `null` means nobody answered. */
+  prompt?(question: string): string | null | Promise<string | null>;
 }
 
 export type Tier = "systemd" | "launchd" | "unsupervised";
@@ -316,6 +326,13 @@ async function startLaunchd(deps: LifecycleDeps): Promise<number> {
 // ── Verbs ────────────────────────────────────────────────────────────────────
 
 export async function cmdStart(deps: LifecycleDeps): Promise<number> {
+  // Which multiplexer, decided BEFORE anything is written or launched (M14/03). It returns
+  // immediately when `COLLIE_MUX` is set, which is every run after the first; when it is not, this
+  // is the one place the question gets asked, and a `start` that cannot answer it must not go on to
+  // put a bridge in front of no panes at all.
+  const chosen = await ensureMuxChosen(deps);
+  if (chosen !== EXIT.OK) return chosen;
+
   // The lazy first build. It warns rather than fails: a host whose UI won't build still gets its
   // API, and the 503 is legible where a refused `start` is not.
   ensureBuild(deps);

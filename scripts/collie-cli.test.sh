@@ -318,10 +318,14 @@ exit 0
 EOF
 chmod +x "${L_BIN}"/systemctl "${L_BIN}"/launchctl "${L_BIN}"/journalctl "${L_BIN}"/tailscale
 
+# COLLIE_MUX is named on purpose, and it is not scaffolding: `start` now REFUSES rather than assume
+# a multiplexer (M14/03, cli/mux.ts), and its probe reads the real machine — the tmux binary is
+# looked for at absolute paths, so a developer running tmux would otherwise change what this suite
+# sees. Every lifecycle case below is about supervision; the first-run question has its own section.
 cli() {
   : > "$L_CALLS"
   run_stripped HOME="$L_HOME" HERDR_PLUGIN_CONFIG_DIR="$L_CONFIG" PATH="$L_BIN" \
-    COLLIE_PORT="$PORT" "$@"
+    COLLIE_MUX=herdr COLLIE_PORT="$PORT" "$@"
 }
 
 # ── systemd: start → status → restart → stop ────────────────────────────────
@@ -370,6 +374,41 @@ assert_eq "$STDOUT" "bridge stopped"
 run_stripped HOME="$L_HOME" HERDR_PLUGIN_CONFIG_DIR="$L_CONFIG" PATH="$L_BIN" \
   COLLIE_PORT="$DEAD_PORT" "$BIN" status || fail "status failed against a dead port"
 assert_contains "$STDOUT" "⚠ Collie isn't answering on :${DEAD_PORT} yet"
+
+# ── The first-run multiplexer question (M14/03) ─────────────────────────────
+# `start` used to assume Herdr when nobody had said. It now probes, decides out loud, and WRITES the
+# answer to the config-dir `.env` — which is the only way the decision reaches a supervised bridge,
+# since the generated unit takes its environment from that file. Both branches are pinned here
+# against the compiled binary; `cli/mux.test.ts` owns the rest.
+#
+# The probe reads THIS machine, so both cases are pinned shut: the two binary settings name paths
+# that are not there (an absolute setting that does not resolve is "no binary", never a PATH walk),
+# and HERDR_SOCKET_PATH decides whether there is a Herdr socket or not.
+F_HOME="${TMP_ROOT}/firstrun-home"
+F_CONFIG="${TMP_ROOT}/firstrun-config"
+mkdir -p "$F_HOME" "$F_CONFIG"
+firstrun() {
+  run_stripped HOME="$F_HOME" HERDR_PLUGIN_CONFIG_DIR="$F_CONFIG" PATH="$L_BIN" \
+    COLLIE_PORT="$PORT" COLLIE_TMUX_BIN=/nonexistent/tmux COLLIE_ZELLIJ_BIN=/nonexistent/zellij "$@"
+}
+
+# Nothing configured, nothing running: `start` refuses, names the variable and the file, and starts
+# no service on the way out.
+firstrun HERDR_SOCKET_PATH="${F_HOME}/absent.sock" "$BIN" start \
+  && fail "\`collie start\` came up with no multiplexer to mirror"
+assert_contains "$STDERR" "no COLLIE_MUX is set"
+assert_contains "$STDERR" "set COLLIE_MUX to one of herdr, tmux, zellij in ${F_CONFIG}/.env"
+[ -f "${F_CONFIG}/.env" ] && fail "a refused start still wrote a config"
+
+# Exactly one found, and no terminal to ask at: auto-selected, said out loud, and written down.
+: > "${F_HOME}/herdr.sock"
+firstrun HERDR_SOCKET_PATH="${F_HOME}/herdr.sock" "$BIN" start \
+  || fail "\`collie start\` refused a host with exactly one multiplexer: ${STDERR}"
+assert_contains "$STDOUT" "auto-selected herdr"
+assert_contains "$STDOUT" "a Herdr socket at ${F_HOME}/herdr.sock"
+assert_contains "$(cat "${F_CONFIG}/.env")" "COLLIE_MUX=herdr"
+assert_eq "$(stat -c '%a' "${F_CONFIG}/.env" 2>/dev/null || stat -f '%Lp' "${F_CONFIG}/.env")" "600"
+run_stripped HOME="$F_HOME" HERDR_PLUGIN_CONFIG_DIR="$F_CONFIG" PATH="$L_BIN" "$BIN" stop >/dev/null 2>&1 || true
 
 # ── url and logs ────────────────────────────────────────────────────────────
 cli "$BIN" url || fail "\`collie url\` failed"
@@ -785,7 +824,7 @@ port_free "$V1_PORT" && fail "the v1 readiness listener never came up on ${V1_PO
 cli_v1() {
   : > "$L_CALLS"
   run_stripped HOME="$L_HOME" HERDR_PLUGIN_CONFIG_DIR="$L_CONFIG" PATH="$L_BIN" \
-    COLLIE_INSTANCE=v1 COLLIE_PORT="$V1_PORT" "$@"
+    COLLIE_MUX=herdr COLLIE_INSTANCE=v1 COLLIE_PORT="$V1_PORT" "$@"
 }
 
 V1_UNIT_FILE="${L_HOME}/.config/systemd/user/collie-v1.service"
@@ -1111,7 +1150,7 @@ upd() {
   local root="$1"; shift
   : > "$U_CALLS"
   run_stripped HOME="${TMP_ROOT}/update-home" HERDR_PLUGIN_CONFIG_DIR="${TMP_ROOT}/update-config" \
-    PATH="${U_BIN}:${BASE_PATH}" COLLIE_PORT="$PORT" COLLIE_PLUGIN_ROOT="$root" "$@"
+    PATH="${U_BIN}:${BASE_PATH}" COLLIE_MUX=herdr COLLIE_PORT="$PORT" COLLIE_PLUGIN_ROOT="$root" "$@"
 }
 
 # Shape 1 — the Herdr-managed checkout, created verbatim the way herdr's plugin_install does.
@@ -1357,7 +1396,7 @@ DOCTOR_STATE="${TMP_ROOT}/doctor-state"
 mkdir -p "$DOCTOR_STATE"
 set +e
 env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$DOCTOR_STATE" \
-  COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" PATH="$BIN_DIR" "$BIN" doctor --json \
+  COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" PATH="$BIN_DIR" COLLIE_MUX=herdr "$BIN" doctor --json \
   >"${TMP_ROOT}/doctor.json" 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
@@ -1369,10 +1408,12 @@ case "$DOCTOR_JSON" in "["*) ;; *) fail "doctor --json did not print an array: $
 assert_contains "$DOCTOR_JSON" '"check": "web-dist"'
 assert_contains "$DOCTOR_JSON" '"status": "error"'
 assert_contains "$DOCTOR_JSON" '"check": "restart-pending"'
-# No COLLIE_MUX in this `env -i`, so the mux is herdr — which states its name and defers the socket
-# to `herdr-socket` rather than probing it twice. Nothing was spawned to find that out.
+# COLLIE_MUX is named here, so the mux line states it, defers the socket to `herdr-socket` rather
+# than probing it twice, and says where the name came from. It is named rather than left out because
+# an UNSET one makes this verb report what `start` would pick on THIS machine (M14/03) — a real
+# answer, and not one a fixture can pin.
 assert_contains "$DOCTOR_JSON" '"check": "mux"'
-assert_contains "$DOCTOR_JSON" 'herdr — see herdr-socket'
+assert_contains "$DOCTOR_JSON" 'herdr — see herdr-socket · set by COLLIE_MUX'
 [ -z "$(ls -A "$DOCTOR_STATE")" ] || fail "\`collie doctor\` wrote into the state dir"
 
 # The human form is one line per check, and every non-✓ line carries its remedy arrow.

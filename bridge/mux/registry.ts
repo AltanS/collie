@@ -89,7 +89,17 @@ export interface MuxAdapterFactory {
  */
 export const MUX_ADAPTERS: readonly MuxAdapterFactory[] = [herdrMuxFactory, tmuxMuxFactory, zellijMuxFactory];
 
-/** The name used when the operator configured none. Herdr, so nothing changes for anyone. */
+/**
+ * The name a bridge falls back to when its environment carries no `COLLIE_MUX` at all.
+ *
+ * IT IS NO LONGER THE FIRST-RUN ANSWER, and must not be used as one again (M14/03). Answering
+ * "herdr" for an operator who never chose was correct while Herdr was the only adapter and is a
+ * silent wrong answer now that there are three: a tmux user's first `collie start` came up mirroring
+ * a socket they did not have, and nothing in the logs named the reason. `collie start` now decides
+ * out loud and writes the answer down (`cli/mux.ts`), so a supervised bridge reaches this line only
+ * when something launched it around that decision — where the last-resort value still has to be one
+ * of the registered names.
+ */
 export const DEFAULT_MUX = "herdr";
 
 /**

@@ -100,7 +100,8 @@ Three steps left, and each one is a decision:
        mkdir -p ~/.config/collie
        cp $DIR/.env.example ~/.config/collie/.env
 
-  2. Choose your multiplexer in that file — COLLIE_MUX=herdr (the default), tmux or zellij.
+  2. Name your multiplexer in that file — COLLIE_MUX=herdr, tmux or zellij. Leave it out and the
+     first \`collie start\` probes for one and asks you.
      Herdr needs its server running; tmux and zellij need an endpoint naming which server or
      session to mirror. Both walkthroughs: $DIR/docs/multiplexers.md
 

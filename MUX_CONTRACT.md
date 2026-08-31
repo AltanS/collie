@@ -105,12 +105,15 @@ ceiling: attention is something the bridge observes, never something a caller ca
 
 ## Pointing a collie at a multiplexer
 
-Three keys, and the default is that nothing changes for anyone. `bridge/config.ts` resolves them once
-at startup and `bridge/index.ts` is the only place they become an adapter.
+Three keys. `bridge/config.ts` resolves them once at startup and `bridge/index.ts` is the only place
+they become an adapter. **`COLLIE_MUX` has no default any more**: the first `collie start` without one
+probes for a live Herdr socket, a running tmux server and zellij sessions, and then asks — or, with no
+terminal, takes the only one it found and says so. Zero or several, and it refuses rather than guess.
+Whatever it settles on is written into the config-dir `.env`, so the question is asked once.
 
 | Key | Default | What it says |
 | --- | --- | --- |
-| `COLLIE_MUX` | `herdr` | Which adapter drives this collie. An unknown name refuses to start, with the valid ones in the message. |
+| `COLLIE_MUX` | — (asked on first start) | Which adapter drives this collie. An unknown name refuses to start, with the valid ones in the message. |
 | `COLLIE_MUX_ENDPOINT_<NAME>` | — | Where that adapter's multiplexer lives, in **its** words. Herdr reads `HERDR_SOCKET_PATH` instead, so nothing about an existing deployment moves. For tmux: `COLLIE_MUX_ENDPOINT_TMUX` is a server **socket name** (`-L`) when it has no `/`, a **socket path** (`-S`) when it does, and **empty means tmux's own default server**. |
 | `COLLIE_TMUX_BIN` | — | Absolute path to `tmux`, when it is somewhere unusual. Empty probes fixed paths — never `PATH`, which a systemd unit and a Herdr plugin action do not share with the operator's shell. |
 | `COLLIE_ZELLIJ_BIN` | — | The same, for `zellij`. The fixed-path probe tries `~/.local/bin` first, because that is where zellij's own installer puts it. |

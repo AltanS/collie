@@ -73,7 +73,14 @@ function harness(over: HarnessOptions = {}): Harness {
   const files = fakeFiles({ [BINARY]: "", ...over.files });
   const readyCalls: Array<{ port: number; host: string }> = [];
   const deps: LifecycleDeps = {
-    ctx: context(over.env, over.instance === undefined ? {} : { instance: over.instance }),
+    // Every fixture here is a Collie that has already chosen its multiplexer, so `start`'s first-run
+    // gate (`cli/mux.ts`) returns before it probes. A supervision test must not also be a test of
+    // that question — `cli/mux.test.ts` owns it, and the one case where it stops `start` is pinned
+    // below in "the first-run multiplexer gate".
+    ctx: context(
+      { COLLIE_MUX: "herdr", ...over.env },
+      over.instance === undefined ? {} : { instance: over.instance },
+    ),
     io,
     exec,
     files,
@@ -367,6 +374,31 @@ describe("start, unsupervised", () => {
     const h = harness({ answers: NO_SYSTEMD, env: { COLLIE_VAPID_PRIVATE: "shhh" } });
     await cmdStart(h.deps);
     expect(h.exec.spawned[0]?.env.COLLIE_VAPID_PRIVATE).toBe("shhh");
+  });
+});
+
+// The gate itself is `cli/mux.test.ts`'s subject; what is pinned here is that it sits IN FRONT of
+// `start` — before the unit is written and before anything is spawned. A bridge launched for a
+// multiplexer nobody chose is the outage M14/03 removes.
+describe("the first-run multiplexer gate", () => {
+  const unchosen = (over: HarnessOptions = {}): Harness =>
+    harness({ ...over, env: { ...over.env, COLLIE_MUX: undefined } });
+
+  test("refuses `start` when nothing is configured and nothing is running", async () => {
+    const h = unchosen({ answers: NO_SYSTEMD });
+    expect(await cmdStart(h.deps)).toBe(EXIT.FAIL);
+    expect(h.exec.spawned).toHaveLength(0);
+    expect(h.io.stderr.join("\n")).toContain("no COLLIE_MUX is set");
+    expect(h.io.stderr.join("\n")).toContain(`${CONFIG}/.env`);
+  });
+
+  test("auto-selects the only multiplexer running, writes it down, and hands it to the bridge", async () => {
+    const socket = "/home/pat/.config/herdr/herdr.sock";
+    const h = unchosen({ answers: NO_SYSTEMD, files: { [socket]: "" } });
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.files.read(`${CONFIG}/.env`)).toContain("COLLIE_MUX=herdr");
+    // Both halves: the file a supervised bridge reads, and the environment this one is spawned with.
+    expect(h.exec.spawned[0]?.env.COLLIE_MUX).toBe("herdr");
   });
 });
 
