@@ -1,6 +1,7 @@
 import { act, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { __resetOperatorBusy, beginBusy } from "@/lib/busy";
 import { clearStatus, setStatus } from "@/lib/status";
 import { markIsLive } from "@/test/collie-mark";
 import { CollieHome, spinRate } from "./collie-home";
@@ -81,6 +82,51 @@ describe("CollieHome — the event round", () => {
 // silently under a curve that merely "looked" eased. This is the half of the throw that can be
 // checked without eyes, so it is checked hard.
 // ─────────────────────────────────────────────────────────────────────────────
+// ── THE BUSY SPIN: a DURATION, not an event ───────────────────────────────────────────────────
+//
+// The round is one turn and then it is over. This is the other shape: the orbit turns for exactly as
+// long as the operator's work runs — no timer, no minimum. The cases pin both ends of that, plus the
+// one state it is not allowed to overrule.
+describe("CollieHome — the busy spin", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearStatus();
+    __resetOperatorBusy();
+  });
+  afterEach(() => {
+    act(() => clearStatus());
+    act(() => __resetOperatorBusy());
+    vi.useRealTimers();
+  });
+
+  it("turns while work is in flight and stops the moment it is released", () => {
+    const { container } = render(<CollieHome trouble={false} />);
+    expect(markIsLive(container)).toBe(false);
+
+    let release!: () => void;
+    act(() => {
+      release = beginBusy();
+    });
+    expect(markIsLive(container)).toBe(true);
+
+    // No timer runs it out — unlike the round, this is a state with a real duration, so it is still
+    // turning long past the round's 1800ms.
+    act(() => void vi.advanceTimersByTime(5000));
+    expect(markIsLive(container)).toBe(true);
+
+    act(() => release());
+    expect(markIsLive(container)).toBe(false);
+  });
+
+  // `lost` is the mark held still and muted. A send fired into a link we have given up on must not
+  // make the app look like it is trying again — the same contract the round already keeps.
+  it("stays still while the connection is lost", () => {
+    const { container } = render(<CollieHome trouble lost />);
+    act(() => void beginBusy());
+    expect(markIsLive(container)).toBe(false);
+  });
+});
+
 describe("spinRate — the wheel-throw curve", () => {
   const T = 1800;
 

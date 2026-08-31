@@ -1,7 +1,15 @@
-import { Outlet, useLoaderData, useParams, useRouteError, useRouteLoaderData } from "react-router";
+import {
+  Outlet,
+  useLoaderData,
+  useNavigation,
+  useParams,
+  useRouteError,
+  useRouteLoaderData,
+} from "react-router";
 
 import { intervalFor, usePolling } from "@/hooks/use-polling";
 import { usePollBusy } from "@/hooks/use-poll-busy";
+import { useBusyWhile } from "@/lib/busy";
 import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
 import { useConnectionLost } from "@/hooks/use-connection-lost";
@@ -62,6 +70,14 @@ export function RootLayout() {
   // routine fast polls/navigations stay invisible. Mounted here so the whole app shares one
   // detector inside the router context.
   usePollBusy();
+  // The Collie mark's orbit turns for the whole of a route navigation — a tap the operator is
+  // waiting on a loader for. NO THRESHOLD here, unlike the bar above: the bar is a strip that
+  // appears, so it waits 500ms rather than flash on every fast tap, while the orbit is already on
+  // screen and only changes speed and chroma. The mark carries its phase across that change
+  // (lib/busy.ts states it at `useBusyWhile`), so a 120ms navigation reads as a short
+  // accelerate/decelerate rather than a flicker, and delaying it would only make the fast case —
+  // the common one — say nothing at all.
+  useBusyWhile(useNavigation().state !== "idle");
   useAgentTransitions(data.agents, paneId ?? null);
   usePushSetup();
 

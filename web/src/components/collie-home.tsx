@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { CollieMark } from "@/components/collie-mark";
 import { t } from "@/lib/i18n";
 import { useStatus } from "@/lib/status";
+import { useOperatorBusy } from "@/lib/busy";
 import { useLocale } from "@/hooks/use-locale";
 
 interface CollieHomeProps {
@@ -153,6 +154,28 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
   // the orbit on and on, which is a STATE again and the exact thing the round must not look like. A
   // status that lands while a round is already turning is dropped: the round it would have started
   // is already on screen, saying the same thing.
+  // ── THE THIRD LOADING INPUT: work the operator started and is waiting on ─────────────────────
+  //
+  // A round is an EVENT (something happened, once). The bloom is a CONNECTION STATE. This is the
+  // third kind and it was missing: a job with a real duration — a send in flight, an image
+  // uploading, a clip being transcribed, a route waiting on its loader — where the honest thing to
+  // show is "still going", starting when it starts and stopping when it stops. lib/busy.ts owns the
+  // counter and states what feeds it and, more importantly, what deliberately does not: the 1.5s
+  // background poll is excluded, because an orbit fed from it would never come to rest and a mark
+  // that always spins says nothing at all. Hung polls stay the stall detector's job — that is
+  // `trouble` below, which is already wired.
+  //
+  // It joins `bloom` as a loading input rather than replacing it, and it does NOT outrank `lost`:
+  // while the connection is given up on, the mark stays still and muted (see `lost` on the props),
+  // and a send the operator fires into a dead link must not make it look like the app is trying
+  // again. Same guard the round already carries, for the same reason.
+  //
+  // No debounce, and none is wanted: <CollieMark/> carries the orbit's phase across the rate change
+  // by hand (collie-mark.tsx), so a 200ms spin joins the drift where it left it and rejoins it where
+  // it lands. Short work reads as a brief accelerate/decelerate, never as a flicker — which is what
+  // lets the spin last exactly as long as the work and not one frame more.
+  const busy = useOperatorBusy();
+
   const status = useStatus();
   const roundId = status?.id ?? 0;
   const [round, setRound] = useState(false);
@@ -313,7 +336,7 @@ export function CollieHome({ onHome, trouble, lost = false, wordmark = false, cl
         <CollieMark
           size={40}
           weight="header"
-          loading={bloom || (round && !lost)}
+          loading={bloom || ((round || busy) && !lost)}
           paper="var(--background)"
           className={cn("transition-opacity", lost && "opacity-40 grayscale")}
         />

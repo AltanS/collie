@@ -11,6 +11,7 @@ import { useDirectTyping } from "@/hooks/use-direct-typing";
 import { useLocale } from "@/hooks/use-locale";
 import { t as translate, tn as translatePlural } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
+import { useBusyWhile } from "@/lib/busy";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
@@ -452,6 +453,22 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     onTranscript: acceptTranscript,
     onError: (message) => setStatus(message, "error"),
   });
+  // ── THE ORBIT TURNS WHILE THE OPERATOR'S WORK IS IN FLIGHT (lib/busy.ts) ───────────────────────
+  //
+  // Three intervals, declared where the state already lives, so the Collie mark in the header spins
+  // for exactly as long as the work does and not a frame longer. `sending` spans the whole guarded
+  // send (type → settle → verify → submit), which is the interval the operator is actually waiting
+  // through; `uploading` spans the image POST; the recorder's `transcribing` phase spans the trip to
+  // the provider. Each is a boolean this component already renders from, so nothing new is tracked —
+  // the mark just reads what the composer already knows.
+  //
+  // NOT the poll, and not `recorder.busy`: the poll is ambient (lib/busy.ts says why at the counter),
+  // and a RECORDING is the operator working, not the app — the microphone strip below already says
+  // so, in words, and a spinning mark would claim the phone was busy while it waits on a human.
+  useBusyWhile(sending);
+  useBusyWhile(uploading);
+  useBusyWhile(recorder.phase === "transcribing");
+
   // Whether the round button at the end of the row is the microphone rather than Send. True only on
   // an EMPTY box, which is the one state where Send can do nothing anyway; the first character typed
   // hands the button straight back. `direct.active` keeps it, because there the same button is the

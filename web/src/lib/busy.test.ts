@@ -3,13 +3,24 @@ import { afterEach, describe, expect, it } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 
 import { server } from "../test/setup";
-import { isBusy, trackBusy, useBusy } from "./busy";
+import {
+  __resetOperatorBusy,
+  beginBusy,
+  isBusy,
+  isOperatorBusy,
+  trackBusy,
+  useBusy,
+  useBusyWhile,
+  useOperatorBusy,
+} from "./busy";
 import * as api from "./api";
 
 // The busy signal must always settle back to idle between tests (a leaked count would make later
 // assertions flap). Every test below awaits its in-flight work, so this is a guard, not a crutch.
 afterEach(() => {
   expect(isBusy()).toBe(false);
+  expect(isOperatorBusy()).toBe(false);
+  __resetOperatorBusy();
 });
 
 describe("trackBusy — counter semantics", () => {
@@ -103,5 +114,89 @@ describe("api wiring — mutations tracked, reads not", () => {
     expect(isBusy()).toBe(false);
     await Promise.all([snap, cfg]);
     expect(isBusy()).toBe(false);
+  });
+});
+
+// ── THE ORBIT'S CHANNEL ────────────────────────────────────────────────────────────────────────
+//
+// A second counter in the same file, and the cases below pin the two properties that keep it from
+// becoming the bar's: an idempotent release (so an effect cleanup that runs twice cannot drive the
+// count negative and stick the orbit OFF), and complete independence from the bar's own signals —
+// the 1.5s background poll must never reach it.
+describe("beginBusy — the operator-work counter", () => {
+  it("counts an interval of work, and rests once it is released", () => {
+    expect(isOperatorBusy()).toBe(false);
+    const release = beginBusy();
+    expect(isOperatorBusy()).toBe(true);
+    release();
+    expect(isOperatorBusy()).toBe(false);
+  });
+
+  // The release is a React effect cleanup at every call site, and a remount under StrictMode runs a
+  // cleanup for an increment it already released. A plain decrement would go negative, and a
+  // negative counter never returns to zero — a permanently DARK orbit, which is the worse failure.
+  it("releases exactly once however many times the release is called", () => {
+    const release = beginBusy();
+    release();
+    release();
+    release();
+    expect(isOperatorBusy()).toBe(false);
+
+    // Still able to count from zero afterwards — the extra calls left no debt behind.
+    const again = beginBusy();
+    expect(isOperatorBusy()).toBe(true);
+    again();
+    expect(isOperatorBusy()).toBe(false);
+  });
+
+  it("nests, so concurrent work rests only on the LAST release", () => {
+    const a = beginBusy();
+    const b = beginBusy();
+    expect(isOperatorBusy()).toBe(true);
+    a();
+    expect(isOperatorBusy()).toBe(true);
+    b();
+    expect(isOperatorBusy()).toBe(false);
+  });
+
+  // The whole reason this counter exists rather than reusing the bar's: the poll runs every 1.5s, so
+  // an orbit fed from it would never come to rest.
+  it("is untouched by the bar's own signals — a tracked mutation and a stalled poll", async () => {
+    let release!: () => void;
+    const p = trackBusy(new Promise<void>((r) => (release = r)));
+    expect(isBusy()).toBe(true);
+    expect(isOperatorBusy()).toBe(false);
+    release();
+    await p;
+  });
+});
+
+describe("useBusyWhile / useOperatorBusy", () => {
+  it("holds the orbit open for exactly as long as the flag is true", () => {
+    const { result, rerender } = renderHook(
+      ({ active }: { active: boolean }) => {
+        useBusyWhile(active);
+        return useOperatorBusy();
+      },
+      { initialProps: { active: false } },
+    );
+    expect(result.current).toBe(false);
+
+    rerender({ active: true });
+    expect(result.current).toBe(true);
+    expect(isOperatorBusy()).toBe(true);
+
+    rerender({ active: false });
+    expect(result.current).toBe(false);
+    expect(isOperatorBusy()).toBe(false);
+  });
+
+  // A pane switch unmounts the composer mid-send. Without the cleanup the count would be stranded
+  // and the orbit would spin for the rest of the session.
+  it("releases on unmount, so work that never finished cannot strand the orbit", () => {
+    const { unmount } = renderHook(() => useBusyWhile(true));
+    expect(isOperatorBusy()).toBe(true);
+    unmount();
+    expect(isOperatorBusy()).toBe(false);
   });
 });
