@@ -264,6 +264,17 @@ export const en = {
   "chat.zen.label": "Zen mode",
   // The floating pill is the ONE way out of zen, and it carries no words — only the glyph.
   "chat.zen.exitAria": "Exit zen mode",
+  // --- chat.strips (the tab row + pane row, folded into one bar of beads) ---
+  // The chevron's own name, and the summary bar's. Both are chosen for the rows actually on screen:
+  // a pane row appears only above one pane, so naming it unconditionally would promise a row that is
+  // not there. Each case is a WHOLE sentence rather than a phrase assembled from parts — "3 tabs" is
+  // a noun phrase, and dropping one into a template is the bug every language with cases hands back.
+  "chat.strips.hide.both": "Hide tabs and panes",
+  "chat.strips.hide.tabs": "Hide tabs",
+  "chat.strips.hide.panes": "Hide panes",
+  "chat.strips.show.both": "Show tabs and panes. {tabs}, {panes} hidden.",
+  "chat.strips.show.tabs": "Show tabs. {tabs} hidden.",
+  "chat.strips.show.panes": "Show panes. {panes} hidden.",
   "chat.find.label": "Find in output",
   "chat.history.label": "Conversation history",
   // The header's ⋮ — the glyph names nothing, so the accessible name has to say what it OPENS.

@@ -247,6 +247,12 @@ export const ja: Dictionary = {
   "chat.zen.label": "Zen モード",
   // The floating pill is the ONE way out of zen, and it carries no words — only the glyph.
   "chat.zen.exitAria": "Zen モードを終了",
+  "chat.strips.hide.both": "タブとペインを隠す",
+  "chat.strips.hide.tabs": "タブを隠す",
+  "chat.strips.hide.panes": "ペインを隠す",
+  "chat.strips.show.both": "タブとペインを表示。{tabs}、{panes}が隠れています。",
+  "chat.strips.show.tabs": "タブを表示。{tabs}が隠れています。",
+  "chat.strips.show.panes": "ペインを表示。{panes}が隠れています。",
   "chat.find.label": "出力内を検索",
   "chat.history.label": "会話履歴",
   "chat.paneMenu.aria": "ペインの操作",

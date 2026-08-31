@@ -19,6 +19,7 @@ vi.mock("@/lib/wizard-action", () => ({
 import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
 import { setZenEnabled, __resetZen } from "@/lib/zen";
+import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs } from "@/test/handlers";
@@ -40,6 +41,9 @@ beforeEach(() => {
   // Zen's availability is a module-scoped, localStorage-backed store — one case turning it on would
   // otherwise leave every later case rendering a menu row it never asked for.
   __resetZen();
+  // Same shape, same reason: a case that folds the strips would otherwise leave every later case
+  // rendering a bead bar it never asked for.
+  __resetStripsCollapsed();
 });
 
 function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
@@ -1476,11 +1480,13 @@ describe("the pane fits its viewport", () => {
       );
       expect(screen.queryByText("[Opus 4.8] ~/webapp · main")).toBeNull();
 
-      // THE NAVIGATION ROWS ARE NOT ON THIS LIST, and that is a decision rather than an omission.
-      // The tab row and the pane switcher were briefly taken with the keyboard too, for 53px, and
-      // the operator declined it: the tab row is how you know where you are, and losing it the
-      // moment you start typing costs more than the pixels are worth. Its HEIGHT is the thing to
-      // reduce, not its presence — see tab-strip.tsx.
+      // THE NAVIGATION ROWS ARE ON A DIFFERENT LIST NOW, and the distinction is the point. They
+      // were once declined here outright — "the tab row is how you know where you are, and losing
+      // it the moment you start typing costs more than the pixels are worth" — and that reasoning
+      // still holds against DELETING them. It does not hold against FOLDING them: they collapse to
+      // the 32px bead bar, which keeps "where am I" and "is anything shouting" on screen and puts
+      // the rows back in one tap. Pinned in its own describe below, not here; this test is about
+      // the two rows that genuinely leave.
 
       // …and the band is untouched, keyboard or no keyboard.
       expect(container.querySelector('[data-slot="composer-status"]')).not.toBeNull();
@@ -1730,5 +1736,139 @@ describe("AgentChat — zen mode", () => {
 
     expect(headerRowOf(container)).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
+  });
+});
+
+// ── THE FOLDED STRIPS ─────────────────────────────────────────────────────────
+// The pane screen is the one screen that stacks two strips, and they are chrome ABOUT the pane
+// rather than the pane's own output. Zen already answers "take it all away" and takes the header and
+// the composer with it; this is the smaller ask — fold the two rows into a 32px bar of beads that
+// still says how many there are, where you are in them, and whether anything is shouting.
+//
+// Four claims, and each one fails on the edit that would undo it: the rows are shown until asked
+// otherwise, the fold is remembered, the bar puts them back, and the soft keyboard overrides the
+// preference WITHOUT rewriting it.
+describe("AgentChat — folding the tab and pane rows", () => {
+  // A second pane in the open pane's own tab, so the pane row renders too (it draws nothing below
+  // two) and the bar has both bead groups to show.
+  const sibling: AgentView = {
+    ...fixtureAgents[0]!,
+    paneId: "w1:p9",
+    status: "working",
+  };
+  function renderStrips(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
+    return renderChat({ tabs: fixtureTabs, agents: [...fixtureAgents, sibling], ...overrides });
+  }
+
+  it("draws both rows and no bar until the operator folds them", () => {
+    // Default OFF, and it is the loud direction: the rows are the pane's only visible way to reach
+    // a sibling tab or pane, so a first run that folded them would hide the navigation with them.
+    renderStrips();
+    expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Panes" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /^Show tabs/ })).toBeNull();
+  });
+
+  it("folds both rows together, and remembers it on this device", async () => {
+    const user = userEvent.setup();
+    renderStrips();
+    // ONE toggle for both rows, pinned to the tab row's trailing end where it costs no height —
+    // that row is already 44px. Its name says which rows it is about, because the glyph says none.
+    await user.click(screen.getByRole("button", { name: "Hide tabs and panes" }));
+
+    // `Collapse` unmounts at the END of its exit, so both rows leave the tree — which is the a11y
+    // half of the claim: a pill that is not on screen must not still be focusable.
+    await waitFor(() => expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull());
+    expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull();
+
+    // The bar's beads are decorative — colour is their only channel — so the counts are carried in
+    // words, and the words are the button's whole accessible name.
+    expect(
+      screen.queryByRole("button", { name: "Show tabs and panes. 1 tab, 2 panes hidden." }),
+    ).not.toBeNull();
+    // Device-level and persisted: the same bit lib/strips-collapsed.ts pins from the other side.
+    expect(localStorage.getItem("collie:strips-collapsed:v1")).toBe("1");
+  });
+
+  it("puts the rows back on a tap anywhere on the bar", async () => {
+    const user = userEvent.setup();
+    setStripsCollapsed(true);
+    renderStrips();
+    // The whole bar is the target, not a chevron you have to find — the fold costs the tabs' NAMES,
+    // so getting them back may not also cost aim.
+    await user.click(screen.getByRole("button", { name: /^Show tabs and panes/ }));
+    await waitFor(() => expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull());
+    expect(localStorage.getItem("collie:strips-collapsed:v1")).toBe("0");
+  });
+
+  it("names only the rows that are actually there", async () => {
+    // A tab holding one pane draws no pane row, so the bar must not offer a pane bead group and the
+    // chevron must not promise to hide one. Naming both unconditionally is the easy bug here.
+    const user = userEvent.setup();
+    renderChat({ tabs: fixtureTabs });
+    await user.click(screen.getByRole("button", { name: "Hide tabs" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Show tabs. 1 tab hidden." })).not.toBeNull(),
+    );
+  });
+
+  // jsdom has no `visualViewport`, so `useKeyboardOpen` returns early and every other case here
+  // renders the RESTING geometry — which is what makes this stub necessary and also what makes it
+  // safe: it is installed and removed inside the one test that wants it.
+  function withSoftKeyboard() {
+    const listeners = new Set<() => void>();
+    const vv = {
+      width: 390,
+      height: 844,
+      addEventListener: (_: string, fn: () => void) => void listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => void listeners.delete(fn),
+    };
+    const had = Object.getOwnPropertyDescriptor(window, "visualViewport");
+    Object.defineProperty(window, "visualViewport", { value: vv, configurable: true });
+    return {
+      resize: (height: number) => {
+        vv.height = height;
+        act(() => listeners.forEach((fn) => fn()));
+      },
+      restore: () => {
+        if (had) Object.defineProperty(window, "visualViewport", had);
+        else Reflect.deleteProperty(window, "visualViewport");
+      },
+    };
+  }
+
+  it("the keyboard folds the rows whatever the preference says, and an expand under it is not written down", async () => {
+    // The keyboard takes roughly 45% of the phone, and these rows are read BEFORE typing, never
+    // during it — the same test the pane switcher and the statusline are already judged by.
+    const kb = withSoftKeyboard();
+    try {
+      const user = userEvent.setup();
+      renderStrips();
+      expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull();
+
+      kb.resize(460); // a soft keyboard: -384px, well past the open threshold
+      await waitFor(() => expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull());
+      // The PREFERENCE is untouched — the keyboard is spending the pixels, not choosing for the
+      // operator, so nothing is written.
+      expect(localStorage.getItem("collie:strips-collapsed:v1")).toBeNull();
+
+      // "I need to see the tabs right now" is not "show me the tabs from now on". The expand holds
+      // for this keyboard session and writes nothing.
+      await user.click(screen.getByRole("button", { name: /^Show tabs and panes/ }));
+      await waitFor(() =>
+        expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull(),
+      );
+      expect(localStorage.getItem("collie:strips-collapsed:v1")).toBeNull();
+
+      // …and it dies with the keyboard: the persisted preference (shown) rules again, so the rows
+      // are back on their own terms rather than on the override's.
+      kb.resize(844);
+      await waitFor(() =>
+        expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull(),
+      );
+      expect(localStorage.getItem("collie:strips-collapsed:v1")).toBeNull();
+    } finally {
+      kb.restore();
+    }
   });
 });

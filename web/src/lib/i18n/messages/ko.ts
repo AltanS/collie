@@ -245,6 +245,12 @@ export const ko: Dictionary = {
   "chat.zen.label": "젠 모드",
   // The floating pill is the ONE way out of zen, and it carries no words — only the glyph.
   "chat.zen.exitAria": "젠 모드 끝내기",
+  "chat.strips.hide.both": "탭과 창 숨기기",
+  "chat.strips.hide.tabs": "탭 숨기기",
+  "chat.strips.hide.panes": "창 숨기기",
+  "chat.strips.show.both": "탭과 창 보기. {tabs}, {panes} 숨김.",
+  "chat.strips.show.tabs": "탭 보기. {tabs} 숨김.",
+  "chat.strips.show.panes": "창 보기. {panes} 숨김.",
   "chat.find.label": "출력에서 찾기",
   "chat.history.label": "대화 기록",
   "chat.paneMenu.aria": "페인 작업",

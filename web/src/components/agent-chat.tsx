@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { useNavigate, useRevalidator } from "react-router";
 import {
   ArrowUpToLine,
+  ChevronUp,
   EllipsisVertical,
   Loader2,
   Minimize2,
@@ -17,9 +18,10 @@ import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
 import { isConnecting } from "@/lib/connection";
-import { t } from "@/lib/i18n";
+import { t, type MessageKey } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
 import { useZenEnabled } from "@/lib/zen";
+import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Collapse } from "@/components/ui/collapse";
@@ -37,8 +39,9 @@ import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
 import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
+import { StripsSummary } from "@/components/strips-summary";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
-import { CompactStripLabels } from "@/components/ui/labelled-strip";
+import { CompactStripLabels, STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
 import { useHostHealth } from "@/components/pack-provider";
@@ -99,6 +102,17 @@ interface AgentChatProps {
   stalled?: boolean;
   onBack: () => void;
   onSelect: (paneId: string) => void;
+}
+
+/**
+ * The fold chevron's accessible name, chosen for what is actually on screen. The glyph names
+ * nothing, and "Hide tabs and panes" over a screen with no pane row is a promise about a row that
+ * is not there — the summary bar's own name is built the same way, from the same two counts.
+ */
+function foldLabelKey(tabCount: number, paneCount: number): MessageKey {
+  if (tabCount > 0 && paneCount > 1) return "chat.strips.hide.both";
+  if (tabCount > 0) return "chat.strips.hide.tabs";
+  return "chat.strips.hide.panes";
 }
 
 // At most one drawer/sheet is open at a time; null = none. (The composer's own Keys/Quick/Agent
@@ -321,6 +335,51 @@ export function AgentChat({
   // separately is two thresholds, two ideas of when the mode starts, and one boundary animating out
   // of step with itself.
   const composing = useKeyboardOpen();
+
+  // ── THE FOLDED STRIPS, AND THE ONE STATE THAT OVERRIDES THE PREFERENCE ────────
+  // The tab row and the pane row fold together into `StripsSummary`, a 32px bar of beads. One
+  // toggle, not two: they are one band of "chrome about the pane", they leave in one gesture, and a
+  // screen where the operator can hide the tabs but not the panes is a setting, not a fold.
+  //
+  // TWO TIERS AGAIN, AND THE SPLIT IS NOT ZEN'S. `stripsPref` is the operator's device-level choice
+  // (lib/strips-collapsed.ts) and it persists. `keyboardFold` is the transient override that exists
+  // only while the soft keyboard is up, and NOTHING about it is written down.
+  //
+  // Why the keyboard wins by default: the keyboard takes roughly 45% of the phone, and the rows are
+  // read BEFORE typing, never during it — the same test `composing` above applies to the pane
+  // switcher and the statusline, reached here for the same reason and answered the same way. So
+  // while the keyboard is up the rows stand down whatever the preference says.
+  //
+  // Why the override may not persist: an expand taken with the keyboard up is the operator saying
+  // "I need to see the tabs right now", not "show me the tabs from now on". Writing it would let one
+  // mid-sentence tap redefine every future pane. It therefore resets the moment the keyboard closes,
+  // and a fold taken in that state writes nothing either — it already matches the state the keyboard
+  // imposes, so there is nothing to record.
+  const stripsPref = useStripsCollapsed();
+  const [keyboardFold, setKeyboardFold] = useState<boolean | null>(null);
+  useEffect(() => {
+    if (!composing) setKeyboardFold(null);
+  }, [composing]);
+  const stripsFolded = composing ? (keyboardFold ?? true) : stripsPref;
+  function toggleStrips() {
+    if (composing) {
+      setKeyboardFold(!stripsFolded);
+      return;
+    }
+    setStripsCollapsed(!stripsFolded);
+  }
+  // Is there anything to fold, and is there anywhere to put the control that folds it? TabStrip
+  // renders null when this space reports no tabs and PaneStrip renders null below two panes, so with
+  // both silent there is no band — no summary bar and no chevron, because a fold over nothing is a
+  // control that lies. The chevron itself is pinned to the TAB row's trailing end (see TabStrip's
+  // `trailing` slot), so the fold is offered exactly when that row exists: a snapshot that somehow
+  // carries panes but no tab for them keeps its pane row and is simply not foldable, which is the
+  // honest answer and not a second placement to maintain.
+  const stripTabs =
+    agent === undefined ? [] : tabs.filter((tab) => tab.workspaceId === agent.workspaceId);
+  const canFold = stripTabs.length > 0;
+  const stripsExist = canFold || tabPanes.length > 1;
+  const folded = canFold && stripsFolded;
   // Fold state for the "Switch pane" sheet's two long tails, shared with the dashboard so one
   // "hide the long tail" preference means the same thing in both places.
   const dash = useDashPrefs();
@@ -1180,45 +1239,94 @@ export function AgentChat({
                 nothing on a solo install, or while the host is live. */}
             <HostStaleBanner health={hostHealth} className="mx-3 mt-1.5" />
 
-            {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without leaving the
-                pane, or create one with +. No "All" here (you're always in a specific tab).
-   */}
-            {agent && (
-              <TabStrip
-                workspaceId={agent.workspaceId}
-                host={agent.host}
-                tabs={tabs}
-                agents={agents}
-                selected={agent.tabId}
-                onSelect={(id) => id && goToTab(id)}
-                onNewTab={newTab}
-                allowAll={false}
-                scope={scope}
-                readOnly={readOnly}
-                onRenamed={() => revalidator.revalidate()}
-                // Closing the tab this pane lives in must not eject you to Home — see closeCurrentTab:
-                // it lands you on a neighbouring tab of this space, and only falls back to onBack() when
-                // the space has nothing left to land on. Closing any other tab just revalidates so it
-                // drops out of the strip.
-                onClosed={(tabId) => (agent?.tabId === tabId ? closeCurrentTab(tabId) : revalidator.revalidate())}
-              />
-            )}
+            {/* THE TWO STRIPS, AND THE THIN BAR THAT STANDS IN FOR THEM. Two `Collapse` elements on
+                opposite gates, nested inside zen's: zen still takes the whole band, folded or not,
+                because the summary bar is chrome about the pane exactly as the rows are. The rows
+                slide out as the bar slides in, and each unmounts at the end of its own exit — so a
+                folded screen has no tab in the tab order and an unfolded one has no bar in it.
 
-            {/* Pane switcher: the panes that share this tab (space › tab › pane). Mobile shows them as a
-                tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
-            {agent && (
-              <PaneStrip
-                // The SAME list the header's discriminator is gated on, and hoisted for that reason —
-                // this row appearing and line 1 gaining a `pN` are one decision, taken once.
-                panes={tabPanes}
-                currentPaneId={paneId}
-                onSelect={switchTo}
-                scope={scope}
-                readOnly={readOnly}
-                onRenamed={() => revalidator.revalidate()}
-                // Mirror closePane's success branch: closing the open pane returns Home, else revalidate.
-                onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
-              />
+                Rendered at all only when a row would have drawn: `stripsExist`. Nothing to fold is
+                not a folded thing. */}
+            {stripsExist && (
+              <>
+                <Collapse open={!folded}>
+                {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without
+                    leaving the pane, or create one with +. No "All" here (you're always in a
+                    specific tab). */}
+                {agent && (
+                  <TabStrip
+                    workspaceId={agent.workspaceId}
+                    host={agent.host}
+                    tabs={tabs}
+                    agents={agents}
+                    selected={agent.tabId}
+                    onSelect={(id) => id && goToTab(id)}
+                    onNewTab={newTab}
+                    allowAll={false}
+                    scope={scope}
+                    readOnly={readOnly}
+                    onRenamed={() => revalidator.revalidate()}
+                    // Closing the tab this pane lives in must not eject you to Home — see closeCurrentTab:
+                    // it lands you on a neighbouring tab of this space, and only falls back to onBack() when
+                    // the space has nothing left to land on. Closing any other tab just revalidates so it
+                    // drops out of the strip.
+                    onClosed={(tabId) => (agent?.tabId === tabId ? closeCurrentTab(tabId) : revalidator.revalidate())}
+                    // The fold's own control, pinned to the row's trailing end where it costs no height
+                    // — the tab row is already 44px, so this centres in pixels the row was spending
+                    // anyway. Same 32px square recipe as the "+" beside it: they are two controls of the
+                    // same rank in the same row, and drawing them differently would rank them.
+                    trailing={
+                      <button
+                        type="button"
+                        onClick={toggleStrips}
+                        aria-expanded={true}
+                        aria-label={t(foldLabelKey(stripTabs.length, tabPanes.length))}
+                        className={cn(
+                          STRIP_TAP_TARGET_SQUARE,
+                          "flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent active:scale-95",
+                        )}
+                      >
+                        <ChevronUp className="size-4" />
+                      </button>
+                    }
+                  />
+                )}
+
+                {/* Pane switcher: the panes that share this tab (space › tab › pane). Mobile shows them as a
+                    tabbed row rather than tiling the panes; only appears when the tab holds more than one. */}
+                {agent && (
+                  <PaneStrip
+                    // The SAME list the header's discriminator is gated on, and hoisted for that reason —
+                    // this row appearing and line 1 gaining a `pN` are one decision, taken once.
+                    panes={tabPanes}
+                    currentPaneId={paneId}
+                    onSelect={switchTo}
+                    scope={scope}
+                    readOnly={readOnly}
+                    onRenamed={() => revalidator.revalidate()}
+                    // Mirror closePane's success branch: closing the open pane returns Home, else revalidate.
+                    onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
+                  />
+                )}
+                </Collapse>
+
+                <Collapse open={folded}>
+                  {agent && (
+                    <StripsSummary
+                      workspaceId={agent.workspaceId}
+                      tabs={tabs}
+                      agents={agents}
+                      host={agent.host}
+                      selectedTabId={agent.tabId}
+                      // The SAME list PaneStrip draws, so the bead group and the pill row can never
+                      // disagree about how many panes there are or which one is open.
+                      panes={tabPanes}
+                      currentPaneId={paneId}
+                      onExpand={toggleStrips}
+                    />
+                  )}
+                </Collapse>
+              </>
             )}
           </Collapse>
 

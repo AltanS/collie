@@ -253,6 +253,12 @@ export const de: Dictionary = {
   "chat.zen.label": "Zen-Modus",
   // The floating pill is the ONE way out of zen, and it carries no words — only the glyph.
   "chat.zen.exitAria": "Zen-Modus verlassen",
+  "chat.strips.hide.both": "Tabs und Panes ausblenden",
+  "chat.strips.hide.tabs": "Tabs ausblenden",
+  "chat.strips.hide.panes": "Panes ausblenden",
+  "chat.strips.show.both": "Tabs und Panes anzeigen. {tabs}, {panes} ausgeblendet.",
+  "chat.strips.show.tabs": "Tabs anzeigen. {tabs} ausgeblendet.",
+  "chat.strips.show.panes": "Panes anzeigen. {panes} ausgeblendet.",
   "chat.find.label": "In der Ausgabe suchen",
   "chat.history.label": "Gesprächsverlauf",
   "chat.paneMenu.aria": "Bereichsaktionen",

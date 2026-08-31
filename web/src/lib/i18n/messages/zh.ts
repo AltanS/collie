@@ -235,6 +235,12 @@ export const zh: Dictionary = {
   "chat.zen.label": "禅模式",
   // The floating pill is the ONE way out of zen, and it carries no words — only the glyph.
   "chat.zen.exitAria": "退出禅模式",
+  "chat.strips.hide.both": "隐藏标签页和窗格",
+  "chat.strips.hide.tabs": "隐藏标签页",
+  "chat.strips.hide.panes": "隐藏窗格",
+  "chat.strips.show.both": "显示标签页和窗格。已隐藏 {tabs}、{panes}。",
+  "chat.strips.show.tabs": "显示标签页。已隐藏 {tabs}。",
+  "chat.strips.show.panes": "显示窗格。已隐藏 {panes}。",
   "chat.find.label": "在输出中查找",
   "chat.history.label": "对话记录",
   "chat.paneMenu.aria": "窗格操作",

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Plus } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
@@ -36,6 +36,22 @@ interface TabStripProps {
   onRenamed?: () => void;
   /** Refresh/fall back after a close. Enables long-press together with onRenamed. */
   onClosed?: (tabId: string) => void;
+  /**
+   * A control PINNED to the row's trailing end, outside the scroller — the pane screen's fold
+   * chevron, and nothing else so far.
+   *
+   * It is a slot rather than a named prop because this row must not learn what the pane screen is
+   * doing with it. Two things follow from "outside the scroller", and both are the point: it does
+   * not scroll away with the tabs (a control you can lose by swiping is not an affordance), and it
+   * costs no height at all — the row is already `h-11`, which is a real 44px target, so the control
+   * centres in space the row was spending anyway.
+   *
+   * The cost, stated: with a trailing control the last tab can no longer scroll clean off the screen
+   * edge, because the edge now belongs to the control. That is the `-mx-4 px-4` trick below, and it
+   * survives on the LEFT (the first tab still starts on the route's gutter) while the right half is
+   * traded for the pin. Passing nothing leaves the row byte-identical to what it always was.
+   */
+  trailing?: ReactNode;
 }
 
 // The selected space's tabs, drawn as TABS — the file-folder kind, not the pill kind.
@@ -80,6 +96,7 @@ export function TabStrip({
   readOnly,
   onRenamed,
   onClosed,
+  trailing,
 }: TabStripProps) {
   useLocale();
   const [sheetTab, setSheetTab] = useState<TabView | null>(null);
@@ -108,7 +125,9 @@ export function TabStrip({
         // above. A second hairline here would sit on the same line as that one and double it.
         // border-b is the BASELINE — see the header comment; it is --rule because it cuts between
         // two regions of chrome rather than around one component.
-        className="shrink-0 border-b border-rule px-4"
+        // `flex items-stretch` only when something is pinned to the trailing end — otherwise the
+        // <nav> stays the plain block it has always been, so a row with no `trailing` is unchanged.
+        className={cn("shrink-0 border-b border-rule px-4", trailing && "flex items-stretch")}
       >
         <div
           // -mx-4 px-4: the gutter moves onto the scroller and is cancelled by the negative margin,
@@ -118,7 +137,14 @@ export function TabStrip({
           // pixel is inside the scroller's own padding box so it is not clipped. It is the room the
           // active tab's cover strip lives in. items-start keeps every tab's TOP on the same line,
           // which is what makes the row read as tabs rather than as boxes of different sizes.
-          className="-mx-4 -mb-px flex items-start gap-1 overflow-x-auto px-4 pb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className={cn(
+            "-mb-px flex items-start gap-1 overflow-x-auto pb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            // With a pinned control the right half of the edge-to-edge trick is spent on it: the
+            // scroller becomes the flex row's growing child, keeps the LEFT gutter cancellation so
+            // the first tab still starts on the route's 16px, and stops at the control instead of at
+            // the screen. `min-w-0` is what lets it actually shrink rather than push the control off.
+            trailing ? "-ml-4 min-w-0 flex-1 pl-4 pr-2" : "-mx-4 px-4",
+          )}
         >
           {allowAll && (
             <Tab
@@ -173,6 +199,12 @@ export function TabStrip({
             </button>
           )}
         </div>
+        {/* The pinned slot. `self-center` for the same reason the "+" takes it: whatever stands here
+            is a control beside the tabs, not a tab, so it centres in the row rather than hanging
+            from the top line. */}
+        {trailing !== undefined && (
+          <div className="flex shrink-0 self-center pl-1">{trailing}</div>
+        )}
       </nav>
 
       {actionsEnabled && (
