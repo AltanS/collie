@@ -1100,7 +1100,8 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
     }
     // …and the one cause the address itself gives away. Below the reason, not instead of it: the
     // scheme is a strong suspicion about an unreachable member, never a diagnosis of the failure.
-    for (const l of schemedAddressLines(m.memberId, m.address)) emit(l.text, l.tone);
+    for (const l of schemedAddressLines(m.memberId, m.address, m.role)) emit(l.text, l.tone);
+    for (const l of unreachableLeadLines(m)) emit(l.text, l.tone);
   }
   if (deps.ui != null) await deps.ui.packMembers(banked);
   return EXIT.OK;
@@ -1470,12 +1471,50 @@ export function packAddressRefusal(address: string): string | null {
 }
 
 /**
+ * The remedy `pack status` offers a peer whose LEAD did not answer — the other half of
+ * {@link schemedAddressLines}, which is deliberately silent on this row.
+ *
+ * There is exactly one verb here, and it is not `pack set-address`. A member's address is corrected
+ * on the machine that DIALS it, so a peer re-points its own lead with `collie reconnect <address>`,
+ * run here ({@link cmdReconnect}); `set-address` is the lead's verb for a peer's row and refuses on
+ * this machine ({@link cmdPackSetAddress}). Naming the wrong one sent an operator to a command that
+ * refuses them, which is the whole of F11.
+ *
+ * Address-shaped remedies only. The lead is one machine behind one front door, so the two ways this
+ * row goes quiet are "the door is down" and "the door moved" — and only the second is Collie's to
+ * repair. The pin is never mentioned: it is unchanged by either, and `reconnect` does not touch it.
+ */
+function unreachableLeadLines(m: Pick<TrustedMember, "role" | "address">): TonedLine[] {
+  if (m.role !== "lead") return [];
+  return [
+    { text: "            This is this machine's LEAD, reached at its front door — check that the door", tone: "dim" },
+    { text: `            is up over there (\`collie status\` on the lead). If it MOVED, re-point this`, tone: "dim" },
+    { text: "            machine at the new one HERE: `collie reconnect <address>` (the pin is kept).", tone: "dim" },
+  ];
+}
+
+/**
  * The hint `pack status` appends to an unreachable member whose stored address carries a scheme.
  *
- * Render-only, and deliberately conditional on BOTH facts: a scheme'd address that is answering is
- * somebody's working reverse-proxy front door, and telling them to change it would be wrong.
+ * Render-only, and deliberately conditional on THREE facts. Two are about the address: a scheme'd
+ * address that is answering is somebody's working reverse-proxy front door, and telling them to
+ * change it would be wrong. The third is about the ROLE, and it is the one this hint got wrong.
+ *
+ * **Never for the LEAD entry.** A lead's address is its front door (§4, ADR 0001), so a scheme
+ * there is not a symptom — it is the correct value, and it is what `pack add` and `join` write.
+ * The remedy this hint offers is wrong twice over for that row: the premise is backwards, and an
+ * operator who follows it to its conclusion strips the scheme and breaks the entry. A peer that
+ * cannot reach its lead is not diagnosed by the shape of the address at all.
+ *
+ * So this hint belongs to exactly one row: a PEER, printed by the lead that dials it, where the
+ * pack really does want a bare `host:port` for its own pinned dial ({@link packAddressRefusal}).
+ * The verb named there is the lead's, `pack set-address`, because the lead is the machine that
+ * dials that member. On the other side of the link the verb is `collie reconnect <address>`, run
+ * on the machine being re-pointed — which is what {@link cmdPackSetAddress} says when a peer
+ * reaches for `set-address` by mistake.
  */
-export function schemedAddressLines(memberId: string, address: string): TonedLine[] {
+export function schemedAddressLines(memberId: string, address: string, role: TrustedMember["role"]): TonedLine[] {
+  if (role === "lead") return [];
   if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(address)) return [];
   return [
     { text: "            an address with a scheme is a front door's, not a pack listener's —", tone: "dim" },

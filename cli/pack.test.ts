@@ -688,6 +688,38 @@ describe("collie join", () => {
   });
 });
 
+// ── the unreachable-lead remedy (F11) ────────────────────────────────────────
+
+describe("collie pack status — what an unreachable LEAD is told to do", () => {
+  const behindAFrontDoor = (): TrustStoreData =>
+    peerStore({ lead: member({ memberId: "desk", role: "lead", address: "https://desk.tailnet.ts.net" }) });
+
+  test("a lead's scheme is not a diagnosis — the set-address hint is suppressed for that row", async () => {
+    const h = harness(behindAFrontDoor(), [new Error("no route to host")]);
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    // A lead's address is SUPPOSED to carry a scheme: it is a front door. The old hint told the
+    // operator to strip it, and the verb it named refuses on this machine anyway.
+    expect(text(h.io)).not.toContain("an address with a scheme is a front door's");
+    expect(text(h.io)).not.toContain("pack set-address desk");
+  });
+
+  test("the remedy it does offer is the verb that runs HERE", async () => {
+    const h = harness(behindAFrontDoor(), [new Error("no route to host")]);
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("collie reconnect <address>");
+    expect(text(h.io)).toContain("check that the door");
+  });
+
+  test("a PEER's scheme'd address still gets the lead's own verb, on the lead", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas", address: "https://nas.example" })] }), [
+      new Error("no route to host"),
+    ]);
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("collie pack set-address nas <host:port>");
+    expect(text(h.io)).not.toContain("collie reconnect <address>");
+  });
+});
+
 // ── the peer→lead dial is not pinned (F10) ───────────────────────────────────
 
 describe("clientFor — which dials carry a pin (§8.1) and which cannot", () => {
