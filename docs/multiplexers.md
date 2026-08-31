@@ -47,8 +47,8 @@ crashes the server, so Collie refuses to open one — see
 
 Then, in order:
 
-1. **Restart after any `.env` edit** — `bin/collie restart`.
-2. **Install the beacon hooks** — `bin/collie hooks install claude`, once per host. Without them a
+1. **Restart after any `.env` edit** — `collie restart`.
+2. **Install the beacon hooks** — `collie hooks install claude`, once per host. Without them a
    pane is only a shell and the dashboard names every one of them `bash`; it edits your *global*
    `~/.claude/settings.json` and never a project's
    ([the detail](#collie-writes-hooks-into-claudes-own-settings)).
@@ -71,6 +71,9 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij                  # a session NAME, not 
 # COLLIE_ZELLIJ_BIN=/home/you/.local/bin/zellij           # only if zellij sits somewhere unusual
 ```
 
+If your distro does not package zellij, take the release tarball from
+[zellij's GitHub releases](https://github.com/zellij-org/zellij/releases) and put the binary on `PATH`.
+
 Empty means *the* running session. With no session, or with two, Collie refuses to start rather than
 guess, and names what it found. A session you named that has since exited is refused by name — never
 silently swapped for a neighbour. One environment variable is easy to lose: zellij finds its sessions
@@ -85,8 +88,8 @@ itself never creates a session and never resurrects one.
 
 Then, in order:
 
-1. **Restart after any `.env` edit** — `bin/collie restart`.
-2. **Install the beacon hooks** — `bin/collie hooks install claude`, once per host. Without them a
+1. **Restart after any `.env` edit** — `collie restart`.
+2. **Install the beacon hooks** — `collie hooks install claude`, once per host. Without them a
    pane is only a shell and the dashboard names every one of them `bash`; it edits your *global*
    `~/.claude/settings.json` and never a project's
    ([the detail](#collie-writes-hooks-into-claudes-own-settings)).
@@ -102,9 +105,9 @@ claude
 ### Did it work?
 
 ```bash
-bin/collie doctor      # the `mux` check names the multiplexer, its endpoint, and whether it answered
-bin/collie logs        # `[bridge] mux: tmux · socket /run/user/1000/collie-tmux.sock`, printed at
-                       # startup; a multiplexer it cannot reach is one warning line more
+collie doctor  # the `mux` check names the multiplexer, its endpoint, and whether it answered
+collie logs    # `[bridge] mux: tmux · socket /run/user/1000/collie-tmux.sock`, printed at
+               # startup; a multiplexer it cannot reach is one warning line more
 curl -s http://127.0.0.1:8787/api/snapshot | head -c 400   # the herd, as the phone is given it
 ```
 
@@ -122,11 +125,15 @@ On tmux and zellij a pane is just a shell, so the agent has to say what it is. T
 [beacon](#agent-beacons-optional-linux), and it needs Collie's hooks in Claude Code's settings:
 
 ```console
-$ bin/collie hooks install claude
-$ bin/collie hooks status
+$ collie hooks install claude
+$ collie hooks status
 would install: /home/you/collie/bin/collie beacon emit  (this checkout)
 /home/you/.claude/settings.json: installed (v1)
 ```
+
+That absolute path is this checkout's own `bin/collie`. A binary install names its published binary
+instead — `~/.local/bin/collie` when that name is linked, or `~/.local/share/collie/current/bin/collie`
+when it is not — never a version directory, because `collie update` deletes the one before last.
 
 Say it plainly, because it edits a file you own:
 
@@ -221,13 +228,14 @@ where a pane is otherwise just a shell. Installing them is a step of
 what they are.
 
 ```console
-$ bin/collie hooks install claude
-$ bin/collie hooks status
+$ collie hooks install claude
+$ collie hooks status
 would install: /home/you/collie/bin/collie beacon emit  (this checkout)
 /home/you/.claude/settings.json: installed (v1)
 ```
 
-`status` reads and writes nothing; `hooks uninstall claude` removes only the entries Collie marked as
+That path is this checkout's own `bin/collie` — a binary install names its published binary instead,
+[as above](#collie-writes-hooks-into-claudes-own-settings). `status` reads and writes nothing; `hooks uninstall claude` removes only the entries Collie marked as
 its own. It edits your *global* Claude settings, never a project's. Linux only — the liveness check
 reads `/proc`, and on any other host a beacon is simply never written.
 

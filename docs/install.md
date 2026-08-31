@@ -19,10 +19,12 @@ source needs one) and **which multiplexer you mirror** (only the Herdr one needs
 | [**Herdr**](https://herdr.dev) ≥ 0.7.0 | only when Herdr is your multiplexer | One of the three, and the default the first `start` offers. Check with `herdr --version`. On tmux or zellij it need be neither installed nor running. |
 | [**Tailscale**](https://tailscale.com) | the default front door | `tailscale serve` publishes Collie on your tailnet. Optional if you run [Variant C](../DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) behind your own reverse proxy. Without any front door, Collie is `127.0.0.1`-only. |
 
-**No minimum tmux or zellij version is enforced** — the adapters were probed on tmux 3.6b and zellij
-0.44.2, and neither declares a floor. One tmux caveat is checked at runtime: on a server whose
-`window-size` is `manual`, tmux below 3.7 crashes when a window is opened, so Collie refuses to open
-one and tells you to run `tmux set -g window-size latest`.
+**No minimum tmux or zellij version is enforced** — the adapters were probed on tmux 3.4, tmux 3.6b
+and zellij 0.44.2, and none declares a floor. tmux 3.4 escapes its `-F` separator differently than
+3.6b does; Collie reads both, and a listing it cannot parse is reported as a mux error rather than
+shown as an empty dashboard. One tmux caveat is checked at runtime: on a server whose `window-size` is
+`manual`, tmux below 3.7 crashes when a window is opened, so Collie refuses to open one and tells you
+to run `tmux set -g window-size latest`.
 
 Soft dependencies: **Node.js** (the `collie` CLI uses it to extract your MagicDNS name from
 `tailscale status --json`; without it the banner falls back to the loopback URL) and a **service

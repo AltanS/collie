@@ -4,8 +4,8 @@ Symptoms below, in order — search the page for yours. **`Os { NotFound }` from
 **`update` says "not currently on a branch"** · **`tailscale serve failed`** · **isn't answering
 (service won't start)** · **phone can't open the URL** · **page loads but stays empty (blank page,
 403)** · **a password prompt won't take your reply** · **no push notifications** · **gone after a
-reboot** · **Collie refuses to open a tmux window** · **`herdr plugin list` shows the old version** ·
-**stale UI after a rebuild**.
+reboot** · **Collie refuses to open a tmux window** · **`tmux list: output did not parse`** ·
+**`herdr plugin list` shows the old version** · **stale UI after a rebuild**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
 directory" }`** (plugin install fails, action invoke fails)**.** This is *not* a Collie problem — it
@@ -92,6 +92,13 @@ server takes every window with it. Collie declines instead, and names the tmux i
 line it prints — `tmux set -g window-size latest` on that server — or tmux 3.7. Nothing else is
 affected: every other action on those panes keeps working
 ([Requirements](install.md#requirements) carries the same caveat).
+
+**Collie logs `tmux list: output did not parse` and the dashboard reads empty.** Not a crash: some
+tmux versions (3.4, not 3.6b) escape the separator this adapter reads on their way out of a `-F`
+listing. Collie reads both shapes now, so a listing that parses to zero rows is reported as a mux
+error instead of being stored as an empty herd — the error line names the tmux version and how many
+lines it saw. If you still hit this, note the `tmux -V` version and open an issue; the fix belongs in
+the adapter, not in your `.env`.
 
 **`herdr plugin list` shows the old version after an `update`.** Expected — Herdr caches the manifest
 it read at install or link time. The authority on what's running is the footer build stamp, or
