@@ -413,6 +413,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "bridgeStale",
       "checkedAt",
       "current",
+      "installKind",
       "latest",
       "latestUrl",
       "majorAvailable",

@@ -88,6 +88,7 @@
     "releaseAvailable": false,
     "majorAvailable": null,
     "majorUrl": null,
+    "installKind": "detached-checkout",
     "bridgeStale": false,
     "checkedAt": null
   },
