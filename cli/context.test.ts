@@ -20,6 +20,7 @@ import {
   resolveHome,
   instanceSuffix,
   resolveInstance,
+  shadowNotes,
   tightenEnvFile,
   upsertEnvVars,
   type Environment,
@@ -271,6 +272,40 @@ describe("parseEnvFile", () => {
 
   test("a later assignment wins, as re-assignment would in a sourced file", () => {
     expect(parseEnvFile("A=1\nA=2")).toEqual({ A: "2" });
+  });
+});
+
+// `.env` still wins the merge in `loadContext` — the precedence is load-bearing and unchanged. This
+// only tests that the win stops being silent: the pure computation `loadContext` calls at the merge
+// site, so it never has to touch the real `process.env`.
+describe("shadowNotes", () => {
+  test("a differing value gets one note naming both", () => {
+    expect(shadowNotes({ COLLIE_PORT: "8788" }, { COLLIE_PORT: "8787" })).toEqual([
+      "note: COLLIE_PORT=8788 from your environment is shadowed by .env (8787).",
+    ]);
+  });
+
+  test("an equal value says nothing", () => {
+    expect(shadowNotes({ COLLIE_PORT: "8787" }, { COLLIE_PORT: "8787" })).toEqual([]);
+  });
+
+  test("an unset ambient value says nothing — there was nothing to shadow", () => {
+    expect(shadowNotes({}, { COLLIE_PORT: "8787" })).toEqual([]);
+  });
+
+  test("a credential-shaped name is named but never valued", () => {
+    expect(
+      shadowNotes({ COLLIE_STT_API_KEY: "sk-old" }, { COLLIE_STT_API_KEY: "sk-new" }),
+    ).toEqual(["note: COLLIE_STT_API_KEY from your environment is shadowed by .env."]);
+  });
+
+  test("more than the cap collapses into a summary line", () => {
+    const ambient = Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`VAR_${i}`, "old"]));
+    const fromFile = Object.fromEntries(Array.from({ length: 7 }, (_, i) => [`VAR_${i}`, "new"]));
+    const notes = shadowNotes(ambient, fromFile);
+    expect(notes).toHaveLength(6);
+    expect(notes.slice(0, 5).every((l) => l.startsWith("note: VAR_"))).toBe(true);
+    expect(notes[5]).toBe("note: 2 more environment variables shadowed by .env.");
   });
 });
 

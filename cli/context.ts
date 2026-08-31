@@ -436,6 +436,40 @@ export function resolveHome(env: Environment): string {
   }
 }
 
+/** A variable name shaped like a credential — its value never appears in a diagnostic. */
+const SENSITIVE_ENV_NAME = /(KEY|TOKEN|SECRET|PASSWORD|PRIVATE)$/;
+
+/** How many per-variable shadow notes {@link shadowNotes} prints before it collapses into a summary. */
+const SHADOW_NOTE_CAP = 5;
+
+/**
+ * The stderr lines to say when a `.env` value SILENTLY overrides a different value the ambient
+ * process environment already carried — `.env` still wins (see {@link loadContext}'s merge
+ * comment), this only stops that win from being silent.
+ *
+ * A name absent from `ambient`, or equal in both, says nothing: nothing was shadowed. A name shaped
+ * like a credential ({@link SENSITIVE_ENV_NAME}) is named but never valued, so the note itself never
+ * becomes a leak. Past {@link SHADOW_NOTE_CAP} differing names — an `EnvironmentFile=` re-exporting
+ * the same `.env`, say — the notes collapse into one summary line rather than flooding stderr.
+ */
+export function shadowNotes(ambient: Environment, fromFile: EnvVars): string[] {
+  const shadowed = Object.keys(fromFile).filter((key) => {
+    const before = ambient[key];
+    return before !== undefined && before !== fromFile[key];
+  });
+  const lines = shadowed.slice(0, SHADOW_NOTE_CAP).map((key) => {
+    if (SENSITIVE_ENV_NAME.test(key)) {
+      return `note: ${key} from your environment is shadowed by .env.`;
+    }
+    return `note: ${key}=${ambient[key]} from your environment is shadowed by .env (${fromFile[key]}).`;
+  });
+  const remaining = shadowed.length - lines.length;
+  if (remaining > 0) {
+    lines.push(`note: ${remaining} more environment variable${remaining === 1 ? "" : "s"} shadowed by .env.`);
+  }
+  return lines;
+}
+
 /**
  * Resolve the context once. `warn` receives diagnostics destined for stderr (the caller owns the
  * stream, so this stays testable).
@@ -458,7 +492,9 @@ export function loadContext(warn: (line: string) => void = (l) => console.error(
   if (dotenv !== null) {
     const tightened = tightenEnvFile(envPath, diskEnvPerms);
     if (tightened !== null) warn(tightened);
-    Object.assign(env, parseEnvFile(dotenv));
+    const fromFile = parseEnvFile(dotenv);
+    for (const line of shadowNotes(process.env, fromFile)) warn(line);
+    Object.assign(env, fromFile);
   }
 
   // Resolved from the MERGED env, so a `.env` may name the instance — the second instance's config
