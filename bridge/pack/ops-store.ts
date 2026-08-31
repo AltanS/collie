@@ -13,9 +13,16 @@ import { fsTrustStoreIo, type TrustStoreIo } from "./trust-store.ts";
 // authority. Nothing in this file ever crosses the pack link, in either direction — a peer neither
 // sends nor learns how its operator dials it (PACK_PROTOCOL.md §11's spirit, ADR 0016's rule).
 //
-// It is written by `pack add` (on a run that finished), refreshed by `pack update` when the operator
-// overrides one of its fields, and deleted by `pack remove`. A member with no record here is not
-// broken — it is a member this machine has never SSH'd to, and `pack update` says exactly that.
+// It is written by `pack add` (on a run that finished) and refreshed by `pack update` when the
+// operator overrides one of its fields. A member with no record here is not broken — it is a member
+// this machine has never SSH'd to, and `pack update` says exactly that.
+//
+// **Nothing deletes a row.** `pack remove` used to, and that was the bug (F16): removal is the exact
+// moment the operator needs the ssh destination, because the far machine keeps its copy of the pack
+// until `collie leave` runs THERE, and the row is the connection that reaches it. So `pack remove`
+// prints the line and keeps the row. A stale row costs nothing — `pack update` builds its targets
+// from the roster and only then looks a member up here, so a row for a machine that is not a member
+// can never be dialled — and a re-add overwrites it. Forgetting one is `rm` on this file.
 //
 // At rest it reuses the trust store's discipline verbatim ({@link fsTrustStoreIo}): 0600 in a 0700
 // directory, temp-file-then-rename. It holds no secret, but it names hosts an operator can reach, and
@@ -195,16 +202,6 @@ export class PackOpsStore {
       members: { ...data?.members, [memberId]: record },
     };
     await this.write(next);
-    return true;
-  }
-
-  /** Forget a member. Silent when there is nothing to forget — `pack remove` must not fail on it. */
-  async forget(memberId: string): Promise<boolean> {
-    const { data, unreadable } = await this.load();
-    if (unreadable || data === null || data.members[memberId] === undefined) return false;
-    const members = { ...data.members };
-    delete members[memberId];
-    await this.write({ version: PACK_OPS_VERSION, members });
     return true;
   }
 

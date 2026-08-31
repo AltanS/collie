@@ -33,7 +33,7 @@ import { mintMemberId, normalizeFingerprint, randomToken, type RandomSource } fr
 import { signDial, signRequest } from "../bridge/pack/signing.ts";
 import { dialTls } from "../bridge/pack/transport.ts";
 import { deriveMode } from "../bridge/pack/mode.ts";
-import { PackOpsStore, type OpsRecord } from "../bridge/pack/ops-store.ts";
+import { packOpsPath, PackOpsStore, type OpsRecord } from "../bridge/pack/ops-store.ts";
 import {
   packHelloBudget,
   packTimeoutBudget,
@@ -1288,6 +1288,8 @@ export async function cmdPackRemove(deps: PackDeps, args: readonly string[]): Pr
     deps.io.err("usage: collie pack remove <member-id>");
     return EXIT.USAGE;
   }
+  // Read before the roster changes, so the line printed below is composed from the same run's facts.
+  const record = await deps.ops.get(memberId);
   const removed = await commitPackChange(deps.store, deps.audit, (current) =>
     current === null ? null : removeMember(current, memberId),
   );
@@ -1295,15 +1297,53 @@ export async function cmdPackRemove(deps: PackDeps, args: readonly string[]): Pr
     deps.io.err(`error: no member "${memberId}" in this roster — \`collie pack status\` lists them.`);
     return EXIT.STATE;
   }
-  // The pin is gone, so the ssh route to it is no longer ours to keep: a member that is not a member
-  // must not linger in `pack update`'s target list (ADR 0016).
-  await deps.ops.forget(memberId);
   deps.io.out(`✓ removed "${memberId}" — its pin is gone, so its certificate is now simply not a member.`);
   deps.io.out("  Nothing was sent to it: revocation is local by design, and the removed machine keeps its");
   deps.io.out("  own copy of the pack until its operator runs `collie leave` there. Either side alone ends");
   deps.io.out("  the link (§8.4) — this side is now ended.");
+  for (const line of leaveTheOtherSideLines(deps, record)) deps.io.out(line);
   await applyLocally(deps, "the shortened roster");
   return EXIT.OK;
+}
+
+/**
+ * The half of `pack remove` that helps: the command the operator now has to run on the OTHER side.
+ *
+ * `pack remove` is correct and says so plainly — the removed machine keeps its copy of the pack until
+ * someone runs `collie leave` there. Meanwhile that machine sits in the worst state Collie has: still
+ * in peer mode, so it publishes no front door and answers no phone, and no longer pinned here, so
+ * this lead cannot reach it either. Invisible from both ends.
+ *
+ * **And this verb used to delete the one thing that finishes the job.** `pack-ops.json`'s row for the
+ * member is `{sshHost, path, port}` — exactly the connection `pack add` used, and exactly what the
+ * sentence above needs — and it was forgotten in the same breath as printing that sentence (F16).
+ *
+ * **So the row is KEPT, and this says where it is.** The comment that used to justify dropping it
+ * feared a non-member lingering in `pack update`'s target list; that fear does not survive reading
+ * the code — `pack update` builds its targets from the ROSTER and only then looks a member up here
+ * (`cli/pack-update.ts`), so a row for a machine that is not a member can never be dialled by it.
+ * Nothing here is trust and nothing here is a wire field, which is the whole of ADR 0016's rule; a
+ * re-add overwrites the row, and deleting the file forgets it. That is a cheaper mistake than
+ * throwing away an ssh destination the operator typed once and now needs.
+ */
+function leaveTheOtherSideLines(deps: PackDeps, record: OpsRecord | null): string[] {
+  const where = packOpsPath(deps.ctx.stateDir);
+  if (record === null) {
+    return [
+      `  It is still in peer mode over there, so it answers no phone — and this lead no longer has a`,
+      `  pin for it. Finish the tear-down on that machine: \`collie leave\` there.`,
+      `  (This lead has no record of how it was reached over ssh — nothing in ${where} named it.)`,
+    ];
+  }
+  const binary = record.path === null ? "collie" : `${record.path}/bin/collie`;
+  return [
+    "  It is still in peer mode over there, so it answers no phone — and this lead no longer has a",
+    "  pin for it. Finish the tear-down on that machine:",
+    `    ssh ${record.sshHost} ${binary} leave`,
+    `  That line is rebuilt from ${where}, which this verb KEEPS: it is how \`pack add\` reached the`,
+    "  machine, it is not trust and never a wire field (ADR 0016), and `pack update` targets the",
+    "  roster — so a row for a machine that is no longer a member can never be dialled by it.",
+  ];
 }
 
 // ── pack set-address (on the lead) ───────────────────────────────────────────

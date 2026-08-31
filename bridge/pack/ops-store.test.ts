@@ -124,15 +124,15 @@ describe("PackOpsStore", () => {
     expect(Object.keys((await store.load()).data!.members).toSorted()).toEqual(["nas", "web"]);
   });
 
-  test("forget drops exactly one member, and says whether there was one", async () => {
+  // F16: there is no `forget`. Removal is the exact moment the operator needs the ssh destination —
+  // the far machine keeps its copy of the pack until `collie leave` runs there — so `pack remove`
+  // prints the line and keeps the row. This pins that no verb can drop one behind the operator.
+  test("nothing deletes a row: a member recorded once stays recorded", async () => {
     const store = new PackOpsStore("/state", fakeIo());
     await store.record("nas", RECORD);
     await store.record("web", { ...RECORD, sshHost: "web.example" });
-    expect(await store.forget("nas")).toBe(true);
-    expect(await store.get("nas")).toBeNull();
-    expect(await store.get("web")).not.toBeNull();
-    // `pack remove` runs this for every member it drops, most of which were never `pack add`-ed.
-    expect(await store.forget("nas")).toBe(false);
+    expect("forget" in store).toBe(false);
+    expect(await store.get("nas")).not.toBeNull();
   });
 
   test("an unreadable file is reported, and is NEVER overwritten", async () => {
@@ -140,7 +140,6 @@ describe("PackOpsStore", () => {
     const store = new PackOpsStore("/state", io);
     expect(await store.load()).toEqual({ data: null, unreadable: true });
     expect(await store.record("nas", RECORD)).toBe(false);
-    expect(await store.forget("nas")).toBe(false);
     expect(io.writes).toBe(0);
     expect(io.contents).toBe("{ this is not the file we left }");
   });

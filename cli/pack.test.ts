@@ -1052,7 +1052,7 @@ describe("collie pack rotate", () => {
 // ── pack remove ──────────────────────────────────────────────────────────────
 
 describe("collie pack remove", () => {
-  test("unpins and forgets, and says the far side keeps its own copy", async () => {
+  test("unpins, and says the far side keeps its own copy", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     expect(await cmdPackRemove(h.deps, ["nas"])).toBe(EXIT.OK);
     expect(h.data()!.peers).toEqual([]);
@@ -1061,6 +1061,30 @@ describe("collie pack remove", () => {
     // Revocation is local by design — it must not be a request that a down peer can refuse.
     expect(h.requests).toEqual([]);
     expect(h.restarts).toHaveLength(1);
+  });
+
+  // F16: the row in pack-ops.json is `{sshHost, path, port}` — exactly the connection that finishes
+  // the tear-down on the other machine — and it was deleted in the same breath as printing the
+  // sentence that needs it. The removed peer is invisible from both ends until `collie leave` runs
+  // there, so the verb now prints the line and KEEPS the row.
+  test("it prints the ssh line that finishes the job, and keeps the record it is built from", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [], {
+      ops: fakeOps({
+        nas: { sshHost: "op@192.168.77.2", path: "/home/op/.collie", port: 8787, recordedAt: T0 },
+      }),
+    });
+    expect(await cmdPackRemove(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("ssh op@192.168.77.2 /home/op/.collie/bin/collie leave");
+    expect(text(h.io)).toContain("/state/pack-ops.json");
+    // The row survives — this is the whole finding.
+    expect(await h.deps.ops.get("nas")).toMatchObject({ sshHost: "op@192.168.77.2" });
+  });
+
+  test("a member this lead never SSH'd to says so instead of inventing a command", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    expect(await cmdPackRemove(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("has no record of how it was reached over ssh");
+    expect(text(h.io)).not.toContain("    ssh ");
   });
 
   test("an unknown member is a state error naming the verb that lists them", async () => {
