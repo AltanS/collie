@@ -64,8 +64,31 @@ describe("config dir precedence", () => {
     );
   });
 
-  test("the Herdr CLI is asked next", () => {
+  test("the Herdr CLI is asked next, and wins when its dir holds the .env", () => {
+    expect(resolve({ herdr: "/from-herdr", files: [join("/from-herdr", ".env")] }).dir).toBe(
+      "/from-herdr",
+    );
+  });
+
+  // The 2026-08-26 bug: a `herdr` binary on PATH answers for every Collie on the host, so a binary
+  // install's own `~/.config/collie/.env` was ignored in favour of a plugin dir nothing had written.
+  test("a Herdr answer with no .env loses to a conventional dir that has one", () => {
+    const r = resolve({ herdr: "/from-herdr", files: [join(CONVENTIONAL, ".env")] });
+    expect(r.dir).toBe(CONVENTIONAL);
+    expect(r.note).toBeNull();
+  });
+
+  test("a Herdr answer with no .env loses to ~/.config/collie's .env", () => {
+    const r = resolve({ herdr: "/from-herdr", files: [join(LEGACY, ".env")] });
+    expect(r.dir).toBe(LEGACY);
+    expect(r.note).toBeNull();
+  });
+
+  test("with no .env anywhere, Herdr's answer is still taken", () => {
     expect(resolve({ herdr: "/from-herdr" }).dir).toBe("/from-herdr");
+    expect(resolve({ herdr: "/from-herdr", files: ["/from-herdr", CONVENTIONAL] }).dir).toBe(
+      "/from-herdr",
+    );
   });
 
   test("Herdr saying nothing (or being absent) falls through", () => {
@@ -85,7 +108,12 @@ describe("config dir precedence", () => {
 
 describe("the legacy .env note", () => {
   test("fires when a legacy .env exists but is not the resolved dir", () => {
-    const r = resolve({ herdr: "/from-herdr", files: [join(LEGACY, ".env")] });
+    // Both files exist and the Herdr one is in use — the case the note was written for.
+    const r = resolve({
+      herdr: "/from-herdr",
+      files: [join("/from-herdr", ".env"), join(LEGACY, ".env")],
+    });
+    expect(r.dir).toBe("/from-herdr");
     expect(r.note).toContain(join(LEGACY, ".env"));
     expect(r.note).toContain(join("/from-herdr", ".env"));
   });
@@ -95,7 +123,7 @@ describe("the legacy .env note", () => {
   });
 
   test("stays silent when there is no legacy .env to ignore", () => {
-    expect(resolve({ herdr: "/from-herdr" }).note).toBeNull();
+    expect(resolve({ herdr: "/from-herdr", files: [join("/from-herdr", ".env")] }).note).toBeNull();
   });
 });
 

@@ -210,9 +210,15 @@ export interface ConfigDirResult {
 }
 
 /**
- * Injected env → Herdr CLI → Herdr's conventional path (only if it has a `.env`) → `~/.config/collie`.
- * Mirrors the pre-shim `collie-ctl.sh` including the legacy-`.env`-ignored note, so config applied
- * one way is never silently dropped the other.
+ * Injected env → the Herdr CLI's answer → Herdr's conventional path → `~/.config/collie`, where
+ * every step past the injected one counts ONLY when that directory actually holds a `.env`. Mirrors
+ * the pre-shim `collie-ctl.sh` including the legacy-`.env`-ignored note, so config applied one way
+ * is never silently dropped the other.
+ *
+ * **A dir with no `.env` is not in use, and may not out-rank one that is.** The `.env` test used to
+ * apply to the conventional path and not to Herdr's answer, so a `herdr` binary merely present on
+ * PATH captured the config dir of a Collie it does not manage. Nothing changes for a real
+ * Herdr-managed install, where the plugin dir is the one holding the `.env`.
  *
  * **A named instance short-circuits the middle of that chain.** `deps.env` is the PROCESS env, read
  * before any `.env` merge, so a `COLLIE_INSTANCE` here is the operator's own — see the amendment at
@@ -248,11 +254,18 @@ export function resolveConfigDir(deps: ConfigDirDeps): ConfigDirResult {
           "HERDR_PLUGIN_CONFIG_DIR explicitly. Refusing to fall back to another instance's config.",
       );
     }
+    // Herdr's answer wins only when it is IN USE. A `herdr` binary anywhere on PATH answers this
+    // question for every Collie on the host, including one Herdr does not manage — and trusting it
+    // unconditionally made a binary install ignore the `~/.config/collie/.env` its own installer
+    // had just told the operator to write, under a note that called that file legacy.
     const asked = deps.askHerdr()?.trim();
-    if (asked) return asked;
+    if (asked && deps.fileExists(join(asked, ".env"))) return asked;
     const conventional = conventionalFor("");
     if (deps.fileExists(join(conventional, ".env"))) return conventional;
-    return legacy;
+    if (deps.fileExists(join(legacy, ".env"))) return legacy;
+    // No `.env` anywhere: nothing is in use, so there is nothing to get wrong. Herdr's answer is
+    // still the best guess at where a config would go on a host that runs Herdr.
+    return asked || legacy;
   }
 }
 
