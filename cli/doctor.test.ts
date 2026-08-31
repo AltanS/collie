@@ -1038,6 +1038,107 @@ describe("mux", () => {
   });
 });
 
+// ── The finding set is scoped by the CHOSEN multiplexer ──────────────────────
+// Collie mirrors ONE multiplexer per install. On tmux or zellij, Herdr's socket, its build and its
+// per-agent `integration` hooks drive nothing here — the bridge never dials that socket, and the
+// hook that names an agent is Collie's own. Those checks are ABSENT rather than a hollow `ok`, and
+// a healthy host exits 0: `collie doctor` failing on a working tmux install is the bug these pin.
+
+/** The checks that only mean something under Herdr — none of them may appear on another mux. */
+const isHerdrCheck = (check: string): boolean =>
+  check.startsWith("herdr-") || check.startsWith("integration-") || check === "hook-python3";
+
+/** A healthy tmux host with NO Herdr anywhere: a socket-less filesystem and no `herdr` binary. */
+const tmuxOnly = () => ({
+  env: ON_TMUX,
+  files: { ...without(healthyFiles(), SOCKET), [TMUX_BIN]: "" },
+  answers: tmuxAnswers("3.4\nwork\n"),
+  absent: ["herdr"],
+});
+
+describe("the finding set is scoped by the chosen multiplexer", () => {
+  test("a healthy tmux host exits 0, and carries no Herdr check at all", async () => {
+    const { code, byCheck, raw } = await findings(harness(null, [], tmuxOnly()));
+    expect(code).toBe(EXIT.OK);
+    expect(raw.filter((f) => isHerdrCheck(f.check))).toEqual([]);
+    // The whole set, so a Herdr-flavoured check added later cannot slip in unnoticed.
+    expect([...byCheck.keys()]).toEqual([
+      "collie",
+      "web-dist",
+      "path-link",
+      "install",
+      "update-source",
+      "bind",
+      "bind-wildcard",
+      "acl",
+      "front-door",
+      "mux",
+      "beacon-hooks-claude",
+      "beacons",
+      "agent-sessions",
+      "journal-roots",
+      "restart-pending",
+      "clock",
+    ]);
+    expect(raw.filter((f) => f.status === "error")).toEqual([]);
+  });
+
+  test("a healthy zellij host reads the same way", async () => {
+    const h = harness(null, [], {
+      env: ON_ZELLIJ,
+      files: { ...without(healthyFiles(), SOCKET), [ZELLIJ_BIN]: "" },
+      answers: zellijAnswers("work\n"),
+      absent: ["herdr"],
+    });
+    const { code, raw } = await findings(h);
+    expect(code).toBe(EXIT.OK);
+    expect(raw.filter((f) => isHerdrCheck(f.check))).toEqual([]);
+  });
+
+  // Presence is not relevance: a Herdr on PATH, with its socket right there, still drives nothing on
+  // a tmux install — so it buys back no check and no red line (the reading `collie`'s config-dir
+  // resolution already takes).
+  test("a Herdr installed alongside tmux buys back nothing", async () => {
+    const h = harness(null, [], {
+      env: ON_TMUX,
+      files: { ...healthyFiles(), [TMUX_BIN]: "" },
+      answers: tmuxAnswers("3.4\nwork\n"),
+    });
+    const { code, raw } = await findings(h);
+    expect(code).toBe(EXIT.OK);
+    expect(raw.filter((f) => isHerdrCheck(f.check))).toEqual([]);
+  });
+
+  // The `--json` array is what a script reads, and the plain rendering is what an operator reads.
+  test("neither `--json` nor the printed lines mention a Herdr check on tmux", async () => {
+    const h = harness(null, [], tmuxOnly());
+    expect(await cmdDoctor(h.deps, ["--json"])).toBe(EXIT.OK);
+    // SAFETY: `--json` prints the serialised `Finding[]` and nothing else, as in `findings` above.
+    const parsed = JSON.parse(h.io.stdout.join("\n")) as Finding[];
+    expect(parsed.some((f) => isHerdrCheck(f.check))).toBe(false);
+
+    const plain = harness(null, [], tmuxOnly());
+    expect(await cmdDoctor(plain.deps, [])).toBe(EXIT.OK);
+    for (const l of plain.io.stdout) {
+      expect(/\bherdr-(socket|version)\b|\bintegration-|\bhook-python3\b/.test(l)).toBe(false);
+    }
+  });
+
+  // Zero regression on the mux Collie defaults to: every Herdr check still runs, and still fails.
+  test("under Herdr nothing is scoped away — a missing socket is still the error it was", async () => {
+    const h = harness(null, [], {
+      env: { COLLIE_MUX: "herdr" },
+      files: without(healthyFiles(), SOCKET),
+    });
+    const { code, byCheck } = await findings(h);
+    expect(byCheck.get("herdr-socket")?.status).toBe("error");
+    expect(byCheck.get("herdr-version")).toBeDefined();
+    expect(byCheck.get("integration-claude")).toBeDefined();
+    expect(byCheck.get("hook-python3")).toBeDefined();
+    expect(code).toBe(EXIT.FAIL);
+  });
+});
+
 describe("beacon-hooks-claude", () => {
   test("under a mux that reports agents itself, no install is OK — never a red line to learn to skip", async () => {
     const h = harness(null, [], { files: without(healthyFiles(), SETTINGS) });

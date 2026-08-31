@@ -155,7 +155,12 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   // The third thing that rides with them: whether the configured multiplexer names its own agents.
   // An unknown mux name reads as `true` here — `mux` is already an error about exactly that, and a
   // second red line derived from the same typo teaches an operator to skim.
-  const declaration = muxDeclaration(muxSettings(deps));
+  // The chosen multiplexer, resolved ONCE and exactly as `collie start` resolves it — `COLLIE_MUX`,
+  // else the config the bridge would read, else the probe. Every question below that only makes
+  // sense under one multiplexer is scoped by this same answer, so `doctor` can never report a check
+  // about an adapter this install does not drive.
+  const chosen = muxSettings(deps);
+  const declaration = muxDeclaration(chosen);
   // How this Collie got here, and where its updates come from — read once, and by the same functions
   // `collie update` decides on, so the two verbs can never disagree about what they are looking at.
   const install = classifyInstall(probeInstall(deps, deps.ctx.root));
@@ -185,7 +190,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     })),
     restartPending(install),
     clock(inPack, probes),
-  ];
+  ].filter((f) => appliesToMux(f.check, chosen.name));
   const pack: Finding[] =
     inPack && data !== null
       ? [
@@ -204,6 +209,31 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     await render(deps, data, mode, local, pack);
   }
   return findings.some((f) => f.status === "error") ? EXIT.FAIL : EXIT.OK;
+}
+
+// ── The finding set is scoped by the CHOSEN multiplexer ──────────────────────
+// Collie mirrors ONE multiplexer per install, and Herdr is one adapter of the three rather than the
+// product. On a tmux or zellij install Herdr drives nothing: no socket is dialled, and the hooks
+// that name an agent are Collie's own (`beacon-hooks-claude`), not `herdr integration`'s. So the
+// checks below are DROPPED there rather than reported `ok` — a hollow pass is a line an operator
+// learns to skim past, and a red one is worse: it fails `collie doctor` on a perfectly healthy host.
+//
+// A Herdr binary on PATH does not bring them back. Presence is not relevance — the same reading the
+// config-dir resolution already takes — so the ONLY thing consulted is which multiplexer this
+// install drives, the same answer `mux` reports.
+//
+// Membership is decided by what a check ASKS, never by how it is spelled: `herdr-socket` probes the
+// socket only Herdr serves, `herdr-version` runs `herdr --version`, and `hook-python3` is here
+// because the interpreter it hunts for is the one HERDR's agent hooks shell out to — Collie's own
+// emitter needs none, so an absent `python3` costs a tmux host nothing and must not fail it.
+const HERDR_ONLY_CHECKS = new Set(["herdr-socket", "herdr-version", "hook-python3"]);
+/** `integration-<agent>`: every one of them is a line of `herdr integration status` (cli/history.ts). */
+const HERDR_ONLY_PREFIX = "integration-";
+
+/** Whether a check has anything to say on an install driving `chosenMux`. */
+function appliesToMux(check: string, chosenMux: string): boolean {
+  if (chosenMux === DEFAULT_MUX) return true;
+  return !HERDR_ONLY_CHECKS.has(check) && !check.startsWith(HERDR_ONLY_PREFIX);
 }
 
 // ── Rendering ────────────────────────────────────────────────────────────────
