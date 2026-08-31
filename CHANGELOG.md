@@ -10,6 +10,7 @@ All notable changes to Collie are recorded here. The format follows
 
 ### Fixed
 
+- **The app icon's accent beads carry colour again.** Refreshed from the finalized brand tile — the beads were baked black by an oklch-blind rasteriser; the new bakes read `accent: 0.7` correctly.
 - **`.env` still wins over an exported variable, but says so now.** The precedence is deliberate — every entry point (a shell, a Herdr action, the systemd unit) must compute the same config — but the override was silent, so an exported `COLLIE_PORT` just vanished. One stderr note per shadowed variable names both values; credential-shaped names are named without values; past five the notes collapse into a summary (cf9d206)
 - **A dead agent's pane reads as a shell again.** An expired beacon (its pid gone) left the pane listed as an agent with status "unknown" for the beacon's whole TTL, hours of ghost. The expired identity is now spent server-side on the journal key alone — the finished conversation stays readable — and the pane the operator sees is byte-identical to any other shell pane, exactly what the docs promised an absent beacon produces (ee93c53)
 - **The composer footer sits quieter and 8px shorter.** The status band's two rules dropped from the regional-cut weight to the component-edge weight — they bound a band inside one chrome surface, and at 24% they made a bright sandwich around 10px type. The grab handle gives back 4px (30px strip, still well past the 24px swipe threshold) and the controls row 4px more (096734d)
