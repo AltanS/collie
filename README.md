@@ -69,7 +69,10 @@ one thumb. Collie is that.
 ## Who is this for
 
 You, if you run AI agents in a terminal on a machine — under Herdr, tmux or zellij — and want to
-pick a session back up from your phone. It assumes a **[Tailscale](https://tailscale.com) tailnet**:
+pick a session back up from your phone. Herdr is the fully supported path in 1.0; **tmux and zellij
+are experimental** — they work, they were probed by one operator on one host, and if you run one,
+[bug reports are wanted](./docs/multiplexers.md#using-the-app-on-tmux-or-zellij), what worked as
+much as what did not. It assumes a **[Tailscale](https://tailscale.com) tailnet**:
 your phone and the host are on the same tailnet, and `tailscale serve` is the default way in. It is **single-user** — one
 operator, one tailnet, no multi-tenant auth. If you need shared or public access, Collie isn't built
 for it. Read the security note below either way.
@@ -111,7 +114,7 @@ the Herdr routes, the requirements table, and what the first `start` leaves on t
 | [**Security**](./docs/security.md) | What a Collie exposes, the defenses, and pairing a device as the write credential |
 | [**Configure**](./docs/configure.md) | The `.env`, your own slash commands, keys, quick replies and typefaces; appearance, Zen mode, language |
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
-| [**tmux and zellij**](./docs/multiplexers.md) | Running Collie without Herdr — both walkthroughs, what each multiplexer can answer, and agent beacons |
+| [**tmux and zellij**](./docs/multiplexers.md) | Running Collie without Herdr — both walkthroughs, what each multiplexer can answer, and agent beacons. Experimental in 1.0; bug reports wanted |
 | [**Packs**](./docs/pack.md) | Several machines' Collies behind one URL: invite, join, deputy, failover |
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Stop, uninstall, update, the v1 beta train, and upgrading from 0.x to 1.x |
