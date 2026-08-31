@@ -688,6 +688,28 @@ describe("collie join", () => {
   });
 });
 
+// ── the runtime's voice never reaches an operator (F18) ──────────────────────
+
+describe("an unreachable member is described in Collie's words, not Bun's", () => {
+  // The exact string Bun throws, which reached `pack status`'s link line, the 503 body a phone
+  // reads and `collie leave`'s warning — all three read the same `reason` field.
+  const BUN_CONNECT = new Error("Unable to connect. Is the computer able to access the url?");
+
+  test("`pack status` says what the far side did", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [BUN_CONNECT]);
+    expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("unreachable · hello: nothing accepted a connection at this address");
+    expect(text(h.io)).not.toContain("Is the computer able to access the url?");
+  });
+
+  test("`collie leave` warns in the same words", async () => {
+    const h = harness(peerStore(), [BUN_CONNECT]);
+    expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("nothing accepted a connection at this address");
+    expect(text(h.io)).not.toContain("the computer");
+  });
+});
+
 // ── the unreachable-lead remedy (F11) ────────────────────────────────────────
 
 describe("collie pack status — what an unreachable LEAD is told to do", () => {

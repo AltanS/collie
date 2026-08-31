@@ -905,11 +905,59 @@ function asRecord(value: JsonValue | undefined): JsonObject | null {
   return value;
 }
 
-/** The reason string for a transport throw, with no secret and no stack in it. */
+/**
+ * The reason string for a transport throw, with no secret and no stack in it — and in Collie's
+ * voice rather than the runtime's.
+ *
+ * **Why the translation lives here.** Bun's connection error is written for a browser console:
+ * "Unable to connect. Is the computer able to access the url?" — *the* computer, *the* url, a
+ * question rather than a statement. It reached three surfaces verbatim: `pack status`'s link line,
+ * the 503 body a phone reads, and `collie leave`'s warning. All three read this one field, so this
+ * is the single funnel where a caught transport error becomes a Collie sentence; wrapping it at any
+ * one of the three would have left the other two speaking browser.
+ *
+ * The raw string is NOT kept beside the translation. There is no debug channel in this process to
+ * put it on, and inventing one to hold a string this table already names would be a worse trade
+ * than losing it. An error the table does not recognise is passed through UNCHANGED — an unknown
+ * failure the operator can search for beats a confident sentence that describes the wrong thing.
+ */
 function errorReason<T>(err: T): string {
-  if (err instanceof Error) return err.message === "" ? err.name : err.message;
-  return "request failed";
+  if (!(err instanceof Error)) return "request failed";
+  return operatorReason(err.message === "" ? err.name : err.message);
 }
+
+/**
+ * One runtime failure string as an operator reads it. Exported for its own test, and pure.
+ *
+ * Each entry says what the far side DID, in the fewest words that still distinguish it from the
+ * others — because that distinction is the whole diagnostic value of this line. "Nothing accepted a
+ * connection" sends the operator to the service; "does not resolve" sends them to the address;
+ * "certificate was not accepted" sends them to the pin or the front door. Deliberately none of them
+ * guesses a remedy: this string is rendered under a member row that already carries the address, the
+ * role and the pin, and the surfaces that own a remedy print their own.
+ */
+export function operatorReason(raw: string): string {
+  const text = raw.toLowerCase();
+  for (const [pattern, reason] of TRANSPORT_REASONS) {
+    if (pattern.test(text)) return reason;
+  }
+  return raw;
+}
+
+const TRANSPORT_REASONS: readonly (readonly [RegExp, string])[] = [
+  // Bun's browser-voiced default, plus the platform spellings of the same event.
+  [/unable to connect|connection refused|econnrefused|connectionrefused/, "nothing accepted a connection at this address"],
+  [/unable to resolve|enotfound|getaddrinfo|dns/, "this address does not resolve"],
+  [/econnreset|epipe|socket|closed unexpectedly|connection closed/, "the connection closed before an answer arrived"],
+  // Anything the TLS layer refused: an unmatched pin, an expired or untrusted certificate, a front
+  // door presenting one this member was never told to expect (§8.1).
+  [/certificate|self.signed|tls|ssl|handshake/, "the TLS certificate was not accepted"],
+  [/ehostunreach|enetunreach|network is unreachable|no route to host/, "there is no route to this address"],
+  // ETIMEDOUT only. A message that already carries a DURATION ("timed out after 1200ms" — this
+  // client's own abort, and the OS's own wording where it gives one) is passed through: the number
+  // is the diagnostic, and §10.4's budget conversation cannot be had without it.
+  [/etimedout/, "the connection timed out"],
+];
 
 /**
  * Read a `403` body as §14.3's refusal — `{ error, code }` — or `null` when it is not one.

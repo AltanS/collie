@@ -14,6 +14,7 @@ import {
   PACK_TIMEOUT_ENV,
   PeerClient,
   foldWarmth,
+  operatorReason,
   packHelloBudget,
   packTimeoutBudget,
   packTimeoutClampWarning,
@@ -301,7 +302,9 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     const outcome = await client(fetch).snapshot(laptop);
     expect(outcome.ok).toBe(false);
     expect(outcome.ok === false && outcome.state).toBe("unreachable");
-    expect(outcome.ok === false && outcome.reason).toContain("ECONNREFUSED");
+    // F18: the runtime's own words never reach a surface. `ECONNREFUSED` — and Bun's browser-voiced
+    // "Is the computer able to access the url?", which is the same event — arrive as one sentence.
+    expect(outcome.ok === false && outcome.reason).toBe("snapshot: nothing accepted a connection at this address");
   });
 
   test("a peer slower than the budget is unreachable, and its request is CANCELLED", async () => {
@@ -698,7 +701,42 @@ describe("two budgets, and which call runs on which (§10.4)", () => {
     const refused: PackFetch = () => Promise.reject(new Error("connect ECONNREFUSED"));
     const dead = await client(refused).snapshot(laptop);
     expect(!dead.ok && dead.state === "unreachable" && dead.timedOut).toBe(false);
-    expect(!dead.ok && dead.reason).toBe("snapshot: connect ECONNREFUSED");
+    expect(!dead.ok && dead.reason).toBe("snapshot: nothing accepted a connection at this address");
+  });
+});
+
+// ── F18: the runtime's voice never reaches an operator ───────────────────────
+
+describe("operatorReason — one runtime failure, said once, in Collie's words", () => {
+  const BUN_CONNECT = "Unable to connect. Is the computer able to access the url?";
+
+  test("Bun's browser-voiced connection error becomes a statement about the far side", () => {
+    // "the computer", "the url", and a question — a browser console's words, in a CLI that
+    // elsewhere writes very carefully. It reached `pack status`, the 503 body and `leave`.
+    expect(operatorReason(BUN_CONNECT)).toBe("nothing accepted a connection at this address");
+    expect(operatorReason(BUN_CONNECT)).not.toContain("computer");
+    expect(operatorReason(BUN_CONNECT)).not.toContain("url");
+  });
+
+  test("the distinctions an operator acts on are kept apart", () => {
+    // Each answer sends them somewhere different: the service, the address, the pin, the network.
+    expect(operatorReason("connect ECONNREFUSED 10.0.0.2:8787")).toBe("nothing accepted a connection at this address");
+    expect(operatorReason("getaddrinfo ENOTFOUND nas.example")).toBe("this address does not resolve");
+    expect(operatorReason("unable to verify the first certificate")).toBe("the TLS certificate was not accepted");
+    expect(operatorReason("unknown certificate verification error")).toBe("the TLS certificate was not accepted");
+    expect(operatorReason("connect EHOSTUNREACH")).toBe("there is no route to this address");
+    expect(operatorReason("The socket connection was closed unexpectedly")).toBe(
+      "the connection closed before an answer arrived",
+    );
+  });
+
+  test("a duration is never thrown away — §10.4's budget conversation needs the number", () => {
+    expect(operatorReason("timed out after 1200ms")).toBe("timed out after 1200ms");
+  });
+
+  test("an unrecognised failure is passed through, not dressed up", () => {
+    // A confident sentence describing the wrong thing is worse than a string they can search for.
+    expect(operatorReason("something nobody has seen yet")).toBe("something nobody has seen yet");
   });
 });
 
