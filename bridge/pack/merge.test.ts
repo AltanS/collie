@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { computeEtag } from "../http-cache.ts";
-import type { PaneWire, SessionSummary, SnapshotResponse } from "../types.ts";
+import type { PaneWire, SessionSummary, SnapshotResponse, TabView, WorkspaceView } from "../types.ts";
 import {
   leadLabel,
   MAX_PEER_PANES,
@@ -61,11 +61,24 @@ function contribution(over: Partial<PeerContribution> & { state: PeerState }): P
   return { name: over.state.memberId, body: null, ...over };
 }
 
-const peerBody: PeerSnapshotBody = {
+function ws(over: Partial<WorkspaceView> & { workspaceId: string }): WorkspaceView {
+  return { number: 1, label: "~", focused: false, activeTabId: `${over.workspaceId}:t1`, tabCount: 1, paneCount: 1, ...over };
+}
+
+function tabOf(over: Partial<TabView> & { tabId: string; workspaceId: string }): TabView {
+  return { number: 1, label: "1", focused: false, paneCount: 1, ...over };
+}
+
+/** A peer's contribution, with the two navigator lists defaulted empty so a test names only its subject. */
+function body(over: Partial<PeerSnapshotBody> = {}): PeerSnapshotBody {
+  return { sessions: [], agents: [], shellPanes: [], workspaces: [], tabs: [], ...over };
+}
+
+const peerBody: PeerSnapshotBody = body({
   sessions: [session({ name: "default", agents: 2, blocked: 1 })],
   agents: [pane({ paneId: "w1:p1", status: "blocked" }), pane({ paneId: "w1:p2", status: "working" })],
   shellPanes: [pane({ paneId: "w1:p8", agent: "shell", kind: "shell" })],
-};
+});
 
 const SELF = { id: "desk", name: "the herd" };
 
@@ -225,7 +238,7 @@ describe("mergeSnapshot — the same pane id on two hosts never collapses", () =
       peers: [
         contribution({
           state: state({ memberId: "laptop" }),
-          body: { sessions: [session({ name: "default" })], agents: [pane({ paneId: "w1:p1", status: "blocked" })], shellPanes: [] },
+          body: body({ sessions: [session({ name: "default" })], agents: [pane({ paneId: "w1:p1", status: "blocked" })] }),
         }),
       ],
       now: NOW,
@@ -254,12 +267,11 @@ describe("mergeSnapshot — the same pane id on two hosts never collapses", () =
           peers: [
             contribution({
               state: state({ memberId: "laptop" }),
-              body: {
+              body: body({
                 sessions: [session({ name: "default" })],
                 // The peer's pane moved blocked → done. Same id, same host, different body.
                 agents: [pane({ paneId: "w1:p1", status: "done" })],
-                shellPanes: [],
-              },
+              }),
             }),
           ],
           now: NOW,
@@ -280,6 +292,125 @@ describe("mergeSnapshot — the same pane id on two hosts never collapses", () =
 
 // ── Ordering: one triage list across hosts ───────────────────────────────────
 
+describe("mergeSnapshot — the space and tab navigators are host-tagged too (F14)", () => {
+  // §9.2: "Every session and every pane is host-tagged". Spaces and tabs were not, and Herdr numbers
+  // them PER MACHINE — two default installs both call theirs `w1` and `w1:t1`. The lead's own lists
+  // were passed straight through, so the member's space had no row at all and every count on the
+  // surviving row was the lead's.
+  const twoDefaultInstalls = () =>
+    mergeSnapshot(
+      localBody({
+        agents: [pane({ paneId: "w1:p1", status: "blocked" })],
+        shellPanes: [],
+        workspaces: [ws({ workspaceId: "w1", label: "~" })],
+        tabs: [tabOf({ tabId: "w1:t1", workspaceId: "w1" })],
+      }),
+      {
+        self: SELF,
+        peers: [
+          contribution({
+            state: state({ memberId: "member" }),
+            body: body({
+              agents: [pane({ paneId: "w1:p1", status: "working" })],
+              workspaces: [ws({ workspaceId: "w1", label: "~" })],
+              tabs: [tabOf({ tabId: "w1:t1", workspaceId: "w1" })],
+            }),
+          }),
+        ],
+        now: NOW,
+      },
+    );
+
+  test("two machines' `w1`s are two rows, not one", () => {
+    const merged = twoDefaultInstalls();
+    expect(merged.workspaces.map((w) => [w.host, w.workspaceId])).toEqual([
+      ["desk", "w1"],
+      ["member", "w1"],
+    ]);
+    expect(merged.tabs.map((t) => [t.host, t.tabId])).toEqual([
+      ["desk", "w1:t1"],
+      ["member", "w1:t1"],
+    ]);
+  });
+
+  test("both panes have a space of their own to be counted in", () => {
+    const merged = twoDefaultInstalls();
+    // Two panes exist. Before the fix the workspace and the tab each claimed one, and the row that
+    // claimed it was the lead's.
+    expect(merged.agents).toHaveLength(2);
+    const byHost = merged.agents.map((p) => p.host).toSorted();
+    expect(byHost).toEqual(["desk", "member"]);
+    // A pane joins its space by `(host, workspaceId)`; every pane's pair is present exactly once.
+    for (const p of merged.agents) {
+      const rows = merged.workspaces.filter((w) => w.host === p.host && w.workspaceId === p.workspaceId);
+      expect(rows).toHaveLength(1);
+    }
+  });
+
+  test("no id is rewritten — a pane still finds its space by the id Herdr gave it", () => {
+    const merged = twoDefaultInstalls();
+    expect(merged.workspaces.every((w) => w.workspaceId === "w1")).toBe(true);
+    expect(merged.tabs.every((t) => t.workspaceId === "w1")).toBe(true);
+  });
+
+  test("the lead's rows come first, then peers by member id, each machine's order kept", () => {
+    const merged = mergeSnapshot(localBody({ workspaces: [ws({ workspaceId: "w1" })] }), {
+      self: SELF,
+      peers: [
+        contribution({
+          state: state({ memberId: "zeta" }),
+          body: body({ workspaces: [ws({ workspaceId: "w2", number: 2 }), ws({ workspaceId: "w1" })] }),
+        }),
+        contribution({ state: state({ memberId: "alpha" }), body: body({ workspaces: [ws({ workspaceId: "w1" })] }) }),
+      ],
+      now: NOW,
+    });
+    expect(merged.workspaces.map((w) => `${w.host}/${w.workspaceId}`)).toEqual([
+      "desk/w1",
+      "alpha/w1",
+      "zeta/w2",
+      "zeta/w1",
+    ]);
+  });
+
+  test("an unreachable peer keeps its spaces, from the last-good body (§10.2, invariant 2)", () => {
+    const merged = mergeSnapshot(localBody({ workspaces: [], tabs: [] }), {
+      self: SELF,
+      peers: [
+        contribution({
+          state: state({ memberId: "member", health: "unreachable" }),
+          body: body({ workspaces: [ws({ workspaceId: "w1" })], tabs: [tabOf({ tabId: "w1:t1", workspaceId: "w1" })] }),
+        }),
+      ],
+      now: NOW,
+    });
+    expect(merged.workspaces).toHaveLength(1);
+    expect(merged.tabs).toHaveLength(1);
+  });
+
+  test("worktree nesting survives the tag — repoRoot and isWorktree ride along per host", () => {
+    const merged = mergeSnapshot(localBody({ workspaces: [] }), {
+      self: SELF,
+      peers: [
+        contribution({
+          state: state({ memberId: "member" }),
+          body: body({
+            workspaces: [
+              ws({ workspaceId: "w1", repoRoot: "/home/op/collie" }),
+              ws({ workspaceId: "w2", repoRoot: "/home/op/collie", isWorktree: true }),
+            ],
+          }),
+        }),
+      ],
+      now: NOW,
+    });
+    expect(merged.workspaces.map((w) => [w.host, w.repoRoot, w.isWorktree])).toEqual([
+      ["member", "/home/op/collie", undefined],
+      ["member", "/home/op/collie", true],
+    ]);
+  });
+});
+
 describe("mergeSnapshot — one triage-sorted list across hosts", () => {
   test("a blocked peer agent outranks an idle local one (no host tab can hide NEEDS YOU)", () => {
     const merged = mergeSnapshot(localBody({ agents: [pane({ paneId: "w1:p1", status: "idle" })] }), {
@@ -287,7 +418,7 @@ describe("mergeSnapshot — one triage-sorted list across hosts", () => {
       peers: [
         contribution({
           state: state({ memberId: "laptop" }),
-          body: { sessions: [], agents: [pane({ paneId: "w1:p2", status: "blocked" })], shellPanes: [] },
+          body: body({ agents: [pane({ paneId: "w1:p2", status: "blocked" })] }),
         }),
       ],
       now: NOW,
@@ -304,11 +435,11 @@ describe("mergeSnapshot — one triage-sorted list across hosts", () => {
       peers: [
         contribution({
           state: state({ memberId: "zeta" }),
-          body: { sessions: [], agents: [pane({ paneId: "w1:p1", status: "blocked" })], shellPanes: [] },
+          body: body({ agents: [pane({ paneId: "w1:p1", status: "blocked" })] }),
         }),
         contribution({
           state: state({ memberId: "alpha" }),
-          body: { sessions: [], agents: [pane({ paneId: "w1:p1", status: "blocked" })], shellPanes: [] },
+          body: body({ agents: [pane({ paneId: "w1:p1", status: "blocked" })] }),
         }),
       ],
       now: NOW,
@@ -376,16 +507,52 @@ describe("parsePeerSnapshot — a peer contributes rows, never claims", () => {
     expect(merged.agents.filter((p) => p.host === "laptop")).toHaveLength(1);
   });
 
-  test("a body missing any of the three lists is not a snapshot to salvage", () => {
+  test("a body missing any of the three PANE lists is not a snapshot to salvage", () => {
     expect(parsePeerSnapshot(null)).toBeNull();
     expect(parsePeerSnapshot("nope")).toBeNull();
     expect(parsePeerSnapshot({})).toBeNull();
     expect(parsePeerSnapshot({ sessions: [], agents: [] })).toBeNull();
-    expect(parsePeerSnapshot({ sessions: [], agents: [], shellPanes: [] })).toEqual({
+    expect(parsePeerSnapshot({ sessions: [], agents: [], shellPanes: [] })).toEqual(body());
+  });
+
+  // …but the navigator's two lists are absent-means-EMPTY. A peer that omits them still has panes,
+  // and every pane carries its own denormalised space and tab labels — refusing the whole body over
+  // a missing switcher row would trade one row for a whole MACHINE, which is invariant 1 backwards.
+  test("workspaces and tabs are absent-means-empty, never a reason to drop the machine", () => {
+    const parsed = parsePeerSnapshot({
+      sessions: [],
+      agents: [pane({ paneId: "w1:p1" })],
+      shellPanes: [],
+    });
+    expect(parsed?.workspaces).toEqual([]);
+    expect(parsed?.tabs).toEqual([]);
+    expect(parsed?.agents).toHaveLength(1);
+  });
+
+  test("a space or a tab a peer asserts a host for is untagged on the way in", () => {
+    // §4: a member id is minted by the lead. A peer that could label its own space with another
+    // member's id would move a row onto a machine the operator never asked about.
+    const parsed = parsePeerSnapshot({
       sessions: [],
       agents: [],
       shellPanes: [],
+      workspaces: [{ ...ws({ workspaceId: "w1" }), host: "somebody-else" }],
+      tabs: [{ ...tabOf({ tabId: "w1:t1", workspaceId: "w1" }), host: "somebody-else" }],
     });
+    expect(parsed?.workspaces[0]).not.toHaveProperty("host");
+    expect(parsed?.tabs[0]).not.toHaveProperty("host");
+  });
+
+  test("a space or tab row that cannot be rendered or addressed is dropped", () => {
+    const parsed = parsePeerSnapshot({
+      sessions: [],
+      agents: [],
+      shellPanes: [],
+      workspaces: [ws({ workspaceId: "w1" }), { label: "no id" }, { workspaceId: "", number: 1 }],
+      tabs: [tabOf({ tabId: "w1:t1", workspaceId: "w1" }), { tabId: "orphan" }],
+    });
+    expect(parsed?.workspaces.map((w) => w.workspaceId)).toEqual(["w1"]);
+    expect(parsed?.tabs.map((t) => t.tabId)).toEqual(["w1:t1"]);
   });
 
   test("rows that cannot be rendered or addressed are dropped, not defaulted", () => {

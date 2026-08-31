@@ -4,6 +4,7 @@ import { paneScopeKey, scopeKey } from "@/lib/scope";
 import { server } from "@/test/setup";
 import {
   fixtureAgents,
+  fixturePackSnapshot,
   fixturePackStatus,
   fixtureSnapshot,
   paneTextWithDraft,
@@ -871,6 +872,40 @@ describe("packLoader", () => {
     server.use(http.get("/api/pack", () => new HttpResponse(null, { status: 500 })));
     const { packLoader } = await import("./loaders");
     expect(await packLoader()).toEqual({ status: null, error: true });
+  });
+});
+
+// ── THE SPACE NAVIGATOR IS ONE MACHINE'S (F14) ───────────────────────────────
+//
+// The lead's merge host-tags `workspaces` and `tabs` now, so its body carries every machine's
+// spaces — before that a peer's `w1` had no row at all and every count on the surviving row was the
+// lead's. The loader narrows them back to the address the url is on, exactly as it already narrows
+// the panes they are drawn beside.
+describe("rootLoader — spaces and tabs follow the host the url names", () => {
+  const packSnapshot = () =>
+    server.use(http.get("/api/snapshot", () => HttpResponse.json(fixturePackSnapshot)));
+
+  it("gives the lead's spaces when no host is named", async () => {
+    packSnapshot();
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader();
+    expect(data.workspaces.map((w) => w.host)).toEqual(["bluefin", "bluefin"]);
+    expect(data.tabs.every((t) => t.host === "bluefin")).toBe(true);
+  });
+
+  it("gives the peer's when the url names it — including its own `w1`", async () => {
+    packSnapshot();
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader({ request: new Request("http://localhost/?h=workshop") });
+    expect(data.workspaces.map((w) => [w.host, w.workspaceId])).toEqual([["workshop", "w1"]]);
+    expect(data.tabs.map((t) => [t.host, t.tabId])).toEqual([["workshop", "w1:t1"]]);
+  });
+
+  it("a solo body is untouched — every row passes, and no row carries a host", async () => {
+    const { rootLoader } = await import("./loaders");
+    const data = await rootLoader();
+    expect(data.workspaces).toEqual(fixtureSnapshot.workspaces);
+    expect(data.tabs).toEqual(fixtureSnapshot.tabs);
   });
 });
 

@@ -326,6 +326,11 @@ const WORKSPACE_KEYS = {
   paneCount: true,
   repoRoot: true,
   isWorktree: true,
+  // A pack dimension, and the SAME one a pane and a session carry: Herdr numbers spaces per machine,
+  // so `(host, workspaceId)` is a space's identity in a pack and `workspaceId` alone collides. Like
+  // `PaneWire.host` it is present exactly when `servers` is, which is never in this baseline — the
+  // golden bodies below are the proof that no byte moved for a solo instance.
+  host: true,
 } satisfies Record<keyof WorkspaceView, true>;
 
 const TAB_KEYS = {
@@ -335,6 +340,8 @@ const TAB_KEYS = {
   label: true,
   focused: true,
   paneCount: true,
+  /** Same dimension, same rule as {@link WORKSPACE_KEYS}'s — a tab id is `w1:t1` on every install. */
+  host: true,
 } satisfies Record<keyof TabView, true>;
 
 describe("solo zero-tax — wire shapes carry no pack dimension", () => {
@@ -413,6 +420,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
     expect(Object.keys(WORKSPACE_KEYS).toSorted()).toEqual([
       "activeTabId",
       "focused",
+      "host",
       "isWorktree",
       "label",
       "number",
@@ -423,6 +431,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
     ]);
     expect(Object.keys(TAB_KEYS).toSorted()).toEqual([
       "focused",
+      "host",
       "label",
       "number",
       "paneCount",

@@ -24,6 +24,7 @@ import {
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { isLostLatched } from "@/lib/connection-health";
+import { ambientSpaces } from "@/lib/hosts";
 import {
   dropLastPaneText,
   loadLastPaneText,
@@ -219,8 +220,12 @@ function toHomeData(
     device: snap.device,
     agents: snap.agents,
     shellPanes: snap.shellPanes ?? [],
-    workspaces: snap.workspaces ?? [],
-    tabs: snap.tabs ?? [],
+    // Narrowed to the address the URL is on, for the reason `ambientPanes` narrows the panes drawn
+    // beside them: the navigator is a tree of ONE machine, and on a pack the lead's merged body now
+    // carries every machine's spaces. A solo body carries no host on any row, so both calls pass
+    // everything through by identity and nothing about a solo dashboard changes.
+    workspaces: ambientSpaces(snap.workspaces ?? [], scope, snap.servers),
+    tabs: ambientSpaces(snap.tabs ?? [], scope, snap.servers),
     sessions: snap.sessions ?? [],
     servers: snap.servers ?? [],
     ts: snap.ts ?? 0,

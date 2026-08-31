@@ -160,14 +160,41 @@ export const fixturePackSessions: SessionSummary[] = [
 ];
 
 /**
- * The merged snapshot a lead serves. `workspaces`/`tabs` stay the LEAD's — the merge deliberately
- * does not union peer workspaces (their ids are only unique per machine, and a pane already carries
- * the denormalised labels the home list renders).
+ * Spaces and tabs across two machines, host-tagged the way the lead's merge emits them — and with
+ `w1` deliberately used on BOTH, because Herdr numbers spaces per machine and two default installs
+ * both call theirs `w1` / `w1:t1`. An untagged merge collapsed those into one row carrying one
+ * machine's counts; `(host, workspaceId)` is what keeps them apart.
+ */
+export const fixturePackWorkspaces: WorkspaceView[] = [
+  ...fixtureWorkspaces.map((w) => Object.assign({}, w, { host: "bluefin" })),
+  {
+    workspaceId: "w1",
+    number: 1,
+    label: "moonward",
+    focused: false,
+    activeTabId: "w1:t1",
+    tabCount: 1,
+    paneCount: 1,
+    host: "workshop",
+  },
+];
+
+export const fixturePackTabs: TabView[] = [
+  ...fixtureTabs.map((t) => Object.assign({}, t, { host: "bluefin" })),
+  { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "1", focused: false, paneCount: 1, host: "workshop" },
+];
+
+/**
+ * The merged snapshot a lead serves. `workspaces`/`tabs` are unioned and host-tagged, exactly as
+ * `bridge/pack/merge.ts` emits them; `lib/hosts.ts`'s `ambientSpaces` is what narrows them back to
+ * the one machine the URL is on, which is where the navigator's tree belongs.
  */
 export const fixturePackSnapshot: SnapshotResponse = {
   ...fixtureSnapshot,
   agents: fixturePackAgents,
   shellPanes: fixturePackShellPanes,
+  workspaces: fixturePackWorkspaces,
+  tabs: fixturePackTabs,
   sessions: fixturePackSessions,
   servers: fixtureServers,
 };

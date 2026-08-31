@@ -57,7 +57,7 @@ function pane(paneId: string, status: AgentStatus, agent = "claude"): PaneWire {
 }
 
 function body(agents: PaneWire[]): PeerSnapshotBody {
-  return { sessions: [], agents, shellPanes: [] };
+  return { sessions: [], agents, shellPanes: [], workspaces: [], tabs: [] };
 }
 
 function notifier(opts: { notifiable?: (s: AgentStatus) => boolean; muted?: () => boolean } = {}) {

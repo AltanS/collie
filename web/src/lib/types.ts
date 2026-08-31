@@ -156,6 +156,14 @@ export interface WorkspaceView {
   repoRoot?: string;
   /** Whether this space is a linked worktree of `repoRoot`, not the repo's own checkout. */
   isWorktree?: boolean;
+  /**
+   * Which member of the pack this space lives on — the same tag a pane and a session carry.
+   *
+   * Present exactly when `servers` is, absent otherwise, so a solo body is unchanged. Herdr numbers
+   * spaces PER MACHINE, so `(host, workspaceId)` is a space's identity in a pack — see `spaceKey`
+   * in lib/hosts.ts, and `ambientSpaces`, which narrows these rows to the address the URL is on.
+   */
+  host?: string;
 }
 
 /** A tab within a workspace (holds one or more panes). */
@@ -166,6 +174,8 @@ export interface TabView {
   label: string;
   focused: boolean;
   paneCount: number;
+  /** Which member of the pack this tab lives on — same rule as {@link WorkspaceView.host}. */
+  host?: string;
 }
 
 export type BridgeStatus = "connected" | "disconnected";

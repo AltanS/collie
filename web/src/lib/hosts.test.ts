@@ -8,6 +8,7 @@ import {
   isMultiHost,
   leadHost,
   ambientPanes,
+  ambientSpaces,
   paneRowKey,
   paneScope,
   paneSpaceKey,
@@ -351,5 +352,36 @@ describe("ambientPanes", () => {
     const mixed = [pane("w1:p1", "bluefin"), pane("w1:p1", "workshop")];
     const out = ambientPanes(mixed, [], {}, pack, registry);
     expect(out.agents.map((p) => p.host)).toEqual(["bluefin"]);
+  });
+});
+
+// The rows those panes are drawn against. The lead's merge host-tags `workspaces` and `tabs` now
+// (F14) — before that a peer's space had no row at all, and every count on the lead's `w1` was the
+// lead's own. Tagged, they collide no more; narrowed, the tree still describes ONE machine.
+describe("ambientSpaces", () => {
+  const spaces = [
+    { workspaceId: "w1", host: "bluefin" },
+    { workspaceId: "w1", host: "workshop" },
+    { workspaceId: "w2", host: "workshop" },
+  ];
+
+  it("keeps only the rows on the host the url is pointed at", () => {
+    expect(ambientSpaces(spaces, {}, pack).map((w) => w.host)).toEqual(["bluefin"]);
+    expect(ambientSpaces(spaces, { host: "workshop" }, pack).map((w) => w.workspaceId)).toEqual(["w1", "w2"]);
+  });
+
+  it("returns a solo body BY IDENTITY, not as a copy", () => {
+    // No row carries a host, so everything passes — and the allocation has to stay absent too: this
+    // runs on every poll and its result feeds the navigator's props.
+    const plain: { workspaceId: string; host?: string }[] = [{ workspaceId: "w1" }, { workspaceId: "w2" }];
+    expect(ambientSpaces(plain, {}, undefined)).toBe(plain);
+  });
+
+  it("an untagged row is ambient, so a mixed body cannot lose the lead's own spaces", () => {
+    const mixed: { workspaceId: string; host?: string }[] = [
+      { workspaceId: "w1" },
+      { workspaceId: "w1", host: "workshop" },
+    ];
+    expect(ambientSpaces(mixed, {}, pack)).toEqual([{ workspaceId: "w1" }]);
   });
 });

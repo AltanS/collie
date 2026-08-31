@@ -179,6 +179,16 @@ export interface WorkspaceView {
    * worktree under the space showing the repo itself.
    */
   isWorktree?: boolean;
+  /**
+   * Which member of the pack this space lives on — the same tag panes and sessions carry.
+   *
+   * **Present exactly when {@link SnapshotResponse.servers} is**, and absent otherwise (§11), so a
+   * solo body is unchanged to the byte. It is not decoration: Herdr numbers spaces PER MACHINE, so
+   * two default installs both call theirs `w1` and a merged list keyed on `workspaceId` alone
+   * collapses them into one row carrying one machine's counts. The identity of a space in a pack is
+   * `(host, workspaceId)`, and every join against a pane must use both halves.
+   */
+  host?: string;
 }
 
 /** A tab within a workspace (a layout/view holding one or more panes). From `tab.list`. */
@@ -189,6 +199,12 @@ export interface TabView {
   label: string;
   focused: boolean;
   paneCount: number;
+  /**
+   * Which member of the pack this tab lives on — see {@link WorkspaceView.host}, which this mirrors
+   * exactly. A tab id is `w1:t1` on every default install, so `(host, tabId)` is the identity, and
+   * `(host, workspaceId)` is the parent it belongs to.
+   */
+  host?: string;
 }
 
 export type BridgeStatus = "connected" | "disconnected";

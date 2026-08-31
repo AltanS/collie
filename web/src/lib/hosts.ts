@@ -288,6 +288,33 @@ export function ambientPanes<T extends { host?: string; session?: string }>(
   return { agents: pick(agents), shellPanes: pick(shellPanes) };
 }
 
+/**
+ * The space and tab rows belonging to the AMBIENT host — the `?h=` the URL names, or the lead.
+ *
+ * The lead's merged snapshot now host-tags `workspaces` and `tabs` the way it has always tagged
+ * panes and sessions, because Herdr numbers spaces PER MACHINE: two default installs both call
+ * theirs `w1` and `w1:t1`, and an untagged merge collapsed them into one row carrying one machine's
+ * counts. Tagged, the rows no longer collide — and the navigator, which is a TREE of one machine and
+ * not a herd-wide list, narrows to the address the URL is on, exactly as {@link ambientPanes} does
+ * for the panes it will be drawn beside. Switching host switches the spaces with it.
+ *
+ * Same "untagged is ambient" rule as everything else here, so a solo body — where no row carries a
+ * host at all — passes wholesale and comes back BY IDENTITY, not as a copy. That matters on the poll
+ * path: a fresh array per tick would re-render the space navigator on every poll of every solo
+ * dashboard that exists today.
+ */
+export function ambientSpaces<T extends { host?: string }>(
+  rows: readonly T[],
+  scope: { host?: string },
+  servers: readonly ServerSummary[] | undefined,
+): T[] {
+  const want = scopeHostKey(scope, servers);
+  const here = (r: T): boolean => r.host === undefined || hostKey(r) === want;
+  // SAFETY: the caller owns this array and this function neither writes to it nor hands the mutable
+  // alias anywhere that does. Widening `readonly T[]` to `T[]` is the price of the identity return.
+  return rows.every(here) ? (rows as T[]) : rows.filter(here);
+}
+
 /** Per-host agent counts, derived from the merged snapshot (a `ServerSummary` carries none). */
 export interface HostCounts {
   agents: number;
