@@ -23,7 +23,11 @@ import type { SessionRuntime } from "../sessions.ts";
 // client dials — a host that is not in the roster produces `undefined`, which the caller turns into
 // the same 404 an unknown session gets today, and nothing is attempted.
 
-/** The wire spelling of the host parameter, phone → lead (§4). The browser sends the short `?h=`. */
+/**
+ * The wire spelling of the host parameter, phone → lead (§4): `host=`. `?h=` is the SPA's short
+ * browser-route spelling, not what goes on the wire — `web/src/lib/api.ts` translates `?h=` into
+ * `host=` before the request leaves the client.
+ */
 export const HOST_PARAM = "host";
 
 /**

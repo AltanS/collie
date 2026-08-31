@@ -927,7 +927,9 @@ prevents (`web/src/lib/api.ts:201-203`).
 
   ```ts
   interface ServerSummary {
-    id: string;            // member id (the `?h=` value); the lead's own entry is present too
+    // The wire spelling is `host=`. `?h=` is the SPA route parameter, which
+    // web/src/lib/api.ts translates into `host=` before the request is sent.
+    id: string;            // member id (the `host=` value); the lead's own entry is present too
     name: string;          // operator-chosen label
     isLead: boolean;
     reachable: boolean;    // last poll succeeded
