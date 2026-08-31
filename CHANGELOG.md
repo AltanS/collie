@@ -8,6 +8,13 @@ All notable changes to Collie are recorded here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **tmux 3.4 no longer shows an empty herd.** That tmux prints Collie's invisible field separator as visible text, so every listing line failed to parse and the app sat blind while the bridge said connected. The wire is un-escaped now (only the separator, never a pane title's own text), and a listing that parses to zero rows on non-empty output is refused as an error instead of stored as an empty herd — the same fault can never be silent again (30add9a)
+- **Beacon hooks survive updates on a binary install.** `collie hooks install claude` pinned the versioned path `versions/X.Y.Z/bin/collie`, which the updater's cleanup deletes — every hook then dangled. The hook command now resolves through realpath to the published name or `current/bin/collie`, and a re-run replaces a stale pinned entry while keeping the operator's own hooks (885951d)
+- **A Herdr binary on PATH no longer hijacks the config dir.** `herdr plugin config-dir`'s answer now wins only when that directory actually holds a `.env`; a binary install's own `~/.config/collie/.env` is read instead of being dismissed as legacy (eee024c)
+- **The dashboard header sits on one line.** The brand eyebrow rides above the "on <mux>" line out of flow, so the host and session chips and the gear share that line's centre instead of floating between the two left rows (8528e8b)
+
 ### Added
 
 - **iOS learns how to install, inside the app.** The Settings install card only ever existed while the browser offered to install, which on iOS is never — install lives in the share sheet, and the people with the least-known path got nothing. An Apple touch device running in a browser tab now sees one line of prose instead of a button: tap Share, then "Add to Home Screen". Already-installed, desktop Macs and everyone with a real install button see no change (ecf561a)
