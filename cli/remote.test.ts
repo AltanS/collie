@@ -467,6 +467,46 @@ describe("collie pack add", () => {
     expect(text(h.io)).not.toContain(token!);
   });
 
+  // F8: `--peer-address 192.168.77.2:8787` was concatenated with `--port`, printed as
+  // `192.168.77.2:8787:8787`, and written into the member's COLLIE_HOST — an address `Bun.serve` can
+  // never bind. The member was left half-enrolled with a dead service.
+  test("a --peer-address that is not a bare host is refused BEFORE any ssh runs", async () => {
+    for (const bad of [
+      "192.168.77.2:8787",
+      "https://192.168.77.2",
+      "192.168.77.2/collie",
+      "op@192.168.77.2",
+      "[fd7a::1]:8787",
+      "[fd7a::1]",
+      " 192.168.77.2 ",
+    ]) {
+      const h = harness();
+      expect(await run(h, ["nas.example", "--peer-address", bad])).toBe(EXIT.USAGE);
+      // The whole point of the finding: nothing was pushed, built, written or restarted.
+      expect(h.calls).toHaveLength(0);
+      expect(h.restarts).toBe(0);
+      expect(text(h.io)).toContain("is not a bind address");
+      expect(text(h.io)).toContain("Give a BARE HOST");
+      expect(text(h.io)).toContain("--port");
+    }
+  });
+
+  test("a bare host — name, IPv4 or an unbracketed IPv6 literal — is accepted", async () => {
+    for (const good of ["192.168.77.2", "collie-2.tail1234.ts.net", "fd7a::1"]) {
+      const h = harness();
+      expect(await run(h, ["nas.example", "--peer-address", good])).toBe(EXIT.OK);
+      expect(h.calls[2]!.script).toContain(`printf 'COLLIE_HOST=%s\\n' '${good}'`);
+    }
+  });
+
+  test("a value typed at the prompt is held to the same rule", async () => {
+    const h = harness({ prompt: "192.168.77.2:8787", answers: { probe: { stdout: probeOut({ address: "" }) } } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(text(h.io)).toContain("is not a bind address");
+    // The prompt comes after leg 1, so the probe has run — but nothing was installed or written.
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe"]);
+  });
+
   test("the lead is restarted so its running bridge can answer the invite", async () => {
     const h = harness();
     await run(h);

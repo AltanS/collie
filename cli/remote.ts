@@ -620,7 +620,9 @@ type Wired = PackAddDeps & { emit(event: AddEvent): void };
 
 const USAGE = [
   "usage: collie pack add <ssh-host> [--path <remote-checkout>] [--port <n>]",
-  "                      [--peer-address <addr>] [--address <lead-address>]",
+  // `<bare-host>`, not `<addr>`: the value becomes the member's COLLIE_HOST, and the usage line was
+  // the first of the five places that said "address" while meaning "host" (F8).
+  "                      [--peer-address <bare-host>] [--address <lead-address>]",
   "                      [--label <name>] [--name <pack>] [--instance <name>]",
 ];
 
@@ -691,6 +693,20 @@ async function packAddRun(deps: Wired, args: readonly string[]): Promise<number>
   if (instance !== null && !INSTANCE_PATTERN.test(instance)) {
     deps.io.err(`error: --instance ${instance} is not a usable instance name — 1-16 characters of [a-z0-9-].`);
     return EXIT.USAGE;
+  }
+  // ── EVERY CHEAP REFUSAL SITS ABOVE THE FIRST SSH BYTE ───────────────────────
+  // The flags below are refused HERE, beside `--port` and `--instance`, and not where they are first
+  // used. Both were found the same way (F8, F9): a value this build can prove wrong on its own was
+  // checked after an 8 MB bundle push, a remote build, an `.env` write and two lead restarts, so a
+  // typo cost a rebuilt member and left it half-configured. Nothing below this block is cheap; a
+  // check that CAN be made from the lead's own argv belongs above it.
+  const peerAddress = flags["peer-address"];
+  if (peerAddress !== undefined) {
+    const refusal = peerHostRefusal(peerAddress);
+    if (refusal !== null) {
+      for (const line of peerHostRefusalLines(peerAddress, refusal)) deps.io.err(line);
+      return EXIT.USAGE;
+    }
   }
 
   const existing = await deps.store.load();
@@ -1301,14 +1317,16 @@ async function resolvePeerHost(
   probe: Probe,
   override: string | undefined,
 ): Promise<string | null> {
+  // The flag was already refused at parse time, before any ssh ran (`packAddRun`). Anything reaching
+  // here is either the address the far machine reported for itself or a value typed at the prompt.
   if (override !== undefined && override !== "") return override;
   if (probe.address !== "") return probe.address;
   const answered = await deps.prompt(
-    "This host has no tailnet address. What address should this lead dial it at?",
+    `This host has no tailnet address. What bare host should this lead dial it at (port ${PEER_HOST_PORT_HINT})?`,
   );
   if (answered === null) {
     deps.io.err("error: this host reported no tailnet address, and this run is not interactive.");
-    deps.io.err("       Pass it: `collie pack add <host> --peer-address <addr-the-lead-can-dial>`.");
+    deps.io.err("       Pass it: `collie pack add <host> --peer-address <bare-host-the-lead-can-dial>`.");
     return null;
   }
   const trimmed = answered.trim();
@@ -1316,7 +1334,60 @@ async function resolvePeerHost(
     deps.io.err("error: no address given — a peer the lead cannot dial stays provisional forever.");
     return null;
   }
+  const refusal = peerHostRefusal(trimmed);
+  if (refusal !== null) {
+    for (const line of peerHostRefusalLines(trimmed, refusal)) deps.io.err(line);
+    return null;
+  }
   return trimmed;
+}
+
+/** Named once so the prompt and the flag's refusal cannot describe different things. */
+const PEER_HOST_PORT_HINT = "--port";
+
+/**
+ * Why this `--peer-address` cannot be a member's bind, or `null` when it may stand.
+ *
+ * **The flag says *address*; the value is a bare HOST, and nothing checked which.** Leg 3 writes it
+ * verbatim into the member's `COLLIE_HOST`, and this lead dials `` `${peerHost}:${port}` `` — so
+ * `--peer-address 192.168.77.2:8787` printed `192.168.77.2:8787:8787` twice and wrote
+ * `COLLIE_HOST=192.168.77.2:8787`, which `Bun.serve` can never bind. The member was left
+ * half-enrolled with a dead service and nothing on screen naming the cause (F8).
+ *
+ * **Splitting `host:port` here instead was considered and refused.** `--port` already exists, and it
+ * is not only the dial port: leg 1 probes it for a collision, leg 3 writes it as `COLLIE_PORT` and
+ * leg 4 banks it in `pack-ops.json`. A second spelling that silently overrode the first is one more
+ * way for those to disagree. One value, one flag — and this function is why the refusal can say so.
+ *
+ * Pure, and the whole check: it runs at parse time on the lead, before a single byte crosses ssh.
+ */
+export function peerHostRefusal(value: string): string | null {
+  if (value.trim() !== value || value === "") return "it is empty or padded with whitespace";
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return "it carries a scheme — a bind address is not a URL";
+  if (value.includes("/")) return "it carries a path — a bind address is a host and nothing else";
+  if (value.includes("@")) return "it carries a user — that is the ssh destination, not the bind";
+  // Brackets are URL-authority syntax, and this value is a BIND: `resolveBridgeHost` hands
+  // `COLLIE_HOST` to `Bun.serve` verbatim, which wants the literal bare. `[fd7a::1]:8787` is a port
+  // and `[fd7a::1]` is a spelling this build will not vouch for — both are refused, by the same rule.
+  if (value.includes("[") || value.includes("]")) {
+    return "it is bracketed — COLLIE_HOST is a bind address, so write an IPv6 literal bare";
+  }
+  const colons = value.split(":").length - 1;
+  // Exactly one colon is `host:port`. Two or more is a bare IPv6 literal, which cannot carry a port
+  // without brackets — so it is a host, and the case above is the only one that can.
+  if (colons === 1) return "it carries a port";
+  return null;
+}
+
+/** The refusal as the operator reads it: what is wrong, then what a value that works looks like. */
+export function peerHostRefusalLines(value: string, refusal: string): string[] {
+  return [
+    `error: --peer-address ${value} is not a bind address — ${refusal}.`,
+    "       Give a BARE HOST — a hostname or an IP address and nothing else:",
+    "         --peer-address collie-2.tail1234.ts.net    --peer-address 192.168.77.2",
+    "       It is written verbatim into that machine's COLLIE_HOST, so it must be an address that",
+    `       machine can BIND, and the port it is dialled on comes from \`${PEER_HOST_PORT_HINT}\`.`,
+  ];
 }
 
 /**
