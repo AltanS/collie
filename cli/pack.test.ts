@@ -15,7 +15,7 @@ import {
   type TrustStoreData,
   type TrustStoreIo,
 } from "../bridge/pack/trust-store.ts";
-import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
+import { capture, CONFIG, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
   cmdJoin,
@@ -698,6 +698,47 @@ describe("collie leave", () => {
     expect(h.data()!.pack).toBeNull();
     expect(text(h.io)).toContain("still lists this machine");
     expect(text(h.io)).toContain("collie pack remove laptop");
+  });
+
+  // F12: `pack add` writes COLLIE_HOST=<the address the lead dials> — a wide bind. Peer mode
+  // tolerates it; solo does not. So the documented tear-down ended with the service failing every
+  // five seconds forever, under a banner that said "activating" and "yet".
+  test("the pack's wide bind is retired, so the machine comes back as a plain loopback collie", async () => {
+    const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")], {
+      ctx: context({ COLLIE_HOST: "192.168.77.2", COLLIE_PACK_TIMEOUT_MS: "60000" }),
+    });
+    h.files.write(`${CONFIG}/.env`, "COLLIE_HOST=192.168.77.2\nCOLLIE_PORT=8787\n");
+    expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
+    expect(h.files.read(`${CONFIG}/.env`)).toBe("COLLIE_PORT=8787\n");
+    expect(text(h.io)).toContain("COLLIE_HOST=192.168.77.2 removed");
+    expect(text(h.io)).toContain("ADR 0013");
+  });
+
+  test("a bind the operator owns is not second-guessed", async () => {
+    const env = { COLLIE_HOST: "192.168.77.2", COLLIE_ALLOW_NON_LOOPBACK_BIND: "1", COLLIE_PACK_TIMEOUT_MS: "60000" };
+    const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")], { ctx: context(env) });
+    h.files.write(`${CONFIG}/.env`, "COLLIE_HOST=192.168.77.2\n");
+    expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
+    expect(h.files.read(`${CONFIG}/.env`)).toBe("COLLIE_HOST=192.168.77.2\n");
+    expect(text(h.io)).not.toContain("removed from");
+  });
+
+  test("a loopback bind is left exactly as it was — the common case pays nothing", async () => {
+    const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")]);
+    h.files.write(`${CONFIG}/.env`, "COLLIE_PORT=8787\n");
+    expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
+    expect(h.files.read(`${CONFIG}/.env`)).toBe("COLLIE_PORT=8787\n");
+    expect(text(h.io)).not.toContain("COLLIE_HOST");
+  });
+
+  test("a bind Collie cannot reach says what will happen, and names the variable", async () => {
+    const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")], {
+      ctx: context({ COLLIE_HOST: "192.168.77.2", COLLIE_PACK_TIMEOUT_MS: "60000" }),
+    });
+    // The value is real, but it comes from a systemd `Environment=` rather than the .env this owns.
+    expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("every five seconds, forever");
+    expect(text(h.io)).toContain("COLLIE_ALLOW_NON_LOOPBACK_BIND=1");
   });
 
   test("a lead refuses to leave — that would strand its peers", async () => {

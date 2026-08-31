@@ -1,6 +1,7 @@
 import { hostname } from "node:os";
 import { join } from "node:path";
 
+import { envBool, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { AuditLog } from "../bridge/audit.ts";
 import {
@@ -60,6 +61,7 @@ import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/p
 import { deriveConfigRoot, discoverSessionSockets, herdTagFor } from "../bridge/sessions.ts";
 import { collieVersionBare, DEFAULT_SERVE_PORT, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
+import { dropEnvAssignments } from "./push-keys.ts";
 import {
   deposedLines,
   deputyUnreachableLines,
@@ -816,8 +818,71 @@ export async function cmdLeave(deps: PackDeps): Promise<number> {
     deps.io.out("  Until then it will keep dialling this address and being refused — which is harmless,");
     deps.io.out("  because the pins and the secret it would need are already gone from here.");
   }
+  // BEFORE the restart, so the bridge that comes back is the one this verb just described.
+  for (const line of retirePackBind(deps)) deps.io.out(line);
   await applyLocally(deps, "solo mode (own front door, own notifications)");
   return EXIT.OK;
+}
+
+/**
+ * Returning a machine to solo includes returning its BIND, and this is the half that was missing.
+ *
+ * `pack add`'s configure leg writes `COLLIE_HOST=<the address the lead dials>` — a wide bind — and
+ * nothing else. Peer mode tolerates that; solo mode does not. So the moment the documented tear-down
+ * finished, the machine's service began failing every five seconds forever on
+ * `COLLIE_HOST=… is not a loopback address`, while the last thing `collie leave` printed was
+ * "isn't answering … yet · activating" — a word that means "wait" over a unit that will never come
+ * up. Recovery meant reading the journal and hand-editing `.env` (F12).
+ *
+ * ── WHY THE BIND IS DROPPED, AND NOT PERMITTED ──────────────────────────────
+ * The other candidate fix was for `pack add` to write `COLLIE_ALLOW_NON_LOOPBACK_BIND=1` beside the
+ * wide bind it chose. That is the substitution ADR 0013 exists to refuse. A peer's off-loopback
+ * listener is admitted BY CONSTRUCTION — two independent factors, pinned mutual TLS plus the pack
+ * secret, checked before any handler runs — and ADR 0013 is explicit that the browser gates
+ * (`Tailscale-User-Login`, `COLLIE_DEVICE_HEADER`, same-origin) are client-settable and mean nothing
+ * on a wide bind. `collie leave` destroys both factors in the two lines above this one. Carrying the
+ * exemption past them would leave a machine with no pack, a wide bind, its own front door and its
+ * browser write gates back on — reachability standing in for authorisation, which is the one
+ * substitution the whole posture is built to refuse. The exemption is the pack's; it lapses with it.
+ *
+ * ── WHAT IT WILL NOT TOUCH ─────────────────────────────────────────────────
+ * Only a bind that CANNOT WORK. If `COLLIE_ALLOW_NON_LOOPBACK_BIND` is set, the operator has said
+ * they own the bind (ADR 0013's F3 amendment: the bind is one address and it is theirs), and nothing
+ * here second-guesses it. So this needs no record of who wrote the value: a non-loopback bind with no
+ * allow-flag is one the solo bridge refuses to start on, whoever wrote it, and removing it destroys
+ * no working configuration — it restores the default, which is loopback.
+ */
+function retirePackBind(deps: PackDeps): string[] {
+  const host = resolveBridgeHost(deps.ctx.env);
+  const refusal = nonLoopbackBindRefusal({
+    host,
+    allowNonLoopbackBind: envBool("COLLIE_ALLOW_NON_LOOPBACK_BIND", false, deps.ctx.env),
+  });
+  if (refusal === null) return [];
+  const envPath = join(deps.ctx.configDir, ".env");
+  const text = deps.files.read(envPath);
+  const next = text === null ? null : dropEnvAssignments(text, "COLLIE_HOST");
+  if (next === null) {
+    // The value is real — the bridge resolves it — but it is not in the file this verb owns: a
+    // systemd `Environment=`, an exported shell variable, a wrapper. Say what will happen, name the
+    // variable, and hand over the two ways out. Silence here is what made this finding a blocker.
+    return [
+      `  ⚠ This machine binds COLLIE_HOST=${host}, which \`pack add\` needed and solo mode refuses:`,
+      "    the bridge will exit at startup and systemd will restart it every five seconds, forever.",
+      `    Collie could not fix it here — that value does not come from ${envPath}.`,
+      "    Unset COLLIE_HOST wherever it is set (a systemd Environment=, your shell), or set",
+      "    COLLIE_ALLOW_NON_LOOPBACK_BIND=1 if you mean to keep binding wide with your own control",
+      "    in front of it. Then `collie restart`.",
+    ];
+  }
+  deps.files.write(envPath, next, 0o600);
+  return [
+    `  COLLIE_HOST=${host} removed from ${envPath} — it was the address the LEAD dialled, and a`,
+    "  wide bind is admitted only by the pack's two factors (ADR 0013), which this machine no longer",
+    "  has. Solo refuses to start on it, so leaving it would have crash-looped the service.",
+    "  This collie is back on loopback, where a solo collie belongs; put your own ingress in front",
+    "  of it, or set COLLIE_ALLOW_NON_LOOPBACK_BIND=1 if you mean to bind wide with a control there.",
+  ];
 }
 
 // ── pack status ──────────────────────────────────────────────────────────────

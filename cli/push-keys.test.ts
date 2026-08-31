@@ -3,6 +3,7 @@ import { createPublicKey } from "node:crypto";
 
 import {
   DEFAULT_SUBJECT,
+  dropEnvAssignments,
   generateVapidKeys,
   mergeEnv,
   readEnvVar,
@@ -54,6 +55,28 @@ describe("readEnvVar", () => {
 
   test("the last assignment wins, as bash would have it", () => {
     expect(readEnvVar("COLLIE_VAPID_PUBLIC=one\nCOLLIE_VAPID_PUBLIC=two\n", "COLLIE_VAPID_PUBLIC")).toBe("two");
+  });
+});
+
+// F12: `collie leave` uses this to retire the wide COLLIE_HOST `pack add` wrote, so a machine
+// returning to solo does not crash-loop on a bind solo mode refuses.
+describe("dropEnvAssignments", () => {
+  test("strikes every live assignment, and says when there was none", () => {
+    expect(dropEnvAssignments("COLLIE_HOST=1.2.3.4\nCOLLIE_PORT=8787\n", "COLLIE_HOST")).toBe(
+      "COLLIE_PORT=8787\n",
+    );
+    expect(dropEnvAssignments("export COLLIE_HOST=1.2.3.4\nA=b\n", "COLLIE_HOST")).toBe("A=b\n");
+    // A later assignment wins at source time, so BOTH have to go or the old value comes back.
+    expect(dropEnvAssignments("COLLIE_HOST=a\nB=c\nCOLLIE_HOST=d\n", "COLLIE_HOST")).toBe("B=c\n");
+    expect(dropEnvAssignments("COLLIE_PORT=8787\n", "COLLIE_HOST")).toBeNull();
+  });
+
+  test("a commented placeholder is the operator's note, not a value — it stays", () => {
+    expect(dropEnvAssignments("# COLLIE_HOST=\nA=b\n", "COLLIE_HOST")).toBeNull();
+  });
+
+  test("a file that was only that one assignment comes back empty, not with a stray newline", () => {
+    expect(dropEnvAssignments("COLLIE_HOST=1.2.3.4\n", "COLLIE_HOST")).toBe("");
   });
 });
 

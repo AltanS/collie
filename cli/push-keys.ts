@@ -118,6 +118,29 @@ export function mergeEnv(text: string, vars: Record<string, string>): string {
 }
 
 /**
+ * `text` with every LIVE assignment of `key` struck out, or `null` when it assigns none.
+ *
+ * The counterpart of {@link mergeEnv}, and it lives here for the same reason that one does: this file
+ * is the one place that knows what an assignment looks like in a Collie `.env` (`export ` prefix and
+ * all), and a second answer to that question is a second thing to keep in agreement.
+ *
+ * A COMMENTED placeholder is left exactly where it is — it is not a value ({@link readEnvVar} agrees),
+ * so removing one would be editing the operator's notes rather than their configuration.
+ */
+export function dropEnvAssignments(text: string, key: string): string | null {
+  const re = assignment(key);
+  const lines = text.split("\n");
+  const kept = lines.filter((line) => {
+    const m = re.exec(line);
+    return m === null || m[1] !== undefined;
+  });
+  if (kept.length === lines.length) return null;
+  // Exactly one trailing newline, whatever the file arrived with — `mergeEnv`'s rule.
+  while (kept.length > 0 && kept[kept.length - 1] === "") kept.pop();
+  return kept.length === 0 ? "" : `${kept.join("\n")}\n`;
+}
+
+/**
  * A subject the push services will accept — RFC 8292 wants a `mailto:` or `https:` URI identifying
  * whoever runs the sender, and a wrong one comes back as a 403 from Apple at 3am rather than here.
  *
