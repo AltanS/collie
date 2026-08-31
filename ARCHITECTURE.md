@@ -193,6 +193,52 @@ app. Closing this needs the server-side blocking-message capture described above
 
 ## 5. Architecture notes
 
+The shape of one collie, end to end — the ASCII sketches in §2 stay the precise ones; this is the
+overview the rest of this section fills in.
+
+```mermaid
+graph TD
+  subgraph phone["The phone"]
+    pwa["PWA — the mobile web app, installed to the home screen"]
+  end
+
+  subgraph door["One hardened front door"]
+    serve["tailscale serve — tailnet-only HTTPS (or a conforming reverse proxy)"]
+  end
+
+  subgraph collie["The collie — one long-lived local process, bound to 127.0.0.1 only"]
+    api["static web app + small JSON API"]
+    muxport["mux port (bridge/mux/) — the only code that knows a multiplexer's verbs"]
+    journal["journal adapters (bridge/journal/) — one per harness"]
+  end
+
+  subgraph mplex["The multiplexer — exactly one per install (COLLIE_MUX)"]
+    herdr["Herdr driver"]
+    tmuxd["tmux driver"]
+    zellijd["zellij driver"]
+    panes["the agents' terminal panes"]
+  end
+
+  logs[("the agents' own session logs, on this machine's disk")]
+  beacons[("beacons — written by the agent's own hooks")]
+
+  pwa -->|"HTTPS over the tailnet, polls /api/snapshot"| serve
+  serve -->|"127.0.0.1:PORT — the browser never reaches further"| api
+  api -->|"snapshot poll, event-poked"| muxport
+  api -->|"/api/pane/:id/history"| journal
+  muxport -->|"registry.ts loads exactly one driver"| herdr
+  muxport --> tmuxd
+  muxport --> zellijd
+  herdr -->|"JSON-RPC over the Herdr socket"| panes
+  tmuxd -->|"capture-pane"| panes
+  zellijd -->|"dump-screen --ansi"| panes
+  panes -.->|"the harness writes its own turns"| logs
+  journal -->|"reads the transcript off local disk, never the screen"| logs
+  panes -.->|"collie beacon emit, from the agent's hooks"| beacons
+  beacons -.->|"which pane holds an agent, and its session key"| tmuxd
+  beacons -.-> zellijd
+```
+
 - **`bridge/mux/` is a port with three drivers, and nothing above it knows which one is loaded.** The
   port is Collie's own contract (`types.ts`), not Herdr's shape renamed
   ([ADR 0022](./.adr/0022-the-mux-seam-is-a-port-collie-owns.md)); the drivers are `herdr/`, `tmux/`

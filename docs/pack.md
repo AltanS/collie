@@ -4,6 +4,22 @@ A **pack** is several machines' Collies linked together, one of them the **lead*
 every herd through one URL. All of it is CLI-only — no Herdr actions — and the wire between the
 machines is [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md).
 
+The shape, before the commands — the lead holds the one door, and the peers hold none:
+
+```mermaid
+graph TD
+  phone["phone (PWA)"] -->|"HTTPS /api/* — the phone talks to the lead and to nothing else"| lead
+  lead["lead — the managed front door, serves the PWA"] -->|"/pack/v1/* — pinned mutual TLS + the pack secret"| peer["peer — a full collie, no front door"]
+  lead -->|"/pack/v1/*"| deputy["deputy — a peer the lead named ahead of time"]
+  lead --- leadHerd["its own agents, journal, uploads, audit"]
+  peer --- peerHerd["its own agents, journal, uploads, audit"]
+  deputy --- depHerd["its own agents, journal, uploads, audit"]
+  deputy -.->|"armed only by the lead's silence, spent by you"| standby(["standby door — bound, never published, three routes"])
+  op["you, the operator"] -.->|"ssh — code rides here, never the pack link"| lead
+  op -.->|"ssh"| peer
+  op -.->|"ssh"| deputy
+```
+
 **Two machines, one pack.** The lead is the machine whose URL your phone already opens; the joiner
 needs its own Collie, installed and running. On the **lead**:
 
