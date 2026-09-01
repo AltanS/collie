@@ -12,10 +12,10 @@ All notable changes to Collie are recorded here. The format follows
 
 ### Added
 
-- **`collie pack join bluefin` is enough in a terminal**: an address with no scheme and no port means port 8787, the token is asked for instead of demanded, and a lead that answers over plain HTTP asks for one consent instead of demanding `--insecure`.
-- `collie pack invite` prints the short join command first, with the stdin form under it for scripts.
-- `--label` defaults to this machine's hostname, so a joining peer is named after its box rather than `collie-8f3a2b1c`.
-- `collie pack join` and `collie pack leave` are the canonical spellings; `collie join` and `collie leave` stay as aliases.
+- **`collie pack join bluefin` is enough in a terminal**: an address with no scheme and no port means port 8787, the token is asked for instead of demanded, and a lead that answers over plain HTTP asks for one consent instead of demanding `--insecure` ([6e3dfca](https://github.com/AltanS/collie/commit/6e3dfca))
+- `collie pack invite` prints the short join command first, with the stdin form under it for scripts ([6e3dfca](https://github.com/AltanS/collie/commit/6e3dfca))
+- `--label` defaults to this machine's hostname, so a joining peer is named after its box rather than `collie-8f3a2b1c` ([6e3dfca](https://github.com/AltanS/collie/commit/6e3dfca))
+- `collie pack join` and `collie pack leave` are the canonical spellings; `collie join` and `collie leave` stay as aliases ([6e3dfca](https://github.com/AltanS/collie/commit/6e3dfca))
 
 ### Changed
 
