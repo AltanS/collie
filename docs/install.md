@@ -87,11 +87,10 @@ bin/collie version
 bin/collie link
 ```
 
-Finish the source setup:
+Then start it. `start` creates `~/.config/collie/` and writes your multiplexer choice into its
+`.env`, so there is nothing to seed by hand first:
 
 ```bash
-mkdir -p ~/.config/collie
-cp ~/.local/share/collie/.env.example ~/.config/collie/.env
 bin/collie start
 ```
 
@@ -119,25 +118,31 @@ Manage via [Herdr actions](commands.md#herdr-actions). For prereleases, see
 
 ### Name your multiplexer
 
-Collie mirrors one backend set by `COLLIE_MUX=herdr` (default), `tmux`, or `zellij`.
+Collie mirrors one backend: `COLLIE_MUX=herdr` (default), `tmux`, or `zellij`.
 
-If unset, `start` detects available multiplexers or prompts. To configure manually, create `.env`
-in `~/.config/collie/.env` (standalone) or the path returned by
-`herdr plugin config-dir herdr.collie`:
+**You do not have to set it up first.** The first `start` looks for a live Herdr socket, a running
+tmux server and zellij sessions, prints what it found, and writes your answer to the config `.env`,
+creating it. With no terminal to ask at, it takes the only backend it found and says which; with
+none, or with several, it refuses to start and names `COLLIE_MUX`.
+
+To decide up front instead, seed that file **before** the first start. It is
+`~/.config/collie/.env` standalone, or the path `herdr plugin config-dir herdr.collie` prints:
 
 ```bash
 mkdir -p ~/.config/collie
 cp .env.example ~/.config/collie/.env
 ```
 
-Set the backend and endpoint in `.env`:
+Then set the backend and its endpoint:
 
 ```bash
 COLLIE_MUX=tmux                                           # or: zellij
 COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock  # zellij: COLLIE_MUX_ENDPOINT_ZELLIJ=<session>
 ```
 
-See [Using the app on tmux or zellij](multiplexers.md#using-the-app-on-tmux-or-zellij).
+Do not run that `cp` after a start: it lands `.env.example` on top of the `COLLIE_MUX` the start
+just wrote. Afterwards, edit the file. See
+[Using the app on tmux or zellij](multiplexers.md#using-the-app-on-tmux-or-zellij).
 
 ### Start it
 
