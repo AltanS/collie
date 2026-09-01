@@ -48,18 +48,30 @@ describe("StatusDot — the glyph", () => {
     expect(hidden?.getAttribute("aria-label")).toBeNull();
   });
 
-  it("stops pulsing and dims when the reading is frozen, and does both again in reverse", () => {
-    // A "working" dot pulses. While the connection is not live that pulse is a lie twice over: the
-    // reading is the LAST snapshot's, and an animation is the one thing on a page that says
-    // "this is arriving now". So stale removes the ping AND dims, together — dimming one mark of a
+  it("stops breathing and dims when the reading is frozen, and does both again in reverse", () => {
+    // A "working" dot breathes (a slow opacity fade, `.status-breathe`) ONLY when the caller opts in
+    // with `live` — the pane chip and the pane header's agent badge, the two spots where the operator
+    // is actually watching one pane. While the connection is not live that breathe is a lie twice
+    // over: the reading is the LAST snapshot's, and an animation is the one thing on a page that says
+    // "this is arriving now". So stale removes the breathe AND dims, together — dimming one mark of a
     // pair and animating the other would leave a frozen reading looking half live.
-    const live = render(<StatusDot status="working" />);
-    expect(live.container.querySelector(".animate-ping")).not.toBeNull();
+    const live = render(<StatusDot status="working" live />);
+    expect(live.container.querySelector(".status-breathe")).not.toBeNull();
     expect(live.container.firstElementChild?.className).not.toContain("opacity-40");
 
-    const frozen = render(<StatusDot status="working" stale />);
-    expect(frozen.container.querySelector(".animate-ping")).toBeNull();
+    const frozen = render(<StatusDot status="working" live stale />);
+    expect(frozen.container.querySelector(".status-breathe")).toBeNull();
     expect(frozen.container.firstElementChild?.className).toContain("opacity-40");
+  });
+
+  it("stays a solid, still dot everywhere `live` isn't passed, e.g. the tab chip", () => {
+    // Most call sites (tab-strip.tsx, space-strip.tsx, ui/chip.tsx, agent-card.tsx,
+    // space-overview.tsx, strips-summary.tsx) never pass `live`. A pane mounts several of these at
+    // once; if each one breathed on its own unsynchronized clock the page would blink. Only the ONE
+    // dot the operator is watching a pane through animates.
+    const notLive = render(<StatusDot status="working" />);
+    expect(notLive.container.querySelector(".status-breathe")).toBeNull();
+    expect(notLive.container.querySelector(".animate-ping")).toBeNull();
   });
 });
 

@@ -1093,6 +1093,7 @@ export function AgentChat({
                         status={agent.status}
                         label={statusLabel(agent.status)}
                         stale={connecting}
+                        live
                         surface="bg-background"
                         className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-background"
                       />

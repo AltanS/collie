@@ -652,3 +652,26 @@
     animation: busy-bar-pulse 1.1s ease-in-out infinite;
   }
 }
+
+/* The working status dot's "live" pulse (components/status-badge.tsx StatusDot, `live` prop) — a
+   slow breathe, not a ping. One dot, opacity only, no second ring element and no scale: a phone
+   screen can carry several of these at once (pane chip, pane header) and an unsynchronized scaling
+   ring on each read as blinking. 2.4s is slow enough that a handful of un-phased dots still read as
+   "alive", not as a strobe. */
+.status-breathe {
+  animation: status-breathe 2.4s ease-in-out infinite;
+}
+@keyframes status-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-breathe {
+    animation: none;
+  }
+}

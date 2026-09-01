@@ -43,6 +43,7 @@ export function StatusDot({
   surface = "bg-background",
   label,
   stale,
+  live = false,
   className,
 }: {
   status: AgentStatus;
@@ -65,12 +66,22 @@ export function StatusDot({
    */
   label?: string;
   /** The dot is showing the LAST snapshot's status while the connection is not live — dim it, and
-   *  stop the working pulse: a frozen reading must not animate as if it were arriving. Same
+   *  stop the working breathe: a frozen reading must not animate as if it were arriving. Same
    *  `opacity-40` the StatusBadge has always used, and the same instant restore on recovery. */
   stale?: boolean;
+  /**
+   * Opt in to the working state's breathing animation. A pane mounts several `StatusDot`s at once
+   * (tab chip, space chip, pane chip, pane header, agent card, overview) and each one used to ping
+   * on its own unsynchronized 1s clock — three or more on one phone screen read as blinking, not as
+   * "alive". Only the ONE dot the operator is actually watching a pane through animates now: the
+   * pane chip and the pane header's agent badge. Every other call site shows a solid, still dot for
+   * the same "working" state — the colour still says it, just without the motion.
+   */
+  live?: boolean;
   className?: string;
 }) {
   const hollow = RESTING.has(status);
+  const breathing = live && status === "working" && stale !== true;
   return (
     <span
       role={label === undefined ? undefined : "img"}
@@ -82,17 +93,6 @@ export function StatusDot({
         className,
       )}
     >
-      {status === "working" && stale !== true && (
-        <span
-          className={cn(
-            "absolute inline-flex size-full animate-ping rounded-full opacity-75",
-            DOT[status],
-          )}
-        />
-      )}
-      {/* size-full, not a second size-2.5: the wrapper owns the size so `className` can change it
-          (the chips ask for size-2), and a hard-coded inner would overflow or get squashed by the
-          flex parent instead. The ping span above already works this way. */}
       {/* Hollow and solid are the same box: measured at 10x10 in both, because `size-full` fixes the
           outer geometry and the 1.5px border is drawn inside it (border-box). The dot has no content
           to push in, and nothing outside it moves, so the ring/fill swap is paint only. Left as is
@@ -100,6 +100,7 @@ export function StatusDot({
       <span
         className={cn(
           "relative inline-flex size-full rounded-full",
+          breathing && "status-breathe",
           hollow ? cn("border-[1.5px]", surface, RING[status]) : DOT[status],
         )}
       />
