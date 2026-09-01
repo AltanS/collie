@@ -20,6 +20,21 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-01
+
+### Added
+
+- The read-only strip links to Settings → Paired devices. ([defec91](https://github.com/AltanS/collie/commit/defec91))
+- Per-host colour on the server glyph in pack mode, ten stable hues. ([e3db22d](https://github.com/AltanS/collie/commit/e3db22d))
+
+### Changed
+
+- The "Side by side" instructions moved out of `docs/upgrading.md` into their own `docs/deployment.md` section. ([0231500](https://github.com/AltanS/collie/commit/0231500))
+
+### Removed
+
+- Pull-to-refresh; polling already keeps the view fresh. ([86e8d78](https://github.com/AltanS/collie/commit/86e8d78))
+
 ## [1.0.2] - 2026-09-01
 
 ### Changed
