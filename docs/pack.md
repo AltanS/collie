@@ -36,25 +36,24 @@ line to the target machine and run:
 collie pack join lead                     # it asks for the token
 ```
 
-`pack invite` prints this exact line with your lead's name already in it. In a terminal, `join` asks
-for the token; for a script, pass `-` and put the token on stdin instead:
+`pack invite` prints this exact line with the lead name included. In a terminal, `join` prompts
+for the token; for a script, pass `-` and provide the token on stdin:
 
 ```bash
 collie pack join lead.tail1234.ts.net -   # paste the token on stdin
 ```
 
-Set the lead address to any hostname or `host:port` reachable from this node. An address with no
-scheme and no port means `https://<host>:8787`, because 8787 is the port a Collie binds. The
-`pack invite` line spells the port out when this lead moved off it. A default install answers there
-over plain HTTP, with TLS on 443 in front of it, so `join` may find no TLS at 8787: it then asks
-once whether to send the token over plain HTTP, and `--insecure` answers that question ahead of
-time. An address
-you spelled `http://` yourself still requires `--insecure` and asks nothing. Pass `-` to read the
+Set the lead address to any hostname or `host:port` reachable from this node. An address without a
+scheme and port resolves to `https://<host>:8787`, which is the default port Collie binds. The
+`pack invite` output specifies the port if the lead changed it. A default install answers on port
+8787 over plain HTTP, with TLS on 443 in front of it, so `join` may find no TLS at 8787. It prompts
+once before sending the token over plain HTTP; `--insecure` confirms this automatically. An
+explicit `http://` address still requires `--insecure` and prompts for nothing. Pass `-` to read the
 token from stdin or `@<file>` to read from disk. Passing raw tokens directly as arguments prints a
 warning, because process listings expose arguments to all local users
 ([`PACK_PROTOCOL.md` §8.3](../PACK_PROTOCOL.md)).
 
-`join` names the final required step: **`collie restart` on the lead.** The lead wrote the
+`join` outputs the final required step: **`collie restart` on the lead.** The lead wrote the
 enrollment to disk, but the active process cached the roster at startup and will not proxy traffic
 to the new peer until restarted. Restart the lead, then check connectivity:
 
@@ -63,10 +62,10 @@ collie pack status        # the new member, its address, and whether the link an
 ```
 
 `collie pack add <ssh-host>` runs this workflow over **SSH**. It generates the token locally,
-provisions Collie on the remote machine, and executes `collie pack join` remotely. Choose either
+provisions Collie on the remote machine, and executes `collie pack join` remotely. Use either
 manual enrollment or `pack add` for a given host, not both. `pack add` requires **Herdr preinstalled
 on the remote host** and does not support `--insecure`. If the lead uses plaintext HTTP, run
-`collie pack join --insecure` manually on the joining machine instead.
+`collie pack join --insecure` manually on the joining machine.
 
 **Multiplexer selection is local to each node.** Configure `COLLIE_MUX` in the node's `.env` file.
 The pack protocol contains no multiplexer-specific fields. Note that peers have only been tested
@@ -84,13 +83,13 @@ with Herdr in v1 ([`PACK_PROTOCOL.md` §16](../PACK_PROTOCOL.md)).
 | `collie pack set-address <member> <host:port>` | Correct where this lead dials a member |
 | `collie pack deputy <member>` | Name the ONE peer that may take over, and arm it; `--revoke` names nobody |
 | `collie pack approve-promote <member>` | Consent, on the lead, for one member to take over — 10 minutes, single-use; `--cancel` clears it |
-| `collie pack join <lead-address> [<token>]` | Join a pack (**on the joining machine**); with no token it asks for one, or pass `-` for stdin or `@file` |
-| `collie pack leave` | Leave the pack — drops the pack secret and every pin on this machine |
+| `collie pack join <lead-address> [<token>]` | Join a pack (**on the joining machine**); without a token it prompts for one, or pass `-` for stdin or `@file` |
+| `collie pack leave` | Leave the pack; drops the pack secret and every pin on this machine |
 | `collie promote` | Make THIS machine the lead (on the peer taking over; `--force` if the lead is gone) |
 | `collie reconnect` | A member moved: re-point at its new address without re-enrolling anything |
 
 `collie join` and `collie leave` still work. They are aliases for `collie pack join` and
-`collie pack leave`, with the same arguments and the same exit codes.
+`collie pack leave`, using the same arguments and exit codes.
 
 The `deputy`, `approve-promote`, and `promote` commands manage failover. For setup and recovery
 instructions, see
