@@ -18,6 +18,10 @@ All notable changes to Collie are recorded here. The format follows
 per-release detail lives in the linked commits and the git history. Coming from 0.x, read
 [`docs/upgrading.md`](./docs/upgrading.md) → *Upgrading from 0.x to 1.x* first.
 
+**Upgrading:** from the Herdr plugin, run `herdr plugin action invoke update-major --plugin
+herdr.collie`. Fresh install: `curl -fsSL https://colliepwa.dev/install.sh | sh`. Details and
+rollback: [`docs/upgrading.md`](./docs/upgrading.md).
+
 ### Added
 
 - **Collie drives tmux and zellij, not only Herdr.** `COLLIE_MUX=tmux` or `COLLIE_MUX=zellij` picks the multiplexer behind one Collie-owned port, where each adapter declares its capabilities and the UI reads them from `GET /api/config` rather than from a name ([2feb1aa](https://github.com/AltanS/collie/commit/2feb1aa), [4d6787f](https://github.com/AltanS/collie/commit/4d6787f))
