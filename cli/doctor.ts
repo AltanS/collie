@@ -924,7 +924,7 @@ function mux(deps: DoctorDeps): Finding {
   const settings = muxSettings(deps);
   const registry = buildMuxRegistry();
   if (settings.origin.kind === "undecided") {
-    const { detail, remedy } = refusedMux(settings.origin.found, deps.ctx.configDir);
+    const { detail, remedy } = refusedMux(settings.origin.found, deps.ctx.configDir, deps.ctx.env);
     return bad("mux", `${detail}, so \`collie start\` refuses`, remedy);
   }
   if (factoryFor(registry, settings.name) === undefined) {

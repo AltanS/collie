@@ -134,7 +134,13 @@ export type MuxDecision =
   | { readonly kind: "explicit"; readonly mux: string }
   | { readonly kind: "auto"; readonly sighting: MuxSighting }
   | { readonly kind: "picked"; readonly sighting: MuxSighting }
-  | { readonly kind: "refused"; readonly detail: string; readonly remedy: string };
+  | {
+      readonly kind: "refused";
+      readonly detail: string;
+      readonly remedy: string;
+      /** The refusal as an operator reads it: headline, then one indented line each. */
+      readonly lines: readonly string[];
+    };
 
 export interface MuxChoiceDeps extends MuxProbeDeps {
   readonly io: Io;
@@ -169,15 +175,58 @@ export async function chooseMux(deps: MuxChoiceDeps): Promise<MuxDecision> {
   const found = probeMuxes(deps);
   if (deps.interactive === true && found.length > 0) {
     const picked = await pick(deps, found);
-    return picked === null ? refusal(found, deps.ctx.configDir) : { kind: "picked", sighting: picked };
+    return picked === null ? refusal(deps, found) : { kind: "picked", sighting: picked };
   }
   const only = found.length === 1 ? found[0] : undefined;
-  if (only === undefined) return refusal(found, deps.ctx.configDir);
+  if (only === undefined) return refusal(deps, found);
   return { kind: "auto", sighting: only };
 }
 
 /**
- * Why an unset `COLLIE_MUX` cannot be resolved, and the one line that resolves it.
+ * The variable that already names a multiplexer, per multiplexer.
+ *
+ * An operator who set one of these has told this install where that multiplexer lives. That is not
+ * consent to drive it — `COLLIE_MUX` is the only sentence that says which one — but it IS the
+ * strongest thing on the box about which of several was meant, so the refusal says it out loud.
+ * Herdr's is not `muxEndpointVar(HERDR_MUX)`: its endpoint IS `HERDR_SOCKET_PATH` (`bridge/config.ts`).
+ */
+function namingVar(mux: string): string {
+  return mux === HERDR_MUX ? "HERDR_SOCKET_PATH" : muxEndpointVar(mux);
+}
+
+/**
+ * The one multiplexer this environment already names, or `null`.
+ *
+ * Only the FOUND ones are candidates: a `COLLIE_MUX_ENDPOINT_TMUX` left over from a box that no
+ * longer runs tmux points at nothing. Two names is no name at all — a hint that has to be chosen
+ * between is the same standoff one level down, so that case says nothing rather than picking.
+ */
+function hintedMux(found: readonly MuxSighting[], env: CliContext["env"]): MuxSighting | null {
+  const named = found.filter((sighting) => (env[namingVar(sighting.mux)] ?? "").trim() !== "");
+  return named.length === 1 ? (named[0] ?? null) : null;
+}
+
+/** What an operator has to type to end the standoff, ready to paste. */
+function fixCommand(mux: string, configDir: string): string {
+  return `printf 'COLLIE_MUX=${mux}\\n' >> ${join(configDir, ".env")} && collie start`;
+}
+
+/**
+ * The standoff, in the two shapes it is read in.
+ *
+ * `detail` and `remedy` are the one-line pair a `collie doctor` finding carries. `lines` is the same
+ * answer as a block for `start` and `restart` to print: the headline first, then one line per
+ * multiplexer, then the hint if there is one, then the command. Both shapes are built here, so a
+ * change to either cannot leave the other saying something else.
+ */
+export interface MuxRefusal {
+  readonly detail: string;
+  readonly remedy: string;
+  readonly lines: readonly string[];
+}
+
+/**
+ * Why an unset `COLLIE_MUX` cannot be resolved, what was found, and the line that resolves it.
  *
  * Exported because `collie doctor` reports the same standoff a `start` would refuse on, and two
  * wordings of it would be two answers to the operator's one question.
@@ -185,21 +234,37 @@ export async function chooseMux(deps: MuxChoiceDeps): Promise<MuxDecision> {
 export function refusedMux(
   found: readonly MuxSighting[],
   configDir: string,
-): { readonly detail: string; readonly remedy: string } {
-  const names = muxNames(buildMuxRegistry()).join(", ");
-  const detail =
-    found.length === 0
-      ? "no COLLIE_MUX is set and no multiplexer is running here — nothing was found to mirror"
-      : `no COLLIE_MUX is set and ${String(found.length)} multiplexers are running, so there is no ` +
-        `single one to drive: ${found.map((s) => `${s.mux} (${s.evidence})`).join("; ")}`;
+  env: CliContext["env"] = {},
+): MuxRefusal {
+  const placeholder = `<${muxNames(buildMuxRegistry()).join("|")}>`;
+  const hint = hintedMux(found, env);
+  const command = fixCommand(hint?.mux ?? placeholder, configDir);
+  const fix = `fix:  ${command}`;
+  if (found.length === 0) {
+    const detail = "no COLLIE_MUX is set, and no multiplexer is running here, so there is nothing to mirror";
+    return { detail, remedy: command, lines: [`${detail}.`, fix] };
+  }
+  const headline =
+    `no COLLIE_MUX is set, and ${String(found.length)} multiplexer${found.length === 1 ? " is" : "s are"} ` +
+    "running here. Collie will not guess which one to drive:";
+  const rows = found.map((sighting) => `  ${sighting.mux.padEnd(8)} ${sighting.evidence}`);
+  const named = hint === null ? null : `${namingVar(hint.mux)} is already set, so ${hint.mux} is probably the one`;
   return {
-    detail,
-    remedy: `set COLLIE_MUX to one of ${names} in ${join(configDir, ".env")}, then \`collie start\``,
+    detail: `${headline} ${found.map((s) => `${s.mux} (${s.evidence})`).join("; ")}`,
+    remedy: named === null ? command : `${named}: ${command}`,
+    lines: [
+      headline,
+      ...rows,
+      ...(hint === null
+        ? []
+        : [`hint: this instance already has ${namingVar(hint.mux)} set, so ${hint.mux} is probably the one.`]),
+      fix,
+    ],
   };
 }
 
-function refusal(found: readonly MuxSighting[], configDir: string): MuxDecision {
-  return { kind: "refused", ...refusedMux(found, configDir) };
+function refusal(deps: MuxChoiceDeps, found: readonly MuxSighting[]): MuxDecision {
+  return { kind: "refused", ...refusedMux(found, deps.ctx.configDir, deps.ctx.env) };
 }
 
 /** The interactive half: print what was found, take a number or a name, or `null` for no answer. */
@@ -262,8 +327,9 @@ export async function ensureMuxChosen(deps: MuxSettleDeps): Promise<number> {
   const decision = await chooseMux(deps);
   if (decision.kind === "explicit") return EXIT.OK;
   if (decision.kind === "refused") {
-    deps.io.err(`error: ${decision.detail}`);
-    deps.io.err(`       ${decision.remedy}`);
+    for (const [index, line] of decision.lines.entries()) {
+      deps.io.err(index === 0 ? `error: ${line}` : `       ${line}`);
+    }
     return EXIT.FAIL;
   }
   const { sighting } = decision;

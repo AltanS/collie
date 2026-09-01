@@ -415,6 +415,14 @@ export function cmdUninstall(deps: LifecycleDeps): number {
 }
 
 export async function cmdRestart(deps: LifecycleDeps): Promise<number> {
+  // The multiplexer question is asked BEFORE anything is stopped, and it is the whole reason this
+  // verb is not `cmdStop` + `cmdStart`. `start` asks it too, and on every run after the first both
+  // calls return at once on an explicit `COLLIE_MUX`. It is the FIRST run that matters: a refusal
+  // reached from inside `start` arrives after `stop` has already disabled the unit, so an operator
+  // who cannot answer it right now is left with no bridge at all, on a verb whose name promises one.
+  const chosen = await ensureMuxChosen(deps);
+  if (chosen !== EXIT.OK) return chosen;
+
   const stopped = cmdStop(deps);
   if (stopped !== EXIT.OK) return stopped;
   return cmdStart(deps);

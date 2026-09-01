@@ -24,6 +24,7 @@ interface SeenIo {
 }
 import {
   cmdLogs,
+  cmdRestart,
   cmdStart,
   cmdStatus,
   cmdStop,
@@ -381,6 +382,8 @@ describe("start, unsupervised", () => {
 // `start` — before the unit is written and before anything is spawned. A bridge launched for a
 // multiplexer nobody chose is the outage M14/03 removes.
 describe("the first-run multiplexer gate", () => {
+  /** Where the tmux adapter's own candidate list looks first — a second sighting, in one file. */
+  const TMUX_BIN = "/usr/bin/tmux";
   const unchosen = (over: HarnessOptions = {}): Harness =>
     harness({ ...over, env: { ...over.env, COLLIE_MUX: undefined } });
 
@@ -399,6 +402,25 @@ describe("the first-run multiplexer gate", () => {
     expect(h.files.read(`${CONFIG}/.env`)).toContain("COLLIE_MUX=herdr");
     // Both halves: the file a supervised bridge reads, and the environment this one is spawned with.
     expect(h.exec.spawned[0]?.env.COLLIE_MUX).toBe("herdr");
+  });
+
+  // `restart` asks the SAME question, and asks it FIRST. A refusal reached from inside `start` would
+  // arrive after `stop` had already disabled the unit, so the verb that promises a running bridge
+  // would end with none — the 1.0.0 outage this pins shut.
+  test("`restart` refuses before it stops anything, so the bridge it cannot re-start stays up", async () => {
+    const socket = "/home/pat/.config/herdr/herdr.sock";
+    const h = unchosen({
+      files: { [socket]: "", [TMUX_BIN]: "" },
+      answers: [[`${TMUX_BIN} list-sessions`, { stdout: "work\n" }]],
+    });
+    expect(await cmdRestart(h.deps)).toBe(EXIT.FAIL);
+    // The whole point: no service manager was touched, and the line `stop` prints was never printed.
+    expect(h.exec.calls).toEqual([`${TMUX_BIN} list-sessions -F #{session_name}`]);
+    expect(h.io.stdout).not.toContain("bridge stopped");
+    expect(h.exec.spawned).toHaveLength(0);
+    const said = h.io.stderr.join("\n");
+    expect(said).toContain("no COLLIE_MUX is set, and 2 multiplexers are running here");
+    expect(said).toContain(`fix:  printf 'COLLIE_MUX=<herdr|tmux|zellij>\\n' >> ${CONFIG}/.env && collie start`);
   });
 });
 

@@ -8,6 +8,8 @@ All notable changes to Collie are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-09-01
+
 ### Changed
 
 - **The install and update docs lead with the two shapes an install actually has**, and neither assumes a bare `collie` on your PATH: a Herdr-managed install spells every verb as a plugin action, a standalone one as `bin/collie <verb>`. `docs/install.md` is two ways in rather than four, and ends with the update command it never carried; `docs/upgrading.md` opens on the update instead of the uninstall, folds the two 0.x sections into one crossing, and drops the finished v1 beta train.
@@ -15,6 +17,8 @@ All notable changes to Collie are recorded here. The format follows
 ### Fixed
 
 - The post-update hooks nudge swallows a spawn failure of the new binary (ENOEXEC/EACCES) instead of failing an update that already succeeded — the silence its own comment promised.
+- `collie restart` decides the multiplexer before it stops the bridge, so a refusal no longer leaves the bridge down.
+- The refusal lists each multiplexer on its own line, points at the one the environment already names, and prints the exact line to append.
 
 ## [1.0.0] - 2026-09-01
 
