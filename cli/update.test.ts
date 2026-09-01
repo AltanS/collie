@@ -1192,6 +1192,22 @@ describe("the hooks nudge", () => {
     expect(h.io.stderr).toEqual([]);
   });
 
+  test("a check whose spawn THROWS leaves the update successful and silent too", async () => {
+    // The real `capture` throws when the child cannot even start (ENOEXEC on a stub, EACCES) —
+    // the shell suite runs it against a fake binary and caught exactly this. The fake exec only
+    // returns results, so the throw is grafted onto the one call that matters.
+    const h = binaryHarness({ hooksCheck: { code: EXIT.STATE } });
+    const real = h.deps.exec.capture.bind(h.deps.exec);
+    h.deps.exec.capture = (tool, args, timeoutMs) => {
+      if (args.join(" ") === "hooks status --check") throw new Error("ENOEXEC: posix_spawn");
+      return real(tool, args, timeoutMs);
+    };
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain(`✓ updated to ${NEW}`);
+    expect(h.io.stdout.join("\n")).not.toContain(NUDGE);
+    expect(h.io.stderr).toEqual([]);
+  });
+
   test("the checkout path asks the binary `build` just wrote, for the same reason", async () => {
     const h = harness({
       answers: [...LINKED, ...SHALLOW, [`${BINARY} hooks status --check`, { code: EXIT.STATE }]],

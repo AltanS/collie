@@ -6,6 +6,12 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## [Unreleased]
+
+### Fixed
+
+- The post-update hooks nudge swallows a spawn failure of the new binary (ENOEXEC/EACCES) instead of failing an update that already succeeded — the silence its own comment promised.
+
 ## [1.0.0] - 2026-09-01
 
 **This release is the whole `1.0.0-alpha` / `1.0.0-beta` line in one entry**, grouped once; the

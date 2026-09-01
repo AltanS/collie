@@ -622,7 +622,13 @@ const HOOKS_CHECK_TIMEOUT_MS = 5_000;
  * silence too. The update already succeeded, and no afterthought may take that back.
  */
 function nudgeHooks(deps: UpdateDeps, binary: string): void {
-  const r = deps.exec.capture(binary, ["hooks", "status", "--check"], HOOKS_CHECK_TIMEOUT_MS);
+  let r;
+  try {
+    r = deps.exec.capture(binary, ["hooks", "status", "--check"], HOOKS_CHECK_TIMEOUT_MS);
+  } catch {
+    // `capture` throws when the child cannot even start (ENOEXEC, EACCES) — spawn failure, silence.
+    return;
+  }
   if (!r.found || r.code !== EXIT.STATE) return;
   deps.io.out(
     "note: this build registers beacon hooks your settings do not carry yet —" +
