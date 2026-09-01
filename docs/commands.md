@@ -6,6 +6,9 @@ installations, implemented directly in the binary (`cli/`). Before adding `colli
 Herdr-managed installation, these same verbs register as Herdr actions ([below](#herdr-actions))
 with identical behavior.
 
+If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every verb. See
+[Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host).
+
 | Verb | Command | What it does |
 | --- | --- | --- |
 | **Start** | `collie start` | Build if needed, serve, print the URL |

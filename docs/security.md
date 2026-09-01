@@ -92,6 +92,10 @@ run `collie pair`, so until then read and write operations function as before. P
 phone first. Revoking the final device disables the gate again to prevent lockouts. Five failed code
 attempts invalidate the code, which requires running `collie pair` again.
 
+On a host running multiple instances, prefix commands with `COLLIE_INSTANCE=<name>` and open that
+specific instance URL on the phone
+([Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host)).
+
 
 ---
 

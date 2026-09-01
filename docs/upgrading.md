@@ -160,14 +160,8 @@ New features:
 
 ### Side by side, if the herd is real
 
-To run a secondary instance, create
-`~/.config/herdr/plugins/config/herdr.collie-<name>/.env` containing:
-
-```bash
-COLLIE_INSTANCE=<name>        # required — [a-z0-9-], max 16 chars
-COLLIE_PORT=8788              # required for a named instance; no default is inferred
-COLLIE_STATE_DIR=/home/you/.local/state/collie-<name>   # the state dir is NOT instance-suffixed
-```
+Secondary instance configuration is documented in
+[Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host).
 
 ### Rolling back
 

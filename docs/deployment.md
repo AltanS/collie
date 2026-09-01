@@ -9,6 +9,7 @@ lives in the README. Security requirements in [docs/security.md](security.md) ap
 - [Variant D — off-host identity proxy over the tailnet](#variant-d--off-host-identity-proxy-over-the-tailnet)
 - [Variant E — any other mesh or tunnel (NetBird, ZeroTier, Cloudflare Tunnel)](#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)
 - [Several Collies on one host](#several-collies-on-one-host)
+- [Multiple Collie instances on one host](#multiple-collie-instances-on-one-host)
 - [The standby door — a pack's failover path](#the-standby-door--a-packs-failover-path)
 
 Individual devices can also be authorized without a proxy via
@@ -264,9 +265,83 @@ Requirements:
 - Initial Tailscale bindings require operator setup: run `bin/collie serve` (or Herdr equivalent)
   with operator privileges.
 
-`COLLIE_SERVE_PORT` sets the front-door port for one instance. `COLLIE_INSTANCE` creates an
-isolated instance (separate service unit and config) on the same host
-([docs/upgrading.md → Side by side](upgrading.md#side-by-side-if-the-herd-is-real)).
+`COLLIE_SERVE_PORT` sets the entry port for an instance. `COLLIE_INSTANCE` creates an isolated
+instance with its own service unit and config on the same host
+([Multiple Collie instances on one host](#multiple-collie-instances-on-one-host)).
+
+---
+
+## Multiple Collie instances on one host
+
+Use this setup to run a second, distinct Collie on the same machine. Examples include running a
+stable release alongside a working copy, or running a second multiplexer (`tmux`/`zellij`) next to
+the Herdr-managed default. Each instance gets a dedicated port, config, state directory, and
+service unit. This differs from [Several Collies on one host](#several-collies-on-one-host), which
+allocates one instance per Unix user. Here, one user runs multiple instances.
+
+### Create the second instance
+
+Set `COLLIE_INSTANCE=<name>` to name the instance. The name must match `[a-z0-9-]{1,16}`. A named
+instance also requires an explicit `COLLIE_PORT`. The CLI exits with an error if this port is
+missing; it infers no default value.
+
+Create `~/.config/herdr/plugins/config/herdr.collie-<name>/.env`:
+
+```bash
+COLLIE_INSTANCE=<name>        # required — [a-z0-9-], max 16 chars
+COLLIE_PORT=8788              # required for a named instance — no default is inferred
+COLLIE_STATE_DIR=/home/you/.local/state/collie-<name>   # not instance-suffixed by default
+```
+
+`COLLIE_INSTANCE`, `COLLIE_PORT`, and `COLLIE_STATE_DIR` can all reside in that `.env` file. The
+merged environment resolves the instance. `HERDR_PLUGIN_CONFIG_DIR` overrides the directory where
+the CLI searches for configuration.
+
+### Run a service unit per instance
+
+`collie start` writes the unit when the environment sets the instance. The operator does not write
+it by hand. On macOS it writes a launchd plist under `~/Library/LaunchAgents/` instead. The unit
+sets `COLLIE_PORT`, `COLLIE_INSTANCE`, `COLLIE_PLUGIN_ROOT`, `HERDR_PLUGIN_CONFIG_DIR`, and
+`EnvironmentFile=-<config dir>/.env`. `--instance <name>` on `ExecStart` exists solely so two
+instances that share one binary can distinguish their bridges (`cli/unit.ts` `systemdUnit()`):
+
+```ini
+ExecStart=<root>/bin/collie _exec-bridge --instance <name>
+Environment=COLLIE_PORT=8788
+Environment=COLLIE_INSTANCE=<name>
+Environment=COLLIE_PLUGIN_ROOT=<root>
+Environment=HERDR_PLUGIN_CONFIG_DIR=<config dir>
+EnvironmentFile=-<config dir>/.env
+```
+
+The CLI maintains a per-instance `tailscale serve` handler file, so running `unserve` on one
+instance does not delete the mapping for another.
+
+### Target a named instance from the CLI
+
+Every CLI verb (`pair`, `devices`, `url`, `qr`, `pack …`, `logs`, `push-test`, …) resolves its
+target instance from the process environment. Set `COLLIE_INSTANCE` before invoking the verb:
+
+```bash
+COLLIE_INSTANCE=next bin/collie pair
+COLLIE_INSTANCE=next bin/collie devices list
+```
+
+Without `COLLIE_INSTANCE`, the CLI queries Herdr. Herdr tracks only the unsuffixed plugin, so the
+command executes against the first instance. Always set `COLLIE_INSTANCE` explicitly when running
+multiple instances on one host to avoid modifying the wrong instance.
+
+### The refusal rule
+
+If `COLLIE_INSTANCE` is set but `herdr.collie-<name>/.env` is missing, the CLI exits with an error.
+It does not fall back to another instance's configuration.
+
+### Pairing is per instance
+
+`collie pair` writes a pairing code to that instance's state directory. Open that instance's
+specific URL on the phone and enter the code under Settings → Paired devices. A code minted for one
+instance cannot pair a device to any other instance
+([Pair a device](security.md#pair-a-device--the-write-credential)).
 
 ---
 
