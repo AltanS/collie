@@ -57,7 +57,7 @@ export function PackRoute() {
   // TIER-2 health, derived once at the data root against the lead's clock — the same map the
   // ServerSwitcher's rows read, so the two surfaces cannot disagree about a member. See
   // `memberHealth` in pack-formation.tsx for a mount without a provider.
-  const { health } = usePack();
+  const { health, servers } = usePack();
   // SAFETY: `packLoader` returns `PackData` for this route; `undefined` is what React Router hands
   // back for a harness that mounts the route without its loader, which the `??` below covers. A
   // data-mode `useLoaderData()` is typed `unknown` and cannot be narrowed any other way.
@@ -114,6 +114,7 @@ export function PackRoute() {
             status={status}
             health={health}
             counts={counts}
+            servers={servers}
             onSelect={(m) => setOpenId(m.id)}
           />
         )}

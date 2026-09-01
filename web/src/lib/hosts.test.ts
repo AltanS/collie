@@ -5,6 +5,8 @@ import {
   hostCounts,
   hostKey,
   hostName,
+  hostSlot,
+  HOST_SLOT_COUNT,
   isMultiHost,
   leadHost,
   ambientPanes,
@@ -383,5 +385,84 @@ describe("ambientSpaces", () => {
       { workspaceId: "w1", host: "workshop" },
     ];
     expect(ambientSpaces(mixed, {}, pack)).toEqual([{ workspaceId: "w1" }]);
+  });
+});
+
+// ── The per-host colour ──────────────────────────────────────────────────────────────────────────
+//
+// The claim under test is not "it returns a number". It is that the number is the SAME number
+// tomorrow, that no two machines in a normal pack share one, and that a solo collie gets none at
+// all — a colour that moves is worse than no colour, because the operator has already learned it.
+describe("hostSlot", () => {
+  const server = (id: string, isLead = false): ServerSummary => ({
+    id,
+    name: id,
+    isLead,
+    reachable: true,
+    protocol: "ok",
+    lastSeenAt: 10,
+  });
+  const roster = (...ids: string[]): ServerSummary[] => ids.map((id, i) => server(id, i === 0));
+
+  it("gives a solo collie no colour at all — the feature only exists to tell machines apart", () => {
+    expect(hostSlot(undefined, "bluefin")).toBeNull();
+    expect(hostSlot([], "bluefin")).toBeNull();
+    expect(hostSlot(roster("bluefin"), "bluefin")).toBeNull();
+  });
+
+  it("resolves an absent host to the lead, exactly as the rest of the module does", () => {
+    const pack5 = roster("bluefin", "workshop", "attic");
+    expect(hostSlot(pack5, undefined)).toBe(hostSlot(pack5, "bluefin"));
+  });
+
+  it("gives no colour when there is no lead to resolve an absent host to", () => {
+    const leaderless = ["a", "b"].map((id) => server(id));
+    expect(hostSlot(leaderless, undefined)).toBeNull();
+  });
+
+  it("gives no colour to a host the roster does not list — a departed member keeps its NAME only", () => {
+    expect(hostSlot(roster("bluefin", "workshop"), "departed")).toBeNull();
+  });
+
+  it("is stable: the same set of ids yields the same slot, whatever order they arrive in", () => {
+    const a = roster("bluefin", "workshop", "attic", "cellar", "garage");
+    const b = roster("garage", "cellar", "attic", "workshop", "bluefin");
+    for (const id of ["bluefin", "workshop", "attic", "cellar", "garage"]) {
+      expect(hostSlot(b, id)).toBe(hostSlot(a, id));
+    }
+  });
+
+  it("holds a machine's colour when an UNRELATED machine joins or leaves", () => {
+    // The whole point of hashing rather than indexing: enrolling a machine whose id sorts first
+    // would re-colour the pack under an operator who has already learned it.
+    const before = roster("bluefin", "workshop", "attic");
+    const after = roster("bluefin", "workshop", "attic", "zebra");
+    expect(hostSlot(after, "bluefin")).toBe(hostSlot(before, "bluefin"));
+    expect(hostSlot(after, "workshop")).toBe(hostSlot(before, "workshop"));
+    expect(hostSlot(after, "attic")).toBe(hostSlot(before, "attic"));
+  });
+
+  it("never hands two machines the same slot while the roster fits the palette", () => {
+    const ids = ["bluefin", "workshop", "attic", "cellar", "garage", "loft", "shed", "barn", "kennel", "porch"];
+    for (let n = 2; n <= HOST_SLOT_COUNT; n += 1) {
+      const some = roster(...ids.slice(0, n));
+      const slots = ids.slice(0, n).map((id) => hostSlot(some, id));
+      expect(slots).not.toContain(null);
+      expect(new Set(slots).size).toBe(n);
+    }
+  });
+
+  it("wraps past ten machines rather than inventing an eleventh colour", () => {
+    const ids = Array.from({ length: 14 }, (_, i) => `machine-${i}`);
+    const big = roster(...ids);
+    const slots = ids.map((id) => hostSlot(big, id));
+    for (const slot of slots) {
+      expect(slot).not.toBeNull();
+      expect(slot).toBeGreaterThanOrEqual(0);
+      expect(slot).toBeLessThan(HOST_SLOT_COUNT);
+    }
+    // Every colour is spoken for, and the surplus machines double up — the NAME is the answer then,
+    // as it was before any of this existed.
+    expect(new Set(slots).size).toBe(HOST_SLOT_COUNT);
   });
 });

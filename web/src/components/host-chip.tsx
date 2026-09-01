@@ -2,7 +2,7 @@ import { Server, ServerOff } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AddressTag } from "@/components/ui/address-tag";
-import { hostName } from "@/lib/hosts";
+import { HOST_TEXT_CLASSES, hostName, hostSlot } from "@/lib/hosts";
 import type { HostState } from "@/lib/host-health";
 import { useHostHealth, usePack } from "@/components/pack-provider";
 import { t } from "@/lib/i18n";
@@ -53,6 +53,10 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
   if (!multi || host === undefined) return null;
 
   const name = hostName(servers, host) ?? host;
+  // The machine's IDENTITY tint, or null when there is nothing to tell apart (lib/hosts.ts). It is
+  // read here and not in AddressTag for the same reason the hide rule is here: which machine a row
+  // is about is a fact about the snapshot, and this is the one component that already holds it.
+  const slot = hostSlot(servers, host);
   // TIER 2, and only tier 2: this chip degrades when the LEAD can't reach this member. It says
   // nothing about whether the phone can reach the lead — that is the header pill, the banner and the
   // dog, all reading one shared clock, and duplicating their answer here is how two surfaces start
@@ -106,6 +110,9 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
         aria-label={label}
         className={cn(
           "inline-flex min-w-0 items-center gap-1 text-[10px]/3 font-medium uppercase tracking-wide",
+          // Degraded first, always: the run is two hundred pixels from the box being typed into, and
+          // "which machine" must never outrank "that machine is not taking writes". The NAME stays
+          // this colour either way — only the glyph below carries the identity tint.
           degraded ? "text-status-blocked" : "text-muted-foreground",
           className,
         )}
@@ -113,7 +120,10 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
         {degraded ? (
           <ServerOff className="size-2.5 shrink-0" aria-hidden />
         ) : (
-          <Server className="size-2.5 shrink-0" aria-hidden />
+          <Server
+            className={cn("size-2.5 shrink-0", slot !== null && HOST_TEXT_CLASSES[slot])}
+            aria-hidden
+          />
         )}
         <span className="truncate" aria-hidden>
           {name}
@@ -130,6 +140,7 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
       name={name}
       size={target ? "md" : "sm"}
       tone={degraded ? "alert" : "quiet"}
+      slot={slot}
       className={className}
     />
   );

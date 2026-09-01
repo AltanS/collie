@@ -505,6 +505,28 @@ export const rosterNine: ServerSummary[] = [
   ),
 ];
 
+/**
+ * Ten machines, one per host colour — the palette card's roster and nothing else.
+ *
+ * The ids are CHOSEN, not arbitrary: `hostSlot` hands this exact set slots 0 through 9 with no two
+ * colliding, which is the only way to see all ten tints at once. A real pack's colours are whatever
+ * its names hash to ({@link rosterFive} lands on 0, 2, 4, 8 and 9), and that is the honest picture —
+ * this roster exists to show the palette, not to promise an even spread.
+ */
+export const rosterPalette: ServerSummary[] = [
+  lead,
+  ...["shed", "porch", "garage", "pier", "loft", "shop", "attic", "studio", "cellar"].map(
+    (id): ServerSummary => ({
+      id,
+      name: id,
+      isLead: false,
+      reachable: true,
+      protocol: "ok",
+      lastSeenAt: TS - 5 * SEC,
+    }),
+  ),
+];
+
 // ── The census (`GET /api/pack`) ─────────────────────────────────────────────────────────────────
 //
 // One page's worth of paperwork per machine: enrolment, warrant and secret generations, versions.

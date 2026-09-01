@@ -219,6 +219,59 @@
      (alpha-bar.tsx). */
   --status-info: light-dark(oklch(0.46 0.14 230), oklch(0.8 0.15 230));
 
+  /* ── Per-host identity palette (components/host-chip.tsx, lib/hosts.ts) ──────────────────────
+     Ten hues, `--host-0` … `--host-9`, handed to machines by lib/hosts.ts `hostSlot`. They are an
+     IDENTITY, never a state: nothing about a host's health, version or reachability is encoded
+     here, and the machine's NAME is always rendered beside the tint (WCAG 1.4.1 — colour is the
+     second encoding, never the only one). On a solo collie no host wears one at all.
+
+     WHY THESE TEN HUES, AND NOT TAILWIND'S SHADE RAMP. Four bands of the wheel are already spoken
+     for by the status palette above and a host tint must never be read as a status: blocked 24-27,
+     working 72-82, done 149-152, info 230. What is left is ten hues at ~20-90 degrees of
+     separation — orange 41, lime 132, teal 185, cyan 221, sky 241, blue 262, indigo 280,
+     purple 302, fuchsia 325, pink 352 — and the SLOT ORDER below interleaves them, so the linear
+     probe in `hostSlot` hands neighbouring slots hues from opposite sides of the wheel.
+     Two hues sit near a status and are kept deliberately: cyan (9 off `info`) and sky (11 off it).
+     `--status-info` is drawn in exactly one place, the prerelease strip in the header
+     (alpha-bar.tsx), and never beside a host mark. Everything nearer a status than that was
+     dropped: rose and red (blocked), amber and yellow (working), green and emerald (done).
+
+     The light halves are NOT Tailwind's `-600` shades. Tailwind's 600s read 2.4-4.7:1, i.e. most of
+     the ramp fails 4.5 outright, and its 700s and 800s fail too for the low-chroma hues. So the
+     light half is tuned the way the status palette is: L 0.46, the hue's maximum in-gamut chroma
+     capped at 0.20. The dark half IS Tailwind's `-400` L/C at the same hue — the ramp's dark end
+     glows correctly on near-black and needed no work.
+
+     The tint is applied to the GLYPH ONLY (ui/address-tag.tsx, host-chip.tsx) — the tag's border,
+     background and name stay the literal untinted `border-border bg-muted/60 text-muted-foreground`
+     always; only the leading icon inside it wears `text-host-N`. A wash across the whole pill read
+     as too much and was dropped. The table below is a RECORD of the wash's rasterised chip contrast
+     from when `bg-host-N/15` under `text-host-N` was still applied to the whole tag; it no longer
+     drives what ships, since `text-host-N` on a small glyph over `--muted/60` clears every one of
+     these grounds by a wider margin than the wash did:
+       slot 0 cyan    5.07/5.48 light   8.39/7.27 dark
+       slot 1 orange  5.46/5.90          6.47/5.63
+       slot 2 purple  5.71/6.16          5.89/5.13
+       slot 3 lime    5.03/5.44          9.74/8.38
+       slot 4 pink    5.47/5.96          6.01/5.25
+       slot 5 teal    4.96/5.37          8.43/7.22
+       slot 6 blue    5.40/5.86          6.09/5.30
+       slot 7 fuchsia 5.65/6.12          6.36/5.55
+       slot 8 sky     5.11/5.55          7.10/6.17
+       slot 9 indigo  5.58/6.08          5.34/4.67   ← the palette's tightest cell
+     Every cell clears 4.5 on both permitted grounds. `--muted` and `--accent` are not permitted
+     grounds here either, for the reason the status block states. */
+  --host-0: light-dark(oklch(0.46 0.085 221), oklch(0.789 0.154 221));
+  --host-1: light-dark(oklch(0.46 0.143 41), oklch(0.75 0.183 41));
+  --host-2: light-dark(oklch(0.46 0.2 302), oklch(0.714 0.203 302));
+  --host-3: light-dark(oklch(0.46 0.129 132), oklch(0.841 0.238 132));
+  --host-4: light-dark(oklch(0.46 0.192 352), oklch(0.718 0.202 352));
+  --host-5: light-dark(oklch(0.46 0.082 185), oklch(0.777 0.152 185));
+  --host-6: light-dark(oklch(0.46 0.2 262), oklch(0.707 0.165 262));
+  --host-7: light-dark(oklch(0.46 0.2 325), oklch(0.74 0.238 325));
+  --host-8: light-dark(oklch(0.46 0.108 241), oklch(0.746 0.16 241));
+  --host-9: light-dark(oklch(0.46 0.2 280), oklch(0.673 0.182 280));
+
   /* ── Terminal palette ─────────────────────────────────────────────────────────────────────────
      The 16 indexed ANSI slots, emitted by lib/ansi.ts as var(--ansi-N).
 
@@ -293,6 +346,17 @@
   --color-status-idle: var(--status-idle);
   --color-status-unknown: var(--status-unknown);
   --color-status-info: var(--status-info);
+
+  --color-host-0: var(--host-0);
+  --color-host-1: var(--host-1);
+  --color-host-2: var(--host-2);
+  --color-host-3: var(--host-3);
+  --color-host-4: var(--host-4);
+  --color-host-5: var(--host-5);
+  --color-host-6: var(--host-6);
+  --color-host-7: var(--host-7);
+  --color-host-8: var(--host-8);
+  --color-host-9: var(--host-9);
 
   --font-mono:
     "Nerd Font Symbols", "JetBrains Mono", "Cascadia Mono", "Cascadia Code",

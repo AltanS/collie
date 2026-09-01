@@ -2,7 +2,7 @@ import { Crown, Server, Shield } from "lucide-react";
 
 import { useLocale } from "@/hooks/use-locale";
 import { hostHealth, type HostHealth } from "@/lib/host-health";
-import { countsFor, type HostCounts } from "@/lib/hosts";
+import { HOST_TEXT_CLASSES, countsFor, hostSlot, type HostCounts } from "@/lib/hosts";
 import { t, tn } from "@/lib/i18n";
 import type { PackMemberStatus, PackStatusResponse, ServerSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -246,10 +246,17 @@ interface PackFormationProps {
   status: PackStatusResponse;
   health: ReadonlyMap<string, HostHealth>;
   counts: Map<string, HostCounts>;
+  /**
+   * The SNAPSHOT's roster, which is where the per-host identity tint is assigned (lib/hosts.ts). The
+   * census in `status` names the same machines, but the colours have to come from the same roster
+   * the dashboard used or a machine would change colour between the two screens — which is the one
+   * thing an identity colour may never do. A member the snapshot does not list simply goes untinted.
+   */
+  servers?: readonly ServerSummary[];
   onSelect: (member: PackMemberStatus) => void;
 }
 
-export function PackFormation({ status, health, counts, onSelect }: PackFormationProps) {
+export function PackFormation({ status, health, counts, servers, onSelect }: PackFormationProps) {
   useLocale();
   const nodes = formationLayout(status.members, status.deputy?.id ?? null);
   const height = formationHeight(nodes);
@@ -295,6 +302,7 @@ export function PackFormation({ status, health, counts, onSelect }: PackFormatio
             node={n}
             health={memberHealth(health, n.member)}
             counts={countsFor(counts, n.member.id)}
+            slot={hostSlot(servers, n.member.id)}
             onSelect={onSelect}
           />
         ))}
@@ -338,11 +346,14 @@ function FormationNodeMark({
   node,
   health,
   counts,
+  slot,
   onSelect,
 }: {
   node: FormationNode;
   health: HostHealth;
   counts: HostCounts;
+  /** The machine's identity tint, or `null` for none — see {@link PackFormationProps.servers}. */
+  slot: number | null;
   onSelect: (member: PackMemberStatus) => void;
 }) {
   const m = node.member;
@@ -403,12 +414,16 @@ function FormationNodeMark({
           counts.blocked > 0 && "motion-safe:animate-pulse",
         )}
       />
+      {/* The node's own glyph carries the identity tint — this page names machines without a
+          HostChip, and a separate coloured dot would be a second mark for the same fact. It is the
+          RING that carries health, in the status vocabulary, and the two never share a colour: the
+          host hues are chosen to avoid every status hue (index.css). */}
       <Server
         x={node.x - 9}
         y={node.y - 9}
         width={18}
         height={18}
-        className="text-muted-foreground"
+        className={slot === null ? "text-muted-foreground" : HOST_TEXT_CLASSES[slot]}
         aria-hidden
       />
 

@@ -255,3 +255,26 @@ describe("ServerSwitcher — staleness on the rows", () => {
     expect(screen.getByText(/unreachable · last seen 10m/i)).toBeInTheDocument();
   });
 });
+
+// The switcher names machines with its OWN rows, not with a HostChip, so it is one of the two places
+// the tint has to be applied by hand — and therefore one of the two places it can silently go
+// missing.
+describe("ServerSwitcher — the per-host tint", () => {
+  const glyphClass = (name: RegExp) => row(name).querySelector("svg")!.getAttribute("class") ?? "";
+
+  it("tints each row's leading glyph with that machine's own colour", async () => {
+    // bluefin / workshop / attic on this roster take slots 2 / 9 / 8 (lib/hosts.ts). Typed out
+    // rather than recomputed: changing the hash changes colours the operator has already learned.
+    renderSwitcher([lead, peer, down], undefined);
+    await userEvent.click(trigger()!);
+    expect(glyphClass(/bluefin/)).toContain("text-host-2");
+    expect(glyphClass(/workshop/)).toContain("text-host-9");
+    expect(glyphClass(/attic/)).toContain("text-host-8");
+  });
+
+  it("adds no second mark for the same fact — the glyph is tinted, not joined by a dot", async () => {
+    renderSwitcher([lead, peer], undefined);
+    await userEvent.click(trigger()!);
+    expect(row(/bluefin/).querySelector('[class*="bg-host-"]')).toBeNull();
+  });
+});

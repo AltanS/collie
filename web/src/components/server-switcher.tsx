@@ -8,7 +8,7 @@ import { BottomSheet } from "@/components/ui/sheet";
 import { homePath, packPath } from "@/lib/nav";
 import { hostHealth } from "@/lib/host-health";
 import { usePack } from "@/components/pack-provider";
-import { countsFor, hostCounts } from "@/lib/hosts";
+import { HOST_TEXT_CLASSES, countsFor, hostCounts, hostSlot } from "@/lib/hosts";
 import type { Scope } from "@/lib/scope";
 import type { AgentView, ServerSummary } from "@/lib/types";
 import { t, tn } from "@/lib/i18n";
@@ -109,6 +109,10 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
               const active = isActive(s);
               const c = countsFor(counts, s.id);
               const h = health.get(s.id) ?? hostHealth(s, { at: 0, pollMs: 0 });
+              // This sheet names machines WITHOUT a HostChip — the rows are its own — so it carries
+              // the identity tint itself, on the glyph that is already standing at the head of the
+              // row. A dot beside that glyph would be a second mark for the same fact.
+              const slot = hostSlot(servers, s.id);
               return (
                 <li key={s.id}>
                   <button
@@ -128,7 +132,13 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                       !h.writable && "opacity-60",
                     )}
                   >
-                    <Server className="size-4 shrink-0 text-muted-foreground" />
+                    <Server
+                      className={cn(
+                        "size-4 shrink-0",
+                        slot === null ? "text-muted-foreground" : HOST_TEXT_CLASSES[slot],
+                      )}
+                      aria-hidden
+                    />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="truncate text-sm font-medium">{s.name || s.id}</span>

@@ -7,7 +7,7 @@ import { PackProvider } from "@/components/pack-provider";
 import { PackSettingsCard } from "@/components/pack-settings-card";
 import { ServerSwitcher } from "@/components/server-switcher";
 import { type PackData } from "@/lib/loaders";
-import type { PackMemberStatus } from "@/lib/types";
+import type { PackMemberStatus, ServerSummary } from "@/lib/types";
 import { fixturePackStatus, fixtureServers } from "@/test/handlers";
 import { withHeaderHost } from "@/test/header-host";
 import { PackRoute } from "./pack";
@@ -18,10 +18,17 @@ import { PackRoute } from "./pack";
 // Settings row, no switcher footer — the census is host chrome, and host chrome is gated on there
 // being more than one machine. The multi-host cases below are the same page with real members on it.
 
-function renderPack(data: PackData, entry = "/pack") {
+function renderPack(data: PackData, entry = "/pack", servers?: ServerSummary[]) {
   const router = createMemoryRouter(
     [
-      { path: "/pack", loader: () => data, element: withHeaderHost(<PackRoute />) },
+      {
+        path: "/pack",
+        loader: () => data,
+        // The roster is OPTIONAL here, and absent by default, because the census is what this page
+        // renders: `servers` reaches it only to colour the nodes, and every assertion that is not
+        // about colour must keep passing with none.
+        element: withHeaderHost(<PackProvider servers={servers}>{<PackRoute />}</PackProvider>),
+      },
       { path: "/", element: <div data-testid="home" /> },
     ],
     { initialEntries: [entry] },
@@ -295,5 +302,31 @@ describe("the entry points", () => {
     await user.click(screen.getByRole("button", { name: /Switch host/ }));
     await user.click(await screen.findByRole("button", { name: "Pack overview" }));
     expect(await screen.findByTestId("pack")).toBeInTheDocument();
+  });
+});
+
+// The formation names machines with its own SVG nodes, not with a HostChip — the second of the two
+// places the tint is applied by hand, and so the second place it can silently go missing. The
+// colours come from the SNAPSHOT's roster and not from the census, because a machine that changed
+// colour between the dashboard and this page would be worse than one that never had a colour.
+describe("PackRoute — the per-host tint", () => {
+  const node = async (name: RegExp) =>
+    (await screen.findAllByRole("button", { name })).find((n) => n.tagName.toLowerCase() === "g")!;
+
+  it("tints each node's glyph with the same colour that machine wears on the dashboard", async () => {
+    // fixtureServers is bluefin / workshop / attic, which lib/hosts.ts slots 2 / 9 / 8 — the same
+    // numbers host-chip.test.tsx asserts, written out for the same reason.
+    renderPack(loaded, "/pack", fixtureServers);
+    expect((await node(/^bluefin/)).querySelector("svg")!.getAttribute("class")).toContain("text-host-2");
+    expect((await node(/^workshop/)).querySelector("svg")!.getAttribute("class")).toContain("text-host-9");
+    expect((await node(/^attic/)).querySelector("svg")!.getAttribute("class")).toContain("text-host-8");
+  });
+
+  it("leaves the page exactly as it was when there is no roster to colour against", async () => {
+    renderPack(loaded);
+    expect((await node(/^bluefin/)).querySelector("svg")!.getAttribute("class")).toContain(
+      "text-muted-foreground",
+    );
+    expect(document.body.innerHTML).not.toMatch(/host-\d/);
   });
 });

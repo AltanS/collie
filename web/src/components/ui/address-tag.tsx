@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { HOST_SLOT_COUNT, HOST_TEXT_CLASSES } from "@/lib/hosts";
 import { cn } from "@/lib/utils";
 
 interface AddressTagProps {
@@ -19,6 +20,14 @@ interface AddressTagProps {
   size?: "sm" | "md";
   /** `alert` is the degraded reading — dashed, in the blocked colour. The caller owns the condition. */
   tone?: "quiet" | "alert";
+  /**
+   * The identity tint, 0-9, from `lib/hosts.ts` `hostSlot`. `null` or absent = no tint, and the tag
+   * renders exactly as it always has — which is what a solo install gets, and what a session tag
+   * gets, since a session has no identity to carry. `alert` outranks it: an unreachable machine is a
+   * STATE and states win over identity, or a tag would announce "workshop" in workshop's colour
+   * while saying nothing about the fact that workshop is not answering.
+   */
+  slot?: number | null;
   className?: string;
 }
 
@@ -46,8 +55,12 @@ export function AddressTag({
   name,
   size = "sm",
   tone = "quiet",
+  slot,
   className,
 }: AddressTagProps) {
+  // Alert wins over identity (see `slot`'s doc above): the glyph carries the host tint only on the
+  // quiet reading, never the alert one.
+  const glyphTint = tone === "quiet" ? glyphTintClass(slot) : undefined;
   return (
     <span
       aria-label={ariaLabel}
@@ -62,11 +75,13 @@ export function AddressTag({
             // legible, dashed rather than dimmed, so a blocked agent on a down machine is never
             // greyed away.
             "border-dashed border-status-blocked/50 bg-status-blocked/10 text-status-blocked"
-          : "border-border bg-muted/60 text-muted-foreground",
+          : // The tag itself never tints — only the glyph does (see `glyphTintClass`). This is the
+            // one literal, untinted reading of the box, on every quiet tag regardless of host.
+            "border-border bg-muted/60 text-muted-foreground",
         className,
       )}
     >
-      {glyph}
+      <span className={glyphTint}>{glyph}</span>
       {prefix !== undefined && (
         <span className="shrink-0 text-muted-foreground/70" aria-hidden>
           {prefix}
@@ -77,4 +92,18 @@ export function AddressTag({
       </span>
     </span>
   );
+}
+
+/**
+ * The GLYPH's own tint class, or `undefined` for none. This is the ONLY place a host colour reaches
+ * the tag — the border, the background and the name stay the literal untinted classes always
+ * (above), so ten machines never produce ten different KINDS of tag, only ten different glyphs.
+ *
+ * An index outside the palette is no tint at all rather than an undefined class name: the tag has to
+ * survive a caller that computed its slot against a different roster.
+ */
+function glyphTintClass(slot: number | null | undefined): string | undefined {
+  if (slot === null || slot === undefined) return undefined;
+  if (slot < 0 || slot >= HOST_SLOT_COUNT) return undefined;
+  return HOST_TEXT_CLASSES[slot];
 }

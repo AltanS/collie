@@ -346,3 +346,115 @@ export function hostCounts(agents: readonly AgentView[]): Map<string, HostCounts
 export function countsFor(counts: Map<string, HostCounts>, host: string): HostCounts {
   return counts.get(host) ?? ZERO;
 }
+
+// ── Per-host colour ──────────────────────────────────────────────────────────────────────────────
+//
+// On a pack the dashboard's rows come from several machines at once, and the host NAME is the only
+// thing that tells them apart — a word the eye has to stop and read on every row. A tint reaches the
+// operator before the word does. It never replaces the word (WCAG 1.4.1): every surface that tints
+// still spells the machine out, and the tint carries no meaning of its own beyond "same machine".
+//
+// The values are the ten `--host-N` tokens in index.css, which records the hues, the shades and the
+// measured contrast. This module owns only WHICH machine gets WHICH slot.
+
+/** How many host tints exist. Ten, because index.css defines ten and no more. */
+export const HOST_SLOT_COUNT = 10;
+
+/**
+ * Slot N as INK alone — the glyph, and only the glyph, everywhere a host is named. Written out as
+ * ten literals rather than built from a template: Tailwind scans source text for class names it can
+ * see, and `` `text-host-${n}` `` is a class it cannot.
+ */
+export const HOST_TEXT_CLASSES: readonly string[] = [
+  "text-host-0",
+  "text-host-1",
+  "text-host-2",
+  "text-host-3",
+  "text-host-4",
+  "text-host-5",
+  "text-host-6",
+  "text-host-7",
+  "text-host-8",
+  "text-host-9",
+];
+
+/**
+ * FNV-1a, 32-bit, over the id's UTF-16 code units. A hash and not `indexOf` in the roster, because
+ * position is not stable: enrolling a machine whose name sorts first would otherwise re-colour every
+ * other machine in the pack, and the operator's memory of "the orange one" is the whole feature.
+ *
+ * `Math.imul` because the multiply overflows 2^53 otherwise and JS would silently lose the low bits
+ * the hash is made of.
+ */
+export function hashId(id: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i += 1) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Every member's slot, computed once per roster.
+ *
+ * The rule: take the roster's ids in SORTED order, and give each one `hash(id) % 10` or, if that is
+ * taken, the next free slot going up (wrapping). Sorted rather than as-listed because the snapshot's
+ * order is the lead's business and can change between polls; sorting makes the whole assignment a
+ * pure function of the SET of ids, so a machine keeps its colour across reloads and across a peer
+ * joining or leaving.
+ *
+ * Past ten members every slot is taken and the probe stops probing — the eleventh machine simply
+ * shares a colour with whoever hashed to the same slot. Ten is the honest ceiling of a palette that
+ * has to stay clear of the status hues (index.css says why); beyond it the name is the answer, as it
+ * always was.
+ */
+function slotMap(servers: readonly { id: string }[]): Map<string, number> {
+  const taken = new Set<number>();
+  const slots = new Map<string, number>();
+  for (const id of servers.map((s) => s.id).toSorted()) {
+    let slot = hashId(id) % HOST_SLOT_COUNT;
+    // Bounded by the palette size: once every slot is taken this walks all the way round and lands
+    // back on the hash's own answer, which is the wrap described above rather than a hang.
+    for (let probe = 0; probe < HOST_SLOT_COUNT && taken.has(slot); probe += 1) {
+      slot = (slot + 1) % HOST_SLOT_COUNT;
+    }
+    taken.add(slot);
+    slots.set(id, slot);
+  }
+  return slots;
+}
+
+// Keyed on the roster ARRAY, so the map is built once per snapshot rather than once per chip — a
+// dashboard on a pack mounts one HostChip per row. Weak, so a stale snapshot's map is collected with
+// it. Correct by construction: a new roster array is a new key, and `servers` is only ever replaced,
+// never mutated in place (lib/snapshot.ts).
+const SLOT_CACHE = new WeakMap<readonly { id: string }[], Map<string, number>>();
+
+/**
+ * Which of the ten host tints this machine wears, or `null` for "none, and none is correct".
+ *
+ * `null` in three cases, and all three are the same statement — there is nothing to tell apart:
+ *   · the snapshot describes fewer than two machines (every install that is not a pack), so the
+ *     whole dimension is invisible exactly as {@link isMultiHost} makes the rest of it invisible;
+ *   · there is no machine to name at all;
+ *   · the id is not in the roster — a member that departed while you were looking at it. It keeps
+ *     its NAME ({@link hostName} refuses to relabel it) and loses only the tint, because a tint is a
+ *     claim about the current roster and this id is no longer in it.
+ *
+ * An absent `host` means the lead, the same way an absent `?h=` does everywhere else in this module.
+ */
+export function hostSlot(
+  servers: readonly ServerSummary[] | undefined,
+  host: string | undefined,
+): number | null {
+  if (!isMultiHost(servers) || servers === undefined) return null;
+  const id = host ?? leadHost(servers);
+  if (id === undefined) return null;
+  let slots = SLOT_CACHE.get(servers);
+  if (slots === undefined) {
+    slots = slotMap(servers);
+    SLOT_CACHE.set(servers, slots);
+  }
+  return slots.get(id) ?? null;
+}

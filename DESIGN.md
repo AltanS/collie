@@ -211,6 +211,19 @@ in is the box that is visible — and moving the padding above it to below it. T
 half-pixel compensation that was paying for the missing edge: on a symmetric box it tips the other
 way. `composer.tsx` holds the measurement, `composer.test.tsx` pins the mechanism.
 
+### Host colour is an identity, never a state
+
+On a pack, `--host-0` … `--host-9` (`index.css`) tint the machine a row belongs to, so the
+dashboard reads as several machines before the eye reads a name. Ten hues, chosen to avoid every
+`--status-*` hue: a tint may never be mistaken for a status. `lib/hosts.ts` `hostSlot` assigns them
+— `hash(id) % 10`, next free slot on a collision, over the sorted roster — so a machine keeps its
+colour across reloads and across a peer joining. **A solo collie gets no host colour at all**;
+`hostSlot` returns `null` and every surface renders exactly as it did before packs existed. The
+NAME is always drawn beside the tint (WCAG 1.4.1), and health still speaks in the status palette.
+**The tint lands on the GLYPH ONLY**, never as a wash across a tag or a pill: `ui/address-tag.tsx`
+and `host-chip.tsx`'s name text and border stay the literal untinted classes on every surface, and
+only the leading Server icon carries `text-host-N`. A whole-tag wash was tried and read as too much.
+
 ### A raised panel is `--card`, not `--background`
 
 A sheet, a drawer or any panel that floats **over** the page takes `bg-card` and edges itself with

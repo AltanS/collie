@@ -262,3 +262,81 @@ describe("HostChip — 'unreachable' is the write gate's word, never the receipt
     expect(screen.getByLabelText("Host: bluefin")).toBeInTheDocument();
   });
 });
+
+// ── The identity tint ────────────────────────────────────────────────────────────────────────────
+//
+// Colour is the SECOND encoding here and never the first: every assertion below has a name beside
+// it. What the tests actually pin is the hide rule one more time — a solo install must not gain a
+// single `host-` class — and the precedence: a machine that is not answering is a STATE, and a
+// state outranks whose machine it is. The tint itself lands on the GLYPH ONLY: the tag root (its
+// border, background and name text) stays the literal untinted classes on every variant.
+describe("HostChip — the per-host tint (glyph only)", () => {
+  // `fixtureServers` is bluefin (lead) / workshop / attic, and lib/hosts.ts hands that roster
+  // slots 2 / 9 / 8. The numbers are asserted rather than recomputed: a change to the hash is a
+  // change to every operator's learned colours, and it should have to be typed out here.
+  const tag = (name: string) => screen.getByLabelText(name);
+  // `tag`/`target` route through AddressTag, which wraps the glyph in its own span to carry the
+  // tint (ui/address-tag.tsx) — the svg itself stays undecorated, so the tint lives one level up.
+  // `caption` has no such wrapper; it puts the tint straight on the svg (host-chip.tsx).
+  const glyphOf = (name: string) => {
+    const root = tag(name);
+    const svg = root.querySelector("svg")!;
+    return svg.parentElement !== root ? svg.parentElement! : svg;
+  };
+
+  it("tints the row tag's glyph only — the tag root carries no host class", () => {
+    render(<HostChip host="workshop" />, { wrapper: pack });
+    const root = tag("Host: workshop").className;
+    expect(root).not.toMatch(/bg-host-/);
+    expect(root).not.toMatch(/text-host-/);
+    expect(glyphOf("Host: workshop").getAttribute("class")).toMatch(/text-host-9/);
+  });
+
+  it("gives two machines two different glyph colours", () => {
+    render(
+      <>
+        <HostChip host="bluefin" />
+        <HostChip host="workshop" />
+      </>,
+      { wrapper: pack },
+    );
+    expect(glyphOf("Host: bluefin").getAttribute("class")).toMatch(/text-host-2/);
+    expect(glyphOf("Host: workshop").getAttribute("class")).toMatch(/text-host-9/);
+  });
+
+  it("lets the unreachable reading win outright — a state outranks an identity", () => {
+    render(<HostChip host="attic" />, { wrapper: pack });
+    const chip = screen.getByLabelText(/attic \(unreachable\)/i);
+    expect(chip.className).toContain("text-status-blocked");
+    expect(chip.className).not.toMatch(/host-\d/);
+    // The glyph itself must not pick up a host tint either — alert wins everywhere, not just on
+    // the root.
+    expect(chip.querySelector("svg")?.getAttribute("class")).not.toMatch(/host-\d/);
+  });
+
+  it("tints only the caption run's glyph — the name stays the muted ink", () => {
+    render(<HostChip host="workshop" variant="caption" />, { wrapper: pack });
+    const root = tag("Sends to host: workshop");
+    expect(root.className).not.toMatch(/host-\d/);
+    expect(glyphOf("Sends to host: workshop").getAttribute("class")).toMatch(/text-host-9/);
+  });
+
+  it("tints only the write surface header's glyph — its pill is already emphasis", () => {
+    render(<HostChip host="workshop" variant="target" />, { wrapper: pack });
+    const root = tag("Sends to host: workshop");
+    expect(root.className).not.toMatch(/bg-host-/);
+    expect(root.className).not.toMatch(/text-host-/);
+    expect(glyphOf("Sends to host: workshop").getAttribute("class")).toMatch(/text-host-9/);
+  });
+
+  it("carries no host class ANYWHERE on a one-machine pack", () => {
+    // The hide rule, restated in colour: a solo collie renders the dashboard it always rendered.
+    render(<AgentList agents={fixtureAgents} onOpen={vi.fn()} />, { wrapper: one });
+    expect(document.body.innerHTML).not.toMatch(/host-\d/);
+  });
+
+  it("carries no host class with no provider at all", () => {
+    render(<HostChip host="workshop" />);
+    expect(document.body.innerHTML).not.toMatch(/host-\d/);
+  });
+});
