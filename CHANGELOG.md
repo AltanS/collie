@@ -32,6 +32,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - The "Side by side" instructions moved out of `docs/upgrading.md` into their own `docs/deployment.md` section. ([0231500](https://github.com/AltanS/collie/commit/0231500))
 
+### Fixed
+
+- **Claude's slash-command autocomplete no longer hides the input box.** The completion list is taller than the statusline window the chrome walk allows, so the box went undetected: the pane fell back to the raw mirror and every send stalled with "Message didn't reach the input box". The popup is now read as its own block and rendered as a list. ([c265d3e](https://github.com/AltanS/collie/commit/c265d3e))
+
 ### Removed
 
 - Pull-to-refresh; polling already keeps the view fresh. ([86e8d78](https://github.com/AltanS/collie/commit/86e8d78))
