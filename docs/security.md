@@ -47,6 +47,19 @@ Key security boundaries and risks:
 
 Restrict access using Tailscale ACLs and `COLLIE_TRUSTED_USER`. Provided as-is, without warranty.
 
+## What leaves your machine
+
+Nothing, by default and by policy. Collie sends no install events, no usage statistics, no crash
+reports and no analytics. There is no flag that enables them.
+
+The one unprompted outbound call is the update check: an anonymous HTTPS `GET` to GitHub's public
+tags API (`bridge/update.ts`) that compares your version to the newest tag. It carries no data about
+you or your machine, only the static user-agent `collie-update-check`.
+
+If collection is ever added, explicit opt-in is the ceiling — off by default, asked as a visible
+question, never carried by a flag or a default. Removing that promise would be a breaking change
+([ADR 0034](../.adr/0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md)).
+
 ## Pair a device — the write credential
 
 The two device gates answer different questions, and you can run either, both, or neither:
