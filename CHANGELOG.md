@@ -26,6 +26,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - The read-only strip links to Settings → Paired devices. ([defec91](https://github.com/AltanS/collie/commit/defec91))
 - Per-host colour on the server glyph in pack mode, ten stable hues. ([e3db22d](https://github.com/AltanS/collie/commit/e3db22d))
+- The new-space sheet picks the host in pack mode; unreachable or incompatible members are shown but disabled. ([af22f6d](https://github.com/AltanS/collie/commit/af22f6d))
 
 ### Changed
 
