@@ -1,20 +1,11 @@
 # Contributing to Collie
 
-This guide covers the essentials: which branch to target, which CI checks must pass, and the
-convention that most often trips people up. Read [`CLAUDE.md`](./CLAUDE.md) for the full working
-agreement.
+This guide covers the essentials: which CI checks must pass and the convention that most often
+trips people up. Read [`CLAUDE.md`](./CLAUDE.md) for the full working agreement.
 
-## Base branches
+## Base branch
 
-**Open bugfixes against `main`**. They reach the stable line first and merge into `v1`
-automatically. **Open features, and anything touching `cli/` or the bridge, against `v1`.** The
-`main` branch remains in maintenance mode until 1.0.0 ships.
-
-The split exists because `v1` is 327 commits ahead of `main`. A feature branched off `main` targets
-an outdated codebase and requires a rewrite before it can land. Bugfixes are small enough to
-backport cleanly, and `main` is where 0.x users receive them.
-
-When 1.0.0 ships, `main` becomes the 1.0 line and all changes will target `main`.
+**Open every PR against `main`.** There is one line of development, and `main` is it.
 
 ## Before you open a PR
 
