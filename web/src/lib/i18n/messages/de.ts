@@ -151,7 +151,7 @@ export const de: Dictionary = {
   "settings.typeface.system": "Systemstandard",
   "settings.typeface.note.system": "Systemschrift des Geräts. Kein zusätzlicher Download.",
   "settings.typeface.note.grotesk": "Eigene Collie-Schrift, abgestimmt auf das Logo.",
-  "settings.typeface.note.aldrich": "Nur ein Schnitt. Fette Schriftschnitte werden vom Browser simuliert.",
+  "settings.typeface.note.aldrich": "Nur eine Schriftstärke: Fetter Text wird wie normaler Text dargestellt.",
   "settings.typeface.note.operator": "Vom Betreiber dieser Collie-Instanz hinterlegt.",
 
   // --- settings.fonts ---

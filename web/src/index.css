@@ -441,12 +441,18 @@
 /* Aldrich — the second SHIPPED face, and the one a reader picks deliberately. Built by the same
  * scripts/build-ui-font.sh run, subset to the same ranges, 8 KB.
  *
- * ONE WEIGHT, AND THE BOLD IS THE BROWSER'S. Aldrich is drawn at 400 and upstream ships nothing
- * else, so `font-weight: 400` is the honest declaration. The app asks for 500 and 600 in a hundred
- * places, and every one of them renders as SYNTHESIZED bold — the engine smearing the 400 outlines.
- * That is accepted, disclosed in the Settings note under the picker, and is why this line is not
- * `400 700`: a RANGE would tell the browser it already has those weights, suppress synthesis, and
- * flatten every bold in the app to regular. A wrong-looking bold beats no bold at all.
+ * ONE WEIGHT, AND NO FAKE SECOND ONE. Aldrich is drawn at 400 and upstream ships nothing else, so
+ * `font-weight: 400` is the honest declaration. The app asks for 500 and 600 in a hundred places,
+ * and the engine used to answer every one of them by smearing the 400 outlines. MEASURED, that
+ * loses: Aldrich's counters are tight to begin with, and synthesis closes them — 14px sidebar text
+ * smears far worse than a 24px heading, so the damage lands hardest exactly where the app does most
+ * of its reading. `font-synthesis-weight: none` in the base layer below turns it off for every
+ * face, and a survey confirmed no UI here uses weight as the SOLE separator between two states, so
+ * nothing loses its only cue. Bold under Aldrich now renders at Aldrich's one real weight.
+ *
+ * That is still not a licence to write `400 700` here. A RANGE would claim weights this file does
+ * not have, which is a lie to the engine about the font's contents rather than a decision about
+ * rendering — the suppression belongs in the base layer, where it says what it means.
  *
  * Aldrich is SIL OFL 1.1 — public/fonts/LICENSE-aldrich.txt. */
 @font-face {
@@ -532,6 +538,10 @@
        in dark — both under the 3:1 floor for a non-text indicator, on an app whose buttons type
        into a live shell. */
     @apply border-border outline-ring;
+    /* No faked bold, on any face. Aldrich ships one weight and the synthesized 500/600 smeared its
+       counters shut at body sizes; see the @font-face note above. Space Grotesk has a real 400-700
+       axis and is untouched by this. */
+    font-synthesis-weight: none;
   }
   html {
     /* Respect notches; keep the app glued to the viewport edges on mobile. */

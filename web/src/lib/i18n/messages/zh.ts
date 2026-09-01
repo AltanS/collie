@@ -138,7 +138,7 @@ export const zh: Dictionary = {
   "settings.typeface.system": "系统默认",
   "settings.typeface.note.system": "使用系统自带字体，无需额外下载资源。",
   "settings.typeface.note.grotesk": "Collie 定制无衬线体，匹配产品标识风格。",
-  "settings.typeface.note.aldrich": "仅包含单一字重，粗体由浏览器模拟渲染。",
+  "settings.typeface.note.aldrich": "仅提供一种字重，粗体文本显示效果与常规文本相同。",
   "settings.typeface.note.operator": "由当前实例管理员配置添加。",
 
   // --- settings.fonts ---

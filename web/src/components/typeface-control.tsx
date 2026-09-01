@@ -114,9 +114,9 @@ export function TypefaceControl() {
 
         {/* The note. One line per choice, always present and always one line, so choosing a face
             never changes the card's height — the no-shift rule applies to a settings row as much as
-            to a banner. Aldrich's is the one that has to be here: it discloses that every bold in
-            the app is synthesized, which is a cost the reader should meet before they choose it and
-            not afterwards. */}
+            to a banner. Aldrich's is the one that has to be here: it discloses that the face has a
+            single weight, so bold text under it is not heavier, which is a cost the reader should
+            meet before they choose it and not afterwards. */}
         <p className="px-4 py-2.5 text-xs text-muted-foreground">{t(noteKey(chosen))}</p>
       </div>
     </Card>

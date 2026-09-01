@@ -146,7 +146,7 @@ export const ko: Dictionary = {
   "settings.typeface.system": "시스템 기본",
   "settings.typeface.note.system": "디바이스 기본 글꼴을 사용합니다. 추가 다운로드는 없습니다.",
   "settings.typeface.note.grotesk": "Collie 로고 디자인에 맞춰 구성된 전용 글꼴입니다.",
-  "settings.typeface.note.aldrich": "단일 두께 글꼴입니다. 볼드체는 브라우저가 직접 렌더링합니다.",
+  "settings.typeface.note.aldrich": "두께가 한 종류뿐이어서 굵은 글씨도 일반 텍스트와 동일하게 표시됩니다.",
   "settings.typeface.note.operator": "서버 관리자가 직접 추가한 글꼴입니다.",
 
   // --- settings.fonts ---

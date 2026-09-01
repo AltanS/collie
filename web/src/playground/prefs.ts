@@ -51,7 +51,7 @@ export const FACES = {
   aldrich: {
     label: "Aldrich",
     stack: '"Aldrich", "Aldrich Fallback", ui-sans-serif, system-ui, sans-serif',
-    note: "8 KB. Squared industrial sans, single 400 weight — every bold here is the browser faking it, not the font drawing it. The shipped DEFAULT since beta.49.",
+    note: "8 KB. Squared industrial sans, single 400 weight — synthesis is off app-wide, so every 500 and 600 here renders at 400. The shipped DEFAULT since beta.49.",
   },
   // The three below are dev-only long shots: Google CDN, no metric-matched fallback, so first paint
   // shows the system face and the swap shifts layout. Declared in playground.css, never index.css.
@@ -63,12 +63,12 @@ export const FACES = {
   audiowide: {
     label: "Audiowide",
     stack: '"Audiowide", ui-sans-serif, system-ui, sans-serif',
-    note: "Rounded display face, single 400 weight only — every bold in this specimen is browser faux-bold, which matters because the specimen leans on 500/600.",
+    note: "Rounded display face, single 400 weight only — synthesis is off app-wide, so the specimen's 500/600 leanings show no weight change at all.",
   },
   novaRound: {
     label: "Nova Round",
     stack: '"Nova Round", ui-sans-serif, system-ui, sans-serif',
-    note: "Rounded, display-leaning, single 400 weight only — the same faux-bold caveat as Audiowide applies wherever the specimen calls for 500/600.",
+    note: "Rounded, display-leaning, single 400 weight only — the same flat-weight caveat as Audiowide applies wherever the specimen calls for 500/600.",
   },
 } as const;
 

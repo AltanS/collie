@@ -161,9 +161,9 @@ export const en = {
   "settings.typeface.system": "System default",
   "settings.typeface.note.system": "Your phone's own face. Downloads nothing.",
   "settings.typeface.note.grotesk": "Collie's own voice, drawn to match the mark.",
-  // Says the cost out loud rather than letting it be discovered: Aldrich ships one weight, so every
-  // bold in the app is the browser thickening the regular outlines.
-  "settings.typeface.note.aldrich": "One weight — bold is thickened by your browser.",
+  // Says the cost out loud rather than letting it be discovered: Aldrich ships one weight, and the
+  // app suppresses synthesized bold, so bold text under it is not heavier than the rest.
+  "settings.typeface.note.aldrich": "One weight, so bold text looks the same as regular.",
   "settings.typeface.note.operator": "Added by this collie's operator.",
 
   // --- settings.fonts (the terminal face: the mirror's size and the draft field's; NOT the app's own typeface) ---

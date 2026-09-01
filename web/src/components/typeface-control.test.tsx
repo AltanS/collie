@@ -124,7 +124,7 @@ describe("TypefaceControl", () => {
   });
 
   // D5: the note is a phrase, always present, and Aldrich's discloses the cost of its one weight.
-  it("shows a note for the chosen face, and discloses Aldrich's synthesized bold", async () => {
+  it("shows a note for the chosen face, and discloses Aldrich's single weight", async () => {
     config({});
     const user = userEvent.setup();
     const { container } = render(<TypefaceControl />);

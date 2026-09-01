@@ -150,7 +150,7 @@ export const es: Dictionary = {
   "settings.typeface.system": "Predeterminada del sistema",
   "settings.typeface.note.system": "Fuente del sistema del dispositivo. Sin descargas de red.",
   "settings.typeface.note.grotesk": "Tipografía propia de Collie, diseñada a juego con el logotipo.",
-  "settings.typeface.note.aldrich": "Un solo peso. El navegador simula la negrita.",
+  "settings.typeface.note.aldrich": "Solo incluye un grosor, por lo que el texto en negrita se muestra igual que el normal.",
   "settings.typeface.note.operator": "Añadida por el operador de este collie.",
 
   // --- settings.fonts ---

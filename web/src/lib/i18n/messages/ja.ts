@@ -147,7 +147,7 @@ export const ja: Dictionary = {
   "settings.typeface.system": "システム標準",
   "settings.typeface.note.system": "OS標準のフォントを使用します。追加の通信は発生しません。",
   "settings.typeface.note.grotesk": "Collieのロゴに合わせて設計されたフォントです。",
-  "settings.typeface.note.aldrich": "ウェイトは1種類のみです。太字はブラウザによる疑似描画となります。",
+  "settings.typeface.note.aldrich": "ウェイトが1種類のみのため、太字も標準テキストと同じ太さで表示されます。",
   "settings.typeface.note.operator": "ホストの管理者が設定したフォントです。",
 
   // --- settings.fonts ---

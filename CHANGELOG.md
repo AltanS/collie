@@ -10,6 +10,7 @@ All notable changes to Collie are recorded here. The format follows
 
 ### Changed
 
+- **No more faked bold under Aldrich.** Aldrich ships one weight and the engine was inventing the other two, smearing the 400 outlines into counters that are tight to begin with. Measured, 14px sidebar text lost more than a 24px heading did, so the damage landed where the app does most of its reading. `font-synthesis-weight: none` turns synthesis off for every face; Space Grotesk has a real 400-700 axis and renders exactly as before, and a survey confirmed no screen uses weight as its only cue between two states. The Settings note under the picker says what happens now instead of what used to.
 - **The five translations read like native product copy now.** Every German, Spanish, Japanese, Korean and Chinese string was rewritten against the English source with a strict style pass — idiomatic register instead of literal calques, no em dashes. Placeholders and code spans were verified unchanged key by key; 1851 strings moved, ten suspect rewrites were rejected and kept their old text. English is untouched.
 - **The docs and README went through the same style pass.** 42 sections across README, CONTRIBUTING and the nine docs files rewritten into a plainer technical register; every code fence, heading, link target and URL verified byte-identical, eight rewrites rejected for losing one of those.
 
