@@ -22,12 +22,17 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [1.0.2] - 2026-09-01
 
+### Changed
+
+- `docs/deployment.md` ends with one footer instead of two. A plain-text `← back to the README` line sat above the real link, and the site footer strip matches only the link, leaving the plain line as a dangling sentence. ([e880281](https://github.com/AltanS/collie/commit/e880281))
+
 ### Fixed
 
-- **A lead is no longer deposed by a claim nobody can prove.** At boot, only a warrant this lead itself signed and can verify deposes it; a peer reporting a higher warrant generation, or refusing with no warrant, is logged once and ignored. A peer carrying one stale field out of an old pack used to take the new lead's front door down. ([bd7e3b5](https://github.com/AltanS/collie/commit/bd7e3b5))
-- `collie pack leave` clears the deputy designation, the warrant, the standby roster and `standby-devices.json`, so nothing from the pack you left travels into the next one. ([bd7e3b5](https://github.com/AltanS/collie/commit/bd7e3b5))
-- `collie pack remove <member>` drops the deputy designation when it names that member, so `pack status` and `pack deputy --revoke` stop disagreeing about whether the pack has a deputy. ([bd7e3b5](https://github.com/AltanS/collie/commit/bd7e3b5))
-- A stored warrant stamped with another pack's id is discarded at boot, with a log line naming the pack it came from. ([bd7e3b5](https://github.com/AltanS/collie/commit/bd7e3b5))
+- **The working status dot no longer pings; it breathes.** It uses a 2.4 s opacity cycle without a ring or scaling, applied only to the pane chip and the pane header. The dot stays static on the tab, space, card and overview chips, where several at once would read as a strobe rather than as "alive". `prefers-reduced-motion` still disables it. ([a2ee186](https://github.com/AltanS/collie/commit/a2ee186))
+- **A lead is no longer deposed by unprovable claims.** At boot, only a warrant signed and verified by this lead can depose it. If a peer reports a higher warrant generation or refuses with no warrant, the lead logs the event once and ignores it. Stale fields from an old pack no longer take down the new lead's front door. ([bd7e3b5](https://github.com/AltanS/collie/commit/bd7e3b5))
+- `collie pack leave` clears the deputy designation, warrant, standby roster, and `standby-devices.json`, preventing old pack state from leaking into the next pack. ([bd7e3b5](https://github.com/AltanS/collie/commit/bd7e3b5))
+- `collie pack remove <member>` drops the deputy designation if it names that member, keeping `pack status` and `pack deputy --revoke` in agreement. ([bd7e3b5](https://github.com/AltanS/collie/commit/bd7e3b5))
+- Stored warrants stamped with another pack's id are discarded at boot, logging the source pack name. ([bd7e3b5](https://github.com/AltanS/collie/commit/bd7e3b5))
 
 ## [1.0.1] - 2026-09-01
 
