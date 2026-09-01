@@ -1,4 +1,5 @@
-import { KeyRound, Lock } from "lucide-react";
+import { ChevronRight, KeyRound, Lock } from "lucide-react";
+import { Link } from "react-router";
 
 import { Collapse } from "@/components/ui/collapse";
 import { Notice } from "@/components/ui/notice";
@@ -6,6 +7,8 @@ import { usePairing } from "@/lib/pairing";
 import { isReadOnly } from "@/lib/types";
 import type { DeviceAuth } from "@/lib/types";
 import { t } from "@/lib/i18n";
+import { pairedDevicesPath } from "@/lib/nav";
+import { useScope } from "@/lib/session";
 import { useLocale } from "@/hooks/use-locale";
 
 /** Which write gate refused. They are independent on the bridge; pairing outranks. */
@@ -19,12 +22,14 @@ type Gate = "pairing" | "device";
 //   · Header gate (`device`, from the snapshot): a fronting proxy asserts who this device is and the
 //     bridge doesn't have it allowlisted. Nothing on the phone can fix it.
 //   · Pairing gate (lib/pairing.ts): this device holds no bearer token, or the one it holds was
-//     rejected. Fixable right here, which is why this variant names the remedy. It is LATCHED off a
+//     rejected. Fixable right here, which is why this variant names the remedy AND is the way to
+//     it: the pairing strip is a link to the Paired-devices card in Settings. It is LATCHED off a
 //     real refusal rather than polled, because reads are ungated — a poll can never discover it.
 //
-// This file knows the CONDITION and the words for it, and after the ui/notice.tsx migration it owns
-// no styling at all: the tinted band, its floor and its live region are the primitive's. It takes no
-// `className` either, which is the strip contract rather than an omission — a strip is full-bleed
+// This file knows the CONDITION, the words for it and, for the pairing gate, where the remedy is.
+// After the ui/notice.tsx migration it owns no LOOK at all: the tinted band, its floor and its live
+// region are the primitive's; the one class here is the link wrapper's `block`, which is layout.
+// It takes no `className` either, which is the strip contract rather than an omission — a strip is full-bleed
 // viewport chrome and there is no gutter for a caller to set (DESIGN.md §4). If a future change
 // wants this to look different, the change belongs in ui/notice.tsx where every notice gets it.
 //
@@ -61,6 +66,10 @@ type Gate = "pairing" | "device";
 export function ReadOnlyBanner({ device }: { device: DeviceAuth | undefined }) {
   useLocale();
   const { refused } = usePairing();
+  // The scope rides the link like every other navigation in the app (lib/nav.ts): Settings' own back
+  // button goes to `homePath(scope)`, so a scope-less link here would strand the operator on the
+  // lead's dashboard after they paired. The banner is never mounted outside the router.
+  const scope = useScope();
 
   // The pairing latch is checked FIRST and outranks the device gate: both can be true at once, and
   // only the pairing one names a remedy the phone can actually carry out.
@@ -80,16 +89,35 @@ export function ReadOnlyBanner({ device }: { device: DeviceAuth | undefined }) {
     // sliding in behind it. A strip is full-bleed and has no margin at all, so there is nothing left
     // outside the measured item and the slide is one continuous movement by construction.
     <Collapse open={gate !== null}>
-      {gate ? (
-        <Notice
-          variant="strip"
-          tone="caution"
-          announce="status"
-          icon={gate === "pairing" ? <KeyRound /> : <Lock />}
-        >
-          {gate === "pairing"
-            ? t("space.readOnly.notPaired")
-            : t("space.readOnly.deviceUnauthorised")}
+      {gate === "pairing" ? (
+        // ONLY THIS GATE IS A LINK, and that asymmetry is the point: the sentence already says
+        // "pair this device in Settings", so the strip may as well BE the way there. The device gate
+        // has no remedy on the phone (a proxy asserts the name and the bridge's allowlist is on the
+        // host), so making it tappable would promise a fix that does not exist.
+        //
+        // A `<Link>` WRAPPING the primitive, not a prop on it. `ui/notice.tsx` already has
+        // `onActivate`, but that renders a `<button>`, and this is a navigation: an anchor is what
+        // carries a destination into the accessibility tree, what a long-press offers to open in a
+        // new tab, and what the browser shows on hover. Wrapping keeps the primitive untouched —
+        // the tinted band, the 33px floor and the `role="status"` on the body are still its.
+        //
+        // `block` is layout, not styling: an inline anchor around the strip's block root sizes to
+        // its own line box, which is the same fault the primitive's `w-full` note describes. The
+        // accessible name is the sentence inside; the chevron is decorative and says so.
+        <Link to={pairedDevicesPath(scope)} className="block">
+          <Notice
+            variant="strip"
+            tone="caution"
+            announce="status"
+            icon={<KeyRound />}
+            action={<ChevronRight aria-hidden className="size-3.5 opacity-70" />}
+          >
+            {t("space.readOnly.notPaired")}
+          </Notice>
+        </Link>
+      ) : gate === "device" ? (
+        <Notice variant="strip" tone="caution" announce="status" icon={<Lock />}>
+          {t("space.readOnly.deviceUnauthorised")}
         </Notice>
       ) : null}
     </Collapse>

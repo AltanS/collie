@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KeyRound, Loader2, Smartphone } from "lucide-react";
-import { useRevalidator } from "react-router";
+import { useLocation, useRevalidator } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -8,6 +8,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { pairDevice, revokeDevice } from "@/lib/api";
 import { timeAgo } from "@/lib/format";
+import { PAIRED_DEVICES_HASH } from "@/lib/nav";
 import { clearDeviceToken, setDeviceToken, usePairing } from "@/lib/pairing";
 import type { DevicesData } from "@/lib/loaders";
 import type { PairFailure } from "@/lib/types";
@@ -37,6 +38,26 @@ export function PairedDevices({ data }: { data: DevicesData }) {
   const revalidator = useRevalidator();
   const { token, refused } = usePairing();
 
+  // THE CARD ANSWERS TO ITS OWN FRAGMENT. `read-only-banner.tsx` links to `/settings#paired-devices`
+  // (lib/nav.ts owns the spelling), and Settings is a long page — arriving at its top would land the
+  // operator on Theme, several screens above the thing they tapped for. The browser cannot do this
+  // itself: React Router navigates without a document load, so no fragment is ever resolved.
+  //
+  // Focus moves too, and that is the half that is not decoration: a screen reader follows focus, not
+  // scroll, so scrolling alone would leave it reading the page from the top. `tabIndex={-1}` makes
+  // the card focusable programmatically without putting it in the tab order.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash !== `#${PAIRED_DEVICES_HASH}`) return;
+    const card = cardRef.current;
+    if (!card) return;
+    card.scrollIntoView({ block: "start", behavior: "smooth" });
+    // preventScroll: the smooth scroll above owns the movement; focus() would otherwise jump to it
+    // instantly and cancel it.
+    card.focus({ preventScroll: true });
+  }, [hash]);
+
   // Show the pairing form when this device has no credential the bridge would accept: it holds no
   // token, its token was rejected by a write, or the registry itself says it authenticated as
   // nobody while pairing is on. Deliberately NOT shown on a failed load — an unreachable bridge is
@@ -50,7 +71,7 @@ export function PairedDevices({ data }: { data: DevicesData }) {
     pairedAsMessage && data.current ? splitAroundValue(pairedAsMessage, data.current) : ["", ""];
 
   return (
-    <Card className="gap-0 py-0">
+    <Card id={PAIRED_DEVICES_HASH} ref={cardRef} tabIndex={-1} className="gap-0 py-0 outline-none">
       <div className="flex items-start gap-3 p-4 pb-3">
         <KeyRound className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">

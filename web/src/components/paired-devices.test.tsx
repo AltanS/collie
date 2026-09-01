@@ -8,12 +8,17 @@ import { PairedDevices } from "@/components/paired-devices";
 import { getDeviceToken, setDeviceToken, TOKEN_STORAGE_KEY } from "@/lib/pairing";
 import type { DevicesData } from "@/lib/loaders";
 
-// PairedDevices calls useRevalidator() to re-run the settings loader after a pair/revoke. Stub it
-// (hoisted so the vi.mock factory can close over it) so the card renders bare, exactly as
-// snooze-control.test.tsx does, and assert it gets called.
-const { revalidate } = vi.hoisted(() => ({ revalidate: vi.fn() }));
+// PairedDevices calls useRevalidator() to re-run the settings loader after a pair/revoke, and
+// useLocation() to see whether it is the fragment the read-only strip linked to. Stub both (hoisted
+// so the vi.mock factory can close over them) so the card renders bare, exactly as
+// snooze-control.test.tsx does, and assert they get used.
+const { revalidate, hash } = vi.hoisted(() => ({
+  revalidate: vi.fn(),
+  hash: { current: "" },
+}));
 vi.mock("react-router", () => ({
   useRevalidator: () => ({ revalidate, state: "idle" }),
+  useLocation: () => ({ hash: hash.current, pathname: "/settings", search: "", state: null, key: "t" }),
 }));
 
 const UNPAIRED: DevicesData = { enforced: false, current: null, devices: [], error: false };
@@ -24,7 +29,10 @@ const PAIRED: DevicesData = {
   error: false,
 };
 
-beforeEach(() => revalidate.mockClear());
+beforeEach(() => {
+  revalidate.mockClear();
+  hash.current = "";
+});
 
 describe("PairedDevices — pairing", () => {
   test("a successful pair stores the token exactly once and revalidates", async () => {
@@ -148,5 +156,34 @@ describe("PairedDevices — revoking", () => {
 
     await waitFor(() => expect(body).toEqual({ label: "old tablet" }));
     expect(getDeviceToken()).toBe("tok-secret");
+  });
+});
+
+describe("PairedDevices — the fragment the read-only strip links to", () => {
+  // `read-only-banner.tsx` links to `/settings#paired-devices`. React Router navigates without a
+  // document load, so the browser never resolves that fragment itself — this card has to. Settings
+  // is a long page, and its top is the Theme card, several screens above the thing that was tapped.
+  test("with the fragment it scrolls itself into view and takes focus", () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    hash.current = "#paired-devices";
+    render(<PairedDevices data={PAIRED} />);
+
+    const card = document.getElementById("paired-devices");
+    expect(card).not.toBeNull();
+    expect(scrollIntoView).toHaveBeenCalled();
+    // Focus, not just scroll: a screen reader follows focus. tabIndex -1 keeps the card out of the
+    // tab order while still letting it be focused programmatically.
+    expect(document.activeElement).toBe(card);
+    expect(card).toHaveAttribute("tabindex", "-1");
+    scrollIntoView.mockRestore();
+  });
+
+  test("without the fragment it moves nothing", () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    render(<PairedDevices data={PAIRED} />);
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(document.body);
+    scrollIntoView.mockRestore();
   });
 });

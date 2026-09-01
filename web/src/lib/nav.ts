@@ -43,3 +43,15 @@ export function settingsPath(scope?: Scope): string {
 export function packPath(scope?: Scope): string {
   return `/pack${scopeSearch(scope)}`;
 }
+
+/**
+ * The fragment naming the Paired-devices card inside Settings. It is a route-level anchor, so it
+ * lives here beside the paths rather than in the card: `read-only-banner.tsx` links to it and
+ * `paired-devices.tsx` answers to it, and neither should own the other's spelling.
+ */
+export const PAIRED_DEVICES_HASH = "paired-devices";
+
+/** Settings, scrolled to the card that pairs this phone — the read-only strip's remedy. */
+export function pairedDevicesPath(scope?: Scope): string {
+  return `${settingsPath(scope)}#${PAIRED_DEVICES_HASH}`;
+}

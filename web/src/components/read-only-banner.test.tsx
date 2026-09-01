@@ -1,10 +1,20 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render as rtlRender, screen } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach } from "vitest";
 
 import { __resetPairing, clearNotPaired, markNotPaired } from "@/lib/pairing";
 import type { DeviceAuth } from "@/lib/types";
 import { COLLAPSE_MS } from "./ui/collapse";
 import { ReadOnlyBanner } from "./read-only-banner";
+
+/**
+ * Every render goes through a router, because the pairing strip is a `<Link>` and the banner reads
+ * the active scope off the query — the same context it has in home.tsx, space.tsx and agent-chat.tsx,
+ * which are the only three places it is ever mounted. `container` is still this render's own, so the
+ * scoped queries below are unaffected.
+ */
+const render = (ui: ReactElement) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
 
 const REFUSED: DeviceAuth = { enforced: true, device: "pixel-9", authorized: false };
 const ALLOWED: DeviceAuth = { enforced: true, device: "pixel-9", authorized: true };
@@ -60,6 +70,29 @@ describe("ReadOnlyBanner — the two write gates, one notice", () => {
     render(<ReadOnlyBanner device={REFUSED} />);
     expect(screen.getByText(/Not paired/)).toBeInTheDocument();
     expect(screen.queryByText(/Read-only/)).toBeNull();
+  });
+
+  it("the PAIRING strip is a link to the Paired-devices card, and the whole band is the target", () => {
+    // The sentence says "pair this device in Settings"; the strip is the way there. A real anchor,
+    // not a click handler on a div — that is what carries the destination into the accessibility
+    // tree and what a long-press can open. Its accessible name is the sentence itself.
+    markNotPaired();
+    const { container } = render(<ReadOnlyBanner device={REFUSED} />);
+    const link = screen.getByRole("link", { name: /Not paired/ });
+    expect(link).toHaveAttribute("href", "/settings#paired-devices");
+    // The band, not a word inside it: the anchor IS the strip's parent, so every pixel of the 33px
+    // full-bleed row is tappable.
+    expect(link.firstElementChild).toHaveClass("min-h-[33px]");
+    // …and the live region survives the wrapping — it rides the Notice's body, inside the anchor.
+    expect(container.querySelector('[role="status"]')).toHaveTextContent(/Not paired/);
+  });
+
+  it("the DEVICE gate is a plain strip — no link, because the phone has no remedy", () => {
+    // A fronting proxy asserts this device's name and the bridge's allowlist is on the host. A tap
+    // target here would promise a fix that does not exist anywhere in the app.
+    render(<ReadOnlyBanner device={REFUSED} />);
+    expect(screen.getByText(/Read-only/)).toBeInTheDocument();
+    expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("carries the caution tone, from the ONE tint table, and none of its own", () => {
