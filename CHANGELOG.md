@@ -19,6 +19,7 @@ All notable changes to Collie are recorded here. The format follows
 - The post-update hooks nudge swallows a spawn failure of the new binary (ENOEXEC/EACCES) instead of failing an update that already succeeded — the silence its own comment promised.
 - `collie restart` decides the multiplexer before it stops the bridge, so a refusal no longer leaves the bridge down.
 - The refusal lists each multiplexer on its own line, points at the one the environment already names, and prints the exact line to append.
+- `collie join` with only a lead address says that the token is missing and shows how to pass it, instead of a bare usage line.
 
 ## [1.0.0] - 2026-09-01
 

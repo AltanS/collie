@@ -600,6 +600,14 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
   const [address, rawToken] = positional;
   if (address === undefined || rawToken === undefined) {
     deps.io.err("usage: collie join <lead-address> <token|-|@file> [--address <mine>] [--label <name>]");
+    if (address !== undefined) {
+      deps.io.err("error: join needs the invite token as its second argument.");
+      deps.io.err("       Pass `-` and paste the token on stdin, or `@<file>` to read it from a file:");
+      deps.io.err(`         collie join ${address} -`);
+      deps.io.err("       Mint the token on the lead with `collie pack invite`; it is single-use and lasts 10 minutes.");
+    } else {
+      deps.io.err("       Mint the token on the lead with `collie pack invite`; it is single-use and lasts 10 minutes.");
+    }
     return EXIT.USAGE;
   }
 

@@ -579,8 +579,20 @@ describe("collie join", () => {
 
   test("missing arguments are a usage error, not an attempt", async () => {
     const h = harness(null);
+    expect(await cmdJoin(h.deps, [])).toBe(EXIT.USAGE);
+    expect(h.requests).toEqual([]);
+    expect(text(h.io)).toContain("usage: collie join <lead-address> <token|-|@file>");
+    expect(text(h.io)).not.toContain("needs the invite token as its second argument");
+  });
+
+  test("an address with no token explains the token is missing and shows how to pass it", async () => {
+    const h = harness(null);
     expect(await cmdJoin(h.deps, ["desk.ts.net"])).toBe(EXIT.USAGE);
     expect(h.requests).toEqual([]);
+    expect(text(h.io)).toContain("usage: collie join <lead-address> <token|-|@file>");
+    expect(text(h.io)).toContain("error: join needs the invite token as its second argument.");
+    expect(text(h.io)).toContain("collie join desk.ts.net -");
+    expect(text(h.io)).toContain("collie pack invite");
   });
 
   // ── The lead's fingerprint on the invite authenticates the lead to the joiner (F1) ──
