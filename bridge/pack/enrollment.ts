@@ -477,29 +477,83 @@ export function dropMembersBehind(data: TrustStoreData): PackChange<{ dropped: s
  * machine and it may come back"; removal means the operator said otherwise, and keeping the pinned
  * fingerprint of a machine you have disowned is a pin waiting to be honoured by mistake.
  */
-export function removeMember(data: TrustStoreData, memberId: string): PackChange<{ member: string }> | null {
+export function removeMember(
+  data: TrustStoreData,
+  memberId: string,
+): PackChange<{ member: string; deputy: boolean }> | null {
   if (!data.peers.some((p) => p.memberId === memberId)) return null;
+  // ── A DISOWNED MACHINE IS NOT STILL THE DEPUTY ──────────────────────────────
+  // `pack status` reads the DESIGNATION (`cli/pack-status-deputy.ts`), and `pack deputy --revoke`
+  // reads the roster, so removing the named deputy used to leave the two disagreeing out loud:
+  // status printed `deputy <member> — warrant generation N` while `--revoke` answered "this pack
+  // names no deputy". Both were describing the same store. The designation is the operator's
+  // decision about a member, and the operator has just disowned that member, so it goes with it.
+  //
+  // The WARRANT stays. It carries the generation counter, which must never reset inside a pack
+  // (§18.3, RFC §4.4) — dropping it would let an old warrant of this pack verify again. It names a
+  // machine that is no longer pinned, which is not a way back in: a takeover from it is refused at
+  // the TLS handshake, before any warrant is read.
+  const designated = (data.deputy ?? null) === memberId;
+  const peers = data.peers.filter((p) => p.memberId !== memberId);
+  const next: TrustStoreData = designated ? { ...data, peers, deputy: null } : { ...data, peers };
   return {
-    next: { ...data, peers: data.peers.filter((p) => p.memberId !== memberId) },
-    result: { member: memberId },
-    audit: { action: "pack.remove", detail: { member: memberId } },
+    next,
+    result: { member: memberId, deputy: designated },
+    audit: { action: "pack.remove", detail: { member: memberId, deputy: designated } },
   };
 }
 
 /**
- * `collie leave` on a peer: drop the roster entry, the pinned material and the pack secret.
+ * `collie leave` on a peer: drop the roster entry, the pinned material, the pack secret **and every
+ * deputy field the old pack wrote here**.
  *
  * This collie's **own** identity survives, so the operator can re-join without every other member
  * having to re-pin a new certificate. Either side alone ending the link is sufficient (§8.4) — the
  * lead's `pack remove` and this are independent, and a lost disk on one end is handled from the
  * other.
+ *
+ * ── WHY THE DEPUTY FIELDS GO TOO, AND WHY THE COUNTER MAY RESET HERE ─────────
+ * This used to drop the secret and the pins and keep `deputy`, `warrant` and `standbyRoster`. A real
+ * pack found what that costs. An armed deputy at generation 3 left pack A, joined pack B, and kept
+ * reporting generation 3 on `hello`. Pack B's brand-new lead, which had never minted a warrant, read
+ * 3 > 0 as a takeover it had missed, parked itself and took its front door down. One stale field on
+ * one machine was an outage on another.
+ *
+ * The generation counter's "never resets" rule (§18.3, RFC §4.4) is scoped to a pack, and this
+ * machine is leaving one. A counter carried across that boundary is not a defence against replay,
+ * it is a claim about a pack this collie no longer belongs to — which is exactly the claim that did
+ * the damage. `pendingHandover` and `deputySpentAt` go for the same reason: both describe a crown
+ * that is not this pack's.
  */
 export function leavePack(data: TrustStoreData): PackChange<{ pack: string | null }> | null {
-  if (data.pack === null && data.lead === null && data.peers.length === 0 && data.invites.length === 0) {
+  const armed =
+    (data.deputy ?? null) !== null ||
+    (data.warrant ?? null) !== null ||
+    (data.standbyRoster ?? null) !== null ||
+    (data.deputySpentAt ?? null) !== null ||
+    (data.pendingHandover ?? null) !== null;
+  if (
+    data.pack === null &&
+    data.lead === null &&
+    data.peers.length === 0 &&
+    data.invites.length === 0 &&
+    !armed
+  ) {
     return null;
   }
   return {
-    next: { ...data, pack: null, lead: null, peers: [], invites: [] },
+    next: {
+      ...data,
+      pack: null,
+      lead: null,
+      peers: [],
+      invites: [],
+      deputy: null,
+      warrant: null,
+      standbyRoster: null,
+      deputySpentAt: null,
+      pendingHandover: null,
+    },
     result: { pack: data.pack?.packId ?? null },
     audit: { action: "pack.leave", detail: { pack: data.pack?.packId, lead: data.lead?.memberId } },
   };

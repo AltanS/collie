@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
-import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
+import { PACK_PROTOCOL_VERSION, removeMember } from "../bridge/pack/enrollment.ts";
 import { fp, leadStore, material, member, peerStore, T0 } from "../bridge/pack/fixtures.ts";
 import { type OpsRecord, parsePackOps } from "../bridge/pack/ops-store.ts";
 import { checkpointMarker, formatMarker, markerFor, type PackRuntimeFacts } from "../bridge/pack/staleness.ts";
 import {
+  parseTrustStore,
   serializeTrustStore,
   TrustStore,
   type TrustedMember,
@@ -18,6 +19,7 @@ import { mintWarrant, type WarrantPush } from "../bridge/pack/warrant.ts";
 import { capture, context, fakeExec, fakeFiles, fakeOps, STATE, type SeededFiles, type SeededOps } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { cmdPackDeputy } from "./pack-deputy.ts";
+import { leadDeputyLines } from "./pack-status-deputy.ts";
 import { cmdPackStatus, failureLine } from "./pack.ts";
 import type { PackAddDeps, RemoteResult } from "./remote.ts";
 
@@ -625,6 +627,24 @@ describe("pack deputy --revoke", () => {
     await cmdPackDeputy(h.deps, ["--revoke"]);
     expect(h.confirms[0]).toBe("restart collie on nas, attic to retire the old deputy's anchor? [y/N]");
     expect(legs(h)).toEqual(["nas.example:probe", "attic.example:probe", "nas.example:restart", "attic.example:restart"]);
+  });
+
+  // The incident's second half. `pack remove <deputy>` left the designation naming the removed
+  // machine, so `pack status` printed a deputy that `--revoke` then refused to find. Both surfaces
+  // read the same store, so both must say the same thing.
+  test("after `pack remove <deputy>` the two surfaces agree that nobody is named", async () => {
+    const armed = withWarrant(twoPeers(), "nas");
+    const afterRemove = removeMember(armed, "nas")!.next;
+    // `pack status`' designation line is empty, ...
+    expect(leadDeputyLines(afterRemove, T0).some((l) => l.text.includes("deputy nas"))).toBe(false);
+    // ... and the revocation mints one naming nobody rather than claiming there was nothing to do.
+    const h = harness({ store: afterRemove });
+    expect(await cmdPackDeputy(h.deps, ["--revoke"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("names NOBODY");
+    const written = parseTrustStore(h.data()!)!;
+    expect(written.warrant?.warrant.deputyMemberId).toBeNull();
+    // The counter moved forward, never back — the removed machine's generation 1 stays spent.
+    expect(written.warrant?.warrant.generation).toBe(2);
   });
 
   test("names the peers still anchoring the old deputy when they could not be restarted", async () => {

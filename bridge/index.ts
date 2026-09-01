@@ -41,7 +41,14 @@ import { filePairingIo, PairingStore } from "./pairing.ts";
 import { createSttGate } from "./stt/index.ts";
 import { runBootGate } from "./pack/boot-gate.ts";
 import { PEER_BROWSER_ENV, resolvePackRuntime, warnsOnWildcardBind } from "./pack/config.ts";
-import { deposedAnswer, deposedStateFrom, outcomeNow, selfHeal, type DeposedState } from "./pack/deposed.ts";
+import {
+  deposedAnswer,
+  deposedStateFrom,
+  isDepositionProof,
+  outcomeNow,
+  selfHeal,
+  type DeposedState,
+} from "./pack/deposed.ts";
 import { LeadContact } from "./pack/lead-contact.ts";
 import { deputyAnchorOf, dialTls, peerListenerTls } from "./pack/transport.ts";
 import { commitPackChange } from "./pack/enrollment.ts";
@@ -97,7 +104,7 @@ import {
   type CommitOutcome,
 } from "./pack/takeover.ts";
 import { enrollmentOf, TrustStore, type TrustStoreData, type Warrant } from "./pack/trust-store.ts";
-import { currentWarrant, refreshWarrant, type WarrantPush } from "./pack/warrant.ts";
+import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush } from "./pack/warrant.ts";
 import { Push } from "./push.ts";
 import { pluginRoot } from "./root.ts";
 import { startServer } from "./server.ts";
@@ -318,6 +325,27 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
   return state;
 }
 
+// ── A warrant from a pack this collie is not in is discarded, at boot ────────
+// Belt and braces behind `leavePack`, which now clears the deputy fields. A store written by an
+// older build can still hold a warrant for a pack this machine has left — and holding it makes this
+// machine report a generation its own lead never minted, which is what the far end reads as a
+// takeover. Cheap, local, and it runs before the gate below so the gate reads a clean store.
+{
+  const held = trustStore.current();
+  const foreign = held === null ? null : discardForeignWarrant(held);
+  if (foreign !== null) {
+    const dropped = await commitPackChange(trustStore, audit, (current) =>
+      current === null ? null : discardForeignWarrant(current),
+    );
+    if (dropped !== null) {
+      console.warn(
+        `[pack] discarded a stored warrant for pack "${dropped.packId}" (generation ${dropped.generation}) — ` +
+          "this collie is in a different pack, so that warrant proves nothing here.",
+      );
+    }
+  }
+}
+
 // ── The boot-time gate against a split brain (§18.11) ────────────────────────
 // A collie booting into `lead` mode with a non-empty roster asks its members ONCE, concurrently, on
 // the patient budget, BEFORE it publishes anything. Silence publishes; a conflicting answer deposes.
@@ -332,6 +360,10 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
         .map((p) => ({ memberId: p.memberId, address: p.address })),
       hello: (link) => client.hello(link),
       generation: currentWarrant(data)?.warrant.generation ?? 0,
+      packId: data.pack?.packId ?? "",
+      // The gate's whole deposition test, and it is this collie's own: a warrant it signed itself,
+      // for this pack, at a generation not behind the one it holds. Nothing weaker deposes a lead.
+      verifies: (warrant) => isDepositionProof(data, warrant),
     });
     if (verdict.kind === "deposed") {
       const state = await applyDeposition(verdict.proof, verdict.reason);
@@ -339,6 +371,11 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
       // this process comes up as an ordinary peer in the very same boot, having published nothing in
       // between. That is the common case and the whole reason the gate sits at boot (§18.11).
       deposed = state.outcome === "healed" ? null : state;
+    } else {
+      // A claim that could not be proved. It is printed ONCE, here, at the boot that read it — the
+      // lead keeps leading, so nothing else in this process will ever mention it, and an operator
+      // who never sees the line has a peer quietly refusing this pack for the rest of its uptime.
+      for (const warning of verdict.warnings) console.warn(`[pack] warn: ${warning}`);
     }
   }
 }

@@ -467,6 +467,36 @@ export function checkWarrantPush(
 }
 
 /**
+ * Belt and braces for the field that took a real pack dark: **a warrant stamped with another pack's
+ * id is not this collie's warrant, so it is discarded.**
+ *
+ * `leavePack` now clears these fields, so a machine that leaves cleanly never reaches this. What
+ * reaches it is a store written by an older build, or a `join` that landed beside a warrant nobody
+ * cleared. Either way the fields describe a pack this collie is not in, and the cost of keeping them
+ * is that this machine reports a generation its own lead never minted — which is read as a takeover
+ * on the far end.
+ *
+ * `null` — nothing to write — when there is no pack, no warrant, or the warrant is this pack's.
+ * `standbyRoster` and `deputy` go with it: all three were written by the same push, from the same
+ * lead, about the same pack.
+ */
+export function discardForeignWarrant(
+  data: TrustStoreData,
+): PackChange<{ packId: string; generation: number }> | null {
+  const stored = currentWarrant(data);
+  if (data.pack === null || stored === null) return null;
+  if (stored.warrant.packId === data.pack.packId) return null;
+  return {
+    next: { ...data, warrant: null, standbyRoster: null, deputy: null },
+    result: { packId: stored.warrant.packId, generation: stored.warrant.generation },
+    audit: {
+      action: "pack.warrant.foreign",
+      detail: { pack: stored.warrant.packId, generation: stored.warrant.generation },
+    },
+  };
+}
+
+/**
  * Persist an accepted warrant. The store's `deputy` designation is NOT written here: that field is
  * the operator's designation **on the lead**, and a peer that copied it would be recording a decision
  * it did not make. Who the deputy is, on a peer, is inside the warrant.

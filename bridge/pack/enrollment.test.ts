@@ -35,6 +35,7 @@ import {
   selfIdentity,
 } from "./enrollment.ts";
 import { fingerprintOfCert, hashToken, isMemberId } from "./identity.ts";
+import { mintWarrant } from "./warrant.ts";
 import { TrustStore, type TrustStoreData, type TrustStoreIo } from "./trust-store.ts";
 import { counterRandom, fp, leadStore, material, member, PACK, peerStore, T0 } from "./fixtures.ts";
 
@@ -385,7 +386,7 @@ describe("revocation (§8.4)", () => {
     const change = removeMember(data, "nas")!;
     expect(change.next.peers.map((p) => p.memberId)).toEqual(["laptop"]);
     expect(JSON.stringify(change.next)).not.toContain(fp("nas"));
-    expect(change.audit).toEqual({ action: "pack.remove", detail: { member: "nas" } });
+    expect(change.audit).toEqual({ action: "pack.remove", detail: { member: "nas", deputy: false } });
     expect(removeMember(change.next, "nas")).toBeNull();
   });
 
@@ -399,6 +400,54 @@ describe("revocation (§8.4)", () => {
     expect(change.next.self).toEqual(peer.self);
     expect(JSON.stringify(change.next)).not.toContain(PACK.secret);
     expect(change.audit.action).toBe("pack.leave");
+  });
+
+  // The incident: `pack remove <deputy>` left `deputy` naming the removed machine, so `pack status`
+  // printed a deputy while `pack deputy --revoke` answered "this pack names no deputy".
+  test("removing the DEPUTY drops the designation, and keeps the warrant's counter", () => {
+    const armed = leadStore({ peers: [member({ memberId: "nas" })] });
+    const minted = mintWarrant(armed, "nas", T0)!;
+    const change = removeMember(minted.next, "nas")!;
+    expect(change.next.deputy).toBeNull();
+    expect(change.result).toEqual({ member: "nas", deputy: true });
+    // The counter never walks backwards inside a pack (§18.3), so the warrant itself stays put.
+    expect(change.next.warrant?.warrant.generation).toBe(minted.result.generation);
+  });
+
+  test("removing an ordinary member leaves the designation alone", () => {
+    const armed = leadStore({ peers: [member({ memberId: "nas" }), member({ memberId: "attic" })] });
+    const change = removeMember(mintWarrant(armed, "nas", T0)!.next, "attic")!;
+    expect(change.next.deputy).toBe("nas");
+    expect(change.result).toEqual({ member: "attic", deputy: false });
+  });
+
+  // The incident, on the machine that caused it. `leave` dropped the secret and the pins and kept
+  // `deputy`, `warrant` and `standbyRoster`. The peer then joined another pack, reported generation
+  // 3 there, and that pack's brand-new lead parked itself over a warrant it had never minted.
+  test("`leave` clears every deputy field — a warrant belongs to the pack that signed it", () => {
+    const stored = mintWarrant(leadStore({ peers: [member({ memberId: "laptop" })] }), "laptop", T0)!.result;
+    const armed = peerStore({
+      deputy: "laptop",
+      deputySpentAt: T0,
+      warrant: { warrant: stored, deputyCertPem: null },
+      standbyRoster: [{ memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787" }],
+    });
+    const next = leavePack(armed)!.next;
+    expect(next.deputy).toBeNull();
+    expect(next.warrant).toBeNull();
+    expect(next.standbyRoster).toBeNull();
+    expect(next.deputySpentAt).toBeNull();
+    expect(next.pendingHandover).toBeNull();
+    // And nothing of the old pack survives in the bytes at all.
+    expect(JSON.stringify(next)).not.toContain(stored.signature);
+  });
+
+  test("a store carrying ONLY stale deputy fields is still a `leave` worth writing", () => {
+    // `pack` is already gone, so the old guard answered "nothing to leave" and left the fields that
+    // do the damage sitting on disk. The verb has to be able to finish the job.
+    const stored = mintWarrant(leadStore({ peers: [member({ memberId: "laptop" })] }), "laptop", T0)!.result;
+    const stranded = leadStore({ pack: null, warrant: { warrant: stored, deputyCertPem: null } });
+    expect(leavePack(stranded)!.next.warrant).toBeNull();
   });
 
   test("leaving a pack you are not in changes nothing", () => {
@@ -432,7 +481,10 @@ describe("commitPackChange — write first, audit second", () => {
     const store = new TrustStore("/unused", h.io);
     // The result distinguishes "changed" from "no-op": `commitPackChange` answers `null` for the
     // latter, so a transition whose result was also `null` would be indistinguishable to a verb.
-    expect(await commitPackChange(store, h.audit, (d) => removeMember(d!, "nas"))).toEqual({ member: "nas" });
+    expect(await commitPackChange(store, h.audit, (d) => removeMember(d!, "nas"))).toEqual({
+      member: "nas",
+      deputy: false,
+    });
     expect(store.current()!.peers).toEqual([]);
     await Bun.sleep(5);
     expect(h.lines.map((l) => l.action)).toEqual(["pack.remove"]);

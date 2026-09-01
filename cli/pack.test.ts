@@ -37,6 +37,8 @@ import {
   selfAddress,
 } from "./pack.ts";
 import type { PackAddDeps } from "./remote.ts";
+import { mintWarrant } from "../bridge/pack/warrant.ts";
+import { leadDeputyLines } from "./pack-status-deputy.ts";
 import { dialableBridgeHost } from "./tailnet.ts";
 
 // The pack verbs, against fakes for every seam. NOTHING here reaches a service manager, a tailnet, a
@@ -1126,6 +1128,31 @@ describe("collie leave", () => {
     const h = harness(null);
     expect(await cmdLeave(h.deps)).toBe(EXIT.STATE);
   });
+
+  // ── the incident: `leave` used to keep the deputy state ────────────────────
+  // A peer left pack A as its armed deputy at warrant generation 3, kept `deputy`, `warrant` and
+  // `standbyRoster`, and joined pack B. Pack B's brand-new lead read generation 3 on `hello`, parked
+  // itself over a warrant it had never minted, and its front door went dark.
+  test("it clears the deputy state, and the synced device file with it", async () => {
+    const stored = mintWarrant(leadStore({ peers: [member({ memberId: "laptop" })] }), "laptop", T0)!.result;
+    const armed = peerStore({
+      deputy: "laptop",
+      warrant: { warrant: stored, deputyCertPem: null },
+      standbyRoster: [
+        { memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787" },
+      ],
+    });
+    const h = harness(armed, [jsonReply({ removed: "laptop" }, 200, "desk")]);
+    h.files.write("/state/standby-devices.json", "{}");
+
+    expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
+    expect(h.data()!.warrant).toBeNull();
+    expect(h.data()!.deputy).toBeNull();
+    expect(h.data()!.standbyRoster).toBeNull();
+    expect(h.files.read("/state/standby-devices.json")).toBeNull();
+    // And the operator is told, because the field they cannot see is the one that did the damage.
+    expect(text(h.io)).toContain("warrant generation 1");
+  });
 });
 
 // ── pack status ──────────────────────────────────────────────────────────────
@@ -1542,6 +1569,20 @@ describe("collie pack remove", () => {
     const h = harness(leadStore());
     expect(await cmdPackRemove(h.deps, ["ghost"])).toBe(EXIT.STATE);
     expect(text(h.io)).toContain("collie pack status");
+  });
+
+  // The two surfaces used to disagree out loud: `pack status` printed `deputy nas — warrant
+  // generation 1` on a lead whose `pack deputy --revoke` answered "this pack names no deputy".
+  test("removing the DEPUTY drops the designation, and says so", async () => {
+    const armed = mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.next;
+    const h = harness(armed);
+    expect(await cmdPackRemove(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(h.data()!.deputy).toBeNull();
+    expect(text(h.io)).toContain("was this pack's DEPUTY");
+    // `pack status` reads the designation, so with it gone the two surfaces agree.
+    expect(leadDeputyLines(h.data()!, T0)).toEqual([]);
+    // The counter stays, so a later mint cannot re-issue a generation this pack has already used.
+    expect(h.data()!.warrant?.warrant.generation).toBe(1);
   });
 
   test("no member id is a usage error", async () => {

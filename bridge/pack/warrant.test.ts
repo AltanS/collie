@@ -9,6 +9,7 @@ import {
   canonicalWarrant,
   checkWarrantPush,
   currentWarrant,
+  discardForeignWarrant,
   mintWarrant,
   parseWarrant,
   parseWarrantReport,
@@ -402,6 +403,30 @@ describe("storing", () => {
     expect(change.next.warrant).toEqual(stored);
     expect(change.next.deputy).toBeUndefined();
     expect(change.audit.action).toBe("pack.warrant.stored");
+  });
+});
+
+describe("a warrant from a pack this collie is not in (the incident)", () => {
+  test("a FOREIGN warrant is discarded, with the deputy fields that rode with it", () => {
+    const { warrant } = named();
+    const held = peerStore({
+      warrant: { warrant: { ...warrant, packId: "pack-elsewhere" }, deputyCertPem: null },
+      deputy: "nas",
+      standbyRoster: [{ memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787" }],
+    });
+    const change = discardForeignWarrant(held)!;
+    expect(change.next.warrant).toBeNull();
+    expect(change.next.standbyRoster).toBeNull();
+    expect(change.next.deputy).toBeNull();
+    expect(change.result).toEqual({ packId: "pack-elsewhere", generation: warrant.generation });
+    expect(change.audit.action).toBe("pack.warrant.foreign");
+  });
+
+  test("this pack's OWN warrant is left alone, and so is a store holding none", () => {
+    const { warrant } = named();
+    expect(discardForeignWarrant(peer({ warrant, deputyCertPem: null }))).toBeNull();
+    expect(discardForeignWarrant(peerStore())).toBeNull();
+    expect(discardForeignWarrant(leadStore({ pack: null }))).toBeNull();
   });
 });
 

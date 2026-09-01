@@ -1034,13 +1034,27 @@ export async function cmdLeave(deps: PackDeps): Promise<number> {
     if (!outcome.ok) deps.io.err(`warn: could not tell the lead — ${failureLine(outcome)}`);
   }
 
+  // Read before the write, so the line below describes what this run actually dropped.
+  const deputyState = deputyStateSummary(data);
   const left = await commitPackChange(deps.store, deps.audit, (current) =>
     current === null ? null : leavePack(current),
   );
   if (left === null) return EXIT.FAIL;
 
+  // ── THE OLD PACK'S DEPUTY STATE GOES WITH IT ────────────────────────────────
+  // `leavePack` clears the fields inside the trust store; `standby-devices.json` is its own file
+  // (`bridge/pack/standby-devices.ts`) and had to be forgotten here. It is the OLD lead's paired
+  // phones — bearer-token hashes for a pack this machine has just left — and keeping it would leave
+  // a credential store on disk that nothing in the new pack ever wrote or can revoke.
+  deps.files.remove(standbyDevicesPath(deps.ctx.stateDir));
+
   deps.io.out(`✓ left pack "${data.pack.name}" — the pack secret and every pin are gone from this machine.`);
   deps.io.out("  This collie's own identity survives, so re-joining needs no new certificate anywhere.");
+  if (deputyState !== null) {
+    deps.io.out(`  Its deputy state went too (${deputyState}). A warrant belongs to the pack that`);
+    deps.io.out("  signed it: carried into another pack it reads as a takeover nobody performed, and the");
+    deps.io.out("  new lead parks itself over it.");
+  }
   if (revoked) {
     deps.io.out(`  The lead removed this machine from its roster too.`);
   } else if (data.lead !== null) {
@@ -1053,6 +1067,22 @@ export async function cmdLeave(deps: PackDeps): Promise<number> {
   for (const line of retirePackBind(deps)) deps.io.out(line);
   await applyLocally(deps, "solo mode (own front door, own notifications)");
   return EXIT.OK;
+}
+
+/**
+ * What deputy state this machine was carrying, in one parenthetical, or `null` when it carried none.
+ *
+ * Said out loud because it is the field an operator has to be told about: a warrant that survived a
+ * `leave` is what a later lead reads as a takeover it missed. Naming it here is how the operator
+ * learns the state existed at all.
+ */
+function deputyStateSummary(data: TrustStoreData): string | null {
+  const stored = currentWarrant(data);
+  const parts: string[] = [];
+  if (stored !== null) parts.push(`warrant generation ${stored.warrant.generation}`);
+  if ((data.deputy ?? null) !== null) parts.push(`the designation of "${data.deputy}"`);
+  if ((data.standbyRoster ?? null) !== null) parts.push("the standby roster");
+  return parts.length === 0 ? null : parts.join(", ");
 }
 
 /**
@@ -1625,6 +1655,11 @@ export async function cmdPackRemove(deps: PackDeps, args: readonly string[]): Pr
     return EXIT.STATE;
   }
   deps.io.out(`✓ removed "${memberId}" — its pin is gone, so its certificate is now simply not a member.`);
+  if (removed.deputy) {
+    deps.io.out(`  It was this pack's DEPUTY, so the designation went with it: no peer may take over`);
+    deps.io.out("  now. Name another with `collie pack deputy <member>`. The warrant on disk stays —");
+    deps.io.out("  it carries the generation counter, which must never walk backwards inside a pack.");
+  }
   deps.io.out("  Nothing was sent to it: revocation is local by design, and the removed machine keeps its");
   deps.io.out("  own copy of the pack until its operator runs `collie leave` there. Either side alone ends");
   deps.io.out("  the link (§8.4) — this side is now ended.");

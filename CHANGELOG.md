@@ -8,6 +8,15 @@ All notable changes to Collie are recorded here. The format follows
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-09-01
+
+### Fixed
+
+- **A lead is no longer deposed by a claim nobody can prove.** At boot, only a warrant this lead itself signed and can verify deposes it; a peer reporting a higher warrant generation, or refusing with no warrant, is logged once and ignored. A peer carrying one stale field out of an old pack used to take the new lead's front door down.
+- `collie pack leave` clears the deputy designation, the warrant, the standby roster and `standby-devices.json`, so nothing from the pack you left travels into the next one.
+- `collie pack remove <member>` drops the deputy designation when it names that member, so `pack status` and `pack deputy --revoke` stop disagreeing about whether the pack has a deputy.
+- A stored warrant stamped with another pack's id is discarded at boot, with a log line naming the pack it came from.
+
 ## [1.0.1] - 2026-09-01
 
 ### Added
