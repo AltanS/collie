@@ -1511,6 +1511,13 @@ describe("the pane fits its viewport", () => {
     // light. With no page between them the open tab has no floor and bleeds into the mirror, and
     // the baseline rule lands flush against the mirror's top rule as one doubled 2px hairline,
     // which DESIGN.md §4 forbids by name. Both halves are pinned here, positively.
+    //
+    // WHERE THE GAP LIVES MOVED, AND THAT IS WHY THIS TEST NOW LOOKS IN TWO PLACES. It is the page an
+    // OPEN FOLDER TAB sits on, so it belongs to the tab row and not to the mirror: parked on the
+    // mirror it was unconditional, and folded — no tab, nothing sitting on it — it was 4px of
+    // nothing under a 24px bar. It is the strips' own `pb-1` now, inside their Collapse, and the
+    // mirror keeps a copy only for the states where those strips are not there to provide one.
+    // Either way the claim is the same and the floor is never zero under a folder tab.
     const { container } = renderChat({ text: STATUS_TEXT });
     // Through the bottom region's own `Collapse` row — see the region test above for why that
     // wrapper, not the region's element, is the row this column is made of.
@@ -1518,8 +1525,20 @@ describe("the pane fits its viewport", () => {
       .querySelector('[data-slot="chrome-block"]')!
       .closest('[data-slot="collapse"]')!.previousElementSibling!;
     expect(mirror.className).toMatch(/(?:^|\s)border-t border-rule(?=\s|$)/);
-    // A gap, and a real one — not `mt-0`, and not absent.
+    // No strips on this render (`tabs` is empty), so the mirror is carrying the gap itself — a real
+    // one, not `mt-0` and not absent.
     expect(mirror.className).toMatch(/(?:^|\s)mt-[1-9](?:\.5)?(?=\s|$)/);
+
+    // …and with the strips there, the same 4px is theirs: the wrapper the two rows stand in, inside
+    // the band, so it arrives and leaves with them instead of popping on a boolean.
+    cleanup();
+    const withTabs = renderChat({ text: STATUS_TEXT, tabs: fixtureTabs }).container;
+    const band = withTabs.querySelector('[data-slot="collapse-swap"]')!;
+    expect(band.querySelector("div.pb-1")).not.toBeNull();
+    const secondMirror = withTabs
+      .querySelector('[data-slot="chrome-block"]')!
+      .closest('[data-slot="collapse"]')!.previousElementSibling!;
+    expect(secondMirror.className).toMatch(/(?:^|\s)mt-0(?=\s|$)/);
   });
 
   it("caps the draft field as a fraction of the viewport, not at a constant", () => {
@@ -1812,6 +1831,32 @@ describe("AgentChat — folding the tab and pane rows", () => {
       .querySelector('[data-slot="chrome-block"]')!
       .closest('[data-slot="collapse"]')!.previousElementSibling!;
     expect(mirror.className).toMatch(/(?:^|\s)border-t border-rule(?=\s|$)/);
+  });
+
+  it("leaves nothing under the bar when folded — the page goes with the tabs", async () => {
+    // THE OPERATOR'S THIRD READING: "some pixels are wasted towards the bottom still". They were.
+    // The 4px above the mirror's rule is the page an OPEN FOLDER TAB sits on, and it was parked on
+    // the mirror unconditionally — so folded, with no tab and nothing sitting on anything, it was
+    // 4px of nothing under a 24px bar and the beads read 4px/8px instead of centred.
+    //
+    // It belongs to the tab row, so it travels with it: `pb-1` inside the band's own Collapse, which
+    // also means it animates with the fold instead of popping on a boolean. Folded, the band is
+    // exactly the bar between the header's rule and the mirror's.
+    const user = userEvent.setup();
+    const { container } = renderStrips();
+    await user.click(screen.getByRole("button", { name: "Hide tabs and panes" }));
+    await screen.findByRole("button", { name: /^Show tabs and panes/ });
+
+    const mirror = container
+      .querySelector('[data-slot="chrome-block"]')!
+      .closest('[data-slot="collapse"]')!.previousElementSibling!;
+    // Stated, not merely absent: `mt-0` is the claim that the gap was moved, and it is the assertion
+    // that fails if someone puts an unconditional margin back on the mirror.
+    expect(mirror.className).toMatch(/(?:^|\s)mt-0(?=\s|$)/);
+    // …and the page it replaced left with the rows it belonged to.
+    await waitFor(() =>
+      expect(container.querySelector('[data-slot="collapse-swap"] div.pb-1')).toBeNull(),
+    );
   });
 
   it("spends 24px of drawn height and still answers a 44px thumb", async () => {

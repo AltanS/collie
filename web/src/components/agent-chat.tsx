@@ -24,7 +24,7 @@ import { useZenEnabled } from "@/lib/zen";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
-import { Collapse } from "@/components/ui/collapse";
+import { Collapse, CollapseSwap } from "@/components/ui/collapse";
 import { RouteHeader } from "@/components/app-header";
 import { AnsiOutput } from "@/components/ansi-output";
 import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
@@ -380,6 +380,20 @@ export function AgentChat({
   const canFold = stripTabs.length > 0;
   const stripsExist = canFold || tabPanes.length > 1;
   const folded = canFold && stripsFolded;
+  // WHO OWNS THE 4px ABOVE THE MIRROR'S RULE.
+  //
+  // It reads as the mirror's own margin and it is not: it is the PAGE AN OPEN FOLDER TAB SITS ON,
+  // and the mirror's comment below states at length why it may not be 0 while such a tab exists.
+  // Parked on the mirror it was unconditional, so folded — no tab, nothing sitting on anything — it
+  // was 4px of nothing under a 24px bar, which is what the operator saw.
+  //
+  // So it moves to the row that needs it: the strips' own `pb-1`, INSIDE their `Collapse`. There it
+  // arrives and leaves with them, animated by the same 240ms, instead of popping on a boolean. The
+  // mirror then keeps a copy for exactly the states where that Collapse is not there to provide one
+  // — no strips at all, and zen, where the band is closed and the 4px is the hidden header's air
+  // rather than a tab's floor. Zen's resting geometry is byte-identical either way, which is the
+  // point of naming it here rather than folding it into `stripsExist`.
+  const mirrorGap = stripsExist && !zen ? "mt-0" : "mt-1";
   // Fold state for the "Switch pane" sheet's two long tails, shared with the dashboard so one
   // "hide the long tail" preference means the same thing in both places.
   const dash = useDashPrefs();
@@ -1239,17 +1253,45 @@ export function AgentChat({
                 nothing on a solo install, or while the host is live. */}
             <HostStaleBanner health={hostHealth} className="mx-3 mt-1.5" />
 
-            {/* THE TWO STRIPS, AND THE THIN BAR THAT STANDS IN FOR THEM. Two `Collapse` elements on
-                opposite gates, nested inside zen's: zen still takes the whole band, folded or not,
-                because the summary bar is chrome about the pane exactly as the rows are. The rows
-                slide out as the bar slides in, and each unmounts at the end of its own exit — so a
-                folded screen has no tab in the tab order and an unfolded one has no bar in it.
+            {/* THE TWO STRIPS, AND THE THIN BAR THAT STANDS IN FOR THEM — one band that morphs, not
+                two rows taking turns. `CollapseSwap` is nested inside zen's `Collapse`, so zen still
+                takes the whole band folded or not: the bar is chrome about the pane exactly as the
+                rows are. Whichever surface is not on screen is unmounted, so a folded screen has no
+                tab in the tab order and an unfolded one has no bar in it.
+
+                It was two sibling `Collapse`s on opposite gates, which is the obvious spelling and
+                the wrong one — the leaving bar was pushed the height of the band downward by the
+                arriving rows. CollapseSwap's own header carries that measurement; do not unpick it
+                back into siblings.
 
                 Rendered at all only when a row would have drawn: `stripsExist`. Nothing to fold is
                 not a folded thing. */}
             {stripsExist && (
-              <>
-                <Collapse open={!folded}>
+              <CollapseSwap
+                open={!folded}
+                // The BAND, not two rows that happen to take turns in it — see CollapseSwap for what
+                // the two-sibling spelling did to the expand gesture. The bar is the stand-in: it is
+                // the shorter surface, so it holds the band's floor while the rows grow out of it.
+                standIn={
+                  agent && (
+                    <StripsSummary
+                      workspaceId={agent.workspaceId}
+                      tabs={tabs}
+                      agents={agents}
+                      host={agent.host}
+                      selectedTabId={agent.tabId}
+                      // The SAME list PaneStrip draws, so the bead group and the pill row can never
+                      // disagree about how many panes there are or which one is open.
+                      panes={tabPanes}
+                      currentPaneId={paneId}
+                      onExpand={toggleStrips}
+                    />
+                  )
+                }
+              >
+                {/* `pb-1` — the 4px of page the open folder tab sits on, which lives HERE rather than
+                    on the mirror so that it leaves with the tabs. See `mirrorGap` above. */}
+                <div className="pb-1">
                 {/* In-pane tab bar: the current space's tabs above the mirror — switch tab without
                     leaving the pane, or create one with +. No "All" here (you're always in a
                     specific tab). */}
@@ -1308,25 +1350,8 @@ export function AgentChat({
                     onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
                   />
                 )}
-                </Collapse>
-
-                <Collapse open={folded}>
-                  {agent && (
-                    <StripsSummary
-                      workspaceId={agent.workspaceId}
-                      tabs={tabs}
-                      agents={agents}
-                      host={agent.host}
-                      selectedTabId={agent.tabId}
-                      // The SAME list PaneStrip draws, so the bead group and the pill row can never
-                      // disagree about how many panes there are or which one is open.
-                      panes={tabPanes}
-                      currentPaneId={paneId}
-                      onExpand={toggleStrips}
-                    />
-                  )}
-                </Collapse>
-              </>
+                </div>
+              </CollapseSwap>
             )}
           </Collapse>
 
@@ -1379,9 +1404,16 @@ export function AgentChat({
               flush against its top rule is the honest rendering, and the bottom keeps its `pb-3`
               because the tail wants clearance from the composer.
 
-              This is unconditional, and that is deliberate: when PaneStrip renders it closes its own
-              band with a border-b and the mirror still announces its top edge the same way, 4px
-              below. One geometry, no state in which the seam is drawn differently (DESIGN.md §2). */}
+              THE RULE IS UNCONDITIONAL. THE GAP IS NOT, AND THE SPLIT IS THE WHOLE POINT.
+              `border-t border-rule` is drawn in every state, always, at the same weight: it is the
+              mirror's own top edge and the one seam between chrome and output, so there is no state
+              in which that boundary is drawn differently (DESIGN.md §2). Whether PaneStrip renders,
+              whether the strips are folded, whether zen took the band entirely — the line is there.
+              What moves is the 4px above it (`mirrorGap`, stated where `folded` is), because that
+              4px was never the mirror's: it is the page an open FOLDER TAB sits on, and it exists
+              only while a folder tab does. Folded, the tab row is gone and the bead bar that stands
+              in for it is not attached to anything, so the page it would sit on is dead space — the
+              operator read it as such. Nothing about the seam changes; only who is standing on it. */}
           {/* `role="presentation"` because that is what this element is: a layout wrapper with no
               semantics of its own. Its click handler adds nothing a keyboard user needs — focusing the
               composer is what a keyboard user already has (the textarea is the next tabbable thing),
@@ -1389,7 +1421,11 @@ export function AgentChat({
               selection. It is a touch convenience layered over an already-reachable action. */}
           <div
             role="presentation"
-            className={cn("mt-1 min-h-0 min-w-0 flex-1 border-t border-rule", mirrorFace.className)}
+            className={cn(
+              mirrorGap,
+              "min-h-0 min-w-0 flex-1 border-t border-rule",
+              mirrorFace.className,
+            )}
             style={mirrorFace.style}
             onClick={focusFromMirror}
           >

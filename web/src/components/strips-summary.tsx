@@ -73,30 +73,32 @@ export function StripsSummary({
       // air above and below them, and the next step down (20px) leaves 2px, which reads as a bead
       // row jammed against the header rule rather than a band with beads in it.
       //
-      // Measured, and left alone: the band the EYE reads is bounded by the header's rule above and
-      // the mirror's rule 4px below (DESIGN.md §4), so it is 28px and the beads sit 4px under the
-      // top edge and 8px above the bottom one. Paying 2px of `pt` to balance that is exactly the
-      // compensation §4 says to delete once the missing edge is back — and the edge below is the
-      // mirror's own page gap, which is not this bar's to spend.
+      // The band the EYE reads (DESIGN.md §4) is exactly this box: header rule above, mirror rule
+      // immediately below, 24px between them, beads centred at 4px on both sides. It was NOT — a 4px
+      // page gap sat under this bar and the beads read 4px/8px, which the operator called wasted
+      // pixels and was right about. That gap belonged to the open FOLDER TAB and now leaves with the
+      // tabs rather than being parked on the mirror; agent-chat.tsx states the move at `mirrorGap`.
+      // Nothing under this bar is unaccounted for, and nothing here pays a compensating pixel for an
+      // edge that is present — which is the compensation §4 tells you to delete.
       //
       // A full-width control is the one shape that can buy its 44px floor purely as hit area with no
       // neighbour to collide with (DESIGN.md §6). 10px above and below (`-inset-y-2.5`) is
-      // 24+10+10 = 44 exactly. Above is a banner or open ground; below is the mirror's 4px of page
-      // and then 6px of the mirror's own top, whose only handler focuses the composer and already
-      // declines a tap that lands on a control. Nothing with a target of its own is shadowed.
-      // It lives inside a `Collapse`, which drops its clip once settled — that is what lets the
-      // ::before reach outside the box at all (see ui/collapse.tsx).
+      // 24+10+10 = 44 exactly. Above is a banner or open ground; below is the mirror's own top,
+      // whose only handler focuses the composer and already declines a tap that lands on a control.
+      // Nothing with a target of its own is shadowed.
+      // It stands in a `CollapseSwap`, whose Collapse drops its clip once settled — that is what
+      // lets the ::before reach outside the box at all (see ui/collapse.tsx).
       //
       // ── AND NO `border-b`, WHICH IS THE POINT ────────────────────────────────
-      // It had one, copied from the tab row, and against the mirror's own unconditional
-      // `border-t border-rule` 4px below it that made TWO hairlines 4px apart — the doubled line
-      // DESIGN.md §4 forbids, just spaced far enough to look deliberate.
+      // It had one, copied from the tab row, and against the mirror's own `border-t border-rule` a
+      // few pixels below it that made TWO hairlines — the doubled line DESIGN.md §4 forbids, just
+      // spaced far enough apart to look deliberate.
       //
       // The tab row's baseline is not a decoration this bar inherits. It exists because a FOLDER TAB
       // has to own the line it breaks: the active tab covers that baseline for its own width so the
-      // tab and the content read as one piece, and the 4px below it is the page the open tab sits
-      // on (tab-strip.tsx and agent-chat.tsx state both halves). Fold the rows away and there is no
-      // folder tab, nothing is attached to anything, and the obligation goes with it.
+      // tab and the content read as one piece, and the 4px below it is the page the open tab sits on
+      // (tab-strip.tsx and agent-chat.tsx state both halves). Fold the rows away and there is no
+      // folder tab, nothing is attached to anything, and both the line and the page go with it.
       //
       // So the seam between chrome and mirror is drawn once, by the mirror — which is the half that
       // may not move: that `border-t` is unconditional on purpose, one geometry with no state in

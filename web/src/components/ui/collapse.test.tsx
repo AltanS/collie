@@ -1,7 +1,7 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
-import { Collapse, COLLAPSE_MS } from "./collapse";
+import { Collapse, CollapseSwap, COLLAPSE_MS } from "./collapse";
 
 /** jsdom reports `prefers-reduced-motion` as "no preference"; this makes it say the opposite. */
 function preferReducedMotion(reduce: boolean) {
@@ -243,5 +243,135 @@ describe("Collapse — animated presence for anything in flow", () => {
     );
     expect(screen.getByTestId("child")).not.toHaveAttribute("class");
     expect(container.firstElementChild?.className).not.toMatch(/bg-|text-|border-|px-|py-/);
+  });
+});
+
+// ── CollapseSwap ─────────────────────────────────────────────────────────────
+// Two surfaces taking turns in one band. The fault it exists to close is not arithmetic — two
+// sibling Collapses on opposite gates keep the total height monotonic the whole way — it is that the
+// LEAVING surface is pushed the height of the band by the arriving one, so the eye reads a movement
+// in the opposite direction to the reveal. These pin the three properties that stop that happening.
+describe("CollapseSwap — two surfaces, one band, one motion", () => {
+  it("overlaps the two in ONE grid cell, so neither can push the other", () => {
+    // THE WHOLE FIX. Placed in the same row and column they occupy the same space, so the band's
+    // height is the taller of the two and the stand-in never travels. Stacked in flow instead — the
+    // spelling this replaced — the stand-in leaves by sliding the full height of the arriving
+    // surface downward, which is what "the animation goes in the wrong direction" was.
+    // Asserted MID-SWAP, which is the only moment both surfaces are in the tree — and the only
+    // moment the placement can go wrong.
+    const { container, rerender } = render(
+      <CollapseSwap open={false} standIn={<p>beads</p>}>
+        <p>rows</p>
+      </CollapseSwap>,
+    );
+    rerender(
+      <CollapseSwap open standIn={<p>beads</p>}>
+        <p>rows</p>
+      </CollapseSwap>,
+    );
+    const band = container.querySelector('[data-slot="collapse-swap"]')!;
+    expect(band).toHaveClass("grid");
+    // …and it is the flex child now, so the floor that kept the strips from being squashed moved
+    // here with them.
+    expect(band).toHaveClass("shrink-0");
+
+    const collapse = band.querySelector('[data-slot="collapse"]')!;
+    const standIn = band.querySelector('[data-slot="collapse-swap-stand-in"]')!;
+    for (const cell of [collapse, standIn]) {
+      expect(cell).toHaveClass("col-start-1");
+      expect(cell).toHaveClass("row-start-1");
+    }
+    // The stand-in is painted LAST, so it fades over the surface it trades places with, not under.
+    expect(standIn.previousElementSibling).toBe(collapse);
+  });
+
+  it("animates ONE height — the stand-in only ever fades", () => {
+    // The second height animation is the thing being removed. The stand-in holds the band's floor by
+    // simply being in it, which is also why it needs no measured number anywhere.
+    const { container } = render(
+      <CollapseSwap open={false} standIn={<p>beads</p>}>
+        <p>rows</p>
+      </CollapseSwap>,
+    );
+    const standIn = container.querySelector('[data-slot="collapse-swap-stand-in"]')!;
+    expect(standIn.className).toMatch(/(?:^|\s)transition-opacity(?=\s|$)/);
+    expect(standIn.className).not.toMatch(/grid-rows-/);
+  });
+
+  it("holds the stand-in through its exit and unmounts it after, like every other presence here", () => {
+    // Same contract as Collapse's own delayed unmount, and for the same two reasons: there must be
+    // something left to fade, and a surface that is not on screen may not still be in the tab order.
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <CollapseSwap open={false} standIn={<button type="button">beads</button>}>
+        <p>rows</p>
+      </CollapseSwap>,
+    );
+    expect(screen.getByRole("button", { name: "beads" })).toBeInTheDocument();
+
+    rerender(
+      <CollapseSwap open standIn={<button type="button">beads</button>}>
+        <p>rows</p>
+      </CollapseSwap>,
+    );
+    // Mid-fade: still drawn, and already unreachable by hand or by keyboard — 240ms of an invisible
+    // control that can still be pressed is the bug the pair of attributes closes.
+    const standIn = container.querySelector('[data-slot="collapse-swap-stand-in"]')!;
+    expect(standIn).toHaveAttribute("inert");
+    expect(standIn).toHaveAttribute("aria-hidden", "true");
+    expect(standIn.className).toMatch(/(?:^|\s)pointer-events-none(?=\s|$)/);
+
+    act(() => {
+      vi.advanceTimersByTime(COLLAPSE_MS + 1);
+    });
+    expect(container.querySelector('[data-slot="collapse-swap-stand-in"]')).toBeNull();
+  });
+
+  it("does not animate the state it was born in", () => {
+    // A band that arrived folded did not fold in front of anybody. Animating it would manufacture a
+    // movement the operator did not cause — Collapse's own first-paint guard, kept here.
+    const { container } = render(
+      <CollapseSwap open={false} standIn={<p>beads</p>}>
+        <p>rows</p>
+      </CollapseSwap>,
+    );
+    const standIn = container.querySelector('[data-slot="collapse-swap-stand-in"]')!;
+    expect(standIn.className).toMatch(/(?:^|\s)opacity-100(?=\s|$)/);
+  });
+
+  it("snaps under prefers-reduced-motion, with no intermediate state either way", () => {
+    preferReducedMotion(true);
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <CollapseSwap open={false} standIn={<p>beads</p>}>
+        <p>rows</p>
+      </CollapseSwap>,
+    );
+    expect(container.querySelector('[data-slot="collapse-swap-stand-in"]')).toHaveClass(
+      "motion-reduce:transition-none",
+    );
+
+    rerender(
+      <CollapseSwap open standIn={<p>beads</p>}>
+        <p>rows</p>
+      </CollapseSwap>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    // Gone at once, not 240ms later: the CSS half stops the paint moving, the JS half stops the
+    // stand-in loitering invisibly in the tree.
+    expect(container.querySelector('[data-slot="collapse-swap-stand-in"]')).toBeNull();
+
+    // …and back the other way in the same breath.
+    rerender(
+      <CollapseSwap open={false} standIn={<p>beads</p>}>
+        <p>rows</p>
+      </CollapseSwap>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    expect(container.querySelector('[data-slot="collapse-swap-stand-in"]')).not.toBeNull();
   });
 });
