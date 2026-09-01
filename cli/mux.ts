@@ -239,26 +239,32 @@ export function refusedMux(
   const placeholder = `<${muxNames(buildMuxRegistry()).join("|")}>`;
   const hint = hintedMux(found, env);
   const command = fixCommand(hint?.mux ?? placeholder, configDir);
-  const fix = `fix:  ${command}`;
   if (found.length === 0) {
-    const detail = "no COLLIE_MUX is set, and no multiplexer is running here, so there is nothing to mirror";
-    return { detail, remedy: command, lines: [`${detail}.`, fix] };
+    const detail = "no COLLIE_MUX is set, and no multiplexers are running. Collie has nothing to mirror";
+    return {
+      detail,
+      remedy: command,
+      lines: [`${detail}.`, "", "Start a multiplexer or set the variable, then run the command again:", `  ${command}`],
+    };
   }
   const headline =
     `no COLLIE_MUX is set, and ${String(found.length)} multiplexer${found.length === 1 ? " is" : "s are"} ` +
-    "running here. Collie will not guess which one to drive:";
+    "running. Collie will not guess which one to use.";
   const rows = found.map((sighting) => `  ${sighting.mux.padEnd(8)} ${sighting.evidence}`);
   const named = hint === null ? null : `${namingVar(hint.mux)} is already set, so ${hint.mux} is probably the one`;
+  // Blank lines between the blocks: what was found, the hint, the fix. `ensureMuxChosen` prints an
+  // empty entry as an empty line, not as seven spaces.
   return {
-    detail: `${headline} ${found.map((s) => `${s.mux} (${s.evidence})`).join("; ")}`,
+    detail: `${headline} Found: ${found.map((s) => `${s.mux} (${s.evidence})`).join("; ")}`,
     remedy: named === null ? command : `${named}: ${command}`,
     lines: [
       headline,
+      "",
       ...rows,
-      ...(hint === null
-        ? []
-        : [`hint: this instance already has ${namingVar(hint.mux)} set, so ${hint.mux} is probably the one.`]),
-      fix,
+      "",
+      ...(hint === null ? [] : [`This instance already sets ${namingVar(hint.mux)}. You probably want ${hint.mux}.`, ""]),
+      "Add this line to your config file, then run the command again:",
+      `  ${command}`,
     ],
   };
 }
@@ -328,7 +334,7 @@ export async function ensureMuxChosen(deps: MuxSettleDeps): Promise<number> {
   if (decision.kind === "explicit") return EXIT.OK;
   if (decision.kind === "refused") {
     for (const [index, line] of decision.lines.entries()) {
-      deps.io.err(index === 0 ? `error: ${line}` : `       ${line}`);
+      deps.io.err(index === 0 ? `error: ${line}` : line === "" ? "" : `       ${line}`);
     }
     return EXIT.FAIL;
   }

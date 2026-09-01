@@ -147,9 +147,9 @@ describe("with no terminal", () => {
     expect(await ensureMuxChosen(h.deps)).toBe(EXIT.FAIL);
     const said = h.io.stderr.join("\n");
     expect(said).toContain("no COLLIE_MUX is set");
-    expect(said).toContain("no multiplexer is running here");
+    expect(said).toContain("no multiplexers are running");
     // No hint is possible with nothing found, so the name is left as the choice it is.
-    expect(said).toContain(`fix:  printf 'COLLIE_MUX=<herdr|tmux|zellij>\\n' >> ${CONFIG}/.env && collie start`);
+    expect(said).toContain(`  printf 'COLLIE_MUX=<herdr|tmux|zellij>\\n' >> ${CONFIG}/.env && collie start`);
     expect(h.dotenv()).toBeNull();
   });
 
@@ -157,12 +157,12 @@ describe("with no terminal", () => {
     const h = host({ files: { [SOCKET]: "", [TMUX_BIN]: "" }, answers: TMUX_RUNNING });
     expect(await ensureMuxChosen(h.deps)).toBe(EXIT.FAIL);
     const said = h.io.stderr.join("\n");
-    expect(said).toContain("no COLLIE_MUX is set, and 2 multiplexers are running here");
+    expect(said).toContain("no COLLIE_MUX is set, and 2 multiplexers are running");
     expect(said).toContain(`  herdr    a Herdr socket at ${SOCKET}`);
     expect(said).toContain("  tmux     a tmux server on tmux's own default server — 2 sessions");
     // Nothing in this environment names one of them, so nothing is suggested.
-    expect(said).not.toContain("hint:");
-    expect(said).toContain(`fix:  printf 'COLLIE_MUX=<herdr|tmux|zellij>\\n' >> ${CONFIG}/.env && collie start`);
+    expect(said).not.toContain("You probably want");
+    expect(said).toContain(`  printf 'COLLIE_MUX=<herdr|tmux|zellij>\\n' >> ${CONFIG}/.env && collie start`);
     expect(h.dotenv()).toBeNull();
   });
 
@@ -174,8 +174,8 @@ describe("with no terminal", () => {
     });
     expect(await ensureMuxChosen(h.deps)).toBe(EXIT.FAIL);
     const said = h.io.stderr.join("\n");
-    expect(said).toContain("hint: this instance already has HERDR_SOCKET_PATH set, so herdr is probably the one.");
-    expect(said).toContain(`fix:  printf 'COLLIE_MUX=herdr\\n' >> ${CONFIG}/.env && collie start`);
+    expect(said).toContain("This instance already sets HERDR_SOCKET_PATH. You probably want herdr.");
+    expect(said).toContain(`  printf 'COLLIE_MUX=herdr\\n' >> ${CONFIG}/.env && collie start`);
     // A hint is a hint: nothing was selected and nothing was written.
     expect(h.dotenv()).toBeNull();
   });
@@ -188,8 +188,8 @@ describe("with no terminal", () => {
     });
     expect(await ensureMuxChosen(h.deps)).toBe(EXIT.FAIL);
     const said = h.io.stderr.join("\n");
-    expect(said).not.toContain("hint:");
-    expect(said).toContain(`fix:  printf 'COLLIE_MUX=<herdr|tmux|zellij>\\n' >> ${CONFIG}/.env && collie start`);
+    expect(said).not.toContain("You probably want");
+    expect(said).toContain(`  printf 'COLLIE_MUX=<herdr|tmux|zellij>\\n' >> ${CONFIG}/.env && collie start`);
   });
 
   test("a prompt seam that is there is still never used without a terminal", async () => {

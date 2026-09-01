@@ -419,8 +419,8 @@ describe("the first-run multiplexer gate", () => {
     expect(h.io.stdout).not.toContain("bridge stopped");
     expect(h.exec.spawned).toHaveLength(0);
     const said = h.io.stderr.join("\n");
-    expect(said).toContain("no COLLIE_MUX is set, and 2 multiplexers are running here");
-    expect(said).toContain(`fix:  printf 'COLLIE_MUX=<herdr|tmux|zellij>\\n' >> ${CONFIG}/.env && collie start`);
+    expect(said).toContain("no COLLIE_MUX is set, and 2 multiplexers are running");
+    expect(said).toContain(`  printf 'COLLIE_MUX=<herdr|tmux|zellij>\\n' >> ${CONFIG}/.env && collie start`);
   });
 });
 
