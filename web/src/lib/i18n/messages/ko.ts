@@ -582,9 +582,6 @@ export const ko: Dictionary = {
   "time.compact.now": "방금",
 
   // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
-  "sync.pull.hint": "당겨서 새로고침",
-  "sync.pull.release": "놓으면 새로고침",
-  "sync.pull.busy": "새로고침 중…",
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "전송 중",

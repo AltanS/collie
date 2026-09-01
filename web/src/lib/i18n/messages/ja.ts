@@ -584,9 +584,6 @@ export const ja: Dictionary = {
   "time.compact.now": "今",
 
   // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
-  "sync.pull.hint": "引いて更新",
-  "sync.pull.release": "離して更新",
-  "sync.pull.busy": "更新中…",
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "送信中",

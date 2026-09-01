@@ -606,9 +606,6 @@ export const en = {
   "time.compact.now": "now",
 
   // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
-  "sync.pull.hint": "Pull to refresh",
-  "sync.pull.release": "Release to refresh",
-  "sync.pull.busy": "Refreshing…",
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "Sending",

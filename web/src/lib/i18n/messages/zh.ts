@@ -572,9 +572,6 @@ export const zh: Dictionary = {
   "time.compact.now": "现在",
 
   // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
-  "sync.pull.hint": "下拉刷新",
-  "sync.pull.release": "释放立即刷新",
-  "sync.pull.busy": "正在刷新…",
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "正在发送",

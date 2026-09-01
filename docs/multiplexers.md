@@ -175,11 +175,8 @@ exact specification.
 Without active beacons, tmux and zellij present panes as raw shells, and pane history is marked
 unavailable rather than returning empty content.
 
-### Three things that feel different on the phone
+### Two things that feel different on the phone
 
-- **Pull to refresh:** Swipe down on dashboard and space views to trigger an immediate multiplexer
-  poll. The terminal pane view does not support pull-to-refresh; swiping there scrolls through
-  terminal buffer history.
 - **"synced Ns ago":** This indicator appears in the dashboard header to show data age. It is
   displayed **only when the backend relies on scheduled polling**, such as **zellij** (up to 12s
   polling interval). Herdr and tmux push state changes immediately, so the freshness badge is

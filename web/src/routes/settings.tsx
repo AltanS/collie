@@ -106,7 +106,7 @@ export function SettingsRoute() {
         }
       />
 
-      {/* `relative` for the same reason PullToRefresh carries it: an `sr-only` (position: absolute)
+      {/* `relative` for the same reason the home scroller carries it: an `sr-only` (position: absolute)
           deep in this page would otherwise escape the scroller and grow the document's own
           scrollbar. */}
       <main className="relative flex min-h-0 flex-1 flex-col space-y-4 overflow-y-auto p-4">

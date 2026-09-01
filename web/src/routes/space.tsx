@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useRevalidator } from "react-router";
 
 import { RouteHeader, SettingsGear } from "@/components/app-header";
-import { PullToRefresh } from "@/components/pull-to-refresh";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { SpaceStrip } from "@/components/space-strip";
 import { SpaceView } from "@/components/space-view";
@@ -84,9 +83,10 @@ export function SpaceRoute() {
         rightTrail={<SettingsGear scope={data.scope} />}
       />
 
-      {/* Content region below the header: the viewport-clipped scroller, carrying the same pull
-          gesture the dashboard does — the two are one list screen at two depths. */}
-      <PullToRefresh scope={data.scope} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* Content region below the header: the viewport-clipped scroller, the same shell the
+          dashboard uses — the two are one list screen at two depths. `relative` for the reason
+          home.tsx gives: an `sr-only` descendant must resolve against this scroller. */}
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
         {/* Below the header, so it is content, not viewport chrome: an inset box on this route's
             gutter, like the dashboard's. See read-only-banner.tsx. */}
         <ReadOnlyBanner device={data.device} />
@@ -137,7 +137,7 @@ export function SpaceRoute() {
             running, with a stale-cache nudge). */}
         <UpdateBanner className="px-4 pt-3" />
         <BuildStamp className="px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
-      </PullToRefresh>
+      </div>
 
       {/* Status overlay, anchored to the bottom of the viewport. Stays outside the scroller. Same
           call as the dashboard's, and for the same reason: no composer down there to collide with.

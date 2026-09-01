@@ -593,9 +593,6 @@ export const es: Dictionary = {
   "time.compact.now": "ahora",
 
   // --- sync (how fresh the herd on screen is, and asking for a fresher one) ---
-  "sync.pull.hint": "Arrastra hacia abajo para actualizar",
-  "sync.pull.release": "Suelta para actualizar",
-  "sync.pull.busy": "Actualizando...",
 
   // --- dialog (menu / multi-select / wizard / preview-select block renderers) ---
   "dialog.sendingAria": "Enviando",

@@ -4,7 +4,6 @@ import { useNavigate } from "react-router";
 import { RouteHeader, SettingsGear } from "@/components/app-header";
 import { SessionSwitcher } from "@/components/session-switcher";
 import { ServerSwitcher } from "@/components/server-switcher";
-import { PullToRefresh } from "@/components/pull-to-refresh";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { AgentList } from "@/components/agent-list";
 import { SpaceOverview } from "@/components/space-overview";
@@ -92,9 +91,11 @@ export function HomeRoute() {
         rightTrail={<SettingsGear scope={data.scope} />}
       />
 
-      {/* Content region below the header: a viewport-clipped internal scroller, with the pull
-          gesture on it — one thumb asking the bridge to look at its multiplexer now. */}
-      <PullToRefresh scope={data.scope} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+      {/* Content region below the header: a viewport-clipped internal scroller. `relative` is
+          load-bearing: it makes this scroller the containing block for its absolutely-positioned
+          descendants. Tailwind's `sr-only` is `position: absolute`, so every status label in the
+          list would otherwise escape this scroller's clip and grow the document's own scrollbar. */}
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
         {/* A notice BELOW the header is content, not viewport chrome: it is an inset box on the
             page gutter, not a full-bleed strip. Full-bleed it ran its left edge 16px outside the
             list it sat on top of — two left edges stacked, the loudest misalignment on the page. */}
@@ -133,7 +134,7 @@ export function HomeRoute() {
         <PackFooterLink scope={data.scope} className="px-4 pt-3" />
         <UpdateBanner className="px-4 pt-3" />
         <BuildStamp className="px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
-      </PullToRefresh>
+      </div>
 
       {/* Status overlay, anchored to the bottom of the viewport (no input here) — same slim line,
           floating so it never shifts the list. Stays outside the scroller so it never scrolls away.
