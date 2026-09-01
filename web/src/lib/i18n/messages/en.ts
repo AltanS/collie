@@ -623,6 +623,7 @@ export const en = {
   "dialog.submitAnswers": "Submit answers",
   "dialog.cancel": "Cancel",
   "dialog.endsQuestionsSuffix": "— ends the questions",
+  "dialog.autocomplete.title": "Slash commands",
   "dialog.menu.moveUp": "Move up",
   "dialog.menu.moveDown": "Move down",
   "dialog.menu.leftAria": "Left — {verb} ({label})",

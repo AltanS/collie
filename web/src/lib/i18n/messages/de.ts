@@ -610,6 +610,7 @@ export const de: Dictionary = {
   "dialog.submitAnswers": "Antworten absenden",
   "dialog.cancel": "Abbrechen",
   "dialog.endsQuestionsSuffix": "- beendet den Fragenteil",
+  "dialog.autocomplete.title": "Slash-Befehle",
   "dialog.menu.moveUp": "Nach oben",
   "dialog.menu.moveDown": "Nach unten",
   "dialog.menu.leftAria": "Links: {verb} ({label})",

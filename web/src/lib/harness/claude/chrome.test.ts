@@ -749,6 +749,11 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     // and the corpus is unanimous: every genuinely-typed draft in this corpus is unstyled, and the
     // only two faint ones are this and the ghost capture. `stripped` is unchanged — stripChrome peels
     // the whole box either way.
+    // The slash-command completion popup below the box (23 rows in the long capture, 3 in the short
+    // one). Both are the regression this table would have caught: before the popup peel the box was
+    // undetectable behind them, so draft was null and stripped was 0.
+    { fixture: "autocomplete-slash-long", statusRows: 0, draft: "/model", stripped: 27 },
+    { fixture: "autocomplete-slash-short", statusRows: 0, draft: "/re", stripped: 7 },
     { fixture: "done", statusRows: 2, draft: null, stripped: 28 },
     { fixture: "ghost-suggestion", statusRows: 4, draft: null, stripped: 21 },
     { fixture: "ghost-typed-over", statusRows: 4, draft: "hello real draft text", stripped: 21 },

@@ -599,6 +599,7 @@ export const ko: Dictionary = {
   "dialog.submitAnswers": "답변 제출",
   "dialog.cancel": "취소",
   "dialog.endsQuestionsSuffix": " (질문 종료)",
+  "dialog.autocomplete.title": "슬래시 명령",
   "dialog.menu.moveUp": "위로 이동",
   "dialog.menu.moveDown": "아래로 이동",
   "dialog.menu.leftAria": "왼쪽: {verb} ({label})",

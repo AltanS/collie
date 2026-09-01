@@ -1,0 +1,32 @@
+[0m[38;2;215;119;87m ▐[0m[38;2;215;119;87m[48;2;0;0;0m▛███▛█   [0m[1mClaude Code [0m[38;2;153;153;153mv2.1.257[0m
+[0m[38;2;215;119;87m▝▜[0m[38;2;215;119;87m[48;2;0;0;0m█████[0m[38;2;215;119;87m█▀  [0m[38;2;153;153;153mOpus 5 (1M context) with medium effort · Claude Max[0m
+[0m[38;2;215;119;87m  ▝▝ ▝▝    [0m[38;2;153;153;153m~/nixos-configuration[0m
+
+[0m[38;2;255;193;7m⚠ Your login expires in 3 days[0m[38;2;153;153;153m · run /login to renew[0m
+
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+❯ [0m[38;2;177;185;249m/model[0m
+[0m[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;177;185;249m/[0m[1m[38;2;177;185;249mmodel[0m[38;2;177;185;249m                                   Set the AI [0m[1m[38;2;177;185;249mmodel[0m[38;2;177;185;249m for Claude Code (currently Opus 5 (1M context))[0m
+  [0m[38;2;153;153;153m/claude-api                              Reference for the Claude API / Anthropic SDK — [0m[1mmodel[0m[38;2;153;153;153m ids, pricing, params, streaming, tool use, MCP, agents, caching, token counting, model migration. TRIGGER — read BEFORE[0m
+                                           [0m[38;2;153;153;153mopening the target file; don't skip because it "looks like a one-liner" — whenever: the prompt names Claude/Anthropic in any form (Claude, Anthropic, Fable, Opus, Sonnet, Haiku…[0m
+  [0m[38;2;153;153;153m/loop                                    Run a prompt or slash command on a recurring interval (e.g. /loop 5m /foo). Omit the interval to let the [0m[1mmodel[0m[38;2;153;153;153m self-pace.[0m
+  [0m[38;2;153;153;153m/advisor                                 Let Claude consult a stronger [0m[1mmodel[0m[38;2;153;153;153m at key moments[0m
+  [0m[38;2;153;153;153m/effort                                  Set effort level for [0m[1mmodel[0m[38;2;153;153;153m usage[0m
+  [0m[38;2;153;153;153m/status                                  Show Claude Code status including version, [0m[1mmodel[0m[38;2;153;153;153m, account, API connectivity, and tool statuses[0m
+  [0m[38;2;153;153;153m/auto-mode-setup                         Teach auto mode about your environment, plus optional rule tweaks[0m
+  [0m[38;2;153;153;153m/typescript:structure-module             (typescript) Organizes code into well-structured modules with clear boundaries, exports, and locality of behavior.[0m
+  [0m[38;2;153;153;153m/doctor                                  Health-check the user's Claude Code setup and fix issues: diagnose installation health — what the `claude doctor` terminal diagnostics cover — from local data (duplicate or[0m
+                                           [0m[38;2;153;153;153mleftover installs, PATH, unparseable settings files, broken or colliding agent definitions, skills whose frontmatter fails to parse); find unused skills, MCP servers, and plugi…[0m
+  [0m[38;2;153;153;153m/update-config                           Use this skill to configure the Claude Code harness via settings.json. Automated behaviors ("from now on when X", "each time X", "whenever X", "before/after X") require hooks[0m
+                                           [0m[38;2;153;153;153mconfigured in settings.json - the harness executes these, not Claude, so memory/preferences cannot fulfill them. Also use for: permissions ("allow X", "add permission", "move p…[0m
+  [0m[38;2;153;153;153m/add-system-service                      This skill should be used when the user asks to "add a service", "install docker", "enable a system service", "add podman", "enable virtualization", or wants to add any[0m
+                                           [0m[38;2;153;153;153msystem-level service to NixOS. Provides patterns for creating service modules and integrating them with hosts. (project)[0m
+  [0m[38;2;153;153;153m/typescript:refactor-dependencies        (typescript) Applies dependency injection and inversion patterns to improve testability and modularity.[0m
+  [0m[38;2;153;153;153m/typescript:tao-of-node-react            (typescript) Six Kondov "Full-Stack Tao" patterns the typescript-expert agent doesn't cover elsewhere — wrap third-party libraries behind owned interfaces, don't block the Node[0m
+                                           [0m[38;2;153;153;153mevent loop with CPU work, separate container/presentational React components, useReducer over chained useState for non-trivial state, use a data-fetching library (react-query/S…[0m
+  [0m[38;2;153;153;153m/code-review                             3 free /ultrareview · Review the current diff, or a PR number/branch/path target, for correctness bugs and reuse/simplification/efficiency cleanups at the given effort level[0m
+                                           [0m[38;2;153;153;153m(low/medium: fewer, high-confidence findings; high→max: broader coverage, may include uncertain findings; ultra: deep multi-agent review in the cloud); with no level given, it …[0m
+  [0m[38;2;153;153;153m/fast                                    Toggle fast mode (Opus 5)[0m
+  [0m[38;2;153;153;153m/voice                                   Toggle voice mode[0m
+  [0m[38;2;153;153;153m/plan                                    Enable plan mode or view the current session plan[0m

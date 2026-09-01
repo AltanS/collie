@@ -261,11 +261,15 @@ export function isValidHerdrKey(key: string): boolean {
   return SPECIAL_KEYS.has(last) && !UNSUPPORTED_KEYS.has(last); // shift+tab, ctrl+left
 }
 
-// Genuinely-future NON-interactive block kinds (like `raw`) that carry no keystrokes and so need no
-// key walk. EMPTY today — every interactive kind that ships is modelled below. A new interactive kind
-// that lands without a case here must FAIL the suite (see the default branch), not slip through as a
-// silent `null`; only a deliberately keyless kind belongs in this allowlist.
-const KEYLESS_FUTURE_KINDS = new Set<string>();
+// NON-interactive block kinds (like `raw`) that carry no keystrokes and so need no key walk. A new
+// INTERACTIVE kind that lands without a case below must FAIL the suite (see the default branch), not
+// slip through as a silent `null`; only a deliberately keyless kind belongs in this allowlist.
+//
+// `autocomplete` is one: the agent's completion popup is painted while its input box is LIVE under it
+// (harness/autocomplete-model.ts), so the block emits nothing, races nothing, and has no row in the
+// dialog contract. Its fixtures still take the fail-closed and tail-anchoring legs above, which is
+// where a popup grammar could actually do harm.
+const KEYLESS_FUTURE_KINDS = new Set<string>(["autocomplete"]);
 
 /**
  * Every keystroke an interactive block can emit, walked off its model + the family's control

@@ -601,6 +601,7 @@ export const ja: Dictionary = {
   "dialog.submitAnswers": "回答を送信",
   "dialog.cancel": "キャンセル",
   "dialog.endsQuestionsSuffix": "（質問を終了）",
+  "dialog.autocomplete.title": "スラッシュコマンド",
   "dialog.menu.moveUp": "上へ移動",
   "dialog.menu.moveDown": "下へ移動",
   "dialog.menu.leftAria": "左: {verb}（{label}）",

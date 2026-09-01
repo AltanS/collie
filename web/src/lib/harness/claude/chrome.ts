@@ -9,6 +9,7 @@
 // matched by POSITION (below the box's bottom border), never by its content strings.
 
 import type { StyledLine } from "../../blocks";
+import { findAutocompleteRun } from "./autocomplete";
 import { isBlank, isBoxBorder, isInputBoxTopBorder, lineText } from "./markers";
 
 // Rows allowed DIRECTLY under the input box's bottom border: the statusline plus its hint row(s)
@@ -264,8 +265,41 @@ interface InputBox {
  *
  * return the top and bottom border indices plus the prompt-line index. Otherwise null. Scans
  * bottom-up.
+ *
+ * The SLASH-AUTOCOMPLETE POPUP is peeled off the tail FIRST, before any of that. While the operator
+ * is typing a slash command, Claude replaces the statusline with its completion list — a run of
+ * entry/continuation rows directly under the bottom border, 23 rows for `/model` on a machine with
+ * many skills. That run is far taller than MAX_STATUS_LINES, so step (b) below used to eat the cap
+ * and step (c) never reached the border: the box went undetected, `hasInputBox` (and therefore
+ * `composerReady`) read false, and every send stalled while the draft sat in a live input box.
+ *
+ * The cap is NOT raised to cover it, per .adr/0004: the row count is not what protects this walk, and
+ * a taller blind window admits more screens it should refuse. Instead the popup is matched by its own
+ * SHAPE (./autocomplete.ts) and removed from the tail, and the ordinary walk then runs from the row
+ * above it — seeing exactly what it would have seen if the popup were not painted at all.
+ *
+ * The peel is confirmed, not assumed: the box it produces must hold a draft that STARTS WITH "/",
+ * which is the only condition under which Claude paints this popup at all. When it doesn't (or when
+ * no popup matches), the walk runs unchanged from `end`, so nothing that worked before can regress.
  */
 function locateInputBox(texts: string[], end: number): InputBox | null {
+  const popup = findAutocompleteRun(texts, end);
+  if (popup !== null) {
+    const box = walkInputBox(texts, popup.start);
+    if (box !== null && promptIsSlashCommand(texts, box)) return box;
+  }
+  return walkInputBox(texts, end);
+}
+
+/** Whether the box's "❯" line holds a slash command — the draft state that puts the completion popup
+ *  on screen. Claude renders a U+00A0 after the marker, which JS `trim()` strips. */
+function promptIsSlashCommand(texts: string[], box: InputBox): boolean {
+  const head = texts[box.prompt]!.trimStart();
+  return (head.startsWith("❯") ? head.slice(1) : head).trim().startsWith("/");
+}
+
+/** The walk itself: steps (a)-(e) from the shape above, bottom-up from `end` (exclusive). */
+function walkInputBox(texts: string[], end: number): InputBox | null {
   let i = end - 1;
 
   // (a) Optional background-agents footer at the very tail (a newer Claude Code UI): a non-blank run

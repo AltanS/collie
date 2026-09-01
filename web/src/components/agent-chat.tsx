@@ -33,6 +33,7 @@ import { paneTag } from "@/lib/pane-tag";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { adapterFor } from "@/lib/harness";
+import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { FindBar } from "@/components/find-bar";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
@@ -448,17 +449,22 @@ export function AgentChat({
         : null,
     [display, agent?.agent, grammarsOn],
   );
-  // Is a dialog (prompt/wizard/preview/multi-select) on screen right now? Any non-raw block means
-  // the TUI's keyboard belongs to it, so the composer must refuse a free-text send: the text would
-  // be swallowed and the submit key would answer the dialog (#34). Same parse source and adapter as
-  // the two probes above, so the three can't drift. This is the zero-latency fail-fast; the
-  // load-bearing protection is reply-action's verify-before-submit, which also covers a dialog that
-  // appears after this render.
+  // Is a dialog (prompt/wizard/preview/multi-select/menu) on screen right now? A block whose screen
+  // owns the TUI's keyboard means the composer must refuse a free-text send: the text would be
+  // swallowed and the submit key would answer the dialog (#34). Same parse source and adapter as the
+  // two probes above, so the three can't drift. This is the zero-latency fail-fast; the load-bearing
+  // protection is reply-action's verify-before-submit, which also covers a dialog that appears after
+  // this render.
+  //
+  // "Owns the keyboard" is asked of the dialog contract (`blockOwnsKeyboard`), not spelled as
+  // `kind !== "raw"`. The two were the same set until a PRESENTATIONAL non-raw kind shipped: the
+  // slash-command `autocomplete` popup is painted while the agent's input box is live under it, so
+  // treating it as a dialog would lock the composer out of a pane that is demonstrably typeable.
   const dialogPresent = useMemo(
     () =>
       grammarsOn
         ? (adapterFor(agent?.agent)?.buildBlocks(splitLines(parseAnsi(display))) ?? []).some(
-            (b) => b.kind !== "raw",
+            blockOwnsKeyboard,
           )
         : false,
     [display, agent?.agent, grammarsOn],

@@ -185,6 +185,22 @@ is why a composer send used to be typed straight into it. Claimed by the last-re
 | `claude--menu-model-picker-moved.txt` | The same picker after `2×Down` (`❯` on row 3) — same title and actions, **different signature**. The race-guard fixture: a committing key must refuse a tap on the earlier render, an arrow must not |
 | `claude--menu-model-picker-dismissed.txt` | After `Esc`: the ordinary input box + statusline are back. The **negative control** — its statusline is `·`-separated like a key-hint footer, so only the input-box gate keeps it raw |
 
+## Slash-autocomplete corpus (captured 2026-09-01, Claude Code v2.1.257, live pane)
+
+Claude Code's **command-completion popup** — the run of rows it paints directly under the input
+box's bottom border while the draft is still a partial slash command. It is the picker's opposite
+number: the input box is **live** underneath it, so this is composer chrome plus a list, never a
+modal. Read by `harness/claude/autocomplete.ts` and peeled off the tail by `locateInputBox` before
+its own walk, because the run is far taller than `MAX_STATUS_LINES` and used to hide the box behind
+it — `composerReady` false, every send stalled, the whole 220-column grid soft-wrapped onto the
+phone. Selection inside the popup is **SGR-only** (the highlighted row is byte-identical to its
+neighbours), so the grammar matches on shape and never on colour.
+
+| Fixture | State / what's in it |
+|---|---|
+| `claude--autocomplete-slash-long.txt` | `/model` typed on a machine with many skills: 23 popup rows — 17 entries at a description column of 43, six of whose blurbs wrap onto a continuation row. **No statusline and no key-hint footer**: while the popup is open the run reaches the last line of the screen. The capture the bug was diagnosed from |
+| `claude--autocomplete-slash-short.txt` | The 3-row shape (`/re` → `/rename`, `/resume`, `/release-notes`) at a description column of 23, first row highlighted. **Derived**: written to the same layout and SGR palette as the long capture, at a width that fits the page |
+
 ## Wizard corpus (captured 2026-07-05, sandbox pane; choreography in `../../lib/grammar/WIZARD_NOTES.md`)
 
 | Fixture | State / what's in it |

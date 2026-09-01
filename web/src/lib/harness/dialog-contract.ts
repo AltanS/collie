@@ -40,8 +40,24 @@ export interface DialogModels {
   menu: MenuModel;
 }
 
-/** An interactive block kind — every `Block["kind"]` except `raw`. */
+/** An interactive block kind — every `Block["kind"]` that OWNS THE KEYBOARD. `raw` is not one, and
+ *  neither is `autocomplete`: a completion popup is painted while the agent's input box is live under
+ *  it, so it emits no keystroke and races nothing. */
 export type DialogKind = keyof DialogModels;
+
+/**
+ * Whether this block's screen OWNS THE TUI's KEYBOARD — i.e. whether free text typed at it would be
+ * swallowed and the submit key answer a modal instead (#34). Exactly the kinds with a row in
+ * `DIALOG_CONTRACT`, which is the definition rather than a parallel list: a kind that ships without a
+ * row has no committing keystroke to guard, so by construction it does not own the keyboard.
+ *
+ * `agent-chat.tsx`'s `dialogPresent` is this predicate over the built blocks. It used to be
+ * `kind !== "raw"`, which was the same set until a PRESENTATIONAL non-raw kind existed; with
+ * `autocomplete` it would have locked the composer out of a pane whose input box is demonstrably live.
+ */
+export function blockOwnsKeyboard(block: Block): boolean {
+  return block.kind in DIALOG_CONTRACT;
+}
 
 /** Pull the typed model off a block of `kind`, or null when the block is a different kind. The one
  *  place that knows which field name each block uses for its payload. */

@@ -610,6 +610,7 @@ export const es: Dictionary = {
   "dialog.submitAnswers": "Enviar respuestas",
   "dialog.cancel": "Cancelar",
   "dialog.endsQuestionsSuffix": ": finaliza el cuestionario",
+  "dialog.autocomplete.title": "Comandos de barra",
   "dialog.menu.moveUp": "Subir",
   "dialog.menu.moveDown": "Bajar",
   "dialog.menu.leftAria": "Izquierda: {verb} ({label})",

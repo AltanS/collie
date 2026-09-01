@@ -15,6 +15,7 @@ import { detectWizardRegion } from "./wizard";
 import { detectMultiSelectRegion } from "./multi-select";
 import { detectPromptSelectRegion } from "./prompt-select";
 import { detectMenuRegion } from "./menu";
+import { detectAutocompleteRegion } from "./autocomplete";
 import { stripChrome, extractStatusLines, extractInputDraft, hasInputBox } from "./chrome";
 import { isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
 
@@ -86,6 +87,29 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
     if (before.length > 0) blocks.push({ kind: "raw", lines: before });
     blocks.push({ kind: "menu", menu: menuRegion.model, lines: lines.slice(menuRegion.startLine) });
     return blocks;
+  }
+
+  // The COMPLETION POPUP (autocomplete.ts) — the one non-raw block that is not a dialog. It runs last
+  // because it is the least specific tail shape, and it is gated on `hasInputBox` because that is what
+  // separates a live composer with a popup under it from a modal: `stripChrome` below has already had
+  // to find the same box (it peels this very run to reach it), so the two answers cannot disagree.
+  //
+  // The transcript above stays raw and the box stays stripped, exactly as on any other idle screen —
+  // the popup is simply lifted out of the mirror, where a 220-column list soft-wrapped into an
+  // unreadable wall on a phone, and rendered as a list.
+  if (hasInputBox(lines)) {
+    const autoRegion = detectAutocompleteRegion(lines);
+    if (autoRegion) {
+      const before = trimTrailingBlank(stripChrome(lines));
+      const blocks: Block[] = [];
+      if (before.length > 0) blocks.push({ kind: "raw", lines: before });
+      blocks.push({
+        kind: "autocomplete",
+        autocomplete: autoRegion.model,
+        lines: lines.slice(autoRegion.startLine),
+      });
+      return blocks;
+    }
   }
 
   return [{ kind: "raw", lines: stripChrome(lines) }];

@@ -589,6 +589,7 @@ export const zh: Dictionary = {
   "dialog.submitAnswers": "提交回答",
   "dialog.cancel": "取消",
   "dialog.endsQuestionsSuffix": "（结束问答）",
+  "dialog.autocomplete.title": "斜杠命令",
   "dialog.menu.moveUp": "上移",
   "dialog.menu.moveDown": "下移",
   "dialog.menu.leftAria": "向左：{verb}（{label}）",
