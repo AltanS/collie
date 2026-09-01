@@ -8,6 +8,10 @@ All notable changes to Collie are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The install and update docs lead with the two shapes an install actually has**, and neither assumes a bare `collie` on your PATH: a Herdr-managed install spells every verb as a plugin action, a standalone one as `bin/collie <verb>`. `docs/install.md` is two ways in rather than four, and ends with the update command it never carried; `docs/upgrading.md` opens on the update instead of the uninstall, folds the two 0.x sections into one crossing, and drops the finished v1 beta train.
+
 ### Fixed
 
 - The post-update hooks nudge swallows a spawn failure of the new binary (ENOEXEC/EACCES) instead of failing an update that already succeeded — the silence its own comment promised.
@@ -16,11 +20,13 @@ All notable changes to Collie are recorded here. The format follows
 
 **This release is the whole `1.0.0-alpha` / `1.0.0-beta` line in one entry**, grouped once; the
 per-release detail lives in the linked commits and the git history. Coming from 0.x, read
-[`docs/upgrading.md`](./docs/upgrading.md) → *Upgrading from 0.x to 1.x* first.
+[`docs/upgrading.md`](./docs/upgrading.md) → *Upgrading from 0.x to 1.0* first.
 
-**Upgrading:** from the Herdr plugin, run `herdr plugin action invoke update-major --plugin
-herdr.collie`. Fresh install: `curl -fsSL https://colliepwa.dev/install.sh | sh`. Details and
-rollback: [`docs/upgrading.md`](./docs/upgrading.md).
+**Upgrading, in one line each.** From the Herdr plugin:
+`herdr plugin action invoke update-major --plugin herdr.collie`. From a checkout you can reach:
+`bin/collie update --major`. Fresh install: `curl -fsSL https://colliepwa.dev/install.sh | sh`.
+Neither upgrade path assumes a `collie` on your PATH. Details and rollback:
+[`docs/upgrading.md`](./docs/upgrading.md).
 
 ### Added
 

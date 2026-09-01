@@ -41,12 +41,18 @@ the Herdr Windows beta; see [Windows](../README.md#windows-experimental).
 
 ## Install
 
-On the host, not your phone. Four ways in — a script, a build you drive yourself, and two through
-Herdr. All four end in the same place: a `collie` on your PATH, a built UI, and one multiplexer to
-mirror. Herdr is the last two routes, not the first: it is one of the three multiplexers Collie
-drives, never a dependency of the program.
+**Two ways in.** Both end in the same place: a built UI, the bridge published on your tailnet, and
+one multiplexer to mirror.
 
-### The install script
+- **[Fresh install](#fresh-install)** — the install script, or the same result from source. Herdr is
+  not involved and need not be installed.
+- **[Through Herdr](#through-herdr)** — you already run Herdr, so Collie goes in as its plugin and
+  you drive it with plugin actions.
+
+Herdr is one of the three multiplexers Collie can mirror, never a dependency of the program. Which
+multiplexer you mirror is a separate decision, and it is the [step after this one](#name-your-multiplexer).
+
+### Fresh install
 
 The short way. It downloads the newest release for your platform, verifies its sha256, lays it down
 and puts `collie` on your PATH — then stops and prints what is left, because choosing a multiplexer
@@ -65,30 +71,38 @@ curl -fsSL https://raw.githubusercontent.com/AltanS/collie/main/scripts/install.
 curl -fsSL https://raw.githubusercontent.com/AltanS/collie/main/scripts/install.sh | sh
 ```
 
-It installs into `~/.local/share/collie` (`COLLIE_DIR` moves that) as
-`versions/<x.y.z>/` with a `current` symlink, takes the newest **stable** release, and refuses to
-touch an install that is already there — `collie update` is the tool for one of those. It needs
-`curl`, `tar` and a sha256 tool, and no toolchain: the payload is already built. Pass `--beta` to
-take the newest prerelease instead, which is the deliberate opt-in described in
-[Testing the v1 beta](upgrading.md#testing-the-v1-beta).
+It installs into `~/.local/share/collie` (`COLLIE_DIR` moves that) as `versions/<x.y.z>/` with a
+`current` symlink, takes the newest **stable** release, and refuses to touch an install that is
+already there — `collie update` is the tool for one of those. It needs `curl`, `tar` and a sha256
+tool, and no toolchain: the payload is already built.
 
-Set `COLLIE_TAG=vX.Y.Z` to pin an exact release tag instead of taking the newest one — a
-prerelease tag works too, and it skips the GitHub tags API entirely:
+**Where the binary is, if the name is not on your PATH.** The script ends by running `collie link`,
+which publishes `~/.local/bin/collie` as a symlink to the version it just laid down. If
+`~/.local/bin` is not on your PATH the script says so, and every verb is still one path away —
+the file arrives executable, so there is nothing to `chmod`:
 
 ```bash
-COLLIE_TAG=v1.0.0-beta.49 curl -fsSL https://colliepwa.dev/install.sh | sh
+~/.local/share/collie/current/bin/collie version
+```
+
+Set `COLLIE_TAG=vX.Y.Z` to pin an exact release tag instead of taking the newest one — a prerelease
+tag works too, and it skips the GitHub tags API entirely:
+
+```bash
+COLLIE_TAG=v1.0.0 curl -fsSL https://colliepwa.dev/install.sh | sh
 ```
 
 `COLLIE_TAG` also works over an existing binary install, as a rescue: it lays the pinned version
 beside the current one and flips the `current` symlink, without touching anything else — see
-[When collie will not run](upgrading.md#when-collie-will-not-run).
+[When collie will not run](upgrading.md#when-collie-will-not-run). To take a prerelease deliberately,
+pass `--beta` instead: that is the opt-in described in [Prereleases](upgrading.md#prereleases).
 
 #### The same result, from source
 
 The script is a convenience and must never be the only door. Building from source is fully supported
 — it is the route for musl systems, for platforms the release matrix does not publish yet, and for
 anyone who will not run a downloaded binary — and it leaves you with the same three things: a
-checkout, a built UI and a `collie` on your PATH.
+checkout, a built UI and a `collie` you can call.
 
 ```bash
 # 1. clone, and check out the newest stable release — the tags are the contract
@@ -99,7 +113,10 @@ git checkout --detach "$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+
 # 2. build — the shim finds Bun and compiles bin/collie, then builds the web UI
 sh scripts/collie-ctl.sh build
 
-# 3. put `collie` on your PATH, as a symlink to this checkout's binary
+# 3. every verb now works from the checkout, and the binary is already executable
+bin/collie version
+
+# 4. optional — publish a bare `collie` on your PATH, as a symlink to this checkout's binary
 bin/collie link
 ```
 
@@ -108,57 +125,14 @@ Then the same finishing steps the script prints, with this route's paths:
 ```bash
 mkdir -p ~/.config/collie
 cp ~/.local/share/collie/.env.example ~/.config/collie/.env
-# optional: name COLLIE_MUX in that file — herdr, tmux or zellij.
-# Leave it out and the first `start` probes for all three and asks you.
-collie start
+bin/collie start
 ```
-
-### Without Herdr (tmux or zellij)
-
-The route that never mentions Herdr. Herdr is one of Collie's three multiplexers, not a dependency of
-the program: with `COLLIE_MUX=tmux` or `COLLIE_MUX=zellij` the bridge builds only the adapter you
-named and never dials Herdr's socket, so Herdr need not be installed. Name it **before the first
-start** and nothing is asked; leave it out and the first `start` asks.
-
-```bash
-git clone https://github.com/AltanS/collie.git && cd collie
-mkdir -p ~/.config/collie          # `start` would create it later; the `cp` below needs it now
-cp .env.example ~/.config/collie/.env
-```
-
-`~/.config/collie/` is where a Herdr-less Collie ends up: it asks Herdr where the plugin's config
-dir is, and with no Herdr to ask, that is the directory it falls back to. Nothing seeds the `.env`
-for you — the copy above is the whole of it. Now name your multiplexer in that file, and the
-endpoint that says *which* tmux server or *which* zellij session:
-
-```bash
-COLLIE_MUX=tmux                                           # or: zellij
-COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock  # zellij: COLLIE_MUX_ENDPOINT_ZELLIJ=<session>
-```
-
-What each endpoint accepts, and how to give the multiplexer something worth mirroring, is
-[Using the app on tmux or zellij](multiplexers.md#using-the-app-on-tmux-or-zellij) — worth reading before you
-start rather than after. Then start it:
-
-```bash
-scripts/collie-ctl.sh start
-```
-
-That first run compiles `bin/collie` — the full build, typecheck and web bundle, so give it a
-minute — and every command from then on is spelled `bin/collie <verb>` ([Commands](commands.md)).
-`start` itself does the same four things the Herdr routes below list.
-
-**Skip the `.env` and the first `start` asks you.** It looks for a live Herdr socket, a running tmux
-server and zellij sessions, prints what it found, and writes your answer into the `.env` for you. With
-no terminal to ask at — a provisioning run, a systemd unit — it takes the only multiplexer it found
-and says which and why; with none or with several it refuses to start and names `COLLIE_MUX` as the
-one line that settles it. `bin/collie doctor` reports the same decision, and the evidence behind it.
 
 ### Through Herdr
 
 **Both Herdr routes need Herdr's server running first** — start the Herdr TUI (`herdr`), or
 `herdr server &`. Without it the `invoke start` lines below fail on the socket with
-`server_not_running`. None of that applies to the two routes above.
+`server_not_running`. None of that applies to the route above.
 
 **From GitHub (turnkey)** — Herdr fetches and builds for you:
 
@@ -167,9 +141,6 @@ one line that settles it. `bin/collie doctor` reports the same decision, and the
 herdr plugin install AltanS/collie
 herdr plugin action invoke start --plugin herdr.collie
 ```
-
-That bare `install` line above tracks the STABLE line only. For the v1 prerelease train, see
-[Testing the v1 beta](upgrading.md#testing-the-v1-beta).
 
 **From a local clone (for development)** — registered by path:
 
@@ -180,9 +151,60 @@ herdr plugin link "$(pwd)"
 herdr plugin action invoke start --plugin herdr.collie
 ```
 
-Either way, `start` does four things:
+**A Herdr-managed install has no `collie` on your PATH, and does not need one.** Every verb is a
+plugin action — `start`, `stop`, `restart`, `update`, `version`, `url`
+([Herdr actions](commands.md#herdr-actions)) — and a GitHub install keeps its checkout under a
+hashed path you are not meant to type. A local clone is yours, so `bin/collie <verb>` works there
+too.
 
-1. **builds** `web/dist` if it's missing (typechecked, staged, swapped in atomically),
+That bare `plugin install` line tracks the STABLE line only. To take a prerelease, see
+[Prereleases](upgrading.md#prereleases).
+
+### Name your multiplexer
+
+Collie mirrors one multiplexer, named in one key: `COLLIE_MUX=herdr` (the default, and the fully
+supported path), `tmux` or `zellij` — the last two experimental in 1.0. Set it and the bridge builds
+only that adapter and never dials Herdr's socket.
+
+**Skip this and the first `start` asks you.** It looks for a live Herdr socket, a running tmux server
+and zellij sessions, prints what it found, and writes your answer into the `.env` for you. With no
+terminal to ask at — a provisioning run, a systemd unit — it takes the only multiplexer it found and
+says which and why; with none, or with several, it refuses to start and names `COLLIE_MUX` as the one
+line that settles it. `doctor` reports the same decision, and the evidence behind it.
+
+To decide it up front, put it in the `.env` before that first start:
+
+```bash
+mkdir -p ~/.config/collie          # `start` would create it later; the `cp` below needs it now
+cp .env.example ~/.config/collie/.env
+```
+
+`~/.config/collie/` is where a Herdr-less Collie ends up: it asks Herdr where the plugin's config dir
+is, and with no Herdr to ask, that is the directory it falls back to. On a Herdr-managed install the
+file lives in the plugin's config dir instead — `herdr plugin config-dir herdr.collie`. Nothing seeds
+it for you; the copy above is the whole of it. Then name the multiplexer, and the endpoint that says
+*which* tmux server or *which* zellij session:
+
+```bash
+COLLIE_MUX=tmux                                           # or: zellij
+COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock  # zellij: COLLIE_MUX_ENDPOINT_ZELLIJ=<session>
+```
+
+What each endpoint accepts, and how to give the multiplexer something worth mirroring, is
+[Using the app on tmux or zellij](multiplexers.md#using-the-app-on-tmux-or-zellij) — worth reading
+before you start rather than after.
+
+### Start it
+
+```bash
+herdr plugin action invoke start --plugin herdr.collie   # Herdr-managed
+bin/collie start                                         # standalone
+```
+
+`start` does four things:
+
+1. **builds** `web/dist` if it's missing (typechecked, staged, swapped in atomically) — a source
+   route's first start does the full compile, so give it a minute,
 2. **starts the bridge** as the `systemd --user` service `collie` (`nohup` fallback without systemd),
 3. **publishes it on the tailnet** — literally `tailscale serve --bg 8787`: HTTPS on the host's
    MagicDNS name, `:443 → 127.0.0.1:8787`, tailnet-only,
@@ -202,7 +224,7 @@ building web UI (first run)…                    # linked clone only; a GitHub 
 bridge started (systemd --user: collie)
 tailscale serve (https) → tailnet :443 -> 127.0.0.1:8787
 
-  ✓ Collie is running  ·  v0.15.0+174c4e4
+  ✓ Collie is running  ·  v1.0.0+b158755
     service   systemd --user (collie) · active
     local     http://127.0.0.1:8787
     tailnet   https://myhost.tail1234.ts.net
@@ -255,7 +277,7 @@ Verify the deployment on both the host and client:
 ```console
 $ bin/collie status
 
-  ✓ Collie is running  ·  v0.15.0+174c4e4
+  ✓ Collie is running  ·  v1.0.0+b158755
     service   systemd --user (collie) · active
     local     http://127.0.0.1:8787
     tailnet   https://myhost.tail1234.ts.net
@@ -281,9 +303,25 @@ loopback address in the log is expected: Collie binds exclusively to `127.0.0.1`
 [Web Push](voice-and-push.md#web-push-optional) requires separate setup.
 
 On your phone, verify that your agents appear in the list and that the footer version string
-(`v0.9.0 · debcff9 · …`) matches `bin/collie version`. If the page renders without content, check
+(`v1.0.0 · b158755 · …`) matches `bin/collie version`. If the page renders without content, check
 the same-origin configuration in [Troubleshooting](troubleshooting.md#troubleshooting).
 
+
+## Keep it up to date
+
+One command, and it is spelled for the route you took:
+
+```bash
+herdr plugin action invoke update --plugin herdr.collie   # Herdr-managed
+bin/collie update                                         # standalone
+```
+
+It takes the newest release of the major you are on, rebuilds and restarts the bridge. It never
+crosses a major on its own — that is `update --major`, or the `update-major` action, and it is a
+deliberate act.
+
+Stopping, uninstalling, crossing a major, upgrading a 0.x install and rolling back are all one page:
+**[Manage & update](upgrading.md)**.
 
 ---
 

@@ -1,9 +1,8 @@
 <!-- What changed, and why. A sentence or two is fine. -->
 
-**Base branch** — see [CONTRIBUTING.md](../CONTRIBUTING.md#base-branches):
+**Base branch** — see [CONTRIBUTING.md](../CONTRIBUTING.md#base-branch):
 
-- [ ] Bugfix → opened against `main`
-- [ ] Feature, or a change to `cli/` or the bridge → opened against `v1`
+- [ ] Opened against `main` — there is one line of development, and `main` is it
 
 **Checks**
 

@@ -1,69 +1,98 @@
 # Manage & update
 
-## Stop or uninstall
+**Two shapes, two spellings.** Which one is yours was decided when you installed. Every command on
+this page comes in both, and **neither assumes a bare `collie` on your PATH**:
 
-Pause Collie without removing files:
+| You installed with | You are | Verbs are spelled |
+| --- | --- | --- |
+| `herdr plugin install` or `herdr plugin link` | **Herdr-managed** — `herdr plugin list` shows `herdr.collie` | `herdr plugin action invoke <verb> --plugin herdr.collie` |
+| the install script, or a build from source | **Standalone** | `bin/collie <verb>`, from the install directory |
 
-```bash
-collie stop
-```
+**Herdr-managed installs have no `collie` on your PATH, and nothing puts one there.** Herdr owns the
+checkout — a GitHub install lands under a hashed path you are not meant to type — so the action ids
+in `herdr-plugin.toml` are the interface ([Herdr actions](commands.md#herdr-actions)).
 
-A subsequent `start` resumes it.
-
-To tear down the service completely, run `uninstall`. This stops and disables the service, removes
-the service definition (the `systemd --user` unit or the macOS launchd agent plist), and clears
-Collie's port-scoped `tailscale serve` mapping without affecting other host tailnet mappings. It
-leaves your `.env` and checkout intact:
-
-```bash
-collie uninstall
-```
-
-To remove the installation from disk entirely, delete the install directory. For a binary install,
-that is `~/.local/share/collie` (or your custom `COLLIE_DIR`), along with the symlink removed via
-`collie unlink`.
-
-On a **Herdr-managed install**, invoke these operations as plugin actions using
-`herdr plugin action invoke stop --plugin herdr.collie` and `uninstall`. Remove the plugin
-registration with `herdr plugin uninstall herdr.collie` (or delete the directory for a linked
-clone).
-
-## Update to a new release
-
-One command does the lot, on every install:
+**Standalone installs have the binary at a path you know.** The install script puts it in
+`~/.local/share/collie/current/bin/collie`; a source build puts it at `bin/collie` inside your
+checkout. It is executable as it lands — nothing to `chmod` — so the full path is always a working
+command:
 
 ```bash
-collie update
+cd ~/.local/share/collie/current && bin/collie version    # the install script's layout
+cd ~/my/collie-checkout        && bin/collie version      # a source build or a linked clone
 ```
 
-On a binary install it fetches the newest release for your platform, verifies its sha256, swaps the
-`current` symlink and restarts — keeping the version you were on, so `collie update --rollback` can
-put it back. On a checkout it advances the checkout and rebuilds the UI. Either way it restarts the
-bridge, re-execing itself from the new code, so it is safe even when the update rewrites the program
-that is running. Confirm via the footer build stamp.
+The install script also runs `collie link` for you, which publishes a bare `collie` as a symlink to
+that binary. If `~/.local/bin` is on your PATH, `collie <verb>` works from anywhere and is the same
+program; if it is not, the script says so and the paths above stay correct
+([Put `collie` on your PATH](commands.md#put-collie-on-your-path)).
 
-**A release can add a beacon hook event, and `update` now tells you when one is missing.** Your
+**Deeper down this page, reference sections spell verbs as `collie <verb>`** — the standalone
+name. Read those as `bin/collie <verb>` if you have not linked it, or as the matching action id
+if you are Herdr-managed.
+
+Nothing you configured lives in the checkout. The `.env`, the `tailscale serve` record, paired
+devices and `stt.json` all sit outside it, so nothing on this page moves your configuration —
+`bridge/solo-baseline.test.ts` pins that as a compiled assertion rather than a promise.
+
+## Update
+
+**Herdr-managed:**
+
+```bash
+herdr plugin action invoke update --plugin herdr.collie
+```
+
+**Standalone:**
+
+```bash
+bin/collie update
+```
+
+That is the whole update. It takes the newest release of the major you are on and restarts the
+bridge, re-execing itself from the new code — so it is safe even when the update rewrites the
+program that is running. Confirm it on the footer build stamp, or with `version`.
+
+Underneath, the shape decides the mechanics. A binary install fetches the release for your platform,
+verifies its sha256 and swaps the `current` symlink, keeping the version it replaced so
+`update --rollback` can put it back. A checkout — Herdr-managed, or a linked clone — advances the
+checkout and rebuilds the UI ([what that means exactly](#what-update-actually-does-to-the-checkout)).
+
+Herdr has no `plugin update` of its own: the checkout *is* the plugin, so the action above is the
+refresh. Pinned to a version with `--ref`? Keep refreshing with `herdr plugin install --ref …`.
+
+**A release can add a beacon hook event, and `update` tells you when one is missing.** Your
 `~/.claude/settings.json` keeps the set the old build wrote, so a newly registered event never fires
-until you re-run `collie hooks install claude`; a successful update prints one line when that is the
-case, and stays quiet when you have no beacon hooks installed or the set is already complete.
+until you re-run `hooks install claude`; a successful update prints one line when that is the case,
+and stays quiet when you have no beacon hooks installed or the set is already complete.
 
-On a **Herdr-managed install** the same verb is the action
-`herdr plugin action invoke update --plugin herdr.collie`. Herdr has no `plugin update` of its own —
-the checkout is the plugin, so this verb is the refresh. Pinned to a version with `--ref`? Keep
-refreshing with `herdr plugin install --ref …`.
+### Cross a major
 
-**`update` goes to the newest release of the major you are on, and never crosses one.** A major
-means you have to change something, so it is never inherited from a routine update: the command says
-a new major is out and names the one that takes it —
+**`update` never crosses a major on its own.** A major means something changed that you have to know
+about, so it is never inherited from a routine update: the command says a new major is out and names
+the one that takes it.
+
+**Herdr-managed:**
 
 ```bash
-collie update --major
+herdr plugin action invoke update-major --plugin herdr.collie
 ```
 
-The flag is the whole consent; there is no prompt, because the same verb has to work where nothing
-can answer one — a Herdr action, a systemd unit, a provisioning run. The reasoning is
-[ADR 0020](../.adr/0020-a-major-upgrade-is-consented-by-flag.md). On a Herdr-managed install it is
-the action `update-major` (`herdr plugin action invoke update-major --plugin herdr.collie`).
+**Standalone:**
+
+```bash
+bin/collie update --major
+```
+
+It crosses **one** major, to the newest **strict** release of the next one — an install two majors
+behind crosses them one at a time rather than jumping to the newest — and a prerelease is never a
+target for it. With no higher major published, the verb says so and changes nothing. The flag is the
+whole consent; there is no prompt, because the same verb has to work where nothing can answer one —
+a Herdr action, a systemd unit, a provisioning run
+([ADR 0020](../.adr/0020-a-major-upgrade-is-consented-by-flag.md)).
+
+**Still on 0.x?** That is the crossing to 1.0. It is the same one command, with one thing to check
+first: [Upgrading from 0.x to 1.0](#upgrading-from-0x-to-10).
 
 ### If that fails with *"You are not currently on a branch"*
 
@@ -129,7 +158,7 @@ or exclude the `-beta` / `-rc` tails according to what you want; Collie's own up
 `collie update` both do exactly this (`bridge/update.ts`, `cli/update.ts`), and which tails they keep
 depends on the version the checkout is already running — a stable install reads strict tags only, and
 a prerelease install falls back to its own major's prereleases only while that major has no strict
-release newer than it ([below](#testing-the-v1-beta)).
+release newer than it ([below](#prereleases)).
 
 ```bash
 # newest stable release
@@ -142,128 +171,96 @@ design, so while a prerelease train is running it keeps answering the last stabl
 that trusts it silently stalls on an old version. The tags are the contract; the Latest badge is only
 a hint for people.
 
-### Testing the v1 beta
+### Prereleases
 
-The v1 line is a prerelease train — `v1.0.0-beta.N` tags cut off the `v1` branch. **Joining the train
-is a deliberate act; staying on it is automatic.** A stable install never lands on a beta: `collie
-update` and the in-app banner offer it strict releases and nothing else, so on 0.x `update` stays on
-0.x and `update --major` answers *"no release above major 0 exists yet — nothing to cross to."*
-Installing a beta is what opts you in, and from then on both the verb and the banner keep you moving
-along that major until its release lands (see below). Take it by one of two routes.
-
-**Binary install — take the beta with the install script's opt-in flag:**
-
-```bash
-curl -fsSL https://colliepwa.dev/install.sh | sh -s -- --beta
-```
-
-`--beta` widens the release search to prerelease tags; without it the script takes the newest stable
-release. Once you are on a beta, `collie update` keeps you on the train — that is the paragraph
-below. A **stable** binary install is never pulled onto a beta: `update` offers it strict releases
-only, and the script refuses to touch an install that is already there. To rehearse the beta beside
-it, install a second copy under its own `COLLIE_DIR`; to cross for real once `v1.0.0` is published,
-`collie update --major`.
-
-**Herdr-managed — install one beta tag; that is the whole opt-in:**
-
-```bash
-# Resolve the newest beta tag, then fetch and detach the checkout onto it, building the UI
-# right there (the manifest's [[build]] step, GitHub installs only) — see above.
-tag=$(git ls-remote --tags --refs https://github.com/AltanS/collie | \
-  sed 's#.*refs/tags/##' | grep -E '^v1\.0\.0-beta\.[0-9]+$' | sort -V | tail -1)
-herdr plugin install AltanS/collie --ref "$tag" --yes
-herdr plugin action invoke restart --plugin herdr.collie   # reinstall doesn't restart the service
-
-# NEW in v1: every verb now lives at <checkout>/bin/collie. Putting `collie` on your PATH is
-# its own act — one symlink, never a copy, never a side effect of install/build/update:
-bin/collie link                                            # ~/.local/bin/collie → <checkout>/bin/collie
-collie stt setup                                           # …and bare `collie` works from anywhere
-```
-
-**A beta install then keeps itself moving.** Because the version on disk carries a prerelease tail,
-`update` and the banner both fall back to that major's prereleases — but only while the major has no
-strict release newer than you. So `update` walks `beta.46` → `beta.47` → … while `v1.0.0` is
-unpublished, and takes `v1.0.0` the moment it exists, skipping any beta above you: the release
-supersedes every beta that led to it. From there the install is stable and reads strict releases
-only, so a later `v1.1.0-rc.1` is as invisible to it as it is to everyone else. The consent you gave
-by installing a beta was to the road *to* its release, not to that major's prereleases forever.
-Nothing here is a flag — it is a property of the version you installed, which is why a stable install
-can never be pulled onto a beta
+**A stable install never lands on a prerelease.** `update` and the in-app banner offer it strict
+releases and nothing else, so no `-beta` or `-rc` tag can reach you by accident. Installing one is
+what opts you in, and from then on both keep you moving along that major — until its release lands,
+which supersedes every prerelease that led to it and returns you to strict releases only. The
+consent is a property of the version on disk, not a flag you carry
 ([ADR 0020](../.adr/0020-a-major-upgrade-is-consented-by-flag.md), amended 2026-08-30).
 
-So **take the next beta with a plain `bin/collie update`** — not by installing its tag by hand. The
-`--ref` above is an entry door, not a pin that holds: `update` reads the version in the checkout's
-`herdr-plugin.toml`, not the tag you asked for, and moves you to the newest beta of that major. An
-update with nothing to take now stops on its verdict — four lines, no rebuild, no restart — so
-running it to check costs you nothing.
-
-**The command above always resolves the current newest beta tag, so there is no literal tag to go
-stale.** If you just want the tag name — say, to record it somewhere else — resolve it the same way
-as [above](#resolving-the-newest-release-from-a-script), keeping the `-beta` tail this time:
+Take one deliberately:
 
 ```bash
-git ls-remote --tags --refs https://github.com/AltanS/collie | \
-  sed 's#.*refs/tags/##' | grep -E '^v1\.0\.0-beta\.[0-9]+$' | sort -V | tail -1
+# Standalone — the install script's opt-in flag takes the newest prerelease
+curl -fsSL https://colliepwa.dev/install.sh | sh -s -- --beta
+
+# Herdr-managed — install the tag; that is the whole opt-in
+herdr plugin install AltanS/collie --ref <tag> --yes
+herdr plugin action invoke restart --plugin herdr.collie   # a reinstall does not restart the service
 ```
 
-`link` is itself a v1 feature worth exercising — [details](commands.md#put-collie-on-your-path),
-reasoning in [ADR 0021](../.adr/0021-the-path-name-is-a-pointer-never-a-copy.md). Skip it and every
-command below reads `bin/collie …` from the checkout instead.
+Resolve `<tag>` the way [Resolving the newest release from a script](#resolving-the-newest-release-from-a-script)
+does, keeping the prerelease tail rather than filtering it out.
 
-**Linked clone:**
+`--ref` is an entry door, not a pin that holds. From there a plain `update` reads the version in the
+checkout's `herdr-plugin.toml` — not the tag you asked for — and moves you to the next prerelease of
+that major by itself, so there is nothing to install by hand again.
 
-```bash
-git fetch --tags && git checkout v1   # the branch, not a tag — see below
-bin/collie build && bin/collie restart
-```
-
-Stay on the **branch**. A clone on `v1` keeps its branch and its `--ff-only` pull, so `update` lands
-you on the branch tip, which runs ahead of the newest beta tag. Check out a *tag* instead and the
-clone is detached, which is the managed shape — `update` then rides the tag train described above.
-
-**To go back**, reinstall with no `--ref`. It lands on the default-branch tip, which is the 0.x stable
-line until v1 merges:
+**To leave the train**, reinstall with no `--ref`. It lands on the default-branch tip:
 
 ```bash
-bin/collie unlink                                          # FIRST, if you linked — see below
-herdr plugin install AltanS/collie --yes                   # default-branch tip, still detached + shallow
+herdr plugin install AltanS/collie --yes
 herdr plugin action invoke restart --plugin herdr.collie
 ```
 
-**Take the link down before you roll back.** 0.x has no `cli/` and no compiled binary — its verbs are
-the shim's own — so nothing on that line ever builds or refreshes `<checkout>/bin/collie`, and a
-`collie` left on your PATH resolves to a stale v1 binary or to nothing at all. `unlink` removes the
-name only while it still points at *this* checkout, so run it before the reinstall, not after.
+## Upgrading from 0.x to 1.0
 
-Nothing you configured moves either way: `.env` and the `tailscale serve` record live in the plugin
-config dir, paired devices and `stt.json` in the state dir — all outside the checkout.
+**0.x is Herdr-managed or a linked clone** — that line had no compiled binary and no install script —
+so this is the crossing for everyone still on it, and it is one command.
 
-What's new to exercise is in the `1.0.0-beta.*` entries of the [CHANGELOG](../CHANGELOG.md). The
-newest surface is the beta train itself — run `bin/collie update` when the next beta is cut and tell
-us whether it took it. The two biggest v1 surfaces to put weight on are
-[voice input](voice-and-push.md#voice-input-optional), off until you run `collie stt setup`, and
-[`link`](commands.md#put-collie-on-your-path).
+**First, one check.** If `BUN_INSTALL` lives only in your `.env`, move it into your environment:
+export it from your shell profile, or from the service environment. 1.0's shim no longer sources
+`.env` to find Bun, and left there it fails at the worst possible moment — the update itself,
+invoked as a Herdr action, which gets no login shell.
 
-## Upgrading from 0.x to 1.x
+**Then cross:**
 
-1.0 is a major, and a major is never inherited: a routine `update` stays on 0.x and names the command
-that crosses. This section is what the crossing changes for *you*. The mechanics of doing it — the one
-thing to do first, the side-by-side rehearsal, the way back — are
-[Migrating from 0.x](#migrating-from-0x) below.
+```bash
+# Herdr-managed
+herdr plugin action invoke update-major --plugin herdr.collie
 
-**The Herdr plugin route still works, and is spelled the same.** `herdr plugin install
-AltanS/collie`, `herdr plugin link "$(pwd)"` and every action id in `herdr-plugin.toml` are the
-strings they were on 0.x, and the actions still name `scripts/collie-ctl.sh`. Those command strings
-are frozen deliberately: a Herdr older than 0.8.0 invokes the action set it cached at install time, so
-a path that moved would strand every install made before the move
+# Linked clone
+bin/collie update --major
+```
+
+No reinstall, no re-link, no config edit, no manual `bun install`. It worked when
+`herdr plugin action invoke version --plugin herdr.collie` — or `bin/collie version` — reads `1.0.0`
+or newer, and the footer build stamp agrees.
+
+**A solo install has nothing else to do.** Same routes, same snapshot bytes, same config keys: no key
+was removed, renamed, or made required, and your `.env` and `tailscale serve` record never move.
+
+**Running a pack? Update the lead first**, then level its peers from it with
+`collie pack update <member>…` ([above](#updating-the-rest-of-the-pack)). Three things changed under
+you there:
+
+- `join` now refuses an `http://` lead without `--insecure`.
+- Invite tokens minted before the `<token>.<lead-fingerprint>` format fail closed — reissue with
+  `pack invite`.
+- Member records minted before the portless-callback fix need `reconnect`.
+
+A peer still on the old build is *behind*, never `incompatible`: it shows in `pack status` as a
+`warn:`-class version finding naming both versions and that remedy
+([PACK_PROTOCOL §7.1](../PACK_PROTOCOL.md#71-version-skew-inside-a-protocol-version)).
+
+### What 1.0 changes for you
+
+**Your Herdr routes are spelled exactly as they were.** `herdr plugin install AltanS/collie`,
+`herdr plugin link "$(pwd)"` and every action id in `herdr-plugin.toml` are the strings they were on
+0.x, and the actions still name `scripts/collie-ctl.sh`. Those are frozen deliberately: a Herdr older
+than 0.8.0 invokes the action set it cached at install time, so a path that moved would strand every
+install made before the move
 ([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md)).
 
 **The CLI is the primary interface now.** On 0.x every verb *was* shell, implemented inside
-`collie-ctl.sh`, because there was no `cli/` and no compiled binary. On 1.x every verb is implemented
-once in `cli/` and compiled into `<checkout>/bin/collie`, and the script is a bootstrap shim: it finds
-Bun, builds the binary when the checkout hasn't got one, and hands it your argv. So the spelling to
-learn is `bin/collie <verb>` ([Commands](commands.md)), and `collie link` — new in 1.0 — publishes a
-bare `collie` on your PATH as a symlink to that binary
+`collie-ctl.sh`. On 1.x every verb is implemented once in `cli/` and compiled into
+`<checkout>/bin/collie`, and the script is a bootstrap shim: it finds Bun, builds the binary when the
+checkout hasn't got one, and hands it your argv. So the spelling to learn is `bin/collie <verb>`
+([Commands](commands.md)), and on a checkout you can reach — a linked clone, not a Herdr GitHub
+install, whose checkout lives under a hashed path — `bin/collie link` publishes a bare `collie` on
+your PATH as a symlink to that binary
 ([Put `collie` on your PATH](commands.md#put-collie-on-your-path)). Nothing else ever publishes that
 name: not install, not build, not update
 ([ADR 0021](../.adr/0021-the-path-name-is-a-pointer-never-a-copy.md)).
@@ -271,74 +268,23 @@ name: not install, not build, not update
 **Verbs that had nowhere to live on 0.x.** Each is opt-in and absent until you run it, so an install
 that ignores the lot behaves exactly as it did:
 
-- **`collie pair` / `collie devices`** — manages per-device write credentials. The gate is active
-  only while at least one device is paired; if none are paired, behavior does not change. Once a
-  device is paired, every write requires that device's token, while reads remain open
+- **`pair` / `devices`** — per-device write credentials. The gate is active only while at least one
+  device is paired; pair none and nothing changes. Once a device is paired, every write requires that
+  device's token, while reads stay open
   ([Pair a device](security.md#pair-a-device--the-write-credential)).
-- **`collie pack …` / `join` / `promote`** — several machines' Collies behind one URL
+- **`pack …` / `join` / `promote`** — several machines' Collies behind one URL
   ([Pack commands](pack.md)).
-- **`collie doctor`** — one read-only pass over the traps that otherwise fail silently.
-- **`collie stt setup`** — the microphone in the composer
+- **`doctor`** — one read-only pass over the traps that otherwise fail silently.
+- **`stt setup`** — the microphone in the composer
   ([Voice input](voice-and-push.md#voice-input-optional)).
-- **`collie hooks install claude` / `collie beacon emit`** — how an agent on tmux or zellij says what
-  it is ([Agent beacons](multiplexers.md#agent-beacons-optional-linux)).
+- **`hooks install claude` / `beacon emit`** — how an agent on tmux or zellij says what it is
+  ([Agent beacons](multiplexers.md#agent-beacons-optional-linux)).
 
 **`COLLIE_MUX` is a choice you did not have.** 0.x mirrored Herdr and only Herdr. 1.x names its
 multiplexer in one key — `herdr` (the default, and the fully supported path), `tmux` or `zellij`, the
 last two experimental in 1.0. Leave the key alone and nothing changes; set it and the bridge builds
 only that adapter and never dials Herdr's socket, so Herdr need not be installed at all
 ([tmux and zellij](multiplexers.md)).
-
-**Your configuration does not move, and no key was removed, renamed, or made required.** The `.env`
-lives where it lived — the plugin's config dir, `herdr plugin config-dir herdr.collie`, or
-`~/.config/collie` without Herdr — along with the `tailscale serve` record, and all of it sits outside
-the checkout, so it survives an update, a reinstall and a rollback alike.
-`bridge/solo-baseline.test.ts` pins that as a compiled assertion rather than a promise.
-
-**What `update --major` does.** It crosses **one** major, to the newest **strict** release of the next
-major that has one — an install two majors behind crosses them one at a time rather than jumping to
-the newest. A prerelease is never a target for it, so `--major` cannot land you on a beta of the major
-above; joining a prerelease train is a separate act, and it is
-[installing one of its tags](#testing-the-v1-beta). The flag is the whole consent — there is no
-prompt, because a Herdr action has no terminal to answer one on
-([ADR 0020](../.adr/0020-a-major-upgrade-is-consented-by-flag.md)). With no higher major published,
-the verb says so and changes nothing.
-
-## Migrating from 0.x
-
-The last 0.x release is the newest `v0.*` tag — read it off the tags with the recipe
-[above](#resolving-the-newest-release-from-a-script) rather than trusting a number written here.
-Going from there to 1.0 crosses a major, so a routine `update` will not do it. Once `v1.0.0` is
-published, `update` says so and names this command instead:
-
-```bash
-collie update --major
-```
-
-On a Herdr-managed install that is the action `update-major`
-(`herdr plugin action invoke update-major --plugin herdr.collie`). Either way: no reinstall, no
-re-link, no config edit, no manual `bun install`.
-
-**One thing to do first: if `BUN_INSTALL` lives only in your `.env`, move it to the environment.**
-1.0's shim no longer sources `.env` to find Bun. Left in `.env` it fails at the worst possible
-moment — the next `update`, invoked as a Herdr action, which gets no login shell. Export it from
-your shell profile (or the service environment) before you update.
-
-**A solo install has nothing else to do.** Same routes, same snapshot bytes, same config keys — no
-key was removed, renamed, or made required. `bridge/solo-baseline.test.ts` pins that as a compiled
-assertion, not a promise.
-
-**Running a pack?** Four things to know, in this order:
-
-- **Update the lead first**, then level the peers from it with `collie pack update <member>…`
-  ([above](#updating-the-rest-of-the-pack)). A peer still on the old build is *behind*, never
-  `incompatible` — it shows in `collie pack status` as a `warn:`-class version finding naming both
-  versions and that remedy
-  ([PACK_PROTOCOL §7.1](../PACK_PROTOCOL.md#71-version-skew-inside-a-protocol-version)).
-- `collie join` now refuses an `http://` lead without `--insecure`.
-- Invite tokens minted before the `<token>.<lead-fingerprint>` format fail closed — reissue with
-  `collie pack invite`.
-- Member records minted before the portless-callback fix need `collie reconnect`.
 
 ### Side by side, if the herd is real
 
@@ -403,6 +349,30 @@ note: Herdr-managed install — registry left alone (re-linking would block `her
 automatically. Pairing issues that phone a write credential. Revoke this credential with
 `collie devices revoke` if a device is lost
 ([Pair a device](security.md#pair-a-device--the-write-credential)).
+
+## Stop or uninstall
+
+Pause Collie without removing anything — a later `start` resumes it:
+
+```bash
+herdr plugin action invoke stop --plugin herdr.collie     # Herdr-managed
+bin/collie stop                                           # standalone
+```
+
+`uninstall` tears the service down: it stops and disables it, removes the service definition (the
+`systemd --user` unit or the macOS launchd agent plist), and clears Collie's port-scoped
+`tailscale serve` mapping without touching other tailnet mappings on the host. Your `.env` and your
+checkout are left alone:
+
+```bash
+herdr plugin action invoke uninstall --plugin herdr.collie   # Herdr-managed
+bin/collie uninstall                                         # standalone
+```
+
+To remove the files as well: on a Herdr-managed install, drop the registration with
+`herdr plugin uninstall herdr.collie` (or delete the directory, for a linked clone). On a standalone
+install, run `bin/collie unlink` to take the name off your PATH if you linked it, then delete the install directory —
+`~/.local/share/collie`, or your own `COLLIE_DIR`.
 
 ## When collie will not run
 
@@ -482,7 +452,7 @@ conflict during the merge. You must resolve these directly.
 
 **Upgrading from 0.x to 1.x uses the same manual merge with a `v1.*` tag.** Do not run
 `update --major`. Merge the tag manually, then review the operational notes in
-[Upgrading from 0.x to 1.x](#upgrading-from-0x-to-1x).
+[Upgrading from 0.x to 1.0](#upgrading-from-0x-to-10).
 
 **`COLLIE_UPDATE_REPO` controls both update discovery and downloads.** It sets the repository used
 for in-app version notices and the source repository for `collie update` (defaulting to
