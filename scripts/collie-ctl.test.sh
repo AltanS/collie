@@ -236,10 +236,15 @@ test_missing_tailscale_cli() {
 COLLIE_PORT=8787
 EOF
 
+  # resolve_tailscale's own absolute-path fallbacks (Homebrew, /usr/local, the macOS app bundle)
+  # are independent of PATH, so a restricted PATH alone can't stage "missing" on a machine that
+  # actually has Tailscale installed — same class of problem as the bun stub above, just not
+  # fixable the same way. COLLIE_TAILSCALE_BIN="" is the override built for exactly this.
   set +e
   HOME="$HOME_DIR" \
   HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" \
   PATH="$BIN_DIR" \
+  COLLIE_TAILSCALE_BIN="" \
   /bin/bash "$CTL" serve > "${CASE_DIR}/missing.out" 2>&1
   rc=$?
   set -e
