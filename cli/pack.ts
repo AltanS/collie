@@ -1,7 +1,7 @@
 import { hostname } from "node:os";
 import { join } from "node:path";
 
-import { envBool, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
+import { DEFAULT_PORT, envBool, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
 import type { AuditLog } from "../bridge/audit.ts";
 import {
@@ -148,6 +148,18 @@ export interface PackDeps {
   clearNotifications(tags: readonly string[]): Promise<void>;
   /** The terminal renderer, when this run landed on one (`cli/render.ts`). Absent ⇒ plain lines. */
   readonly ui?: Ui | null;
+  /**
+   * Is there a terminal to ask a question at? Absent reads as "no", so a verb that asks one must
+   * still have an answer for the scripted path — the same guard `stt setup` and `chooseMux` use.
+   */
+  readonly interactive?: boolean;
+  /**
+   * The free-text ask, behind the seam `pack add` already owns (`PackAddDeps.prompt` narrows this
+   * to required). `null` means nobody is there to answer.
+   */
+  prompt?(question: string): string | null | Promise<string | null>;
+  /** This machine's own hostname — the default `--label`, so a member is named after its box. */
+  hostname?(): string;
 }
 
 /**
@@ -214,7 +226,7 @@ export function clientFor(deps: ProbeDeps, data: TrustStoreData, secret: string)
     //
     // **Why the lead is the exception, and why the test is its ROLE.** `bridge/pack/transport.ts`'s
     // design note states the law this obeys: "A LEAD does not pin its listener at all. Its pack
-    // surface rides the front door, and `tailscale serve` (or any conforming proxy, DEPLOYMENT.md
+    // surface rides the front door, and `tailscale serve` (or any conforming proxy, docs/deployment.md
     // Variant C) terminates TLS before the process sees the connection — no client certificate can
     // survive to it under ANY design." So the certificate on the wire in the peer→lead direction is
     // the front door's, never the lead's own, and pinning `ca: [lead.certPem]` here could not match
@@ -398,6 +410,38 @@ function publicFrontDoor(deps: PackDeps): string | null {
   return url.origin;
 }
 
+/**
+ * The host an operator types after `collie pack join`, on the machine that is joining.
+ *
+ * This is NOT {@link selfAddress}'s front door, and the difference is the point. A front door is
+ * `https://<name>` on :443, and a joiner that dials it enrolls through whatever terminates that TLS.
+ * The pack surface a lead answers on directly is its OWN listener, `COLLIE_PORT`, and 8787 is what
+ * `collie pack join <host>` assumes — so the banner prints a bare host on the default port and
+ * appends `:<port>` only when this lead moved off it. `COLLIE_PUBLIC_URL` still wins, because it is
+ * the operator telling Collie which ingress this machine actually publishes; its port is made
+ * explicit (443 for https, 80 for http) so the joiner dials the door that is really there.
+ *
+ * `null` when this node has no Tailscale name and no configured URL — the caller prints a
+ * placeholder, exactly as it did before.
+ */
+export function joinHost(deps: PackDeps): string | null {
+  const configured = publicFrontDoor(deps);
+  if (configured !== null) {
+    const url = new URL(configured);
+    const port = url.port === "" ? (url.protocol === "http:" ? 80 : DEFAULT_SERVE_PORT) : Number(url.port);
+    return port === DEFAULT_PORT ? url.hostname : `${url.hostname}:${port}`;
+  }
+  const name = tailnetName(deps.exec);
+  if (name === null) return null;
+  // The SHORT MagicDNS name: `bluefin`, not `bluefin.tail1234.ts.net`. MagicDNS puts the tailnet
+  // suffix in every node's search domain, so the short name resolves from any other node — and it is
+  // the thing an operator can retype without reading it off a screen. If there is no suffix to
+  // strip, the name is already as short as it gets.
+  const short = name.split(".")[0];
+  const host = short === undefined || short === "" ? name : short;
+  return deps.ctx.port === DEFAULT_PORT ? host : `${host}:${deps.ctx.port}`;
+}
+
 /** The parsed flag set every pack verb shares: `--flag value` pairs plus bare positional arguments. */
 export interface PackArgs {
   readonly positional: readonly string[];
@@ -565,8 +609,8 @@ export async function cmdPackInvite(deps: PackDeps, args: readonly string[]): Pr
   );
   if (minted === null) return EXIT.FAIL;
 
-  // The lead's own address, for the joiner to dial: its front door, not its bridge port.
-  const address = selfAddress(deps, flags.address, "front-door");
+  // The host the joiner types after `collie pack join` — this lead's, and `--address` still wins.
+  const target = flags.address !== undefined && flags.address !== "" ? flags.address : joinHost(deps);
   // The operator carries `<token>.<lead-fingerprint>` (§8.2): the token still authenticates the joiner
   // to the lead, and the fingerprint — this lead's OWN certificate hash, public material — lets `join`
   // authenticate the lead back. Only the printed string gains the suffix: the wire token stays exactly
@@ -578,9 +622,12 @@ export async function cmdPackInvite(deps: PackDeps, args: readonly string[]): Pr
   deps.io.out("");
   deps.io.out(`  single-use · expires ${new Date(minted.expiresAt).toISOString()} (10 minutes)`);
   deps.io.out("  Shown once — only its hash is stored. Run this on the machine that is joining:");
-  deps.io.out(
-    `    collie join ${address ?? "<this-lead-address>"} -    # then paste the whole token on stdin`,
-  );
+  const host = target ?? "<this-lead-address>";
+  // The short form first, because it is the one a person types: `join` asks for the token at a
+  // prompt when none is given, so nothing else has to be remembered. The stdin form stays right
+  // underneath it — it is what a script uses, and it is still the only form that takes no keystrokes.
+  deps.io.out(`    collie pack join ${host}`);
+  deps.io.out(`    collie pack join ${host} -   # paste the token on stdin`);
   deps.io.out("  Passing it as an argument instead leaves it in `ps` output for every local uid.");
   await applyLocally(deps, "the freshly minted invite");
   return EXIT.OK;
@@ -588,8 +635,148 @@ export async function cmdPackInvite(deps: PackDeps, args: readonly string[]): Pr
 
 // ── join (on the joining machine) ────────────────────────────────────────────
 
+const JOIN_USAGE = "usage: collie pack join <lead-address> [<token>|-|@file] [--address <mine>] [--label <name>]";
+
+/** What the operator is asked when they gave no token and there is a terminal to ask at. */
+const TOKEN_PROMPT = "Paste the invite token from `collie pack invite` on the lead:";
+
 /**
- * `collie join <lead-address> <token>` — §8.2, run on the peer, once.
+ * The invite token, however it was supplied: an argument (`-`, `@file` or a literal), or — when
+ * none was given and a terminal is there — one line typed at a prompt. `null` with the reason
+ * already on stderr.
+ *
+ * A token typed at the prompt deliberately skips {@link readToken}'s `ps` warning: it was never in
+ * argv, and argv is the only thing that warning is about.
+ */
+async function resolveToken(deps: PackDeps, address: string, given: string | undefined): Promise<string | null> {
+  if (given !== undefined) {
+    const raw = await readToken(given, deps);
+    if (raw === null) deps.io.err("error: the token was empty");
+    return raw;
+  }
+  const typed =
+    deps.interactive === true && deps.prompt !== undefined ? (await deps.prompt(TOKEN_PROMPT))?.trim() : null;
+  if (typed !== null && typed !== undefined && typed !== "") return typed;
+  // No terminal, or an empty answer: the same four lines a scripted run has always been given.
+  deps.io.err(JOIN_USAGE);
+  deps.io.err("error: join needs the invite token as its second argument.");
+  deps.io.err("       Pass `-` and paste the token on stdin, or `@<file>` to read it from a file:");
+  deps.io.err(`         collie pack join ${address} -`);
+  deps.io.err("       Mint the token on the lead with `collie pack invite`; it is single-use and lasts 10 minutes.");
+  return null;
+}
+
+/**
+ * `--label`, or this machine's hostname.
+ *
+ * The label becomes the member id on both sides, and an unlabelled join used to mint `collie-8f3a2b1c`
+ * — a name that identifies the machine to nobody. The box's own name is the answer everyone would
+ * have typed, so it is the default; `--label` still wins, and a machine with no hostname to read
+ * falls back to the random id rather than to an empty string.
+ */
+function joinLabel(deps: PackDeps, flag: string | undefined): string | undefined {
+  if (flag !== undefined && flag !== "") return flag;
+  const host = deps.hostname?.().trim();
+  return host === undefined || host === "" ? undefined : host;
+}
+
+/** One enrollment POST. `res` absent means nothing answered; see {@link looksLikePlaintextListener}. */
+interface EnrollAttempt {
+  readonly res?: Response;
+  /** Collie's words for why nothing answered — never the runtime's, once it reaches an operator. */
+  readonly reason: string;
+  /** Did it fail the way a TLS client fails against a listener that speaks plain HTTP? */
+  readonly plaintext: boolean;
+}
+
+async function postEnrollment(deps: PackDeps, origin: URL, body: string): Promise<EnrollAttempt> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), JOIN_DIAL_TIMEOUT_MS);
+  try {
+    const res = await deps.fetch(new URL(PACK_ENROLL_PATH, origin).toString(), {
+      method: "POST",
+      headers: { ...CONTENT_TYPE, "x-pack-protocol": String(PACK_PROTOCOL_VERSION) },
+      // The token rides the BODY, never the URL: a query string lands in access logs on every hop
+      // that ever fronts a lead, and §8.3's rule is about where a credential comes to rest.
+      body,
+      signal: controller.signal,
+    });
+    return { res, reason: "", plaintext: false };
+  } catch (err) {
+    // A timeout is never read as a plaintext listener: the whole point of the retry is that the far
+    // side answered *something* that was not TLS, and a budget that ran out answered nothing at all.
+    if (controller.signal.aborted) {
+      return { reason: `timed out after ${JOIN_DIAL_TIMEOUT_MS / 1000}s`, plaintext: false };
+    }
+    return {
+      reason: err instanceof Error ? err.message : String(err),
+      plaintext: err instanceof Error && looksLikePlaintextListener(err),
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * The error shapes a TLS client produces against a listener that is speaking plain HTTP.
+ *
+ * Probed against Bun 1.4's `fetch`, which is what actually runs here: an `https://` request to a
+ * `Bun.serve` listener fails with `code: "UNKNOWN_CERTIFICATE_VERIFICATION_ERROR"` — the handshake
+ * never produced a certificate to verify — and a listener that resets mid-handshake gives
+ * `ECONNRESET`. The OpenSSL spellings (`EPROTO`, "wrong version number", "http request") are here
+ * because they are what every other runtime and every proxy in front of one says for the same
+ * thing, and this predicate must not become Bun-version-shaped.
+ *
+ * It is a HINT, never a decision: everything it gates is a question asked before anything is sent.
+ * A false positive costs one prompt against a lead whose TLS is merely misconfigured; a false
+ * negative costs nothing at all, because the refusal it falls back to is the one that shipped.
+ */
+export function looksLikePlaintextListener(err: Error): boolean {
+  // SAFETY: every runtime's transport error carries its reason as `code` — Bun's, Node's and
+  // OpenSSL's alike — and this reads that one field defensively: `String(… ?? "")` turns an absent
+  // key, an `undefined` and a non-string alike into a value the set below simply does not hold.
+  const code = String((err as Error & { code?: unknown }).code ?? "").toUpperCase();
+  if (PLAINTEXT_CODES.has(code)) return true;
+  return /wrong version number|packet length too long|http request|record layer failure/i.test(err.message);
+}
+
+const PLAINTEXT_CODES: ReadonlySet<string> = new Set([
+  "UNKNOWN_CERTIFICATE_VERIFICATION_ERROR",
+  "ECONNRESET",
+  "EPROTO",
+  "ERR_SSL_WRONG_VERSION_NUMBER",
+  "ERR_SSL_PACKET_LENGTH_TOO_LONG",
+  "ERR_SSL_HTTP_REQUEST",
+]);
+
+/**
+ * The one question this verb asks. `false` when nobody is there to answer it, which is what keeps a
+ * scripted run on exactly the refusal it had before.
+ */
+async function consentToPlaintext(deps: PackDeps, plain: URL): Promise<boolean> {
+  if (deps.interactive !== true || deps.prompt === undefined) return false;
+  const answered = await deps.prompt(
+    `${plain.host} answers over plain HTTP, not HTTPS. On a tailnet the hop is still encrypted by WireGuard. Send the token over it? [y/N]`,
+  );
+  return answered?.trim().toLowerCase() === "y";
+}
+
+/**
+ * Refuse a plaintext hop. Over `http://` both the invite token and the pack secret cross the wire in
+ * the clear — F1's fingerprint pin authenticates the lead to us, but it does nothing to stop a
+ * token-thief racing the spend with its own certificate.
+ */
+function refusePlaintext(deps: PackDeps): void {
+  deps.io.err("error: refusing to enroll over http:// — the invite token and the pack secret would cross the");
+  deps.io.err("       wire in the clear. An on-path attacker who reads the token can enroll THEIR OWN certificate");
+  deps.io.err("       as a member before you do (the lead admits on the token alone), then holds the pack secret");
+  deps.io.err("       and a pinned link. Use an encrypted address (https:// via tailscale serve, or your own TLS");
+  deps.io.err("       front door). If this hop is genuinely trusted and you accept that risk, re-run with");
+  deps.io.err("       --insecure to own that assumption explicitly.");
+}
+
+/**
+ * `collie pack join <lead-address> [<token>]` — §8.2, run on the peer, once.
  *
  * Distinct outcomes get distinct exit codes (spec requirement), because "it didn't work" is the one
  * answer an operator cannot act on: already in a pack is `3`, a refused token is `4`, an address that
@@ -597,17 +784,10 @@ export async function cmdPackInvite(deps: PackDeps, args: readonly string[]): Pr
  */
 export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<number> {
   const { positional, flags, bare } = parsePackArgs(args, ["insecure"]);
-  const [address, rawToken] = positional;
-  if (address === undefined || rawToken === undefined) {
-    deps.io.err("usage: collie join <lead-address> <token|-|@file> [--address <mine>] [--label <name>]");
-    if (address !== undefined) {
-      deps.io.err("error: join needs the invite token as its second argument.");
-      deps.io.err("       Pass `-` and paste the token on stdin, or `@<file>` to read it from a file:");
-      deps.io.err(`         collie join ${address} -`);
-      deps.io.err("       Mint the token on the lead with `collie pack invite`; it is single-use and lasts 10 minutes.");
-    } else {
-      deps.io.err("       Mint the token on the lead with `collie pack invite`; it is single-use and lasts 10 minutes.");
-    }
+  const [address, tokenArg] = positional;
+  if (address === undefined) {
+    deps.io.err(JOIN_USAGE);
+    deps.io.err("       Mint the token on the lead with `collie pack invite`; it is single-use and lasts 10 minutes.");
     return EXIT.USAGE;
   }
 
@@ -615,15 +795,12 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
   if (existing !== null && existing.pack !== null) {
     const role = existing.lead === null ? `lead of ${existing.peers.length} peer(s)` : `peer of "${existing.lead.memberId}"`;
     deps.io.err(`error: already in pack "${existing.pack.name}" as ${role} (member "${existing.self.memberId}").`);
-    deps.io.err("       Run `collie leave` here first — joining a second pack is not a thing (§3).");
+    deps.io.err("       Run `collie pack leave` here first — joining a second pack is not a thing (§3).");
     return EXIT.STATE;
   }
 
-  const raw = await readToken(rawToken, deps);
-  if (raw === null) {
-    deps.io.err("error: the token was empty");
-    return EXIT.USAGE;
-  }
+  const raw = await resolveToken(deps, address, tokenArg);
+  if (raw === null) return EXIT.USAGE;
 
   // The operator-carried token is `<token>.<lead-fingerprint>` (§8.2). Split on the LAST dot: minted
   // tokens and fingerprints hold none, so this is unambiguous, and the wire `EnrollRequest.token` is
@@ -645,75 +822,80 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
     return EXIT.REFUSED;
   }
 
-  const data = await ensureStore(deps, flags.label);
+  const label = joinLabel(deps, flags.label);
+  const data = await ensureStore(deps, label);
   if (data === null) return EXIT.FAIL;
   // Joining makes this machine a peer, and a peer is dialled on its own pack listener — never on a
   // front door, because it is about to tear its own one down (§3).
   const mine = selfAddress(deps, flags.address, "pack-listener");
   if (mine === null) {
     deps.io.err("error: cannot work out an address the lead can dial this machine at.");
-    deps.io.err("       Pass one: `collie join <lead-address> - --address <host-the-lead-can-reach>`.");
+    deps.io.err("       Pass one: `collie pack join <lead-address> - --address <host-the-lead-can-reach>`.");
     return EXIT.FAIL;
   }
 
-  const url = enrollUrl(address);
-  if (url === null) {
+  // The address the operator typed, resolved once: scheme and port defaults applied, and kept as a
+  // URL so the plain-HTTP retry below can flip one field rather than re-parse a string.
+  const typedScheme = /^https?:\/\//i.test(address);
+  let origin = leadOrigin(address);
+  if (origin === null) {
     deps.io.err(`error: "${address}" is not a host this can dial — give a hostname or host:port.`);
     return EXIT.USAGE;
   }
+  const insecure = bare.has("insecure");
 
-  // Refuse a plaintext hop unless the operator owns the risk explicitly. Over http:// both the invite
-  // token and the pack secret cross the wire in the clear — F1's fingerprint pin authenticates the
-  // lead to us, but it does nothing to stop a token-thief racing the spend with its own certificate.
-  if (new URL(url).protocol === "http:" && !bare.has("insecure")) {
-    deps.io.err("error: refusing to enroll over http:// — the invite token and the pack secret would cross the");
-    deps.io.err("       wire in the clear. An on-path attacker who reads the token can enroll THEIR OWN certificate");
-    deps.io.err("       as a member before you do (the lead admits on the token alone), then holds the pack secret");
-    deps.io.err("       and a pinned link. Use an encrypted address (https:// via tailscale serve, or your own TLS");
-    deps.io.err("       front door). If this hop is genuinely trusted and you accept that risk, re-run with");
-    deps.io.err("       --insecure to own that assumption explicitly.");
+  // An EXPLICIT `http://` address is refused exactly as it always was, with no question asked. A
+  // script that spells the scheme means it, and a prompt would change what that script does; the
+  // consent below is only ever offered for an address that named no scheme at all.
+  if (origin.protocol === "http:" && !insecure) {
+    refusePlaintext(deps);
     return EXIT.REFUSED;
   }
 
-  let res: Response;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), JOIN_DIAL_TIMEOUT_MS);
-  try {
-    res = await deps.fetch(url, {
-      method: "POST",
-      headers: { ...CONTENT_TYPE, "x-pack-protocol": String(PACK_PROTOCOL_VERSION) },
-      // The token rides the BODY, never the URL: a query string lands in access logs on every hop
-      // that ever fronts a lead, and §8.3's rule is about where a credential comes to rest.
-      body: JSON.stringify({
-        protocol: PACK_PROTOCOL_VERSION,
-        token,
-        fingerprint: data.self.fingerprint,
-        // The certificate itself, not only its hash: the lead pins by fingerprint but ENFORCES by
-        // certificate (its dial's `ca` list), and it has no other way to obtain the material. The
-        // lead re-derives the fingerprint from these bytes and refuses a payload where the two
-        // disagree, so sending both adds a cross-check rather than a second source of truth.
-        certPem: data.self.certPem,
-        address: mine,
-        label: flags.label ?? null,
-      }),
-      signal: controller.signal,
-    });
-  } catch (err) {
-    const reason = controller.signal.aborted
-      ? `timed out after ${JOIN_DIAL_TIMEOUT_MS / 1000}s`
-      : err instanceof Error
-        ? err.message
-        : String(err);
-    deps.io.err(`error: could not reach ${address} — ${reason}`);
+  const body = JSON.stringify({
+    protocol: PACK_PROTOCOL_VERSION,
+    token,
+    fingerprint: data.self.fingerprint,
+    // The certificate itself, not only its hash: the lead pins by fingerprint but ENFORCES by
+    // certificate (its dial's `ca` list), and it has no other way to obtain the material. The
+    // lead re-derives the fingerprint from these bytes and refuses a payload where the two
+    // disagree, so sending both adds a cross-check rather than a second source of truth.
+    certPem: data.self.certPem,
+    address: mine,
+    label: label ?? null,
+  });
+
+  let attempt = await postEnrollment(deps, origin, body);
+  // A lead whose pack surface is plain HTTP on the port we assumed `https://` for fails the
+  // handshake, not the request — and the operator, who typed a bare host, has no way to know that
+  // is what happened. So ask, once, in a terminal, and retry the same host:port over `http://` if
+  // the answer is yes. Nothing has crossed the wire at this point: the question comes BEFORE the
+  // token is sent, which is the whole reason the retry is a second POST and not a redirect.
+  if (attempt.res === undefined && attempt.plaintext && !typedScheme) {
+    const plain = new URL(origin.toString());
+    plain.protocol = "http:";
+    if (!insecure && !(await consentToPlaintext(deps, plain))) {
+      refusePlaintext(deps);
+      return EXIT.REFUSED;
+    }
+    origin = plain;
+    attempt = await postEnrollment(deps, origin, body);
+  }
+
+  // What was actually dialled, and therefore what this machine must remember: a peer dials its lead
+  // again on every poll, and a bare `bluefin` would send those dials to :443 over TLS the lead never
+  // answers. The origin is stored, so the second dial goes where the first one succeeded.
+  const dialed = `${origin.protocol}//${origin.host}`;
+  const res = attempt.res;
+  if (res === undefined) {
+    deps.io.err(`error: could not reach ${address} — ${attempt.reason}`);
     deps.io.err("       The lead owns nothing about reachability: check the address, the tunnel, the port.");
-    if (!/^https?:\/\//i.test(address)) {
+    if (!typedScheme && origin.protocol === "https:") {
       deps.io.err("       No scheme was given, so https:// was assumed. If the lead really is plaintext http://, say");
       deps.io.err("       so explicitly AND pass --insecure — but the token and pack secret then cross the wire in the");
       deps.io.err("       clear (see the http:// refusal).");
     }
     return EXIT.UNREACHABLE;
-  } finally {
-    clearTimeout(timer);
   }
 
   if (res.status === 401) {
@@ -754,12 +936,12 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
   }
 
   const accepted = await commitPackChange(deps.store, deps.audit, (current) =>
-    current === null ? null : acceptEnrollment(current, parsed, address, deps.now()),
+    current === null ? null : acceptEnrollment(current, parsed, dialed, deps.now()),
   );
   if (accepted === null) return EXIT.FAIL;
 
   deps.io.out(`✓ joined pack "${parsed.packName}" as "${accepted.memberId}"`);
-  deps.io.out(`  lead      ${parsed.leadMemberId} at ${address}`);
+  deps.io.out(`  lead      ${parsed.leadMemberId} at ${dialed}`);
   deps.io.out(`  pinned    ${parsed.leadFingerprint.slice(0, 16)}… (its certificate, not its name)`);
   deps.io.out("  This machine now publishes no front door and sends no notifications of its own —");
   deps.io.out("  the phone talks to the lead, which speaks for the whole pack.");
@@ -786,18 +968,36 @@ export async function cmdJoin(deps: PackDeps, args: readonly string[]): Promise<
   return EXIT.OK;
 }
 
-/** The enrollment URL for an operator-typed address. `null` when it is not a bare host. */
-export function enrollUrl(address: string): string | null {
-  const withScheme = /^https?:\/\//i.test(address) ? address : `https://${address}`;
+/**
+ * The origin an operator-typed lead address names. `null` when it is not a bare host.
+ *
+ * Two defaults, and both only for an address that named no scheme: `https://`, as it always did, and
+ * **port 8787** — the port a collie's own listener binds, and therefore the only thing `collie pack
+ * join bluefin` can mean. A typed scheme or a typed port is taken as typed, so `host:port`,
+ * `http://…` and `https://…` resolve exactly as they did before this default existed.
+ *
+ * The port is the reason a bare host is no longer :443. A lead's front door on :443 is a `tailscale
+ * serve` mapping in front of that same listener, so it is one more thing that has to be right; the
+ * listener itself is what enrollment actually needs, and it is at 8787 on every default install.
+ */
+export function leadOrigin(address: string): URL | null {
+  const typedScheme = /^https?:\/\//i.test(address);
   let base: URL;
   try {
-    base = new URL(withScheme);
+    base = new URL(typedScheme ? address : `https://${address}`);
   } catch {
     return null;
   }
   if (base.username !== "" || base.password !== "" || base.search !== "" || base.hash !== "") return null;
   if (base.pathname !== "/" || base.host === "") return null;
-  return new URL(PACK_ENROLL_PATH, base).toString();
+  if (!typedScheme && base.port === "") base.port = String(DEFAULT_PORT);
+  return base;
+}
+
+/** The enrollment URL for an operator-typed address. `null` when it is not a bare host. */
+export function enrollUrl(address: string): string | null {
+  const base = leadOrigin(address);
+  return base === null ? null : new URL(PACK_ENROLL_PATH, base).toString();
 }
 
 // ── leave (on the peer) ──────────────────────────────────────────────────────
@@ -1895,6 +2095,12 @@ export async function cmdReconnect(deps: PackDeps, args: readonly string[]): Pro
 /** The `pack` sub-verbs, in the order the help prints them. */
 export const PACK_SUBCOMMANDS = [
   "invite",
+  // `join` and `leave` are the CANONICAL spellings — every other pack verb lives under `pack`, and
+  // these two were the exception for no reason anyone could state. The top-level `collie join` /
+  // `collie leave` stay as aliases onto these same functions (`cli/program.ts`), so a 1.0.0 script
+  // keeps working; the aliases are what changed status, not the behaviour.
+  "join",
+  "leave",
   "add",
   "update",
   "status",
@@ -1925,6 +2131,10 @@ export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promi
   switch (sub) {
     case "invite":
       return cmdPackInvite(deps, rest);
+    case "join":
+      return cmdJoin(deps, rest);
+    case "leave":
+      return cmdLeave(deps);
     // Imported at CALL time, not at module load: `cli/remote.ts` imports this module's `ensureStore`,
     // `selfAddress` and `probeMembers`, so a static import here would close a cycle. Everything else
     // in the switch is local, and `pack add` is the one verb that reaches another machine.
@@ -1961,6 +2171,8 @@ export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promi
       }
       deps.io.err(packUsage());
       deps.io.err("  invite   mint a single-use, 10-minute enrollment token (on the lead)");
+      deps.io.err("  join     join a pack: `pack join <lead-address>` (on the joining machine)");
+      deps.io.err("  leave    leave the pack — drops the pack secret and every pin on this machine");
       deps.io.err("  add      install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)");
       deps.io.err("  update   level peers to this lead's build over SSH: `pack update <member>… | --all`");
       deps.io.err("  status   mode, members, reachability, secret pickup and why a link is refused");
@@ -2016,6 +2228,12 @@ export function packDeps(
         sans: [tailnetName(base.exec) ?? "", hostname(), "localhost", "127.0.0.1"],
       })(),
     readStdin: () => new Response(Bun.stdin.stream()).text(),
+    // Bun's built-ins behind a tty check, exactly as `pack add` and `stt setup` guard theirs: a
+    // question nobody can answer must refuse legibly rather than read EOF as an answer. `packAddDeps`
+    // layers the identical pair on top for the verbs that take a `[y/N]`.
+    interactive: process.stdin.isTTY === true,
+    prompt: (question) => (process.stdin.isTTY === true ? prompt(question) : null),
+    hostname: () => hostname(),
     clearNotifications: (tags) => clearViaPush(base.ctx, tags),
   };
 }

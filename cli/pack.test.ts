@@ -31,6 +31,7 @@ import {
   cmdPromote,
   cmdReconnect,
   enrollUrl,
+  looksLikePlaintextListener,
   parsePackArgs,
   readToken,
   selfAddress,
@@ -142,6 +143,10 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
     // fingerprint — `fp("desk")`, matching the lead in `ENROLLED` — so a `join` split yields the wire
     // token "token-from-stdin" and an invited fingerprint the answer will match.
     readStdin: () => Promise.resolve(`token-from-stdin.${fp("desk")}\n`),
+    // No terminal by default — the scripted path, which is what every test below the interactive
+    // ones asserts. A test that wants the question overrides both seams through `over`.
+    interactive: false,
+    hostname: () => "laptop-box",
     restart: () => {
       restarts.push(requests.length);
       return Promise.resolve(EXIT.OK);
@@ -364,9 +369,19 @@ describe("selfAddress — the port is explicit exactly where the dial needs it",
 });
 
 describe("enrollUrl", () => {
-  test("a bare host becomes an https enrollment URL", () => {
-    expect(enrollUrl("desk.ts.net")).toBe("https://desk.ts.net/pack/v1/enroll");
+  test("a bare host becomes an https enrollment URL on the default bridge port", () => {
+    expect(enrollUrl("desk.ts.net")).toBe("https://desk.ts.net:8787/pack/v1/enroll");
     expect(enrollUrl("http://desk:8787")).toBe("http://desk:8787/pack/v1/enroll");
+  });
+
+  // The port default is what makes `collie pack join bluefin` a whole command. It applies ONLY to an
+  // address that named neither a scheme nor a port — anything the operator spelled is taken as spelt,
+  // so a script written against 1.0.0 keeps dialling exactly where it always did.
+  test("a typed port and a typed scheme both win over the defaults", () => {
+    expect(enrollUrl("desk.ts.net:9000")).toBe("https://desk.ts.net:9000/pack/v1/enroll");
+    expect(enrollUrl("https://desk.ts.net")).toBe("https://desk.ts.net/pack/v1/enroll");
+    expect(enrollUrl("https://desk.ts.net:9000")).toBe("https://desk.ts.net:9000/pack/v1/enroll");
+    expect(enrollUrl("http://desk.ts.net")).toBe("http://desk.ts.net/pack/v1/enroll");
   });
 
   test("an address carrying a path, a query or credentials is refused", () => {
@@ -394,11 +409,27 @@ describe("collie pack invite", () => {
     expect(text(h.io)).toContain("expires");
   });
 
-  test("the printed instruction is the stdin form, not the argv one", async () => {
+  test("the banner leads with the short join command and keeps the stdin form under it", async () => {
     const h = harness(leadStore());
     await cmdPackInvite(h.deps, []);
-    expect(text(h.io)).toContain("collie join laptop.tail.ts.net -");
+    // The SHORT MagicDNS name, and no port: this lead is on 8787, which is what a bare host means.
+    expect(text(h.io)).toContain("collie pack join laptop");
+    expect(text(h.io)).toContain("collie pack join laptop -   # paste the token on stdin");
     expect(text(h.io)).toContain("leaves it in `ps` output");
+  });
+
+  test("a lead that moved off 8787 says so, and COLLIE_PUBLIC_URL wins with its port made explicit", async () => {
+    const moved = harness(leadStore(), [], { ctx: context({}, { port: 9001 }) });
+    await cmdPackInvite(moved.deps, []);
+    expect(text(moved.io)).toContain("collie pack join laptop:9001");
+
+    // A configured front door is the ingress this machine actually publishes, so it wins — and its
+    // port is spelt out, because a bare host would send the joiner to 8787 instead of to that door.
+    const published = harness(leadStore(), [], {
+      ctx: context({ COLLIE_PUBLIC_URL: "https://collie.example.com" }),
+    });
+    await cmdPackInvite(published.deps, []);
+    expect(text(published.io)).toContain("collie pack join collie.example.com:443");
   });
 
   test("it materialises the store — and identity minting refusing is the whole verb failing", async () => {
@@ -436,7 +467,7 @@ describe("collie join", () => {
     const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
     const req = h.requests[0]!;
-    expect(req.url).toBe("https://desk.ts.net/pack/v1/enroll");
+    expect(req.url).toBe("https://desk.ts.net:8787/pack/v1/enroll");
     expect(req.method).toBe("POST");
     expect(req.url).not.toContain("token-from-stdin");
     expect(JSON.parse(req.body)).toEqual({
@@ -447,14 +478,21 @@ describe("collie join", () => {
       // The joiner is becoming a PEER, so what it hands the lead is its own pack listener — host AND
       // port. Portless, the lead would dial it at :443 forever (see the `selfAddress` suite above).
       address: "laptop.tail.ts.net:8787",
-      label: null,
+      // No `--label`, so the box's own name — a member called `collie-8f3a2b1c` identifies nobody.
+      label: "laptop-box",
     });
     // Nothing was handed to a subprocess: the token cannot appear in anyone's `ps`.
     expect(h.exec.calls.join("\n")).not.toContain("token-from-stdin");
 
     const data = h.data()!;
     expect(data.pack).toMatchObject({ packId: PACK.packId, secret: PACK.secret });
-    expect(data.lead).toMatchObject({ memberId: "desk", fingerprint: fp("desk"), address: "desk.ts.net" });
+    // The ORIGIN that answered, not the string that was typed: every later peer→lead dial reads this
+    // field, and a bare `desk.ts.net` would send them all to :443 over TLS this lead never answers.
+    expect(data.lead).toMatchObject({
+      memberId: "desk",
+      fingerprint: fp("desk"),
+      address: "https://desk.ts.net:8787",
+    });
     expect(data.self.memberId).toBe("laptop");
     expect(h.audit.map((l) => l.action)).toContain("pack.joined");
   });
@@ -475,7 +513,7 @@ describe("collie join", () => {
     const h = harness(peerStore());
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.STATE);
     expect(text(h.io)).toContain("already in pack");
-    expect(text(h.io)).toContain("collie leave");
+    expect(text(h.io)).toContain("collie pack leave");
     expect(h.requests).toEqual([]);
   });
 
@@ -581,7 +619,7 @@ describe("collie join", () => {
     const h = harness(null);
     expect(await cmdJoin(h.deps, [])).toBe(EXIT.USAGE);
     expect(h.requests).toEqual([]);
-    expect(text(h.io)).toContain("usage: collie join <lead-address> <token|-|@file>");
+    expect(text(h.io)).toContain("usage: collie pack join <lead-address> [<token>|-|@file]");
     expect(text(h.io)).not.toContain("needs the invite token as its second argument");
   });
 
@@ -589,9 +627,9 @@ describe("collie join", () => {
     const h = harness(null);
     expect(await cmdJoin(h.deps, ["desk.ts.net"])).toBe(EXIT.USAGE);
     expect(h.requests).toEqual([]);
-    expect(text(h.io)).toContain("usage: collie join <lead-address> <token|-|@file>");
+    expect(text(h.io)).toContain("usage: collie pack join <lead-address> [<token>|-|@file]");
     expect(text(h.io)).toContain("error: join needs the invite token as its second argument.");
-    expect(text(h.io)).toContain("collie join desk.ts.net -");
+    expect(text(h.io)).toContain("collie pack join desk.ts.net -");
     expect(text(h.io)).toContain("collie pack invite");
   });
 
@@ -689,7 +727,7 @@ describe("collie join", () => {
   test("a bare host is unaffected — assumed https://, dials without --insecure", async () => {
     const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
-    expect(h.requests[0]!.url).toBe("https://desk.ts.net/pack/v1/enroll");
+    expect(h.requests[0]!.url).toBe("https://desk.ts.net:8787/pack/v1/enroll");
     expect(text(h.io)).not.toContain("refusing to enroll over http://");
   });
 
@@ -698,6 +736,175 @@ describe("collie join", () => {
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.UNREACHABLE);
     expect(text(h.io)).toContain("https:// was assumed");
     expect(text(h.io)).toContain("--insecure");
+  });
+
+  // ── the plain-HTTP lead: one question, asked before anything is sent ────────
+  // A default install answers `/pack/v1/*` over plain HTTP on 8787 and publishes TLS on 443 through
+  // `tailscale serve`. So the bare host an operator types resolves to https://host:8787, which is a
+  // TLS client meeting a plaintext listener — and the refusal that shipped told them to add
+  // `--insecure` to a scheme they never typed. The question below replaces that dead end.
+
+  const PROMPTED =
+    "desk.ts.net:8787 answers over plain HTTP, not HTTPS. On a tailnet the hop is still encrypted by WireGuard. Send the token over it? [y/N]";
+
+  /** Exactly what Bun 1.4's `fetch` throws when an `https://` request meets a plain-HTTP listener. */
+  const plaintextListener = (): Error =>
+    Object.assign(new TypeError("unknown certificate verification error"), {
+      code: "UNKNOWN_CERTIFICATE_VERIFICATION_ERROR",
+    });
+
+  test("`y` retries the same host:port over http:// — and the question comes BEFORE the token", async () => {
+    const asked: string[] = [];
+    const h = harness(null, [plaintextListener(), jsonReply(ENROLLED, 200, "desk")], {
+      interactive: true,
+      prompt: (q) => {
+        asked.push(q);
+        return "y";
+      },
+    });
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
+    expect(asked).toEqual([PROMPTED]);
+    // The https attempt carried the token and reached nothing; the http one is the first that any
+    // listener could have read. Same host, same port, one scheme apart.
+    expect(h.requests.map((r) => r.url)).toEqual([
+      "https://desk.ts.net:8787/pack/v1/enroll",
+      "http://desk.ts.net:8787/pack/v1/enroll",
+    ]);
+    // …and what this machine remembers is the origin that answered, not the one that did not.
+    expect(h.data()!.lead).toMatchObject({ address: "http://desk.ts.net:8787" });
+  });
+
+  test("anything but `y` is the refusal that shipped, with the --insecure hint", async () => {
+    for (const answer of ["n", "", "yes please", null]) {
+      const h = harness(null, [plaintextListener()], { interactive: true, prompt: () => answer });
+      expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.REFUSED);
+      expect(text(h.io)).toContain("refusing to enroll over http://");
+      expect(text(h.io)).toContain("--insecure");
+      // One attempt, and it was the https one: nothing crossed a plaintext wire.
+      expect(h.requests.map((r) => r.url)).toEqual(["https://desk.ts.net:8787/pack/v1/enroll"]);
+      expect(h.data()!.pack).toBeNull();
+    }
+  });
+
+  test("no terminal, no question — a scripted run keeps exactly the refusal it had", async () => {
+    // The harness `prompt` throws, so this also proves the question was never asked.
+    const h = harness(null, [plaintextListener()]);
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.REFUSED);
+    expect(text(h.io)).toContain("refusing to enroll over http://");
+    expect(h.requests).toHaveLength(1);
+  });
+
+  test("--insecure given explicitly skips the question and retries straight away", async () => {
+    const h = harness(null, [plaintextListener(), jsonReply(ENROLLED, 200, "desk")], { interactive: true });
+    expect(await cmdJoin(h.deps, [...joinArgs, "--insecure"])).toBe(EXIT.OK);
+    expect(h.requests.map((r) => r.url)).toEqual([
+      "https://desk.ts.net:8787/pack/v1/enroll",
+      "http://desk.ts.net:8787/pack/v1/enroll",
+    ]);
+  });
+
+  test("an EXPLICIT http:// address is never asked about — a script that spells it means it", async () => {
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")], { interactive: true });
+    expect(await cmdJoin(h.deps, ["http://desk.ts.net:8787", "-"])).toBe(EXIT.REFUSED);
+    expect(text(h.io)).toContain("refusing to enroll over http://");
+    expect(h.requests).toEqual([]);
+  });
+
+  test("a failure that is not a plaintext listener asks nothing and stays UNREACHABLE", async () => {
+    const h = harness(null, [new Error("connect ECONNREFUSED")], { interactive: true });
+    expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.UNREACHABLE);
+    expect(text(h.io)).not.toContain("plain HTTP");
+  });
+
+  // ── the token, asked for rather than demanded ──────────────────────────────
+
+  test("with a terminal and no token argument, it asks for one and uses the answer", async () => {
+    const asked: string[] = [];
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")], {
+      interactive: true,
+      prompt: (q) => {
+        asked.push(q);
+        return `  token-from-stdin.${fp("desk")}  `;
+      },
+    });
+    expect(await cmdJoin(h.deps, ["desk.ts.net"])).toBe(EXIT.OK);
+    expect(asked).toEqual(["Paste the invite token from `collie pack invite` on the lead:"]);
+    // SAFETY: the body is the `EnrollRequest` `cmdJoin` just serialised — the answer, trimmed.
+    expect(JSON.parse(h.requests[0]!.body).token).toBe("token-from-stdin");
+    // A token typed at a prompt was never in argv, so the `ps` warning must not fire for it.
+    expect(text(h.io)).not.toContain("`ps -eo args`");
+  });
+
+  test("an empty answer is the missing-token error, not an attempt", async () => {
+    const h = harness(null, [], { interactive: true, prompt: () => "   " });
+    expect(await cmdJoin(h.deps, ["desk.ts.net"])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain("error: join needs the invite token as its second argument.");
+    expect(h.requests).toEqual([]);
+  });
+
+  test("`--label` defaults to this machine's hostname, and an explicit one still wins", async () => {
+    const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(h.deps, [...joinArgs, "--label", "nas"])).toBe(EXIT.OK);
+    // SAFETY: the body is the `EnrollRequest` `cmdJoin` just serialised, whose `label` is the flag.
+    expect(JSON.parse(h.requests[0]!.body).label).toBe("nas");
+  });
+});
+
+// ── one verb, two spellings ──────────────────────────────────────────────────
+// `pack join` and `pack leave` are canonical; `collie join` / `collie leave` are aliases onto the
+// same two functions. Nothing may drift between them, so the dispatch is pinned rather than trusted.
+
+describe("`collie pack join|leave` and their top-level aliases", () => {
+  test("`pack join` runs `cmdJoin` — same requests, same words", async () => {
+    const viaPack = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdPack(viaPack.deps, ["join", "desk.ts.net", "-"])).toBe(EXIT.OK);
+    const direct = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
+    expect(await cmdJoin(direct.deps, ["desk.ts.net", "-"])).toBe(EXIT.OK);
+    expect(viaPack.requests.map((r) => r.url)).toEqual(direct.requests.map((r) => r.url));
+    expect(text(viaPack.io)).toBe(text(direct.io));
+  });
+
+  test("`pack leave` runs `cmdLeave` — same exit code, same words", async () => {
+    const viaPack = harness(null);
+    expect(await cmdPack(viaPack.deps, ["leave"])).toBe(EXIT.STATE);
+    const direct = harness(null);
+    expect(await cmdLeave(direct.deps)).toBe(EXIT.STATE);
+    expect(text(viaPack.io)).toBe(text(direct.io));
+    expect(text(viaPack.io)).toContain("not in a pack");
+  });
+
+  test("the `pack` usage block names both of them", async () => {
+    const h = harness(null);
+    expect(await cmdPack(h.deps, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain("  join     join a pack:");
+    expect(text(h.io)).toContain("  leave    leave the pack");
+  });
+});
+
+// ── how a plaintext listener fails a TLS client ──────────────────────────────
+
+describe("looksLikePlaintextListener", () => {
+  test("the shapes Bun and OpenSSL actually produce", () => {
+    const thrown = (message: string, code?: string): Error =>
+      code === undefined ? new Error(message) : Object.assign(new Error(message), { code });
+    // Probed against Bun 1.4: an https:// fetch at a `Bun.serve` listener, and one that resets.
+    expect(looksLikePlaintextListener(thrown("unknown certificate verification error", "UNKNOWN_CERTIFICATE_VERIFICATION_ERROR"))).toBe(true);
+    expect(looksLikePlaintextListener(thrown("The socket connection was closed unexpectedly", "ECONNRESET"))).toBe(true);
+    // The OpenSSL spellings every other runtime and every proxy in front of one produce.
+    expect(looksLikePlaintextListener(thrown("write EPROTO", "EPROTO"))).toBe(true);
+    expect(looksLikePlaintextListener(thrown("routines:ssl3_get_record:wrong version number"))).toBe(true);
+    expect(looksLikePlaintextListener(thrown("packet length too long"))).toBe(true);
+  });
+
+  test("a refusal, a timeout and a DNS failure are NOT it", () => {
+    for (const [message, code] of [
+      ["Unable to connect. Is the computer able to access the url?", "ConnectionRefused"],
+      ["The operation timed out", "ETIMEDOUT"],
+      ["getaddrinfo ENOTFOUND desk.ts.net", "ENOTFOUND"],
+      ["self-signed certificate", "DEPTH_ZERO_SELF_SIGNED_CERT"],
+    ] as const) {
+      expect(looksLikePlaintextListener(Object.assign(new Error(message), { code }))).toBe(false);
+    }
   });
 });
 

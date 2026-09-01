@@ -10,6 +10,13 @@ All notable changes to Collie are recorded here. The format follows
 
 ## [1.0.1] - 2026-09-01
 
+### Added
+
+- **`collie pack join bluefin` is enough in a terminal**: an address with no scheme and no port means port 8787, the token is asked for instead of demanded, and a lead that answers over plain HTTP asks for one consent instead of demanding `--insecure`.
+- `collie pack invite` prints the short join command first, with the stdin form under it for scripts.
+- `--label` defaults to this machine's hostname, so a joining peer is named after its box rather than `collie-8f3a2b1c`.
+- `collie pack join` and `collie pack leave` are the canonical spellings; `collie join` and `collie leave` stay as aliases.
+
 ### Changed
 
 - **The install and update docs lead with the two shapes an install actually has**, and neither assumes a bare `collie` on your PATH: a Herdr-managed install spells every verb as a plugin action, a standalone one as `bin/collie <verb>`. `docs/install.md` is two ways in rather than four, and ends with the update command it never carried; `docs/upgrading.md` opens on the update instead of the uninstall, folds the two 0.x sections into one crossing, and drops the finished v1 beta train.

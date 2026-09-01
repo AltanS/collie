@@ -506,14 +506,18 @@ export const COMMANDS: readonly Command[] = [
   // ── The pack (M4/07) ───────────────────────────────────────────────────────
   // The only way a machine enters or leaves a pack. Every one of them resolves its seams through
   // `packVerbDeps`, so the dispatcher stays a table and `cli/pack.ts` owns the behaviour.
+  // The two ALIASES. `pack join` and `pack leave` are the canonical spellings — every other pack
+  // verb is a `pack` sub-verb, and these two were the exception for no reason anyone could state.
+  // They stay because 1.0.0 documented them and scripts type them: same function, same seams, same
+  // exit codes, one name each. `cli/pack.test.ts` pins that the two spellings are one code path.
   {
     name: "join",
-    summary: "join a pack: `join <lead-address> <token|-|@file>` (run on the joining machine)",
+    summary: "same as `pack join`",
     run: async (args, s) => cmdJoin(await packVerbDeps(s.io), args),
   },
   {
     name: "leave",
-    summary: "leave the pack — drops the pack secret and every pin on this machine",
+    summary: "same as `pack leave`",
     run: async (_args, s) => cmdLeave(await packVerbDeps(s.io)),
   },
   {
@@ -523,6 +527,10 @@ export const COMMANDS: readonly Command[] = [
     // `cli/pack.ts`'s own usage block prints — the two are pinned to each other in cli/main.test.ts.
     subcommands: [
       packSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead)", cmdPackInvite),
+      packSubcommand("join", "join a pack: `pack join <lead-address>` (run on the joining machine)", cmdJoin),
+      packSubcommand("leave", "leave the pack — drops the pack secret and every pin on this machine", (deps) =>
+        cmdLeave(deps),
+      ),
       packSubcommand("add", "install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)", cmdPackAdd, true),
       packSubcommand(
         "update",

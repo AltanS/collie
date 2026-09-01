@@ -1380,28 +1380,49 @@ rc=$?
 set -e
 assert_eq "$rc" "2"
 assert_contains "$(cat "${TMP_ROOT}/err")" "unknown pack subcommand \`nonsense\`"
-for sub in invite status rotate remove set-address deputy; do
+for sub in invite join leave status rotate remove set-address deputy; do
   assert_contains "$(cat "${TMP_ROOT}/err")" "$sub"
 done
 
-# `join` without its two arguments is a usage error — and must not dial, enroll or write on the way.
+# `join` without its arguments is a usage error — and must not dial, enroll or write on the way.
+# Both spellings, because `pack join` is now the canonical one and `join` is its alias: they are one
+# function, and this is where that stops being a claim. stdin comes from /dev/null so the run is not
+# a terminal — the token question must never be asked of a script.
+for spelling in "join" "pack join"; do
+  set +e
+  # shellcheck disable=SC2086
+  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+    PATH="$BIN_DIR" "$BIN" $spelling </dev/null >/dev/null 2>"${TMP_ROOT}/err"
+  rc=$?
+  set -e
+  assert_eq "$rc" "2"
+  assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie pack join"
+  [ -z "$(ls -A "$PACK_STATE")" ] || fail "a usage-failed \`$spelling\` still wrote into the state dir"
+done
+
+# An address with no token, with no terminal to ask at, is the same usage error — and still no dial.
 set +e
 env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
-  PATH="$BIN_DIR" "$BIN" join >/dev/null 2>"${TMP_ROOT}/err"
+  PATH="$BIN_DIR" "$BIN" pack join example.invalid </dev/null >/dev/null 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
 assert_eq "$rc" "2"
-assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie join"
-[ -z "$(ls -A "$PACK_STATE")" ] || fail "a usage-failed \`join\` still wrote into the state dir"
+assert_contains "$(cat "${TMP_ROOT}/err")" "needs the invite token as its second argument"
+assert_contains "$(cat "${TMP_ROOT}/err")" "collie pack join example.invalid -"
+[ -z "$(ls -A "$PACK_STATE")" ] || fail "a tokenless \`pack join\` still wrote into the state dir"
 
 # `leave` on a machine that is in no pack is a STATE error (3), not a usage error and not a success.
-set +e
-env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
-  PATH="$BIN_DIR" "$BIN" leave >/dev/null 2>"${TMP_ROOT}/err"
-rc=$?
-set -e
-assert_eq "$rc" "3"
-assert_contains "$(cat "${TMP_ROOT}/err")" "not in a pack"
+# Both spellings again, for the same reason.
+for spelling in "leave" "pack leave"; do
+  set +e
+  # shellcheck disable=SC2086
+  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+    PATH="$BIN_DIR" "$BIN" $spelling </dev/null >/dev/null 2>"${TMP_ROOT}/err"
+  rc=$?
+  set -e
+  assert_eq "$rc" "3"
+  assert_contains "$(cat "${TMP_ROOT}/err")" "not in a pack"
+done
 
 # No pack verb above shelled out to anything — no systemctl, no tailscale, no herdr.
 assert_eq "$(cat "$PACK_CALLS")" ""
