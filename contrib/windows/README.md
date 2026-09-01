@@ -59,7 +59,7 @@ nothing is relaxed here.
   touches Tailscale Serve state — not on `start`, not on `uninstall`. Create the mapping yourself,
   once, in an Administrator PowerShell (`tailscale serve --bg 8787`), or run
   `COLLIE_SKIP_SERVE=1` behind your own reverse proxy per
-  [Variant C](../../DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale). This
+  [Variant C](../../docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale). This
   is the [one managed front door](../../.adr/0001-one-managed-front-door.md) rule holding: Collie
   manages exactly one, and it isn't this one.
 

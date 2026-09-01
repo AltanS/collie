@@ -63,7 +63,7 @@ the tailnet yet — and stays quiet whenever it can't tell.
 custom domain, or a proxy that rewrites `Host`. Allow the exact public origin with
 `COLLIE_ALLOWED_ORIGINS` (see [Configure](configure.md#configure)), or make the proxy forward `Host` unchanged —
 the fourth proxy requirement in
-[`DEPLOYMENT.md`](../DEPLOYMENT.md#variant-b--identity-aware-proxy--per-device-authorisation).
+[`docs/deployment.md`](deployment.md#variant-b--identity-aware-proxy--per-device-authorisation).
 
 **A `sudo` (or SSH passphrase, or `gpg`) prompt won't take your reply.** Use **Type** in the
 Controls row, not Send. Send *verifies* what it typed by reading it back off the screen before it

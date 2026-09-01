@@ -22,7 +22,7 @@ import type { PackMode } from "../types.ts";
 // that does not exist cannot be mis-gated** (ADR 0013's own words). Collie BINDS it and publishes
 // nothing: no `tailscale serve`, never `funnel`, no ownership record (ADR 0001 is untouched — we
 // still manage only what we run and can test). Plain HTTP behind the operator's own failover proxy,
-// which is RFC §14.2's deployment and DEPLOYMENT.md Variant C/E's posture already.
+// which is RFC §14.2's deployment and docs/deployment.md Variant C/E's posture already.
 //
 // ── PAIRING ONLY, AND THAT IS A DELIBERATE NARROWING ─────────────────────────
 // `COLLIE_DEVICE_HEADER` composes by AND with pairing on `/api/*` and that stays true everywhere

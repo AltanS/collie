@@ -326,7 +326,7 @@ warrant naming itself, and serving a page only while armed.**
 - **Plain HTTP by default, behind the operator's own ingress.** The deputy holds a self-signed
   certificate, and a phone will not accept one; the deployment this door is designed for is the
   two-backend failover proxy of RFC §14.2, which terminates TLS and is the operator's, exactly as
-  DEPLOYMENT.md Variant C/E already prescribes. **Collie publishes nothing here** — no
+  docs/deployment.md Variant C/E already prescribes. **Collie publishes nothing here** — no
   `tailscale serve`, never `funnel`, no ownership record. ADR 0001's criterion (*we manage only what
   we run and can test*) is untouched: the standby door is bound, not published.
 - **Two routes and no more:**
@@ -1106,7 +1106,7 @@ headers it injects.
 forge `COLLIE_DEVICE_HEADER`, and read every byte in both directions — **including the pairing bearer
 token in flight**, which is a `POST /standby/takeover` header.
 **Stopped by:** nothing new, and nothing needs to be — **this is the pre-existing trust position of a
-TLS-terminating front door** and it is stated in DEPLOYMENT.md and §8.5 already. A proxy that can
+TLS-terminating front door** and it is stated in docs/deployment.md and §8.5 already. A proxy that can
 read the phone's credential could already have used it against the lead's `/api/*` to type into every
 terminal in the pack. **The proxy operator cannot mint credentials** — no warrant, no signature, no
 pack secret — so it cannot take over *without* the operator's token; it can only steal one that the

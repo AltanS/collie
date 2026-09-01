@@ -79,8 +79,8 @@ with Herdr in v1 ([`PACK_PROTOCOL.md` §16](../PACK_PROTOCOL.md)).
 
 The `deputy`, `approve-promote`, and `promote` commands manage failover. For setup and recovery
 instructions, see
-[`DEPLOYMENT.md` → the standby door](../DEPLOYMENT.md#the-standby-door--a-packs-failover-path) and
-[the bad day](../DEPLOYMENT.md#the-bad-day--the-runbook).
+[`DEPLOYMENT.md` → the standby door](deployment.md#the-standby-door--a-packs-failover-path) and
+[the bad day](deployment.md#the-bad-day--the-runbook).
 
 
 ---

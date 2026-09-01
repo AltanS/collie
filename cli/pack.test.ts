@@ -759,7 +759,7 @@ describe("collie pack status — what an unreachable LEAD is told to do", () => 
 
 describe("clientFor — which dials carry a pin (§8.1) and which cannot", () => {
   // The lab's front door, and every real one: a `tailscale serve` or a conforming reverse proxy
-  // (DEPLOYMENT.md Variant C) that terminates TLS with a certificate that is NOT the lead's own.
+  // (docs/deployment.md Variant C) that terminates TLS with a certificate that is NOT the lead's own.
   const behindAFrontDoor = (): TrustStoreData =>
     peerStore({ lead: member({ memberId: "desk", role: "lead", address: "https://desk.tailnet.ts.net" }) });
 

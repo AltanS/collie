@@ -1445,7 +1445,7 @@ export function leadAddressRefusal(
     "       enroll THEIR OWN certificate as a member before your peer does (the lead admits on the",
     "       token alone), then holds the pack secret and a pinned link.",
     "       Give an encrypted address: https:// via `tailscale serve`, or your own TLS front door",
-    "       (DEPLOYMENT.md Variant C).",
+    "       (docs/deployment.md Variant C).",
     "       `pack add` has no --insecure and will not get one — it would ship the token over",
     "       plaintext on behalf of a machine you are not standing at. If this hop really is trusted,",
     "       own it where the token is spent: install Collie on that machine, run `collie pack invite`",

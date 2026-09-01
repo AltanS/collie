@@ -34,7 +34,7 @@ import { verifyWarrantSignature, warrantExpired } from "./warrant.ts";
 //     and RFC §12's F7 mitigation is the one that applies — **make the deputy the second machine you
 //     most trust.** A pack that names none is unaffected, byte for byte.
 //   • A LEAD does not pin its listener at all. Its pack surface rides the front door, and
-//     `tailscale serve` (or any conforming proxy, DEPLOYMENT.md Variant C) terminates TLS before
+//     `tailscale serve` (or any conforming proxy, docs/deployment.md Variant C) terminates TLS before
 //     the process sees the connection — no client certificate can survive to it under ANY
 //     design. Peer→lead requests re-establish the second factor at the application layer instead (§8.6,
 //     bridge/pack/signing.ts).

@@ -453,7 +453,7 @@ export async function runTakeover(deps: TakeoverDeps): Promise<TakeoverOutcome> 
  *     member's and the anchor really can match.
  *   • The **LEAD** is dialled with no TLS material at all. `bridge/pack/transport.ts`'s design note
  *     states the law: "A LEAD does not pin its listener at all. Its pack surface rides the front
- *     door, and `tailscale serve` (or any conforming proxy, DEPLOYMENT.md Variant C) terminates TLS
+ *     door, and `tailscale serve` (or any conforming proxy, docs/deployment.md Variant C) terminates TLS
  *     before the process sees the connection — no client certificate can survive to it under ANY
  *     design." So the certificate a takeover meets in the deputy→lead direction is the front door's,
  *     never the lead's own, and `ca: [lead.certPem]` could not match at any address a lead can

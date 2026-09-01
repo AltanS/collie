@@ -454,7 +454,7 @@ describe("serve — a peer publishes no front door (ADR 0013, §3)", () => {
   });
 });
 
-describe("serve — COLLIE_SKIP_SERVE (DEPLOYMENT.md Variants C/E)", () => {
+describe("serve — COLLIE_SKIP_SERVE (docs/deployment.md Variants C/E)", () => {
   test("publishes nothing", () => {
     const h = harness({ env: { COLLIE_SKIP_SERVE: "1" } });
     expect(cmdServe(h.deps)).toBe(EXIT.OK);

@@ -1114,9 +1114,9 @@ describe("startupWarnings — security-posture nags", () => {
     const ws = startupWarnings(cfg({ skipServe: true, trustedUser: "me@example.com" }));
     expect(has(ws, "COLLIE_TRUSTED_USER has no effect")).toBe(true);
     expect(has(ws, "COLLIE_DEVICE_HEADER")).toBe(true);
-    // The pointer must name the doc the variant actually lives in — B–E moved to DEPLOYMENT.md in
+    // The pointer must name the doc the variant actually lives in — B–E moved to docs/deployment.md in
     // 0.31.0, while Variant A stayed in the README (pinned in the empty-trustedUser test below).
-    expect(has(ws, "DEPLOYMENT.md → Variant C")).toBe(true);
+    expect(has(ws, "docs/deployment.md → Variant C")).toBe(true);
     // The Variant-A empty-trustedUser nag must NOT also fire (it's meaningless behind a proxy).
     expect(has(ws, "any tailnet device/user")).toBe(false);
   });

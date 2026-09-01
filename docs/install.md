@@ -15,7 +15,7 @@ Supported hosts: Linux and macOS. Windows is experimental; see
 | git | Source builds and Herdr routes | Clone and update the repository. |
 | Multiplexer: Herdr, [tmux](https://github.com/tmux/tmux), or [zellij](https://zellij.dev) | All installs | Mirrored backend set via `COLLIE_MUX`. tmux and zellij are experimental in 1.0; see [Using the app on tmux or zellij](multiplexers.md#using-the-app-on-tmux-or-zellij) and [`MUX_CONTRACT.md`](../MUX_CONTRACT.md). |
 | [Herdr](https://herdr.dev) ≥ 0.7.0 | Herdr backend only | Required when `COLLIE_MUX=herdr`. Check with `herdr --version`. |
-| [Tailscale](https://tailscale.com) | Default access | `tailscale serve` proxies Collie to your tailnet. Optional if using [Variant C](../DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale). |
+| [Tailscale](https://tailscale.com) | Default access | `tailscale serve` proxies Collie to your tailnet. Optional if using [Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale). |
 
 **No minimum tmux or zellij version is enforced.** The adapters were tested against tmux 3.4, tmux
 3.6b and zellij 0.44.2. One tmux edge case is handled: on a server using `window-size manual`, tmux

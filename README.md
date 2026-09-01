@@ -118,6 +118,7 @@ requirements table, and what the initial run writes to the host.
 | [**Install**](./docs/install.md) | Requirements, the two ways in — fresh install or through Herdr — first run, and opening it on your phone |
 | [**Security**](./docs/security.md) | What a Collie exposes, the defenses, and pairing a device as the write credential |
 | [**Configure**](./docs/configure.md) | The `.env`, your own slash commands, keys, quick replies and typefaces; appearance, Zen mode, language |
+| [**Deployment**](./docs/deployment.md) | Front doors other than the default: an identity-aware proxy, a reverse proxy with no Tailscale, an off-host ingress, several Collies on one host, and a pack's standby door |
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
 | [**tmux and zellij**](./docs/multiplexers.md) | Running Collie without Herdr — both walkthroughs, what each multiplexer can answer, and agent beacons. Experimental in 1.0; bug reports wanted |
 | [**Packs**](./docs/pack.md) | Several machines' Collies behind one URL: invite, join, deputy, failover |
@@ -126,7 +127,7 @@ requirements table, and what the initial run writes to the host.
 | [**Troubleshooting**](./docs/troubleshooting.md) | Symptoms in the words you would actually search for |
 
 Repository-level specifications live at the root: [`ARCHITECTURE.md`](./ARCHITECTURE.md) ·
-[`DEPLOYMENT.md`](./DEPLOYMENT.md) · [`MUX_CONTRACT.md`](./MUX_CONTRACT.md) ·
+[`docs/deployment.md`](./docs/deployment.md) · [`MUX_CONTRACT.md`](./MUX_CONTRACT.md) ·
 [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md) · [`HERDR_API.md`](./HERDR_API.md) ·
 [`DESIGN.md`](./DESIGN.md) · [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
@@ -134,7 +135,7 @@ Repository-level specifications live at the root: [`ARCHITECTURE.md`](./ARCHITEC
 
 Collie always binds **loopback only**; what changes between deployments is *what sits in front
 of it* and *how a request proves who it is*. Variant A is the default and sits below; the other four
-are in [`DEPLOYMENT.md`](./DEPLOYMENT.md). Pick one.
+are in [`docs/deployment.md`](./docs/deployment.md). Pick one.
 
 ### Variant A — `tailscale serve` + person identity (default)
 
@@ -155,12 +156,12 @@ COLLIE_TRUSTED_USER=you@example.com
   device](./docs/security.md#pair-a-device--the-write-credential) — it composes on top of this variant.
 
 This is the right choice unless you specifically need a proxy in the path. If you do, or if Tailscale
-isn't in the path at all, [`DEPLOYMENT.md`](./DEPLOYMENT.md) has the rest:
+isn't in the path at all, [`docs/deployment.md`](./docs/deployment.md) has the rest:
 
-- **[B — identity-aware proxy, authorised by device](./DEPLOYMENT.md#variant-b--identity-aware-proxy--per-device-authorisation)** — a proxy on this host; some devices drive, others watch.
-- **[C — reverse proxy as the only front door](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)** — no Tailscale anywhere in the path.
-- **[D — off-host identity proxy over the tailnet](./DEPLOYMENT.md#variant-d--off-host-identity-proxy-over-the-tailnet)** — one central ingress node fronting Collie among your other services.
-- **[E — any other mesh or tunnel](./DEPLOYMENT.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)** — NetBird, ZeroTier, Cloudflare Tunnel: you own the ingress, Collie publishes nothing.
+- **[B — identity-aware proxy, authorised by device](./docs/deployment.md#variant-b--identity-aware-proxy--per-device-authorisation)** — a proxy on this host; some devices drive, others watch.
+- **[C — reverse proxy as the only front door](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)** — no Tailscale anywhere in the path.
+- **[D — off-host identity proxy over the tailnet](./docs/deployment.md#variant-d--off-host-identity-proxy-over-the-tailnet)** — one central ingress node fronting Collie among your other services.
+- **[E — any other mesh or tunnel](./docs/deployment.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)** — NetBird, ZeroTier, Cloudflare Tunnel: you own the ingress, Collie publishes nothing.
 
 ## Windows (experimental)
 
@@ -175,7 +176,7 @@ Operational details:
   buttons invoke `bash`, requiring Git Bash on `PATH`. The manifest lists only `linux` and `macos`
   support to avoid exposing actions that might fail silently.
 - **`tailscale serve` integration is unavailable on Windows.** Follow
-  [Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale): bind to
+  [Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale): bind to
   loopback, place your own ingress in front, and set `COLLIE_PUBLIC_HOSTS`. The rules in
   [§Security](./docs/security.md) still apply.
 - **Set `COLLIE_MULTI_SESSION=off`**, as session discovery relies on POSIX paths.
@@ -211,7 +212,7 @@ multiplexer.
   Herdr · tmux · zellij
 ```
 
-Under [Variant C](./DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) a
+Under [Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) a
 reverse proxy replaces the `tailscale serve` box; everything below the front door is identical.
 
 - **Only the adapter touches the multiplexer** (`bridge/mux/<name>/` — Herdr dials a Unix socket, tmux and zellij shell out to their CLIs); everything else speaks the bridge's HTTP API. What every adapter must answer is [`MUX_CONTRACT.md`](./MUX_CONTRACT.md).
@@ -273,13 +274,13 @@ integration is documented in [`HERDR_API.md`](./HERDR_API.md).
 ## See also
 
 - All how-to pages: [`docs/`](./docs/)
-- Deployment variants B through E: [`DEPLOYMENT.md`](./DEPLOYMENT.md)
+- Deployment variants B through E: [`docs/deployment.md`](./docs/deployment.md)
 - Architecture and design rationale: [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 - Multiplexer query interface and capabilities: [`MUX_CONTRACT.md`](./MUX_CONTRACT.md)
 - Lead-to-peer pack protocol: [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md) (topology diagram in
   [§2](./PACK_PROTOCOL.md#2-shape-of-the-thing))
 - Pack recovery from a phone after lead failure:
-  [`DEPLOYMENT.md` → the standby door](./DEPLOYMENT.md#the-standby-door--a-packs-failover-path)
+  [`docs/deployment.md` → the standby door](./docs/deployment.md#the-standby-door--a-packs-failover-path)
 - Verified Herdr socket API: [`HERDR_API.md`](./HERDR_API.md)
 - Operations, versioning, and project conventions: [`CLAUDE.md`](./CLAUDE.md)
 - Contribution guidelines: [`CONTRIBUTING.md`](./CONTRIBUTING.md)

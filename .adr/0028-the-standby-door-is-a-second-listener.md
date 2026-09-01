@@ -12,7 +12,7 @@ this class of change; nothing in its body is retracted.
 Related: [ADR 0027](./0027-the-deputy-is-named-ahead-of-time.md) (the warrant this door reads)
 Contract: [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.15 (the door), §18.14 (the pairing sync),
 §18.16 (what the button runs), §18.12 (the deposed lead's answer on the same path).
-Operator setup: [`DEPLOYMENT.md`](../DEPLOYMENT.md#the-standby-door--a-packs-failover-path).
+Operator setup: [`docs/deployment.md`](../docs/deployment.md#the-standby-door--a-packs-failover-path).
 Design history: [`PACK_DEPUTY_RFC.md`](../PACK_DEPUTY_RFC.md) §6.
 
 ## Context

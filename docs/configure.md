@@ -29,14 +29,14 @@ Collie reads `.env` only during startup. Run `collie restart` after modifying it
 [`.env.example`](../.env.example) file lists all options, including `COLLIE_PORT`,
 `COLLIE_SERVE_MODE=http` (for Headscale or `.internal` domains), and `COLLIE_SERVE_PORT` (to expose
 HTTPS on a port other than `:443`; see
-[DEPLOYMENT.md → Several Collies on one host](../DEPLOYMENT.md#several-collies-on-one-host)). The
+[DEPLOYMENT.md → Several Collies on one host](deployment.md#several-collies-on-one-host)). The
 CLI reads the serve parameters to configure `tailscale serve`, rather than passing them to the
 bridge.
 
 To read history from multiple agent home directories, provide a comma-separated list in
 `COLLIE_TRANSCRIPT_ROOT`.
 
-[`DEPLOYMENT.md`](../DEPLOYMENT.md) covers custom domains and reverse proxies. Collie enforces a
+[`docs/deployment.md`](deployment.md) covers custom domains and reverse proxies. Collie enforces a
 same-origin policy, so any custom hostname or external TLS terminator must be explicitly
 allowlisted:
 

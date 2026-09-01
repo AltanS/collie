@@ -352,7 +352,7 @@ grammar, the probe catches on-disk format drift.
 ## Security posture (don't regress)
 
 Loopback bind only · exactly one hardened front door — `tailscale serve` (never `funnel`) or a
-conforming reverse proxy per DEPLOYMENT.md Variant C (`COLLIE_SKIP_SERVE=1`) · same-origin gate ·
+conforming reverse proxy per docs/deployment.md Variant C (`COLLIE_SKIP_SERVE=1`) · same-origin gate ·
 optional identity/device gates · strict CSP. A socket call can type into a real terminal — treat a
 collie as remote shell access.
 
@@ -386,7 +386,7 @@ ungated by both. Neither applies to `/pack/v1/*`, which has its own two factors.
 **Collie manages exactly one front door: `tailscale serve`** — the CLI (`cli/serve.ts`) publishes it,
 records the mapping in `tailscale-managed-handler`, and only ever tears down a mapping matching that
 record.
-Every other tunnel (NetBird, ZeroTier, Cloudflare Tunnel) is `COLLIE_SKIP_SERVE=1` + DEPLOYMENT.md
+Every other tunnel (NetBird, ZeroTier, Cloudflare Tunnel) is `COLLIE_SKIP_SERVE=1` + docs/deployment.md
 Variant E: the operator owns the ingress, Collie publishes nothing. **Don't add a second managed front
 door** — [ADR 0001](./.adr/0001-one-managed-front-door.md).
 

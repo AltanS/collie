@@ -179,7 +179,7 @@ browser.
 
 Web Push requires a secure context (HTTPS). This is provided by `tailscale serve` (MagicDNS
 certificates) or an external reverse proxy terminating TLS
-([Variant C](../DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)). Plain
+([Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)). Plain
 HTTP setups (`COLLIE_SERVE_MODE=http`) lack a secure context, and the browser disables the
 subscription controls in Settings.
 

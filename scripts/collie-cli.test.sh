@@ -734,7 +734,7 @@ assert_contains "$STDERR" "retained ${RECORD} for retry"
 assert_eq "$(cat "$RECORD")" "http:8787|host.example:8787|${OURS}"
 rm -f "$FD_OFF_FAILS"
 
-# COLLIE_SKIP_SERVE=1 (DEPLOYMENT.md Variants C/E): the operator owns the ingress, Collie publishes
+# COLLIE_SKIP_SERVE=1 (docs/deployment.md Variants C/E): the operator owns the ingress, Collie publishes
 # NOTHING — but still tears down a mapping published before the flag was flipped, which would
 # otherwise stay reachable by a path the operator thinks is closed.
 status_is "$COLLIE_HTTP_ROOT"

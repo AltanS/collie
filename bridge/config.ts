@@ -285,7 +285,7 @@ export interface Config {
    * proxy (Caddy/Nginx) fronts the loopback bridge instead. The bridge itself handles every request
    * identically either way — this flag only informs the startup warnings: without `tailscale serve`
    * in front, the `Tailscale-User-Login` header is never injected, so {@link trustedUser} is inert
-   * and per-device auth ({@link deviceHeader}) becomes the way to gate writes (DEPLOYMENT.md → Variant C).
+   * and per-device auth ({@link deviceHeader}) becomes the way to gate writes (docs/deployment.md → Variant C).
    */
   skipServe: boolean;
 }

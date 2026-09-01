@@ -502,7 +502,7 @@ that something is listening.
 >   the listener, never read from a header — and resolves it to the pinned lead. A peer that cannot
 >   build its anchor sets it `false` and refuses **everything**: down, never single-factor.
 > - **The lead's own listener pins nothing, and cannot.** Its pack surface rides the front door, and
->   `tailscale serve` — or any conforming reverse proxy (DEPLOYMENT.md Variant C) — terminates TLS
+>   `tailscale serve` — or any conforming reverse proxy (docs/deployment.md Variant C) — terminates TLS
 >   before the process sees the connection. No client certificate survives to a lead under any
 >   design. The peer→lead direction re-establishes the second factor at the application layer instead: **§8.6**.
 >
@@ -591,7 +591,7 @@ There is no discovery, no enumeration, and no overlay-network integration — ev
 > order: an explicit `--address`, taken verbatim; then `COLLIE_PUBLIC_URL`, reduced to its origin
 > (scheme + host + port — the pack link mounts at `/pack/v1/*` off it, so a path is dropped with a
 > warning, and a value that does not parse warns and falls through); then this node's Tailscale name.
-> A machine whose real ingress is a reverse proxy (DEPLOYMENT.md Variant C/E) therefore states that
+> A machine whose real ingress is a reverse proxy (docs/deployment.md Variant C/E) therefore states that
 > ingress once in config instead of on every invite — a derived tailnet name is silently undialable
 > from a peer under a one-way tailnet ACL, and nothing in the enrollment names that as the cause. **A peer's
 > own listener address is never taken from `COLLIE_PUBLIC_URL`**: a peer publishes no front door (§3,
