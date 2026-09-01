@@ -28,6 +28,9 @@ until explicitly configured.
 - **Keypad for terminal control keys**: `Esc`, `Ctrl+C`, arrows, and modifier combinations
 - **Output search** and full conversation history beyond standard terminal scrollback
 - **Image uploads** directly from the local camera roll
+- **Device pairing** as the write credential: once a device is paired, every write needs its token
+- **Packs**: several machines' Collies behind one URL, with operator-triggered failover
+- **Six UI languages** and a per-device typeface setting
 - **Herdr session switching** managed from the web interface
 - **PWA support** running locally on loopback with no external accounts or cloud dependencies
 
@@ -44,15 +47,15 @@ data without installation.
 <table>
   <tr>
     <td align="center" width="50%"><img src="assets/dashboard.png" alt="Collie dashboard — Needs you, Recent, Spaces" width="250"><br><sub><b>Dashboard</b> — agents needing you float to the top</sub></td>
-    <td align="center" width="50%"><img src="assets/ask-question.png" alt="A Claude AskUserQuestion prompt up-leveled into tappable buttons" width="250"><br><sub><b>Ask</b> — Claude's own questions become tappable buttons</sub></td>
+    <td align="center" width="50%"><img src="assets/ask-question.png" alt="A Claude permission prompt up-leveled into tappable buttons" width="250"><br><sub><b>Ask</b> — the agent's own prompts become tappable buttons</sub></td>
   </tr>
   <tr>
     <td align="center" width="50%"><img src="assets/space-detail.png" alt="A space's tabs and panes" width="250"><br><sub><b>Space</b> — its tabs and panes, deep-linkable</sub></td>
     <td align="center" width="50%"><img src="assets/keys.png" alt="The special-keys pad — arrows, Esc, Tab, Ctrl, Alt, Shift" width="250"><br><sub><b>Keys</b> — the special-keys pad, no chords to remember</sub></td>
   </tr>
   <tr>
-    <td align="center" width="50%"><img src="assets/session-switcher.png" alt="Session switcher" width="250"><br><sub><b>Session switcher</b> — one collie, every herd</sub></td>
-    <td align="center" width="50%"><img src="assets/settings.png" alt="Settings — notifications and diagnostics" width="250"><br><sub><b>Settings</b> — notifications, DND, diagnostics</sub></td>
+    <td align="center" width="50%"><img src="assets/quick.png" alt="The Quick dock — one-tap replies over a working pane" width="250"><br><sub><b>Quick</b> — your own one-tap replies, from <code>quick-replies.toml</code></sub></td>
+    <td align="center" width="50%"><img src="assets/settings.png" alt="Settings — appearance, language, typeface" width="250"><br><sub><b>Settings</b> — appearance, language, typeface, per device</sub></td>
   </tr>
 </table>
 
