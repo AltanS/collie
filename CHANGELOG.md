@@ -20,6 +20,7 @@ All notable changes to Collie are recorded here. The format follows
 ### Changed
 
 - **The install and update docs lead with the two shapes an install actually has**, and neither assumes a bare `collie` on your PATH: a Herdr-managed install spells every verb as a plugin action, a standalone one as `bin/collie <verb>`. `docs/install.md` is two ways in rather than four, and ends with the update command it never carried; `docs/upgrading.md` opens on the update instead of the uninstall, folds the two 0.x sections into one crossing, and drops the finished v1 beta train.
+- **`DEPLOYMENT.md` is now [`docs/deployment.md`](./docs/deployment.md), and colliepwa.dev publishes it.** The site serves the files the README's documentation table lists, so every link to a front door other than the default used to leave the site. Each variant keeps its anchor; in-code pointers name the new path, including the `COLLIE_SKIP_SERVE` warning and `collie doctor`'s serve finding.
 
 ### Fixed
 
