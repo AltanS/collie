@@ -1,26 +1,25 @@
 # Contributing to Collie
 
-Thanks for looking. This page is the short version: which branch to open against, which gates have
-to be green, and the one convention that trips people up. The long-form working agreement lives in
-[`CLAUDE.md`](./CLAUDE.md).
+This guide covers the essentials: which branch to target, which CI checks must pass, and the
+convention that most often trips people up. Read [`CLAUDE.md`](./CLAUDE.md) for the full working
+agreement.
 
 ## Base branches
 
-**Open bugfixes against `main`** — they reach the stable line first and flow into `v1`
-automatically. **Open features, and anything touching `cli/` or the bridge, against `v1`.** `main`
-is in maintenance until 1.0.0 ships.
+**Open bugfixes against `main`**. They reach the stable line first and merge into `v1`
+automatically. **Open features, and anything touching `cli/` or the bridge, against `v1`.** The
+`main` branch remains in maintenance mode until 1.0.0 ships.
 
-Why the split: `v1` is 327 commits ahead of `main`. A feature branched off `main` is a feature
-written against a codebase that has already moved, and it has to be rewritten before it can land. A
-bugfix is small enough to cross the gap in the other direction, and `main` is where users of the
-0.x line get it.
+The split exists because `v1` is 327 commits ahead of `main`. A feature branched off `main` targets
+an outdated codebase and requires a rewrite before it can land. Bugfixes are small enough to
+backport cleanly, and `main` is where 0.x users receive them.
 
-When 1.0.0 ships, `main` becomes the 1.0 line and this rule collapses to "open everything against
-`main`".
+When 1.0.0 ships, `main` becomes the 1.0 line and all changes will target `main`.
 
 ## Before you open a PR
 
-Run all four. The first three are also the pre-commit and pre-push hooks; CI runs the lot.
+Run all four checks. The first three match the pre-commit and pre-push hooks, and CI runs every
+suite.
 
 ```bash
 bun run typecheck            # backend
@@ -30,34 +29,34 @@ bun test ./bridge ./cli ./scripts
 cd web && bun run test       # vitest — never `bun test` in web/, Bun's runner can't drive jsdom
 ```
 
-The web typecheck is a separate command on purpose: a change to a shared type can leave the root
-check green and still break the build on a stale test fixture. Run both, every time.
+The web typecheck runs separately by design. Changing a shared type can pass the root check while
+breaking stale test fixtures. Run both commands every time.
 
-Let the hooks run these for you — `scripts/install-hooks.sh`, once. It points `core.hooksPath` at
-the repo's own hooks: pre-commit guards the version, the lint and the pack wire; pre-push
-typechecks, tests, and warns if you are pushing a release with no tag.
+You can automate this by running `scripts/install-hooks.sh` once. It sets `core.hooksPath` to the
+repo hooks. The pre-commit hook checks the version, linting, and package wire. The pre-push hook
+runs typechecks, executes tests, and warns if you push an untagged release.
 
 ## Versions
 
-A functional change — anything under `bridge/`, `cli/`, `web/src/`, `scripts/` or the manifest —
-bumps the version in `herdr-plugin.toml`, `package.json` and `web/package.json`, and adds a
-`CHANGELOG.md` entry. Doc-only changes (`*.md`) are exempt. The pre-commit hook enforces this;
-`SKIP_VERSION_CHECK=1 git commit …` is the escape hatch for a single commit.
+Functional changes in `bridge/`, `cli/`, `web/src/`, `scripts/`, or the manifest require bumping the
+version in `herdr-plugin.toml`, `package.json`, and `web/package.json`, along with a new entry in
+`CHANGELOG.md`. Documentation-only changes (`*.md`) are exempt. The pre-commit hook checks for these
+updates; use `SKIP_VERSION_CHECK=1 git commit …` to bypass it for a single commit.
 
-**From a fork, bump nothing.** Send the functional commits and leave all four files alone — the
-version depends on what else lands in the same release, so it is the maintainer's to pick, and two
-PRs both guessing the same number collide. Take the `SKIP_VERSION_CHECK=1` hatch locally. If you
-want a CHANGELOG line in your own words, put it in the PR description.
+**From a fork, do not bump versions.** Submit your functional commits and leave those four files
+unmodified. The release version depends on other merged changes, so maintainers set it to avoid
+collisions between competing PRs. Use `SKIP_VERSION_CHECK=1` locally. If you want a specific
+CHANGELOG entry, include it in the PR description.
 
 ## Working on the UI
 
-Read [`DESIGN.md`](./DESIGN.md) first. Its first rule is the one that keeps getting broken: look in
-`web/src/components/ui/` for an existing primitive before you build a new one, and promote one the
-moment a second place needs the same visual idea. `DESIGN.md` also holds the no-shift rule, the
-radius and line tokens, and the Tailwind v4 traps that each cost a day.
+Read [`DESIGN.md`](./DESIGN.md) before writing code. Check `web/src/components/ui/` for an existing
+primitive before you build a new one, and extract a component as soon as two places share the same
+visual pattern. `DESIGN.md` also documents the layout stability constraints, radius and border
+tokens, and the Tailwind v4 issues that cause regressions.
 
 ## Decisions that are already settled
 
-[`.adr/`](./.adr/) holds the decisions whose reasoning would otherwise live only in a PR thread —
-specifically the ones that close off an option someone will reasonably propose again. If you are
-about to argue *why not* rather than *how*, check there first.
+[`.adr/`](./.adr/) records decisions whose rationale would otherwise stay buried in PR threads. It
+focuses on choices that rule out alternatives contributors frequently propose again. Check there
+first if you are about to ask why a particular approach was not used.

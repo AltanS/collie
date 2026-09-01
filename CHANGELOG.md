@@ -11,6 +11,7 @@ All notable changes to Collie are recorded here. The format follows
 ### Changed
 
 - **The five translations read like native product copy now.** Every German, Spanish, Japanese, Korean and Chinese string was rewritten against the English source with a strict style pass — idiomatic register instead of literal calques, no em dashes. Placeholders and code spans were verified unchanged key by key; 1851 strings moved, ten suspect rewrites were rejected and kept their old text. English is untouched.
+- **The docs and README went through the same style pass.** 42 sections across README, CONTRIBUTING and the nine docs files rewritten into a plainer technical register; every code fence, heading, link target and URL verified byte-identical, eight rewrites rejected for losing one of those.
 
 ### Fixed
 

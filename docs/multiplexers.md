@@ -1,29 +1,28 @@
 # tmux and zellij
 
-Collie drives one multiplexer per install. Herdr is the default; this page is the other two — how to
-point Collie at a tmux server or a zellij session, what each one can and cannot answer, and the
-beacons that tell Collie an agent is in a pane at all.
+Collie drives one multiplexer per install. Herdr is the default. This page covers the other two
+options: how to point Collie at a tmux server or a zellij session, what each backend supports, and
+the beacons Collie uses to detect an agent in a pane.
 
 ## Using the app on tmux or zellij
 
-> **Experimental in 1.0.** tmux and zellij were probed on **tmux 3.6b** and **zellij 0.44.2**, by one
-> operator, on one host. Herdr stays the default and the fully supported path. **We want testers:**
+> **Experimental in 1.0.** tmux and zellij support was tested on **tmux 3.6b** and **zellij 0.44.2**
+> on a single host. Herdr remains the default and primary supported backend. **Testers wanted:**
 > open an issue on [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …` or
-> `zellij: …` and say which multiplexer and version, which OS, and what you saw — what worked as much
-> as what did not.
+> `zellij: …`. Include your multiplexer, version, OS, and observed behavior (both working and
+> broken).
 
-Collie drives **one** multiplexer per install, named by `COLLIE_MUX` — or picked at the first
-`start`, which probes for Herdr, tmux and zellij and asks when that key is unset, then writes your
-answer into the `.env`. The two walkthroughs below get you from a `.env` to a dashboard listing your
-own windows. The reference for every key is
-[`MUX_CONTRACT.md` → Pointing a collie at a multiplexer](../MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer);
-this section is the path through it, not a copy of it.
+Collie drives **one** multiplexer per install, configured by `COLLIE_MUX`. If unset on the first
+run, `start` probes for Herdr, tmux, and zellij, prompts for a selection, and writes the choice to
+`.env`. The walkthroughs below cover setting up `.env` to list your windows on the dashboard. For
+the full configuration reference, see
+[`MUX_CONTRACT.md` → Pointing a collie at a multiplexer](../MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer).
 
-**Herdr is not required in this mode.** With `COLLIE_MUX=tmux` or `COLLIE_MUX=zellij` the bridge
-builds only the adapter you named and never dials Herdr's socket, and multi-session discovery — which
-walks Herdr's own config root — turns itself off (`bridge/index.ts`). Herdr does not have to be
-installed or running. Without it, drive Collie from the checkout with `scripts/collie-ctl.sh start`,
-and the `.env` lives in `~/.config/collie/` instead of the plugin config dir.
+**Herdr is not required in this mode.** When using `COLLIE_MUX=tmux` or `COLLIE_MUX=zellij`, the
+bridge loads only the selected adapter and ignores Herdr's socket. Multi-session discovery across
+Herdr config roots is disabled (`bridge/index.ts`). You do not need Herdr installed or running. Run
+Collie directly from the repository with `scripts/collie-ctl.sh start`. In this setup, `.env`
+resides in `~/.config/collie/` instead of the plugin configuration directory.
 
 ### Pointing Collie at tmux
 
@@ -36,24 +35,25 @@ COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock  # a socket PATH (tmux 
 # COLLIE_TMUX_BIN=/usr/bin/tmux                           # only if tmux sits somewhere unusual
 ```
 
-`COLLIE_TMUX_BIN` is empty for almost everyone: Collie probes a short list of fixed paths and
-deliberately never reads `PATH`, which a service and a Herdr action do not share with your shell.
-**Keep a socket path short** — a Unix socket path longer than about 100 characters cannot be
-connected to at all, and tmux says `error connecting to … (File name too long)`. `/run/user/<uid>/`
-or `/tmp` is the place for it; a deep checkout is not.
-One caveat lives here too: on tmux below 3.7 with `window-size` set to `manual`, opening a window
-crashes the server, so Collie refuses to open one — see
-[Requirements](install.md#requirements) for the one-line fix.
+`COLLIE_TMUX_BIN` is usually left unset. Collie checks a list of standard paths and deliberately
+avoids reading `PATH`, which background services and Herdr actions do not share with login shells.
+**Keep socket paths short.** Unix domain sockets longer than roughly 100 characters fail to connect,
+causing tmux to return `error connecting to … (File name too long)`. Use `/run/user/<uid>/` or
+`/tmp` rather than a deep directory path.
 
-Then, in order:
+Note: on tmux versions before 3.7 with `window-size` set to `manual`, creating a window crashes the
+server. Collie blocks window creation in this state. See [Requirements](install.md#requirements) for
+the fix.
 
-1. **Restart after any `.env` edit** — `collie restart`.
-2. **Install the beacon hooks** — `collie hooks install claude`, once per host. Without them a
-   pane is only a shell and the dashboard names every one of them `bash`; it edits your *global*
-   `~/.claude/settings.json` and never a project's
-   ([the detail](#collie-writes-hooks-into-claudes-own-settings)).
-3. **Start an agent in a window Collie can see** — and relaunch any Claude that was already running,
-   because a running Claude does not reload its hooks:
+Setup steps:
+
+1. **Restart after editing `.env`:** `collie restart`.
+2. **Install the beacon hooks:** run `collie hooks install claude` once per host. Without hooks,
+   panes appear as generic shells named `bash`. This command updates your global
+   `~/.claude/settings.json` and leaves project configs untouched
+   ([details below](#collie-writes-hooks-into-claudes-own-settings)).
+3. **Start an agent in a visible window:** relaunch existing Claude instances so they pick up the
+   new hooks:
 
 ```bash
 tmux -S /run/user/1000/collie-tmux.sock new-window -n claude
@@ -71,30 +71,29 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij                  # a session NAME, not 
 # COLLIE_ZELLIJ_BIN=/home/you/.local/bin/zellij           # only if zellij sits somewhere unusual
 ```
 
-If your distro does not package zellij, take the release tarball from
-[zellij's GitHub releases](https://github.com/zellij-org/zellij/releases) and put the binary on `PATH`.
+If your distribution lacks zellij packages, download a binary from
+[zellij's GitHub releases](https://github.com/zellij-org/zellij/releases) and place it in your
+`PATH`.
 
-Empty means *the* running session. With no session, or with two, Collie refuses to start rather than
-guess, and names what it found. A session you named that has since exited is refused by name — never
-silently swapped for a neighbour. One environment variable is easy to lose: zellij finds its sessions
-through `XDG_RUNTIME_DIR`, and a Collie that reports every session as exited is looking at a unit file
-without it ([contract](../MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer)).
+Leaving the endpoint empty defaults to the currently running session. If zero or multiple sessions
+exist, Collie halts with an error rather than selecting one automatically. If a named session exits,
+Collie reports it by name instead of switching to an active one. Zellij relies on `XDG_RUNTIME_DIR`
+to locate sessions; if Collie reports all sessions as exited, ensure the systemd service includes
+this environment variable ([contract](../MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer)).
 
-**A zellij session outlives the terminal that started it.** Start one anywhere — `zellij -s
-collie-zellij` — then detach with `Ctrl o` `d`: the session keeps running on the host, and that
-running session is what Collie drives. On a host you never sit at, `zellij attach --create-background
-collie-zellij` starts the same session with no terminal at all (probed on zellij 0.44.2). Collie
-itself never creates a session and never resurrects one.
+**Zellij sessions persist independently of their initial terminal.** Create a session with
+`zellij -s collie-zellij` and detach using `Ctrl o` `d`. On headless hosts,
+`zellij attach --create-background collie-zellij` starts a detached session directly (verified on
+zellij 0.44.2). Collie manages active sessions but does not create or restart them.
 
-Then, in order:
+Setup steps:
 
-1. **Restart after any `.env` edit** — `collie restart`.
-2. **Install the beacon hooks** — `collie hooks install claude`, once per host. Without them a
-   pane is only a shell and the dashboard names every one of them `bash`; it edits your *global*
-   `~/.claude/settings.json` and never a project's
-   ([the detail](#collie-writes-hooks-into-claudes-own-settings)).
-3. **Start an agent in a tab Collie can see** — and relaunch any Claude that was already running,
-   because a running Claude does not reload its hooks:
+1. **Restart after editing `.env`:** `collie restart`.
+2. **Install the beacon hooks:** run `collie hooks install claude` once per host. Without hooks,
+   panes appear as generic shells named `bash`. This updates global `~/.claude/settings.json`
+   without modifying project settings
+   ([details below](#collie-writes-hooks-into-claudes-own-settings)).
+3. **Start an agent in a visible tab:** restart existing Claude instances to load the hooks:
 
 ```bash
 zellij --session collie-zellij action new-tab --name claude
@@ -111,18 +110,19 @@ collie logs    # `[bridge] mux: tmux · socket /run/user/1000/collie-tmux.sock`,
 curl -s http://127.0.0.1:8787/api/snapshot | head -c 400   # the herd, as the phone is given it
 ```
 
-That `curl` needs no device header: both write gates leave reads alone, so a read answers even with
-`COLLIE_DEVICE_HEADER` set ([Configure](configure.md#configure)). A write from the shell is the case that needs
-the header you configured.
+This `curl` call works without auth headers. Read requests bypass device validation even when
+`COLLIE_DEVICE_HEADER` is enabled ([Configure](configure.md#configure)). Only write actions require
+the configured header.
 
-Then open the phone: the dashboard lists your **tmux windows** or **zellij tabs**, and the pane you
-launched Claude in names the agent rather than `bash`. If every pane still reads as a shell, the
-beacon hooks are missing — next section.
+Check the phone UI: the dashboard should display your **tmux windows** or **zellij tabs**, and the
+Claude pane should identify as an agent instead of `bash`. If panes still display as standard
+shells, verify the beacon hook installation below.
 
 ### Collie writes hooks into Claude's own settings
 
-On tmux and zellij a pane is just a shell, so the agent has to say what it is. That is a
-[beacon](#agent-beacons-optional-linux), and it needs Collie's hooks in Claude Code's settings:
+Because tmux and zellij expose panes as generic shells, agents must announce themselves. This
+requires installing Collie's [beacon](#agent-beacons-optional-linux) hooks into Claude Code's
+configuration:
 
 ```console
 $ collie hooks install claude
@@ -131,34 +131,34 @@ would install: /home/you/collie/bin/collie beacon emit  (this checkout)
 /home/you/.claude/settings.json: installed (v1)
 ```
 
-That absolute path is this checkout's own `bin/collie`. A binary install names its published binary
-instead — `~/.local/bin/collie` when that name is linked, or `~/.local/share/collie/current/bin/collie`
-when it is not — never a version directory, because `collie update` deletes the one before last.
+The output references the `bin/collie` path from this repository. Package installs use the installed
+binary path (`~/.local/bin/collie` or `~/.local/share/collie/current/bin/collie`) rather than
+versioned directories, ensuring links remain valid across updates.
 
-Say it plainly, because it edits a file you own:
+Behavior details for Claude configuration changes:
 
-- The target is your **global** `~/.claude/settings.json` (and any `CLAUDE_CONFIG_DIR` profile).
-  A project's `.claude/settings.json` is never written.
-- It adds **five** entries, each marked `# collie-beacon v1`, each with a 10 s timeout. Every hook
-  beside them is left exactly where it was, and `hooks uninstall claude` removes only the marked ones.
-- **An already-running Claude does not reload its hooks.** Relaunch the agents you want seen.
-- **Linux only** — the liveness check reads `/proc`; elsewhere a beacon is simply never written.
-- **A beacon belongs to one multiplexer.** It names the pane it was written for by that
-  multiplexer, its session and its pane, so after you change `COLLIE_MUX` the beacons written under
-  the old one match nothing. Nothing deletes them and nothing breaks — `collie doctor` simply keeps
-  counting them under `beacons`.
-- If you set `COLLIE_STATE_DIR`, export it in the shell your agents run in too: `collie beacon emit`
-  resolves the state dir from **its own** environment, so a beacon otherwise lands where the bridge
-  is not reading.
+- Modifies the **global** `~/.claude/settings.json` and any active `CLAUDE_CONFIG_DIR`.
+  Project-level `.claude/settings.json` files are untouched.
+- Injects **five** hooks tagged `# collie-beacon v1` with 10-second timeouts. Existing hooks are
+  preserved. `hooks uninstall claude` removes only Collie entries.
+- **Running Claude processes do not reload configuration.** Restart agents to apply changes.
+- **Linux only.** The agent liveness check depends on `/proc`. Other operating systems do not emit
+  beacons.
+- **Beacons are multiplexer-specific.** They record pane and session identifiers for the active
+  backend. Switching `COLLIE_MUX` invalidates existing beacons. Old beacons remain on disk until
+  cleared, visible under `collie doctor`'s `beacons` count.
+- If using `COLLIE_STATE_DIR`, export it in the agent's shell environment. `collie beacon emit`
+  reads this variable directly; otherwise, beacons write to the default state directory where the
+  bridge will not find them.
 
-`collie doctor` reports this as the `beacon-hooks-claude` check and names the install command as the
-remedy — including when a hook still points at a checkout that has moved. What a beacon may and may
-not do is [Agent beacons](#agent-beacons-optional-linux); this is only the setup step.
+`collie doctor` includes a `beacon-hooks-claude` diagnostic check that points out missing hooks or
+broken paths to moved checkouts. For runtime details, see
+[Agent beacons](#agent-beacons-optional-linux).
 
 ### What changes compared with Herdr
 
-The reader's summary. **The truth is the cell in [`MUX_CONTRACT.md`](../MUX_CONTRACT.md)** — each row
-links to it.
+The table below summarizes key differences. Refer to [`MUX_CONTRACT.md`](../MUX_CONTRACT.md) for the
+exact specification.
 
 | | Herdr | tmux | zellij |
 | --- | --- | --- | --- |
@@ -172,60 +172,59 @@ links to it.
 | [open a space](../MUX_CONTRACT.md#capabilities) | yes | yes | **no** — a session it made would be invisible to it |
 | [pane history](../MUX_CONTRACT.md#capabilities) | from Herdr's own pane record | from the beacon's session key | from the beacon's session key |
 
-Without a beacon, tmux and zellij report every pane as a plain shell, and pane history is **declared
-absent** rather than served empty.
+Without active beacons, tmux and zellij present panes as raw shells, and pane history is marked
+unavailable rather than returning empty content.
 
 ### Three things that feel different on the phone
 
-- **Pull to refresh.** On the dashboard and on a space, drag down and let go: Collie asks the
-  multiplexer to look *now* rather than waiting for its next round. The pane view has no pull —
-  its scroller is the terminal mirror, where pulling reaches older output instead.
-- **"synced Ns ago"** sits under the dashboard header, and it is the age of what you are looking at.
-  It appears **only where the bridge promises a bounded freshness** — today that is **zellij**, which
-  has no way to announce a new tab and so is re-counted on a schedule (worst case 12 s). Under Herdr
-  and tmux there is no chip, because those announce their changes and there is nothing to wait for.
-- **"Show in terminal"** is a row in a pane's actions. Tap it and the terminal you are attached to on
-  the host jumps to that pane. It is **absent under zellij** — zellij's focus command accepts the
-  request and moves nothing, so Collie declines it rather than offering a button that lies.
+- **Pull to refresh:** Swipe down on dashboard and space views to trigger an immediate multiplexer
+  poll. The terminal pane view does not support pull-to-refresh; swiping there scrolls through
+  terminal buffer history.
+- **"synced Ns ago":** This indicator appears in the dashboard header to show data age. It is
+  displayed **only when the backend relies on scheduled polling**, such as **zellij** (up to 12s
+  polling interval). Herdr and tmux push state changes immediately, so the freshness badge is
+  omitted.
+- **"Show in terminal":** This pane action focuses the selected pane in your active host terminal.
+  It is **disabled on zellij** because zellij's focus command accepts the instruction without
+  changing view state.
 
-**The phone never moves your terminal on its own.** Only that one named tap does. Browsing the herd,
-opening a pane, backing out — none of it touches the cursor of whoever is typing on the host
-([ADR 0031](../.adr/0031-freshness-is-a-declared-promise.md)).
+**The mobile interface never changes host terminal focus automatically.** Only the explicit "Show in
+terminal" action updates the display. Navigating the dashboard or opening panes does not affect the
+active host cursor ([ADR 0031](../.adr/0031-freshness-is-a-declared-promise.md)).
 
 ### tmux tips — getting your windows back after a reboot
 
-Collie persists nothing about your multiplexer. A tmux server that dies takes every window with it,
-and Collie then has nothing left to list. tmux's own plugins fix that, and they are entirely optional:
-[tpm](https://github.com/tmux-plugins/tpm) installs plugins,
-[tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect) saves and restores the session tree,
-and [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) does the saving for you.
+Collie does not store multiplexer state. Restarting a tmux server destroys its windows, leaving the
+dashboard empty. You can manage state restoration using standard tmux plugins:
+[tpm](https://github.com/tmux-plugins/tpm) for plugin management,
+[tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect) for saving session trees, and
+[tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) for automated snapshots.
 
-What comes back is the **windows**, their layout and their working directories. **The agents inside do
-not come back running** — start Claude Code again by hand. Picking its old conversation back up is
-Claude's own feature (`claude --resume` / `claude --continue`), not the plugin's.
+These tools restore **window layouts** and working directories. **Running agent processes are not
+preserved.** Restart Claude Code manually after recovery. To restore conversation context, use
+Claude's built-in flags: `claude --resume` or `claude --continue`.
 
 ### zellij tips — after a reboot there is nothing to restore
 
-zellij has no tpm-and-resurrect story for Collie to lean on. What it has is its own: a session that
-outlived its terminal is listed as `(EXITED - attach to resurrect)`, and attaching re-runs the
-commands that session was built from. That is an operator's act with side effects, so **Collie never
-attaches and never resurrects** — an exited session reads as *unreachable*, not as an empty herd, and
-the phone shows the disconnected banner naming the session rather than a herd that has lost its tabs.
+Zellij does not provide an equivalent to tmux-resurrect. Sessions persisted after terminal
+detachment show as `(EXITED - attach to resurrect)`. Attaching triggers re-execution of session
+commands. Because this produces side effects, **Collie does not attach to or resurrect sessions.**
+Exited sessions appear as *unreachable*, and the UI displays a disconnection banner instead of an
+empty session list.
 
-So after a reboot the two steps are yours: start the session again — `zellij -s collie-zellij`, or
-`zellij attach --create-background collie-zellij` on a host you never sit at — and start the agents
-in it by hand, the same way you did the first time. Picking a conversation back up is again Claude's
-own `--resume` / `--continue`.
+Following a reboot, start the session manually (`zellij -s collie-zellij` or
+`zellij attach --create-background collie-zellij` for headless systems) and launch agents inside it.
+Reconnect to prior agent sessions using `claude --resume` or `claude --continue`.
 
 
 ## Agent beacons (optional, Linux)
 
-A **beacon** is the agent telling Collie what only the agent knows: a hook in Claude Code's own
-settings runs `collie beacon emit`, which writes one small file naming the harness, the session and
-the pane it is running in. Herdr reports all of that itself — beacons are for **tmux and zellij**,
-where a pane is otherwise just a shell. Installing them is a step of
-[Using the app on tmux or zellij](#collie-writes-hooks-into-claudes-own-settings); this section is
-what they are.
+A **beacon** is how an agent identifies itself to Collie. A hook in Claude Code settings runs
+`collie beacon emit`, which writes a file containing the harness name, the session, and the target
+pane. Herdr tracks this natively. Beacons exist for **tmux and zellij**, where a pane otherwise
+appears as a generic shell. Setup details are in
+[Using the app on tmux or zellij](#collie-writes-hooks-into-claudes-own-settings); this section
+explains the mechanism.
 
 ```console
 $ collie hooks install claude
@@ -234,27 +233,27 @@ would install: /home/you/collie/bin/collie beacon emit  (this checkout)
 /home/you/.claude/settings.json: installed (v1)
 ```
 
-That path is this checkout's own `bin/collie` — a binary install names its published binary instead,
-[as above](#collie-writes-hooks-into-claudes-own-settings). `status` reads and writes nothing; `hooks uninstall claude` removes only the entries Collie marked as
-its own. It edits your *global* Claude settings, never a project's. Linux only — the liveness check
-reads `/proc`, and on any other host a beacon is simply never written.
+The path above references `bin/collie` from the local checkout. A binary install points to the
+installed binary instead, [as described above](#collie-writes-hooks-into-claudes-own-settings). The
+`status` command performs no writes. Running `hooks uninstall claude` removes only entries added by
+Collie. It modifies your *global* Claude configuration, not project-level files. This is Linux-only:
+the liveness check inspects `/proc`, and Collie writes no beacons on other operating systems.
 
-A Claude is visible from the moment it starts — the hook fires on `SessionStart`, so a pane you have
-opened but not yet typed into shows an idle agent rather than a shell.
+Claude becomes visible immediately on startup. Because the hook triggers on `SessionStart`, an open
+pane waiting for input displays as an idle agent instead of a shell.
 
-It stops being visible the moment it ends. Collie checks the emitting process on every look, and a
-pane whose agent has exited goes straight back to reading as a plain shell — it does not linger in
-the herd as an agent of unknown status. Nothing is deleted to make that happen: the beacon file stays
-where it is, `collie doctor` counts it under `beacons` as *expired*, and the next hook event replaces
-it.
+Visibility ends when the process exits. Collie verifies the emitting PID on each check. Once the
+agent terminates, the pane immediately reports as a standard shell instead of lingering in an
+unknown state. Collie does not delete the beacon file to do this: the file remains on disk,
+`collie doctor` reports it under `beacons` as *expired*, and the next hook invocation overwrites it.
 
-What you get: the dashboard names the agent in each pane instead of `bash`, so **"needs you" can sort
-by who is actually blocked** — and a status is something notifications can fire on at all. Pane
-history works too, because the beacon carries the session key the journal needs.
+This allows the dashboard to label panes by agent name rather than `bash`. It lets **"needs you"
+sort panes by blocked status**, and provides the state required for alerts. Pane history also relies
+on the beacon to supply the session key used by the journal.
 
-What you do **not** get: any control. A beacon sets what Collie *shows* and what it *looks up*, and
-nothing else — it can never cause a send, a key, a rename or a close, and it relaxes no gate. The
-threat model, and why some obviously useful fields do not exist, are
+Beacons provide **no control channel**. A beacon only determines what Collie *displays* and
+*queries*. It cannot send text, inject keystrokes, rename panes, close sessions, or bypass access
+controls. The threat model and omitted fields are documented in
 [ADR 0024](../.adr/0024-a-beacon-is-a-hint-never-a-control-channel.md).
 
 

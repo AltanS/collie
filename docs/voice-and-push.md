@@ -1,7 +1,7 @@
 # Voice input and Web Push
 
-Two optional surfaces, each absent until you turn it on: a microphone in the composer, and a
-notification the moment an agent is waiting on you.
+Both features are disabled by default. You can enable a microphone button in the composer, and
+browser notifications that trigger when an agent is waiting for input.
 
 ## Voice input (optional)
 
@@ -131,8 +131,8 @@ looks like this — is [ADR 0029](../.adr/0029-speech-to-text-is-a-provider-seam
 
 ## Web Push (optional)
 
-Off unless you opt in. Three steps, and nothing to install — the sender (`web-push`) is already an
-optional dependency, installed by the build:
+Disabled by default. Setup requires three steps. The sender library (`web-push`) is included as an
+optional dependency during the build:
 
 ```bash
 collie push-keys     # 1. generate + write the VAPID keys
@@ -140,55 +140,55 @@ collie restart       # 2. Collie reads them at start
 #                      3. on your phone: Settings → notifications
 ```
 
-Step 1 is the one that used to be fiddly. `push-keys` generates the keypair *and* writes
-`COLLIE_VAPID_PUBLIC` / `_PRIVATE` into the `.env` the service actually reads, at mode 600.
+The `push-keys` command generates the keypair and writes `COLLIE_VAPID_PUBLIC` and
+`COLLIE_VAPID_PRIVATE` to the active `.env` file with file mode 600.
 
-**Worth one extra keystroke:** pass a *subject* — the contact address RFC 8292 wants, so a push
-service has a way to reach whoever is sending:
+Pass a contact URI as an argument to set the RFC 8292 subject claim:
 
 ```bash
 collie push-keys mailto:you@example.com
 ```
 
-On a Herdr-managed install both steps are also actions (`herdr plugin action invoke push-keys
---plugin herdr.collie`, and `restart` likewise) — but an action carries no arguments, so a subject
-has to be passed in the shell form above.
+On Herdr-managed installs, both steps are available as actions
+(`herdr plugin action invoke push-keys --plugin herdr.collie`, and `restart`). Herdr actions do not
+accept positional arguments, so setting a subject requires running the command directly in the
+shell.
 
-Two behaviours worth knowing. It **refuses to replace keys that are already live** unless you pass
-`--force`, because new keys invalidate every existing subscription: each device must re-enable
-notifications, and until it does it silently receives nothing. But passing a subject on an
-already-configured install is *not* that — it updates the contact address and leaves the keys alone,
-so fixing a typo never costs you your subscribers.
+Key handling details:
 
-> **On a Herdr install older than 0.8.0**, actions are the set cached when the plugin was installed
-> ([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md)), so `push-keys` and
-> `push-test` won't appear until the next `herdr plugin install`. Use
-> `bash scripts/collie-ctl.sh push-keys` until then — the shim hands the verb to the same binary, so
-> it does the identical thing.
+The command refuses to overwrite existing keys unless you pass `--force`. Replacing keys invalidates
+all current subscriptions, requiring every device to resubscribe before it can receive notifications
+again. Providing a subject argument on an existing configuration updates only the contact address
+and preserves the current keys.
 
-**Did it work?** Fire a notification at every subscribed device without waiting for an agent to
-block:
+> **On Herdr versions before 0.8.0**, actions remain fixed to the set cached during initial plugin
+> installation ([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md)). The
+> `push-keys` and `push-test` actions will not appear until you run `herdr plugin install`. Run
+> `bash scripts/collie-ctl.sh push-keys` directly instead. The wrapper script passes the command
+> directly to the binary.
+
+Test the delivery path across all subscribed devices:
 
 ```bash
 collie push-test                     # or: push-test "Title" "Body"
 ```
 
-You should get it within a second or two. If it says push is disabled, Collie didn't get the keys
-— restart it (step 2). If it says there are no subscribed devices, step 3 hasn't happened on that
-phone yet.
+Delivery takes one to two seconds. If the command reports push is disabled, restart the service so
+it loads the generated keys. If it reports no subscribed devices, complete step 3 in the phone
+browser.
 
-Push needs a **secure context (HTTPS)**, which any HTTPS-terminating front door provides — the
-default `tailscale serve` (Tailscale manages the MagicDNS cert; nothing to obtain or renew) or a
-[Variant C](../DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale) proxy that
-terminates TLS. Plain-HTTP modes (`COLLIE_SERVE_MODE=http`) are **not** a secure context, so the
-browser won't even offer the subscribe button — Settings flags it `insecure`.
+Web Push requires a secure context (HTTPS). This is provided by `tailscale serve` (MagicDNS
+certificates) or an external reverse proxy terminating TLS
+([Variant C](../DEPLOYMENT.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)). Plain
+HTTP setups (`COLLIE_SERVE_MODE=http`) lack a secure context, and the browser disables the
+subscription controls in Settings.
 
-Collie pushes when an agent goes **blocked** or **done**, with the agent's message in the body;
-**tapping it opens Collie at that agent**.
+Collie sends notifications when an agent enters the **blocked** or **done** state, placing the agent
+message in the body. Selecting the notification navigates directly to that agent in the web UI.
 
-Subscriptions accumulate — a home-screen reinstall or a service-worker re-registration mints a fresh
-endpoint, and the old one stays live-looking rather than 410ing. Collie supersedes the row a device
-re-registers over, and the rest are yours to see and drop (both work with push off):
+Stale subscriptions can accumulate over time because home-screen reinstalls and service-worker
+resets create new endpoints without always returning an HTTP 410. Collie updates the record when a
+device re-registers. You can view and delete stored endpoints directly:
 
 ```bash
 bin/collie push list                 # one line per device: service, since, user agent, endpoint tail

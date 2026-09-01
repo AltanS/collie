@@ -1,10 +1,11 @@
 # Pack commands
 
-A **pack** is several machines' Collies linked together, one of them the **lead**, so the phone sees
-every herd through one URL. All of it is CLI-only — no Herdr actions — and the wire between the
-machines is [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md).
+A **pack** links multiple Collie instances together under a single **lead**, exposing every herd to
+the phone through one URL. Management happens entirely via the CLI without Herdr UI actions.
+Machine-to-machine traffic uses the protocol documented in
+[`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md).
 
-The shape, before the commands — the lead holds the one door, and the peers hold none:
+Architecture before running commands: only the lead exposes the front door, while peers expose none.
 
 ```mermaid
 graph TD
@@ -20,47 +21,44 @@ graph TD
   op -.->|"ssh"| deputy
 ```
 
-**Two machines, one pack.** The lead is the machine whose URL your phone already opens; the joiner
-needs its own Collie, installed and running. On the **lead**:
+**Two machines, one pack.** The lead is the instance your phone already reaches. The joining machine
+must have Collie installed and running. On the **lead**:
 
 ```bash
 collie pack invite        # prints one line: <token>.<lead-fingerprint>
 ```
 
-Single-use, ten minutes, shown exactly once — only its hash is kept. `invite` restarts the lead
-itself, so it can answer the enrollment that is coming. Carry that whole line to the other machine
-and join from there:
+Tokens are single-use, valid for ten minutes, and displayed once. The lead stores only the hash.
+Running `invite` restarts the lead process so it can accept the incoming enrollment. Copy the output
+line to the target machine and run:
 
 ```bash
 collie join lead.tail1234.ts.net -        # then paste the token on stdin
 ```
 
-The address is the lead's, spelled however *this* machine can reach it — a hostname or `host:port`,
-with `https://` assumed when you give no scheme. A plaintext `http://` lead is refused unless you
-add `--insecure`, which is you owning the assumption out loud: the token and the pack secret would
-otherwise cross the network in the clear. The token argument is `-` for stdin or `@<file>`; a
-literal token works and warns, because `ps` shows every local uid what you typed
-([`PACK_PROTOCOL.md` §8.3](../PACK_PROTOCOL.md)).
+Set the lead address to any hostname or `host:port` reachable from this node. Collie defaults to
+`https://`. Plaintext `http://` requires `--insecure`, acknowledging that the token and pack secret
+will traverse the network unencrypted. Pass `-` to read the token from stdin or `@<file>` to read
+from disk. Passing raw tokens directly as arguments prints a warning, because process listings
+expose arguments to all local users ([`PACK_PROTOCOL.md` §8.3](../PACK_PROTOCOL.md)).
 
-`join` ends by naming the one step left: **`collie restart` on the lead.** The enrollment did land
-in the lead's trust store, but the running lead read that roster at boot, so it merges nothing from
-the new machine until it is restarted. Do that, then ask:
+`join` prompts for the final required step: **`collie restart` on the lead.** The lead wrote the
+enrollment to disk, but the active process cached the roster at startup and will not proxy traffic
+to the new peer until restarted. Restart the lead, then check connectivity:
 
 ```bash
 collie pack status        # the new member, its address, and whether the link answered
 ```
 
-`collie pack add <ssh-host>` is that same pair of verbs, driven over **your own SSH** — it mints the
-invite here, installs and configures Collie there, and runs `collie join` on the far side for you.
-Use one route or the other for a given machine, never both. Two things decide which: `pack add`
-requires **Herdr already installed on the remote host** and refuses without it, and it has no
-`--insecure` and never will — a plaintext lead address is exactly the case where you enroll by hand,
-typing `--insecure` on the machine that is joining.
+`collie pack add <ssh-host>` runs this workflow over **SSH**. It generates the token locally,
+provisions Collie on the remote machine, and executes `collie join` remotely. Choose either manual
+enrollment or `pack add` for a given host, not both. `pack add` requires **Herdr preinstalled on the
+remote host** and does not support `--insecure`. If the lead uses plaintext HTTP, run
+`collie join --insecure` manually on the joining machine instead.
 
-**Which multiplexer a member runs is that machine's own business.** Its `.env` decides, through
-`COLLIE_MUX`, and the pack protocol carries no multiplexer vocabulary at all. Be warned, though:
-no peer in v1 has fronted anything but Herdr, so that seam is a promise rather than a verified
-property ([`PACK_PROTOCOL.md` §16](../PACK_PROTOCOL.md)).
+**Multiplexer selection is local to each node.** Configure `COLLIE_MUX` in the node's `.env` file.
+The pack protocol contains no multiplexer-specific fields. Note that peers have only been tested
+with Herdr in v1 ([`PACK_PROTOCOL.md` §16](../PACK_PROTOCOL.md)).
 
 
 | Command | What it does |
@@ -79,8 +77,8 @@ property ([`PACK_PROTOCOL.md` §16](../PACK_PROTOCOL.md)).
 | `collie promote` | Make THIS machine the lead (on the peer taking over; `--force` if the lead is gone) |
 | `collie reconnect` | A member moved: re-point at its new address without re-enrolling anything |
 
-`deputy`, `approve-promote` and `promote` are the failover set. Setting them up while everything is
-healthy, and the runbook for the day the lead is gone, are
+The `deputy`, `approve-promote`, and `promote` commands manage failover. For setup and recovery
+instructions, see
 [`DEPLOYMENT.md` → the standby door](../DEPLOYMENT.md#the-standby-door--a-packs-failover-path) and
 [the bad day](../DEPLOYMENT.md#the-bad-day--the-runbook).
 

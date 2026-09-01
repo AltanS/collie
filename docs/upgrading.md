@@ -2,29 +2,31 @@
 
 ## Stop or uninstall
 
-Pause Collie without removing anything (a later `start` brings it right back):
+Pause Collie without removing files:
 
 ```bash
 collie stop
 ```
 
-To tear the service down completely — stop + disable it, remove the service definition (the
-`systemd --user` unit, or the launchd agent plist on macOS), and remove
-Collie's own `tailscale serve` mapping (port-scoped, so other tailnet mappings on the host survive) —
-use `uninstall`. It leaves your `.env` and the checkout untouched:
+A subsequent `start` resumes it.
+
+To tear down the service completely, run `uninstall`. This stops and disables the service, removes
+the service definition (the `systemd --user` unit or the macOS launchd agent plist), and clears
+Collie's port-scoped `tailscale serve` mapping without affecting other host tailnet mappings. It
+leaves your `.env` and checkout intact:
 
 ```bash
 collie uninstall
 ```
 
-That leaves the install itself on disk. Delete the directory to finish the job — for a binary
-install, `~/.local/share/collie` (or wherever you pointed `COLLIE_DIR`), plus the `collie` symlink
-`collie unlink` takes down.
+To remove the installation from disk entirely, delete the install directory. For a binary install,
+that is `~/.local/share/collie` (or your custom `COLLIE_DIR`), along with the symlink removed via
+`collie unlink`.
 
-On a **Herdr-managed install** the same two verbs are also actions —
-`herdr plugin action invoke stop --plugin herdr.collie`, and `uninstall` likewise — and the
-registration is removed with `herdr plugin uninstall herdr.collie` (or, for a linked clone, by
-deleting the directory).
+On a **Herdr-managed install**, invoke these operations as plugin actions using
+`herdr plugin action invoke stop --plugin herdr.collie` and `uninstall`. Remove the plugin
+registration with `herdr plugin uninstall herdr.collie` (or delete the directory for a linked
+clone).
 
 ## Update to a new release
 
@@ -392,44 +394,42 @@ note: Herdr-managed install — registry left alone (re-linking would block `her
 
 ## When collie will not run
 
-**This section is for a binary install** — `~/.local/share/collie` (or `$COLLIE_DIR`), with a
-`versions/x.y.z/` layout and a `current` symlink. If the binary is too broken to run any verb at
-all, `collie update`, `collie doctor` and `collie update --rollback` are unreachable — they need a
-working binary to run them.
+**This section applies to standard binary installs** in `~/.local/share/collie` (or `$COLLIE_DIR`),
+which use a `versions/x.y.z/` layout and a `current` symlink. If the active binary cannot execute
+commands, `collie update`, `collie doctor`, and `collie update --rollback` will not run.
 
-**Run the previous version's binary directly.** List what's on disk:
+**Execute the previous binary directly.** Inspect the installed versions:
 
 ```bash
 ls ~/.local/share/collie/versions/
 ```
 
-Then invoke the one before the broken one, by its own path:
+Run rollback using the direct path to the previous working binary:
 
 ```bash
 ~/.local/share/collie/versions/<previous>/bin/collie update --rollback
 ```
 
-**No good previous version on disk?** Pin forward to a known-good release instead, by re-running
-the installer with `COLLIE_TAG` set:
+**If no previous working version exists on disk**, install a specific release by setting
+`COLLIE_TAG`:
 
 ```bash
 COLLIE_TAG=v1.0.0 curl -fsSL https://colliepwa.dev/install.sh | sh
 ```
 
-This lays the pinned version beside the current one and flips the `current` symlink — a rescue
-route, not just a pin.
+This writes the specified version to the versions directory and updates the `current` symlink.
 
-**On a Herdr-managed install or a linked clone (a git checkout), this section doesn't apply.**
-There's no `versions/` layout to fall back into. Take a known-good ref directly:
-`herdr plugin install AltanS/collie --ref vX.Y.Z --yes`, or on a plain checkout,
-`git checkout <tag>`.
+**This does not apply to Herdr-managed installs or git checkouts.** Those setups do not use the
+`versions/` directory layout. Switch to a known-good release using
+`herdr plugin install AltanS/collie --ref vX.Y.Z --yes`, or run `git checkout <tag>` inside a
+repository clone.
 
 ## You run a fork
 
-**`collie update` refuses to run in a fork checkout, and says so.** The verb talks to the git remote
-named `origin`, and before it fetches anything it checks that `origin` IS the repo updates are
-configured to come from (`COLLIE_UPDATE_REPO`, default `AltanS/collie`). On a mismatch it stops,
-names both repos, and changes nothing:
+**`collie update` refuses to run in a fork checkout.** The command inspects the git remote named
+`origin`. Before fetching, it confirms that `origin` matches the configured update repository
+(`COLLIE_UPDATE_REPO`, which defaults to `AltanS/collie`). On a mismatch, it exits with an error,
+prints both repository paths, and leaves the working tree untouched:
 
 ```
 error: this checkout's origin is github.com/you/collie, but updates are configured to
@@ -440,22 +440,21 @@ error: this checkout's origin is github.com/you/collie, but updates are configur
        To take an upstream release by hand: docs/upgrading.md → "You run a fork"
 ```
 
-That refusal is what the two checkout shapes would otherwise have cost you:
+Without this check, the updater would fail in one of two ways depending on your checkout state:
 
-- **A fork clone on a branch** — `update` would fetch `origin` and `git pull --ff-only`, which
-  fast-forwards your branch onto your own fork. Nothing from upstream arrives, and the command
-  still reports success.
-- **A detached fork checkout** — `update` would list `origin`'s tags with `git ls-remote`, pick one,
-  and re-detach onto it with `git checkout --detach --force`. With tags of your own it lands you on
-  *your* tag, not upstream's — and that forced checkout discards uncommitted work in the tree.
+- **A fork clone on a branch:** `update` would fetch from `origin` and run `git pull --ff-only`.
+  This fast-forwards your branch against your own fork, pulls nothing from upstream, and exits
+  cleanly.
+- **A detached fork checkout:** `update` would query `origin` for tags using `git ls-remote`, select
+  one, and execute `git checkout --detach --force`. If your fork defines tags, this checks out your
+  tag instead of upstream and overwrites uncommitted local changes.
 
-**Setting `COLLIE_UPDATE_REPO` to your fork is consent, not a workaround.** It makes the updater
-self-consistent — your fork's tags, your fork's releases, your fork's banner — and it is the right
-setting for a fork you genuinely release from. It does not merge anything from upstream; that is the
-manual path below.
+**Set `COLLIE_UPDATE_REPO` to your fork only if you release from it directly.** This aligns the
+update checks, release tags, and UI notices with your repository. It does not pull or merge changes
+from upstream.
 
-**The supported path is a manual merge.** Add upstream as a second remote, fetch its tags, and merge
-the release tag you decided to take into your branch:
+**To pull upstream releases, merge them manually.** Add upstream as a remote, fetch its tags, and
+merge the target release tag into your branch:
 
 ```bash
 git remote add upstream https://github.com/AltanS/collie.git
@@ -466,39 +465,39 @@ sh scripts/collie-ctl.sh build
 bin/collie restart                                          # Herdr-managed: invoke the `restart` action
 ```
 
-**Expect that merge to be real work** wherever you patched a file upstream also moved. Git hands you
-the conflict and nothing resolves it for you; that is what carrying your own commits costs, not a
-fault in the merge.
+**Resolve merge conflicts manually.** Files modified in your fork that also changed upstream will
+conflict during the merge. You must resolve these directly.
 
-**Crossing 0.x to 1.x as a fork is the same merge, with a `v1.*` tag.** `update --major` is not your
-route — you merge instead — but everything
-[Upgrading from 0.x to 1.x](#upgrading-from-0x-to-1x) says about what the crossing changes for you
-applies as written.
+**Upgrading from 0.x to 1.x uses the same manual merge with a `v1.*` tag.** Do not run
+`update --major`. Merge the tag manually, then review the operational notes in
+[Upgrading from 0.x to 1.x](#upgrading-from-0x-to-1x).
 
-**`COLLIE_UPDATE_REPO` is one override for both halves.** It names the repo whose tags the in-app
-update notice watches AND the repo `collie update` takes releases from (default `AltanS/collie`) —
-on a git checkout as the assertion against `origin` described above, and on a downloaded binary
-install as the source of the tags, the manifest and every download URL. `collie doctor` prints it.
+**`COLLIE_UPDATE_REPO` controls both update discovery and downloads.** It sets the repository used
+for in-app version notices and the source repository for `collie update` (defaulting to
+`AltanS/collie`). In git checkouts, it validates the `origin` remote. In binary installations, it
+defines the source for tags, manifests, and release assets. Run `collie doctor` to inspect its
+current value.
 
 ## Surviving reboots
 
-A `systemd --user` service only runs while you have a login session. On a host that should serve
-Collie unattended, enable lingering once:
+A `systemd --user` service runs only during an active login session. On a host that serves Collie
+unattended, enable lingering:
 
 ```bash
 loginctl enable-linger $USER
 ```
 
-The unit is `enable`d, so with lingering it starts at boot with your user manager; the
-`tailscale serve` mapping is persistent (`--bg`) and comes back on its own. Inspect the unit with
-`systemctl --user status collie`.
+Because the unit is enabled, lingering allows it to start at boot with the user manager. The
+`tailscale serve` mapping is persistent (`--bg`) and restores itself automatically. Check the unit
+with `systemctl --user status collie`.
 
-**On macOS there's nothing to enable.** `start` installs a launchd agent
-(`~/Library/LaunchAgents/herdr.collie.plist`) with `RunAtLoad`, so Collie comes back when you log
-in and launchd restarts it if it exits abnormally. Inspect it with
-`launchctl print gui/$(id -u)/herdr.collie`. It's a *LaunchAgent*, not a daemon, so it starts at
-**login** rather than at boot — a Mac sitting at the login window is not serving Collie. (Neither
-supervisor? A `nohup` process with a pidfile in the config dir instead.)
+**On macOS, configuration is automatic.** The `start` command installs a launchd agent
+(`~/Library/LaunchAgents/herdr.collie.plist`) with `RunAtLoad`. Collie starts at login, and launchd
+restarts it if the process crashes. Check the state with
+`launchctl print gui/$(id -u)/herdr.collie`. Because this is a LaunchAgent rather than a daemon, it
+runs at **login** instead of system boot; a Mac at the login window will not serve Collie. If
+neither supervisor is present, Collie runs as a `nohup` process with a pidfile in the config
+directory.
 
 
 ---

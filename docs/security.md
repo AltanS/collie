@@ -1,44 +1,51 @@
 # Security — read before you run it
 
-**Collie is remote shell access to your machine, by design.** One Collie API call types arbitrary
-keystrokes into a live terminal pane, so anyone who can reach the URL can read every pane (source,
-secrets, env, agent output) and run any command as your user. No sandbox, no command allow-list
-(that would defeat the purpose). Treat the URL like a root login.
+**Collie provides remote shell access to your machine by design.** A single Collie API call sends
+arbitrary keystrokes directly to a live terminal pane. Anyone with network access to the URL can
+read every pane (source code, secrets, environment variables, agent output) and execute commands as
+your user. There is no sandbox and no command allow-list, as filtering commands would defeat the
+purpose of the tool. Treat the URL as a root login.
 
-The sharp edges:
+Key security boundaries and risks:
 
-- **It acts as _you_**, with your full privileges — `~/.ssh`, `git push --force`, `rm -rf`, `sudo`.
-- **Access is device-level, not person-level.** Tailscale proves the device, not who's holding it —
-  no password, no session, so an unlocked or stolen phone is an open shell. Pairing a device is the
-  answer to that ([below](#pair-a-device--the-write-credential)); the idle lock is not — it pauses an
-  unattended screen and gates nothing (details:
-  [ADR 0007](../.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)).
-- **Every uid on the host can reach it.** Your multiplexer's socket is a file (Herdr's, tmux's and
-  zellij's alike), so its permissions keep other local users out; Collie's port is TCP, so they're
-  all in. Pairing or the per-device gate closes the
-  write half of that; reads stay open, so it bounds damage, not disclosure (details:
-  [ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
-- **One collie fronts _every_ session** under your config root by default, sandbox ones included
-  (details: [Multi-session](configure.md#multi-session)).
-- **Every write is appended to `<state-dir>/audit.log`** — replies, keys, uploads, pane and tab
-  create/close. A trail is not a gate (details:
-  [ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
-- **The defenses:** loopback bind only, never `0.0.0.0` (the bridge refuses to start on a wide bind
-  unless you set `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`); exactly one hardened front door —
-  `tailscale serve` or a conforming reverse proxy, never `funnel` and never a bare port; a
-  same-origin gate and a strict CSP, with pane output rendered as React text nodes rather than
-  `innerHTML`. Host-header validation is on by default and fails closed (`COLLIE_ALLOW_ANY_HOST=1`
-  turns it off), and a non-loopback bind refuses to start. `COLLIE_TRUSTED_USER` is yours to set, and
-  you should: it rejects a mismatching *or missing* `Tailscale-User-Login` (tagged nodes get no
-  header; `COLLIE_TRUSTED_USER_OPTIONAL=1` restores the old missing-header pass). Authorising
-  individual *devices* is [pairing](#pair-a-device--the-write-credential) — no proxy required — or,
-  if a proxy already injects a device identity, `COLLIE_DEVICE_HEADER` + `COLLIE_DEVICE_ALLOWLIST`, see
-  [`DEPLOYMENT.md`](../DEPLOYMENT.md).
+- **It runs with your user permissions.** Collie inherits your full access rights, including
+  `~/.ssh`, `git push --force`, `rm -rf`, and `sudo`.
+- **Authentication identifies devices, not humans.** Tailscale verifies the hardware endpoint rather
+  than the user holding it. There are no passwords or user sessions; an unlocked or stolen phone
+  provides an open shell. You can mitigate this by pairing the device
+  ([below](#pair-a-device--the-write-credential)). The built-in idle lock merely blanks an
+  unattended screen and provides no actual security boundary
+  ([ADR 0007](../.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)).
+- **All local system users can reach the port.** Standard terminal multiplexer sockets (`tmux`,
+  `zellij`, `herdr`) use filesystem permissions to restrict access to other local users. Collie
+  listens on a local TCP port, which exposes it to every local UID. Pairing or the per-device gate
+  restricts write access, but read operations remain accessible to all local users. This limits
+  execution risks but does not prevent data disclosure
+  ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
+- **A single instance exposes all sessions.** By default, one Collie process fronts every
+  multiplexer session discovered under your configuration root, including sandbox sessions
+  ([Multi-session](configure.md#multi-session)).
+- **Writes are recorded to `<state-dir>/audit.log`.** The server logs all incoming keystrokes,
+  replies, file uploads, and pane/tab lifecycle events. Note that an audit log provides visibility
+  after the fact rather than access control
+  ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
+- **Default defensive controls.** Collie binds strictly to loopback interfaces. The bridge refuses
+  to bind to `0.0.0.0` unless you set `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`. Route traffic solely
+  through `tailscale serve` or an equivalent reverse proxy; do not use `tailscale funnel` or expose
+  raw ports. The web interface applies strict CSP rules, enforces same-origin checks, and renders
+  pane outputs as React text nodes instead of `innerHTML`. Host-header validation is enabled by
+  default and fails closed; set `COLLIE_ALLOW_ANY_HOST=1` to disable it. Set `COLLIE_TRUSTED_USER`
+  to reject requests where the `Tailscale-User-Login` header is missing or does not match (tagged
+  nodes do not send this header; use `COLLIE_TRUSTED_USER_OPTIONAL=1` to permit missing headers). To
+  authorize specific hardware, use [pairing](#pair-a-device--the-write-credential) directly, or
+  configure `COLLIE_DEVICE_HEADER` and `COLLIE_DEVICE_ALLOWLIST` if your proxy injects device IDs
+  ([`DEPLOYMENT.md`](../DEPLOYMENT.md)).
 
-> 🚫 **Never `tailscale funnel` this** — funnel exposes it to the public internet; `serve` keeps it
-> tailnet-only. There is no scenario where funneling Collie is correct.
+> 🚫 **Never use `tailscale funnel` with Collie.** Funnel routes traffic to the public internet,
+> whereas `tailscale serve` restricts access to your private tailnet. There is no supported use case
+> for running Collie over Funnel.
 
-Narrow the blast radius with Tailscale ACLs and `COLLIE_TRUSTED_USER`. Provided as-is, no warranty.
+Restrict access using Tailscale ACLs and `COLLIE_TRUSTED_USER`. Provided as-is, without warranty.
 
 ## Pair a device — the write credential
 
@@ -49,28 +56,27 @@ The two device gates answer different questions, and you can run either, both, o
 | `COLLIE_DEVICE_HEADER` | *is this device on the operator's list?* | your proxy, to inject a name it sanitised | editing `COLLIE_DEVICE_ALLOWLIST`, then restarting |
 | **pairing** | *does this device hold a credential I issued?* | nothing on the network | `collie devices revoke <label>` — live |
 
-Pairing costs no infrastructure, so it is the one to reach for on a plain `tailscale serve` setup,
-where there is no proxy to inject a header in the first place. Both are **write** gates: reads stay
-open to anything that clears the same-origin gate either way.
+Pairing requires no extra infrastructure. It fits a direct `tailscale serve` setup where no proxy
+exists to inject headers. Both options gate write access only. Read requests remain open to anything
+that passes the same-origin check.
 
 ```bash
 bin/collie pair          # on the host — prints an 8-character code, good for 10 minutes
 ```
 
-Open Collie on the phone → **Settings** → **Paired devices** → enter the code and a name for the
-device. The phone stores the token it gets back; Collie stores only its hash, and the token is
-shown exactly once. Nothing needs restarting — the running service picks up a pairing (and a
-revocation) on the next request.
+Open Collie on the phone, go to **Settings** → **Paired devices**, and enter the code with a label
+for the device. The phone stores the returned token. Collie keeps only the hash, and the token is
+displayed once. You do not need to restart the process; the running daemon applies pairings and
+revocations on the next request.
 
 ```bash
 bin/collie devices list             # what holds a credential, and when each was last seen
 bin/collie devices revoke old-phone # effective immediately, no restart
 ```
 
-**Pairing the first device turns the requirement on for every device**, so pair the phone you are
-holding first. Revoking the last one turns it back off — there is no state in which you are locked
-out of your own collie. A wrong code is worth five attempts before the code is destroyed and you have
-to run `collie pair` again.
+Pairing the first device enables the write gate globally. Pair your current phone first. Revoking
+the final device disables the gate again, preventing lockouts. Five failed code attempts invalidate
+the code, requiring a new run of `collie pair`.
 
 
 ---
