@@ -122,10 +122,12 @@ export interface Net {
 /** Same budget as the bridge's tag check — a hung request must never wedge a verb. */
 const NET_TIMEOUT_MS = 20_000;
 
-const netFailure = (err: unknown): NetFailure => ({
-  status: null,
-  message: err instanceof Error ? err.message : String(err),
-});
+/**
+ * A failure with no HTTP status behind it — DNS, TLS, or the timeout. `fetch` rejects with a value,
+ * not a type (a `TypeError` here, a `DOMException` for the abort), so the catch clause narrows the
+ * throw to its text and this takes that text. The parse stays at the boundary that caught it.
+ */
+const netFailure = (message: string): NetFailure => ({ status: null, message });
 
 export const realNet: Net = {
   async getJson(url) {
@@ -137,7 +139,7 @@ export const realNet: Net = {
       if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
       return { ok: true, value: await res.json() };
     } catch (err) {
-      return { ok: false, failure: netFailure(err) };
+      return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
     }
   },
   async download(url, dest) {
@@ -160,7 +162,7 @@ export const realNet: Net = {
       await sink.end();
       return { ok: true, sha256: hasher.digest("hex"), size };
     } catch (err) {
-      return { ok: false, failure: netFailure(err) };
+      return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
     }
   },
 };

@@ -16,6 +16,7 @@ import {
 } from "./fakes.ts";
 import type { Net } from "./sys.ts";
 import { EXIT } from "./io.ts";
+import type { JsonObject } from "../bridge/json.ts";
 import { latestUpdateInMajor } from "../bridge/update.ts";
 import {
   cmdApplyUpdate,
@@ -926,7 +927,7 @@ const DIGEST = "3f786850e387550fdab836ed7e6dc881de23001b9d9dbb3b9b2b0b0f1a2c3d4e
 /** The `/tags` payload as GitHub actually answers it — the document `parseTagsResponse` reads. */
 const apiTags = (...names: string[]) => names.map((name) => ({ name, commit: { sha: `sha-${name}` } }));
 
-const manifestDoc = (over: Record<string, unknown> = {}) => ({
+const manifestDoc = (over: JsonObject = {}) => ({
   schemaVersion: 1,
   repo: "AltanS/collie",
   tag: `v${NEW}`,
@@ -945,7 +946,7 @@ const manifestDoc = (over: Record<string, unknown> = {}) => ({
 
 interface BinaryOptions {
   tags?: readonly { name: string; commit: { sha: string } }[];
-  manifest?: Record<string, unknown> | null;
+  manifest?: JsonObject | null;
   /** The digest the download reports — a different one is the corruption case. */
   digest?: string;
   tagsFailure?: { status: number | null; message: string };

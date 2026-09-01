@@ -114,6 +114,6 @@ export function probeShareSheetInstall(): boolean {
   const standalone =
     (typeof window.matchMedia === "function" &&
       window.matchMedia("(display-mode: standalone)").matches) ||
-    (navigator as Navigator & { standalone?: unknown }).standalone === true;
+    ("standalone" in navigator && navigator.standalone === true);
   return installsViaShareSheet(touch, apple, standalone);
 }
