@@ -53,7 +53,7 @@ We own its lifecycle end to end — `collie-ctl.sh` publishes it, records the ma
 `<config-dir>/tailscale-managed-handler`, and only ever tears down a mapping still matching that
 record.
 
-**Every other tunnel is `COLLIE_SKIP_SERVE=1` plus [DEPLOYMENT.md Variant
+**Every other tunnel is `COLLIE_SKIP_SERVE=1` plus [docs/deployment.md → Variant
 E](../docs/deployment.md#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel).** The
 operator owns the ingress; Collie publishes nothing, supervises nothing, and tears down nothing.
 

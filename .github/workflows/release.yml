@@ -227,6 +227,15 @@ jobs:
             grab { print }
           ' CHANGELOG.md > "$RUNNER_TEMP/changelog.md" || true
           {
+            # The 0.x crossing rides on EVERY release, not only 1.0.0's. A 0.x install's update
+            # banner points at the newest release, so a reader who never opens 1.0.0's notes must
+            # still find `--major` here (M14/01 §8).
+            echo "**Coming from 0.x?** Upgrade with one command. Do not use \`collie update\`."
+            echo "From the Herdr plugin: \`herdr plugin action invoke update-major --plugin herdr.collie\`."
+            echo "From a checkout you can reach: \`bin/collie update --major\`."
+            echo "Fresh install: \`curl -fsSL https://colliepwa.dev/install.sh | sh\`."
+            echo "Details and rollback: [docs/upgrading.md → Upgrading from 0.x to 1.0](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/upgrading.md#upgrading-from-0x-to-10)."
+            echo
             if [ -s "$RUNNER_TEMP/changelog.md" ]; then
               cat "$RUNNER_TEMP/changelog.md"
               echo

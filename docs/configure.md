@@ -29,7 +29,7 @@ Collie reads `.env` only during startup. Run `collie restart` after modifying it
 [`.env.example`](../.env.example) file lists all options, including `COLLIE_PORT`,
 `COLLIE_SERVE_MODE=http` (for Headscale or `.internal` domains), and `COLLIE_SERVE_PORT` (to expose
 HTTPS on a port other than `:443`; see
-[DEPLOYMENT.md → Several Collies on one host](deployment.md#several-collies-on-one-host)). The
+[docs/deployment.md → Several Collies on one host](deployment.md#several-collies-on-one-host)). The
 CLI reads the serve parameters to configure `tailscale serve`, rather than passing them to the
 bridge.
 

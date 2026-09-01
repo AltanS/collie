@@ -152,7 +152,7 @@ function conflictWarning(
     return (
       `"${memberId}" says it follows lead "${leadMemberId}" under a warrant for pack ` +
       `"${warrant.packId}", which is not this pack; ignoring it. That machine belongs to another ` +
-      "pack — run `collie pack leave` there, then re-join it."
+      "pack. Run `collie pack leave` there, then re-join it."
     );
   }
   return `"${memberId}" says it follows lead "${leadMemberId}", but its warrant does not verify here; ${tail}`;

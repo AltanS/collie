@@ -339,7 +339,7 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
     );
     if (dropped !== null) {
       console.warn(
-        `[pack] discarded a stored warrant for pack "${dropped.packId}" (generation ${dropped.generation}) — ` +
+        `[pack] discarded a stored warrant for pack "${dropped.packId}" (generation ${dropped.generation}): ` +
           "this collie is in a different pack, so that warrant proves nothing here.",
       );
     }

@@ -1657,7 +1657,7 @@ export async function cmdPackRemove(deps: PackDeps, args: readonly string[]): Pr
   deps.io.out(`✓ removed "${memberId}" — its pin is gone, so its certificate is now simply not a member.`);
   if (removed.deputy) {
     deps.io.out(`  It was this pack's DEPUTY, so the designation went with it: no peer may take over`);
-    deps.io.out("  now. Name another with `collie pack deputy <member>`. The warrant on disk stays —");
+    deps.io.out("  now. Name another with `collie pack deputy <member>`. The warrant on disk stays:");
     deps.io.out("  it carries the generation counter, which must never walk backwards inside a pack.");
   }
   deps.io.out("  Nothing was sent to it: revocation is local by design, and the removed machine keeps its");

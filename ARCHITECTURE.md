@@ -31,7 +31,7 @@ A **collie** — a long-lived local process that
 - translates browser actions → socket methods,
 - sits behind **one hardened front door** — `tailscale serve` (default; tailnet-only HTTPS +
   MagicDNS) or a conforming reverse proxy
-  ([DEPLOYMENT.md → Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)) —
+  ([docs/deployment.md → Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)) —
   installable as a **PWA**.
 
 The browser never touches the multiplexer directly; the bridge is the only thing that does.
@@ -369,7 +369,7 @@ door (tailnet-only by default; one per **pack** — §2.1). These four are genui
   tolerating the absence let any tagged node write. `COLLIE_TRUSTED_USER_OPTIONAL=1` restores the old
   pass, for host-local development. The header exists **only** under `tailscale serve` ingress, so
   under `COLLIE_SKIP_SERVE` only a mismatch is rejected. Under a reverse-proxy front door
-  ([DEPLOYMENT.md → Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale))
+  ([docs/deployment.md → Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale))
   there is none, and the equivalent write gate is **per-device auth** (`COLLIE_DEVICE_HEADER`) with
   the proxy contract (docs/deployment.md Variant B/C requirements) as the load-bearing piece. That gate **fails
   closed since 0.15.0**: with `COLLIE_DEVICE_HEADER` set, a request arriving without the header is
@@ -406,7 +406,7 @@ door (tailnet-only by default; one per **pack** — §2.1). These four are genui
   device can't CSRF the bridge. With a plain `tailscale serve` on the MagicDNS name these match
   automatically (no config). When Collie is fronted by a *different* public hostname or an extra
   reverse proxy / TLS terminator (custom domain, load balancer, Headscale + upstream TLS, or a
-  reverse-proxy front door — [DEPLOYMENT.md → Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)),
+  reverse-proxy front door — [docs/deployment.md → Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale)),
   the public origin no longer matches the forwarded `Host` — list that exact origin in
   `COLLIE_ALLOWED_ORIGINS` (the only sanctioned way to widen the gate; never bind off-loopback to
   "fix" it).

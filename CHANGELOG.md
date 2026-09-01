@@ -6,6 +6,18 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
+## Upgrading
+
+**Coming from 0.x?** Upgrade with one command. Do not use `collie update`. From the Herdr
+plugin: `herdr plugin action invoke update-major --plugin herdr.collie`. From a checkout you can
+reach: `bin/collie update --major`. Fresh install:
+`curl -fsSL https://colliepwa.dev/install.sh | sh`. Neither upgrade path assumes a `collie` on your
+PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgrading from 0.x to
+1.0*.
+
+**Already on any 1.x?** `collie update`, or
+`herdr plugin action invoke update --plugin herdr.collie`, is enough.
+
 ## [Unreleased]
 
 ## [1.0.2] - 2026-09-01
