@@ -379,8 +379,4 @@ Post-recovery:
 
 ---
 
-← back to the README
-
----
-
 [← back to the README](../README.md)
