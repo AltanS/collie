@@ -63,11 +63,11 @@ describe("describeApiError", () => {
     setLocale("de");
     await whenLocaleReady("de");
     expect(describeApiError({ error: "no file", code: "upload.no_file" })).toBe(
-      "Es wurde keine Datei gesendet.",
+      "Es wurde keine Datei übermittelt.",
     );
     expect(
       describeApiError({ error: "x", code: "session.unknown", detail: { session: "work" } }),
-    ).toBe("Auf diesem collie gibt es keine Sitzung namens work.");
+    ).toBe("Keine Sitzung namens work auf diesem collie vorhanden.");
   });
 });
 

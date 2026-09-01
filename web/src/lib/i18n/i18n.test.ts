@@ -76,8 +76,8 @@ describe("plurals", () => {
   it("uses one category for Japanese, where 1 is not special", async () => {
     setLocale("ja");
     await whenLocaleReady("ja");
-    expect(tn("space.overview.paneCount", 1)).toBe("ペイン1件");
-    expect(tn("space.overview.paneCount", 2)).toBe("ペイン2件");
+    expect(tn("space.overview.paneCount", 1)).toBe("1ペイン");
+    expect(tn("space.overview.paneCount", 2)).toBe("2ペイン");
   });
 
   it("lets the explicit count win over a stray vars.count", () => {

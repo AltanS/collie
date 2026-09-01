@@ -8,6 +8,10 @@ All notable changes to Collie are recorded here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The five translations read like native product copy now.** Every German, Spanish, Japanese, Korean and Chinese string was rewritten against the English source with a strict style pass — idiomatic register instead of literal calques, no em dashes. Placeholders and code spans were verified unchanged key by key; 1851 strings moved, ten suspect rewrites were rejected and kept their old text. English is untouched.
+
 ### Fixed
 
 - **Hybrid favicon — head on dark paper in the tab, the full app tile at 96.** Matches the home-screen icon now.
