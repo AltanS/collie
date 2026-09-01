@@ -6,7 +6,7 @@ All notable changes to Collie are recorded here. The format follows
 `version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
 `scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
-## [Unreleased]
+## [1.0.0] - 2026-09-01
 
 **This release is the whole `1.0.0-alpha` / `1.0.0-beta` line in one entry**, grouped once; the
 per-release detail lives in the linked commits and the git history. Coming from 0.x, read
