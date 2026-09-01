@@ -957,6 +957,8 @@ interface BinaryOptions {
   env?: Record<string, string | undefined>;
   /** Versions already on disk beside the running one. */
   others?: readonly string[];
+  /** What `current/bin/collie hooks status --check` answers. Default: exit 0, i.e. nothing to say. */
+  hooksCheck?: Partial<import("./sys.ts").ExecResult>;
 }
 
 function binaryHarness(over: BinaryOptions = {}): Harness {
@@ -974,6 +976,7 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
       { stdout: over.smoke?.post === false ? "boom\n" : `${over.currentSays ?? NEW}\n` },
     ],
     version("1.0.0"),
+    [`${INST}/current/bin/collie hooks status --check`, over.hooksCheck ?? { code: EXIT.OK }],
   ];
   const exec = fakeExec({ answers });
   const seed: SeededFiles = {
@@ -1151,5 +1154,56 @@ describe("collie update --rollback", () => {
     const h = harness({ answers: MANAGED, installed: "1.0.0" });
     expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("binary install's verb");
+  });
+});
+
+// ── The hooks nudge after a successful update ────────────────────────────────
+// The gap it closes: a new build registers a beacon hook event, the operator's `settings.json` does
+// not carry it, and until now only a manual `doctor` or `hooks status` ever said so. What is pinned
+// here is WHO ANSWERS — the newly installed binary, through the name that was just switched, because
+// the running process is the OLD build and its `BEACON_HOOKS` is the stale list.
+
+const NUDGE = "beacon hooks your settings do not carry yet";
+const CHECK = `${INST}/current/bin/collie hooks status --check`;
+
+describe("the hooks nudge", () => {
+  test("asks the NEW binary through `current`, and prints one line naming the command", async () => {
+    const h = binaryHarness({ hooksCheck: { code: EXIT.STATE } });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    // Through `current`, never this process and never the version directory — the pin `hooks
+    // install` itself writes, and the only name that stays valid across the next update.
+    expect(h.exec.calls).toContain(CHECK);
+    expect(h.io.stdout.join("\n")).toContain(NUDGE);
+    expect(h.io.stdout.join("\n")).toContain("collie hooks install claude");
+  });
+
+  test("stays silent when the new binary reports nothing to do", async () => {
+    const h = binaryHarness();
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(CHECK);
+    expect(h.io.stdout.join("\n")).not.toContain(NUDGE);
+  });
+
+  test("a check that cannot run leaves the update successful and silent", async () => {
+    const h = binaryHarness({ hooksCheck: { found: false, code: 127 } });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain(`✓ updated to ${NEW}`);
+    expect(h.io.stdout.join("\n")).not.toContain(NUDGE);
+    expect(h.io.stderr).toEqual([]);
+  });
+
+  test("the checkout path asks the binary `build` just wrote, for the same reason", async () => {
+    const h = harness({
+      answers: [...LINKED, ...SHALLOW, [`${BINARY} hooks status --check`, { code: EXIT.STATE }]],
+    });
+    expect(await cmdApplyUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(`${BINARY} hooks status --check`);
+    expect(h.io.stdout.join("\n")).toContain(NUDGE);
+  });
+
+  test("never fires on a rollback — that flips back, it does not add registrations", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], hooksCheck: { code: EXIT.STATE } });
+    await cmdUpdate(h.deps, ["--rollback"]);
+    expect(h.exec.calls.join("\n")).not.toContain("hooks status --check");
   });
 });

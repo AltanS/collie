@@ -394,7 +394,7 @@ export const COMMANDS: readonly Command[] = [
       {
         name: "status",
         summary: "what each settings file carries right now (reads only)",
-        run: (_args, s) => cmdHooksStatus(hooksDeps(s.io)),
+        run: (args, s) => cmdHooksStatus(hooksDeps(s.io), args),
       },
     ],
     run: (args, s) => cmdHooks(hooksDeps(s.io), args),

@@ -42,6 +42,11 @@ put it back. On a checkout it advances the checkout and rebuilds the UI. Either 
 bridge, re-execing itself from the new code, so it is safe even when the update rewrites the program
 that is running. Confirm via the footer build stamp.
 
+**A release can add a beacon hook event, and `update` now tells you when one is missing.** Your
+`~/.claude/settings.json` keeps the set the old build wrote, so a newly registered event never fires
+until you re-run `collie hooks install claude`; a successful update prints one line when that is the
+case, and stays quiet when you have no beacon hooks installed or the set is already complete.
+
 On a **Herdr-managed install** the same verb is the action
 `herdr plugin action invoke update --plugin herdr.collie`. Herdr has no `plugin update` of its own —
 the checkout is the plugin, so this verb is the refresh. Pinned to a version with `--ref`? Keep

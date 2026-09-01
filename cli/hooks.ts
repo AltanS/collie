@@ -508,8 +508,71 @@ export function cmdHooksUninstall(deps: HooksDeps, args: readonly string[]): num
   return EXIT.OK;
 }
 
-/** `collie hooks status` — READ-ONLY. It reports; it never repairs. */
-export function cmdHooksStatus(deps: HooksDeps): number {
+/**
+ * What ONE settings file carries, as a verdict rather than a sentence.
+ *
+ * `status` renders these into its lines; `--check` branches on them. One reading, two readers — the
+ * same rule {@link markedCommandsByEvent} exists for, one level up.
+ */
+export type HookTargetState =
+  | { readonly kind: "refused"; readonly symlink: string }
+  | { readonly kind: "unreadable" }
+  | { readonly kind: "absent" }
+  | { readonly kind: "not-installed" }
+  /** Ours, and missing at least one registration this build knows — the shape a grown set leaves. */
+  | { readonly kind: "partial"; readonly at: string; readonly present: number }
+  /** Ours, complete, but written by a build whose marker was a different version. */
+  | { readonly kind: "stale"; readonly at: string }
+  | { readonly kind: "installed"; readonly at: string };
+
+function targetState(deps: HooksDeps, target: HookTarget): HookTargetState {
+  const symlink = symlinkOnPath(deps, target);
+  if (symlink !== null) return { kind: "refused", symlink };
+  const settings = readSettings(deps, target);
+  if (settings === null) return { kind: "unreadable" };
+  if (settings.text === null) return { kind: "absent" };
+  const versions = new Set<string>();
+  let present = 0;
+  for (const command of markedCommandsByEvent(settings.value)) {
+    if (command === null) continue;
+    present += 1;
+    versions.add(String(markerVersionOf(command)));
+  }
+  if (present === 0) return { kind: "not-installed" };
+  const at = `v${[...versions].join("/")}`;
+  if (present < BEACON_HOOKS.length) return { kind: "partial", at, present };
+  return versions.has(String(HOOK_MARKER_VERSION)) && versions.size === 1
+    ? { kind: "installed", at }
+    : { kind: "stale", at };
+}
+
+/**
+ * Is any settings file BEHIND this build — carrying our entries, but not all of them, or at a marker
+ * version this build no longer writes?
+ *
+ * "Behind" is deliberately narrower than "install would change something". A file with none of our
+ * entries is not behind, it OPTED OUT, and nothing should nag about it. Absent, unreadable and
+ * refused files are not behind either: they are `doctor`'s business, not an afterthought's.
+ *
+ * This is the question `collie update` asks — of the NEWLY installed binary, never in-process, since
+ * {@link BEACON_HOOKS} is compiled in and the old build's copy is exactly the stale thing.
+ */
+export function hooksAreBehind(deps: HooksDeps): boolean {
+  return claudeSettingsTargets(deps.ctx)
+    .map((target) => targetState(deps, target))
+    .some((state) => state.kind === "partial" || state.kind === "stale");
+}
+
+/**
+ * `collie hooks status` — READ-ONLY. It reports; it never repairs.
+ *
+ * `--check` is the same verdict for a caller with no eyes: nothing on stdout, and the exit code IS
+ * the answer — `EXIT.STATE` ("the local state says no", `cli/io.ts`) when {@link hooksAreBehind},
+ * `EXIT.OK` otherwise. `collie update` runs it on the binary it just installed; keeping it a flag on
+ * the existing verb means the two answers cannot drift, and it leaves `status`'s own contract alone.
+ */
+export function cmdHooksStatus(deps: HooksDeps, args: readonly string[] = []): number {
+  if (args.includes("--check")) return hooksAreBehind(deps) ? EXIT.STATE : EXIT.OK;
   const { binary, source } = resolveHookCommand(deps.ctx, deps.fs);
   deps.io.out(`would install: ${binary} beacon emit  (${SOURCE_NAME[source]})`);
   for (const target of claudeSettingsTargets(deps.ctx)) {
@@ -519,28 +582,25 @@ export function cmdHooksStatus(deps: HooksDeps): number {
 }
 
 function describeTarget(deps: HooksDeps, target: HookTarget): string {
-  const symlink = symlinkOnPath(deps, target);
-  if (symlink !== null) return `refused — ${symlink} is a symlink`;
-  const settings = readSettings(deps, target);
-  if (settings === null) return "unreadable — not valid JSON";
-  if (settings.text === null) return "no settings file — `collie hooks install claude` creates one";
-  const versions = new Set<string>();
-  let present = 0;
-  for (const command of markedCommandsByEvent(settings.value)) {
-    if (command === null) continue;
-    present += 1;
-    versions.add(String(markerVersionOf(command)));
+  const state = targetState(deps, target);
+  switch (state.kind) {
+    case "refused":
+      return `refused — ${state.symlink} is a symlink`;
+    case "unreadable":
+      return "unreadable — not valid JSON";
+    case "absent":
+      return "no settings file — `collie hooks install claude` creates one";
+    case "not-installed":
+      return "not installed";
+    // A file installed by an older build carries the events THAT build knew, which is what this reads
+    // like once the set grows. So the line names the remedy: install adds the missing ones in place.
+    case "partial":
+      return `partly installed (${state.at}, ${state.present}/${BEACON_HOOKS.length} events) — re-run install to add the rest`;
+    case "stale":
+      return `installed at ${state.at} — re-run install to heal it to v${HOOK_MARKER_VERSION}`;
+    case "installed":
+      return `installed (${state.at})`;
   }
-  if (present === 0) return "not installed";
-  const at = `v${[...versions].join("/")}`;
-  // A file installed by an older build carries the events THAT build knew, which is what this reads
-  // like once the set grows. So the line names the remedy: install adds the missing ones in place.
-  if (present < BEACON_HOOKS.length) {
-    return `partly installed (${at}, ${present}/${BEACON_HOOKS.length} events) — re-run install to add the rest`;
-  }
-  return versions.has(String(HOOK_MARKER_VERSION)) && versions.size === 1
-    ? `installed (${at})`
-    : `installed at ${at} — re-run install to heal it to v${HOOK_MARKER_VERSION}`;
 }
 
 export function hooksUsage(): string {
@@ -556,7 +616,7 @@ export function cmdHooks(deps: HooksDeps, args: readonly string[]): number {
     case "uninstall":
       return cmdHooksUninstall(deps, rest);
     case "status":
-      return cmdHooksStatus(deps);
+      return cmdHooksStatus(deps, rest);
     default:
       if (sub !== undefined && sub !== "" && sub !== "help") {
         deps.io.err(`error: unknown hooks subcommand \`${sub}\``);

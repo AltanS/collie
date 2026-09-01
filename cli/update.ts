@@ -603,6 +603,33 @@ function closeWithMajor(deps: UpdateDeps, higher: ReleaseTag | null): void {
   deps.io.out(`note: Collie ${higher.version} is out — a NEW MAJOR. Take it with:  ${MAJOR_ACTION}`);
 }
 
+/** The check is `hooks status --check`, which answers in milliseconds; a longer wait is a hang. */
+const HOOKS_CHECK_TIMEOUT_MS = 5_000;
+
+/**
+ * The one line a successful update prints when the new build's beacon hooks are ahead of the
+ * operator's `settings.json` — a registration this build added that their file does not carry.
+ *
+ * IT IS ASKED OF THE NEW BINARY, and that is the whole design. This process is the OLD build, and
+ * its compiled-in `BEACON_HOOKS` is exactly the list that may have grown; an in-process check would
+ * therefore be the one check guaranteed to miss the case it exists for. So the freshly installed
+ * binary is spawned through the stable name that was just switched, and its EXIT CODE is the verdict
+ * (`EXIT.STATE` = behind — `cli/hooks.ts`).
+ *
+ * Silent unless the answer is "behind". A machine with no beacon hooks installed opted out, and an
+ * update is not the place to sell them; a complete install has nothing to say. Every other outcome —
+ * a binary too old to know the flag, a spawn that fails, a settings file nobody can read — is
+ * silence too. The update already succeeded, and no afterthought may take that back.
+ */
+function nudgeHooks(deps: UpdateDeps, binary: string): void {
+  const r = deps.exec.capture(binary, ["hooks", "status", "--check"], HOOKS_CHECK_TIMEOUT_MS);
+  if (!r.found || r.code !== EXIT.STATE) return;
+  deps.io.out(
+    "note: this build registers beacon hooks your settings do not carry yet —" +
+      " run `collie hooks install claude` to add them.",
+  );
+}
+
 /**
  * The second half of `update`, run FROM THE CODE THAT WAS JUST FETCHED. `build` re-runs the version
  * gate (a half-bumped release can't go live) and recompiles both the binary and `web/dist`;
@@ -625,6 +652,8 @@ export async function cmdApplyUpdate(deps: UpdateDeps): Promise<number> {
   if (restarted !== EXIT.OK) return restarted;
   refreshRegistry(deps);
   deps.io.out("✓ update complete");
+  // `build` just wrote this binary from the code we are running, so it is the new list, not ours.
+  nudgeHooks(deps, collieBinary(deps.ctx.root));
   return EXIT.OK;
 }
 
@@ -1012,6 +1041,8 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   // 13. GC, only now, and never fatally.
   collectOldVersions(deps, layout, target.version);
   deps.io.out(`✓ updated to ${target.version}`);
+  // Through `current`, the link flipped in step 10 — the same stable name `hooks install` pins to.
+  nudgeHooks(deps, join(layout.currentLink, "bin", "collie"));
   closeWithMajor(deps, higher);
   return EXIT.OK;
 }

@@ -419,3 +419,63 @@ describe("status", () => {
     expect(d.io.stdout.join("\n")).toContain("re-run install to heal it");
   });
 });
+
+// `--check` is what `collie update` runs on the binary it has just installed: no output at all, and
+// the exit code is the whole answer. "Behind" is narrower than "install would change something" —
+// a file with none of our entries opted out, and nothing may nag it.
+describe("status --check", () => {
+  const partial = () => {
+    const older = BEACON_HOOKS.slice(1);
+    return serializeSettings({
+      hooks: Object.fromEntries(older.map((r) => [r.event, [{ hooks: [{ type: "command", command: COMMAND }] }]])),
+    });
+  };
+  const staleDoc = () => {
+    const stale = { hooks: [{ type: "command", command: "/old/collie beacon emit # collie-beacon v0" }] };
+    return serializeSettings({ hooks: Object.fromEntries(BEACON_HOOKS.map((r) => [r.event, [stale]])) });
+  };
+  const installed = () => {
+    const d = deps();
+    cmdHooksInstall(d, ["claude"]);
+    return d.files.entries.get(SETTINGS)!.text;
+  };
+
+  test("says behind for a partial install, and prints nothing at all", () => {
+    const d = deps({ files: { [SETTINGS]: partial() } });
+    expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.STATE);
+    expect(d.io.stdout).toEqual([]);
+    expect(d.io.stderr).toEqual([]);
+    expect(d.files.ops).toEqual([]);
+  });
+
+  test("says behind for entries at a marker version this build no longer writes", () => {
+    const d = deps({ files: { [SETTINGS]: staleDoc() } });
+    expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.STATE);
+  });
+
+  test("stays quiet when the hooks were never installed — that is an opt-out, not a gap", () => {
+    const never = deps({ files: { [SETTINGS]: serializeSettings({ hooks: { Stop: [THEIRS] } }) } });
+    expect(cmdHooksStatus(never, ["--check"])).toBe(EXIT.OK);
+    const nofile = deps();
+    expect(cmdHooksStatus(nofile, ["--check"])).toBe(EXIT.OK);
+  });
+
+  test("stays quiet when every registration is present at this version", () => {
+    const d = deps({ files: { [SETTINGS]: installed() } });
+    expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.OK);
+    expect(d.io.stdout).toEqual([]);
+  });
+
+  test("is behind when ANY configured profile is, not only ~/.claude (issue #92)", () => {
+    const d = deps({
+      env: { COLLIE_TRANSCRIPT_ROOT: "/srv/ops/projects" },
+      files: { [SETTINGS]: installed(), "/srv/ops/settings.json": partial() },
+    });
+    expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.STATE);
+  });
+
+  test("does not answer `behind` for a file it cannot read — that is doctor's business", () => {
+    const d = deps({ files: { [SETTINGS]: "{ not json" } });
+    expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.OK);
+  });
+});
