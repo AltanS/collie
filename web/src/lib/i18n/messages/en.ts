@@ -760,6 +760,7 @@ export const en = {
   "space.new.tab.plain": "Space",
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "Repository",
+  "space.new.host.label": "Host",
   "worktree.orOpenExisting": "Or open one that already exists",
 } as const;
 

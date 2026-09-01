@@ -20,6 +20,7 @@ import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-heade
 import { BuildStamp } from "@/components/build-stamp";
 import { CollieHome } from "@/components/collie-home";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
+import { PackProvider } from "@/components/pack-provider";
 import { SpaceOverview } from "@/components/space-overview";
 import { CollieMark } from "@/components/collie-mark";
 import { ConnectionBanner } from "@/components/connection-banner";
@@ -906,6 +907,19 @@ function SettingsSection() {
             onCreateWorktree={() => {}}
             onOpenWorktree={() => {}}
           />
+        </PhoneFrameCard>
+      </Card>
+
+      <Card
+        label="new space — pack, pick a host"
+        reach="tap + on the spaces list of a lead with peers. On a solo collie this row is not rendered at all and the sheet is the one above."
+        note="The chip that is marked is where the create lands: the machine the list was already showing, or the lead. `attic`, `cellar` and `garage` keep their chips and their names — a machine that cannot take writes is dimmed and says why, never dropped, because a missing row reads as a machine you do not have."
+        span={2}
+      >
+        <PhoneFrameCard height={560}>
+          <PackProvider servers={rosterFive} ts={homePack.ts} pollMs={3_000}>
+            <NewSpaceSheet open onClose={() => {}} onCreate={() => {}} scope={{ host: "workshop" }} />
+          </PackProvider>
         </PhoneFrameCard>
       </Card>
 

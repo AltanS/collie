@@ -725,5 +725,6 @@ export const ko: Dictionary = {
   "space.new.tab.plain": "스페이스",
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "저장소",
+  "space.new.host.label": "호스트",
   "worktree.orOpenExisting": "기존 worktree 열기",
 };

@@ -744,5 +744,6 @@ export const es: Dictionary = {
   "space.new.tab.plain": "Espacio",
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "Repositorio",
+  "space.new.host.label": "Host",
   "worktree.orOpenExisting": "Abrir worktree existente",
 };

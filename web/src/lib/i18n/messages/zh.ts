@@ -712,5 +712,6 @@ export const zh: Dictionary = {
   "space.new.tab.plain": "空间",
   "space.new.tab.worktree": "Worktree",
   "space.new.repo.label": "仓库",
+  "space.new.host.label": "主机",
   "worktree.orOpenExisting": "或打开已有 Worktree",
 };

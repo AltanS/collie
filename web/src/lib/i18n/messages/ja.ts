@@ -733,5 +733,6 @@ export const ja: Dictionary = {
   "space.new.tab.plain": "スペース",
   "space.new.tab.worktree": "ワークツリー",
   "space.new.repo.label": "リポジトリ",
+  "space.new.host.label": "ホスト",
   "worktree.orOpenExisting": "または既存のものを開く",
 };

@@ -45,7 +45,12 @@ export function useSpaceActions() {
   );
 
   const open = useCallback(
-    (res: CreateResponse, what: "tab" | "space") => {
+    // `at` is the scope the create was ADDRESSED to, which is not always the ambient one: the
+    // new-space sheet can aim a create at another machine in the pack. The navigation has to use
+    // the SAME scope, or the phone would open the new pane's id on the machine it was looking at —
+    // where that id is a different terminal, which is the one mistake the host dimension exists to
+    // prevent. Absent means the ambient scope, which is every caller that cannot re-address.
+    (res: CreateResponse, what: "tab" | "space", at?: Scope) => {
       if (!res.ok) {
         setStatus(describeApiError(res), "error");
         return;
@@ -66,7 +71,7 @@ export function useSpaceActions() {
       const noun = what === "tab" ? t("space.noun.tab") : t("space.noun.space");
       setStatus(t("space.create.ready", { what: noun }), "success");
       revalidatorRef.current.revalidate();
-      navigate(panePath(p.paneId, scopeRef.current), { state: { freshPane: fresh } });
+      navigate(panePath(p.paneId, at ?? scopeRef.current), { state: { freshPane: fresh } });
     },
     [navigate],
   );
@@ -83,11 +88,15 @@ export function useSpaceActions() {
     [open, blockedText],
   );
 
+  // `at` overrides the ambient scope for this one create — the new-space sheet's host picker. It is
+  // optional and defaults to the ambient scope, so every existing caller is unchanged and a solo
+  // install never has one to pass.
   const newSpace = useCallback(
-    async (opts: { label?: string; cwd?: string } = {}) => {
+    async (opts: { label?: string; cwd?: string } = {}, at?: Scope) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      const scope = at ?? scopeRef.current;
       try {
-        open(await api.createWorkspace(opts, scopeRef.current), "space");
+        open(await api.createWorkspace(opts, scope), "space", scope);
       } catch (e) {
         setStatus(describeThrownError(e), "error");
       }
