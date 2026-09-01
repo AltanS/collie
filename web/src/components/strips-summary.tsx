@@ -23,7 +23,7 @@ interface StripsSummaryProps {
   onExpand: () => void;
 }
 
-// The tab row and the pane row, folded down to one 32px bar of beads.
+// The tab row and the pane row, folded down to one 24px bar of beads.
 //
 // WHAT THIS IS FOR. The pane screen is the one screen that stacks two strips, and the strips are
 // chrome ABOUT the pane rather than the pane's own output — 94px of it, above a mirror that on a
@@ -66,16 +66,42 @@ export function StripsSummary({
       type="button"
       onClick={onExpand}
       aria-expanded={false}
-      // 32px drawn, 44px hit. The bar REPLACES two 47px strips, so every drawn pixel it spends is a
-      // pixel the fold did not save — and a full-width control is the one shape that can buy its
-      // floor purely as hit area with no neighbour to collide with. 6px above and below
-      // (`-inset-y-1.5`) is 32+6+6 = 44 exactly. Above it is a banner or open ground and below it
-      // the mirror's 4px of page, so nothing is stolen from another target.
+      // ── 24px DRAWN, 44px HIT ─────────────────────────────────────────────────
+      // The bar REPLACES two 47px strips, so every drawn pixel it spends is a pixel the fold did not
+      // save — it was 32px and the operator read that as still heavy. 24px is the floor its contents
+      // set rather than a number picked to be small: the beads are 16px boxes, so 24 leaves 4px of
+      // air above and below them, and the next step down (20px) leaves 2px, which reads as a bead
+      // row jammed against the header rule rather than a band with beads in it.
+      //
+      // Measured, and left alone: the band the EYE reads is bounded by the header's rule above and
+      // the mirror's rule 4px below (DESIGN.md §4), so it is 28px and the beads sit 4px under the
+      // top edge and 8px above the bottom one. Paying 2px of `pt` to balance that is exactly the
+      // compensation §4 says to delete once the missing edge is back — and the edge below is the
+      // mirror's own page gap, which is not this bar's to spend.
+      //
+      // A full-width control is the one shape that can buy its 44px floor purely as hit area with no
+      // neighbour to collide with (DESIGN.md §6). 10px above and below (`-inset-y-2.5`) is
+      // 24+10+10 = 44 exactly. Above is a banner or open ground; below is the mirror's 4px of page
+      // and then 6px of the mirror's own top, whose only handler focuses the composer and already
+      // declines a tap that lands on a control. Nothing with a target of its own is shadowed.
       // It lives inside a `Collapse`, which drops its clip once settled — that is what lets the
       // ::before reach outside the box at all (see ui/collapse.tsx).
-      // border-b in --rule for the same reason the tab row carries one: this is the cut between the
-      // chrome above and the mirror below, and the folded bar inherits the seam it replaced.
-      className="relative flex h-8 w-full shrink-0 items-center gap-2 border-b border-rule px-4 text-left transition-colors before:absolute before:inset-x-0 before:-inset-y-1.5 before:content-[''] hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+      //
+      // ── AND NO `border-b`, WHICH IS THE POINT ────────────────────────────────
+      // It had one, copied from the tab row, and against the mirror's own unconditional
+      // `border-t border-rule` 4px below it that made TWO hairlines 4px apart — the doubled line
+      // DESIGN.md §4 forbids, just spaced far enough to look deliberate.
+      //
+      // The tab row's baseline is not a decoration this bar inherits. It exists because a FOLDER TAB
+      // has to own the line it breaks: the active tab covers that baseline for its own width so the
+      // tab and the content read as one piece, and the 4px below it is the page the open tab sits
+      // on (tab-strip.tsx and agent-chat.tsx state both halves). Fold the rows away and there is no
+      // folder tab, nothing is attached to anything, and the obligation goes with it.
+      //
+      // So the seam between chrome and mirror is drawn once, by the mirror — which is the half that
+      // may not move: that `border-t` is unconditional on purpose, one geometry with no state in
+      // which the seam is drawn differently. This bar simply stands on the page above it.
+      className="relative flex h-6 w-full shrink-0 items-center gap-2 px-4 text-left transition-colors before:absolute before:inset-x-0 before:-inset-y-2.5 before:content-[''] hover:bg-accent/40 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
     >
       {/* The words — the only thing here a screen reader is given. */}
       <span className="sr-only">

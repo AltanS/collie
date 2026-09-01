@@ -1790,6 +1790,46 @@ describe("AgentChat — folding the tab and pane rows", () => {
     expect(localStorage.getItem("collie:strips-collapsed:v1")).toBe("1");
   });
 
+  it("draws ONE seam between the folded chrome and the mirror, and draws it from below", async () => {
+    // THE OPERATOR'S SECOND READING, verbatim: "taking up a bit too much space still and the double
+    // border is ugly". The bar carried a `border-b` copied from the tab row, and the mirror's own
+    // unconditional `border-t border-rule` sits 4px under it — two hairlines 4px apart, which is the
+    // doubled line DESIGN.md §4 forbids, just spaced far enough to look deliberate.
+    //
+    // The tab row's baseline is not a decoration this bar inherits: it exists because a FOLDER TAB
+    // has to own the line it breaks, and folded there is no folder tab. So the bar draws nothing and
+    // the mirror keeps the one seam — which is also the half that may not move, being unconditional
+    // by design (one geometry, no state in which the seam is drawn differently).
+    const user = userEvent.setup();
+    const { container } = renderStrips();
+    await user.click(screen.getByRole("button", { name: "Hide tabs and panes" }));
+    const bar = await screen.findByRole("button", { name: /^Show tabs and panes/ });
+
+    expect(bar.className).not.toMatch(/border-b/);
+    expect(bar.className).not.toMatch(/border-rule/);
+    // …and the seam it used to double is still there, drawn once, by the mirror.
+    const mirror = container
+      .querySelector('[data-slot="chrome-block"]')!
+      .closest('[data-slot="collapse"]')!.previousElementSibling!;
+    expect(mirror.className).toMatch(/(?:^|\s)border-t border-rule(?=\s|$)/);
+  });
+
+  it("spends 24px of drawn height and still answers a 44px thumb", async () => {
+    // The bar REPLACES two 47px strips, so every drawn pixel is a pixel the fold did not save — 32px
+    // was still heavy. 24px is the floor its contents set: the beads are 16px boxes, so 24 leaves
+    // 4px of air and the next step down leaves 2px, which reads as a row jammed under the header.
+    //
+    // The floor is bought as HIT area, not drawn height (DESIGN.md §6). Both halves are asserted
+    // because they are ONE number: 24 + 10 + 10 = 44, so shrinking the bar without re-cutting the
+    // inset silently drops the target.
+    const user = userEvent.setup();
+    renderStrips();
+    await user.click(screen.getByRole("button", { name: "Hide tabs and panes" }));
+    const bar = await screen.findByRole("button", { name: /^Show tabs and panes/ });
+    expect(bar.className).toMatch(/(?:^|\s)h-6(?=\s|$)/);
+    expect(bar.className).toMatch(/(?:^|\s)before:-inset-y-2\.5(?=\s|$)/);
+  });
+
   it("puts the rows back on a tap anywhere on the bar", async () => {
     const user = userEvent.setup();
     setStripsCollapsed(true);
