@@ -271,8 +271,10 @@ name: not install, not build, not update
 **Verbs that had nowhere to live on 0.x.** Each is opt-in and absent until you run it, so an install
 that ignores the lot behaves exactly as it did:
 
-- **`collie pair` / `collie devices`** — a per-device write credential, on exactly while at least one
-  device is paired ([Pair a device](security.md#pair-a-device--the-write-credential)).
+- **`collie pair` / `collie devices`** — manages per-device write credentials. The gate is active
+  only while at least one device is paired; if none are paired, behavior does not change. Once a
+  device is paired, every write requires that device's token, while reads remain open
+  ([Pair a device](security.md#pair-a-device--the-write-credential)).
 - **`collie pack …` / `join` / `promote`** — several machines' Collies behind one URL
   ([Pack commands](pack.md)).
 - **`collie doctor`** — one read-only pass over the traps that otherwise fail silently.
@@ -396,6 +398,11 @@ first run — building the collie binary…
 note: Herdr-managed install — registry left alone (re-linking would block `herdr plugin install`)
 ✓ update complete
 ```
+
+**Next step: pair your phone.** Pairing is optional, and an upgraded installation pairs no devices
+automatically. Pairing issues that phone a write credential. Revoke this credential with
+`collie devices revoke` if a device is lost
+([Pair a device](security.md#pair-a-device--the-write-credential)).
 
 ## When collie will not run
 

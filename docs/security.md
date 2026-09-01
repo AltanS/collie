@@ -87,9 +87,10 @@ bin/collie devices list             # what holds a credential, and when each was
 bin/collie devices revoke old-phone # effective immediately, no restart
 ```
 
-Pairing the first device enables the write gate globally. Pair your current phone first. Revoking
-the final device disables the gate again, preventing lockouts. Five failed code attempts invalidate
-the code, requiring a new run of `collie pair`.
+The write gate is active only while at least one device is paired. No device is paired until you
+run `collie pair`, so until then read and write operations function as before. Pair your current
+phone first. Revoking the final device disables the gate again to prevent lockouts. Five failed code
+attempts invalidate the code, which requires running `collie pair` again.
 
 
 ---
