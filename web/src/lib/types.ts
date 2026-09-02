@@ -6,6 +6,11 @@ import { t } from "@/lib/i18n";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
+export interface LiveSlashCommand {
+  command: string;
+  description: string;
+}
+
 export interface AgentView {
   paneId: string;
   workspaceId: string;
@@ -117,6 +122,10 @@ export interface AgentView {
    * rather than with the ambient one.
    */
   session?: string;
+  /**
+   * Live omp extras from `<stateDir>/slash-catalog/`. Hint only. Omitted when none.
+   */
+  liveCommands?: LiveSlashCommand[];
 }
 
 /**

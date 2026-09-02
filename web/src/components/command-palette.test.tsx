@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { CommandPalette } from "./command-palette";
 import type { OperatorCommand } from "@/lib/types";
 
-function setup(overrides?: { agent?: string | null; mine?: OperatorCommand[] }) {
+function setup(overrides?: { agent?: string | null; mine?: OperatorCommand[]; live?: { command: string; description: string }[] }) {
   // Widened at the binding, not asserted at the literal: the overrides below hand `null` and
   // `undefined` for the same prop, so the base value has to carry the whole domain.
   const agentProp: string | null | undefined = "claude";
@@ -26,6 +26,17 @@ describe("CommandPalette", () => {
     // /status is common; /doctor is not.
     expect(screen.getByText("/status")).toBeInTheDocument();
     expect(screen.queryByText("/doctor")).toBeNull();
+  });
+
+  it("keeps live omp extras off the first screen until you search", async () => {
+    const user = userEvent.setup();
+    setup({
+      agent: "omp",
+      live: [{ command: "/green", description: "Iterate on CI until green" }],
+    });
+    expect(screen.queryByText("/green")).toBeNull();
+    await user.type(screen.getByPlaceholderText(/Search \d+ commands/), "green");
+    expect(screen.getByText("/green")).toBeInTheDocument();
   });
 
   it("filters across the full catalog as you type", async () => {

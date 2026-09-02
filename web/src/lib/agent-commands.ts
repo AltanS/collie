@@ -299,8 +299,10 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
  * 1. YOUR LIST IS THE PALETTE. A pane addressed by even one of your rows shows your rows for that
  *    pane and nothing else. This surface is a handful of one-thumb shortcuts, and the value of the
  *    shipped catalog is that someone chose those ten; a list half-chosen by you and half-guessed
- *    for you is worse than either. Discovery is not lost by this — the agent's own `/` completion
- *    renders in the mirrored pane, complete and live, which no copy here could stay.
+ *    for you is worse than either.
+ *    Live omp extras (`live`) are a separate source: the running session dumped them. They APPEND
+ *    after the chosen list, never replace it, and they are never `common` — the first screen stays
+ *    the handful someone chose. ADR 0018 still forbids merging commands.toml with the shipped catalog.
  * 2. DANGER IS INHERITED, NOT RESET. A row naming a shipped command keeps that row's `dangerous`
  *    classification, so re-describing a session wipe cannot turn a two-tap command into a one-tap
  *    one. A row that names nothing shipped is not dangerous — nothing out here knows otherwise.
@@ -308,23 +310,46 @@ const CATALOG = new Map<string, readonly AgentCommand[]>([
 export function commandsFor(
   agent: string | undefined | null,
   mine: readonly OperatorCommand[] = [],
+  live: readonly { command: string; description: string }[] = [],
 ): readonly AgentCommand[] {
   const shipped = catalogFor(agent);
   const aimed = rowsFor(mine, agent, (row) => row.command);
   // Rule 2: nothing of yours points here, so this pane was never part of what you were choosing.
-  if (aimed.length === 0) return shipped;
-  const byName = new Map(shipped.map((c) => [c.command, c] as const));
-  return aimed.map((row) => ({
-    command: row.command,
-    description: row.description,
-    takesArg: row.takesArg,
-    argHint: row.argHint,
-    // A row you typed into your own config is by definition one you want on the first screen.
-    common: true,
-    // Inheriting is a FLOOR, never a default: `confirm = false` on a row that names a shipped
-    // dangerous command still confirms, so the only direction this field moves is up.
-    dangerous: (byName.get(row.command)?.dangerous ?? false) || row.confirm === true,
-  }));
+  const base: readonly AgentCommand[] =
+    aimed.length === 0
+      ? shipped
+      : aimed.map((row) => ({
+          command: row.command,
+          description: row.description,
+          takesArg: row.takesArg,
+          argHint: row.argHint,
+          // A row you typed into your own config is by definition one you want on the first screen.
+          common: true,
+          // Inheriting is a FLOOR, never a default: `confirm = false` on a row that names a shipped
+          // dangerous command still confirms, so the only direction this field moves is up.
+          dangerous: (byNameFor(shipped).get(row.command)?.dangerous ?? false) || row.confirm === true,
+        }));
+  if (live.length === 0) return base;
+  const seen = new Set(base.map((c) => c.command));
+  const extras: AgentCommand[] = [];
+  for (const row of live) {
+    const command = row.command.startsWith("/") ? row.command : `/${row.command}`;
+    if (seen.has(command)) continue;
+    seen.add(command);
+    extras.push({
+      command,
+      description: row.description || command,
+      takesArg: false,
+      argHint: "",
+      common: false,
+      dangerous: false,
+    });
+  }
+  return extras.length === 0 ? base : [...base, ...extras];
+}
+
+function byNameFor(shipped: readonly AgentCommand[]): Map<string, AgentCommand> {
+  return new Map(shipped.map((c) => [c.command, c] as const));
 }
 
 /** The agent names the shipped catalog is filed under — pinned against AGENT_FAMILIES in the tests. */

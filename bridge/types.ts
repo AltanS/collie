@@ -11,6 +11,12 @@ export type { TranscriptEntry, TranscriptPart } from "./journal/types.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
+/** One row from an omp slash-catalog hint file. Hint only: Collie still types the command into the PTY. */
+export interface LiveSlashCommand {
+  command: string;
+  description: string;
+}
+
 /**
  * A single pane the user might want to monitor or drive. Usually an agent-bearing pane (the
  * triage home), but also a bare **shell** pane (`kind:"shell"`, `agent:"shell"`) once we surface
@@ -109,6 +115,12 @@ export interface AgentView {
    * `done` agent IS the "finished while you weren't looking" state — there is no stored seen flag.
    */
   lastSeenAt?: number;
+  /**
+   * Slash commands the live omp session dumped into `<stateDir>/slash-catalog/`. A hint file,
+   * never a control channel (ADR 0024). Omitted when none. The shipped catalog stays the first
+   * screen; these are session extras (skills, extensions) the corpus cannot ship.
+   */
+  liveCommands?: LiveSlashCommand[];
 }
 
 /**

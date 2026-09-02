@@ -16,6 +16,8 @@ interface CommandPaletteProps {
   agent: string | undefined | null;
   /** The operator's own rows (`commands.toml`); they replace the catalog on panes they address. */
   mine?: readonly OperatorCommand[];
+  /** Live omp extras from the slash-catalog hint file. Search-only; never replace the catalog. */
+  live?: readonly { command: string; description: string }[];
   /** Insert "/cmd " into the composer for the user to complete (arg-taking commands). */
   onInsert: (text: string) => void;
   /** Send "/cmd" immediately and submit (no-arg commands). */
@@ -27,11 +29,12 @@ export function CommandPalette({
   onClose,
   agent,
   mine,
+  live,
   onInsert,
   onSubmit,
 }: CommandPaletteProps) {
   useLocale();
-  const all = commandsFor(agent, mine);
+  const all = commandsFor(agent, mine, live);
   const [query, setQuery] = useState("");
   const { pending, confirm, reset } = usePendingConfirm();
 

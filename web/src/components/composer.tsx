@@ -55,6 +55,8 @@ interface ComposerProps {
   scope?: Scope;
   /** The pane's agent name — drives the slash-command palette and the reply-vs-shell placeholder. */
   agent: string | undefined | null;
+  /** Live omp extras from the snapshot (`liveCommands`). */
+  liveCommands?: readonly { command: string; description: string }[];
   /** True for a bare shell pane (tweaks the placeholder copy, and is its own status word). */
   isShell: boolean;
   /**
@@ -225,7 +227,7 @@ function ComposerDock({
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, status, stale, gone, readOnly, hostBlock, composing, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, onSent },
+  { paneId, scope, agent, liveCommands, isShell, status, stale, gone, readOnly, hostBlock, composing, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, onSent },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -662,7 +664,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The operator's own palette rows, resolved against the shipped catalog for both the button's
   // visibility test here and the palette's own list below (same call, same arguments).
   const operatorCommands = useOperatorCommands();
-  const commands = commandsFor(agent, operatorCommands);
+  const commands = commandsFor(agent, operatorCommands, liveCommands);
   // The Keys tray's preset row, resolved the same way from the same one-shot read of /api/config.
   const keyPresets = ctrlPresetsFor(agent, useOperatorKeys());
   // Empty on every adapter that refuses nothing, and empty for Herdr's six as far as this tray is
@@ -1579,6 +1581,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         onClose={closeDrawer}
         agent={agent}
         mine={operatorCommands}
+        live={liveCommands}
         onInsert={insertCommand}
         onSubmit={(t) => send(t, false)}
       />

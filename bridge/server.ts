@@ -15,6 +15,7 @@ import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
 import { createOperatorQuickReplies } from "./operator-quick-replies.ts";
 import { createOperatorFonts, resolveOperatorFont } from "./operator-fonts.ts";
+import { createSlashCatalogReader } from "./slash-catalog.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
   verifyExpectedPrompt,
@@ -539,6 +540,7 @@ export function startServer(opts: {
   const operatorQuickReplies = createOperatorQuickReplies(cfg.quickRepliesFile);
   // The fourth on that contract: the operator's own UI typefaces, theme.toml off the hot path.
   const operatorFonts = createOperatorFonts(cfg.themeFile);
+  const slashCatalogs = createSlashCatalogReader(join(cfg.stateDir, "slash-catalog"));
   const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
@@ -588,9 +590,12 @@ export function startServer(opts: {
     // are read at serialise time, i.e. as fresh as the request. The ledger is keyed by SESSION, so
     // the runtime whose panes are being serialised is the one that has to be asked — which is why
     // this takes the runtime rather than closing over the ambient one.
+    const catalogByPane = slashCatalogs();
     const withActivity = (from: SessionRuntime, p: AgentView): AgentView => {
       const a = activity.get(from.name, p.paneId);
-      return a ? { ...p, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : p;
+      const live = catalogByPane.get(p.paneId);
+      const stamped = a ? { ...p, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : p;
+      return live && live.length > 0 ? { ...stamped, liveCommands: live } : stamped;
     };
     // The one place a pane leaves the bridge: the session ref is stripped to a presence flag here,
     // so an agent-reported filesystem path never reaches a browser (see toPaneWire). The flag is

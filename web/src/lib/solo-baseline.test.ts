@@ -106,6 +106,8 @@ const AGENT_VIEW_KEYS = {
   // present exactly when the snapshot was widened (`?sessions=all`, the "All sessions" view), absent
   // on every other read — which is every read the app made before that view existed.
   session: true,
+  // Optional omp slash-catalog extras. Absent when none; not a pack dimension.
+  liveCommands: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -173,6 +175,7 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
       "kind",
       "lastActiveAt",
       "lastSeenAt",
+      "liveCommands",
       "paneId",
       "paneLabel",
       "readableLines",

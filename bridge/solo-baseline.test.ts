@@ -298,8 +298,9 @@ const PANE_WIRE_KEYS = {
   // and then on every pane in the body. Nothing in this baseline asks, so it is absent on every
   // pane here and no golden byte moved — which is the claim, not an aside.
   session: true,
+  // Optional hint-file extras from omp (slash-catalog). Absent when none; not a pack dimension.
+  liveCommands: true,
 } satisfies Record<keyof PaneWire, true>;
-
 const DEVICE_AUTH_KEYS = {
   enforced: true,
   device: true,
@@ -391,6 +392,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "kind",
       "lastActiveAt",
       "lastSeenAt",
+      "liveCommands",
       "paneId",
       "paneLabel",
       "readableLines",
@@ -741,6 +743,8 @@ const STATE_DIR_ENTRIES = [
   "paired-devices.json",
   "pairing-pending.json",
   "push-subscriptions.json",
+  // omp slash-command dumps (hint files). A directory the bridge only READS; the omp extension writes it.
+  "slash-catalog",
   "snooze.json",
   // Speech-to-text settings. Absent until the operator runs `collie stt setup`, and READ ONLY by
   // the bridge — `bridge/stt/config.ts` names this path and never writes it.

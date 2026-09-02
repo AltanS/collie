@@ -312,3 +312,25 @@ describe("commandsFor with the operator's own rows", () => {
     expect(commandsFor("omp", [mine]).some((c) => c.command === "/mine")).toBe(false);
   });
 });
+
+describe("commandsFor with live omp extras", () => {
+  it("appends live rows after the shipped catalog and keeps them out of the first screen", () => {
+    const cmds = commandsFor("omp", [], [
+      { command: "/green", description: "Iterate on CI until green" },
+      { command: "/new", description: "should not duplicate" },
+    ]);
+    expect(cmds.some((c) => c.command === "/new" && c.common)).toBe(true);
+    const green = cmds.find((c) => c.command === "/green");
+    expect(green).toMatchObject({ description: "Iterate on CI until green", common: false, dangerous: false });
+    expect(cmds.filter((c) => c.command === "/new")).toHaveLength(1);
+  });
+
+  it("still appends live extras when commands.toml replaced the catalog", () => {
+    const mine = [
+      { agent: "omp", command: "/fork-in-herdr", description: "Fork", takesArg: false, argHint: "" },
+    ];
+    const cmds = commandsFor("omp", mine, [{ command: "/review", description: "Launch review" }]);
+    expect(cmds.map((c) => c.command)).toEqual(["/fork-in-herdr", "/review"]);
+    expect(cmds.find((c) => c.command === "/review")?.common).toBe(false);
+  });
+});

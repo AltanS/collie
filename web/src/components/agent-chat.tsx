@@ -1758,6 +1758,7 @@ export function AgentChat({
                   paneId={paneId}
                   scope={scope}
                   agent={agent?.agent}
+                  liveCommands={agent?.liveCommands}
                   isShell={isShell}
                   // The state, as the WORD on the composer's status strip. It used to be the pane
                   // header's caption line; the dot badged onto the agent's tile up there stays, because
