@@ -235,7 +235,7 @@ git remote add upstream https://github.com/AltanS/collie.git
 git fetch upstream --tags
 git merge v1.0.0                                            # the tag you decided to take
 # resolve the conflicts, commit the merge, then rebuild and restart:
-sh scripts/collie-ctl.sh build
+bash scripts/collie-ctl.sh build
 bin/collie restart                                          # Herdr-managed: invoke the `restart` action
 ```
 

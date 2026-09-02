@@ -22,7 +22,7 @@ jobs:
   #     with SIGILL on older hardware, which is exactly the hardware a self-hosted tool lives on.
   #     Collie is I/O-bound (a Unix socket and static files), so the baseline penalty is not
   #     observable here.
-  # The matrix is written for the full four-target set and SHIPS two; a user on a fast-follow
+  # The matrix is written for the full four-target set and SHIPS three; a user on a fast-follow
   # platform gets `collie update`'s honest "no artifact for your platform, build from source"
   # rather than a wrong binary. Uncomment a row to publish it.
   payload:
@@ -36,9 +36,9 @@ jobs:
           - platform: macos-arm64
             runs-on: macos-14
             bun-target: bun-darwin-arm64
-          # - platform: linux-arm64
-          #   runs-on: ubuntu-24.04-arm
-          #   bun-target: bun-linux-arm64
+          - platform: linux-arm64
+            runs-on: ubuntu-24.04-arm
+            bun-target: bun-linux-arm64
           # - platform: macos-x64
           #   runs-on: macos-13
           #   bun-target: bun-darwin-x64

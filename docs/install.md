@@ -78,7 +78,7 @@ cd ~/.local/share/collie
 git checkout --detach "$(git tag --list 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)"
 
 # 2. Build runtime and UI
-sh scripts/collie-ctl.sh build
+bash scripts/collie-ctl.sh build
 
 # 3. Verify
 bin/collie version
