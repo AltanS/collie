@@ -49,22 +49,37 @@ export function isComposerTop(text: string): boolean {
   return COMPOSER_TOP.test(rstrip(text));
 }
 
-// The composer's BOTTOM border, and the single most load-bearing literal in this adapter: omp writes
-// the LAST fragment of the draft INTO the bottom border, between a `╰─ ` opener and a ` ─╯` closer, so
-// the border carries a one-space gutter on each side that nothing else in the TUI has. Across the
-// whole 59-fixture corpus (38 claude + 21 omp) this shape occurs exactly ONCE per composer capture and
-// nowhere else: every other omp box — the welcome panel, a tool-result box, an Ask dialog, `/model`,
-// `/settings` — closes corner-to-corner with an unbroken rule (`╰────╯`) and no gutter. That is why
-// the composer gate can be lexical here where Claude's had to be positional.
+// OMP 17's classic composer writes the LAST fragment of the draft into a closed bottom border,
+// between a `╰─ ` opener and a ` ─╯` closer. OMP 18.1.2 can clip the right chrome entirely on a wide
+// pane and leave the same prompt row open-ended (`╰─ draft` or bare `╰─`). Both forms keep the
+// discriminator that other OMP boxes lack: after `╰─` comes either a one-space draft gutter or the
+// end of the row, never another rule glyph.
 const COMPOSER_BOTTOM = /^╰─ ([\s\S]*) ─╯$/;
-/** The opener `COMPOSER_BOTTOM` matches, whose length is where the row's inner span starts. */
+const OPEN_COMPOSER_BOTTOM = /^╰─(?: ([\s\S]*))?$/;
+/** Both supported composer rows share this opener; the draft span begins immediately after it. */
 const BOTTOM_OPEN = "╰─ ";
 
-/** The draft tail written into the composer's bottom border (UNTRIMMED — the caller decides), or null
- *  when the line is not that border. An empty composer yields `""`, which is a match, not a miss. */
+interface ParsedComposerBottom {
+  draft: string;
+  openEnded: boolean;
+}
+
+function parseComposerBottom(text: string): ParsedComposerBottom | null {
+  const stripped = rstrip(text);
+  const closed = COMPOSER_BOTTOM.exec(stripped);
+  if (closed !== null) return { draft: closed[1]!, openEnded: false };
+  const open = OPEN_COMPOSER_BOTTOM.exec(stripped);
+  return open === null ? null : { draft: open[1] ?? "", openEnded: true };
+}
+
+/** The draft tail written into either composer row (UNTRIMMED), or null for every other box bottom. */
 export function composerBottomText(text: string): string | null {
-  const m = COMPOSER_BOTTOM.exec(rstrip(text));
-  return m === null ? null : m[1]!;
+  return parseComposerBottom(text)?.draft ?? null;
+}
+
+/** Whether OMP clipped the row's right chrome — this shape has no separate top border to require. */
+export function isOpenComposerBottom(text: string): boolean {
+  return parseComposerBottom(text)?.openEnded === true;
 }
 
 // omp paints an INLINE COMPLETION SUGGESTION — a "ghost" — into the composer, after the operator's
@@ -114,7 +129,7 @@ export function composerBottomText(text: string): string | null {
 // failure the operator actually feels. The previous rule was WORSE here, not better: with an unstyled
 // draft it claimed the whole gradient (`ultrathink`), where this one claims `k`.
 export function composerGhost(line: StyledLine): string {
-  const inner = COMPOSER_BOTTOM.exec(rstrip(lineText(line)))?.[1];
+  const inner = parseComposerBottom(lineText(line))?.draft;
   if (inner === undefined || inner.length === 0) return "";
   const start = BOTTOM_OPEN.length;
   const end = start + inner.length;

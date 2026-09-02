@@ -25,6 +25,7 @@ import {
   composerGhost,
   isBlank,
   isComposerTop,
+  isOpenComposerBottom,
   lineText,
   opensBox,
   rstrip,
@@ -128,6 +129,9 @@ export interface ComposerBox {
  *     ╰─ <draft tail> ────╯      (a) the bottom border — the anchor everything else hangs off
  *     ❯ <palette row…>           (a) 0..MAX_SUGGESTION_ROWS non-blank, non-BOX rows, up to the tail
  *
+ * OMP 18.1.2 also emits a clipped two-row form: an arbitrary status row directly above an
+ * open-ended `╰─ <draft>` prompt. The prompt's missing right chrome is its anchor; other boxes close
+ * corner-to-corner, so they cannot enter that branch.
  * Every gate is a glyph predicate or an adjacency; none is a measurement. See the block above for why
  * the width equalities that used to co-sign (b) and (c) are gone and must stay gone.
  */
@@ -192,6 +196,7 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
     }
   }
   const suggestEnd = end + 1;
+  const openBottom = isOpenComposerBottom(texts[bottom]!);
 
   // (b) Continuation rows of a wrapped draft, walking up from the bottom border. The two-space gutter
   //     is the whole predicate, and it is not asked to carry the claim alone: the walk starts on a row
@@ -202,6 +207,14 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   let i = bottom - 1;
   while (i >= 0 && bottom - i <= MAX_DRAFT_ROWS && composerContText(texts[i]!) !== null) {
     i--;
+  }
+
+  // OMP 18.1.2's clipped shape has no `╭…╮` top border. Its open-ended `╰─ <draft>` row is the
+  // discriminator, and the non-blank row directly above the continuation run is the standalone
+  // statusline to re-surface. A miss here stays fail-closed for destructive pre-type work.
+  if (openBottom) {
+    if (i < 0 || isBlank(texts[i]!)) return null;
+    return { top: i, firstDraftRow: i + 1, bottom, suggestEnd };
   }
 
   // (c) The top border — the LAST anchor checked, which is what pays for `isComposerTop` being loose
@@ -357,19 +370,15 @@ export function extractInputDraft(lines: StyledLine[]): string | null {
  * Whether omp's free-text composer is on screen at the tail — i.e. whether typing a reply would land
  * in the input box at all, rather than in a modal that has the keyboard.
  *
- * This is the highest-leverage function in the adapter. Before it existed, `omp` had no adapter at
- * all, so `sendGuardedReply` took the legacy one-shot path: type AND submit in a single call. A user
- * replying from their phone while one of omp's modals held the keyboard therefore fired the submit
- * key at THAT modal — the text is swallowed and the key confirms whatever row the modal had
- * highlighted. A definite `false` here is what makes the reply pre-flight refuse before a byte is
- * typed, and all ELEVEN captures in this corpus with a modal on screen answer `false`
- * (chrome.test.ts) — six pickers and five Ask-tool screens. omp's tool-approval dialog is NOT among
- * them: it was never captured, so its answer here is inferred from those eleven, not measured.
+ * This is the highest-leverage function in the adapter. A definite `false` makes the reply pre-flight
+ * refuse before a byte is typed; a `true` also authorises the prompt-bound pre-clear sweep. Both the
+ * closed OMP 17 box and OMP 18.1.2's open-ended prompt row are therefore parsed above before this
+ * function answers.
  *
  * "On screen at the tail" is meant strictly, and step (a)'s box rule is what makes it true: a composer
  * border with one of omp's boxes painted UNDER it answers `false`, because whatever that box is has
- * the keyboard. Without that rule this would only have said "a composer border exists somewhere in the
- * last 64 rows", which a dialog stacked straight onto the composer satisfies.
+ * the keyboard. Without that rule this would only have said "a composer border exists somewhere in
+ * the last 64 rows", which a dialog stacked straight onto the composer satisfies.
  */
 export function hasComposer(lines: StyledLine[]): boolean {
   return locateComposer(lines) !== null;

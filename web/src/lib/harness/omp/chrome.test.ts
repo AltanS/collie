@@ -15,7 +15,7 @@ import {
 } from "./chrome";
 import { lineText } from "./markers";
 
-// omp's composer chrome. The whole adapter's Tier-1 value — and its safety half — is here: the box
+// omp's composer chrome. The whole adapter's Tier-1 value — and its safety half — is here: the shape
 // this scanner finds is the statusline, the stranded draft, AND the answer to "may a phone reply be
 // typed right now". A false "yes" types the user's message into whatever modal has the keyboard.
 
@@ -349,6 +349,31 @@ describe("locateComposer — Unicode anywhere in the box must never produce a nu
     // certain ASCII; every terminal that honours VS16 draws it at two columns.
     const buffer = lines(boxRowsPaddedLikeATerminal("1️⃣ deploy > master", "ship it").join("\n"));
     expect(locateComposer(buffer)).not.toBeNull();
+  });
+});
+
+describe("locateComposer — OMP 18.1.2's open-ended prompt row", () => {
+  it("locates the live two-row shape and re-surfaces its status and draft", () => {
+    const status = " idle  GPT-5.6-Sol ────────2%────────1M─";
+    const buffer = lines(["transcript", "", status, `╰─ draft-probe${" ".repeat(80)}`].join("\n"));
+
+    expect(locateComposer(buffer)).toEqual({
+      top: 2,
+      firstDraftRow: 3,
+      bottom: 3,
+      suggestEnd: 4,
+    });
+    expect(hasComposer(buffer)).toBe(true);
+    expect(extractInputDraft(buffer)).toBe("draft-probe");
+    expect(extractStatusLines(buffer).map(lineText)).toEqual([status]);
+    expect(composerPrompt(buffer)).toBe("╰─ draft-probe");
+    expect(stripChrome(buffer).map(lineText)).toEqual(["transcript"]);
+  });
+
+  it("recognises the same shape with an empty draft", () => {
+    const buffer = lines(["status", `╰─ ${" ".repeat(80)}`].join("\n"));
+    expect(hasComposer(buffer)).toBe(true);
+    expect(extractInputDraft(buffer)).toBeNull();
   });
 });
 
