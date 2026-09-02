@@ -2,14 +2,23 @@
 // official logo, paired with the brand's tile color. Sources (all verified against each project's
 // own favicon/site): Claude + Codex(OpenAI) via Simple Icons (CC0); pi via Simple Icons / pi.dev
 // favicon (#09090b tile); opencode via opencode.ai's site mark (#080808 tile, theme_color); agy
-// (Antigravity) via its Google-blue #1A73E8 tile, keyed under both "agy" and "antigravity".
+// (Antigravity) via its Google-blue #1A73E8 tile, keyed under both "agy" and "antigravity"; omp via
+// omp.sh/favicon.svg (#0f0a14 tile, and the one mark whose official paint is a gradient — `grad`).
 // To refresh: re-run the fetch in CHANGELOG and replace the `d` strings.
 
 export interface AgentBrand {
   /** Tile background — the agent's official brand color. */
   bg: string;
-  /** Mark color, chosen for contrast on `bg`. */
+  /** Mark color, chosen for contrast on `bg`. Ignored when `grad` is set — it is then the colour a
+   *  future flattening would take, which for omp is the gradient's mid stop. */
   fg: string;
+  /** Stops of the mark's own gradient, top-left → bottom-right, evenly spaced, for a brand whose
+   *  official mark IS a gradient (omp). Not a contrast device: flat `#9B4DFF` on omp's tile measures
+   *  4.56:1 and would read fine. It is fidelity — flattening ships a mark omp itself never paints.
+   *
+   *  Two stops minimum, by type: one stop (or none) is a gradient that paints nothing, and a mark
+   *  referencing it goes invisible on every surface at once. Absent is how a brand says "flat". */
+  grad?: readonly [string, string, ...string[]];
   /** "fill" for solid silhouettes, "stroke" for outlined marks (opencode). */
   mode: "fill" | "stroke";
   /** 24×24 path data. */
@@ -25,4 +34,17 @@ export const AGENT_BRANDS = new Map<string, AgentBrand>([
   ["opencode", { bg: "#080808", fg: "#FFFFFF", mode: "stroke", d: "M8.75 8.75V2.75H21.25V15.25H15.25M15.25 8.75H2.75V21.25H15.25V8.75Z" }],
   ["agy", { bg: "#1A73E8", fg: "#FFFFFF", mode: "fill", d: "M12 2L2 22h4.5l2-4.5h7l2 4.5H22L12 2zm0 6.5L14.2 14H9.8L12 8.5z" }],
   ["antigravity", { bg: "#1A73E8", fg: "#FFFFFF", mode: "fill", d: "M12 2L2 22h4.5l2-4.5h7l2 4.5H22L12 2zm0 6.5L14.2 14H9.8L12 8.5z" }],
+  // omp (oh-my-pi): the π from omp.sh/favicon.svg, its 64×64 mark rescaled ×0.6 and centred to fill
+  // 24×24 (the tile adds its own padding) — the same path, not a redrawing. Gradient stops are that
+  // favicon's, and match the TUI's own welcome mark.
+  [
+    "omp",
+    {
+      bg: "#0F0A14",
+      fg: "#9B4DFF",
+      mode: "fill",
+      grad: ["#ED4ABF", "#9B4DFF", "#5AD8E6"],
+      d: "M1.2 0h21.6v4.8h-6v19.2h-4.8V4.8H8.4v13.2H3.6V4.8H1.2z",
+    },
+  ],
 ]);
