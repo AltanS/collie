@@ -29,6 +29,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Fixed
 
+- oh-my-pi panes show omp's own π mark, painted with its official three-stop gradient, instead of the initials tile; the brand table now says every mark must be painted, thanks @enieuwy (#151)
 - The OMP adapter recognises the open-ended `╰─ <draft>` composer row and standalone status row that OMP 18.1.2 paints on a wide pane; the closed OMP 17 box and the corner-to-corner modal rule are unchanged, thanks @ImArtisann (#149, #150)
 - A notification tap on Android opens the deep-linked pane again when the Collie tab had been discarded; navigate before focus, and fall through to a new window when no tab survives. (#147)
 
