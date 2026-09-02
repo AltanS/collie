@@ -290,3 +290,32 @@ jobs:
             --title "Collie $GITHUB_REF_NAME" \
             --notes-file "${{ steps.notes.outputs.file }}" \
             "$RUNNER_TEMP"/assets/*
+
+  # ── Tell the website ───────────────────────────────────────────────────────
+  # colliepwa.dev quotes this repo's `docs/*.md`, and it quotes them at the latest PUBLISHED release
+  # rather than at `main`, because the site documents what a reader can install. This dispatch is
+  # what makes that immediate instead of up to a day late; the site polls daily as well, so a
+  # missed dispatch heals itself.
+  #
+  # IT CARRIES THE TAG FOR THE RECORD AND NOTHING ELSE READS IT. Which release the site documents is
+  # decided in one place, `resolveRef` in the site's sync-docs.ts, which takes the highest published
+  # non-prerelease semver. A tag passed as an instruction would be a second answer to that question.
+  #
+  # TERMINAL, WITH `needs: release`. The credential is a fine-grained PAT and those expire inside a
+  # year; when it does, this 401s. Nothing depends on this job, so the release is already published
+  # and downloadable by the time it runs. A marketing site not hearing about a release must never be
+  # able to fail one.
+  notify-website:
+    needs: release
+    runs-on: ubuntu-latest
+    # A prerelease does not move the site, because the site only ever quotes a released line. Same
+    # hyphen rule the release job above uses to set `--prerelease`, so the two cannot drift.
+    if: ${{ !contains(github.ref_name, '-') }}
+    steps:
+      - name: Ask colliepwa.dev to re-quote the docs
+        env:
+          GH_TOKEN: ${{ secrets.COLLIE_GITHUB_REPO_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY_OWNER}/collie-website/dispatches" \
+            -f event_type=collie-released \
+            -f "client_payload[tag]=$GITHUB_REF_NAME"
