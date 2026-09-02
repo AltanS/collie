@@ -33,11 +33,32 @@ describe("terminal mirror colour space", () => {
     expect(pre.className).not.toMatch(/\btext-foreground\b/);
   });
 
+  // The colour lives on the SEGMENT span, and a no-wrap line wraps its segments in a clipping
+  // inline-block span — so the query has to reach the leaf, not whatever element happens to contain
+  // the glyph first. A frame row is a no-wrap line (blocks.ts FRAME_ROW), which is how this stopped
+  // matching what it meant to match.
+  const leafSpan = (pre: HTMLElement, has: string) =>
+    [...pre.querySelectorAll("span")].find(
+      (s) => s.textContent?.includes(has) && s.querySelector("span") === null,
+    );
+
+  const MUTED_RULE_COLOUR = "rgb(161, 161, 161)"; // #a1a1a1, --muted-foreground's dark half
+
   it("keeps muted rule glyphs on a literal dark-space grey", () => {
-    const pre = mirror("├────────────┤\n");
-    const span = [...pre.querySelectorAll("span")].find((s) => s.textContent?.includes("─"));
+    const span = leafSpan(mirror("├────────────┤\n"), "─");
     expect(span).toBeDefined();
-    expect(span!.style.color).toBe("rgb(161, 161, 161)"); // #a1a1a1, --muted-foreground's dark half
+    expect(span!.style.color).toBe(MUTED_RULE_COLOUR);
+  });
+
+  // The frame row keeps BOTH properties at once: clipped to one visual line, and still painted the
+  // muted grey. The clipping wrapper must not swallow the segment styling on its way in.
+  it("renders a frame row on one clipped line without losing the muted colour", () => {
+    const pre = mirror("├────────────┤\n");
+    const clip = [...pre.querySelectorAll("span")].find((s) => s.className.includes("overflow-hidden"));
+
+    expect(clip).toBeDefined();
+    expect(clip!.className).toContain("whitespace-pre");
+    expect(leafSpan(pre, "─")!.style.color).toBe(MUTED_RULE_COLOUR);
   });
 
   it("emits palette variables for indexed colour so the 16 slots stay themeable", () => {
