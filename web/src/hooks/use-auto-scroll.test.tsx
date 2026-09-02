@@ -62,6 +62,15 @@ function GrowingHarness() {
   );
 }
 
+function ReportingHarness({ onAtBottomChange }: { onAtBottomChange: (b: boolean) => void }) {
+  const { scrollRef, onScroll } = useAutoScroll<HTMLDivElement>({ onAtBottomChange });
+  return (
+    <div ref={scrollRef} onScroll={onScroll} data-testid="scroll">
+      <div data-testid="content">body</div>
+    </div>
+  );
+}
+
 function fireResize(el: Element) {
   for (const o of observers.filter((x) => x.el === el)) {
     o.cb([], stubPart<ResizeObserver>({}));
@@ -143,5 +152,58 @@ describe("useAutoScroll — resize re-pin", () => {
     vi.stubGlobal("ResizeObserver", undefined);
     // Mounting must not throw when the observer is absent — the effect bails on the typeof guard.
     expect(() => render(<Harness />)).not.toThrow();
+  });
+});
+
+describe("useAutoScroll — resize-induced scroll is not a user scroll (#155)", () => {
+  beforeAll(() => {
+    if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
+  });
+  beforeEach(() => {
+    observers = [];
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps following when the soft keyboard / Keys dock shrinks the container", () => {
+    const onAtBottomChange = vi.fn();
+    const { getByTestId } = render(<ReportingHarness onAtBottomChange={onAtBottomChange} />);
+    const el = getByTestId("scroll");
+    el.scrollTo = vi.fn();
+
+    // Settled at the tail: 500 - 300 - 200 = 0px from the bottom.
+    setMetrics(el, { scrollHeight: 500, clientHeight: 200, scrollTop: 300 });
+    fireEvent.scroll(el);
+    expect(onAtBottomChange).toHaveBeenLastCalledWith(true);
+    onAtBottomChange.mockClear();
+
+    // The dock opens: the container loses 100px. scrollTop is already below the new maximum, so it
+    // is left at 300, but the bottom edge moved and the naive test now reads 500 - 300 - 100 =
+    // 100px from the bottom. Nobody scrolled.
+    setMetrics(el, { scrollHeight: 500, clientHeight: 100, scrollTop: 300 });
+    fireEvent.scroll(el);
+
+    expect(onAtBottomChange).not.toHaveBeenCalledWith(false);
+    // And the tail is put back under the new bottom edge.
+    expect(el.scrollTo).toHaveBeenCalledWith({ top: 500, behavior: "auto" });
+  });
+
+  it("still freezes for a genuine user scroll (container height unchanged)", () => {
+    const onAtBottomChange = vi.fn();
+    const { getByTestId } = render(<ReportingHarness onAtBottomChange={onAtBottomChange} />);
+    const el = getByTestId("scroll");
+    el.scrollTo = vi.fn();
+
+    setMetrics(el, { scrollHeight: 500, clientHeight: 200, scrollTop: 300 });
+    fireEvent.scroll(el);
+    onAtBottomChange.mockClear();
+
+    // Same height, dragged up into backscroll.
+    setMetrics(el, { scrollHeight: 500, clientHeight: 200, scrollTop: 0 });
+    fireEvent.scroll(el);
+
+    expect(onAtBottomChange).toHaveBeenLastCalledWith(false);
   });
 });
