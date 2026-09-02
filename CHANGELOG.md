@@ -2,9 +2,12 @@
 
 All notable changes to Collie are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project uses
-[Semantic Versioning](https://semver.org/). The newest `## [x.y.z]` heading **must** match the
-`version` in `herdr-plugin.toml`, `package.json`, and `web/package.json` (enforced by
-`scripts/check-version.sh`). See [`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
+[Semantic Versioning](https://semver.org/). Work that has landed but is not released yet is
+collected under `## [Unreleased]`; the release commit renames that heading to `## [x.y.z] -
+YYYY-MM-DD` and opens an empty one above it. The newest *numbered* `## [x.y.z]` heading, which the
+Unreleased heading is not, **must** match the `version` in `herdr-plugin.toml`, `package.json`,
+and `web/package.json` (enforced by `scripts/check-version.sh`). See
+[`CLAUDE.md`](./CLAUDE.md) → *Versioning* for the bump policy.
 
 ## Upgrading
 
@@ -19,6 +22,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 `herdr plugin action invoke update --plugin herdr.collie`, is enough.
 
 ## [Unreleased]
+
+### Fixed
+
+- A notification tap on Android opens the deep-linked pane again when the Collie tab had been discarded; navigate before focus, and fall through to a new window when no tab survives. (#147)
 
 ## [1.1.0] - 2026-09-01
 
