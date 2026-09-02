@@ -57,6 +57,12 @@ describe("composerBottomText", () => {
     expect(composerBottomText(row("omp--draft-wrapped.txt", 29))!.trim()).toBe("hand");
   });
 
+  it("reads OMP 18.1.2's open-ended prompt row", () => {
+    expect(composerBottomText("╰─ draft-probe   ")).toBe("draft-probe");
+    expect(composerBottomText("╰─   ")).toBe("");
+    expect(composerBottomText("╰────────╯")).toBeNull();
+  });
+
   it("rejects every other box bottom — the one-space gutter is the discriminator", () => {
     expect(composerBottomText(row("omp--menu-dismissed.txt", 20))).toBeNull(); // `╰───┴───╯`
     expect(composerBottomText(row("omp--select-menu.txt", 55))).toBeNull(); // Ask box `╰───╯`
@@ -81,6 +87,11 @@ describe("composerGhost — omp's inline completion suggestion", () => {
   it("claims it just the same when the draft carries a foreground of its own", () => {
     const borderRow = `${CORNER}╰─ ${DRAFT}list the files in this repo${SUGGEST}sitory\x1b[0m${PAD}${CORNER} ─╯\x1b[0m`;
     expect(composerGhost(splitLines(parseAnsi(borderRow))[0]!)).toBe("sitory");
+  });
+
+  it("claims the trailing suggestion from an open-ended OMP 18.1.2 prompt", () => {
+    const promptRow = `${CORNER}╰─ ${DRAFT}draft-probe${SUGGEST}s\x1b[0m${PAD}`;
+    expect(composerGhost(splitLines(parseAnsi(promptRow))[0]!)).toBe("s");
   });
 
   it("reads it off the real captures, and leaves the plain one alone", () => {
