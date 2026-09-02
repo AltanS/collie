@@ -1,0 +1,100 @@
+name: Triage
+
+# Two independent labelers.
+#   `paths`    — actions/labeler, pure glob matching, no model, no secret.
+#   `classify` — one OpenRouter call that reads the title, body and (for PRs) the changed file
+#                PATHS, and adds at most four labels.
+#
+# SAFETY — why pull_request_target is used, and why it is safe here.
+# `pull_request` from a fork gets a read-only token and no secrets, so neither job could label
+# anything. `pull_request_target` runs in the context of the BASE repo: write token, secrets
+# available. The price is that it must NEVER execute code from the fork. Both jobs honour that:
+#   - `paths` does not check out anything at all. actions/labeler reads the changed paths from
+#     the API.
+#   - `classify` runs actions/checkout with no `ref`. On pull_request_target GITHUB_SHA is the
+#     BASE ref, so that checks out the head of the base branch — main — not the PR head. The
+#     script that runs is always the reviewed one. It is never given the diff or file contents.
+# Do not add `ref: ${{ github.event.pull_request.head.sha }}` to either job.
+
+on:
+  issues:
+    types: [opened]
+  pull_request_target:
+    # Path labels track the branch, so they re-run on every push. The model runs once per PR
+    # (see the `classify` job's `if`) to bound spend.
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      number:
+        description: "Issue or PR number to re-triage"
+        required: true
+        type: string
+
+# One run at a time per item, and NEVER cancel the one in flight. `opened` is the only event
+# that reaches the `classify` job, so a `synchronize` push arriving seconds later must queue
+# behind it rather than kill it — otherwise a fast follow-up push costs the PR its LLM labels.
+# A run finishes in under a minute, so queueing is cheap.
+concurrency:
+  group: triage-${{ github.event.issue.number || github.event.pull_request.number || inputs.number }}
+  cancel-in-progress: false
+
+jobs:
+  paths:
+    name: path labels
+    # PRs only — actions/labeler has no meaning for an issue.
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      # No checkout on purpose: labeler reads .github/labeler.yml from the base repo through the
+      # API. Nothing from the fork is fetched or run.
+      - uses: actions/labeler@v7
+        with:
+          configuration-path: .github/labeler.yml
+          # Never take a label away. A maintainer's manual label outranks a glob.
+          sync-labels: false
+
+  classify:
+    name: llm labels
+    # Issues on open, PRs on open only, plus manual re-runs. `synchronize` deliberately does not
+    # reach the model.
+    if: >-
+      github.event_name == 'issues' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && github.event.action == 'opened')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      # No `ref:` — on pull_request_target GITHUB_SHA is the base ref, so this checks out the
+      # head of the base branch, not the fork head. The script below is the reviewed one.
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Classify and label
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          # Empty on the issues/pull_request_target events; the script then reads the number out
+          # of GITHUB_EVENT_PATH.
+          ITEM_NUMBER: ${{ inputs.number }}
+        run: node .github/scripts/triage.mjs
+
+      # The run stays RED when the step above fails — no continue-on-error. This only makes the
+      # failure visible on the item itself, so nothing falls silently through the cracks.
+      - name: Fall back to manual triage
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number || github.event.pull_request.number || inputs.number }}
+        run: |
+          gh api "repos/${{ github.repository }}/issues/${NUMBER}/labels" \
+            -X POST -f "labels[]=needs triage"

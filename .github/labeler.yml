@@ -1,0 +1,109 @@
+# Path-based labels for pull requests. Consumed by actions/labeler in .github/workflows/triage.yml.
+#
+# Rules:
+#   - Areas overlap on purpose. A PR that touches bridge/pack/ gets BOTH `area: bridge` and
+#     `area: pack`; the narrow label is added, not substituted.
+#   - `sync-labels` is off in the workflow, so nothing here ever REMOVES a label a human added.
+#   - Labels not listed here (`area: security`, `bug`, `regression`, triage verdicts like
+#     `duplicate` or `wontfix`) are cross-cutting or judgment calls. They are left to the LLM
+#     classifier or to a maintainer.
+
+"area: bridge":
+  - changed-files:
+      - any-glob-to-any-file:
+          - bridge/**
+          - ARCHITECTURE.md
+          - HERDR_API.md
+          - MUX_CONTRACT.md
+          - MUX_CONTRIBUTING.md
+
+# Harness adapters are per-agent dialog grammars. They live in the WEB bundle, not the bridge
+# (web/src/lib/harness/), and are developed against the byte-faithful pane fixture corpus.
+"area: harness":
+  - changed-files:
+      - any-glob-to-any-file:
+          - web/src/lib/harness/**
+          - web/src/fixtures/panes/**
+          - web/src/fixtures/prompt-binding-regions.json
+          - bridge/prompt-binding.ts
+          - bridge/prompt-binding.test.ts
+          - HARNESS_CONTRIBUTING.md
+
+"area: web":
+  - changed-files:
+      - any-glob-to-any-file:
+          - web/**
+          - DESIGN.md
+
+"area: journal":
+  - changed-files:
+      - any-glob-to-any-file:
+          - bridge/journal/**
+          - bridge/beacon-journal.test.ts
+          - web/src/lib/journal-agents.ts
+          - scripts/journal-probe.ts
+          - scripts/journal-probe.test.ts
+
+"area: pack":
+  - changed-files:
+      - any-glob-to-any-file:
+          - bridge/pack/**
+          - cli/pack*.ts
+          - web/src/routes/pack.tsx
+          - web/src/routes/pack.test.tsx
+          - web/src/components/pack-*
+          - scripts/check-pack-wire.sh
+          - PACK_PROTOCOL.md
+          - PACK_DEPUTY_RFC.md
+          - docs/pack.md
+
+"area: notifications":
+  - changed-files:
+      - any-glob-to-any-file:
+          - bridge/push.ts
+          - bridge/push.test.ts
+          - bridge/notifications.ts
+          - bridge/notifications.test.ts
+          - bridge/notify-prefs.ts
+          - bridge/notify-prefs.test.ts
+          - bridge/snooze.ts
+          - bridge/snooze.test.ts
+          - bridge/pack/notify.ts
+          - bridge/pack/notify.test.ts
+          - cli/push*.ts
+          - scripts/push-test.ts
+          - web/src/lib/push*.ts
+          - web/src/hooks/use-push.ts
+          - web/src/hooks/use-notify-prefs.ts
+          - web/src/components/notify-prefs-control*
+          - web/src/components/snooze-control*
+          - web/src/sw.ts
+          - docs/voice-and-push.md
+
+# `bin/collie` verbs, the Herdr plugin lifecycle, update and the systemd unit — everything that
+# gets Collie onto a host and keeps it there.
+"area: install":
+  - changed-files:
+      - any-glob-to-any-file:
+          - bin/**
+          - cli/**
+          - scripts/**
+          - systemd/**
+          - herdr-plugin.toml
+          - docs/install.md
+          - docs/upgrading.md
+          - docs/deployment.md
+          - docs/configure.md
+
+"platform: windows":
+  - changed-files:
+      - any-glob-to-any-file:
+          - contrib/windows/**
+
+# Narrow on purpose. `**/*.md` would tag every PR that grazes CHANGELOG.md, and the top-level
+# design docs (ARCHITECTURE, DESIGN, PACK_PROTOCOL, …) already carry their own `area:` label.
+documentation:
+  - changed-files:
+      - any-glob-to-any-file:
+          - docs/**
+          - README.md
