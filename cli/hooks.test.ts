@@ -350,7 +350,7 @@ describe("install", () => {
       const d = deps();
       expect(cmdHooksInstall(d, args)).toBe(EXIT.USAGE);
       expect(d.files.entries.size).toBe(0);
-      expect(d.io.stderr.join("\n")).toContain("collie hooks install {claude}");
+      expect(d.io.stderr.join("\n")).toContain("collie hooks install {claude|omp}");
     }
   });
 });
@@ -477,5 +477,52 @@ describe("status --check", () => {
   test("does not answer `behind` for a file it cannot read — that is doctor's business", () => {
     const d = deps({ files: { [SETTINGS]: "{ not json" } });
     expect(cmdHooksStatus(d, ["--check"])).toBe(EXIT.OK);
+  });
+});
+
+
+describe("omp slash catalog", () => {
+  const EXT = `${HOME}/.omp/agent/extensions/collie-slash-catalog.ts`;
+
+  test("install writes a marked extension and is a no-op the second time", () => {
+    const d = deps();
+    expect(cmdHooksInstall(d, ["omp"])).toBe(EXIT.OK);
+    const first = d.files.entries.get(EXT)?.text ?? "";
+    expect(first.startsWith("// # collie-slash-catalog v1")).toBe(true);
+    expect(first).toContain("export default function collieSlashCatalog");
+    const ops = d.files.ops.length;
+    expect(cmdHooksInstall(d, ["omp"])).toBe(EXIT.OK);
+    expect(d.files.ops.length).toBe(ops);
+    expect(d.io.stdout.join("\n")).toContain("already has it");
+  });
+
+  test("refuses to overwrite an unmarked file", () => {
+    const d = deps({ files: { [EXT]: "// my own extension\n" } });
+    expect(cmdHooksInstall(d, ["omp"])).toBe(EXIT.FAIL);
+    expect(d.files.entries.get(EXT)?.text).toBe("// my own extension\n");
+  });
+
+  test("uninstall removes only a marked file", () => {
+    const d = deps();
+    cmdHooksInstall(d, ["omp"]);
+    expect(cmdHooksUninstall(d, ["omp"])).toBe(EXIT.OK);
+    expect(d.files.entries.has(EXT)).toBe(false);
+  });
+
+  test("status reports the extension path", () => {
+    const d = deps();
+    expect(cmdHooksStatus(d)).toBe(EXIT.OK);
+    expect(d.io.stdout.join("\n")).toContain(`${EXT}: not installed`);
+    cmdHooksInstall(d, ["omp"]);
+    d.io.stdout.length = 0;
+    cmdHooksStatus(d);
+    expect(d.io.stdout.join("\n")).toContain(`${EXT}: installed (v1)`);
+  });
+
+  test("--check is behind for a stale marker, quiet when absent", () => {
+    const stale = "// # collie-slash-catalog v0\nexport default function x() {}\n";
+    const behind = deps({ files: { [EXT]: stale } });
+    expect(cmdHooksStatus(behind, ["--check"])).toBe(EXIT.STATE);
+    expect(cmdHooksStatus(deps(), ["--check"])).toBe(EXIT.OK);
   });
 });

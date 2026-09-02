@@ -383,12 +383,12 @@ export const COMMANDS: readonly Command[] = [
     subcommands: [
       {
         name: "install",
-        summary: "register the beacon hooks: `hooks install claude`",
+        summary: "register agent hooks: `hooks install claude|omp`",
         run: (args, s) => cmdHooksInstall(hooksDeps(s.io), args),
       },
       {
         name: "uninstall",
-        summary: "remove only the entries collie owns: `hooks uninstall claude`",
+        summary: "remove only what collie owns: `hooks uninstall claude|omp`",
         run: (args, s) => cmdHooksUninstall(hooksDeps(s.io), args),
       },
       {
