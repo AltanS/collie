@@ -3,7 +3,10 @@
 #
 # A) Versioning guard — override with: SKIP_VERSION_CHECK=1 git commit …
 #    1) versions must be consistent (check-version.sh)
-#    2) if functional code changed, the canonical version must differ from HEAD (i.e. you bumped it)
+#    2) if functional code changed and the canonical version did NOT move, the commit must add at
+#       least one bullet under `## [Unreleased]` in CHANGELOG.md (the ordinary functional commit)
+#    3) if the canonical version DID move, it must move forward, and `## [Unreleased]` must be
+#       empty — the release commit folds those lines under the new `## [x.y.z]` heading
 #
 # B) Lint guard — override with: SKIP_LINT_CHECK=1 git commit …
 #    oxlint over the STAGED lintable files only. This is a convenience, not the authority: the
@@ -28,28 +31,58 @@ else
   # (1) consistency
   "$ROOT/scripts/check-version.sh" >/dev/null
 
-  # (2) bump-on-change — any functional path in this set requires a version bump.
+  # (2)/(3) changelog-on-change — any functional path in this set must land a CHANGELOG line.
   if echo "$staged" | grep -qE '^(bridge/|cli/|web/src/|web/public/|web/vite\.config\.ts|web/index\.html|web/package\.json|scripts/|systemd/|package\.json|herdr-plugin\.toml)'; then
     read_ver() { sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
     cur="$(read_ver < "$ROOT/herdr-plugin.toml")"
     prev="$(git show HEAD:herdr-plugin.toml 2>/dev/null | read_ver || true)"
+
+    # Bullets under `## [Unreleased]` in the CHANGELOG on stdin. The section runs from that heading
+    # to the next `## ` heading. Portable awk + grep only — this hook also runs on macOS.
+    unreleased_bullets() {
+      awk '/^## \[Unreleased\]/{p=1;next} /^## /{p=0} p' \
+        | grep -cE '^[[:space:]]*-[[:space:]]' || true
+    }
+
     if [ -n "${prev:-}" ]; then
       if [ "$cur" = "$prev" ]; then
-        cat >&2 <<EOF
-✗ pre-commit: functional code changed but the version is still $cur.
-  Bump version in herdr-plugin.toml, package.json, web/package.json and add a CHANGELOG entry.
-  (Doc-only changes don't need a bump. Override once with SKIP_VERSION_CHECK=1 git commit.)
+        # Ordinary functional commit: no bump, but the staged CHANGELOG must have grown a bullet
+        # under `## [Unreleased]` compared with HEAD's.
+        now=0; before=0
+        if echo "$staged" | grep -qx 'CHANGELOG.md'; then
+          now="$(git show :CHANGELOG.md | unreleased_bullets)"
+          before="$(git show HEAD:CHANGELOG.md 2>/dev/null | unreleased_bullets)"
+        fi
+        if [ "$now" -le "$before" ]; then
+          cat >&2 <<EOF
+✗ pre-commit: functional code changed but nothing was recorded.
+  Add one line under \`## [Unreleased]\` in CHANGELOG.md, in the same commit
+  (### Added / ### Changed / ### Fixed; end with (#issue) where one exists, no commit hash),
+  or bump the version in herdr-plugin.toml, package.json and web/package.json for a release commit.
+  (Doc-only changes need neither. Override once with SKIP_VERSION_CHECK=1 git commit.)
 EOF
-        exit 1
-      fi
-      # Monotonicity: the new version must sort STRICTLY ABOVE the previous one — no downgrades or
-      # typo'd versions. `sort -V` orders semver; the higher of {prev,cur} must be cur.
-      higher="$(printf '%s\n%s\n' "$prev" "$cur" | sort -V | tail -1)"
-      if [ "$higher" != "$cur" ]; then
-        cat >&2 <<EOF
+          exit 1
+        fi
+      else
+        # Monotonicity: the new version must sort STRICTLY ABOVE the previous one — no downgrades or
+        # typo'd versions. `sort -V` orders semver; the higher of {prev,cur} must be cur.
+        higher="$(printf '%s\n%s\n' "$prev" "$cur" | sort -V | tail -1)"
+        if [ "$higher" != "$cur" ]; then
+          cat >&2 <<EOF
 ✗ pre-commit: version went backwards ($prev → $cur). The new version must be greater than the last.
 EOF
-        exit 1
+          exit 1
+        fi
+        # Release commit: the Unreleased section must have been emptied into the new heading.
+        left="$(git show :CHANGELOG.md | unreleased_bullets)"
+        if [ "$left" -ne 0 ]; then
+          cat >&2 <<EOF
+✗ pre-commit: release commit but \`## [Unreleased]\` is not empty ($left line(s) left).
+  Move its lines under the new \`## [x.y.z] - YYYY-MM-DD\` heading and leave an empty
+  \`## [Unreleased]\` above it. (Override once with SKIP_VERSION_CHECK=1 git commit.)
+EOF
+          exit 1
+        fi
       fi
     fi
   fi

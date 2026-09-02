@@ -29,13 +29,24 @@ Collie is **SemVer**ed, and the version is **enforced**, so it never silently dr
 
 **The version lives in three files that must always agree, plus a matching CHANGELOG entry:**
 `herdr-plugin.toml` (canonical — Herdr reads it) · `package.json` · `web/package.json` ·
-newest `## [x.y.z]` heading in `CHANGELOG.md`.
+newest *numbered* `## [x.y.z]` heading in `CHANGELOG.md`. `## [Unreleased]` is not numbered and is
+not part of that agreement.
 
-**Before committing any functional change** (anything under `bridge/`, `web/src/`, `scripts/`, or the
-manifest) you MUST:
+**Two kinds of commit. A functional commit records; only the release commit bumps.** Never bump a
+version because you fixed something; the version moves once, when the release is cut.
 
-1. **Bump** the version in all three files to the same number. The axis is **what the operator has
-   to do**, not how visible the change is:
+**Before committing any functional change** (anything under `bridge/`, `cli/`, `web/src/`,
+`web/public/`, `scripts/`, `systemd/`, or the manifest / package files) you MUST, **in the same
+commit**, add **one line** to `CHANGELOG.md` under `## [Unreleased]`, beneath `### Added`,
+`### Changed` or `### Fixed` — create the sub-heading if it isn't there yet. **Style: super crisp
+and short** — one line per change, no prose paragraphs. End the line with the issue or PR it
+answers where one exists (`… (#147)`), and with **no commit hash**: the hash doesn't exist yet, and
+the release commit adds it. Do not touch the three version files.
+
+**Cutting a release is one `chore(release): x.y.z` commit** that does all of this and nothing else:
+
+1. **Pick the axis** from the *sum* of the Unreleased entries — what the operator has to do, not how
+   visible any one change is:
    - **PATCH** (`0.2.0 → 0.2.1`): the code now does what it was always meant to do — bug fixes and
      internal refactors. A fix may well change what you see; that alone never promotes it. When the
      correction is big enough that someone should read the notes, say so loudly in the CHANGELOG
@@ -44,36 +55,43 @@ manifest) you MUST:
      surface, or action. Existing setups keep working untouched.
    - **MAJOR** (`0.2.0 → 1.0.0`): the operator must change something — a config key renamed or
      removed, a contract broken, a workflow that used to work and now doesn't.
-2. **Add a `CHANGELOG.md` entry** under a new `## [x.y.z] - YYYY-MM-DD` heading (Added / Changed /
-   Fixed). Use the real date. **Style: super crisp and short** — one line per change, no prose
-   paragraphs, and cite the feature's short commit hash at the end of the line (`… (abc1234)`).
-   Land features as their own commits first, then cut the release commit so the entry can cite them.
-3. **Run `scripts/check-version.sh`** — it must print `✓`.
+2. **Bump** all three version files to that number.
+3. **Rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`**, real date, and **append each line's
+   short commit hash** in the file's link style —
+   `([abc1234](https://github.com/AltanS/collie/commit/abc1234))`. Tidy while you're there: merge or
+   reorder lines that grew untidy, and delete lines for changes that were reverted before the
+   release ever shipped.
+4. **Re-create an empty `## [Unreleased]` heading above it.**
+5. **Run `scripts/check-version.sh`** — it must print `✓`. Then tag and push (next paragraph).
 
 **A PR from a fork is the exception: leave all four files alone.** Bump nothing, add no CHANGELOG
-entry — send the functional commits only. The version is the maintainer's to pick, because it depends
+line — send the functional commits only. The version is the maintainer's to pick, because it depends
 on what else lands in the same release and on which axis the *sum* of those changes sits; a bump
 guessed at PR time collides with the `chore(release):` commit that actually cuts the release, and two
 PRs both guessing `0.26.1` conflict with each other. `scripts/check-version.sh` stays green either
 way — all four files simply keep the version they already agree on. The pre-commit hook may object
 locally; `SKIP_VERSION_CHECK=1 git commit …` is the intended escape hatch here. If you'd like a
-CHANGELOG line in your words, put it in the PR description and it'll be used. (Maintainer side: when
-a fork PR does carry a release commit, cherry-pick the functional commits with `-x` and drop that one
-— authorship is preserved and `main` stays unreleased until you cut it.)
+CHANGELOG line in your words, put it in the PR description and it'll be used. (Maintainer side: the
+Unreleased line is yours to write on merge — cherry-pick the functional commits with `-x`, then add
+the line in a follow-up `docs(changelog):` commit or by amending the merge. When a fork PR does carry
+a release commit, drop that one — authorship is preserved and `main` stays unreleased until you cut
+it.)
 
-Doc-only changes (`*.md`) don't need a bump. This is enforced two ways, but **you are the first
-line — do it as part of the change, not after**:
+Doc-only changes (`*.md`) need neither a bump nor a CHANGELOG line. This is enforced two ways, but
+**you are the first line — do it as part of the change, not after**:
 
 - `scripts/check-version.sh` runs inside `collie build` (a release can't build while versions
   disagree).
 - A **git pre-commit hook** (`scripts/git-hooks/pre-commit`, activate once with
-  `scripts/install-hooks.sh`) blocks commits where functional code changed but the version didn't.
-  Escape hatch for a single commit: `SKIP_VERSION_CHECK=1 git commit …` (every `SKIP_*` hatch is
-  listed under *Linting* below).
+  `scripts/install-hooks.sh`) blocks a functional commit that neither adds a line under
+  `## [Unreleased]` nor bumps the version, and blocks a release commit (version bumped) whose
+  `## [Unreleased]` section still has lines in it. Escape hatch for a single commit:
+  `SKIP_VERSION_CHECK=1 git commit …` (every `SKIP_*` hatch is listed under *Linting* below).
 
 **Publish every release you cut — tag it when you push it.** Cutting a release means the three
-version files + the newest `CHANGELOG.md` heading agree on `x.y.z` (steps 1–3). A cut version that
-never gets a tag is not a release at all: `.github/workflows/release.yml` triggers on
+version files + the newest numbered `CHANGELOG.md` heading agree on `x.y.z`, and `## [Unreleased]`
+is empty again (the release recipe above). A cut version that never gets a tag is not a release at
+all: `.github/workflows/release.yml` triggers on
 `push: tags: ["v*.*.*"]` and nothing else creates the GitHub Release the in-app update banner links
 to, so an untagged version exists only as a CHANGELOG heading and nobody can install it. So when
 that release lands and you push, **always push a matching annotated git tag with it** —

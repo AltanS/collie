@@ -5,7 +5,10 @@
 #   - herdr-plugin.toml   (canonical — this is what Herdr reads)
 #   - package.json        (bridge / Bun server)
 #   - web/package.json    (PWA frontend)
-#   - CHANGELOG.md        (newest "## [x.y.z]" heading)
+#   - CHANGELOG.md        (newest NUMBERED "## [x.y.z]" heading)
+#
+# "## [Unreleased]" is not a numbered heading and is ignored here: unreleased work collects under
+# it and only the release commit renames it to "## [x.y.z] - YYYY-MM-DD".
 #
 # Exits non-zero with a clear message on any mismatch. Run by `collie-ctl.sh build` and the
 # pre-commit hook. See CLAUDE.md → "Versioning" for the policy.
