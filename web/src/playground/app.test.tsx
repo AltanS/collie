@@ -38,12 +38,16 @@ describe("the states playground", () => {
       // Proves the page actually finished mounting its async routers, not just that render()
       // returned. The page mounts ~20 independent `createMemoryRouter`s (one per card), each on its
       // own microtask chain — under a loaded test runner (the full suite, not this file alone) that
-      // can take a couple of seconds, so the wait is generous on purpose. "Pane actions" is
+      // can take a couple of seconds, so the wait is generous on purpose — and it grew by half when
+      // the Dashboard section gained the live-snapshot row card (playground/dashboard-card.tsx),
+      // which mounts one more router and 22 more real AgentCards. Measured: this file ALONE settles
+      // in ~6s; in the full suite it timed out once in three runs at the old 8s/20s, so the numbers
+      // are a budget for a loaded machine, not a claim about the page. "Pane actions" is
       // `AgentChat`'s own right-cluster button, portalled through `RouteHeader` into
       // `AppHeaderHost`'s right host; waiting on it is itself a positive assertion that the host is
       // really there, for the router kind (`PaneRouter`/`PaneStackRouter`) this regression broke.
-      await screen.findAllByRole("button", { name: "Pane actions" }, { timeout: 8000 });
-      await screen.findAllByRole("heading", { name: "Settings" }, { timeout: 8000 });
+      await screen.findAllByRole("button", { name: "Pane actions" }, { timeout: 12_000 });
+      await screen.findAllByRole("heading", { name: "Settings" }, { timeout: 12_000 });
 
       expect(screen.queryByText(/unexpected application error/i)).not.toBeInTheDocument();
       expect(screen.queryByText(/must be rendered inside/i)).not.toBeInTheDocument();
@@ -56,6 +60,6 @@ describe("the states playground", () => {
       expect(screen.getAllByRole("heading", { name: "Settings" }).length).toBeGreaterThan(0);
       expect(screen.getAllByRole("button", { name: "Pane actions" }).length).toBeGreaterThan(0);
     },
-    20_000,
+    30_000,
   );
 });

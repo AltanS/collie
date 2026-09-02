@@ -116,6 +116,7 @@ import {
   useFace,
   type FaceId,
 } from "./prefs";
+import { DashboardRowsCard } from "./dashboard-card";
 import { TypefaceCard } from "./typeface-card";
 
 const SECTIONS = [
@@ -452,6 +453,10 @@ function IdleSection() {
 function DashboardSection() {
   return (
     <Section def={SECTIONS[3]}>
+      {/* First, deliberately: the row is the unit every other card on this page is made of, and it
+          is the only card here drawn from a real snapshot rather than a designed herd. */}
+      <DashboardRowsCard />
+
       <Card
         label="agent list — a working herd, all four sections"
         reach="the dashboard on a busy day. The order is the one the whole app agrees on: Needs you → Ready · unseen → Working → Recent."

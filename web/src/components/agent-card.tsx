@@ -9,6 +9,7 @@ import { SessionChip } from "@/components/session-chip";
 import { PaneHint } from "@/components/pane-hint";
 import { timeAgoShort } from "@/lib/format";
 import { paneParts, paneTitleInTab } from "@/lib/pane-name";
+import type { PaneParts } from "@/lib/pane-name";
 import { statusLabel } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
@@ -23,9 +24,9 @@ interface AgentCardProps {
    */
   age?: "seen" | "active";
   /**
-   * Where the row is being shown. "herd" (default) is a flat list across every space, so the title
-   * carries `project · tab`. "tab" is a list already grouped under its space and tab — repeating
-   * them would say nothing, so the pane's own name leads instead.
+   * Where the row is being shown. "herd" (default) is a flat list across every space, so line 1
+   * carries the pane's own title and line 2 the address it sits at. "tab" is a list already grouped
+   * under its space and tab, so line 2 is the path alone.
    */
   scope?: "herd" | "tab";
   /**
@@ -46,6 +47,28 @@ interface AgentCardProps {
   density?: "card" | "row";
 }
 
+/** The row's text: line 1's name, and line 2's two runs. */
+interface RowLines {
+  primary: string;
+  /** Line 2's first run — the space, in a herd row. Null when there is none. */
+  detailLead: string | null;
+  /** Line 2's second run, which takes the remaining width — the tab, in a herd row. */
+  detailTail: string | null;
+  /** The tail is a path (mono, data) rather than a tab or a space (app face). */
+  tailMono: boolean;
+}
+
+/** Which fact lands on which line, for a herd-scoped row. The pane's own name takes line 1, and
+ *  line 2 becomes the address it sits at. Each fallback drops the fact it just promoted, so nothing
+ *  is ever said twice, and a row with nothing but a space is one line. */
+function herdLines(parts: PaneParts): RowLines {
+  if (parts.secondary !== null)
+    return { primary: parts.secondary, detailLead: parts.project, detailTail: parts.tab, tailMono: false };
+  if (parts.tab !== null)
+    return { primary: parts.tab, detailLead: parts.project, detailTail: null, tailMono: false };
+  return { primary: parts.project, detailLead: null, detailTail: null, tailMono: false };
+}
+
 /** The row's age, in the trailing slot of whichever line it sits on. Not mono — it's a footnote,
  *  not data; mono made it read like the path it replaced. */
 function Age({ at }: { at: number }) {
@@ -55,10 +78,23 @@ function Age({ at }: { at: number }) {
 // A pane row, used by the triage home and the space view. Usually an agent; for a bare shell pane
 // (kind:"shell") it shows a terminal glyph and a muted "shell" tag instead of a status badge.
 //
-// The title is `project · tab` — NOT the agent name, which every row would otherwise share. The two
-// parts render as separate spans on purpose: eight panes in one project all start `moonward_os · `,
-// so truncating the joined string would eat the tab and leave every row identical. The project
-// gives up width first; the tab, the only discriminator, survives.
+// ── THE ROW LEADS WITH THE PANE TITLE, AND THE ADDRESS SITS BENEATH ───────────
+// Line 1 is the pane's own TITLE, in the row's one bold run, taking the whole width. Line 2 is
+// `space · tab`, muted and small. The title is the only fact on the row that is unique to it: the
+// space repeats across every one of an eight-pane project's rows, and the tab name repeats across
+// projects. So the title gets the weight and the width, and the address goes beneath it as context —
+// you read what the work is, then where it lives.
+//
+// The tile shrank with the same argument. At `size-9` it was a 36px column on every row of a list
+// where every row is the same agent, so it carried no information and pushed both lines 44px right.
+// At `size-4` it rides inline on line 1 as a mark beside the title, and the row's text starts
+// where the row starts. That is the SAME size and the same shell tile the pane header wears
+// (`agent-chat.tsx`), which is the other place the agent's mark stands beside a name — one size for
+// one role, so the two surfaces cannot drift apart.
+//
+// The two parts of line 2 render as separate spans on purpose: at 390px a joined string truncates
+// from the right, which would eat the tab and leave every row of a project reading the same nine
+// characters of its space. The space gives up width first and the tab takes what is left.
 export function AgentCard({
   agent,
   onClick,
@@ -75,9 +111,18 @@ export function AgentCard({
   const parts = paneParts(agent);
   const tabTitle = paneTitleInTab(agent);
   const stamp = age === "seen" ? agent.lastSeenAt : age === "active" ? agent.lastActiveAt : undefined;
-  const secondary = inTab ? tabTitle.secondary : parts.secondary;
-  // The dot rides the avatar's corner rather than the far right: at the right edge the eye read a
-  // title, then crossed 200px of empty card to a 10px mark describing it.
+  // Line 1's name, and line 2's two runs. In a tab-scoped list the space and the tab are already
+  // established by the heading above, so line 2 is the path alone.
+  const lines: RowLines = inTab
+    ? { primary: tabTitle.primary, detailLead: null, detailTail: tabTitle.secondary, tailMono: true }
+    : herdLines(parts);
+  const { primary, detailLead, detailTail } = lines;
+  // The dot leads line 1, INLINE, ahead of the tile — not on the tile's corner. The corner was
+  // right at `size-9`: a 10px badge on a 36px tile is a badge. On a 16px tile it is most of the
+  // artwork, and shrinking it to fit kills the one glance cue the row has — the resting states are
+  // hollow rings drawn with a 1.5px border, which at 8px is nearly a solid disc and stops telling
+  // idle from working. Inline it keeps full size, still sits against its subject, and a list of rows
+  // lines its dots up in one column at the left edge, which is how the list is actually scanned.
   const cornerDot = statusStyle === "dot" && !isShell;
 
   const Shell = flat ? "div" : Card;
@@ -117,67 +162,53 @@ export function AgentCard({
               : "border-status-blocked/40 bg-status-blocked/5"),
         )}
       >
-        <div className="relative shrink-0">
-          {/* An avatar is a FRAME around someone else's artwork, not a shape that means something, so
-              the whole family — this shell tile, the same tile in `agent-chat.tsx`, and the branded
-              `AgentIcon` beside it — is framed at the house radius. A circle would crop the artwork,
-              which is why `agent-icon.tsx` carried its own 22% radius before this; one slot may not
-              hold two shapes for one role. Full-round stays RESERVED for things that are a circle in
-              meaning: status dots (the corner dot just below), the switch thumb, round icon buttons.
-              Don't "fix" one of the three back to `rounded-full`. */}
-          {isShell ? (
-            <div className="flex size-9 items-center justify-center rounded-md border bg-muted">
-              <TerminalSquare className="size-4 text-muted-foreground" />
-            </div>
-          ) : (
-            <AgentIcon agent={agent.agent} className="size-9" />
-          )}
-          {cornerDot && (
-            <StatusDot
-              status={agent.status}
-              // Filled and ringed in the surface it actually sits on — a card is white, a flat row
-              // is the page. Get this wrong and a hollow ring reads as a notch in the logo.
-              surface={flat ? "bg-background" : "bg-card"}
-              className={cn(
-                "absolute -bottom-0.5 -right-0.5 rounded-full ring-2",
-                flat ? "ring-background" : "ring-card",
-              )}
-            />
-          )}
-        </div>
-
         <div className="min-w-0 flex-1">
-          {inTab ? (
-            <div className="truncate font-medium">{tabTitle.primary}</div>
-          ) : (
-            <div className="flex min-w-0 items-baseline gap-1">
-              {/* With a tab present the project yields width first (capped, truncatable) and the
-                  tab — the discriminator — takes the rest. With NO tab the project IS the name, so
-                  it takes the width itself; leaving the fill on the tab span meant an unlabelled
-                  row had no filler at all and its age butted against the name, reading as part of
-                  it ("comm_cli 37m"). */}
-              <span
-                className={cn(
-                  "truncate text-muted-foreground",
-                  parts.tab ? "max-w-[45%] shrink" : "min-w-0 flex-1",
-                )}
-              >
-                {parts.project}
-              </span>
-              {parts.tab && (
-                <>
-                  <span className="shrink-0 text-muted-foreground/60" aria-hidden>
-                    ·
-                  </span>
-                  <span className="min-w-0 flex-1 truncate font-medium">{parts.tab}</span>
-                </>
+          <div data-slot="agent-row-title" className="flex min-w-0 items-center gap-2">
+            {cornerDot && (
+              <StatusDot
+                status={agent.status}
+                // A hollow resting ring must be filled with the colour it actually sits on — a card
+                // is `--card`, a flat row is the page.
+                surface={flat ? "bg-background" : "bg-card"}
+              />
+            )}
+            {/* An avatar is a FRAME around someone else's artwork, not a shape that means
+                something, so this tile, the shell tile beside it and the same tile in
+                `agent-chat.tsx` are all framed at the house radius — a circle would crop the
+                artwork. Full-round stays RESERVED for things that are a circle in meaning: the
+                status dot above, the switch thumb, round icon buttons. */}
+            {isShell ? (
+              <div className="flex size-4 shrink-0 items-center justify-center rounded-sm border bg-muted">
+                <TerminalSquare className="size-2.5 text-muted-foreground" />
+              </div>
+            ) : (
+              <AgentIcon agent={agent.agent} className="size-4" />
+            )}
+            <span className="min-w-0 flex-1 truncate font-medium">{primary}</span>
+          </div>
+
+          {/* Only rendered when there's something to say — a pane with neither a tab nor a name of
+              its own is a one-line row. */}
+          {(detailLead !== null || detailTail !== null) && (
+            <div
+              data-slot="agent-row-detail"
+              className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground"
+            >
+              {/* Both runs of the address are plainly muted — line 2 is one fact in two parts, and
+                  weighting either half turns it back into a competition with line 1. The space
+                  gives up width first; the tab takes the rest. */}
+              {detailLead !== null && <span className="min-w-0 shrink truncate">{detailLead}</span>}
+              {detailLead !== null && detailTail !== null && (
+                <span className="shrink-0 text-muted-foreground/60" aria-hidden>
+                  ·
+                </span>
+              )}
+              {detailTail !== null && (
+                <span className={cn("min-w-0 flex-1 truncate", lines.tailMono && "font-mono")}>
+                  {detailTail}
+                </span>
               )}
             </div>
-          )}
-
-          {/* Only rendered when there's something to say — most rows are one line now. */}
-          {secondary && (
-            <div className="truncate font-mono text-xs text-muted-foreground">{secondary}</div>
           )}
 
           {/* The bridge's own sentence about this pane, when it sent one — text, never a branch
@@ -188,7 +219,7 @@ export function AgentCard({
 
         {/* The trailing meta is a COLUMN, not a tail on the title. Inside the title line the chip
             was 4px from a truncated word and competed with the discriminator for the same width;
-            here the title takes its natural width, the secondary line runs the full width beneath
+            here the title takes its natural width, the detail line runs the full width beneath
             it, and the chip is centred against the whole row by the shell's own `items-center`.
             Costs no height — the row pitch is unchanged. HostChip self-hides: nothing renders
             unless the snapshot lists more than one machine (components/host-chip.tsx), so on a solo
@@ -206,7 +237,7 @@ export function AgentCard({
         {isShell ? (
           <ShellBadge />
         ) : cornerDot ? (
-          /* The dot itself is colour-only and lives on the avatar; give SR users the word. */
+          /* The dot itself is colour-only and lives on line 1; give SR users the word. */
           <span className="sr-only">{statusLabel(agent.status)}</span>
         ) : (
           <StatusBadge status={agent.status} />

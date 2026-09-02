@@ -61,16 +61,31 @@ describe("AgentList — sections", () => {
     expect(screen.queryByText("claude")).not.toBeInTheDocument();
   });
 
-  it("gives the tab the width and lets the project truncate — the tab is the discriminator", () => {
+  it("gives line 1's width to the pane title, and drops the space and tab to line 2", () => {
     render(
       <AgentList
-        agents={[agent("p", "idle", { workspaceLabel: "moonward_os", tabLabel: "fix-auth" })]}
+        agents={[
+          agent("p", "idle", {
+            workspaceLabel: "moonward_os",
+            tabLabel: "fix-auth",
+            sessionName: "rewrite the loader",
+          }),
+        ]}
         onOpen={vi.fn()}
       />,
     );
-    // The project yields width first (capped + shrinkable); the tab takes what's left.
-    expect(screen.getByText("moonward_os").className).toMatch(/max-w-\[45%\]/);
-    expect(screen.getByText("fix-auth").className).toMatch(/flex-1/);
+    // The title takes the fill and the weight on line 1 — it is the only fact unique to this row.
+    expect(screen.getByText("rewrite the loader").className).toMatch(/flex-1/);
+    expect(screen.getByText("rewrite the loader").closest("[data-slot]")).toHaveAttribute(
+      "data-slot",
+      "agent-row-title",
+    );
+    // The address — space then tab — sits on the line below.
+    for (const part of ["moonward_os", "fix-auth"])
+      expect(screen.getByText(part).closest("[data-slot]")).toHaveAttribute(
+        "data-slot",
+        "agent-row-detail",
+      );
   });
 
   it("omits a section with no members rather than showing an empty heading", () => {
@@ -314,27 +329,39 @@ describe("AgentList — an older bridge with no timestamps", () => {
 
 describe("AgentList — the age column", () => {
   it("keeps the age off the end of the name when a row has no tab label", () => {
-    // An unlabelled single-tab space returns tab: null. Without a flex filler the age butted
-    // against the project and read as part of it ("comm_cli 37m").
-    render(
-      <AgentList
-        agents={[agent("p", "idle", { workspaceLabel: "comm_cli", lastSeenAt: Date.now() - 60_000 })]}
-        onOpen={vi.fn()}
-      />,
-    );
-    expect(screen.getByText("comm_cli").className).toMatch(/flex-1/);
-  });
-
-  it("hands the width to the tab instead when there IS one", () => {
+    // An unlabelled single-tab space returns tab: null. Without a flex filler on line 1 the age
+    // butted against the name and read as part of it ("comm_cli 37m").
     render(
       <AgentList
         agents={[
-          agent("p", "idle", { workspaceLabel: "comm_cli", tabLabel: "main", lastSeenAt: 1 }),
+          agent("p", "idle", {
+            workspaceLabel: "comm_cli",
+            sessionName: "rewrite the loader",
+            lastSeenAt: Date.now() - 60_000,
+          }),
         ]}
         onOpen={vi.fn()}
       />,
     );
-    expect(screen.getByText("comm_cli").className).toMatch(/max-w-\[45%\]/);
-    expect(screen.getByText("main").className).toMatch(/flex-1/);
+    expect(screen.getByText("rewrite the loader").className).toMatch(/flex-1/);
+  });
+
+  it("keeps the filler on the title when the row DOES have a tab", () => {
+    // Same guard as above. The tab no longer competes for line 1's width at all — it is on line 2 —
+    // so the title keeps the filler in both cases and nothing can butt the age.
+    render(
+      <AgentList
+        agents={[
+          agent("p", "idle", {
+            workspaceLabel: "comm_cli",
+            tabLabel: "main",
+            sessionName: "rewrite the loader",
+            lastSeenAt: 1,
+          }),
+        ]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("rewrite the loader").className).toMatch(/flex-1/);
   });
 });
