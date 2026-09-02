@@ -11,7 +11,7 @@ import { loadDraft } from "@/lib/drafts";
 import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
 import { PackProvider } from "./pack-provider";
-import { Composer } from "./composer";
+import { Composer, TUI_SETTLE_MS } from "./composer";
 import { statusLabel, type ServerSummary } from "@/lib/types";
 
 // A guarded send is TWO reply calls: type (submit:false), then — once the text is verified on the
@@ -308,6 +308,32 @@ describe("Composer — send", () => {
     // Draft length + the 32-Backspace overshoot (mid-poll-gap host typing margin) + the ctrl+k.
     expect(sentKeys).toHaveLength([..."leftover"].length + 33);
     expect(sentKeys!.slice(1).every((k) => k === "Backspace")).toBe(true);
+    await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
+  }, 15000);
+
+  // The sweep is a burst of keystrokes into a live TUI; the reply must not overtake its redraw. The
+  // wait is measured on the wall clock (this file runs on real timers, with msw in front of the two
+  // requests), so the assertion is a floor: the reply request cannot leave before the settle elapsed.
+  it("waits TUI_SETTLE_MS between the clearing keys and the reply", async () => {
+    const user = userEvent.setup();
+    const at: Record<string, number> = {};
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/keys$/, () => {
+        at.keys ??= Date.now();
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/reply$/, () => {
+        at.reply ??= Date.now();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposerWithStatus({ terminalDraft: null, rawTerminalDraft: "leftover" });
+
+    await user.type(screen.getByPlaceholderText(/type a reply/i), "new message");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() => expect(at.reply).toBeDefined());
+    expect(at.reply! - at.keys!).toBeGreaterThanOrEqual(TUI_SETTLE_MS);
     await awaitTerminalStall(); // see the helper: an unawaited stall lands in a later test
   }, 15000);
 

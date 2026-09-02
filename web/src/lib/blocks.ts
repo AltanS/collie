@@ -21,7 +21,7 @@
 // (find covers the raw mirror only).
 
 import type { AnsiSegment } from "./ansi";
-import { PURE_HORIZONTAL_RULE_GLYPH_CLASS } from "./rule-glyphs";
+import { FRAME_EDGE_GLYPH_CLASS, PURE_HORIZONTAL_RULE_GLYPH_CLASS } from "./rule-glyphs";
 import type { PromptModel } from "./harness/prompt-model";
 import type { WizardModel } from "./harness/wizard-model";
 import type { PreviewSelectModel } from "./harness/preview-model";
@@ -211,9 +211,20 @@ const PURE_HORIZONTAL_BORDER = new RegExp(
   `^([${PURE_HORIZONTAL_RULE_GLYPH_CLASS}])\\1{${MIN_NO_WRAP_BORDER_LENGTH - 1},}$`,
 );
 
+// A FRAMED ROW: the first and the last non-space glyph are both frame edges (a boxed TUI menu row, a
+// panel border). Herdr spawns panes at desktop width while a phone mirror shows ~45 columns, so
+// wrapping such a row splits it across two or three ragged visual lines: the frame scrambles and the
+// inverse-video selection is shredded, exactly while the operator drives that menu from the Keys pad.
+// Clipped instead — the selection marker sits at the line's left edge, so what overflows is the part
+// that carries the least. A leading edge alone is NOT enough (`tree` output starts with "│"), and one
+// glyph cannot be both edges.
+const FRAME_ROW = new RegExp(`^\\s*[${FRAME_EDGE_GLYPH_CLASS}].*[${FRAME_EDGE_GLYPH_CLASS}]\\s*$`);
+
 function styledLine(segments: AnsiSegment[]): StyledLine {
   const text = segments.map((segment) => segment.text).join("");
-  return PURE_HORIZONTAL_BORDER.test(text.trim()) ? { segments, noWrap: true } : { segments };
+  return PURE_HORIZONTAL_BORDER.test(text.trim()) || FRAME_ROW.test(text)
+    ? { segments, noWrap: true }
+    : { segments };
 }
 
 // The two generic StyledLine probes. They live HERE, in the core AST module that imports nothing

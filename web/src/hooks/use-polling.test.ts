@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 
-import { SUPERSEDE_MS, intervalFor, usePolling } from "./use-polling";
+import { COLD_MS, HOT_MS, SUPERSEDE_MS, intervalFor, usePolling } from "./use-polling";
 import { isCatchingUp, resetIdleLock, setLocked } from "@/lib/idle";
 import type { HomeData } from "@/lib/loaders";
 import type { AgentView } from "@/lib/types";
@@ -69,8 +69,10 @@ function makeData(agents: AgentView[], shellPanes: AgentView[] = []): HomeData {
   };
 }
 
-const HOT = 1500;
-const COLD = 4000;
+// The cadence tests read the constants, never a copy of their values: the numbers are a judgement
+// call that may be re-tuned (issue #156), and what must not change is the BEHAVIOUR around them.
+const HOT = HOT_MS;
+const COLD = COLD_MS;
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -128,7 +130,7 @@ describe("intervalFor", () => {
 // every future tick, since the fast-path only revalidates while idle. Once it has been loading past
 // SUPERSEDE_MS, a tick kicks a fresh revalidate() to supersede the hung one.
 describe("usePolling — superseding a wedged revalidation", () => {
-  const hotData = () => makeData([makeAgent("w1:p1", "working")]); // HOT → 1500ms tick interval
+  const hotData = () => makeData([makeAgent("w1:p1", "working")]); // HOT → HOT_MS tick interval
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -153,10 +155,43 @@ describe("usePolling — superseding a wedged revalidation", () => {
     expect(rr.revalidate).toHaveBeenCalled();
   });
 
+  // The gap between ticks is what an operator waits for after a key tap, so it is pinned to the
+  // constant exactly: nothing before HOT_MS, one revalidation at HOT_MS, one more each HOT_MS after.
+  it("ticks at exactly HOT_MS while the herd is hot", () => {
+    rr.state = "idle";
+    renderHook(() => usePolling(hotData()));
+
+    vi.advanceTimersByTime(HOT_MS - 1);
+    expect(rr.revalidate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(rr.revalidate).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(HOT_MS * 3);
+    expect(rr.revalidate).toHaveBeenCalledTimes(4);
+  });
+
+  // Cooling: an idle herd with no pane open backs off to COLD_MS. The hot gap must buy nothing there
+  // — no tick until the full cold interval has passed.
+  it("ticks at exactly COLD_MS once the herd goes idle, and re-arms the hot gap when it heats up", () => {
+    rr.state = "idle";
+    const { rerender } = renderHook(({ data }: { data: HomeData }) => usePolling(data), {
+      initialProps: { data: makeData([makeAgent("w1:p1", "idle")]) },
+    });
+
+    vi.advanceTimersByTime(HOT_MS);
+    expect(rr.revalidate).not.toHaveBeenCalled(); // cold: the hot gap is not enough
+    vi.advanceTimersByTime(COLD_MS - HOT_MS);
+    expect(rr.revalidate).toHaveBeenCalledTimes(1);
+
+    rr.revalidate.mockClear();
+    act(() => rerender({ data: hotData() })); // an agent starts working — back to the hot gap
+    vi.advanceTimersByTime(HOT_MS);
+    expect(rr.revalidate).toHaveBeenCalledTimes(1);
+  });
+
   it("still uses the plain idle fast-path when not loading", () => {
     rr.state = "idle";
     renderHook(() => usePolling(hotData()));
-    vi.advanceTimersByTime(1_500); // one HOT tick
+    vi.advanceTimersByTime(HOT_MS); // one HOT tick
     expect(rr.revalidate).toHaveBeenCalled();
   });
 
@@ -168,7 +203,7 @@ describe("usePolling — superseding a wedged revalidation", () => {
     setLocked(true);
     try {
       renderHook(() => usePolling(hotData()));
-      vi.advanceTimersByTime(1_500 * 5); // several HOT intervals behind the cover
+      vi.advanceTimersByTime(HOT_MS * 5); // several HOT intervals behind the cover
       expect(rr.revalidate).not.toHaveBeenCalled();
     } finally {
       resetIdleLock();
@@ -221,7 +256,7 @@ describe("usePolling — superseding a wedged revalidation", () => {
     Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
     try {
       renderHook(() => usePolling(hotData()));
-      vi.advanceTimersByTime(1_500); // one HOT tick with the flag stuck false
+      vi.advanceTimersByTime(HOT_MS); // one HOT tick with the flag stuck false
       expect(rr.revalidate).toHaveBeenCalled();
     } finally {
       Reflect.deleteProperty(navigator, "onLine"); // restore the prototype getter

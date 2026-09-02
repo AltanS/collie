@@ -14,8 +14,10 @@ import type { Scope } from "@/lib/scope";
 //  - skipped only while the tab is hidden (battery); it deliberately does NOT gate on
 //    navigator.onLine (that flag lies on some phones and would wedge polling forever — see the tick),
 //    and it's kicked immediately on focus/online/visibility as an accelerator.
-const HOT_MS = 1500;
-const COLD_MS = 4000;
+// Exported so the tests can pin the CADENCE BEHAVIOUR against the constant rather than against a
+// number typed twice: the tick fires at exactly this gap, and cooling switches the interval.
+export const HOT_MS = 1500;
+export const COLD_MS = 4000;
 
 // Self-heal a wedged revalidation. Normally a tick no-ops while one is already in flight (see the
 // idle fast-path below), but a black-holed fetch can stay `loading` forever (its timeout aside — the

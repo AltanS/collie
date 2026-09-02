@@ -37,3 +37,11 @@ const HORIZONTAL_BOX_RULE_GLYPH_CLASS = "─━┄┅┈┉╌╍═╴╶╸╺
 /** Glyphs safe to classify as a repeated, standalone horizontal terminal border. */
 export const PURE_HORIZONTAL_RULE_GLYPH_CLASS =
   HORIZONTAL_BOX_RULE_GLYPH_CLASS + BLOCK_EIGHTH_RULE_GLYPH_CLASS + UNICODE_DASH_RULE_GLYPH_CLASS;
+
+// The glyphs that stand at the left and right edge of a boxed row (a TUI menu, a panel): verticals,
+// corners, and the TEES an inner separator row hangs off — light, heavy and double in each. Never a
+// horizontal rule glyph: this alphabet answers "is this row framed?", not "is this row a rule".
+// blocks.ts is its only consumer (FRAME_ROW), for the same clipping question
+// PURE_HORIZONTAL_RULE_GLYPH_CLASS answers for a bare rule; markers.ts must not borrow it (see the
+// note at the top of this file).
+export const FRAME_EDGE_GLYPH_CLASS = "│┌└├┏┗┣╔╚╠╟╞┐┘┤┓┛┫╗╝╣╢╡";
