@@ -33,6 +33,7 @@ import {
   saveLastSnapshot,
 } from "@/lib/last-seen";
 import { detectNoEchoPrompt } from "@/lib/no-echo";
+import { markPollResult } from "@/lib/poll-intent";
 import { clearNotPaired, markNotPaired } from "@/lib/pairing";
 import {
   internScope,
@@ -455,6 +456,16 @@ export async function paneLoader({
     // branch) so the connection bar doesn't flicker on an unchanged poll.
     const read: PaneReadResponse = await fetchPane(paneId, lines, scope, request?.signal);
     const text = read.text || lastPaneText.get(key) || "";
+    // THE "IS THE SCREEN STILL MOVING" SIGNAL, taken at the one place that can honestly answer it.
+    //
+    // A 304 is the bridge saying the mirror is byte-identical, which is exactly "unchanged". The
+    // text compare behind it is not redundant: a bridge that serves no ETag would otherwise report
+    // every poll as a change and the burst would never end. Read BEFORE the write-through below,
+    // since `rememberPaneText` is what makes this text the previous one.
+    //
+    // The cadence consumes it (hooks/use-polling.ts): a mirror that keeps moving is one the operator
+    // is watching move.
+    markPollResult(read.notModified !== true && text !== lastPaneText.get(key));
     rememberPaneText(key, text);
     // Write-through, EXCEPT while the pane is asking for a secret — see holdsNoEchoPrompt (ADR 0017).
     if (holdsNoEchoPrompt(text)) dropLastPaneText(scope, paneId);

@@ -23,6 +23,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Changed
+
+- Mirror polling follows what you do: 300ms bursts after a key or a message while the screen keeps changing, 1.5s while you follow a working agent, 4s on the home screen while an agent works, 6s when nothing says you are watching (#156)
+
 ### Fixed
 
 - Mirror no longer freezes when the soft keyboard or Keys dock shrinks the pane: a scroll that arrives with a changed container height is layout, not the user leaving the bottom (#155)
