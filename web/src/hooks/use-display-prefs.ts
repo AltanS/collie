@@ -11,7 +11,7 @@ export interface DisplayPrefs {
    *  session), so panning was the common case, not the exception. Column-faithful no-wrap for TUI
    *  tables stays one tap away in View. */
   wrap: boolean;
-  /** Font size in px for the mirror pre (default: 12, range: 9–16). */
+  /** Font size in px for the mirror pre (default: 10, range: 9–16). */
   fontSize: number;
   /**
    * Font size in px for the COMPOSER's draft field (default: 14, range: 13–16).
@@ -172,7 +172,7 @@ export const DRAFT_FONT_MIN = 13;
 export const DRAFT_FONT_MAX = 16;
 const DEFAULTS: DisplayPrefs = {
   wrap: true,
-  fontSize: 12,
+  fontSize: 10,
   draftFontSize: 14,
   fontFamily: "system",
   rawTerminal: false,

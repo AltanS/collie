@@ -31,6 +31,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - A refused transcription names the upstream status and the container it was sent as, so the phone's error says which format the provider rejected (#148)
 - A functional commit now records one line under `## [Unreleased]` instead of bumping the version; the pre-commit hook enforces both halves, and only the `chore(release):` commit bumps and dates the heading.
+- The mirror's default font size is 10px, down from 12; a device that already picked a size keeps it
 
 ### Fixed
 
