@@ -26,6 +26,7 @@ import { fixtureAgents, fixtureShellPanes, fixtureTabs } from "@/test/handlers";
 import { PackProvider } from "./pack-provider";
 import type { AgentStatus, AgentView, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
+import { COLLAPSE_MS } from "./ui/collapse";
 import { AgentChat } from "./agent-chat";
 
 // The detail view's core job: type a reply and submit it to the bridge. This drives the whole wired
@@ -1922,6 +1923,12 @@ describe("AgentChat — folding the tab and pane rows", () => {
     };
   }
 
+  /** Put the caret in the message composer's own field, the way tapping it on a phone would. */
+  function focusComposer() {
+    const field = document.querySelector<HTMLTextAreaElement>('[data-slot="chat-input"]')!;
+    act(() => field.focus());
+  }
+
   it("the keyboard folds the rows whatever the preference says, and an expand under it is not written down", async () => {
     // The keyboard takes roughly 45% of the phone, and these rows are read BEFORE typing, never
     // during it — the same test the pane switcher and the statusline are already judged by.
@@ -1931,6 +1938,9 @@ describe("AgentChat — folding the tab and pane rows", () => {
       renderStrips();
       expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull();
 
+      // The COMPOSER's keyboard, which is the only one that buys this fold — see the case below for
+      // the one that must not.
+      focusComposer();
       kb.resize(460); // a soft keyboard: -384px, well past the open threshold
       await waitFor(() => expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull());
       // The PREFERENCE is untouched — the keyboard is spending the pixels, not choosing for the
@@ -1952,6 +1962,44 @@ describe("AgentChat — folding the tab and pane rows", () => {
         expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull(),
       );
       expect(localStorage.getItem("collie:strips-collapsed:v1")).toBeNull();
+    } finally {
+      kb.restore();
+    }
+  });
+
+  it("does not fold on a keyboard the composer did not ask for — the rename sheet survives its own keyboard", async () => {
+    // THE BUG, from the phone: tap a tab → the actions sheet opens → tap Rename → "things flash" and
+    // the sheet is gone, with nothing renameable on the device at all.
+    //
+    // The sheet is TabStrip's, so it renders INSIDE the band that folds. Its rename field
+    // autofocuses, the field's own keyboard opens, and a fold gated on "is a keyboard up" fires on
+    // it — 240ms later `Collapse` unmounts the strip, the sheet and the half-typed name together.
+    // The keyboard may spend the band's pixels only when it is the COMPOSER's keyboard.
+    const kb = withSoftKeyboard();
+    try {
+      const user = userEvent.setup();
+      renderStrips();
+
+      // Tapping the tab you are already in opens the actions sheet rather than re-selecting.
+      const tabs = screen.getByRole("navigation", { name: "Tabs" });
+      await user.click(within(tabs).getByRole("button", { current: true }));
+      await user.click(screen.getByRole("button", { name: "Rename" }));
+      const field = screen.getByLabelText<HTMLInputElement>("Label");
+      expect(field).toBe(document.activeElement); // the sheet autofocuses it
+
+      kb.resize(460); // the RENAME field's keyboard, not the composer's
+
+      // Past the full exit — `Collapse` unmounts at the end of it, so if the band ever started
+      // closing the strip, the sheet and this field would be gone by now.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, COLLAPSE_MS + 60));
+      });
+
+      expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull();
+      expect(screen.queryByLabelText("Label")).not.toBeNull();
+      // And still editable, which is the operator's actual complaint.
+      await user.type(field, "x");
+      expect(field.value).toContain("x");
     } finally {
       kb.restore();
     }

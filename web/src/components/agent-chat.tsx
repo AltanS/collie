@@ -120,6 +120,38 @@ function foldLabelKey(tabCount: number, paneCount: number): MessageKey {
 // sheets are separate and live inside <Composer>.)
 type Drawer = "switcher" | "paneMenu" | null;
 
+/**
+ * Is the caret in the MESSAGE COMPOSER's field, as opposed to any other input on the screen?
+ *
+ * Read by the strips' auto-fold, which may only spend the band when the keyboard on screen is the
+ * composer's — see the gate for the failure that taught us the difference (the actions sheets'
+ * rename field lives inside the band that folds).
+ *
+ * Delegated to the document rather than wired through `<Composer>`: the field is `ChatInput`, four
+ * layers down and behind an imperative handle, and threading an `onFocus` up through all of it to
+ * answer one question is more seam than the question is worth. `focusout` is read off
+ * `relatedTarget` — the node about to take focus — because `document.activeElement` is `<body>` at
+ * that moment, which would flip this false for one frame on every hop within the composer and start
+ * the fold animating on a focus change that never left.
+ */
+function useComposerFocus(): boolean {
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    const inComposer = (node: EventTarget | null) =>
+      node instanceof Element && node.closest('[data-slot="chat-input"]') !== null;
+    const onIn = (e: FocusEvent) => setFocused(inComposer(e.target));
+    const onOut = (e: FocusEvent) => setFocused(inComposer(e.relatedTarget));
+    setFocused(inComposer(document.activeElement));
+    document.addEventListener("focusin", onIn);
+    document.addEventListener("focusout", onOut);
+    return () => {
+      document.removeEventListener("focusin", onIn);
+      document.removeEventListener("focusout", onOut);
+    };
+  }, []);
+  return focused;
+}
+
 // The detail view mirrors a terminal pane, NOT a chat thread. The pane's output comes from the
 // route loader (`text`); polling revalidates it. Replies/keys are confirmed via the header status
 // line (`setStatus`), then a revalidation pulls the fresh output.
@@ -358,12 +390,40 @@ export function AgentChat({
   // imposes, so there is nothing to record.
   const stripsPref = useStripsCollapsed();
   const [keyboardFold, setKeyboardFold] = useState<boolean | null>(null);
+  // ── AND WHOSE KEYBOARD IT IS, WHICH `composing` CANNOT ANSWER ────────────────
+  // `useKeyboardOpen` watches the viewport, so it says a keyboard is up and never says what asked
+  // for it — correct for the switcher and the statusline, which spend pixels the keyboard took
+  // whoever is typing. It is NOT enough here, because THE THING THAT FOLDS CONTAINS AN INPUT: the
+  // tab and pane actions sheets are rendered by TabStrip/PaneStrip, inside this band, and their
+  // rename field autofocuses. The operator taps Rename, the field's own keyboard opens, `composing`
+  // flips, the band folds, and 240ms later `Collapse` unmounts the strip — taking the sheet and the
+  // half-typed name with it. Nothing can be renamed on a phone at all. (The sheets stay in the band
+  // deliberately: they belong to the row that owns them. The gate is the fix, not a hoist.)
+  //
+  // So the auto-fold asks the second question too: is this the COMPOSER's keyboard? Only the
+  // composer's field is down at the bottom under the space this band would give back; a keyboard
+  // raised by anything else took its pixels from somewhere else and buys no fold here.
+  //
+  // OWNERSHIP IS LATCHED, not read live, and that is not an optimisation. Focus leaves the composer
+  // for every control the operator touches while typing — including the summary bar that puts these
+  // rows BACK — and a live read would hand the band back to `stripsPref` mid-gesture and let that
+  // tap write the device preference it is explicitly not allowed to write. So the composer claims
+  // the keyboard while it holds focus under one, and only the keyboard CLOSING releases the claim.
+  const composerHasFocus = useComposerFocus();
+  const [composerKeyboard, setComposerKeyboard] = useState(false);
   useEffect(() => {
-    if (!composing) setKeyboardFold(null);
-  }, [composing]);
-  const stripsFolded = composing ? (keyboardFold ?? true) : stripsPref;
+    if (!composing) {
+      setComposerKeyboard(false);
+      return;
+    }
+    if (composerHasFocus) setComposerKeyboard(true);
+  }, [composing, composerHasFocus]);
+  useEffect(() => {
+    if (!composerKeyboard) setKeyboardFold(null);
+  }, [composerKeyboard]);
+  const stripsFolded = composerKeyboard ? (keyboardFold ?? true) : stripsPref;
   function toggleStrips() {
-    if (composing) {
+    if (composerKeyboard) {
       setKeyboardFold(!stripsFolded);
       return;
     }
