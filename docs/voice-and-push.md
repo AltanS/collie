@@ -69,14 +69,15 @@ polling and stops escalating the connection banner: your own audio saturating a 
 an outage, and it must not be reported as one.
 
 **Did it work?** `stt test` sends a fifth of a second of generated silence through the real
-provider:
+provider, once per container a phone can record:
 
 ```console
 $ bin/collie stt test
 provider: openai-compatible (http://127.0.0.1:8080/v1, model whisper-1, language en)
-sending:  0.2 s of generated silence (audio/wav)
-✓ round trip in 214 ms
+sending:  0.2 s of generated silence as audio/wav (the setup probe) … ✓ 214 ms
   transcript: (empty) — expected from silence, and the empty answer still proves the pipeline.
+sending:  0.2 s of generated silence as audio/webm;codecs=opus (Chrome, Android, Firefox) … ✓ 198 ms
+sending:  0.2 s of generated silence as audio/mp4 (Safari, iOS) … ✓ 190 ms
 ```
 
 An **empty transcript is a pass** — silence transcribes to nothing, and the round trip is what was
@@ -84,6 +85,34 @@ being proved. If it fails, the error names its kind (auth, endpoint, response sh
 Collie on the phone: a microphone sits beside the message box. `collie stt status` says what is
 configured and *where each setting came from* (the file, or an environment variable that outranks
 it); `collie stt off` removes `stt.json` and the button is gone again, no restart either way.
+
+### Container support is provider-specific
+
+The phone never records WAV. It records Opus in a WebM container on Chrome, Android and Firefox, or
+AAC in an MP4 container on Safari and iOS, and it sends those bytes as they are. A provider that
+transcribes WAV can still answer 400 to both of them, and every dictation then fails with "refused"
+while `stt test` looks healthy. That is why `stt test` sends all three clips: the refusal is found at
+setup, not on the phone.
+
+One case, verified on 2026-09-01 against OpenRouter's `POST /v1/audio/transcriptions`:
+
+| format      | `mistralai/voxtral-small-24b-2507-stt` | `openai/whisper-large-v3-turbo` |
+| ----------- | -------------------------------------- | ------------------------------- |
+| wav         | yes                                    | yes                             |
+| ogg/opus    | yes                                    | yes                             |
+| webm/opus   | no, 400                                | yes                             |
+| mp4/m4a AAC | no, 400                                | yes                             |
+
+The workaround is the model, not the key: point the same OpenRouter key at
+`openai/whisper-large-v3-turbo`, which takes all four.
+
+```bash
+bin/collie stt setup --provider openai-compatible \
+  --url https://openrouter.ai/api/v1 --model openai/whisper-large-v3-turbo --key <key>
+```
+
+A refused transcription now names the upstream status and the container it was sent as, so the error
+on the phone says which format the provider rejected. (#148, thanks @drewbitt)
 
 ### Zero-egress — point it at your own engine
 

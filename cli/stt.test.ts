@@ -72,20 +72,42 @@ const said = (d: Deps): string => [...d.io.stdout, ...d.io.stderr].join("\n");
 interface ProviderLog {
   closed: number;
   mime: string[];
+  filenames: string[];
+  /** The first bytes of each clip, so a test can prove the container is real and not a copy. */
+  magic: Uint8Array[];
 }
 
 /** A provider that answers with one fixed transcript, recording what it was handed. */
 function fakeProvider(text: string): SttProvider & { seen: ProviderLog } {
-  const seen: ProviderLog = { closed: 0, mime: [] };
+  const seen: ProviderLog = { closed: 0, mime: [], filenames: [], magic: [] };
   return {
     id: "fake",
     seen,
     status: async (): Promise<{ available: boolean }> => ({ available: true }),
     async transcribe(input: SttAudio): Promise<SttResult> {
       seen.mime.push(input.mimeType);
+      seen.filenames.push(input.filename);
+      seen.magic.push(input.audio.subarray(0, 8));
       return { text };
     },
     close: () => void (seen.closed += 1),
+  };
+}
+
+/**
+ * A provider that takes everything except the containers named, which it refuses the way
+ * `bridge/stt/openai.ts` does: a 400 that names the container it was sent as.
+ */
+function refusingProvider(refuse: readonly string[]): SttProvider & { seen: ProviderLog } {
+  const provider = fakeProvider("");
+  const accept = provider.transcribe.bind(provider);
+  return {
+    ...provider,
+    async transcribe(input: SttAudio): Promise<SttResult> {
+      if (!refuse.includes(input.mimeType)) return accept(input);
+      const container = input.mimeType.split(";", 1)[0]!;
+      throw new SttError("refused", `the transcription service answered 400 for ${container}`);
+    },
   };
 }
 
@@ -299,22 +321,42 @@ describe("collie stt setup — codex", () => {
 describe("collie stt test", () => {
   const configured = { [CONFIG_PATH]: '{"provider":"openai-compatible","baseUrl":"https://stt.example/v1"}' };
 
-  test("a silent clip that transcribes to nothing is a PASS, and says why", async () => {
+  test("a silent clip that transcribes to nothing is a PASS, and says why exactly once", async () => {
     const provider = fakeProvider("   ");
     const d = deps({ seed: configured, create: () => provider });
     expect(await cmdSttTest(d)).toBe(EXIT.OK);
-    expect(provider.seen.mime).toEqual(["audio/wav"]);
     expect(said(d)).toContain("(empty)");
     expect(said(d)).toContain("still proves the pipeline");
+    // Three clips, one explanation: the other two answer the same empty string.
+    expect(d.io.stdout.filter((line) => line.includes("(empty)"))).toHaveLength(1);
     // The child a codex provider would own is released even on the happy path.
     expect(provider.seen.closed).toBe(1);
+  });
+
+  test("every container the phone can record is probed, wav first", async () => {
+    const provider = fakeProvider("");
+    const d = deps({ seed: configured, create: () => provider });
+    expect(await cmdSttTest(d)).toBe(EXIT.OK);
+    // The order is the contract: wav proves the endpoint, the other two prove the phone.
+    expect(provider.seen.mime).toEqual(["audio/wav", "audio/webm;codecs=opus", "audio/mp4"]);
+    // The extension is the one `bridge/stt/http.ts` derives from the same content type.
+    expect(provider.seen.filenames).toEqual([
+      "collie-stt-test.wav",
+      "collie-stt-test.webm",
+      "collie-stt-test.mp4",
+    ]);
+    // Real bytes, in a real container, not three copies of the wav probe.
+    expect([...provider.seen.magic[1]!.subarray(0, 4)]).toEqual([0x1a, 0x45, 0xdf, 0xa3]);
+    expect(String.fromCharCode(...provider.seen.magic[2]!.subarray(4, 8))).toBe("ftyp");
+    expect(said(d)).toContain("as audio/webm;codecs=opus (Chrome, Android, Firefox) … ✓ 0 ms");
+    expect(said(d)).toContain("as audio/mp4 (Safari, iOS) … ✓ 0 ms");
   });
 
   test("a transcript is printed, with the provider and the round trip", async () => {
     const d = deps({ seed: configured, create: () => fakeProvider("hello there") });
     expect(await cmdSttTest(d)).toBe(EXIT.OK);
     expect(said(d)).toContain("openai-compatible (https://stt.example/v1");
-    expect(said(d)).toContain("round trip in 0 ms");
+    expect(said(d)).toContain("(the setup probe) … ✓ 0 ms");
     expect(said(d)).toContain("hello there");
   });
 
@@ -328,7 +370,33 @@ describe("collie stt test", () => {
     };
     const d = deps({ seed: configured, create: () => provider });
     expect(await cmdSttTest(d)).toBe(EXIT.FAIL);
-    expect(d.io.stderr.join("\n")).toContain("kind: timeout");
+    expect(said(d)).toContain("✗ timeout: transcription timed out");
+    // Nothing about containers: wav failed too, so the container is not what is wrong.
+    expect(said(d)).not.toContain("whisper-large-v3-turbo");
+  });
+
+  test("wav accepted and webm refused is a FAIL that names the consequence", async () => {
+    const provider = refusingProvider(["audio/webm;codecs=opus"]);
+    const d = deps({ seed: configured, create: () => provider });
+    expect(await cmdSttTest(d)).toBe(EXIT.FAIL);
+    const output = said(d);
+    expect(output).toContain(
+      "✗ refused: the transcription service answered 400 for audio/webm",
+    );
+    // The wav clip still passed, and the mp4 one after the refusal still ran.
+    expect(output).toContain("(the setup probe) … ✓ 0 ms");
+    expect(output).toContain("(Safari, iOS) … ✓ 0 ms");
+    expect(output).toContain("takes audio/wav, but not audio/webm;codecs=opus");
+    expect(output).toContain('will fail with "refused" on the phone');
+    expect(output).toContain("openai/whisper-large-v3-turbo");
+    expect(output).toContain("Container support is provider-specific");
+  });
+
+  test("both phone containers refused are named together in one paragraph", async () => {
+    const provider = refusingProvider(["audio/webm;codecs=opus", "audio/mp4"]);
+    const d = deps({ seed: configured, create: () => provider });
+    expect(await cmdSttTest(d)).toBe(EXIT.FAIL);
+    expect(said(d)).toContain("but not audio/webm;codecs=opus or audio/mp4");
   });
 
   test("nothing configured is a legible failure, not a crash", async () => {

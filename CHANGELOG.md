@@ -23,8 +23,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- `collie stt test` now sends the two containers a phone actually records, webm/opus and mp4, after the wav probe, and fails with guidance when the provider refuses one; Voxtral on OpenRouter refuses both, whisper-large-v3-turbo accepts them (#148)
+
 ### Changed
 
+- A refused transcription names the upstream status and the container it was sent as, so the phone's error says which format the provider rejected (#148)
 - A functional commit now records one line under `## [Unreleased]` instead of bumping the version; the pre-commit hook enforces both halves, and only the `chore(release):` commit bumps and dates the heading.
 
 ### Fixed

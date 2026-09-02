@@ -16,6 +16,7 @@ import {
   type SttWireIdentity,
 } from "../bridge/stt/config.ts";
 import { CODEX_TRANSCRIBE_URL, probeCodexIdentity, silentWavBytes } from "../bridge/stt/codex.ts";
+import { silentMp4AacBytes, silentWebmOpusBytes } from "../bridge/stt/probe-clips.ts";
 import { createSttProvider } from "../bridge/stt/index.ts";
 import { SttError, type SttProvider } from "../bridge/stt/provider.ts";
 import type { CliContext } from "./context.ts";
@@ -425,12 +426,49 @@ async function accepted(deps: SttDeps, byFlag: boolean): Promise<boolean> {
 // ── test ─────────────────────────────────────────────────────────────────────
 
 /**
- * `collie stt test` — one real round trip through the configured provider.
+ * The three clips `stt test` sends, in the order it sends them.
  *
- * The clip is a fifth of a second of generated digital silence, the same bytes the setup probe uses.
- * A silent clip legitimately transcribes to nothing, so an EMPTY answer is a PASS: what this verb
- * proves is that the credential, the endpoint and the response shape all work, not that anything was
- * heard. That is said in the output, because a bare empty line reads like a failure.
+ * WAV first, because it is the setup probe and the one container every service demuxes: if it fails,
+ * nothing else about the configuration is worth reading. Then the two containers the PHONE actually
+ * records (`web/src/lib/stt.ts` → `RECORDING_MIME_TYPES`), which is the whole point of the list. A
+ * provider can accept WAV and refuse both of those, and until #148 that was only ever discovered by
+ * a real dictation failing on the phone.
+ *
+ * The extensions are the ones `bridge/stt/http.ts` derives from the same content types, so the
+ * provider sees exactly what a recording from the route would have given it.
+ */
+const STT_PROBE_CLIPS = [
+  {
+    mimeType: "audio/wav",
+    filename: "collie-stt-test.wav",
+    audience: "the setup probe",
+    bytes: silentWavBytes,
+  },
+  {
+    mimeType: "audio/webm;codecs=opus",
+    filename: "collie-stt-test.webm",
+    audience: "Chrome, Android, Firefox",
+    bytes: silentWebmOpusBytes,
+  },
+  {
+    mimeType: "audio/mp4",
+    filename: "collie-stt-test.mp4",
+    audience: "Safari, iOS",
+    bytes: silentMp4AacBytes,
+  },
+] as const;
+
+/**
+ * `collie stt test` — one real round trip per container the phone can produce.
+ *
+ * Each clip is a fifth of a second of generated digital silence. A silent clip legitimately
+ * transcribes to nothing, so an EMPTY answer is a PASS: what this verb proves is that the
+ * credential, the endpoint and the response shape all work, not that anything was heard. That is
+ * said in the output, because a bare empty line reads like a failure.
+ *
+ * It sends three clips rather than one because the container is part of what a provider accepts.
+ * The browser never sends WAV, so a run that only probed WAV could pass on a provider every
+ * recording from the phone would be refused by (#148).
  */
 export async function cmdSttTest(deps: SttDeps): Promise<number> {
   const settings = loadSettings(deps);
@@ -439,37 +477,67 @@ export async function cmdSttTest(deps: SttDeps): Promise<number> {
   const provider = (deps.create ?? createSttProvider)(settings);
   const clock = deps.now ?? Date.now;
   deps.io.out(`provider: ${describeProvider(settings)}`);
-  deps.io.out("sending:  0.2 s of generated silence (audio/wav)");
-  const started = clock();
+
+  const refused: string[] = [];
+  let wavPassed = false;
   try {
-    const result = await provider.transcribe({
-      audio: silentWavBytes(),
-      mimeType: "audio/wav",
-      filename: "collie-stt-test.wav",
-    });
-    const elapsed = clock() - started;
-    deps.io.out(`✓ round trip in ${elapsed} ms`);
-    deps.io.out(
-      result.text.trim() === ""
-        ? "  transcript: (empty) — expected from silence, and the empty answer still proves the pipeline."
-        : `  transcript: ${result.text}`,
-    );
-    return EXIT.OK;
-  } catch (err) {
-    const elapsed = clock() - started;
-    deps.io.err(`error: transcription failed after ${elapsed} ms`);
-    if (err instanceof SttError) {
-      deps.io.err(`       kind: ${err.kind}`);
-      deps.io.err(`       ${err.message}`);
-    } else {
-      deps.io.err(`       ${err instanceof Error ? err.message : String(err)}`);
+    for (const clip of STT_PROBE_CLIPS) {
+      const label = `sending:  0.2 s of generated silence as ${clip.mimeType} (${clip.audience}) …`;
+      const started = clock();
+      try {
+        const result = await provider.transcribe({
+          audio: clip.bytes(),
+          mimeType: clip.mimeType,
+          filename: clip.filename,
+        });
+        deps.io.out(`${label} ✓ ${clock() - started} ms`);
+        // Once, after the first clip. The transcript is the same empty string on all three, and
+        // repeating the explanation three times would bury the one line that differs per clip.
+        if (clip.mimeType === "audio/wav") {
+          wavPassed = true;
+          deps.io.out(
+            result.text.trim() === ""
+              ? "  transcript: (empty) — expected from silence, and the empty answer still proves the pipeline."
+              : `  transcript: ${result.text}`,
+          );
+        }
+      } catch (err) {
+        refused.push(clip.mimeType);
+        // The kind the bridge would report, then the sentence it carries. A caught value is not a
+        // parsed input, so it is narrowed here rather than handed to a helper that would have to
+        // take `unknown`.
+        let reason = err instanceof Error ? err.message : String(err);
+        if (err instanceof SttError) reason = `${err.kind}: ${err.message}`;
+        deps.io.out(`${label} ✗ ${reason}`);
+      }
     }
-    return EXIT.FAIL;
   } finally {
     // The codex provider owns a `codex app-server` child. A test run that left one behind would be a
     // process leak the operator never asked for.
     provider.close?.();
   }
+
+  if (refused.length === 0) return EXIT.OK;
+  deps.io.err(`error: the provider refused ${refused.length} of ${STT_PROBE_CLIPS.length} clips.`);
+  if (wavPassed) sayContainerRefusal(deps, refused);
+  return EXIT.FAIL;
+}
+
+/**
+ * The paragraph for the failure this verb exists to catch: WAV works, the phone's container does not.
+ *
+ * It is spelled out rather than left as "1 of 3 clips failed" because the consequence is invisible
+ * from the host. Everything on this machine will keep working, and every dictation from the affected
+ * browser will fail with "refused" (#148).
+ */
+function sayContainerRefusal(deps: SttDeps, refused: string[]): void {
+  deps.io.err("");
+  deps.io.err(`       Your provider takes audio/wav, but not ${refused.join(" or ")}.`);
+  deps.io.err("       The phone never records wav. It records one of the containers above, so every");
+  deps.io.err('       dictation from those browsers will fail with "refused" on the phone.');
+  deps.io.err("       Point the same key at a model that takes all three, for example");
+  deps.io.err("       `openai/whisper-large-v3-turbo`, or read");
+  deps.io.err('       docs/voice-and-push.md → "Container support is provider-specific".');
 }
 
 /** The settings the BRIDGE would run with: the file, then the environment on top. */

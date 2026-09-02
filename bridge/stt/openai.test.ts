@@ -148,8 +148,26 @@ describe("openai-compatible provider — the bounds", () => {
       // SAFETY: asserted to be an SttError on the line above.
       const failure = err as SttError;
       expect(failure.kind).toBe("refused");
-      expect(failure.message).toBe("the transcription service answered 429");
+      // The status AND the container, so the phone's error says which format was rejected (#148).
+      // The codec parameter is cut off: the provider refuses a container, not a codec string.
+      expect(failure.message).toBe("the transcription service answered 429 for audio/webm");
       expect(failure.message).not.toContain("org-SECRET");
+    }
+  });
+
+  test("the refusal names the container it sent, whatever the phone recorded", async () => {
+    const provider = createOpenAiSttProvider(SETTINGS, {
+      fetch: async () => new Response("no", { status: 400 }),
+    });
+
+    try {
+      await provider.transcribe({ ...AUDIO, mimeType: "AUDIO/MP4", filename: "recording.mp4" });
+      throw new Error("expected a refusal");
+    } catch (err) {
+      expect(err).toBeInstanceOf(SttError);
+      // SAFETY: asserted to be an SttError on the line above.
+      const failure = err as SttError;
+      expect(failure.message).toBe("the transcription service answered 400 for audio/mp4");
     }
   });
 
