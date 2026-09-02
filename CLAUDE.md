@@ -80,6 +80,12 @@ it.)
 Doc-only changes (`*.md`) need neither a bump nor a CHANGELOG line. This is enforced two ways, but
 **you are the first line — do it as part of the change, not after**:
 
+**A docs change reaches colliepwa.dev only with a release.** Collie's `release.yml` tells the website
+on every tag, and the website re-quotes `docs/*.md` at the newest published release — so a doc-only
+fix pushed to `main` and not released sits unpublished, and the website's daily cron will not pick it
+up either. To publish sooner, run the website's sync by hand against a ref:
+`gh workflow run sync-docs.yml -R AltanS/collie-website -f ref=main`.
+
 - `scripts/check-version.sh` runs inside `collie build` (a release can't build while versions
   disagree).
 - A **git pre-commit hook** (`scripts/git-hooks/pre-commit`, activate once with
