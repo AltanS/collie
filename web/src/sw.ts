@@ -168,9 +168,17 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
 async function openPath(path: string): Promise<void> {
   const url = new URL(path, self.location.origin).href;
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  // Navigate BEFORE focusing, and treat a null result as "this client is no good". `navigate()`
+  // resolves null when the client is a discarded tab — Firefox on Android throws background tabs
+  // away eagerly — and the old code ignored that, focused the corpse and returned, so the tap
+  // raised the browser onto a blank tab and `openWindow` below was never reached (#147).
+  // Spec: https://w3c.github.io/ServiceWorker/#client-navigate
   for (const client of windows) {
+    if (client.url !== url) {
+      const navigated = await client.navigate(url).catch(() => null);
+      if (!navigated) continue;
+    }
     await client.focus();
-    if (client.url !== url) await client.navigate(url).catch(() => null);
     return;
   }
   await self.clients.openWindow(url);
