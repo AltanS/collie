@@ -46,3 +46,28 @@ describe("SettingsRoute — the shared header shell", () => {
     expect(screen.queryByRole("button", { name: /^Collie/ })).toBeNull();
   });
 });
+
+// ── THE FOOTER, AFTER THE UPDATE CHIP LEFT IT (M16/01) ──────────────────────────────────────────
+//
+// Settings used to end with three update surfaces for one subject. Updating has a page of its own
+// now, so this page keeps one row that links to it — and the footer keeps the build stamp, which is
+// a diagnostic and was never an update surface.
+describe("SettingsRoute — the update surfaces", () => {
+  it("keeps the build stamp and drops the footer update chip", async () => {
+    renderSettings();
+    // The build stamp is the vitest define — `v<version> · <sha> · <time> UTC`.
+    expect(await screen.findByText(/^v0\.0\.0-test · .* UTC$/)).toBeInTheDocument();
+    // Nothing on this page nudges an update any more: no chip line, no copyable command.
+    expect(screen.queryByText(/Bridge restart needed/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Copy command/ })).toBeNull();
+  });
+
+  it("holds exactly one Updates row, and neither the card nor the check control", async () => {
+    renderSettings();
+    const rows = await screen.findAllByRole("button", { name: /Updates/ });
+    expect(rows).toHaveLength(1);
+    // Both of those live on /settings/updates now.
+    expect(screen.queryByText("Update Collie")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Check for updates" })).toBeNull();
+  });
+});
