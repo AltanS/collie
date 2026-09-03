@@ -33,6 +33,31 @@ const RED: PreflightReport = {
   ],
 };
 
+/** All six checks the settings screenshot showed, all green — the everyday shape of the report. */
+const GREEN_SIX: PreflightReport = {
+  schema: 1,
+  verdict: "green",
+  checks: [
+    { id: "doctor", verdict: "green", reason: "doctor reports no issues" },
+    { id: "disk", verdict: "green", reason: "4.2 GB free" },
+    { id: "bun", verdict: "green", reason: "bun is on PATH" },
+    { id: "tree", verdict: "green", reason: "the working tree is clean" },
+    { id: "upstream", verdict: "green", reason: "upstream is reachable" },
+    { id: "service", verdict: "green", reason: "collie.service is present" },
+  ],
+};
+
+/** Green overall, but one check inside it is red — the case a folded card must still surface. */
+const GREEN_WITH_ONE_RED: PreflightReport = {
+  schema: 1,
+  verdict: "green",
+  checks: [
+    { id: "disk", verdict: "green", reason: "4.2 GB free" },
+    { id: "bun", verdict: "green", reason: "bun is on PATH" },
+    { id: "tree", verdict: "red", reason: "2 tracked files are modified", remedy: "git stash" },
+  ],
+};
+
 const info = (over: Partial<UpdateInfo> = {}): UpdateInfo => ({
   current: "1.3.0",
   latest: "1.4.0",
@@ -125,7 +150,8 @@ describe("update card — what it says before anything happens", () => {
     const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
     serveCheck(current, GREEN);
     renderCard(current);
-    expect(await screen.findByText("This is the newest release.")).toBeInTheDocument();
+    expect(await screen.findByText("Up to date. Nothing to do.")).toBeInTheDocument();
+    expect(screen.getByText(/Running 1\.3\.0/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Update to/ })).not.toBeInTheDocument();
   });
 
@@ -151,6 +177,51 @@ describe("update card — what it says before anything happens", () => {
     await waitFor(() => expect(snoozed).toBe(true));
     expect(screen.getByText("Dismissed until the next digest.")).toBeInTheDocument();
     expect(screen.getByText(/Running 1\.3\.0/)).toBeInTheDocument();
+  });
+});
+
+describe("Details fold — noise gone when there is nothing to do, open when something needs a look", () => {
+  it("up to date: the done head text shows, and Preflight is collapsed behind a '6 checks' summary", async () => {
+    const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
+    serveCheck(current, GREEN_SIX);
+    renderCard(current);
+    expect(await screen.findByText("Up to date. Nothing to do.")).toBeInTheDocument();
+    const toggle = await screen.findByRole("button", { name: /Details/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("6 checks")).toBeInTheDocument();
+    expect(screen.queryByText("doctor reports no issues")).not.toBeInTheDocument();
+  });
+
+  it("an available update renders Details expanded", async () => {
+    serveCheck(info(), GREEN_SIX);
+    renderCard(info());
+    const toggle = await screen.findByRole("button", { name: /Details/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("doctor reports no issues")).toBeInTheDocument();
+  });
+
+  it("up to date but one check is red: Details renders expanded with '1 red' in the summary", async () => {
+    const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
+    serveCheck(current, GREEN_WITH_ONE_RED);
+    renderCard(current);
+    const toggle = await screen.findByRole("button", { name: /Details/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("1 red")).toBeInTheDocument();
+    expect(screen.getByText("2 tracked files are modified")).toBeInTheDocument();
+  });
+
+  it("tapping Details toggles the fold", async () => {
+    const user = userEvent.setup();
+    const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
+    serveCheck(current, GREEN_SIX);
+    renderCard(current);
+    const toggle = await screen.findByRole("button", { name: /Details/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByText("doctor reports no issues")).toBeInTheDocument();
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
   });
 });
 
@@ -351,6 +422,17 @@ describe("pack lead card — peers are levelled from the terminal this milestone
   it("a solo install grows no such line", async () => {
     renderCard(info());
     await screen.findByText(/Running 1\.3\.0/);
+    expect(screen.queryByText(/collie pack update/)).not.toBeInTheDocument();
+  });
+
+  it("is hidden when up to date, even with pack members", async () => {
+    const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
+    serveCheck(current, GREEN);
+    renderCard(current, [
+      { id: "desk", name: "desk", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1 },
+      { id: "laptop", name: "laptop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 1 },
+    ]);
+    await screen.findByText("Up to date. Nothing to do.");
     expect(screen.queryByText(/collie pack update/)).not.toBeInTheDocument();
   });
 });

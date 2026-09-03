@@ -1,17 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { ArrowUpCircle, Loader2, RotateCcw } from "lucide-react";
+import { ArrowUpCircle, CheckCircle2, Loader2, RotateCcw } from "lucide-react";
 import { useRevalidator } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Collapse } from "@/components/ui/collapse";
+import { SectionHeader } from "@/components/section-header";
 import { useLocale } from "@/hooks/use-locale";
-import { t } from "@/lib/i18n";
+import { t, tn } from "@/lib/i18n";
 import { fetchStandbyRun, fetchUpdateState, snoozeUpdate, startUpdate } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
 import { useOptionalRootData } from "@/lib/route-data";
 import { noteUpdateRun } from "@/lib/self-update";
 import { cn } from "@/lib/utils";
-import type { PreflightCheck, UpdateCheckResponse, UpdateRun, UpdateRunState } from "@/lib/types";
+import type {
+  PreflightCheck,
+  PreflightReport,
+  UpdateCheckResponse,
+  UpdateRun,
+  UpdateRunState,
+} from "@/lib/types";
 
 // ── UPDATE COLLIE, from the phone ───────────────────────────────────────────────────────────────
 //
@@ -187,21 +195,40 @@ export function UpdateCard() {
   const blockedReason =
     redCheck !== undefined ? redCheck.reason : t("settings.updateCard.preflightUnavailable");
 
+  // Nothing to take: the running version already IS the newest, no major is waiting, and no run is
+  // mid-flight. This is the state the operator sees on almost every visit, so it gets the loudest
+  // line on the card rather than being read off a Preflight list nobody asked to open.
+  const upToDate = !releaseAvailable && majorAvailable === null && latest !== null && run === undefined;
+  const updateAvailable = releaseAvailable || majorAvailable !== null;
+
   return (
     <Card className="gap-0 py-0">
       <div className="flex items-start gap-3 p-4">
-        <ArrowUpCircle className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        {upToDate ? (
+          <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-status-done" />
+        ) : (
+          <ArrowUpCircle className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
+        )}
         <div className="min-w-0 flex-1">
           <div className="font-medium">{t("settings.updateCard.title")}</div>
-          <p className="text-sm text-muted-foreground">
-            {t("settings.updateCard.running", { current: current || t("settings.updateCard.versionUnknown") })}
-            {latest !== null && ` · ${t("settings.updateCard.newest", { version: latest })}`}
-          </p>
-          {latest === null && (
-            <p className="text-sm text-muted-foreground">{t("settings.updateCard.unknownLatest")}</p>
-          )}
-          {!releaseAvailable && majorAvailable === null && latest !== null && run === undefined && (
-            <p className="text-sm text-muted-foreground">{t("settings.updateCard.upToDate")}</p>
+          {upToDate ? (
+            <>
+              <p className="text-sm text-muted-foreground">{t("settings.updateCard.upToDate")}</p>
+              <p className="text-sm text-muted-foreground">
+                {t("settings.updateCard.running", { current: current || t("settings.updateCard.versionUnknown") })}
+                {latest !== null && ` · ${t("settings.updateCard.newest", { version: latest })}`}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {t("settings.updateCard.running", { current: current || t("settings.updateCard.versionUnknown") })}
+                {latest !== null && ` · ${t("settings.updateCard.newest", { version: latest })}`}
+              </p>
+              {latest === null && (
+                <p className="text-sm text-muted-foreground">{t("settings.updateCard.unknownLatest")}</p>
+              )}
+            </>
           )}
           {newerVersions.length > 1 && (
             <p className="mt-1 text-xs text-muted-foreground">
@@ -223,30 +250,10 @@ export function UpdateCard() {
       {!running && (
         <>
           {preflight !== null && preflight.checks.length > 0 && (
-            <div className="border-t border-border px-4 py-3">
-              <div className="text-xs font-medium text-muted-foreground">{t("settings.updateCard.preflight")}</div>
-              <ul className="mt-1.5 space-y-1.5">
-                {preflight.checks.map((c) => (
-                  <li key={c.id} className="flex items-start gap-2 text-xs">
-                    <span
-                      aria-hidden="true"
-                      className={cn("mt-1 size-1.5 shrink-0 rounded-full", VERDICT_COLOUR[c.verdict])}
-                    />
-                    <span className="min-w-0">
-                      <span className="font-mono">{c.id}</span> <span className="text-muted-foreground">{c.reason}</span>
-                      {c.remedy !== undefined && (
-                        <span className="block font-mono text-muted-foreground">
-                          {t("settings.updateCard.remedy", { command: c.remedy })}
-                        </span>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <PreflightSection preflight={preflight} updateAvailable={updateAvailable} />
           )}
 
-          {packLead && (
+          {packLead && updateAvailable && (
             <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
               {t("settings.updateCard.packLead")}
             </p>
@@ -322,6 +329,92 @@ export function UpdateCard() {
 
       {error !== null && <p className="border-t border-border px-4 py-2.5 text-xs text-status-blocked">{error}</p>}
     </Card>
+  );
+}
+
+/** The worst verdict actually present among the individual checks — read off the rows themselves,
+ *  never off the report's own summary field, so a row that needs a look is never hidden by a
+ *  stale or mistaken top-level verdict. */
+function worstVerdict(checks: PreflightCheck[]): PreflightCheck["verdict"] {
+  if (checks.some((c) => c.verdict === "red")) return "red";
+  if (checks.some((c) => c.verdict === "amber")) return "amber";
+  return "green";
+}
+
+/**
+ * The count that still reads true when the list underneath is folded shut: "6 checks" while every
+ * one is green, "1 red · 1 amber" the moment one isn't — red named before amber, because that is
+ * the order that matters most.
+ */
+function preflightSummary(checks: PreflightCheck[]): string {
+  const red = checks.filter((c) => c.verdict === "red").length;
+  const amber = checks.filter((c) => c.verdict === "amber").length;
+  if (red === 0 && amber === 0) return tn("settings.updateCard.summary.checks", checks.length);
+  const parts: string[] = [];
+  if (red > 0) parts.push(tn("settings.updateCard.summary.red", red));
+  if (amber > 0) parts.push(tn("settings.updateCard.summary.amber", amber));
+  return parts.join(" · ");
+}
+
+/**
+ * The Preflight list, folded behind a "Details" row.
+ *
+ * Default open state is decided ONCE, at mount — never re-derived while the card sits open, or a
+ * poll landing mid-read would fold a list the operator is looking at. It opens by default when
+ * there is something to act on: an update is available (the operator is about to read these before
+ * tapping the button), or the worst verdict is amber or red (a check that needs a look must not
+ * hide behind a tap). Otherwise — nothing to do, and everything green — it starts folded, and the
+ * header's own summary is what still tells the truth at a glance.
+ */
+function PreflightSection({
+  preflight,
+  updateAvailable,
+}: {
+  preflight: PreflightReport;
+  updateAvailable: boolean;
+}) {
+  const verdict = worstVerdict(preflight.checks);
+  const [open, setOpen] = useState(() => updateAvailable || verdict !== "green");
+
+  return (
+    <div className="border-t border-border px-4 py-3">
+      <SectionHeader
+        label={t("settings.updateCard.details")}
+        level={3}
+        open={open}
+        onToggle={setOpen}
+        controls="update-preflight-body"
+        trailing={
+          <span className="flex items-center gap-1.5 text-xs font-normal normal-case tracking-normal text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className={cn("size-1.5 shrink-0 rounded-full", VERDICT_COLOUR[verdict])}
+            />
+            {preflightSummary(preflight.checks)}
+          </span>
+        }
+      />
+      <Collapse open={open}>
+        <ul id="update-preflight-body" className="mt-1.5 space-y-1.5">
+          {preflight.checks.map((c) => (
+            <li key={c.id} className="flex items-start gap-2 text-xs">
+              <span
+                aria-hidden="true"
+                className={cn("mt-1 size-1.5 shrink-0 rounded-full", VERDICT_COLOUR[c.verdict])}
+              />
+              <span className="min-w-0">
+                <span className="font-mono">{c.id}</span> <span className="text-muted-foreground">{c.reason}</span>
+                {c.remedy !== undefined && (
+                  <span className="block font-mono text-muted-foreground">
+                    {t("settings.updateCard.remedy", { command: c.remedy })}
+                  </span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Collapse>
+    </div>
   );
 }
 

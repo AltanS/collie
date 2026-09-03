@@ -25,6 +25,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Changed
+
+- Update card says "Up to date. Nothing to do." at the top and folds the Preflight details unless something needs a look.
+
 ## [1.4.0] - 2026-09-03
 
 ### Changed
