@@ -13,7 +13,7 @@ import { AgentChat } from "@/components/agent-chat";
 import { AppHeaderHost } from "@/components/app-header";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { PackProvider } from "@/components/pack-provider";
-import { UpdateAvailableBanner } from "@/components/update-available-banner";
+import { UpdateRibbon } from "@/components/update-ribbon";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth, markLive } from "@/lib/connection-health";
 import { saveDraft } from "@/lib/drafts";
@@ -303,7 +303,7 @@ const StackDeviceContext = createContext<DeviceAuth | null>(null);
 
 /**
  * {@link PaneRouter}'s pane, PLUS the two tier-1 banners RootLayout mounts as its in-flow siblings —
- * `<UpdateAvailableBanner/>` and `<ConnectionBanner/>` — so the worst-case stack (gap 4) can be judged
+ * `<UpdateRibbon/>` and `<ConnectionBanner/>` — so the worst-case stack (gap 4) can be judged
  * as one screen instead of summed from cards measured apart. Same real components, same nesting order
  * as `routes/root.tsx`: banners first, pane second.
  *
@@ -344,7 +344,7 @@ export function PaneStackRouter({
               pollMs={3_000}
             >
               <div className="flex h-full flex-col">
-                <UpdateAvailableBanner />
+                <UpdateRibbon />
                 <ConnectionBanner bridge={undefined} error authError />
                 <AppHeaderHost bridge={data.bridge} error={false}>
                   <StackPane data={data} fixture={fixture} />

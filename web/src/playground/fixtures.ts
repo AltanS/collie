@@ -37,6 +37,7 @@ import type {
   SessionSummary,
   TabView,
   UpdateInfo,
+  UpdateRunState,
   WorkspaceView,
 } from "@/lib/types";
 
@@ -772,6 +773,68 @@ export const updateMajor: UpdateInfo = {
   majorUrl: "https://github.com/AltanS/collie/releases/tag/v1.0.0",
   bridgeStale: false,
   checkedAt: TS - 6 * MIN,
+};
+
+// ── Update RUNS (the top band's states b, c and d) ───────────────────────────────────────────────
+//
+// The band reads `update.run` off the ordinary snapshot, so a state is a fixture rather than a
+// harness: give it a run record and it says the matching sentence. `updatedAt` is anchored to `TS`
+// (this module's own load time) because a finished run only speaks for ten minutes — see
+// `DONE_WINDOW_MS` in `lib/update-ribbon.ts`.
+
+const RUN_BASE = {
+  schema: 1,
+  from: "0.31.0",
+  to: "0.32.1",
+  startedAt: TS - 40 * SEC,
+  updatedAt: TS - 2 * SEC,
+  pid: 4242,
+  attempt: 1,
+} as const;
+
+/** The lead mid-run. One call per run state — the band counts Fetching → Building → Restarting. */
+export function updateInFlight(state: UpdateRunState): UpdateInfo {
+  return { ...updateRelease, releaseAvailable: false, run: { ...RUN_BASE, state } };
+}
+
+/** The lead is done and one peer is still moving. The band names it and then goes quiet. */
+export const updatePeersFollowing: UpdateInfo = {
+  ...updateRelease,
+  current: "0.32.1",
+  releaseAvailable: false,
+  run: {
+    ...RUN_BASE,
+    state: "done",
+    peers: [{ name: "minibuch", state: "restarting", version: "0.31.0" }],
+  },
+};
+
+/** A peer that tried and rolled back. Its reason is deliberately longer than the band's budget, so
+ *  the word-boundary cut is the thing this fixture is for. */
+export const updatePeerRolledBack: UpdateInfo = {
+  ...updatePeersFollowing,
+  run: {
+    ...RUN_BASE,
+    state: "done",
+    peers: [
+      {
+        name: "minibuch",
+        state: "rolled-back",
+        version: "0.31.0",
+        reason: "health gate timed out after three attempts on the standby door",
+      },
+    ],
+  },
+};
+
+/** The lead is done, and so is the pack. The band has nothing left to say. */
+export const updatePackLevel: UpdateInfo = {
+  ...updatePeersFollowing,
+  run: {
+    ...RUN_BASE,
+    state: "done",
+    peers: [{ name: "minibuch", state: "done", version: "0.32.1" }],
+  },
 };
 
 // ── The write gates ──────────────────────────────────────────────────────────────────────────────

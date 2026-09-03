@@ -854,6 +854,25 @@ export const en = {
   "updates.entry.status.peersBehind.other": "{count} peers behind",
   "updates.entry.status.available": "{version} available",
   "updates.entry.status.upToDate": "Up to date",
+
+  // --- updateRibbon (the ONE top-of-app update band), M16/02 ---
+  // Every string in this block is held to a 40-CHARACTER BUDGET in all six locales, enforced by
+  // `update-ribbon-i18n.test.ts`. One truncating row on a phone is about forty characters wide, and
+  // a line that overflows it in German or Japanese is a line nobody can read. The budget is measured
+  // with the slots filled: a version, a peer name, a count. `{reason}` is a peer's own prose of
+  // unbounded length, so it is cut on a word boundary before it ever reaches a string here and the
+  // Updates page carries it whole.
+  "updateRibbon.starting": "Starting update…",
+  "updateRibbon.fetching": "Updating to {version}. Fetching",
+  "updateRibbon.building": "Updating to {version}. Building",
+  "updateRibbon.restarting": "Updating to {version}. Restarting",
+  "updateRibbon.updated": "Updated to {version}. Tap to reload.",
+  "updateRibbon.peers.one": "Updating {count} peer: {names}",
+  "updateRibbon.peers.other": "Updating {count} peers: {names}",
+  "updateRibbon.peerRolledBack": "{name} rolled back: {reason}.",
+  "updateRibbon.seeUpdates": "See Updates.",
+  "updateRibbon.available": "Collie {version} available. Tap to update.",
+  "updateRibbon.dismiss": "Dismiss this version",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

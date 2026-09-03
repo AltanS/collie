@@ -54,7 +54,7 @@ export const GREEN_MS = 1_800;
 export const EXIT_MS = 200;
 
 // The ONE connection surface: a single, thin, animated bar mounted once in RootLayout (in-flow above
-// the route, a sibling of UpdateAvailableBanner) that is the app's entire connection UI — the header
+// the route, a sibling of the UpdateRibbon) that is the app's entire connection UI — the header
 // pill is gone. It fades in only on SUSTAINED trouble, escalates from amber → red on a real outage,
 // flashes green on recovery, and otherwise renders nothing. It reads the SAME two shared-clock signals
 // the header dog does (useConnectionTrouble at 4s, useConnectionLost at 15s), so bar and dog can never
