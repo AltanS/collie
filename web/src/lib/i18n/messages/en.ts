@@ -844,7 +844,7 @@ export const en = {
   "settings.updateCard.peer.state.interrupted": "stopped",
   "settings.updateCard.peer.state.idle": "waiting",
 
-  // --- updates (the page, and the Settings row that opens it) — M16/01 ---
+  // --- updates (the page, and the Settings row that opens it), M16/01 ---
   "updates.title": "Updates",
   "updates.nav.back": "Back",
   "updates.entry.title": "Updates",
