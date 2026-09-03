@@ -7,6 +7,7 @@ import {
   BUILD_HEADER,
   cacheControlFor,
   checkAccess,
+  launch,
   marksPaneSeen,
   SEEN_HEADER,
   deviceAuth,
@@ -16,6 +17,7 @@ import {
   isLoopbackPeer,
   isReservedAuthPath,
   keysPane,
+  launchersRoute,
   normalizeTabLabel,
   paneReadResponse,
   parsePairRequest,
@@ -30,6 +32,7 @@ import {
   type ReplySender,
 } from "./server.ts";
 import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "./audit.ts";
@@ -41,12 +44,30 @@ import { withAgentHints } from "./beacon/hint.ts";
 import { HerdrMux, herdrMuxFactory } from "./mux/herdr/adapter.ts";
 import { tmuxMuxFactory } from "./mux/tmux/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
-import { muxAck, type MuxAck, type MuxAdapter, type MuxGrid } from "./mux/types.ts";
+import {
+  muxAck,
+  muxOk,
+  muxRefused,
+  type MuxAck,
+  type MuxAdapter,
+  type MuxCreatedPane,
+  type MuxGrid,
+  type MuxOutcome,
+  type MuxSpaceRequest,
+  type MuxTabRequest,
+} from "./mux/types.ts";
 import { neverProxy } from "./pack/fixtures.ts";
 import { PackLead } from "./pack/lead.ts";
 import { PackRegistry } from "./pack/registry.ts";
 import { computeEtag } from "./http-cache.ts";
-import { MUX_LOGO_PATH, type SnapshotResponse } from "./types.ts";
+import {
+  MUX_LOGO_PATH,
+  type AgentView,
+  type Launcher,
+  type LaunchersResponse,
+  type SnapshotResponse,
+} from "./types.ts";
+import type { StateEngine } from "./state-engine.ts";
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
@@ -85,6 +106,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     quickRepliesFile: "/nope/quick-replies.toml",
     themeFile: "/nope/theme.toml",
     fontsDir: "/nope/fonts",
+    launchersFile: "/nope/launchers.toml",
     trustedUser: "",
     trustedUserOptional: false,
     auditContent: "preview",
@@ -1639,10 +1661,10 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All SEVEN session-scoped routes (tab create, workspace create, tab action, the pane family,
-    // "look now", the worktree listing and the worktree actions) reach their runtime through the
-    // caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(7);
+    // All NINE session-scoped routes (tab create, workspace create, launch, this host's launcher
+    // rows, tab action, the pane family, "look now", the worktree listing and the worktree actions)
+    // reach their runtime through the caller's resolver and nothing else.
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(9);
     // Exactly five `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
@@ -1825,5 +1847,447 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(src).toContain("update: updateMonitor.status(),");
     expect(src).toContain("...updateMonitor.status(), preflight: report");
     expect(src).not.toContain('"/api/update/status"');
+  });
+});
+
+// POST /api/launch — the launcher rows' one-tap: a Space whose cwd and label come from the row,
+// then the command plus a bare Enter typed into its fresh shell. The configured rows ARE the
+// allowlist, so the first thing asserted is that an unlisted command touches the multiplexer at all.
+describe("launch — an allowlisted space create, then the command and Enter", () => {
+  /** What a phone posts here: a row's `command`, and optionally the pane to open a tab beside. */
+  interface LaunchBody {
+    command?: string;
+    paneId?: string;
+  }
+
+  function request(body: LaunchBody): Request {
+    return new Request("http://localhost/api/launch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  /** One audit line as `JSON.parse` returns it: the entry as written, plus formatAuditLine's stamp. */
+  type LaunchAuditLine = AuditEntry & { ts: string };
+
+  function launchAudit() {
+    const entries: LaunchAuditLine[] = [];
+    return {
+      audit: new AuditLog((line) => {
+        // SAFETY: the appender is handed formatAuditLine's own output — this test never feeds it
+        // anything else — so the parse round-trips the AuditEntry it just serialised.
+        entries.push(JSON.parse(line) as LaunchAuditLine);
+      }),
+      entries,
+    };
+  }
+
+  // A clock the test owns: `sleep` moves `now` and returns immediately, so a wait bounded in
+  // milliseconds is asserted in milliseconds without any of them passing.
+  function fakeClock() {
+    let ms = 0;
+    return {
+      now: () => ms,
+      sleep: (by: number): Promise<void> => {
+        ms += by;
+        return Promise.resolve();
+      },
+    };
+  }
+
+  // Only what `launch` reaches: create the space, read its grid, type, submit, and close on
+  // rollback. `refresh` is there because every structural create settles the topology afterwards.
+  class FakeLaunchMux {
+    createArgs: MuxSpaceRequest | null = null;
+    createTabArgs: MuxTabRequest | null = null;
+    readonly texts: Array<[string, string]> = [];
+    readonly keys: Array<[string, readonly string[]]> = [];
+    readonly closes: string[] = [];
+    failOn: "create" | "text" | "keys" | null = null;
+    closeThrows = false;
+    /** Successive screens the new pane shows; the last one repeats for every further read. */
+    screens: string[] = ["$ "];
+    grids = 0;
+    /** The fake clock's reading when the command was typed — what the wait is asserted against. */
+    typedAtMs: number | null = null;
+    constructor(private readonly now: () => number = () => 0) {}
+
+    createSpace(request_: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+      this.createArgs = request_;
+      if (this.failOn === "create") return Promise.resolve(muxRefused("create failed"));
+      return Promise.resolve(
+        muxOk({ paneId: "w1:p1", spaceId: "w1", spaceLabel: "MySpace", tabId: "w1:t1", cwd: "/home/op" }),
+      );
+    }
+    createTab(request_: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+      this.createTabArgs = request_;
+      if (this.failOn === "create") return Promise.resolve(muxRefused("create failed"));
+      return Promise.resolve(
+        muxOk({ paneId: "w2:p9", spaceId: request_.spaceId, spaceLabel: "MySpace", tabId: "w2:t9", cwd: request_.cwd ?? "/home/op" }),
+      );
+    }
+    readGrid(paneId: string): Promise<MuxOutcome<MuxGrid>> {
+      // SAFETY: `screens` is never empty in this suite and the index is clamped to its last entry.
+      const text = this.screens[Math.min(this.grids, this.screens.length - 1)] as string;
+      this.grids += 1;
+      return Promise.resolve(muxOk({ paneId, text, truncated: false, revision: this.grids }));
+    }
+    typeText(paneId: string, text: string): Promise<MuxAck> {
+      this.typedAtMs ??= this.now();
+      this.texts.push([paneId, text]);
+      return this.failOn === "text" ? Promise.resolve(muxRefused("text failed")) : Promise.resolve(muxAck());
+    }
+    sendKeys(paneId: string, keys: readonly string[]): Promise<MuxAck> {
+      this.keys.push([paneId, keys]);
+      return this.failOn === "keys" ? Promise.resolve(muxRefused("keys failed")) : Promise.resolve(muxAck());
+    }
+    closePane(paneId: string): Promise<MuxAck> {
+      this.closes.push(paneId);
+      if (this.closeThrows) return Promise.reject(new Error("close failed"));
+      return Promise.resolve(muxAck());
+    }
+    refresh(): Promise<void> {
+      return Promise.resolve();
+    }
+  }
+
+  // `Partial<T>` on both stubs keeps the compiler checking every member they DO supply against the
+  // real contract, exactly as `asMux` above does for a HerdrClient fake.
+  const engineStub: Partial<StateEngine> = { pokeNow: () => {} };
+  // SAFETY: after a create, `launch` asks the engine for exactly one thing — `pokeNow()` — and the
+  // adapter for exactly the five calls FakeLaunchMux implements. No other member of either is
+  // reachable from this code path, which is the only step these two casts assert.
+  const engine = engineStub as StateEngine;
+  function asLaunchMux(fake: Partial<MuxAdapter>): MuxAdapter {
+    // SAFETY: as above — only the five calls the fake implements are reachable from `launch`.
+    return fake as MuxAdapter;
+  }
+  const rowsOf = (rows: Launcher[]) => () => Promise.resolve(rows);
+  const PEEK: Launcher = { command: "rumen-peek", label: "Runs & quota", cwd: "/home/op/project" };
+
+  /** A minimal pane the "beside a pane" launch path can look up by id. */
+  function fakePane(overrides: Partial<AgentView> = {}): AgentView {
+    return {
+      paneId: "w3:p1",
+      workspaceId: "w3",
+      workspaceLabel: "Beside",
+      workspaceNumber: 1,
+      tabId: "w3:t1",
+      agent: "shell",
+      status: "unknown",
+      cwd: "/home/op/beside",
+      focused: false,
+      ...overrides,
+    };
+  }
+
+  /** An engine whose snapshot lists exactly these panes — what `launch`'s `paneId` lookup reads. */
+  function engineWithPanes(agents: AgentView[]): StateEngine {
+    const stub: Partial<StateEngine> = {
+      pokeNow: () => {},
+      current: () => ({ agents, shellPanes: [], workspaces: [], tabs: [], bridge: "connected" }),
+    };
+    // SAFETY: `launch`'s beside-pane path reaches only `current()` (for the pane lookup and the
+    // tab-path's workspace-label fallback) and `pokeNow()` — the same two members every other
+    // engine stub in this suite supplies.
+    return stub as StateEngine;
+  }
+
+  test("an unlisted command is refused before anything is created", async () => {
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
+    const { audit, entries } = launchAudit();
+    const res = await launch(
+      asLaunchMux(mux),
+      engine,
+      request({ command: "intruder" }),
+      audit,
+      null,
+      "default",
+      rowsOf([PEEK]),
+      clock,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ ok: false, code: "launch.not_allowlisted" });
+    expect(mux.createArgs).toBeNull();
+    expect(mux.texts).toEqual([]);
+    expect(mux.keys).toEqual([]);
+    expect(entries).toHaveLength(0);
+  });
+
+  test("a listed row creates a space with that row's label AND cwd, then types the command + Enter", async () => {
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
+    const { audit, entries } = launchAudit();
+    const res = await launch(
+      asLaunchMux(mux),
+      engine,
+      request({ command: "rumen-peek" }),
+      audit,
+      null,
+      "default",
+      rowsOf([PEEK]),
+      clock,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true });
+    // The row's own cwd and label, never the client's — the request carried neither.
+    expect(mux.createArgs).toEqual({ cwd: "/home/op/project", label: "Runs & quota" });
+    expect(mux.texts).toEqual([["w1:p1", "rumen-peek"]]);
+    // A bare Enter, NOT cfg.submitKeys: this is a shell prompt, not an agent's composer.
+    expect(mux.keys).toEqual([["w1:p1", ["Enter"]]]);
+    expect(entries[0]?.action).toBe("workspace.launch");
+    expect(entries[0]?.detail).toEqual({
+      command: "rumen-peek",
+      label: "Runs & quota",
+      cwd: "/home/op/project",
+    });
+  });
+
+  test("a send failure closes the created pane rather than leaving an empty shell", async () => {
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
+    mux.failOn = "keys";
+    const { audit } = launchAudit();
+    const res = await launch(
+      asLaunchMux(mux),
+      engine,
+      request({ command: "rumen-peek" }),
+      audit,
+      null,
+      "default",
+      rowsOf([PEEK]),
+      clock,
+    );
+    expect(mux.closes).toEqual(["w1:p1"]);
+    expect(res.status).toBe(200);
+    // The text landed and the Enter did not, which `sendReplySteps` names precisely — the code and
+    // its sentence ride out unchanged, because a launch is a reply into a shell by another name.
+    expect(await res.json()).toMatchObject({ ok: false, code: "reply.not_submitted" });
+  });
+
+  test("a rollback that itself fails is swallowed — the send error is still the answer", async () => {
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
+    mux.failOn = "text";
+    mux.closeThrows = true;
+    const { audit } = launchAudit();
+    const res = await launch(
+      asLaunchMux(mux),
+      engine,
+      request({ command: "rumen-peek" }),
+      audit,
+      null,
+      "default",
+      rowsOf([PEEK]),
+      clock,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: false });
+  });
+
+  test("a space the multiplexer refuses is reported, and nothing is typed", async () => {
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
+    mux.failOn = "create";
+    const { audit, entries } = launchAudit();
+    const res = await launch(
+      asLaunchMux(mux),
+      engine,
+      request({ command: "rumen-peek" }),
+      audit,
+      null,
+      "default",
+      rowsOf([PEEK]),
+      clock,
+    );
+    expect(await res.json()).toMatchObject({ ok: false, code: "workspace.create_failed" });
+    expect(mux.texts).toEqual([]);
+    expect(entries).toHaveLength(0);
+  });
+
+  // The bug this route was shipped with: `createSpace` returns when the Space is ALLOCATED, so the
+  // command used to be typed into a shell that had not drawn its prompt yet and was discarded.
+  test("the command is typed only once the new pane's screen has stopped moving", async () => {
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
+    // Two empty reads (no shell yet), then a greeting that is still growing, then it settles.
+    mux.screens = ["", "", "Welcome", "Welcome\n$ ", "Welcome\n$ "];
+    const { audit } = launchAudit();
+    const res = await launch(
+      asLaunchMux(mux),
+      engine,
+      request({ command: "rumen-peek" }),
+      audit,
+      null,
+      "default",
+      rowsOf([PEEK]),
+      clock,
+    );
+    expect(res.status).toBe(200);
+    // Five polls at 150ms: the fifth is the first that repeats a non-empty screen.
+    expect(mux.grids).toBe(5);
+    expect(mux.typedAtMs).toBe(750);
+    expect(mux.texts).toEqual([["w1:p1", "rumen-peek"]]);
+  });
+
+  test("a screen that never settles is still launched into, once past the ceiling", async () => {
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
+    // A screen that changes on every read — a `top`-like banner, or a shell that never stops.
+    mux.screens = Array.from({ length: 200 }, (_, i) => `line ${i}`);
+    const { audit } = launchAudit();
+    const res = await launch(
+      asLaunchMux(mux),
+      engine,
+      request({ command: "rumen-peek" }),
+      audit,
+      null,
+      "default",
+      rowsOf([PEEK]),
+      clock,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true });
+    // The wait gives up at the 5000ms ceiling (the poll that crosses it is at 5100) and sends
+    // anyway: a slow shell still runs what it is handed, and a swallowed launch is worse.
+    expect(mux.typedAtMs).toBe(5100);
+    expect(mux.texts).toEqual([["w1:p1", "rumen-peek"]]);
+  });
+
+  describe("beside a pane — a tab in that pane's Space, never a new Space", () => {
+    const HERE: Launcher = { command: "htop", label: "Top" };
+
+    test("a pinned row's cwd wins over the pane's own", async () => {
+      const clock = fakeClock();
+      const mux = new FakeLaunchMux(clock.now);
+      const { audit, entries } = launchAudit();
+      const pane = fakePane({ paneId: "w3:p1", workspaceId: "w3", cwd: "/home/op/pane-cwd" });
+      const res = await launch(
+        asLaunchMux(mux),
+        engineWithPanes([pane]),
+        request({ command: "rumen-peek", paneId: "w3:p1" }),
+        audit,
+        null,
+        "default",
+        rowsOf([PEEK]),
+        clock,
+      );
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ ok: true, pane: { workspaceId: "w3" } });
+      expect(mux.createArgs).toBeNull(); // never createSpace
+      expect(mux.createTabArgs).toEqual({ spaceId: "w3", label: "Runs & quota", cwd: "/home/op/project" });
+      expect(mux.texts).toEqual([["w2:p9", "rumen-peek"]]);
+      expect(entries[0]?.action).toBe("tab.launch");
+      expect(entries[0]?.detail).toEqual({
+        command: "rumen-peek",
+        label: "Runs & quota",
+        cwd: "/home/op/project",
+        besidePaneId: "w3:p1",
+      });
+    });
+
+    test("an absent cwd resolves to the pane's own cwd, not the operator's home", async () => {
+      const clock = fakeClock();
+      const mux = new FakeLaunchMux(clock.now);
+      const { audit, entries } = launchAudit();
+      const pane = fakePane({ paneId: "w3:p1", workspaceId: "w3", cwd: "/home/op/pane-cwd" });
+      const res = await launch(
+        asLaunchMux(mux),
+        engineWithPanes([pane]),
+        request({ command: "htop", paneId: "w3:p1" }),
+        audit,
+        null,
+        "default",
+        rowsOf([HERE]),
+        clock,
+      );
+      expect(res.status).toBe(200);
+      expect(mux.createTabArgs).toEqual({ spaceId: "w3", label: "Top", cwd: "/home/op/pane-cwd" });
+      expect(entries[0]?.detail).toMatchObject({ cwd: "/home/op/pane-cwd" });
+    });
+
+    test("an unknown paneId 404s with launch.pane_unknown, before anything is touched", async () => {
+      const clock = fakeClock();
+      const mux = new FakeLaunchMux(clock.now);
+      const { audit, entries } = launchAudit();
+      const res = await launch(
+        asLaunchMux(mux),
+        engineWithPanes([]),
+        request({ command: "rumen-peek", paneId: "ghost" }),
+        audit,
+        null,
+        "default",
+        rowsOf([PEEK]),
+        clock,
+      );
+      expect(res.status).toBe(404);
+      expect(await res.json()).toMatchObject({ ok: false, code: "launch.pane_unknown" });
+      expect(mux.createArgs).toBeNull();
+      expect(mux.createTabArgs).toBeNull();
+      expect(mux.texts).toEqual([]);
+      expect(entries).toHaveLength(0);
+    });
+
+    test("a failed send closes the created TAB, same rollback as the Space path", async () => {
+      const clock = fakeClock();
+      const mux = new FakeLaunchMux(clock.now);
+      mux.failOn = "keys";
+      const { audit } = launchAudit();
+      const pane = fakePane({ paneId: "w3:p1", workspaceId: "w3" });
+      const res = await launch(
+        asLaunchMux(mux),
+        engineWithPanes([pane]),
+        request({ command: "rumen-peek", paneId: "w3:p1" }),
+        audit,
+        null,
+        "default",
+        rowsOf([PEEK]),
+        clock,
+      );
+      expect(mux.closes).toEqual(["w2:p9"]);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toMatchObject({ ok: false, code: "reply.not_submitted" });
+    });
+
+    test("without a paneId, the Space path runs exactly as before", async () => {
+      const clock = fakeClock();
+      const mux = new FakeLaunchMux(clock.now);
+      const { audit, entries } = launchAudit();
+      const res = await launch(
+        asLaunchMux(mux),
+        engineWithPanes([]),
+        request({ command: "rumen-peek" }),
+        audit,
+        null,
+        "default",
+        rowsOf([PEEK]),
+        clock,
+      );
+      expect(res.status).toBe(200);
+      expect(mux.createArgs).toEqual({ cwd: "/home/op/project", label: "Runs & quota" });
+      expect(mux.createTabArgs).toBeNull();
+      expect(entries[0]?.action).toBe("workspace.launch");
+    });
+  });
+});
+
+describe("GET /api/launchers — this host's own rows, home included", () => {
+  test("answers the rows this getLaunchers gives, plus this host's home dir", async () => {
+    const rows: Launcher[] = [{ command: "rumen-peek", label: "Runs & quota", cwd: "/home/op/project" }];
+    const res = await launchersRoute(() => Promise.resolve(rows), null);
+    expect(res.status).toBe(200);
+    // SAFETY: `launchersRoute` is the only writer of this body (this test calls it directly, two
+    // lines up), so the shape it satisfies itself with (`LaunchersResponse`) is what comes back.
+    const body = (await res.json()) as LaunchersResponse;
+    expect(body.launchers).toEqual(rows);
+    expect(body.home).toBe(homedir());
+  });
+
+  test("no launchers.toml answers an empty list, never an error", async () => {
+    const res = await launchersRoute(() => Promise.resolve([]), null);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ launchers: [], home: homedir() });
   });
 });

@@ -16,6 +16,17 @@ import { cn } from "@/lib/utils";
  *
  * It owns POSITION and nothing else. What floats in it — the status line, its ground, its
  * dismissal — belongs to the feature that renders inside it.
+ *
+ * ONE DOCK NOW, NOT TWO. This used to also offer `dock="top"` — absolute at the top of a route's
+ * own content region — for the pane screen, whose composer sits at the bottom. That dock covered
+ * the tab strip and the pane strip instead, which read as the cheapest real estate on that screen
+ * until an operator tapped the tab strip's own "+" (new tab) and watched the toast it earned
+ * ("Tab ready") land on the control they had just pressed. The strip was never free real estate;
+ * it is where the control you just tapped lives. The pane screen's status now rides in its
+ * header's own title slot instead (`components/header-status.tsx`), which is text nobody is
+ * reading for the two seconds a status shows, and the controls beside it never move — so nothing
+ * on the pane screen needs a `dock="top"` docked over its own content anymore. Every remaining
+ * caller wants the bottom dock, so that is the only shape left here.
  */
 
 /**
@@ -33,31 +44,11 @@ import { cn } from "@/lib/utils";
 const SHARED = "pointer-events-none z-40 mx-auto w-full max-w-screen-sm px-4";
 
 export interface ToastViewportProps {
-  /**
-   * `"bottom"` — fixed to the viewport bottom, column-centred, clearing the home indicator. The
-   * dashboard and space screens, which have no composer to collide with.
-   *
-   * `"top"` — absolute at the top of the nearest positioned ancestor, which on the pane screen is
-   * the content region below the sticky header. Deliberately NOT fixed: covering the tab and pane
-   * strips for two seconds is the cheapest real estate on that screen, while covering the terminal
-   * tail — the newest output, the reason the screen is open — was tried on this very screen and
-   * reverted (agent-chat.tsx:1000-1002). Being absolute inside the content region also puts it below
-   * the header by geometry rather than by measuring the header's height, which nothing has to
-   * maintain.
-   */
-  dock: "bottom" | "top";
   children: ReactNode;
   className?: string;
 }
 
-export function ToastViewport({ dock, children, className }: ToastViewportProps) {
-  if (dock === "top") {
-    // No portal, and that is the point: `absolute` resolves against the route's own positioned
-    // content region, so it needs to stay in that subtree. Nothing here is `fixed`, so the
-    // containing-block hazard below cannot apply.
-    return <div className={cn(SHARED, "absolute inset-x-0 top-0 pt-3", className)}>{children}</div>;
-  }
-
+export function ToastViewport({ children, className }: ToastViewportProps) {
   // Portalled to <body>, and NOT as a formality. A `fixed` element is positioned against the
   // viewport only while no ancestor has created a containing block — and `backdrop-filter`,
   // `filter`, `transform`, `perspective` and `contain` all create one, on any ancestor, at any

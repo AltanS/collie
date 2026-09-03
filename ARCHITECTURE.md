@@ -323,8 +323,12 @@ graph TD
   [ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md). Their **Keys-tray presets**
   ride the same request on the same terms, from `keys.toml` (`bridge/operator-keys.ts`), and their
   **Quick-dock groups** from `quick-replies.toml` (`bridge/operator-quick-replies.ts`); the three
-  files share one reader (`bridge/operator-file.ts`) and one scope ladder
-  (`web/src/lib/operator-scope.ts`).
+  share one reader (`bridge/operator-file.ts`) and one scope ladder
+  (`web/src/lib/operator-scope.ts`). Their **launcher rows**, from `launchers.toml`
+  (`bridge/operator-launchers.ts`), share the reader but NOT `/api/config`: a launcher row creates
+  its own pane rather than addressing an existing one, so it carries no scope, and its rows ride
+  their own session-scoped `GET /api/launchers` instead — rows must come from the host that runs
+  them, which a lead-only `/api/config` field cannot say in a pack (PACK_PROTOCOL.md §5).
 
 - **UI strings are translated by a typed dictionary, not a library** (`web/src/lib/i18n/`, six
   locales, English the compile-time source of truth) — `t()`/`tn()` plus the `useLocale()` hook

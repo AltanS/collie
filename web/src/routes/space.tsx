@@ -28,7 +28,7 @@ export function SpaceRoute() {
   const { spaceId = "" } = useParams();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
-  const { newTab, newSpace } = useSpaceActions();
+  const { newTab, newSpace, creatingTab, creatingSpace } = useSpaceActions();
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   // Either write gate refusing locks the tab strip's rename/close the same way (see ReadOnlyBanner).
   const { refused: notPaired } = usePairing();
@@ -75,7 +75,8 @@ export function SpaceRoute() {
   return (
     <div className="mx-auto flex min-h-0 w-full max-w-screen-sm flex-1 flex-col">
       {/* The space header: same shell as the dashboard, minus the session switcher (you switch
-          sessions from home). Wordmark + shared pill + Settings gear. */}
+          sessions from home). Wordmark + shared pill + Settings gear. Launchers live on the
+          dashboard's own strip and in the pane switcher sheet, not here. */}
       <RouteHeader
         onHome={toDashboard}
         wordmark
@@ -99,6 +100,7 @@ export function SpaceRoute() {
               selected={spaceId}
               onSelect={(id) => (id === null ? toDashboard() : switchSpace(id))}
               onNewSpace={() => setNewSpaceOpen(true)}
+              creatingSpace={creatingSpace}
               onBack={toDashboard}
             />
             <TabStrip
@@ -109,6 +111,7 @@ export function SpaceRoute() {
               selected={tab}
               onSelect={switchTab}
               onNewTab={newTab}
+              creatingTab={creatingTab.has(selectedWs.workspaceId)}
               scope={data.scope}
               readOnly={isReadOnly(data.device) || notPaired}
               onRenamed={() => revalidator.revalidate()}
@@ -142,7 +145,7 @@ export function SpaceRoute() {
       {/* Status overlay, anchored to the bottom of the viewport. Stays outside the scroller. Same
           call as the dashboard's, and for the same reason: no composer down there to collide with.
           ToastViewport owns the position — see the note on home.tsx's copy. */}
-      <ToastViewport dock="bottom">
+      <ToastViewport>
         <StatusArea />
       </ToastViewport>
 

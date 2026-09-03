@@ -14,6 +14,7 @@ import type {
   BridgeConfig,
   CreateResponse,
   DevicesResponse,
+  LaunchersResponse,
   NotifyPrefs,
   PaneHistoryResponse,
   PackStatusResponse,
@@ -573,6 +574,37 @@ export function createWorkspace(
     method: "POST",
     body: JSON.stringify(opts),
   });
+}
+
+// POST /api/launch — the command string here is an allowlist KEY the bridge must recognise, not an
+// arbitrary line the client gets to run. Anything not in `launchers.toml` is a 400 before the
+// multiplexer is ever touched, and that lookup is the whole security story of the route. Scoped
+// like /api/tab and /api/workspace: the new pane is created where you are looking. The client never
+// sends a path — only, optionally, `besidePaneId`, the pane this launch should open a TAB beside
+// (the switcher). Omitted, the bridge creates a throwaway Space instead (the dashboard).
+/** POST /api/launch's body — a named contract so `launch` below infers against it, not a widened literal. */
+interface LaunchRequestBody {
+  command: string;
+  paneId?: string;
+}
+
+export function launch(command: string, besidePaneId?: string, scope?: Scope): Promise<CreateResponse> {
+  const body: LaunchRequestBody = { command };
+  if (besidePaneId !== undefined) body.paneId = besidePaneId;
+  return req<CreateResponse>(withScope("/api/launch", scope), {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+/**
+ * GET /api/launchers — THIS scope's own host's launcher rows, read live off its `launchers.toml`.
+ * Never cached alongside `/api/config`: rows must come from the host that runs them, and the
+ * operator file is read live on the bridge, so this is fetched on mount and again whenever the
+ * scope changes (lib/operator-config.ts's `useLaunchers`).
+ */
+export function fetchLaunchers(scope?: Scope): Promise<LaunchersResponse> {
+  return req<LaunchersResponse>(withScope("/api/launchers", scope));
 }
 
 /** The worktrees of the repo a space sits in. Empty-handed when the space is not in one. */

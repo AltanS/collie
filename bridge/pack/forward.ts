@@ -56,6 +56,11 @@ const FORWARDABLE: readonly RegExp[] = [
   /^tab$/,
   /^tab\/[^/]+\/(?:rename|close)$/,
   /^workspace$/,
+  // Rows must come from the host that runs them: a launch (and the rows a launch button reads)
+  // addressed at a peer via `?host=` has to reach THAT machine's `launchers.toml`, never the
+  // lead's. Both ride the pack link exactly like `workspace` does.
+  /^launch$/,
+  /^launchers$/,
 ];
 
 /** The inverse of {@link packRouteFor}, for the peer dispatching a pack route into its own routes. */
@@ -72,6 +77,10 @@ export type ForwardKind = "read" | "write";
  * an action segment types into or restructures a terminal.
  */
 export function forwardKind(route: string): ForwardKind {
+  // A GET that changes nothing, exactly like `pane/:id/history` — attempted even against a member
+  // this lead has not heard from in a while, never refused before it is tried (§10.3's "a READ to a
+  // dead member is still attempted").
+  if (route === "launchers") return "read";
   if (!route.startsWith("pane/")) return "write";
   const action = route.split("/")[2];
   return action === undefined || action === "history" ? "read" : "write";
@@ -95,6 +104,11 @@ export function forwardPaneId(route: string): string | undefined {
 export function forwardAuditAction(route: string): string | null {
   if (route === "tab") return "tab.create";
   if (route === "workspace") return "workspace.create";
+  // `launch` writes either `workspace.launch` or `tab.launch`, decided by the body a route string
+  // alone can't see — this generic name is the LEAD's own line about the forward (§12's "plus the
+  // target host"), and the peer's own audit line is the accurate record of which one ran.
+  if (route === "launch") return "launch";
+  if (route === "launchers") return null;
   if (route.startsWith("tab/")) return route.endsWith("/close") ? "tab.close" : "tab.rename";
   const action = route.split("/")[2];
   if (action === undefined || action === "history") return null;

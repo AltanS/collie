@@ -11,7 +11,14 @@ import {
   usePolling,
 } from "./use-polling";
 import { isCatchingUp, resetIdleLock, setLocked } from "@/lib/idle";
-import { markPollResult, resetPollIntent, setFollowing, stampSend } from "@/lib/poll-intent";
+import {
+  BURST_MIN_POLLS,
+  markPollResult,
+  resetPollIntent,
+  setFollowing,
+  stampSend,
+  stampTopology,
+} from "@/lib/poll-intent";
 import type { HomeData } from "@/lib/loaders";
 import type { AgentView } from "@/lib/types";
 
@@ -100,6 +107,11 @@ describe("intervalFor", () => {
   const blockedPane = makeData([makeAgent("w1:p1", "blocked")]);
   const shell = makeData([], [makeShell("w1:s1")]);
   const elsewhere = makeData([makeAgent("w1:p1", "idle"), makeAgent("w1:p9", "working")]);
+
+  it("rule 0 — a topology burst wins even on the home screen with an idle herd", () => {
+    expect(intervalFor(idlePane, null, on({ topologyBursting: true }))).toBe(BURST_MS);
+    expect(intervalFor(undefined, undefined, on({ topologyBursting: true }))).toBe(BURST_MS);
+  });
 
   it("rule 1 — a burst on the open pane wins over everything else", () => {
     expect(intervalFor(idlePane, "w1:p1", on({ bursting: true }))).toBe(BURST_MS);
@@ -371,6 +383,46 @@ describe("usePolling — bursts and the follow intent", () => {
     act(() => stampSend("w1:p1"));
     vi.advanceTimersByTime(BURST_MS * 4);
     expect(rr.revalidate).not.toHaveBeenCalled();
+  });
+
+  it("polls at BURST_MS after a topology write, even on the home screen", () => {
+    renderHook(() => usePolling(openPane(), null)); // home screen — no pane open
+    act(() => stampTopology());
+
+    vi.advanceTimersByTime(BURST_MS - 1);
+    expect(rr.revalidate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(rr.revalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("a topology write reschedules from the stamp, like a send does", () => {
+    renderHook(() => usePolling(openPane(), null));
+    vi.advanceTimersByTime(IDLE_MS - 1000);
+    expect(rr.revalidate).not.toHaveBeenCalled();
+    act(() => stampTopology());
+    vi.advanceTimersByTime(BURST_MS);
+    expect(rr.revalidate).toHaveBeenCalledTimes(1);
+  });
+
+  it("the topology burst spends itself after BURST_MIN_POLLS polls and backs off", () => {
+    renderHook(() => usePolling(openPane(), null));
+    act(() => stampTopology());
+    // Run through the burst's own budget of fast polls. Each advance is its own `act` so the state
+    // update the tick makes (consumeTopologyPoll) is flushed and the interval rescheduled — a tick
+    // fires from inside the effect's own setInterval callback, not from test code, so nothing else
+    // would flush it between iterations.
+    for (let i = 0; i < BURST_MIN_POLLS; i += 1) {
+      act(() => {
+        vi.advanceTimersByTime(BURST_MS);
+      });
+    }
+    expect(rr.revalidate).toHaveBeenCalledTimes(BURST_MIN_POLLS);
+    rr.revalidate.mockClear();
+    // Spent — the herd is idle and no pane is open, so the gap is back to IDLE_MS.
+    vi.advanceTimersByTime(BURST_MS * 4);
+    expect(rr.revalidate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(IDLE_MS);
+    expect(rr.revalidate).toHaveBeenCalledTimes(1);
   });
 
   it("reads the follow intent the pane view publishes", () => {

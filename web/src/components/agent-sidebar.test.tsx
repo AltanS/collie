@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 
 import { ThreadSidebar } from "./agent-sidebar";
 import { fixtureAgents } from "@/test/handlers";
-import type { AgentView } from "@/lib/types";
+import type { AgentView, Launcher } from "@/lib/types";
 
 const idleAgent: AgentView = {
   paneId: "w3:p1",
@@ -236,5 +236,121 @@ describe("ThreadSidebar — folding the long tails", () => {
     );
     expect(screen.getByText("scratch0")).toBeInTheDocument();
     expect(screen.queryByRole("button", { expanded: true })).not.toBeInTheDocument();
+  });
+});
+
+// The switcher's own Launch section: the launcher's other home now that the pane header's rocket
+// is gone. Same rows the deleted LaunchSheet drew; see agent-chat.test.tsx for how it's wired in.
+describe("ThreadSidebar: Launch section", () => {
+  const peek: Launcher = { command: "rumen-peek", label: "Runs & quota", cwd: "/home" };
+  const quota: Launcher = { command: "showy-quota-peek", label: "Quota bars", cwd: "/home" };
+
+  it("renders a row per launcher and fires onLaunch with the command when tapped", async () => {
+    const user = userEvent.setup();
+    const onLaunch = vi.fn();
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        launchers={[peek, quota]}
+        onLaunch={onLaunch}
+      />,
+    );
+    expect(screen.getByText("Launch")).toBeInTheDocument();
+    expect(screen.getByText("Runs & quota")).toBeInTheDocument();
+    expect(screen.getByText("rumen-peek")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Quota bars"));
+    expect(onLaunch).toHaveBeenCalledExactlyOnceWith("showy-quota-peek");
+  });
+
+  it("hides the section entirely when onLaunch is not given, even with launchers declared", () => {
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        launchers={[peek]}
+      />,
+    );
+    expect(screen.queryByText("Launch")).not.toBeInTheDocument();
+    expect(screen.queryByText("rumen-peek")).not.toBeInTheDocument();
+  });
+
+  it("hides the section when no launchers are declared, even with onLaunch given", () => {
+    render(
+      <ThreadSidebar agents={fixtureAgents} currentPaneId="" onSelect={vi.fn()} onLaunch={vi.fn()} />,
+    );
+    expect(screen.queryByText("Launch")).not.toBeInTheDocument();
+  });
+
+  it("disables the row that is in flight and leaves the others tappable", async () => {
+    const user = userEvent.setup();
+    const onLaunch = vi.fn();
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        launchers={[peek, quota]}
+        onLaunch={onLaunch}
+        launching={new Set(["rumen-peek"])}
+      />,
+    );
+    const busyRow = screen.getByText("Runs & quota").closest("button");
+    expect(busyRow).toBeDisabled();
+
+    await user.click(screen.getByText("Quota bars"));
+    expect(onLaunch).toHaveBeenCalledExactlyOnceWith("showy-quota-peek");
+  });
+
+  it("shows the Launch section together with the empty-panes text when there are no panes", () => {
+    render(
+      <ThreadSidebar
+        agents={[]}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        launchers={[peek]}
+        onLaunch={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("No agents running.")).toBeInTheDocument();
+    expect(screen.getByText("Launch")).toBeInTheDocument();
+    expect(screen.getByText("rumen-peek")).toBeInTheDocument();
+  });
+
+  it("a pinned row's folder is shortened under home; an absent cwd reads \"here\"", () => {
+    const top: Launcher = { command: "htop", label: "Top" };
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        launchers={[peek, top]}
+        launchersHome="/home"
+        onLaunch={vi.fn()}
+      />,
+    );
+    // peek's cwd IS home, so it collapses to a bare "~" rather than the full path.
+    expect(screen.getByText("~")).toBeInTheDocument();
+    // top declares no cwd — beside this pane, wherever it is.
+    expect(screen.getByText("here")).toBeInTheDocument();
+  });
+
+  it("a host that refuses writes disables every row and names the reason", () => {
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        launchers={[peek, quota]}
+        onLaunch={vi.fn()}
+        launchRefusal="laptop hasn't answered in a while"
+      />,
+    );
+    const row = screen.getByText("Runs & quota").closest("button");
+    expect(row).toBeDisabled();
+    expect(row).toHaveAttribute("title", "laptop hasn't answered in a while");
   });
 });

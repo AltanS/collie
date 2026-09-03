@@ -746,6 +746,37 @@ export interface OperatorFontRow {
   weight?: string;
 }
 
+/**
+ * One operator-declared launcher row (`launchers.toml`). A phone tap creates a new herdr workspace
+ * (a Space) labelled with the row's label, running in the row's cwd, and types the command into its
+ * fresh shell — the whole security story of `POST /api/launch` is that the bridge matches the client's
+ * `command` string EXACTLY against this list and 400s anything else before herdr is touched.
+ */
+export interface Launcher {
+  /** The shell line typed into the new Space's shell, verbatim. Also the allowlist key /api/launch matches. */
+  command: string;
+  /** Button label. Defaults to the command's first whitespace-separated token. */
+  label: string;
+  /**
+   * Absolute directory the new Space (or tab) opens in. Absent means "here": from the dashboard,
+   * the operator's home dir; from a pane, that pane's own cwd. Present, it is pinned and wins
+   * either way.
+   */
+  cwd?: string;
+}
+
+/**
+ * GET /api/launchers — this HOST's own launcher rows, read live off its `launchers.toml`. Session-
+ * scoped so a `?host=` call forwards to the peer that runs the rows, exactly like `/api/launch`
+ * (PACK_PROTOCOL.md §5): rows must come from the machine that will run them, never from the lead's
+ * own file. `home` is that host's operator home dir, so the client can shorten a pinned `cwd` with a
+ * leading `~` without knowing which machine answered.
+ */
+export interface LaunchersResponse {
+  launchers: Launcher[];
+  home: string;
+}
+
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
 export interface BridgeConfig {
   push: boolean;

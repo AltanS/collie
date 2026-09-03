@@ -213,6 +213,12 @@ export interface Config {
    */
   fontsDir: string;
   /**
+   * Where the operator's launcher rows live — `launchers.toml`, the sibling of `commands.toml`
+   * and `keys.toml` in the same dir, read the same way (bridge/operator-launchers.ts) and
+   * likewise never read here.
+   */
+  launchersFile: string;
+  /**
    * Tailscale identity gate. If set under `tailscale serve`, the request must carry a matching
    * `Tailscale-User-Login` header. A mismatch is rejected. A missing header is also rejected —
    * serve injects none for tagged nodes, so tolerating it let any tagged node write. Under
@@ -495,6 +501,7 @@ export function loadConfig(): Config {
     quickRepliesFile: join(configDir, "quick-replies.toml"),
     themeFile: join(configDir, "theme.toml"),
     fontsDir: join(configDir, "fonts"),
+    launchersFile: join(configDir, "launchers.toml"),
     trustedUser: process.env.COLLIE_TRUSTED_USER ?? "",
     trustedUserOptional: envBool("COLLIE_TRUSTED_USER_OPTIONAL", false),
     auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview"),

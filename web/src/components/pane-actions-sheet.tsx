@@ -13,6 +13,7 @@ import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { t } from "@/lib/i18n";
 import { useMuxCapability, useMuxName } from "@/lib/mux-capability";
 import { setStatus } from "@/lib/status";
+import { stampTopology } from "@/lib/poll-intent";
 import { paneDisplayName } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
@@ -172,6 +173,9 @@ export function PaneActionsSheet({
           return false;
         }
         onClose();
+        // Same catch-up as a create: the list the operator just closed a pane out of should not
+        // wait out an idle-timed gap to show it gone.
+        stampTopology();
         onClosed(target.paneId);
         return true;
       } catch (e) {

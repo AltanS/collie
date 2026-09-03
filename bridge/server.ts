@@ -15,6 +15,7 @@ import { createOperatorCommands } from "./operator-commands.ts";
 import { createOperatorKeys } from "./operator-keys.ts";
 import { createOperatorQuickReplies } from "./operator-quick-replies.ts";
 import { createOperatorFonts, resolveOperatorFont } from "./operator-fonts.ts";
+import { createOperatorLaunchers } from "./operator-launchers.ts";
 import {
   DEFAULT_PROMPT_TAIL_LINES,
   verifyExpectedPrompt,
@@ -67,6 +68,8 @@ import type {
   OperatorFontRow,
   OperatorQuickReplyRow,
   PackStatusResponse,
+  Launcher,
+  LaunchersResponse,
   PaneHistoryResponse,
   PaneReadResponse,
   PaneWire,
@@ -577,6 +580,8 @@ export function startServer(opts: {
   const operatorQuickReplies = createOperatorQuickReplies(cfg.quickRepliesFile);
   // The fourth on that contract: the operator's own UI typefaces, theme.toml off the hot path.
   const operatorFonts = createOperatorFonts(cfg.themeFile);
+  // Its sibling too, on the same contract: one reader, one mtime cache, launchers.toml off the hot path.
+  const operatorLaunchers = createOperatorLaunchers(cfg.launchersFile);
   const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
@@ -747,6 +752,28 @@ export function startServer(opts: {
       const rt = await caller.resolve();
       if (rt instanceof Response) return rt;
       return createWorkspace(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name);
+    }
+    // A launch is a `/api/workspace` create the operator pre-declared: the client names a row in
+    // `launchers.toml` and the bridge, never the client, supplies the command line. It sits here
+    // rather than beside it in the browser dispatch so a pack lead reaches the same handler (§5).
+    if (pathname === "/api/launch" && req.method === "POST") {
+      const denied = caller.gate("write");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, operatorLaunchers);
+    }
+    // Rows must come from the host that runs them: today's `/api/config` (a lead-only body) sent
+    // the LEAD's rows down even for a launch addressed at a peer via `?host=`. Session-scoped like
+    // `/api/launch` beside it, so the same `?host=` forward (§5) reaches the peer's own
+    // `launchers.toml` rather than the lead's. `home` rides along so the client can shorten a
+    // pinned `cwd` with a leading `~` without knowing which machine answered.
+    if (pathname === "/api/launchers" && req.method === "GET") {
+      const denied = caller.gate("read");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      return launchersRoute(operatorLaunchers, req.headers.get("accept-encoding"));
     }
 
     // ── Worktrees: list / create / open / remove, all scoped to a space (ADR 0032) ──
@@ -1723,6 +1750,86 @@ export async function sendReplySteps(
   }
 }
 
+/** The pane's screen, as much of {@link MuxAdapter} as {@link awaitPaneReady} is allowed to touch. */
+export type GridReader = Pick<MuxAdapter, "readGrid">;
+
+/** How long the wait took, and whether the screen settled inside the ceiling. */
+export interface PaneReadyResult {
+  readonly ready: boolean;
+  readonly ms: number;
+}
+
+/** Injection seams: the clock and the three bounds. Defaults are the production values. */
+export interface PaneReadyOptions {
+  readonly sleep?: SleepFn;
+  readonly now?: () => number;
+  readonly pollMs?: number;
+  readonly floorMs?: number;
+  readonly ceilingMs?: number;
+}
+
+/** One poll of the new pane's screen. Small: a prompt is one short line at the top of a fresh shell. */
+const PANE_READY_LINES = 40;
+/** Gap between two reads. Two identical reads this far apart is what "the screen stopped moving" means. */
+const PANE_READY_POLL_MS = 150;
+/** Never call a pane ready sooner than this, however fast the first two reads agree. */
+const PANE_READY_FLOOR_MS = 300;
+/** Give up waiting here and send anyway — a slow shell must not swallow the operator's launch. */
+const PANE_READY_CEILING_MS = 5000;
+
+/**
+ * Wait until a freshly created pane's shell is drawn, before anything is typed into it.
+ *
+ * `createSpace` returns when the Space is ALLOCATED, not when its shell is interactive — so text
+ * typed straight after it lands before the prompt exists and the shell discards it (the operator
+ * sees their command printed ABOVE the greeting, and an empty prompt below it). This is the missing
+ * wait: poll the pane's own grid until it is non-empty and UNCHANGED across two consecutive reads
+ * ~{@link PANE_READY_POLL_MS} apart, which is the multiplexer's own answer to "has the shell
+ * finished painting".
+ *
+ * Bounds, all three deliberate: never ready before {@link PANE_READY_FLOOR_MS} (a greeting that
+ * paints in two chunks can look still between them), never wait past {@link PANE_READY_CEILING_MS}
+ * (the caller sends anyway — a late command beats a swallowed one), and a read the multiplexer
+ * refuses or throws counts as "not ready yet", never as an error: the pane is a second old, and a
+ * grid it cannot render yet is exactly the state being waited out.
+ *
+ * Pure + exported, with the clock injected, so the bounds are unit-testable on a fake clock.
+ */
+export async function awaitPaneReady(
+  client: GridReader,
+  paneId: string,
+  opts: PaneReadyOptions = {},
+): Promise<PaneReadyResult> {
+  const sleep = opts.sleep ?? defaultSleep;
+  const now = opts.now ?? (() => Date.now());
+  const pollMs = opts.pollMs ?? PANE_READY_POLL_MS;
+  const floorMs = opts.floorMs ?? PANE_READY_FLOOR_MS;
+  const ceilingMs = opts.ceilingMs ?? PANE_READY_CEILING_MS;
+  const started = now();
+  let previous: string | null = null;
+  // Bounded by the ceiling check at the foot of the body, which every path reaches.
+  for (;;) {
+    await sleep(pollMs);
+    let current: string | null = null;
+    try {
+      const read = await client.readGrid(paneId, {
+        scope: "viewport",
+        lines: PANE_READY_LINES,
+        styling: "strip",
+      });
+      if (read.ok) current = read.value.text;
+    } catch {
+      // Swallowed on purpose: an unreadable brand-new pane is "not ready yet", not a failure.
+    }
+    const elapsed = now() - started;
+    if (current !== null && current.trim() !== "" && current === previous && elapsed >= floorMs) {
+      return { ready: true, ms: elapsed };
+    }
+    previous = current;
+    if (elapsed >= ceilingMs) return { ready: false, ms: elapsed };
+  }
+}
+
 export async function replyPane(
   herdr: MuxAdapter,
   cfg: Config,
@@ -2515,6 +2622,171 @@ async function openWorktree(
   );
 }
 
+
+
+// GET /api/launchers — this host's own rows, read live off its `launchers.toml`. Exported and
+// pulled out of the inline route so it's directly testable with a fake `getLaunchers`, exactly like
+// `launch` below: the route registration (gate, `?host=` forward) stays pinned by
+// server.test.ts's "every session-scoped route resolves through the gate" source read, and this
+// function is what answers once that has already happened.
+export async function launchersRoute(
+  getLaunchers: () => Promise<Launcher[]>,
+  acceptEncoding: string | null,
+): Promise<Response> {
+  const rows = await getLaunchers();
+  return json({ launchers: rows, home: homedir() } satisfies LaunchersResponse, acceptEncoding);
+}
+
+// Launch one allowlisted command, either in a new throwaway Space (from the dashboard, no pane
+// context) or as a new tab beside a pane the client names (from a pane, the swipe-up switcher). The
+// configured list doubles as the allowlist `POST /api/launch` matches: the client names a row by its
+// `command` string and the bridge checks for exact equality against the current rows before the
+// multiplexer is touched at all — the client never supplies a command line, and it never supplies a
+// path either: `cwd` is always the row's own (if pinned) or resolved from where the launch was
+// addressed (the operator's home from the dashboard, the beside pane's own cwd from a pane). That is
+// the whole security story of the route, and why `command` is an identity and not a free-text
+// argument. `createSpace`/`createTab` allocates the pane (a multiplexer deletes a tab whose last
+// pane closes and a space whose last tab closes, so a self-closing pane leaves nothing behind);
+// `awaitPaneReady` waits for that pane's shell to finish drawing; `sendReplySteps` then types the
+// line and sends Enter into it.
+// `["Enter"]` is literal here, NOT `cfg.submitKeys`: `COLLIE_SUBMIT_KEYS` is the agent-dependent
+// submit sequence for a TUI composer; this is a bare shell prompt where Enter is the only key that
+// means "run it".
+export async function launch(
+  herdr: MuxAdapter,
+  engine: StateEngine,
+  req: Request,
+  audit: AuditLog,
+  device: string | null,
+  session: string,
+  getLaunchers: () => Promise<Launcher[]>,
+  // The clock this route waits on, injected so the tests drive the wait on a fake one. Production
+  // passes nothing and gets the real timers.
+  wait: PaneReadyOptions = {},
+): Promise<Response> {
+  let body: JsonValue;
+  try {
+    // SAFETY: as createWorkspace — checked below, never trusted as declared.
+    body = (await req.json()) as JsonValue;
+  } catch {
+    return text("bad body", 400);
+  }
+  const fields = asJsonRecord(body) ?? {};
+  const command = (typeof fields.command === "string" ? fields.command.trim() : "");
+  if (command === "") return text("bad body", 400);
+  // The client never sends a path — only, optionally, the pane it wants the launch to open BESIDE.
+  // Absent means "from the dashboard": a new Space, cwd resolved against the operator's home.
+  const besidePaneId = typeof fields.paneId === "string" ? fields.paneId.trim() : "";
+  const ae = req.headers.get("accept-encoding");
+  // Live read, behind the same mtime cache the other operator files use — a new row in
+  // `launchers.toml` is live on the bridge without a restart (an already-open tab needs a reload to
+  // re-fetch its rows, the same property `commands.toml` has).
+  const rows = await getLaunchers();
+  const row = rows.find((r) => r.command === command);
+  if (!row) {
+    return json(
+      { ok: false, ...apiError("launch.not_allowlisted") } satisfies CreateResponse,
+      ae,
+      400,
+    );
+  }
+
+  // Resolved here, once, so both the create call and the audit line agree on what actually ran —
+  // and so a tab beside an unknown pane 404s before the multiplexer is touched at all, exactly like
+  // an unlisted command does.
+  let besidePane: AgentView | undefined;
+  if (besidePaneId !== "") {
+    const { agents, shellPanes } = engine.current();
+    besidePane = [...agents, ...shellPanes].find((p) => p.paneId === besidePaneId);
+    if (!besidePane) {
+      return json(
+        { ok: false, ...apiError("launch.pane_unknown") } satisfies CreateResponse,
+        ae,
+        404,
+      );
+    }
+  }
+  const resolvedCwd = besidePane ? (row.cwd ?? besidePane.cwd) : (row.cwd ?? homedir());
+
+  const outcome = besidePane
+    ? await herdr.createTab({ spaceId: besidePane.workspaceId, label: row.label, cwd: resolvedCwd })
+    : await herdr.createSpace({ cwd: resolvedCwd, label: row.label });
+  if (!outcome.ok) {
+    return json(
+      { ok: false, ...apiError("workspace.create_failed", { reason: outcome.detail }) } satisfies CreateResponse,
+      ae,
+    );
+  }
+  const created = outcome.value;
+  // The pane is allocated; its shell may not have drawn a prompt yet. Typing into that gap is
+  // exactly how a launch used to vanish — the command printed above the greeting, the prompt empty.
+  const ready = await awaitPaneReady(herdr, created.paneId, wait);
+  if (!ready.ready) {
+    // Send anyway: a shell that is merely slow still runs what it is handed, and a swallowed launch
+    // is the worse failure. The line names the pane so a repeat is traceable to one launcher.
+    console.warn(
+      `[launch] pane ${created.paneId} did not settle after ${ready.ms}ms — sending "${row.command}" anyway`,
+    );
+  }
+  // COLLIE_SUBMIT_KEYS is the agent-dependent submit sequence for a TUI composer; this is a bare
+  // shell prompt where Enter is the only key that means "run it".
+  const sent = await sendReplySteps(herdr, created.paneId, row.command, true, ["Enter"], wait.sleep);
+  if (!sent.ok) {
+    // Best-effort rollback: a half-born pane whose command did not fully start must not linger as
+    // an empty shell nobody asked for. The rollback's own failure is swallowed because the original
+    // send error is the useful result and there is no safe second recovery action to take here.
+    try {
+      await herdr.closePane(created.paneId);
+    } catch {
+      // Swallowed: the failed send is the result the client needs; a second failure only obscures it.
+    }
+    return json(
+      { ok: false, error: sent.error, code: sent.code, detail: sent.detail } satisfies CreateResponse,
+      ae,
+    );
+  }
+  // `command` is deliberately NOT added to `METADATA_KEYS` in audit.ts. Under
+  // `COLLIE_AUDIT_CONTENT=none` it therefore redacts like every other content-bearing detail, and
+  // the line still answers the question a launch raises: who started something, in which pane and
+  // Space, when. Which shell line ran is recoverable from `launchers.toml` in a way a reply's text
+  // never is.
+  if (besidePane) {
+    audit.record({
+      action: "tab.launch",
+      paneId: created.paneId,
+      session,
+      device,
+      detail: { command: row.command, label: row.label, cwd: resolvedCwd, besidePaneId: besidePane.paneId },
+    });
+  } else {
+    audit.record({
+      action: "workspace.launch",
+      paneId: created.paneId,
+      session,
+      device,
+      detail: { command: row.command, label: row.label, cwd: resolvedCwd },
+    });
+  }
+  await settleTopology(herdr, engine);
+  // The tab path's create call doesn't answer with the space's own label (mirrors createTab above):
+  // the snapshot already knows it, and that lookup is cheaper than a round trip.
+  const workspaceLabel = besidePane
+    ? (engine.current().workspaces.find((w) => w.workspaceId === created.spaceId)?.label ?? created.spaceLabel)
+    : created.spaceLabel;
+  return json(
+    {
+      ok: true,
+      pane: {
+        paneId: created.paneId,
+        workspaceId: created.spaceId,
+        workspaceLabel,
+        tabId: created.tabId,
+        cwd: created.cwd,
+      },
+    } satisfies CreateResponse,
+    ae,
+  );
+}
 
 // Save an uploaded image to a host file and return its absolute path. The client then references
 // that path in a message; Claude Code / Codex read images by path (the terminal can't take a

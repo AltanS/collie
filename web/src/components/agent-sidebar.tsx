@@ -1,11 +1,12 @@
-import { TerminalSquare } from "lucide-react";
+import { Loader2, Play, TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/components/agent-icon";
 import { SectionHeader } from "@/components/section-header";
 import { paneParts } from "@/lib/pane-name";
+import { shortenHome } from "@/lib/shorten-home";
 import { isAttention, sectionHeaderProps, triage } from "@/lib/triage";
-import type { AgentView } from "@/lib/types";
+import type { AgentView, Launcher } from "@/lib/types";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
@@ -21,6 +22,23 @@ interface ThreadSidebarProps {
   /** Whether the Shells section is expanded, and how to fold it. Omit to leave it always open. */
   shellsOpen?: boolean;
   onShellsOpenChange?: (open: boolean) => void;
+  /**
+   * The operator's own launcher rows (`launchers.toml`). A trailing "Launch" section renders only
+   * when this is non-empty AND `onLaunch` is given, since the caller (agent-chat) withholds `onLaunch` on
+   * a read-only device, which is what keeps a write this device cannot make from being offered here.
+   */
+  launchers?: readonly Launcher[];
+  /** The bridge's own home dir, for shortening a pinned row's `cwd` with a leading `~`. */
+  launchersHome?: string;
+  /** Fired with the row's command. The caller owns the write (useSpaceActions().launch). */
+  onLaunch?: (command: string) => void;
+  /** Commands whose launch is still in flight; those rows are disabled and say so. */
+  launching?: ReadonlySet<string>;
+  /** The §10.3 refusal for this sheet's scope, when the host it would launch on refuses writes. */
+  launchRefusal?: string;
+  /** Whether the Launch section is expanded, and how to fold it. Omit to leave it always open. */
+  launchOpen?: boolean;
+  onLaunchOpenChange?: (open: boolean) => void;
   /** Override the list container padding (e.g. flush inside a bottom sheet). */
   className?: string;
 }
@@ -37,6 +55,7 @@ interface ThreadSidebarProps {
 // A module-level empty list, not a `= []` default in the parameter list: a fresh array literal on
 // every render is a new reference, which defeats memoisation downstream for no benefit here.
 const NO_PANES: AgentView[] = [];
+const NO_LAUNCHERS: readonly Launcher[] = [];
 
 export function ThreadSidebar({
   agents,
@@ -47,10 +66,22 @@ export function ThreadSidebar({
   onRecentOpenChange,
   shellsOpen = true,
   onShellsOpenChange,
+  launchers = NO_LAUNCHERS,
+  launchersHome = "",
+  onLaunch,
+  launching,
+  launchRefusal,
+  launchOpen = true,
+  onLaunchOpenChange,
   className,
 }: ThreadSidebarProps) {
   useLocale();
-  if (agents.length === 0 && shellPanes.length === 0) {
+  const showLaunch = launchers.length > 0 && onLaunch !== undefined;
+  const noPanes = agents.length === 0 && shellPanes.length === 0;
+
+  // An operator with no panes but a launchers.toml still has something to reach in here, so the
+  // empty-panes text and the Launch section coexist rather than the text winning outright.
+  if (noPanes && !showLaunch) {
     return (
       <div className="px-4 py-12 text-center text-sm text-muted-foreground">
         {t("home.empty.noAgents")}
@@ -60,6 +91,10 @@ export function ThreadSidebar({
 
   return (
     <div className={cn("flex flex-col gap-4 px-2 py-3", className)}>
+      {noPanes && (
+        <p className="px-2 py-2 text-sm text-muted-foreground">{t("home.empty.noAgents")}</p>
+      )}
+
       {triage(agents).map((g) => {
         const members = g.agents;
         if (members.length === 0) return null;
@@ -99,6 +134,27 @@ export function ThreadSidebar({
               pane={p}
               active={p.paneId === currentPaneId}
               onSelect={onSelect}
+            />
+          ))}
+        </Section>
+      )}
+
+      {launchers.length > 0 && onLaunch && (
+        <Section
+          id="switch-launch"
+          label="Launch"
+          count={launchers.length}
+          dot="bg-status-unknown"
+          {...(onLaunchOpenChange ? { open: launchOpen, onToggle: onLaunchOpenChange } : {})}
+        >
+          {launchers.map((launcher) => (
+            <LaunchRow
+              key={launcher.command}
+              launcher={launcher}
+              home={launchersHome}
+              busy={!!launching?.has(launcher.command)}
+              refusal={launchRefusal}
+              onLaunch={onLaunch}
             />
           ))}
         </Section>
@@ -207,6 +263,57 @@ function PaneRow({
           <div className="truncate font-mono text-[11px] text-muted-foreground">{secondary}</div>
         )}
       </div>
+    </button>
+  );
+}
+
+// A launcher row, styled like PaneRow so it sits in the same list rather than reading as a second
+// kind of control bolted onto the bottom. Same shape as the deleted LaunchSheet's rows: a Play icon
+// that swaps for a spinner while the row is busy, the label, and the command underneath in mono.
+// A sheet row is a full screen width, so showing the command costs nothing and tells you what you're
+// about to run before you tap it.
+function LaunchRow({
+  launcher,
+  home,
+  busy,
+  refusal,
+  onLaunch,
+}: {
+  launcher: Launcher;
+  home: string;
+  busy: boolean;
+  /** The §10.3 write refusal for this scope, or undefined when the row may be tapped. */
+  refusal: string | undefined;
+  onLaunch: (command: string) => void;
+}) {
+  // Pinned → the folder, shortened under home; absent → "here" (opens beside this pane, wherever it
+  // is), which is the one thing the switcher can say that the dashboard's "here" cannot — there,
+  // home is already implied and this suffix is withheld instead (launch-strip.tsx).
+  const suffix = launcher.cwd !== undefined ? shortenHome(launcher.cwd, home) : t("chat.switcher.launch.here");
+  const disabled = busy || refusal !== undefined;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label={refusal}
+      title={refusal}
+      onClick={() => onLaunch(launcher.command)}
+      // min-h-11 (44px) keeps the touch floor even though the two-line label is shorter than that.
+      className="flex w-full min-h-11 items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-left transition-colors hover:bg-muted/60 active:bg-muted disabled:opacity-60"
+    >
+      {busy ? (
+        <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+      ) : (
+        <Play className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      )}
+      <span className="flex min-w-0 flex-col">
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          <span className="truncate text-sm font-medium">{launcher.label}</span>
+          <span className="shrink-0 truncate font-mono text-xs text-muted-foreground">{suffix}</span>
+        </span>
+        {/* The command is operator-authored text going into a text node, never markup. */}
+        <span className="truncate font-mono text-xs text-muted-foreground">{launcher.command}</span>
+      </span>
     </button>
   );
 }

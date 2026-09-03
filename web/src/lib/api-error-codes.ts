@@ -54,6 +54,10 @@ export const API_ERROR_CODES = [
   "tab.workspace_required",
   "workspace.create_failed",
 
+  // Launchers — /api/launch
+  "launch.not_allowlisted",
+  "launch.pane_unknown",
+
   // Worktrees — /api/workspace/:id/worktree[s|/open|/remove] (ADR 0032)
   "worktree.list_failed",
   "worktree.create_failed",

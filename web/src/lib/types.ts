@@ -750,6 +750,37 @@ export interface OperatorFontRow {
   weight?: string;
 }
 
+/**
+ * One operator-declared launcher row (`launchers.toml`). Mirrors Launcher in
+ * bridge/types.ts. A tap creates a throwaway Space and types this shell line verbatim
+ * into its fresh shell — herdr deletes a Space when its last pane closes, so quit → gone
+ * with nothing to clean up. The label is what the dashboard button shows; when the
+ * operator omits it the bridge defaults it to the command's first token.
+ */
+export interface Launcher {
+  /** The shell line typed into the new Space's shell, verbatim. Also the allowlist key /api/launch matches. */
+  command: string;
+  /** Button label. Defaults to the command's first whitespace-separated token. */
+  label: string;
+  /**
+   * Absolute directory the new Space (or tab) opens in. Absent means "here": from the dashboard,
+   * the bridge's home dir; from a pane, that pane's own cwd. Present, it is pinned and shown
+   * shortened under home (`shortenHome`) wherever the row's folder is displayed.
+   */
+  cwd?: string;
+}
+
+/**
+ * GET /api/launchers — the rows for ONE host (a pack has one file per member), read live off its
+ * `launchers.toml`. `home` is that host's own home dir, for shortening a pinned `cwd` without the
+ * client knowing which machine answered (a peer's home is not this browser's, and is not even
+ * necessarily the same string as the lead's).
+ */
+export interface LaunchersResponse {
+  launchers: Launcher[];
+  home: string;
+}
+
 export interface BridgeConfig {
   push: boolean;
   vapidPublicKey: string;

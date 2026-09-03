@@ -19,6 +19,12 @@ export interface DashPrefs {
    * count decides — a herd with 37 bare shells shouldn't bury the agents you actually switch to.
    */
   shellsOpen: boolean | null;
+  /**
+   * Whether the Launch section is expanded. `null` = never chosen, so the count decides, like
+   * Spaces: two launchers are worth showing, and an operator who declared thirty should not have
+   * their herd pushed off the first screen by a wall of buttons.
+   */
+  launchOpen: boolean | null;
   /** Whether the Recent section is expanded. Defaults open — it's the recency list itself. */
   recentOpen: boolean;
   /** Which way Recent runs. Attention sections are never affected. */
@@ -33,6 +39,7 @@ export const COLLAPSE_THRESHOLD = 8;
 const DEFAULTS: DashPrefs = {
   spacesOpen: null,
   shellsOpen: null,
+  launchOpen: null,
   recentOpen: true,
   recentDir: "newest",
 };
@@ -58,6 +65,7 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
   return {
     spacesOpen: asJsonBoolean(p.spacesOpen) ?? DEFAULTS.spacesOpen,
     shellsOpen: asJsonBoolean(p.shellsOpen) ?? DEFAULTS.shellsOpen,
+    launchOpen: asJsonBoolean(p.launchOpen) ?? DEFAULTS.launchOpen,
     recentOpen: asJsonBoolean(p.recentOpen) ?? DEFAULTS.recentOpen,
     recentDir: p.recentDir === "oldest" || p.recentDir === "newest" ? p.recentDir : DEFAULTS.recentDir,
   };
@@ -87,6 +95,7 @@ export interface UseDashPrefsReturn {
   prefs: DashPrefs;
   setSpacesOpen: (open: boolean) => void;
   setShellsOpen: (open: boolean) => void;
+  setLaunchOpen: (open: boolean) => void;
   setRecentOpen: (open: boolean) => void;
   setRecentDir: (dir: RecentDir) => void;
 }
@@ -104,8 +113,9 @@ export function useDashPrefs(): UseDashPrefsReturn {
 
   const setSpacesOpen = useCallback((spacesOpen: boolean) => update({ spacesOpen }), [update]);
   const setShellsOpen = useCallback((shellsOpen: boolean) => update({ shellsOpen }), [update]);
+  const setLaunchOpen = useCallback((launchOpen: boolean) => update({ launchOpen }), [update]);
   const setRecentOpen = useCallback((recentOpen: boolean) => update({ recentOpen }), [update]);
   const setRecentDir = useCallback((recentDir: RecentDir) => update({ recentDir }), [update]);
 
-  return { prefs, setSpacesOpen, setShellsOpen, setRecentOpen, setRecentDir };
+  return { prefs, setSpacesOpen, setShellsOpen, setLaunchOpen, setRecentOpen, setRecentDir };
 }

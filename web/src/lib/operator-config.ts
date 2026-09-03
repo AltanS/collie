@@ -13,9 +13,9 @@ import type {
 
 // The startup-resolved half of /api/config, read ONCE and held in module state: the operator's own
 // rows (their `commands.toml` palette, their `keys.toml` tray presets and their
-// `quick-replies.toml` dock groups) and the multiplexer's declared capabilities (M10/06). They all
-// ride the same request because they are the same kind of thing — config the bridge resolves at
-// startup and the client reads once.
+// `quick-replies.toml` dock groups) and the multiplexer's declared
+// capabilities (M10/06). They all ride the same request because they are the same kind of thing —
+// config the bridge resolves at startup and the client reads once.
 //
 // THE CAPABILITIES BELONG HERE RATHER THAN IN A SECOND STORE for the reason the header already
 // gives: this is ONE /api/config call, never a second channel. A capability store with its own

@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Plus } from "lucide-react";
+import { Loader2, Plus } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
 import { STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
@@ -26,6 +26,10 @@ interface TabStripProps {
   selected: string | null;
   onSelect: (tabId: string | null) => void;
   onNewTab: (workspaceId: string) => void;
+  /** True while this Space's own "+" create is in flight — disables the button and swaps its icon
+   *  for a spinner, so a second tap during the round trip is refused rather than silently ignored
+   *  (the hook already ignores it; this is the feedback that stops the operator tapping twice). */
+  creatingTab?: boolean;
   /** Show the leading "All" tab (home space view); off for the in-pane tab bar. */
   allowAll?: boolean;
   /** Session scope for the long-press tab actions (rename/close); undefined = primary. */
@@ -91,6 +95,7 @@ export function TabStrip({
   selected,
   onSelect,
   onNewTab,
+  creatingTab = false,
   allowAll = true,
   scope,
   readOnly,
@@ -183,7 +188,9 @@ export function TabStrip({
             <button
               type="button"
               onClick={() => onNewTab(workspaceId)}
+              disabled={creatingTab}
               aria-label={translate("space.tabStrip.new.aria")}
+              aria-busy={creatingTab}
               // 32px drawn, 44x46 hit — a true square, which is the one shape allowed to keep
               // `rounded-full`. self-center against the row's items-start: it is a button beside the
               // tabs, not a tab, so it centres in the row rather than hanging from the top line.
@@ -192,10 +199,16 @@ export function TabStrip({
               // row and the gap keeps it clear of its neighbour.
               className={cn(
                 STRIP_TAP_TARGET_SQUARE,
-                "flex size-8 shrink-0 self-center items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95",
+                "flex size-8 shrink-0 self-center items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95 disabled:opacity-100",
               )}
             >
-              <Plus className="size-4" />
+              {/* Same box, same icon size, swapped in place — the button never resizes between its
+                  idle and busy shapes (DESIGN.md's no-shift rule). */}
+              {creatingTab ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Plus className="size-4" />
+              )}
             </button>
           )}
         </div>

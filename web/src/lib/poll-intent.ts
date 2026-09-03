@@ -75,6 +75,10 @@ let burst: BurstState = NO_BURST;
 let following = true;
 let changed = false;
 let sends = 0;
+// Polls still owed to a topology write (a create or a close) — see stampTopology below. Counted
+// down one per actual tick, not on a wall-clock timer, for the same reason the send burst is
+// counted in polls: a slow link should not get fewer fast beats than a fast one promised.
+let topologyPolls = 0;
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -97,6 +101,28 @@ function subscribe(fn: () => void): () => void {
 export function stampSend(paneId: string): void {
   burst = burstOnSend(paneId);
   sends += 1;
+  emit();
+}
+
+/**
+ * The topology just changed under the operator's own hand — a create or a close went through.
+ *
+ * Unlike a send, this is not spent on any one pane: the thing that needs to catch up is whichever
+ * VIEW is on screen (a tab strip, the dashboard), and any of them may be it. So rather than a
+ * pane-scoped burst, this buys the next {@link BURST_MIN_POLLS} ticks at {@link BURST_MS} outright,
+ * wherever the operator is looking, and bumps the same send counter the poller already reschedules
+ * on — a topology write must not sit out the remainder of a gap timed for an idle screen either.
+ */
+export function stampTopology(): void {
+  topologyPolls = BURST_MIN_POLLS;
+  sends += 1;
+  emit();
+}
+
+/** One tick spent the topology burst's budget — called by the poller each time it actually polls. */
+export function consumeTopologyPoll(): void {
+  if (topologyPolls <= 0) return;
+  topologyPolls -= 1;
   emit();
 }
 
@@ -145,6 +171,11 @@ export function sendCount(): number {
   return sends;
 }
 
+/** Whether a topology burst is still owed — see {@link stampTopology}. */
+export function topologyBursting(): boolean {
+  return topologyPolls > 0;
+}
+
 // Reactive reads, used by the poller. Each is a plain primitive, so no cached snapshot is needed.
 export function useBurstPaneId(): string | null {
   return useSyncExternalStore(subscribe, burstPaneId, burstPaneId);
@@ -162,11 +193,16 @@ export function useSendCount(): number {
   return useSyncExternalStore(subscribe, sendCount, sendCount);
 }
 
+export function useTopologyBursting(): boolean {
+  return useSyncExternalStore(subscribe, topologyBursting, topologyBursting);
+}
+
 /** Test-only: drop all state and subscribers so a suite can't leak between cases. */
 export function resetPollIntent(): void {
   burst = NO_BURST;
   following = true;
   changed = false;
   sends = 0;
+  topologyPolls = 0;
   listeners.clear();
 }

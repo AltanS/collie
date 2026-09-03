@@ -26,11 +26,15 @@ const forkIn = {
   argHint: "",
 };
 
-const config = (operatorCommands?: BridgeConfig["operatorCommands"]): BridgeConfig => ({
+const config = (
+  operatorCommands?: BridgeConfig["operatorCommands"],
+  extra?: Partial<BridgeConfig>,
+): BridgeConfig => ({
   push: false,
   vapidPublicKey: "",
   // Optional on BridgeConfig: an absent key and an explicit `undefined` read the same downstream.
   operatorCommands,
+  ...extra,
 });
 
 beforeEach(() => asked.mockReset());
@@ -128,3 +132,8 @@ describe("the Quick-dock groups ride the same one read", () => {
     expect(dock.result.current).toEqual([]);
   });
 });
+
+// Launcher rows are NOT part of this store — see lib/launchers.test.ts. `/api/config` used to carry
+// them, but rows must come from the host that RUNS them (a pack peer's own `launchers.toml`), which
+// this store's one lead-only fetch cannot express; `GET /api/launchers` replaced it (session-scoped,
+// forwarded on `?host=`).

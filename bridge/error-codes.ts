@@ -77,6 +77,16 @@ export const ERROR_CODES = {
   /** The create body named no space to create the tab in. */
   "tab.workspace_required": "workspaceId required",
   "workspace.create_failed": "{reason}",
+  /**
+   * The `command` the client named is in no row of the operator's `launchers.toml`. The rows ARE
+   * the allowlist, so this is the whole of what a phone may start — nothing was created.
+   */
+  "launch.not_allowlisted": "command not allowlisted",
+  /**
+   * A launch named a `paneId` to open beside, and that pane is not in this session's current
+   * snapshot — closed, or never existed. Nothing was created.
+   */
+  "launch.pane_unknown": "pane not found",
 
   // ── Worktrees: /api/workspace/:id/worktree[s|/open|/remove] (ADR 0032) ─────────────
   /** The list could not be read — the space is not in a Git work tree, or the mux refused. */
