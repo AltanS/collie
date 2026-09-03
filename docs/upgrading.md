@@ -22,16 +22,39 @@ checkout and persist across updates (`bridge/solo-baseline.test.ts`).
 
 ## Update
 
+**1. Update**
+
 ```bash
 herdr plugin action invoke update --plugin herdr.collie     # Herdr-managed
 bin/collie update                                           # Standalone
 ```
 
-This fetches the newest release of your current major and restarts the bridge. A binary install
-swaps the `current` symlink and supports `update --rollback`. A checkout advances git and rebuilds
-the UI.
+This fetches the newest release of your current major and restarts the bridge.
+
+**2. Verify**
+
+```bash
+herdr plugin action invoke version --plugin herdr.collie
+bin/collie version
+```
+
+Expect the newest tag. A binary install swaps the `current` symlink and supports
+`update --rollback`. A checkout advances git and rebuilds the UI.
 
 If a new beacon hook event is available, `update` prints a notice to re-run `hooks install claude`.
+
+**3. The phone**
+
+The PWA checks for a new build on its own and reloads within about a minute; no action needed. If
+you are mid-task, it shows a "tap to update" banner instead and waits for your tap.
+
+### If the version did not move
+
+`collie update` asks GitHub directly on every run, `git ls-remote` for a checkout, the GitHub tags
+API for a binary install. It does not cache the release list. A release published seconds ago may
+still take a minute to show up, because GitHub itself needs a moment to catch up. Run
+`collie doctor` next. If that does not explain it, see
+[When collie will not run](#when-collie-will-not-run).
 
 ### Cross a major
 

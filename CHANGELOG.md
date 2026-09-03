@@ -11,15 +11,17 @@ and `web/package.json` (enforced by `scripts/check-version.sh`). See
 
 ## Upgrading
 
+**Already on 1.x?** Run `collie update`, or run
+`herdr plugin action invoke update --plugin herdr.collie`. Check the result with
+`bin/collie version` (or `herdr plugin action invoke version --plugin herdr.collie`). It shows the
+newest tag. The phone PWA updates itself within about a minute; no reload needed.
+
 **Coming from 0.x?** Upgrade with one command. Do not use `collie update`. From the Herdr
 plugin: `herdr plugin action invoke update-major --plugin herdr.collie`. From a checkout you can
 reach: `bin/collie update --major`. Fresh install:
 `curl -fsSL https://colliepwa.dev/install.sh | sh`. Neither upgrade path assumes a `collie` on your
 PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgrading from 0.x to
 1.0*.
-
-**Already on any 1.x?** `collie update`, or
-`herdr plugin action invoke update --plugin herdr.collie`, is enough.
 
 ## [Unreleased]
 
