@@ -441,7 +441,17 @@ export interface UpdateActionDeps {
   /** Whether the updater's lock is held by a process that is still alive (spec 04's lock). */
   lockHeld: () => boolean;
   /** Start `collie update`, detached from this process. Never awaits the update itself. */
-  start: (a: { major: boolean }) => { ok: true } | { ok: false; reason: string };
+  start: (a: { major: boolean; runId: string }) => { ok: true } | { ok: false; reason: string };
+  /**
+   * Mint an opaque run id (M16/04). A seam because the source of randomness is index.ts's, exactly
+   * as the two spawns above are — and because a test must be able to pin the id it asserts on.
+   */
+  newRunId: () => string;
+  /**
+   * Tell the pack a run has begun, so the lead starts granting turns and fires the first of §20's
+   * three immediate sweeps. A no-op on a solo install and on a peer.
+   */
+  beginPackRun?: (a: { runId: string; to: string }) => void;
 }
 
 export function startServer(opts: {
@@ -1337,8 +1347,17 @@ export function startServer(opts: {
         // follows the same rule: `[]` on a solo instance and on a peer, never absent. It is composed
         // from what the sweep BANKED (`PackLead.updateRows`) and dials nobody — `status-wire.ts`'s
         // purity argument, one route over.
+        // The peer LEGS of the run this lead is driving (M16/04) ride the run record the card
+        // already follows, so the phone reads one object rather than two that could disagree.
+        // Derived from what the sweep banked and nothing else — this route dials nobody.
+        const status = updateMonitor.status();
+        const legs = opts.packLead?.updatePeers() ?? [];
+        const withPeers =
+          status.run === undefined || status.run === null || legs.length === 0
+            ? status
+            : { ...status, run: { ...status.run, peers: legs } };
         return json(
-          { ...updateMonitor.status(), preflight: report, pack: opts.packLead?.updateRows() ?? [] },
+          { ...withPeers, preflight: report, pack: opts.packLead?.updateRows() ?? [] },
           req.headers.get("accept-encoding"),
         );
       }
@@ -1379,11 +1398,30 @@ export function startServer(opts: {
           // same way the lead's own does. Read, never fetched — the sweep is the only thing that
           // talks to a member.
           pack: opts.packLead?.updateRows() ?? [],
+          // And the legs of the last run, which is what "Retry pack update" is about (M16/04).
+          peers: opts.packLead?.updatePeers() ?? [],
         });
         if (verdict.kind === "refuse") {
           return jsonError(verdict.body, verdict.status, req.headers.get("accept-encoding"));
         }
-        const started = action.start({ major: verdict.major });
+        // ONE id per confirm, minted here and nowhere else. It is what the peers' turns carry and
+        // what a member that rolled back keys its "not twice" memory on — so a fresh confirm, and
+        // only a fresh confirm, permits one further attempt at the same tag.
+        const runId = action.newRunId();
+        // ── A PEERS-ONLY RUN MOVES NOTHING HERE ────────────────────────────
+        // The lead is already current. It starts no updater, spawns nothing and restarts nothing:
+        // it opens a run whose only legs are the peers, and the first of §20's three immediate
+        // sweeps carries the first turn out.
+        if (verdict.kind === "peers") {
+          action.beginPackRun?.({ runId, to: verdict.to });
+          audit.record({
+            action: "update",
+            device: whois(req).device,
+            detail: { to: verdict.to, major: false, peersOnly: true },
+          });
+          return json({ ok: true, to: verdict.to, major: false, run: status.run ?? null }, req.headers.get("accept-encoding"), 202);
+        }
+        const started = action.start({ major: verdict.major, runId });
         if (!started.ok) {
           return jsonError(
             apiError("update.start_failed", { reason: started.reason }),
@@ -1391,6 +1429,10 @@ export function startServer(opts: {
             req.headers.get("accept-encoding"),
           );
         }
+        // The peers ride the SAME confirm and the same id. Their turns are granted once this lead's
+        // own health gate settles — a lead that announced a version it has not finished taking would
+        // send its whole pack after a release it may itself roll back from (§20).
+        action.beginPackRun?.({ runId, to: verdict.to });
         audit.record({
           action: "update",
           device: whois(req).device,

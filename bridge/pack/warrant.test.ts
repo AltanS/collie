@@ -527,3 +527,33 @@ test("naming a deputy clears the takeover's spent stamp — the question it answ
   expect(change!.next.deputy).toBe("nas");
   expect(change!.next.deputySpentAt).toBeNull();
 });
+
+// ── THE WARRANT SURVIVES AN UPDATE RESTART (M16/04) ──────────────────────────
+// A peer following its lead restarts itself. That restart is not special: the warrant is persisted
+// in the trust store, so it survives an update exactly as it survives a `systemctl restart` — which
+// is what the manual drill on 2026-09-03 demonstrated. Nothing in the follow path may touch it.
+
+test("the deputy warrant survives an update restart — it is store state, not process state", () => {
+  const { data } = named();
+  // What a restarted process does: re-read the file it left behind. An update rewrites the binary
+  // and the bundle; it does not rewrite `pack-trust.json`.
+  const reread = parseTrustStore(serializeTrustStore(data));
+  expect(reread).not.toBeNull();
+  expect(reread!.warrant).toEqual(data.warrant!);
+  expect(reread!.deputy).toBe(data.deputy);
+  // And the ARMED reading is the same one, so a deputy that was armed before the update is armed
+  // after it. `warrantActiveGeneration` (§18.17) stays threaded into the router once at boot, which
+  // is exactly what a restart re-does.
+  expect(currentWarrant(reread)).toEqual(currentWarrant(data));
+});
+
+test("a follow-driven restart writes no warrant field — the update path never touches the store", async () => {
+  // Mechanical, and deliberately so: the guarantee above is only worth anything while nothing in the
+  // follow path can write the field. `bridge/pack/follow.ts` reads a run record and spawns a
+  // command; it has no trust store at all.
+  const follow = await Bun.file(new URL("./follow.ts", import.meta.url)).text();
+  expect(follow).not.toContain('from "./trust-store.ts"');
+  expect(follow).not.toContain("StoredWarrant");
+  expect(follow).not.toContain("mintWarrant");
+  expect(follow).not.toContain("storeWarrant");
+});
