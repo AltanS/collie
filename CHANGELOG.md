@@ -23,16 +23,18 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-03
+
 ### Changed
 
-- Mirror polling follows what you do: 300ms bursts after a key or a message while the screen keeps changing, 1.5s while you follow a working agent, 4s on the home screen while an agent works, 6s when nothing says you are watching (#156)
+- Mirror polling follows what you do: 300ms bursts after a key or a message while the screen keeps changing, 1.5s while you follow a working agent, 4s on the home screen while an agent works, 6s when nothing says you are watching (#156) ([d2cb8a3](https://github.com/AltanS/collie/commit/d2cb8a3))
 
 ### Fixed
 
-- Mirror no longer freezes when the soft keyboard or Keys dock shrinks the pane: a scroll that arrives with a changed container height is layout, not the user leaving the bottom (#155)
-- Boxed TUI rows (a `/model` picker, a panel border) stay on one line on a narrow phone mirror instead of wrapping into a scrambled frame; `tree` output and prose still wrap, thanks @alexlee2046 (#156)
-- Releases publish a linux-arm64 build, so a Raspberry Pi installs instead of 404ing; the from-source docs call the bootstrap script with bash, which it is (#157)
-- Pairing no longer logs `could not stamp lastSeenAt: ENOENT` once a minute: concurrent stamps from one poll tick raced on a shared temp file; writes are serialized and temp names are unique now (#159)
+- Mirror no longer freezes when the soft keyboard or Keys dock shrinks the pane: a scroll that arrives with a changed container height is layout, not the user leaving the bottom (#155) ([1862276](https://github.com/AltanS/collie/commit/1862276))
+- Boxed TUI rows (a `/model` picker, a panel border) stay on one line on a narrow phone mirror instead of wrapping into a scrambled frame; `tree` output and prose still wrap, thanks @alexlee2046 (#156) ([d7a4276](https://github.com/AltanS/collie/commit/d7a4276))
+- Releases publish a linux-arm64 build, so a Raspberry Pi installs instead of 404ing; the from-source docs call the bootstrap script with bash, which it is (#157) ([64c7d7e](https://github.com/AltanS/collie/commit/64c7d7e))
+- Pairing no longer logs `could not stamp lastSeenAt: ENOENT` once a minute: concurrent stamps from one poll tick raced on a shared temp file; writes are serialized and temp names are unique now (#159) ([d4bd3f9](https://github.com/AltanS/collie/commit/d4bd3f9))
 
 ## [1.2.0] - 2026-09-02
 
