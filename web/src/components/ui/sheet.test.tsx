@@ -183,7 +183,21 @@ describe("BottomSheet: pull-driven peek", () => {
     const root = container.firstElementChild!;
     expect(root.getAttribute("aria-hidden")).toBe("true");
     const panel = container.querySelector<HTMLElement>('div[style*="translateY"]')!;
-    expect(panel.style.transform).toBe("translateY(calc(100% - 80px))");
+    expect(panel.style.transform).toBe("translateY(max(0px, calc(100% - 80px)))");
+  });
+
+  it("starts the peek's top edge at the handle's anchor, not the screen's bottom edge", () => {
+    // pullFrom is the handle's own distance from the viewport bottom (useSheetPull's onAnchor);
+    // the transform is pullFrom + pull, so a peek that started 100px above the bottom edge and has
+    // been dragged 40px further reports 140px total.
+    const { container } = render(
+      <BottomSheet open={false} onClose={vi.fn()} title="Switch pane" pull={40} pullFrom={100}>
+        body
+      </BottomSheet>,
+    );
+    const panel = container.querySelector<HTMLElement>('div[style*="translateY"]')!;
+    expect(panel.style.transform).toContain("140px");
+    expect(panel.style.transform).toBe("translateY(max(0px, calc(100% - 140px)))");
   });
 
   it("renders nothing when closed and not being pulled", () => {

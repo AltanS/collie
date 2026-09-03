@@ -30,6 +30,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - A launcher's `cwd` is optional: pin one and it wins everywhere, leave it out and it means "here", your home dir from the dashboard, that pane's own folder from the switcher.
 - Tapped from a pane, a launcher opens a tab beside it instead of a new Space; tapped from the dashboard, a Space, as before. Rows read live per host, so on a pack they always come from whichever machine you tapped the row on, never the lead's own file.
 - The "Switch pane" sheet's handle now follows the thumb, peeking up as you drag, instead of appearing only on release, and opens with a haptic tick.
+- The switcher sheet now rises from its handle instead of the screen's bottom edge, so the peek starts where the thumb is dragging it.
+- On the pane screen a status now shows in the header title instead of floating over the tab strip's own controls.
 - `collie pack update` is one sequence: preflight every machine, update the lead first, then each peer in turn, health-gated. The first failure stops the run and leaves the rest untouched, with the recovery command named.
 - `collie update` stages, then hands the swap to a detached updater: it flips `current`, restarts, polls `/api/health` for 30 s (`COLLIE_UPDATE_HEALTH_TIMEOUT_MS`), and rolls back once by itself if the new version does not answer. Watch it with `collie update --status`.
 - A linked checkout updates by staging: `collie update` builds a release into a `versions/vX.Y.Z` git worktree and flips the `current` symlink, so a failed build never touches the running install and `collie update --rollback` works on a checkout (ADR 0006, amended)

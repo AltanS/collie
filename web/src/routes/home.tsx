@@ -152,7 +152,7 @@ export function HomeRoute() {
           screen docks its own to the top for the opposite reason. The positioning — the portal, the
           z-rung, the safe-area inset — belongs to ToastViewport and is stated there once, which is
           what stopped it being three hand-rolled copies of the same four utilities. DESIGN.md §1. */}
-      <ToastViewport dock="bottom">
+      <ToastViewport>
         <StatusArea />
       </ToastViewport>
 

@@ -47,9 +47,27 @@ interface BottomSheetProps {
    * slide-in and instead continues the transform from wherever the peek left off.
    */
   pull?: number;
+  /**
+   * The handle's own distance (px) from the viewport bottom, reported once per gesture by
+   * `useSheetPull`'s `onAnchor`. The peeking panel's transform is `pullFrom + pull`, not `pull`
+   * alone — without it the panel emerges from the viewport's bottom edge while the handle the
+   * thumb is actually dragging sits well above it (above the composer), so the sheet appears with
+   * the composer sandwiched between it and the finger. Presentation only: `shouldOpen` still
+   * decides on `pull` alone, the anchor never enters that decision. Defaults to 0 (start from the
+   * bottom edge), which is what every caller but the switcher handle wants.
+   */
+  pullFrom?: number;
 }
 
-export function BottomSheet({ open, onClose, title, children, className, pull = 0 }: BottomSheetProps) {
+export function BottomSheet({
+  open,
+  onClose,
+  title,
+  children,
+  className,
+  pull = 0,
+  pullFrom = 0,
+}: BottomSheetProps) {
   useLocale();
   const panelRef = React.useRef<HTMLDivElement>(null);
   const drag = React.useRef({ startY: 0, atTop: false, engaged: false, dy: 0 });
@@ -150,7 +168,14 @@ export function BottomSheet({ open, onClose, title, children, className, pull = 
   // Peeking: no dialog role, no aria-modal, no pointer events on the page underneath. Nothing has
   // opened yet, so nothing about this render should read as a modal to assistive tech or the mouse.
   const panelStyle: React.CSSProperties = peeking
-    ? { transform: `translateY(calc(100% - ${pull}px))`, transition: "none" }
+    ? {
+        // `pullFrom + pull`, not `pull` alone: `pullFrom` is the handle's own distance from the
+        // viewport bottom (useSheetPull's `onAnchor`), so the panel's TOP edge starts there instead
+        // of at the screen's bottom edge. `max(0px, …)` is the floor for a caller that passes 0 for
+        // both (every BottomSheet but the switcher handle) — CSS `calc` can go negative, `max` can't.
+        transform: `translateY(max(0px, calc(100% - ${pullFrom + pull}px)))`,
+        transition: "none",
+      }
     : continuingFromPeek
       ? {
           transform: "translateY(0)",

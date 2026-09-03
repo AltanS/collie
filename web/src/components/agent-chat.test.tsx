@@ -17,7 +17,7 @@ vi.mock("@/lib/wizard-action", () => ({
 }));
 
 import { server } from "@/test/setup";
-import { clearStatus } from "@/lib/status";
+import { clearStatus, setStatus } from "@/lib/status";
 import { setZenEnabled, __resetZen } from "@/lib/zen";
 import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
 import { __resetOperatorCommands } from "@/lib/operator-config";
@@ -858,6 +858,49 @@ describe("AgentChat — shared header: stale-status dimming", () => {
     expect(badge).toHaveClass("opacity-40"); // not live → frozen status dimmed
     act(() => setError(false)); // snapshot recovers → live
     expect(badge).not.toHaveClass("opacity-40"); // undimmed instantly
+  });
+});
+
+// The pane screen's status used to float over the tab strip (dock="top"), landing on the tab
+// strip's own "+" the moment a fresh tab earned its first status. It now rides in the header's
+// title slot (HeaderStatus) instead — this is the regression test for that move.
+describe("AgentChat — status rides the header title slot, not the tab strip", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    clearStatus();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("shows a live status in place of the title, and the tab strip's + stays usable", () => {
+    renderChat({ tabs: fixtureTabs });
+
+    // The title is showing, no status yet.
+    expect(screen.getByText("webapp")).toBeInTheDocument();
+
+    act(() => setStatus("Sent", "success"));
+
+    // The title's own text is gone from the header slot — the status replaced it in place.
+    expect(screen.queryByText("webapp")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Sent");
+
+    // The tab strip's "+" never moved and is still enabled — the control the operator just
+    // tapped to earn this exact status, on the old placement, is untouched by the swap.
+    const newTab = screen.getByRole("button", { name: "New tab" });
+    expect(newTab).toBeInTheDocument();
+    expect(newTab).toBeEnabled();
+  });
+
+  it("brings the title back once the status's TTL expires", () => {
+    renderChat({ tabs: fixtureTabs });
+    act(() => setStatus("Sent", "success"));
+    expect(screen.getByRole("status")).toHaveTextContent("Sent");
+
+    act(() => vi.advanceTimersByTime(2500));
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByText("webapp")).toBeInTheDocument();
   });
 });
 

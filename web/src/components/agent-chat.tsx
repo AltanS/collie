@@ -29,6 +29,7 @@ import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/cha
 import { BottomSheet } from "@/components/ui/sheet";
 import { Collapse, CollapseSwap } from "@/components/ui/collapse";
 import { RouteHeader } from "@/components/app-header";
+import { HeaderStatus } from "@/components/header-status";
 import { AnsiOutput } from "@/components/ansi-output";
 import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
 import { cn } from "@/lib/utils";
@@ -353,16 +354,25 @@ export function AgentChat({
   // so the sheet peeks up under the thumb rather than appearing on release. Tapping is still the
   // reliable fallback (the button's own onClick below). `pull` is the live upward travel in px, fed
   // straight to the switcher BottomSheet's `pull` prop; a release past the open threshold buzzes and
-  // opens for real, a release short of it snaps back to 0.
+  // opens for real, a release short of it snaps back to 0. `pullFrom` is the handle's own distance
+  // from the viewport bottom, measured once per gesture (useSheetPull's `onAnchor`) — the handle
+  // sits above the composer, so without it the peek would rise from the screen's bottom edge with
+  // the composer sandwiched between the panel and the thumb dragging it.
   const [pull, setPull] = useState(0);
+  const [pullFrom, setPullFrom] = useState(0);
   const sheetPull = useSheetPull({
     onPull: setPull,
+    onAnchor: setPullFrom,
     onOpen: () => {
       buzz();
       setDrawer("switcher");
       setPull(0);
+      setPullFrom(0);
     },
-    onCancel: () => setPull(0),
+    onCancel: () => {
+      setPull(0);
+      setPullFrom(0);
+    },
   });
   // ── COMPOSING MODE — read ONCE, here, for the whole pane ──────────────────────
   // The soft keyboard takes roughly 45% of a phone. What is left has to hold the header, the tab
@@ -1092,7 +1102,12 @@ export function AgentChat({
         >
           {/* Title block: the agent's brand logo and the space › tab share line 1 (the agent name
               would just repeat the icon, so it's dropped), and the working directory has line 2 to
-              itself. Tapping it leaves the pane for the space overview (all its tabs + panes). */}
+              itself. Tapping it leaves the pane for the space overview (all its tabs + panes).
+
+              Wrapped in HeaderStatus: while a status is live (lib/status.ts) it takes this whole
+              slot over, in the same box, rather than floating a toast over the tab strip's own "+"
+              — see that component's header for the reasoning and what replaced. */}
+          <HeaderStatus>
           {agent ? (
             <button
               type="button"
@@ -1257,13 +1272,15 @@ export function AgentChat({
               <span className="truncate font-semibold">{t("chat.header.agentGone")}</span>
             </div>
           )}
+          </HeaderStatus>
         </RouteHeader>
 
-        {/* Content region below the header — the mirror inside is the scroller. `relative` is load-
-            bearing and stays: <ToastViewport dock="top"> below is `absolute`, so THIS element is the
-            positioned ancestor it resolves against. That is also how the toast lands below the sticky
-            header — by geometry, because it sits in the region the header ends at, rather than by
-            anyone measuring the header's height and keeping the number in sync. */}
+        {/* Content region below the header — the mirror inside is the scroller. `relative` is for the
+            zen exit button below (`absolute right-3 top-3`), the one thing in this region still
+            positioned against it — the status toast that used to need it too is gone from this
+            screen's non-zen path: it now rides in the header's own title slot (HeaderStatus, wrapped
+            around RouteHeader's children above) rather than floating over this region. See that
+            component's header for why. */}
         <div
           className={cn(
             "relative flex min-h-0 min-w-0 flex-1 flex-col",
@@ -1307,33 +1324,26 @@ export function AgentChat({
           )}
 
           {/* The status line — "Sent", "wrap changed", a send error. An EVENT in DESIGN.md §11's
-              sense: it passes on its own, so it FLOATS and never holds space. It was an ordinary row
-              in this column once, and that is the whole argument — every "Sent" pushed the tab strip,
-              the pane strip and the mirror down ~30px and pulled them back up 2.5s later, so the page
-              jumped twice to say one word.
+              sense: it passes on its own, so on every OTHER screen it FLOATS and never holds space.
+              On THIS screen it no longer floats over content at all: it rides in the header's own
+              title slot (HeaderStatus, wrapped around RouteHeader's children above), because a toast
+              docked at the top of this region sat exactly where the tab strip's "+" (new tab) lives
+              — the first status a fresh tab ever earns ("Tab ready") landed on the control the
+              operator had just tapped to make it. The strip was never free real estate; it is where
+              the control you just pressed lives. Floating the toast over the TERMINAL TAIL instead
+              (the newest output, the reason the screen is open) was tried on this very screen even
+              earlier and reverted too — see ToastViewport's own doc for that experiment.
 
-              `dock="top"`, and this is the screen that makes the choice. The other two routes float
-              their toasts at the bottom; here the bottom is the composer, and covering the control
-              you just pressed to make the toast appear is the worst square on the page. The top of
-              this region is the tab strip and the pane strip — chrome nobody reads while waiting on a
-              send, and the cheapest real estate here. Floating it over the TERMINAL TAIL instead (the
-              newest output, the reason the screen is open) was tried on this very screen and
-              reverted; that is the experiment ToastViewport's own doc cites, and everything else —
-              the z-40 rung, the pointer-events split StatusArea completes, why absolute and not fixed
-              — is stated there once and deliberately not repeated here.
-
-              No wrapper of ours and no className: ToastViewport states the gutter and the top inset
-              itself, and a second set here would add to them rather than replace them. */}
-          {/* `dock={zen ? "bottom" : "top"}`, and the switch is this route's own argument read back.
-              Top is chosen HERE because the bottom of this screen is the composer and covering the
-              control you just pressed is the worst square on the page. In zen there is no composer,
-              and the top-right corner is where the one way out stands — so the reason for top is
-              gone and the reason against it has arrived. StatusArea stays MOUNTED either way: it
-              renders nothing when idle, and it is the only surface a prompt-tap failure ("menu
-              changed", a read-only refusal) has. Hiding it would silently eat errors. */}
-          <ToastViewport dock={zen ? "bottom" : "top"}>
-            <StatusArea />
-          </ToastViewport>
+              Zen has no header row to ride in, so it keeps the old bottom-docked toast: there is no
+              composer to collide with in zen either, so `dock="bottom"` costs it nothing.
+              `StatusArea` stays MOUNTED here either way — it renders nothing when idle, and it is
+              zen's only surface for a prompt-tap failure ("menu changed", a read-only refusal).
+              Hiding it would silently eat errors. */}
+          {zen && (
+            <ToastViewport>
+              <StatusArea />
+            </ToastViewport>
+          )}
 
           {/* THE CHROME ABOVE THE MIRROR, AS ONE ROW THAT LEAVES. In zen these four surfaces go
               together — they are Collie talking about the pane, not the pane's own output — and they
@@ -1842,6 +1852,7 @@ export function AgentChat({
           onClose={closeDrawer}
           title={t("chat.switcher.title")}
           pull={pull}
+          pullFrom={pullFrom}
         >
           <ThreadSidebar
             agents={agents}

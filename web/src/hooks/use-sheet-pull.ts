@@ -29,14 +29,38 @@ export function shouldOpen(pull: number, velocity: number): boolean {
 /** Trailing window (ms) the velocity is measured over, recent enough to read as "how fast now". */
 const VELOCITY_WINDOW_MS = 80;
 
+/**
+ * Given the handle's own distance from the viewport bottom (`anchor`, px) and the sheet's own
+ * max-height (`sheetMax`, px, defaulting to 0.82 * innerHeight — BottomSheet's `max-h-[82dvh]`),
+ * the most `pull` may report without the peeking panel's top edge overshooting that max-height.
+ * Exported bare so the clamp is testable without a touch simulation: it's the one piece of the
+ * anchor math with a wrong answer worth pinning on its own.
+ */
+export function maxPullForAnchor(anchor: number, sheetMax?: number): number {
+  const cap = sheetMax ?? window.innerHeight * 0.82;
+  return Math.max(0, cap - anchor);
+}
+
 interface UseSheetPullOptions {
   /** Fired on every tracked move once the drag has engaged, with the current upward pull in px. */
   onPull: (px: number) => void;
+  /**
+   * Fired once per gesture, on touchstart, with the handle's distance (px) from the viewport
+   * bottom at that moment — `window.innerHeight - handleNode.getBoundingClientRect().top`. The
+   * caller feeds this straight to `BottomSheet`'s `pullFrom` prop so the peeking panel's TOP edge
+   * starts at the handle rather than at the screen's bottom edge, which is where a raw `pull` value
+   * alone would put it (the handle sits above the composer, with the composer in between).
+   */
+  onAnchor: (px: number) => void;
   /** Fired on release when the drag crossed the open threshold ({@link shouldOpen}). */
   onOpen: () => void;
   /** Fired on release when it didn't; the caller resets its pull state back to 0. */
   onCancel: () => void;
-  /** Hard clamp on the reported pull. Defaults to 0.82 * viewport height, the sheet's own max-height. */
+  /**
+   * Hard clamp on the reported pull. Defaults to `maxPullForAnchor(anchor)` — the sheet's own
+   * 0.82 * innerHeight max-height, less whatever the anchor already spent — so `anchor + pull`
+   * never overshoots the sheet's own ceiling regardless of how far the finger travels.
+   */
   max?: number;
 }
 
@@ -46,6 +70,7 @@ interface UseSheetPullResult {
 
 export function useSheetPull({
   onPull,
+  onAnchor,
   onOpen,
   onCancel,
   max,
@@ -55,12 +80,17 @@ export function useSheetPull({
   // shape hooks/use-spaces.ts uses for its own callbacks.
   const onPullRef = useRef(onPull);
   onPullRef.current = onPull;
+  const onAnchorRef = useRef(onAnchor);
+  onAnchorRef.current = onAnchor;
   const onOpenRef = useRef(onOpen);
   onOpenRef.current = onOpen;
   const onCancelRef = useRef(onCancel);
   onCancelRef.current = onCancel;
   const maxRef = useRef(max);
   maxRef.current = max;
+  // Set once per gesture (onStart), read by the clamp for the rest of it — the anchor cannot
+  // change mid-drag, the handle isn't moving, only the finger is.
+  const anchorRef = useRef(0);
 
   // A ref callback stored in state (not a plain useRef), because a plain ref gives the attach effect
   // below nothing to depend on, so it would run before the button exists and never re-run once it
@@ -76,7 +106,7 @@ export function useSheetPull({
     let samples: { t: number; y: number }[] = [];
 
     const clamp = (px: number) => {
-      const cap = maxRef.current ?? window.innerHeight * 0.82;
+      const cap = maxRef.current ?? maxPullForAnchor(anchorRef.current);
       return Math.min(Math.max(px, 0), cap);
     };
 
@@ -86,6 +116,12 @@ export function useSheetPull({
       startY = t.clientY;
       engaged = false;
       samples = [{ t: e.timeStamp, y: t.clientY }];
+      // Measured once per gesture: the handle's own distance from the viewport bottom, so the
+      // peek's top edge can start there instead of at the screen's bottom edge (BottomSheet's
+      // `pullFrom`). The clamp above reads it back on every subsequent move.
+      const anchor = window.innerHeight - node.getBoundingClientRect().top;
+      anchorRef.current = anchor;
+      onAnchorRef.current(anchor);
     };
 
     const onMove = (e: TouchEvent) => {

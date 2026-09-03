@@ -145,7 +145,7 @@ export function SpaceRoute() {
       {/* Status overlay, anchored to the bottom of the viewport. Stays outside the scroller. Same
           call as the dashboard's, and for the same reason: no composer down there to collide with.
           ToastViewport owns the position — see the note on home.tsx's copy. */}
-      <ToastViewport dock="bottom">
+      <ToastViewport>
         <StatusArea />
       </ToastViewport>
 
