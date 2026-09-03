@@ -32,6 +32,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Added
 
 - `POST /api/update/snooze` dismisses the current update digest until a newer release and a fresh window.
+- `collie update --check [--json]`, a read-only preflight over doctor, disk, bun, the tracked-file tree, upstream and the service unit, plus every pack member on a lead.
 
 ### Fixed
 
