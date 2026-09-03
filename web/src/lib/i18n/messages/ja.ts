@@ -687,7 +687,7 @@ export const ja: Dictionary = {
   "apiError.tab.close_failed": "タブを閉じられませんでした: {reason}",
   "apiError.tab.workspace_required": "新規タブのスペースが指定されていません。",
   "apiError.launch.not_allowlisted": "そのコマンドはランチャーに登録されていません",
-  "apiError.launch.pane_unknown": "そのペインは見つかりません。何も起動されていません",
+  "apiError.launch.pane_unknown": "そのペインは見つかりません。何も起動されませんでした",
   "apiError.workspace.create_failed": "スペースの作成に失敗しました: {reason}",
   "apiError.upload.too_large": "画像サイズが上限の 10 MB を超えています。",
   "apiError.upload.no_file": "ファイルが指定されていません。",

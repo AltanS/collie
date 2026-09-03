@@ -681,7 +681,7 @@ export const ko: Dictionary = {
   "apiError.tab.close_failed": "탭을 닫지 못했습니다: {reason}",
   "apiError.tab.workspace_required": "새 탭을 생성할 작업 공간이 지정되지 않았습니다.",
   "apiError.launch.not_allowlisted": "해당 명령은 등록된 실행 항목이 아닙니다",
-  "apiError.launch.pane_unknown": "해당 패널을 찾을 수 없습니다. 아무것도 실행되지 않았습니다",
+  "apiError.launch.pane_unknown": "해당 창을 찾을 수 없어 실행하지 못했습니다",
   "apiError.workspace.create_failed": "작업 공간을 생성하지 못했습니다: {reason}",
   "apiError.upload.too_large": "이미지가 너무 큽니다. 최대 크기는 10MB입니다.",
   "apiError.upload.no_file": "전송된 파일이 없습니다.",

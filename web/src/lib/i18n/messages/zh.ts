@@ -255,7 +255,7 @@ export const zh: Dictionary = {
   "chat.output.empty": "（暂无近期输出）",
   "chat.switcher.aria": "切换窗格",
   "chat.switcher.title": "切换窗格",
-  "chat.switcher.launch.here": "这里",
+  "chat.switcher.launch.here": "当前位置",
   "chat.status.feedbackSent": "反馈已发送",
   "chat.status.sent": "已发送",
   "chat.status.menuChanged": "菜单已变动，正在刷新",
