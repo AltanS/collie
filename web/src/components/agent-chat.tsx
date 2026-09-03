@@ -191,7 +191,7 @@ export function AgentChat({
   // current while we're reconnecting/lost, and restores instantly on recovery. Both marks dim
   // together — dimming only one of them would leave a frozen reading looking half live.
   const connecting = isConnecting({ bridge, error, stalled });
-  const { newTab, launch, launching } = useSpaceActions();
+  const { newTab, launch, launching, creatingTab } = useSpaceActions();
   const { launchers, home: launchersHome } = useLaunchers(scope);
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus } = useDisplayPrefs();
@@ -1405,6 +1405,7 @@ export function AgentChat({
                     selected={agent.tabId}
                     onSelect={(id) => id && goToTab(id)}
                     onNewTab={newTab}
+                    creatingTab={creatingTab.has(agent.workspaceId)}
                     allowAll={false}
                     scope={scope}
                     readOnly={readOnly}

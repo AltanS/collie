@@ -32,7 +32,7 @@ import { useRootData } from "@/lib/route-data";
 export function HomeRoute() {
   const data = useRootData();
   const navigate = useNavigate();
-  const { newSpace, newWorktree, showWorktree } = useSpaceActions();
+  const { newSpace, newWorktree, showWorktree, creatingSpace } = useSpaceActions();
 
   // Which repos a worktree could be branched from: one entry per repo, taken from the space that
   // shows the repo ITSELF (a worktree's own space would branch from the same repo, so listing both
@@ -131,6 +131,7 @@ export function HomeRoute() {
             host={navHost}
             onOpen={drillInto}
             onNewSpace={() => setNewSpaceOpen(true)}
+            creatingSpace={creatingSpace}
             open={spacesOpen}
             onOpenChange={setSpacesOpen}
           />

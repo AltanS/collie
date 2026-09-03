@@ -6,10 +6,12 @@ import { isLongUpload } from "@/lib/connection-health";
 import { beginCatchUp, endCatchUp, isLocked, useLocked } from "@/lib/idle";
 import {
   burstAppliesTo,
+  consumeTopologyPoll,
   useBurstPaneId,
   useFollowing,
   useLastPollChanged,
   useSendCount,
+  useTopologyBursting,
 } from "@/lib/poll-intent";
 import type { HomeData } from "@/lib/loaders";
 import type { Scope } from "@/lib/scope";
@@ -63,6 +65,10 @@ export interface PollIntent {
   /** The last pane read came back with new content (a 200 with a body we hadn't seen) rather than
    *  an ETag hit. */
   changed: boolean;
+  /** A create or a close just went through and hasn't yet spent its catch-up polls — see
+   *  `lib/poll-intent.ts` → `stampTopology`. Unlike `bursting`, this applies wherever the operator
+   *  is looking, not only on the pane a send went to. */
+  topologyBursting?: boolean;
 }
 
 // Self-heal a wedged revalidation. Normally a tick no-ops while one is already in flight (see the
@@ -94,6 +100,9 @@ export function intervalFor(
   paneId?: string | null,
   intent?: PollIntent,
 ): number {
+  // 0. A create or a close just went through, wherever you're looking: catch the list up.
+  if (intent?.topologyBursting) return BURST_MS;
+
   // 1. A send just happened on the pane you are looking at: watch it land.
   if (intent?.bursting) return BURST_MS;
 
@@ -187,12 +196,14 @@ export function usePolling(
   const storeFollowing = useFollowing();
   const changed = useLastPollChanged();
   const sendKick = useSendCount();
+  const topoBursting = useTopologyBursting();
   const ms = intervalFor(data, paneId, {
     bursting: burstAppliesTo(burstPane, paneId),
     // The caller may own the flag directly (the tests do); otherwise the pane view's own follow
     // intent, published to lib/poll-intent, answers — and it is true whenever no pane is open.
     following: following ?? storeFollowing,
     changed,
+    topologyBursting: topoBursting,
   });
 
   // Resuming from the idle lock must refetch AT ONCE. The route tree stays mounted through a pause
@@ -239,6 +250,7 @@ export function usePolling(
       // because a possibly-lying flag says offline.
       const r = ref.current;
       if (r.state === "idle") {
+        consumeTopologyPoll();
         r.revalidate();
         return;
       }

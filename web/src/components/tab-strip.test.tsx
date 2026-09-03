@@ -377,3 +377,60 @@ describe("TabStrip — status on the chips", () => {
     expect(logos(screen.getByRole("button", { name: /empty/ }))).toEqual([]);
   });
 });
+
+// The "+" gives no feedback while a create is in flight — the operator taps it, nothing visibly
+// happens for a beat, and taps again. `creatingTab` is the fix: the caller (agent-chat.tsx,
+// space.tsx) computes it from the hook's `creatingTab` set for THIS workspace, and the button
+// disables itself and swaps its icon for a spinner rather than staying a live-looking no-op.
+describe("TabStrip new-tab busy state", () => {
+  it("disables the '+' and shows a spinner while its Space is creating", () => {
+    render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+        creatingTab
+      />,
+    );
+    const button = screen.getByRole("button", { name: "New tab" });
+    expect(button).toBeDisabled();
+    expect(button.querySelector(".animate-spin")).not.toBeNull();
+  });
+
+  it("stays enabled with a plain plus when not creating", () => {
+    render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "New tab" });
+    expect(button).toBeEnabled();
+    expect(button.querySelector(".animate-spin")).toBeNull();
+  });
+
+  it("a tap while creating never reaches onNewTab", async () => {
+    const user = userEvent.setup();
+    const onNewTab = vi.fn();
+    render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewTab={onNewTab}
+        creatingTab
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "New tab" }));
+    expect(onNewTab).not.toHaveBeenCalled();
+  });
+});

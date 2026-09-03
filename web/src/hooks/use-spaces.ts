@@ -5,6 +5,7 @@ import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { t } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
+import { stampTopology } from "@/lib/poll-intent";
 import { panePath } from "@/lib/nav";
 import { isReadOnly, type AgentView, type CreateResponse } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
@@ -70,23 +71,45 @@ export function useSpaceActions() {
       };
       const noun = what === "tab" ? t("space.noun.tab") : t("space.noun.space");
       setStatus(t("space.create.ready", { what: noun }), "success");
+      // A topology write: whichever view the operator lands back on (the tab strip they just left,
+      // the dashboard behind it) should not wait out an idle-timed gap to show the new pane.
+      stampTopology();
       revalidatorRef.current.revalidate();
       navigate(panePath(p.paneId, at ?? scopeRef.current), { state: { freshPane: fresh } });
     },
     [navigate],
   );
 
+  // ONE create per Space's "+" at a time — the same shape as `launch` below, and for the same
+  // reason: a create is a round trip, an impatient second tap on a phone is normal, and every tap
+  // that gets through makes another throwaway tab the operator then has to close. Keyed by
+  // workspaceId, not global, so a different Space's "+" stays live while this one is in flight.
+  const [creatingTab, setCreatingTab] = useState<ReadonlySet<string>>(() => new Set());
+  const creatingTabRef = useRef<Set<string>>(new Set());
   const newTab = useCallback(
     async (workspaceId: string) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      if (creatingTabRef.current.has(workspaceId)) return;
+      creatingTabRef.current.add(workspaceId);
+      setCreatingTab(new Set(creatingTabRef.current));
       try {
         open(await api.createTab(workspaceId, {}, scopeRef.current), "tab");
       } catch (e) {
         setStatus(describeThrownError(e), "error");
+      } finally {
+        creatingTabRef.current.delete(workspaceId);
+        setCreatingTab(new Set(creatingTabRef.current));
       }
     },
     [open, blockedText],
   );
+
+  // ONE Space create in flight at a time, globally — there is only ever one "+" for a new Space on
+  // screen (the dashboard's, or the drill-in's), unlike tabs where each Space has its own. Also
+  // guards `newWorktree`: both open through the same sheet, so only one of the two can be mid-flight
+  // at once anyway, and sharing the flag means either control's trigger shows busy the same way.
+  const [creatingSpace, setCreatingSpace] = useState(false);
+  const creatingSpaceRef = useRef(false);
 
   // `at` overrides the ambient scope for this one create — the new-space sheet's host picker. It is
   // optional and defaults to the ambient scope, so every existing caller is unchanged and a solo
@@ -94,11 +117,17 @@ export function useSpaceActions() {
   const newSpace = useCallback(
     async (opts: { label?: string; cwd?: string } = {}, at?: Scope) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      if (creatingSpaceRef.current) return;
+      creatingSpaceRef.current = true;
+      setCreatingSpace(true);
       const scope = at ?? scopeRef.current;
       try {
         open(await api.createWorkspace(opts, scope), "space", scope);
       } catch (e) {
         setStatus(describeThrownError(e), "error");
+      } finally {
+        creatingSpaceRef.current = false;
+        setCreatingSpace(false);
       }
     },
     [open, blockedText],
@@ -111,10 +140,16 @@ export function useSpaceActions() {
   const newWorktree = useCallback(
     async (workspaceId: string, branch: string) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      if (creatingSpaceRef.current) return;
+      creatingSpaceRef.current = true;
+      setCreatingSpace(true);
       try {
         open(await api.createWorktree(workspaceId, branch, scopeRef.current), "space");
       } catch (e) {
         setStatus(describeThrownError(e), "error");
+      } finally {
+        creatingSpaceRef.current = false;
+        setCreatingSpace(false);
       }
     },
     [open, blockedText],
@@ -166,5 +201,14 @@ export function useSpaceActions() {
     [open, blockedText],
   );
 
-  return { newTab, newSpace, newWorktree, showWorktree, launch, launching };
+  return {
+    newTab,
+    newSpace,
+    newWorktree,
+    showWorktree,
+    launch,
+    launching,
+    creatingTab,
+    creatingSpace,
+  };
 }

@@ -28,7 +28,7 @@ export function SpaceRoute() {
   const { spaceId = "" } = useParams();
   const navigate = useNavigate();
   const revalidator = useRevalidator();
-  const { newTab, newSpace } = useSpaceActions();
+  const { newTab, newSpace, creatingTab, creatingSpace } = useSpaceActions();
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
   // Either write gate refusing locks the tab strip's rename/close the same way (see ReadOnlyBanner).
   const { refused: notPaired } = usePairing();
@@ -100,6 +100,7 @@ export function SpaceRoute() {
               selected={spaceId}
               onSelect={(id) => (id === null ? toDashboard() : switchSpace(id))}
               onNewSpace={() => setNewSpaceOpen(true)}
+              creatingSpace={creatingSpace}
               onBack={toDashboard}
             />
             <TabStrip
@@ -110,6 +111,7 @@ export function SpaceRoute() {
               selected={tab}
               onSelect={switchTab}
               onNewTab={newTab}
+              creatingTab={creatingTab.has(selectedWs.workspaceId)}
               scope={data.scope}
               readOnly={isReadOnly(data.device) || notPaired}
               onRenamed={() => revalidator.revalidate()}

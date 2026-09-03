@@ -1,4 +1,4 @@
-import { ChevronLeft, Plus } from "lucide-react";
+import { ChevronLeft, Loader2, Plus } from "lucide-react";
 
 import { Chip } from "@/components/ui/chip";
 import {
@@ -20,6 +20,10 @@ interface SpaceStripProps {
   selected: string | null;
   onSelect: (workspaceId: string | null) => void;
   onNewSpace: () => void;
+  /** True while a Space create (from this row's sheet, or the worktree sheet it shares a flag with)
+   *  is in flight — disables the "+" and swaps its icon for a spinner, the same feedback the tab
+   *  strip's own "+" gives. */
+  creatingSpace?: boolean;
   /** When set (the drill-in view), lead with an explicit "‹ Back" button to the dashboard instead
    *  of the "All" chip — so the way back is obvious, not reliant on the header wordmark. */
   onBack?: () => void;
@@ -35,6 +39,7 @@ export function SpaceStrip({
   selected,
   onSelect,
   onNewSpace,
+  creatingSpace = false,
   onBack,
 }: SpaceStripProps) {
   const newSpace = useMuxCapability("createSpace");
@@ -98,16 +103,22 @@ export function SpaceStrip({
         <button
           type="button"
           onClick={onNewSpace}
+          disabled={creatingSpace}
           aria-label={t("space.overview.new.aria")}
+          aria-busy={creatingSpace}
           // 32px drawn, 46x46 hit: STRIP_TAP_TARGET_SQUARE adds the horizontal half of the floor,
           // which only this button needs and only this button can safely take (it is last in the
           // row). `rounded-full` stays — width equals height, so it is a circle and not a stadium.
           className={cn(
             STRIP_TAP_TARGET_SQUARE,
-            "flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95",
+            "flex size-8 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent active:scale-95 disabled:opacity-100",
           )}
         >
-          <Plus className="size-4" />
+          {creatingSpace ? (
+            <Loader2 className="size-4 animate-spin" aria-hidden />
+          ) : (
+            <Plus className="size-4" />
+          )}
         </button>
       )}
     </LabelledStrip>

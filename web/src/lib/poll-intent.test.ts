@@ -6,6 +6,7 @@ import {
   burstOnSend,
   burstPaneId,
   burstState,
+  consumeTopologyPoll,
   isFollowing,
   lastPollChanged,
   markPollResult,
@@ -14,6 +15,8 @@ import {
   sendCount,
   setFollowing,
   stampSend,
+  stampTopology,
+  topologyBursting,
 } from "./poll-intent";
 
 // The burst rules are counted in POLLS, so they are testable without a clock at all — which is the
@@ -122,5 +125,46 @@ describe("the store", () => {
     expect(isFollowing()).toBe(false);
     setFollowing(true);
     expect(isFollowing()).toBe(true);
+  });
+});
+
+// A create or a close is not spent on any one pane — whichever view is on screen (a tab strip, the
+// dashboard) needs the catch-up, so this buys a fixed run of fast polls outright rather than a
+// pane-scoped burst.
+describe("stampTopology", () => {
+  it("starts owed and bumps the reschedule counter, same as a send", () => {
+    stampTopology();
+    expect(topologyBursting()).toBe(true);
+    expect(sendCount()).toBe(1);
+    stampTopology();
+    expect(sendCount()).toBe(2);
+  });
+
+  it("ends after exactly BURST_MIN_POLLS consumed polls", () => {
+    stampTopology();
+    for (let i = 0; i < BURST_MIN_POLLS - 1; i += 1) {
+      consumeTopologyPoll();
+      expect(topologyBursting()).toBe(true);
+    }
+    consumeTopologyPoll();
+    expect(topologyBursting()).toBe(false);
+  });
+
+  it("consuming past zero is a no-op", () => {
+    consumeTopologyPoll();
+    expect(topologyBursting()).toBe(false);
+  });
+
+  it("a second stamp mid-burst restarts the full budget", () => {
+    stampTopology();
+    consumeTopologyPoll();
+    consumeTopologyPoll();
+    stampTopology();
+    for (let i = 0; i < BURST_MIN_POLLS - 1; i += 1) {
+      consumeTopologyPoll();
+      expect(topologyBursting()).toBe(true);
+    }
+    consumeTopologyPoll();
+    expect(topologyBursting()).toBe(false);
   });
 });

@@ -29,7 +29,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - A launcher's `cwd` is optional: pin one and it wins everywhere, leave it out and it means "here", your home dir from the dashboard, that pane's own folder from the switcher.
 - Tapped from a pane, a launcher opens a tab beside it instead of a new Space; tapped from the dashboard, a Space, as before. Rows read live per host, so on a pack they always come from whichever machine you tapped the row on, never the lead's own file.
-- The "Switch pane" sheet's handle now tracks the thumb as it drags, peeking up before it fully opens, instead of appearing only on release.
+- The "Switch pane" sheet's handle now follows the thumb, peeking up as you drag, instead of appearing only on release, and opens with a haptic tick.
 - `collie pack update` is one sequence: preflight every machine, update the lead first, then each peer in turn, health-gated. The first failure stops the run and leaves the rest untouched, with the recovery command named.
 - `collie update` stages, then hands the swap to a detached updater: it flips `current`, restarts, polls `/api/health` for 30 s (`COLLIE_UPDATE_HEALTH_TIMEOUT_MS`), and rolls back once by itself if the new version does not answer. Watch it with `collie update --status`.
 - A linked checkout updates by staging: `collie update` builds a release into a `versions/vX.Y.Z` git worktree and flips the `current` symlink, so a failed build never touches the running install and `collie update --rollback` works on a checkout (ADR 0006, amended)
@@ -48,6 +48,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   fully successful run.
 - `bun run test` no longer exits 0 when a test fails: a probe script called process.exit on import.
 - `collie update --check` no longer turns red, and the phone's Update button no longer disables, on a lead whose peer has no ssh record: that fact still shows red on the member, but updating the lead needs no route to a peer, so the top verdict is amber.
+- The new-tab and new-Space controls show a spinner and ignore a second tap while the create is in flight; the pane list catches up within a poll burst after any create or close.
 
 ## [1.3.0] - 2026-09-03
 

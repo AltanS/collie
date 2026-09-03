@@ -11,6 +11,7 @@ import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { setStatus } from "@/lib/status";
+import { stampTopology } from "@/lib/poll-intent";
 import type { TabView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { t, tn } from "@/lib/i18n";
@@ -119,6 +120,9 @@ export function TabActionsSheet({
           return false;
         }
         onClose();
+        // Same catch-up as a create: the strip the operator just closed a tab out of should not
+        // wait out an idle-timed gap to show it gone.
+        stampTopology();
         onClosed(target.tabId);
         return true;
       } catch (e) {
