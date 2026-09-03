@@ -12,7 +12,7 @@ import {
   truncateWords,
   type RibbonInput,
 } from "./update-ribbon";
-import type { UpdateInfo, UpdatePeerLeg, UpdateRun, UpdateRunState } from "./types";
+import type { UpdateInfo, UpdatePeerLeg, UpdatePeerLegState, UpdateRun, UpdateRunState } from "./types";
 
 // The band's reading, as a pure function. The component test next door proves the row that comes out
 // of it; everything about WHICH state wins lives here, where it needs no DOM.
@@ -108,15 +108,30 @@ describe("update ribbon states", () => {
   });
 
   it("counts a peer state it has never heard of as still moving, never as finished", () => {
-    // Spec 04 lands beside this one and may report a word this client does not know. A leg that
-    // vanished from the band would read as "that machine is fine".
+    // A newer bridge may report a word this client does not know. A leg that vanished from the band
+    // would read as "that machine is fine".
     // SAFETY: the assertion is the POINT of this test — it plants a wire value outside the union
     // this client compiles against, which is exactly what an older client reading a newer bridge
     // receives. Nothing downstream trusts the value; the reading only asks whether it is `done`.
-    const peers = [{ name: "minibuch", state: "unreachable" as UpdateRunState }];
+    const peers = [{ name: "minibuch", state: "levitating" as UpdatePeerLegState }];
     expect(read({ update: info({ run: run("done", { peers }) }) })).toEqual({
       kind: "peers",
       names: ["minibuch"],
+    });
+  });
+
+  it("an unreachable peer is a failed leg, not a moving one (M16/04)", () => {
+    // The lead gave up on that machine after three missed sweeps, so the band names it rather than
+    // counting it among the machines still going.
+    // SAFETY: `unreachable` IS a member of `UpdatePeerLegState`; the assertion only narrows the
+    // inferred `string` of an object literal to it, and the union above is what makes that sound.
+    const peers = [
+      { name: "minibuch", state: "unreachable" as UpdatePeerLegState, reason: "minibuch has missed 3 sweeps" },
+    ];
+    expect(read({ update: info({ releaseAvailable: false, run: run("done", { peers }) }) })).toEqual({
+      kind: "peer-failed",
+      name: "minibuch",
+      reason: "minibuch has missed 3 sweeps",
     });
   });
 

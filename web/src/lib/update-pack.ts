@@ -3,7 +3,7 @@ import type {
   UpdatePackMember,
   UpdatePackVerdict,
   UpdatePeerLeg,
-  UpdateRunState,
+  UpdatePeerLegState,
 } from "./types";
 
 // ── THE PACK, AS THE UPDATES PAGE READS IT ──────────────────────────────────────────────────────
@@ -18,17 +18,20 @@ import type {
 // Nothing here decides anything about the pack. It reads what the lead reported and puts the row
 // that needs a look at the top.
 
-/** The run states that are somebody still driving it. Mirrors the card's own set. */
-const IN_FLIGHT: ReadonlySet<UpdateRunState> = new Set<UpdateRunState>([
+/** The leg states that are somebody still driving it. `updating` is the lead's own word for all
+ *  four of the run states it cannot tell apart across the link (M16/04). */
+const IN_FLIGHT: ReadonlySet<UpdatePeerLegState> = new Set<UpdatePeerLegState>([
+  "updating",
   "preflight",
   "staging",
   "restarting",
   "verifying",
 ]);
 
-/** The run states that are a leg having gone wrong. `rolled-back` must carry its reason. */
-const FAILED: ReadonlySet<UpdateRunState> = new Set<UpdateRunState>([
+/** The leg states that are a leg having gone wrong. `rolled-back` must carry its reason. */
+const FAILED: ReadonlySet<UpdatePeerLegState> = new Set<UpdatePeerLegState>([
   "rolled-back",
+  "unreachable",
   "stuck",
   "interrupted",
 ]);
@@ -58,15 +61,21 @@ function rankOfVerdict(verdict: UpdatePackVerdict): number {
   return 5;
 }
 
-function rankOfState(state: UpdateRunState): number {
+function rankOfState(state: UpdatePeerLegState): number {
   if (FAILED.has(state)) return 0;
   if (IN_FLIGHT.has(state)) return 4;
   return 5;
 }
 
 /** The word a run state prints on a peer row — short, because it sits in a `·`-joined line. */
-export function peerStateWord(state: UpdateRunState): string {
+export function peerStateWord(state: UpdatePeerLegState): string {
   switch (state) {
+    case "waiting":
+      return t("settings.updateCard.peer.state.waiting");
+    case "updating":
+      return t("settings.updateCard.peer.state.updating");
+    case "unreachable":
+      return t("settings.updateCard.peer.state.unreachable");
     case "preflight":
       return t("settings.updateCard.peer.state.preflight");
     case "staging":

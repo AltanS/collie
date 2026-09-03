@@ -434,6 +434,11 @@ export interface UpdateRun {
   /** The command the operator runs by hand — carried only by `stuck`. */
   recovery?: string;
   /**
+   * The run's own opaque id (M16/04). Absent on a run started before the pack learned to follow, and
+   * on a bridge that predates it — both read as "no run to key on", which is the closed case.
+   */
+  runId?: string;
+  /**
    * The peer legs of a pack-wide run (M16/04). Absent on a solo run, and absent on a bridge that
    * predates it — the page then falls back to the census rows, which is the same screen with older
    * facts on it rather than a broken one.
@@ -474,13 +479,25 @@ export type PackUpdateRow = UpdatePackMember;
  */
 export interface UpdatePeerLeg {
   name: string;
-  state: UpdateRunState;
+  state: UpdatePeerLegState;
   /** The version that peer runs right now, when the lead knows it. */
   version?: string | null;
   /** Why the leg is where it is. Carried on a failure, and required on a rolled-back leg. */
   reason?: string;
   updatedAt?: number;
 }
+
+/**
+ * Where one peer's leg is, as the LEAD derived it from its sweep (M16/04, PACK_PROTOCOL.md §20).
+ *
+ * Deliberately not `UpdateRunState`: the lead never runs a peer's updater and never sees its
+ * staging, so it can only report what the link told it — behind and waiting, moving, arrived, fallen
+ * back, or gone quiet. The four run states it cannot distinguish all read as `updating`.
+ *
+ * The union stays open to the run states as well, because a bridge from before this split sent
+ * those, and a client that dropped such a leg would lose the row nobody may lose.
+ */
+export type UpdatePeerLegState = "waiting" | "updating" | "done" | "rolled-back" | "unreachable" | UpdateRunState;
 
 /** One preflight check (mirrors `cli/update-check.ts`). `id` is stable; the prose is not. */
 export interface PreflightCheck {
