@@ -17,7 +17,7 @@ import {
   type SeededFiles,
 } from "./fakes.ts";
 import type { Net } from "./sys.ts";
-import { parseUpdateRun, STALE_AFTER_MS } from "../bridge/update-run.ts";
+import { parseUpdateRun, STALE_AFTER_MS, UPDATE_RUN_SCHEMA } from "../bridge/update-run.ts";
 import {
   boundTail,
   healthTimeoutMs,
@@ -43,6 +43,7 @@ import {
   nextMajorRelease,
   parseApiTags,
   parseRemoteTags,
+  planToTag,
   planUpdate,
   platformId,
   pruneVersions,
@@ -52,6 +53,8 @@ import {
   updateCheckout,
   type UpdateDeps,
   wantsMajor,
+  wantsRunId,
+  wantsToTag,
 } from "./update.ts";
 
 // `update` against fakes. The shell suite proves the git grammar against REAL throwaway repos
@@ -1715,7 +1718,7 @@ describe("the update state file and its lock", () => {
     await cmdUpdate(h.deps);
     expect(h.files.ops).toContain(`mv ${RUN_FILE}.tmp ${RUN_FILE}`);
     const run = parseUpdateRun(h.files.read(RUN_FILE));
-    expect(run?.schema).toBe(1);
+    expect(run?.schema).toBe(UPDATE_RUN_SCHEMA);
     expect(run?.state).toBe("staging");
     expect(run?.to).toBe(NEW);
     // 0600: it names a pid and a path on a possibly shared host.
@@ -1888,5 +1891,87 @@ describe("the recorded log tail", () => {
     };
     await runner(h, BINARY_APPLY);
     expect(parseUpdateRun(h.files.read(RUN_FILE))?.logTail).toContain("Failed with result");
+  });
+});
+
+describe("collie update --to-tag", () => {
+  // The pure resolver first: the four refusals and the one happy path, decided without an install.
+  const TAGS = parseApiTags([
+    { name: "v1.0.0", sha: "a" },
+    { name: "v1.1.0", sha: "b" },
+    { name: "v1.2.0-beta.1", sha: "c" },
+    { name: "v2.0.0", sha: "d" },
+  ]);
+
+  test("to-tag pins the plan to that exact release, not to the highest one", () => {
+    const plan = planToTag({ tags: TAGS, installed: "1.0.0", wanted: "v1.1.0" });
+    expect(plan.kind).toBe("pinned");
+    expect(plan.kind === "pinned" && plan.target.tag).toBe("v1.1.0");
+    // The bare spelling resolves to the same tag: a caller composing argv writes one or the other.
+    expect(planToTag({ tags: TAGS, installed: "1.0.0", wanted: "1.1.0" }).kind).toBe("pinned");
+  });
+
+  test("to-tag refuses a tag that does not exist upstream", () => {
+    const plan = planToTag({ tags: TAGS, installed: "1.0.0", wanted: "v9.9.9" });
+    expect(plan.kind).toBe("refused");
+    expect(plan.kind === "refused" && plan.reason).toContain("no release tag");
+  });
+
+  test("to-tag refuses a prerelease", () => {
+    const plan = planToTag({ tags: TAGS, installed: "1.0.0", wanted: "v1.2.0-beta.1" });
+    expect(plan.kind === "refused" && plan.reason).toContain("prerelease");
+  });
+
+  test("to-tag refuses a tag that is not higher than the installed version", () => {
+    const plan = planToTag({ tags: TAGS, installed: "1.1.0", wanted: "v1.0.0" });
+    expect(plan.kind === "refused" && plan.reason).toContain("never downgrades");
+    // Equal is refused too. There is no "re-install this version" spelling here.
+    expect(planToTag({ tags: TAGS, installed: "1.1.0", wanted: "v1.1.0" }).kind).toBe("refused");
+  });
+
+  test("to-tag refuses a major crossing", () => {
+    const plan = planToTag({ tags: TAGS, installed: "1.0.0", wanted: "v2.0.0" });
+    expect(plan.kind === "refused" && plan.reason).toContain("crosses a major");
+  });
+
+  test("to-tag reads both spellings off the argv and blank is absent", () => {
+    expect(wantsToTag(["update", "--to-tag", "v1.1.0"])).toBe("v1.1.0");
+    expect(wantsToTag(["update", "--to-tag=v1.1.0"])).toBe("v1.1.0");
+    expect(wantsToTag(["update"])).toBeNull();
+    expect(wantsToTag(["update", "--to-tag"])).toBeNull();
+    // `--to` is the detached runner's own flag and is NOT read as a target tag.
+    expect(wantsToTag(["_apply-update", "--to", "1.1.0"])).toBeNull();
+  });
+
+  test("to-tag on a binary install takes the named release", async () => {
+    const h = binaryHarness();
+    expect(await cmdUpdate(h.deps, ["--to-tag", `v${NEW}`])).toBe(EXIT.OK);
+    expect(parseUpdateRun(h.files.read(RUN_FILE))?.to).toBe(NEW);
+  });
+
+  test("to-tag on a binary install refuses a tag the remote does not publish", async () => {
+    const h = binaryHarness();
+    expect(await cmdUpdate(h.deps, ["--to-tag", "v9.9.9"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("no release tag");
+    // Nothing was staged: a refusal happens before any download.
+    expect(h.files.read(RUN_FILE)).toBeNull();
+  });
+});
+
+describe("the update run id", () => {
+  test("run id rides the record when the caller names one, and is absent when it does not", async () => {
+    const withId = binaryHarness();
+    expect(await cmdUpdate(withId.deps, ["--run-id", "r-42"])).toBe(EXIT.OK);
+    expect(parseUpdateRun(withId.files.read(RUN_FILE))?.runId).toBe("r-42");
+
+    const without = binaryHarness();
+    expect(await cmdUpdate(without.deps)).toBe(EXIT.OK);
+    expect(parseUpdateRun(without.files.read(RUN_FILE))?.runId).toBeUndefined();
+  });
+
+  test("run id reads both spellings and never picks up the runner's own --to", () => {
+    expect(wantsRunId(["update", "--run-id", "r-1"])).toBe("r-1");
+    expect(wantsRunId(["update", "--run-id=r-1"])).toBe("r-1");
+    expect(wantsRunId(["update", "--to-tag", "v1.1.0"])).toBeNull();
   });
 });

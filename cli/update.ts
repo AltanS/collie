@@ -279,6 +279,122 @@ export function wantsMajor(args: readonly string[]): boolean {
   return args.includes("--major");
 }
 
+/**
+ * `--to-tag v<x.y.z>` — the PLUMBING flag that pins the plan to one exact release (M16/04).
+ *
+ * The operator's verb is `collie update`, which takes the highest release of its own major and needs
+ * no target. This exists so a peer following its lead can take **the release the lead is running**
+ * rather than the newest one, and for nothing else. It is deliberately not `--to`: that spelling is
+ * already the detached runner's own internal argv ({@link parseApplyArgs}), and two flags one letter
+ * apart on the same binary is a bug waiting for a tired evening.
+ *
+ * Both spellings are read, `--to-tag v1.2.3` and `--to-tag=v1.2.3`, because a caller composing argv
+ * by hand will write one of them and the other would read as "no target" — which is an update to
+ * something else entirely rather than a refusal.
+ */
+export function wantsToTag(args: readonly string[]): string | null {
+  return namedValue(args, "--to-tag");
+}
+
+/**
+ * `--run-id <opaque>` — the other plumbing flag: the id of the run this update belongs to (M16/04).
+ *
+ * It is written into `<state dir>/update.json` and read back by the pack and by nobody else: a peer's
+ * memory of "I already rolled back from this tag" is keyed by (tag, run id), so a fresh confirm on
+ * the phone mints a new id and permits exactly one further attempt. It never becomes a path, a URL
+ * or a comparison against a clock — it is compared for equality with itself and printed nowhere.
+ */
+export function wantsRunId(args: readonly string[]): string | null {
+  return namedValue(args, "--run-id");
+}
+
+/** `--name value` or `--name=value`, trimmed. `null` for absent and for a blank value alike. */
+function namedValue(args: readonly string[], name: string): string | null {
+  const at = args.indexOf(name);
+  if (at >= 0) {
+    const next = args[at + 1]?.trim() ?? "";
+    return next === "" || next.startsWith("--") ? null : next;
+  }
+  const joined = args.find((a) => a.startsWith(`${name}=`));
+  if (joined === undefined) return null;
+  const value = joined.slice(name.length + 1).trim();
+  return value === "" ? null : value;
+}
+
+/** What `--to-tag` resolved to: the one tag to take, or the sentence saying why it will not be. */
+export type ToTagPlan =
+  | { readonly kind: "pinned"; readonly target: ReleaseTag }
+  | { readonly kind: "refused"; readonly reason: string };
+
+/**
+ * Resolve `--to-tag` against the remote's tags and the installed version — the FOUR refusals, in one
+ * pure function so every install kind refuses identically.
+ *
+ * There is no downgrade path here and there will not be one. A flag that could move an install
+ * backwards is a flag that could move it anywhere, and the caller that reads it on a peer takes its
+ * target from a header its lead sent.
+ */
+export function planToTag(a: {
+  tags: readonly ReleaseTag[];
+  installed: string | null;
+  wanted: string;
+}): ToTagPlan {
+  const wanted = a.wanted.trim();
+  const bare = wanted.startsWith("v") ? wanted.slice(1) : wanted;
+  const target = a.tags.find((t) => t.tag === wanted || t.version === bare);
+  if (target === undefined) {
+    return { kind: "refused", reason: `no release tag \`${wanted}\` upstream — there is nothing to take` };
+  }
+  if (target.prerelease !== null) {
+    return {
+      kind: "refused",
+      reason: `\`${target.tag}\` is a prerelease — \`--to-tag\` takes strict releases only`,
+    };
+  }
+  if (a.installed === null) {
+    return {
+      kind: "refused",
+      reason: "this install names no version, so there is nothing to compare `--to-tag` against",
+    };
+  }
+  if (compareSemver(target.version, a.installed) <= 0) {
+    return {
+      kind: "refused",
+      reason: `\`${target.tag}\` is not higher than the installed ${a.installed} — \`--to-tag\` never downgrades`,
+    };
+  }
+  const major = majorOf(a.installed);
+  if (major !== null && target.major !== major) {
+    return {
+      kind: "refused",
+      reason: `\`${target.tag}\` crosses a major from ${a.installed} — a crossing is a named operator choice (ADR 0020), never a flag`,
+    };
+  }
+  return { kind: "pinned", target };
+}
+
+/** The pinned plan as an {@link UpdatePlan}, so every call site below keeps exactly one shape. */
+const advanceTo = (target: ReleaseTag): UpdatePlan => ({
+  kind: "advance",
+  target,
+  crossesMajor: false,
+  higher: null,
+});
+
+/**
+ * Apply `--to-tag` to a plan, or say why it will not apply. `null` in ⇒ the plan is handed straight
+ * back, which is every `collie update` an operator has ever run.
+ */
+export function pinPlan(
+  plan: UpdatePlan,
+  a: { tags: readonly ReleaseTag[]; installed: string | null; wanted: string | null },
+): { readonly ok: true; readonly plan: UpdatePlan } | { readonly ok: false; readonly reason: string } {
+  if (a.wanted === null) return { ok: true, plan };
+  const pinned = planToTag({ tags: a.tags, installed: a.installed, wanted: a.wanted });
+  if (pinned.kind === "refused") return { ok: false, reason: pinned.reason };
+  return { ok: true, plan: advanceTo(pinned.target) };
+}
+
 function isShallow(exec: Exec, root: string): boolean {
   const r = exec.capture("git", gitArgs(root, ["rev-parse", "--is-shallow-repository"]));
   return r.found && r.code === 0 && r.stdout.trim() === "true";
@@ -387,7 +503,7 @@ export interface CheckoutOutcome {
  */
 export function updateCheckout(
   deps: UpdateDeps,
-  opts: { crossMajor: boolean } = { crossMajor: false },
+  opts: { crossMajor: boolean; toTag?: string | null } = { crossMajor: false },
 ): CheckoutOutcome {
   const root = deps.ctx.root;
   const git = (args: readonly string[]): number => {
@@ -409,9 +525,10 @@ export function updateCheckout(
   if (!assertOrigin(deps)) return { code: EXIT.FAIL, moved: false, higher: null };
 
   const installed = installedVersion(deps);
+  const toTag = opts.toTag ?? null;
   return isManagedCheckout(deps.exec, root)
-    ? updateManaged(deps, git, installed, opts.crossMajor)
-    : updateLinked(deps, git, installed, opts.crossMajor);
+    ? updateManaged(deps, git, installed, opts.crossMajor, toTag)
+    : updateLinked(deps, git, installed, opts.crossMajor, toTag);
 }
 
 /** A linked clone keeps its branch and its `--ff-only` pull; the gate runs BEFORE the pull. */
@@ -420,8 +537,17 @@ function updateLinked(
   git: (args: readonly string[]) => number,
   installed: string | null,
   crossMajor: boolean,
+  toTag: string | null,
 ): CheckoutOutcome {
   const root = deps.ctx.root;
+  // `--to-tag` names a RELEASE, and this path takes a branch tip: there is no tag here to pin, so
+  // the flag is refused rather than quietly ignored. A caller that asked for one exact version and
+  // got whatever the branch points at today is the failure this refusal exists for.
+  if (toTag !== null) {
+    deps.io.err("error: `--to-tag` names a release tag, and this checkout follows a branch.");
+    deps.io.err("       Take that release by hand with `git checkout <tag>` and rebuild.");
+    return { code: EXIT.FAIL, moved: false, higher: null };
+  }
   const headNow = (): string => deps.exec.capture("git", gitArgs(root, ["rev-parse", "HEAD"])).stdout.trim();
   const before = headNow();
   // Plain `git fetch origin` — the configured refspec, so every remote-tracking ref advances. NOT
@@ -471,6 +597,7 @@ function updateManaged(
   git: (args: readonly string[]) => number,
   installed: string | null,
   crossMajor: boolean,
+  toTag: string | null,
 ): CheckoutOutcome {
   const root = deps.ctx.root;
   const ls = deps.exec.capture("git", gitArgs(root, ["ls-remote", "--tags", "origin"]));
@@ -479,7 +606,17 @@ function updateManaged(
     return { code: EXIT.FAIL, moved: false, higher: null };
   }
   const head = deps.exec.capture("git", gitArgs(root, ["rev-parse", "HEAD"])).stdout.trim();
-  const plan = planUpdate({ tags: parseRemoteTags(ls.stdout), installed, head, crossMajor });
+  const managedTags = parseRemoteTags(ls.stdout);
+  const asked = pinPlan(planUpdate({ tags: managedTags, installed, head, crossMajor }), {
+    tags: managedTags,
+    installed,
+    wanted: toTag,
+  });
+  if (!asked.ok) {
+    deps.io.err(`error: ${asked.reason}.`);
+    return { code: EXIT.FAIL, moved: false, higher: null };
+  }
+  const plan = asked.plan;
 
   if (plan.kind === "unknown-version") {
     // No readable version on disk: still take a RELEASE, never `origin HEAD`. A checkout that cannot
@@ -761,7 +898,7 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     return EXIT.FAIL;
   }
   if (staged && layout !== null) return await updateStagedCheckout(deps, layout, args);
-  const advanced = updateCheckout(deps, { crossMajor: wantsMajor(args) });
+  const advanced = updateCheckout(deps, { crossMajor: wantsMajor(args), toTag: wantsToTag(args) });
   if (advanced.code !== EXIT.OK) return advanced.code;
   // Nothing was taken AND what is on disk is whole: stop here. This used to fall through, so
   // "already current" and "nothing to cross to" were each followed by two installs, two typechecks,
@@ -987,7 +1124,19 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   //    has no checked-out commit, so `planUpdate`'s commit arm must never fire and the VERSION
   //    comparison decides — which is the right question for an install whose identity IS its version.
   const installed = installedVersion(deps);
-  const plan = planUpdate({ tags, installed, head: "", crossMajor: wantsMajor(args) });
+  // `--to-tag` pins this to ONE release (M16/04). It is applied to the plan rather than replacing it,
+  // so a refusal is the same sentence on every install kind and the four bad cases are decided in
+  // one pure function.
+  const pinnedBinary = pinPlan(planUpdate({ tags, installed, head: "", crossMajor: wantsMajor(args) }), {
+    tags,
+    installed,
+    wanted: wantsToTag(args),
+  });
+  if (!pinnedBinary.ok) {
+    deps.io.err(`error: ${pinnedBinary.reason}.`);
+    return EXIT.FAIL;
+  }
+  const plan = pinnedBinary.plan;
   if (plan.kind === "no-higher-major") {
     printNoHigherMajor(deps, plan.major);
     return EXIT.OK;
@@ -1102,13 +1251,12 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   //     `/api/health` until the new version answers, rolls back once if it does not, and only then
   //     collects the old versions. Nothing below this line runs in this process.
   const previous = currentVersionDir(deps, layout);
-  const handed = handOff(deps, layout, {
-    to: target.version,
-    from: previous,
-    version: target.version,
-    commit: target.commit,
-    kind: "binary",
-  });
+  const handed = handOff(
+    deps,
+    layout,
+    { to: target.version, from: previous, version: target.version, commit: target.commit, kind: "binary" },
+    wantsRunId(args),
+  );
   if (handed !== EXIT.OK) return handed;
   closeWithMajor(deps, higher);
   return EXIT.OK;
@@ -1467,7 +1615,18 @@ async function updateStagedCheckout(
   }
   const installed = installedVersion(deps);
   const head = deps.exec.capture("git", gitArgs(root, ["rev-parse", "HEAD"])).stdout.trim();
-  const plan = planUpdate({ tags: parseRemoteTags(ls.stdout), installed, head, crossMajor: wantsMajor(args) });
+  const stagedTags = parseRemoteTags(ls.stdout);
+  // The same pin, the same four refusals — see `updateBinary` above.
+  const pinnedStaged = pinPlan(planUpdate({ tags: stagedTags, installed, head, crossMajor: wantsMajor(args) }), {
+    tags: stagedTags,
+    installed,
+    wanted: wantsToTag(args),
+  });
+  if (!pinnedStaged.ok) {
+    deps.io.err(`error: ${pinnedStaged.reason}.`);
+    return EXIT.FAIL;
+  }
+  const plan = pinnedStaged.plan;
 
   if (plan.kind === "no-higher-major") {
     printNoHigherMajor(deps, plan.major);
@@ -1571,13 +1730,18 @@ async function updateStagedCheckout(
   //    DETACHED RUNNER (M15/04) — this process may not do them, because the restart would kill the
   //    bridge that quite possibly asked for this update, and a killed updater cannot roll back.
   const previous = stagedCurrent(deps, layout);
-  const handed = handOff(deps, layout, {
-    to: dir,
-    from: previous?.dir ?? null,
-    version: target.version,
-    commit: target.commit,
-    kind: "checkout",
-  });
+  const handed = handOff(
+    deps,
+    layout,
+    {
+      to: dir,
+      from: previous?.dir ?? null,
+      version: target.version,
+      commit: target.commit,
+      kind: "checkout",
+    },
+    wantsRunId(args),
+  );
   if (handed !== EXIT.OK) return handed;
   deps.io.out(
     previous === null
@@ -1767,7 +1931,12 @@ function currentRun(deps: UpdateDeps): UpdateRun | null {
  * the thing it just started is going to kill this process's own service — and on a Herdr action or
  * an `/api/update` call, quite possibly this process's own parent.
  */
-function handOff(deps: UpdateDeps, layout: BinaryLayout, a: Omit<ApplyArgs, "handoff">): number {
+function handOff(
+  deps: UpdateDeps,
+  layout: BinaryLayout,
+  a: Omit<ApplyArgs, "handoff">,
+  runId: string | null = null,
+): number {
   const verdict = updateLockVerdict(deps);
   if (!verdict.ok) {
     deps.io.err(`error: ${verdict.reason}.`);
@@ -1777,8 +1946,10 @@ function handOff(deps: UpdateDeps, layout: BinaryLayout, a: Omit<ApplyArgs, "han
   }
   const now = deps.now();
   takeLock(deps.files, deps.ctx.stateDir, deps.pid, now);
+  // The run id rides the RECORD, not the runner's argv: `runApply` picks the staging record up off
+  // disk and keeps driving it, so the id reaches every later state without `--to` growing a sibling.
   const staging = reduce(
-    reduce(idleRun(now), { kind: "begin", from: a.from, to: a.to, pid: deps.pid }, now),
+    reduce(idleRun(now), { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId }, now),
     { kind: "stage" },
     now,
   );

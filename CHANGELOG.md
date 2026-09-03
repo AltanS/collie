@@ -29,6 +29,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - Updates page at `/settings/updates`: the check, the update card, a read-only line per pack member, and one action button.
 - Every pack member reports its own update preflight over the link, and `GET /api/update/check` answers with a dated `pack` row per member.
+- `collie update --to-tag v<x.y.z>` pins an update to one exact release; it refuses a prerelease, a downgrade and a major crossing. Plumbing, not an operator verb.
 - `collie pack update` prints each member's peer-reported verdict beside its SSH one and names a disagreement.
 - One top-of-app update band, replacing the self-update row: release on offer, confirm just tapped, run in flight, new bridge, and peers following.
 

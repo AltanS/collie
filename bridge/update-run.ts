@@ -16,8 +16,20 @@ import { join } from "node:path";
 // coming up `idle` and telling the phone nothing happened. That symptom — tap update, the app goes
 // blank, comes back claiming there was no update — is the whole reason this file is on disk.
 
-/** The record's schema. Bumped when a field changes meaning; a reader that does not know it declines. */
-export const UPDATE_RUN_SCHEMA = 1;
+/**
+ * The record's schema, as this build WRITES it. Bumped when a field changes meaning.
+ *
+ * `2` added {@link UpdateRun.runId} (M16/04) — additively, so a `1` record is still a record this
+ * build reads whole. {@link READABLE_UPDATE_RUN_SCHEMAS} is the set a reader accepts, and a document
+ * carrying anything outside it is declined rather than half-read, exactly as before.
+ */
+export const UPDATE_RUN_SCHEMA = 2;
+
+/**
+ * The schemas a reader accepts. A `1` record simply has **no run id**, which is the closed reading:
+ * a run nobody can name is a run no peer will ever match a rollback against.
+ */
+export const READABLE_UPDATE_RUN_SCHEMAS: ReadonlySet<number> = new Set([1, UPDATE_RUN_SCHEMA]);
 
 /** `<state dir>/update.json` — the record. */
 export const UPDATE_RUN_FILENAME = "update.json";
@@ -89,6 +101,16 @@ export interface UpdateRun {
   readonly pid: number;
   /** How many rollbacks this run has made. `0` on the way forward, `1` after the one rollback. */
   readonly attempt: number;
+  /**
+   * The run's own id — **opaque**, minted once when the operator confirms (M16/04). Never a
+   * timestamp and never a version: two confirms inside one millisecond would collide, and an id that
+   * reads as a clock claim on the wire is an id somebody will compare.
+   *
+   * Absent on a schema-1 record and on every run this machine started for itself before the pack
+   * learned to follow. Absent means "no run to key on", which is what makes a peer's rollback memory
+   * refuse rather than match (`bridge/pack/follow.ts`).
+   */
+  readonly runId?: string;
   /** Why the run is where it is, when that needs a sentence. */
   readonly reason?: string;
   /** A bounded, credential-scrubbed tail of the service log, recorded on a failure. */
@@ -105,6 +127,16 @@ export interface UpdateLock {
 
 const finite = (value: number | undefined, fallback: number): number =>
   Number.isFinite(Number(value)) ? Number(value) : fallback;
+
+/**
+ * `value` when the document really carried a non-empty string there, else null.
+ *
+ * {@link finite}'s sibling, and it has to be one: the field is declared `string` for this file's own
+ * readers, but the document is foreign and may hold a number, an object or nothing at all. `String(v)
+ * === v` is true for a string and for nothing else, so the round trip IS the check.
+ */
+const nonEmptyString = (value: string | undefined): string | null =>
+  value === undefined || value === null || String(value) !== value || value === "" ? null : value;
 
 /**
  * The record in `text`, or null when there is none this build can read as one.
@@ -124,6 +156,7 @@ export function parseUpdateRun(text: string | null): UpdateRun | null {
     updatedAt?: number;
     pid?: number;
     attempt?: number;
+    runId?: string;
     reason?: string;
     logTail?: string;
     recovery?: string;
@@ -136,13 +169,16 @@ export function parseUpdateRun(text: string | null): UpdateRun | null {
   } catch {
     return null;
   }
-  if (finite(doc.schema, 0) !== UPDATE_RUN_SCHEMA) return null;
+  const schema = finite(doc.schema, 0);
+  if (!READABLE_UPDATE_RUN_SCHEMAS.has(schema)) return null;
   const state = doc.state ?? "";
   if (!STATES.has(state)) return null;
   // Assigned, never conditionally spread: a record without a reason must carry NO such key rather
   // than one whose value is `undefined`.
   const run: DraftRun = {
-    schema: UPDATE_RUN_SCHEMA,
+    // The schema the DOCUMENT claims, not this build's — a record read as `1` and handed back as `2`
+    // would be a reader inventing a field the writer never wrote.
+    schema,
     // SAFETY: `STATES` holds exactly the members of `UpdateRunState`, and the guard above returned
     // for every string that is not one of them.
     state: state as UpdateRunState,
@@ -153,6 +189,11 @@ export function parseUpdateRun(text: string | null): UpdateRun | null {
     pid: finite(doc.pid, 0),
     attempt: finite(doc.attempt, 0),
   };
+  // Assigned only when it is a non-empty string: an id nobody can name is no id at all, and an empty
+  // one would match another empty one. `text` is `finite`'s sibling — a foreign document may carry
+  // any JSON value here, and only a real string is one.
+  const id = nonEmptyString(doc.runId);
+  if (id !== null) run.runId = id;
   if (doc.reason !== undefined) run.reason = doc.reason;
   if (doc.logTail !== undefined) run.logTail = doc.logTail;
   if (doc.recovery !== undefined) run.recovery = doc.recovery;
@@ -173,6 +214,7 @@ interface DraftRun {
   updatedAt: number;
   pid: number;
   attempt: number;
+  runId?: string;
   reason?: string;
   logTail?: string;
   recovery?: string;

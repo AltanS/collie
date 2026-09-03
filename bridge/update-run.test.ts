@@ -126,3 +126,41 @@ describe("the standby door", () => {
     expect(standbyUpdateAnswer(post, new URL(`http://d${STANDBY_UPDATE_PATH}`), () => null)?.status).toBe(405);
   });
 });
+
+describe("the run id (M16/04)", () => {
+  test("a record carries an opaque run id, and a record without one carries no such key", () => {
+    const withId = parseUpdateRun(JSON.stringify(record({ runId: "r-7" })));
+    expect(withId?.runId).toBe("r-7");
+    const without = parseUpdateRun(JSON.stringify(record()));
+    expect("runId" in (without ?? {})).toBe(false);
+  });
+
+  test("a run id that is not a non-empty string is no run id at all", () => {
+    // An empty id would MATCH another empty id, which is exactly the false positive the peer's
+    // rollback memory must never make.
+    expect(parseUpdateRun(JSON.stringify({ ...record(), runId: "" }))?.runId).toBeUndefined();
+    expect(parseUpdateRun(JSON.stringify({ ...record(), runId: 7 }))?.runId).toBeUndefined();
+  });
+
+  test("a schema-1 record still reads whole, as a run with no id", () => {
+    const older = { ...record(), schema: 1 };
+    const run = parseUpdateRun(JSON.stringify(older));
+    expect(run?.state).toBe("verifying");
+    expect(run?.schema).toBe(1);
+    expect(run?.runId).toBeUndefined();
+    // A schema this build has never heard of is still declined rather than half-read.
+    expect(parseUpdateRun(JSON.stringify({ ...record(), schema: 99 }))).toBeNull();
+  });
+
+  test("the rolled-back memory survives a restart — it is read off disk, never held in memory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "collie-runid-"));
+    const rolled = record({ state: "rolled-back", to: "v1.1.0", runId: "r-9", reason: "health gate failed" });
+    await writeFile(join(dir, "update.json"), JSON.stringify(rolled), "utf8");
+    // A fresh process reads exactly what the updater left behind: the tag it fell back FROM and the
+    // run it belonged to. That pair is the whole of a peer's "never twice in this run".
+    const read = readUpdateRun(dir, () => NOW, () => false);
+    expect(read?.state).toBe("rolled-back");
+    expect(read?.to).toBe("v1.1.0");
+    expect(read?.runId).toBe("r-9");
+  });
+});
