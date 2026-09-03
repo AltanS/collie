@@ -20,48 +20,140 @@ Run `bin/collie link` to symlink the binary into `~/.local/bin`
 Configuration files (`.env`, `tailscale serve` state, paired devices, `stt.json`) sit outside the
 checkout and persist across updates (`bridge/solo-baseline.test.ts`).
 
-## Update
+## Update, from the phone or the terminal
 
-**1. Update**
+There are two ways to take a release, and they run the same thing on the host: stage the new
+version beside the old one, flip a symlink, restart, and check that the service answers. The phone
+updates the machine it is talking to. The terminal updates this machine, or a whole pack.
+
+### From the phone
+
+Open **Settings**. The **Update Collie** card names the version you are running, the newest release,
+and the versions one update would fold in. On the newest release it says so and offers nothing.
+
+Under that sits the preflight, one line per check: `doctor`, `disk`, `bun`, `tree`, `upstream` and
+`service`. On a lead, every pack member is checked too.
+
+- **Green** is clear.
+- **Amber** is worth knowing and never blocks: version skew across a pack, an unusual install kind,
+  a major that is out but is not being taken. Untracked scratch files in a checkout stay green.
+- **Red** blocks the update. The line names the reason, such as a red `collie doctor`, less than
+  1 GB free for the staged build, no `bun` on the host, or an upstream that cannot be reached. Where
+  one command clears it, the card prints that command as `Fix: <command>`.
+
+Tapping **Update to `<version>`** asks once, and the confirm text is literal: your terminal session
+stays alive, and the phone view drops for up to 30 seconds. The restart takes the bridge down, not
+your multiplexer, so the agents keep running and the phone comes back on the new version. A major
+never rides a routine update: crossing one asks its own confirm, names the version as a new major,
+and tells you to read the release notes first.
+
+While it runs, the card shows the state it is in:
+
+| State | What it means |
+| --- | --- |
+| `preflight` | Checking this machine. Nothing has moved. |
+| `staging` | Building or downloading the new version beside the old one. |
+| `restarting` | The bridge is down on purpose. This is not an outage. |
+| `verifying` | Waiting for the new version to answer. |
+| `done` | The new version answered. |
+| `rolled-back` | The new version did not answer, so the updater put the old one back. |
+| `stuck` | Neither version answered. Nothing will restart again on its own. |
+| `interrupted` | The run stopped before it finished. Nothing is half installed. |
+
+The first four are progress; the card says so and asks you to keep the screen open. `rolled-back`
+names the version you are still on, shows the tail of the service log, and offers **Retry**.
+`stuck` prints the one command to run in a terminal. `interrupted` offers **Retry** as well.
+
+**Remind me next digest** dismisses the card's nudge. It is not a mute: the next push waits for both
+a newer release and a fresh window.
+
+**How often you are told.** Update pushes are a digest, at most one a day, and never before 09:00
+host local time. A delta that is only patch releases waits for a weekly window instead, so a patch
+train arrives as one push rather than four; a minor or a major keeps the daily cadence and carries
+the waiting patches with it. Held releases are folded, never dropped. The card always shows the
+current state regardless of the window. The `updates` notification preference, under Settings →
+notifications ([Web Push](voice-and-push.md#web-push-optional)), is the single off switch.
+
+On a pack lead, the card updates the lead only. The peers are updated from the terminal, and the
+card says so.
+
+### From the terminal
 
 ```bash
-herdr plugin action invoke update --plugin herdr.collie     # Herdr-managed
-bin/collie update                                           # Standalone
+collie update --check            # read-only preflight, --json for a script
+collie update                    # stage, flip, restart, verify
+collie update --status           # what the updater did, or is doing, --json for a script
+collie update --rollback         # put the previous version back
+collie update --major            # cross one major, see below
 ```
 
-This fetches the newest release of your current major and stages it. The command then hands the
-swap to a separate updater and exits: that updater points `current` at the new version, restarts the
-bridge, and waits up to 30 seconds for `GET /api/health` to answer with the version it just
-installed. It has to be a separate process, because the restart kills the bridge that asked for the
-update.
+On a Herdr-managed install the same verbs are Herdr actions:
 
-If the new version does not answer in time, or answers as the old one, the updater flips `current`
-back and restarts once more. If that does not come up either, it stops: it records the failure and
-the command to run by hand, and nothing restarts again.
+```bash
+herdr plugin action invoke update --plugin herdr.collie      # Herdr-managed
+bin/collie update                                            # Standalone
+```
+
+`collie update --check` changes nothing. It runs `collie doctor`, reads the free space, the `bun`
+version, the working tree, the upstream release list and the service unit, and on a lead it asks
+every pack member the same question over your own SSH. It exits 0 unless something is red, and
+`--json` prints a versioned report.
+
+`collie update` fetches the newest release of your current major and stages it. The command then
+hands the swap to a separate updater and exits, because the restart kills the bridge that asked for
+the update. That updater points `current` at the new version, restarts through the new binary, and
+polls `GET /api/health` for up to 30 seconds for an answer carrying the version it just installed.
+If the answer does not come, or comes from the old version, it flips `current` back and restarts
+once more, and records `rolled-back` with a tail of the service log. If that does not come up
+either, it records `stuck` with the command to run by hand, and nothing restarts again. It rolls
+back once, never twice.
 
 Set `COLLIE_UPDATE_HEALTH_TIMEOUT_MS` if 30 seconds is not enough on your machine. A slow cold start
 that runs past the budget is read as a failed update and rolled back.
 
-**2. Verify**
+`collie update --status` prints the record the updater keeps, and the phone reads the same record.
+A deputy's standby door serves it at `/standby/update` while the main port is down.
+
+If a new beacon hook event is available, `update` prints a notice to re-run `hooks install claude`.
+
+#### Where the versions live
+
+A binary install and a linked clone share one layout under the install root
+(`~/.local/share/collie` or `$COLLIE_DIR` for a binary install, the clone itself for a checkout):
+
+```
+current -> versions/v1.3.0
+versions/v1.3.0/
+versions/v1.2.0/
+```
+
+On a checkout each `versions/vX.Y.Z` is a git worktree of the release tag, sharing the one `.git`,
+so a version costs a tree and not a second object store. The build runs inside the new directory and
+writes a completeness marker last; the flip refuses without that marker, so a killed build leaves
+the live version untouched. Going live is one rename of the `current` symlink. Retention keeps
+`current` plus the two newest previous versions, and only a successful run prunes, so a run that may
+need its rollback target never removes it.
+
+A **Herdr-managed** checkout is the exception and keeps advancing in place
+([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md), amended 2026-09-03). It
+is detached and shallow, and it lives in a directory Herdr owns, so there is no `versions/` layout
+beside it, nothing to hand off, and nothing to flip back to. `--rollback` is refused there; the
+recovery path is a reinstall of a named tag
+(`herdr plugin install AltanS/collie --ref vX.Y.Z --yes`).
+
+#### Verify
 
 ```bash
-bin/collie update --status          # what the updater did, or is doing (--json for a script)
+bin/collie update --status
 herdr plugin action invoke version --plugin herdr.collie
 bin/collie version
 ```
 
-Expect the newest tag. A binary install and a linked checkout both swap the `current` symlink and
-support `update --rollback`. A Herdr-managed checkout still advances in place and rebuilds
-(ADR 0006): there is no staged version beside it, so there is nothing to hand off and nothing to
-flip back to. The phone can read the same record while the bridge is down: a deputy's standby door
-serves it at `/standby/update`.
+Expect the newest tag.
 
-If a new beacon hook event is available, `update` prints a notice to re-run `hooks install claude`.
-
-**3. The phone**
-
-The PWA checks for a new build on its own and reloads within about a minute; no action needed. If
-you are mid-task, it shows a "tap to update" banner instead and waits for your tap.
+**The phone's own bundle** is a separate thing. The PWA checks for a new build by itself and reloads
+within about a minute, and it holds that reload for the length of an update run. If you are mid-task
+it shows a "tap to update" banner and waits for your tap.
 
 ### If the version did not move
 
@@ -97,28 +189,80 @@ herdr plugin action invoke version --plugin herdr.collie   # expect 0.23.1 or ne
 
 Config in the plugin directory is preserved.
 
-### What `update` actually does to the checkout
-
-Binary installs swap the `current` symlink; checkouts update in place
-([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md)):
-
-- **Linked clone** (on a branch): runs `git pull --ff-only` and re-links the plugin.
-- **`herdr plugin install`** (detached/shallow): fetches default-branch HEAD and checks it out
-  detached (`--depth 1` if shallow, `--force`). It does not re-link.
-
-Manual rebuild steps: frontend (`web/`) via `bin/collie build` (no restart needed); backend
-(`bridge/`) via `systemctl --user restart collie`. Run `scripts/install-hooks.sh` to install git
-hooks.
-
 ### Updating the rest of the pack
 
-From the lead node, run `collie pack update <member>…` (or `--all`). It runs as one sequence over
-your local SSH: it preflights every machine first, then updates the lead itself if the lead is not
-yet running the build it is handing out, then each peer in turn. A peer is pushed the lead's commit,
-rebuilt, restarted, and then polled until it answers the new build. The first failure stops the run:
-the members after it are left untouched and reported as "not attempted", and the summary names the
-one command that clears the failure. Stopping there is safe because the pack tolerates version skew
-(PACK_PROTOCOL.md §7.1). See [ADR 0016](../.adr/0016-updates-ride-the-operators-ssh.md).
+A pack is updated from the lead, in a terminal. There is no button for it on the phone
+([ADR 0035](../.adr/0035-pack-updates-from-the-phone-amend-0016.md), proposed): a phone tap has no
+terminal to answer the one consent question the flow asks before it touches N machines, and that
+question is not something to skip with a flag.
+
+```bash
+collie pack update <member>…      # on the lead
+collie pack update --all
+```
+
+It runs as one sequence over your own SSH. It preflights every machine first, with the same checks
+`collie update --check` runs locally. Then it updates the lead itself, if the lead is not yet
+running the build it is handing out. Then it takes each peer in turn: the peer is pushed the lead's
+commit as a git bundle, rebuilt, restarted, and polled until it answers the new build within the
+same 30 second budget.
+
+The first failure stops the run. Every member after it is left untouched and reported as
+"not attempted", and the summary names the one command that clears the failure. A lead that cannot
+take its own update touches no peer at all. Stopping there is safe, because a pack tolerates version
+skew ([PACK_PROTOCOL.md §7.1](../PACK_PROTOCOL.md#71-version-skew-inside-a-protocol-version)), so a
+half-updated pack is a supported state and pressing on is not. Code reaches a peer over your SSH and
+never over the pack link ([ADR 0016](../.adr/0016-updates-ride-the-operators-ssh.md)).
+
+### If the updater itself dies
+
+Nothing above helps when the updater is gone. This is the path that assumes only a terminal.
+
+The updater writes one record, `<state dir>/update.json` (by default
+`~/.local/state/collie/update.json`, or under `$COLLIE_STATE_DIR`). Read it first: it names the
+state, the version the run came from, the version it was going to, the updater's pid, and on a
+failure a tail of the service log and the recovery command.
+
+Beside it sits `<state dir>/update.lock`, holding a pid and a timestamp. One run at a time. A record
+that still reads `preflight`, `staging`, `restarting` or `verifying`, has not moved for 10 minutes,
+and whose pid is no longer in the process table, is over: it reads as `interrupted`, and a new run
+may take the lock.
+
+To put the previous version back by hand, point `current` at it and restart:
+
+```bash
+cd ~/.local/share/collie        # or $COLLIE_DIR, or the checkout root
+ls versions/
+ln -sfn versions/<previous> current
+collie restart
+```
+
+Or let the previous version do the same thing for you, which is the command a `stuck` record
+carries:
+
+```bash
+~/.local/share/collie/versions/<previous>/bin/collie update --rollback
+```
+
+Use the full path, not `collie`: the name on your PATH resolves through `current`, and `current` is
+the thing that may be wrong.
+
+### What the health gate does not catch
+
+The gate proves one thing: the service came back and answered `/api/health` with the version that
+was installed. That is a bounded promise, not "never brick". Four things can be broken while the
+gate reports success:
+
+- **A stale web bundle on the phone.** The host is on the new version and the phone is still running
+  old JavaScript out of its service worker. The PWA replaces its own bundle on its own schedule; the
+  health gate has no view of it.
+- **Config or schema migrations.** Collie ships none at this cadence, and the updater runs none. The
+  gate checks that the service answers, not that its data is shaped right.
+- **A mux driver that breaks only on interaction.** The bridge starts and answers health while the
+  adapter fails on the first real attach or send. Health is a liveness probe, not a conformance run.
+- **The updater running the old version's code.** The detached updater is launched from the version
+  being replaced. It is kept small and stable and its record is versioned, so an old updater and a
+  new bridge still understand each other, but that is a mitigation and not a guarantee.
 
 ### Resolving the newest release from a script
 

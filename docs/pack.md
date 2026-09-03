@@ -76,7 +76,7 @@ with Herdr in v1 ([`PACK_PROTOCOL.md` §16](../PACK_PROTOCOL.md)).
 | --- | --- |
 | `collie pack invite` | Mint a single-use, 10-minute enrollment token (**on the lead**) |
 | `collie pack add <ssh-host>` | Install and enroll a peer over **your own SSH** (on the lead) |
-| `collie pack update <member>… \| --all` | Level peers to this lead's build over SSH ([above](upgrading.md#updating-the-rest-of-the-pack)) |
+| `collie pack update <member>… \| --all` | Preflight every machine, then the lead, then each peer one at a time over **your own SSH**; the first failure stops the run ([above](upgrading.md#updating-the-rest-of-the-pack)) |
 | `collie pack status` | Mode, members, reachability, secret pickup — and why a link is refused |
 | `collie pack rotate` | Reissue the pack secret and hand it to every reachable peer |
 | `collie pack remove <member>` | Unpin and forget a member (on the lead) |

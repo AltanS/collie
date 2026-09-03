@@ -18,8 +18,8 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **URL** | `collie url` | Print the tailnet URL |
 | **QR** | `collie qr` | The same URL as a scannable code |
 | **Version** | `collie version` | The running version (`0.x.y+sha`) |
-| **Update** | `collie update` | Advance to the newest release of your major, rebuild and restart (`--major` crosses one) |
-| **Rollback** | `collie update --rollback` | **Binary install only** — put the previous version back |
+| **Update** | `collie update` | Stage the newest release of your major, flip to it, restart and verify (`--check` preflights, `--status` reports, `--major` crosses one) |
+| **Rollback** | `collie update --rollback` | Put the previous version back (not on a Herdr-managed checkout, which has none staged) |
 | **Uninstall** | `collie uninstall` | Remove the service; keep `.env` and the install |
 | **Pair** | `collie pair` | Mint a code so a phone can be [paired](security.md#pair-a-device--the-write-credential) |
 | **Devices** | `collie devices list` · `collie devices revoke <label>` | List / revoke paired devices |
