@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { useState, type ComponentProps } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -1133,6 +1135,23 @@ describe("AgentChat — no session reported", () => {
     const agent = { ...fixtureAgents[0]!, agent: "omp" }; // block grammars, no journal
     renderChat({ agent, agents: [agent] });
     expect(noSessionNote()).not.toBeInTheDocument();
+  });
+});
+
+// The strip has its own scroll bound (`max-h-[18dvh]`) for a statusline tall enough to spill it. On a
+// phone, dragging past that bound with no `overscroll-contain` chains the gesture into the document
+// (there is no other scrollable ancestor to absorb it) and drags the whole app — composer included —
+// down with it. See sheet.tsx's own scrollports for the same contract already in force there.
+describe("AgentChat — statusline strip scroll containment", () => {
+  it("renders the strip with overscroll-contain so a drag past its bound can't chain into the page", () => {
+    const text = readFileSync(join(import.meta.dirname, "..", "fixtures", "panes", "omp--fresh-idle.txt"), "utf8");
+    const agent = { ...fixtureAgents[0]!, agent: "omp" };
+    const { container } = renderChat({ agent, agents: [agent], text });
+    const strip = Array.from(container.querySelectorAll("div")).find((el) =>
+      el.className.includes("max-h-[18dvh]"),
+    );
+    expect(strip).toBeDefined();
+    expect(strip!.className).toMatch(/(?:^|\s)overscroll-contain(?=\s|$)/);
   });
 });
 

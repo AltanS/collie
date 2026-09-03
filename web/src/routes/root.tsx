@@ -95,7 +95,7 @@ export function RootLayout() {
     // second derivation of it, so the tolerance can never be computed against a cadence we aren't
     // using. That mattered more once the cadence gained inputs beyond the snapshot (#156).
     <PackProvider servers={data.servers} sessions={data.sessions} ts={data.ts} pollMs={pollMs}>
-      <div className="flex h-[100dvh] flex-col">
+      <div className="flex h-[100dvh] flex-col overflow-hidden">
         {/* API-observed self-update: mounted unconditionally so its controller runs (and can
             auto-update) for the app's lifetime; renders the slim "tap to update" row only when a fresh
             build is confirmed but auto-update is held off (unsent work) or already spent. */}

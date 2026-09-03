@@ -1,10 +1,11 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import { createMemoryRouter, RouterProvider } from "react-router";
 
-import { BootSplash, shownLastSeenAt } from "./root";
+import { BootSplash, RootLayout, shownLastSeenAt } from "./root";
 import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 import { collieMark, markIsLive, markPaper } from "@/test/collie-mark";
-import type { HomeData, PaneData } from "@/lib/loaders";
+import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 
 // BootSplash is the router's HydrateFallback: it stays mounted until the FIRST loader run settles, so
 // over a dead tailnet (a hanging initial fetch) it can otherwise bloom the mark forever with no way
@@ -113,5 +114,29 @@ describe("which 'last seen' the connection bar shows", () => {
     expect(shownLastSeenAt(home(AFTERNOON), pane({ error: false, lastSeenAt: NOON }))).toBe(
       AFTERNOON,
     );
+  });
+});
+
+// The root wrapper is the ONE flex column the whole app renders inside (banners + header + outlet, all
+// in-flow). It must never itself become a scrolling element: a scrollport nested inside it that hits
+// its own bound (the statusline strip, the mirror) would otherwise chain an over-drag into the
+// document, dragging the banners and header off screen with it and leaving no scroll position to
+// snap back from. `overflow-hidden` here is what forces every scroll to stay inside a scrollport that
+// actually declares one.
+describe("RootLayout — the document itself never scrolls", () => {
+  it("renders its flex column with overflow-hidden", async () => {
+    const router = createMemoryRouter(
+      [{ id: ROOT_ROUTE_ID, path: "/", loader: () => home(AFTERNOON), element: <RootLayout /> }],
+      { initialEntries: ["/"] },
+    );
+    const { container } = render(<RouterProvider router={router} />);
+    // The loader resolves on a microtask even though it's synchronous — the route isn't hydrated yet
+    // on the first render.
+    const column = await waitFor(() => {
+      const el = container.querySelector(".flex.h-\\[100dvh\\].flex-col");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(column.className).toMatch(/(?:^|\s)overflow-hidden(?=\s|$)/);
   });
 });

@@ -25,6 +25,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+
+- Pane detail: dragging the status line strip above the switcher handle no longer scrolls the
+  composer out of view.
+
 ## [1.4.1] - 2026-09-03
 
 ### Changed
