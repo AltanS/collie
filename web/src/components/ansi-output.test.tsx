@@ -183,9 +183,8 @@ describe("a table pans while the mirror around it wraps", () => {
   });
 
   it("leaves the border clip alone: a rule beside a table stays clipped and outside the run", () => {
-    // The two features cannot meet. A clipped line is 20+ IDENTICAL rule glyphs, and every grammar
-    // demands its own separator at each member row's column offsets, which such a line has nowhere.
-    // So the run ends at the rule, and the rule keeps the single-row clip it has always had.
+    // A repeated rule carries no separator at any member row's column offsets, so the run ends at
+    // it and the rule keeps the single-row clip it has always had.
     const rule = "─".repeat(20);
     const table = ["┌──────┬──────┐", "│ a    │ b    │", "├──────┼──────┤", "│ 1    │ 2    │", "└──────┴──────┘"].join("\n");
     const text = `${table}\n${rule}\n`;
@@ -195,6 +194,40 @@ describe("a table pans while the mirror around it wraps", () => {
     expect(run.textContent).toBe(table);
     expect(container.querySelector("span.overflow-hidden")!.textContent).toBe(rule);
     expect(container.querySelector("pre")!.textContent).toBe(text);
+  });
+
+  // THE PRECEDENCE. A box-drawn table's rows open and close on a vertical stroke, so blocks.ts's
+  // FRAME_ROW marks every one of them `noWrap` (issue #156) at the same time as table-run.ts claims
+  // them for a run. The two answers are ordered, not merged: a detected table owns its rows, frame
+  // rows included, so the whole table pans as one unit. A frame row with no table around it keeps
+  // the clip. These two tests are the pair; neither alone would catch a regression in the order.
+  describe("a table run outranks the frame-row clip on the rows it owns", () => {
+    const BOX = ["┌──────┬──────┐", "│ a    │ b    │", "├──────┼──────┤", "│ 1    │ 2    │", "└──────┴──────┘"];
+
+    it("clips no row of a box table, so the one scroller has something to pan", () => {
+      const table = BOX.join("\n");
+      const { container } = render(<AnsiOutput text={`prose\n\n${table}\n`} />);
+      const run = container.querySelector("span.overflow-x-auto")!;
+
+      // Every row is inside the run, and NOT ONE of them carries a clip of its own. A per-row clip
+      // would hide the same columns on every row and leave the run's scrollWidth at its clientWidth,
+      // which is the table silently refusing to pan.
+      expect(run.textContent).toBe(table);
+      expect(run.querySelectorAll("span.overflow-hidden")).toHaveLength(0);
+      expect(container.querySelectorAll("span.overflow-hidden")).toHaveLength(0);
+      expect(container.querySelector("pre")!.textContent).toBe(`prose\n\n${table}\n`);
+    });
+
+    it("still clips a framed row that no table claims", () => {
+      // A one-column chrome box: no cross anywhere, so no anchor and no run. Nothing about the
+      // table grammar may reach this row, so it keeps the clip #156 gave it.
+      const panel = ["╭──────────────╮", "│ Continue?    │", "╰──────────────╯"];
+      const { container } = render(<AnsiOutput text={`${panel.join("\n")}\n`} />);
+
+      expect(container.querySelector("span.overflow-x-auto")).toBeNull();
+      const clipped = [...container.querySelectorAll("span.overflow-hidden")].map((s) => s.textContent);
+      expect(clipped).toContain("│ Continue?    │");
+    });
   });
 
   // The grouping moves line nodes under a span and hoists one "\n" out of it, so the arrangements

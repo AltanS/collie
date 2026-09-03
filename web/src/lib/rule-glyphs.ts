@@ -13,7 +13,7 @@
 //   · `blocks.ts` (PURE_HORIZONTAL_BORDER) asks whether this row is TOO WIDE TO WRAP NICELY, to
 //     decide whether to clip it. Its false positive crops a short rule. It can afford a broad glyph
 //     set and a plain repetition count.
-//   · `blocks.ts` (FRAME_ROW) asks whether this row is FRAMED — a boxed menu, a panel — for the same
+//   · `blocks.ts` (FRAME_ROW) asks whether this row is FRAMED, a boxed menu or a panel, for the same
 //     clipping decision. Its false positive clips a line of prose that opens and closes on a
 //     vertical stroke. Its alphabet is FRAME_EDGE_GLYPH_CLASS at the foot of this file.
 //   · `table-run.ts` (tableRuns) asks whether this row belongs to a TABLE, to decide whether to pan

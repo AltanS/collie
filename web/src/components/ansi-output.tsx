@@ -379,7 +379,15 @@ export const AnsiOutput = memo(function AnsiOutput({
   // before the run's scroller (inside it, it would open the table with a blank row). The offset is
   // advanced either way — the separator exists in the find/link coordinate space regardless of which
   // element holds its text node.
-  const renderLine = (line: StyledLine, li: number, lead: boolean): ReactNode => {
+  //
+  // `inRun` settles the PRECEDENCE between the two no-wrap answers, and it is the reconcile with the
+  // frame-row clip (blocks.ts FRAME_ROW, issue #156). A box-drawn table's rows open and close on a
+  // vertical stroke, so every one of them is `noWrap` as well as a member of a run. THE RUN WINS.
+  // Clipping each row on its own would hide the same columns on every row and leave the scroller
+  // nothing to pan, so the table would be silently un-pannable, which is the exact failure this
+  // change exists to fix. A frame row that is NOT in a run, a lone menu or panel border, keeps its clip
+  // untouched: a detected table owns its own rows, and nothing beyond them.
+  const renderLine = (line: StyledLine, li: number, lead: boolean, inRun: boolean): ReactNode => {
     if (li > 0) offset += 1; // the "\n" separating this line from the previous
     const segNodes = line.segments.map((s, si) => {
       const segStart = offset;
@@ -390,10 +398,9 @@ export const AnsiOutput = memo(function AnsiOutput({
         </span>
       );
     });
-    // No interaction with the border clip below: a `noWrap` line is 20+ IDENTICAL rule glyphs, and
-    // every grammar demands a separator of its own on each member row, so a clipped border can
-    // never be inside a run.
-    const content = line.noWrap && wrap ? (
+    // A run's own rows are never clipped; see `inRun` above. Outside a run this is unchanged: a
+    // repeated rule, or a framed menu row, keeps the single-row clip it has always had.
+    const content = line.noWrap && wrap && !inRun ? (
       <span className="inline-block max-w-full overflow-hidden align-bottom whitespace-pre break-normal">{segNodes}</span>
     ) : (
       segNodes
@@ -414,14 +421,14 @@ export const AnsiOutput = memo(function AnsiOutput({
     for (let li = 0; li < block.lines.length; ) {
       const run: TableRun | undefined = runs[ri];
       if (!run || run.start !== li) {
-        nodes.push(renderLine(block.lines[li]!, li, true));
+        nodes.push(renderLine(block.lines[li]!, li, true, false));
         li++;
         continue;
       }
       ri++;
       const rows: ReactNode[] = [];
       for (let k = run.start; k <= run.end; k++) {
-        rows.push(renderLine(block.lines[k]!, k, k > run.start));
+        rows.push(renderLine(block.lines[k]!, k, k > run.start, true));
       }
       // Keyed by the table's own first row and height, NEVER by its line index. The mirror is a
       // rendered grid: one new line of output shifts every index by one, and an index key would
