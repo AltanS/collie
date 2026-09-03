@@ -81,6 +81,7 @@ card says so.
 
 ```bash
 collie update --check            # read-only preflight, --json for a script
+collie update --check --local    # the same, this instance only, no pack members
 collie update                    # stage, flip, restart, verify
 collie update --status           # what the updater did, or is doing, --json for a script
 collie update --rollback         # put the previous version back
@@ -97,7 +98,9 @@ bin/collie update                                            # Standalone
 `collie update --check` changes nothing. It runs `collie doctor`, reads the free space, the `bun`
 version, the working tree, the upstream release list and the service unit, and on a lead it asks
 every pack member the same question over your own SSH. It exits 0 unless something is red, and
-`--json` prints a versioned report.
+`--json` prints a versioned report. Add `--local` to check this instance only and skip the pack
+members: that is what the phone's card runs, because the card updates the lead alone. The pack is
+checked from a terminal.
 
 `collie update` fetches the newest release of your current major and stages it. The command then
 hands the swap to a separate updater and exits, because the restart kills the bridge that asked for
@@ -202,8 +205,9 @@ collie pack update --all
 ```
 
 It runs as one sequence over your own SSH. It preflights every machine first, with the same checks
-`collie update --check` runs locally. Then it updates the lead itself, if the lead is not yet
-running the build it is handing out. Then it takes each peer in turn: the peer is pushed the lead's
+`collie update --check` runs locally. The phone's card never does this: its own preflight is
+`--local`, the lead alone. Then it updates the lead itself, if the lead is not yet running the
+build it is handing out. Then it takes each peer in turn: the peer is pushed the lead's
 commit as a git bundle, rebuilt, restarted, and polled until it answers the new build within the
 same 30 second budget.
 

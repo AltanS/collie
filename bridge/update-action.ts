@@ -46,6 +46,26 @@ export interface PreflightReport {
 
 const VERDICTS: ReadonlySet<string> = new Set(["green", "amber", "red"]);
 
+const RANK = { green: 0, amber: 1, red: 2 } satisfies Record<"green" | "amber" | "red", number>;
+
+/** The worst of a set of verdicts. The CLI's own summary rule, restated (nothing here may import it). */
+export function worstVerdict(verdicts: readonly ("green" | "amber" | "red")[]): "green" | "amber" | "red" {
+  let seen: "green" | "amber" | "red" = "green";
+  for (const v of verdicts) if (RANK[v] > RANK[seen]) seen = v;
+  return seen;
+}
+
+/**
+ * The argv of the preflight the PHONE runs.
+ *
+ * `--local` is the load-bearing word: the card updates the lead alone (ADR 0016 — a peer is
+ * levelled from a terminal), so a peer must never be a reason to refuse the lead's own update, and
+ * the member walk runs over the operator's SSH, which a bridge running as a service does not have.
+ */
+export function preflightCommand(binary: string): string[] {
+  return [binary, "update", "--check", "--local", "--json"];
+}
+
 /**
  * {@link PreflightCheck} while it is being BUILT field by field — the one place a check is not
  * readonly. A named contract rather than an inline type, so the optional `remedy` is declared where
@@ -109,12 +129,15 @@ export function parsePreflightReport(stdout: string): PreflightReport | null {
     if (typeof remedy === "string") parsed.remedy = remedy;
     checks.push(parsed);
   }
-  return {
-    schema: PREFLIGHT_SCHEMA,
-    // SAFETY: as above — checked against the same closed set one line after it was read.
-    verdict: verdict as "green" | "amber" | "red",
-    checks,
-  };
+  // The phone's payload carries no `pack` — the card is the LEAD's own answer. A report that still
+  // has one (an older CLI, or a terminal run read here) folded its members into the top verdict, so
+  // dropping the members while keeping that verdict would show a red card with no red row. The
+  // verdict is re-derived from the checks that remain. `--local` makes this a belt-and-braces path.
+  // SAFETY: `verdict` was checked against `VERDICTS` above, which holds exactly the three members of
+  // the union, and the guard there returned for every string that is not one of them.
+  const printed = verdict as "green" | "amber" | "red";
+  const topLevel = rec.pack === undefined ? printed : worstVerdict(checks.map((c) => c.verdict));
+  return { schema: PREFLIGHT_SCHEMA, verdict: topLevel, checks };
 }
 
 /** The first red check in `report`, or null. What the refusal NAMES — "unavailable" is not a reason. */

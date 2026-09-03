@@ -292,7 +292,7 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "update",
     summary:
-      "advance to the newest release of this major (--check is a read-only preflight; --major crosses one; --rollback flips current back to the previous version; --status shows the run)",
+      "advance to the newest release of this major (--check is a read-only preflight, and --check --local checks this instance only, skipping pack members; --major crosses one; --rollback flips current back to the previous version; --status shows the run)",
     // `--check` is a different verb wearing `update`'s name: a read-only preflight that answers
     // "could this update succeed right now?" and touches nothing (`cli/update-check.ts`). It is
     // routed HERE, before `cmdUpdate` is ever constructed, so no part of the real update path can

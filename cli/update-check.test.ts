@@ -23,8 +23,10 @@ import type { RemoteResult, RemoteRunner } from "./remote.ts";
 import type { Net } from "./sys.ts";
 import { unitFilePath } from "./unit.ts";
 import {
+  anonymousTagUrl,
   bunCheck,
   checkLine,
+  classifyTagFailure,
   cmdUpdateCheck,
   parseDfAvailableKb,
   parseReport,
@@ -35,6 +37,7 @@ import {
   skewCheck,
   type UpdateCheckDeps,
   wantsCheck,
+  wantsLocal,
   worst,
 } from "./update-check.ts";
 
@@ -66,7 +69,7 @@ const HEALTHY: NonNullable<Scripted["answers"]> = [
   [`${GIT} symbolic-ref -q HEAD`, { code: 1 }],
   [`${GIT} remote get-url origin`, { stdout: "https://github.com/AltanS/collie.git\n" }],
   [`${GIT} status --porcelain --untracked-files=no`, { stdout: "" }],
-  [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+  [`${GIT} ls-remote --tags`, { stdout: LS_REMOTE }],
   [`${GIT} rev-parse HEAD`, { stdout: "cccccccc\n" }],
   ["df -Pk", { stdout: df(50_000_000) }],
   ["bun --version", { stdout: "1.3.14\n" }],
@@ -341,7 +344,7 @@ describe("preflight — the upstream check", () => {
       harness({
         installed: "0.31.1",
         answers: [
-          [`${GIT} ls-remote --tags origin`, { stdout: "a1a1a1a1\trefs/tags/v0.31.1\nb2b2b2b2\trefs/tags/v0.32.0\n" }],
+          [`${GIT} ls-remote --tags`, { stdout: "a1a1a1a1\trefs/tags/v0.31.1\nb2b2b2b2\trefs/tags/v0.32.0\n" }],
           [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
         ],
       }).deps,
@@ -359,7 +362,7 @@ describe("preflight — the upstream check", () => {
   });
 
   test("a major crossing is amber, with a remedy naming --major", async () => {
-    const report = await preflight(harness({ answers: [[`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE_WITH_MAJOR }]] }).deps);
+    const report = await preflight(harness({ answers: [[`${GIT} ls-remote --tags`, { stdout: LS_REMOTE_WITH_MAJOR }]] }).deps);
     const check = byId(report, "upstream");
     expect(check.verdict).toBe("amber");
     expect(check.reason).toContain("NEW MAJOR");
@@ -367,13 +370,84 @@ describe("preflight — the upstream check", () => {
     expect(report.verdict).toBe("amber");
   });
 
-  test("an unreachable remote is red and says so", async () => {
+  test("an unreachable remote is red and quotes git's own first line", async () => {
     const check = byId(
-      await preflight(harness({ answers: [[`${GIT} ls-remote --tags origin`, { code: 128, stderr: "could not read" }]] }).deps),
+      await preflight(
+        harness({
+          answers: [[`${GIT} ls-remote --tags`, { code: 128, stderr: "fatal: could not read from remote\n" }]],
+        }).deps,
+      ),
       "upstream",
     );
     expect(check.verdict).toBe("red");
+    expect(check.reason).toContain("fatal: could not read from remote");
+  });
+
+  test("a silent failure still reads as a remote that did not answer", async () => {
+    const check = byId(
+      await preflight(harness({ answers: [[`${GIT} ls-remote --tags`, { code: 128 }]] }).deps),
+      "upstream",
+    );
     expect(check.reason).toContain("did not answer");
+    expect(check.remedy).toContain("network");
+  });
+
+  test("a missing ssh agent reads as itself, and its remedy is not the network one", async () => {
+    const check = byId(
+      await preflight(
+        harness({
+          answers: [
+            [`${GIT} remote get-url origin`, { stdout: "git@github.com:AltanS/collie.git\n" }],
+            [
+              `${GIT} ls-remote --tags`,
+              { code: 128, stderr: "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.\n" },
+            ],
+          ],
+        }).deps,
+      ),
+      "upstream",
+    );
+    expect(check.verdict).toBe("red");
+    expect(check.reason).toContain("Permission denied (publickey)");
+    expect(check.remedy).toContain("git remote get-url origin");
+  });
+
+  test("a read-only tag listing needs no credential: an ssh origin is listed over https, with a timeout", async () => {
+    const h = harness({
+      answers: [[`${GIT} remote get-url origin`, { stdout: "git@github.com:AltanS/collie.git\n" }]],
+    });
+    await preflight(h.deps);
+    const listing = h.exec.calls.find((c) => c.includes("ls-remote"))!;
+    expect(listing).toBe(`${GIT} ls-remote --tags https://github.com/AltanS/collie.git`);
+    expect(h.exec.timeouts.find((t) => t.call.includes("ls-remote"))?.ms).toBe(15_000);
+  });
+
+  test("anonymousTagUrl maps the GitHub ssh spellings to https and leaves everything else alone", () => {
+    expect(anonymousTagUrl("git@github.com:a/b.git")).toBe("https://github.com/a/b.git");
+    expect(anonymousTagUrl("git@github.com:a/b")).toBe("https://github.com/a/b.git");
+    expect(anonymousTagUrl("ssh://git@github.com/a/b.git")).toBe("https://github.com/a/b.git");
+    expect(anonymousTagUrl("https://github.com/a/b.git")).toBe("https://github.com/a/b.git");
+    expect(anonymousTagUrl("git@git.example.com:a/b.git")).toBe("git@git.example.com:a/b.git");
+    expect(anonymousTagUrl("/srv/mirrors/collie.git")).toBe("/srv/mirrors/collie.git");
+  });
+
+  test("the failure classifier tells a dead network from a credential", () => {
+    for (const line of [
+      "ssh: Could not resolve hostname github.com: Name or service not known",
+      "fatal: unable to access 'https://github.com/a/b.git': Failed to connect",
+      "ssh: connect to host github.com port 22: Connection timed out",
+      "fatal: Network is unreachable",
+      "",
+    ]) {
+      expect(classifyTagFailure(line)).toBe("network");
+    }
+    for (const line of [
+      "git@github.com: Permission denied (publickey).",
+      "Host key verification failed.",
+      "remote: Repository not found.",
+    ]) {
+      expect(classifyTagFailure(line)).toBe("credentials");
+    }
   });
 
   test("an origin that is not the configured update source is red and names both", async () => {
@@ -558,6 +632,43 @@ describe("preflight pack — the members of a lead", () => {
   });
 });
 
+describe("preflight --local — the answer the phone's card reads", () => {
+  const lead = (peers: string[]): TrustStoreData => leadStore({ peers: peers.map((id) => member({ memberId: id })) });
+
+  test("the members are not walked at all, and the report carries no pack", async () => {
+    const h = harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED });
+    const report = await preflight(h.deps, { local: true });
+    expect(report.pack).toBeUndefined();
+    // No ssh was opened: the walk is skipped, never run and discarded.
+    expect(h.runners.size).toBe(0);
+  });
+
+  test("a peer this lead cannot reach never refuses the lead's own update (ADR 0016)", async () => {
+    const h = harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED });
+    // Without --local the same pack turns the whole report red.
+    expect((await preflight(h.deps)).verdict).toBe("red");
+    const local = await preflight(h.deps, { local: true });
+    expect(local.verdict).toBe("green");
+    expect(local.verdict).toBe(worst(local.checks.map((c) => c.verdict)));
+  });
+
+  test("`--local` is the flag, and the terminal's default is unchanged", async () => {
+    expect(wantsLocal(["--check", "--local"])).toBe(true);
+    expect(wantsLocal(["--check", "--json"])).toBe(false);
+    const h = harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED });
+    expect(await cmdUpdateCheck(h.deps, ["--check", "--local", "--json"])).toBe(EXIT.OK);
+    expect(parseReport(h.io.stdout.join("\n"))!.pack).toBeUndefined();
+    const terminal = harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED });
+    expect(await cmdUpdateCheck(terminal.deps, ["--check", "--json"])).toBe(EXIT.FAIL);
+    expect(parseReport(terminal.io.stdout.join("\n"))!.pack).toHaveLength(1);
+  });
+
+  test("a red on this instance is still a red under --local", async () => {
+    const h = harness({ store: lead(["nas"]), answers: [["df -Pk", { stdout: df(1000) }]] });
+    expect((await preflight(h.deps, { local: true })).verdict).toBe("red");
+  });
+});
+
 describe("the JSON contract", () => {
   test("check json — the document is versioned and every check is an object", async () => {
     const h = harness();
@@ -593,7 +704,7 @@ describe("the JSON contract", () => {
     for (const h of [
       harness({ answers: [["df -Pk", { stdout: df(1000) }]] }),
       harness({ answers: [[`${GIT} status --porcelain --untracked-files=no`, { stdout: " M cli/x.ts\n" }]] }),
-      harness({ answers: [[`${GIT} ls-remote --tags origin`, { code: 128 }]] }),
+      harness({ answers: [[`${GIT} ls-remote --tags`, { code: 128 }]] }),
       harness({ findings: [{ check: "bind", status: "error", detail: "d", remedy: "r" }] }),
     ]) {
       const report = await preflight(h.deps);

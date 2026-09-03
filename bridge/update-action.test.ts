@@ -5,11 +5,13 @@ import {
   parsePreflightReport,
   parseUpdateStartRequest,
   PreflightCache,
+  preflightCommand,
   updateStartCommand,
   updateStartVerdict,
   type PreflightReport,
   type UpdateStartRequest,
   type UpdateStartState,
+  worstVerdict,
 } from "./update-action.ts";
 import type { JsonObject } from "./json.ts";
 import type { UpdateRun, UpdateRunState } from "./update-run.ts";
@@ -87,6 +89,39 @@ describe("the update preflight report, as the bridge reads it", () => {
     expect(parsePreflightReport("")).toBeNull();
     expect(parsePreflightReport("not json at all")).toBeNull();
     expect(parsePreflightReport("[]")).toBeNull();
+  });
+
+  test("a report carrying `pack` loses the members AND their contribution to the verdict", () => {
+    const text = JSON.stringify({
+      schema: 1,
+      // Red because of a peer this lead cannot ssh to, which is not a reason to refuse the lead's
+      // own update — and would show as a red card with no red row.
+      verdict: "red",
+      checks: [
+        { id: "disk", verdict: "green", reason: "4.2 GB free" },
+        { id: "bun", verdict: "amber", reason: "Bun 1.1.0 is older than measured" },
+      ],
+      pack: [{ memberId: "nas", host: "nas.local", verdict: "red", checks: [] }],
+    });
+    const report = parsePreflightReport(text);
+    expect(report?.verdict).toBe("amber");
+    expect(report?.checks.map((c) => c.id)).toEqual(["disk", "bun"]);
+    expect("pack" in (report ?? {})).toBe(false);
+  });
+
+  test("without `pack` the top-level verdict is taken as printed", () => {
+    const text = JSON.stringify({
+      schema: 1,
+      verdict: "red",
+      checks: [{ id: "disk", verdict: "green", reason: "4.2 GB free" }],
+    });
+    expect(parsePreflightReport(text)?.verdict).toBe("red");
+  });
+
+  test("worstVerdict is the summary rule", () => {
+    expect(worstVerdict([])).toBe("green");
+    expect(worstVerdict(["green", "amber"])).toBe("amber");
+    expect(worstVerdict(["amber", "red", "green"])).toBe("red");
   });
 
   test("firstRed names the check, so a refusal is never a generic 'unavailable'", () => {
@@ -308,5 +343,17 @@ describe("update hands off — the command that leaves this process's cgroup", (
   test("it is `collie update` and nothing else — the operator's own verb, not a second recipe", () => {
     const cmd = updateStartCommand({ ...base, major: false, hasSystemdRun: false, hasSetsid: false });
     expect(cmd).toEqual(["/opt/collie/bin/collie", "update"]);
+  });
+});
+
+describe("the preflight the phone runs", () => {
+  test("the argv carries --local, so a peer never refuses the lead's own update (ADR 0016)", () => {
+    expect(preflightCommand("/opt/collie/bin/collie")).toEqual([
+      "/opt/collie/bin/collie",
+      "update",
+      "--check",
+      "--local",
+      "--json",
+    ]);
   });
 });

@@ -127,7 +127,12 @@ import {
 } from "./update.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 import { readUpdateRun, updateLockHeld } from "./update-run.ts";
-import { PreflightCache, updateStartCommand } from "./update-action.ts";
+import {
+  parsePreflightReport,
+  PreflightCache,
+  preflightCommand,
+  updateStartCommand,
+} from "./update-action.ts";
 import { collieVersionBare } from "./version.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
@@ -605,18 +610,33 @@ const PREFLIGHT_TIMEOUT_MS = 30_000;
 const preflightCache = new PreflightCache({
   now: Date.now,
   run: async () => {
-    const child = Bun.spawn([collieBinary, "update", "--check", "--json"], {
+    // `--local`: this instance only. The card updates the lead alone (ADR 0016), and the member
+    // walk would run over an SSH agent this service does not have — see `preflightCommand`.
+    const child = Bun.spawn(preflightCommand(collieBinary), {
       cwd: rootDir,
       stdout: "pipe",
-      stderr: "ignore",
+      // Piped, never ignored: when the report cannot be read, git's own words on this stream are
+      // the only thing that says why, and a service log is where the operator looks.
+      stderr: "pipe",
       stdin: "ignore",
     });
     const timer = setTimeout(() => child.kill(), PREFLIGHT_TIMEOUT_MS);
     try {
-      const stdout = await new Response(child.stdout).text();
+      const [stdout, stderr] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ]);
       // A RED preflight exits non-zero and still prints a perfectly good report, so the exit code is
-      // deliberately not consulted: the document is the answer, and its absence is the failure.
-      await child.exited;
+      // deliberately not consulted for the ANSWER: the document is the answer, and its absence is
+      // the failure. It is consulted for the LOG, below, and only there.
+      const code = await child.exited;
+      const unreadable = parsePreflightReport(stdout) === null;
+      if (unreadable || (code !== 0 && stderr.trim() !== "")) {
+        const tail = stderr.trim().split("\n").slice(-5).join(" / ");
+        console.warn(
+          `[update] preflight exited ${code}${unreadable ? " with no readable report" : ""}${tail === "" ? "" : `: ${tail}`}`,
+        );
+      }
       return { stdout };
     } finally {
       clearTimeout(timer);

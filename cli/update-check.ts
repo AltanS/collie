@@ -397,6 +397,61 @@ type TagListing =
   | { readonly ok: true; readonly tags: readonly ReleaseTag[] }
   | { readonly ok: false; readonly reason: string; readonly remedy: string };
 
+/** How long `git ls-remote` may take before the preflight stops waiting on it. */
+const LS_REMOTE_TIMEOUT_MS = 15_000;
+
+/**
+ * The URL a READ-ONLY tag listing should use for `origin`.
+ *
+ * Listing the tags of a public repository must not depend on a credential. The bridge runs as a
+ * systemd user service with no access to the operator's SSH agent, so `git ls-remote origin` on a
+ * checkout whose origin is `git@github.com:AltanS/collie.git` fails with "Permission denied
+ * (publickey)" — a red preflight that has nothing to do with whether an update could succeed.
+ * A GitHub SSH remote is therefore listed over anonymous HTTPS instead. Every other URL is used
+ * exactly as git reports it: a self-hosted mirror or a local path is not ours to rewrite.
+ */
+export function anonymousTagUrl(url: string): string {
+  const raw = url.trim();
+  const scp = /^git@github\.com:(.+)$/i.exec(raw);
+  const ssh = /^ssh:\/\/git@github\.com\/(.+)$/i.exec(raw);
+  const path = scp?.[1] ?? ssh?.[1];
+  if (path === undefined) return raw;
+  const repo = path.replace(/\/+$/, "").replace(/\.git$/, "");
+  return repo === "" ? raw : `https://github.com/${repo}.git`;
+}
+
+/** What `origin` is called on the wire for a read-only listing — the URL, or the name as a fallback. */
+function tagRemote(deps: UpdateCheckDeps): string {
+  const r = deps.exec.capture("git", gitArgs(deps.ctx.root, ["remote", "get-url", "origin"]));
+  const url = r.found && r.code === 0 ? r.stdout.trim() : "";
+  return url === "" ? "origin" : anonymousTagUrl(url);
+}
+
+/**
+ * Why a `git ls-remote` failed, in the only two families a remedy can differ on.
+ *
+ * `network` is the one the operator fixes by getting the machine online; everything else is the
+ * machine being unable to PROVE who it is to that remote, or the remote URL being wrong. Guessing
+ * "network" for both is what made a missing SSH agent read as a dead github.com.
+ */
+export type TagFailure = "network" | "credentials";
+
+const NETWORK_STDERR =
+  /could not resolve host|name or service not known|temporary failure in name resolution|timed out|timeout|network is unreachable|no route to host|connection refused|connection reset|unable to access/i;
+
+/** The classifier. Empty stderr is `network`: a remote that says nothing is the silence it names. */
+export function classifyTagFailure(stderr: string): TagFailure {
+  const line = firstLine(stderr);
+  if (line === "") return "network";
+  return NETWORK_STDERR.test(line) ? "network" : "credentials";
+}
+
+const TAG_REMEDY = {
+  network: "check this machine's network and its access to the remote, then re-run this check",
+  credentials:
+    "the listing is anonymous, so this is the remote URL or its credentials — check `git remote get-url origin`, then re-run this check",
+} satisfies Record<TagFailure, string>;
+
 /**
  * The remote's tags, by the route this install's `update` would take them: `git ls-remote` on a
  * checkout, the GitHub tags endpoint on a binary install. Same `ReleaseTag[]` either way, so the
@@ -404,15 +459,27 @@ type TagListing =
  */
 async function listTags(deps: UpdateCheckDeps, install: InstallKind, repo: string): Promise<TagListing> {
   if (isCheckout(install)) {
-    const ls = deps.exec.capture("git", gitArgs(deps.ctx.root, ["ls-remote", "--tags", "origin"]));
+    const remote = tagRemote(deps);
+    const ls = deps.exec.capture(
+      "git",
+      gitArgs(deps.ctx.root, ["ls-remote", "--tags", remote]),
+      LS_REMOTE_TIMEOUT_MS,
+    );
     if (!ls.found) {
       return { ok: false, reason: "git is not installed here, so the upstream tags cannot be listed", remedy: "install git" };
     }
     if (ls.code !== 0) {
+      // git's own first line, verbatim: "Permission denied (publickey)" has to read as itself, and
+      // never as a remote that did not answer.
+      const said = firstLine(ls.stderr);
+      const kind = classifyTagFailure(ls.stderr);
       return {
         ok: false,
-        reason: `could not list the release tags of github.com/${repo} — the remote did not answer`,
-        remedy: "check this machine's network and its access to the remote, then re-run this check",
+        reason:
+          said === ""
+            ? `could not list the release tags of github.com/${repo} — the remote did not answer`
+            : `could not list the release tags of github.com/${repo} — git said: ${said}`,
+        remedy: TAG_REMEDY[kind],
       };
     }
     return { ok: true, tags: parseRemoteTags(ls.stdout) };
@@ -639,10 +706,23 @@ export async function packChecks(deps: UpdateCheckDeps): Promise<PreflightMember
 
 // ── The verb ─────────────────────────────────────────────────────────────────
 
+/**
+ * What a run of the preflight is asked to cover.
+ *
+ * `local` is the phone's answer and only the phone's: the card updates the LEAD alone (ADR 0016 —
+ * peers are levelled from a terminal), so a peer can never be a reason to refuse the lead's own
+ * update. It also keeps the member walk, which runs over the operator's own SSH, out of a bridge
+ * running as a service with no agent to sign with. The terminal's default is unchanged.
+ */
+export interface PreflightOptions {
+  readonly local?: boolean;
+}
+
 /** The whole document, assembled. Pure of output — {@link cmdUpdateCheck} decides how to print it. */
-export async function preflight(deps: UpdateCheckDeps): Promise<PreflightReport> {
+export async function preflight(deps: UpdateCheckDeps, opts: PreflightOptions = {}): Promise<PreflightReport> {
   const checks = await instanceChecks(deps);
-  const pack = await packChecks(deps);
+  // Skipped ENTIRELY under `--local`: no trust store read, no ssh, and no `pack` key in the report.
+  const pack = opts.local === true ? undefined : await packChecks(deps);
   // A member's contribution to the TOP verdict is `topLevelMemberVerdict`, not its own `.verdict` —
   // see that function's comment: an `ops-record`-only red on a peer must not disable the lead's own
   // update button.
@@ -683,14 +763,14 @@ function render(deps: UpdateCheckDeps, report: PreflightReport): void {
 }
 
 /**
- * `collie update --check [--json]` — the read-only preflight.
+ * `collie update --check [--local] [--json]` — the read-only preflight.
  *
  * Exit 0 when nothing is red, {@link EXIT.FAIL} otherwise. Amber never moves the exit code: it is
  * "would proceed, but you should know", and a gate that blocked on it would be a gate every caller
  * learns to pass `--force` to.
  */
 export async function cmdUpdateCheck(deps: UpdateCheckDeps, args: readonly string[] = []): Promise<number> {
-  const report = await preflight(deps);
+  const report = await preflight(deps, { local: wantsLocal(args) });
   if (args.includes("--json")) {
     // stdout and nothing else: the whole point of `--json` is that spec 05 and spec 06 can read it.
     deps.io.out(JSON.stringify(report, null, 2));
@@ -735,4 +815,9 @@ export function updateCheckDeps(io: Io): UpdateCheckDeps {
 /** `--check` anywhere in `update`'s argv — the dispatcher's predicate (`cli/program.ts`). */
 export function wantsCheck(args: readonly string[]): boolean {
   return args.includes("--check");
+}
+
+/** `--local`: check this instance only, and skip the pack members. What the phone's card asks for. */
+export function wantsLocal(args: readonly string[]): boolean {
+  return args.includes("--local");
 }

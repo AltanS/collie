@@ -29,6 +29,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - Update card says "Up to date. Nothing to do." at the top and folds the Preflight details unless something needs a look.
 
+### Fixed
+
+- The phone's update preflight checks this instance only (`update --check --local`), so an unreachable pack peer no longer turns the lead's card red.
+- The preflight lists release tags over anonymous HTTPS when `origin` is a GitHub SSH URL, and quotes git's own error, so a missing SSH agent no longer reads as a dead remote.
+
 ## [1.4.0] - 2026-09-03
 
 ### Changed
