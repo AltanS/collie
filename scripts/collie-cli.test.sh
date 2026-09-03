@@ -1108,21 +1108,39 @@ advance_origin() {
   git_q -C "$ORIGIN" tag v9.10.0
 }
 
-# The fake Bun for this section records the `_apply-update` handoff — the ONE thing `update` does
-# after advancing the checkout — and otherwise behaves like the build fake.
+# The fake Bun for this section records the `_apply-update` handoff — the ONE thing an in-place
+# update does after advancing the checkout — and otherwise behaves like the build fake.
+#
+# Two things it must produce, because the staged path runs on them: `bun <worktree>/cli/main.ts
+# build` is how a version is built INSIDE its worktree, and what that build leaves behind is a
+# RUNNABLE `bin/collie` — the staged flip then restarts the service through `current/bin/collie`,
+# so a binary that is only a text file would fail the restart and roll the update back.
 cat > "${U_BIN}/bun" <<EOF
 #!/bin/sh
 echo "\${PWD}\\\$ bun \$*" >> "$U_CALLS"
+new_binary() {
+  mkdir -p "\$(dirname "\$1")"
+  printf '#!/bin/sh\n# NEW BINARY\necho "\$0 \$*" >> "%s"\nexit 0\n' "$U_CALLS" > "\$1"
+  chmod +x "\$1"
+}
 case "\$1 \$2" in
   "build --compile")
     for a in "\$@"; do
-      [ "\$prev" = --outfile ] && printf 'NEW BINARY\n' > "\$a" && chmod +x "\$a"
+      [ "\$prev" = --outfile ] && new_binary "\$a"
       prev="\$a"
     done
     exit 0 ;;
   "run build")
     mkdir -p dist-staging
     printf 'NEW BUNDLE\n' > dist-staging/index.html
+    exit 0 ;;
+esac
+# <root>/cli/main.ts build -- the staged path's build, run from inside the worktree.
+case "\$2" in
+  build)
+    new_binary bin/collie
+    mkdir -p web/dist
+    printf 'NEW BUNDLE\n' > web/dist/index.html
     exit 0 ;;
 esac
 exit 0
@@ -1191,17 +1209,34 @@ assert_contains "$(cat "$U_CALLS")" "${MANAGED}\$ bun ${MANAGED}/cli/main.ts _ap
 # Idempotent: a second update with nothing new upstream is a no-op, not an error.
 upd "$MANAGED" "$BIN" update || fail "a second \`collie update\` failed"
 
-# Shape 2 — a dev clone linked with `herdr plugin link`. On a branch, so it fast-forwards, keeps its
-# branch, and keeps its FULL history (no --depth truncation).
+# Shape 2 — a dev clone linked with `herdr plugin link`. Since M15/02 it STAGES rather than
+# advancing itself: the target release TAG is checked out into `versions/vX.Y.Z` — a git worktree
+# sharing the one `.git` — built there, marked complete, and `current` is flipped onto it with one
+# rename. The clone's own branch never moves, which is what makes a failed build a no-op
+# (ADR 0006, amendment of 2026-09-03).
 CLONE="${U_DIR}/clone"
 git_q clone -q "$ORIGIN" "$CLONE"
 git_q -C "$ORIGIN" commit -q --allow-empty -m "third"
+CLONE_BRANCH_AT="$(git -C "$CLONE" rev-parse HEAD)"
 upd "$CLONE" "$BIN" update || fail "\`collie update\` failed on a linked clone: ${STDERR}"
-assert_contains "$STDOUT" "git pull --ff-only"
-assert_eq "$(git -C "$CLONE" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse HEAD)"
+assert_contains "$STDOUT" "staged checkout"
+assert_contains "$STDOUT" "✓ updated to 9.10.0"
+# The version is a worktree of the tag, and `current` is a RELATIVE symlink at it.
+assert_eq "$(git -C "${CLONE}/versions/v9.10.0" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse "v9.10.0^{commit}")"
+assert_eq "$(readlink "${CLONE}/current")" "versions/v9.10.0"
+assert_eq "$(cat "${CLONE}/versions/v9.10.0/VERSION")" "v2"
+# The completeness marker is the build's LAST act — without it the flip refuses.
+assert_contains "$(cat "${CLONE}/versions/v9.10.0/.collie-build")" '"version": "9.10.0"'
+# The restart goes through the name that was just switched, never through the old process.
+assert_contains "$(cat "$U_CALLS")" "${CLONE}/current/bin/collie restart"
+# The clone itself is untouched: same commit, same branch, full history.
+assert_eq "$(git -C "$CLONE" rev-parse HEAD)" "$CLONE_BRANCH_AT"
 assert_eq "$(git -C "$CLONE" symbolic-ref --short HEAD)" "main"
-assert_eq "$(git -C "$CLONE" rev-list --count HEAD)" "3"
 assert_eq "$(git -C "$CLONE" rev-parse --is-shallow-repository)" "false"
+# The first staged update has no rollback target, and says so rather than implying one.
+assert_contains "$STDOUT" "nothing to roll back to yet"
+if upd "$CLONE" "$BIN" update --rollback; then fail "--rollback found a target on a first staged update"; fi
+assert_contains "$STDERR" "nothing to roll back to"
 
 # Shape 3 — not a git checkout at all (a copied tree). It must name the reinstall command rather than
 # emit a raw git error about a missing origin, and it must not reach the rebuild.
@@ -1249,20 +1284,28 @@ assert_eq "$(cat "${MANAGED}/VERSION")" "v10"
 git -C "$MANAGED" symbolic-ref -q HEAD >/dev/null 2>&1 &&
   fail "crossing a major must leave the managed checkout detached"
 
-# Linked: the target is the branch tip, so the gate is a pre-flight read of the manifest at
-# FETCH_HEAD — and a refusal pulls NOTHING.
+# Linked: the target is a TAG here too now, so the gate is target selection — v10.0.0 is simply not
+# a major-9 install's to take, and nothing is staged for it.
 CLONE_AT="$(git -C "$CLONE" rev-parse HEAD)"
 upd "$CLONE" "$BIN" update || fail "a routine update refusing a major must still succeed: ${STDERR}"
-assert_contains "$STDOUT" "crosses a MAJOR version"
-assert_eq "$(git -C "$CLONE" rev-parse HEAD)" "$CLONE_AT"
+assert_contains "$STDOUT" "NEW MAJOR"
+[ -d "${CLONE}/versions/v10.0.0" ] && fail "a routine update staged the next major"
 upd "$CLONE" "$BIN" update --major || fail "\`collie update --major\` failed on a clone: ${STDERR}"
-assert_eq "$(git -C "$CLONE" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse HEAD)"
+assert_contains "$STDOUT" "crossing to Collie 10.0.0"
+assert_eq "$(readlink "${CLONE}/current")" "versions/v10.0.0"
+# The crossing is staged too: the clone's own branch is where it was.
+assert_eq "$(git -C "$CLONE" rev-parse HEAD)" "$CLONE_AT"
 assert_eq "$(git -C "$CLONE" symbolic-ref --short HEAD)" "main"   # still a branch, never detached
+# …and NOW there is a previous version, so `--rollback` flips back to it and restarts.
+upd "$CLONE" "$BIN" update --rollback || fail "\`collie update --rollback\` failed on a clone: ${STDERR}"
+assert_contains "$STDOUT" "✓ rolled back to 9.10.0"
+assert_eq "$(readlink "${CLONE}/current")" "versions/v9.10.0"
+# A rollback collects nothing: the version rolled away from is the one most likely to be wanted back.
+[ -d "${CLONE}/versions/v10.0.0" ] || fail "a rollback removed the version it rolled away from"
 
-# A clone kept on a NON-DEFAULT branch is judged by ITS OWN upstream, never by the remote's default
-# tip. `origin/main` is a major ahead here; `origin/maint` is not, and it is the only thing
-# `git pull --ff-only` would ever take — reading the gate off the wrong one would refuse every pull
-# on a maintenance branch (this repo's own deployment host is a clone on `v1`).
+# A clone kept on a NON-DEFAULT branch stays on it. A staged update takes the newest RELEASE of the
+# major the install is on — `origin/main` is a major ahead here and is never consulted — and the
+# branch the operator keeps this clone on is left exactly where it is, unpulled.
 git_q -C "$ORIGIN" branch maint v9.10.0
 MAINT="${U_DIR}/maint"
 git_q clone -q -b maint "$ORIGIN" "$MAINT"
@@ -1271,11 +1314,11 @@ printf 'v9-maint\n' > "${ORIGIN}/VERSION"
 git_q -C "$ORIGIN" add -A
 git_q -C "$ORIGIN" commit -q -m "a 9.x fix"
 git_q -C "$ORIGIN" checkout -q main
-upd "$MAINT" "$BIN" update || fail "update refused a within-major pull on a maintenance branch: ${STDERR}"
-assert_contains "$STDOUT" "git pull --ff-only"
-assert_eq "$(cat "${MAINT}/VERSION")" "v9-maint"
+MAINT_AT="$(git -C "$MAINT" rev-parse HEAD)"
+upd "$MAINT" "$BIN" update || fail "update refused a within-major release on a maintenance branch: ${STDERR}"
+assert_eq "$(readlink "${MAINT}/current")" "versions/v9.10.0"
 assert_eq "$(git -C "$MAINT" symbolic-ref --short HEAD)" "maint"
-assert_eq "$(git -C "$MAINT" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse maint)"
+assert_eq "$(git -C "$MAINT" rev-parse HEAD)" "$MAINT_AT"
 
 # An UNVERSIONED managed checkout — a manifest we cannot read a major out of. It must never strand
 # the install, and it must never follow `origin HEAD`: a moved default branch is unreleased work
@@ -1294,17 +1337,16 @@ assert_eq "$(git -C "$UNVERSIONED" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-pars
 [ "$(git -C "$UNVERSIONED" rev-parse HEAD)" != "$(git -C "$ORIGIN" rev-parse main)" ] ||
   fail "the unversioned fallback followed origin HEAD instead of the newest release tag"
 
-# A branch with NO upstream: nothing to gate, and nothing to pull either — git's own "no tracking
-# information" is the whole answer, and a pull that cannot happen cannot cross a major.
+# A branch with NO upstream is no obstacle to a staged update: the target is a tag, not the branch's
+# tracking ref, and the branch is never pulled. What the clone is sitting on stays untouched.
 NOUP="${U_DIR}/no-upstream"
 git_q clone -q "$ORIGIN" "$NOUP"
 git_q -C "$NOUP" checkout -q -b local-only
 NOUP_AT="$(git -C "$NOUP" rev-parse HEAD)"
-if upd "$NOUP" "$BIN" update; then fail "a branch with no upstream reported a successful update"; fi
+upd "$NOUP" "$BIN" update || fail "a branch with no upstream could not stage a release: ${STDERR}"
+assert_eq "$(readlink "${NOUP}/current")" "versions/v10.0.0"
 assert_eq "$(git -C "$NOUP" rev-parse HEAD)" "$NOUP_AT"
-case "$STDOUT" in
-  *"MAJOR"*) fail "a branch with no upstream was refused by the major gate instead of by git" ;;
-esac
+assert_eq "$(git -C "$NOUP" symbolic-ref --short HEAD)" "local-only"
 
 # The suite must not damage the repository it is run FROM. Git hands every hook a `GIT_DIR`, this
 # suite runs from pre-push, and an exported `GIT_DIR` beats `-C` for every git command in the tree —
@@ -1339,7 +1381,7 @@ assert_contains "$STDOUT" "✓ update complete"
 assert_contains "$(cat "$U_CALLS")" "systemctl --user enable --now collie"
 # The rebuilt artifacts are in place: the binary the restarted unit will execute, and the bundle the
 # bridge serves from disk.
-assert_eq "$(cat "${MANAGED}/bin/collie")" "NEW BINARY"
+assert_contains "$(cat "${MANAGED}/bin/collie")" "NEW BINARY"
 assert_eq "$(cat "${MANAGED}/web/dist/index.html")" "NEW BUNDLE"
 # NEVER re-link a managed checkout: `plugin link` re-registers it as source.kind=local, after which
 # Herdr REFUSES `plugin install` — the operator's only other way to refresh (ADR 0006).

@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { BEACON_HOOKS } from "./beacon.ts";
 import {
@@ -44,6 +44,7 @@ import { historyFindings } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
 import {
   binaryLayout,
+  type BinaryLayout,
   classifyInstall,
   DEFAULT_UPDATE_REPO,
   type InstallKind,
@@ -58,7 +59,7 @@ import type { Ui } from "./render.ts";
 import { failureLine, type MemberReach, parsePackArgs, probeMemberReach, VERSION_REPORTED_SINCE } from "./pack.ts";
 import { fingerprintRoot, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
-import { platformId } from "./update.ts";
+import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMarker } from "./update.ts";
 import { tailnetInboundBlocked, tailnetName } from "./tailnet.ts";
 
 // `collie doctor` — one read-only pass over the traps that fail silently (M7/02).
@@ -169,6 +170,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     webDist(deps),
     pathLink(deps),
     installKind(deps, install),
+    versionsLayout(deps, install),
     updateSource(deps, install),
     ...quarantine(deps, install),
     herdrSocket(deps),
@@ -373,9 +375,19 @@ function installKind(deps: DoctorDeps, install: InstallKind): Finding {
     }
     case "linked-clone":
     case "detached-checkout": {
+      if (isStagedCheckout(deps, root)) {
+        // The normal shape since M15/02: a git WORKTREE of a release tag, under this install's own
+        // `versions/`, with `current` beside it. Both signals are true here on purpose.
+        const layout = binaryLayout(root);
+        return ok(
+          "install",
+          `staged checkout, version ${layout.version} at ${layout.installRoot} (worktree of ${root})`,
+        );
+      }
       if (install.alsoLayout) {
-        // Both signals. `update` takes the git path — a `.git` means a human put a working tree
-        // there, and the binary path would rename it into `.trash/`. Printed rather than hidden.
+        // Both signals, and no build marker: a human put a working tree inside somebody's versions/
+        // layout. `update` takes the git path — a `.git` means uncommitted work may be in there, and
+        // the binary path would rename it into `.trash/`. Printed rather than hidden.
         return warn(
           "install",
           `a git checkout inside a binary layout (${root})`,
@@ -402,10 +414,90 @@ function installKind(deps: DoctorDeps, install: InstallKind): Finding {
         "install",
         install.why === "no-marker"
           ? `cannot tell how this Collie was installed (no herdr-plugin.toml at ${root})`
-          : `cannot tell how this Collie was installed (${root} is neither a git checkout nor a versions/ layout)`,
+          : `cannot tell how this Collie was installed (${root} has no .git of its own and no versions/ layout above it)`,
         "`collie update` cannot run here; see docs/install.md",
       );
   }
+}
+
+/**
+ * Is `root` a version of a STAGED checkout — a git worktree under a `versions/` directory that
+ * carries the build marker its own build wrote? The marker is what tells this shape apart from a
+ * clone someone dropped inside a binary install's layout, which is an ambiguity, not a design.
+ */
+function isStagedCheckout(deps: DoctorDeps, root: string): boolean {
+  if (basename(dirname(root)) !== "versions") return false;
+  return readBuildMarker(deps, root) !== null;
+}
+
+/**
+ * **The `versions/` layout: what is live, what is retained, and whether `current` resolves.** This is
+ * the outside view of the stage-then-swap shape both install kinds now use — the answer to "which
+ * version am I running, and what would `--rollback` return to".
+ *
+ * On a checkout it also RECONCILES against `git worktree list`: a version is a worktree, and the two
+ * halves of a worktree (its directory and git's administrative record of it) can be removed
+ * separately. A record with no directory blocks the next `worktree add` of the same name, so it is
+ * worth a line before it is worth an incident.
+ */
+function versionsLayout(deps: DoctorDeps, install: InstallKind): Finding {
+  const root = deps.ctx.root;
+  const staged = isStagedCheckout(deps, root);
+  if (install.kind === "unknown") {
+    return skipped("versions", "install kind unknown — nothing to report a layout for", "see docs/install.md");
+  }
+  if (!staged && install.kind !== "binary") {
+    if (install.kind === "detached-checkout") {
+      return ok("versions", `in place at ${root} — a Herdr-managed checkout advances in place (ADR 0006)`);
+    }
+    return ok("versions", `in place at ${root} — no versions/ layout yet; the next \`collie update\` stages one`);
+  }
+  const kind = staged ? "checkout" : "binary";
+  const layout = binaryLayout(root);
+  const versions = listVersions(deps, layout, kind);
+  const at = currentVersionDir(deps, layout);
+  const live = versions.find((v) => v.dir === at);
+  // Newest first: what an operator scans this line for is the rollback target, which is the first
+  // name after `current`.
+  const newestFirst = versions.toReversed();
+  const previous = newestFirst.filter((v) => v.complete && v.dir !== at).map((v) => v.dir);
+  const kept = `${previous.length} retained${previous.length === 0 ? "" : ` (${previous.join(", ")})`}`;
+  const drift = staged ? worktreeDrift(deps, layout, newestFirst.map((v) => v.dir)) : null;
+  if (at === null) {
+    return bad(
+      "versions",
+      `${layout.currentLink} resolves to no version under ${layout.versionsDir} — ${kept}`,
+      "`collie update` re-stages and re-points it; a binary install reinstalls with docs/install.md",
+    );
+  }
+  if (live === undefined || !live.complete) {
+    return bad(
+      "versions",
+      `${layout.currentLink} → ${at}, which is ${live === undefined ? "not on disk" : `incomplete (no ${BUILD_MARKER})`} — ${kept}`,
+      "`collie update --rollback` returns to the newest retained version",
+    );
+  }
+  if (drift !== null) return warn("versions", `current ${at} · ${kept} · ${drift}`, "`git worktree prune`");
+  return ok("versions", `current ${at} · ${kept}`);
+}
+
+/** What `git worktree list` says that the directories under `versions/` do not, or null when they agree. */
+function worktreeDrift(deps: DoctorDeps, layout: BinaryLayout, dirs: readonly string[]): string | null {
+  const r = deps.exec.capture("git", ["-C", deps.ctx.root, "worktree", "list", "--porcelain"]);
+  if (!r.found || r.code !== 0) return "git could not list the worktrees";
+  const listed = r.stdout
+    .split("\n")
+    .filter((row) => row.startsWith("worktree "))
+    .map((row) => row.slice("worktree ".length).trim())
+    .filter((p) => dirname(p) === layout.versionsDir)
+    .map((p) => basename(p));
+  const orphaned = listed.filter((d) => !dirs.includes(d));
+  const untracked = dirs.filter((d) => !listed.includes(d));
+  if (orphaned.length === 0 && untracked.length === 0) return null;
+  const said: string[] = [];
+  if (orphaned.length > 0) said.push(`git still records ${orphaned.join(", ")} with no directory on disk`);
+  if (untracked.length > 0) said.push(`${untracked.join(", ")} is on disk but git tracks no worktree there`);
+  return said.join("; ");
 }
 
 /**

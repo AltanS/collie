@@ -10,6 +10,7 @@ import {
   fakeFiles,
   type FakeLinkFs,
   fakeLinkFs,
+  HOME,
   ROOT,
   type Scripted,
   type SeededFiles,
@@ -19,6 +20,7 @@ import { EXIT } from "./io.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { latestUpdateInMajor } from "../bridge/update.ts";
 import {
+  checkoutLayout,
   cmdApplyUpdate,
   cmdUpdate,
   isManagedCheckout,
@@ -28,6 +30,7 @@ import {
   parseRemoteTags,
   planUpdate,
   platformId,
+  pruneVersions,
   refreshRegistry,
   releaseInMajor,
   trainInMajor,
@@ -668,15 +671,20 @@ describe("_apply-update", () => {
 });
 
 describe("update", () => {
-  /** `git pull --ff-only` took a commit: HEAD reads differently either side of it. */
-  const PULLED: Scripted["answers"] = [
-    [`${GIT} rev-parse HEAD`, { perCall: (n) => ({ stdout: n === 1 ? "aaaaaaa\n" : "bbbbbbb\n" }) }],
-  ];
-
   test("advances the checkout, then hands the rest to the code it just fetched", async () => {
-    // The post-pull half MUST run the new build logic, and the new binary does not exist yet —
-    // `build` is what produces it. So the handoff re-execs the fetched SOURCE with Bun.
-    const h = harness({ answers: [...PULLED, ...LINKED] });
+    // The post-advance half MUST run the new build logic, and the new binary does not exist yet —
+    // `build` is what produces it. So the handoff re-execs the fetched SOURCE with Bun. This is the
+    // MANAGED shape: a linked clone stages instead (M15/02), and ADR 0006's in-place advancement is
+    // what a Herdr-managed checkout keeps.
+    const h = harness({
+      installed: "0.31.1",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+        ...SHALLOW,
+      ],
+    });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain(`${ROOT}$ bun ${ROOT}/cli/main.ts _apply-update`);
     // Nothing of the second half ran in THIS process.
@@ -691,7 +699,16 @@ describe("update", () => {
   });
 
   test("no Bun: the checkout advanced, and the failure says exactly that", async () => {
-    const h = harness({ absent: ["bun"], answers: [...PULLED, ...LINKED] });
+    const h = harness({
+      absent: ["bun"],
+      installed: "0.31.1",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+        ...SHALLOW,
+      ],
+    });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("the checkout advanced, but rebuilding needs Bun");
   });
@@ -775,19 +792,22 @@ describe("update", () => {
     expect(built(h)).toBe(true);
   });
 
-  test("a linked clone whose ff-only pull took nothing is the same no-op", async () => {
+  test("a linked clone with nothing to take stages nothing — it is the same no-op", async () => {
+    // The staged path asks the same second question the in-place one does: a verdict of "already
+    // current" ends the verb only when what is on disk is whole. Nothing is fetched, no worktree is
+    // added, and an in-place clone is NOT migrated by an update that has nothing to take.
     const h = harness({
       installed: "0.32.0",
       answers: [
-        [`${GIT} rev-parse HEAD`, { stdout: "same\n" }],
         ...LINKED,
-        [`${GIT} rev-parse --abbrev-ref --symbolic-full-name @{u}`, { stdout: "origin/main\n" }],
-        [`${GIT} show origin/main:herdr-plugin.toml`, { stdout: 'version = "0.32.0"\n' }],
+        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "b2peeled\n" }],
       ],
     });
     stamp(h, "0.32.0");
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
-    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch origin`, `${GIT} pull --ff-only`]);
+    expect(h.io.stdout.join("\n")).toContain("already current");
+    expect(gitRuns(h.exec)).toEqual([]);
     expect(built(h)).toBe(false);
   });
   // ── The major notice closes the transcript (F5) ───────────────────────────
@@ -1151,10 +1171,12 @@ describe("collie update --rollback", () => {
     expect(h.link.ops).toEqual([]);
   });
 
-  test("on a git checkout it is refused — there is no symlink to flip", async () => {
+  test("on a Herdr-managed checkout it is refused, and the refusal names the reason", async () => {
+    // ADR 0006 (amended 2026-09-03) keeps a managed checkout advancing in place, so there is no
+    // `versions/` layout and no previous version on disk to flip back to.
     const h = harness({ answers: MANAGED, installed: "1.0.0" });
     expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
-    expect(h.io.stderr.join("\n")).toContain("binary install's verb");
+    expect(h.io.stderr.join("\n")).toContain("advances in place (ADR 0006)");
   });
 });
 
@@ -1222,5 +1244,249 @@ describe("the hooks nudge", () => {
     const h = binaryHarness({ others: ["0.9.0"], hooksCheck: { code: EXIT.STATE } });
     await cmdUpdate(h.deps, ["--rollback"]);
     expect(h.exec.calls.join("\n")).not.toContain("hooks status --check");
+  });
+});
+
+// ── The staged checkout path (M15/02) ────────────────────────────────────────
+// A checkout builds into `versions/vX.Y.Z` — a git worktree of the release tag — and goes live by
+// the same single-rename symlink flip the binary path makes. What is pinned here is that the
+// running install is untouched until that flip, that the flip demands the build's own completeness
+// marker, and that nothing is pruned by an update.
+
+const CLONE = ROOT;
+const VERSIONS = `${CLONE}/versions`;
+const CURRENT = `${CLONE}/current`;
+const WT = (tag: string): string => `${VERSIONS}/${tag}`;
+
+/** A LINKED CLONE that has never staged a version — the shape the first staged update migrates. */
+function legacyClone(over: { answers?: Scripted["answers"]; absent?: string[]; installed?: string } = {}): Harness {
+  const h = harness({
+    installed: over.installed ?? "0.31.1",
+    absent: over.absent,
+    answers: [
+      ...(over.answers ?? []),
+      ...(LINKED ?? []),
+      [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+      [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+      ...(FULL ?? []),
+    ],
+  });
+  // The two seams are separate fakes, so a `rename(2)` over a symlink has to be joined up here: the
+  // flip renames `.current.new` onto `current` through the FILES seam, and what moves is a symlink
+  // the LINK seam owns. Every probe after the flip — `publishedBinary`, `currentVersionDir` — reads
+  // the link seam, so a fixture that did not model this would answer as if the flip never happened.
+  const rename = h.files.rename;
+  h.files.rename = (from, to) => {
+    rename(from, to);
+    const moved = h.link.entries.get(from);
+    if (moved === undefined) return;
+    h.link.entries.delete(from);
+    h.link.entries.set(to, moved);
+  };
+  return h;
+}
+
+interface StagedOptions {
+  /** The version directories on disk: name → the version its marker names, or null for no marker. */
+  versions?: Record<string, string | null>;
+  /** The directory `current` points at. */
+  current?: string;
+  answers?: Scripted["answers"];
+}
+
+/** An already-staged checkout: the running root IS a worktree under `versions/`. */
+function stagedHarness(over: StagedOptions = {}): Harness {
+  const current = over.current ?? "v1.0.0";
+  const versions = over.versions ?? { "v1.0.0": "1.0.0" };
+  const root = WT(current);
+  const io = capture();
+  const exec = fakeExec({
+    answers: [
+      ...(over.answers ?? []),
+      // A worktree of a tag is detached — which is exactly why the layout, not the HEAD, decides
+      // that this install stages.
+      [`git -C ${root} symbolic-ref -q HEAD`, { code: 1 }],
+      [`git -C ${root} remote get-url origin`, { stdout: "https://github.com/AltanS/collie.git\n" }],
+    ],
+  });
+  const seed: SeededFiles = {
+    [`${root}/herdr-plugin.toml`]: `id = "herdr.collie"\nversion = "${current.slice(1)}"\n`,
+  };
+  for (const [dir, marker] of Object.entries(versions)) {
+    seed[`${VERSIONS}/${dir}/bin/collie`] = "BINARY";
+    if (marker !== null) {
+      seed[`${VERSIONS}/${dir}/.collie-build`] = JSON.stringify({ version: marker, commit: "abc1234" });
+    }
+  }
+  const files = fakeFiles(seed);
+  const link = fakeLinkFs({ [CURRENT]: { kind: "symlink", target: `versions/${current}` } });
+  const h: Harness = {
+    io,
+    exec,
+    files,
+    link,
+    restarts: 0,
+    deps: {
+      ctx: context({}, { root }),
+      io,
+      exec,
+      files,
+      link,
+      net: deadNet,
+      platform: "linux",
+      arch: "x64",
+      restart: () => {
+        h.restarts++;
+        return Promise.resolve(EXIT.OK);
+      },
+    },
+  };
+  return h;
+}
+
+describe("the staged checkout path", () => {
+  test("stages the release as a git worktree, builds inside it, then flips `current` with one rename", async () => {
+    const h = legacyClone();
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    // The tag is FETCHED and STORED, then a worktree of it is added beside the running install.
+    expect(gitRuns(h.exec)).toContain(`${GIT} fetch origin +refs/tags/v0.32.0:refs/tags/v0.32.0`);
+    expect(gitRuns(h.exec)).toContain(
+      `${GIT} worktree add --detach --force ${WT("v0.32.0")} refs/tags/v0.32.0`,
+    );
+    // The build runs INSIDE the worktree, from the source that was just checked out there.
+    expect(h.exec.calls).toContain(`${WT("v0.32.0")}$ bun ${WT("v0.32.0")}/cli/main.ts build`);
+    // The marker is the build's last act…
+    expect(JSON.parse(h.files.read(`${WT("v0.32.0")}/.collie-build`) ?? "{}")).toEqual({
+      version: "0.32.0",
+      commit: "b2peeled",
+    });
+    // …and the swap is the one rename the binary path already makes.
+    expect(h.link.ops).toContain(`symlink versions/v0.32.0 ${CLONE}/.current.new`);
+    expect(h.files.ops).toContain(`mv ${CLONE}/.current.new ${CURRENT}`);
+    // The restart goes through the name that was just switched, never through this old process.
+    expect(h.exec.calls).toContain(`${CLONE}$ ${CURRENT}/bin/collie restart`);
+    expect(h.restarts).toBe(0);
+    expect(h.io.stdout.join("\n")).toContain("✓ updated to 0.32.0");
+  });
+
+  test("migrates a legacy in-place checkout with no manual step, and says it has no rollback target", async () => {
+    const h = legacyClone();
+    // The name on PATH was published at the clone's own binary before the migration (ADR 0021).
+    h.link.entries.set(`${HOME}/.local/bin/collie`, { kind: "symlink", target: BINARY });
+    // The flip is what makes this path resolve; the fake filesystem is flat, so it is seeded.
+    h.files.entries.set(`${CURRENT}/bin/collie`, { text: "NEW BINARY" });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    const said = h.io.stdout.join("\n");
+    expect(said).toContain(`${VERSIONS} and ${CURRENT} are created now`);
+    // Nothing to fall back to yet, and the transcript says exactly that rather than implying one.
+    expect(said).toContain("nothing to roll back to yet");
+    // The pointer follows the flip: the published name now reaches `current`, not the old tree.
+    expect(h.link.ops).toContain(`symlink ${CURRENT}/bin/collie ${HOME}/.local/bin/collie`);
+    // And Herdr is re-registered at `current`, so a plugin action runs whatever is live.
+    expect(h.exec.calls).toContain(`herdr plugin link ${CURRENT}`);
+  });
+
+  test("a build fail leaves `current` where it was, names the stage, and takes the worktree away", async () => {
+    const h = legacyClone({ answers: [[`${WT("v0.32.0")}$ bun`, { code: 1 }]] });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("stopped at the BUILD stage");
+    expect(h.io.stderr.join("\n")).toContain("`current` never moved");
+    // Nothing was ever pointed at the half-built version…
+    expect(h.link.ops).toEqual([]);
+    expect(h.files.read(`${WT("v0.32.0")}/.collie-build`)).toBeNull();
+    // …and both halves of the worktree go, directory and administrative record together.
+    expect(h.files.ops).toContain(`rm -rf ${WT("v0.32.0")}`);
+    expect(h.exec.calls).toContain(`${GIT} worktree prune`);
+  });
+
+  test("a fetch that fails stops before any worktree is added", async () => {
+    const h = legacyClone({ answers: [[`${ROOT}$ git -C ${ROOT} fetch origin +refs/tags`, { code: 1 }]] });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("stopped at the FETCH stage");
+    expect(gitRuns(h.exec).join("\n")).not.toContain("worktree add");
+  });
+
+  test("prune after health, never during staging: an update removes no version directory", async () => {
+    // Pruning here would destroy the rollback target of the very update that may need it. The order
+    // is stage, flip, restart, health passes (spec 04), THEN prune.
+    const h = legacyClone();
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.files.ops.filter((o) => o.startsWith(`rm -rf ${VERSIONS}`))).toEqual([]);
+  });
+
+  test("a staged install that is already current stages nothing at all", async () => {
+    const h = stagedHarness({ answers: [[`git -C ${WT("v1.0.0")} ls-remote --tags origin`, { stdout: LS_REMOTE }]] });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("already current");
+    expect(h.exec.calls.join("\n")).not.toContain("worktree add");
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("retention keeps `current` plus the two newest previous versions", () => {
+    const h = stagedHarness({
+      versions: { "v0.7.0": "0.7.0", "v0.8.0": "0.8.0", "v0.9.0": "0.9.0", "v1.0.0": "1.0.0" },
+    });
+    expect(pruneVersions(h.deps, checkoutLayout(CLONE))).toEqual(["v0.7.0"]);
+    expect(h.files.ops).toContain(`rm -rf ${VERSIONS}/v0.7.0`);
+    // The administrative half runs wherever a worktree directory is removed.
+    expect(h.exec.calls).toContain(`git -C ${WT("v1.0.0")} worktree prune`);
+    // …and the two newest previous ones are still there, with `current` untouched.
+    expect(h.files.exists(`${VERSIONS}/v0.8.0`)).toBe(true);
+    expect(h.files.exists(`${VERSIONS}/v1.0.0`)).toBe(true);
+  });
+
+  test("retention counts `current` itself — keep 1 leaves exactly the live version", () => {
+    const h = stagedHarness({
+      versions: { "v0.9.0": "0.9.0", "v1.0.0": "1.0.0" },
+    });
+    expect(pruneVersions(h.deps, checkoutLayout(CLONE), 1)).toEqual(["v0.9.0"]);
+    expect(h.files.exists(`${VERSIONS}/v1.0.0`)).toBe(true);
+  });
+});
+
+describe("collie update --rollback on a staged checkout", () => {
+  test("flips `current` back to the newest retained previous version", async () => {
+    const h = stagedHarness({ versions: { "v0.9.0": "0.9.0", "v1.0.0": "1.0.0" } });
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.OK);
+    expect(h.link.ops).toContain(`symlink versions/v0.9.0 ${CLONE}/.current.new`);
+    expect(h.files.ops).toContain(`mv ${CLONE}/.current.new ${CURRENT}`);
+    expect(h.exec.calls).toContain(`${CLONE}$ ${CURRENT}/bin/collie restart`);
+    expect(h.io.stdout.join("\n")).toContain("✓ rolled back to 0.9.0");
+    // Never collects: the version rolled away from is the one most likely to be wanted back.
+    expect(h.files.ops.join("\n")).not.toContain("rm -rf");
+  });
+
+  test("with nothing retained it says so rather than doing something", async () => {
+    const h = stagedHarness();
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("nothing to roll back to");
+    expect(h.io.stderr.join("\n")).toContain("the only complete version this checkout");
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("the flip refuses a version whose build marker is missing", async () => {
+    // A killed build, a full disk, a half-copied directory: the marker is the evidence, and without
+    // it the version is not a rollback candidate at all.
+    const h = stagedHarness({ versions: { "v0.9.0": null, "v1.0.0": "1.0.0" } });
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("nothing to roll back to");
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("the flip refuses a marker that names another version, and names the mismatch", async () => {
+    const h = stagedHarness({ versions: { "v0.9.0": "0.8.0", "v1.0.0": "1.0.0" } });
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("names 0.8.0, not 0.9.0");
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("a rollback that does not come up is rolled FORWARD again", async () => {
+    const h = stagedHarness({
+      versions: { "v0.9.0": "0.9.0", "v1.0.0": "1.0.0" },
+      answers: [[`${CLONE}$ ${CURRENT}/bin/collie restart`, { code: 1 }]],
+    });
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("rolled forward to v1.0.0 again");
+    expect(h.link.ops.filter((o) => o.startsWith("symlink")).length).toBe(2);
   });
 });

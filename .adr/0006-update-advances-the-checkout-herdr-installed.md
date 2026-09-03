@@ -78,3 +78,60 @@ stays for linked clones, where it is safe and still useful.
   API that updates `resolved_commit`), which would remove the staleness this ADR accepts.
 - Evidence that operators actually *want* a pinned `--ref` install to stay pinned across `update`.
   Today "update means latest"; that reading is a judgement call, not a constraint.
+
+## Amendment — 2026-09-03: a LINKED CLONE stages its update; a MANAGED checkout still advances in place
+
+Status: **Accepted** (2026-09-03). Amends the Decision above for one of the two shapes. Everything
+this ADR says about a **Herdr-managed** checkout stands unchanged — including the re-link rule, the
+`--depth 1` rule and the `--force` detach.
+
+### What changed
+
+A **linked clone** no longer advances in place. `collie update` resolves the target release tag,
+adds a git **worktree** for it at `<install-root>/versions/vX.Y.Z`, builds inside that worktree, and
+goes live by flipping the `<install-root>/current` symlink with the single `rename(2)` a binary
+install already uses (`cli/update.ts`). Every version shares the one `.git`, so a version costs a
+checkout of the tree and not a second object store. The first staged update creates `versions/` and
+`current` inside the existing clone; no operator moves anything by hand.
+
+### Why
+
+The consequence this ADR accepted is the one that got expensive: advancing the live tree means a
+failed build leaves **new code on disk and the old artifacts being served** — the skew shape this
+ADR exists to prevent, mitigated by a message rather than removed. `cli/update.ts` had to say
+"the checkout advanced but the build failed" because there was nothing else it could truthfully say.
+
+Staging removes the shape instead of naming it. Until the flip, nothing the operator can see has
+moved: a failed build is a no-op that names the stage it failed at, and the version that was live is
+still on disk, which is what makes `collie update --rollback` work on a checkout at all. The
+completeness marker (`.collie-build`, written last) is what makes a killed build a **refusal** at the
+flip rather than a symlink pointing at a half-built tree.
+
+### Why a Herdr-managed checkout is excluded
+
+Not caution — shape. A managed checkout is detached and **shallow**, its root is Herdr's own plugin
+directory under `~/.config/herdr/plugins/…`, and Herdr's registry names that path. Laying a
+`versions/` layout inside a directory Herdr owns, and pointing the registry at a symlink in it, is a
+second contract with an undocumented internal on top of the one this ADR already accepts. The
+turnkey install's recovery path is a reinstall, and a reinstall replaces that directory wholesale —
+which is exactly the property staging would put at risk. So it keeps advancing in place, and the
+re-link rule above still governs it.
+
+### Consequences
+
+- **Two update shapes, one layout.** A staged checkout and a binary install now differ in how a
+  version is *produced* (a worktree that is built, versus a payload that is downloaded and verified)
+  and in nothing else: one `versions/` directory, one `current` symlink, one flip, one retention rule
+  (`current` plus the two newest previous versions).
+- **The plugin root of a migrated clone moves under `versions/`.** `bridge/root.ts` resolves the
+  running binary's own directory, and `process.execPath` is realpath-resolved, so the answer is
+  `versions/vX.Y.Z` and never `current` — the same property a binary install already has.
+- **The service unit and the PATH name follow the flip.** The restart is performed by the NEW binary
+  through `current`, because this process is the old version and its own `restart` would pin the
+  supervisor to the version being left; `~/.local/bin/collie` is re-pointed at `current/bin/collie`
+  on migration, keeping ADR 0021's pointer-not-a-copy rule true across versions.
+- **Herdr is re-registered at `current`**, not at a version, so a plugin action always runs what is
+  live. The re-link is still refused on a managed checkout, for the reason above.
+- **Retention is not collected by `update`.** Pruning during staging would destroy the rollback
+  target of the run that may need it, so `pruneVersions` is exported for the health gate to call
+  after a restart has proven the new version, and an update itself removes nothing.

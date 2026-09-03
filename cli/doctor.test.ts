@@ -154,6 +154,8 @@ function harness(
     link?: Record<string, LinkProbe>;
     /** The beacon directory this host has right now; empty is the default. */
     beacons?: FakeBeacon[];
+    /** The plugin root this Collie resolved — a staged checkout's is a worktree under `versions/`. */
+    root?: string;
   } = {},
 ): Harness {
   const contents = initial === null ? null : serializeTrustStore(initial);
@@ -172,7 +174,10 @@ function harness(
     deps: {
       // As in cli/pack.test.ts: the peer client races the fake fetch against a REAL timer, so the
       // budget is set far above anything this process could stall for.
-      ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000", ...over.env }, { socket: SOCKET }),
+      ctx: context(
+        { COLLIE_PACK_TIMEOUT_MS: "60000", ...over.env },
+        over.root === undefined ? { socket: SOCKET } : { socket: SOCKET, root: over.root },
+      ),
       io: out,
       exec,
       files,
@@ -263,6 +268,7 @@ describe("collie doctor — the contract", () => {
       "web-dist",
       "path-link",
       "install",
+      "versions",
       "update-source",
       "herdr-socket",
       "bind",
@@ -648,6 +654,87 @@ describe("collie doctor — the local checks", () => {
     expect(byCheck.get("install")?.remedy).toContain("docs/install.md");
     // A warning, never an error: an install doctor cannot name still runs.
     expect(code).toBe(EXIT.OK);
+  });
+
+  // ── versions (M15/02) ──────────────────────────────────────────────────────
+  // The outside view of the stage-then-swap layout both install kinds now use: which version is
+  // live, what is retained, whether `current` resolves — and, on a checkout, whether git agrees
+  // with the directories on disk.
+
+  const STAGED = `${ROOT}/versions/v1.1.0`;
+  const stagedFiles = (over: SeededFiles = {}): SeededFiles => ({
+    ...healthyFiles(),
+    [`${ROOT}/versions/v1.1.0/.collie-build`]: JSON.stringify({ version: "1.1.0", commit: "abc1234" }),
+    [`${ROOT}/versions/v1.0.0/.collie-build`]: JSON.stringify({ version: "1.0.0", commit: "0000000" }),
+    [`${ROOT}/versions/v0.9.0/.collie-build`]: JSON.stringify({ version: "0.9.0", commit: "1111111" }),
+    ...over,
+  });
+  const worktrees = (...paths: string[]): NonNullable<Scripted["answers"]> => [
+    [
+      `git -C ${STAGED} worktree list`,
+      { stdout: [`worktree ${ROOT}`, ...paths.map((p) => `worktree ${p}`)].join("\n\n") },
+    ],
+  ];
+  const stagedLink = { [`${ROOT}/current`]: { kind: "symlink" as const, target: "versions/v1.1.0" } };
+
+  test("versions: a staged checkout names the live version and what is retained", async () => {
+    const h = harness(null, [], {
+      root: STAGED,
+      files: stagedFiles(),
+      link: stagedLink,
+      answers: [
+        ...worktrees(`${ROOT}/versions/v1.1.0`, `${ROOT}/versions/v1.0.0`, `${ROOT}/versions/v0.9.0`),
+        ...HEALTHY_ANSWERS,
+      ],
+    });
+    const { byCheck } = await findings(h);
+    expect(byCheck.get("install")?.detail).toContain("staged checkout, version v1.1.0");
+    const f = byCheck.get("versions");
+    expect(f?.status).toBe("ok");
+    expect(f?.detail).toContain("current v1.1.0");
+    expect(f?.detail).toContain("2 retained (v1.0.0, v0.9.0)");
+  });
+
+  test("versions: a `current` that resolves to nothing is an error naming rollback", async () => {
+    const h = harness(null, [], {
+      root: STAGED,
+      files: stagedFiles(),
+      answers: [...worktrees(`${ROOT}/versions/v1.1.0`), ...HEALTHY_ANSWERS],
+    });
+    const f = (await findings(h)).byCheck.get("versions");
+    expect(f?.status).toBe("error");
+    expect(f?.detail).toContain("resolves to no version");
+  });
+
+  test("versions: a worktree git records with no directory on disk is reconciled and warned about", async () => {
+    const h = harness(null, [], {
+      root: STAGED,
+      files: stagedFiles(),
+      link: stagedLink,
+      answers: [
+        ...worktrees(`${ROOT}/versions/v1.1.0`, `${ROOT}/versions/v0.8.0`),
+        ...HEALTHY_ANSWERS,
+      ],
+    });
+    const f = (await findings(h)).byCheck.get("versions");
+    expect(f?.status).toBe("warn");
+    expect(f?.detail).toContain("git still records v0.8.0");
+    expect(f?.detail).toContain("v1.0.0, v0.9.0 is on disk but git tracks no worktree there");
+    expect(f?.remedy).toContain("git worktree prune");
+  });
+
+  test("versions: an in-place checkout says the layout is not there yet, and is not an error", async () => {
+    const { byCheck, code } = await findings(harness(null));
+    expect(byCheck.get("versions")?.status).toBe("ok");
+    expect(byCheck.get("versions")?.detail).toContain("no versions/ layout yet");
+    expect(code).toBe(EXIT.OK);
+  });
+
+  test("versions: a Herdr-managed checkout is in place by design (ADR 0006)", async () => {
+    const h = harness(null, [], {
+      answers: [[`git -C ${ROOT} symbolic-ref -q HEAD`, { code: 1 }], ...HEALTHY_ANSWERS],
+    });
+    expect((await findings(h)).byCheck.get("versions")?.detail).toContain("ADR 0006");
   });
 
   test("update-source: an origin that is not the update source is an ERROR naming the fork docs", async () => {
@@ -1068,6 +1155,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "web-dist",
       "path-link",
       "install",
+      "versions",
       "update-source",
       "bind",
       "bind-wildcard",
