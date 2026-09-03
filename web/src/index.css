@@ -4,10 +4,18 @@
 /* Codex paints submitted user messages onto a near-white terminal-width row. The mirror's light
    theme inversion turns that fill nearly black; on a narrow phone it reads as a heavy black bar
    rather than message emphasis. The codex adapter marks only that exact ANSI fill. Desktop keeps
-   the native TUI background, while phone width makes it transparent without touching diff colours. */
+   the native TUI background, while phone width makes it transparent without touching diff colours.
+
+   The marked segment carries its fill in --terminal-seg-bg instead of an inline background-color,
+   so these two rules can win by ordinary cascade order. An inline background-color would need
+   `!important` to override, which nothing else in this stylesheet does. */
+.terminal-mobile-transparent-bg {
+  background-color: var(--terminal-seg-bg);
+}
+
 @media (max-width: 640px) {
   .terminal-mobile-transparent-bg {
-    background-color: transparent !important;
+    background-color: transparent;
   }
 }
 

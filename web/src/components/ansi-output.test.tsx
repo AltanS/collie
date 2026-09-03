@@ -140,11 +140,16 @@ describe("mirror line wrapping", () => {
     const diff = `${ESC}[48;2;33;58;43m+ semantic diff${ESC}[0m`;
     const rule = `─ Worked for 31m ${"─".repeat(32)}`;
     const { container } = render(<AnsiOutput text={`${user}\n${diff}\n${rule}\n`} agent="codex" />);
+    // SAFETY: the marked segment is a <span> the renderer just produced, so querySelector on the
+    // class it only ever sets on a span returns an HTMLElement or null; the assertions below
+    // dereference it and would fail loudly on null.
     const userSpan = container.querySelector(".terminal-mobile-transparent-bg") as HTMLElement;
 
     expect(userSpan.textContent).toContain("submitted message");
-    // Desktop keeps Codex's native fill; the max-width CSS rule overrides it only on a phone.
-    expect(userSpan.style.backgroundColor).toBe("rgb(240, 240, 240)");
+    // Desktop keeps Codex's native fill, carried in the custom property the stylesheet reads. The
+    // inline background-color is gone on purpose: a class cannot beat one without `!important`.
+    expect(userSpan.style.backgroundColor).toBe("");
+    expect(userSpan.style.getPropertyValue("--terminal-seg-bg")).toBe("rgb(240,240,240)");
     const diffSpan = [...container.querySelectorAll("span")].find((node) =>
       node.textContent?.includes("semantic diff"),
     )!;

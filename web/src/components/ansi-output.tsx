@@ -1,8 +1,8 @@
 import { Fragment, memo, useEffect, useMemo, useRef } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
-import { parseAnsi } from "@/lib/ansi";
+import { parseAnsi, type AnsiSegment } from "@/lib/ansi";
 import { buildBlocks } from "@/lib/harness";
 import {
   lineText,
@@ -109,6 +109,21 @@ const NO_MATCHES: FindMatch[] = [];
 // Don't convert it to a px value, and don't "fix" it to fit the line box — that would undo (1).
 const LINK_CLASS =
   "underline decoration-1 underline-offset-2 break-all cursor-pointer py-[0.35em]";
+
+// A segment marked `mobileTransparentBg` hands its ANSI fill to a custom property instead of the
+// inline `background-color`, and `.terminal-mobile-transparent-bg` in index.css paints it: on a
+// desktop from the property, on a phone not at all. Inline styles beat a class, so the alternative
+// spelling is `!important` in the stylesheet. Every other segment takes the plain inline style, and
+// the other mirror surface (the statusline strip) calls styleFor directly and is unaffected.
+function segmentStyle(s: AnsiSegment): CSSProperties {
+  const style = styleFor(s);
+  if (!s.mobileTransparentBg) return style;
+  const { backgroundColor, ...rest } = style;
+  // SAFETY: a CSS custom property is a valid style key at runtime; React passes any `--*` key
+  // straight to the CSSOM. CSSProperties has no index signature for it, so the cast is the only
+  // spelling. The value is the backgroundColor just removed from the same object.
+  return { ...rest, "--terminal-seg-bg": backgroundColor } as CSSProperties;
+}
 
 function preClass(wrap: boolean, className?: string): string {
   return cn(
@@ -342,7 +357,7 @@ export const AnsiOutput = memo(function AnsiOutput({
             return (
               <span
                 key={si}
-                style={styleFor(s)}
+                style={segmentStyle(s)}
                 className={s.mobileTransparentBg ? "terminal-mobile-transparent-bg" : undefined}
               >
                 {renderSegment(s.text, segStart)}

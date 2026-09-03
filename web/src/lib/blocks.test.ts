@@ -322,8 +322,6 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     const blocks = buildBlocks(lines, { agent: "codex" });
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.kind).toBe("raw");
-    // Codex may add presentation-only mobile hints to raw lines; it must not change one byte of
-    // visible text or lift Claude's wizard through a foreign grammar.
-    expect(blockText(blocks[0]!.lines)).toBe(blockText(lines));
+    expect(blocks[0]!.lines).toBe(lines);
   });
 });

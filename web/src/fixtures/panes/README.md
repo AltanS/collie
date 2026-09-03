@@ -83,6 +83,27 @@ row. That is an ordinary draft, not a dialog.
 |---|---|---|
 | `codex--v0151-draft-indented-line.txt` | Two-line draft: the `› ` row, then a hard line break whose text starts with two spaces, painted as a four-space-indented continuation above the two-field status row. `composerReady` must be TRUE — `/^ {2}\S/` refused it, `locateComposer` returned null, and the pane refused every send with "the agent's input box isn't on screen" until the draft was cleared | `idle` |
 
+## Codex mobile chrome (reconstructed 2026-09-03)
+
+**Not a capture.** This one file is RECONSTRUCTED from the two rows reported in
+[PR #144](https://github.com/AltanS/collie/pull/144), which were seen on a live Codex pane the
+contributor could reach and this repo's capture hosts could not. It carries real ESC bytes in the
+shape the report describes, and it is the ground truth for `codex/display.ts` only. Replace it with
+a real `format:ansi` capture the next time a Codex pane paints these rows, and delete this note.
+
+Two rows matter, and both are 100 columns wide:
+
+- the **submitted user message**, padded to the terminal width and filled with the truecolor
+  `48;2;240;240;240`. The mirror is authored in dark space and inverted under the light theme, so
+  that fill lands near-black: a heavy full-width bar on a phone. The two diff rows beneath it carry
+  their own backgrounds and must keep them.
+- the **labelled separator** `─ Worked for 3m 12s ──…`, a short rule, a label, then a rule to the
+  row's end. It is not a pure rule, so blocks.ts leaves it wrapping; the codex adapter clips it.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `codex--submitted-fill-labelled-rule.txt` | Finished turn: the near-white submitted-message row, an assistant line, two coloured diff rows, the labelled `Worked for` rule, then the idle composer and the two-field status row | `idle` |
+
 ## Grok corpus (live panes 2026-08-21–23)
 
 Grok's composer is a rounded box at the tail: `╭─…─╮` / `│ ❯ … │` / `╰─ <status> ─╯`, then a blank and a key-hint row. The status run is opaque (display name, optional effort, optional permission mode). User-message bubbles use **square** corners (`┌ ┐ └ ┘`) and must never be read as the composer. **All identifying content genericized** per the repo's public-repo rule.

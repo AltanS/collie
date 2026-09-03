@@ -1,0 +1,13 @@
+[user@sbox collie-codex-sandbox]$ codex
+
+[48;2;240;240;240m› move the screenshots across to the new blog post                                                  [0m
+
+[0m[2m• [0mI copied the four screenshots and rewrote the image paths.
+
+[48;2;33;58;43m+ ![hero](/img/2026/hero.png)[0m
+[48;2;74;34;34m- ![hero](../old/hero.png)[0m
+
+[0m[2m─ Worked for 3m 12s ────────────────────────────────────────────────────────────────────────────────[0m
+
+[0m[2m› [0m[2mAsk Codex to do anything[0m
+  [0m[38;2;246;226;183mgpt-5.6-sol medium[0m[2m · [0m[38;2;171;223;167m/tmp/collie-codex-sandbox[0m
