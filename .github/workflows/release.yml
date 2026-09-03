@@ -227,42 +227,29 @@ jobs:
             grab { print }
           ' CHANGELOG.md > "$RUNNER_TEMP/changelog.md" || true
           {
+            echo "## Update"
+            echo
+            echo "**Already on 1.x?** One command, then the phone updates itself within a minute."
+            echo
+            # Two spellings, because there are two kinds of install and neither command works on the
+            # other: a Herdr-managed checkout has plugin actions, a downloaded binary install has
+            # `collie` on PATH (M14/01 §8).
+            echo '```'
+            echo "collie update                                              # downloaded install (install.sh or a tarball below)"
+            echo "herdr plugin action invoke update --plugin herdr.collie    # Herdr plugin install"
+            echo '```'
+            echo
+            echo "Check with \`collie version\` or \`herdr plugin action invoke version --plugin herdr.collie\`."
+            echo
             # The 0.x crossing rides on EVERY release, not only 1.0.0's. A 0.x install's update
             # banner points at the newest release, so a reader who never opens 1.0.0's notes must
-            # still find `--major` here (M14/01 §8).
-            echo "**Coming from 0.x?** Upgrade with one command. Do not use \`collie update\`."
-            echo "From the Herdr plugin: \`herdr plugin action invoke update-major --plugin herdr.collie\`."
-            echo "From a checkout you can reach: \`bin/collie update --major\`."
-            echo "Fresh install: \`curl -fsSL https://colliepwa.dev/install.sh | sh\`."
-            echo "Details and rollback: [docs/upgrading.md → Upgrading from 0.x to 1.0](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/upgrading.md#upgrading-from-0x-to-10)."
+            # still find this line here (M14/01 §8).
+            echo "**Coming from 0.x?** \`collie update\` will not cross a major. Follow [Upgrading from 0.x to 1.0](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/upgrading.md#upgrading-from-0x-to-10)."
             echo
             if [ -s "$RUNNER_TEMP/changelog.md" ]; then
               cat "$RUNNER_TEMP/changelog.md"
               echo
             fi
-            echo "## Update"
-            echo
-            # Two spellings, because there are two kinds of install and neither command works on the
-            # other: a Herdr-managed checkout has plugin actions, a downloaded binary install has
-            # `collie` on PATH (M14/01 §8).
-            echo "**A downloaded install** (\`install.sh\`, or a tarball below):"
-            echo
-            echo '```'
-            echo "collie update"
-            echo '```'
-            echo
-            echo "**A Herdr plugin install** — advances the checkout, rebuilds, restarts (runs from any directory):"
-            echo
-            echo '```'
-            echo "herdr plugin action invoke update --plugin herdr.collie"
-            echo '```'
-            echo
-            echo "Or just restart the bridge to pick up an already-built change:"
-            echo
-            echo '```'
-            echo "herdr plugin action invoke restart --plugin herdr.collie"
-            echo '```'
-            echo
             echo "## Verify a download by hand"
             echo
             echo '```'
@@ -271,7 +258,7 @@ jobs:
             echo "sha256sum -c collie-$version-linux-x64.tar.gz.sha256   # macOS: shasum -a 256 -c"
             echo '```'
             echo
-            echo "A sha256 catches a corrupt or truncated download. It does not prove who built the file —"
+            echo "A sha256 catches a corrupt or truncated download. It does not prove who built the file,"
             echo "HTTPS and the pinned github.com host carry that."
           } > "$notes"
           echo "file=$notes" >> "$GITHUB_OUTPUT"
