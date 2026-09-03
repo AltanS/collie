@@ -317,6 +317,12 @@ lint guard or the pack-wire guard.
   `terminal session observe`/`control`: a stale mirror is a transport problem, cursor position is an
   upstream ask, and `control` resizes the *shared* PTY
   ([ADR 0008](./.adr/0008-collie-does-not-run-a-terminal-emulator.md)).
+- **A table pans; the mirror around it keeps wrapping** — `lib/table-run.ts` groups a table's rows
+  into a single scroller inside the wrapping `<pre>` (`ansi-output.tsx`). One scroller per table,
+  never one per row. Each grammar anchors on a row nothing else prints — a markdown delimiter row,
+  a `+---+` rule, a frame row carrying a **cross** — and then grows by agreement, so a menu, a
+  chrome box or a rule beside a table is never claimed. `table-run.test.ts` gates it against every
+  capture in `fixtures/panes`; the argument sits in `table-run.ts`'s header.
 - **Never use a `dark:` variant inside the mirror `<pre>`** — it tracks the root theme, which is
   backwards in a surface that renders dark under every theme and inverts in light
   ([ADR 0002](./.adr/0002-invert-the-light-terminal-mirror.md)). Fails silently;

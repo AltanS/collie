@@ -163,7 +163,8 @@ export const ko: Dictionary = {
 
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "자동 줄바꿈",
-  "settings.display.wrap.hint": "비활성화 시 TUI 표를 열 기준 그대로 출력합니다. 화면은 가로로 이동합니다.",
+  "settings.display.wrap.hint":
+    "비활성화 시 창 전체가 열 기준을 유지하며 가로로 스크롤됩니다. 표 때문에 끌 필요는 없습니다. 자동 줄바꿈이 켜져 있어도 표는 스스로 스크롤됩니다.",
   "settings.display.tapToType.label": "탭하여 입력",
   "settings.display.tapToType.hint":
     "활성화하면 미러 영역 어디를 눌러도 키보드가 열립니다. 끄면 일반 문서처럼 동작하며 입력기를 눌러야 키보드가 표시됩니다.",

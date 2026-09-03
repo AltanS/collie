@@ -96,7 +96,8 @@ describe("mirror line wrapping", () => {
     const text = `ordinary prose\n${ESC}[41m${border.slice(0, 12)}${ESC}[44m${border.slice(12)}${ESC}[0m\nsee https://herdr.dev/docs\n`;
     const { container } = render(<AnsiOutput text={text} query="───" />);
     const pre = container.querySelector("pre")!;
-    const clipped = pre.querySelector("span.inline-block")!;
+    // `span.overflow-hidden`, not `span.inline-block`: the table-run scroller is an inline-block too.
+    const clipped = pre.querySelector("span.overflow-hidden")!;
 
     expect(clipped.className).toContain("max-w-full");
     expect(clipped.className).toContain("overflow-hidden");
@@ -122,18 +123,143 @@ describe("mirror line wrapping", () => {
   it("clips a plain border only while wrapping, leaving ordinary output and wrap-off panning alone", () => {
     const border = `  ${"─".repeat(20)}  `;
     const { container: plain } = render(<AnsiOutput text={`${border}\n`} />);
-    expect(plain.querySelector("span.inline-block")?.textContent).toBe(border);
+    expect(plain.querySelector("span.overflow-hidden")?.textContent).toBe(border);
 
     const { container: wrapped } = render(<AnsiOutput text={`unbroken-${"x".repeat(40)}\n`} />);
     const wrappedPre = wrapped.querySelector("pre")!;
     expect(wrappedPre.className).toContain("break-words");
-    expect(wrappedPre.querySelector("span.inline-block")).toBeNull();
+    expect(wrappedPre.querySelector("span.overflow-hidden")).toBeNull();
 
     const { container: panned } = render(<AnsiOutput text={`${border}\n`} wrap={false} />);
     const pannedPre = panned.querySelector("pre")!;
     expect(pannedPre.className).toContain("overflow-x-auto");
-    expect(pannedPre.querySelector("span.inline-block")).toBeNull();
+    expect(pannedPre.querySelector("span.overflow-hidden")).toBeNull();
     expect(pannedPre.textContent).toBe(`${border}\n`);
+  });
+});
+
+// Wrap is right for prose and wrong for a table, whose meaning is the column a character sits in
+// (lib/table-run.ts). So a table run pans inside its own scroller while everything around it keeps
+// wrapping. What a refactor would break silently is not the scroller — it is the mirror text around
+// it: the run is grouped by moving line nodes under one span, and the find offsets, the link
+// offsets and a clipboard copy are all defined by the "\n" text nodes those lines sit between.
+describe("a table pans while the mirror around it wraps", () => {
+  const TABLE = ["| Option | Cost |", "| --- | --- |", "| A | low |", "| B | high |"].join("\n");
+  const TEXT = `here is the comparison:\n\n${TABLE}\n\nsee https://herdr.dev/docs\n`;
+
+  function mirror(props: Partial<ComponentProps<typeof AnsiOutput>> = {}) {
+    const { container } = render(<AnsiOutput text={TEXT} {...props} />);
+    return container.querySelector("pre")!;
+  }
+
+  it("puts the whole table in ONE scroller, so its rows pan together and stay aligned", () => {
+    const pre = mirror();
+    const runs = [...pre.querySelectorAll("span.overflow-x-auto")];
+
+    expect(runs).toHaveLength(1);
+    expect(runs[0]!.textContent).toBe(TABLE);
+    // Per-line scrollers would let two rows sit at different scrollLeft — the columns would come
+    // apart under the thumb, which is the exact failure wrapping already causes.
+    expect(runs[0]!.className).toContain("whitespace-pre");
+    expect(runs[0]!.className).toContain("inline-block");
+  });
+
+  it("pins overflow-y, so a link's em-padding cannot make the run a second vertical scroller", () => {
+    expect(mirror().querySelector("span.overflow-x-auto")!.className).toContain("overflow-y-hidden");
+  });
+
+  it("leaves the mirror text, the find offsets and the autolink exactly where they were", () => {
+    const pre = mirror({ query: "high" });
+
+    // Byte-identical to the input: grouping moved nodes, it did not add or drop a separator.
+    expect(pre.textContent).toBe(TEXT);
+    expect(pre.querySelector("[data-find-match]")!.textContent).toBe("high");
+    expect(pre.querySelector("span.overflow-x-auto")!.querySelector("[data-find-match]")).not.toBeNull();
+    expect(pre.querySelector("a")!.textContent).toBe("https://herdr.dev/docs");
+  });
+
+  it("does not nest a scroller inside the wrap-off pan, which is already column-faithful", () => {
+    expect(mirror({ wrap: false }).querySelector("span.overflow-x-auto")).toBeNull();
+  });
+
+  it("leaves the border clip alone: a rule beside a table stays clipped and outside the run", () => {
+    // The two features cannot meet. A clipped line is 20+ IDENTICAL rule glyphs, and every grammar
+    // demands its own separator at each member row's column offsets, which such a line has nowhere.
+    // So the run ends at the rule, and the rule keeps the single-row clip it has always had.
+    const rule = "─".repeat(20);
+    const table = ["┌──────┬──────┐", "│ a    │ b    │", "├──────┼──────┤", "│ 1    │ 2    │", "└──────┴──────┘"].join("\n");
+    const text = `${table}\n${rule}\n`;
+    const { container } = render(<AnsiOutput text={text} />);
+    const run = container.querySelector("span.overflow-x-auto")!;
+
+    expect(run.textContent).toBe(table);
+    expect(container.querySelector("span.overflow-hidden")!.textContent).toBe(rule);
+    expect(container.querySelector("pre")!.textContent).toBe(text);
+  });
+
+  // The grouping moves line nodes under a span and hoists one "\n" out of it, so the arrangements
+  // worth testing are the ones where that newline is decisive: a run with nothing before it, two
+  // runs in one block, and two runs with no gap. TEXT above always has prose first, so on its own it
+  // never renders the branch where the hoisted newline would be wrong.
+  describe("the arrangements where the hoisted newline decides", () => {
+    const A = ["| a | b |", "| --- | --- |", "| 1 | 2 |"].join("\n");
+    const B = ["| c | d |", "| --- | --- |", "| 3 | 4 |"].join("\n");
+
+    function offsetsOf(pre: HTMLElement, selector: string): number[] {
+      const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+      const at: number[] = [];
+      let seen = 0;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const owner = node.parentElement?.closest(selector);
+        if (owner && !at.includes(seen)) at.push(seen);
+        seen += node.textContent!.length;
+      }
+      return at;
+    }
+
+    it.each([
+      ["a run that starts the mirror", `${A}\nafter\n`],
+      ["a run that ends the mirror, no trailing newline", `before\n${A}`],
+      ["two runs with prose between them", `${A}\nbetween\n${B}\n`],
+      ["two runs with no gap at all", `${A}\n${B}\n`],
+      ["the whole mirror being one run", A],
+    ])("keeps the mirror text byte-identical: %s", (_name, text) => {
+      const { container } = render(<AnsiOutput text={text} />);
+      expect(container.querySelector("pre")!.textContent).toBe(text);
+    });
+
+    it("keeps find offsets true when a match sits after a run that starts the mirror", () => {
+      const text = `${A}\nbetween\n${B}\n`;
+      const { container } = render(<AnsiOutput text={text} query="3" />);
+      const pre = container.querySelector("pre")!;
+
+      // The highlighted node must start at the same index in the DOM text as in the input string.
+      expect(offsetsOf(pre, "[data-find-match]")).toEqual([text.indexOf("3")]);
+      expect(pre.textContent).toBe(text);
+    });
+
+    it("anchors a URL at its true offset inside a run", () => {
+      const table = ["| doc | note |", "| --- | --- |", "| https://herdr.dev/docs | read |"].join("\n");
+      const text = `before\n${table}\n`;
+      const { container } = render(<AnsiOutput text={text} />);
+      const pre = container.querySelector("pre")!;
+
+      expect(offsetsOf(pre, "a")).toEqual([text.indexOf("https://")]);
+      expect(pre.querySelector("span.overflow-x-auto")!.querySelector("a")).not.toBeNull();
+    });
+  });
+
+  it("survives a poll that shifts the table's line index, so the reader's pan is not thrown away", () => {
+    // The mirror is a rendered grid: one new line of output moves every line index. Keyed by index,
+    // the scroller would unmount on that poll and scrollLeft would snap back to zero under the
+    // thumb, with the table still sitting in the same place on screen.
+    const table = ["| a | b |", "| --- | --- |", "| 1 | 2 |"].join("\n");
+    const { container, rerender } = render(<AnsiOutput text={`one\n\n${table}\n`} />);
+    const before = container.querySelector("span.overflow-x-auto")!;
+
+    rerender(<AnsiOutput text={`one\ntwo\n\n${table}\n`} />);
+
+    expect(container.querySelector("span.overflow-x-auto")).toBe(before);
   });
 });
 
