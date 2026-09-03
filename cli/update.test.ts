@@ -35,6 +35,7 @@ import { latestUpdateInMajor } from "../bridge/update.ts";
 import {
   type ApplyArgs,
   applyArgv,
+  parseApplyArgs,
   checkoutLayout,
   cmdApplyUpdate,
   cmdUpdate,
@@ -1955,6 +1956,33 @@ describe("collie update --to-tag", () => {
     expect(h.io.stderr.join("\n")).toContain("no release tag");
     // Nothing was staged: a refusal happens before any download.
     expect(h.files.read(RUN_FILE)).toBeNull();
+  });
+});
+
+describe("the detached updater argv", () => {
+  test("detached updater argv keeps `--to`, and the follow flags never reach it", () => {
+    const argv = applyArgv({
+      to: "v1.1.0",
+      from: "v1.0.0",
+      version: "1.1.0",
+      commit: "abc1234",
+      kind: "checkout",
+      handoff: 42,
+    });
+    // `--to` is the RUNNER's own internal argv and is untouched by M16/04. `--to-tag` is a different
+    // flag on a different verb, and the two must never be read for one another.
+    expect(argv).toContain("--to");
+    expect(argv).not.toContain("--to-tag");
+    expect(argv).not.toContain("--run-id");
+    // The run id reaches the runner through the RECORD it picks up off disk, not through this argv.
+    expect(parseApplyArgs(argv)).toEqual({
+      to: "v1.1.0",
+      from: "v1.0.0",
+      version: "1.1.0",
+      commit: "abc1234",
+      kind: "checkout",
+      handoff: 42,
+    });
   });
 });
 
