@@ -1,7 +1,7 @@
-// The omp adapter (oh-my-pi's `omp` CLI, v17.2.12) — the second registered harness. Its composer
-// scanner (chrome.ts) and the lexing primitives under it (markers.ts) live alongside this file; this
-// module wires them into the HarnessAdapter surfaces: the block pipeline (ompBuildBlocks) and the
-// chrome re-surfacing probes (re-exported from ./chrome).
+// The omp adapter (oh-my-pi's `omp` CLI, v17.2.12 through v18.1.6) — the second registered harness.
+// Its boxed-composer scanner (chrome.ts), rule-composer scanner (rule.ts) and shared lexing primitives
+// (markers.ts) live alongside this file; this module composes them into the HarnessAdapter block and
+// chrome re-surfacing surfaces.
 //
 // This adapter is TIER 1 ONLY, BY CHOICE, and the choice is what makes it mergeable from fixtures
 // alone. It emits NO interactive block kind — not `prompt-select`, `wizard`, `preview-select`,
@@ -24,15 +24,15 @@
 // also NOT IN THE CORPUS — no capture of it exists here, which is why nothing below claims it as
 // tested.
 //
-// What ships here is the read-only layer (chrome.ts), and it is not cosmetic: the statusline omp paints
-// into its composer's top border, a stranded draft, and — the reason this layer is worth its own PR —
+// What ships here is the read-only chrome layer, and it is not cosmetic: the statusline omp paints
+// into or around its composer, a stranded draft, and — the reason this layer is worth its own PR —
 // `composerReady`. Which reply path core takes is decided by whether an adapter EXISTS at all
 // (reply-action.ts opens with `if (!adapter) return oneShot(args)`), so before this file omp panes took
 // the legacy one-shot send: type AND submit in a single call. A phone reply sent while any modal owned
 // the keyboard therefore fired the submit key at that modal, which confirms whatever row it had
 // highlighted. Registering ANY adapter swaps that for type-then-verify — the submit key waits until
-// `extractInputDraft` can see the text in the box — and supplying `composerReady` adds the pre-flight
-// on top, which reads the pane once BEFORE typing and refuses on a definite `false`. This adapter
+// `extractInputDraft` can see the text in the composer — boxed or rule-shaped — while
+// `composerReady` adds the pre-flight on top, reading the pane once BEFORE typing. It definitively
 // answers `false` on all eleven captures in this corpus where a modal is up (harness/omp.test.ts), so
 // the message never reaches the modal either. Two honest edges: a failed pre-flight read falls through
 // rather than blocking a send, and the user's deliberate `force` retry skips the pre-flight — in both
@@ -44,10 +44,10 @@
 //   - STRUCTURAL, for every screen omp can draw: `ompBuildBlocks` returns one `raw` block
 //     unconditionally. There is no detector to mis-fire, so no screen — captured or not — can be
 //     up-levelled. That covers the tool-approval dialog by construction.
-//   - TESTED, for the twenty-one screens in this corpus: ten composer states, six picker screens
+//   - TESTED, for the 25 screens in this corpus: 14 composer states, six picker screens
 //     (`/model`, `/settings`, `/resume`, each with a moved-selection twin) and five Ask-tool screens.
-//     harness/omp.test.ts asserts raw-only over all twenty-one and `composerReady === false` over the
-//     eleven modals, so the declining is a test result rather than an accident. Each is declined
+//     harness/omp.test.ts asserts raw-only over all 25 and `composerReady === false` over the eleven
+//     modals, so the declining is a test result rather than an accident. Each is declined
 //     because it is out of scope above, or a widget whose `handleInput` we have not read, or one
 //     whose options include a free-text row that would strand a phone user — the fail-closed
 //     contract says a detector returns null on anything it does not confidently recognise.
@@ -60,24 +60,29 @@
 //     where a wrong `true` would be worst, so capturing it is the first thing the Tier-2 contribution
 //     owes, ahead of any grammar.
 //
-// One more limit worth stating where the tier is claimed, because it is the adapter's sharpest edge:
-// the whole composer lift hangs off ONE literal, the `╰─ … ─╯` bottom border with its one-space
-// gutters. The census behind that is real — once per composer capture, nowhere in the other 49 — but
-// it is a measurement of omp 17.2.12's renderer, not a proof about it. omp already draws a two-row
-// full-width box at column 0 whose text lives in the TOP border (`╭─── ✘ Error: … ───╮`), so a widget
-// that ever labelled its BOTTOM border the way the composer does would be read as a composer. What
-// bounds the damage is that it can only mislead while it is the LAST box on screen: with any of omp's
-// modals under it the box rule declines the whole shape, which is the case that mattered.
+// Two fixture-derived scanners now carry that chrome claim. The boxed OMP 17/18.1.2 form remains
+// anchored on `╰─ … ─╯` (closed or clipped) plus its adjacent top/status row. OMP 18.1.6's `rule`
+// form has no bottom border, so rule.ts instead requires its renderer's whole tail choreography:
+// a status-bearing top rule directly above `❯` plus bounded continuation rows, then exactly one blank
+// gap and one standalone status row at the buffer tail. Neither scanner searches past a completed
+// transcript row, and every captured picker and Ask dialog still makes both return null.
 
 import type { Block, StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import {
-  composerPrompt,
-  extractInputDraft,
-  extractStatusLines,
-  hasComposer,
-  stripChrome,
+  composerPrompt as boxComposerPrompt,
+  extractInputDraft as extractBoxInputDraft,
+  extractStatusLines as extractBoxStatusLines,
+  hasComposer as hasBoxComposer,
+  stripChrome as stripBoxChrome,
 } from "./chrome";
+import {
+  extractRuleInputDraft,
+  extractRuleStatusLines,
+  locateRuleComposer,
+  ruleComposerPrompt,
+  stripRuleChrome,
+} from "./rule";
 
 /**
  * omp's block pipeline: one raw block with the composer chrome stripped off the tail. There is no
@@ -97,7 +102,29 @@ export function ompBuildBlocks(lines: StyledLine[]): Block[] {
   return [{ kind: "raw", lines: stripChrome(lines) }];
 }
 
-export { extractStatusLines, extractInputDraft };
+export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
+  const rule = locateRuleComposer(lines);
+  return rule === null ? extractBoxStatusLines(lines) : extractRuleStatusLines(lines, rule);
+}
+
+export function extractInputDraft(lines: StyledLine[]): string | null {
+  const rule = locateRuleComposer(lines);
+  return rule === null ? extractBoxInputDraft(lines) : extractRuleInputDraft(lines, rule);
+}
+
+function stripChrome(lines: StyledLine[]): StyledLine[] {
+  const rule = locateRuleComposer(lines);
+  return rule === null ? stripBoxChrome(lines) : stripRuleChrome(lines, rule);
+}
+
+function hasComposer(lines: StyledLine[]): boolean {
+  return locateRuleComposer(lines) !== null || hasBoxComposer(lines);
+}
+
+function composerPrompt(lines: StyledLine[]): string | null {
+  const rule = locateRuleComposer(lines);
+  return rule === null ? boxComposerPrompt(lines) : ruleComposerPrompt(lines, rule);
+}
 
 export const ompAdapter: HarnessAdapter = {
   agent: "omp",
@@ -107,9 +134,9 @@ export const ompAdapter: HarnessAdapter = {
   // The reply path's pre-flight. omp's composer is exactly what `hasComposer` finds, and its absence
   // is exactly the condition under which typing would land in a modal instead.
   composerReady: hasComposer,
-  // …and the region that pre-flight's verdict is bound to on the wire. omp's `╰─ … ─╯` sits at the
-  // tail on eight of the ten composer captures and behind at most five palette rows on the other
-  // two, so it is well inside the tail window the bridge accepts a binding within.
+  // …and the exact on-screen draft region the destructive pre-clear is bound to on the wire: the
+  // box's bottom prompt row or all of the rule composer's prompt rows. The box scanner declines when
+  // a long palette pushes that row out of range; the rule region ends one status row from the tail.
   composerPrompt,
   // `draftCarriesSend` / `draftIsOpaque` are deliberately ABSENT, which is the documented default:
   // omp echoes typed text back verbatim (see the draft-single / draft-wrapped captures) and has no
