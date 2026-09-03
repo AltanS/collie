@@ -1,4 +1,4 @@
-import { homePath, panePath } from "./nav";
+import { homePath, panePath, settingsPath, updatesPath } from "./nav";
 
 describe("panePath", () => {
   it("URL-encodes the colon in a pane id", () => {
@@ -49,5 +49,19 @@ describe("homePath", () => {
   it("carries a host as ?h=, before ?s=", () => {
     expect(homePath({ host: "badger" })).toBe("/?h=badger");
     expect(homePath({ host: "badger", session: "collie-demo" })).toBe("/?h=badger&s=collie-demo");
+  });
+});
+
+describe("updatesPath", () => {
+  // A CHILD path of settings, not an anchor inside it — so "back" from the page lands on Settings
+  // and the router can hold the two as separate routes.
+  it("is a child of settings and carries the scope like the others", () => {
+    expect(updatesPath()).toBe("/settings/updates");
+    expect(updatesPath({})).toBe("/settings/updates");
+    expect(updatesPath({ host: "badger" })).toBe("/settings/updates?h=badger");
+    expect(updatesPath({ host: "badger", session: "demo" })).toBe("/settings/updates?h=badger&s=demo");
+    // It is a path, not a fragment: PAIRED_DEVICES_HASH's shape would not have given it a route.
+    expect(updatesPath()).not.toContain("#");
+    expect(settingsPath()).toBe("/settings");
   });
 });

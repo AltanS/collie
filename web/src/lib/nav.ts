@@ -45,6 +45,15 @@ export function packPath(scope?: Scope): string {
 }
 
 /**
+ * The Updates page — a CHILD of Settings, not an anchor inside it. Updating is a flow with a lead,
+ * N peers, progress and a rollback state, so it gets a page and Settings keeps one row that links
+ * here. Carries the scope like the others, so "back" returns to the machine you came from.
+ */
+export function updatesPath(scope?: Scope): string {
+  return `/settings/updates${scopeSearch(scope)}`;
+}
+
+/**
  * The fragment naming the Paired-devices card inside Settings. It is a route-level anchor, so it
  * lives here beside the paths rather than in the card: `read-only-banner.tsx` links to it and
  * `paired-devices.tsx` answers to it, and neither should own the other's spelling.
