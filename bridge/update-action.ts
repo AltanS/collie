@@ -1,7 +1,7 @@
 import type { JsonObject, JsonValue } from "./json.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { compareSemver } from "./update.ts";
-import { inFlight, type UpdateRun } from "./update-run.ts";
+import { inFlight, type UpdateRun, type UpdateRunState } from "./update-run.ts";
 
 // `POST /api/update` — the phone's one-tap-plus-one-confirm start, and the preflight it is gated on
 // (M15/05).
@@ -258,6 +258,86 @@ export function parsePeerPreflight(value: JsonValue): PeerPreflight | null {
   };
 }
 
+// ── The pack's half of the RUN (M16/04) ──────────────────────────────────────
+
+/**
+ * The trimmed run record a member publishes beside its snapshot body (PACK_PROTOCOL.md §20).
+ *
+ * The lead cannot otherwise know a peer is moving or has fallen back: the version alone says only
+ * "still behind", and a peer that tried and rolled back looks exactly like a peer that has not
+ * started. It rides ALONGSIDE the body for the reason `updatePreflight` does — `body` is the object
+ * that machine serves its own browser, and a pack-only fact has no business in the browser's
+ * snapshot type — and it carries no pid, no log tail and no recovery command: those are for the
+ * operator of THAT machine, and the lead's page names a member, a state and a reason.
+ */
+export interface PeerRunReport {
+  readonly state: UpdateRunState;
+  /** The version that run was moving to, as that machine spells it. Never re-derived here. */
+  readonly to: string | null;
+  /** The run it belongs to, or null. A leg is only matched against the run the lead is driving. */
+  readonly runId: string | null;
+  readonly reason: string | null;
+  /** That machine's own stamp, passed through untouched — nothing here can make an old fact new. */
+  readonly updatedAt: number | null;
+}
+
+/** The wire name of {@link PeerRunReport}'s field, beside {@link PACK_PREFLIGHT_FIELD} (§20). */
+export const PACK_RUN_FIELD = "updateRun";
+
+/** How much of a reason crosses the link. A log tail is that machine's own business, not the pack's. */
+export const PACK_RUN_REASON_MAX = 240;
+
+/** What one member publishes. `null` ⇒ it has never run an update, which is nothing to report. */
+export function peerRunWire(run: UpdateRun | null): PeerRunReport | null {
+  if (run === null) return null;
+  return {
+    state: run.state,
+    to: run.to,
+    runId: run.runId ?? null,
+    reason: run.reason === undefined ? null : run.reason.slice(0, PACK_RUN_REASON_MAX),
+    updatedAt: run.updatedAt,
+  };
+}
+
+/**
+ * Read a member's `updateRun` off the answer its snapshot rode on.
+ *
+ * `null` for every shape this build cannot read as one, which is the closed reading: a member that
+ * reported nothing is a member the lead has learned nothing new about, never a member that
+ * succeeded.
+ */
+export function parsePeerRun(value: JsonValue): PeerRunReport | null {
+  const rec = asRecord(value);
+  if (rec === null) return null;
+  const field = asRecord(rec[PACK_RUN_FIELD] ?? null);
+  if (field === null) return null;
+  const state = field.state;
+  if (typeof state !== "string" || !RUN_STATES.has(state)) return null;
+  const { to, runId, reason, updatedAt } = field;
+  return {
+    // SAFETY: `RUN_STATES` holds exactly the members of `UpdateRunState`, and the guard above
+    // returned for every string that is not one of them.
+    state: state as UpdateRunState,
+    to: typeof to === "string" && to !== "" ? to : null,
+    runId: typeof runId === "string" && runId !== "" ? runId : null,
+    reason: typeof reason === "string" && reason !== "" ? reason.slice(0, PACK_RUN_REASON_MAX) : null,
+    updatedAt: typeof updatedAt === "number" && Number.isSafeInteger(updatedAt) ? updatedAt : null,
+  };
+}
+
+/** Every member of `UpdateRunState`. Anything else is a member reporting nothing. */
+const RUN_STATES: ReadonlySet<string> = new Set<UpdateRunState>([
+  "idle",
+  "preflight",
+  "staging",
+  "restarting",
+  "verifying",
+  "done",
+  "rolled-back",
+  "stuck",
+  "interrupted",
+]);
+
 /**
  * A member's verdict as the card reads it. `unknown` is the fourth, and it is not a shade of green:
  * it is "we could not check this machine", which blocks the confirm exactly as a red does.
@@ -513,6 +593,12 @@ export class PreflightCache {
 /** What `POST /api/update` decided. `start` carries what the server is about to install. */
 export type UpdateStartVerdict =
   | { readonly kind: "start"; readonly to: string; readonly major: boolean }
+  /**
+   * The **peers-only** run (M16/04): this lead is already current, and one or more members are
+   * behind or have rolled back. `to` is the version the lead is itself running, which is what the
+   * members level to; nothing on this machine moves.
+   */
+  | { readonly kind: "peers"; readonly to: string }
   | { readonly kind: "refuse"; readonly status: number; readonly body: ApiErrorBody };
 
 const refuse = (status: number, code: ErrorCode, detail?: ApiErrorDetail): UpdateStartVerdict => ({
@@ -528,6 +614,15 @@ export interface UpdateStartRequest {
   readonly target: string | null;
   /** The second consent, and only a major crossing needs it (ADR 0020). */
   readonly major: boolean;
+  /**
+   * "Retry pack update" (M16/04): start a run whose only legs are the PEERS.
+   *
+   * The page offers it as its single action exactly when this lead is current and a member is
+   * behind or has rolled back — there is nothing to move the lead to, and a per-peer button would be
+   * a second way to say the same thing. It mints a NEW run id, and that id is what permits a member
+   * that rolled back one further attempt at the same tag.
+   */
+  readonly peersOnly: boolean;
 }
 
 /** Parse an untrusted body. `null` when it is not an object — the caller answers 400. */
@@ -539,6 +634,7 @@ export function parseUpdateStartRequest(body: JsonValue): UpdateStartRequest | n
     confirm: rec.confirm === true,
     target: typeof target === "string" && target.trim() !== "" ? target.trim() : null,
     major: rec.major === true,
+    peersOnly: rec.peersOnly === true,
   };
 }
 
@@ -564,6 +660,13 @@ export interface UpdateStartState {
    * showed before the operator tapped.
    */
   readonly pack?: readonly PackUpdateRow[];
+  /**
+   * Every peer's leg of the run this lead last drove (M16/04). Absent ⇒ no run, which is `[]`.
+   *
+   * Read only by the peers-only branch, and only to answer "is there anything for a retry to do":
+   * a member behind the lead's own version, or one that rolled back.
+   */
+  readonly peers?: readonly { readonly name: string; readonly state: string }[];
 }
 
 /**
@@ -590,6 +693,23 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   const running = state.run !== null && inFlight(state.run.state);
   if (running || state.lockHeld) {
     return refuse(409, "update.in_progress", { state: state.run?.state ?? "staging" });
+  }
+
+  // ── THE PEERS-ONLY RUN (M16/04) ─────────────────────────────────────────────
+  // Decided here, above the preflight, because the gates below are about THIS machine's own move and
+  // this request asks for none: the lead is current, so there is no target for it and its own
+  // `latest` says nothing about whether a member is behind. What is NOT skipped is the pack's half
+  // of the gate — one confirm still covers the pack, so a member that is red or that nobody could
+  // check refuses this exactly as it refuses an ordinary start.
+  if (req.peersOnly) {
+    const blocked = mergedUpdateVerdict(state.preflight, state.pack ?? []);
+    if (blocked.blocks) {
+      return refuse(412, "update.preflight_red", {
+        check: blocked.member ?? "the pack",
+        reason: blocked.reason ?? "the pack preflight could not be read",
+      });
+    }
+    return peersNeedLevelling(state) ? { kind: "peers", to: state.current } : refuse(409, "update.none_available");
   }
 
   if (state.preflight === null) return refuse(503, "update.preflight_unavailable");
@@ -627,6 +747,19 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   return { kind: "start", to: would, major: req.major };
 }
 
+/**
+ * Is there anything for a retry to do — a member behind this lead's own version, or one that fell
+ * back?
+ *
+ * A member whose version nobody could learn is NOT counted behind: an unknown is reported as unknown
+ * on its own row, and starting a run over it would send the operator to an action that cannot help.
+ */
+function peersNeedLevelling(state: UpdateStartState): boolean {
+  const behind = (state.pack ?? []).some((m) => m.version !== null && compareSemver(m.version, state.current) < 0);
+  const fellBack = (state.peers ?? []).some((leg) => leg.state === "rolled-back" || leg.state === "unreachable");
+  return behind || fellBack;
+}
+
 // ── The handoff ──────────────────────────────────────────────────────────────
 
 /**
@@ -651,8 +784,20 @@ export function updateStartCommand(a: {
   readonly stamp: string;
   readonly hasSystemdRun: boolean;
   readonly hasSetsid: boolean;
+  /**
+   * The run this update belongs to (M16/04), written into `<state dir>/update.json` by the updater.
+   * Absent on a run nobody named — which is every `collie update` typed at a terminal.
+   */
+  readonly runId?: string | null;
+  /**
+   * Pin the update to ONE release rather than "the highest of my major" — the peer's own follow
+   * (M16/04). Absent on the lead's own button, which takes what an update would take.
+   */
+  readonly toTag?: string | null;
 }): string[] {
   const verb = a.major ? ["update", "--major"] : ["update"];
+  if (a.toTag !== undefined && a.toTag !== null) verb.push("--to-tag", a.toTag);
+  if (a.runId !== undefined && a.runId !== null) verb.push("--run-id", a.runId);
   if (a.platform === "linux" && a.hasSystemdRun) {
     return ["systemd-run", "--user", "--collect", "--unit", `collie-api-update-${a.stamp}`, a.binary, ...verb];
   }

@@ -38,7 +38,18 @@ import type { Exec, Files, Net } from "./sys.ts";
 /** What can happen to a run. Every one of these is a transition the reducer names explicitly. */
 export type RunEvent =
   /** A run starts. From `idle` or from any terminal state — the record is a log of the LAST run. */
-  | { readonly kind: "begin"; readonly from: string | null; readonly to: string | null; readonly pid: number }
+  | {
+      readonly kind: "begin";
+      readonly from: string | null;
+      readonly to: string | null;
+      readonly pid: number;
+      /**
+       * The run's id, when one was handed down (M16/04): the operator's confirm on the phone mints
+       * it, and `collie update --run-id` carries it here. Absent — or empty — on every run started
+       * from a terminal, which is a run with no id, never a run with a blank one.
+       */
+      readonly runId?: string | null;
+    }
   /** Preflight passed; the new version is being built or laid down. */
   | { readonly kind: "stage" }
   /** `current` has been flipped and the service is being restarted. */
@@ -111,7 +122,7 @@ export function reduce(run: UpdateRun, event: RunEvent, now: number): UpdateRun 
   switch (event.kind) {
     case "begin": {
       if (inFlight(run.state)) throw new BadTransition(run.state, event.kind);
-      return {
+      const begun: UpdateRun = {
         schema: UPDATE_RUN_SCHEMA,
         state: "preflight",
         from: event.from,
@@ -121,6 +132,10 @@ export function reduce(run: UpdateRun, event: RunEvent, now: number): UpdateRun 
         pid: event.pid,
         attempt: 0,
       };
+      // Assigned, never conditionally spread: a run with no id must carry NO such key rather than one
+      // whose value is `undefined`, or it would serialise as a key the reader has to guess about.
+      const id = event.runId ?? null;
+      return id === null || id === "" ? begun : { ...begun, runId: id };
     }
     case "stage":
       expect(run, event.kind, ["preflight"]);

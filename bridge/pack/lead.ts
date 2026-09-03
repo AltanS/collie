@@ -13,7 +13,13 @@ import {
 } from "./standby-devices.ts";
 import type { Warrant } from "./trust-store.ts";
 import { parseWarrantReport, warrantPushNeeded, type WarrantPush } from "./warrant.ts";
-import { packUpdateRows, parsePeerPreflight, type PackUpdateRow } from "../update-action.ts";
+import {
+  packUpdateRows,
+  parsePeerPreflight,
+  parsePeerRun,
+  type PackUpdateRow,
+} from "../update-action.ts";
+import { UpdateTurns, type PeerLeg, type TurnMember } from "./follow.ts";
 
 // The lead's side of the pack, assembled: sweep the peers, remember the last-good body, merge.
 //
@@ -110,7 +116,19 @@ export interface PackLeadDeps {
    * member to re-run its update check on this one dial. It is a REQUEST — a peer that ignores it
    * answers with an older report and an `asOf` that says so — and the periodic sweep never sets it.
    */
-  readonly snapshot: (link: PackLink, freshPreflight?: boolean) => Promise<PeerOutcome<unknown>>;
+  readonly snapshot: (
+    link: PackLink,
+    freshPreflight?: boolean,
+    follow?: { readonly leadRelease?: string | null; readonly turn?: string | null },
+  ) => Promise<PeerOutcome<unknown>>;
+  /**
+   * §20's half of the sweep (M16/04): what this lead may state about ITSELF, and the queue that
+   * hands out one turn at a time.
+   *
+   * Injected and optional, for the reason `hello` is: a lead built without it keeps today's sweep
+   * byte for byte, and neither header goes on the wire. Every production wiring supplies it.
+   */
+  readonly follow?: FollowDistribution;
   /**
    * `PeerClient.proxy`, for the per-pane forward (M4/05). Injected for the same reason `snapshot` is
    * — the routes must be exercisable without a socket — and typed as the pass-through variant, so a
@@ -191,6 +209,21 @@ export interface PairingDistribution {
   collision?(labels: readonly string[] | null): void;
 }
 
+/** What the sweep needs to state a release and hand out a turn (§20, M16/04). */
+export interface FollowDistribution {
+  /**
+   * This lead's own settled release, or `null` while it may state nothing —
+   * `bridge/pack/follow.ts`'s `leadReleaseHeader` over this process's own version and run
+   * record. Read on every sweep rather than captured: a lead settles mid-life, and a value taken at
+   * boot would keep a whole pack waiting for a restart.
+   */
+  readonly leadRelease: () => string | null;
+  /** The in-memory queue. Never persisted — a lead restart re-derives it and re-grants. */
+  readonly turns: UpdateTurns;
+  /** `enrolledAt` per member, the trust store's own ordering. Read through the store each sweep. */
+  readonly enrolledAt: (memberId: string) => number;
+}
+
 /**
  * The two things the sweep needs in order to keep every member's warrant current, injected for the
  * reason `snapshot` and `hello` are: the decision logic must be exercisable without a socket or a
@@ -269,7 +302,16 @@ export class PackLead {
       const due = this.deps.registry.links().filter((l) => dueForProbe(this.memory.get(l.memberId), now));
       if (due.length === 0) return;
 
-      const outcomes = await sweepPeers(due, (link) => this.deps.snapshot(link, opts.freshPreflight === true));
+      // §20: what this lead may state, computed ONCE per sweep. The turn is per member — at most
+      // one member holds it — so it is read inside the loop below.
+      const follow = this.deps.follow;
+      const leadRelease = follow?.leadRelease() ?? null;
+      const outcomes = await sweepPeers(due, (link) =>
+        this.deps.snapshot(link, opts.freshPreflight === true, {
+          leadRelease,
+          turn: follow?.turns.turnFor(link.memberId) ?? null,
+        }),
+      );
       for (const link of due) {
         const outcome = outcomes.get(link.memberId);
         if (outcome === undefined) continue;
@@ -306,6 +348,28 @@ export class PackLead {
           this.deps.onPeerSnapshot?.(memberId, next.body);
         }
       }
+      // §20's fold, after every member's answer is banked: who is behind, who is moving, who fell
+      // back, and who has now missed three sweeps. A turn RELEASED here earns an immediate re-sweep
+      // — the third of the three triggers — so the next member starts within one sweep of its turn
+      // rather than within the periodic cadence.
+      if (follow !== undefined) {
+        const members = due.map((link): TurnMember => {
+          const outcome = outcomes.get(link.memberId);
+          const state = this.deps.registry.state(link.memberId);
+          return {
+            memberId: link.memberId,
+            enrolledAt: follow.enrolledAt(link.memberId),
+            version: state.version,
+            verdict: state.preflight?.verdict ?? null,
+            answered: outcome?.ok === true,
+            // SAFETY: `value` is a peer's HTTP body after `res.json()` — a JsonValue by
+            // construction, the same cast and the same reason as `parsePeerPreflight`'s above.
+            run: outcome?.ok === true ? parsePeerRun(outcome.value as JsonValue) : null,
+          };
+        });
+        if (follow.turns.observe(members, this.now()).released) this.resweep();
+      }
+
       // ── TWO INDEPENDENT DISTRIBUTIONS, TWO INDEPENDENT GUARDS ─────────────
       // They used to share this try, and a live drill showed what that costs: the warrant half awaits
       // a store write (the hourly refresh), so any failure there took the pairing half down with it
@@ -563,6 +627,27 @@ export class PackLead {
    * The card's `pack` array. It dials nobody — the same guarantee `packStatusBody` makes and for the
    * same reason: a surface the phone polls must not be able to make the lead reach a machine.
    */
+  /**
+   * Every peer's LEG of the run this lead is driving (§20, M16/04), from what the sweep banked.
+   *
+   * Empty when no run is being driven, which is every ordinary minute of a pack's life. It dials
+   * nobody, for the reason {@link PackLead.updateRows} does not.
+   */
+  updatePeers(): PeerLeg[] {
+    return this.deps.follow?.turns.peerLegs() ?? [];
+  }
+
+  /**
+   * One immediate sweep, off this tick.
+   *
+   * **Not a timer** (§10.1, §11): a microtask, fired at most once per turn release, so the member
+   * next in line starts within one sweep of its turn instead of waiting out the idle cadence. The
+   * re-entrancy guard in {@link PackLead.sweep} is what keeps it from stacking.
+   */
+  resweep(): void {
+    queueMicrotask(() => void this.sweep());
+  }
+
   updateRows(): PackUpdateRow[] {
     return packUpdateRows(
       this.contributions().map((c) => ({ name: c.name, version: c.state.version, preflight: c.state.preflight })),

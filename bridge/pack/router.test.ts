@@ -391,6 +391,136 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
     expect(carried.at(-1)!.reason).toContain("not carried over the pack link");
   });
 
+  // ── §20 — THE FOLLOW HEADERS, AND THE MEMBER'S OWN RUN (M16/04) ────────────
+  // Two REQUEST headers in, one optional field out. Nothing here is a route, a verb or an order:
+  // a build that reads neither header is a correct peer, and the protocol integer does not move.
+
+  test("a peer reads both follow headers and hands them to its own decision, unchanged", async () => {
+    const h = harness(peerStore());
+    const seen: { leadRelease: string | null; turn: string | null }[] = [];
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => ownSnapshot(),
+      onFollow: (a) => seen.push(a),
+    });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, {
+      headers: { ...authed, "x-pack-lead-release": "1.5.0", "x-pack-update-turn": "laptop;r-7" },
+    }))!;
+    // The snapshot is answered exactly as before — the follow is a notification, never a branch.
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(await res.json()).toEqual(ownSnapshot());
+    expect(seen).toEqual([{ leadRelease: "1.5.0", turn: "laptop;r-7" }]);
+  });
+
+  test("a turn for somebody else reaches the peer verbatim, and its own guards refuse it", async () => {
+    const h = harness(peerStore());
+    const seen: { leadRelease: string | null; turn: string | null }[] = [];
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => ownSnapshot(),
+      onFollow: (a) => seen.push(a),
+    });
+    await call(handler, PACK_SNAPSHOT_PATH, {
+      headers: { ...authed, "x-pack-lead-release": "1.5.0", "x-pack-update-turn": "basement;r-7" },
+    });
+    // The ROUTER does not decide whose turn it is — it carries the value, and `follow.ts` refuses a
+    // turn that does not name this member. Deciding it here would be a second answer to one question.
+    expect(seen).toEqual([{ leadRelease: "1.5.0", turn: "basement;r-7" }]);
+  });
+
+  test("an older peer ignores the follow headers: absent, blank and unwired all read the same", async () => {
+    const h = harness(peerStore());
+    const seen: { leadRelease: string | null; turn: string | null }[] = [];
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => ownSnapshot(),
+      onFollow: (a) => seen.push(a),
+    });
+    await call(handler, PACK_SNAPSHOT_PATH, { headers: authed });
+    await call(handler, PACK_SNAPSHOT_PATH, {
+      headers: { ...authed, "x-pack-lead-release": "  ", "x-pack-update-turn": "" },
+    });
+    expect(seen).toEqual([
+      { leadRelease: null, turn: null },
+      { leadRelease: null, turn: null },
+    ]);
+
+    // And a build wired with no follower at all answers the identical body: it ignores both headers,
+    // which is a correct peer.
+    const older = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => ownSnapshot(),
+    });
+    const res = (await call(older, PACK_SNAPSHOT_PATH, {
+      headers: { ...authed, "x-pack-lead-release": "1.5.0", "x-pack-update-turn": "laptop;r-7" },
+    }))!;
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(await res.json()).toEqual(ownSnapshot());
+  });
+
+  test("updateRun rides beside the body, and is OMITTED when there is nothing to report", async () => {
+    const h = harness(peerStore());
+    const body = ownSnapshot();
+    const report = {
+      state: "restarting" as const,
+      to: "v1.5.0",
+      runId: "r-7",
+      reason: null,
+      updatedAt: 1_757_000_000_000,
+    };
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => body,
+      updateRun: () => report,
+    });
+    expect(await (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!.json()).toEqual({
+      ...body,
+      updateRun: report,
+    });
+    // The browser's own snapshot is untouched: a pack-only fact never leaks into it.
+    expect(body).toEqual(ownSnapshot());
+
+    const silent = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => body,
+      updateRun: () => null,
+    });
+    expect(await (await call(silent, PACK_SNAPSHOT_PATH, { headers: authed }))!.json()).toEqual(body);
+  });
+
+  test("an UNADMITTED caller never reaches the follow headers either", async () => {
+    const h = harness(peerStore());
+    let seen = 0;
+    // transportPinned not set => the unwired default admits nobody.
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      snapshot: () => ownSnapshot(),
+      onFollow: () => {
+        seen += 1;
+      },
+    });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, {
+      headers: { ...authed, "x-pack-lead-release": "1.5.0", "x-pack-update-turn": "laptop;r-7" },
+    }))!;
+    expect(res.status).toBe(401);
+    expect(seen).toBe(0);
+  });
+
   test("an UNADMITTED caller never reaches the preflight, fresh header or not", async () => {
     const h = harness(peerStore());
     let calls = 0;

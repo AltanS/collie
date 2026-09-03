@@ -1,5 +1,5 @@
 import { t, tn } from "./i18n";
-import type { UpdateInfo, UpdatePeerLeg, UpdateRunState } from "./types";
+import type { UpdateInfo, UpdatePeerLeg, UpdatePeerLegState, UpdateRunState } from "./types";
 
 // ── THE UPDATE BAND, AS A PURE READING ──────────────────────────────────────────────────────────
 //
@@ -39,8 +39,9 @@ const IN_FLIGHT: ReadonlySet<UpdateRunState> = new Set<UpdateRunState>([
 
 /** A peer leg that went wrong. `rolled-back` is the one the band names; the other two read the same
  *  way to an operator and point at the same page. */
-const PEER_FAILED: ReadonlySet<UpdateRunState> = new Set<UpdateRunState>([
+const PEER_FAILED: ReadonlySet<UpdatePeerLegState> = new Set<UpdatePeerLegState>([
   "rolled-back",
+  "unreachable",
   "stuck",
   "interrupted",
 ]);

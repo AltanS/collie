@@ -333,6 +333,8 @@ Every request on a pack link, and every response:
 | `X-Pack-Member: <member-id>` | both | Who is speaking. On a request, the lead's id; on a response, the peer's. Informational — identity is proven by the pinned certificate, never by this header. |
 | `X-Pack-Device: <device-id>` | request | The operator's device identity, forwarded for the peer's audit trail (§12). Absent when the lead's device gate is off. |
 | `X-Pack-Preflight: fresh` | request | **Optional**, added 2026-09-04 (§19). On `GET /pack/v1/snapshot` only: a REQUEST that the answering member re-run its own `collie update --check --local` before it answers. `fresh` is the only value with meaning; anything else reads as absent. A member that ignores it is a **correct member** — its answer is then simply older, and `asOf` says so. Honoured at most once per `PREFLIGHT_TTL_MS` per member. |
+| `X-Pack-Lead-Release: <x.y.z>` | request | **Optional**, added 2026-09-04 (§20). On `GET /pack/v1/snapshot` only: the bare version the LEAD is itself running, sent only while that version is a strict release and the lead's own health gate has settled it. Absent means the lead is on a dev or prerelease build, or is mid-run — and absent means the receiving member does nothing. It is a statement about the sender and carries no ref, no URL and no command. |
+| `X-Pack-Update-Turn: <member-name>;<run-id>` | request | **Optional**, added 2026-09-04 (§20). On `GET /pack/v1/snapshot` only: who may take that release now, and the id of the `UpdateRun` the operator confirmed on the lead. Sent to **at most one member at a time**. A member ignores a turn that does not name itself. Absent means it is not this member's turn. |
 | `X-Pack-Received-At` | response | Omitted deliberately. **A peer's clock is never trusted for freshness** — the lead stamps its own receipt time (§10). |
 
 The pack surface carries **no `Origin` and no `Host` expectation**: `checkAccess()`
@@ -2473,3 +2475,124 @@ A member that predates this amendment omits the field and ignores the header —
 closed one, and neither refuses anything. A **lead** that predates it passes the sibling over
 untouched, exactly as it does with the warrant pair. The protocol integer is still the only thing
 that refuses (§7.1).
+
+---
+
+## 20. A peer follows its lead's settled release *(added 2026-09-04)*
+
+A member running a **release** build, whose lead is running a **higher release** the lead has marked
+**settled**, levels itself to that exact tag — from **GitHub over anonymous HTTPS**, behind its own
+preflight, its own detached updater, its own health gate and its own rollback.
+
+**No code crosses this link, and no lead distributes anything.** ADR 0016's decision sentence stands
+untouched: code distribution to a member is credentialed by the operator's own SSH and by nothing
+else. What crosses here is two facts, and the second of them is a mutex token.
+
+There is **no new route, no new verb, and no inbound update surface on a member.** A member's
+`/pack/v1/*` surface stays exactly what §5 lists. `X-Pack-Protocol` stays `1`.
+
+### The two request headers
+
+They travel **lead → member** on the sweep the lead already makes, because a running member never
+dials its lead — there is no member-side poll to hang them on (§5's note on `hello`'s `version`).
+Both are additive-optional and absent-means-closed (§7.1).
+
+| Header | Value | Absent means |
+|---|---|---|
+| `X-Pack-Lead-Release` | the lead's own bare version, **only when it is a strict release and settled** | the lead is on a dev or prerelease build, or has not settled — the member does nothing |
+| `X-Pack-Update-Turn` | `<member-name>;<run-id>` | it is not this member's turn |
+
+**Settled** is the lead's own health gate having passed for the version it is running: its last
+`UpdateRun` reached `done` for this version, or it has been running this version since before any
+recorded run. A lead in `preflight`, `staging`, `restarting` or `verifying` sends the header absent.
+
+`X-Pack-Lead-Release` **cannot express a version the lead is not running**: it is read from the same
+`collieVersionBare` the lead answers `hello` and `/api/health` with. A member that receives a version
+its lead is not running is a member whose lead lied about itself, which gains an attacker nothing
+they did not already have (§8.5).
+
+`X-Pack-Update-Turn` carries **no version, no ref, no URL and no command** — a member name and an
+opaque run id, nothing else. Neither header is an order. **A member that ignores both is a correct
+member**, and every guard below is evaluated on the member's own side.
+
+### What the member decides, in order
+
+Each is a refusal with a recorded reason, and each is on the member:
+
+1. **Release builds only.** Its own version must be a strict release. A `-dev+` build never
+   self-levels, full stop.
+2. The header must be **present and a strict release**.
+3. **Strictly higher**, by semver. Equal is nothing; lower is nothing, ever. There is no downgrade
+   path on this link and there will not be one.
+4. **Not a major crossing.** ADR 0020's consent is a named operator choice and a header is not one.
+5. **Not a tag it already rolled back from in this run** — keyed by **(tag, run id)** in its own
+   `<state dir>/update.json`. A new run id, which only a fresh operator confirm produces, permits
+   exactly one further attempt.
+6. **Its own preflight, re-run synchronously immediately before the spawn**, and not red. The
+   §19 report is what the lead's page showed a moment ago; this is what is true now.
+7. **A turn naming this member.**
+8. **The tag resolves upstream**, against the member's own configured repository, anonymously.
+
+Plus a rate limit the member enforces on itself: **at most one self-level attempt per hour**,
+whatever the headers say. It is not a tuning knob — it is the guard against a buggy or hostile lead
+cycling a member through restarts, and the clock is that member's own run record, so it survives the
+member's restart.
+
+Artifact verification is **inherited, not invented**: the release manifest plus this platform's
+`sha256` on a binary install, an explicit `refs/tags/<tag>` fetch on a checkout. No new mechanism.
+
+### The turn, on the lead
+
+The lead holds an **in-memory** ordered queue of members that are behind, eligible and
+preflight-clean, sorted by `TrustedMember.enrolledAt` — enrolment order, stated so it is stable and
+explainable rather than incidental. It grants one turn at a time.
+
+A turn is released on exactly three things: the member reports the new version; the member reports
+`rolled-back`; or the member misses **three consecutive sweeps**, after which it reads `unreachable`
+and the turn moves on.
+
+The queue is **never persisted**. §18.9's argument for `lastDialledAt` applies unchanged — a
+persisted turn would survive the restart it is meant to describe — so a lead restart re-derives the
+queue from the roster and re-grants, and a member already on the new version is simply not in it.
+
+The lead fires an **immediate sweep** on three events, so a member starts within one sweep of its
+turn rather than within the periodic cadence: the operator confirms; the lead's own health gate
+settles; a turn is released. The periodic sweep is unchanged — part of the existing poll, never a
+second timer (§10.1), at `COLLIE_POLL_MS` 1500 relaxing to `COLLIE_POLL_IDLE_MS` 12000, with its
+1000 ms floor intact. That floor matters more than it did: a sweep configurable to fire arbitrarily
+fast would be a member-restart amplifier, and the member's one-attempt-an-hour limit is the other
+half of that guard.
+
+### The response field
+
+A member publishes its own run beside its snapshot body, in the seat §19's `updatePreflight` uses:
+
+```json
+{ "updateRun": { "state": "restarting", "to": "v1.5.0", "runId": "…", "reason": null, "updatedAt": 1757000000000 } }
+```
+
+`updateRun` is **optional**. Absent means the member has nothing to report, which is never success.
+It carries no pid, no log tail and no recovery command: those are for the operator of that machine.
+The lead needs it because a version alone cannot tell "moving" from "still behind", nor "rolled back"
+from "not started".
+
+### Mixed versions are a supported state
+
+§7.1 tolerates build skew by design, and a pack levelling is exactly that: no route behaves
+differently and no code path branches on it. The lead levelling before its members is supported for
+its whole duration, and nothing here needs to shorten it.
+
+### An accepted gap
+
+A lead **rolled back by hand** after its members have advanced leaves them ahead of it. Nothing steps
+a member down: there is no downgrade path, and there will not be one — a lead that could move a
+member backwards is a lead that could move it anywhere, which is the credential ADR 0016 refuses.
+§7.1 makes the resulting skew harmless, and the remedy is `collie pack update <member>` from the
+lead, which pushes the lead's own commit over the operator's SSH.
+
+### Compatibility
+
+A member that predates this amendment ignores both headers and omits the field. All three readings
+are the closed one, and none of them refuses anything. A lead that predates it sends neither header,
+which is the state every pack is in until an operator confirms an update. The protocol integer is
+still the only thing that refuses (§7.1).

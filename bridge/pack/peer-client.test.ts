@@ -257,6 +257,53 @@ describe("PeerClient — the request the lead sends (§6)", () => {
     expect(outcome.ok === false && outcome.state).toBe("unreachable");
   });
 
+  // ── §20's TWO REQUEST HEADERS (M16/04) ─────────────────────────────────────
+  // Both additive-optional, both on the sweep the lead already makes, and both absent by default —
+  // which is every sweep of every pack until an operator confirms an update.
+
+  test("X-Pack-Lead-Release rides the sweep, and is absent unless the lead states something", async () => {
+    const { fetch, calls } = replying({});
+    const c = client(fetch);
+    await c.snapshot(laptop);
+    expect(new Headers(calls[0]!.init.headers).get("X-Pack-Lead-Release")).toBeNull();
+    await c.snapshot(laptop, undefined, false, { leadRelease: "1.5.0" });
+    expect(new Headers(calls[1]!.init.headers).get("X-Pack-Lead-Release")).toBe("1.5.0");
+    // The protocol integer does not move for an additive-optional field (§7.1).
+    expect(new Headers(calls[1]!.init.headers).get(PROTOCOL_HEADER)).toBe("1");
+  });
+
+  test("a lead mid-run states nothing: a null release sends no header at all", async () => {
+    const { fetch, calls } = replying({});
+    await client(fetch).snapshot(laptop, undefined, false, { leadRelease: null, turn: null });
+    const headers = new Headers(calls[0]!.init.headers);
+    expect(headers.get("X-Pack-Lead-Release")).toBeNull();
+    expect(headers.get("X-Pack-Update-Turn")).toBeNull();
+  });
+
+  test("the turn names no code — a member and a run id, and it goes to one member at a time", async () => {
+    const { fetch, calls } = replying({});
+    const c = client(fetch);
+    await c.snapshot(laptop, undefined, false, { leadRelease: "1.5.0", turn: "laptop;r-7" });
+    await c.snapshot(laptop, undefined, false, { leadRelease: "1.5.0" });
+    const first = new Headers(calls[0]!.init.headers).get("X-Pack-Update-Turn");
+    expect(first).toBe("laptop;r-7");
+    // No version, no ref, no URL, no command.
+    expect(first).not.toContain("1.5.0");
+    expect(first).not.toContain("http");
+    expect(first).not.toContain("refs/");
+    // The second member of the same sweep gets the release and no turn.
+    expect(new Headers(calls[1]!.init.headers).get("X-Pack-Update-Turn")).toBeNull();
+  });
+
+  test("the follow headers do not buy the patient budget — only §19's fresh does", async () => {
+    const { fetch, calls } = replying({});
+    const c = client(fetch);
+    await c.snapshot(laptop, undefined, false, { leadRelease: "1.5.0", turn: "laptop;r-7" });
+    // A lead with something to state must not become a lead that polls more slowly (§10.1).
+    expect(calls[0]!.init.headers).toBeDefined();
+    expect(new Headers(calls[0]!.init.headers).get("X-Pack-Preflight")).toBeNull();
+  });
+
   test("`snapshot` names the session only when there is one — absent means the peer's primary", async () => {
     const { fetch, calls } = replying({});
     const c = client(fetch);

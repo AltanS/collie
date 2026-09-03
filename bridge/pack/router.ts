@@ -11,7 +11,8 @@ import {
   unauthorizedResponse,
   type RefusedFactor,
 } from "./admission.ts";
-import { PACK_PREFLIGHT_FIELD, type PeerPreflight } from "../update-action.ts";
+import { PACK_PREFLIGHT_FIELD, PACK_RUN_FIELD, type PeerPreflight, type PeerRunReport } from "../update-action.ts";
+import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { apiPathFor } from "./forward.ts";
 import { HOST_PARAM } from "./registry.ts";
 import {
@@ -390,8 +391,31 @@ export interface PackRouterDeps {
    * Optional so a test constructing a router for some other route need not care.
    */
   readonly updatePreflight?: (fresh: boolean) => Promise<PeerPreflight | null>;
+  /**
+   * **This machine's own update run**, published beside the snapshot body (§20, M16/04).
+   *
+   * The lead cannot otherwise tell "moving" from "still behind", nor "rolled back" from "not
+   * started" — the version alone says neither. Absent ⇒ the field is omitted, which the lead reads
+   * as "nothing to report" and never as success.
+   */
+  readonly updateRun?: () => PeerRunReport | null;
+  /**
+   * §20's two REQUEST headers reaching through: the lead's own settled release, and the turn.
+   *
+   * A **notification**, not a route: this collie decides for itself whether any of it means
+   * anything (`bridge/pack/follow.ts` holds all eight guards), and a build that supplies no
+   * `onFollow` simply ignores both headers — which is a correct peer. Nothing here awaits it, so a
+   * follow decision can never cost this snapshot its answer.
+   */
+  readonly onFollow?: (a: { readonly leadRelease: string | null; readonly turn: string | null }) => void;
   readonly now?: () => number;
   readonly random?: RandomSource;
+}
+
+/** A request header, trimmed, or `null` for absent and blank alike — §7.1's absent-means-closed. */
+function headerValue(req: Request, name: string): string | null {
+  const raw = req.headers.get(name)?.trim() ?? "";
+  return raw === "" ? null : raw;
 }
 
 /** Answers a pack request, or `null` when the path is not ours (so the normal router continues). */
@@ -890,7 +914,19 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       const preflight = (await deps.updatePreflight?.(askedFresh)) ?? null;
       const withPreflight =
         preflight === null ? withReport : { ...withReport, [PACK_PREFLIGHT_FIELD]: preflight };
-      return new Response(JSON.stringify(withPreflight), {
+      // §20: this machine's own run, in the same seat and for the same reason. It is what lets the
+      // lead's page say "updating" and "rolled back" about a member instead of "still behind".
+      const ownRun = deps.updateRun?.() ?? null;
+      const withRun = ownRun === null ? withPreflight : { ...withPreflight, [PACK_RUN_FIELD]: ownRun };
+      // §20's two REQUEST headers, read LAST and answered with nothing. They are additive-optional
+      // and absent-means-closed: a build with no `onFollow` ignores both, which is a correct peer,
+      // and a peer that reads them still decides for itself. Handed over synchronously and never
+      // awaited — the snapshot this request came for is not the follow's to delay.
+      deps.onFollow?.({
+        leadRelease: headerValue(req, LEAD_RELEASE_HEADER),
+        turn: headerValue(req, UPDATE_TURN_HEADER),
+      });
+      return new Response(JSON.stringify(withRun), {
         status: 200,
         headers: packResponseHeaders(verdict.self),
       });
