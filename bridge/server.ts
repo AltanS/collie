@@ -1314,11 +1314,31 @@ export function startServer(opts: {
             new Promise<void>((resolve) => setTimeout(resolve, UPDATE_ON_DEMAND_POLL_TIMEOUT_MS)),
           ]);
         }
+        // ── THE PACK'S HALF (M16/03) ────────────────────────────────────────
+        // The same on-demand shape, one line lower: six hours is the right cadence for a background
+        // fact and the wrong one for a page the operator is looking at, so this read fires ONE
+        // immediate sweep carrying `X-Pack-Preflight: fresh` and waits the same bounded moment for
+        // it. Past the bound the answer is what the lead already has — a stale `asOf`, never a
+        // fabricated green — and a peer that ignores the header is a correct peer.
+        //
+        // The peer's own `PREFLIGHT_TTL_MS` is what keeps this cheap: the header is honoured at most
+        // once a minute per member, so a phone sitting on the page cannot make a peer shell out to
+        // git and `doctor` on every poll.
+        const freshSweep = opts.packLead?.sweep({ freshPreflight: true });
+        if (freshSweep !== undefined) {
+          await Promise.race([
+            freshSweep,
+            new Promise<void>((resolve) => setTimeout(resolve, UPDATE_ON_DEMAND_POLL_TIMEOUT_MS)),
+          ]);
+        }
         const report = opts.updateAction ? await opts.updateAction.preflight() : null;
         // `preflight: null` is a fact the card renders ("could not be checked"), not an omission —
-        // the key is always present so the phone can tell "not checked" from "old bridge".
+        // the key is always present so the phone can tell "not checked" from "old bridge". `pack`
+        // follows the same rule: `[]` on a solo instance and on a peer, never absent. It is composed
+        // from what the sweep BANKED (`PackLead.updateRows`) and dials nobody — `status-wire.ts`'s
+        // purity argument, one route over.
         return json(
-          { ...updateMonitor.status(), preflight: report },
+          { ...updateMonitor.status(), preflight: report, pack: opts.packLead?.updateRows() ?? [] },
           req.headers.get("accept-encoding"),
         );
       }
@@ -1355,6 +1375,10 @@ export function startServer(opts: {
           run: status.run ?? null,
           lockHeld: action.lockHeld(),
           preflight: report,
+          // One confirm covers the pack (M16/03): the members' banked verdicts gate this start the
+          // same way the lead's own does. Read, never fetched — the sweep is the only thing that
+          // talks to a member.
+          pack: opts.packLead?.updateRows() ?? [],
         });
         if (verdict.kind === "refuse") {
           return jsonError(verdict.body, verdict.status, req.headers.get("accept-encoding"));

@@ -452,13 +452,32 @@ export interface PreflightReport {
 }
 
 /**
+ * One member's own update verdict, as its lead reports it (mirrors `bridge/update-action.ts`).
+ *
+ * `unknown` is the fourth verdict and it is not a shade of green: it means "we could not check this
+ * machine", which blocks the confirm exactly as a red does. `asOf` is that member's OWN stamp for
+ * the report, passed through untouched — a green from six hours ago and a green from four seconds
+ * ago are different claims.
+ */
+export interface PackUpdateRow {
+  name: string;
+  version: string | null;
+  verdict: "green" | "amber" | "red" | "unknown";
+  /** The reason strings of its non-green checks, worst first. A red row always has at least one. */
+  reasons: string[];
+  asOf: number | null;
+}
+
+/**
  * `GET /api/update/check` — the update snapshot plus the preflight the button is gated on.
  *
  * `preflight: null` is a fact, not an omission: it means the check could not be run here, which
- * REFUSES an update rather than allowing one.
+ * REFUSES an update rather than allowing one. `pack` follows the same rule: it is `[]` on a solo
+ * instance and on a peer, never absent, so the phone can tell "no members" from "old bridge".
  */
 export interface UpdateCheckResponse extends UpdateInfo {
   preflight: PreflightReport | null;
+  pack: PackUpdateRow[];
 }
 
 /** `POST /api/update` — the 202. The run itself is followed on the snapshot from here. */

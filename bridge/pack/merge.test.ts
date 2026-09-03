@@ -54,7 +54,15 @@ function localBody(over: Partial<SnapshotResponse> = {}): SnapshotResponse {
 }
 
 function state(over: Partial<PeerState> & { memberId: string }): PeerState {
-  return { health: "reachable", lastSeenAt: NOW - 1_000, reason: null, version: null, conflict: null, ...over };
+  return {
+    health: "reachable",
+    lastSeenAt: NOW - 1_000,
+    reason: null,
+    version: null,
+    conflict: null,
+    preflight: null,
+    ...over,
+  };
 }
 
 function contribution(over: Partial<PeerContribution> & { state: PeerState }): PeerContribution {

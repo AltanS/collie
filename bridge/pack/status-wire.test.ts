@@ -28,6 +28,7 @@ function state(over: Partial<PeerState> & { memberId: string }): PeerState {
     reason: null,
     version: "1.0.0",
     conflict: null,
+    preflight: null,
     ...over,
   };
 }
