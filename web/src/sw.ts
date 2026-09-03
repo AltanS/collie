@@ -4,6 +4,7 @@ import { NavigationRoute, registerRoute } from "workbox-routing";
 import { clientsClaim } from "workbox-core";
 
 import { decidePush, notificationPath, type NotifData, type PushPayload } from "./lib/push-decision";
+import { openNotificationTarget, type OpenOutcome } from "./lib/notification-open";
 import { FONT_URLS, NAVIGATION_NETWORK_ONLY } from "./lib/sw-routes";
 
 // Custom service worker (vite-plugin-pwa `injectManifest`). It does everything the old generated
@@ -164,29 +165,33 @@ async function handlePush(event: PushEvent): Promise<void> {
 // `scopeSearch`: the query this file used to hand-inline is now the app's own, so the string
 // compared in openPath below is byte-identical to the one the router produces for that scope.
 self.addEventListener("notificationclick", (event: NotificationEvent) => {
-  event.notification.close();
+  // The notification is closed AFTER the open attempt, and only when it worked. Closing first is
+  // what made the 1.2.0 regression silent: the notification vanished, `openWindow` was then refused
+  // for want of user activation, and the tap left the user with nothing to tap again. `close()`
+  // neither grants nor consumes activation, so deferring it costs nothing, and on a failure the
+  // notification stays on the shade as a second chance.
+  //
   // SAFETY: `Notification.data` is `any` — but it is OUR data: the only writer is `handlePush`
   // above, in this same file, which attaches a `NotifData`. Every field is optional and defaulted.
   const data = (event.notification.data as NotifData | null) ?? {};
-  event.waitUntil(openPath(notificationPath(data)));
+  event.waitUntil(
+    (async () => {
+      const outcome = await openPath(notificationPath(data));
+      if (outcome !== "failed") event.notification.close();
+    })(),
+  );
 });
 
-// Focus an existing Collie tab (navigating it to `path`) or open a new one. `path` is origin-relative.
-async function openPath(path: string): Promise<void> {
+// Focus an existing Collie tab (navigating it to `path`) or open a new one. `path` is
+// origin-relative. The choice lives in lib/notification-open, which also documents why a window is
+// opened before any discarded client is navigated (#147, and the Android regression that fix grew).
+// The `matchAll` below is deliberately the ONLY awaited call between the tap and `openWindow`.
+async function openPath(path: string): Promise<OpenOutcome> {
   const url = new URL(path, self.location.origin).href;
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-  // Navigate BEFORE focusing, and treat a null result as "this client is no good". `navigate()`
-  // resolves null when the client is a discarded tab — Firefox on Android throws background tabs
-  // away eagerly — and the old code ignored that, focused the corpse and returned, so the tap
-  // raised the browser onto a blank tab and `openWindow` below was never reached (#147).
-  // Spec: https://w3c.github.io/ServiceWorker/#client-navigate
-  for (const client of windows) {
-    if (client.url !== url) {
-      const navigated = await client.navigate(url).catch(() => null);
-      if (!navigated) continue;
-    }
-    await client.focus();
-    return;
-  }
-  await self.clients.openWindow(url);
+  return openNotificationTarget({
+    url,
+    clients: windows,
+    openWindow: (target) => self.clients.openWindow(target),
+  });
 }

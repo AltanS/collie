@@ -29,6 +29,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - Pane detail: dragging the status line strip above the switcher handle no longer scrolls the
   composer out of view.
+- Tapping a push notification opens the app again on Android; the tap no longer waits on a
+  discarded tab before it may open a window (regression since 1.2.0).
 
 ## [1.4.1] - 2026-09-03
 
