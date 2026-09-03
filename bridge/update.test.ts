@@ -309,6 +309,30 @@ function fakeStore(
   };
 }
 
+describe("the update run record on the snapshot", () => {
+  it("the bridge resumes update state from disk instead of coming up with nothing to say", () => {
+    // A bridge restarted BY an update must report the run it is part of. The record is read per
+    // call, never cached, because the process that writes it is the detached updater (M15/04).
+    const run = {
+      schema: 1,
+      state: "verifying",
+      from: "v1.0.0",
+      to: "v1.1.0",
+      startedAt: 1,
+      updatedAt: 2,
+      pid: 7,
+      attempt: 0,
+    } as const;
+    const { monitor } = makeMonitor({ runState: () => run });
+    expect(monitor.status().run).toEqual(run);
+  });
+
+  it("an install that has never updated carries no run key at all", () => {
+    const { monitor } = makeMonitor();
+    expect("run" in monitor.status()).toBe(false);
+  });
+});
+
 /** Tag names as the `/tags` endpoint reports them — one parser, so the monitor's fixtures name what
  *  the CLI's binary updater reads too. The sha is arbitrary here: the banner never looks at it. */
 const apiTags = (...names: string[]): ApiTag[] => names.map((name) => ({ name, sha: `sha-${name}` }));
@@ -327,6 +351,8 @@ function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
     fetchTags: async () => apiTags("v0.12.0"),
     bridgeStamp: () => "STAMP@boot",
     store,
+    // No run on disk unless a case says so — the shape every install that has never updated has.
+    runState: () => null,
     now: () => clock,
     updatesEnabled: () => true,
     notify: (versions) => notified.push(...versions),

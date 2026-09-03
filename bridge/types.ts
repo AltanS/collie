@@ -4,6 +4,7 @@
 import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 import type { MuxCapability, MuxSpaceCapacity, MuxTopologyLatency } from "./mux/capabilities.ts";
+import type { UpdateRun } from "./update-run.ts";
 
 // Re-exported so the wire surface has ONE import site: a consumer of PaneHistoryResponse gets the
 // entry shape from here too, without reaching into an adapter module.
@@ -442,6 +443,14 @@ export interface UpdateStatus {
   bridgeStale: boolean;
   /** When the upstream check last completed (epoch ms), or null if it hasn't run yet. */
   checkedAt: number | null;
+  /**
+   * The detached updater's run record (`<state dir>/update.json`, M15/04) — read from disk on every
+   * snapshot, so a bridge that has just been restarted BY an update reports the run it is part of
+   * instead of coming up with nothing to say. Absent when this install has never updated through the
+   * runner. The staleness rule is applied before it gets here: a run nobody is driving reads as
+   * `interrupted`, never as still in flight.
+   */
+  run?: UpdateRun;
 }
 
 /** GET /api/pane/:id — recent terminal output for one agent (ANSI/SGR, rendered colored). */

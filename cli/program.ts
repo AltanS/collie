@@ -304,7 +304,7 @@ export const COMMANDS: readonly Command[] = [
     name: "_apply-update",
     summary: "internal: the second half of `update`, run post-pull",
     internal: true,
-    run: (_args, s) => cmdApplyUpdate(updateDeps(s.io)),
+    run: (args, s) => cmdApplyUpdate(updateDeps(s.io), args),
   },
   lifecycleCommand(
     "_exec-bridge",

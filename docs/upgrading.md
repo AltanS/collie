@@ -29,17 +29,32 @@ herdr plugin action invoke update --plugin herdr.collie     # Herdr-managed
 bin/collie update                                           # Standalone
 ```
 
-This fetches the newest release of your current major and restarts the bridge.
+This fetches the newest release of your current major and stages it. The command then hands the
+swap to a separate updater and exits: that updater points `current` at the new version, restarts the
+bridge, and waits up to 30 seconds for `GET /api/health` to answer with the version it just
+installed. It has to be a separate process, because the restart kills the bridge that asked for the
+update.
+
+If the new version does not answer in time, or answers as the old one, the updater flips `current`
+back and restarts once more. If that does not come up either, it stops: it records the failure and
+the command to run by hand, and nothing restarts again.
+
+Set `COLLIE_UPDATE_HEALTH_TIMEOUT_MS` if 30 seconds is not enough on your machine. A slow cold start
+that runs past the budget is read as a failed update and rolled back.
 
 **2. Verify**
 
 ```bash
+bin/collie update --status          # what the updater did, or is doing (--json for a script)
 herdr plugin action invoke version --plugin herdr.collie
 bin/collie version
 ```
 
-Expect the newest tag. A binary install swaps the `current` symlink and supports
-`update --rollback`. A checkout advances git and rebuilds the UI.
+Expect the newest tag. A binary install and a linked checkout both swap the `current` symlink and
+support `update --rollback`. A Herdr-managed checkout still advances in place and rebuilds
+(ADR 0006): there is no staged version beside it, so there is nothing to hand off and nothing to
+flip back to. The phone can read the same record while the bridge is down: a deputy's standby door
+serves it at `/standby/update`.
 
 If a new beacon hook event is available, `update` prints a notice to re-run `hooks install claude`.
 

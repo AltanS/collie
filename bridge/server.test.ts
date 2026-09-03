@@ -25,6 +25,7 @@ import {
   resolveStaticPath,
   sendReplySteps,
   startupWarnings,
+  healthBody,
   withBuildHeader,
   type ReplySender,
 } from "./server.ts";
@@ -1219,6 +1220,22 @@ describe("normalizeTabLabel", () => {
 // The X-Collie-Build response header is what a no-service-worker client polls to notice a live
 // rebuild (web/src/lib/server-build.ts). withBuildHeader is the pure attach helper; the handlers
 // that call it (snapshot/pane) stay untested by convention (they need Bun.serve + the socket).
+describe("GET /api/health", () => {
+  test("the health answer reports the running build — the health version IS the gate", () => {
+    // The detached updater (M15/04) compares this string against the version it just flipped to. A
+    // service that came back on the OLD code answers fine, so "did it answer" is not the question.
+    expect(healthBody("1.2.3+ab12cd3", "solo")).toEqual({
+      ok: true,
+      version: "1.2.3+ab12cd3",
+      deposed: false,
+      mode: "solo",
+    });
+    // `deposed` is always false here because a deposed collie never reaches this route — its one
+    // page answers every path first. The field states the rule the prober applies.
+    expect(healthBody("1.2.3", "lead").deposed).toBe(false);
+  });
+});
+
 describe("withBuildHeader", () => {
   test("sets the build header to the given id and returns the same response", () => {
     const res = new Response("body");

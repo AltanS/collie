@@ -422,6 +422,12 @@ export function startServer(opts: {
   snooze: Snooze;
   notifyPrefs: NotifyPrefsStore;
   updateMonitor: UpdateMonitor;
+  /**
+   * The BARE version string this process answers with (`bridge/version.ts`'s `collieVersionBare`) —
+   * `<semver>` or `<semver>+<short sha>`. Resolved once in index.ts, never re-read here: it is the
+   * same string `/pack/v1/hello` carries, so one machine can never report two different versions.
+   */
+  version: string;
   audit: AuditLog;
   activity: ActivityLedger;
   /** Resolved once at startup in index.ts, before anything is wired. Solo is `SOLO_RUNTIME`. */
@@ -891,6 +897,27 @@ export function startServer(opts: {
       // deposed collie has none.
       const deposedAnswer = opts.deposed?.(req, url);
       if (deposedAnswer) return secure(deposedAnswer);
+
+      // ── The health check (M15/04) ────────────────────────────────────────
+      // `GET /api/health`: is this collie up, and WHICH BUILD is answering? The detached updater
+      // polls it after a restart, and the version is the whole point — a service that came back on
+      // the OLD code answers fine, and a gate that only asked "did it answer" would call that a
+      // successful update.
+      //
+      // UNGATED, and deliberately the only `/api/*` route that is. The prober is a local process
+      // holding no pairing credential and no device header — it is the updater, running as the same
+      // user, before anybody has a browser open. What it discloses is the version, to a caller that
+      // has already reached a loopback-bound listener behind the operator's own front door; the same
+      // string is on every response as `X-Collie-Build`. It grants nothing, mutates nothing and
+      // reads no session.
+      //
+      // It sits AFTER the deposed answer on purpose: a DEPOSED collie must FAIL this check
+      // (`bridge/pack/deposed.ts`), and it does so by answering its one page here instead. That is
+      // why a deposed peer can never be mistaken for a successful update.
+      if (pathname === "/api/health") {
+        if (req.method !== "GET" && req.method !== "HEAD") return text("method not allowed", 405);
+        return json(healthBody(opts.version, pack.mode), req.headers.get("accept-encoding"));
+      }
 
       // Session-scoped routes accept an optional `?session=<name>`; absent → the primary session
       // (identical to pre-multi-session behaviour). The name is only ever a registry Map lookup — it
@@ -2800,6 +2827,30 @@ async function buildId(): Promise<string> {
 // runs (see web/src/lib/self-update.ts). Also set on static responses (serveStatic). A named constant
 // so both sides agree on the spelling.
 export const BUILD_HEADER = "x-collie-build";
+
+/**
+ * What `GET /api/health` answers (M15/04). Pure, and exported so the shape is pinned by a unit test
+ * rather than by a live listener.
+ *
+ * `version` is the load-bearing field: the detached updater compares it against the version it just
+ * flipped to, under `bridge/version.ts`'s tolerant `<semver>+<sha>` rule. `deposed` is always
+ * `false` HERE, and that is honest rather than a stub — a deposed collie never reaches this route,
+ * because `deposed.ts` answers its one page for every path before the front door is consulted. The
+ * field exists so the prober can state the rule it applies instead of inferring it from a parse
+ * failure.
+ */
+export interface HealthBody {
+  readonly ok: true;
+  /** The BARE `<semver>` or `<semver>+<short sha>` this process answers with. */
+  readonly version: string;
+  /** Always false here — see {@link healthBody}. */
+  readonly deposed: false;
+  readonly mode: PackRuntime["mode"];
+}
+
+export function healthBody(version: string, mode: PackRuntime["mode"]): HealthBody {
+  return { ok: true, version, deposed: false, mode };
+}
 
 /**
  * Attach the current bundle's build id to a response so a polling client can observe a server-side

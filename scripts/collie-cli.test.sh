@@ -43,7 +43,13 @@ TMP_ROOT="$(cd "$TMP_ROOT" && pwd -P)"
 # tool of the same name — in particular the fake `bun`, which is what keeps a real build off this host.
 BASE_PATH="$PATH"
 
-cleanup() { rm -rf "$TMP_ROOT"; }
+# `U_HEALTH_PID` is the `/api/health` stand-in the update section starts (M15/04). It is killed HERE
+# rather than under its own trap so that every exit path takes it down: a stand-in still listening
+# after the suite would make the next run's port pick fail.
+cleanup() {
+  [ -n "${U_HEALTH_PID:-}" ] && kill "$U_HEALTH_PID" 2>/dev/null
+  rm -rf "$TMP_ROOT"
+}
 trap cleanup EXIT
 
 fail() {
@@ -1157,6 +1163,24 @@ echo "systemctl \$*" >> "$U_CALLS"
 [ "\$2" = "is-active" ] && echo active
 exit 0
 EOF
+# The detached updater's launch seam (M15/04). The real `systemd-run --user --collect` hands the
+# runner to the user manager so it survives the bridge it is about to restart; this stand-in strips
+# those flags and RUNS it, so one pass proves BOTH the argv the handoff builds and the swap-and-
+# verify half it drives. The child is still spawned detached, so every assertion after a staged
+# update waits on the state file (`wait_for_run`) rather than on the verb's exit.
+cat > "${U_BIN}/systemd-run" <<EOF
+#!/bin/sh
+echo "systemd-run \$*" >> "$U_CALLS"
+while [ \$# -gt 0 ]; do
+  case "\$1" in
+    --user|--collect) shift ;;
+    --unit) shift 2 ;;
+    *) break ;;
+  esac
+done
+exec "\$@"
+EOF
+chmod +x "${U_BIN}/systemd-run"
 cat > "${U_BIN}/tailscale" <<EOF
 #!/bin/sh
 echo "tailscale \$*" >> "$U_CALLS"
@@ -1170,11 +1194,69 @@ chmod +x "${U_BIN}/herdr" "${U_BIN}/systemctl" "${U_BIN}/tailscale"
 # tags and `checkout --detach --force` onto them, discarding local work (M14/02 amendment). These
 # checkouts' origin is a throwaway path, so the override is what makes them self-consistent; the
 # refusal itself is pinned right below.
+# `/api/health` (M15/04), stood in for. The detached updater polls it after the restart and demands
+# the version it just flipped to — "did it answer" alone is not the question, because a service that
+# came back on the OLD code answers perfectly well. The version served is a file, so a case can say
+# what the machine claims to be running; an empty file is "down".
+U_STATE="${TMP_ROOT}/update-home/.local/state/collie"
+U_HEALTH="${TMP_ROOT}/update-health-version"
+U_PORT="$(pick_port 48791 48891 48991)"
+printf '9.10.0\n' > "$U_HEALTH"
+cat > "${TMP_ROOT}/update-health.ts" <<EOF
+import { readFileSync } from "node:fs";
+Bun.serve({
+  hostname: "127.0.0.1",
+  port: ${U_PORT},
+  fetch(req) {
+    if (new URL(req.url).pathname !== "/api/health") return new Response("no", { status: 404 });
+    const version = readFileSync("${U_HEALTH}", "utf8").trim();
+    if (version === "") return new Response("down", { status: 503 });
+    return Response.json({ ok: true, version, deposed: false, mode: "solo" });
+  },
+});
+EOF
+# `>/dev/null 2>&1` is load-bearing, not tidiness: a background child inheriting this script's
+# stdout holds the pipe open, and a caller reading the suite through `| tail` would then wait for
+# the health stand-in rather than for the suite.
+bun "${TMP_ROOT}/update-health.ts" >/dev/null 2>&1 &
+U_HEALTH_PID=$!
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  curl -fsS "http://127.0.0.1:${U_PORT}/api/health" >/dev/null 2>&1 && break
+  sleep 0.2
+done
+
+# What the health stand-in claims this machine is running.
+health_says() { printf '%s\n' "$1" > "$U_HEALTH"; }
+
+# Wait for the DETACHED runner to reach a terminal state. Every assertion about a flipped `current`
+# comes after one of these: the verb returns as soon as the child is away, which is the whole point.
+wait_for_run() {
+  local want="$1" i=0
+  while [ "$i" -lt 300 ]; do
+    if grep -q "\"state\": \"${want}\"" "${U_STATE}/update.json" 2>/dev/null; then return 0; fi
+    sleep 0.1
+    i=$((i + 1))
+  done
+  # Both halves, because a runner that never started and one that started and failed look identical
+  # from the record alone: the record is where it stopped, the log is what it said while stopping.
+  fail "the detached updater never reached '${want}': $(cat "${U_STATE}/update.json" 2>/dev/null)
+  log: $(find "${TMP_ROOT}" -name 'collie*.log' -exec cat {} + 2>/dev/null)"
+}
+
 upd() {
   local root="$1"; shift
-  : > "$U_CALLS"
+  case " $* " in
+    # `--status` READS the record and changes nothing, so it clears nothing either: the call log and
+    # the record it is being asked about both belong to the run before it. Every other verb starts a
+    # fresh run, so both are cleared first — `wait_for_run` must never match the run before this one.
+    *" --status "*) ;;
+    *)
+      : > "$U_CALLS"
+      rm -f "${U_STATE}/update.json" "${U_STATE}/update.lock"
+      ;;
+  esac
   run_stripped HOME="${TMP_ROOT}/update-home" HERDR_PLUGIN_CONFIG_DIR="${TMP_ROOT}/update-config" \
-    PATH="${U_BIN}:${BASE_PATH}" COLLIE_MUX=herdr COLLIE_PORT="$PORT" COLLIE_PLUGIN_ROOT="$root" \
+    PATH="${U_BIN}:${BASE_PATH}" COLLIE_MUX=herdr COLLIE_PORT="$U_PORT" COLLIE_PLUGIN_ROOT="$root" \
     COLLIE_UPDATE_REPO="$ORIGIN" "$@"
 }
 
@@ -1218,9 +1300,15 @@ CLONE="${U_DIR}/clone"
 git_q clone -q "$ORIGIN" "$CLONE"
 git_q -C "$ORIGIN" commit -q --allow-empty -m "third"
 CLONE_BRANCH_AT="$(git -C "$CLONE" rev-parse HEAD)"
+health_says 9.10.0
 upd "$CLONE" "$BIN" update || fail "\`collie update\` failed on a linked clone: ${STDERR}"
 assert_contains "$STDOUT" "staged checkout"
-assert_contains "$STDOUT" "✓ updated to 9.10.0"
+# The verb STAGES and hands off (M15/04): the swap, the restart and the health gate all run in a
+# process with its own lifetime, because the restart would otherwise kill the bridge that asked.
+assert_contains "$STDOUT" "handed off to systemd-run --user --collect"
+assert_contains "$STDOUT" "Watch it with: collie update --status"
+wait_for_run done
+assert_contains "$(cat "$U_CALLS")" "systemd-run --user --collect --unit collie-update-"
 # The version is a worktree of the tag, and `current` is a RELATIVE symlink at it.
 assert_eq "$(git -C "${CLONE}/versions/v9.10.0" rev-parse HEAD)" "$(git -C "$ORIGIN" rev-parse "v9.10.0^{commit}")"
 assert_eq "$(readlink "${CLONE}/current")" "versions/v9.10.0"
@@ -1235,6 +1323,10 @@ assert_eq "$(git -C "$CLONE" symbolic-ref --short HEAD)" "main"
 assert_eq "$(git -C "$CLONE" rev-parse --is-shallow-repository)" "false"
 # The first staged update has no rollback target, and says so rather than implying one.
 assert_contains "$STDOUT" "nothing to roll back to yet"
+# `--status` reads the record the runner left behind — the same file the bridge and the standby door
+# report, so the terminal and the phone can never tell two different stories about one run.
+upd "$CLONE" "$BIN" update --status || fail "\`collie update --status\` failed: ${STDERR}"
+assert_contains "$STDOUT" "✓ updated to v9.10.0"
 if upd "$CLONE" "$BIN" update --rollback; then fail "--rollback found a target on a first staged update"; fi
 assert_contains "$STDERR" "nothing to roll back to"
 
@@ -1290,8 +1382,10 @@ CLONE_AT="$(git -C "$CLONE" rev-parse HEAD)"
 upd "$CLONE" "$BIN" update || fail "a routine update refusing a major must still succeed: ${STDERR}"
 assert_contains "$STDOUT" "NEW MAJOR"
 [ -d "${CLONE}/versions/v10.0.0" ] && fail "a routine update staged the next major"
+health_says 10.0.0
 upd "$CLONE" "$BIN" update --major || fail "\`collie update --major\` failed on a clone: ${STDERR}"
 assert_contains "$STDOUT" "crossing to Collie 10.0.0"
+wait_for_run done
 assert_eq "$(readlink "${CLONE}/current")" "versions/v10.0.0"
 # The crossing is staged too: the clone's own branch is where it was.
 assert_eq "$(git -C "$CLONE" rev-parse HEAD)" "$CLONE_AT"
@@ -1315,7 +1409,9 @@ git_q -C "$ORIGIN" add -A
 git_q -C "$ORIGIN" commit -q -m "a 9.x fix"
 git_q -C "$ORIGIN" checkout -q main
 MAINT_AT="$(git -C "$MAINT" rev-parse HEAD)"
+health_says 9.10.0
 upd "$MAINT" "$BIN" update || fail "update refused a within-major release on a maintenance branch: ${STDERR}"
+wait_for_run done
 assert_eq "$(readlink "${MAINT}/current")" "versions/v9.10.0"
 assert_eq "$(git -C "$MAINT" symbolic-ref --short HEAD)" "maint"
 assert_eq "$(git -C "$MAINT" rev-parse HEAD)" "$MAINT_AT"
@@ -1343,7 +1439,9 @@ NOUP="${U_DIR}/no-upstream"
 git_q clone -q "$ORIGIN" "$NOUP"
 git_q -C "$NOUP" checkout -q -b local-only
 NOUP_AT="$(git -C "$NOUP" rev-parse HEAD)"
+health_says 10.0.0
 upd "$NOUP" "$BIN" update || fail "a branch with no upstream could not stage a release: ${STDERR}"
+wait_for_run done
 assert_eq "$(readlink "${NOUP}/current")" "versions/v10.0.0"
 assert_eq "$(git -C "$NOUP" rev-parse HEAD)" "$NOUP_AT"
 assert_eq "$(git -C "$NOUP" symbolic-ref --short HEAD)" "local-only"

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   BINARY,
   capture,
+  STATE,
   context,
   type FakeExec,
   fakeExec,
@@ -16,10 +17,24 @@ import {
   type SeededFiles,
 } from "./fakes.ts";
 import type { Net } from "./sys.ts";
+import { parseUpdateRun, STALE_AFTER_MS } from "../bridge/update-run.ts";
+import {
+  boundTail,
+  healthTimeoutMs,
+  idleRun,
+  launchPlan,
+  lockVerdict,
+  LOG_TAIL_LINES,
+  REDACTED,
+  reduce,
+  scrubSecrets,
+} from "./update-run.ts";
 import { EXIT } from "./io.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { latestUpdateInMajor } from "../bridge/update.ts";
 import {
+  type ApplyArgs,
+  applyArgv,
   checkoutLayout,
   cmdApplyUpdate,
   cmdUpdate,
@@ -80,6 +95,23 @@ interface Harness {
   restarts: number;
 }
 
+// The detached updater's three new seams (M15/04), faked once for every harness in this file: a
+// clock a test moves by sleeping, a sleep that moves it, and a pid the fake process table does not
+// know — so a lock this suite writes always reads as "the updater is gone".
+export const FAKE_PID = 4242;
+/** The release every checkout fixture in this file updates TO — what its health gate expects back. */
+const STAGED_TARGET = "0.32.0";
+let NOW = 1_700_000_000_000;
+const clock = () => ({
+  now: () => NOW,
+  sleep: (ms: number) => {
+    NOW += ms;
+    return Promise.resolve();
+  },
+  pid: FAKE_PID,
+  execPath: BINARY,
+});
+
 /** A `Net` that reaches nothing: every case scripts the two GETs it expects. */
 const deadNet: Net = {
   getJson: () => Promise.resolve({ ok: false, failure: { status: null, message: "no network in tests" } }),
@@ -109,6 +141,8 @@ function harness(
       restart: number;
       /** The version in the checkout's `herdr-plugin.toml` — where the installed MAJOR is read from. */
       installed: string;
+      /** What `/api/health` answers the detached runner's gate, in order. */
+      health: readonly HealthReply[];
     }
   > = {},
 ): Harness {
@@ -120,6 +154,7 @@ function harness(
   }
   const files = fakeFiles(seed);
   const link = fakeLinkFs();
+  const health = healthNet(over.health, STAGED_TARGET);
   const h: Harness = {
     io,
     exec,
@@ -132,13 +167,14 @@ function harness(
       exec,
       files,
       link,
-      net: deadNet,
+      net: { ...deadNet, getJson: (url) => (url.includes("/api/health") ? health() : deadNet.getJson(url)) },
       platform: "linux",
       arch: "x64",
       restart: () => {
         h.restarts++;
         return Promise.resolve(over.restart ?? EXIT.OK);
       },
+      ...clock(),
     },
   };
   return h;
@@ -980,6 +1016,29 @@ interface BinaryOptions {
   others?: readonly string[];
   /** What `current/bin/collie hooks status --check` answers. Default: exit 0, i.e. nothing to say. */
   hooksCheck?: Partial<import("./sys.ts").ExecResult>;
+  /** What `/api/health` answers, in order — the detached runner's gate polls it (M15/04). */
+  health?: readonly HealthReply[];
+}
+
+/** One `/api/health` answer for the fake net: down, deposed, or up as some version. */
+type HealthReply = { down: true } | { version: string; deposed?: boolean };
+
+/**
+ * `/api/health` over the same `Net` seam every other GET goes through, answering `replies` in order
+ * and repeating the last one for ever — so a gate that polls sees "down, down, up" without a clock.
+ */
+function healthNet(replies: readonly HealthReply[] | undefined, fallback: string) {
+  const queue = [...(replies ?? [{ version: fallback }])];
+  return () => {
+    const reply = queue.length > 1 ? queue.shift()! : (queue[0] ?? { version: fallback });
+    if ("down" in reply) {
+      return Promise.resolve({ ok: false as const, failure: { status: null, message: "connection refused" } });
+    }
+    return Promise.resolve({
+      ok: true as const,
+      value: { version: reply.version, deposed: reply.deposed === true },
+    });
+  };
 }
 
 function binaryHarness(over: BinaryOptions = {}): Harness {
@@ -1008,8 +1067,10 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
   for (const v of over.others ?? []) seed[`${INST}/versions/${v}/bin/collie`] = "OLDER BINARY";
   const files = fakeFiles(seed);
   const link = fakeLinkFs({ [`${INST}/current`]: { kind: "symlink", target: BROOT } });
+  const health = healthNet(over.health, NEW);
   const net: Net = {
     getJson: (url) => {
+      if (url.includes("/api/health")) return health();
       if (url.includes("api.github.com")) {
         return Promise.resolve(
           over.tagsFailure === undefined
@@ -1058,24 +1119,56 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
         h.restarts++;
         return Promise.resolve(over.restart ?? EXIT.OK);
       },
+      ...clock(),
     },
   };
   return h;
 }
 
+/**
+ * The DETACHED RUNNER, driven directly — `collie update` stages and hands off to exactly this
+ * (M15/04), so the flip, the restart, the health gate and the rollback are all proved here rather
+ * than through the verb that no longer performs them.
+ */
+const runner = (h: Harness, a: Omit<ApplyArgs, "handoff">): Promise<number> =>
+  cmdApplyUpdate(h.deps, applyArgv({ ...a, handoff: FAKE_PID }));
+
+/** The runner's argv for the binary fixture: 1.0.0 is on disk, 1.1.0 is being made live. */
+const BINARY_APPLY: Omit<ApplyArgs, "handoff"> = {
+  to: NEW,
+  from: "1.0.0",
+  version: NEW,
+  commit: "",
+  kind: "binary",
+};
+
 describe("collie update on a binary install", () => {
-  test("lays the version down, flips `current` with one rename, restarts, then collects", async () => {
+  test("lays the version down, then hands the swap to the detached updater with systemd-run", async () => {
     const h = binaryHarness({ others: ["0.9.0"] });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
-    expect(h.io.stdout.join("\n")).toContain(`✓ updated to ${NEW}`);
     // The payload landed as ONE rename into versions/<version>…
     expect(h.files.ops).toContain(`mv ${INST}/.staging/x/${PAYLOAD} ${INST}/versions/${NEW}`);
-    // …and the symlink was built beside `current` and renamed ONTO it, never removed first.
-    expect(h.link.ops).toContain(`symlink versions/${NEW} ${INST}/.current.new`);
-    expect(h.files.ops).toContain(`mv ${INST}/.current.new ${INST}/current`);
-    expect(h.restarts).toBe(1);
+    // …and then this process stopped. No flip, no restart: the restart would kill the bridge that
+    // asked for the update, and a killed updater cannot roll anything back.
+    expect(h.link.ops).toEqual([]);
+    expect(h.restarts).toBe(0);
+    expect(h.io.stdout.join("\n")).toContain("Watch it with: collie update --status");
     // Nothing was compiled and nothing re-exec'd: no `bun` anywhere on this path.
     expect(h.exec.calls.join("\n")).not.toContain("bun ");
+    // The state file says `staging`, so a bridge that comes up now reports a run in flight.
+    expect(JSON.parse(h.files.read(`${STATE}/update.json`) ?? "{}").state).toBe("staging");
+  });
+
+  test("the runner flips `current` with one rename, restarts through it, and only then prunes", async () => {
+    const h = binaryHarness({ others: ["0.9.0"] });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
+    // The symlink was built beside `current` and renamed ONTO it, never removed first.
+    expect(h.link.ops).toContain(`symlink versions/${NEW} ${INST}/.current.new`);
+    expect(h.files.ops).toContain(`mv ${INST}/.current.new ${INST}/current`);
+    // The restart goes through the name that was just switched, never through this old process.
+    expect(h.exec.calls).toContain(`${INST}$ ${INST}/current/bin/collie restart`);
+    expect(h.restarts).toBe(0);
+    expect(h.io.stdout.join("\n")).toContain(`✓ updated to ${NEW}`);
     // GC: `current` plus one older is kept, so 0.9.0 goes and 1.0.0 stays.
     expect(h.files.ops.join("\n")).toContain(`${INST}/.trash/0.9.0.`);
     expect(h.files.ops.join("\n")).not.toContain(`${INST}/versions/1.0.0 ${INST}/.trash`);
@@ -1121,13 +1214,23 @@ describe("collie update on a binary install", () => {
     expect(h.restarts).toBe(0);
   });
 
-  test("a version that does not come up after the flip is rolled back, and says so", async () => {
-    const h = binaryHarness({ smoke: { post: false } });
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
-    expect(h.io.stderr.join("\n")).toContain("failed its post-install check — rolled back to 1.0.0");
-    // Two flips (forward, then back) and two restarts.
+  test("a version that answers as the OLD one is rolled-back, and the prune never runs", async () => {
+    // The health gate's second failure mode: the service is up, and it is up on the wrong code.
+    const h = binaryHarness({
+      others: ["0.9.0"],
+      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "2000" },
+      health: [{ version: "1.0.0" }],
+    });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("rolled back to 1.0.0");
+    // Two flips (forward, then back) and two restarts through `current`.
     expect(h.link.ops.filter((o) => o.startsWith("symlink")).length).toBe(2);
-    expect(h.restarts).toBe(2);
+    expect(h.exec.calls.filter((c) => c.endsWith("current/bin/collie restart")).length).toBe(2);
+    const run = JSON.parse(h.files.read(`${STATE}/update.json`) ?? "{}");
+    expect(run.state).toBe("rolled-back");
+    expect(run.reason).toContain("came back as 1.0.0, not 1.1.0");
+    // A rolled-back run prunes NOTHING: 0.9.0 is still where it was.
+    expect(h.files.ops.join("\n")).not.toContain(`${INST}/.trash/0.9.0.`);
   });
 
   test("a version that does not even run is discarded BEFORE the flip", async () => {
@@ -1142,8 +1245,9 @@ describe("collie update on a binary install", () => {
     const h = binaryHarness();
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     const smokes = h.exec.timeouts.filter((t) => t.call.endsWith("bin/collie version"));
-    // Pre-flip on the laid payload, post-flip through the current link — both bounded.
-    expect(smokes.length).toBe(2);
+    // One, on the laid payload and BEFORE the flip. What used to be the post-flip smoke is now the
+    // detached runner's `/api/health` gate, which asks a running service rather than a binary.
+    expect(smokes.length).toBe(1);
     for (const s of smokes) expect(s.ms).toBe(20_000);
   });
 
@@ -1192,7 +1296,7 @@ const CHECK = `${INST}/current/bin/collie hooks status --check`;
 describe("the hooks nudge", () => {
   test("asks the NEW binary through `current`, and prints one line naming the command", async () => {
     const h = binaryHarness({ hooksCheck: { code: EXIT.STATE } });
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
     // Through `current`, never this process and never the version directory — the pin `hooks
     // install` itself writes, and the only name that stays valid across the next update.
     expect(h.exec.calls).toContain(CHECK);
@@ -1202,14 +1306,14 @@ describe("the hooks nudge", () => {
 
   test("stays silent when the new binary reports nothing to do", async () => {
     const h = binaryHarness();
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
     expect(h.exec.calls).toContain(CHECK);
     expect(h.io.stdout.join("\n")).not.toContain(NUDGE);
   });
 
   test("a check that cannot run leaves the update successful and silent", async () => {
     const h = binaryHarness({ hooksCheck: { found: false, code: 127 } });
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
     expect(h.io.stdout.join("\n")).toContain(`✓ updated to ${NEW}`);
     expect(h.io.stdout.join("\n")).not.toContain(NUDGE);
     expect(h.io.stderr).toEqual([]);
@@ -1225,7 +1329,7 @@ describe("the hooks nudge", () => {
       if (args.join(" ") === "hooks status --check") throw new Error("ENOEXEC: posix_spawn");
       return real(tool, args, timeoutMs);
     };
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.OK);
     expect(h.io.stdout.join("\n")).toContain(`✓ updated to ${NEW}`);
     expect(h.io.stdout.join("\n")).not.toContain(NUDGE);
     expect(h.io.stderr).toEqual([]);
@@ -1292,6 +1396,8 @@ interface StagedOptions {
   /** The directory `current` points at. */
   current?: string;
   answers?: Scripted["answers"];
+  /** What `/api/health` answers the detached runner's gate, in order. */
+  health?: readonly HealthReply[];
 }
 
 /** An already-staged checkout: the running root IS a worktree under `versions/`. */
@@ -1320,6 +1426,7 @@ function stagedHarness(over: StagedOptions = {}): Harness {
   }
   const files = fakeFiles(seed);
   const link = fakeLinkFs({ [CURRENT]: { kind: "symlink", target: `versions/${current}` } });
+  const health = healthNet(over.health, STAGED_TARGET);
   const h: Harness = {
     io,
     exec,
@@ -1332,13 +1439,14 @@ function stagedHarness(over: StagedOptions = {}): Harness {
       exec,
       files,
       link,
-      net: deadNet,
+      net: { ...deadNet, getJson: (url) => (url.includes("/api/health") ? health() : deadNet.getJson(url)) },
       platform: "linux",
       arch: "x64",
       restart: () => {
         h.restarts++;
         return Promise.resolve(EXIT.OK);
       },
+      ...clock(),
     },
   };
   return h;
@@ -1360,12 +1468,27 @@ describe("the staged checkout path", () => {
       version: "0.32.0",
       commit: "b2peeled",
     });
-    // …and the swap is the one rename the binary path already makes.
+    // …and then this process hands off: nothing is flipped and nothing is restarted here.
+    expect(h.link.ops).toEqual([]);
+    expect(h.restarts).toBe(0);
+    expect(h.io.stdout.join("\n")).toContain("Watch it with: collie update --status");
+  });
+
+  test("the runner flips `current` with the one rename, restarts through it, and re-links Herdr", async () => {
+    const h = legacyClone();
+    // The staging half already ran: a built worktree carrying the marker its build wrote LAST.
+    h.files.write(`${WT("v0.32.0")}/.collie-build`, JSON.stringify({ version: "0.32.0", commit: "b2peeled" }));
+    h.files.entries.set(`${CURRENT}/bin/collie`, { text: "NEW BINARY" });
+    expect(
+      await runner(h, { to: "v0.32.0", from: null, version: "0.32.0", commit: "b2peeled", kind: "checkout" }),
+    ).toBe(EXIT.OK);
+    // The swap is the one rename the binary path already makes.
     expect(h.link.ops).toContain(`symlink versions/v0.32.0 ${CLONE}/.current.new`);
     expect(h.files.ops).toContain(`mv ${CLONE}/.current.new ${CURRENT}`);
     // The restart goes through the name that was just switched, never through this old process.
     expect(h.exec.calls).toContain(`${CLONE}$ ${CURRENT}/bin/collie restart`);
     expect(h.restarts).toBe(0);
+    expect(h.exec.calls).toContain(`herdr plugin link ${CURRENT}`);
     expect(h.io.stdout.join("\n")).toContain("✓ updated to 0.32.0");
   });
 
@@ -1380,7 +1503,11 @@ describe("the staged checkout path", () => {
     expect(said).toContain(`${VERSIONS} and ${CURRENT} are created now`);
     // Nothing to fall back to yet, and the transcript says exactly that rather than implying one.
     expect(said).toContain("nothing to roll back to yet");
-    // The pointer follows the flip: the published name now reaches `current`, not the old tree.
+    // The pointer follows the flip — and the flip is the RUNNER's, so the republish is too.
+    h.files.write(`${WT("v0.32.0")}/.collie-build`, JSON.stringify({ version: "0.32.0", commit: "b2peeled" }));
+    expect(
+      await runner(h, { to: "v0.32.0", from: null, version: "0.32.0", commit: "b2peeled", kind: "checkout" }),
+    ).toBe(EXIT.OK);
     expect(h.link.ops).toContain(`symlink ${CURRENT}/bin/collie ${HOME}/.local/bin/collie`);
     // And Herdr is re-registered at `current`, so a plugin action runs whatever is live.
     expect(h.exec.calls).toContain(`herdr plugin link ${CURRENT}`);
@@ -1488,5 +1615,276 @@ describe("collie update --rollback on a staged checkout", () => {
     expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("rolled forward to v1.0.0 again");
     expect(h.link.ops.filter((o) => o.startsWith("symlink")).length).toBe(2);
+  });
+});
+
+// ── The detached updater (M15/04) ────────────────────────────────────────────
+// The machine is a pure reducer over injected effects, so everything below runs with no systemd, no
+// service, no network and no clock. The two cases that get discovered in production otherwise — the
+// updater dying mid-flight, and a reader arriving at a stale marker — are pinned by name.
+
+const RUN_FILE = `${STATE}/update.json`;
+const LOCK_FILE = `${STATE}/update.lock`;
+
+describe("the update reducer", () => {
+  const t0 = 1_000;
+  const begun = reduce(idleRun(t0), { kind: "begin", from: "v1.0.0", to: "v1.1.0", pid: 7 }, t0);
+
+  test("the reducer walks idle → preflight → staging → restarting → verifying → done", () => {
+    let run = begun;
+    expect(run.state).toBe("preflight");
+    run = reduce(run, { kind: "stage" }, t0 + 1);
+    expect(run.state).toBe("staging");
+    run = reduce(run, { kind: "restart" }, t0 + 2);
+    expect(run.state).toBe("restarting");
+    run = reduce(run, { kind: "verify" }, t0 + 3);
+    expect(run.state).toBe("verifying");
+    run = reduce(run, { kind: "pass" }, t0 + 4);
+    expect(run.state).toBe("done");
+    // Every transition stamps `updatedAt` and none of them moves `startedAt`.
+    expect(run.startedAt).toBe(t0);
+    expect(run.updatedAt).toBe(t0 + 4);
+    expect(run.attempt).toBe(0);
+  });
+
+  test("the reducer allows exactly one rollback, and the second failure is stuck", () => {
+    const verifying = reduce(
+      reduce(reduce(begun, { kind: "stage" }, t0), { kind: "restart" }, t0),
+      { kind: "verify" },
+      t0,
+    );
+    const fail = { kind: "fail", reason: "no answer", logTail: "boom", recovery: "run me" } as const;
+    // First failure: back into `restarting` — that IS the rollback restart, and the counter moves.
+    const rolling = reduce(verifying, { ...fail, rollbackTo: "v1.0.0" }, t0 + 1);
+    expect(rolling.state).toBe("restarting");
+    expect(rolling.attempt).toBe(1);
+    // The rollback's own health check passing is `rolled-back`, never `done`.
+    const back = reduce(reduce(rolling, { kind: "verify" }, t0 + 2), { kind: "pass" }, t0 + 3);
+    expect(back.state).toBe("rolled-back");
+    // A second failure is terminal, carries the tail and the recovery command, and restarts nothing.
+    const second = reduce(reduce(rolling, { kind: "verify" }, t0 + 2), { ...fail, rollbackTo: "v1.0.0" }, t0 + 3);
+    expect(second.state).toBe("stuck");
+    expect(second.recovery).toBe("run me");
+    expect(second.logTail).toBe("boom");
+  });
+
+  test("the reducer sends a first failure straight to stuck when there is nothing to roll back to", () => {
+    const verifying = reduce(
+      reduce(reduce(begun, { kind: "stage" }, t0), { kind: "restart" }, t0),
+      { kind: "verify" },
+      t0,
+    );
+    const only = reduce(
+      verifying,
+      { kind: "fail", reason: "no answer", logTail: "", recovery: "collie update", rollbackTo: null },
+      t0 + 1,
+    );
+    expect(only.state).toBe("stuck");
+  });
+
+  test("the reducer refuses a transition it has no meaning for", () => {
+    expect(() => reduce(idleRun(t0), { kind: "pass" }, t0)).toThrow("no transition for `pass` from `idle`");
+    // A run already in flight cannot be begun a second time — that is the lock's job to prevent,
+    // and the machine says so rather than silently restarting its own record.
+    expect(() => reduce(begun, { kind: "begin", from: null, to: "x", pid: 1 }, t0)).toThrow();
+  });
+
+  test("the reducer interrupts any in-flight state, and no terminal one", () => {
+    const staging = reduce(begun, { kind: "stage" }, t0);
+    const gone = reduce(staging, { kind: "interrupt", reason: "the updater is gone" }, t0 + 1);
+    expect(gone.state).toBe("interrupted");
+    expect(gone.reason).toBe("the updater is gone");
+    // A finished run cannot be interrupted — there is nobody left to interrupt.
+    const done = reduce(reduce(reduce(staging, { kind: "restart" }, t0), { kind: "verify" }, t0), { kind: "pass" }, t0);
+    expect(() => reduce(done, { kind: "interrupt", reason: "x" }, t0)).toThrow();
+  });
+
+  test("an aborted staging returns the reducer to idle, because nothing moved", () => {
+    const staged = reduce(begun, { kind: "stage" }, t0);
+    const stopped = reduce(staged, { kind: "abort", reason: "the build failed" }, t0 + 1);
+    expect(stopped.state).toBe("idle");
+    expect(stopped.reason).toBe("the build failed");
+  });
+});
+
+describe("the update state file and its lock", () => {
+  test("the state file is schema-versioned and written atomically, temp file then rename", async () => {
+    const h = binaryHarness();
+    await cmdUpdate(h.deps);
+    expect(h.files.ops).toContain(`mv ${RUN_FILE}.tmp ${RUN_FILE}`);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(run?.schema).toBe(1);
+    expect(run?.state).toBe("staging");
+    expect(run?.to).toBe(NEW);
+    // 0600: it names a pid and a path on a possibly shared host.
+    expect(h.files.entries.get(RUN_FILE)?.mode).toBe(0o600);
+  });
+
+  test("a concurrent apply is refused by the pid-and-timestamp lock", async () => {
+    const h = binaryHarness();
+    h.files.write(LOCK_FILE, JSON.stringify({ pid: 999, at: 1_700_000_000_000 }));
+    // The pid is in the process table, so the lock holds whatever its age.
+    h.deps.exec.processCommand = (pid) => (pid === 999 ? "collie _apply-update" : null);
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("another update is in flight");
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("a lock older than ten minutes whose updater is gone no longer blocks a retry", () => {
+    const now = 2_000_000_000_000;
+    const held = { pid: 999, at: now - STALE_AFTER_MS - 1 };
+    expect(lockVerdict(held, now, true, STALE_AFTER_MS).ok).toBe(false);
+    expect(lockVerdict(held, now, false, STALE_AFTER_MS).ok).toBe(true);
+    // A YOUNG lock with a dead pid still holds: a retry must not race the tail of a finishing run.
+    expect(lockVerdict({ pid: 999, at: now - 1_000 }, now, false, STALE_AFTER_MS).ok).toBe(false);
+  });
+
+  test("the updater dies mid-flight: the stale marker reads as interrupted and the retry proceeds", async () => {
+    const h = binaryHarness();
+    // Well past the ten-minute rule on the fixture clock — the marker is old AND its pid is gone.
+    const stale = 1_600_000_000_000;
+    // A run left `verifying` by an updater that is no longer in the process table.
+    h.files.write(
+      RUN_FILE,
+      JSON.stringify({ schema: 1, state: "verifying", from: "1.0.0", to: NEW, startedAt: stale, updatedAt: stale, pid: 999, attempt: 0 }),
+    );
+    h.files.write(LOCK_FILE, JSON.stringify({ pid: 999, at: stale }));
+    expect(await cmdUpdate(h.deps, ["--status"])).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("interrupted");
+    // …and the lock it left behind does not block the next run.
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(parseUpdateRun(h.files.read(RUN_FILE))?.state).toBe("staging");
+  });
+});
+
+describe("the detached updater's health gate", () => {
+  test("the health timeout defaults to 30 s and honours COLLIE_UPDATE_HEALTH_TIMEOUT_MS", () => {
+    expect(healthTimeoutMs({})).toBe(30_000);
+    expect(healthTimeoutMs({ COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "5000" })).toBe(5_000);
+    // A value nobody can act on is the default, not a crash and not zero.
+    expect(healthTimeoutMs({ COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "nonsense" })).toBe(30_000);
+    expect(healthTimeoutMs({ COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "0" })).toBe(30_000);
+  });
+
+  test("a health timeout stops polling at the budget and rolls back", async () => {
+    const h = binaryHarness({
+      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "3000" },
+      // Down for the forward gate; the rollback only has to prove the old version is up.
+      health: [{ down: true }, { down: true }, { down: true }, { down: true }, { version: "1.0.0" }],
+    });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.FAIL);
+    expect(parseUpdateRun(h.files.read(RUN_FILE))?.state).toBe("rolled-back");
+  });
+
+  test("a deposed peer answering health is not a success — it is rolled back like any other failure", async () => {
+    const h = binaryHarness({
+      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "1000" },
+      health: [{ version: NEW, deposed: true }, { version: NEW, deposed: true }, { version: "1.0.0" }],
+    });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.FAIL);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(run?.state).toBe("rolled-back");
+    expect(run?.reason).toContain("DEPOSED");
+  });
+
+  test("a second failure after the rollback is stuck, with a recovery command and no third restart", async () => {
+    const h = binaryHarness({ env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "1000" }, health: [{ down: true }] });
+    expect(await runner(h, BINARY_APPLY)).toBe(EXIT.FAIL);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(run?.state).toBe("stuck");
+    expect(run?.recovery).toBe(`${INST}/versions/1.0.0/bin/collie update --rollback`);
+    // Two restarts and no more: forward, then the one rollback.
+    expect(h.exec.calls.filter((c) => c.endsWith("current/bin/collie restart")).length).toBe(2);
+    expect(h.io.stderr.join("\n")).toContain("Nothing will restart again");
+  });
+
+  test("a done run prunes and a rolled-back run does not — the prune is the success half only", async () => {
+    const kept = binaryHarness({ others: ["0.9.0"] });
+    expect(await runner(kept, BINARY_APPLY)).toBe(EXIT.OK);
+    expect(kept.files.ops.join("\n")).toContain(`${INST}/.trash/0.9.0.`);
+
+    const rolled = binaryHarness({
+      others: ["0.9.0"],
+      env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "1000" },
+      health: [{ version: "1.0.0" }],
+    });
+    expect(await runner(rolled, BINARY_APPLY)).toBe(EXIT.FAIL);
+    expect(rolled.files.ops.join("\n")).not.toContain(`${INST}/.trash/0.9.0.`);
+  });
+});
+
+describe("the detached updater's launch seam", () => {
+  const base = { binary: "/inst/current/bin/collie", args: ["_apply-update", "--to", "1.1.0"], unit: "collie", stamp: "abc" };
+
+  test("linux launches the runner with systemd-run --user --collect and a transient unit name", () => {
+    const plan = launchPlan({ ...base, platform: "linux", hasSystemdRun: true, hasSetsid: true });
+    expect(plan.kind).toBe("systemd-run");
+    expect(plan.command.slice(0, 5)).toEqual(["systemd-run", "--user", "--collect", "--unit", "collie-update-abc"]);
+    expect(plan.command.slice(5)).toEqual([base.binary, ...base.args]);
+  });
+
+  test("macOS launches a setsid double-forked child instead — there is no systemd-run there", () => {
+    const plan = launchPlan({ ...base, platform: "darwin", hasSystemdRun: false, hasSetsid: true });
+    expect(plan.kind).toBe("setsid");
+    expect(plan.command).toEqual(["setsid", base.binary, ...base.args]);
+  });
+
+  test("linux with no systemd-run falls back to the same setsid child and says so", () => {
+    const plan = launchPlan({ ...base, platform: "linux", hasSystemdRun: false, hasSetsid: true });
+    expect(plan.kind).toBe("setsid");
+    const bare = launchPlan({ ...base, platform: "linux", hasSystemdRun: false, hasSetsid: false });
+    expect(bare.kind).toBe("fork");
+    expect(bare.command).toEqual([base.binary, ...base.args]);
+    expect(bare.note).toContain("neither systemd-run nor setsid");
+  });
+
+  test("the handoff spawns the runner detached and never flips anything itself", async () => {
+    const h = binaryHarness();
+    await cmdUpdate(h.deps);
+    const spawned = h.exec.spawned.at(-1);
+    expect(spawned?.command[0]).toBe("systemd-run");
+    expect(spawned?.command).toContain("_apply-update");
+    // The binary THIS process is executing, not a path derived from the root.
+    expect(spawned?.command).toContain(BINARY);
+    // A narrow, named environment: no credential ever reaches a `--setenv` or a `ps` line.
+    expect(Object.keys(spawned?.env ?? {})).not.toContain("COLLIE_VAPID_PRIVATE");
+  });
+});
+
+describe("the recorded log tail", () => {
+  test("the log tail is bounded to the last 40 lines and scrubbed of credential-shaped text", () => {
+    const noisy = [
+      ...Array.from({ length: 60 }, (_, i) => `line ${i}`),
+      "Authorization: Bearer abcdefghijklmnopqrstuvwxyz012345",
+      "COLLIE_PACK_SECRET=hunter2",
+      'token = "aaaabbbbccccdddd"',
+    ].join("\n");
+    const tail = scrubSecrets(boundTail(noisy));
+    const lines = tail.split("\n");
+    expect(lines.length).toBe(LOG_TAIL_LINES);
+    // The oldest lines are the ones that went; the newest are the ones that say why it failed.
+    expect(lines[0]).toBe("line 23");
+    expect(tail).not.toContain("hunter2");
+    expect(tail).not.toContain("abcdefghijklmnopqrstuvwxyz012345");
+    expect(tail).not.toContain("aaaabbbbccccdddd");
+    expect(tail).toContain(REDACTED);
+  });
+
+  test("the log tail is capped in bytes as well as lines", () => {
+    const huge = Array.from({ length: 10 }, () => "x".repeat(4_000)).join("\n");
+    expect(boundTail(huge).length).toBeLessThanOrEqual(8 * 1024);
+  });
+
+  test("a stuck run records the log tail journalctl gave it", async () => {
+    const h = binaryHarness({ env: { COLLIE_UPDATE_HEALTH_TIMEOUT_MS: "1000" }, health: [{ down: true }] });
+    h.deps.exec = {
+      ...h.deps.exec,
+      capture: (tool, args, ms) =>
+        tool === "journalctl"
+          ? { code: 0, stdout: "collie.service: Failed with result 'exit-code'.\n", stderr: "", found: true }
+          : h.exec.capture(tool, args, ms),
+    };
+    await runner(h, BINARY_APPLY);
+    expect(parseUpdateRun(h.files.read(RUN_FILE))?.logTail).toContain("Failed with result");
   });
 });

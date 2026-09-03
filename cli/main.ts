@@ -60,7 +60,10 @@ export async function main(argv: readonly string[], io: Io, isTTY = false): Prom
     case "build":
       return cmdBuild(lifecycleDeps(io));
     case "_apply-update":
-      return await cmdApplyUpdate(updateDeps(io));
+      // Its OWN argv, minus the verb. Since M15/04 `_apply-update` is two verbs under one name —
+      // with `--to` it is the detached runner that flips, restarts and verifies — and a bootstrap
+      // dispatch that dropped the flags would silently run the other one.
+      return await cmdApplyUpdate(updateDeps(io), argv.slice(1));
   }
   let program: typeof import("./program.ts");
   try {

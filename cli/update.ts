@@ -12,8 +12,10 @@ import {
   parseReleaseManifest,
   parseTagsResponse,
 } from "../bridge/update.ts";
+import { STALE_AFTER_MS, type UpdateRun } from "../bridge/update-run.ts";
 import { manifestVersionFrom, readBuildInfo } from "../bridge/version.ts";
 import { type BuildDeps, cmdBuild } from "./build.ts";
+import { logFilePath } from "./lifecycle.ts";
 import {
   binaryLayout,
   type BinaryLayout,
@@ -26,10 +28,28 @@ import {
   updateRepoOf,
   DEFAULT_UPDATE_REPO,
 } from "./install-kind.ts";
+import type { Environment, EnvVars } from "./context.ts";
 import { EXIT } from "./io.ts";
 import { cmdLink, isCollieBinaryPath, type LinkReader, linkPath, type LinkWriter } from "./link.ts";
 import type { Exec, Files, Net, NetFailure } from "./sys.ts";
-import { collieBinary } from "./unit.ts";
+import { collieBinary, unitName } from "./unit.ts";
+import {
+  driveApply,
+  HEALTH_POLL_MS,
+  HEALTH_TIMEOUT_ENV,
+  healthProbe,
+  healthTimeoutMs,
+  idleRun,
+  launchPlan,
+  lockVerdict,
+  readLock,
+  readRun,
+  reduce,
+  releaseLock,
+  serviceLogTail,
+  takeLock,
+  writeRun,
+} from "./update-run.ts";
 
 // `update`, `_apply-update` and the checkout logic behind them, ported from
 // the pre-shim `collie-ctl.sh`. ADR 0006 is this module's specification: Collie is a link-mode
@@ -63,6 +83,15 @@ export interface UpdateDeps extends BuildDeps {
    *  the host's — the artifact this install may take is decided from them. */
   platform: string;
   arch: string;
+  /** The clock and the wait the detached runner's health gate is driven by (M15/04). Injected for
+   *  the same reason everything else here is: a test drives a 30 s budget in no time at all. */
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+  /** This process's pid — what the update lock records and the staleness rule asks about. */
+  pid: number;
+  /** `process.execPath` — the binary THIS process is executing, and the one the detached runner is
+   *  launched as. See {@link runnerBinary} for why it is not simply `<root>/bin/collie`. */
+  execPath: string;
 }
 
 // One predicate for the checkout shape, one for "is this a git checkout at all", both in
@@ -657,7 +686,13 @@ function nudgeHooks(deps: UpdateDeps, binary: string): void {
  * so the still-running service keeps executing the old one until it is restarted); `refreshRegistry`
  * re-links so Herdr learns any newly added actions.
  */
-export async function cmdApplyUpdate(deps: UpdateDeps): Promise<number> {
+export async function cmdApplyUpdate(deps: UpdateDeps, args: readonly string[] = []): Promise<number> {
+  // TWO VERBS UNDER ONE NAME, told apart by `--to`. With it, this is the DETACHED RUNNER of M15/04:
+  // it flips a staged version live, restarts, polls the health gate and rolls back once. Without it,
+  // it is the original post-pull half below — the in-place second stage a Herdr-managed checkout
+  // still takes (ADR 0006), which builds in the tree it is standing in and has nothing to flip.
+  const apply = parseApplyArgs(args);
+  if (apply !== null) return await runApply(deps, apply);
   const built = cmdBuild(deps);
   if (built !== EXIT.OK) {
     // The checkout has already advanced, so this is the skew shape ADR 0006 exists to prevent: new
@@ -702,6 +737,9 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
   // in-place advancement for this milestone (see that ADR's 2026-09-03 amendment).
   const staged = isCheckout && (underVersions(deps.ctx.root) || install.kind === "linked-clone");
   const layout = isCheckout ? layoutForCheckout(deps.ctx.root) : null;
+  // The record, not the act — `--status` reads `<state dir>/update.json` and touches nothing, so it
+  // is answered before the lock, before the install kind matters and before any network call.
+  if (wantsStatus(args)) return cmdUpdateStatus(deps, args);
   if (args.includes("--rollback")) {
     if (install.kind === "binary") return await rollbackBinary(deps);
     if (staged && layout !== null) return await rollbackCheckout(deps, layout);
@@ -1057,30 +1095,19 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
     return EXIT.FAIL;
   }
 
-  // 10-11. Flip, then restart. The old bridge served its own pinned version until this moment.
+  // 10. HAND OFF — the same runner the staged checkout uses, because the flip is already the same
+  //     single rename for both kinds (M15/04). It flips, restarts through `current`, polls
+  //     `/api/health` until the new version answers, rolls back once if it does not, and only then
+  //     collects the old versions. Nothing below this line runs in this process.
   const previous = currentVersionDir(deps, layout);
-  if (!flipCurrent(deps, layout, target.version)) return EXIT.FAIL;
-  const restarted = await deps.restart();
-
-  // 12. Verify after the flip, through `current` this time. Either failure rolls back.
-  const live = smoke(deps, layout.currentLink, target.version);
-  if (restarted !== EXIT.OK || !live) {
-    if (previous === null || !flipCurrent(deps, layout, previous)) {
-      deps.io.err(`error: ${target.version} failed its post-install check and there is no previous version`);
-      deps.io.err(`       to fall back to. ${layout.currentLink} points at ${target.version}.`);
-      return EXIT.FAIL;
-    }
-    await deps.restart();
-    deps.io.err(`error: ${target.version} failed its post-install check — rolled back to ${previous}.`);
-    deps.io.err(`       Your Collie is running ${previous} again. The failure output is above.`);
-    return EXIT.FAIL;
-  }
-
-  // 13. GC, only now, and never fatally.
-  collectOldVersions(deps, layout, target.version);
-  deps.io.out(`✓ updated to ${target.version}`);
-  // Through `current`, the link flipped in step 10 — the same stable name `hooks install` pins to.
-  nudgeHooks(deps, join(layout.currentLink, "bin", "collie"));
+  const handed = handOff(deps, layout, {
+    to: target.version,
+    from: previous,
+    version: target.version,
+    commit: target.commit,
+    kind: "binary",
+  });
+  if (handed !== EXIT.OK) return handed;
   closeWithMajor(deps, higher);
   return EXIT.OK;
 }
@@ -1538,40 +1565,24 @@ async function updateStagedCheckout(
   // 4. The marker, LAST — the evidence the flip demands.
   writeBuildMarker(deps, at, { version: target.version, commit: target.commit });
 
-  // 5. The flip. One rename, the same one the binary path makes.
+  // 5. HAND OFF. The flip, the restart, the health gate and the one rollback all happen in the
+  //    DETACHED RUNNER (M15/04) — this process may not do them, because the restart would kill the
+  //    bridge that quite possibly asked for this update, and a killed updater cannot roll back.
   const previous = stagedCurrent(deps, layout);
-  const flip = flipToStaged(deps, layout, { dir, version: target.version, complete: true });
-  if (!flip.ok) {
-    deps.io.err(`error: update stopped at the FLIP stage — ${flip.reason}.`);
-    deps.io.err("       The running version is untouched.");
-    return EXIT.FAIL;
-  }
-
-  // 6. Restart through the name that was just switched, and roll the flip back if it will not come up.
-  if (!restartThroughCurrent(deps, layout)) {
-    if (previous === null || !flipToStaged(deps, layout, previous).ok) {
-      deps.io.err(`error: ${target.version} did not restart, and there is no previous version to fall`);
-      deps.io.err(`       back to. ${layout.currentLink} points at ${dir}.`);
-      return EXIT.FAIL;
-    }
-    restartThroughCurrent(deps, layout);
-    deps.io.err(`error: ${target.version} did not restart — rolled back to ${previous.dir}.`);
-    return EXIT.FAIL;
-  }
-
-  // 7. The two names that must follow the flip: the operator's PATH pointer, and Herdr's registry.
-  if (migrating) republishName(deps, at, collieBinary(root));
-  refreshRegistry(deps, layout.currentLink);
-  // NO PRUNE HERE. See {@link pruneVersions}: retention is collected after the health gate (spec 04),
-  // never during an update, or the run would delete the version it may have to roll back to.
-  deps.io.out(`✓ updated to ${target.version}`);
+  const handed = handOff(deps, layout, {
+    to: dir,
+    from: previous?.dir ?? null,
+    version: target.version,
+    commit: target.commit,
+    kind: "checkout",
+  });
+  if (handed !== EXIT.OK) return handed;
   deps.io.out(
     previous === null
-      ? "  nothing to roll back to yet — this was the first staged version, so `collie update --rollback`" +
-          " has no target until the next one lands."
-      : `  \`collie update --rollback\` returns to ${previous.dir}.`,
+      ? "  nothing to roll back to yet — this was the first staged version, so a failed health check" +
+          " has no target to flip back to."
+      : `  a failed health check flips back to ${previous.dir} by itself.`,
   );
-  nudgeHooks(deps, join(layout.currentLink, "bin", "collie"));
   closeWithMajor(deps, higher);
   return EXIT.OK;
 }
@@ -1616,4 +1627,307 @@ async function rollbackCheckout(deps: UpdateDeps, layout: BinaryLayout): Promise
   refreshRegistry(deps, layout.currentLink);
   deps.io.out(`✓ rolled back to ${target.version}`);
   return EXIT.OK;
+}
+
+// ── The detached updater (M15/04) ────────────────────────────────────────────
+// An update is TWO PROCESSES, and the split is forced by step three of it: restart the service. The
+// bridge IS the service, so a bridge that drove its own update would be killed halfway through —
+// nobody left to notice the new version never answered, nobody left to flip `current` back.
+//
+// So `collie update` stages, and then HANDS OFF. The runner (`_apply-update --to …`) flips, restarts,
+// polls `/api/health` and rolls back once if it has to; the machine it runs is `cli/update-run.ts`,
+// a pure reducer over injected effects. Everything it knows goes into `<state dir>/update.json`,
+// which the bridge reads at startup and the standby door serves while the main port is down.
+
+/**
+ * The binary the detached runner is launched as: the one THIS process is executing.
+ *
+ * Not `<root>/bin/collie`, and the difference is real. A Collie run through the PATH name, or from a
+ * clone that has not been built in place, is executing a binary that path does not name — and
+ * launching a file that is not there is a handoff that never happens. The fallback is for the one
+ * case where `execPath` is NOT a collie: `bun cli/main.ts`, the bootstrap path, where the binary the
+ * checkout owns is the right answer.
+ */
+function runnerBinary(deps: UpdateDeps): string {
+  return isCollieBinaryPath(deps.execPath) ? deps.execPath : collieBinary(deps.ctx.root);
+}
+
+/** The one thing an operator is told to run, and it is a path, not a verb — `current` may be wrong. */
+function recoveryCommand(layout: BinaryLayout, from: string | null): string {
+  if (from === null) return "collie update  (there is no previous version on disk to flip back to)";
+  return `${join(layout.versionsDir, from, "bin", "collie")} update --rollback`;
+}
+
+/** What the runner was asked to do, parsed out of its own argv. */
+export interface ApplyArgs {
+  /** The version DIRECTORY to make live — `v1.2.3` on a staged checkout, `1.2.3` on a binary install. */
+  readonly to: string;
+  /** The version directory to fall back to, or null when this install has none yet. */
+  readonly from: string | null;
+  /** The dotted version `to` must answer with, and the commit it was built from (may be ""). */
+  readonly version: string;
+  readonly commit: string;
+  readonly kind: "checkout" | "binary";
+  /** The pid of the process that staged this run and wrote the lock — see {@link handOff}. */
+  readonly handoff: number;
+}
+
+const flagValue = (args: readonly string[], name: string): string | null => {
+  const at = args.indexOf(name);
+  return at < 0 ? null : (args[at + 1] ?? null);
+};
+
+/**
+ * The runner's argv, or null when this is the OLD `_apply-update` — the in-place second half a
+ * Herdr-managed checkout still takes (ADR 0006), which stages nothing and has nothing to flip.
+ */
+export function parseApplyArgs(args: readonly string[]): ApplyArgs | null {
+  const to = flagValue(args, "--to");
+  if (to === null || to === "") return null;
+  const from = flagValue(args, "--from");
+  return {
+    to,
+    from: from === null || from === "" ? null : from,
+    version: flagValue(args, "--version") ?? "",
+    commit: flagValue(args, "--commit") ?? "",
+    kind: flagValue(args, "--kind") === "binary" ? "binary" : "checkout",
+    handoff: Number.parseInt(flagValue(args, "--handoff") ?? "", 10) || 0,
+  };
+}
+
+/** {@link ApplyArgs} back as argv — one spelling, so the handoff and the parser can never drift. */
+export function applyArgv(a: ApplyArgs): string[] {
+  return [
+    "_apply-update",
+    "--to",
+    a.to,
+    ...(a.from === null ? [] : ["--from", a.from]),
+    "--version",
+    a.version,
+    "--commit",
+    a.commit,
+    "--kind",
+    a.kind,
+    "--handoff",
+    String(a.handoff),
+  ];
+}
+
+/**
+ * The environment the detached runner is started with.
+ *
+ * A NARROW, NAMED list, and that is the point on the `systemd-run` path: `--setenv=` puts a value on
+ * a command line every process on the box can read out of `ps`. None of these is a credential — they
+ * are the instance's identity and its paths. Everything else the runner needs it re-reads from the
+ * same `.env` this process did (`cli/context.ts`), which is where the secrets stay.
+ */
+export const RUNNER_ENV_KEYS = [
+  "HOME",
+  "PATH",
+  "XDG_RUNTIME_DIR",
+  "COLLIE_INSTANCE",
+  // The multiplexer this install mirrors. The runner RESTARTS the service, and `restart` refuses to
+  // guess a mux — so a runner without it dies on a question nobody is there to answer.
+  "COLLIE_MUX",
+  "COLLIE_CONFIG_DIR",
+  "COLLIE_STATE_DIR",
+  "COLLIE_PLUGIN_ROOT",
+  "COLLIE_PORT",
+  "COLLIE_KEEP_VERSIONS",
+  HEALTH_TIMEOUT_ENV,
+] as const;
+
+export function runnerEnv(env: Environment): EnvVars {
+  const out: EnvVars = {};
+  for (const key of RUNNER_ENV_KEYS) {
+    const value = env[key];
+    if (value !== undefined && value !== "") out[key] = value;
+  }
+  return out;
+}
+
+/** The lock's verdict for this install, with the pid liveness question answered by the process table. */
+function updateLockVerdict(deps: UpdateDeps): ReturnType<typeof lockVerdict> {
+  const held = readLock(deps.files, deps.ctx.stateDir);
+  const alive = held !== null && deps.exec.processCommand(held.pid) !== null;
+  return lockVerdict(held, deps.now(), alive, STALE_AFTER_MS);
+}
+
+/** The record on disk as of now, or null — the staleness rule applied through the process table. */
+function currentRun(deps: UpdateDeps): UpdateRun | null {
+  return readRun(deps.files, deps.ctx.stateDir, deps.now(), (pid) => deps.exec.processCommand(pid) !== null);
+}
+
+/**
+ * Stage is done: write `staging`, launch the runner with its own lifetime, and get out of the way.
+ *
+ * This function does not flip and does not restart. It exits 0 the moment the child is away, because
+ * the thing it just started is going to kill this process's own service — and on a Herdr action or
+ * an `/api/update` call, quite possibly this process's own parent.
+ */
+function handOff(deps: UpdateDeps, layout: BinaryLayout, a: Omit<ApplyArgs, "handoff">): number {
+  const verdict = updateLockVerdict(deps);
+  if (!verdict.ok) {
+    deps.io.err(`error: ${verdict.reason}.`);
+    deps.io.err("       Watch it with `collie update --status`; a run whose updater is gone stops");
+    deps.io.err(`       blocking a retry ${Math.round(STALE_AFTER_MS / 60_000)} minutes after its last transition.`);
+    return EXIT.FAIL;
+  }
+  const now = deps.now();
+  takeLock(deps.files, deps.ctx.stateDir, deps.pid, now);
+  const staging = reduce(
+    reduce(idleRun(now), { kind: "begin", from: a.from, to: a.to, pid: deps.pid }, now),
+    { kind: "stage" },
+    now,
+  );
+  writeRun(deps.files, deps.ctx.stateDir, staging);
+
+  const plan = launchPlan({
+    platform: deps.platform,
+    binary: runnerBinary(deps),
+    args: applyArgv({ ...a, handoff: deps.pid }),
+    unit: unitName(deps.ctx.instance),
+    stamp: now.toString(36),
+    hasSystemdRun: deps.exec.which("systemd-run") !== null,
+    hasSetsid: deps.exec.which("setsid") !== null,
+  });
+  const pid = deps.exec.spawnDetached(plan.command, {
+    cwd: layout.installRoot,
+    env: runnerEnv(deps.ctx.env),
+    logPath: logFilePath(deps.ctx.configDir, deps.ctx.instance),
+  });
+  if (pid === null) {
+    releaseLock(deps.files, deps.ctx.stateDir);
+    writeRun(deps.files, deps.ctx.stateDir, reduce(staging, { kind: "abort", reason: plan.note }, deps.now()));
+    deps.io.err("error: the update was staged, but the detached updater could not be started.");
+    deps.io.err(`       Nothing was swapped. Apply it by hand: ${runnerBinary(deps)} ${applyArgv({ ...a, handoff: 0 }).join(" ")}`);
+    return EXIT.FAIL;
+  }
+  deps.io.out(`✓ ${a.to} is staged — ${plan.note}.`);
+  deps.io.out("  The swap, the restart and the health check run there, so this command is done.");
+  deps.io.out("  Watch it with: collie update --status");
+  return EXIT.OK;
+}
+
+/**
+ * `collie update --status` — the record, read out loud. `--json` prints it verbatim for a script.
+ *
+ * It reads the same file, through the same staleness rule, that the bridge and the standby door do,
+ * so the terminal and the phone can never tell two different stories about one run.
+ */
+export function cmdUpdateStatus(deps: UpdateDeps, args: readonly string[]): number {
+  const run = currentRun(deps);
+  if (args.includes("--json")) {
+    deps.io.out(JSON.stringify(run, null, 2));
+    return EXIT.OK;
+  }
+  if (run === null) {
+    deps.io.out("no update has run on this install yet.");
+    return EXIT.OK;
+  }
+  const target = run.to ?? "?";
+  const heading =
+    run.state === "done"
+      ? `✓ updated to ${target}`
+      : run.state === "rolled-back"
+        ? `rolled back to ${run.from ?? "the previous version"} — ${target} did not come up`
+        : run.state === "stuck"
+          ? `STUCK — ${target} did not come up and neither did the rollback`
+          : run.state === "interrupted"
+            ? `interrupted — the updater is gone and ${target} was mid-flight`
+            : `${run.state} — ${run.from ?? "?"} → ${target}`;
+  deps.io.out(heading);
+  deps.io.out(`  started ${new Date(run.startedAt).toISOString()}, last moved ${new Date(run.updatedAt).toISOString()}`);
+  if (run.reason !== undefined) deps.io.out(`  reason: ${run.reason}`);
+  if (run.recovery !== undefined) deps.io.out(`  recover with: ${run.recovery}`);
+  if (run.logTail !== undefined && run.logTail !== "") {
+    deps.io.out("  last lines of the service log:");
+    for (const line of run.logTail.split("\n")) deps.io.out(`    ${line}`);
+  }
+  return run.state === "stuck" ? EXIT.FAIL : EXIT.OK;
+}
+
+/** `--status` anywhere in the verb's argv. */
+export const wantsStatus = (args: readonly string[]): boolean => args.includes("--status");
+
+/**
+ * The runner proper: flip, restart, verify, roll back once. Everything impure is an effect handed to
+ * {@link driveApply}, which is where the machine lives.
+ */
+async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
+  const layout = a.kind === "binary" ? binaryLayout(deps.ctx.root) : layoutForCheckout(deps.ctx.root);
+  const stateDir = deps.ctx.stateDir;
+  // The lock this run inherits is the one the staging process took (`--handoff <pid>`). Any other
+  // holder is somebody else's run and refuses us, exactly as it refuses a second `collie update`.
+  const held = readLock(deps.files, stateDir);
+  if (held !== null && held.pid !== a.handoff) {
+    const verdict = updateLockVerdict(deps);
+    if (!verdict.ok) {
+      deps.io.err(`error: ${verdict.reason} — this runner will not touch \`current\`.`);
+      return EXIT.FAIL;
+    }
+  }
+  takeLock(deps.files, stateDir, deps.pid, deps.now());
+
+  const onDisk = currentRun(deps);
+  const start: UpdateRun =
+    onDisk !== null && onDisk.state === "staging"
+      ? { ...onDisk, pid: deps.pid }
+      : reduce(
+          reduce(idleRun(deps.now()), { kind: "begin", from: a.from, to: a.to, pid: deps.pid }, deps.now()),
+          { kind: "stage" },
+          deps.now(),
+        );
+
+  const flipTo = (dir: string): boolean =>
+    a.kind === "binary"
+      ? flipCurrent(deps, layout, dir)
+      : flipToStaged(deps, layout, { dir, version: dir.replace(/^v/, ""), complete: true }).ok;
+
+  const run = await driveApply(
+    {
+      flip: flipTo,
+      // Through `current`, for BOTH install kinds. This process is the OLD version, and its own
+      // `restart` would rewrite the unit from its own root — pinning the supervisor to the version
+      // the flip just left, which would make the flip cosmetic.
+      restart: () => Promise.resolve(restartThroughCurrent(deps, layout)),
+      health: healthProbe(deps.net, deps.ctx.port),
+      prune: () => {
+        if (a.kind === "binary") collectOldVersions(deps, layout, a.to);
+        else pruneVersions(deps, layout);
+      },
+      logTail: () =>
+        serviceLogTail(deps, unitName(deps.ctx.instance), logFilePath(deps.ctx.configDir, deps.ctx.instance)),
+      now: deps.now,
+      sleep: deps.sleep,
+      write: (record) => writeRun(deps.files, stateDir, record),
+      timeoutMs: healthTimeoutMs(deps.ctx.env),
+      pollMs: HEALTH_POLL_MS,
+    },
+    { to: a.to, from: a.from, version: a.version, commit: a.commit, recovery: recoveryCommand(layout, a.from) },
+    start,
+  );
+  releaseLock(deps.files, stateDir);
+
+  if (run.state === "done") {
+    // The two names that must follow a flip, and the nudge that must be asked of the NEW binary.
+    if (a.kind === "checkout") {
+      if (!underVersions(deps.ctx.root)) {
+        republishName(deps, join(layout.versionsDir, a.to), collieBinary(deps.ctx.root));
+      }
+      refreshRegistry(deps, layout.currentLink);
+    }
+    deps.io.out(`✓ updated to ${a.version === "" ? a.to : a.version}`);
+    nudgeHooks(deps, join(layout.currentLink, "bin", "collie"));
+    return EXIT.OK;
+  }
+  if (run.state === "rolled-back") {
+    deps.io.err(`error: ${a.to} did not pass its health check — rolled back to ${a.from ?? "?"}.`);
+    deps.io.err(`       ${run.reason ?? "no reason recorded"}`);
+    return EXIT.FAIL;
+  }
+  deps.io.err(`error: ${a.to} did not come up, and neither did the rollback. Nothing will restart again.`);
+  deps.io.err(`       ${run.reason ?? "no reason recorded"}`);
+  deps.io.err(`       Recover with: ${run.recovery ?? recoveryCommand(layout, a.from)}`);
+  return EXIT.FAIL;
 }

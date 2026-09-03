@@ -59,5 +59,11 @@ export function updateDeps(io: Io): UpdateDeps {
     net: realNet,
     platform: process.platform,
     arch: process.arch,
+    // The detached updater's clock, wait and identity (M15/04). Real here; `cli/update.test.ts`
+    // drives a 30 s health budget in no time at all by handing over fakes.
+    now: () => Date.now(),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    pid: process.pid,
+    execPath: process.execPath,
   };
 }

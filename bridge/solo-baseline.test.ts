@@ -316,6 +316,9 @@ const UPDATE_STATUS_KEYS = {
   installKind: true,
   bridgeStale: true,
   checkedAt: true,
+  // The detached updater's run record (M15/04). Optional on the wire: an install that has never
+  // updated through the runner sends no `run` key at all.
+  run: true,
 } satisfies Record<keyof UpdateStatus, true>;
 
 const WORKSPACE_KEYS = {
@@ -419,6 +422,9 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "majorAvailable",
       "majorUrl",
       "releaseAvailable",
+      // The detached updater's run record (M15/04) — optional, so an install that has never run one
+      // sends no such key at all.
+      "run",
     ]);
     expect(Object.keys(WORKSPACE_KEYS).toSorted()).toEqual([
       "activeTabId",
@@ -541,6 +547,10 @@ describe("solo zero-tax — routes", () => {
       // It is named here, not exempted: the guard's job is that a route arrives on purpose.
       "/api/devices",
       "/api/devices/revoke",
+      // The detached updater's probe (M15/04) — a solo feature that legitimately extends this list,
+      // named here rather than exempted. It is the one ungated `/api/*` route: the prober is a local
+      // updater holding no credential, and what it answers is `{ ok, version, deposed, mode }`.
+      "/api/health",
       "/api/notifications/prefs",
       "/api/notifications/snooze",
       // The Pack overview (bridge/pack/status-wire.ts) — a FRONT-DOOR route, and it legitimately
@@ -749,6 +759,11 @@ const STATE_DIR_ENTRIES = [
   // the bridge — `bridge/stt/config.ts` names this path and never writes it.
   "stt.json",
   "update-state.json",
+  // The detached updater's run record and its lock (M15/04). WRITTEN BY THE CLI, never by the
+  // bridge — `bridge/update-run.ts` only reads them, so the scan below sees the names here and no
+  // writer anywhere under `bridge/`. Absent until the first `collie update`.
+  "update.json",
+  "update.lock",
   "uploads",
 ];
 

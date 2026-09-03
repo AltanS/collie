@@ -4,6 +4,7 @@ import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
 import type { UpdateStatus } from "./types.ts";
+import type { UpdateRun } from "./update-run.ts";
 
 // Update-availability signal, surfaced on the (access-gated) /api/snapshot as `update`. Two
 // independent questions the running plugin can answer about itself:
@@ -571,6 +572,16 @@ export interface UpdateMonitorDeps {
   /** Fire the update-available push for the digest — every version folded into it, oldest first.
    *  Never empty; the last element is the newest available version. */
   notify: (versions: string[]) => void;
+  /**
+   * The detached updater's run record, read from disk (M15/04). Injected rather than read here so
+   * the monitor stays a pure poller over seams — and read PER CALL, never cached, because the file
+   * is written by another process and the whole point is to notice its transitions.
+   *
+   * **The bridge reads it at startup through this.** A bridge coming up mid-update must resume
+   * reporting `verifying` or `rolled-back`, not come up with nothing to say: the operator taps
+   * update, the app goes blank, and it comes back claiming there was no update.
+   */
+  runState: () => UpdateRun | null;
 }
 
 export class UpdateMonitor {
@@ -666,7 +677,8 @@ export class UpdateMonitor {
   /** The snapshot-facing status. Cheap: `latest` is cached from the last check, `bridgeStale` throttled. */
   status(): UpdateStatus {
     const { current } = this.deps;
-    return {
+    const run = this.deps.runState();
+    const status: UpdateStatus = {
       current,
       latest: this.latest,
       latestUrl: this.latest ? githubReleaseUrl(this.deps.repo, this.latest) : null,
@@ -680,5 +692,9 @@ export class UpdateMonitor {
       bridgeStale: this.bridgeStale(),
       checkedAt: this.checkedAt,
     };
+    // Assigned, never conditionally spread: an install that has never updated through the runner
+    // must carry NO `run` key rather than one whose value is `undefined`.
+    if (run !== null) status.run = run;
+    return status;
   }
 }

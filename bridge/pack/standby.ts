@@ -7,6 +7,7 @@ import { resolveSyncedToken, type SyncedDevice } from "./standby-devices.ts";
 import type { TrustStoreData } from "./trust-store.ts";
 import { verifyWarrantSignature, warrantExpired } from "./warrant.ts";
 import type { PackMode } from "../types.ts";
+import type { UpdateRun } from "../update-run.ts";
 
 // The standby door: a SECOND HTTP listener a deputy binds, and the one narrow exception to ADR 0013's
 // "a peer publishes nothing" (RFC §6, PACK_PROTOCOL.md §18.15).
@@ -36,6 +37,18 @@ import type { PackMode } from "../types.ts";
 export const STANDBY_PATH = "/standby";
 /** The confirm. `POST`, gated by a pairing bearer credential from `standby-devices.json` ONLY. */
 export const STANDBY_TAKEOVER_PATH = "/standby/takeover";
+/**
+ * The update record, served while the MAIN PORT IS DOWN (M15/04). `GET`, ungated — it reads
+ * `<state dir>/update.json` and grants nothing, exactly as {@link STANDBY_PATH} does.
+ *
+ * This is the window the operator most wants to see and the one in which the front door cannot
+ * answer: an update restarts the bridge, so the phone loses `/api/update/check` for precisely as
+ * long as the thing it is waiting on. The standby listener is a separate `Bun.serve` that the
+ * restart does not touch on a machine that is not the one restarting, and on the machine that IS,
+ * this is what comes back first.
+ */
+export const STANDBY_UPDATE_PATH = "/standby/update";
+
 /**
  * The namespace this door owns. Reserved on the FRONT DOOR too (`bridge/server.ts`) and denylisted in
  * the service worker (`web/src/lib/sw-routes.ts`): in the same-origin failover deployment the phone
@@ -480,6 +493,33 @@ export function createStandbyDoor(deps: StandbyDoorDeps) {
  * route at all (§11's zero-tax contract). A **deposed** lead never reaches this: `deposed.ts` answers
  * the same path with `503` before this is consulted, which is exactly the flip the proxy needs.
  */
+/**
+ * `/standby/update` on the standby listener, in EVERY state that listener can be in — deposed, lead,
+ * deputy or a plain peer that merely binds the port. It is mounted ahead of all of them in
+ * `bridge/index.ts` for that reason: the question it answers ("what is this machine's update doing?")
+ * has one answer whatever role the machine holds, and a deposed collie is exactly the machine whose
+ * operator needs it.
+ *
+ * `null` for any other path, so this adds no surface: the listener turns that into its bare 404.
+ */
+export function standbyUpdateAnswer(
+  req: Request,
+  url: URL,
+  read: () => UpdateRun | null,
+): Response | null {
+  if (url.pathname !== STANDBY_UPDATE_PATH) return null;
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    return new Response(JSON.stringify({ error: "method not allowed" }), { status: 405, headers: { ...JSON_HEADERS } });
+  }
+  // An install that has never updated answers `idle` rather than 404: "nothing is happening" is a
+  // fact the phone can render, and a missing route is not.
+  const run = read() ?? { state: "idle" };
+  return new Response(JSON.stringify(run), {
+    status: 200,
+    headers: { ...JSON_HEADERS, "cache-control": "no-store" },
+  });
+}
+
 export function frontDoorHealth(mode: PackMode, url: URL): Response | null {
   if (mode !== "lead" || url.pathname !== STANDBY_HEALTH_PATH) return null;
   return json({ state: "leading" }, 200);

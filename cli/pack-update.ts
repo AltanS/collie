@@ -1,6 +1,7 @@
 import { DEFAULT_PORT } from "../bridge/config.ts";
 import type { OpsRecord } from "../bridge/pack/ops-store.ts";
 import type { TrustedMember, TrustStoreData } from "../bridge/pack/trust-store.ts";
+import { answersThisBuild } from "../bridge/version.ts";
 import { collieVersionBare } from "./context.ts";
 import { EXIT } from "./io.ts";
 import { parsePackArgs, probeMembers } from "./pack.ts";
@@ -18,6 +19,12 @@ import {
   type RemoteRunner,
 } from "./remote.ts";
 import { plainUpdate, type UpdateEvent, type UpdateOutcome, type UpdateRow } from "./render.ts";
+
+// The tolerant `<semver>+<sha>` comparison lives in `bridge/version.ts` now — the health gate of the
+// detached updater (M15/04) asks the same question of a machine restarting under it, and one
+// implementation is the only way the two can never disagree. Re-exported because every caller and
+// test here already spells it `from "./pack-update.ts"`.
+export { answersThisBuild };
 
 // `collie pack update [<member>…] [--all]` — level peers to the lead's current build (M7/02).
 //
@@ -506,23 +513,6 @@ function expectedAnswer(deps: Wired, version: string, commit: string): string {
   // so this is the string this lead itself answers with once it has built the same commit.
   const short = gitOut(deps, ["rev-parse", "--short", commit]) || commit.slice(0, 7);
   return `${version}+${short}`;
-}
-
-/**
- * Does `reported` name the build that was pushed?
- *
- * The build metadata is compared as an ABBREVIATION of the commit rather than byte for byte: git
- * chooses that length per repository, so the far machine may spell the same commit with more digits
- * than this one does — and it stays a mismatch the moment the digits disagree, or a `-dirty`/`-dev`
- * marker says the build is not that commit. A member with no build stamp at all can only report its
- * manifest version; that is the version it was given, and it is not evidence against the push.
- */
-export function answersThisBuild(reported: string, version: string, commit: string): boolean {
-  const plus = reported.indexOf("+");
-  if (plus < 0) return reported === version;
-  if (reported.slice(0, plus) !== version) return false;
-  const build = reported.slice(plus + 1);
-  return build.length >= 4 && commit.toLowerCase().startsWith(build.toLowerCase());
 }
 
 /**

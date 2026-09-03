@@ -79,6 +79,7 @@ import {
   silenceOf,
   STANDBY_PREFIX,
   standbyPortOf,
+  standbyUpdateAnswer,
   warrantNamesSelf,
   type StandbyFacts,
 } from "./pack/standby.ts";
@@ -124,6 +125,7 @@ import {
   updateDigestBody,
 } from "./update.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
+import { readUpdateRun } from "./update-run.ts";
 import { collieVersionBare } from "./version.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
@@ -563,6 +565,11 @@ const updateMonitor = new UpdateMonitor({
   now: Date.now,
   // The `updates` notify pref is the off-switch — update pushes bypass snooze, so this is their gate.
   updatesEnabled: () => notifyPrefs.current().updates,
+  // Read from disk on every snapshot, never cached: the file is written by the DETACHED UPDATER, a
+  // different process, and noticing its transitions is the whole job (M15/04). Reading it here is
+  // also what makes a bridge restarted BY an update resume reporting that run at startup instead of
+  // saying nothing happened.
+  runState: () => readUpdateRun(cfg.stateDir),
   // One push a DAY, naming every release folded into it — the digest decides that; this only renders it.
   notify: (versions) =>
     void push.send({
@@ -1267,6 +1274,11 @@ const standbyServer =
           // DEPOSED collie fails the check (§18.12), a LEAD passes it, and a peer holding a warrant
           // runs the door. A path nobody owns gets a bare 404 with no body worth reading — three
           // routes exist on this port and nothing else does.
+          // `/standby/update` FIRST, before every role: an update restarts the front door, so this
+          // is the one door still answering in the window the operator most wants to look (M15/04).
+          // It is the same file `/api/update/check` reports, read through the same staleness rule.
+          const update = standbyUpdateAnswer(req, url, () => readUpdateRun(cfg.stateDir));
+          if (update !== null) return update;
           const answered =
             deposed !== null
               ? deposedAnswer(deposed, outcomeNow(deposed, leadContact.facts()), url)
@@ -1295,6 +1307,10 @@ const server = startServer({
   snooze,
   notifyPrefs,
   updateMonitor,
+  // The bare `<semver>+<sha>` this process answers `/api/health` and `/pack/v1/hello` with — one
+  // string, resolved once, so the detached updater's health gate and a peer can never be told two
+  // different things about this machine (M15/04).
+  version: packVersion,
   audit,
   activity,
   pack,

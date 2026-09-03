@@ -113,3 +113,27 @@ function readIfPresent(p: string): string | null {
     return null;
   }
 }
+
+/**
+ * Does `reported` name the build at `(version, commit)`?
+ *
+ * TWO CALLERS, ONE QUESTION. `cli/pack-update.ts` asks it of a peer that was just levelled to this
+ * lead's commit; `cli/update-run.ts`'s health gate asks it of the local service that just restarted
+ * onto a staged version. Both are comparing a string a running Collie ANSWERS with against a version
+ * and a commit, and both learned the same lesson: a built Collie reports `<semver>+<short sha>`, so
+ * comparing against the bare semver reports a mismatch about a machine running exactly the right
+ * code.
+ *
+ * The build metadata is compared as an ABBREVIATION of the commit rather than byte for byte: git
+ * chooses that length per repository, so the other build may spell the same commit with more digits
+ * than this one does — and it stays a mismatch the moment the digits disagree, or a `-dirty`/`-dev`
+ * marker says the build is not that commit. A Collie with no build stamp at all can only report its
+ * manifest version; that is the version it was given, and it is not evidence against the build.
+ */
+export function answersThisBuild(reported: string, version: string, commit: string): boolean {
+  const plus = reported.indexOf("+");
+  if (plus < 0) return reported === version;
+  if (reported.slice(0, plus) !== version) return false;
+  const build = reported.slice(plus + 1);
+  return build.length >= 4 && commit.toLowerCase().startsWith(build.toLowerCase());
+}
