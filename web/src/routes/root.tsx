@@ -13,7 +13,7 @@ import { useBusyWhile } from "@/lib/busy";
 import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
 import { useConnectionLost } from "@/hooks/use-connection-lost";
-import { UpdateAvailableBanner } from "@/components/update-available-banner";
+import { UpdateRibbon } from "@/components/update-ribbon";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { AppHeaderHost } from "@/components/app-header";
 import { PackProvider } from "@/components/pack-provider";
@@ -96,10 +96,12 @@ export function RootLayout() {
     // using. That mattered more once the cadence gained inputs beyond the snapshot (#156).
     <PackProvider servers={data.servers} sessions={data.sessions} ts={data.ts} pollMs={pollMs}>
       <div className="flex h-[100dvh] flex-col overflow-hidden">
-        {/* API-observed self-update: mounted unconditionally so its controller runs (and can
-            auto-update) for the app's lifetime; renders the slim "tap to update" row only when a fresh
-            build is confirmed but auto-update is held off (unsent work) or already spent. */}
-        <UpdateAvailableBanner />
+        {/* THE update band, and the only one: a release on offer, a confirm just tapped, a run in
+            flight, a new bridge this bundle is behind, and peers following — one fixed-height row
+            that says whichever of those is true. Mounted unconditionally so the bundle self-updater's
+            controller runs (and can auto-update) for the app's lifetime; it returns null when it has
+            nothing to say. */}
+        <UpdateRibbon />
         {/* The app's ONE connection surface: a thin, animated bar that stays hidden while healthy, fades
             in amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates to a
             red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery. Reads the

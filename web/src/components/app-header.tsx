@@ -117,7 +117,7 @@ interface AppHeaderHostProps {
  * entirely. None of that is reachable by memoising inside the mark: the `useMemo` on its markup is
  * per-instance, and a new instance is exactly what was happening.
  *
- * The pattern is `RootLayout`'s existing one — UpdateAvailableBanner and ConnectionBanner already sit
+ * The pattern is `RootLayout`'s existing one — UpdateRibbon and ConnectionBanner already sit
  * above the outlet and already survive navigation. This is the third thing on that shelf.
  *
  * Routes feed it through `<RouteHeader/>`; see the note there for why that is a portal and not a

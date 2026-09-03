@@ -259,7 +259,7 @@ describe("Notice — enforcement, so the alert family does not regrow", () => {
     const allowed = new Set([
       "components/ui/notice.tsx", // the table itself
       "components/connection-banner.tsx", // migration step 4 (the top band, in one change)
-      "components/update-available-banner.tsx", // migration step 4
+      "components/update-ribbon.tsx", // migration step 4 (absorbed update-available-banner, M16/02)
       "components/host-stale-banner.tsx", // migration step 3
       "components/alpha-bar.tsx", // step 6, optional: not an alert, and already correct
     ]);

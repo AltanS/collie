@@ -21,6 +21,7 @@ import {
   peersRolledBack,
   type PeerRow,
 } from "@/lib/update-pack";
+import { clearUpdateStarted, noteUpdateStarted } from "@/lib/update-ribbon";
 import { cn } from "@/lib/utils";
 import type {
   PreflightCheck,
@@ -44,12 +45,13 @@ import type {
 // is "level this pack", made once, and a per-peer button would be a second one.
 //
 // ── THIS IS NOT THE OTHER UPDATE ─────────────────────────────────────────────
-// `components/update-available-banner.tsx` says "New version — tap to update" and reloads the
-// BUNDLE. This card updates COLLIE — the program, on the host, with a service restart in the middle
-// of it. Two things called "update" in one UI is the confusion this card exists to avoid, so it
-// never borrows that banner's words: it is titled "Update Collie", it names versions, and it takes
-// a confirm. The two are coordinated in `lib/self-update.ts`, which holds the bundle reload for the
-// length of a run and lets it fire once the run is `done`.
+// The top band's bundle states say "New version — tap to update" and reload the BUNDLE. This card
+// updates COLLIE — the program, on the host, with a service restart in the middle of it. Two things
+// called "update" in one UI is the confusion this card exists to avoid, so it never borrows those
+// words: it is titled "Update Collie", it names versions, and it takes a confirm. The two are
+// coordinated in `lib/self-update.ts`, which holds the bundle reload for the length of a run and
+// lets it fire once the run is `done`. What this card owes the band is one stamp: `noteUpdateStarted()`
+// on a successful POST, which is the band's "Starting update…" and nothing else.
 //
 // ── THE RESTART GAP IS NOT AN OUTAGE ─────────────────────────────────────────
 // The bridge goes away during `restarting`. A poll that fails in that window is the update working,
@@ -201,6 +203,10 @@ export function UpdateCard() {
     setError(null);
     try {
       const answer = await startUpdate({ target: ask.version, major: ask.major, peersOnly: ask.peersOnly });
+      // The band's (s) state, and the only thing that produces it: `POST /api/update` returns
+      // immediately and hands off to a detached process, so the run record says nothing for a beat.
+      // A silent band in that beat reads as "nothing happened" about the thing just consented to.
+      noteUpdateStarted();
       setConfirming(null);
       if (answer.run !== null) setStandbyRun(answer.run);
       // Pull the snapshot now rather than waiting out the poll gap: the operator has just tapped,
@@ -210,6 +216,7 @@ export function UpdateCard() {
       // Every refusal the bridge can make is a code with a sentence (bridge/error-codes.ts) — a
       // double tap lands here as `update.in_progress`, which is the idempotence being reported
       // rather than a second update being started.
+      clearUpdateStarted(); // nothing was started, so the band must not say one was
       setError(describeThrownError(thrown));
       setConfirming(null);
     } finally {

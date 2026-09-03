@@ -28,6 +28,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Added
 
 - Updates page at `/settings/updates`: the check, the update card, a read-only line per pack member, and one action button.
+- One top-of-app update band, replacing the self-update row: release on offer, confirm just tapped, run in flight, new bridge, and peers following.
 
 ### Changed
 
