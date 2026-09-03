@@ -40,6 +40,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - `pack update --path '~/…'` expands the tilde on the remote's own `$HOME`, not this machine's.
 - `pack update --host` remembers the ssh route as soon as the probe proves it, not only after a
   fully successful run.
+- `bun run test` no longer exits 0 when a test fails: a probe script called process.exit on import.
 
 ## [1.3.0] - 2026-09-03
 

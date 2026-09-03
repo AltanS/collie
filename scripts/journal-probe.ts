@@ -311,19 +311,24 @@ async function probeBeacons(registry: Record<string, JournalAdapter>, stateDir: 
   return count("empty") + count("unnamed");
 }
 
-const cfg = loadConfig();
-const registry = buildJournalRegistry(cfg.journalRoots);
-// Keyed lookup rather than a cast: JournalRoots is a closed shape on purpose (adding a harness
-// should be a type error here until its root is wired), so widen it explicitly.
-const roots = new Map<string, readonly string[]>(Object.entries(cfg.journalRoots));
+// Guarded so `journal-probe.test.ts` can import `refFor` above with no side effects: unguarded,
+// this whole probe (and its `process.exit`) ran at import time, which killed the combined
+// `bun test ./bridge ./cli ./scripts` run mid-suite before it ever printed a summary.
+if (import.meta.main) {
+  const cfg = loadConfig();
+  const registry = buildJournalRegistry(cfg.journalRoots);
+  // Keyed lookup rather than a cast: JournalRoots is a closed shape on purpose (adding a harness
+  // should be a type error here until its root is wired), so widen it explicitly.
+  const roots = new Map<string, readonly string[]>(Object.entries(cfg.journalRoots));
 
-console.log("journal adapters — probing real logs\n");
-const results = await Promise.all(
-  Object.entries(registry).map(([agent, adapter]) => probe(adapter, roots.get(agent) ?? [])),
-);
-const failed = results.filter((r) => r === "fail").length;
-const ok = results.filter((r) => r === "ok").length;
-console.log(`\n${ok} ok, ${results.length - ok - failed} with no logs, ${failed} failed`);
+  console.log("journal adapters — probing real logs\n");
+  const results = await Promise.all(
+    Object.entries(registry).map(([agent, adapter]) => probe(adapter, roots.get(agent) ?? [])),
+  );
+  const failed = results.filter((r) => r === "fail").length;
+  const ok = results.filter((r) => r === "ok").length;
+  console.log(`\n${ok} ok, ${results.length - ok - failed} with no logs, ${failed} failed`);
 
-const beaconFailures = await probeBeacons(registry, cfg.stateDir);
-process.exit(failed + beaconFailures > 0 ? 1 : 0);
+  const beaconFailures = await probeBeacons(registry, cfg.stateDir);
+  process.exit(failed + beaconFailures > 0 ? 1 : 0);
+}

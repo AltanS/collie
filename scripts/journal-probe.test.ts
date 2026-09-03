@@ -29,3 +29,19 @@ describe("refFor", () => {
     expect(refFor("grok", "/tmp/sessions/not-a-uuid/chat_history.jsonl")).toBeNull();
   });
 });
+
+test("importing journal-probe has no side effects", async () => {
+  // Pre-fix, the whole probe (config load, real-log walk, banner, process.exit) ran at import
+  // time — this file's own `import { refFor }` above would have printed the banner or, worse,
+  // exited the process before `bun -e` ever reached its own console.log. Spawned out-of-process
+  // so a regression here fails loudly instead of aborting this very test run mid-suite.
+  const proc = Bun.spawn(["bun", "-e", 'import("./scripts/journal-probe.ts").then(()=>console.log("alive"))'], {
+    cwd: import.meta.dir.replace(/\/scripts$/, ""),
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+  expect(exitCode).toBe(0);
+  expect(stdout).toContain("alive");
+  expect(stdout).not.toContain("journal adapters — probing real logs");
+});
