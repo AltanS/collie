@@ -1,9 +1,11 @@
 import { DEFAULT_PORT } from "../bridge/config.ts";
 import type { OpsRecord } from "../bridge/pack/ops-store.ts";
 import type { TrustedMember, TrustStoreData } from "../bridge/pack/trust-store.ts";
+import { STALE_AFTER_MS, type UpdateRun } from "../bridge/update-run.ts";
 import { answersThisBuild } from "../bridge/version.ts";
 import { collieVersionBare } from "./context.ts";
-import { EXIT } from "./io.ts";
+import { updateDeps } from "./deps.ts";
+import { EXIT, type Io } from "./io.ts";
 import { parsePackArgs, probeMembers } from "./pack.ts";
 import {
   errorLine,
@@ -13,12 +15,16 @@ import {
   restartScript,
   runInstall,
   runProbe,
+  runUpdateStatus,
   transportFailure,
   type PackAddDeps,
   type Probe,
   type RemoteRunner,
 } from "./remote.ts";
 import { plainUpdate, type UpdateEvent, type UpdateOutcome, type UpdateRow } from "./render.ts";
+import { cmdUpdate } from "./update.ts";
+import { preflight, updateCheckDeps, type PreflightCheck, type PreflightReport } from "./update-check.ts";
+import { awaitRunRecord, healthTimeoutMs, HEALTH_POLL_MS, readRun } from "./update-run.ts";
 
 // The tolerant `<semver>+<sha>` comparison lives in `bridge/version.ts` now — the health gate of the
 // detached updater (M15/04) asks the same question of a machine restarting under it, and one
@@ -47,15 +53,57 @@ export { answersThisBuild };
 // "level these machines to this build" — and asking it five times is not five consents, it is one
 // consent with four chances to answer the wrong one by reflex. What stays per-member is the DIRTY
 // checkout refusal: that is not consent, it is Collie declining to discard work it did not create.
+//
+// ── ONE SEQUENCE, AND IT STOPS AT THE FIRST FAILURE (M15/06) ─────────────────
+// Preflight every machine this run intends to touch (spec 03's `collie update --check`, over the
+// same ssh); then this LEAD, if it is not yet running the build it is about to hand out; then the
+// peers, one at a time, each gated on the member coming back answering that build. The first failure
+// ends the run and every member after it is left untouched and reported as "not attempted".
+//
+// That is a deliberate reversal of "record it and carry on", and the reason is PACK_PROTOCOL.md
+// §7.1: version skew inside a protocol version is tolerated by design, so a half-updated pack is a
+// SUPPORTED state and stopping is cheap. Pressing on after one machine failed is not — it multiplies
+// one unexplained fault across every machine still to come, and the operator then has N failures to
+// read instead of one. The output says this out loud when it aborts.
+//
+// ── TERMINAL-ONLY, THIS MILESTONE ────────────────────────────────────────────
+// The phone drives the machine it is talking to and nothing else. A pack-wide update needs the one
+// TTY consent below, and there is still no `--yes`. The credential that would let a phone push to
+// peers is written up as a PROPOSED amendment to ADR 0016 and is not decided; until it is, this verb
+// is the only way a peer is levelled.
 
-/** `pack update`'s seams. Exactly `pack add`'s set — the transport, the prompts and the bundle. */
+/** How this lead's OWN update is asked for and watched — `collie update`'s detached runner (M15/04). */
+export interface LeadUpdate {
+  /** Stage and hand off, exactly as `collie update` does. `EXIT.OK` ⇒ the runner is away. */
+  start(): Promise<number>;
+  /** That runner's record as of now, through the one staleness rule. Null ⇒ nothing has been written. */
+  record(): UpdateRun | null;
+}
+
+/** `pack update`'s seams: `pack add`'s set, plus the preflight, this lead's own update and a wait. */
 export interface PackUpdateDeps extends PackAddDeps {
   /** Where every line this verb says goes as STRUCTURE. Absent ⇒ the plain replay. */
   emitUpdate?(event: UpdateEvent): void;
+  /**
+   * Spec 03's read-only preflight (`cli/update-check.ts`), behind a seam.
+   *
+   * A seam rather than a call for the reason every other one here is: this verb's tests must never
+   * spawn ssh, and the preflight reaches every member over it.
+   */
+  preflight?(): Promise<PreflightReport>;
+  /** This lead's own update. Absent ⇒ the real `collie update`, resolved on first use. */
+  readonly lead?: LeadUpdate;
+  /** How this verb waits between polls. Absent ⇒ a real timer. */
+  readonly sleep?: (ms: number) => Promise<void>;
 }
 
-/** {@link PackUpdateDeps} once the sink is resolved — the shape every step below takes. */
-type Wired = PackUpdateDeps & { emitUpdate(event: UpdateEvent): void };
+/** {@link PackUpdateDeps} once the sink and the defaults are resolved — the shape every step takes. */
+type Wired = PackUpdateDeps & {
+  emitUpdate(event: UpdateEvent): void;
+  preflight(): Promise<PreflightReport>;
+  readonly lead: LeadUpdate;
+  readonly sleep: (ms: number) => Promise<void>;
+};
 
 const USAGE = [
   "usage: collie pack update <member>…   # level these peers to this lead's build",
@@ -92,23 +140,56 @@ export async function cmdPackUpdate(deps: PackUpdateDeps, args: readonly string[
   const surface = deps.ui?.packUpdate?.() ?? null;
   if (surface === null) {
     return await updateRun(
-      { ...deps, emitUpdate: deps.emitUpdate ?? ((event) => plainUpdate(deps.io, event)) },
+      wire({ ...deps, emitUpdate: deps.emitUpdate ?? ((event) => plainUpdate(deps.io, event)) }),
       args,
     );
   }
   // The rich path: `io` and `confirm` are BOTH replaced for the length of the run, which is the whole
   // of the one-writer rule (`cli/render.ts`). Nothing below knows which renderer it is talking to.
-  const wired: Wired = {
+  const wired = wire({
     ...deps,
     io: surface.io,
     emitUpdate: surface.emit,
     confirm: surface.confirm,
-  };
+  });
   try {
     return await updateRun(wired, args);
   } finally {
     await surface.close();
   }
+}
+
+/** The three defaults, filled in once. Everything here is a seam a test replaces with a value. */
+function wire(deps: PackUpdateDeps & { emitUpdate(event: UpdateEvent): void }): Wired {
+  return {
+    ...deps,
+    preflight: deps.preflight ?? (() => preflight(updateCheckDeps(deps.io))),
+    lead: deps.lead ?? lazyLead(deps.io),
+    sleep: deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+  };
+}
+
+/**
+ * The real `collie update`, resolved on FIRST USE and not before.
+ *
+ * `updateDeps` loads the context a second time and reaches the filesystem to do it, and most runs of
+ * this verb never touch the lead at all — so a run where the lead is already current must not pay
+ * for it, and must not print a context complaint it had no reason to provoke.
+ */
+function lazyLead(io: Io): LeadUpdate {
+  let resolved: LeadUpdate | null = null;
+  const real = (): LeadUpdate => {
+    if (resolved === null) {
+      const deps = updateDeps(io);
+      resolved = {
+        start: () => cmdUpdate(deps, []),
+        record: () =>
+          readRun(deps.files, deps.ctx.stateDir, deps.now(), (pid) => deps.exec.processCommand(pid) !== null),
+      };
+    }
+    return resolved;
+  };
+  return { start: () => real().start(), record: () => real().record() };
 }
 
 async function updateRun(deps: Wired, args: readonly string[]): Promise<number> {
@@ -164,12 +245,38 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
   const outcomes = new Map<string, UpdateRow>();
   const runners: RemoteRunner[] = [];
   try {
+    // 1. THE PREFLIGHT. Every machine this run intends to touch, asked spec 03's question, before a
+    //    single one of them is touched. One red is the whole run.
+    const red = await preflightGate(deps, targets);
+    if (red !== null) return red;
+
     const ready = await planAll(deps, targets, commit, outcomes, runners);
-    if (ready.length > 0) {
-      const consent = await confirmBatch(deps, ready, outcomes, version, commit);
-      if (consent !== EXIT.OK) return consent;
-      await workAll(deps, data, ready, { commit, version, expected, outcomes });
+    // 2. A member the probe refused has already failed, and the probe touched nothing at all — so
+    //    the abort rule applies here too, one step earlier and for free.
+    const refused = [...outcomes.values()].find((row) => row.outcome === "failed");
+    if (refused !== undefined) {
+      return stop(deps, targets, outcomes, version, {
+        memberId: refused.memberId,
+        recovery: `collie pack update ${refused.memberId}`,
+      });
     }
+    if (ready.length === 0) return report(deps, targets, outcomes, version);
+
+    // 3. THE ONE CONSENT, and it names the lead when the lead is part of what is being consented to.
+    const behind = leadIsBehind(deps, version, commit);
+    const consent = await confirmBatch(deps, ready, outcomes, version, commit, behind);
+    if (consent !== EXIT.OK) return consent;
+
+    // 4. THE LEAD FIRST. A lead that is not running the build it is handing out gets it first, and a
+    //    lead that cannot take it is a lead whose peers must not take it either.
+    if (behind && !(await updateLead(deps, version))) {
+      leaveRest(deps, targets, outcomes, "not attempted — this lead's own update did not land");
+      return report(deps, targets, outcomes, version, false);
+    }
+
+    // 5. THE PEERS, one at a time, stopping at the first failure.
+    const stopped = await workAll(deps, data, ready, { commit, version, expected, outcomes });
+    if (stopped !== null) return stop(deps, targets, outcomes, version, stopped);
     return report(deps, targets, outcomes, version);
   } finally {
     // Every exit path, including a throw: each of these is a live authenticated channel.
@@ -335,6 +442,105 @@ async function planAll(
   return ready;
 }
 
+// ── The preflight gate ───────────────────────────────────────────────────────
+
+/**
+ * Spec 03's preflight over this lead and every member this run means to touch. `null` means go.
+ *
+ * **A red here costs nothing to obey.** Nothing has been pushed, built or restarted at this point,
+ * so the whole run is still free to be one sentence naming a machine and a reason. The alternative —
+ * discovering the same fact on the third member, mid-push — is the failure this gate exists to move
+ * to the front.
+ *
+ * Two ids are deliberately not gated on. `ops-record` is a member this run already treats as
+ * SKIPPED, because it has no route to it and never touches it; a preflight red about a machine
+ * nobody is going to reach must not stop the machines that can be reached. Amber never blocks, by
+ * spec 03's own rule: a gate that fires on a healthy host is a gate the operator learns to bypass.
+ */
+async function preflightGate(deps: Wired, targets: readonly Target[]): Promise<number | null> {
+  const routed = targets.filter((t) => t.sshHost !== "");
+  const named = new Set(routed.map((t) => t.member.memberId));
+  const checked = await deps.preflight();
+  const reds: { readonly who: string; readonly check: PreflightCheck }[] = [
+    ...checked.checks.filter(blocks).map((check) => ({ who: "this lead", check })),
+    ...(checked.pack ?? [])
+      .filter((m) => named.has(m.memberId))
+      .flatMap((m) => m.checks.filter(blocks).map((check) => ({ who: m.memberId, check }))),
+  ];
+  if (reds.length === 0) {
+    line(deps, `preflight: nothing red on this lead${routed.length === 0 ? "" : ` or on ${nMembers(routed.length)}`}.`);
+    return null;
+  }
+  for (const { who, check } of reds) {
+    deps.io.err(`error: the preflight is red on ${who} — ${check.reason}`);
+    if (check.remedy !== undefined) deps.io.err(`       clear it with: ${check.remedy}`);
+  }
+  deps.io.err("       Nothing was pushed, built or restarted, on any member.");
+  return EXIT.FAIL;
+}
+
+/** Does this check stop the run? See {@link preflightGate} for the one id that does not. */
+const blocks = (c: PreflightCheck): boolean => c.verdict === "red" && c.id !== "ops-record";
+
+const nMembers = (n: number): string => `${n} member${n === 1 ? "" : "s"}`;
+
+// ── The lead's own turn ──────────────────────────────────────────────────────
+
+/**
+ * Is this lead running the build it is about to hand out?
+ *
+ * The question is asked of what this machine ANSWERS with, not of what its checkout says: a checkout
+ * that has advanced without being built is exactly the case where the peers would end up on a build
+ * their lead has never run.
+ */
+function leadIsBehind(deps: Wired, version: string, commit: string): boolean {
+  return !answersThisBuild(collieVersionBare(deps.ctx.root, (p) => deps.files.read(p)), version, commit);
+}
+
+/**
+ * The lead's leg: hand off to its own updater, then WAIT for the record to settle.
+ *
+ * It is the same runner `collie update` uses and the same record `collie update --status` reads —
+ * the health gate and the one rollback come with it (M15/04), so a lead that does not come up rolls
+ * itself back and this run stops before a single peer is touched.
+ *
+ * The wait is bounded by the record's own staleness rule rather than by the health budget: this leg
+ * covers a full build, which is minutes on small hardware, and a killed updater is reported as
+ * `interrupted` by that rule long before the ten minutes are up.
+ */
+async function updateLead(deps: Wired, version: string): Promise<boolean> {
+  const ours = collieVersionBare(deps.ctx.root, (p) => deps.files.read(p));
+  line(deps, "");
+  line(deps, `this lead: ${ours} — it takes ${version} first, before any peer does.`);
+  const started = await deps.lead.start();
+  if (started !== EXIT.OK) {
+    deps.io.err(`error: this lead's own update would not start (exit ${started}) — no peer was touched.`);
+    deps.io.err("       Run `collie update` here, then re-run this command.");
+    return false;
+  }
+  const outcome = await awaitRunRecord(() => deps.lead.record(), {
+    now: deps.now,
+    sleep: deps.sleep,
+    timeoutMs: STALE_AFTER_MS,
+    pollMs: LEAD_POLL_MS,
+  });
+  if (outcome.kind === "done") {
+    line(deps, `  ✓ this lead is running ${version} — the peers can have it.`);
+    return true;
+  }
+  const what = outcome.kind === "timeout" ? "did not finish" : `ended as ${outcome.state}`;
+  deps.io.err(`error: this lead's own update ${what} — ${outcome.reason}.`);
+  if (outcome.kind === "failed" && outcome.recovery !== null) {
+    deps.io.err(`       recover with: ${outcome.recovery}`);
+  }
+  deps.io.err("       No peer was touched, and none is behind anything this lead is running.");
+  skewNote(deps);
+  return false;
+}
+
+/** How often the lead's record is read. A build is minutes; a second between reads buys nothing. */
+const LEAD_POLL_MS = 2_000;
+
 // ── The one confirmation ─────────────────────────────────────────────────────
 
 /**
@@ -351,6 +557,7 @@ async function confirmBatch(
   outcomes: ReadonlyMap<string, UpdateRow>,
   version: string,
   commit: string,
+  leadFirst: boolean,
 ): Promise<number> {
   const named = ready
     .map((p) => `${p.target.member.memberId} (${p.probe.version || "unbuilt"})`)
@@ -365,8 +572,11 @@ async function confirmBatch(
     refused === 0 ? "" : `${refused} the probe refused`,
   ].filter((s) => s !== "");
   const question =
-    `update ${ready.length} member${ready.length === 1 ? "" : "s"} to ${version} (${commit.slice(0, 12)})` +
-    ` over ssh: ${named}${aside.length === 0 ? "" : ` — ${aside.join(", ")}`}?`;
+    `update ${nMembers(ready.length)} to ${version} (${commit.slice(0, 12)})` +
+    ` over ssh: ${named}${aside.length === 0 ? "" : ` — ${aside.join(", ")}`}` +
+    // Said in the SAME question, never as a second one: the lead is part of the operation being
+    // consented to, not an operation of its own.
+    `${leadFirst ? ", this lead first" : ""}?`;
   const answer = await deps.confirm(question);
   if (answer === null) {
     deps.io.err(`error: this run is not interactive, and it would have asked: ${question}`);
@@ -382,17 +592,29 @@ async function confirmBatch(
 
 // ── The work ─────────────────────────────────────────────────────────────────
 
-/** Every consented member, one at a time. A failure is recorded and the run continues. */
+/** Where a run stopped, and the one command that clears it. */
+interface Stopped {
+  readonly memberId: string;
+  readonly recovery: string;
+}
+
+/**
+ * Every consented member, one at a time. **The first failure ends the run.**
+ *
+ * `null` means every member took the build. Anything else names the member that failed — it has
+ * already rolled itself back or been left exactly as its failing leg found it — and every member
+ * after it in the order is recorded as "not attempted" without being touched.
+ */
 async function workAll(
   deps: Wired,
   data: TrustStoreData,
   ready: readonly Planned[],
   o: { commit: string; version: string; expected: string; outcomes: Map<string, UpdateRow> },
-): Promise<void> {
+): Promise<Stopped | null> {
   // Bundled ONCE for the whole run: the commit is one artifact, and re-running `git bundle` per
   // member would be N copies of the same bytes with N chances for HEAD to have moved underneath.
   let bundle: string | null = null;
-  for (const planned of ready) {
+  for (const [index, planned] of ready.entries()) {
     const id = planned.target.member.memberId;
     deps.emitUpdate({ kind: "member-start", memberId: id });
     if (bundle === null) {
@@ -400,23 +622,38 @@ async function workAll(
       if (bundle === null) {
         deps.io.err(`error: could not bundle ${o.commit.slice(0, 12)} from ${deps.ctx.root}.`);
         fail(deps, id, o.outcomes, "nothing to push — the bundle failed here");
-        // Nothing can be sent to anyone: stop rather than repeat the same failure per member.
-        for (const rest of ready.slice(ready.indexOf(planned) + 1)) {
-          fail(deps, rest.target.member.memberId, o.outcomes, "not attempted — the bundle failed here");
-        }
-        return;
+        // Nothing can be sent to anyone: the rest are untouched for a reason of their own.
+        untouched(deps, ready.slice(index + 1), o.outcomes, "not attempted — the bundle failed here");
+        return { memberId: id, recovery: `collie pack update ${id}` };
       }
     }
     const from = planned.probe.version || planned.probe.commit.slice(0, 12) || "unbuilt";
-    const done = await workOne(deps, data, planned, { ...o, bundle });
-    if (done) {
-      o.outcomes.set(id, { memberId: id, outcome: "updated", detail: `${from} → ${o.version}` });
-      deps.emitUpdate({ kind: "member-done", memberId: id, outcome: "updated" });
+    const failure = await workOne(deps, data, planned, { ...o, bundle });
+    if (failure !== null) {
+      untouched(deps, ready.slice(index + 1), o.outcomes, `not attempted — the run stopped at ${id}`);
+      return failure;
     }
+    o.outcomes.set(id, { memberId: id, outcome: "updated", detail: `${from} → ${o.version}` });
+    deps.emitUpdate({ kind: "member-done", memberId: id, outcome: "updated" });
+  }
+  return null;
+}
+
+/** The members after the one that failed. Recorded, never dialled — that is the whole point. */
+function untouched(
+  deps: Wired,
+  rest: readonly Planned[],
+  outcomes: Map<string, UpdateRow>,
+  detail: string,
+): void {
+  for (const planned of rest) {
+    const id = planned.target.member.memberId;
+    outcomes.set(id, { memberId: id, outcome: "skipped", detail });
+    deps.emitUpdate({ kind: "member-done", memberId: id, outcome: "skipped" });
   }
 }
 
-/** One member's three legs. `false` means it failed and has already been recorded. */
+/** One member's four legs. Non-null means it failed, and the failure has already been recorded. */
 async function workOne(
   deps: Wired,
   data: TrustStoreData,
@@ -428,7 +665,7 @@ async function workOne(
     bundle: string;
     outcomes: Map<string, UpdateRow>;
   },
-): Promise<boolean> {
+): Promise<Stopped | null> {
   const { target, runner, root } = planned;
   const id = target.member.memberId;
   const host = target.sshHost;
@@ -466,38 +703,95 @@ async function workOne(
   }
   deps.emitUpdate({ kind: "leg-done", memberId: id, leg: "restart", ok: true, detail: "its bridge came back" });
 
-  // ── verify ─────────────────────────────────────────────────────────────────
+  // ── verify: the health gate ────────────────────────────────────────────────
   // The lead's own view decides, not the ssh exit code: the member answers `hello` over the pack link
   // and says which version it is running. That is the same fact `pack status` renders as skew, so a
   // run that ends green here is a run whose skew warning has actually gone.
+  //
+  // It POLLS, on the same budget the local health gate uses (M15/04), because a bridge that has just
+  // been restarted is not up the instant `collie restart` returns — a single ask a second too early
+  // would call a healthy member a failure. And it is a GATE, not a warning: a member that never comes
+  // back running what was pushed stops the run, and the members after it keep the build they have.
   deps.emitUpdate({ kind: "leg-start", memberId: id, leg: "verify" });
-  const probes = await probeMembers(deps, data, [target.member]);
-  const outcome = probes.get(id);
-  if (outcome?.ok !== true) {
-    deps.io.err(`error: ${id} was updated, but this lead cannot reach it at ${target.member.address}.`);
+  const health = await awaitPeerBuild(deps, data, planned, o);
+  if (!health.ok) {
+    // Asked over ssh, never over the pack link: the member's own updater record is the only thing
+    // that knows whether it rolled back, and `curl` is not assumed to exist on anybody's machine.
+    const record = await peerRun(planned);
+    const detail = record === null ? health.reason : `${health.reason}; its own updater reports ${record.state}`;
+    deps.io.err(`error: ${id} did not come back running ${o.expected} — ${detail}.`);
+    if (record?.reason !== undefined) deps.io.err(`       ${id} says: ${record.reason}`);
     deps.io.err(`       Run \`collie doctor\` on ${host}: it names the bind, the ACL and the clock.`);
-    return legFailed(deps, id, "verify", o.outcomes, `updated, but unreachable at ${target.member.address}`);
-  }
-  const reported = outcome.value.version;
-  const skewed = reported !== null && !answersThisBuild(reported, o.version, o.commit);
-  if (skewed) {
-    line(deps, `warn: ${id} answers as ${reported}, not ${o.expected} — check the build there.`, "warn", "err");
+    const recovery =
+      record?.recovery === undefined ? `collie pack update ${id}` : `ssh ${host} -- ${record.recovery}`;
+    return legFailed(deps, id, "verify", o.outcomes, detail, recovery);
   }
   deps.emitUpdate({
     kind: "leg-done",
     memberId: id,
     leg: "verify",
     ok: true,
-    // The row and the warning above it must never say opposite things about the same string: when the
-    // answer is the one that was pushed it stands alone, and when it is not, the row names both.
-    detail:
-      `answers at ${target.member.address} · ${reported ?? "no version reported"}` +
-      (skewed ? ` (expected ${o.expected})` : ""),
+    detail: `answers at ${target.member.address} · ${health.reported ?? "no version reported"}`,
   });
 
   // The route was already remembered once the probe proved it, in `planAll` — well before this leg
   // runs, and well before the one consent. Nothing left to do here.
-  return true;
+  return null;
+}
+
+/** What the health gate saw: the version the member answers with, or why it never answered it. */
+type PeerHealth =
+  | { readonly ok: true; readonly reported: string | null }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Poll one member until it answers the build that was pushed, or the budget runs out.
+ *
+ * The budget is the local gate's — `COLLIE_UPDATE_HEALTH_TIMEOUT_MS`, 30 s by default — because it is
+ * the same question about the same kind of machine, and two numbers for one wait is two numbers to
+ * tune. The poll count is bounded as well as the clock, so a caller whose clock does not move still
+ * terminates.
+ *
+ * A member that reports NO version at all passes: an unstamped Collie can only name its manifest,
+ * and that is not evidence against the build (`bridge/version.ts`).
+ */
+async function awaitPeerBuild(
+  deps: Wired,
+  data: TrustStoreData,
+  planned: Planned,
+  o: { commit: string; version: string; expected: string },
+): Promise<PeerHealth> {
+  const id = planned.target.member.memberId;
+  const budget = healthTimeoutMs(deps.ctx.env);
+  const deadline = deps.now() + budget;
+  const tries = Math.max(1, Math.ceil(budget / HEALTH_POLL_MS));
+  let reason = "it never answered at all";
+  for (let i = 0; i < tries; i++) {
+    const outcome = (await probeMembers(deps, data, [planned.target.member])).get(id);
+    if (outcome?.ok !== true) {
+      reason = `this lead cannot reach it at ${planned.target.member.address}`;
+    } else {
+      const reported = outcome.value.version;
+      if (reported === null || answersThisBuild(reported, o.version, o.commit)) return { ok: true, reported };
+      reason = `it answers as ${reported}, not ${o.expected}`;
+    }
+    if (i + 1 >= tries || deps.now() >= deadline) break;
+    await deps.sleep(HEALTH_POLL_MS);
+  }
+  return { ok: false, reason: `${reason} after ${Math.round(budget / 1000)}s` };
+}
+
+/**
+ * The member's own update record, read over the ssh this run already holds open.
+ *
+ * Best effort, and silent when it fails: this is a diagnosis attached to a failure that has already
+ * been decided, and a member too old to know `collie update --status` must not turn one clear failure
+ * into two confusing ones.
+ */
+async function peerRun(planned: Planned): Promise<UpdateRun | null> {
+  const { result, run } = await runUpdateStatus(planned.runner, planned.root);
+  if (!result.spawned || result.code === 255) return null;
+  return run;
 }
 
 // ── What "it came back running what we pushed" means ─────────────────────────
@@ -543,6 +837,9 @@ function report(
   targets: readonly Target[],
   outcomes: ReadonlyMap<string, UpdateRow>,
   version: string,
+  // A run can fail without any MEMBER failing — a lead that could not take its own update leaves
+  // every peer merely "not attempted". The table must not print a ✓ over that.
+  landed = true,
 ): number {
   const rows: UpdateRow[] = targets.map(
     (t) =>
@@ -565,8 +862,53 @@ function report(
     behind === 0
       ? `${parts.join(", ")} — every member named runs ${version}`
       : `${parts.join(", ")} — ${behind} still behind this lead's ${version}`;
-  deps.emitUpdate({ kind: "summary", rows, verdict, ok: failed === 0 });
-  return failed === 0 ? EXIT.OK : EXIT.FAIL;
+  const ok = failed === 0 && landed;
+  deps.emitUpdate({ kind: "summary", rows, verdict, ok });
+  return ok ? EXIT.OK : EXIT.FAIL;
+}
+
+/**
+ * The table, then the abort: what stopped the run, how to clear it, and why stopping was safe.
+ *
+ * The order matters. The operator reads the table to see where the pack stands and the paragraph
+ * under it to see what to do about it, and the recovery command names ONE member — the one that
+ * failed — because every member after it was never touched.
+ */
+function stop(
+  deps: Wired,
+  targets: readonly Target[],
+  outcomes: Map<string, UpdateRow>,
+  version: string,
+  stopped: Stopped,
+): number {
+  leaveRest(deps, targets, outcomes, `not attempted — the run stopped at ${stopped.memberId}`);
+  const code = report(deps, targets, outcomes, version, false);
+  deps.io.err(`error: the run stopped at ${stopped.memberId} — every member after it was left untouched.`);
+  deps.io.err(`       recover with: ${stopped.recovery}`);
+  deps.io.err("       Then re-run this command; the members that already took the build are current.");
+  skewNote(deps);
+  return code;
+}
+
+/** Every target no leg ever reached. Recorded so the table has a row and a reason for each. */
+function leaveRest(
+  deps: Wired,
+  targets: readonly Target[],
+  outcomes: Map<string, UpdateRow>,
+  detail: string,
+): void {
+  for (const target of targets) {
+    const id = target.member.memberId;
+    if (outcomes.has(id)) continue;
+    outcomes.set(id, { memberId: id, outcome: "skipped", detail });
+    deps.emitUpdate({ kind: "member-done", memberId: id, outcome: "skipped" });
+  }
+}
+
+/** Why a half-updated pack is a place it is safe to stop. Printed on every abort, for that reason. */
+function skewNote(deps: Wired): void {
+  deps.io.err("       A half-updated pack keeps working: PACK_PROTOCOL.md §7.1 tolerates version skew");
+  deps.io.err("       inside a protocol version, which is what makes stopping at the first failure safe.");
 }
 
 // ── Small shared spellings ───────────────────────────────────────────────────
@@ -592,10 +934,11 @@ function legFailed(
   leg: "push" | "restart" | "verify",
   outcomes: Map<string, UpdateRow>,
   detail: string,
-): false {
+  recovery = `collie pack update ${memberId}`,
+): Stopped {
   deps.emitUpdate({ kind: "leg-done", memberId, leg, ok: false, detail });
   fail(deps, memberId, outcomes, detail);
-  return false;
+  return { memberId, recovery };
 }
 
 function fail(deps: Wired, memberId: string, outcomes: Map<string, UpdateRow>, detail: string): void {

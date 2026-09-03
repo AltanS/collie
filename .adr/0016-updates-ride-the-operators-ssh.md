@@ -7,6 +7,11 @@ reasons, one verb earlier) · [ADR 0013](./0013-a-peer-listens-without-becoming-
 peer listens for its lead and admits nobody else) · contract:
 [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §7.1, §8.5, §11
 
+Amendment proposed: [ADR 0035](./0035-pack-updates-from-the-phone-amend-0016.md), a non-interactive
+pack key on the lead, restricted on every peer by a forced command scoped to a **pinned tag**. It
+removes the interactive consent this ADR relies on, so it is **Proposed**, not accepted; until it is
+reviewed on its own, the phone does not push to peers.
+
 ## Context
 
 A pack drifts. The lead updates, its peers do not, and `collie pack status` renders the skew as a

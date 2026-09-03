@@ -38,6 +38,8 @@ import {
   HEALTH_POLL_MS,
   HEALTH_TIMEOUT_ENV,
   healthProbe,
+  probeConfigOf,
+  probeTarget,
   healthTimeoutMs,
   idleRun,
   launchPlan,
@@ -1891,7 +1893,12 @@ async function runApply(deps: UpdateDeps, a: ApplyArgs): Promise<number> {
       // `restart` would rewrite the unit from its own root — pinning the supervisor to the version
       // the flip just left, which would make the flip cosmetic.
       restart: () => Promise.resolve(restartThroughCurrent(deps, layout)),
-      health: healthProbe(deps.net, deps.ctx.port),
+      // Not "loopback and the front-door port": a wide bind and a peer's TLS-pinned listener are
+      // both real, and both make that URL the wrong door (`cli/update-run.ts` → `probeTarget`).
+      health: healthProbe(
+        deps.net,
+        probeTarget(probeConfigOf(deps.ctx.env, deps.files, deps.ctx.stateDir, deps.ctx.port)),
+      ),
       prune: () => {
         if (a.kind === "binary") collectOldVersions(deps, layout, a.to);
         else pruneVersions(deps, layout);

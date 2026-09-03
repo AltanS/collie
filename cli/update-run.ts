@@ -11,6 +11,8 @@ import {
   type UpdateRun,
   type UpdateRunState,
 } from "../bridge/update-run.ts";
+import { STANDBY_BUILD_HEADER, STANDBY_HEALTH_PATH, standbyPortOf } from "../bridge/pack/standby.ts";
+import { parseTrustStore, trustStorePath } from "../bridge/pack/trust-store.ts";
 import type { Environment } from "./context.ts";
 import type { Exec, Files, Net } from "./sys.ts";
 
@@ -229,9 +231,11 @@ export function releaseLock(files: Files, stateDir: string): void {
 /** The env name that moves the health budget, and the default it moves off. */
 export const HEALTH_TIMEOUT_ENV = "COLLIE_UPDATE_HEALTH_TIMEOUT_MS";
 /**
- * 30 s, which is a MEASURED-ONCE guess and not a law: the bound has to clear a cold start on the
- * slowest lane actually in use, and a timeout tuned on fast hardware turns a healthy slow machine
- * into a spurious rollback. `COLLIE_UPDATE_HEALTH_TIMEOUT_MS` is how a slow machine says so.
+ * 30 s, which is a MEASURED bound and not a law: it has to clear a cold start on the slowest lane
+ * actually in use, and a timeout tuned on fast hardware turns a healthy slow machine into a spurious
+ * rollback. The slowest lane measured so far (minibuch, the tmux mux) takes **190 ms** from unit stop
+ * to listening, so 30 s is two orders of magnitude of headroom and stays the default.
+ * `COLLIE_UPDATE_HEALTH_TIMEOUT_MS` is how a machine slower than that says so.
  */
 export const DEFAULT_HEALTH_TIMEOUT_MS = 30_000;
 /** How often the gate asks. `/api/health` answers in milliseconds; a second between tries is polite. */
@@ -284,10 +288,135 @@ export function aliveVerdict(answer: HealthAnswer): HealthVerdict {
   return { ok: true };
 }
 
-/** `GET http://127.0.0.1:<port>/api/health` — the local probe, over the seam every net call uses. */
-export function healthProbe(net: Net, port: number): () => Promise<HealthAnswer> {
+// ── Waiting on somebody else's run ───────────────────────────────────────────
+// The runner is detached, so a caller that wants to know how it ended cannot await a promise — it
+// reads the record. `collie pack update` does exactly that when it updates the lead before any peer
+// (M15/06): it hands off through the same path `collie update` uses and then waits here.
+
+/** How a run somebody else was driving ended, as a waiting caller reads it. */
+export type RunOutcome =
+  | { readonly kind: "done" }
+  /** A terminal state that is not `done` — the reason and the recovery are the record's own. */
+  | {
+      readonly kind: "failed";
+      readonly state: UpdateRunState;
+      readonly reason: string;
+      readonly recovery: string | null;
+    }
+  /** The budget ran out while the run was still in flight, or there was no record to read at all. */
+  | { readonly kind: "timeout"; readonly reason: string };
+
+/** The clock, the wait and the two budgets {@link awaitRunRecord} polls on. */
+export interface RunWait {
+  now(): number;
+  sleep(ms: number): Promise<void>;
+  readonly timeoutMs: number;
+  readonly pollMs: number;
+}
+
+/**
+ * Poll `read` until the run it names reaches a terminal state, or the budget runs out.
+ *
+ * The record is the only thing a waiter may read: the runner is another process, so its exit code is
+ * not ours to collect and its output goes to the service log. `read` is expected to have applied the
+ * staleness rule already ({@link readRun}), which is what turns a killed updater into `interrupted`
+ * rather than a wait that runs to the full budget.
+ *
+ * The number of polls is bounded as well as the clock, so a caller whose clock does not move — every
+ * test in this tree — still terminates.
+ */
+export async function awaitRunRecord(read: () => UpdateRun | null, e: RunWait): Promise<RunOutcome> {
+  const deadline = e.now() + e.timeoutMs;
+  const tries = Math.max(1, Math.ceil(e.timeoutMs / Math.max(1, e.pollMs)));
+  let last: UpdateRun | null = null;
+  for (let i = 0; i < tries; i++) {
+    last = read();
+    if (last !== null && !inFlight(last.state)) return settledOutcome(last);
+    if (i + 1 >= tries || e.now() >= deadline) break;
+    await e.sleep(e.pollMs);
+  }
+  const where = last === null ? "no update record was ever written" : `it is still ${last.state}`;
+  return { kind: "timeout", reason: `the updater did not finish within ${Math.round(e.timeoutMs / 1000)}s — ${where}` };
+}
+
+/** A terminal record, read as an outcome. `idle` is an aborted preflight: nothing moved, but nothing landed either. */
+function settledOutcome(run: UpdateRun): RunOutcome {
+  if (run.state === "done") return { kind: "done" };
+  return {
+    kind: "failed",
+    state: run.state,
+    reason: run.reason ?? `the run ended as ${run.state}`,
+    recovery: run.recovery ?? null,
+  };
+}
+
+// ── Where the gate knocks ────────────────────────────────────────────────────
+// `http://127.0.0.1:<port>/api/health` is right for most installs and WRONG for two real ones, both
+// measured on live machines rather than imagined:
+//
+//   1. A wide bind. `COLLIE_HOST=100.64.0.8` with `COLLIE_ALLOW_NON_LOOPBACK_BIND=1` is a listener
+//      that is not on loopback at all, so the loopback URL connects to nothing.
+//   2. A PEER. A collie that pins a lead serves its main port behind mutual TLS
+//      (`peerListenerTls`, ADR 0013/§8.1), so a plain-HTTP GET there gets an empty reply — BoringSSL
+//      refuses the handshake long before any route is reached.
+//
+// A peer's plain-HTTP door is its STANDBY door, and it answers `/standby/health` on both of its
+// states. `503` there means "do not route to me", never "I am not up" — a cold door is the ordinary
+// case for a peer that is not standing by — so the gate reads the STATUS as evidence of nothing and
+// takes the build off the answer instead.
+
+/** Where the health gate knocks, and which of the two answers it is about to read. */
+export type ProbeTarget =
+  | { readonly kind: "front-door"; readonly url: string }
+  | { readonly kind: "standby"; readonly url: string };
+
+/** The facts the rule is decided from. All four are read off this instance's own configuration. */
+export interface ProbeConfig {
+  /** `COLLIE_HOST` as configured. Empty ⇒ the loopback default, which is the usual case. */
+  readonly host: string;
+  readonly port: number;
+  /** `COLLIE_STANDBY_PORT`, or null when this instance binds no second door. */
+  readonly standbyPort: number | null;
+  /** Does this collie pin a lead? A peer's front door is mutual TLS and answers no plain HTTP. */
+  readonly pinsALead: boolean;
+}
+
+/**
+ * The rule, pure: a peer with a standby door is asked there, and everything else is asked at its own
+ * front door on the address it actually bound.
+ *
+ * A peer WITHOUT a standby door has no plain-HTTP surface at all, and the front-door URL is returned
+ * for it deliberately: the gate then fails with the connection error, which is the honest report of
+ * a configuration where nothing local can ask this machine how it is.
+ */
+export function probeTarget(c: ProbeConfig): ProbeTarget {
+  if (c.pinsALead && c.standbyPort !== null) {
+    // Loopback, always: the standby door binds `COLLIE_STANDBY_HOST` but this process is ON the
+    // machine, and a door bound wide is reachable on loopback too.
+    return { kind: "standby", url: `http://127.0.0.1:${c.standbyPort}${STANDBY_HEALTH_PATH}` };
+  }
+  const host = c.host.trim() === "" ? "127.0.0.1" : c.host.trim();
+  return { kind: "front-door", url: `http://${host}:${c.port}/api/health` };
+}
+
+/** {@link ProbeConfig} read off this instance's environment and its trust store. */
+export function probeConfigOf(env: Environment, files: Files, stateDir: string, port: number): ProbeConfig {
+  const raw = files.read(trustStorePath(stateDir));
+  const trust = raw === null ? null : parseTrustStore(raw);
+  return {
+    host: env.COLLIE_HOST ?? "",
+    port,
+    standbyPort: standbyPortOf(env),
+    // The same fact `bridge/index.ts` builds its pinned listener from: a store that names a lead.
+    pinsALead: trust !== null && trust.lead !== null,
+  };
+}
+
+/** The health gate's one request, at whichever door {@link probeTarget} named. */
+export function healthProbe(net: Net, target: ProbeTarget): () => Promise<HealthAnswer> {
+  if (target.kind === "standby") return standbyAnswer(net, target.url);
   return async () => {
-    const got = await net.getJson(`http://127.0.0.1:${port}/api/health`);
+    const got = await net.getJson(target.url);
     if (!got.ok) return { ok: false, reason: got.failure.message };
     // SAFETY: `Net.getJson` hands back what `Response.json()` produced, which IS a JSON value by
     // construction. Both fields are checked here before use, and a body that carries neither reads
@@ -296,6 +425,30 @@ export function healthProbe(net: Net, port: number): () => Promise<HealthAnswer>
     const version = body.version ?? "";
     if (version === "") return { ok: false, reason: "the health answer named no version" };
     return { ok: true, version, deposed: body.deposed === true };
+  };
+}
+
+/**
+ * The standby door's answer, read for the one thing the gate wants: what is running there.
+ *
+ * The header first, the body second. They carry the same string by construction
+ * (`bridge/pack/standby.ts`), and reading both is what keeps this working against a peer whose door
+ * predates the header — which, on the day of an update, is every peer being updated.
+ */
+function standbyAnswer(net: Net, url: string): () => Promise<HealthAnswer> {
+  return async () => {
+    const got = await net.probe(url, STANDBY_BUILD_HEADER);
+    if (!got.ok) return { ok: false, reason: got.failure.message };
+    // SAFETY: the parsed body of a JSON answer, with every field checked here before use. A body
+    // that is not an object at all reads every one of them as `undefined`.
+    const body = (got.body ?? {}) as { version?: string; state?: string };
+    const version = got.header ?? body.version ?? "";
+    if (version === "") {
+      return { ok: false, reason: `the standby door answered ${got.status} without naming a version` };
+    }
+    // A deposed collie answers 503 here too, and its state word is the only thing that tells the two
+    // apart. It is not up in the sense that matters: nothing routes to it.
+    return { ok: true, version, deposed: body.state === "deposed" };
   };
 }
 

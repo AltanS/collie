@@ -112,9 +112,13 @@ hooks.
 
 ### Updating the rest of the pack
 
-From the lead node, run `collie pack update <member>…` (or `--all`). This connects over your local
-SSH, pushes the lead's commit, rebuilds, restarts the remote bridge, and verifies the version
-([ADR 0016](../.adr/0016-updates-ride-the-operators-ssh.md)).
+From the lead node, run `collie pack update <member>…` (or `--all`). It runs as one sequence over
+your local SSH: it preflights every machine first, then updates the lead itself if the lead is not
+yet running the build it is handing out, then each peer in turn. A peer is pushed the lead's commit,
+rebuilt, restarted, and then polled until it answers the new build. The first failure stops the run:
+the members after it are left untouched and reported as "not attempted", and the summary names the
+one command that clears the failure. Stopping there is safe because the pack tolerates version skew
+(PACK_PROTOCOL.md §7.1). See [ADR 0016](../.adr/0016-updates-ride-the-operators-ssh.md).
 
 ### Resolving the newest release from a script
 

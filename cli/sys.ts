@@ -100,6 +100,10 @@ export interface NetFailure {
 }
 
 export type NetJson = { ok: true; value: unknown } | { ok: false; failure: NetFailure };
+/** One answer read as the health gate needs it: the status, one named header, and the body. */
+export type NetProbe =
+  | { ok: true; status: number; header: string | null; body: unknown }
+  | { ok: false; failure: NetFailure };
 /** A finished download, with the digest computed AS IT WAS WRITTEN — the bytes are never re-read. */
 export type NetDownload =
   | { ok: true; sha256: string; size: number }
@@ -117,6 +121,15 @@ export type NetDownload =
 export interface Net {
   getJson(url: string): Promise<NetJson>;
   download(url: string, dest: string): Promise<NetDownload>;
+  /**
+   * `GET url`, answered **whatever the status is**, with one response header read off it.
+   *
+   * A third method rather than a flag on {@link Net.getJson}, because it asks a different question:
+   * `getJson` wants a document and treats a non-2xx as a failure, while the update health gate wants
+   * to know what a machine SAYS while it is refusing to serve. A standby door answers `503` when it
+   * is cold, and cold is a healthy peer, not a failure (M15/04, M15/06).
+   */
+  probe(url: string, header: string): Promise<NetProbe>;
 }
 
 /** Same budget as the bridge's tag check — a hung request must never wedge a verb. */
@@ -138,6 +151,20 @@ export const realNet: Net = {
       });
       if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
       return { ok: true, value: await res.json() };
+    } catch (err) {
+      return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
+    }
+  },
+  async probe(url, header) {
+    try {
+      const res = await fetch(url, {
+        headers: { accept: "application/json", "user-agent": "collie-update" },
+        signal: AbortSignal.timeout(NET_TIMEOUT_MS),
+      });
+      // The body is best effort and the status is not: a door that answered at all is a door that is
+      // up, and an unreadable body is one field missing from an answer that already arrived.
+      const body = await res.json().catch(() => null);
+      return { ok: true, status: res.status, header: res.headers.get(header), body };
     } catch (err) {
       return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
     }

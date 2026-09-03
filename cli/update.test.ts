@@ -116,6 +116,7 @@ const clock = () => ({
 const deadNet: Net = {
   getJson: () => Promise.resolve({ ok: false, failure: { status: null, message: "no network in tests" } }),
   download: () => Promise.resolve({ ok: false, failure: { status: null, message: "no network in tests" } }),
+  probe: () => Promise.resolve({ ok: false, failure: { status: null, message: "no network in tests" } }),
 };
 
 /** `git symbolic-ref -q HEAD` answering non-zero is what "detached, i.e. Herdr-managed" means. */
@@ -1069,6 +1070,7 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
   const link = fakeLinkFs({ [`${INST}/current`]: { kind: "symlink", target: BROOT } });
   const health = healthNet(over.health, NEW);
   const net: Net = {
+    probe: () => Promise.resolve({ ok: false, failure: { status: null, message: "no probe in this case" } }),
     getJson: (url) => {
       if (url.includes("/api/health")) return health();
       if (url.includes("api.github.com")) {
