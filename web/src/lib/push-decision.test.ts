@@ -169,8 +169,19 @@ describe("notificationPath — where a tap lands", () => {
     expect(notificationPath({ paneId: "test" })).toBe("/"); // the push-test payload
   });
 
-  test("an update notification routes to settings, unscoped", () => {
-    expect(notificationPath({ target: "settings", host: "box2" })).toBe("/settings");
+  // The update push opens the UPDATES page, not Settings — that is where the check, the card, the
+  // peers and the one button live (M16/01). Unscoped on purpose: an update is about the machine
+  // the phone is talking to, and `host` must not send the tap somewhere else.
+  test("update push opens updates, unscoped", () => {
+    expect(notificationPath({ target: "settings", host: "box2" })).toBe("/settings/updates");
+  });
+
+  // The WIRE value stays `"settings"` while the destination moves. An old cached service worker
+  // holds its own copy of this function and lands on `/settings`, one row from the page it wanted;
+  // renaming the field would have sent it to `/` instead.
+  test("the wire spelling is unchanged, so an old SW degrades one row away", () => {
+    expect(notificationPath({ target: "settings" })).toBe("/settings/updates");
+    expect(notificationPath({ target: "updates" })).toBe("/");
   });
 
   // sw.ts compares the URL it builds against an open client's URL (`client.url !== url`) and

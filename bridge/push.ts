@@ -198,7 +198,11 @@ export interface PushMessage {
    */
   host?: string;
   /** Where a tap should land instead of the default pane deep-link. `"settings"` for update alerts;
-   *  absent = today's pane deep-link (so the agent-alert payload is unchanged). */
+   *  absent = today's pane deep-link (so the agent-alert payload is unchanged).
+   *
+   *  The client resolves this name to `/settings/updates` (web/src/lib/push-decision.ts). The name
+   *  itself is frozen: an old cached service worker resolves it to `/settings` and lands one row
+   *  away from the page it wanted, which renaming the field would have turned into `/`. */
   target?: "settings";
   renotify?: boolean;
 }

@@ -123,8 +123,13 @@ export function decidePush(payload: PushPayload, hasVisibleClient: boolean): Pus
 }
 
 /**
- * The URL a notification tap opens — `/settings` for an update alert, otherwise the agent's pane
- * scoped to the machine and session it actually lives on.
+ * The URL a notification tap opens — `/settings/updates` for an update alert, otherwise the agent's
+ * pane scoped to the machine and session it actually lives on.
+ *
+ * The WIRE spelling stays `"settings"` (bridge/push.ts) while the destination moves, and that is
+ * deliberate: an old cached service worker holds its own copy of this function, sends the tap to
+ * `/settings` and lands the operator on a real page one row away from the one they wanted. Renaming
+ * the field would have sent it to `/` instead. Same graceful degradation `host` documents below.
  *
  * **This is the app's own URL builder, not a second one.** The query comes from `lib/scope`'s
  * {@link scopeSearch}, so the string the service worker constructs is by construction the string the
@@ -138,7 +143,7 @@ export function decidePush(payload: PushPayload, hasVisibleClient: boolean): Pus
  * wrong machine's pane id is exactly the failure the host dimension exists to prevent.
  */
 export function notificationPath(data: NotifData = {}): string {
-  if (data.target === "settings") return "/settings";
+  if (data.target === "settings") return "/settings/updates";
   const base = data.paneId && data.paneId !== "test" ? `/pane/${encodeURIComponent(data.paneId)}` : "/";
   return `${base}${scopeSearch({ host: data.host, session: data.session })}`;
 }
