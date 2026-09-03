@@ -40,6 +40,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Fixed
 
+- OMP replies no longer stall when `composer.shape` is `rule`: Collie now recognizes the top-rule composer, recovers single-line and wrapped drafts, excludes inline suggestions, and prompt-binds the destructive clear before submitting.
 - `pack update --path '~/…'` expands the tilde on the remote's own `$HOME`, not this machine's.
 - `pack update --host` remembers the ssh route as soon as the probe proves it, not only after a
   fully successful run.

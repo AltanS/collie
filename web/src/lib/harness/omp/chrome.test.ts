@@ -45,9 +45,9 @@ function boxRows(
   ];
 }
 
-// Every omp capture in the corpus, split by whether the composer is on screen. The 11 non-composer
-// captures are the ones the reply pre-flight has to refuse.
-const COMPOSER_FIXTURES = [
+// The boxed scanner's positive cohort. Every other OMP capture — the three `rule` composer states
+// included — must return null here; index.ts composes the separate rule scanner over this one.
+const BOX_COMPOSER_FIXTURES = [
   "omp--done--tool-result.txt",
   "omp--done.txt",
   "omp--draft-ghost-suggestion.txt",
@@ -65,7 +65,7 @@ const ALL_OMP_FIXTURES = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("omp--") && f.endsWith(".txt"))
   .toSorted();
 
-const NON_COMPOSER_FIXTURES = ALL_OMP_FIXTURES.filter((f) => !COMPOSER_FIXTURES.includes(f));
+const NON_BOX_COMPOSER_FIXTURES = ALL_OMP_FIXTURES.filter((f) => !BOX_COMPOSER_FIXTURES.includes(f));
 
 describe("locateComposer — the real corpus, pinned so any change to the walk shows up as a diff", () => {
   const PINNED: { fixture: string; top: number; bottom: number; suggestEnd: number }[] = [
@@ -90,32 +90,30 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
     { fixture: "omp--slash-palette--filtered.txt", top: 26, bottom: 27, suggestEnd: 33 },
   ];
 
-  // These nine indices are byte-identical to the ones the width-gated scanner produced. That is the
-  // evidence that dropping the measurements cost nothing the corpus can see: every composer capture
-  // still resolves to the same rows, and the eleven modal captures below still resolve to null.
+  // These eleven indices are byte-identical to the ones the width-gated scanner produced. That is
+  // evidence that dropping the measurements cost nothing the corpus can see: every boxed composer
+  // capture still resolves to the same rows and every other capture still resolves to null.
   it.each(PINNED)("$fixture locates the box", ({ fixture, top, bottom, suggestEnd }) => {
     const box = locateComposer(fixtureLines(fixture));
     expect(box).not.toBeNull();
     expect(box!).toEqual({ top, firstDraftRow: top + 1, bottom, suggestEnd });
   });
 
-  it("covers every composer capture in the corpus", () => {
-    expect(PINNED.map((p) => p.fixture).toSorted()).toEqual(COMPOSER_FIXTURES.toSorted());
+  it("covers every boxed composer capture in the corpus", () => {
+    expect(PINNED.map((p) => p.fixture).toSorted()).toEqual(BOX_COMPOSER_FIXTURES.toSorted());
   });
 });
 
-describe("the composer gate — a dialog on screen means a phone reply must NOT be typed", () => {
-  // This is the assertion that matters most in the file. With no adapter at all, omp panes took
-  // reply-action.ts's legacy one-shot path (type AND submit in one call), so a reply sent while one
-  // of these modals held the keyboard fired the submit key at THAT modal, confirming whatever row it
-  // had highlighted. `composerReady === false` on every one of these captures is what makes the
-  // pre-flight refuse before a byte is typed.
-  it.each(NON_COMPOSER_FIXTURES)("%s: no composer, so no send", (name) => {
+describe("the boxed composer gate", () => {
+  // This module must decline both modals and other composer shapes. The composite adapter's stronger
+  // assertion — all eleven captured modals make `composerReady` false, while every `rule` fixture is
+  // true — lives at the public seam in harness/omp.test.ts.
+  it.each(NON_BOX_COMPOSER_FIXTURES)("%s: not a boxed composer", (name) => {
     expect(locateComposer(fixtureLines(name))).toBeNull();
     expect(hasComposer(fixtureLines(name))).toBe(false);
   });
 
-  it.each(COMPOSER_FIXTURES)("%s: the composer IS on screen", (name) => {
+  it.each(BOX_COMPOSER_FIXTURES)("%s: the composer IS on screen", (name) => {
     expect(hasComposer(fixtureLines(name))).toBe(true);
   });
 });
@@ -158,13 +156,13 @@ describe("extractInputDraft", () => {
     expect(extractInputDraft(fixtureLines(fixture))).toBe(draft);
   });
 
-  it.each(NON_COMPOSER_FIXTURES)("%s: no box at the tail ⇒ no draft", (name) => {
+  it.each(NON_BOX_COMPOSER_FIXTURES)("%s: no box at the tail ⇒ no draft", (name) => {
     expect(extractInputDraft(fixtureLines(name))).toBeNull();
   });
 });
 
 describe("extractStatusLines", () => {
-  it.each(COMPOSER_FIXTURES)("%s: re-surfaces exactly one styled row", (name) => {
+  it.each(BOX_COMPOSER_FIXTURES)("%s: re-surfaces exactly one styled row", (name) => {
     const rows = extractStatusLines(fixtureLines(name));
     expect(rows).toHaveLength(1);
     // STYLED, not flattened: omp colours each powerline field separately, and that is what makes the
@@ -172,7 +170,7 @@ describe("extractStatusLines", () => {
     expect(rows[0]!.segments.length).toBeGreaterThan(1);
   });
 
-  it.each(COMPOSER_FIXTURES.filter((f) => f !== "omp--done.txt"))(
+  it.each(BOX_COMPOSER_FIXTURES.filter((f) => f !== "omp--done.txt"))(
     "%s: trims the border glyphs off both ends, keeping the whole powerline",
     (name) => {
       const text = lineText(extractStatusLines(fixtureLines(name))[0]!);
@@ -184,7 +182,7 @@ describe("extractStatusLines", () => {
     },
   );
 
-  it.each(NON_COMPOSER_FIXTURES)("%s: no box at the tail ⇒ the strip hides", (name) => {
+  it.each(NON_BOX_COMPOSER_FIXTURES)("%s: no box at the tail ⇒ the strip hides", (name) => {
     expect(extractStatusLines(fixtureLines(name))).toEqual([]);
   });
 
@@ -228,7 +226,7 @@ describe("stripChrome", () => {
     },
   );
 
-  it.each(NON_COMPOSER_FIXTURES)(
+  it.each(NON_BOX_COMPOSER_FIXTURES)(
     "%s: returns the SAME reference when there is no chrome to strip",
     (name) => {
       // The conservatism contract: callers may treat `result === lines` as "nothing was removed".
@@ -581,10 +579,10 @@ describe("composerPrompt — the region a destructive write is bound to", () => 
   });
 
   it("is null on exactly the screens composerReady refuses", () => {
-    for (const name of NON_COMPOSER_FIXTURES) {
+    for (const name of NON_BOX_COMPOSER_FIXTURES) {
       expect(composerPrompt(fixtureLines(name))).toBeNull();
     }
-    for (const name of COMPOSER_FIXTURES) {
+    for (const name of BOX_COMPOSER_FIXTURES) {
       expect(composerPrompt(fixtureLines(name))).not.toBeNull();
     }
   });
@@ -616,7 +614,7 @@ describe("composerPrompt — the region a destructive write is bound to", () => 
     // DEFAULT_PROMPT_TAIL_LINES (6) NON-BLANK rows of a fresh read, so a region with more rows than
     // that below it would refuse legitimate sweeps. omp paints at most the slash palette down there.
     const BRIDGE_TAIL_LINES = 6;
-    for (const name of COMPOSER_FIXTURES) {
+    for (const name of BOX_COMPOSER_FIXTURES) {
       const buffer = fixtureLines(name);
       const box = locateComposer(buffer)!;
       const below = buffer
