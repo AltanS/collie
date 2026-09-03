@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -413,7 +413,7 @@ describe("PairingStore", () => {
     expect(state.writes).toBe(writesAfterClaim);
     now = 1000 + 60_000;
     store.resolve(claimed.token);
-    await Promise.resolve();
+    await store.idle();
     expect(state.writes).toBe(writesAfterClaim + 1);
     expect(coerceRegistry(state.registry).devices[0]?.lastSeenAt).toBe(61_000);
   });
@@ -625,5 +625,67 @@ describe("filePairingIo", () => {
     await writeFile(join(stateDir, DEVICES_FILENAME), JSON.stringify({ devices: [] }));
     expect(store.enforced()).toBe(false);
     expect(store.resolve("t")).toBeNull();
+  });
+});
+
+// ── One poll tick, two stamps, one file ──────────────────────────────────────────────────────
+// A poll tick issues a snapshot request and a pane read; both resolve the same token, both clear
+// the 60 s throttle off the same cached registry, and both used to run a read-modify-write against
+// `paired-devices.json` at once — sharing the temp name, so the second `rename` found the file the
+// first had already moved and the bridge logged ENOENT about once a minute (#159).
+describe("concurrent lastSeenAt stamps (#159)", () => {
+  /** A real on-disk io with a write counter, plus the store in front of it. */
+  async function seeded() {
+    const stateDir = await tempStateDir();
+    const disk = filePairingIo(stateDir);
+    const writes: string[] = [];
+    const io: PairingIo = {
+      ...disk,
+      writeRegistry: async (r) => {
+        writes.push("registry");
+        await disk.writeRegistry(r);
+      },
+    };
+    await disk.writeRegistry({
+      devices: [{ label: "phone", tokenHash: sha256Hex("t"), createdAt: 1, lastSeenAt: 1 }],
+    });
+    // A frozen clock well past the throttle window, so the FIRST stamp is due and every later one
+    // that re-reads inside the serialized section sees a fresh `lastSeenAt` and declines.
+    const store = new PairingStore(io, () => 100_000);
+    return { stateDir, store, writes };
+  }
+
+  /** Every assertion #159 is about: it landed, quietly, once, and left no litter. */
+  async function expectOneCleanStamp(stateDir: string, writes: string[], warn: { mock: unknown }) {
+    expect(warn).not.toHaveBeenCalled();
+    expect(writes).toHaveLength(1);
+    const parsed = JSON.parse(await readFile(join(stateDir, DEVICES_FILENAME), "utf8"));
+    expect(coerceRegistry(parsed).devices[0]?.lastSeenAt).toBe(100_000);
+    expect(readdirSync(stateDir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+  }
+
+  test("two stamps from one tick write once, quietly, and leave no temp file", async () => {
+    const { stateDir, store, writes } = await seeded();
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      expect(store.resolve("t")?.label).toBe("phone");
+      expect(store.resolve("t")?.label).toBe("phone");
+      await store.idle();
+      await expectOneCleanStamp(stateDir, writes, warn);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("twenty stamps at once are still one write", async () => {
+    const { stateDir, store, writes } = await seeded();
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      for (let i = 0; i < 20; i++) expect(store.resolve("t")).not.toBeNull();
+      await store.idle();
+      await expectOneCleanStamp(stateDir, writes, warn);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

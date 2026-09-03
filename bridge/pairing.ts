@@ -318,11 +318,25 @@ export function filePairingIo(stateDir: string): PairingIo {
   const registryPath = join(stateDir, DEVICES_FILENAME);
   let cache: { key: string; value: JsonValue } | null = null;
 
+  // Every temp name is unique to one write. A shared `${path}.tmp` is only atomic against a reader:
+  // two writers both create it, the first `rename` moves it away, and the second gets ENOENT (#159).
+  // The pid keeps another PROCESS off the name; the counter keeps another write in THIS one off it.
+  let writeSeq = 0;
   const writeAtomic = async (path: string, text: string): Promise<void> => {
     await mkdir(stateDir, { recursive: true, mode: 0o700 });
-    const tmp = `${path}.tmp`;
+    const tmp = `${path}.${process.pid}.${++writeSeq}.tmp`;
     await writeFile(tmp, text, { mode: 0o600 });
-    await rename(tmp, path);
+    try {
+      await rename(tmp, path);
+    } catch (err) {
+      // The temp name is ours alone, so nobody else will ever clear what a failed rename left.
+      try {
+        await unlink(tmp);
+      } catch {
+        /* gone already — nothing to clean up */
+      }
+      throw err;
+    }
   };
 
   return {
@@ -377,6 +391,33 @@ export class PairingStore {
     private readonly random: (n: number) => Buffer = randomBytes,
   ) {}
 
+  /**
+   * The tail of this store's registry write chain. Every read-modify-write of the registry runs
+   * through {@link serialize}, so two of them never interleave: without it, one poll tick's snapshot
+   * request and pane read both read, both decide to stamp, and both write at once (#159).
+   */
+  private writeQueue: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Run `op` after every registry write already queued on this store, and return what it returns.
+   * `op` is passed as BOTH handlers so a failed operation still lets the next one start, and the
+   * stored tail can never reject — nothing awaits it for a value, only for its turn.
+   */
+  private serialize<T>(op: () => Promise<T>): Promise<T> {
+    const next = this.writeQueue.then(op, op);
+    this.writeQueue = next.catch(() => undefined);
+    return next;
+  }
+
+  /**
+   * Resolves once every registry write this store has started has finished. The stamp in
+   * {@link resolve} is deliberately fire-and-forget, so this is the only way to observe it landing.
+   * Never awaited on the request path.
+   */
+  async idle(): Promise<void> {
+    await this.writeQueue;
+  }
+
   /** The registry as of this instant, straight off disk (cached on mtime). */
   registry(): PairedRegistry {
     return coerceRegistry(this.io.readRegistrySync());
@@ -398,15 +439,19 @@ export class PairingStore {
     const touched = touchDevice(registry, device.label, this.now());
     if (touched) {
       // Fire-and-forget: a failed stamp must never fail the request that triggered it.
-      void (async () => {
+      void this.serialize(async () => {
         try {
           // ── RE-DERIVED FROM DISK, NEVER WRITTEN FROM THE SNAPSHOT ABOVE ────
-          // `touched` was computed from a registry read at the top of this synchronous call, and this
-          // write lands later. `bin/collie devices revoke` runs in ANOTHER process and writes the same
-          // file, so writing `touched` blind would put a revoked device BACK — a stamp silently undoing
-          // a revocation, which is the one thing a credential store may not do. Re-reading here costs
-          // one file read at most once per device per minute (the throttle above is what makes this
-          // path rare), and a device that has gone in the meantime is simply not stamped.
+          // `touched` was computed from a registry read at the top of this synchronous call, and
+          // this write lands later. `bin/collie devices revoke` runs in ANOTHER process and writes
+          // the same file, so writing `touched` blind would put a revoked device BACK — a stamp
+          // silently undoing a revocation, which is the one thing a credential store may not do.
+          // Re-reading here costs one file read at most once per device per minute (the throttle
+          // above is what makes this path rare), and a device gone in the meantime is not stamped.
+          //
+          // The re-read and the throttle check are INSIDE the serialized section on purpose: a
+          // second stamp from the same poll tick then reads the first one's timestamp and becomes a
+          // no-op, instead of racing it to the same file.
           const current = coerceRegistry(await this.io.readRegistry());
           const fresh = touchDevice(current, device.label, this.now());
           if (fresh === null) return;
@@ -416,7 +461,7 @@ export class PairingStore {
             `[pairing] could not stamp lastSeenAt: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
-      })();
+      });
     }
     return device;
   }
@@ -435,15 +480,19 @@ export class PairingStore {
       return { ok: false, reason: verdict.reason };
     }
     const token = generateToken(this.random);
-    const next = addDevice(coerceRegistry(await this.io.readRegistry()), {
-      label,
-      tokenHash: sha256Hex(token),
-      now: this.now(),
+    const enrolled = await this.serialize(async () => {
+      const next = addDevice(coerceRegistry(await this.io.readRegistry()), {
+        label,
+        tokenHash: sha256Hex(token),
+        now: this.now(),
+      });
+      if (!next) return false;
+      await this.io.writeRegistry(next);
+      return true;
     });
     // A duplicate label leaves the pending pairing alive: the operator retries with another name
     // rather than re-running `collie pair`.
-    if (!next) return { ok: false, reason: "duplicate-label" };
-    await this.io.writeRegistry(next);
+    if (!enrolled) return { ok: false, reason: "duplicate-label" };
     await this.io.deletePending();
     return { ok: true, token };
   }
@@ -461,25 +510,29 @@ export class PairingStore {
    * namespace-and-merge (RFC §16, decision 6): a label is the revoke handle.
    */
   async adopt(devices: readonly { label: string; tokenHash: string; createdAt: number }[]): Promise<string[]> {
-    const own = coerceRegistry(await this.io.readRegistry());
-    const collisions = devices.filter((d) => own.devices.some((x) => x.label === d.label)).map((d) => d.label);
-    if (collisions.length > 0) return collisions;
-    await this.io.writeRegistry({
-      devices: [
-        ...own.devices,
-        // `lastSeenAt: 0` — never contacted THIS machine, and copying the lead's stamp would be this
-        // machine asserting traffic it never saw.
-        ...devices.map((d) => ({ label: d.label, tokenHash: d.tokenHash, createdAt: d.createdAt, lastSeenAt: 0 })),
-      ],
+    return this.serialize(async () => {
+      const own = coerceRegistry(await this.io.readRegistry());
+      const collisions = devices.filter((d) => own.devices.some((x) => x.label === d.label)).map((d) => d.label);
+      if (collisions.length > 0) return collisions;
+      await this.io.writeRegistry({
+        devices: [
+          ...own.devices,
+          // `lastSeenAt: 0` — never contacted THIS machine, and copying the lead's stamp would be this
+          // machine asserting traffic it never saw.
+          ...devices.map((d) => ({ label: d.label, tokenHash: d.tokenHash, createdAt: d.createdAt, lastSeenAt: 0 })),
+        ],
+      });
+      return [];
     });
-    return [];
   }
 
   /** Drop a device. False ⇒ no such label. */
   async revoke(label: string): Promise<boolean> {
-    const next = removeDevice(coerceRegistry(await this.io.readRegistry()), label);
-    if (!next) return false;
-    await this.io.writeRegistry(next);
-    return true;
+    return this.serialize(async () => {
+      const next = removeDevice(coerceRegistry(await this.io.readRegistry()), label);
+      if (!next) return false;
+      await this.io.writeRegistry(next);
+      return true;
+    });
   }
 }
