@@ -10,6 +10,7 @@ import { isStatusRow, lineText, PLACEHOLDER } from "./codex/markers";
 import { detectApprovalRegion } from "./codex/approval";
 import { detectAskRegion } from "./codex/ask";
 import { detectTrustRegion } from "./codex/trust";
+import { decorateCodexDisplay } from "./codex/display";
 import { describeAdapterConformance } from "./conformance";
 
 const PANES_DIR = join(import.meta.dirname, "..", "..", "fixtures", "panes");
@@ -36,6 +37,7 @@ const PINNED = [
   "codex--draft-wrapped.txt",
   "codex--draft.txt",
   "codex--fresh-idle.txt",
+  "codex--submitted-fill-labelled-rule.txt",
   "codex--trust-prompt.txt",
   "codex--v0150-custom-status.txt",
   "codex--v0150-draft-wrapped.txt",
@@ -571,5 +573,79 @@ describe("codexBuildBlocks", () => {
       "  Press enter to continue",
     ].join("\n");
     expect(detectTrustRegion(splitLines(parseAnsi(spoof)))).toBeNull();
+  });
+});
+
+describe("Codex mobile display cleanup", () => {
+  // The fixture carries both rows as real ESC bytes, so a change in the parser fails here rather
+  // than silently un-fixing the phone. It is RECONSTRUCTED from PR #144's report, not captured.
+  // fixtures/panes/README.md says so, and says to replace it with a capture when one is reachable.
+  const FIXTURE = "codex--submitted-fill-labelled-rule.txt";
+
+  function decoratedFixture() {
+    return decorateCodexDisplay(fixtureLines(FIXTURE));
+  }
+
+  it("clips the fixture's labelled rule, and nothing else on the screen", () => {
+    const clipped = decoratedFixture().filter((line) => line.noWrap);
+    expect(clipped).toHaveLength(1);
+    expect(lineText(clipped[0]!)).toContain("Worked for 3m 12s");
+  });
+
+  it("marks the fixture's submitted-message fill, and leaves both diff rows alone", () => {
+    const marked = decoratedFixture().filter((line) =>
+      line.segments.some((segment) => segment.mobileTransparentBg),
+    );
+    expect(marked).toHaveLength(1);
+    expect(lineText(marked[0]!)).toContain("move the screenshots across to the new blog post");
+
+    const diffBackgrounds = decoratedFixture()
+      .flatMap((line) => line.segments)
+      .filter((segment) => segment.bg && segment.bg !== "rgb(240,240,240)")
+      .map((segment) => segment.bg);
+    expect(diffBackgrounds).toEqual(["rgb(33,58,43)", "rgb(74,34,34)"]);
+  });
+
+  it("changes not one byte of the fixture's visible text", () => {
+    const lines = fixtureLines(FIXTURE);
+    expect(decorateCodexDisplay(lines).map(lineText)).toEqual(lines.map(lineText));
+  });
+
+  it("returns the same array when a screen carries neither row", () => {
+    const lines = fixtureLines("codex--fresh-idle.txt");
+    expect(decorateCodexDisplay(lines)).toBe(lines);
+  });
+
+  it("clips a labelled rule without changing its text", () => {
+    const rule = `\u2500 Worked for 31m 11s ${"\u2500".repeat(80)}`;
+    const [decorated] = decorateCodexDisplay(splitLines(parseAnsi(rule)));
+
+    expect(decorated!.noWrap).toBe(true);
+    expect(lineText(decorated!)).toBe(rule);
+  });
+
+  // The shape is the guard: a long rule run somewhere inside a row is ordinary Codex output, and
+  // clipping it would hide the row's right edge on a phone.
+  it.each([
+    ["a table row with a long inner rule", `| id | ${"\u2500".repeat(40)} | note |`],
+    ["a rule with text after it", `${"\u2500".repeat(40)} and then some prose about it`],
+    ["a labelled rule whose tail is too short", `\u2500 Worked for 3s ${"\u2500".repeat(8)}`],
+    ["a label carrying its own rule glyph", `\u2500 a \u2500 b ${"\u2500".repeat(40)}`],
+    ["a long leading rule before the label", `${"\u2500".repeat(9)} label ${"\u2500".repeat(40)}`],
+  ])("leaves %s wrapping", (_name, text) => {
+    const [decorated] = decorateCodexDisplay(splitLines(parseAnsi(text)));
+    expect(decorated!.noWrap).toBeUndefined();
+  });
+
+  it("marks only Codex's observed user-message fill for mobile transparency", () => {
+    const user = `${String.fromCharCode(27)}[48;2;240;240;240m\u203a submitted message${" ".repeat(40)}${String.fromCharCode(27)}[0m`;
+    const diff = `${String.fromCharCode(27)}[48;2;33;58;43m+ semantic diff${String.fromCharCode(27)}[0m`;
+    const [userLine, diffLine] = decorateCodexDisplay(splitLines(parseAnsi(`${user}\n${diff}`)));
+
+    expect(userLine!.segments[0]!.bg).toBe("rgb(240,240,240)");
+    expect(userLine!.segments[0]!.style.backgroundColor).toBe("rgb(240,240,240)");
+    expect(userLine!.segments[0]!.mobileTransparentBg).toBe(true);
+    expect(diffLine!.segments[0]!.bg).toBe("rgb(33,58,43)");
+    expect(diffLine!.segments[0]!.mobileTransparentBg).toBeUndefined();
   });
 });

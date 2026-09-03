@@ -46,6 +46,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - `bun run test` no longer exits 0 when a test fails: a probe script called process.exit on import.
 - `collie update --check` no longer turns red, and the phone's Update button no longer disables, on a lead whose peer has no ssh record: that fact still shows red on the member, but updating the lead needs no route to a peer, so the top verdict is amber.
 - A table in the mirror pans in its own scroller while the prose around it keeps wrapping, so Wrap no longer has to be turned off to read one. A box-drawn table pans as one unit; a framed row outside a table still does not wrap. (#5, #158)
+- Codex on a phone: submitted-message rows no longer render as solid black bars in the light theme, and a labelled `─ Worked for … ───` separator stays on one line. (#144)
 
 ## [1.3.0] - 2026-09-03
 

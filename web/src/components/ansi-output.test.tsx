@@ -136,6 +136,34 @@ describe("mirror line wrapping", () => {
     expect(pannedPre.querySelector("span.overflow-hidden")).toBeNull();
     expect(pannedPre.textContent).toBe(`${border}\n`);
   });
+  it("clips Codex's labelled rules and tags only its terminal-wide user fill for mobile transparency", () => {
+    const user = `${ESC}[48;2;240;240;240m› submitted message${" ".repeat(32)}${ESC}[0m`;
+    const diff = `${ESC}[48;2;33;58;43m+ semantic diff${ESC}[0m`;
+    const rule = `─ Worked for 31m ${"─".repeat(32)}`;
+    const { container } = render(<AnsiOutput text={`${user}\n${diff}\n${rule}\n`} agent="codex" />);
+    // SAFETY: the marked segment is a <span> the renderer just produced, so querySelector on the
+    // class it only ever sets on a span returns an HTMLElement or null; the assertions below
+    // dereference it and would fail loudly on null.
+    const userSpan = container.querySelector(".terminal-mobile-transparent-bg") as HTMLElement;
+
+    expect(userSpan.textContent).toContain("submitted message");
+    // Desktop keeps Codex's native fill, carried in the custom property the stylesheet reads. The
+    // inline background-color is gone on purpose: a class cannot beat one without `!important`.
+    expect(userSpan.style.backgroundColor).toBe("");
+    expect(userSpan.style.getPropertyValue("--terminal-seg-bg")).toBe("rgb(240,240,240)");
+    const diffSpan = [...container.querySelectorAll("span")].find((node) =>
+      node.textContent?.includes("semantic diff"),
+    )!;
+    expect(diffSpan.classList.contains("terminal-mobile-transparent-bg")).toBe(false);
+    expect(diffSpan.getAttribute("style")).toContain("rgb(33, 58, 43)");
+    expect(container.querySelector("span.inline-block")?.textContent).toBe(rule);
+  });
+
+  it("does not suppress the same ANSI background for an unknown agent", () => {
+    const user = `${ESC}[48;2;240;240;240mordinary terminal output${ESC}[0m`;
+    const { container } = render(<AnsiOutput text={user} agent="shell" />);
+    expect(container.querySelector(".terminal-mobile-transparent-bg")).toBeNull();
+  });
 });
 
 // Wrap is right for prose and wrong for a table, whose meaning is the column a character sits in
