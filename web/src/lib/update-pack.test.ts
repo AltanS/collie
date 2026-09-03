@@ -71,6 +71,11 @@ describe("peerRows", () => {
   it("solo — no census, no legs, no rows", () => {
     expect(peerRows()).toEqual([]);
   });
+
+  it("a member that never reported carries a null asOf, not a stale stamp", () => {
+    const rows = peerRows([member({ name: "shed", verdict: "unknown", reasons: [], asOf: null })]);
+    expect(rows[0]?.asOf).toBeNull();
+  });
 });
 
 describe("peersBehind", () => {
