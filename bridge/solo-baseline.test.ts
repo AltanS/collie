@@ -554,6 +554,12 @@ describe("solo zero-tax — routes", () => {
       // named here rather than exempted. It is the one ungated `/api/*` route: the prober is a local
       // updater holding no credential, and what it answers is `{ ok, version, deposed, mode }`.
       "/api/health",
+      // The operator's own launcher rows (`launchers.toml`) — a SOLO route that legitimately
+      // extends this list, named here rather than exempted. It is session-scoped and write-gated
+      // through the same closure `/api/workspace` rides, and the configured rows are its allowlist:
+      // the client names a row, never a command line. An operator who declares none can call it,
+      // and every call is refused.
+      "/api/launch",
       "/api/notifications/prefs",
       "/api/notifications/snooze",
       // The Pack overview (bridge/pack/status-wire.ts) — a FRONT-DOOR route, and it legitimately
@@ -615,6 +621,7 @@ const CONFIG_KEYS = {
   quickRepliesFile: true,
   themeFile: true,
   fontsDir: true,
+  launchersFile: true,
   port: true,
   host: true,
   pollMs: true,
@@ -657,6 +664,7 @@ describe("solo zero-tax — config", () => {
       "host",
       "journalRoots",
       "keysFile",
+      "launchersFile",
       "multiSession",
       "mux",
       "muxEndpoint",

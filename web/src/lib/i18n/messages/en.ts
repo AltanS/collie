@@ -714,6 +714,7 @@ export const en = {
   "apiError.tab.rename_failed": "The tab couldn't be renamed: {reason}",
   "apiError.tab.close_failed": "The tab couldn't be closed: {reason}",
   "apiError.tab.workspace_required": "No space was named for the new tab.",
+  "apiError.launch.not_allowlisted": "That command isn't one of your launchers",
   "apiError.workspace.create_failed": "The space couldn't be created: {reason}",
   "apiError.upload.too_large": "That image is too large — 10 MB is the limit.",
   "apiError.upload.no_file": "No file was sent.",

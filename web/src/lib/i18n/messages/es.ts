@@ -695,6 +695,7 @@ export const es: Dictionary = {
   "apiError.tab.rename_failed": "Error al renombrar la pestaña: {reason}",
   "apiError.tab.close_failed": "Error al cerrar la pestaña: {reason}",
   "apiError.tab.workspace_required": "No se especificó un espacio para la nueva pestaña.",
+  "apiError.launch.not_allowlisted": "Ese comando no es uno de tus lanzadores",
   "apiError.workspace.create_failed": "Error al crear el espacio: {reason}",
   "apiError.upload.too_large": "La imagen supera el límite máximo de 10 MB.",
   "apiError.upload.no_file": "No se especificó ningún archivo.",

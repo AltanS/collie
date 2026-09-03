@@ -389,6 +389,11 @@ export function bridgeConfigBody(opts: {
    */
   operatorFonts?: readonly OperatorFontRow[];
   /**
+   * The operator's own launcher rows. Same omit-when-empty rule as `operatorCommands`, and the same
+   * live-by-mtime contract: a `launchers.toml` edit reaches a device on its next page load.
+   */
+  launchers?: readonly Launcher[];
+  /**
    * Speech-to-text, when a provider resolved. Omitted entirely otherwise — an operator who
    * configured none ships the same payload as before, the same rule `mode` follows.
    */
@@ -399,6 +404,7 @@ export function bridgeConfigBody(opts: {
   const myKeys = opts.operatorKeys ?? [];
   const myReplies = opts.operatorQuickReplies ?? [];
   const myFonts = opts.operatorFonts ?? [];
+  const myLaunchers = opts.launchers ?? [];
   const wire: BridgeConfig = {
     push: opts.push,
     vapidPublicKey: opts.vapidPublicKey,
@@ -411,6 +417,7 @@ export function bridgeConfigBody(opts: {
   if (myKeys.length > 0) wire.operatorKeys = [...myKeys];
   if (myReplies.length > 0) wire.operatorQuickReplies = [...myReplies];
   if (myFonts.length > 0) wire.operatorFonts = [...myFonts];
+  if (myLaunchers.length > 0) wire.launchers = [...myLaunchers];
   // Appended last, and unconditional once an adapter is in hand: unlike `mode`, this is not
   // omit-when-default. There is no default to omit — "no mux key" already means something on the
   // phone (an older bridge, read as fully capable), so a Herdr bridge staying silent here would be

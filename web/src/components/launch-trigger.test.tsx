@@ -8,9 +8,10 @@ import type { DeviceAuth, Launcher } from "@/lib/types";
 
 // Same seams as launch-strip.test: the store is stubbed at its hook, the bridge at api.launch. The
 // hook under the button (useSpaceActions) stays real, so its read-only gate is exercised, not faked.
-const { launchersValue } = vi.hoisted(() => ({
-  launchersValue: { current: [] as readonly Launcher[] },
-}));
+const { launchersValue } = vi.hoisted(() => {
+  const current: readonly Launcher[] = [];
+  return { launchersValue: { current } };
+});
 vi.mock("@/lib/operator-config", () => ({
   useLaunchers: () => launchersValue.current,
   useOperatorCommands: () => [],
@@ -41,19 +42,22 @@ const quota: Launcher = { command: "showy-quota-peek", label: "Quota bars", cwd:
 
 function homeData(device: DeviceAuth | undefined): HomeData {
   return {
-    bridge: "live",
+    bridge: "connected",
+    device,
     agents: [],
     shellPanes: [],
     workspaces: [],
     tabs: [],
     sessions: [],
-    session: undefined,
-    device,
-    notifications: { snoozedUntil: null },
-    update: null,
-    error: null,
-    lastSeenAt: {},
-  } as unknown as HomeData;
+    servers: [],
+    ts: 0,
+    scope: {},
+    viewAll: false,
+    snoozedUntil: null,
+    update: undefined,
+    error: false,
+    authError: false,
+  };
 }
 
 function makeRouter(device: DeviceAuth | undefined, readOnly = false) {
@@ -100,7 +104,8 @@ describe("LaunchTrigger", () => {
     expect(screen.getByText("showy-quota-peek")).toBeInTheDocument();
 
     await user.click(screen.getByText("Quota bars"));
-    expect(mockLaunch).toHaveBeenCalledExactlyOnceWith("showy-quota-peek", undefined);
+    // The scope rides as the second argument — `{}` is the lead's primary session.
+    expect(mockLaunch).toHaveBeenCalledExactlyOnceWith("showy-quota-peek", {});
   });
 
   it("explains a read-only device instead of offering rows it cannot run", async () => {

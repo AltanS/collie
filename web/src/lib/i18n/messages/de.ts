@@ -697,6 +697,7 @@ export const de: Dictionary = {
   "apiError.tab.rename_failed": "Tab konnte nicht umbenannt werden: {reason}",
   "apiError.tab.close_failed": "Tab konnte nicht geschlossen werden: {reason}",
   "apiError.tab.workspace_required": "Für den neuen Tab wurde kein Space angegeben.",
+  "apiError.launch.not_allowlisted": "Dieser Befehl steht in keiner deiner Launcher-Zeilen",
   "apiError.workspace.create_failed": "Space konnte nicht erstellt werden: {reason}",
   "apiError.upload.too_large": "Bilddatei ist zu groß. Das Limit liegt bei 10 MB.",
   "apiError.upload.no_file": "Es wurde keine Datei übermittelt.",

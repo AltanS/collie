@@ -8,9 +8,10 @@ import type { DeviceAuth, Launcher } from "@/lib/types";
 
 // Stub the launcher store at its seam — same idiom as operator-commands tests: the component
 // reads the hook, so we control what the hook returns per-case without touching the network.
-const { launchersValue } = vi.hoisted(() => ({
-  launchersValue: { current: [] as readonly Launcher[] },
-}));
+const { launchersValue } = vi.hoisted(() => {
+  const current: readonly Launcher[] = [];
+  return { launchersValue: { current } };
+});
 vi.mock("@/lib/operator-config", () => ({
   useLaunchers: () => launchersValue.current,
   // The other hooks are not used by LaunchStrip, but the module may be imported elsewhere
@@ -22,7 +23,7 @@ vi.mock("@/lib/operator-config", () => ({
 // Stub the bridge's launch endpoint at the api seam, so the hook's read-only short-circuit
 // (which fires before api.launch) can be proven by "api never called". The hook itself stays real.
 const { mockLaunch } = vi.hoisted(() => ({
-  mockLaunch: vi.fn(async (_command: string, _session?: string) => ({
+  mockLaunch: vi.fn(async (_command: string, _scope?: { host?: string; session?: string }) => ({
     ok: true as const,
     pane: {
       paneId: "p1",
@@ -52,7 +53,10 @@ function homeData(device: DeviceAuth | undefined): HomeData {
     workspaces: [],
     tabs: [],
     sessions: [],
-    session: undefined,
+    servers: [],
+    ts: 0,
+    scope: {},
+    viewAll: false,
     snoozedUntil: null,
     update: undefined,
     error: false,
@@ -109,7 +113,8 @@ describe("LaunchStrip", () => {
     await user.click(screen.getByRole("button", { name: "Runs & quota" }));
     // The strip delegates to useSpaceActions.launch which POSTs to /api/launch; the command
     // string is an allowlist key, not an arbitrary shell line the client gets to run.
-    expect(mockLaunch).toHaveBeenCalledExactlyOnceWith("rumen-peek", undefined);
+    // The scope rides as the second argument — `{}` is the lead's primary session.
+    expect(mockLaunch).toHaveBeenCalledExactlyOnceWith("rumen-peek", {});
   });
 
   it("a read-only device does not fire the launch API", async () => {

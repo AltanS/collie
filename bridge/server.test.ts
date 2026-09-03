@@ -42,12 +42,23 @@ import { withAgentHints } from "./beacon/hint.ts";
 import { HerdrMux, herdrMuxFactory } from "./mux/herdr/adapter.ts";
 import { tmuxMuxFactory } from "./mux/tmux/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
-import { muxAck, type MuxAck, type MuxAdapter, type MuxGrid } from "./mux/types.ts";
+import {
+  muxAck,
+  muxOk,
+  muxRefused,
+  type MuxAck,
+  type MuxAdapter,
+  type MuxCreatedPane,
+  type MuxGrid,
+  type MuxOutcome,
+  type MuxSpaceRequest,
+} from "./mux/types.ts";
 import { neverProxy } from "./pack/fixtures.ts";
 import { PackLead } from "./pack/lead.ts";
 import { PackRegistry } from "./pack/registry.ts";
 import { computeEtag } from "./http-cache.ts";
-import { MUX_LOGO_PATH, type SnapshotResponse } from "./types.ts";
+import { MUX_LOGO_PATH, type Launcher, type SnapshotResponse } from "./types.ts";
+import type { StateEngine } from "./state-engine.ts";
 
 // checkAccess is the API security gate (same-origin/CSRF + optional Tailscale identity). A
 // regression here silently opens remote shell access, so it gets the most direct coverage.
@@ -1641,10 +1652,10 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All SEVEN session-scoped routes (tab create, workspace create, tab action, the pane family,
-    // "look now", the worktree listing and the worktree actions) reach their runtime through the
-    // caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(7);
+    // All EIGHT session-scoped routes (tab create, workspace create, launch, tab action, the pane
+    // family, "look now", the worktree listing and the worktree actions) reach their runtime through
+    // the caller's resolver and nothing else.
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(8);
     // Exactly five `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
@@ -1834,7 +1845,12 @@ describe("the update write gate — POST api/update rides the pane path's own ga
 // then the command plus a bare Enter typed into its fresh shell. The configured rows ARE the
 // allowlist, so the first thing asserted is that an unlisted command touches the multiplexer at all.
 describe("launch — an allowlisted space create, then the command and Enter", () => {
-  function request(body: unknown): Request {
+  /** What a phone posts here: a row's `command`, and nothing else. */
+  interface LaunchBody {
+    command?: string;
+  }
+
+  function request(body: LaunchBody): Request {
     return new Request("http://localhost/api/launch", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -1842,11 +1858,16 @@ describe("launch — an allowlisted space create, then the command and Enter", (
     });
   }
 
-  function auditEntries(): { audit: AuditLog; entries: Array<Record<string, unknown>> } {
-    const entries: Array<Record<string, unknown>> = [];
+  /** One audit line as `JSON.parse` returns it: the entry as written, plus formatAuditLine's stamp. */
+  type LaunchAuditLine = AuditEntry & { ts: string };
+
+  function launchAudit() {
+    const entries: LaunchAuditLine[] = [];
     return {
       audit: new AuditLog((line) => {
-        entries.push(JSON.parse(line) as Record<string, unknown>);
+        // SAFETY: the appender is handed formatAuditLine's own output — this test never feeds it
+        // anything else — so the parse round-trips the AuditEntry it just serialised.
+        entries.push(JSON.parse(line) as LaunchAuditLine);
       }),
       entries,
     };
@@ -1887,15 +1908,23 @@ describe("launch — an allowlisted space create, then the command and Enter", (
     }
   }
 
-  // `launch` asks the engine for exactly one thing after a create: settle now.
-  const engine = { pokeNow: () => {} } as unknown as StateEngine;
-  const asLaunchMux = (fake: FakeLaunchMux): MuxAdapter => fake as unknown as MuxAdapter;
+  // `Partial<T>` on both stubs keeps the compiler checking every member they DO supply against the
+  // real contract, exactly as `asMux` above does for a HerdrClient fake.
+  const engineStub: Partial<StateEngine> = { pokeNow: () => {} };
+  // SAFETY: after a create, `launch` asks the engine for exactly one thing — `pokeNow()` — and the
+  // adapter for exactly the five calls FakeLaunchMux implements. No other member of either is
+  // reachable from this code path, which is the only step these two casts assert.
+  const engine = engineStub as StateEngine;
+  function asLaunchMux(fake: Partial<MuxAdapter>): MuxAdapter {
+    // SAFETY: as above — only the five calls the fake implements are reachable from `launch`.
+    return fake as MuxAdapter;
+  }
   const rowsOf = (rows: Launcher[]) => () => Promise.resolve(rows);
   const PEEK: Launcher = { command: "rumen-peek", label: "Runs & quota", cwd: "/home/op/project" };
 
   test("an unlisted command is refused before anything is created", async () => {
     const mux = new FakeLaunchMux();
-    const { audit, entries } = auditEntries();
+    const { audit, entries } = launchAudit();
     const res = await launch(
       asLaunchMux(mux),
       engine,
@@ -1915,7 +1944,7 @@ describe("launch — an allowlisted space create, then the command and Enter", (
 
   test("a listed row creates a space with that row's label AND cwd, then types the command + Enter", async () => {
     const mux = new FakeLaunchMux();
-    const { audit, entries } = auditEntries();
+    const { audit, entries } = launchAudit();
     const res = await launch(
       asLaunchMux(mux),
       engine,
@@ -1943,7 +1972,7 @@ describe("launch — an allowlisted space create, then the command and Enter", (
   test("a send failure closes the created pane rather than leaving an empty shell", async () => {
     const mux = new FakeLaunchMux();
     mux.failOn = "keys";
-    const { audit } = auditEntries();
+    const { audit } = launchAudit();
     const res = await launch(
       asLaunchMux(mux),
       engine,
@@ -1955,16 +1984,16 @@ describe("launch — an allowlisted space create, then the command and Enter", (
     );
     expect(mux.closes).toEqual(["w1:p1"]);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { ok: boolean; error: string };
-    expect(body.ok).toBe(false);
-    expect(typeof body.error).toBe("string");
+    // The text landed and the Enter did not, which `sendReplySteps` names precisely — the code and
+    // its sentence ride out unchanged, because a launch is a reply into a shell by another name.
+    expect(await res.json()).toMatchObject({ ok: false, code: "reply.not_submitted" });
   });
 
   test("a rollback that itself fails is swallowed — the send error is still the answer", async () => {
     const mux = new FakeLaunchMux();
     mux.failOn = "text";
     mux.closeThrows = true;
-    const { audit } = auditEntries();
+    const { audit } = launchAudit();
     const res = await launch(
       asLaunchMux(mux),
       engine,
@@ -1981,7 +2010,7 @@ describe("launch — an allowlisted space create, then the command and Enter", (
   test("a space the multiplexer refuses is reported, and nothing is typed", async () => {
     const mux = new FakeLaunchMux();
     mux.failOn = "create";
-    const { audit, entries } = auditEntries();
+    const { audit, entries } = launchAudit();
     const res = await launch(
       asLaunchMux(mux),
       engine,

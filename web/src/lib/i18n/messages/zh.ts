@@ -666,6 +666,7 @@ export const zh: Dictionary = {
   "apiError.tab.rename_failed": "重命名标签页失败：{reason}",
   "apiError.tab.close_failed": "关闭标签页失败：{reason}",
   "apiError.tab.workspace_required": "未指定新标签页的工作区。",
+  "apiError.launch.not_allowlisted": "该命令不在你的启动器列表中",
   "apiError.workspace.create_failed": "创建工作区失败：{reason}",
   "apiError.upload.too_large": "图片体积过大，上限为 10 MB。",
   "apiError.upload.no_file": "未提供任何文件。",

@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import type { JsonObject } from "./json.ts";
 import { createOperatorFileReader, diskIo, type OperatorFileIo } from "./operator-file.ts";
 import type { Launcher } from "./types.ts";
 
@@ -29,8 +30,24 @@ import type { Launcher } from "./types.ts";
 // (drop the row, warn once) is the only one that cannot be mistaken for a successful launch of the
 // operator's intended command.
 
-/** ASCII control characters that would alter what the shell receives. */
-const CONTROL_RE = /[\x00-\x1F\x7F]/;
+/**
+ * Whether the line carries an ASCII control character.
+ *
+ * A scan rather than a regular expression: a control-character CLASS in a pattern is itself the
+ * thing the lint rule warns about, and the question here is a plain one about code points.
+ */
+function hasControlChar(line: string): boolean {
+  for (const ch of line) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f) return true;
+  }
+  return false;
+}
+
+/** A parsed `launchers.toml` document, before a byte of it is believed. */
+interface LaunchersDocument {
+  launchers?: unknown;
+}
 
 /**
  * Turn a parsed TOML document into launcher rows, dropping anything malformed with one warning line.
@@ -50,10 +67,10 @@ const CONTROL_RE = /[\x00-\x1F\x7F]/;
  * not reshuffle the dashboard.
  */
 export function validateOperatorLaunchers(
-  doc: unknown,
+  doc: LaunchersDocument | null | undefined,
   warn = defaultWarn,
 ): Launcher[] {
-  const rows = (doc as { launchers?: unknown } | null | undefined)?.launchers;
+  const rows = doc?.launchers;
   if (rows === undefined || rows === null) return [];
   if (!Array.isArray(rows)) {
     warn("`launchers` must be an array of [[launchers]] tables — ignoring the file's rows");
@@ -62,11 +79,11 @@ export function validateOperatorLaunchers(
   const out: Launcher[] = [];
   const at = new Map<string, number>();
   for (const raw of rows) {
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    if (typeof raw !== "object" || raw === null || raw === undefined || Array.isArray(raw)) {
       warn("ignoring a row that is not a [[launchers]] table");
       continue;
     }
-    const row = raw as Record<string, unknown>;
+    const row: JsonObject = raw;
 
     // `command` is the allowlist key and the shell line. It must be a non-empty string and must
     // not contain an ASCII control character — a newline would submit a second line nobody reviewed
@@ -76,7 +93,7 @@ export function validateOperatorLaunchers(
       continue;
     }
     const command = row.command.trim();
-    if (CONTROL_RE.test(command)) {
+    if (hasControlChar(command)) {
       warn(`ignoring "${command}" — command contains a control character and cannot be typed verbatim`);
       continue;
     }
