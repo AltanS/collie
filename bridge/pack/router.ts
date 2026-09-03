@@ -11,6 +11,7 @@ import {
   unauthorizedResponse,
   type RefusedFactor,
 } from "./admission.ts";
+import { PACK_PREFLIGHT_FIELD, type PeerPreflight } from "../update-action.ts";
 import { apiPathFor } from "./forward.ts";
 import { HOST_PARAM } from "./registry.ts";
 import {
@@ -77,6 +78,17 @@ export const PACK_PREFIX = "/pack/v1/";
 export const PACK_ENROLL_PATH = "/pack/v1/enroll";
 export const PACK_HELLO_PATH = "/pack/v1/hello";
 export const PACK_SNAPSHOT_PATH = "/pack/v1/snapshot";
+
+/**
+ * The lead's REQUEST for a fresh preflight on the snapshot it is about to read (§19).
+ *
+ * `fresh` is the only value that means anything, and it is a request rather than an order: a peer
+ * that ignores this header is a **correct peer** — its answer is then simply older, and `asOf` says
+ * so. No new route, no new verb; one header on a dial the lead already makes.
+ */
+export const PREFLIGHT_HEADER = "X-Pack-Preflight";
+/** The one value {@link PREFLIGHT_HEADER} carries. Anything else reads as an absent header. */
+export const PREFLIGHT_FRESH = "fresh";
 
 // ── The membership routes (M4/07) ────────────────────────────────────────────
 // Three routes that exist because three operator verbs are otherwise undeliverable: §8.4's rotation
@@ -366,6 +378,18 @@ export interface PackRouterDeps {
    * unchanged (§7.1's absent-means-closed).
    */
   readonly warrantActiveGeneration?: number | null;
+  /**
+   * **This machine's own `collie update --check --local` verdict** (§19), published beside the
+   * snapshot body so one confirm on the phone can cover the whole pack (M16/03).
+   *
+   * `fresh` is the lead's `X-Pack-Preflight: fresh` reaching through: a REQUEST to re-read, which
+   * the wiring honours at most once per `PREFLIGHT_TTL_MS` and bounds on its own clock. Nothing here
+   * decides that — the router passes the request on and serialises whatever comes back.
+   *
+   * Absent ⇒ the field is simply omitted, which the lead reads as **unknown, never green** (§7.1).
+   * Optional so a test constructing a router for some other route need not care.
+   */
+  readonly updatePreflight?: (fresh: boolean) => Promise<PeerPreflight | null>;
   readonly now?: () => number;
   readonly random?: RandomSource;
 }
@@ -857,7 +881,16 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // lead sees it while it is true instead of for the one sweep a push happened to land on.
       const clash = deps.standby?.syncedCollision() ?? [];
       const withReport = clash.length === 0 ? withDigest : { ...withDigest, pairingCollision: [...clash] };
-      return new Response(JSON.stringify(withReport), {
+      // §19: this machine's own update preflight, in the same seat, for the same reason. The lead's
+      // `X-Pack-Preflight: fresh` is passed on as a REQUEST — a peer that honours it answers with a
+      // freshly-run report, and one that does not answers with an older one and an `asOf` saying so.
+      // Absent means unknown at the far end, never green, so a member that cannot check itself
+      // blocks the phone's confirm by name instead of passing silently.
+      const askedFresh = req.headers.get(PREFLIGHT_HEADER)?.trim().toLowerCase() === PREFLIGHT_FRESH;
+      const preflight = (await deps.updatePreflight?.(askedFresh)) ?? null;
+      const withPreflight =
+        preflight === null ? withReport : { ...withReport, [PACK_PREFLIGHT_FIELD]: preflight };
+      return new Response(JSON.stringify(withPreflight), {
         status: 200,
         headers: packResponseHeaders(verdict.self),
       });

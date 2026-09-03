@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import type { SnapshotResponse } from "../types.ts";
+import type { PeerPreflight } from "../update-action.ts";
 import { member, neverProxy } from "./fixtures.ts";
 import {
   dueForProbe,
@@ -905,5 +906,71 @@ describe("PackLead — a pairing collision is REPORTED every sweep, never swallo
     await l.sweep();
     await Bun.sleep(5);
     expect(pushes).toEqual(["laptop"]);
+  });
+});
+
+// ── §19 — the member's own update preflight, banked by the sweep ─────────────
+
+describe("PackLead — each member's update preflight (§19)", () => {
+  const REPORT: PeerPreflight = {
+    verdict: "red",
+    asOf: 1_757_000_000_000,
+    checks: [{ id: "tree", verdict: "red", reason: "working tree has tracked changes: bridge/server.ts" }],
+  };
+
+  test("the sweep banks what each member said about its own checkout", async () => {
+    const h = lead([member({ memberId: "laptop" })], () => ok({ ...body, updatePreflight: REPORT }));
+    await h.lead.sweep();
+    expect(h.registry.state("laptop").preflight).toEqual(REPORT);
+    expect(h.lead.updateRows()).toEqual([
+      {
+        name: "laptop",
+        version: null,
+        verdict: "red",
+        reasons: ["working tree has tracked changes: bridge/server.ts"],
+        asOf: 1_757_000_000_000,
+      },
+    ]);
+  });
+
+  test("a member that carried none is unknown by name — never green, never omitted", async () => {
+    const h = lead([member({ memberId: "laptop" })], () => ok(body));
+    await h.lead.sweep();
+    expect(h.lead.updateRows()).toEqual([
+      { name: "laptop", version: null, verdict: "unknown", reasons: ["we could not check laptop"], asOf: null },
+    ]);
+  });
+
+  test("a member that did not answer keeps its last report, and the rows still dial nobody", async () => {
+    let answer = true;
+    const h = lead([member({ memberId: "laptop" })], () => (answer ? ok({ ...body, updatePreflight: REPORT }) : down));
+    await h.lead.sweep();
+    answer = false;
+    await h.lead.sweep();
+    // Stale-never-vanish (§10.2): the report survives, and its own `asOf` is what dates it.
+    expect(h.lead.updateRows()[0]!.asOf).toBe(1_757_000_000_000);
+    const before = h.calls.length;
+    h.lead.updateRows();
+    h.lead.updateRows();
+    expect(h.calls.length).toBe(before);
+  });
+
+  test("only the fresh sweep carries the request; the periodic one keeps the strict budget", async () => {
+    const asked: boolean[] = [];
+    const members = [member({ memberId: "laptop" })];
+    const l = new PackLead({
+      registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
+      snapshot: async (_link, freshPreflight) => {
+        asked.push(freshPreflight === true);
+        return ok(body);
+      },
+      proxy: neverProxy,
+      self: { id: "desk", name: "the herd" },
+      now: () => NOW,
+    });
+    await l.sweep();
+    await l.sweep({ freshPreflight: true });
+    await l.sweep({});
+    expect(asked).toEqual([false, true, false]);
   });
 });

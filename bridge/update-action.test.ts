@@ -1,19 +1,33 @@
 import { describe, expect, test } from "bun:test";
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   firstRed,
+  FreshPreflightGate,
+  mergedUpdateVerdict,
+  PACK_PREFLIGHT_MAX_CHECKS,
+  PACK_PREFLIGHT_TRUNCATED_ID,
+  packPreflightChecks,
+  packUpdateRows,
+  parsePeerPreflight,
   parsePreflightReport,
   parseUpdateStartRequest,
+  peerPreflightWire,
   PreflightCache,
   preflightCommand,
+  PREFLIGHT_TTL_MS,
+  updateCadenceTick,
   updateStartCommand,
   updateStartVerdict,
+  type PreflightCheck,
   type PreflightReport,
   type UpdateStartRequest,
   type UpdateStartState,
   worstVerdict,
 } from "./update-action.ts";
-import type { JsonObject } from "./json.ts";
+import type { JsonObject, JsonValue } from "./json.ts";
 import type { UpdateRun, UpdateRunState } from "./update-run.ts";
 
 // `POST /api/update`, decided (bridge/update-action.ts). The handler itself lives inside `Bun.serve`
@@ -355,5 +369,260 @@ describe("the preflight the phone runs", () => {
       "--local",
       "--json",
     ]);
+  });
+});
+
+// ── The pack's half (M16/03) ─────────────────────────────────────────────────
+// Every peer answers for ITSELF over the link the lead already polls, the lead banks the answer, and
+// the card reads the bank. Nothing below dials anything; that is the point of it being here.
+
+const CHECK = (id: string, verdict: "green" | "amber" | "red", reason: string): PreflightCheck => ({
+  id,
+  verdict,
+  reason,
+});
+
+/** A peer's snapshot answer, with §19's field riding beside the body — the shape the lead reads. */
+const wire = (over: JsonObject = {}): JsonValue => ({
+  bridge: "connected",
+  updatePreflight: {
+    verdict: "green",
+    asOf: 1_757_000_000_000,
+    checks: [{ id: "tree", verdict: "green", reason: "working tree is clean" }],
+    ...over,
+  },
+});
+
+/** The same checks as plain JSON — what a member would actually put on the wire. */
+const asJson = (checks: readonly PreflightCheck[]): JsonValue =>
+  checks.map((c) => ({ id: c.id, verdict: c.verdict, reason: c.reason }));
+
+describe("a member's own preflight, as it crosses the link", () => {
+  test("updatePreflight is read off the answer the snapshot rode on, verdict and asOf and all", () => {
+    expect(parsePeerPreflight(wire())).toEqual({
+      verdict: "green",
+      asOf: 1_757_000_000_000,
+      checks: [{ id: "tree", verdict: "green", reason: "working tree is clean" }],
+    });
+  });
+
+  test("absent preflight is unknown, never green — and so is every shape this build cannot read", () => {
+    // The whole of §7.1's absent-means-closed, case by case. Each of these is a member that has told
+    // us nothing, and "nothing" may never be rendered as "nothing is wrong".
+    const closed: JsonValue[] = [
+      { bridge: "connected" },
+      { updatePreflight: null },
+      wire({ verdict: "blue" }),
+      wire({ asOf: 0 }),
+      wire({ asOf: "yesterday" }),
+      wire({ checks: "none" }),
+      wire({ checks: [{ id: "tree", verdict: "green" }] }),
+    ];
+    for (const value of closed) expect(parsePeerPreflight(value)).toBeNull();
+    // And the row it produces blocks by name rather than passing as green.
+    const rows = packUpdateRows([{ name: "attic", version: "1.4.0", preflight: null }]);
+    expect(rows).toEqual([
+      { name: "attic", version: "1.4.0", verdict: "unknown", reasons: ["we could not check attic"], asOf: null },
+    ]);
+    expect(mergedUpdateVerdict(GREEN, rows).blocks).toBe(true);
+  });
+
+  test("the emitted report carries the peer's own verdict whole and drops the remedy", () => {
+    const report = REPORT("red", [
+      CHECK("tree", "red", "working tree has tracked changes: bridge/server.ts"),
+      { id: "disk", verdict: "green", reason: "4.2 GB free", remedy: "make space" },
+    ]);
+    expect(peerPreflightWire(report, 1_757_000_000_000)).toEqual({
+      verdict: "red",
+      asOf: 1_757_000_000_000,
+      checks: [
+        { id: "tree", verdict: "red", reason: "working tree has tracked changes: bridge/server.ts" },
+        { id: "disk", verdict: "green", reason: "4.2 GB free" },
+      ],
+    });
+    // Nothing to publish is nothing published — which the other side reads as unknown.
+    expect(peerPreflightWire(null, 1_757_000_000_000)).toBeNull();
+    expect(peerPreflightWire(report, null)).toBeNull();
+  });
+
+  test("the check list is capped at 16, truncation is stated, and it can never change a verdict", () => {
+    const many = [
+      CHECK("tree", "red", "working tree has tracked changes"),
+      ...Array.from({ length: 30 }, (_, i) => CHECK(`c${i}`, "green", `check ${i} passed`)),
+    ];
+    const capped = packPreflightChecks(many);
+    expect(capped).toHaveLength(PACK_PREFLIGHT_MAX_CHECKS);
+    // Worst first, so the red that DECIDED the verdict is the last thing truncation would drop.
+    expect(capped[0]!.id).toBe("tree");
+    const last = capped.at(-1)!;
+    expect(last.id).toBe(PACK_PREFLIGHT_TRUNCATED_ID);
+    expect(last.verdict).toBe("green");
+    expect(last.reason).toContain("16 further checks");
+    // The trailing check states a fact; it does not invent a finding.
+    expect(worstVerdict(capped.map((c) => c.verdict))).toBe("red");
+    // The lead caps what it READS too — a bound one side enforces is one the other can dodge.
+    const long = wire({ verdict: "red", asOf: 5, checks: asJson(many) });
+    expect(parsePeerPreflight(long)!.checks).toHaveLength(PACK_PREFLIGHT_MAX_CHECKS);
+    expect(parsePeerPreflight(long)!.verdict).toBe("red");
+  });
+});
+
+describe("pack rows — what GET /api/update/check answers with", () => {
+  test("pack rows carry name, version, verdict, non-green reasons worst first, and asOf", () => {
+    const rows = packUpdateRows([
+      {
+        name: "minibuch",
+        version: "1.4.1",
+        preflight: { verdict: "green", asOf: 1_757_000_000_000, checks: [CHECK("tree", "green", "clean")] },
+      },
+      {
+        name: "attic",
+        version: "1.4.0",
+        preflight: {
+          verdict: "red",
+          asOf: 1_756_978_000_000,
+          checks: [
+            CHECK("disk", "green", "4.2 GB free"),
+            CHECK("ops", "amber", "no ssh record"),
+            CHECK("tree", "red", "working tree has tracked changes: bridge/server.ts"),
+          ],
+        },
+      },
+    ]);
+    expect(rows).toEqual([
+      { name: "minibuch", version: "1.4.1", verdict: "green", reasons: [], asOf: 1_757_000_000_000 },
+      {
+        name: "attic",
+        version: "1.4.0",
+        verdict: "red",
+        reasons: ["working tree has tracked changes: bridge/server.ts", "no ssh record"],
+        asOf: 1_756_978_000_000,
+      },
+    ]);
+  });
+
+  test("pack rows are empty for an empty pack — the key is a fact, never an omission", () => {
+    expect(packUpdateRows([])).toEqual([]);
+  });
+});
+
+describe("the merged verdict — one function, three surfaces", () => {
+  test("merged verdict names the member that produced it, and the reason it gave", () => {
+    const pack = packUpdateRows([
+      {
+        name: "attic",
+        version: "1.4.0",
+        preflight: {
+          verdict: "red",
+          asOf: 5,
+          checks: [CHECK("tree", "red", "working tree has tracked changes: bridge/server.ts")],
+        },
+      },
+    ]);
+    expect(mergedUpdateVerdict(GREEN, pack)).toEqual({
+      verdict: "red",
+      member: "attic",
+      reason: "working tree has tracked changes: bridge/server.ts",
+      blocks: true,
+    });
+    // The lead's own red is named the same way, and it is read first.
+    const leadRed = REPORT("red", [CHECK("lock", "red", "an update is already running here")]);
+    expect(mergedUpdateVerdict(leadRed, pack)).toEqual({
+      verdict: "red",
+      member: "this collie",
+      reason: "an update is already running here",
+      blocks: true,
+    });
+  });
+
+  test("unknown beats amber and blocks; amber never blocks; all green names nobody", () => {
+    const amber = packUpdateRows([
+      {
+        name: "nas",
+        version: "1.4.1",
+        preflight: { verdict: "amber", asOf: 5, checks: [CHECK("ops", "amber", "no ssh record")] },
+      },
+    ]);
+    const unknown = packUpdateRows([{ name: "attic", version: null, preflight: null }]);
+    expect(mergedUpdateVerdict(GREEN, amber)).toEqual({
+      verdict: "amber",
+      member: "nas",
+      reason: "no ssh record",
+      blocks: false,
+    });
+    expect(mergedUpdateVerdict(GREEN, [...amber, ...unknown])).toEqual({
+      verdict: "unknown",
+      member: "attic",
+      reason: "we could not check attic",
+      blocks: true,
+    });
+    expect(mergedUpdateVerdict(GREEN, [])).toEqual({ verdict: "green", member: null, reason: null, blocks: false });
+    // A lead whose own preflight could not run is unknown too, by its own name.
+    expect(mergedUpdateVerdict(null, [])).toEqual({
+      verdict: "unknown",
+      member: "this collie",
+      reason: "we could not check this collie",
+      blocks: true,
+    });
+  });
+});
+
+describe("the fresh-preflight request, across the link", () => {
+  test("the fresh header is honoured at most once per TTL per member", () => {
+    let now = 10_000;
+    const gate = new FreshPreflightGate({ now: () => now });
+    expect(gate.admit()).toBe(true);
+    // A phone sitting on the page polls every couple of seconds. None of those may shell out.
+    now += 1_000;
+    expect(gate.admit()).toBe(false);
+    now += PREFLIGHT_TTL_MS - 1_001;
+    expect(gate.admit()).toBe(false);
+    now += 1;
+    expect(gate.admit()).toBe(true);
+  });
+
+  test("peer preflight cadence: a peer refreshes on the monitor's tick, and nothing else does", () => {
+    const calls: string[] = [];
+    const tick = (isPeer: boolean) =>
+      updateCadenceTick({
+        isPeer,
+        checkRelease: () => calls.push("release"),
+        refreshPreflight: () => calls.push("preflight"),
+      });
+    tick(true);
+    expect(calls).toEqual(["release", "preflight"]);
+    calls.length = 0;
+    // A lead and a solo instance run the card's own read and nothing extra.
+    tick(false);
+    expect(calls).toEqual(["release"]);
+  });
+
+  test("peer preflight cadence: no third timer — it rides the monitor's own two", () => {
+    const src = readFileSync(join(import.meta.dir, "index.ts"), "utf8");
+    // The two numbers are the monitor's, and the tick is the ONE place the refresh hangs off them.
+    expect(src).toContain("const updateFirstCheck = setTimeout(updateTick, UPDATE_FIRST_DELAY_MS);");
+    expect(src).toContain("const updateTimer = setInterval(updateTick, UPDATE_INTERVAL_MS);");
+    expect([...src.matchAll(/updateCadenceTick\(/g)]).toHaveLength(1);
+  });
+
+  test("the pack read peeks; it never shells out mid-sweep", async () => {
+    let runs = 0;
+    let now = 1_000;
+    const cache = new PreflightCache({
+      now: () => now,
+      run: async () => {
+        runs += 1;
+        return { stdout: JSON.stringify(GREEN) };
+      },
+    });
+    // Nothing has run: "no report", which the other side reads as unknown.
+    expect(cache.peek()).toBeNull();
+    expect(runs).toBe(0);
+    await cache.get();
+    expect(cache.peek()).toEqual({ report: GREEN, at: 1_000 });
+    now = 99_000;
+    // A stale entry stays readable and stays HONEST about its age — never re-run on the pack path.
+    expect(cache.peek()).toEqual({ report: GREEN, at: 1_000 });
+    expect(runs).toBe(1);
   });
 });

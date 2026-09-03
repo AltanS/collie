@@ -128,9 +128,12 @@ import {
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 import { readUpdateRun, updateLockHeld } from "./update-run.ts";
 import {
+  FreshPreflightGate,
   parsePreflightReport,
+  peerPreflightWire,
   PreflightCache,
   preflightCommand,
+  updateCadenceTick,
   updateStartCommand,
 } from "./update-action.ts";
 import { collieVersionBare } from "./version.ts";
@@ -607,6 +610,11 @@ const canRunUpdate = existsSync(collieBinary);
 // the remote's tags over the network, so it is not instant; past this, "no report" is the answer,
 // which REFUSES an update rather than allowing one.
 const PREFLIGHT_TIMEOUT_MS = 30_000;
+// How long a PEER waits for a forced re-run before answering its lead with what it already holds
+// (§19). Under the lead's own `UPDATE_ON_DEMAND_POLL_TIMEOUT_MS`, because the lead answers the phone
+// regardless past that, and well under `PREFLIGHT_TIMEOUT_MS`, because a peer that blocks its
+// lead's sweep is a peer the phone renders as unreachable.
+const FRESH_PREFLIGHT_WAIT_MS = 3_000;
 const preflightCache = new PreflightCache({
   now: Date.now,
   run: async () => {
@@ -674,12 +682,50 @@ const updateAction = canRunUpdate
     }
   : undefined;
 
+// ── The peer's own preflight, on the monitor's cadence (M16/03) ──────────────
+// A peer answers the pack's update question for ITSELF, over the link its lead already polls
+// (PACK_PROTOCOL.md §19). The answer is this very cache, refreshed on the two timers below and read
+// — never run — by the pack route. So there is no third timer, no second subprocess shape and no
+// SSH: the six hours a background fact deserves, plus the lead's `X-Pack-Preflight: fresh` for the
+// moment an operator is actually looking at the page.
+const freshPreflightGate = new FreshPreflightGate({ now: Date.now });
+const updateTick = () =>
+  updateCadenceTick({
+    isPeer: pack.mode === "peer",
+    checkRelease: () => void updateMonitor.checkRelease(),
+    // A no-op on an install with no compiled binary to run: there is nothing honest to spawn there,
+    // and the field this would refresh is simply omitted (which the lead reads as unknown).
+    refreshPreflight: () => {
+      if (canRunUpdate) void preflightCache.get();
+    },
+  });
+
 // First check delayed (don't probe mid-boot); then every few hours. unref() so neither timer holds
 // the process open; both cleared on shutdown.
-const updateFirstCheck = setTimeout(() => void updateMonitor.checkRelease(), UPDATE_FIRST_DELAY_MS);
+const updateFirstCheck = setTimeout(updateTick, UPDATE_FIRST_DELAY_MS);
 updateFirstCheck.unref();
-const updateTimer = setInterval(() => void updateMonitor.checkRelease(), UPDATE_INTERVAL_MS);
+const updateTimer = setInterval(updateTick, UPDATE_INTERVAL_MS);
 updateTimer.unref();
+
+/**
+ * What this collie publishes beside its snapshot body when its lead polls it (§19).
+ *
+ * `fresh` is the lead's request for a re-read, honoured at most once per `PREFLIGHT_TTL_MS` and
+ * bounded by {@link FRESH_PREFLIGHT_WAIT_MS} — past which this answers with what it already holds
+ * and an `asOf` that says how old that is. **Never a fabricated green**, and never a wait that can
+ * cost the lead its strict poll budget (§10.1).
+ */
+async function updatePreflightReport(fresh: boolean) {
+  if (!canRunUpdate) return null;
+  if (fresh && freshPreflightGate.admit()) {
+    await Promise.race([
+      preflightCache.get(true),
+      new Promise<void>((resolve) => setTimeout(resolve, FRESH_PREFLIGHT_WAIT_MS)),
+    ]);
+  }
+  const held = preflightCache.peek();
+  return held === null ? null : peerPreflightWire(held.report, held.at);
+}
 
 // The multiplexers this build can drive. Built once — the map is derived from each factory's own
 // name, so a key can never drift from the adapter it resolves to.
@@ -1058,7 +1104,7 @@ const packLead = (() => {
   const client = packPeerClient(data);
   return new PackLead({
     registry: packRegistry,
-    snapshot: (link) => client.snapshot(link),
+    snapshot: (link, freshPreflight) => client.snapshot(link, undefined, freshPreflight),
     // The re-ask a timed-out sweep earns (§10.4). Off the tick, on the patient budget — and the
     // connection it warms is the one the next strict-budget snapshot rides, which is what makes a
     // high-latency member converge on `reachable` instead of never bootstrapping at all.
@@ -1442,6 +1488,10 @@ const server = startServer({
             // an update, a systemd unit, a hand on a keyboard — is invisible to `pack-ops.json` and
             // was therefore rendered as `anchor INACTIVE` on a machine that was fully armed.
             warrantActiveGeneration: activatedGeneration,
+            // §19: this machine's own `collie update --check --local` verdict, published beside the
+            // snapshot body so one confirm on the phone can cover the whole pack. A REPORT and never
+            // an order — it names no code, no route and no version anybody should install.
+            updatePreflight: updatePreflightReport,
             onMembershipChange: packStoreChanged,
             // Gap A (§18.9), and its rotation-shaped sibling. Two receipts, one holder, in memory.
             onLeadDialled: (at) => leadContact.record(at),

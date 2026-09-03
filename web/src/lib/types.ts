@@ -459,10 +459,14 @@ export interface UpdatePackMember {
   verdict: UpdatePackVerdict;
   /** Why the verdict is what it is. A red or an unknown with no reason is a defect. */
   reasons: string[];
-  /** When that member's answer was taken (epoch ms). A six-hour-old green and a four-second-old
-   *  green are different facts, so every row is dated. */
-  asOf: number;
+  /** When that member's answer was taken (epoch ms), or null when it never reported. A
+   *  six-hour-old green and a four-second-old green are different facts, so every row that has
+   *  reported is dated. */
+  asOf: number | null;
 }
+
+/** The bridge and the CLI (`bridge/pack/lead.ts`, `bridge/update-action.ts`, `cli/pack-update.ts`) know this row by this name. */
+export type PackUpdateRow = UpdatePackMember;
 
 /**
  * One peer's leg of a pack-wide run (M16/04). Every field past the name is optional, because this
@@ -498,7 +502,8 @@ export interface PreflightReport {
  * `GET /api/update/check` — the update snapshot plus the preflight the button is gated on.
  *
  * `preflight: null` is a fact, not an omission: it means the check could not be run here, which
- * REFUSES an update rather than allowing one.
+ * REFUSES an update rather than allowing one. `pack` is optional because a bridge older than the
+ * pack-wide check omits it; that reads the same as "no peer rows" on the phone.
  */
 export interface UpdateCheckResponse extends UpdateInfo {
   preflight: PreflightReport | null;

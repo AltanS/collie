@@ -1,7 +1,7 @@
 import type { JsonObject, JsonValue } from "../json.ts";
 import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
 import { DEVICE_HEADER, MEMBER_HEADER, PROTOCOL_HEADER, parseProtocolHeader } from "./admission.ts";
-import { LEAD_CONFLICT, PACK_PREFIX, PAIRING_LABEL_COLLISION } from "./router.ts";
+import { LEAD_CONFLICT, PACK_PREFIX, PAIRING_LABEL_COLLISION, PREFLIGHT_FRESH, PREFLIGHT_HEADER } from "./router.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
@@ -589,9 +589,25 @@ export class PeerClient {
     );
   }
 
-  /** `GET /pack/v1/snapshot` — the one merged route (§5). Shape is spec M4/04's business. */
-  snapshot(link: PackLink, session?: string): Promise<PeerOutcome<JsonValue>> {
-    return this.json(link, "snapshot", session === undefined || session === "" ? undefined : { session });
+  /**
+   * `GET /pack/v1/snapshot` — the one merged route (§5). Shape is spec M4/04's business.
+   *
+   * `freshPreflight` adds §19's one header and, with it, the PATIENT budget — the only data dial
+   * that ever takes one by name. It is not a widening of the poll: the sweep that carries it is the
+   * one the phone's own on-demand read fires (`GET /api/update/check`), which is bounded at the
+   * route by `UPDATE_ON_DEMAND_POLL_TIMEOUT_MS` and answers with what it has past that. The periodic
+   * sweep never sets it and keeps the strict budget §10.1 requires, unchanged.
+   */
+  snapshot(link: PackLink, session?: string, freshPreflight = false): Promise<PeerOutcome<JsonValue>> {
+    const params = session === undefined || session === "" ? undefined : { session };
+    if (!freshPreflight) return this.json(link, "snapshot", params);
+    return this.json(
+      link,
+      "snapshot",
+      params,
+      { headers: { [PREFLIGHT_HEADER]: PREFLIGHT_FRESH } },
+      this.deps.patientTimeoutMs,
+    );
   }
 
   /** A pack call whose JSON body the lead consumes. */

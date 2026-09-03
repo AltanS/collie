@@ -8,7 +8,8 @@ import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo
 import { UPDATE_RUN_SCHEMA, type UpdateRun } from "../bridge/update-run.ts";
 import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT, type SeededFiles, type SeededOps } from "./fakes.ts";
 import { EXIT } from "./io.ts";
-import { answersThisBuild, cmdPackUpdate, type PackUpdateDeps } from "./pack-update.ts";
+import type { PackUpdateRow } from "../bridge/update-action.ts";
+import { answersThisBuild, cmdPackUpdate, peerReportLines, type PackUpdateDeps } from "./pack-update.ts";
 import type { RemoteResult } from "./remote.ts";
 import { PREFLIGHT_SCHEMA, type PreflightCheck, type PreflightReport } from "./update-check.ts";
 
@@ -77,6 +78,8 @@ interface HarnessOptions {
   confirm?: boolean | null;
   /** The preflight the gate reads. Absent ⇒ nothing red anywhere. */
   preflight?: PreflightReport;
+  /** What the running bridge banked off the pack link (§19). Absent ⇒ it knows nothing. */
+  peerReported?: readonly PackUpdateRow[];
   /** What this LEAD answers with. Absent ⇒ the build being pushed, so the lead is not behind. */
   leadVersion?: string;
   /** This lead's own update: what `start` returns, and the records its runner writes, in order. */
@@ -165,6 +168,7 @@ function harness(opts: HarnessOptions = {}) {
     clearNotifications: () => Promise.resolve(),
     preflight: () =>
       Promise.resolve(opts.preflight ?? { schema: PREFLIGHT_SCHEMA, verdict: "green", checks: [] }),
+    peerReported: () => Promise.resolve(opts.peerReported ?? []),
     lead: {
       start: () => {
         events.push("lead");
@@ -391,6 +395,61 @@ describe("the preflight runs first, and one red aborts the whole run", () => {
     });
     expect(await cmdPackUpdate(h.deps, ["--all"])).toBe(EXIT.OK);
     expect(legs(h)).toContain("nas.example:install");
+  });
+
+  // ── §19 — THE PEER-REPORTED VERDICT, BESIDE THE SSH ONE (M16/03) ───────────
+  test("peer-reported preflight: the link's verdict is printed beside the walk's, dated", async () => {
+    const h = harness({
+      ops: { nas: opsRecord("nas.example") },
+      hello: { nas: VERSION },
+      peerReported: [
+        { name: "nas", version: VERSION, verdict: "green", reasons: [], asOf: T0 - 6 * 60 * 60 * 1000 },
+      ],
+    });
+    expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    // The stamp is the MEMBER's, and it is shown: a green from six hours ago and a green from four
+    // seconds ago are different claims.
+    expect(text(h.io)).toContain("preflight: nas reports green over the link (as of 6h ago)");
+  });
+
+  test("peer-reported preflight: a disagreement is named, and the ssh walk still decides", async () => {
+    const h = harness({
+      ops: { nas: opsRecord("nas.example") },
+      hello: { nas: VERSION },
+      // The walk found nothing wrong; the member itself says it is red. Neither is silently preferred.
+      peerReported: [
+        {
+          name: "nas",
+          version: VERSION,
+          verdict: "red",
+          reasons: ["working tree has tracked changes: bridge/server.ts"],
+          asOf: T0 - 30_000,
+        },
+      ],
+      preflight: {
+        schema: PREFLIGHT_SCHEMA,
+        verdict: "green",
+        checks: [],
+        pack: [{ memberId: "nas", host: "nas.example", verdict: "green", checks: [] }],
+      },
+    });
+    expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    const rendered = text(h.io);
+    expect(rendered).toContain("preflight: nas reports red over the link — working tree has tracked changes");
+    expect(rendered).toContain("they disagree: ssh says green, the link says red — this run follows the ssh walk");
+    // Consent, ordering and abort behaviour are untouched: the run went ahead on the walk's verdict.
+    expect(h.confirms).toHaveLength(1);
+    expect(legs(h)).toContain("nas.example:install");
+  });
+
+  test("peer-reported preflight: a member the link knows nothing about prints nothing", () => {
+    const rows: PackUpdateRow[] = [{ name: "pi", version: null, verdict: "green", reasons: [], asOf: T0 }];
+    // `pi` is not a target of this run, so its row is not this run's business.
+    expect(peerReportLines([], rows, new Set(["nas"]), T0)).toEqual([]);
+    // And a member that has never produced a report says so rather than reading as checked.
+    expect(
+      peerReportLines([], [{ name: "nas", version: null, verdict: "unknown", reasons: [], asOf: null }], new Set(["nas"]), T0),
+    ).toEqual(["preflight: nas reports unknown over the link (never checked there)"]);
   });
 
   test("a member the probe refuses aborts the run before anything is pushed", async () => {

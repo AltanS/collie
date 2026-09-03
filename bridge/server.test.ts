@@ -1853,6 +1853,65 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(checkHandler).toContain("UPDATE_ON_DEMAND_POLL_TIMEOUT_MS");
   });
 
+  // ── THE PACK'S HALF (M16/03) ───────────────────────────────────────────────
+  // The card's read answers for every member, from what the sweep banked. The route itself lives
+  // inside `Bun.serve` and cannot be stood up here (CLAUDE.md), so what is pinned is its SHAPE —
+  // the same way every other assertion in this block is — and the decisions it delegates to are
+  // exercised for real in `update-action.test.ts` and `lead.test.ts`.
+  test("update check pack array: the key is always present, [] on a solo instance and on a peer", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
+    const checkHandler = src.slice(checkAt, checkAt + 4500);
+    // `?? []` is the whole of it: a solo instance and a peer build no `packLead`, so the key is an
+    // empty array rather than an absent one — `preflight: null`'s stated reason, one field over.
+    expect(checkHandler).toContain("pack: opts.packLead?.updateRows() ?? []");
+    // Composed from the bank, not from a dial: the rows come off `PackLead`, which reads `PeerState`.
+    expect(checkHandler).not.toContain("packLead.forward");
+  });
+
+  test("update check dials nobody: the rows are read from the sweep's bank, never fetched", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
+    const checkHandler = src.slice(checkAt, checkAt + 4500);
+    // The shape `status-wire.test.ts` uses: the surface the phone polls must not be able to make the
+    // lead dial a member. The ONE thing here that reaches a peer is the sweep — the same sweep the
+    // poll tick already runs, asked for one immediate pass and bounded — and nothing else.
+    for (const forbidden of ["client.snapshot", "peerClient", "proxy(", "fetch("]) {
+      expect(checkHandler).not.toContain(forbidden);
+    }
+    expect(checkHandler).toContain("opts.packLead?.updateRows()");
+  });
+
+  test("update check preflight fresh: the on-demand read fires ONE sweep asking for a fresh check", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
+    const checkHandler = src.slice(checkAt, checkAt + 4500);
+    expect(checkHandler).toContain("opts.packLead?.sweep({ freshPreflight: true })");
+    expect([...checkHandler.matchAll(/sweep\(/g)]).toHaveLength(1);
+  });
+
+  test("update check answers a stale asOf, never a fabricated green: the wait is the existing bound", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
+    const checkHandler = src.slice(checkAt, checkAt + 4500);
+    // The same race and the same constant the release check already uses. Past it the route answers
+    // with what the lead has — whose `asOf` is the peer's own stamp and says how old it is.
+    const races = [...checkHandler.matchAll(/Promise\.race\(\[/g)];
+    expect(races).toHaveLength(2);
+    expect([...checkHandler.matchAll(/UPDATE_ON_DEMAND_POLL_TIMEOUT_MS/g)]).toHaveLength(2);
+    // Nothing invents a verdict when the wait runs out: there is no green written into this handler.
+    expect(checkHandler).not.toContain('"green"');
+  });
+
+  test("the pack gates the confirm too: POST api/update reads the same banked rows", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
+    const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
+    // One confirm covers the pack, so one verdict covers the pack — and it is the SAME rows the
+    // card showed, from the same bank, decided by the one merge function in `update-action.ts`.
+    expect(handler).toContain("pack: opts.packLead?.updateRows() ?? []");
+  });
+
   test("update status: the run record reaches the phone through the status the card already polls", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     // One status object, three surfaces: the snapshot's `update`, the forced check, and the card's

@@ -1,3 +1,4 @@
+import type { PeerPreflight } from "../update-action.ts";
 import { isMemberId } from "./identity.ts";
 import type { PackLink, PeerFailure, PeerOutcome } from "./peer-client.ts";
 import type { TrustedMember } from "./trust-store.ts";
@@ -125,6 +126,20 @@ export interface PeerState {
    * renders both; nothing else branches on it.
    */
   readonly conflict: PeerConflict | null;
+  /**
+   * That member's own `collie update --check --local` verdict, as its snapshot answer reported it
+   * (§19), or `null` when it has reported none — never polled, a build older than the 2026-09-04
+   * amendment, or a machine whose own check could not run.
+   *
+   * **In memory only, beside `version`, and for the same reason**: it describes a checkout at a
+   * moment, and the moment is carried with it as the peer's own `asOf`. No `TrustedMember` field,
+   * and `TRUST_STORE_VERSION` stays `1`.
+   *
+   * `null` reads as **unknown, never green** (§7.1), and unknown blocks the phone's confirm with a
+   * reason naming the member. A failed sweep does NOT clear it — §10.2's stale-never-vanish applies
+   * here too, and the stamp beside it is what stops an old answer reading as a fresh one.
+   */
+  readonly preflight: PeerPreflight | null;
 }
 
 /**
@@ -215,6 +230,7 @@ export class PackRegistry {
         reason: "never polled",
         version: null,
         conflict: null,
+        preflight: null,
       }
     );
   }
@@ -242,6 +258,10 @@ export class PackRegistry {
     // Absent-means-closed (§7.1) applies to the wire field; here it is "observed nothing" vs
     // "observed absence", and only the second overwrites.
     const version = observed !== undefined ? observed.version : (previous?.version ?? null);
+    // The banked preflight is NOT touched here. It is folded by `recordPreflight`, off the same
+    // answer, so a failure keeps the last report (§10.2's stale-never-vanish) and the peer's own
+    // `asOf` is what says how old it is.
+    const preflight = previous?.preflight ?? null;
     const next: PeerState = outcome.ok
       ? {
           memberId,
@@ -250,10 +270,12 @@ export class PackRegistry {
           reason: null,
           version,
           conflict: null,
+          preflight,
         }
       : {
           memberId,
           version,
+          preflight,
           // `refused` (§14.3's 403) is a CLI-only outcome — no route the lead's sweep calls answers
           // one — so it reads as unreachable here, which is the honest projection: the phone's answer
           // is the same. `conflicted` (§18.10) does NOT, and that is the 2026-08-20 amendment: the
@@ -301,6 +323,7 @@ export class PackRegistry {
       reason: keepingUp ? null : SLOW_LINK_REASON,
       version,
       conflict: null,
+      preflight: previous?.preflight ?? null,
     };
     this.peers.set(memberId, next);
     return next;
@@ -342,6 +365,26 @@ export class PackRegistry {
     if (previous === undefined || previous.health !== "reachable") return this.state(memberId);
     if (receivedAt <= (previous.lastSeenAt ?? 0)) return previous;
     const next: PeerState = { ...previous, lastSeenAt: receivedAt };
+    this.peers.set(memberId, next);
+    return next;
+  }
+
+  /**
+   * Bank one member's own update preflight, as the sweep read it off that member's snapshot answer
+   * (§19, M16/03).
+   *
+   * **Only from a successful answer**, which is the caller's rule and the reason this is its own
+   * method rather than another field on {@link PeerObservation}: a member that said nothing has told
+   * us nothing about its checkout, and clearing the bank on a failed dial would render "the laptop
+   * is shut" as "we could not check it" one sweep later — two different sentences with two different
+   * remedies. `null` here is the OTHER thing: the member answered and carried no report, which is
+   * unknown and blocks the confirm by name.
+   *
+   * The lead never derives this. It stores what the member said and passes the member's own `asOf`
+   * through untouched, so nothing on this side can make an old answer look new.
+   */
+  recordPreflight(memberId: string, preflight: PeerPreflight | null): PeerState {
+    const next: PeerState = { ...this.state(memberId), preflight };
     this.peers.set(memberId, next);
     return next;
   }

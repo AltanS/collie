@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { AuditLog, type AuditEntry } from "../audit.ts";
 import type { SnapshotResponse } from "../types.ts";
+import { PACK_PREFLIGHT_MAX_CHECKS, PACK_PREFLIGHT_TRUNCATED_ID, peerPreflightWire } from "../update-action.ts";
 import { MEMBER_HEADER } from "./admission.ts";
 import { HANDOVER_TTL_MS, mintInvite, type EnrollResponse } from "./enrollment.ts";
 import { counterRandom, fp, leadStore, material, member, PACK, peerStore, T0 } from "./fixtures.ts";
@@ -292,6 +293,118 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
     // transportPinned not set => the unwired default admits nobody, same as the hello tests.
     const handler = createPackRouter({ store: h.store, audit: h.audit, snapshot: source });
     const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
+    expect(res.status).toBe(401);
+    expect(calls).toBe(0);
+  });
+
+  // ── §19 — THE MEMBER'S OWN UPDATE PREFLIGHT ────────────────────────────────
+  // A peer answers the update question for ITSELF, over the link its lead already polls. It is a
+  // report and never an order: it names no code, no route and no version anybody should install.
+  test("updatePreflight rides BESIDE the body, and the protocol stays 1", async () => {
+    const h = harness(peerStore());
+    const body = ownSnapshot();
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => body,
+      updatePreflight: async () => ({
+        verdict: "red",
+        asOf: 1_757_000_000_000,
+        checks: [{ id: "tree", verdict: "red", reason: "working tree has tracked changes" }],
+      }),
+    });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
+    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(await res.json()).toEqual({
+      ...body,
+      updatePreflight: {
+        verdict: "red",
+        asOf: 1_757_000_000_000,
+        checks: [{ id: "tree", verdict: "red", reason: "working tree has tracked changes" }],
+      },
+    });
+    // The browser's own snapshot is untouched: a pack-only fact never leaks into it.
+    expect(body).toEqual(ownSnapshot());
+  });
+
+  test("updatePreflight is OMITTED when this collie has none — absent, never a fabricated green", async () => {
+    const h = harness(peerStore());
+    const body = ownSnapshot();
+    // Both shapes of "nothing to say": a build that was wired none, and one whose check has not run.
+    for (const updatePreflight of [undefined, async () => null]) {
+      const handler = createPackRouter({
+        store: h.store,
+        audit: h.audit,
+        transportPinned: true,
+        snapshot: () => body,
+        updatePreflight,
+      });
+      const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
+      expect(await res.json()).toEqual(body);
+    }
+  });
+
+  test("X-Pack-Preflight: fresh is passed on as a request; anything else is an absent header", async () => {
+    const h = harness(peerStore());
+    const asked: boolean[] = [];
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => ownSnapshot(),
+      updatePreflight: async (fresh) => {
+        asked.push(fresh);
+        return null;
+      },
+    });
+    await call(handler, PACK_SNAPSHOT_PATH, { headers: { ...authed, "x-pack-preflight": "fresh" } });
+    await call(handler, PACK_SNAPSHOT_PATH, { headers: { ...authed, "x-pack-preflight": " FRESH " } });
+    await call(handler, PACK_SNAPSHOT_PATH, { headers: { ...authed, "x-pack-preflight": "please" } });
+    await call(handler, PACK_SNAPSHOT_PATH, { headers: authed });
+    expect(asked).toEqual([true, true, false, false]);
+  });
+
+  test("a member with more checks than the cap is truncated, and the truncation is stated", async () => {
+    const h = harness(peerStore());
+    const checks = Array.from({ length: 40 }, (_, i) => ({
+      id: `c${i}`,
+      verdict: "green" as const,
+      reason: `check ${i} passed`,
+    }));
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => ownSnapshot(),
+      // The wiring caps what it emits (`peerPreflightWire`); this asserts the router carries that
+      // capped list rather than re-expanding it, and that the drop is SAID rather than silent.
+      updatePreflight: async () => peerPreflightWire({ schema: 1, verdict: "green", checks }, 1_757_000_000_000),
+    });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
+    // SAFETY: the handler above serialised `peerPreflightWire`'s own output beside the body, so the
+    // response is that object; every field read below is asserted against it in the same breath.
+    const carried = ((await res.json()) as { updatePreflight: { checks: { id: string; reason: string }[] } })
+      .updatePreflight.checks;
+    expect(carried).toHaveLength(PACK_PREFLIGHT_MAX_CHECKS);
+    expect(carried.at(-1)!.id).toBe(PACK_PREFLIGHT_TRUNCATED_ID);
+    expect(carried.at(-1)!.reason).toContain("not carried over the pack link");
+  });
+
+  test("an UNADMITTED caller never reaches the preflight, fresh header or not", async () => {
+    const h = harness(peerStore());
+    let calls = 0;
+    // transportPinned not set => the unwired default admits nobody.
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      snapshot: () => ownSnapshot(),
+      updatePreflight: async () => {
+        calls += 1;
+        return null;
+      },
+    });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: { ...authed, "x-pack-preflight": "fresh" } }))!;
     expect(res.status).toBe(401);
     expect(calls).toBe(0);
   });
