@@ -22,6 +22,7 @@ import type { DeviceAuth } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { PackRoute } from "@/routes/pack";
 import { SettingsRoute } from "@/routes/settings";
+import { UpdatesRoute } from "@/routes/updates";
 import type { PaneFixture } from "./fixtures";
 
 // ── The shared connection clock ──────────────────────────────────────────────
@@ -163,7 +164,17 @@ export function PackRouter({ home, pack }: { home: HomeData; pack: PackData }) {
  * subscription. Both fail soft — the page renders whole either way, and against a dev proxy pointed
  * at a live bridge they answer for real.
  */
-export function SettingsRouter({ home, devices }: { home: HomeData; devices: DevicesData }) {
+export function SettingsRouter({
+  home,
+  devices,
+  start = "/settings",
+}: {
+  home: HomeData;
+  devices: DevicesData;
+  /** Which of the two routes to open on. `/settings/updates` is the Updates page, a child of
+   *  Settings, so the same router serves both and "back" works between them. */
+  start?: "/settings" | "/settings/updates";
+}) {
   const [router] = useState(() =>
     createMemoryRouter(
       [
@@ -186,10 +197,11 @@ export function SettingsRouter({ home, devices }: { home: HomeData; devices: Dev
           children: [
             { index: true, element: <div className="p-4 text-sm text-muted-foreground">home</div> },
             { path: "settings", loader: () => devices, element: <SettingsRoute /> },
+            { path: "settings/updates", element: <UpdatesRoute /> },
           ],
         },
       ],
-      { initialEntries: ["/settings"] },
+      { initialEntries: [start] },
     ),
   );
   return <RouterProvider router={router} />;
