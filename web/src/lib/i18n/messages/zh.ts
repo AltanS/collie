@@ -155,7 +155,8 @@ export const zh: Dictionary = {
 
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "自动换行",
-  "settings.display.wrap.hint": "关闭以按原始列宽渲染 TUI 表格，通过水平平移查看。",
+  "settings.display.wrap.hint":
+    "关闭后整个窗格按原始列宽渲染，通过水平平移查看。表格无需关闭此项：开启自动换行时，表格会单独平移。",
   "settings.display.tapToType.label": "点击唤起键盘",
   "settings.display.tapToType.hint":
     "开启后点击镜像任意位置均弹出键盘。关闭后镜像以文档模式交互，仅点击输入框时调出键盘。",

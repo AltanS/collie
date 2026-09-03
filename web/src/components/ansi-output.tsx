@@ -12,8 +12,10 @@ import {
   type MultiSelectModel,
   type PreviewSelectModel,
   type PromptModel,
+  type StyledLine,
   type WizardModel,
 } from "@/lib/blocks";
+import { tableRuns, type TableRun } from "@/lib/table-run";
 import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
 import { findLinks } from "@/lib/links";
@@ -46,8 +48,9 @@ export interface AnsiOutputProps {
   className?: string;
   /** true = wrap; the block breaks at the viewport width instead of scrolling horizontally. Default
    *  true — the mirror is mostly agent prose, and a phone shows far fewer columns than the desktop
-   *  width panes are spawned at, so panning was the common case. Disable Wrap in View for
-   *  column-faithful TUI tables. */
+   *  width panes are spawned at, so panning was the common case. Tables are the exception and are
+   *  handled inside that default (lib/table-run.ts): each one pans in its own scroller, so turning
+   *  Wrap off is now only for output whose columns matter EVERYWHERE, such as a full-screen TUI. */
   wrap?: boolean;
   /** Monospace font size in px. Default 11. */
   fontSize?: number;
@@ -86,6 +89,11 @@ export interface AnsiOutputProps {
 // Stable empty result so the "not searching" path keeps the same `matches` reference across polls
 // (no needless effect re-runs / parent count updates while find is closed).
 const NO_MATCHES: FindMatch[] = [];
+/** The grammar's own frozen empty result, so "this block has no table" is one identity everywhere.
+ *  `NO_BLOCK_RUNS` is the wrap-off answer for EVERY block at once: that path computes nothing, and
+ *  the lookup below falls through to NO_RUNS for each block it asks about. */
+const NO_RUNS = tableRuns([]);
+const NO_BLOCK_RUNS: readonly (readonly TableRun[])[] = Object.freeze([]);
 
 // The mirror's dark colour space and its light-theme inversion live in mirror-space.ts — the
 // statusline strip renders the same terminal segments and the two must not drift.
@@ -126,6 +134,35 @@ function preClass(wrap: boolean, className?: string): string {
     className,
   );
 }
+
+// A table run (lib/table-run.ts) is the one thing Wrap must not reflow, so it pans in its own
+// scroller while the mirror around it keeps wrapping. Five details are load-bearing:
+//
+//   · `inline-block`, not `block`. The run sits between the same "\n" text nodes as every other
+//     line, and the mirror's find offsets, its link offsets and a clipboard copy are all defined by
+//     those nodes. A block box would need them deleted either side of every run — three coordinate
+//     spaces perturbed for a line break the inline-block already gets from the newline it follows.
+//     Same in-flow shape as the single-row border clip below, which is not the same class string.
+//     `align-bottom` keeps its rows on the mirror's own 1.25em grid: `baseline` would add the
+//     strut's descent under the table. `w-full` makes the box fill the line instead of shrinking to
+//     fit, so a table narrower than the mirror still scrolls from the same left edge as the prose.
+//   · `overscroll-x-contain` and `[touch-action:pan-x_pan-y]`, for the same reason preClass carries
+//     them: a pan that reaches the end of the table must not become a page-level swipe, and the
+//     vertical gesture must still reach the message list underneath.
+//   · `overflow-y-hidden`, explicitly. `overflow-x-auto` alone computes `overflow-y` to `auto` (the
+//     CSS quirk preClass documents), and LINK_CLASS's em-padding deliberately overflows its line box
+//     — so an autolinked URL in a cell would make the run a second, stray vertical scroller. What y
+//     clipping costs is one pixel: measured at every size the A+/A- control offers, the first row's
+//     ink starts 1.0px above the run's border box, so the very top of a tall glyph is cut. The last
+//     row and a link's underline are inside the box at every size.
+//   · No scrollbar of its own. A classic (non-overlay) scrollbar is laid INSIDE an auto-height box,
+//     so it would cover about 15px at the foot of the run — a whole 13.75px row at fontSize 11 —
+//     and `overflow-y-hidden` leaves no way to reach what it covers. Overlay scrollbars, i.e. every
+//     phone, never showed one anyway. Same spelling the strips use.
+//   · `whitespace-pre` beats the <pre>'s `pre-wrap` for its subtree, which is the whole point, and
+//     it also means a run narrower than the phone simply does not scroll.
+const TABLE_RUN_CLASS =
+  "inline-block w-full max-w-full align-bottom whitespace-pre break-normal overflow-x-auto overflow-y-hidden overscroll-x-contain [touch-action:pan-x_pan-y] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
 // Faithful, colored mirror of a pane's recent terminal output. Rendering flows through the Block AST
 // (blocks.ts): parseAnsi → styled lines → typed blocks → React. Text is always rendered as React
@@ -196,6 +233,14 @@ export const AnsiOutput = memo(function AnsiOutput({
   const autoBlock = useMemo(
     () => blocks.find((b): b is AutoBlock => b.kind === "autocomplete") ?? null,
     [blocks],
+  );
+
+  // The table runs of each raw block, by block index. Only while wrapping: with Wrap off the whole
+  // <pre> already pans column-faithfully, and a nested scroller would just trap the gesture — so
+  // that branch computes nothing at all and every block falls through to NO_RUNS below.
+  const runsByBlock = useMemo(
+    () => (wrap ? rawBlocks.map((b) => tableRuns(b.lines)) : NO_BLOCK_RUNS),
+    [rawBlocks, wrap],
   );
 
   // Find offsets live over the *raw* mirror text (raw blocks joined by "\n", lines joined by "\n").
@@ -329,34 +374,79 @@ export const AnsiOutput = memo(function AnsiOutput({
     });
   };
 
+  // One mirror line. `lead` says whether this line emits the "\n" that separates it from the one
+  // before: the first line of a table run does NOT, because that newline is hoisted out to sit
+  // before the run's scroller (inside it, it would open the table with a blank row). The offset is
+  // advanced either way — the separator exists in the find/link coordinate space regardless of which
+  // element holds its text node.
+  //
+  // `inRun` settles the PRECEDENCE between the two no-wrap answers, and it is the reconcile with the
+  // frame-row clip (blocks.ts FRAME_ROW, issue #156). A box-drawn table's rows open and close on a
+  // vertical stroke, so every one of them is `noWrap` as well as a member of a run. THE RUN WINS.
+  // Clipping each row on its own would hide the same columns on every row and leave the scroller
+  // nothing to pan, so the table would be silently un-pannable, which is the exact failure this
+  // change exists to fix. A frame row that is NOT in a run, a lone menu or panel border, keeps its clip
+  // untouched: a detected table owns its own rows, and nothing beyond them.
+  const renderLine = (line: StyledLine, li: number, lead: boolean, inRun: boolean): ReactNode => {
+    if (li > 0) offset += 1; // the "\n" separating this line from the previous
+    const segNodes = line.segments.map((s, si) => {
+      const segStart = offset;
+      offset += s.text.length;
+      return (
+        <span key={si} style={styleFor(s)}>
+          {renderSegment(s.text, segStart)}
+        </span>
+      );
+    });
+    // A run's own rows are never clipped; see `inRun` above. Outside a run this is unchanged: a
+    // repeated rule, or a framed menu row, keeps the single-row clip it has always had.
+    const content = line.noWrap && wrap && !inRun ? (
+      <span className="inline-block max-w-full overflow-hidden align-bottom whitespace-pre break-normal">{segNodes}</span>
+    ) : (
+      segNodes
+    );
+    return (
+      <Fragment key={li}>
+        {li > 0 && lead ? "\n" : null}
+        {content}
+      </Fragment>
+    );
+  };
+
   const renderBlock = (block: RawBlock, bi: number) => {
     if (bi > 0) offset += 1; // the "\n" separating this block from the previous
+    const runs = runsByBlock[bi] ?? NO_RUNS;
+    const nodes: ReactNode[] = [];
+    let ri = 0;
+    for (let li = 0; li < block.lines.length; ) {
+      const run: TableRun | undefined = runs[ri];
+      if (!run || run.start !== li) {
+        nodes.push(renderLine(block.lines[li]!, li, true, false));
+        li++;
+        continue;
+      }
+      ri++;
+      const rows: ReactNode[] = [];
+      for (let k = run.start; k <= run.end; k++) {
+        rows.push(renderLine(block.lines[k]!, k, k > run.start, true));
+      }
+      // Keyed by the table's own first row and height, NEVER by its line index. The mirror is a
+      // rendered grid: one new line of output shifts every index by one, and an index key would
+      // unmount the scroller on that poll and snap the reader's pan back to column zero — while the
+      // table on screen had not moved at all. React reuses the element while the key holds, and
+      // scrollLeft lives on the element.
+      nodes.push(
+        <Fragment key={`run:${run.end - run.start}:${lineText(block.lines[run.start]!)}`}>
+          {li > 0 ? "\n" : null}
+          <span className={TABLE_RUN_CLASS}>{rows}</span>
+        </Fragment>,
+      );
+      li = run.end + 1;
+    }
     return (
       <Fragment key={bi}>
         {bi > 0 ? "\n" : null}
-        {block.lines.map((line, li) => {
-          if (li > 0) offset += 1; // the "\n" separating this line from the previous
-          const segNodes = line.segments.map((s, si) => {
-            const segStart = offset;
-            offset += s.text.length;
-            return (
-              <span key={si} style={styleFor(s)}>
-                {renderSegment(s.text, segStart)}
-              </span>
-            );
-          });
-          const content = line.noWrap && wrap ? (
-            <span className="inline-block max-w-full overflow-hidden align-bottom whitespace-pre break-normal">{segNodes}</span>
-          ) : (
-            segNodes
-          );
-          return (
-            <Fragment key={li}>
-              {li > 0 ? "\n" : null}
-              {content}
-            </Fragment>
-          );
-        })}
+        {nodes}
       </Fragment>
     );
   };

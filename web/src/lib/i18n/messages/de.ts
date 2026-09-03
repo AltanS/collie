@@ -169,7 +169,7 @@ export const de: Dictionary = {
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "Zeilenumbruch",
   "settings.display.wrap.hint":
-    "Deaktiviert: Spaltentreue Darstellung für TUI-Tabellen mit horizontalem Scrollen.",
+    "Deaktiviert: Das ganze Pane bleibt spaltentreu und wird horizontal gescrollt. Für eine Tabelle ist das nicht mehr nötig: Bei aktivem Zeilenumbruch scrollt eine Tabelle für sich.",
   "settings.display.tapToType.label": "Tippen zum Schreiben",
   "settings.display.tapToType.hint":
     "Aktiv: Antippen des Spiegels öffnet überall die Tastatur. Deaktiviert: Spiegel bleibt Textanzeige, Tastatur öffnet nur im Eingabefeld.",

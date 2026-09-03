@@ -181,7 +181,7 @@ export const en = {
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "Wrap lines",
   "settings.display.wrap.hint":
-    "Off shows column-faithful output for TUI tables — you pan instead.",
+    "Off pans the whole pane, column-faithful. You no longer need it for a table — a table pans by itself while Wrap is on.",
   "settings.display.tapToType.label": "Tap to type",
   "settings.display.tapToType.hint":
     "On, tapping the mirror anywhere opens the keyboard. Off, the mirror behaves like a document — taps land on the text and only the composer opens the keyboard.",
