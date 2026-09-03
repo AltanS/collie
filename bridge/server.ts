@@ -693,7 +693,7 @@ export function startServer(opts: {
       tabs,
       sessions: registry.list(),
       notifications: { snoozedUntil: snooze.until() },
-      update: updateMonitor.status(),
+      update: updateStatusWithPeers(),
       ts: Date.now(),
     };
     // Only report device state when the feature is on, so an off deployment sends nothing new.
@@ -924,6 +924,25 @@ export function startServer(opts: {
   // solo and lead keep the zero-tax shape — an absent key, not a disabled one.
   // `ca` is copied out of its readonly array because Bun's `TLSOptions` wants a mutable one.
   const listenerTls = opts.tls === undefined ? undefined : { ...opts.tls, ca: [...opts.tls.ca] };
+
+  /**
+   * The update status, with the peer LEGS of the run this lead is driving folded into its run record
+   * (M16/04).
+   *
+   * One composer for both surfaces the phone reads — the snapshot's `update` and the card's own
+   * `GET /api/update/check` — because the band reads the first and the Updates page reads the
+   * second, and two compositions would be two objects that could disagree about the same run.
+   *
+   * It **dials nobody**: `updatePeers()` is a read of what the sweep banked, exactly as
+   * `updateRows()` is. Absent legs are omitted rather than sent empty, so a solo install and a
+   * bridge with no run in flight send precisely today's object.
+   */
+  function updateStatusWithPeers() {
+    const status = updateMonitor.status();
+    const legs = opts.packLead?.updatePeers() ?? [];
+    if (status.run === undefined || status.run === null || legs.length === 0) return status;
+    return { ...status, run: { ...status.run, peers: legs } };
+  }
 
   const server = Bun.serve({
     hostname: cfg.host,
@@ -1347,17 +1366,8 @@ export function startServer(opts: {
         // follows the same rule: `[]` on a solo instance and on a peer, never absent. It is composed
         // from what the sweep BANKED (`PackLead.updateRows`) and dials nobody — `status-wire.ts`'s
         // purity argument, one route over.
-        // The peer LEGS of the run this lead is driving (M16/04) ride the run record the card
-        // already follows, so the phone reads one object rather than two that could disagree.
-        // Derived from what the sweep banked and nothing else — this route dials nobody.
-        const status = updateMonitor.status();
-        const legs = opts.packLead?.updatePeers() ?? [];
-        const withPeers =
-          status.run === undefined || status.run === null || legs.length === 0
-            ? status
-            : { ...status, run: { ...status.run, peers: legs } };
         return json(
-          { ...withPeers, preflight: report, pack: opts.packLead?.updateRows() ?? [] },
+          { ...updateStatusWithPeers(), preflight: report, pack: opts.packLead?.updateRows() ?? [] },
           req.headers.get("accept-encoding"),
         );
       }

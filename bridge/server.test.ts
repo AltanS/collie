@@ -1919,8 +1919,8 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     // One status object, three surfaces: the snapshot's `update`, the forced check, and the card's
     // read. The run record rides all three rather than acquiring a fourth endpoint with its own
     // shape — the nine states are `bridge/update-run.ts`'s, and nothing re-spells them here.
-    expect(src).toContain("update: updateMonitor.status(),");
-    expect(src).toContain("...withPeers, preflight: report");
+    expect(src).toContain("update: updateStatusWithPeers(),");
+    expect(src).toContain("...updateStatusWithPeers(), preflight: report");
     expect(src).not.toContain('"/api/update/status"');
   });
 });
@@ -2372,14 +2372,20 @@ describe("GET /api/launchers — this host's own rows, home included", () => {
 // the sweep banked. This route dials nobody, and a peers-only start spawns nothing here.
 
 describe("update status peers — the legs of a pack-wide run", () => {
-  test("update status peers ride the run record the card already polls, and dial nobody", () => {
+  test("update status peers ride the run record BOTH surfaces already poll, from one composer", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
-    const handler = src.slice(checkAt, src.indexOf("\n      }\n", checkAt));
+    // ONE composer, and both readers take it. The band reads the snapshot's `update`; the Updates
+    // page reads `GET /api/update/check`. Two compositions would be two objects that could disagree
+    // about the same run.
+    expect(src).toContain("update: updateStatusWithPeers(),");
+    expect(src).toContain("...updateStatusWithPeers(), preflight: report");
     // From the queue the sweep folds, never from a dial: `updatePeers()` is a read of banked state,
     // exactly as `updateRows()` is.
-    expect(handler).toContain("opts.packLead?.updatePeers() ?? []");
-    expect(handler).toContain("run: { ...status.run, peers: legs }");
+    const at = src.indexOf("function updateStatusWithPeers()");
+    const composer = src.slice(at, at + 600);
+    expect(composer).toContain("opts.packLead?.updatePeers() ?? []");
+    expect(composer).toContain("run: { ...status.run, peers: legs }");
+    expect(composer).not.toContain("sweep(");
     // And there is still no fourth endpoint with a fifth shape.
     expect(src).not.toContain('"/api/update/status"');
   });

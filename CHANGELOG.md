@@ -29,6 +29,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - Updates page at `/settings/updates`: the check, the update card, a read-only line per pack member, and one action button.
 - Every pack member reports its own update preflight over the link, and `GET /api/update/check` answers with a dated `pack` row per member.
+- The snapshot and `GET /api/update/check` compose the update status from one place, so the band and the Updates page can never disagree about a run.
 - The Updates page and the band report each peer's leg of a pack-wide run: waiting, updating, updated, rolled back or unreachable.
 - `POST /api/update` accepts `peersOnly: true`, the Updates page's "Retry pack update": a new run whose only legs are the peers.
 - Known gap: a lead rolled back by hand after its peers have levelled leaves them ahead of it. No peer is ever stepped down over the pack link; the remedy is `collie pack update <member>` from the lead.
