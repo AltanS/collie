@@ -137,4 +137,15 @@ describe("UpdateCheckControl", () => {
     expect(await screen.findByText(/whether a new collie version is available/i)).toBeInTheDocument();
     expect(screen.queryByText(/up to date/i)).toBeNull();
   });
+
+  // This control is the QUESTION; the card directly beneath it on /settings/updates is the ANSWER.
+  // Its header used to say the actionable lines lived in a footer banner. That banner is gone from
+  // Settings, so the claim is asserted here rather than only written down.
+  it("carries no actionable line of its own — one button, and it only re-checks", async () => {
+    renderControl({ ...upToDate, releaseAvailable: true, latest: "0.12.0", current: "0.11.0" });
+    const buttons = await screen.findAllByRole("button");
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]).toHaveAccessibleName(/check for updates/i);
+    expect(screen.queryByText(/0\.12\.0/)).toBeNull();
+  });
 });

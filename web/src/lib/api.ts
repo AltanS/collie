@@ -711,11 +711,28 @@ export function fetchUpdateState(signal?: AbortSignal): Promise<UpdateCheckRespo
  * (`update.in_progress`, `update.preflight_red`, `update.major_confirm_required`, …) — the caller
  * renders it through `lib/api-error-message.ts` like every other refusal.
  */
-export function startUpdate(a: { target: string; major: boolean }): Promise<UpdateStartResponse> {
-  return req<UpdateStartResponse>("/api/update", {
-    method: "POST",
-    body: JSON.stringify({ confirm: true, target: a.target, major: a.major }),
-  });
+/** The body `POST /api/update` takes. Named, so `peersOnly` has an owner rather than being widened
+ *  in at the call site — and so a bridge that predates the field is simply never sent it. */
+interface UpdateStartBody {
+  confirm: true;
+  target: string;
+  major: boolean;
+  peersOnly?: true;
+}
+
+export function startUpdate(a: {
+  target: string;
+  major: boolean;
+  /**
+   * "Retry pack update": a new run whose only legs are the peers (M16/04). Sent only when true, so
+   * the ordinary confirm's body is byte-identical to the one that shipped and a bridge that does
+   * not know the field yet is never handed it.
+   */
+  peersOnly?: boolean;
+}): Promise<UpdateStartResponse> {
+  const body: UpdateStartBody = { confirm: true, target: a.target, major: a.major };
+  if (a.peersOnly === true) body.peersOnly = true;
+  return req<UpdateStartResponse>("/api/update", { method: "POST", body: JSON.stringify(body) });
 }
 
 /** "Remind me next digest" — the card's dismiss. Not a mute: the banner keeps showing. */

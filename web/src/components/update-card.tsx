@@ -10,8 +10,17 @@ import { useLocale } from "@/hooks/use-locale";
 import { t, tn } from "@/lib/i18n";
 import { fetchStandbyRun, fetchUpdateState, snoozeUpdate, startUpdate } from "@/lib/api";
 import { describeThrownError } from "@/lib/api-error-message";
+import { timeAgoShort } from "@/lib/format";
 import { useOptionalRootData } from "@/lib/route-data";
 import { noteUpdateRun } from "@/lib/self-update";
+import {
+  packAction,
+  packActionLabel,
+  peerRows,
+  peersBehind,
+  peersRolledBack,
+  type PeerRow,
+} from "@/lib/update-pack";
 import { cn } from "@/lib/utils";
 import type {
   PreflightCheck,
@@ -23,9 +32,16 @@ import type {
 
 // ── UPDATE COLLIE, from the phone ───────────────────────────────────────────────────────────────
 //
-// One tap plus one confirm: the settings card that names the version you are on, the version you
-// would move to, what the preflight says about this machine, and the button that starts it. The
-// route behind it is `POST /api/update` (bridge/update-action.ts), gated exactly like a send.
+// One tap plus one confirm: the card on `/settings/updates` that names the version you are on, the
+// version you would move to, what the preflight says about this machine, what it says about every
+// peer, and the button that starts it. The route behind it is `POST /api/update`
+// (bridge/update-action.ts), gated exactly like a send.
+//
+// ── ONE CONFIRM COVERS THE PACK, AND PEERS ARE LINES IN THIS CARD ────────────
+// The peer lines sit inside the card rather than in a table beside it, because the card is what the
+// confirm button belongs to and the thing that blocks the confirm has to be readable without moving
+// your eyes to a second surface. No peer line carries a button of any kind: the operator's decision
+// is "level this pack", made once, and a per-peer button would be a second one.
 //
 // ── THIS IS NOT THE OTHER UPDATE ─────────────────────────────────────────────
 // `components/update-available-banner.tsx` says "New version — tap to update" and reloads the
@@ -72,6 +88,18 @@ const VERDICT_COLOUR = {
   red: "bg-status-blocked",
 } satisfies Record<PreflightCheck["verdict"], string>;
 
+/**
+ * What the open confirm is asking for. `kind` decides the words and nothing else — every one of
+ * them sends the same `POST /api/update`, and `peersOnly` is the only field that changes what the
+ * bridge does with it.
+ */
+interface Confirm {
+  kind: "single" | "pack" | "retry" | "major";
+  version: string;
+  major: boolean;
+  peersOnly: boolean;
+}
+
 export function UpdateCard() {
   useLocale();
   const data = useOptionalRootData();
@@ -84,7 +112,7 @@ export function UpdateCard() {
   const [checked, setChecked] = useState(false);
   // The record read off the STANDBY door while the front door is restarting.
   const [standbyRun, setStandbyRun] = useState<UpdateRun | undefined>();
-  const [confirming, setConfirming] = useState<{ version: string; major: boolean } | null>(null);
+  const [confirming, setConfirming] = useState<Confirm | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
@@ -100,10 +128,18 @@ export function UpdateCard() {
   const runState = run?.state;
   const running = runState !== undefined && IN_FLIGHT.has(runState);
 
-  // A pack LEAD says so plainly, so nobody hunts for a button that does not exist this milestone:
-  // a peer is levelled from the operator's own terminal, over their own SSH (ADR 0016).
+  // Whether this machine leads anybody. The roster answers it on every snapshot; the check's own
+  // `pack` array answers it better, when the bridge is new enough to send one. Either is enough to
+  // make the button say "pack" — a lead with peers it could not reach still leads them.
   const servers = data?.servers ?? [];
   const packLead = servers.length > 1 && servers.some((s) => s.isLead);
+  const census = check?.pack ?? [];
+  const legs = run?.peers ?? [];
+  const rows = peerRows(census, legs);
+  const hasPeers = rows.length > 0 || packLead;
+  const behind = peersBehind(census, current);
+  const rolledBack = peersRolledBack(legs);
+  const action = packAction({ releaseAvailable, hasPeers, behind, rolledBack });
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -160,11 +196,11 @@ export function UpdateCard() {
     };
   }, [running]);
 
-  async function begin(version: string, major: boolean) {
+  async function begin(ask: Confirm) {
     setBusy(true);
     setError(null);
     try {
-      const answer = await startUpdate({ target: version, major });
+      const answer = await startUpdate({ target: ask.version, major: ask.major, peersOnly: ask.peersOnly });
       setConfirming(null);
       if (answer.run !== null) setStandbyRun(answer.run);
       // Pull the snapshot now rather than waiting out the poll gap: the operator has just tapped,
@@ -198,7 +234,11 @@ export function UpdateCard() {
   // Nothing to take: the running version already IS the newest, no major is waiting, and no run is
   // mid-flight. This is the state the operator sees on almost every visit, so it gets the loudest
   // line on the card rather than being read off a Preflight list nobody asked to open.
-  const upToDate = !releaseAvailable && majorAvailable === null && latest !== null && run === undefined;
+  // `behind === 0` is part of it now: a lead whose own version is newest but whose peer is a
+  // release back has something to do, and "Up to date. Nothing to do." three inches above a
+  // "Retry pack update" button would be the card contradicting itself.
+  const upToDate =
+    !releaseAvailable && majorAvailable === null && latest !== null && run === undefined && behind === 0;
   const updateAvailable = releaseAvailable || majorAvailable !== null;
 
   return (
@@ -243,9 +283,21 @@ export function UpdateCard() {
           run={run}
           // Retry re-opens the SAME confirm the first attempt went through. A dead end with no next
           // action is what sends the operator to a terminal they may not have.
-          onRetry={() => setConfirming({ version: run.to ?? latest ?? current, major: false })}
+          onRetry={() =>
+            setConfirming({
+              kind: "single",
+              version: run.to ?? latest ?? current,
+              major: false,
+              peersOnly: false,
+            })
+          }
         />
       )}
+
+      {/* The pack, as lines in this card. Drawn whether or not a run is in flight — a peer going
+          quiet is exactly what the operator opened this page to see. On a solo install there is
+          nothing here and the card grows no height at all. */}
+      {rows.length > 0 && <PeerSection rows={rows} />}
 
       {!running && (
         <>
@@ -253,30 +305,14 @@ export function UpdateCard() {
             <PreflightSection preflight={preflight} updateAvailable={updateAvailable} />
           )}
 
-          {packLead && updateAvailable && (
-            <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">
-              {t("settings.updateCard.packLead")}
-            </p>
-          )}
-
           {confirming !== null ? (
             <div className="border-t border-border p-4">
-              <div className="text-sm font-medium">
-                {confirming.major
-                  ? t("settings.updateCard.majorConfirmTitle", { version: confirming.version })
-                  : t("settings.updateCard.confirmTitle", { version: confirming.version })}
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {confirming.major
-                  ? t("settings.updateCard.majorConfirmBody", { version: confirming.version })
-                  : t("settings.updateCard.confirmBody")}
-              </p>
+              <div className="text-sm font-medium">{confirmTitle(confirming)}</div>
+              <p className="mt-1 text-sm text-muted-foreground">{confirmBody(confirming)}</p>
               <div className="mt-3 flex items-center gap-2">
-                <Button size="sm" disabled={busy} onClick={() => void begin(confirming.version, confirming.major)}>
+                <Button size="sm" disabled={busy} onClick={() => void begin(confirming)}>
                   {busy && <Loader2 className="size-4 animate-spin" />}
-                  {confirming.major
-                    ? t("settings.updateCard.majorConfirmAction", { version: confirming.version })
-                    : t("settings.updateCard.confirmAction")}
+                  {confirmAction(confirming)}
                 </Button>
                 <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(null)}>
                   {t("settings.updateCard.cancel")}
@@ -284,29 +320,56 @@ export function UpdateCard() {
               </div>
             </div>
           ) : (
-            (releaseAvailable || majorAvailable !== null) && (
+            (action !== "none" || majorAvailable !== null) && (
               <div className="flex flex-col gap-2 border-t border-border p-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  {releaseAvailable && latest !== null && (
+                  {/* THE action button. One of the three labels, never two of them, and the label
+                      states what the tap will actually do: level this machine, level the pack, or
+                      run the peers again once this machine is already current. */}
+                  {action !== "none" && (
                     <Button
                       size="sm"
-                      disabled={blocked}
-                      onClick={() => setConfirming({ version: latest, major: false })}
+                      disabled={blocked && action !== "retry-pack"}
+                      onClick={() =>
+                        setConfirming(
+                          action === "retry-pack"
+                            ? { kind: "retry", version: current, major: false, peersOnly: true }
+                            : {
+                                kind: action === "update-pack" ? "pack" : "single",
+                                version: latest ?? current,
+                                major: false,
+                                peersOnly: false,
+                              },
+                        )
+                      }
                     >
-                      {t("settings.updateCard.action", { version: latest })}
+                      {packActionLabel(action, latest ?? current)}
                     </Button>
                   )}
+                  {/* NOT a second update action: crossing a major is its own consent (ADR 0020),
+                      the one thing the button above will never take. It appears only when a major
+                      is actually waiting, which is rare, and it says "Cross", not "Update". */}
                   {majorAvailable !== null && (
                     <Button
                       variant="outline"
                       size="sm"
                       disabled={blocked}
-                      onClick={() => setConfirming({ version: majorAvailable, major: true })}
+                      onClick={() =>
+                        setConfirming({
+                          kind: "major",
+                          version: majorAvailable,
+                          major: true,
+                          peersOnly: false,
+                        })
+                      }
                     >
                       {t("settings.updateCard.majorAction", { version: majorAvailable })}
                     </Button>
                   )}
-                  {!dismissed && (
+                  {/* The dismiss is not an action on the update, it is a courtesy about the digest
+                      push — and there is nothing to snooze once this machine is already current, so
+                      a retry-only state grows no ghost row. */}
+                  {!dismissed && updateAvailable && (
                     <Button variant="ghost" size="sm" onClick={() => void dismiss()}>
                       {t("settings.updateCard.dismiss")}
                     </Button>
@@ -314,7 +377,9 @@ export function UpdateCard() {
                 </div>
                 {/* The red's OWN reason, in place of a generic "unavailable" — a red preflight has to
                     be legible without leaving the phone. */}
-                {blocked && <p className="text-xs text-status-blocked">{blockedReason}</p>}
+                {blocked && action !== "retry-pack" && (
+                  <p className="text-xs text-status-blocked">{blockedReason}</p>
+                )}
                 {dismissed && <p className="text-xs text-muted-foreground">{t("settings.updateCard.dismissed")}</p>}
                 {majorAvailable !== null && (
                   <p className="text-xs text-muted-foreground">
@@ -330,6 +395,79 @@ export function UpdateCard() {
       {error !== null && <p className="border-t border-border px-4 py-2.5 text-xs text-status-blocked">{error}</p>}
     </Card>
   );
+}
+
+/** The confirm's heading. Four asks, four sentences — a pack-wide run must not be consented to
+ *  through the words written for one machine. */
+function confirmTitle(ask: Confirm): string {
+  if (ask.kind === "major") return t("settings.updateCard.majorConfirmTitle", { version: ask.version });
+  if (ask.kind === "pack") return t("settings.updateCard.packConfirmTitle", { version: ask.version });
+  if (ask.kind === "retry") return t("settings.updateCard.retryConfirmTitle");
+  return t("settings.updateCard.confirmTitle", { version: ask.version });
+}
+
+function confirmBody(ask: Confirm): string {
+  if (ask.kind === "major") return t("settings.updateCard.majorConfirmBody", { version: ask.version });
+  if (ask.kind === "pack") return t("settings.updateCard.packConfirmBody");
+  if (ask.kind === "retry") return t("settings.updateCard.retryConfirmBody");
+  return t("settings.updateCard.confirmBody");
+}
+
+function confirmAction(ask: Confirm): string {
+  if (ask.kind === "major") return t("settings.updateCard.majorConfirmAction", { version: ask.version });
+  if (ask.kind === "pack") return t("settings.updateCard.packConfirmAction");
+  if (ask.kind === "retry") return t("settings.updateCard.retryConfirmAction");
+  return t("settings.updateCard.confirmAction");
+}
+
+/**
+ * The peer lines. Read-only by construction: this function renders no interactive element at all,
+ * which is the milestone's rule rather than an omission — the operator's decision is "level this
+ * pack", taken once on the button above, and a per-peer button would be a second one.
+ *
+ * Worst first, so the row that blocks the confirm is the row nearest the button. Each line is
+ * `name · version · verdict-or-state`, plus the reason on its own line whenever the row is red,
+ * unknown or a leg that failed. Each is dated from the stamp its source carried, so a six-hour-old
+ * green and a four-second-old green are told apart.
+ */
+function PeerSection({ rows }: { rows: PeerRow[] }) {
+  return (
+    <div className="border-t border-border px-4 py-3">
+      <ul aria-label={t("settings.updateCard.peers.label")} className="space-y-1.5">
+        {rows.map((row) => (
+          <li key={row.name} className="flex items-start gap-2 text-xs">
+            {row.inFlight ? (
+              <Loader2 aria-hidden="true" className="mt-0.5 size-3 shrink-0 animate-spin text-status-working" />
+            ) : (
+              <span
+                aria-hidden="true"
+                className={cn("mt-1 size-1.5 shrink-0 rounded-full", peerDot(row))}
+              />
+            )}
+            <span className="min-w-0">
+              <span className="font-medium">{row.name}</span>
+              <span className="text-muted-foreground">
+                {" · "}
+                {row.version ?? t("settings.updateCard.peer.versionUnknown")}
+                {" · "}
+                {row.word}
+                {row.asOf !== null && ` · ${t("settings.updateCard.peer.asOf", { ago: timeAgoShort(row.asOf) })}`}
+              </span>
+              {row.reason !== null && <span className="block text-status-blocked">{row.reason}</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** The dot a peer row is drawn with. Ranks map to the same status tokens the preflight rows use;
+ *  an unknown never borrows green's. */
+function peerDot(row: PeerRow): string {
+  if (row.rank <= 1) return "bg-status-blocked";
+  if (row.rank <= 3) return "bg-status-working";
+  return "bg-status-done";
 }
 
 /** The worst verdict actually present among the individual checks — read off the rows themselves,

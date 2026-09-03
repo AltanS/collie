@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { http, HttpResponse } from "msw";
@@ -7,7 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/setup";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { __resetReloadGuard, isReloadHeld } from "@/lib/reload-guard";
-import type { PreflightReport, UpdateInfo, UpdateRun, UpdateRunState } from "@/lib/types";
+import type {
+  PreflightReport,
+  UpdateInfo,
+  UpdatePackMember,
+  UpdateRun,
+  UpdateRunState,
+} from "@/lib/types";
 import { UpdateCard } from "./update-card";
 
 // The update CARD (M15/05): the settings surface that starts a Collie update from the phone. Driven
@@ -130,9 +136,15 @@ function renderCard(update: UpdateInfo | undefined, servers: HomeData["servers"]
   return render(<RouterProvider router={router} />);
 }
 
-/** The card's own read, answered with `update` plus whatever preflight the case is about. */
-function serveCheck(update: UpdateInfo, preflight: PreflightReport | null) {
-  server.use(http.get("/api/update/check", () => HttpResponse.json({ ...update, preflight })));
+/** The card's own read, answered with `update` plus whatever preflight the case is about — and,
+ *  for the pack cases, the census spec 03 puts on the same response. Absent by default, which is
+ *  the solo answer and the older-bridge answer both. */
+function serveCheck(update: UpdateInfo, preflight: PreflightReport | null, pack?: UpdatePackMember[]) {
+  server.use(
+    http.get("/api/update/check", () =>
+      HttpResponse.json(pack === undefined ? { ...update, preflight } : { ...update, preflight, pack }),
+    ),
+  );
 }
 
 beforeEach(() => {
@@ -430,32 +442,170 @@ describe("rolled back card — the machine is named, the log is there, and there
   });
 });
 
-describe("pack lead card — peers are levelled from the terminal this milestone", () => {
-  it("points a lead at `collie pack update` instead of a button that does not exist", async () => {
-    renderCard(info(), [
-      { id: "desk", name: "desk", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1 },
-      { id: "laptop", name: "laptop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 1 },
-    ]);
+// ── THE PACK, INSIDE THE CARD (M16/01) ──────────────────────────────────────────────────────────
+//
+// The line this card used to carry — "Peers are updated from the terminal: collie pack update" —
+// is gone, because it is no longer true. The pack is lines in this card now, and the button above
+// them covers it.
+
+const PACK: UpdatePackMember[] = [
+  { name: "attic", version: "1.3.0", verdict: "red", reasons: ["working tree has tracked changes: bridge/server.ts"], asOf: 1_700_000_000_000 },
+  { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+  { name: "shed", version: null, verdict: "unknown", reasons: [], asOf: 1_700_000_000_000 },
+];
+
+const LEAD_ROSTER: HomeData["servers"] = [
+  { id: "desk", name: "desk", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1 },
+  { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 1 },
+];
+
+describe("peer rows in the card", () => {
+  it("grows one line per peer, worst first, with no table beside the card", async () => {
+    serveCheck(info(), GREEN, PACK);
+    renderCard(info(), LEAD_ROSTER);
+    const list = await screen.findByRole("list", { name: "Pack members" });
+    const names = within(list)
+      .getAllByRole("listitem")
+      .map((li) => li.textContent ?? "");
+    // Red first, then the unknown, then the green. The row that blocks the confirm sits nearest
+    // the button, which is the whole reason the rows live in this card.
+    expect(names[0]).toContain("attic");
+    expect(names[1]).toContain("shed");
+    expect(names[2]).toContain("minibuch");
+    expect(names).toHaveLength(3);
+  });
+
+  it("peer rows are read-only and carry the reason when red", async () => {
+    serveCheck(info(), GREEN, PACK);
+    renderCard(info(), LEAD_ROSTER);
+    const list = await screen.findByRole("list", { name: "Pack members" });
+    // No per-peer update, no per-peer retry — the operator's decision was taken once, above.
+    expect(within(list).queryAllByRole("button")).toHaveLength(0);
     expect(
-      await screen.findByText("Peers are updated from the terminal: collie pack update"),
+      within(list).getByText("working tree has tracked changes: bridge/server.ts"),
     ).toBeInTheDocument();
   });
 
-  it("a solo install grows no such line", async () => {
-    renderCard(info());
-    await screen.findByText(/Running 1\.3\.0/);
-    expect(screen.queryByText(/collie pack update/)).not.toBeInTheDocument();
+  it("peer row asOf dates every line, so an old green and a fresh green differ", async () => {
+    vi.setSystemTime(1_700_000_000_000 + 6 * 60 * 60 * 1000);
+    const mixed: UpdatePackMember[] = [
+      { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+      { name: "shed", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 + 6 * 60 * 60 * 1000 - 4000 },
+    ];
+    serveCheck(info(), GREEN, mixed);
+    renderCard(info(), LEAD_ROSTER);
+    const list = await screen.findByRole("list", { name: "Pack members" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows.find((li) => li.textContent?.includes("minibuch"))?.textContent).toContain("checked 6h");
+    expect(rows.find((li) => li.textContent?.includes("shed"))?.textContent).toContain("checked now");
   });
 
-  it("is hidden when up to date, even with pack members", async () => {
+  it("unknown is not green — it says unknown and says why", async () => {
+    serveCheck(info(), GREEN, PACK);
+    renderCard(info(), LEAD_ROSTER);
+    const list = await screen.findByRole("list", { name: "Pack members" });
+    const shed = within(list)
+      .getAllByRole("listitem")
+      .find((li) => li.textContent?.includes("shed"));
+    expect(shed?.textContent).toContain("unknown");
+    expect(shed?.textContent).toContain("we could not check this machine");
+    expect(shed?.textContent).not.toContain("ready");
+  });
+
+  it("solo grows no peer rows at all", async () => {
+    renderCard(info());
+    await screen.findByText(/Running 1\.3\.0/);
+    expect(screen.queryByRole("list", { name: "Pack members" })).not.toBeInTheDocument();
+  });
+});
+
+describe("single action button", () => {
+  it("says 'Update pack to X' when this pack has peers", async () => {
+    serveCheck(info(), GREEN, PACK);
+    renderCard(info(), LEAD_ROSTER);
+    expect(await screen.findByRole("button", { name: "Update pack to 1.4.0" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update to 1.4.0" })).not.toBeInTheDocument();
+  });
+
+  it("says 'Update to X' on a solo install", async () => {
+    renderCard(info());
+    expect(await screen.findByRole("button", { name: "Update to 1.4.0" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Update pack/ })).not.toBeInTheDocument();
+  });
+
+  it("says 'Retry pack update' once the lead is current and a peer is behind", async () => {
     const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
-    serveCheck(current, GREEN);
-    renderCard(current, [
-      { id: "desk", name: "desk", isLead: true, reachable: true, protocol: "ok", lastSeenAt: 1 },
-      { id: "laptop", name: "laptop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: 1 },
-    ]);
-    await screen.findByText("Up to date. Nothing to do.");
-    expect(screen.queryByText(/collie pack update/)).not.toBeInTheDocument();
+    const behind: UpdatePackMember[] = [
+      { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+    ];
+    serveCheck(current, GREEN, behind);
+    renderCard(current, LEAD_ROSTER);
+    expect(await screen.findByRole("button", { name: "Retry pack update" })).toBeInTheDocument();
+    // And the card does not claim there is nothing to do three inches above that button.
+    expect(screen.queryByText("Up to date. Nothing to do.")).not.toBeInTheDocument();
+  });
+});
+
+/** What `startUpdate` puts on the wire. Named so the assertions below read against a contract
+ *  rather than an anonymous bag. */
+interface StartBody {
+  confirm?: boolean;
+  target?: string;
+  major?: boolean;
+  peersOnly?: boolean;
+}
+
+async function readStart(request: Request): Promise<StartBody> {
+  // SAFETY: the only writer of this body is `startUpdate` in lib/api.ts, three lines of
+  // JSON.stringify over a typed object. Every field above is optional, so a body missing one reads
+  // as undefined and the assertion fails loudly rather than the parse throwing.
+  return (await request.json()) as StartBody;
+}
+
+describe("retry pack update", () => {
+  it("starts a new run whose only legs are the peers", async () => {
+    const user = userEvent.setup();
+    const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
+    const behind: UpdatePackMember[] = [
+      { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+    ];
+    serveCheck(current, GREEN, behind);
+    let sent: StartBody | undefined;
+    server.use(
+      http.post("/api/update", async ({ request }) => {
+        sent = await readStart(request);
+        return HttpResponse.json({ ok: true, to: "1.3.0", major: false, run: null });
+      }),
+    );
+    renderCard(current, LEAD_ROSTER);
+
+    await user.click(await screen.findByRole("button", { name: "Retry pack update" }));
+    // Its own confirm, in its own words: only the peers run, and each gets one more attempt.
+    expect(screen.getByText("Retry the pack update?")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Yes, retry" }));
+
+    await waitFor(() => expect(sent).toBeDefined());
+    expect(sent).toMatchObject({ confirm: true, peersOnly: true, target: "1.3.0", major: false });
+  });
+
+  it("an ordinary pack update is NOT peers-only", async () => {
+    const user = userEvent.setup();
+    serveCheck(info(), GREEN, PACK);
+    let sent: StartBody | undefined;
+    server.use(
+      http.post("/api/update", async ({ request }) => {
+        sent = await readStart(request);
+        return HttpResponse.json({ ok: true, to: "1.4.0", major: false, run: null });
+      }),
+    );
+    renderCard(info(), LEAD_ROSTER);
+
+    await user.click(await screen.findByRole("button", { name: "Update pack to 1.4.0" }));
+    expect(screen.getByText("Update the pack to 1.4.0?")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Yes, update the pack" }));
+
+    await waitFor(() => expect(sent).toBeDefined());
+    expect(sent).not.toHaveProperty("peersOnly");
   });
 });
 

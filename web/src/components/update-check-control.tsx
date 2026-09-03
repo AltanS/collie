@@ -11,11 +11,13 @@ import { timeAgo } from "@/lib/format";
 import type { UpdateInfo } from "@/lib/types";
 import { useOptionalRootData } from "@/lib/route-data";
 
-// "Check for updates" — a manual, on-demand upstream check. The bridge only polls upstream every few
-// hours, so this forces a fresh look (which can take ~10s). It reads the current version + last-checked
-// time from the snapshot's `update` (via the root loader), then after a check revalidates so the footer
-// UpdateBanner reflects the new state. The actionable "available"/"restart needed" lines live in that
-// banner; here we only confirm an up-to-date result or surface a check failure.
+// "Check for updates" — a manual, on-demand upstream check, and the first thing on
+// `/settings/updates`. The bridge only polls upstream every few hours, so this forces a fresh look
+// (which can take ~10s). It reads the current version + last-checked time from the snapshot's
+// `update` (via the root loader), then after a check revalidates so the UpdateCard directly beneath
+// it reflects the new state. This control is the QUESTION and that card is the ANSWER: every
+// actionable line — the version available, the preflight, the peers, the one button — lives there,
+// and here we only confirm an up-to-date result or surface a check failure.
 
 function describe(update: UpdateInfo | undefined): string {
   if (!update) return t("settings.update.check.prompt");
@@ -49,7 +51,7 @@ export function UpdateCheckControl() {
         setError(true);
         return;
       }
-      revalidator.revalidate(); // pull the fresh snapshot so the footer UpdateBanner updates
+      revalidator.revalidate(); // pull the fresh snapshot so the UpdateCard below reflects it
     } catch {
       setError(true);
     } finally {
@@ -86,7 +88,7 @@ export function UpdateCheckControl() {
             t("settings.update.action")
           )}
         </Button>
-        {/* Lightweight result — the actionable "available"/"restart" case is left to the UpdateBanner. */}
+        {/* Lightweight result — the actionable "available"/"restart" case is left to the UpdateCard. */}
         {!busy && error && (
           <span className="text-xs text-status-blocked">{t("settings.update.error")}</span>
         )}
