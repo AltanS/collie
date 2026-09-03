@@ -162,6 +162,25 @@ export function worst(verdicts: readonly Verdict[]): Verdict {
   return seen;
 }
 
+/**
+ * A member's verdict AS IT COUNTS TOWARD THE TOP-LEVEL REPORT — distinct from
+ * {@link PreflightMember.verdict}, which stays the worst of that member's own checks so the
+ * terminal output and the card still show a red `ops-record` line with its remedy.
+ *
+ * `ops-record` red means "this lead has never been told how to reach that peer" — a fact about the
+ * lead's own records, not about whether the LEAD's own update can succeed. Updating the lead needs
+ * no route to its peers (`cli/pack-update.ts` already treats an `ops-record` red the same way: it
+ * skips that member with its remedy, it does not abort the run). So when a member's ONLY red is
+ * `ops-record`, it counts as amber here — a peer needing a route is a fact to show, not a reason to
+ * refuse the lead's own update. Any OTHER red (unreachable, no Collie at the path, a red remote
+ * preflight) still makes this member count red at the top, same as `cli/pack-update.ts`'s `blocks`.
+ */
+export function topLevelMemberVerdict(member: PreflightMember): Verdict {
+  const reds = member.checks.filter((c) => c.verdict === "red");
+  const onlyOpsRecord = reds.length > 0 && reds.every((c) => c.id === "ops-record");
+  return onlyOpsRecord ? "amber" : member.verdict;
+}
+
 const green = (id: string, reason: string): PreflightCheck => ({ id, verdict: "green", reason });
 const amber = (id: string, reason: string, remedy?: string): PreflightCheck =>
   remedy === undefined ? { id, verdict: "amber", reason } : { id, verdict: "amber", reason, remedy };
@@ -624,9 +643,12 @@ export async function packChecks(deps: UpdateCheckDeps): Promise<PreflightMember
 export async function preflight(deps: UpdateCheckDeps): Promise<PreflightReport> {
   const checks = await instanceChecks(deps);
   const pack = await packChecks(deps);
+  // A member's contribution to the TOP verdict is `topLevelMemberVerdict`, not its own `.verdict` —
+  // see that function's comment: an `ops-record`-only red on a peer must not disable the lead's own
+  // update button.
   const verdict = worst([
     ...checks.map((c) => c.verdict),
-    ...(pack ?? []).map((m) => m.verdict),
+    ...(pack ?? []).map(topLevelMemberVerdict),
   ]);
   const report: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict, checks };
   return pack === undefined ? report : { ...report, pack };

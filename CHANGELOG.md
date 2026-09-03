@@ -44,6 +44,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - `pack update --host` remembers the ssh route as soon as the probe proves it, not only after a
   fully successful run.
 - `bun run test` no longer exits 0 when a test fails: a probe script called process.exit on import.
+- `collie update --check` no longer turns red, and the phone's Update button no longer disables, on a lead whose peer has no ssh record: that fact still shows red on the member, but updating the lead needs no route to a peer, so the top verdict is amber.
 
 ## [1.3.0] - 2026-09-03
 

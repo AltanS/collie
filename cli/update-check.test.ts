@@ -434,7 +434,33 @@ describe("preflight pack — the members of a lead", () => {
     expect(nas.checks[0]!.reason).toContain("no ssh record");
     expect(nas.checks[0]!.remedy).toContain("pack update nas --host");
     expect(nas.checks[0]!.remedy).toContain("--path");
+    // The member's OWN verdict stays red (the card and the terminal must still show it), but this
+    // does not need a route to a peer, so it must not disable the lead's own Update button — see
+    // `topLevelMemberVerdict`.
+    expect(report.verdict).toBe("amber");
+  });
+
+  test("ops-record: a lead with one peer lacking an ops record is amber at the top and exits 0", async () => {
+    const h = harness({ store: lead(["nas"]) });
+    const report = await preflight(h.deps);
+    const nas = report.pack![0]!;
+    // The member's own ops-record check stays red with its remedy — the card still shows it.
+    expect(nas.checks[0]!.id).toBe("ops-record");
+    expect(nas.checks[0]!.verdict).toBe("red");
+    expect(nas.verdict).toBe("red");
+    // But the top-level verdict is amber: updating the lead needs no route to this peer.
+    expect(report.verdict).toBe("amber");
+    expect(await cmdUpdateCheck(h.deps, ["--json"])).toBe(EXIT.OK);
+  });
+
+  test("ops-record: a lead with an unreachable peer still yields red and exits 1", async () => {
+    const h = harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED });
+    const report = await preflight(h.deps);
+    const nas = report.pack![0]!;
+    expect(nas.checks[0]!.id).toBe("reachable");
+    expect(nas.verdict).toBe("red");
     expect(report.verdict).toBe("red");
+    expect(await cmdUpdateCheck(h.deps, ["--json"])).toBe(EXIT.FAIL);
   });
 
   test("an unreachable member is red and names the host", async () => {
