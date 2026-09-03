@@ -562,6 +562,9 @@ describe("solo zero-tax — routes", () => {
       "/api/subscribe",
       "/api/tab",
       "/api/update/check",
+      // The digest's "remind me next digest" dismiss — solo, no pack sibling: it writes the lead's
+      // own notify record, and a peer never pushes an update notification of its own.
+      "/api/update/snooze",
       "/api/workspace",
       "/auth",
       "/auth/*",

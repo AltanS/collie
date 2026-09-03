@@ -17,6 +17,8 @@ import {
   parseTagsResponse,
   shouldNotify,
   stampOf,
+  updateDigestBody,
+  updatesNewerThan,
   UpdateMonitor,
   type UpdateMonitorDeps,
   type UpdateStore,
@@ -160,18 +162,111 @@ describe("parseSemverTag / latestReleaseTag", () => {
   });
 });
 
+// 10:00 on a fixed LOCAL day — past the digest's earliest hour, so a test that isn't about the clock
+// isn't accidentally about the clock. Built from local parts, so it holds in any TZ.
+const AT_10AM = new Date(2026, 0, 15, 10, 0, 0);
+const hoursAgo = (from: Date, h: number) => new Date(from.getTime() - h * 3600_000).toISOString();
+
+describe("updatesNewerThan", () => {
+  it("lists every version this install may take, oldest first — the digest names them all", () => {
+    expect(updatesNewerThan(["v0.11.0", "v0.12.0", "v0.12.1", "v1.0.0", "nightly"], "0.11.0")).toEqual([
+      "0.12.0",
+      "0.12.1",
+    ]);
+    // A stable install stays blind to prereleases; a beta install follows its own train.
+    expect(updatesNewerThan(["v1.0.0", "v1.1.0-beta.1"], "1.0.0")).toEqual([]);
+    expect(updatesNewerThan(["v1.0.0-beta.44", "v1.0.0-beta.45"], "1.0.0-beta.44")).toEqual([
+      "1.0.0-beta.45",
+    ]);
+  });
+});
+
+describe("updateDigestBody", () => {
+  it("names the one version, or the count AND every folded version", () => {
+    expect(updateDigestBody("1.3.0", ["1.3.1"])).toBe("Collie 1.3.1 is available");
+    expect(updateDigestBody("1.3.0", ["1.3.1", "1.3.2"])).toBe("2 updates since 1.3.0: 1.3.1, 1.3.2");
+  });
+});
+
 describe("shouldNotify", () => {
   const current = "0.11.0";
-  it("fires only for a strictly-newer, not-yet-notified release", () => {
-    expect(shouldNotify({ current, latest: "0.12.0", lastNotified: null })).toBe(true);
-    // Already notified for this exact version → no re-nag.
-    expect(shouldNotify({ current, latest: "0.12.0", lastNotified: "0.12.0" })).toBe(false);
-    // A newer one than we last notified → fire again.
-    expect(shouldNotify({ current, latest: "0.13.0", lastNotified: "0.12.0" })).toBe(true);
-    // Not newer than what we're running → never.
-    expect(shouldNotify({ current, latest: "0.11.0", lastNotified: null })).toBe(false);
-    expect(shouldNotify({ current, latest: "0.10.0", lastNotified: null })).toBe(false);
-    expect(shouldNotify({ current, latest: null, lastNotified: null })).toBe(false);
+  const gate = (over: Partial<Parameters<typeof shouldNotify>[0]> = {}) =>
+    shouldNotify({
+      current,
+      latest: "0.12.0",
+      newerVersions: ["0.12.0"],
+      lastNotified: null,
+      lastPushedAt: null,
+      now: AT_10AM,
+      ...over,
+    });
+
+  it("fires for a strictly-newer, not-yet-announced release", () => {
+    expect(gate()).toEqual({ send: true, versions: ["0.12.0"] });
+    // Already announced this exact version -> no re-nag, even with the window wide open.
+    expect(gate({ lastNotified: "0.12.0" })).toEqual({ send: false });
+    // Not newer than what we're running -> never.
+    expect(gate({ latest: "0.11.0", newerVersions: [] })).toEqual({ send: false });
+    expect(gate({ latest: "0.10.0", newerVersions: [] })).toEqual({ send: false });
+    expect(gate({ latest: null, newerVersions: [] })).toEqual({ send: false });
+  });
+
+  it("window closed suppresses the push — one a day, no matter how many releases land", () => {
+    expect(gate({ lastPushedAt: hoursAgo(AT_10AM, 3), lastNotified: "0.11.5" })).toEqual({ send: false });
+  });
+
+  it("window open sends, and the digest names every folded version since the last one announced", () => {
+    const verdict = gate({
+      latest: "0.13.0",
+      newerVersions: ["0.12.0", "0.12.1", "0.13.0"],
+      lastNotified: "0.12.0",
+      lastPushedAt: hoursAgo(AT_10AM, 30),
+    });
+    expect(verdict).toEqual({ send: true, versions: ["0.12.1", "0.13.0"] });
+  });
+
+  it("digest folds a whole release week into one push that names each version", () => {
+    expect(
+      gate({ latest: "0.14.0", newerVersions: ["0.12.0", "0.13.0", "0.14.0"] }),
+    ).toEqual({ send: true, versions: ["0.12.0", "0.13.0", "0.14.0"] });
+  });
+
+  it("a patch-only delta waits out the week, then sends — it is a wait, not a mute", () => {
+    const patches = { current: "1.3.0", latest: "1.3.2", newerVersions: ["1.3.1", "1.3.2"] };
+    // Inside the 7-day patch window: the daily window would have opened days ago, this one has not.
+    expect(gate({ ...patches, lastPushedAt: hoursAgo(AT_10AM, 30) })).toEqual({ send: false });
+    expect(gate({ ...patches, lastPushedAt: hoursAgo(AT_10AM, 6 * 24) })).toEqual({ send: false });
+    // Past it: an install that only ever sees patch releases is still nudged, once a week.
+    expect(gate({ ...patches, lastPushedAt: hoursAgo(AT_10AM, 7 * 24 + 1) })).toEqual({
+      send: true,
+      versions: ["1.3.1", "1.3.2"],
+    });
+    // No push on record — a first-ever patch digest waits for nothing.
+    expect(gate({ ...patches, lastPushedAt: null })).toEqual({ send: true, versions: ["1.3.1", "1.3.2"] });
+    // The 09:00 rule still applies on top of the weekly window.
+    expect(
+      gate({ ...patches, lastPushedAt: hoursAgo(AT_10AM, 8 * 24), now: new Date(2026, 0, 15, 3, 0, 0) }),
+    ).toEqual({ send: false });
+  });
+
+  it("a minor keeps the DAILY window, and carries the waiting patch releases with it", () => {
+    const mixed = { current: "1.3.0", latest: "1.4.0", newerVersions: ["1.3.1", "1.3.2", "1.4.0"] };
+    expect(gate(mixed)).toEqual({ send: true, versions: ["1.3.1", "1.3.2", "1.4.0"] });
+    // 30 h after the last push: too soon for a patch train, in time for a minor.
+    expect(gate({ ...mixed, lastPushedAt: hoursAgo(AT_10AM, 30) })).toEqual({
+      send: true,
+      versions: ["1.3.1", "1.3.2", "1.4.0"],
+    });
+  });
+
+  it("before 09:00 it waits — a release published at night does not buzz a phone", () => {
+    expect(gate({ now: new Date(2026, 0, 15, 3, 0, 0) })).toEqual({ send: false });
+    expect(gate({ now: new Date(2026, 0, 15, 9, 0, 0) })).toEqual({ send: true, versions: ["0.12.0"] });
+  });
+
+  it("a legacy record with no push timestamp reads as no push yet, and sends", () => {
+    expect(gate({ lastPushedAt: null })).toEqual({ send: true, versions: ["0.12.0"] });
+    expect(gate({ lastPushedAt: "not-a-date" })).toEqual({ send: true, versions: ["0.12.0"] });
   });
 });
 
@@ -192,15 +287,24 @@ describe("stampOf", () => {
 });
 
 // A fake store + a scripted clock for the monitor.
-function fakeStore(initial: string | null = null): UpdateStore & { saved: string[] } {
+function fakeStore(
+  initial: string | null = null,
+  pushedAt: string | null = null,
+): UpdateStore & { saved: string[]; pushes: string[] } {
   let last = initial;
+  let stamp = pushedAt;
   const saved: string[] = [];
+  const pushes: string[] = [];
   return {
     saved,
+    pushes,
     lastNotified: () => last,
-    setLastNotified: async (v) => {
+    lastPushedAt: () => stamp,
+    setLastNotified: async (v, at) => {
       last = v;
+      stamp = at;
       saved.push(v);
+      pushes.push(at);
     },
   };
 }
@@ -212,7 +316,9 @@ const apiTags = (...names: string[]): ApiTag[] => names.map((name) => ({ name, s
 function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
   const notified: string[] = [];
   const store = fakeStore();
-  let clock = 1_000_000;
+  // 10:00 on a fixed LOCAL day: past the digest's earliest hour, so these tests exercise the monitor
+  // rather than the clock. `tick` moves it forward within the same morning unless a test says otherwise.
+  let clock = new Date(2026, 0, 15, 10, 0, 0).getTime();
   const monitor = new UpdateMonitor({
     repo: "AltanS/collie",
     current: "0.11.0",
@@ -223,7 +329,7 @@ function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
     store,
     now: () => clock,
     updatesEnabled: () => true,
-    notify: (v) => notified.push(v),
+    notify: (versions) => notified.push(...versions),
     ...over,
   });
   return { monitor, notified, store, tick: (ms: number) => (clock += ms) };
@@ -338,23 +444,77 @@ describe("UpdateMonitor", () => {
     const store = fakeStore();
     const wrapped: UpdateStore = {
       lastNotified: store.lastNotified,
-      setLastNotified: async (v) => {
+      lastPushedAt: store.lastPushedAt,
+      setLastNotified: async (v, at) => {
         order.push(`persist:${v}`);
-        await store.setLastNotified(v);
+        await store.setLastNotified(v, at);
       },
     };
-    const { monitor, notified } = makeMonitor({ store: wrapped, notify: (v) => order.push(`notify:${v}`) });
+    const { monitor, notified } = makeMonitor({
+      store: wrapped,
+      notify: (versions) => order.push(`notify:${versions.join(",")}`),
+    });
     await monitor.checkRelease();
     await monitor.checkRelease(); // same latest → no re-nag
     expect(order).toEqual(["persist:0.12.0", "notify:0.12.0"]); // persisted first, fired once
     expect(notified).toEqual([]); // notify routed into `order` above
   });
 
-  it("does not push when the updates pref is off, but still surfaces releaseAvailable", async () => {
-    const { monitor, notified } = makeMonitor({ updatesEnabled: () => false });
+  it("the off switch suppresses everything — the updates pref off means no push, at any hour", async () => {
+    const { monitor, notified, store } = makeMonitor({ updatesEnabled: () => false });
     await monitor.checkRelease();
     expect(notified).toEqual([]);
+    expect(store.saved).toEqual([]); // nothing announced either, so turning it back on still tells you
     expect(monitor.status().releaseAvailable).toBe(true); // the banner still shows; only the push is gated
+  });
+
+  it("the snapshot reports releaseAvailable independent of the digest window", async () => {
+    // Pushed an hour ago -> the window is shut, but the card must still name the new release.
+    const store = fakeStore("0.11.5", new Date(2026, 0, 15, 9, 0, 0).toISOString());
+    const { monitor, notified } = makeMonitor({ store });
+    await monitor.checkRelease();
+    expect(notified).toEqual([]); // window closed
+    expect(monitor.status()).toMatchObject({ latest: "0.12.0", releaseAvailable: true });
+  });
+
+  it("folds a closed window into one digest that names every version it held back", async () => {
+    const store = fakeStore("0.11.0", new Date(2026, 0, 15, 9, 0, 0).toISOString());
+    const { monitor, notified, tick } = makeMonitor({
+      store,
+      fetchTags: async () => apiTags("v0.12.0", "v0.12.1", "v0.13.0"),
+    });
+    await monitor.checkRelease();
+    expect(notified).toEqual([]); // still inside the window
+    tick(25 * 3600_000); // next morning, window open
+    await monitor.checkRelease();
+    expect(notified).toEqual(["0.12.0", "0.12.1", "0.13.0"]);
+    expect(store.saved).toEqual(["0.13.0"]); // the newest is what "already announced" now means
+    await monitor.checkRelease();
+    expect(notified).toEqual(["0.12.0", "0.12.1", "0.13.0"]); // ignoring a digest never re-fires it
+  });
+
+  it("a patch-only train rides the weekly digest, and the card is current the whole time", async () => {
+    const store = fakeStore("1.3.0", new Date(2026, 0, 14, 10, 0, 0).toISOString()); // pushed a day ago
+    const { monitor, notified, tick } = makeMonitor({
+      current: "1.3.0",
+      store,
+      fetchTags: async () => apiTags("v1.3.1", "v1.3.2"),
+    });
+    await monitor.checkRelease();
+    expect(notified).toEqual([]); // the daily window is open; the patch window is not
+    expect(monitor.status().releaseAvailable).toBe(true); // the card is current regardless
+    tick(7 * 24 * 3600_000); // a week on
+    await monitor.checkRelease();
+    expect(notified).toEqual(["1.3.1", "1.3.2"]);
+  });
+
+  it("snoozeDigest marks the current latest announced and closes the window", async () => {
+    const { monitor, notified, store } = makeMonitor();
+    await monitor.checkRelease();
+    expect(notified).toEqual(["0.12.0"]);
+    await monitor.snoozeDigest();
+    expect(store.saved).toEqual(["0.12.0", "0.12.0"]);
+    expect(store.pushes).toHaveLength(2);
   });
 
   it("is fail-soft: a fetch error keeps prior state and sends nothing", async () => {

@@ -25,6 +25,20 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Changed
+
+- Update notifications are a digest: at most one push a day, naming every release it folded, never before 09:00. A patch-only delta rides a weekly digest instead, or a minor that arrives first.
+
+### Added
+
+- `POST /api/update/snooze` dismisses the current update digest until a newer release and a fresh window.
+
+### Fixed
+
+- `pack update --path '~/…'` expands the tilde on the remote's own `$HOME`, not this machine's.
+- `pack update --host` remembers the ssh route as soon as the probe proves it, not only after a
+  fully successful run.
+
 ## [1.3.0] - 2026-09-03
 
 ### Changed

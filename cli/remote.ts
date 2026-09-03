@@ -173,6 +173,20 @@ export function shq(value: string): string {
 }
 
 /**
+ * A remote PATH expression for `/bin/sh` — {@link shq}, except a leading `~` is expanded against the
+ * REMOTE `$HOME`, never against this machine's. `shq` alone defeats tilde expansion (single quotes
+ * turn off every shell substitution), so an operator's `--path '~/apps/collie-stable'` would reach
+ * the far shell as the seven-byte literal `~/apps/collie-stable` — a directory named `~` that does
+ * not exist — rather than the path they meant. And the two accounts are not guaranteed to share a
+ * `$HOME`, so this side must never resolve the tilde itself and ship the resolved string instead.
+ */
+export function shqPath(path: string): string {
+  if (path === "~") return '"$HOME"';
+  if (path.startsWith("~/")) return `"$HOME"/${shq(path.slice(2))}`;
+  return shq(path);
+}
+
+/**
  * Resolve a tool the way `scripts/collie-ctl.sh` resolves Bun: `PATH` first, then the fixed install
  * locations — because `ssh host '/bin/sh -s'` is byte-for-byte the no-login-shell, no-`PATH`
  * environment that shim was written for. `command -v` reports a shell function as a bare word, so
@@ -288,7 +302,7 @@ export function probeScript(opts: { readonly path: string | null; readonly port:
   const candidates =
     opts.path === null
       ? `"$HOME/.collie" "$HOME/collie" "$HOME"/.config/herdr/plugins/github/*/ "$HOME"/.config/herdr/plugins/local/*/`
-      : shq(opts.path);
+      : shqPath(opts.path);
   return [
     "set -u",
     "umask 077",
@@ -402,7 +416,7 @@ export function installScript(opts: {
     TOOL_LOOKUP,
     'GIT=$(collie_tool git) || { echo "error: no git on this machine" >&2; exit 20; }',
     'BUN=$(collie_tool bun) || { echo "error: no bun on this machine" >&2; exit 21; }',
-    `ROOT=${shq(opts.root)}`,
+    `ROOT=${shqPath(opts.root)}`,
     `COMMIT=${shq(opts.commit)}`,
     `EXPECT=${shq(opts.version)}`,
     'WORK=$(mktemp -d "${TMPDIR:-/tmp}/collie-add.XXXXXX")',
@@ -481,7 +495,7 @@ export async function runInstall(
 export function restartScript(root: string): string {
   return [
     "set -eu",
-    `ROOT=${shq(root)}`,
+    `ROOT=${shqPath(root)}`,
     'exec "$ROOT/bin/collie" restart',
     "",
   ].join("\n");
@@ -536,7 +550,7 @@ export function configureScript(opts: {
 export function membershipScript(root: string): string {
   return [
     "set -eu",
-    `ROOT=${shq(root)}`,
+    `ROOT=${shqPath(root)}`,
     '"$ROOT/bin/collie" pack status --no-probe',
     "",
   ].join("\n");
@@ -589,7 +603,7 @@ export function enrollScript(opts: {
   ];
   return [
     "set -eu",
-    `ROOT=${shq(opts.root)}`,
+    `ROOT=${shqPath(opts.root)}`,
     `exec "$ROOT/bin/collie" ${args.map(shq).join(" ")} <<'${PAYLOAD_EOF}'`,
     STDIN_MARKER,
     PAYLOAD_EOF,

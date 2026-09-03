@@ -33,6 +33,17 @@ const TAGS_TIMEOUT_MS = 10_000;
 // bridgeStale is read on every snapshot poll; recompute the on-disk stamp at most this often so a
 // busy poll loop doesn't stat the source tree dozens of times a second (the value barely changes).
 const STALE_TTL_MS = 5_000;
+// The digest window: after one update push, no second one for a day. Sibling of STALE_TTL_MS above —
+// a time-bounded recheck, not a new mechanism. Releases inside a closed window are folded, not dropped.
+const DIGEST_WINDOW_MS = 24 * 60 * 60 * 1000;
+// The patch window: a delta that is ONLY a patch bump rides a WEEKLY digest instead of the daily one.
+// It is a wait, not a mute — an install that only ever sees patch releases is still nudged, once a
+// week. A minor or major keeps the daily cadence, because it is the kind of release worth reading
+// notes for; a patch train is not, until enough of it has piled up to be worth one interruption.
+const DIGEST_PATCH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// The earliest HOST-LOCAL hour a digest may be pushed. A release published at 03:00 waits for morning;
+// the update banner is already showing it, so nothing is lost by not buzzing a phone at night.
+const DIGEST_EARLIEST_HOUR = 9;
 
 // ── Pure helpers (unit-tested) ────────────────────────────────────────────────
 
@@ -231,17 +242,89 @@ export function latestReleaseTag(tags: string[]): string | null {
   return best;
 }
 
-/** Whether a NEW-version push should fire: a strictly-newer release we haven't already notified for.
- *  Comparing against `current` (not the raw `latest`) means a restart after updating self-heals — the
- *  new `current` catches up and the condition falls false with no state reset. */
+/** Every version among `tags` that this install may routinely update TO and that is strictly newer
+ *  than `current`, oldest first. The list form of {@link latestUpdateInMajor} — same visibility rule
+ *  (own major only; that major's prereleases IFF this install is on one), so its last element IS what
+ *  that function returns whenever anything is newer. The digest needs the whole list, not the top of
+ *  it: a push has to be able to name the releases it folded. */
+export function updatesNewerThan(tags: string[], current: string): string[] {
+  const major = majorOf(current);
+  const train = major !== null && followsTrain(current, latestReleaseInMajor(tags, major));
+  const seen = new Set<string>();
+  for (const tag of tags) {
+    const parsed = parsePrereleaseTag(tag);
+    if (parsed === null) continue;
+    if (parsed.prerelease !== null && !train) continue;
+    if (major !== null && parsed.triple[0] !== major) continue;
+    const v = versionOfTag(parsed);
+    if (compareSemver(v, current) <= 0) continue;
+    seen.add(v);
+  }
+  return [...seen].toSorted(compareSemver);
+}
+
+/** Whether two dotted versions differ ONLY in their patch component — `1.3.0` vs `1.3.1`, but not
+ *  `1.3.0` vs `1.4.0` and not `1.0.0-beta.44` vs `1.0.0-beta.45` (same patch, different train stop). */
+function isPatchOnlyDelta(current: string, candidate: string): boolean {
+  const a = versionParts(current);
+  const b = versionParts(candidate);
+  if (a.triple[0] !== b.triple[0] || a.triple[1] !== b.triple[1]) return false;
+  return a.triple[2] !== b.triple[2];
+}
+
+/** The gate's answer: send nothing, or send a digest naming every folded version (oldest first). */
+export type NotifyVerdict = { send: false } | { send: true; versions: string[] };
+
+/**
+ * Whether a NEW-version push should fire, and what it should name. Pure, and time-aware: `now` is an
+ * argument, so the whole rule is testable without a timer.
+ *
+ * The push is a DAILY DIGEST, not a per-release announcement:
+ *   • nothing to say — no `latest`, or `latest` is not newer than `current`, or we already announced
+ *     it. Comparing against `current` (not the raw `latest`) means a restart after updating self-heals;
+ *   • the window — one push per {@link DIGEST_WINDOW_MS}, measured from `lastPushedAt`;
+ *   • the hour — never before {@link DIGEST_EARLIEST_HOUR} host-local;
+ *   • patch alone waits LONGER — a delta that is only a patch bump needs {@link DIGEST_PATCH_WINDOW_MS}
+ *     since the last push, not 24 h, so a patch train folds into a weekly digest. It is a wait, not a
+ *     mute: with no push on record it goes out at once, and a minor or major arriving meanwhile carries
+ *     the waiting patches with it. Releases held back this way are folded, never dropped;
+ *   • the payload is every version newer than what we last announced, so the operator can tell a patch
+ *     train from a feature release without opening the app.
+ */
 export function shouldNotify(a: {
   current: string;
   latest: string | null;
+  newerVersions: readonly string[];
   lastNotified: string | null;
-}): boolean {
-  if (!a.latest) return false;
-  if (compareSemver(a.latest, a.current) <= 0) return false;
-  return a.latest !== a.lastNotified;
+  lastPushedAt: string | null;
+  now: Date;
+}): NotifyVerdict {
+  if (!a.latest) return { send: false };
+  if (compareSemver(a.latest, a.current) <= 0) return { send: false };
+  if (a.latest === a.lastNotified) return { send: false };
+
+  const candidates = a.newerVersions.length > 0 ? [...a.newerVersions] : [a.latest];
+  const patchOnly = candidates.every((v) => isPatchOnlyDelta(a.current, v));
+
+  const pushedAt = a.lastPushedAt === null ? Number.NaN : Date.parse(a.lastPushedAt);
+  // An unreadable stamp reads as "no push yet" — the same fail-open a legacy record gets, and the one
+  // that lets a first-ever patch digest go out instead of waiting a week for a push that never was.
+  const window = patchOnly ? DIGEST_PATCH_WINDOW_MS : DIGEST_WINDOW_MS;
+  if (!Number.isNaN(pushedAt) && a.now.getTime() - pushedAt < window) return { send: false };
+  if (a.now.getHours() < DIGEST_EARLIEST_HOUR) return { send: false };
+
+  const announced = a.lastNotified;
+  const folded =
+    announced === null ? candidates : candidates.filter((v) => compareSemver(v, announced) > 0);
+  return { send: true, versions: folded.length > 0 ? folded : [a.latest] };
+}
+
+/** The push body for a digest: one version names itself, several name the count AND every version —
+ *  a count alone can't tell a patch train from a feature release. */
+export function updateDigestBody(current: string, versions: readonly string[]): string {
+  const first = versions[0];
+  if (versions.length <= 1) return `Collie ${first ?? current} is available`;
+  return `${versions.length} updates since ${current}: ${versions.join(", ")}`;
 }
 
 /** A stable, comparable stamp of source files by (path, mtime, size). Order-independent. Equality is
@@ -407,6 +490,7 @@ export function parseReleaseManifest(data: JsonValue): ManifestVerdict {
  *  same version. Its own tiny store (NOT piggybacked on push-subscriptions.json), owner-only. */
 export class UpdateStateStore {
   private lastVersion: string | null = null;
+  private pushedAt: string | null = null;
   private readonly file: string;
 
   constructor(private readonly cfg: Config) {
@@ -415,12 +499,16 @@ export class UpdateStateStore {
 
   async load(): Promise<void> {
     try {
-      // SAFETY: `Bun.file().json()` output IS a JsonValue by construction; `lastNotified` is
-      // checked before it is believed.
+      // SAFETY: `Bun.file().json()` output IS a JsonValue by construction; both fields are checked
+      // before they are believed.
       const raw = (await Bun.file(this.file).json()) as JsonValue;
-      const last =
-        raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw.lastNotified : undefined;
+      const rec = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw : null;
+      const last = rec === null ? undefined : rec.lastNotified;
+      const pushed = rec === null ? undefined : rec.lastPushedAt;
       this.lastVersion = typeof last === "string" ? last : null;
+      // A LEGACY record carries no timestamp. It reads as "no push yet" — the window opens at once
+      // rather than crashing the monitor or pinning it shut for a day.
+      this.pushedAt = typeof pushed === "string" ? pushed : null;
     } catch {
       /* none saved yet */
     }
@@ -430,13 +518,21 @@ export class UpdateStateStore {
     return this.lastVersion;
   }
 
-  async setLastNotified(version: string): Promise<void> {
+  /** When the last update push went out, ISO-8601, or null when none ever did. */
+  lastPushedAt(): string | null {
+    return this.pushedAt;
+  }
+
+  async setLastNotified(version: string, pushedAt: string): Promise<void> {
     this.lastVersion = version;
+    this.pushedAt = pushedAt;
     await mkdir(this.cfg.stateDir, { recursive: true, mode: 0o700 });
     // Atomic write (tmp + rename), matching Push/NotifyPrefs/Snooze — a crash mid-write can't leave a
     // corrupt file that would re-nag (or worse) on the next load.
     const tmp = `${this.file}.tmp`;
-    await writeFile(tmp, JSON.stringify({ lastNotified: version }, null, 2), { mode: 0o600 });
+    await writeFile(tmp, JSON.stringify({ lastNotified: version, lastPushedAt: pushedAt }, null, 2), {
+      mode: 0o600,
+    });
     await rename(tmp, this.file);
   }
 }
@@ -446,7 +542,9 @@ export class UpdateStateStore {
 /** Persistence seam — just what the monitor needs from {@link UpdateStateStore}. */
 export interface UpdateStore {
   lastNotified(): string | null;
-  setLastNotified(version: string): Promise<void>;
+  /** ISO-8601 stamp of the last push, or null — the digest window is measured from it. */
+  lastPushedAt(): string | null;
+  setLastNotified(version: string, pushedAt: string): Promise<void>;
 }
 
 export interface UpdateMonitorDeps {
@@ -470,12 +568,14 @@ export interface UpdateMonitorDeps {
   now: () => number;
   /** Whether update pushes are enabled (the `updates` notify pref — the user's off-switch). */
   updatesEnabled: () => boolean;
-  /** Fire the update-available push for `latest`. */
-  notify: (latest: string) => void;
+  /** Fire the update-available push for the digest — every version folded into it, oldest first.
+   *  Never empty; the last element is the newest available version. */
+  notify: (versions: string[]) => void;
 }
 
 export class UpdateMonitor {
   private latest: string | null = null;
+  private newerVersions: string[] = [];
   private majorAvailable: string | null = null;
   private checkedAt: number | null = null;
   private staleAt = Number.NEGATIVE_INFINITY;
@@ -520,17 +620,38 @@ export class UpdateMonitor {
     this.latest =
       major === null ? latestReleaseTag(tags) : latestUpdateInMajor(tags, major, this.deps.current);
     this.majorAvailable = major === null ? null : latestReleaseAboveMajor(tags, major);
+    // The whole list, not just its top: a digest has to be able to NAME the releases it folded.
+    this.newerVersions = updatesNewerThan(tags, this.deps.current);
     this.checkedAt = this.deps.now();
 
     const { current, store } = this.deps;
-    if (
-      this.latest &&
-      this.deps.updatesEnabled() &&
-      shouldNotify({ current, latest: this.latest, lastNotified: store.lastNotified() })
-    ) {
-      await store.setLastNotified(this.latest);
-      this.deps.notify(this.latest);
-    }
+    // The snapshot above is already updated — suppressing a push must never suppress state.
+    if (!this.deps.updatesEnabled()) return;
+    const verdict = shouldNotify({
+      current,
+      latest: this.latest,
+      newerVersions: this.newerVersions,
+      lastNotified: store.lastNotified(),
+      lastPushedAt: store.lastPushedAt(),
+      now: new Date(this.deps.now()),
+    });
+    if (!verdict.send) return;
+    await store.setLastNotified(verdict.versions[verdict.versions.length - 1] ?? current, this.nowIso());
+    this.deps.notify(verdict.versions);
+  }
+
+  private nowIso(): string {
+    return new Date(this.deps.now()).toISOString();
+  }
+
+  /**
+   * "Remind me next digest" — the dismiss seam the PWA can call on the update card. It closes the
+   * window and marks the current `latest` as announced, so the next push waits for BOTH a newer
+   * release and a fresh window. It is not a mute: `updatesEnabled()` remains the only off switch.
+   */
+  async snoozeDigest(): Promise<void> {
+    if (this.latest === null) return;
+    await this.deps.store.setLastNotified(this.latest, this.nowIso());
   }
 
   /** Recompute (throttled) whether the running process is behind the on-disk bridge source. */

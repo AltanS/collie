@@ -1178,6 +1178,15 @@ export function startServer(opts: {
         await updateMonitor.checkRelease();
         return json(updateMonitor.status(), req.headers.get("accept-encoding"));
       }
+      if (pathname === "/api/update/snooze" && req.method === "POST") {
+        // "Remind me next digest" — dismisses the CURRENT update push without touching the `updates`
+        // pref, which stays the only off switch. Read-level like the notification snooze: managing
+        // your own notifications isn't terminal-driving. The banner keeps showing; only the push waits.
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        await updateMonitor.snoozeDigest();
+        return json(updateMonitor.status(), req.headers.get("accept-encoding"));
+      }
 
       // ── Speech-to-text (bridge/stt/) ─────────────────────────────────────
       if (pathname === "/api/stt" && req.method === "POST") {

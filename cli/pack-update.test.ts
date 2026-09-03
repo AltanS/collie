@@ -480,6 +480,56 @@ describe("the ops record", () => {
     expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
     expect(h.ops.contents()).toBe(before);
   });
+
+  test("an override is remembered once the probe proves it, even when a later leg fails", async () => {
+    const h = harness({
+      ops: { nas: opsRecord("old.example") },
+      answers: { "nas.new": { install: { code: 1, stderr: "the build blew up" } } },
+    });
+    expect(await cmdPackUpdate(h.deps, ["nas", "--host", "nas.new", "--port", "9000"])).toBe(EXIT.FAIL);
+    // The push failed — the run as a whole is a failure — but the route the operator typed
+    // correctly must not be lost: the probe reached `nas.new` and found a real checkout there
+    // before the push ever ran, and that is proof enough to keep.
+    expect(parsePackOps(h.ops.contents()!)?.members.nas).toEqual({
+      sshHost: "nas.new",
+      path: CHECKOUT,
+      port: 9000,
+      recordedAt: T0,
+      anchoredGeneration: null,
+      anchoredAt: null,
+    });
+  });
+});
+
+// ── Tilde expansion in remote paths ───────────────────────────────────────────
+
+describe("a --path with a tilde is expanded on the far side, never here", () => {
+  test("`~/…` reaches the remote shell as \"$HOME\"/rest, quoted — never a literal tilde", async () => {
+    const h = harness({ ops: { nas: opsRecord("old.example") } });
+    expect(
+      await cmdPackUpdate(h.deps, ["nas", "--host", "nas.new", "--path", "~/apps/collie-stable"]),
+    ).toBe(EXIT.OK);
+    const probed = h.calls.find((c) => c.leg === "probe");
+    expect(probed?.script).toContain(`"$HOME"/'apps/collie-stable'`);
+    expect(probed?.script).not.toContain("~");
+  });
+
+  test("bare `~` reaches the remote shell as \"$HOME\"", async () => {
+    const h = harness({ ops: { nas: opsRecord("old.example") } });
+    expect(await cmdPackUpdate(h.deps, ["nas", "--host", "nas.new", "--path", "~"])).toBe(EXIT.OK);
+    const probed = h.calls.find((c) => c.leg === "probe");
+    expect(probed?.script).toContain(`for _d in "$HOME"; do`);
+    expect(probed?.script).not.toContain("~");
+  });
+
+  test("a path without a tilde is still single-quoted, exactly as before", async () => {
+    const h = harness({ ops: { nas: opsRecord("old.example") } });
+    expect(
+      await cmdPackUpdate(h.deps, ["nas", "--host", "nas.new", "--path", "/opt/collie"]),
+    ).toBe(EXIT.OK);
+    const probed = h.calls.find((c) => c.leg === "probe");
+    expect(probed?.script).toContain(`for _d in '/opt/collie'; do`);
+  });
 });
 
 // A single, deliberately un-asserted print of the whole plain transcript, so the shape of what an

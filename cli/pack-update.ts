@@ -296,6 +296,11 @@ async function planAll(
       blocked(deps, id, outcomes, "no Collie checkout there");
       continue;
     }
+    // The route is proven the moment the probe answers with a checkout: the host was reachable and
+    // the path names a real Collie. Remembering it HERE, before the one consent and before any leg
+    // that can fail, is what closes the bug a `--host` run used to have — a build or restart failure
+    // downstream must not cost the operator the route they just typed correctly.
+    await remember(deps, target, probe);
     if (probe.dirty === "yes") {
       // Refused, never prompted — the same rule `pack add` applies, for the same reason: a y/N in
       // front of a `git checkout` that discards someone's work is consent theatre, and the remedy is
@@ -483,7 +488,8 @@ async function workOne(
       (skewed ? ` (expected ${o.expected})` : ""),
   });
 
-  await remember(deps, planned);
+  // The route was already remembered once the probe proved it, in `planAll` — well before this leg
+  // runs, and well before the one consent. Nothing left to do here.
   return true;
 }
 
@@ -519,16 +525,22 @@ export function answersThisBuild(reported: string, version: string, commit: stri
   return build.length >= 4 && commit.toLowerCase().startsWith(build.toLowerCase());
 }
 
-/** Refresh the ops record when the operator steered this run by hand. */
-async function remember(deps: Wired, planned: Planned): Promise<void> {
-  if (!planned.target.overridden) return;
+/**
+ * Refresh the ops record when the operator steered this run by hand, as soon as the probe has
+ * PROVEN the route: the ssh host answered and the path is a Collie checkout. That is deliberately
+ * earlier than "the member is fully updated" — a route the operator typed correctly is worth
+ * remembering even when the build or the restart fails on a later leg, and a run that forgot it
+ * anyway is the bug this closes.
+ */
+async function remember(deps: Wired, target: Target, probe: Probe): Promise<void> {
+  if (!target.overridden) return;
   const record: OpsRecord = {
-    sshHost: planned.target.sshHost,
-    path: planned.root,
-    port: planned.target.port,
+    sshHost: target.sshHost,
+    path: probe.checkout,
+    port: target.port,
     recordedAt: deps.now(),
   };
-  if (!(await deps.ops.record(planned.target.member.memberId, record))) {
+  if (!(await deps.ops.record(target.member.memberId, record))) {
     line(deps, "warn: the ops file could not be updated, so this route was not remembered.", "warn", "err");
   }
 }

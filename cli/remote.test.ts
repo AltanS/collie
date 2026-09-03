@@ -27,6 +27,7 @@ import {
   probeScript,
   restartScript,
   shq,
+  shqPath,
   sshOptions,
   STDIN_MARKER,
   type PackAddDeps,
@@ -338,6 +339,22 @@ describe("the leg scripts", () => {
   test("shq closes a single quote rather than trusting the value", () => {
     expect(shq("a'b")).toBe(`'a'\\''b'`);
     expect(shq("; rm -rf /")).toBe(`'; rm -rf /'`);
+  });
+
+  test("shqPath expands a leading `~` against the REMOTE $HOME, never this machine's", () => {
+    expect(shqPath("~/apps/collie-stable")).toBe(`"$HOME"/'apps/collie-stable'`);
+    expect(shqPath("~")).toBe(`"$HOME"`);
+  });
+
+  test("shqPath leaves an ordinary path exactly as `shq` would", () => {
+    expect(shqPath("/opt/collie")).toBe(shq("/opt/collie"));
+    expect(shqPath("~notauser/x")).toBe(shq("~notauser/x"));
+  });
+
+  test("the probe script never carries a literal tilde for a `~`-rooted --path", () => {
+    const script = probeScript({ path: "~/apps/collie-stable", port: 8787 });
+    expect(script).toContain(`for _d in "$HOME"/'apps/collie-stable'; do`);
+    expect(script).not.toContain("~");
   });
 });
 

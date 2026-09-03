@@ -121,6 +121,7 @@ import {
   githubTagsFetcher,
   UpdateMonitor,
   UpdateStateStore,
+  updateDigestBody,
 } from "./update.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 import { collieVersionBare } from "./version.ts";
@@ -562,14 +563,15 @@ const updateMonitor = new UpdateMonitor({
   now: Date.now,
   // The `updates` notify pref is the off-switch — update pushes bypass snooze, so this is their gate.
   updatesEnabled: () => notifyPrefs.current().updates,
-  notify: (latest) =>
+  // One push a DAY, naming every release folded into it — the digest decides that; this only renders it.
+  notify: (versions) =>
     void push.send({
       type: "update",
       tag: "collie:update",
       // No command in the body — the tap opens Settings (target below), and the update banner / linked
       // release page carry the location-independent Herdr actions. Keeps this off the cwd-dependent path.
       title: "Collie update available",
-      body: `Version ${latest} is available`,
+      body: updateDigestBody(currentVersion, versions),
       target: "settings",
     }),
 });
