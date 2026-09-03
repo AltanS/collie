@@ -58,6 +58,18 @@ const GREEN_WITH_ONE_RED: PreflightReport = {
   ],
 };
 
+/** One check amber, nothing red — the chronic "doctor" shape on an install missing an
+ *  integration. Nothing to act on today, so this stays folded. */
+const GREEN_WITH_ONE_AMBER: PreflightReport = {
+  schema: 1,
+  verdict: "amber",
+  checks: [
+    { id: "disk", verdict: "green", reason: "4.2 GB free" },
+    { id: "bun", verdict: "green", reason: "bun is on PATH" },
+    { id: "doctor", verdict: "amber", reason: "1 integration is not linked" },
+  ],
+};
+
 const info = (over: Partial<UpdateInfo> = {}): UpdateInfo => ({
   current: "1.3.0",
   latest: "1.4.0",
@@ -208,6 +220,16 @@ describe("Details fold — noise gone when there is nothing to do, open when som
     expect(toggle).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("1 red")).toBeInTheDocument();
     expect(screen.getByText("2 tracked files are modified")).toBeInTheDocument();
+  });
+
+  it("up to date with one amber check renders folded with '1 amber'", async () => {
+    const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
+    serveCheck(current, GREEN_WITH_ONE_AMBER);
+    renderCard(current);
+    const toggle = await screen.findByRole("button", { name: /Details/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByText("1 amber")).toBeInTheDocument();
+    expect(screen.queryByText("1 integration is not linked")).not.toBeInTheDocument();
   });
 
   it("tapping Details toggles the fold", async () => {

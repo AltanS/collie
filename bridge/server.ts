@@ -86,6 +86,11 @@ const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024; // 12 MB
 const MAX_READ_LINES = 10_000;
 const MAX_EXPECTED_PROMPT_CHARS = 8192;
 const PROMPT_BINDING_BLANK_LINE_HEADROOM = 6;
+// How long `GET /api/update/check` waits for an on-demand poll before answering with what it has.
+// Only paid once per boot: it fires exactly while `latest` is still null (the monitor's deliberate
+// first-poll delay, so the bridge never probes the network mid-boot) and never again once a check has
+// landed either way.
+const UPDATE_ON_DEMAND_POLL_TIMEOUT_MS = 5_000;
 // Image type is sniffed from magic bytes in uploadPane — never from the client-supplied MIME.
 
 // The built PWA lives in web/dist (Vite output). If it's missing, the bridge still runs the API
@@ -1296,6 +1301,19 @@ export function startServer(opts: {
         // on every poll for a card nobody has opened is the wrong trade.
         const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
+        // Right after a restart `latest` is null until the monitor's own first poll — deliberately
+        // delayed so the bridge never probes the network mid-boot (bridge/index.ts). A card opened in
+        // that window must not print "isn't known yet" over a healthy network just because it read a
+        // second too early, so THIS read triggers the SAME poll the timer would eventually run
+        // (`checkRelease` de-dupes, so a concurrent timer tick or a second tab awaits the one fetch)
+        // and waits a bounded moment for it. Once `latest` is set — success or a settled failure — this
+        // never fires again; a persistently offline network still answers within the bound, unchanged.
+        if (updateMonitor.status().latest === null) {
+          await Promise.race([
+            updateMonitor.checkRelease(),
+            new Promise<void>((resolve) => setTimeout(resolve, UPDATE_ON_DEMAND_POLL_TIMEOUT_MS)),
+          ]);
+        }
         const report = opts.updateAction ? await opts.updateAction.preflight() : null;
         // `preflight: null` is a fact the card renders ("could not be checked"), not an omission —
         // the key is always present so the phone can tell "not checked" from "old bridge".

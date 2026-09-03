@@ -362,9 +362,11 @@ function preflightSummary(checks: PreflightCheck[]): string {
  * Default open state is decided ONCE, at mount — never re-derived while the card sits open, or a
  * poll landing mid-read would fold a list the operator is looking at. It opens by default when
  * there is something to act on: an update is available (the operator is about to read these before
- * tapping the button), or the worst verdict is amber or red (a check that needs a look must not
- * hide behind a tap). Otherwise — nothing to do, and everything green — it starts folded, and the
- * header's own summary is what still tells the truth at a glance.
+ * tapping the button), or a check is red (a check that blocks the update must not hide behind a
+ * tap). Amber alone stays folded — a chronic amber (a missing integration, an unlinked path) is not
+ * something to act on today, and the header's own summary dot already says "1 amber" without the
+ * card forcing itself open on every visit. Otherwise — nothing to do, and everything green or amber
+ * — it starts folded, and the header's own summary is what still tells the truth at a glance.
  */
 function PreflightSection({
   preflight,
@@ -374,7 +376,7 @@ function PreflightSection({
   updateAvailable: boolean;
 }) {
   const verdict = worstVerdict(preflight.checks);
-  const [open, setOpen] = useState(() => updateAvailable || verdict !== "green");
+  const [open, setOpen] = useState(() => updateAvailable || verdict === "red");
 
   return (
     <div className="border-t border-border px-4 py-3">

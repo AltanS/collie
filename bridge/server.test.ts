@@ -1839,6 +1839,20 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(handler).toContain("202,");
   });
 
+  test("update check GET: an unknown latest triggers a bounded on-demand poll before answering", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
+    const checkHandler = src.slice(checkAt, checkAt + 2000);
+    // Right after a restart `latest` is null until the monitor's own delayed first poll — this read
+    // must not answer "isn't known yet" over a healthy network just because it landed a second early,
+    // so it triggers the SAME `checkRelease()` the timer would eventually run (de-duped there, not
+    // reimplemented here) and waits a bounded moment for it.
+    expect(checkHandler).toContain("if (updateMonitor.status().latest === null)");
+    expect(checkHandler).toContain("updateMonitor.checkRelease()");
+    expect(checkHandler).toContain("Promise.race([");
+    expect(checkHandler).toContain("UPDATE_ON_DEMAND_POLL_TIMEOUT_MS");
+  });
+
   test("update status: the run record reaches the phone through the status the card already polls", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     // One status object, three surfaces: the snapshot's `update`, the forced check, and the card's
