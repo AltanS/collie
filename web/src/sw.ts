@@ -155,7 +155,7 @@ async function handlePush(event: PushEvent): Promise<void> {
   await self.registration.showNotification(decision.title, options);
 }
 
-// Tap a notification: an update push routes to Settings; everything else deep-links to the agent's
+// Tap a notification: an update push routes to the Updates page under Settings; everything else deep-links to the agent's
 // pane on the machine and in the session it lives in (never act on it blind — the reply lives
 // in-app; a cross-host blind action would be strictly worse than a same-host one). An old cached SW
 // that predates `target` simply ignores it and takes the pane path, opening "/" for a pushed update

@@ -160,7 +160,7 @@ const SECTIONS = [
     id: "settings",
     title: "Settings",
     intent:
-      "The whole settings route, mounted twice: once on a solo collie with nothing paired, once on a lead with three paired devices and a pack card to show for it.",
+      "The whole settings route, mounted twice: once on a solo collie with nothing paired, once on a lead with three paired devices and a pack card to show for it. Then the Updates page it links to, which is where the check, the card, the peers and the one button now live.",
   },
 ] as const satisfies readonly SectionDef[];
 
@@ -528,8 +528,8 @@ function DashboardSection() {
 
       <Card
         label="update — the footer chip, all three states"
-        reach="read off the snapshot's `update` block. Precedence: a stale running PROCESS outranks an available release, which outranks a major that needs explicit consent (ADR 0020)."
-        note="Three snapshots, three routers — the three cannot be true at once on one bridge."
+        reach="the dashboard footer. It left Settings in M16/01, where one Updates row took its place — but its precedence function still decides that row's status line, which is why all three states are still drawn here."
+        note="Precedence: a stale running PROCESS outranks an available release, which outranks a major that needs explicit consent (ADR 0020). Three snapshots, three routers — the three cannot be true at once on one bridge."
       >
         <Stage>
           <ListGroup>
@@ -868,10 +868,22 @@ function SettingsSection() {
       <Card
         label="settings — lead of a pack, three devices paired"
         reach="pair a phone with `collie pair`, then open Settings on the lead. The Pack card appears only on a multi-machine roster; the device list names which row is the phone you are holding."
+        note="One Updates row, where three update cards used to stand. Its status line follows the footer chip's old precedence and its chevron says it opens a page."
         span={2}
       >
         <PhoneFrameCard height={760}>
           <SettingsRouter home={homePack} devices={devicesPaired} />
+        </PhoneFrameCard>
+      </Card>
+
+      <Card
+        label="updates — the page the Settings row opens"
+        reach="tap the Updates row in Settings. The check control on top, then one card carrying the version, the preflight, the run progress, a read-only line per peer, and the single action button."
+        note="No bridge here, so the card's own read of /api/update/check never lands: the versions come from the snapshot and the peer lines stay empty. Against a live lead the same card grows one line per member, worst first."
+        span={2}
+      >
+        <PhoneFrameCard height={760}>
+          <SettingsRouter home={homePack} devices={devicesPaired} start="/settings/updates" />
         </PhoneFrameCard>
       </Card>
       <Card

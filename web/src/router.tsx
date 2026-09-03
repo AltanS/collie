@@ -7,6 +7,7 @@ import { DetailRoute } from "@/routes/detail";
 import { HistoryRoute } from "@/routes/history";
 import { SettingsRoute } from "@/routes/settings";
 import { PackRoute } from "@/routes/pack";
+import { UpdatesRoute } from "@/routes/updates";
 import {
   devicesLoader,
   historyLoader,
@@ -48,6 +49,11 @@ export const router = createBrowserRouter([
       // Settings carries the paired-device registry, so it gets its own loader — a revoke or a pair
       // is then the app's standard mutation shape (api call → revalidate), with no second data path.
       { path: "settings", loader: devicesLoader, element: <SettingsRoute /> },
+      // The Updates page, a sibling of settings and pack. No loader of its own: everything on it is
+      // either the snapshot (root loader) or the card's own read of /api/update/check. It is
+      // deliberately ON the poll loop for `pack`'s stated reason — a run in progress and a peer
+      // going quiet are exactly what this page exists to show without a reload.
+      { path: "settings/updates", element: <UpdatesRoute /> },
       // The pack census, likewise on its own loader — and deliberately ON the poll loop: the payload
       // is one small object per machine, and the whole point of the page is that a member going
       // quiet shows up here without the operator reloading. (History opts out; this one wants in.)

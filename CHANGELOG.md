@@ -25,6 +25,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- Updates page at `/settings/updates`: the check, the update card, a read-only line per pack member, and one action button.
+
+### Changed
+
+- Settings keeps one "Updates" row with a status line and a chevron; the footer update chip and the update card left the page.
+- An update push now opens the Updates page. The wire value is unchanged, so an old service worker still lands on Settings.
+
 ### Fixed
 
 - Pane detail: dragging the status line strip above the switcher handle no longer scrolls the
