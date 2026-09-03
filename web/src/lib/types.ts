@@ -390,6 +390,84 @@ export interface UpdateInfo {
   bridgeStale: boolean;
   /** When the upstream check last ran (epoch ms), or null if it hasn't. */
   checkedAt: number | null;
+  /** Every release newer than `current`, oldest first — what one update folds in. Absent on an
+   *  older bridge, which the card reads as "nothing to list". */
+  newerVersions?: string[];
+  /** The detached updater's run record. Absent when this install has never run one. */
+  run?: UpdateRun;
+}
+
+/**
+ * Where an update run is (mirrors `bridge/update-run.ts`). `done`, `rolled-back`, `stuck` and
+ * `interrupted` are terminal; the four in the middle are somebody still driving it.
+ *
+ * `restarting` and `verifying` are the states the operator stares at, and the card renders them as
+ * PROGRESS. The bridge is gone during `restarting` — that is the update working, not an outage.
+ */
+export type UpdateRunState =
+  | "idle"
+  | "preflight"
+  | "staging"
+  | "restarting"
+  | "verifying"
+  | "done"
+  | "rolled-back"
+  | "stuck"
+  | "interrupted";
+
+/** The run record the bridge and the standby door both report (mirrors `bridge/update-run.ts`). */
+export interface UpdateRun {
+  schema: number;
+  state: UpdateRunState;
+  /** The version this run started from, or null when there was none to name. */
+  from: string | null;
+  /** The version it is going to. */
+  to: string | null;
+  startedAt: number;
+  updatedAt: number;
+  pid: number;
+  attempt: number;
+  /** Why it is where it is, when that needs a sentence. */
+  reason?: string;
+  /** A bounded, credential-scrubbed tail of the service log, recorded on a failure. */
+  logTail?: string;
+  /** The command the operator runs by hand — carried only by `stuck`. */
+  recovery?: string;
+}
+
+/** One preflight check (mirrors `cli/update-check.ts`). `id` is stable; the prose is not. */
+export interface PreflightCheck {
+  id: string;
+  verdict: "green" | "amber" | "red";
+  reason: string;
+  /** The one command that clears it, where one exists. */
+  remedy?: string;
+}
+
+/** The preflight report: the worst verdict, and every check behind it. */
+export interface PreflightReport {
+  schema: number;
+  verdict: "green" | "amber" | "red";
+  checks: PreflightCheck[];
+}
+
+/**
+ * `GET /api/update/check` — the update snapshot plus the preflight the button is gated on.
+ *
+ * `preflight: null` is a fact, not an omission: it means the check could not be run here, which
+ * REFUSES an update rather than allowing one.
+ */
+export interface UpdateCheckResponse extends UpdateInfo {
+  preflight: PreflightReport | null;
+}
+
+/** `POST /api/update` — the 202. The run itself is followed on the snapshot from here. */
+export interface UpdateStartResponse {
+  ok: true;
+  /** The version the bridge is installing. */
+  to: string;
+  major: boolean;
+  run: UpdateRun | null;
 }
 
 export interface SnapshotResponse {

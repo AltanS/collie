@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { STANDBY_BUILD_HEADER } from "../bridge/pack/standby.ts";
+import { STANDBY_VERSION_HEADER } from "../bridge/pack/standby.ts";
 import { leadStore, member, peerStore } from "../bridge/pack/fixtures.ts";
 import { serializeTrustStore } from "../bridge/pack/trust-store.ts";
 import { UPDATE_RUN_SCHEMA, type UpdateRun } from "../bridge/update-run.ts";
@@ -99,10 +99,10 @@ describe("probe target: the standby door's answer", () => {
     expect(await healthProbe(net, target)()).toEqual({ ok: true, version: "1.4.0+ab12cd3", deposed: false });
   });
 
-  test("the header is what carries the build", async () => {
+  test("the header is what carries the version", async () => {
     const net = netAnswering({ ok: true, status: 200, header: "1.4.0+ab12cd3", body: { state: "armed" } });
     expect(await healthProbe(net, target)()).toEqual({ ok: true, version: "1.4.0+ab12cd3", deposed: false });
-    expect(STANDBY_BUILD_HEADER).toBe("x-collie-build");
+    expect(STANDBY_VERSION_HEADER).toBe("x-collie-version");
   });
 
   test("a door that predates the header is read out of its body instead", async () => {

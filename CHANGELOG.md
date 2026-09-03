@@ -34,6 +34,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- Update Collie from the phone: a settings card with the version, the newest release, the preflight per check and its state, behind `POST /api/update`: same gate as a send, one confirm, and its own confirm for a major.
 - `POST /api/update/snooze` dismisses the current update digest until a newer release and a fresh window.
 - `collie update --check [--json]`, a read-only preflight over doctor, disk, bun, the tracked-file tree, upstream and the service unit, plus every pack member on a lead.
 

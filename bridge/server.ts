@@ -26,6 +26,11 @@ import { herdTagFor, type SessionRegistry, type SessionRuntime, widenedPanes } f
 import type { Snooze } from "./snooze.ts";
 import { imageExtFromBytes, SNIFF_BYTES } from "./uploads.ts";
 import type { UpdateMonitor } from "./update.ts";
+import {
+  parseUpdateStartRequest,
+  updateStartVerdict,
+  type PreflightReport,
+} from "./update-action.ts";
 import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
@@ -415,6 +420,22 @@ export function bridgeConfigBody(opts: {
   return wire;
 }
 
+/**
+ * What `POST /api/update` needs from the world, as three questions and one act.
+ *
+ * Every member is a SEAM index.ts fills, and the shape is what makes the route testable at all: the
+ * handler lives inside `Bun.serve`, so the only thing `bun test` can hold is this interface and the
+ * pure verdict behind it (`bridge/update-action.ts`).
+ */
+export interface UpdateActionDeps {
+  /** The cached preflight report, or null when one could not be produced. `force` re-runs it now. */
+  preflight: (force?: boolean) => Promise<PreflightReport | null>;
+  /** Whether the updater's lock is held by a process that is still alive (spec 04's lock). */
+  lockHeld: () => boolean;
+  /** Start `collie update`, detached from this process. Never awaits the update itself. */
+  start: (a: { major: boolean }) => { ok: true } | { ok: false; reason: string };
+}
+
 export function startServer(opts: {
   cfg: Config;
   registry: SessionRegistry;
@@ -422,6 +443,17 @@ export function startServer(opts: {
   snooze: Snooze;
   notifyPrefs: NotifyPrefsStore;
   updateMonitor: UpdateMonitor;
+  /**
+   * The two effects `POST /api/update` needs and this file must not own: the cached preflight
+   * (a `collie update --check --json` subprocess) and the detached `collie update` handoff itself
+   * (M15/05). Both are spawns, and a spawn is index.ts's business — the same arrangement the mux
+   * adapters, the STT provider and the front door already have.
+   *
+   * **Undefined disables the route**, which answers 503. That is the honest state for a bridge whose
+   * own binary it cannot name: the phone learns the update must be run from the terminal instead of
+   * tapping a button that quietly does nothing.
+   */
+  updateAction?: UpdateActionDeps;
   /**
    * The BARE version string this process answers with (`bridge/version.ts`'s `collieVersionBare`) —
    * `<semver>` or `<semver>+<short sha>`. Resolved once in index.ts, never re-read here: it is the
@@ -1021,9 +1053,18 @@ export function startServer(opts: {
       // The block itself lives above, shared with the pack surface (§5). What a browser supplies is
       // its own gate (`guard`), its own device attribution, this collie's audit log, and the host
       // gate — which is the one thing a pack caller never has, because a peer has no peers (§4).
+      //
+      // ── ONE GATE EXPRESSION, SHARED BY NAME ──────────────────────────────
+      // `browserGate` is the browser's whole authorisation story: `checkAccess` (host allowlist,
+      // same-origin, Tailscale identity) plus, for a write, the device header AND the pairing
+      // credential. Typing into a pane goes through it, and so does `POST /api/update` below — the
+      // SAME closure, passed to both, never a second call that agrees today. Two authorisation
+      // checks meant to be identical drift the moment one of them is edited, so there is only one
+      // (spec M15/05; `server.test.ts` → "same device auth as pane input").
+      const browserGate = (level: "read" | "write"): Response | null => guard(req, cfg, level, pairing);
       const sessionRouted = await serveSessionRoute(req, url, {
         resolve: target,
-        gate: (level) => guard(req, cfg, level, pairing),
+        gate: browserGate,
         device: () => whois(req).device,
         audit,
       });
@@ -1213,6 +1254,88 @@ export function startServer(opts: {
         if (denied) return denied;
         await updateMonitor.snoozeDigest();
         return json(updateMonitor.status(), req.headers.get("accept-encoding"));
+      }
+      if (pathname === "/api/update/check" && req.method === "GET") {
+        // The card's own read: everything `POST /api/update/check` answers, plus the PREFLIGHT that
+        // decides whether the update button is live and what it says when it is not (M15/05).
+        //
+        // A GET because it is a read in the strictest sense — it starts nothing, takes no upstream
+        // look and mutates no state — and read-gated for the same reason the snapshot is. It is safe
+        // to poll: the preflight behind it is cached (bridge/update-action.ts), so a phone sitting on
+        // the settings screen costs one `collie update --check` a minute at most.
+        //
+        // It is deliberately NOT folded into the snapshot. The snapshot is polled by every open
+        // client on a burst cadence, and the preflight shells out to git and to `doctor`; paying that
+        // on every poll for a card nobody has opened is the wrong trade.
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        const report = opts.updateAction ? await opts.updateAction.preflight() : null;
+        // `preflight: null` is a fact the card renders ("could not be checked"), not an omission —
+        // the key is always present so the phone can tell "not checked" from "old bridge".
+        return json(
+          { ...updateMonitor.status(), preflight: report },
+          req.headers.get("accept-encoding"),
+        );
+      }
+      if (pathname === "/api/update" && req.method === "POST") {
+        // ── STARTING AN UPDATE FROM THE PHONE (M15/05) ──────────────────────
+        // A WRITE, through the pane path's own `browserGate` — same host allowlist, same same-origin
+        // rule, same device header, same pairing credential. No new authentication concept, and no
+        // beacon path: an update is an action, and an action is armed by a named choice of the
+        // operator's and by nothing else (ADR 0024).
+        const denied = browserGate("write");
+        if (denied) return denied;
+        const action = opts.updateAction;
+        if (!action) return text("update action unavailable", 503);
+        let body: JsonValue;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction, and
+          // `parseUpdateStartRequest` re-checks every field of it before any of it is believed.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          return jsonError(apiError("update.confirm_required"), 400, req.headers.get("accept-encoding"));
+        }
+        const parsed = parseUpdateStartRequest(body);
+        if (parsed === null) {
+          return jsonError(apiError("update.confirm_required"), 400, req.headers.get("accept-encoding"));
+        }
+        // FORCED, never the cached report: the client's disabled button is a courtesy and this is
+        // the actual gate, so it asks the machine now rather than trusting a minute-old answer.
+        const report = await action.preflight(true);
+        const status = updateMonitor.status();
+        const verdict = updateStartVerdict(parsed, {
+          current: status.current,
+          latest: status.latest,
+          majorAvailable: status.majorAvailable,
+          run: status.run ?? null,
+          lockHeld: action.lockHeld(),
+          preflight: report,
+        });
+        if (verdict.kind === "refuse") {
+          return jsonError(verdict.body, verdict.status, req.headers.get("accept-encoding"));
+        }
+        const started = action.start({ major: verdict.major });
+        if (!started.ok) {
+          return jsonError(
+            apiError("update.start_failed", { reason: started.reason }),
+            500,
+            req.headers.get("accept-encoding"),
+          );
+        }
+        audit.record({
+          action: "update",
+          device: whois(req).device,
+          detail: { to: verdict.to, major: verdict.major },
+        });
+        // 202, and the request ENDS HERE. The update stages and then restarts this very process —
+        // holding the request open across that would mean answering with a socket that is about to
+        // be closed by the thing the request asked for. The card watches the run record instead, on
+        // the snapshot it already polls, and on `/standby/update` while this door is shut.
+        return json(
+          { ok: true, to: verdict.to, major: verdict.major, run: status.run ?? null },
+          req.headers.get("accept-encoding"),
+          202,
+        );
       }
 
       // ── Speech-to-text (bridge/stt/) ─────────────────────────────────────
@@ -2804,8 +2927,11 @@ function supersededEndpoint(body: JsonValue | undefined): string | undefined {
 // Build id of the bundle currently on disk (written by the Vite build to dist/build-info.json).
 // Surfaced via the X-Collie-Build header and /api/config so a stale, service-worker-cached client
 // can tell it's behind. Cached by file mtime so a frontend rebuild (live, no restart) is picked up.
+// Exported since M15/05 for the STANDBY listener, which reports the same fact on its own port
+// (`bridge/pack/standby.ts`) — one answer to "which bundle is on disk", never a second reader that
+// caches it differently.
 let buildCache: { id: string; mtime: number } | null = null;
-async function buildId(): Promise<string> {
+export async function buildId(): Promise<string> {
   try {
     const f = Bun.file(join(WEB_DIR, "build-info.json"));
     const mtime = f.lastModified;

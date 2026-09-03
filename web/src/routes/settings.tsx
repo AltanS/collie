@@ -20,6 +20,7 @@ import { InstallControl } from "@/components/install-control";
 import { LanguageControl } from "@/components/language-control";
 import { FontSettingsControl } from "@/components/font-settings";
 import { TypefaceControl } from "@/components/typeface-control";
+import { UpdateCard } from "@/components/update-card";
 import { UpdateCheckControl } from "@/components/update-check-control";
 import { Switch } from "@/components/ui/switch";
 import { fetchConfig } from "@/lib/api";
@@ -206,6 +207,12 @@ export function SettingsRoute() {
 
         {/* On-demand upstream update check (independent of push) — drives the footer UpdateBanner. */}
         <UpdateCheckControl />
+
+        {/* And the act itself, immediately under the check that finds it: current version, newest
+            version, what the preflight says about this machine, and the one button that starts an
+            update — with its confirm (M15/05). It is deliberately NOT the bundle banner: that one
+            reloads this page, this one restarts Collie. */}
+        <UpdateCard />
 
         {/* Access sits with the connection diagnostics — both answer "what is this device allowed
             to do, and why". Pairing is the gate you can change from here; ConnectionInfo below only

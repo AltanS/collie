@@ -444,6 +444,14 @@ export interface UpdateStatus {
   /** When the upstream check last completed (epoch ms), or null if it hasn't run yet. */
   checkedAt: number | null;
   /**
+   * Every release newer than the running one, oldest first — the same list the daily digest names.
+   *
+   * The update card lists them so the operator can see WHAT they are about to fold in, rather than
+   * only the top of the pile. Versions and nothing else: the phone never fetches release notes from
+   * GitHub, so what is not already on this wire is not shown (M15/05).
+   */
+  newerVersions?: string[];
+  /**
    * The detached updater's run record (`<state dir>/update.json`, M15/04) — read from disk on every
    * snapshot, so a bridge that has just been restarted BY an update reports the run it is part of
    * instead of coming up with nothing to say. Absent when this install has never updated through the

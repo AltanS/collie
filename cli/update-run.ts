@@ -11,7 +11,7 @@ import {
   type UpdateRun,
   type UpdateRunState,
 } from "../bridge/update-run.ts";
-import { STANDBY_BUILD_HEADER, STANDBY_HEALTH_PATH, standbyPortOf } from "../bridge/pack/standby.ts";
+import { STANDBY_HEALTH_PATH, STANDBY_VERSION_HEADER, standbyPortOf } from "../bridge/pack/standby.ts";
 import { parseTrustStore, trustStorePath } from "../bridge/pack/trust-store.ts";
 import type { Environment } from "./context.ts";
 import type { Exec, Files, Net } from "./sys.ts";
@@ -437,7 +437,7 @@ export function healthProbe(net: Net, target: ProbeTarget): () => Promise<Health
  */
 function standbyAnswer(net: Net, url: string): () => Promise<HealthAnswer> {
   return async () => {
-    const got = await net.probe(url, STANDBY_BUILD_HEADER);
+    const got = await net.probe(url, STANDBY_VERSION_HEADER);
     if (!got.ok) return { ok: false, reason: got.failure.message };
     // SAFETY: the parsed body of a JSON answer, with every field checked here before use. A body
     // that is not an object at all reads every one of them as `undefined`.

@@ -319,6 +319,8 @@ const UPDATE_STATUS_KEYS = {
   // The detached updater's run record (M15/04). Optional on the wire: an install that has never
   // updated through the runner sends no `run` key at all.
   run: true,
+  // Every release newer than the running one (M15/05) — the card lists what one update folds in.
+  newerVersions: true,
 } satisfies Record<keyof UpdateStatus, true>;
 
 const WORKSPACE_KEYS = {
@@ -421,6 +423,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "latestUrl",
       "majorAvailable",
       "majorUrl",
+      "newerVersions",
       "releaseAvailable",
       // The detached updater's run record (M15/04) — optional, so an install that has never run one
       // sends no such key at all.
@@ -571,6 +574,11 @@ describe("solo zero-tax — routes", () => {
       "/api/stt",
       "/api/subscribe",
       "/api/tab",
+      // Starting an update from the phone (M15/05) — a SOLO route that legitimately extends this
+      // list, named here rather than exempted. Write-gated through the same closure a send rides,
+      // and it registers no pack sibling: a peer is levelled from the lead's terminal
+      // (`collie pack update`), never over the link (ADR 0016).
+      "/api/update",
       "/api/update/check",
       // The digest's "remind me next digest" dismiss — solo, no pack sibling: it writes the lead's
       // own notify record, and a peer never pushes an update notification of its own.

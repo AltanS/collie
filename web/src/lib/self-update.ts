@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { BUILD, isStaleBuild } from "@/lib/build";
 import { getServerBuild, subscribeServerBuild } from "@/lib/server-build";
-import { isReloadHeld, subscribeReloadHeld } from "@/lib/reload-guard";
+import { holdReload, isReloadHeld, releaseReload, subscribeReloadHeld } from "@/lib/reload-guard";
 import { checkForUpdate } from "@/lib/pwa";
 
 // API-observed self-update. The bridge serves index.html + sw.js with no-cache and hashed assets as
@@ -24,6 +24,39 @@ import { checkForUpdate } from "@/lib/pwa";
 //   3. A safety gate — never yank the page while the user has unsent work (composer text, an upload,
 //      an open action sheet); we show a "New version — tap to update" banner and auto-update only
 //      once the hold clears.
+
+// ── THE COLLIE-UPDATE HOLD (M15/05) ─────────────────────────────────────────
+//
+// Two different things are called "update" in this app, and this is where they meet. THIS file
+// updates the BUNDLE. `components/update-card.tsx` updates COLLIE, and a Collie update restarts the
+// bridge — which changes the server build id, which is precisely what the hysteresis above is
+// watching for.
+//
+// So the reload it would then want is CORRECT and desirable, and only once the run is over. Mid-run
+// it is the worst possible moment: the operator is watching a progress state, the bridge is between
+// restarts, and a reload lands them on a page that cannot reach it. That is not left to timing — the
+// run's own state registers a hold, through the same reload guard an unsent composer draft uses, and
+// clears it on any terminal state. `done` therefore reloads onto the new bundle the moment the hold
+// lifts, which is exactly what should happen.
+const UPDATE_RUN_HOLD = "collie-update-run";
+
+/** The run states in which the page must not be reloaded out from under the operator. */
+const HELD_BY: ReadonlySet<string> = new Set(["preflight", "staging", "restarting", "verifying"]);
+
+/**
+ * Tell the self-updater where the Collie update run is. Idempotent, and safe to call on every poll.
+ *
+ * Called from the snapshot loader (so the hold applies on every route, not only where the card is
+ * mounted) and from the card itself while it is polling the standby door — the window in which the
+ * snapshot is not answering at all is exactly the window the hold matters most.
+ */
+export function noteUpdateRun(state: string | undefined): void {
+  if (state !== undefined && HELD_BY.has(state)) {
+    holdReload(UPDATE_RUN_HOLD);
+    return;
+  }
+  releaseReload(UPDATE_RUN_HOLD);
+}
 
 // sessionStorage key: keyed by build id so a genuinely newer build gets its own fresh guard.
 const reloadedKey = (id: string): string => `collie:auto-reloaded-for=${id}`;

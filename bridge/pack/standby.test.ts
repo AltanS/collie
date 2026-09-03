@@ -26,6 +26,10 @@ import {
   STANDBY_HEALTH_PATH,
   STANDBY_PATH,
   STANDBY_TAKEOVER_PATH,
+  STANDBY_VERSION_HEADER,
+  STANDBY_UPDATE_PATH,
+  standbyUpdateAnswer,
+  withStandbyVersion,
   type StandbyFacts,
 } from "./standby.ts";
 
@@ -263,6 +267,8 @@ describe("the door's three routes", () => {
   function door(over: Partial<StandbyFacts> = {}, takeover = async () => ({ ok: true, message: "done" })) {
     const calls: string[] = [];
     const handler = createStandbyDoor({
+      version: "1.4.0+abc1234",
+      build: () => Promise.resolve("b-2026-09-03"),
       facts: () => facts(over),
       devices: () => (over.deviceCount === 0 ? [] : [DEVICE]),
       takeover: async (device) => {
@@ -276,11 +282,16 @@ describe("the door's three routes", () => {
   test("health: 503 cold, 200 armed — the two answers a failover proxy switches on (RFC §14.2)", async () => {
     const cold = await door({ silentForMs: 1000 }).handler(req(STANDBY_HEALTH_PATH), new URL(`http://x${STANDBY_HEALTH_PATH}`));
     expect(cold!.status).toBe(503);
-    expect(await cold!.json()).toEqual({ state: "cold" });
+    expect(await cold!.json()).toEqual({ state: "cold", version: "1.4.0+abc1234", build: "b-2026-09-03" });
 
     const armed = await door().handler(req(STANDBY_HEALTH_PATH), new URL(`http://x${STANDBY_HEALTH_PATH}`));
     expect(armed!.status).toBe(200);
-    expect(await armed!.json()).toEqual({ state: "armed", silentForMs: 60_000 });
+    expect(await armed!.json()).toEqual({
+      state: "armed",
+      silentForMs: 60_000,
+      version: "1.4.0+abc1234",
+      build: "b-2026-09-03",
+    });
   });
 
   test("health never names a member — a stranger who reaches the port learns nothing", async () => {
@@ -388,4 +399,61 @@ test("the fixtures really are the material the store would hold", () => {
   // A guard on this file rather than on the code: every clause above compares a fingerprint derived
   // from a certificate, so a placeholder fixture would make the whole suite vacuous.
   expect(warrantFor("laptop").warrant.deputyFingerprint).toBe(fp("laptop"));
+});
+
+// ── The version stamp on the standby port (M15/05) ──────────────────────────────────────────────
+//
+// The detached updater's health gate asks "which build came back?" after a restart. On a LEAD it
+// asks `/api/health`; on a PEER that pins its lead it cannot — the main port is behind mutual TLS
+// there, and a wide-bound instance is not on loopback either. The standby listener is plain HTTP on
+// its own address in every one of those states, so the answer rides EVERY response it makes.
+describe("standby answers the version", () => {
+  const req = (path: string, init: RequestInit = {}) =>
+    new Request(`http://deputy.internal:8788${path}`, init);
+  const url = (path: string) => new URL(`http://deputy.internal:8788${path}`);
+  const VERSION = "1.4.0+abc1234";
+
+  const handler = createStandbyDoor({
+    version: VERSION,
+    build: () => Promise.resolve("b-2026-09-03"),
+    facts: () => facts({}),
+    devices: () => [DEVICE],
+    takeover: async () => ({ ok: true, message: "done" }),
+  });
+
+  test("every response from the listener carries X-Collie-Version, whatever it answers", async () => {
+    // The stamp is applied at the LISTENER, so the set it covers is "every answer this port makes" —
+    // the door's own routes, `/standby/update`, and the bare 404 for a path nobody owns.
+    const answers = [
+      await handler(req(STANDBY_HEALTH_PATH), url(STANDBY_HEALTH_PATH)),
+      await handler(req(STANDBY_PATH), url(STANDBY_PATH)),
+      await handler(req(STANDBY_TAKEOVER_PATH, { method: "GET" }), url(STANDBY_TAKEOVER_PATH)),
+      standbyUpdateAnswer(req(STANDBY_UPDATE_PATH), url(STANDBY_UPDATE_PATH), () => null),
+      new Response("not found", { status: 404 }),
+    ];
+    for (const answer of answers) {
+      expect(answer).not.toBeNull();
+      const stamped = withStandbyVersion(answer!, VERSION);
+      expect(stamped.headers.get(STANDBY_VERSION_HEADER)).toBe(VERSION);
+    }
+  });
+
+  test("the header carries the VERSION, which is what the health gate compares", () => {
+    // Not the web bundle's id — that is what the FRONT door's header of the same name carries. Two
+    // ports, two questions, and `/standby/health`'s body carries both facts under their own names.
+    const stamped = withStandbyVersion(new Response("x"), VERSION);
+    expect(stamped.headers.get(STANDBY_VERSION_HEADER)).toMatch(/^\d+\.\d+\.\d+\+/);
+  });
+
+  test("a COLD door still says what it is running — a 503 is 'do not route here', not silence", async () => {
+    const cold = await createStandbyDoor({
+      version: VERSION,
+      build: () => Promise.resolve("b-2026-09-03"),
+      facts: () => facts({ silentForMs: 1000 }),
+      devices: () => [DEVICE],
+      takeover: async () => ({ ok: true, message: "done" }),
+    })(req(STANDBY_HEALTH_PATH), url(STANDBY_HEALTH_PATH));
+    expect(cold!.status).toBe(503);
+    expect(await cold!.json()).toMatchObject({ version: VERSION, build: "b-2026-09-03" });
+  });
 });

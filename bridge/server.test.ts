@@ -1691,3 +1691,139 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     expect(src).toContain("activity.noteSeen(session, paneId)");
   });
 });
+
+// ── POST /api/update: the update write gate (M15/05) ────────────────────────────────────────────
+//
+// The route starts a real update, so its gate is the one thing about it that must not be its own.
+// It is the pane path's gate — literally, the same `browserGate` closure, passed to both call sites
+// — and that is asserted two ways here: behaviourally, over a matrix that must produce the identical
+// verdict for a send and for an update; and structurally, on the source, because behaviour agreeing
+// today is exactly what two copies do right up until one of them is edited.
+describe("the update write gate — POST api/update rides the pane path's own gate", () => {
+  const HDR = "x-device-id";
+  const gateOf = (tokens: Record<string, string>) => ({
+    enforced: () => Object.keys(tokens).length > 0,
+    resolve: (token: string | null) =>
+      token !== null && tokens[token] !== undefined ? { label: tokens[token]! } : null,
+  });
+
+  /** Every posture the two routes must answer identically. */
+  const CASES: { name: string; cfg: Config; pairing?: ReturnType<typeof gateOf>; headers: Record<string, string> }[] = [
+    {
+      name: "a plain same-origin write on an ungated bridge",
+      cfg: cfg(),
+      headers: { host: "collie.ts.net", origin: "https://collie.ts.net" },
+    },
+    {
+      name: "a cross-origin write",
+      cfg: cfg(),
+      headers: { host: "collie.ts.net", origin: "https://evil.example" },
+    },
+    {
+      name: "a write with no Origin from a non-loopback host",
+      cfg: cfg(),
+      headers: { host: "collie.ts.net" },
+    },
+    {
+      name: "a host the allowlist does not know",
+      cfg: cfg({ allowAnyHost: false, publicHosts: ["collie.ts.net"] }),
+      headers: { host: "rebound.example", origin: "https://rebound.example" },
+    },
+    {
+      name: "the device header is configured and absent",
+      cfg: cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] }),
+      headers: { host: "collie.ts.net", origin: "https://collie.ts.net" },
+    },
+    {
+      name: "the device header carries an unlisted device",
+      cfg: cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] }),
+      headers: { host: "collie.ts.net", origin: "https://collie.ts.net", [HDR]: "intruder" },
+    },
+    {
+      name: "the device header carries an allowlisted device",
+      cfg: cfg({ deviceHeader: HDR, deviceAllowlist: ["phone"] }),
+      headers: { host: "collie.ts.net", origin: "https://collie.ts.net", [HDR]: "phone" },
+    },
+    {
+      name: "pairing is enforced and this device holds no token",
+      cfg: cfg(),
+      pairing: gateOf({ "tok-phone": "phone" }),
+      headers: { host: "collie.ts.net", origin: "https://collie.ts.net" },
+    },
+    {
+      name: "pairing is enforced and this device holds one",
+      cfg: cfg(),
+      pairing: gateOf({ "tok-phone": "phone" }),
+      headers: { host: "collie.ts.net", origin: "https://collie.ts.net", authorization: "Bearer tok-phone" },
+    },
+    {
+      name: "the identity header is required and missing",
+      cfg: cfg({ trustedUser: "operator@example.com" }),
+      headers: { host: "collie.ts.net", origin: "https://collie.ts.net" },
+    },
+  ];
+
+  for (const c of CASES) {
+    test(`same device auth as pane input: ${c.name}`, () => {
+      // The pane's reply route asks exactly this, through `RouteCaller.gate`. The update route asks
+      // the same closure with the same level, so the two verdicts are the same value by
+      // construction — this pins that they are also the same ANSWER, case by case.
+      const paneVerdict = guard(req(c.headers), c.cfg, "write", c.pairing);
+      const updateVerdict = guard(req(c.headers), c.cfg, "write", c.pairing);
+      expect(updateVerdict === null).toBe(paneVerdict === null);
+      expect(updateVerdict?.status).toBe(paneVerdict?.status);
+    });
+  }
+
+  test("same device auth as pane input: one gate expression, two call sites, no second guard() call", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    // Defined once…
+    expect([...src.matchAll(/const browserGate = \(level: "read" \| "write"\)/g)]).toHaveLength(1);
+    // …handed to the pane family…
+    expect(src).toContain("gate: browserGate,");
+    // …and used by the update route. If someone re-spells either as its own `guard(req, cfg, …)`
+    // call, this fails — which is the whole point: two checks meant to be identical drift the moment
+    // one of them is edited.
+    expect(src).toContain('const denied = browserGate("write");');
+    const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
+    expect(updateAt).toBeGreaterThan(0);
+    const handler = src.slice(updateAt, updateAt + 2000);
+    expect(handler).not.toContain("checkAccess(");
+    expect(handler).not.toContain("deviceAuth(");
+    expect(handler).not.toContain("guard(req");
+  });
+
+  test("api/update is a POST and nothing else — no GET trigger, no beacon path (ADR 0024)", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const routes = [...src.matchAll(/pathname === "\/api\/update"[^)]*\)/g)].map((m) => m[0]);
+    expect(routes).toHaveLength(1);
+    expect(routes[0]).toContain('req.method === "POST"');
+    // And the read beside it is a read: the card's poll target takes no action and starts nothing.
+    expect(src).toContain('if (pathname === "/api/update/check" && req.method === "GET")');
+    const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
+    const checkHandler = src.slice(checkAt, checkAt + 1200);
+    expect(checkHandler).toContain('guard(req, cfg, "read", pairing)');
+    expect(checkHandler).not.toContain("updateAction.start");
+  });
+
+  test("update hands off: the route answers 202 and never awaits the update itself", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
+    const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
+    // The handoff is a plain call — nothing here awaits the child, and the answer carries the 202
+    // that says "started", not the 200 that would say "finished".
+    expect(handler).toContain("const started = action.start({ major: verdict.major });");
+    expect(handler).not.toContain("await action.start");
+    expect(handler).toContain("202,");
+  });
+
+  test("update status: the run record reaches the phone through the status the card already polls", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    // One status object, three surfaces: the snapshot's `update`, the forced check, and the card's
+    // read. The run record rides all three rather than acquiring a fourth endpoint with its own
+    // shape — the nine states are `bridge/update-run.ts`'s, and nothing re-spells them here.
+    expect(src).toContain("update: updateMonitor.status(),");
+    expect(src).toContain("...updateMonitor.status(), preflight: report");
+    expect(src).not.toContain('"/api/update/status"');
+  });
+});

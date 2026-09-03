@@ -404,6 +404,13 @@ export interface TakeoverAnswer {
 export interface StandbyDoorDeps {
   /** Re-read per request: arming is instantaneous in both directions and nothing caches it. */
   readonly facts: () => StandbyFacts;
+  /**
+   * This process's `<semver>+<short sha>` — the same string `/api/health` answers with, and the
+   * value this port's `X-Collie-Version` header carries. See {@link STANDBY_VERSION_HEADER}.
+   */
+  readonly version: string;
+  /** The on-disk bundle's build id, as `/api/config` reports it. `"unknown"` where none is stamped. */
+  readonly build: () => Promise<string>;
   /** The synced registry's devices, per request, for the bearer check. Empty ⇒ nothing can pass. */
   readonly devices: () => readonly SyncedDevice[];
   /** Run RFC §7. Called at most once per admitted confirm; the door does not retry it. */
@@ -412,10 +419,43 @@ export interface StandbyDoorDeps {
 
 const JSON_HEADERS = { "content-type": "application/json; charset=utf-8" } as const;
 
+/**
+ * The header EVERY response from the standby listener carries, whatever its path, its status or
+ * whether the door is armed: this collie's `<semver>+<short sha>`.
+ *
+ * ── WHY IT IS ON THIS PORT AT ALL (M15/05) ───────────────────────────────────
+ * The detached updater's health gate asks one question after a restart — *which build came back?* —
+ * and on the LEAD it asks it at `GET /api/health`. On a PEER that pins its lead it cannot: the main
+ * port is behind mutual TLS there, so a plain-HTTP probe gets an empty reply, and a wide-bound
+ * instance is not on loopback for it to dial either. The standby listener is plain HTTP on its own
+ * address in every one of those states, so this header is where the runner reads the answer.
+ *
+ * ── A DIFFERENT HEADER FROM THE FRONT DOOR'S, ON PURPOSE ─────────────────────
+ * `X-Collie-Build` on the FRONT DOOR carries the on-disk web bundle's id (`bridge/server.ts`'s
+ * `BUILD_HEADER`), which is what a stale PWA needs. This door carries the VERSION instead, under
+ * its own header name, because the question this port is asked is the health gate's, and the health
+ * gate compares versions. The two ports answer two different questions, so they now carry two
+ * different header names; that is stated here rather than left for someone to discover, and
+ * `/standby/health`'s body carries BOTH facts under their own names so nothing has to be inferred
+ * from a header either way.
+ */
+export const STANDBY_VERSION_HEADER = "x-collie-version";
+
+/**
+ * Stamp `res` with {@link STANDBY_VERSION_HEADER}. Applied at the LISTENER, once, so it covers every
+ * answer this port can make — the door's three routes, a deposed collie's page, a lead's health
+ * answer, `/standby/update`, and the bare 404 for everything else. A header applied per route is a
+ * header a new route forgets.
+ */
+export function withStandbyVersion(res: Response, version: string): Response {
+  res.headers.set(STANDBY_VERSION_HEADER, version);
+  return res;
+}
+
 /** Every body this door emits. A closed union, so no route can answer with a shape nobody reviewed. */
 type StandbyBody =
-  | { readonly state: "armed"; readonly silentForMs: number }
-  | { readonly state: "cold" }
+  | { readonly state: "armed"; readonly silentForMs: number; readonly version: string; readonly build: string }
+  | { readonly state: "cold"; readonly version: string; readonly build: string }
   | { readonly state: "leading" }
   | { readonly error: string }
   | TakeoverAnswer;
@@ -440,11 +480,16 @@ export function createStandbyDoor(deps: StandbyDoorDeps) {
 
     if (url.pathname === STANDBY_HEALTH_PATH) {
       if (req.method !== "GET" && req.method !== "HEAD") return json({ error: "method not allowed" }, 405);
-      // Never a body a stranger can learn a member id from: a state word and, when armed, how long
-      // the silence has run. No member ids, no pack name, no roster.
+      // Never a body a stranger can learn a member id from: a state word, how long the silence has
+      // run when armed, and what this machine is running. No member ids, no pack name, no roster.
+      //
+      // The version and the build ride BOTH answers, cold included — the updater's health gate reads
+      // them on a peer, and a peer whose door is cold is the ordinary case, not the exception
+      // (M15/05). A 503 here means "do not route to me", never "I have nothing to tell you".
+      const stamp = { version: deps.version, build: await deps.build() };
       return report.armed
-        ? json({ state: "armed", silentForMs: facts.silentForMs }, 200)
-        : json({ state: "cold" }, 503);
+        ? json({ state: "armed", silentForMs: facts.silentForMs, ...stamp }, 200)
+        : json({ state: "cold", ...stamp }, 503);
     }
 
     if (url.pathname === STANDBY_PATH) {

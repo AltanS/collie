@@ -2218,9 +2218,19 @@ second listener or no feature.
 - **Three routes, and no more.** No PWA, no `/api/*`, no SPA fallback, no `/auth` placeholder; every
   other path on that port is a bare `404`. *A route that does not exist cannot be mis-gated.*
 
+- **Every response on this port carries `X-Collie-Version: <semver>+<sha>` *(added 2026-09-03)*.**
+  Any path, any status, armed or cold, the `404` included. It is additive: no body changes and no
+  route is added. The detached updater's health gate needs to know which build came back after a
+  restart, and on a peer it cannot ask `GET /api/health` — that port is behind the pack's mutual TLS,
+  and a wide-bound instance is not on loopback for it either. This port is plain HTTP on its own
+  address in every one of those states, so the answer rides it. The front door's `X-Collie-Build`
+  header answers a different question, which is the web bundle's id; the standby door's
+  `X-Collie-Version` header answers the running version. Two ports, two headers, two questions, and
+  `/standby/health`'s body names both facts under their own names too.
+
 | Method | Path | Gate | Answer |
 |---|---|---|---|
-| `GET` | `/standby/health` | none | `503` + `{"state":"cold"}` while the lead is fresh; `200` + `{"state":"armed","silentForMs":…}` once armed. **Never a body a stranger can learn a member id from.** |
+| `GET` | `/standby/health` | none | `503` + `{"state":"cold",…}` while the lead is fresh; `200` + `{"state":"armed","silentForMs":…}` once armed. Both answers also carry `version` (`<semver>+<sha>`) and `build` (the on-disk bundle id). **Never a body a stranger can learn a member id from.** |
 | `GET` | `/standby` | none (a read) | The page, in both states. |
 | `POST` | `/standby/takeover` | **pairing bearer credential only** | Runs §18.16. `409` with the reason while cold — the credential is not even consulted there. |
 

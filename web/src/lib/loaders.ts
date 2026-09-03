@@ -22,6 +22,7 @@ import {
   isApiErrorStatus,
 } from "@/lib/api";
 import { parseAnsi } from "@/lib/ansi";
+import { noteUpdateRun } from "./self-update";
 import { splitLines } from "@/lib/blocks";
 import { isLostLatched } from "@/lib/connection-health";
 import { ambientSpaces } from "@/lib/hosts";
@@ -215,6 +216,10 @@ function toHomeData(
   error: boolean,
   lastSeenAt?: number,
 ): HomeData {
+  // Where the Collie UPDATE run is, on every snapshot — the self-updater must not reload the bundle
+  // out from under a running update, and it must reload once that run is done (M15/05). Stamped here
+  // rather than in the card so the hold applies on every route, not only where the card is mounted.
+  noteUpdateRun(snap.update?.run?.state);
   return {
     lastSeenAt,
     bridge: snap.bridge,

@@ -140,6 +140,14 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "The answer — up to date, an offer, or 'the check itself failed' — is a standing fact about this install that belongs in the card that states it, and it must not fade out from under the operator (components/update-check-control.tsx).",
   },
+  startUpdate: {
+    channel: "inline",
+    why: "The answer is the run itself — a progress state that persists in the card for the length of a restart, or a refusal (a red preflight, a run already going) the operator has to read and act on. Neither survives a floating toast, and both belong beside the button that asked for them (components/update-card.tsx).",
+  },
+  snoozeUpdate: {
+    channel: "silent",
+    why: "\"Remind me next digest\" is answered by the card's own line changing to say so, in the same tap. A second acknowledgement of a dismissal is noise about noise.",
+  },
   pairDevice: {
     channel: "inline",
     why: "A mistyped or expired code is a refusal the operator fixes IN the form, one field away, so the sentence belongs beside the field rather than floating over the page (components/paired-devices.tsx).",

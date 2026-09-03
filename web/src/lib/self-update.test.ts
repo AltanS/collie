@@ -6,6 +6,7 @@ import { __resetReloadGuard, holdReload, releaseReload } from "./reload-guard";
 import {
   __resetSelfUpdate,
   __setReloadImpl,
+  noteUpdateRun,
   selfUpdateBannerVisible,
   startSelfUpdate,
   subscribeBanner,
@@ -123,5 +124,65 @@ describe("update path — fires regardless of service-worker presence (checkForU
     observeServerBuild(STALE);
     expect(vi.mocked(checkForUpdate)).not.toHaveBeenCalled();
     expect(selfUpdateBannerVisible()).toBe(true);
+  });
+});
+
+// ── The Collie-update hold (M15/05) ─────────────────────────────────────────────────────────────
+//
+// A Collie update restarts the bridge, which changes the server build id — the exact signal this
+// module reloads on. That reload is right, and only once the run is over. Mid-run it lands the
+// operator on a page that cannot reach the bridge, which is why the coordination is explicit rather
+// than left to timing.
+describe("self-update hold — a Collie update run defers the bundle reload", () => {
+  it("does not reload while the run is in flight, and does the moment it is done", () => {
+    const reload = vi.fn();
+    __setReloadImpl(reload);
+
+    noteUpdateRun("restarting");
+    observeServerBuild(STALE);
+    observeServerBuild(STALE); // confirmed stale — and held
+    expect(reload).not.toHaveBeenCalled();
+    expect(selfUpdateBannerVisible()).toBe(true);
+
+    // `done` clears the hold, and the deferred reload fires without waiting for another poll: the
+    // new bundle is exactly what the operator should land on.
+    noteUpdateRun("done");
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("holds through every in-flight state and through none of the terminal ones", () => {
+    for (const state of ["preflight", "staging", "restarting", "verifying"]) {
+      const reload = vi.fn();
+      __resetSelfUpdate(); // resets the reload impl too, so the spy goes in AFTER it
+      __setReloadImpl(reload);
+      sessionStorage.clear();
+      noteUpdateRun(state);
+      observeServerBuild(STALE);
+      observeServerBuild(STALE);
+      expect(reload).not.toHaveBeenCalled();
+    }
+    for (const state of ["done", "rolled-back", "stuck", "interrupted", "idle", undefined]) {
+      const reload = vi.fn();
+      __resetSelfUpdate(); // resets the reload impl too, so the spy goes in AFTER it
+      __setReloadImpl(reload);
+      sessionStorage.clear();
+      noteUpdateRun(state);
+      observeServerBuild(STALE);
+      observeServerBuild(STALE);
+      expect(reload).toHaveBeenCalledTimes(1);
+    }
+    noteUpdateRun(undefined);
+  });
+
+  it("composes with the other holds rather than replacing them — an unsent draft still defers", () => {
+    const reload = vi.fn();
+    __setReloadImpl(reload);
+    holdReload("composer");
+    noteUpdateRun("done"); // the update's own hold is clear…
+    observeServerBuild(STALE);
+    observeServerBuild(STALE);
+    expect(reload).not.toHaveBeenCalled(); // …and the composer's is not
+    releaseReload("composer");
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });

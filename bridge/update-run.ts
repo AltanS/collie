@@ -239,6 +239,29 @@ export function pidIsAlive(pid: number): boolean {
 }
 
 /**
+ * Whether the updater's lock is held by a process that is still alive.
+ *
+ * The bridge's half of spec 04's lock, and the whole of what `POST /api/update` needs from it: not
+ * who holds it or since when, only whether starting a second updater would be starting a second
+ * updater. A lock file left behind by a dead process is NOT held — the same reading
+ * {@link readsAsInterrupted} takes of the record beside it, so the two can never disagree about
+ * whether a run is still a run.
+ */
+export function updateLockHeld(
+  stateDir: string,
+  alive: (pid: number) => boolean = pidIsAlive,
+): boolean {
+  let text: string | null;
+  try {
+    text = readFileSync(updateLockPath(stateDir), "utf8");
+  } catch {
+    return false;
+  }
+  const lock = parseUpdateLock(text);
+  return lock !== null && alive(lock.pid);
+}
+
+/**
  * The record on disk as of now, resolved — for the bridge, which reads it at startup and on every
  * update snapshot. Synchronous and tiny: one small file, read at most once per snapshot poll.
  */

@@ -124,6 +124,10 @@ const UPDATE_INFO_KEYS = {
   installKind: true,
   bridgeStale: true,
   checkedAt: true,
+  // The update card's two additions (M15/05): what one update folds in, and the run record the card
+  // renders. Both optional — an older bridge sends neither.
+  newerVersions: true,
+  run: true,
 } satisfies Record<keyof UpdateInfo, true>;
 
 describe("solo zero-tax — the client's mirror types carry no pack dimension", () => {
@@ -197,7 +201,9 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
       "latestUrl",
       "majorAvailable",
       "majorUrl",
+      "newerVersions",
       "releaseAvailable",
+      "run",
     ]);
   });
 

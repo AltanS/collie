@@ -691,6 +691,9 @@ export class UpdateMonitor {
       installKind: this.deps.installKind,
       bridgeStale: this.bridgeStale(),
       checkedAt: this.checkedAt,
+      // The whole list, oldest first — the card names what a single update folds in (M15/05). Empty
+      // until the first successful check, which reads as "nothing to name", the same as up to date.
+      newerVersions: this.newerVersions,
     };
     // Assigned, never conditionally spread: an install that has never updated through the runner
     // must carry NO `run` key rather than one whose value is `undefined`.
