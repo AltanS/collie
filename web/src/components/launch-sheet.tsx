@@ -1,4 +1,4 @@
-import { Play } from "lucide-react";
+import { Loader2, Play } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { useLaunchers } from "@/lib/operator-config";
@@ -9,6 +9,11 @@ interface LaunchSheetProps {
   onClose: () => void;
   /** Fired with the row's command. The caller owns the write (useSpaceActions().launch). */
   onLaunch: (command: string) => void;
+  /**
+   * The commands whose launch is still in flight (`useSpaceActions().launching`). Those rows are
+   * disabled and say so — the write belongs to the caller, so the busy set does too.
+   */
+  launching?: ReadonlySet<string>;
   /** This device isn't authorised to write — show a read-only note instead of the rows. */
   readOnly?: boolean;
 }
@@ -22,10 +27,19 @@ interface LaunchSheetProps {
 // screen width, and `rumen-peek` under "Runs & quota" is the difference between trusting a button
 // and wondering what it runs. `cwd` is deliberately not shown — it is an absolute host path, so it
 // would be the longest and least distinguishing thing on every row.
-export function LaunchSheet({ open, onClose, onLaunch, readOnly = false }: LaunchSheetProps) {
+export function LaunchSheet({
+  open,
+  onClose,
+  onLaunch,
+  launching,
+  readOnly = false,
+}: LaunchSheetProps) {
   const launchers = useLaunchers();
 
   function fire(launcher: Launcher) {
+    // A second tap on a row already launching: the hook refuses it anyway, and refusing it here too
+    // keeps the sheet from closing on a tap that does nothing.
+    if (launching?.has(launcher.command)) return;
     // Close first: the launch navigates into the new pane, and a sheet still up while the route
     // changes under it would have to be dismissed on the screen you just arrived at.
     onClose();
@@ -50,10 +64,17 @@ export function LaunchSheet({ open, onClose, onLaunch, readOnly = false }: Launc
             <button
               key={launcher.command}
               type="button"
+              disabled={launching?.has(launcher.command)}
               onClick={() => fire(launcher)}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-accent active:bg-muted"
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-accent active:bg-muted disabled:opacity-60"
             >
-              <Play className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              {/* Spinner in the Play icon's own slot, so a busy row keeps its height and its text
+                  stays where it was — the no-shift rule DESIGN.md opens with. */}
+              {launching?.has(launcher.command) ? (
+                <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+              ) : (
+                <Play className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+              )}
               <span className="flex min-w-0 flex-col">
                 <span className="text-sm font-medium">{launcher.label}</span>
                 {/* The command is operator-authored text going into a text node, never markup. */}

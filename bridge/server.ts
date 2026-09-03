@@ -1748,6 +1748,86 @@ export async function sendReplySteps(
   }
 }
 
+/** The pane's screen, as much of {@link MuxAdapter} as {@link awaitPaneReady} is allowed to touch. */
+export type GridReader = Pick<MuxAdapter, "readGrid">;
+
+/** How long the wait took, and whether the screen settled inside the ceiling. */
+export interface PaneReadyResult {
+  readonly ready: boolean;
+  readonly ms: number;
+}
+
+/** Injection seams: the clock and the three bounds. Defaults are the production values. */
+export interface PaneReadyOptions {
+  readonly sleep?: SleepFn;
+  readonly now?: () => number;
+  readonly pollMs?: number;
+  readonly floorMs?: number;
+  readonly ceilingMs?: number;
+}
+
+/** One poll of the new pane's screen. Small: a prompt is one short line at the top of a fresh shell. */
+const PANE_READY_LINES = 40;
+/** Gap between two reads. Two identical reads this far apart is what "the screen stopped moving" means. */
+const PANE_READY_POLL_MS = 150;
+/** Never call a pane ready sooner than this, however fast the first two reads agree. */
+const PANE_READY_FLOOR_MS = 300;
+/** Give up waiting here and send anyway — a slow shell must not swallow the operator's launch. */
+const PANE_READY_CEILING_MS = 5000;
+
+/**
+ * Wait until a freshly created pane's shell is drawn, before anything is typed into it.
+ *
+ * `createSpace` returns when the Space is ALLOCATED, not when its shell is interactive — so text
+ * typed straight after it lands before the prompt exists and the shell discards it (the operator
+ * sees their command printed ABOVE the greeting, and an empty prompt below it). This is the missing
+ * wait: poll the pane's own grid until it is non-empty and UNCHANGED across two consecutive reads
+ * ~{@link PANE_READY_POLL_MS} apart, which is the multiplexer's own answer to "has the shell
+ * finished painting".
+ *
+ * Bounds, all three deliberate: never ready before {@link PANE_READY_FLOOR_MS} (a greeting that
+ * paints in two chunks can look still between them), never wait past {@link PANE_READY_CEILING_MS}
+ * (the caller sends anyway — a late command beats a swallowed one), and a read the multiplexer
+ * refuses or throws counts as "not ready yet", never as an error: the pane is a second old, and a
+ * grid it cannot render yet is exactly the state being waited out.
+ *
+ * Pure + exported, with the clock injected, so the bounds are unit-testable on a fake clock.
+ */
+export async function awaitPaneReady(
+  client: GridReader,
+  paneId: string,
+  opts: PaneReadyOptions = {},
+): Promise<PaneReadyResult> {
+  const sleep = opts.sleep ?? defaultSleep;
+  const now = opts.now ?? (() => Date.now());
+  const pollMs = opts.pollMs ?? PANE_READY_POLL_MS;
+  const floorMs = opts.floorMs ?? PANE_READY_FLOOR_MS;
+  const ceilingMs = opts.ceilingMs ?? PANE_READY_CEILING_MS;
+  const started = now();
+  let previous: string | null = null;
+  // Bounded by the ceiling check at the foot of the body, which every path reaches.
+  for (;;) {
+    await sleep(pollMs);
+    let current: string | null = null;
+    try {
+      const read = await client.readGrid(paneId, {
+        scope: "viewport",
+        lines: PANE_READY_LINES,
+        styling: "strip",
+      });
+      if (read.ok) current = read.value.text;
+    } catch {
+      // Swallowed on purpose: an unreadable brand-new pane is "not ready yet", not a failure.
+    }
+    const elapsed = now() - started;
+    if (current !== null && current.trim() !== "" && current === previous && elapsed >= floorMs) {
+      return { ready: true, ms: elapsed };
+    }
+    previous = current;
+    if (elapsed >= ceilingMs) return { ready: false, ms: elapsed };
+  }
+}
+
 export async function replyPane(
   herdr: MuxAdapter,
   cfg: Config,
@@ -2548,8 +2628,8 @@ async function openWorktree(
 // client never supplies a command line. That is the whole security story of the route, and why
 // `command` is an identity and not a free-text argument. `createSpace` allocates the Space (a
 // multiplexer deletes a tab whose last pane closes and a space whose last tab closes, so a
-// self-closing pane leaves nothing behind); `sendReplySteps` types the line and sends Enter into its
-// fresh shell.
+// self-closing pane leaves nothing behind); `awaitPaneReady` waits for that Space's shell to finish
+// drawing; `sendReplySteps` then types the line and sends Enter into it.
 // `["Enter"]` is literal here, NOT `cfg.submitKeys`: `COLLIE_SUBMIT_KEYS` is the agent-dependent
 // submit sequence for a TUI composer; this is a bare shell prompt where Enter is the only key that
 // means "run it".
@@ -2561,6 +2641,9 @@ export async function launch(
   device: string | null,
   session: string,
   getLaunchers: () => Promise<Launcher[]>,
+  // The clock this route waits on, injected so the tests drive the wait on a fake one. Production
+  // passes nothing and gets the real timers.
+  wait: PaneReadyOptions = {},
 ): Promise<Response> {
   let body: JsonValue;
   try {
@@ -2593,9 +2676,19 @@ export async function launch(
     );
   }
   const created = outcome.value;
+  // The Space is allocated; its shell may not have drawn a prompt yet. Typing into that gap is
+  // exactly how a launch used to vanish — the command printed above the greeting, the prompt empty.
+  const ready = await awaitPaneReady(herdr, created.paneId, wait);
+  if (!ready.ready) {
+    // Send anyway: a shell that is merely slow still runs what it is handed, and a swallowed launch
+    // is the worse failure. The line names the pane so a repeat is traceable to one launcher.
+    console.warn(
+      `[launch] pane ${created.paneId} did not settle after ${ready.ms}ms — sending "${row.command}" anyway`,
+    );
+  }
   // COLLIE_SUBMIT_KEYS is the agent-dependent submit sequence for a TUI composer; this is a bare
   // shell prompt where Enter is the only key that means "run it".
-  const sent = await sendReplySteps(herdr, created.paneId, row.command, true, ["Enter"]);
+  const sent = await sendReplySteps(herdr, created.paneId, row.command, true, ["Enter"], wait.sleep);
   if (!sent.ok) {
     // Best-effort rollback: a half-born Space whose command did not fully start must not linger as
     // an empty shell nobody asked for. The rollback's own failure is swallowed because the original

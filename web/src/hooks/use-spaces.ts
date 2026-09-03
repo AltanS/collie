@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useNavigate, useRevalidator } from "react-router";
 
 import * as api from "@/lib/api";
@@ -136,17 +136,32 @@ export function useSpaceActions() {
 
   // A launcher arrives as a SPACE too, and takes the same route for the same reason: the bridge
   // matched the row and created the pane, so what comes back is a created pane like any other.
+  //
+  // ONE launch per row at a time. A launch is slower than any other create — the bridge waits for
+  // the new shell to finish drawing before it types — so an impatient second tap on a phone is
+  // normal, and every tap that gets through makes another throwaway Space the operator then has to
+  // close. The guard is per COMMAND, not global: two different launchers are two different
+  // intentions and both are honoured. The ref IS the guard — it is already current inside the
+  // callback the first tap is still running — while the state is only what disables the row.
+  const [launching, setLaunching] = useState<ReadonlySet<string>>(() => new Set());
+  const launchingRef = useRef<Set<string>>(new Set());
   const launch = useCallback(
     async (command: string) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
+      if (launchingRef.current.has(command)) return;
+      launchingRef.current.add(command);
+      setLaunching(new Set(launchingRef.current));
       try {
         open(await api.launch(command, scopeRef.current), "space");
       } catch (e) {
         setStatus(describeThrownError(e), "error");
+      } finally {
+        launchingRef.current.delete(command);
+        setLaunching(new Set(launchingRef.current));
       }
     },
     [open, blockedText],
   );
 
-  return { newTab, newSpace, newWorktree, showWorktree, launch };
+  return { newTab, newSpace, newWorktree, showWorktree, launch, launching };
 }

@@ -117,6 +117,37 @@ describe("LaunchStrip", () => {
     expect(mockLaunch).toHaveBeenCalledExactlyOnceWith("rumen-peek", {});
   });
 
+  it("double tap launches once", async () => {
+    launchersValue.current = [peek, quota];
+    mockLaunch.mockClear();
+    // A launch is the slowest create there is — the bridge waits for the new shell to draw before
+    // it types — so hold this one open and tap again, the way an impatient thumb does.
+    let release = (): void => {};
+    mockLaunch.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return {
+        ok: true as const,
+        pane: { paneId: "p1", workspaceId: "w1", workspaceLabel: "peek", tabId: "t1", cwd: "/home" },
+      };
+    });
+    const user = userEvent.setup();
+    render(<RouterProvider router={makeRouter(undefined)} />);
+    const button = await screen.findByRole("button", { name: "Runs & quota" });
+
+    await user.click(button);
+    // In flight → the row is disabled, so the second tap has nothing to hit and the hook's
+    // per-command guard refuses it even if one gets through.
+    await waitFor(() => expect(button).toBeDisabled());
+    await user.click(button);
+    expect(mockLaunch).toHaveBeenCalledTimes(1);
+
+    // The neighbouring launcher is a different intention and stays live throughout.
+    expect(screen.getByRole("button", { name: "Quota bars" })).toBeEnabled();
+    release();
+  });
+
   it("a read-only device does not fire the launch API", async () => {
     launchersValue.current = [peek];
     mockLaunch.mockClear();

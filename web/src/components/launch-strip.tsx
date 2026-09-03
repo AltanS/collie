@@ -1,8 +1,11 @@
+import { Loader2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/section-header";
 import { openForCount } from "@/hooks/use-dash-prefs";
 import { useLaunchers } from "@/lib/operator-config";
 import { useSpaceActions } from "@/hooks/use-spaces";
+import { cn } from "@/lib/utils";
 
 interface LaunchStripProps {
   /**
@@ -26,7 +29,7 @@ interface LaunchStripProps {
 // header still says how many there are — the count is the reason to unfold.
 export function LaunchStrip({ open, onOpenChange }: LaunchStripProps) {
   const launchers = useLaunchers();
-  const { launch } = useSpaceActions();
+  const { launch, launching } = useSpaceActions();
 
   // Nothing declared → no affordance at all, not an empty section. Worth a comment because an early
   // return like this reads as a forgotten empty state, when it is the intended default for every
@@ -47,19 +50,30 @@ export function LaunchStrip({ open, onOpenChange }: LaunchStripProps) {
 
       {expanded && (
         <div id="launch-body" className="flex flex-wrap gap-2">
-          {launchers.map((launcher) => (
-            // `size="lg"` is h-11 — the same 44px target every other primary phone action gets — and
-            // `outline` keeps a launcher from competing with the triage list above it for attention.
-            <Button
-              key={launcher.command}
-              type="button"
-              variant="outline"
-              size="lg"
-              onClick={() => void launch(launcher.command)}
-            >
-              {launcher.label}
-            </Button>
-          ))}
+          {launchers.map((launcher) => {
+            // In flight → this row only. A launch takes a moment (the bridge waits for the new
+            // shell to draw before typing), so the row says so and refuses a second tap; its
+            // neighbours stay live, because another launcher is another intention.
+            const pending = launching.has(launcher.command);
+            return (
+              // `size="lg"` is h-11 — the same 44px target every other primary phone action gets —
+              // and `outline` keeps a launcher from competing with the triage list for attention.
+              <Button
+                key={launcher.command}
+                type="button"
+                variant="outline"
+                size="lg"
+                disabled={pending}
+                // Undimmed while pending, like the Quick dock's tapped reply: the busy row is the
+                // one to look at, not the one to lose.
+                className={cn(pending && "disabled:opacity-100")}
+                onClick={() => void launch(launcher.command)}
+              >
+                {pending && <Loader2 className="size-4 animate-spin" />}
+                {launcher.label}
+              </Button>
+            );
+          })}
         </div>
       )}
     </section>

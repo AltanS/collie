@@ -1873,8 +1873,21 @@ describe("launch — an allowlisted space create, then the command and Enter", (
     };
   }
 
-  // Only what `launch` reaches: create the space, type, submit, and close on rollback. `refresh` is
-  // there because every structural create settles the topology afterwards.
+  // A clock the test owns: `sleep` moves `now` and returns immediately, so a wait bounded in
+  // milliseconds is asserted in milliseconds without any of them passing.
+  function fakeClock() {
+    let ms = 0;
+    return {
+      now: () => ms,
+      sleep: (by: number): Promise<void> => {
+        ms += by;
+        return Promise.resolve();
+      },
+    };
+  }
+
+  // Only what `launch` reaches: create the space, read its grid, type, submit, and close on
+  // rollback. `refresh` is there because every structural create settles the topology afterwards.
   class FakeLaunchMux {
     createArgs: MuxSpaceRequest | null = null;
     readonly texts: Array<[string, string]> = [];
@@ -1882,6 +1895,12 @@ describe("launch — an allowlisted space create, then the command and Enter", (
     readonly closes: string[] = [];
     failOn: "create" | "text" | "keys" | null = null;
     closeThrows = false;
+    /** Successive screens the new pane shows; the last one repeats for every further read. */
+    screens: string[] = ["$ "];
+    grids = 0;
+    /** The fake clock's reading when the command was typed — what the wait is asserted against. */
+    typedAtMs: number | null = null;
+    constructor(private readonly now: () => number = () => 0) {}
 
     createSpace(request_: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
       this.createArgs = request_;
@@ -1890,7 +1909,14 @@ describe("launch — an allowlisted space create, then the command and Enter", (
         muxOk({ paneId: "w1:p1", spaceId: "w1", spaceLabel: "MySpace", tabId: "w1:t1", cwd: "/home/op" }),
       );
     }
+    readGrid(paneId: string): Promise<MuxOutcome<MuxGrid>> {
+      // SAFETY: `screens` is never empty in this suite and the index is clamped to its last entry.
+      const text = this.screens[Math.min(this.grids, this.screens.length - 1)] as string;
+      this.grids += 1;
+      return Promise.resolve(muxOk({ paneId, text, truncated: false, revision: this.grids }));
+    }
     typeText(paneId: string, text: string): Promise<MuxAck> {
+      this.typedAtMs ??= this.now();
       this.texts.push([paneId, text]);
       return this.failOn === "text" ? Promise.resolve(muxRefused("text failed")) : Promise.resolve(muxAck());
     }
@@ -1923,7 +1949,8 @@ describe("launch — an allowlisted space create, then the command and Enter", (
   const PEEK: Launcher = { command: "rumen-peek", label: "Runs & quota", cwd: "/home/op/project" };
 
   test("an unlisted command is refused before anything is created", async () => {
-    const mux = new FakeLaunchMux();
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
     const { audit, entries } = launchAudit();
     const res = await launch(
       asLaunchMux(mux),
@@ -1933,6 +1960,7 @@ describe("launch — an allowlisted space create, then the command and Enter", (
       null,
       "default",
       rowsOf([PEEK]),
+      clock,
     );
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({ ok: false, code: "launch.not_allowlisted" });
@@ -1943,7 +1971,8 @@ describe("launch — an allowlisted space create, then the command and Enter", (
   });
 
   test("a listed row creates a space with that row's label AND cwd, then types the command + Enter", async () => {
-    const mux = new FakeLaunchMux();
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
     const { audit, entries } = launchAudit();
     const res = await launch(
       asLaunchMux(mux),
@@ -1953,6 +1982,7 @@ describe("launch — an allowlisted space create, then the command and Enter", (
       null,
       "default",
       rowsOf([PEEK]),
+      clock,
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: true });
@@ -1970,7 +2000,8 @@ describe("launch — an allowlisted space create, then the command and Enter", (
   });
 
   test("a send failure closes the created pane rather than leaving an empty shell", async () => {
-    const mux = new FakeLaunchMux();
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
     mux.failOn = "keys";
     const { audit } = launchAudit();
     const res = await launch(
@@ -1981,6 +2012,7 @@ describe("launch — an allowlisted space create, then the command and Enter", (
       null,
       "default",
       rowsOf([PEEK]),
+      clock,
     );
     expect(mux.closes).toEqual(["w1:p1"]);
     expect(res.status).toBe(200);
@@ -1990,7 +2022,8 @@ describe("launch — an allowlisted space create, then the command and Enter", (
   });
 
   test("a rollback that itself fails is swallowed — the send error is still the answer", async () => {
-    const mux = new FakeLaunchMux();
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
     mux.failOn = "text";
     mux.closeThrows = true;
     const { audit } = launchAudit();
@@ -2002,13 +2035,15 @@ describe("launch — an allowlisted space create, then the command and Enter", (
       null,
       "default",
       rowsOf([PEEK]),
+      clock,
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ ok: false });
   });
 
   test("a space the multiplexer refuses is reported, and nothing is typed", async () => {
-    const mux = new FakeLaunchMux();
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
     mux.failOn = "create";
     const { audit, entries } = launchAudit();
     const res = await launch(
@@ -2019,9 +2054,59 @@ describe("launch — an allowlisted space create, then the command and Enter", (
       null,
       "default",
       rowsOf([PEEK]),
+      clock,
     );
     expect(await res.json()).toMatchObject({ ok: false, code: "workspace.create_failed" });
     expect(mux.texts).toEqual([]);
     expect(entries).toHaveLength(0);
+  });
+
+  // The bug this route was shipped with: `createSpace` returns when the Space is ALLOCATED, so the
+  // command used to be typed into a shell that had not drawn its prompt yet and was discarded.
+  test("the command is typed only once the new pane's screen has stopped moving", async () => {
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
+    // Two empty reads (no shell yet), then a greeting that is still growing, then it settles.
+    mux.screens = ["", "", "Welcome", "Welcome\n$ ", "Welcome\n$ "];
+    const { audit } = launchAudit();
+    const res = await launch(
+      asLaunchMux(mux),
+      engine,
+      request({ command: "rumen-peek" }),
+      audit,
+      null,
+      "default",
+      rowsOf([PEEK]),
+      clock,
+    );
+    expect(res.status).toBe(200);
+    // Five polls at 150ms: the fifth is the first that repeats a non-empty screen.
+    expect(mux.grids).toBe(5);
+    expect(mux.typedAtMs).toBe(750);
+    expect(mux.texts).toEqual([["w1:p1", "rumen-peek"]]);
+  });
+
+  test("a screen that never settles is still launched into, once past the ceiling", async () => {
+    const clock = fakeClock();
+    const mux = new FakeLaunchMux(clock.now);
+    // A screen that changes on every read — a `top`-like banner, or a shell that never stops.
+    mux.screens = Array.from({ length: 200 }, (_, i) => `line ${i}`);
+    const { audit } = launchAudit();
+    const res = await launch(
+      asLaunchMux(mux),
+      engine,
+      request({ command: "rumen-peek" }),
+      audit,
+      null,
+      "default",
+      rowsOf([PEEK]),
+      clock,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ ok: true });
+    // The wait gives up at the 5000ms ceiling (the poll that crosses it is at 5100) and sends
+    // anyway: a slow shell still runs what it is handed, and a swallowed launch is worse.
+    expect(mux.typedAtMs).toBe(5100);
+    expect(mux.texts).toEqual([["w1:p1", "rumen-peek"]]);
   });
 });

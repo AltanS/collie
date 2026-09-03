@@ -26,7 +26,7 @@ interface LaunchTriggerProps {
 // eating a touch target in the one row of the screen where space is scarcest.
 export function LaunchTrigger({ readOnly = false, className }: LaunchTriggerProps) {
   const launchers = useLaunchers();
-  const { launch } = useSpaceActions();
+  const { launch, launching } = useSpaceActions();
   const [open, setOpen] = useState(false);
 
   if (launchers.length === 0) return null;
@@ -48,6 +48,7 @@ export function LaunchTrigger({ readOnly = false, className }: LaunchTriggerProp
         open={open}
         onClose={() => setOpen(false)}
         onLaunch={launch}
+        launching={launching}
         readOnly={readOnly}
       />
     </>

@@ -108,6 +108,42 @@ describe("LaunchTrigger", () => {
     expect(mockLaunch).toHaveBeenCalledExactlyOnceWith("showy-quota-peek", {});
   });
 
+  it("double tap launches once", async () => {
+    launchersValue.current = [peek, quota];
+    mockLaunch.mockClear();
+    // Hold the first launch open, the way the bridge does while it waits for the new shell to draw.
+    let release = (): void => {};
+    mockLaunch.mockImplementationOnce(async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return {
+        ok: true as const,
+        pane: {
+          paneId: "w9:p1",
+          workspaceId: "w9",
+          workspaceLabel: "Runs & quota",
+          tabId: "w9:t1",
+          cwd: "/home",
+        },
+      };
+    });
+    const user = userEvent.setup();
+    render(<RouterProvider router={makeRouter(undefined)} />);
+
+    await user.click(await screen.findByRole("button", { name: "Launch" }));
+    await user.click(screen.getByText("Runs & quota"));
+    // The sheet closes on the tap, so re-open it: the row that is still launching is disabled
+    // there too, and a second tap on it is refused rather than making a second Space.
+    await user.click(screen.getByRole("button", { name: "Launch" }));
+    const row = screen.getByText("Runs & quota").closest("button");
+    expect(row).toBeDisabled();
+
+    await user.click(screen.getByText("Runs & quota"));
+    expect(mockLaunch).toHaveBeenCalledTimes(1);
+    release();
+  });
+
   it("explains a read-only device instead of offering rows it cannot run", async () => {
     launchersValue.current = [peek];
     mockLaunch.mockClear();
