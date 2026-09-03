@@ -192,7 +192,7 @@ Config in the plugin directory is preserved.
 ### Updating the rest of the pack
 
 A pack is updated from the lead, in a terminal. There is no button for it on the phone
-([ADR 0035](../.adr/0035-pack-updates-from-the-phone-amend-0016.md), proposed): a phone tap has no
+([ADR 0016](../.adr/0016-updates-ride-the-operators-ssh.md)): a phone tap has no
 terminal to answer the one consent question the flow asks before it touches N machines, and that
 question is not something to skip with a flag.
 
