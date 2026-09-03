@@ -693,7 +693,11 @@ const updateTick = () =>
   updateCadenceTick({
     isPeer: pack.mode === "peer",
     checkRelease: () => void updateMonitor.checkRelease(),
-    refreshPreflight: () => void preflightCache.get(),
+    // A no-op on an install with no compiled binary to run: there is nothing honest to spawn there,
+    // and the field this would refresh is simply omitted (which the lead reads as unknown).
+    refreshPreflight: () => {
+      if (canRunUpdate) void preflightCache.get();
+    },
   });
 
 // First check delayed (don't probe mid-boot); then every few hours. unref() so neither timer holds
