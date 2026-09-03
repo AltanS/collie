@@ -25,15 +25,17 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-09-03
+
 ### Changed
 
-- Update card says "Up to date. Nothing to do." at the top and folds the preflight details unless a check is red or an update is available.
+- Update card says "Up to date. Nothing to do." at the top and folds the preflight details unless a check is red or an update is available. ([235ab1b](https://github.com/AltanS/collie/commit/235ab1b))
 
 ### Fixed
 
-- The phone's update preflight checks this instance only (`update --check --local`), so an unreachable pack peer no longer turns the lead's card red.
-- The preflight lists release tags over anonymous HTTPS when `origin` is a GitHub SSH URL, and quotes git's own error, so a missing SSH agent no longer reads as a dead remote.
-- The update card no longer says "the newest release isn't known yet" right after a restart — its first read now waits briefly for the delayed startup poll instead of answering with a stale null.
+- The phone's update preflight checks this instance only (`update --check --local`), so an unreachable pack peer no longer turns the lead's card red. ([fd4be21](https://github.com/AltanS/collie/commit/fd4be21))
+- The preflight lists release tags over anonymous HTTPS when `origin` is a GitHub SSH URL, and quotes git's own error, so a missing SSH agent no longer reads as a dead remote. ([fd4be21](https://github.com/AltanS/collie/commit/fd4be21))
+- The update card no longer says "the newest release isn't known yet" right after a restart, its first read now waits briefly for the delayed startup poll instead of answering with a stale null. ([203dd07](https://github.com/AltanS/collie/commit/203dd07))
 
 ## [1.4.0] - 2026-09-03
 
