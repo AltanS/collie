@@ -20,6 +20,7 @@ import { server } from "@/test/setup";
 import { clearStatus } from "@/lib/status";
 import { setZenEnabled, __resetZen } from "@/lib/zen";
 import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
+import { __resetOperatorCommands } from "@/lib/operator-config";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs } from "@/test/handlers";
@@ -45,6 +46,10 @@ beforeEach(() => {
   // Same shape, same reason: a case that folds the strips would otherwise leave every later case
   // rendering a bead bar it never asked for.
   __resetStripsCollapsed();
+  // Same shape once more: launchers.toml's rows are cached for the life of the page (one successful
+  // /api/config read), so a case that declares launchers would otherwise leak them into every case
+  // that comes after it.
+  __resetOperatorCommands();
 });
 
 function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
@@ -2003,5 +2008,76 @@ describe("AgentChat — folding the tab and pane rows", () => {
     } finally {
       kb.restore();
     }
+  });
+});
+
+// The pane header's rocket is gone; the switcher sheet is one of its two remaining homes (the other
+// is the dashboard's own LaunchStrip, covered by launch-strip.test.tsx). Same launchers.toml rows,
+// declared here through /api/config the way the rest of this file declares bridge state.
+describe("AgentChat: Launch section in the switcher", () => {
+  function declareLaunchers() {
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          launchers: [{ command: "rumen-peek", label: "Runs & quota", cwd: "/home" }],
+        }),
+      ),
+      http.post("/api/launch", () =>
+        HttpResponse.json({
+          ok: true,
+          pane: {
+            paneId: "w9:p1",
+            workspaceId: "w9",
+            workspaceLabel: "Runs & quota",
+            tabId: "w9:t1",
+            cwd: "/home",
+          },
+        }),
+      ),
+    );
+  }
+
+  it("shows the Launch section in the switcher when launchers are declared", async () => {
+    declareLaunchers();
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    expect(await screen.findByText("Launch")).toBeInTheDocument();
+    expect(screen.getByText("Runs & quota")).toBeInTheDocument();
+    expect(screen.getByText("rumen-peek")).toBeInTheDocument();
+  });
+
+  it("closes the sheet and launches when a row is tapped", async () => {
+    declareLaunchers();
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    await screen.findByText("rumen-peek");
+
+    await user.click(screen.getByText("Runs & quota"));
+    // Closing is the launch's own signal that it landed: the sheet is gone and the switch handle is
+    // reachable again, on a route that is about to change under it.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("is not offered on a read-only device", async () => {
+    declareLaunchers();
+    const user = userEvent.setup();
+    renderChat({ device: { enforced: true, device: "spare-phone", authorized: false } });
+    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    // The sheet itself still opens (it's switch-only otherwise), but nothing in it offers a write
+    // this device isn't authorised to make.
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.queryByText("Launch")).toBeNull();
+    expect(screen.queryByText("rumen-peek")).toBeNull();
+  });
+
+  it("does not show the switch handle's launcher affordance when nothing is declared", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    expect(screen.queryByText("Launch")).toBeNull();
   });
 });

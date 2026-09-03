@@ -10,10 +10,12 @@ import {
   ScrollText,
   TerminalSquare,
 } from "lucide-react";
-import { useSwipeUp } from "@/hooks/use-swipe";
 import { useKeyboardOpen } from "@/hooks/use-keyboard";
+import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
+import { useLaunchers } from "@/lib/operator-config";
+import { buzz } from "@/lib/haptics";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
@@ -36,7 +38,6 @@ import { splitLines } from "@/lib/blocks";
 import { adapterFor } from "@/lib/harness";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { FindBar } from "@/components/find-bar";
-import { LaunchTrigger } from "@/components/launch-trigger";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
@@ -190,7 +191,8 @@ export function AgentChat({
   // current while we're reconnecting/lost, and restores instantly on recovery. Both marks dim
   // together — dimming only one of them would leave a frozen reading looking half live.
   const connecting = isConnecting({ bridge, error, stalled });
-  const { newTab } = useSpaceActions();
+  const { newTab, launch, launching } = useSpaceActions();
+  const launchers = useLaunchers();
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus } = useDisplayPrefs();
   // The chosen terminal font (Settings → Terminal font), applied by re-pointing `--font-mono` on
@@ -287,7 +289,10 @@ export function AgentChat({
   // Drawers/sheets are mutually exclusive — at most one open. A single value makes that invariant
   // unrepresentable to violate.
   const [drawer, setDrawer] = useState<Drawer>(null);
-  const closeDrawer = () => setDrawer(null);
+  const closeDrawer = () => {
+    setDrawer(null);
+    setPull(0);
+  };
 
   // ── ZEN MODE — chrome-free, mirror-only viewing ───────────────────────────────
   // On a phone the chrome IS most of the viewport: measured at 390x844 this route spends 199px above
@@ -344,10 +349,21 @@ export function AgentChat({
 
   const gone = !agent;
 
-  // Swipe up (or just tap) the handle above the composer to bring up the pane switcher. A lowish
-  // threshold + a taller hit area (below) make the gesture easy to land with a thumb; tapping is the
-  // reliable fallback. "Up" naturally reveals a bottom sheet without fighting the mirror's scroll.
-  const swipe = useSwipeUp(() => setDrawer("switcher"), 24);
+  // Drag the handle above the composer up to bring up the pane switcher, tracked finger-by-finger
+  // so the sheet peeks up under the thumb rather than appearing on release. Tapping is still the
+  // reliable fallback (the button's own onClick below). `pull` is the live upward travel in px, fed
+  // straight to the switcher BottomSheet's `pull` prop; a release past the open threshold buzzes and
+  // opens for real, a release short of it snaps back to 0.
+  const [pull, setPull] = useState(0);
+  const sheetPull = useSheetPull({
+    onPull: setPull,
+    onOpen: () => {
+      buzz();
+      setDrawer("switcher");
+      setPull(0);
+    },
+    onCancel: () => setPull(0),
+  });
   // ── COMPOSING MODE — read ONCE, here, for the whole pane ──────────────────────
   // The soft keyboard takes roughly 45% of a phone. What is left has to hold the header, the tab
   // strip, the agent's statusline, the grab handle, the status band, the controls row and the draft
@@ -1058,11 +1074,6 @@ export function AgentChat({
           rightLead={
             agent ? (
               <>
-                {/* A launch from inside a pane is the case the dashboard's strip cannot serve: you
-                    are reading an agent and want a glance at something else, which otherwise costs
-                    Home, tap, Back. It hides itself when no launchers are declared, so the cluster
-                    a pane already had is the cluster it keeps. */}
-                <LaunchTrigger readOnly={readOnly} />
                 <button
                   type="button"
                   onClick={() => setDrawer("paneMenu")}
@@ -1757,18 +1768,26 @@ export function AgentChat({
                   1.04:1 against the inverted mirror. index.css states the whole argument. */}
               <div data-slot="chrome-block" className="border-t border-rule bg-chrome">
                 {/* …and stands down while the keyboard is up, for 30px (`py-3` around the 6px
-                    grip — it was py-3.5/34px until the 2026-08-31 shave; the swipe threshold is
-                    24px and the strip is full-width, so the gesture still lands). Switching panes
-                    is a
+                    grip, it was py-3.5/34px until the 2026-08-31 shave; the drag is tracked from
+                    the first pixel past useSheetPull's own slop, and the strip is full-width, so the
+                    gesture still lands). Switching panes is a
                     BEFORE-typing act, so the row costs its height at the one moment it cannot be
                     wanted. Nothing is stranded: the tab strip above still switches, the sheet is still
                     reachable the instant the keyboard closes, and `Collapse` unmounts the button at
-                    the end of the exit so it leaves the tab order with the pixels. */}
-                <Collapse open={!composing && agents.length + shellPanes.length > 0}>
+                    the end of the exit so it leaves the tab order with the pixels.
+
+                    Also shown whenever launchers are declared, even with a single pane and no
+                    shells: a lone pane with launchers still needs a way to reach them. */}
+                <Collapse
+                  open={
+                    !composing &&
+                    (agents.length + shellPanes.length > 0 || launchers.length > 0)
+                  }
+                >
                   <button
                     type="button"
                     aria-label={t("chat.switcher.aria")}
-                    {...swipe}
+                    ref={sheetPull.ref}
                     onClick={() => setDrawer("switcher")}
                     className="flex w-full touch-none items-center justify-center py-3 transition-colors active:bg-muted/50"
                   >
@@ -1813,11 +1832,15 @@ export function AgentChat({
         </div>
 
         {/* Swipe-up quick switcher — just the panes (agents + shells), reached by the thumb gesture.
-            Switch-only: pane closing lives in the pane pill's long-press sheet, not here. */}
+            Switch-only for panes: pane closing lives in the pane pill's long-press sheet, not here.
+            A trailing Launch section rides along (see ThreadSidebar): this is the launcher's other
+            home now that the pane header's rocket is gone, and the one reachable from inside a pane
+            without going home first. `pull` is the only BottomSheet this drag reveal drives. */}
         <BottomSheet
           open={drawer === "switcher"}
           onClose={closeDrawer}
           title={t("chat.switcher.title")}
+          pull={pull}
         >
           <ThreadSidebar
             agents={agents}
@@ -1830,6 +1853,24 @@ export function AgentChat({
             // they'd otherwise bury the agents you opened this sheet to reach.
             shellsOpen={openForCount(dash.prefs.shellsOpen, shellPanes.length)}
             onShellsOpenChange={dash.setShellsOpen}
+            launchers={launchers}
+            // Withheld on a read-only device: the same gate the dashboard's own LaunchStrip needs
+            // is enforced in useSpaceActions().launch itself, but leaving onLaunch undefined here is
+            // what hides the section rather than offering a write the bridge would refuse anyway.
+            onLaunch={
+              readOnly
+                ? undefined
+                : (command: string) => {
+                    // Close first: the launch navigates into the new pane, and a sheet still up
+                    // while the route changes under it would have to be dismissed on the screen
+                    // you just arrived at (same order the deleted LaunchSheet used).
+                    closeDrawer();
+                    void launch(command);
+                  }
+            }
+            launching={launching}
+            launchOpen={openForCount(dash.prefs.launchOpen, launchers.length)}
+            onLaunchOpenChange={dash.setLaunchOpen}
             className="px-0 py-1"
           />
         </BottomSheet>
