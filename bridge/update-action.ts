@@ -1,7 +1,7 @@
 import type { JsonObject, JsonValue } from "./json.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { compareSemver } from "./update.ts";
-import { inFlight, type UpdateRun } from "./update-run.ts";
+import { inFlight, type UpdateRun, type UpdateRunState } from "./update-run.ts";
 
 // `POST /api/update` — the phone's one-tap-plus-one-confirm start, and the preflight it is gated on
 // (M15/05).
@@ -257,6 +257,86 @@ export function parsePeerPreflight(value: JsonValue): PeerPreflight | null {
     checks: packPreflightChecks(checks),
   };
 }
+
+// ── The pack's half of the RUN (M16/04) ──────────────────────────────────────
+
+/**
+ * The trimmed run record a member publishes beside its snapshot body (PACK_PROTOCOL.md §20).
+ *
+ * The lead cannot otherwise know a peer is moving or has fallen back: the version alone says only
+ * "still behind", and a peer that tried and rolled back looks exactly like a peer that has not
+ * started. It rides ALONGSIDE the body for the reason `updatePreflight` does — `body` is the object
+ * that machine serves its own browser, and a pack-only fact has no business in the browser's
+ * snapshot type — and it carries no pid, no log tail and no recovery command: those are for the
+ * operator of THAT machine, and the lead's page names a member, a state and a reason.
+ */
+export interface PeerRunReport {
+  readonly state: UpdateRunState;
+  /** The version that run was moving to, as that machine spells it. Never re-derived here. */
+  readonly to: string | null;
+  /** The run it belongs to, or null. A leg is only matched against the run the lead is driving. */
+  readonly runId: string | null;
+  readonly reason: string | null;
+  /** That machine's own stamp, passed through untouched — nothing here can make an old fact new. */
+  readonly updatedAt: number | null;
+}
+
+/** The wire name of {@link PeerRunReport}'s field, beside {@link PACK_PREFLIGHT_FIELD} (§20). */
+export const PACK_RUN_FIELD = "updateRun";
+
+/** How much of a reason crosses the link. A log tail is that machine's own business, not the pack's. */
+export const PACK_RUN_REASON_MAX = 240;
+
+/** What one member publishes. `null` ⇒ it has never run an update, which is nothing to report. */
+export function peerRunWire(run: UpdateRun | null): PeerRunReport | null {
+  if (run === null) return null;
+  return {
+    state: run.state,
+    to: run.to,
+    runId: run.runId ?? null,
+    reason: run.reason === undefined ? null : run.reason.slice(0, PACK_RUN_REASON_MAX),
+    updatedAt: run.updatedAt,
+  };
+}
+
+/**
+ * Read a member's `updateRun` off the answer its snapshot rode on.
+ *
+ * `null` for every shape this build cannot read as one, which is the closed reading: a member that
+ * reported nothing is a member the lead has learned nothing new about, never a member that
+ * succeeded.
+ */
+export function parsePeerRun(value: JsonValue): PeerRunReport | null {
+  const rec = asRecord(value);
+  if (rec === null) return null;
+  const field = asRecord(rec[PACK_RUN_FIELD] ?? null);
+  if (field === null) return null;
+  const state = field.state;
+  if (typeof state !== "string" || !RUN_STATES.has(state)) return null;
+  const { to, runId, reason, updatedAt } = field;
+  return {
+    // SAFETY: `RUN_STATES` holds exactly the members of `UpdateRunState`, and the guard above
+    // returned for every string that is not one of them.
+    state: state as UpdateRunState,
+    to: typeof to === "string" && to !== "" ? to : null,
+    runId: typeof runId === "string" && runId !== "" ? runId : null,
+    reason: typeof reason === "string" && reason !== "" ? reason.slice(0, PACK_RUN_REASON_MAX) : null,
+    updatedAt: typeof updatedAt === "number" && Number.isSafeInteger(updatedAt) ? updatedAt : null,
+  };
+}
+
+/** Every member of `UpdateRunState`. Anything else is a member reporting nothing. */
+const RUN_STATES: ReadonlySet<string> = new Set<UpdateRunState>([
+  "idle",
+  "preflight",
+  "staging",
+  "restarting",
+  "verifying",
+  "done",
+  "rolled-back",
+  "stuck",
+  "interrupted",
+]);
 
 /**
  * A member's verdict as the card reads it. `unknown` is the fourth, and it is not a shade of green:

@@ -2,6 +2,7 @@ import type { JsonObject, JsonValue } from "../json.ts";
 import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
 import { DEVICE_HEADER, MEMBER_HEADER, PROTOCOL_HEADER, parseProtocolHeader } from "./admission.ts";
 import { LEAD_CONFLICT, PACK_PREFIX, PAIRING_LABEL_COLLISION, PREFLIGHT_FRESH, PREFLIGHT_HEADER } from "./router.ts";
+import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import type { PackRequestInit, PackTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
@@ -26,6 +27,17 @@ import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warr
 //   • THE TRANSPORT IS INJECTED. `Bun.serve`/`Bun.connect`-dependent code cannot be unit-tested here
 //     (CLAUDE.md), so the fetch is a parameter — the `bridge/dial.ts` precedent, applied one layer up.
 //     peer-client.test.ts therefore exercises the real decision logic against a fake, not a socket.
+
+/**
+ * §20's two request headers, as one value the sweep passes down. `null`/absent for either ⇒ that
+ * header is simply not sent, which is the closed reading on the far end.
+ */
+export interface FollowHeaders {
+  /** The lead's own settled release (`X-Pack-Lead-Release`), or null while it may state nothing. */
+  readonly leadRelease?: string | null;
+  /** `<member-name>;<run-id>` (`X-Pack-Update-Turn`), for the ONE member holding the turn. */
+  readonly turn?: string | null;
+}
 
 /** How long a peer has to answer before the poll gives up on it, by default (§10.1). */
 export const DEFAULT_PACK_TIMEOUT_MS = 1200;
@@ -598,15 +610,30 @@ export class PeerClient {
    * route by `UPDATE_ON_DEMAND_POLL_TIMEOUT_MS` and answers with what it has past that. The periodic
    * sweep never sets it and keeps the strict budget §10.1 requires, unchanged.
    */
-  snapshot(link: PackLink, session?: string, freshPreflight = false): Promise<PeerOutcome<JsonValue>> {
+  snapshot(
+    link: PackLink,
+    session?: string,
+    freshPreflight = false,
+    follow: FollowHeaders = {},
+  ): Promise<PeerOutcome<JsonValue>> {
     const params = session === undefined || session === "" ? undefined : { session };
-    if (!freshPreflight) return this.json(link, "snapshot", params);
+    const headers: Record<string, string> = {};
+    if (freshPreflight) headers[PREFLIGHT_HEADER] = PREFLIGHT_FRESH;
+    // §20's two, both additive-optional and both absent-means-closed. They are set on the sweep the
+    // lead already makes because a running peer never dials its lead — there is no peer-side poll to
+    // hang them on — and they never change the budget: a lead that has something to state must not
+    // become a lead that polls more slowly.
+    if (follow.leadRelease !== undefined && follow.leadRelease !== null) {
+      headers[LEAD_RELEASE_HEADER] = follow.leadRelease;
+    }
+    if (follow.turn !== undefined && follow.turn !== null) headers[UPDATE_TURN_HEADER] = follow.turn;
+    if (Object.keys(headers).length === 0) return this.json(link, "snapshot", params);
     return this.json(
       link,
       "snapshot",
       params,
-      { headers: { [PREFLIGHT_HEADER]: PREFLIGHT_FRESH } },
-      this.deps.patientTimeoutMs,
+      { headers },
+      freshPreflight ? this.deps.patientTimeoutMs : undefined,
     );
   }
 
