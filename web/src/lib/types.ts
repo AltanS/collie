@@ -762,8 +762,23 @@ export interface Launcher {
   command: string;
   /** Button label. Defaults to the command's first whitespace-separated token. */
   label: string;
-  /** Absolute directory the new Space opens in. */
-  cwd: string;
+  /**
+   * Absolute directory the new Space (or tab) opens in. Absent means "here": from the dashboard,
+   * the bridge's home dir; from a pane, that pane's own cwd. Present, it is pinned and shown
+   * shortened under home (`shortenHome`) wherever the row's folder is displayed.
+   */
+  cwd?: string;
+}
+
+/**
+ * GET /api/launchers — the rows for ONE host (a pack has one file per member), read live off its
+ * `launchers.toml`. `home` is that host's own home dir, for shortening a pinned `cwd` without the
+ * client knowing which machine answered (a peer's home is not this browser's, and is not even
+ * necessarily the same string as the lead's).
+ */
+export interface LaunchersResponse {
+  launchers: Launcher[];
+  home: string;
 }
 
 export interface BridgeConfig {
@@ -785,8 +800,6 @@ export interface BridgeConfig {
   operatorQuickReplies?: OperatorQuickReplyRow[];
   /** The operator's own UI typefaces. Absent when there is no `theme.toml` (ADR 0033). */
   operatorFonts?: OperatorFontRow[];
-  /** The operator's own launcher rows. Absent when there is no `launchers.toml`. */
-  launchers?: Launcher[];
   /**
    * The multiplexer and its declared capabilities. **Absent on a bridge older than this field**, and
    * that absence is read as "everything is supported" — a mid-upgrade Herdr operator must never

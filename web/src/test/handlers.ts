@@ -357,6 +357,9 @@ export const handlers = [
     ),
   ),
   http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "" })),
+  // Default world: no `launchers.toml`. Session-scoped (server.ts), so a test that wants rows
+  // overrides this with its own `/api/launchers` handler rather than adding a field to `/api/config`.
+  http.get("/api/launchers", () => HttpResponse.json({ launchers: [], home: "" })),
   http.post<never, { snoozedUntil: number | null }>("/api/notifications/snooze", async ({ request }) => {
     const { snoozedUntil } = await request.json();
     return HttpResponse.json({ snoozedUntil });

@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 
 // Finger-tracked reveal for the pane-switcher handle. useSwipeUp (use-swipe.ts) only reads the
-// start/end points and fires once on release  -  that reads as a swipe gesture, not a native sheet
+// start/end points and fires once on release, which reads as a swipe gesture, not a native sheet
 // that follows the thumb. This hook reports every intermediate point so the caller can paint the
 // sheet peeking up under the finger, then decides on release whether the drag crossed into "open"
 // (far enough, or fast enough) the same way ui/sheet.tsx's drag-to-dismiss decides "close".
 
 /** Upward travel (px) past which a release always opens, regardless of speed. */
 export const OPEN_PX = 120;
-/** Upward speed (px/ms) past which a release opens even on a short pull  -  a fling. */
+/** Upward speed (px/ms) past which a release opens even on a short pull, a fling. */
 export const FLING_PX_PER_MS = 0.6;
-/** Travel (px) below which a touch is a tap, not a drag  -  mirrors ui/sheet.tsx's own SLOP. */
+/** Travel (px) below which a touch is a tap, not a drag; mirrors ui/sheet.tsx's own SLOP. */
 export const SLOP = 6;
 
 /**
@@ -20,13 +20,13 @@ export const SLOP = 6;
  */
 export function shouldOpen(pull: number, velocity: number): boolean {
   if (pull >= OPEN_PX) return true;
-  // A short, fast upward flick opens too  -  matches the fling most native sheets honour  -  but a
+  // A short, fast upward flick opens too, matching the fling most native sheets honour. A
   // measurement past pure noise (SLOP) is required so a stationary finger with jittery velocity
   // near zero pull can never trip it.
   return pull > SLOP && velocity >= FLING_PX_PER_MS;
 }
 
-/** Trailing window (ms) the velocity is measured over  -  recent enough to read as "how fast now". */
+/** Trailing window (ms) the velocity is measured over, recent enough to read as "how fast now". */
 const VELOCITY_WINDOW_MS = 80;
 
 interface UseSheetPullOptions {
@@ -34,7 +34,7 @@ interface UseSheetPullOptions {
   onPull: (px: number) => void;
   /** Fired on release when the drag crossed the open threshold ({@link shouldOpen}). */
   onOpen: () => void;
-  /** Fired on release when it didn't  -  the caller resets its pull state back to 0. */
+  /** Fired on release when it didn't; the caller resets its pull state back to 0. */
   onCancel: () => void;
   /** Hard clamp on the reported pull. Defaults to 0.82 * viewport height, the sheet's own max-height. */
   max?: number;
@@ -51,7 +51,7 @@ export function useSheetPull({
   max,
 }: UseSheetPullOptions): UseSheetPullResult {
   // Callbacks travel through refs so the attach effect below runs once per DOM node rather than
-  // re-binding listeners on every render  -  the same "read via ref, stay stable across renders"
+  // re-binding listeners on every render, the same "read via ref, stay stable across renders"
   // shape hooks/use-spaces.ts uses for its own callbacks.
   const onPullRef = useRef(onPull);
   onPullRef.current = onPull;
@@ -62,7 +62,7 @@ export function useSheetPull({
   const maxRef = useRef(max);
   maxRef.current = max;
 
-  // A ref callback stored in state (not a plain useRef)  -  a plain ref gives the attach effect
+  // A ref callback stored in state (not a plain useRef), because a plain ref gives the attach effect
   // below nothing to depend on, so it would run before the button exists and never re-run once it
   // does. State makes the node's arrival a render the effect can react to.
   const [node, setNode] = useState<HTMLElement | null>(null);
@@ -72,7 +72,7 @@ export function useSheetPull({
 
     let startY = 0;
     let engaged = false;
-    // Trailing samples for the velocity read  -  trimmed to the last VELOCITY_WINDOW_MS on each move.
+    // Trailing samples for the velocity read, trimmed to the last VELOCITY_WINDOW_MS on each move.
     let samples: { t: number; y: number }[] = [];
 
     const clamp = (px: number) => {

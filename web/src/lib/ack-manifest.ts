@@ -122,7 +122,7 @@ export const ACK_MANIFEST = {
   },
   launch: {
     channel: "status",
-    why: "A launcher creates a Space and the app navigates straight into its pane, so the button that asked is already off screen; hooks/use-spaces.ts names what was created on arrival, exactly as createWorkspace does. A refusal (an unlisted row, a failed send) has no control left to sit in either.",
+    why: "A launcher creates a Space (dashboard) or a tab beside the pane you launched it from (switcher), and the app navigates straight into its pane either way, so the button that asked is already off screen; hooks/use-spaces.ts names what was created on arrival, exactly as createWorkspace does. A refusal (an unlisted row, an unknown pane, a failed send) has no control left to sit in either.",
   },
   createWorktree: {
     channel: "status",

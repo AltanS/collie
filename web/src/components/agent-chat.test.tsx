@@ -2013,15 +2013,21 @@ describe("AgentChat — folding the tab and pane rows", () => {
 
 // The pane header's rocket is gone; the switcher sheet is one of its two remaining homes (the other
 // is the dashboard's own LaunchStrip, covered by launch-strip.test.tsx). Same launchers.toml rows,
-// declared here through /api/config the way the rest of this file declares bridge state.
+// declared here through GET /api/launchers — a session-scoped route (server.ts), never a field on
+// /api/config, so rows come from the host that runs them (PACK_PROTOCOL.md §5).
+/** What `api.launch`'s POST body carries — mirrors lib/api.ts's `LaunchRequestBody`. */
+interface LaunchPostedBody {
+  command?: string;
+  paneId?: string;
+}
+
 describe("AgentChat: Launch section in the switcher", () => {
   function declareLaunchers() {
     server.use(
-      http.get("/api/config", () =>
+      http.get("/api/launchers", () =>
         HttpResponse.json({
-          push: false,
-          vapidPublicKey: "",
           launchers: [{ command: "rumen-peek", label: "Runs & quota", cwd: "/home" }],
+          home: "/home",
         }),
       ),
       http.post("/api/launch", () =>
@@ -2060,6 +2066,33 @@ describe("AgentChat: Launch section in the switcher", () => {
     // Closing is the launch's own signal that it landed: the sheet is gone and the switch handle is
     // reachable again, on a route that is about to change under it.
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("launches BESIDE this pane — the request carries this pane's own id", async () => {
+    let posted: LaunchPostedBody | undefined;
+    const agent = fixtureAgents[0]!;
+    server.use(
+      http.get("/api/launchers", () =>
+        HttpResponse.json({
+          launchers: [{ command: "rumen-peek", label: "Runs & quota", cwd: "/home" }],
+          home: "/home",
+        }),
+      ),
+      http.post("/api/launch", async ({ request }) => {
+        // SAFETY: this test's own client call (`api.launch`) is the only thing that can hit this
+        // handler, and it always sends exactly these two fields (lib/api.ts's `LaunchRequestBody`).
+        posted = (await request.json()) as LaunchPostedBody;
+        return HttpResponse.json({
+          ok: true,
+          pane: { paneId: "w9:p1", workspaceId: "w9", workspaceLabel: "Runs & quota", tabId: "w9:t1", cwd: "/home" },
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole("button", { name: "Switch pane" }));
+    await user.click(await screen.findByText("Runs & quota"));
+    await waitFor(() => expect(posted).toEqual({ command: "rumen-peek", paneId: agent.paneId }));
   });
 
   it("is not offered on a read-only device", async () => {

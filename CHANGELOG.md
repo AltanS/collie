@@ -27,7 +27,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Changed
 
-- The launcher rocket leaves the pane header and the Space header; its rows now live on the dashboard strip and in a new "Launch" section of the swipe-up "Switch pane" sheet.
+- A launcher's `cwd` is optional: pin one and it wins everywhere, leave it out and it means "here", your home dir from the dashboard, that pane's own folder from the switcher.
+- Tapped from a pane, a launcher opens a tab beside it instead of a new Space; tapped from the dashboard, a Space, as before. Rows read live per host, so on a pack they always come from whichever machine you tapped the row on, never the lead's own file.
 - The "Switch pane" sheet's handle now tracks the thumb as it drags, peeking up before it fully opens, instead of appearing only on release.
 - `collie pack update` is one sequence: preflight every machine, update the lead first, then each peer in turn, health-gated. The first failure stops the run and leaves the rest untouched, with the recovery command named.
 - `collie update` stages, then hands the swap to a detached updater: it flips `current`, restarts, polls `/api/health` for 30 s (`COLLIE_UPDATE_HEALTH_TIMEOUT_MS`), and rolls back once by itself if the new version does not answer. Watch it with `collie update --status`.

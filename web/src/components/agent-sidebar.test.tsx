@@ -319,4 +319,38 @@ describe("ThreadSidebar: Launch section", () => {
     expect(screen.getByText("Launch")).toBeInTheDocument();
     expect(screen.getByText("rumen-peek")).toBeInTheDocument();
   });
+
+  it("a pinned row's folder is shortened under home; an absent cwd reads \"here\"", () => {
+    const top: Launcher = { command: "htop", label: "Top" };
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        launchers={[peek, top]}
+        launchersHome="/home"
+        onLaunch={vi.fn()}
+      />,
+    );
+    // peek's cwd IS home, so it collapses to a bare "~" rather than the full path.
+    expect(screen.getByText("~")).toBeInTheDocument();
+    // top declares no cwd — beside this pane, wherever it is.
+    expect(screen.getByText("here")).toBeInTheDocument();
+  });
+
+  it("a host that refuses writes disables every row and names the reason", () => {
+    render(
+      <ThreadSidebar
+        agents={fixtureAgents}
+        currentPaneId=""
+        onSelect={vi.fn()}
+        launchers={[peek, quota]}
+        onLaunch={vi.fn()}
+        launchRefusal="laptop hasn't answered in a while"
+      />,
+    );
+    const row = screen.getByText("Runs & quota").closest("button");
+    expect(row).toBeDisabled();
+    expect(row).toHaveAttribute("title", "laptop hasn't answered in a while");
+  });
 });

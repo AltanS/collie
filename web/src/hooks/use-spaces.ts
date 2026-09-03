@@ -134,25 +134,28 @@ export function useSpaceActions() {
     [open, blockedText],
   );
 
-  // A launcher arrives as a SPACE too, and takes the same route for the same reason: the bridge
-  // matched the row and created the pane, so what comes back is a created pane like any other.
+  // A launcher arrives as a SPACE (from the dashboard) or a TAB beside a named pane (from the
+  // switcher), and takes the same `open` route either way for the same reason: the bridge matched
+  // the row and created the pane, so what comes back is a created pane like any other.
   //
   // ONE launch per row at a time. A launch is slower than any other create — the bridge waits for
   // the new shell to finish drawing before it types — so an impatient second tap on a phone is
-  // normal, and every tap that gets through makes another throwaway Space the operator then has to
+  // normal, and every tap that gets through makes another throwaway pane the operator then has to
   // close. The guard is per COMMAND, not global: two different launchers are two different
   // intentions and both are honoured. The ref IS the guard — it is already current inside the
   // callback the first tap is still running — while the state is only what disables the row.
   const [launching, setLaunching] = useState<ReadonlySet<string>>(() => new Set());
   const launchingRef = useRef<Set<string>>(new Set());
   const launch = useCallback(
-    async (command: string) => {
+    // `beside` is the pane id to open a tab next to — the switcher's row passes the current pane;
+    // the dashboard's row passes nothing, and the bridge creates a throwaway Space instead.
+    async (command: string, beside?: string) => {
       if (readOnlyRef.current) return setStatus(blockedText(), "error");
       if (launchingRef.current.has(command)) return;
       launchingRef.current.add(command);
       setLaunching(new Set(launchingRef.current));
       try {
-        open(await api.launch(command, scopeRef.current), "space");
+        open(await api.launch(command, beside, scopeRef.current), beside !== undefined ? "tab" : "space");
       } catch (e) {
         setStatus(describeThrownError(e), "error");
       } finally {

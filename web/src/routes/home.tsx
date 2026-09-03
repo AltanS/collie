@@ -123,7 +123,7 @@ export function HomeRoute() {
             error={data.error}
             lastSeenAt={data.lastSeenAt}
           />
-          <LaunchStrip open={launchOpen} onOpenChange={setLaunchOpen} />
+          <LaunchStrip open={launchOpen} onOpenChange={setLaunchOpen} scope={data.scope} />
           <SpaceOverview
             workspaces={data.workspaces}
             agents={navPanes.agents}

@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/components/agent-icon";
 import { SectionHeader } from "@/components/section-header";
 import { paneParts } from "@/lib/pane-name";
+import { shortenHome } from "@/lib/shorten-home";
 import { isAttention, sectionHeaderProps, triage } from "@/lib/triage";
 import type { AgentView, Launcher } from "@/lib/types";
 import { t } from "@/lib/i18n";
@@ -27,10 +28,14 @@ interface ThreadSidebarProps {
    * a read-only device, which is what keeps a write this device cannot make from being offered here.
    */
   launchers?: readonly Launcher[];
+  /** The bridge's own home dir, for shortening a pinned row's `cwd` with a leading `~`. */
+  launchersHome?: string;
   /** Fired with the row's command. The caller owns the write (useSpaceActions().launch). */
   onLaunch?: (command: string) => void;
   /** Commands whose launch is still in flight; those rows are disabled and say so. */
   launching?: ReadonlySet<string>;
+  /** The §10.3 refusal for this sheet's scope, when the host it would launch on refuses writes. */
+  launchRefusal?: string;
   /** Whether the Launch section is expanded, and how to fold it. Omit to leave it always open. */
   launchOpen?: boolean;
   onLaunchOpenChange?: (open: boolean) => void;
@@ -62,8 +67,10 @@ export function ThreadSidebar({
   shellsOpen = true,
   onShellsOpenChange,
   launchers = NO_LAUNCHERS,
+  launchersHome = "",
   onLaunch,
   launching,
+  launchRefusal,
   launchOpen = true,
   onLaunchOpenChange,
   className,
@@ -144,7 +151,9 @@ export function ThreadSidebar({
             <LaunchRow
               key={launcher.command}
               launcher={launcher}
+              home={launchersHome}
               busy={!!launching?.has(launcher.command)}
+              refusal={launchRefusal}
               onLaunch={onLaunch}
             />
           ))}
@@ -265,17 +274,29 @@ function PaneRow({
 // about to run before you tap it.
 function LaunchRow({
   launcher,
+  home,
   busy,
+  refusal,
   onLaunch,
 }: {
   launcher: Launcher;
+  home: string;
   busy: boolean;
+  /** The §10.3 write refusal for this scope, or undefined when the row may be tapped. */
+  refusal: string | undefined;
   onLaunch: (command: string) => void;
 }) {
+  // Pinned → the folder, shortened under home; absent → "here" (opens beside this pane, wherever it
+  // is), which is the one thing the switcher can say that the dashboard's "here" cannot — there,
+  // home is already implied and this suffix is withheld instead (launch-strip.tsx).
+  const suffix = launcher.cwd !== undefined ? shortenHome(launcher.cwd, home) : t("chat.switcher.launch.here");
+  const disabled = busy || refusal !== undefined;
   return (
     <button
       type="button"
-      disabled={busy}
+      disabled={disabled}
+      aria-label={refusal}
+      title={refusal}
       onClick={() => onLaunch(launcher.command)}
       // min-h-11 (44px) keeps the touch floor even though the two-line label is shorter than that.
       className="flex w-full min-h-11 items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-left transition-colors hover:bg-muted/60 active:bg-muted disabled:opacity-60"
@@ -286,7 +307,10 @@ function LaunchRow({
         <Play className="size-4 shrink-0 text-muted-foreground" aria-hidden />
       )}
       <span className="flex min-w-0 flex-col">
-        <span className="text-sm font-medium">{launcher.label}</span>
+        <span className="flex min-w-0 items-baseline gap-1.5">
+          <span className="truncate text-sm font-medium">{launcher.label}</span>
+          <span className="shrink-0 truncate font-mono text-xs text-muted-foreground">{suffix}</span>
+        </span>
         {/* The command is operator-authored text going into a text node, never markup. */}
         <span className="truncate font-mono text-xs text-muted-foreground">{launcher.command}</span>
       </span>

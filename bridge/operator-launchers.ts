@@ -60,7 +60,7 @@ interface LaunchersDocument {
  * [[launchers]]
  * command = "rumen-peek"        # required; the shell line, typed verbatim
  * label = "Runs & quota"        # optional; defaults to the command's first whitespace-separated token
- * cwd = "~/dev/collie"          # optional; defaults to the operator's home dir, leading ~ expanded
+ * cwd = "~/dev/collie"          # optional; absent means "here" (home from the dashboard, the pane's own dir from a pane); leading ~ expanded
  * ```
  *
  * A later row for the same `command` replaces the earlier one IN PLACE, so correcting a row does
@@ -116,12 +116,14 @@ export function validateOperatorLaunchers(
       label = first ?? command;
     }
 
-    // `cwd` is the directory the new Space opens in. Absent → the operator's home dir. A leading
-    // `~`/`~/...` is expanded to the operator's home dir, because that is how the operator already
-    // spells paths in their shell. Present but not a non-empty string → fail closed rather than
-    // silently falling back to the home dir: a typo that was meant to point the launch at a project
-    // should not send it to the wrong directory without saying so.
-    let cwd: string;
+    // `cwd` is the directory the new Space (or tab) opens in. Absent → "here": resolved on the
+    // bridge at launch time, to the operator's home dir from the dashboard or to the pane's own cwd
+    // from a pane (server.ts § launch/createTab), never defaulted here. A leading `~`/`~/...` is
+    // expanded to the operator's home dir, because that is how the operator already spells paths in
+    // their shell. Present but not a non-empty string → fail closed rather than silently falling
+    // back to "here": a typo that was meant to point the launch at a project should not silently
+    // change what "no cwd" means for that row.
+    let cwd: string | undefined;
     if (row.cwd !== undefined) {
       if (typeof row.cwd !== "string" || row.cwd.trim() === "") {
         warn(`ignoring "${command}" — cwd must be a non-empty string`);
@@ -131,11 +133,9 @@ export function validateOperatorLaunchers(
       if (rawCwd === "~") cwd = homedir();
       else if (rawCwd.startsWith("~/")) cwd = join(homedir(), rawCwd.slice(2));
       else cwd = rawCwd;
-    } else {
-      cwd = homedir();
     }
 
-    const parsed: Launcher = { command, label, cwd };
+    const parsed: Launcher = cwd === undefined ? { command, label } : { command, label, cwd };
     const prev = at.get(command);
     if (prev !== undefined) {
       warn(`"${command}" redefined — the later row wins`);

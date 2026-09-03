@@ -193,6 +193,8 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/pack/v1/tab` | `POST /api/tab` (`:218`) | forwarded |
 | `POST` | `/pack/v1/tab/:id/rename\|close` | `TAB_ACTION_ROUTE` (`:102`, matched `:234`) | forwarded |
 | `POST` | `/pack/v1/workspace` | `POST /api/workspace` (`:225`) | forwarded |
+| `POST` | `/pack/v1/launch` | `POST /api/launch` | forwarded — additive-optional (§7.1). Runs an allowlisted `launchers.toml` row **on the peer**, from that peer's own rows; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
+| `GET` | `/pack/v1/launchers` | `GET /api/launchers` | forwarded — additive-optional (§7.1), same pairing as above. Rows must come from the host that runs them, so this is a READ crossing the link rather than a second copy of `config`'s `launchers` field, which is why that field was retired from `/api/config` in the same change |
 | `GET` | `/pack/v1/config` | `GET /api/config` (`:288`) | consumed by the lead, not proxied |
 | `GET` | `/pack/v1/hello` | — (new) | consumed by the lead: liveness + version + member id |
 

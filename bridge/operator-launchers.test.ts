@@ -24,10 +24,11 @@ describe("validateOperatorLaunchers", () => {
     expect(validateOperatorLaunchers(null, quiet)).toEqual([]);
   });
 
-  test("a minimal row keeps the command and defaults the rest", () => {
+  test("a minimal row keeps the command, defaults the label, and leaves cwd absent", () => {
     const out = rows(`[[launchers]]
 command = "rumen-peek"`);
-    expect(out).toEqual([{ command: "rumen-peek", label: "rumen-peek", cwd: homedir() }]);
+    expect(out).toEqual([{ command: "rumen-peek", label: "rumen-peek" }]);
+    expect(out[0]).not.toHaveProperty("cwd");
   });
 
   test("label defaults to the command's first whitespace-separated token", () => {
@@ -48,7 +49,7 @@ label = "Runs & quota"`);
     expect(out[0]!.label).not.toBe("rumen-peek");
   });
 
-  test("cwd expansion of ~ and ~/sub, and the default", () => {
+  test("cwd expansion of ~ and ~/sub, and absent staying absent", () => {
     expect(rows(`[[launchers]]
 command = "a"
 cwd = "~"`)[0]!.cwd).toBe(homedir());
@@ -66,9 +67,12 @@ cwd = "~/a/b"`)[0]!.cwd).toBe(
     expect(rows(`[[launchers]]
 command = "a"
 cwd = "/tmp/foo"`)[0]!.cwd).toBe("/tmp/foo");
-    // No cwd defaults to the operator's home dir.
-    expect(rows(`[[launchers]]
-command = "a"`)[0]!.cwd).toBe(homedir());
+    // No cwd stays ABSENT — "here", resolved on the bridge at launch time (home from the
+    // dashboard, the pane's own cwd from a pane), never defaulted by the parser.
+    const out = rows(`[[launchers]]
+command = "a"`)[0]!;
+    expect(out.cwd).toBeUndefined();
+    expect(out).not.toHaveProperty("cwd");
   });
 
   test("drops a row whose command is missing, empty, non-string, or control-character-bearing", () => {

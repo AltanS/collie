@@ -14,7 +14,7 @@ import { useKeyboardOpen } from "@/hooks/use-keyboard";
 import { useSheetPull } from "@/hooks/use-sheet-pull";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
-import { useLaunchers } from "@/lib/operator-config";
+import { useLaunchers } from "@/lib/launchers";
 import { buzz } from "@/lib/haptics";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
@@ -192,7 +192,7 @@ export function AgentChat({
   // together — dimming only one of them would leave a frozen reading looking half live.
   const connecting = isConnecting({ bridge, error, stalled });
   const { newTab, launch, launching } = useSpaceActions();
-  const launchers = useLaunchers();
+  const { launchers, home: launchersHome } = useLaunchers(scope);
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus } = useDisplayPrefs();
   // The chosen terminal font (Settings → Terminal font), applied by re-pointing `--font-mono` on
@@ -1854,9 +1854,12 @@ export function AgentChat({
             shellsOpen={openForCount(dash.prefs.shellsOpen, shellPanes.length)}
             onShellsOpenChange={dash.setShellsOpen}
             launchers={launchers}
+            launchersHome={launchersHome}
             // Withheld on a read-only device: the same gate the dashboard's own LaunchStrip needs
             // is enforced in useSpaceActions().launch itself, but leaving onLaunch undefined here is
             // what hides the section rather than offering a write the bridge would refuse anyway.
+            // A host-level refusal (this pane's own machine, not the device) keeps the section but
+            // disables each row instead — see `launchRefusal` below.
             onLaunch={
               readOnly
                 ? undefined
@@ -1865,10 +1868,13 @@ export function AgentChat({
                     // while the route changes under it would have to be dismissed on the screen
                     // you just arrived at (same order the deleted LaunchSheet used).
                     closeDrawer();
-                    void launch(command);
+                    // Beside THIS pane — the switcher's launch always opens a tab in this pane's
+                    // Space, on this pane's own host (server.ts resolves `paneId` there).
+                    void launch(command, paneId);
                   }
             }
             launching={launching}
+            launchRefusal={hostBlock}
             launchOpen={openForCount(dash.prefs.launchOpen, launchers.length)}
             onLaunchOpenChange={dash.setLaunchOpen}
             className="px-0 py-1"

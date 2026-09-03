@@ -757,8 +757,24 @@ export interface Launcher {
   command: string;
   /** Button label. Defaults to the command's first whitespace-separated token. */
   label: string;
-  /** Absolute directory the new Space opens in. */
-  cwd: string;
+  /**
+   * Absolute directory the new Space (or tab) opens in. Absent means "here": from the dashboard,
+   * the operator's home dir; from a pane, that pane's own cwd. Present, it is pinned and wins
+   * either way.
+   */
+  cwd?: string;
+}
+
+/**
+ * GET /api/launchers — this HOST's own launcher rows, read live off its `launchers.toml`. Session-
+ * scoped so a `?host=` call forwards to the peer that runs the rows, exactly like `/api/launch`
+ * (PACK_PROTOCOL.md §5): rows must come from the machine that will run them, never from the lead's
+ * own file. `home` is that host's operator home dir, so the client can shorten a pinned `cwd` with a
+ * leading `~` without knowing which machine answered.
+ */
+export interface LaunchersResponse {
+  launchers: Launcher[];
+  home: string;
 }
 
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
@@ -786,8 +802,6 @@ export interface BridgeConfig {
    * bridge resolved is ever echoed to a phone (ADR 0033).
    */
   operatorFonts?: OperatorFontRow[];
-  /** The operator's own launcher rows. Absent/empty when there is no `launchers.toml`. */
-  launchers?: Launcher[];
   /**
    * The multiplexer this collie drives, and what it can do. Absent only on a bridge older than
    * M10/06 — which a client reads as "every capability present", i.e. exactly today's Herdr app.

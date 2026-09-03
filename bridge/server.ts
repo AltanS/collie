@@ -69,6 +69,7 @@ import type {
   OperatorQuickReplyRow,
   PackStatusResponse,
   Launcher,
+  LaunchersResponse,
   PaneHistoryResponse,
   PaneReadResponse,
   PaneWire,
@@ -389,11 +390,6 @@ export function bridgeConfigBody(opts: {
    */
   operatorFonts?: readonly OperatorFontRow[];
   /**
-   * The operator's own launcher rows. Same omit-when-empty rule as `operatorCommands`, and the same
-   * live-by-mtime contract: a `launchers.toml` edit reaches a device on its next page load.
-   */
-  launchers?: readonly Launcher[];
-  /**
    * Speech-to-text, when a provider resolved. Omitted entirely otherwise — an operator who
    * configured none ships the same payload as before, the same rule `mode` follows.
    */
@@ -404,7 +400,6 @@ export function bridgeConfigBody(opts: {
   const myKeys = opts.operatorKeys ?? [];
   const myReplies = opts.operatorQuickReplies ?? [];
   const myFonts = opts.operatorFonts ?? [];
-  const myLaunchers = opts.launchers ?? [];
   const wire: BridgeConfig = {
     push: opts.push,
     vapidPublicKey: opts.vapidPublicKey,
@@ -417,7 +412,6 @@ export function bridgeConfigBody(opts: {
   if (myKeys.length > 0) wire.operatorKeys = [...myKeys];
   if (myReplies.length > 0) wire.operatorQuickReplies = [...myReplies];
   if (myFonts.length > 0) wire.operatorFonts = [...myFonts];
-  if (myLaunchers.length > 0) wire.launchers = [...myLaunchers];
   // Appended last, and unconditional once an adapter is in hand: unlike `mode`, this is not
   // omit-when-default. There is no default to omit — "no mux key" already means something on the
   // phone (an older bridge, read as fully capable), so a Herdr bridge staying silent here would be
@@ -769,6 +763,18 @@ export function startServer(opts: {
       if (rt instanceof Response) return rt;
       return launch(rt.herdr, rt.engine, req, caller.audit, caller.device(), rt.name, operatorLaunchers);
     }
+    // Rows must come from the host that runs them: today's `/api/config` (a lead-only body) sent
+    // the LEAD's rows down even for a launch addressed at a peer via `?host=`. Session-scoped like
+    // `/api/launch` beside it, so the same `?host=` forward (§5) reaches the peer's own
+    // `launchers.toml` rather than the lead's. `home` rides along so the client can shorten a
+    // pinned `cwd` with a leading `~` without knowing which machine answered.
+    if (pathname === "/api/launchers" && req.method === "GET") {
+      const denied = caller.gate("read");
+      if (denied) return denied;
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
+      return launchersRoute(operatorLaunchers, req.headers.get("accept-encoding"));
+    }
 
     // ── Worktrees: list / create / open / remove, all scoped to a space (ADR 0032) ──
     const worktreeListMatch = pathname.match(WORKTREE_LIST_ROUTE);
@@ -1111,9 +1117,6 @@ export function startServer(opts: {
         // Same mtime-checked re-read, same reason: an operator who adds a face to theme.toml wants
         // it in the picker on the next page load, not after a restart.
         const myFonts = await operatorFonts();
-        // Same mtime-checked re-read once more: a row added to launchers.toml is on the phone at
-        // its next page load, with no restart.
-        const myLaunchers = await operatorLaunchers();
         // The PRIMARY session's adapter, because one collie drives one multiplexer: every session in
         // the registry is built by the same factory off the same `cfg.mux`, so which runtime answers
         // is not a choice. `?.` only because `get()` is total over a Map — the primary is created
@@ -1133,7 +1136,6 @@ export function startServer(opts: {
             operatorKeys: myKeys,
             operatorQuickReplies: myReplies,
             operatorFonts: myFonts,
-            launchers: myLaunchers,
             mux: activeMux?.herdr,
             stt: sttWire,
           }),
@@ -2622,14 +2624,31 @@ async function openWorktree(
 
 
 
-// Launch one allowlisted command in a new throwaway Space. The configured list doubles as the
-// allowlist `POST /api/launch` matches: the client names a row by its `command` string and the bridge
-// checks for exact equality against the current rows before the multiplexer is touched at all — the
-// client never supplies a command line. That is the whole security story of the route, and why
-// `command` is an identity and not a free-text argument. `createSpace` allocates the Space (a
-// multiplexer deletes a tab whose last pane closes and a space whose last tab closes, so a
-// self-closing pane leaves nothing behind); `awaitPaneReady` waits for that Space's shell to finish
-// drawing; `sendReplySteps` then types the line and sends Enter into it.
+// GET /api/launchers — this host's own rows, read live off its `launchers.toml`. Exported and
+// pulled out of the inline route so it's directly testable with a fake `getLaunchers`, exactly like
+// `launch` below: the route registration (gate, `?host=` forward) stays pinned by
+// server.test.ts's "every session-scoped route resolves through the gate" source read, and this
+// function is what answers once that has already happened.
+export async function launchersRoute(
+  getLaunchers: () => Promise<Launcher[]>,
+  acceptEncoding: string | null,
+): Promise<Response> {
+  const rows = await getLaunchers();
+  return json({ launchers: rows, home: homedir() } satisfies LaunchersResponse, acceptEncoding);
+}
+
+// Launch one allowlisted command, either in a new throwaway Space (from the dashboard, no pane
+// context) or as a new tab beside a pane the client names (from a pane, the swipe-up switcher). The
+// configured list doubles as the allowlist `POST /api/launch` matches: the client names a row by its
+// `command` string and the bridge checks for exact equality against the current rows before the
+// multiplexer is touched at all — the client never supplies a command line, and it never supplies a
+// path either: `cwd` is always the row's own (if pinned) or resolved from where the launch was
+// addressed (the operator's home from the dashboard, the beside pane's own cwd from a pane). That is
+// the whole security story of the route, and why `command` is an identity and not a free-text
+// argument. `createSpace`/`createTab` allocates the pane (a multiplexer deletes a tab whose last
+// pane closes and a space whose last tab closes, so a self-closing pane leaves nothing behind);
+// `awaitPaneReady` waits for that pane's shell to finish drawing; `sendReplySteps` then types the
+// line and sends Enter into it.
 // `["Enter"]` is literal here, NOT `cfg.submitKeys`: `COLLIE_SUBMIT_KEYS` is the agent-dependent
 // submit sequence for a TUI composer; this is a bare shell prompt where Enter is the only key that
 // means "run it".
@@ -2655,10 +2674,13 @@ export async function launch(
   const fields = asJsonRecord(body) ?? {};
   const command = (typeof fields.command === "string" ? fields.command.trim() : "");
   if (command === "") return text("bad body", 400);
+  // The client never sends a path — only, optionally, the pane it wants the launch to open BESIDE.
+  // Absent means "from the dashboard": a new Space, cwd resolved against the operator's home.
+  const besidePaneId = typeof fields.paneId === "string" ? fields.paneId.trim() : "";
   const ae = req.headers.get("accept-encoding");
   // Live read, behind the same mtime cache the other operator files use — a new row in
   // `launchers.toml` is live on the bridge without a restart (an already-open tab needs a reload to
-  // re-fetch `/api/config`, the same property `commands.toml` has).
+  // re-fetch its rows, the same property `commands.toml` has).
   const rows = await getLaunchers();
   const row = rows.find((r) => r.command === command);
   if (!row) {
@@ -2668,7 +2690,27 @@ export async function launch(
       400,
     );
   }
-  const outcome = await herdr.createSpace({ cwd: row.cwd, label: row.label });
+
+  // Resolved here, once, so both the create call and the audit line agree on what actually ran —
+  // and so a tab beside an unknown pane 404s before the multiplexer is touched at all, exactly like
+  // an unlisted command does.
+  let besidePane: AgentView | undefined;
+  if (besidePaneId !== "") {
+    const { agents, shellPanes } = engine.current();
+    besidePane = [...agents, ...shellPanes].find((p) => p.paneId === besidePaneId);
+    if (!besidePane) {
+      return json(
+        { ok: false, ...apiError("launch.pane_unknown") } satisfies CreateResponse,
+        ae,
+        404,
+      );
+    }
+  }
+  const resolvedCwd = besidePane ? (row.cwd ?? besidePane.cwd) : (row.cwd ?? homedir());
+
+  const outcome = besidePane
+    ? await herdr.createTab({ spaceId: besidePane.workspaceId, label: row.label, cwd: resolvedCwd })
+    : await herdr.createSpace({ cwd: resolvedCwd, label: row.label });
   if (!outcome.ok) {
     return json(
       { ok: false, ...apiError("workspace.create_failed", { reason: outcome.detail }) } satisfies CreateResponse,
@@ -2676,7 +2718,7 @@ export async function launch(
     );
   }
   const created = outcome.value;
-  // The Space is allocated; its shell may not have drawn a prompt yet. Typing into that gap is
+  // The pane is allocated; its shell may not have drawn a prompt yet. Typing into that gap is
   // exactly how a launch used to vanish — the command printed above the greeting, the prompt empty.
   const ready = await awaitPaneReady(herdr, created.paneId, wait);
   if (!ready.ready) {
@@ -2690,7 +2732,7 @@ export async function launch(
   // shell prompt where Enter is the only key that means "run it".
   const sent = await sendReplySteps(herdr, created.paneId, row.command, true, ["Enter"], wait.sleep);
   if (!sent.ok) {
-    // Best-effort rollback: a half-born Space whose command did not fully start must not linger as
+    // Best-effort rollback: a half-born pane whose command did not fully start must not linger as
     // an empty shell nobody asked for. The rollback's own failure is swallowed because the original
     // send error is the useful result and there is no safe second recovery action to take here.
     try {
@@ -2708,21 +2750,36 @@ export async function launch(
   // the line still answers the question a launch raises: who started something, in which pane and
   // Space, when. Which shell line ran is recoverable from `launchers.toml` in a way a reply's text
   // never is.
-  audit.record({
-    action: "workspace.launch",
-    paneId: created.paneId,
-    session,
-    device,
-    detail: { command: row.command, label: row.label, cwd: row.cwd },
-  });
+  if (besidePane) {
+    audit.record({
+      action: "tab.launch",
+      paneId: created.paneId,
+      session,
+      device,
+      detail: { command: row.command, label: row.label, cwd: resolvedCwd, besidePaneId: besidePane.paneId },
+    });
+  } else {
+    audit.record({
+      action: "workspace.launch",
+      paneId: created.paneId,
+      session,
+      device,
+      detail: { command: row.command, label: row.label, cwd: resolvedCwd },
+    });
+  }
   await settleTopology(herdr, engine);
+  // The tab path's create call doesn't answer with the space's own label (mirrors createTab above):
+  // the snapshot already knows it, and that lookup is cheaper than a round trip.
+  const workspaceLabel = besidePane
+    ? (engine.current().workspaces.find((w) => w.workspaceId === created.spaceId)?.label ?? created.spaceLabel)
+    : created.spaceLabel;
   return json(
     {
       ok: true,
       pane: {
         paneId: created.paneId,
         workspaceId: created.spaceId,
-        workspaceLabel: created.spaceLabel,
+        workspaceLabel,
         tabId: created.tabId,
         cwd: created.cwd,
       },

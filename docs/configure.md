@@ -118,7 +118,7 @@ prints the error.
 
 ## Your own launchers
 
-One tap opens a new Space and runs a command you declared, in `launchers.toml` next to `keys.toml`:
+One tap runs a command you declared, in `launchers.toml` next to `keys.toml`:
 
 ```bash
 cp launchers.toml.example ~/.config/collie/launchers.toml
@@ -126,20 +126,32 @@ cp launchers.toml.example ~/.config/collie/launchers.toml
 
 ```toml
 [[launchers]]
-command = "htop"             # required; the shell line, typed verbatim into the new Space
+command = "htop"             # required; the shell line, typed verbatim into the fresh shell
 label = "Top"                # optional; defaults to the first word of command
-# cwd = "~/dev/collie"       # optional; defaults to your home directory, ~ expanded
+# cwd = "~/dev/collie"       # optional; absent means "here" — see below
 ```
 
-A tap creates a Space named after the row, in its `cwd`, types the `command` and sends Enter. The
-command owns its own lifetime. A command that closes itself takes the Space with it, and `htop`
-stays until you quit it. This file is the allowlist. `POST /api/launch` accepts only a command that
-matches a row here exactly, so a phone can start nothing that is not in the file. Changes apply
-immediately without a restart, but an already-open tab reads the rows once per load.
+Where the tap opens depends on where you tap it, not on the row. From the **dashboard**, a tap
+creates a new Space named after the row. From a **pane** — the switcher sheet you reach by
+swiping up — a tap opens a new **tab in that pane's own Space**, beside it. Either way the bridge
+types the `command` into the fresh shell and sends Enter. The command owns its own lifetime: one
+that closes itself takes the Space or tab with it, and `htop` stays until you quit it.
 
-Your rows appear twice: as a **Launch** section on the dashboard, which folds like Spaces and
-Recent, and behind the rocket button in the Space and pane headers, which opens them as a sheet
-with each command printed under its label. Declare no rows and neither surface appears. To verify,
+`cwd` is where that new Space or tab opens. Pin one (as `htop` does above) and it wins wherever you
+tap the row. Leave it out and it means "here": the dashboard opens it in your home dir, a pane
+opens it in *that pane's own* cwd — one cwd-less row follows you around your checkouts instead of
+always landing at the top of one.
+
+This file is the allowlist. `POST /api/launch` accepts only a `command` that matches a row here
+exactly, so a phone can start nothing that is not in the file. Changes apply immediately without a
+restart, but an already-open tab re-reads the rows only on its next load.
+
+Your rows appear in two places: a **Launch** section on the dashboard, which folds like Spaces and
+Recent, and a **Launch** section in the switcher sheet (swipe up from a pane). A pinned row shows
+its folder, shortened under home; a cwd-less row says "here" in the switcher (the dashboard already
+implies home, so it says nothing there). Declare no rows and neither section appears. On a pack
+(several machines, one phone-facing lead), each machine reads its own copy of this file — a row
+launches on whichever machine's dashboard or pane you tapped it from, not on the lead. To verify,
 reload the dashboard and look under the herd. If a row fails to load,
 `journalctl --user -u collie -n 20` prints the error.
 

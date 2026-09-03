@@ -114,6 +114,21 @@ describe("which routes cross a link", () => {
     expect(packRouteFor("/api/workspace")).toBe("workspace");
   });
 
+  test("launch and its rows cross the link too — rows must come from the host that runs them", () => {
+    expect(packRouteFor("/api/launch")).toBe("launch");
+    expect(packRouteFor("/api/launchers")).toBe("launchers");
+    expect(apiPathFor("launch")).toBe("/api/launch");
+    expect(apiPathFor("launchers")).toBe("/api/launchers");
+    // Rows are a READ (a GET that changes nothing), so a stale member is still asked — never
+    // refused before it is attempted, the same tolerance `pane/:id` (a read) already gets.
+    expect(forwardKind("launchers")).toBe("read");
+    expect(forwardKind("launch")).toBe("write");
+    // The lead's own forward line names a generic action; the peer's own audit line (workspace.
+    // launch or tab.launch, decided by the body) is the accurate record.
+    expect(forwardAuditAction("launch")).toBe("launch");
+    expect(forwardAuditAction("launchers")).toBeNull();
+  });
+
   test("the routes §5 excludes are excluded — and stay that way by construction", () => {
     // Push subscriptions live on the lead, notification policy is one pack-wide setting the lead
     // owns, update checking is per-machine, `config` is consumed not proxied, `snapshot` is merged.

@@ -9,10 +9,8 @@ import { fetchConfig } from "@/lib/api";
 import type { BridgeConfig } from "@/lib/types";
 import {
   __resetOperatorCommands,
-  getLaunchers,
   getOperatorCommands,
   loadOperatorCommands,
-  useLaunchers,
   useOperatorCommands,
   useOperatorKeys,
   useOperatorQuickReplies,
@@ -135,30 +133,7 @@ describe("the Quick-dock groups ride the same one read", () => {
   });
 });
 
-describe("the launcher rows ride the same single fetch", () => {
-  it("one fetch answers commands, keys and launchers", async () => {
-    const interrupt = { label: "Interrupt", keys: ["ctrl+c"], danger: false };
-    const peek = { command: "rumen-peek", label: "Runs & quota", cwd: "/home" };
-    asked.mockResolvedValue({
-      ...config([forkIn], { operatorKeys: [interrupt], launchers: [peek] }),
-    });
-
-    const keys = renderHook(() => useOperatorKeys());
-    const commands = renderHook(() => useOperatorCommands());
-    const launchers = renderHook(() => useLaunchers());
-    await waitFor(() => expect(launchers.result.current).toEqual([peek]));
-    expect(commands.result.current).toEqual([forkIn]);
-    expect(keys.result.current).toEqual([interrupt]);
-    // Three hooks, still one /api/config call — a second store would mean a second GET
-    // racing over which response wins.
-    expect(asked).toHaveBeenCalledTimes(1);
-  });
-
-  it("a bridge without launchers yields an empty list", async () => {
-    asked.mockResolvedValue(config());
-    const launchers = renderHook(() => useLaunchers());
-    await waitFor(() => expect(asked).toHaveBeenCalled());
-    expect(launchers.result.current).toEqual([]);
-    expect(getLaunchers()).toEqual([]);
-  });
-});
+// Launcher rows are NOT part of this store — see lib/launchers.test.ts. `/api/config` used to carry
+// them, but rows must come from the host that RUNS them (a pack peer's own `launchers.toml`), which
+// this store's one lead-only fetch cannot express; `GET /api/launchers` replaced it (session-scoped,
+// forwarded on `?host=`).
