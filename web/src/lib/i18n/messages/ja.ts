@@ -164,7 +164,8 @@ export const ja: Dictionary = {
 
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "行の折り返し",
-  "settings.display.wrap.hint": "無効化するとTUIの表などの列構造を維持します。表示範囲外は水平スクロールで確認します。",
+  "settings.display.wrap.hint":
+    "無効化するとペイン全体が列構造を維持し、水平スクロールになります。表のために無効化する必要はありません。折り返しが有効なままでも、表は単独でスクロールします。",
   "settings.display.tapToType.label": "タップで入力開始",
   "settings.display.tapToType.hint":
     "有効時はターミナル領域のタップでキーボードが開きます。無効時はテキスト選択が優先され、キーボードは入力欄タップ時のみ開きます。",

@@ -168,7 +168,7 @@ export const es: Dictionary = {
   // --- settings.display (mirror display prefs, behind the composer's ⚙ dock) ---
   "settings.display.wrap.label": "Ajuste de línea",
   "settings.display.wrap.hint":
-    "Desactivado mantiene la salida exacta por columnas para interfaces TUI mediante desplazamiento.",
+    "Desactivado desplaza todo el panel manteniendo las columnas. Ya no hace falta para una tabla: con el ajuste activo, una tabla se desplaza por su cuenta.",
   "settings.display.tapToType.label": "Tocar para escribir",
   "settings.display.tapToType.hint":
     "Si esta activo, pulsar en cualquier parte abre el teclado. Si no, funciona como documento de texto y solo el editor abre el teclado.",
