@@ -1,4 +1,7 @@
-import { DEFAULT_PORT } from "../bridge/config.ts";
+import { DEFAULT_PORT, resolveBridgeHost } from "../bridge/config.ts";
+import type { JsonValue } from "../bridge/json.ts";
+import { bindIsWildcard } from "../bridge/pack/config.ts";
+import { parsePackRows, type PackUpdateRow } from "../bridge/update-action.ts";
 import type { OpsRecord } from "../bridge/pack/ops-store.ts";
 import type { TrustedMember, TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { STALE_AFTER_MS, type UpdateRun } from "../bridge/update-run.ts";
@@ -23,7 +26,13 @@ import {
 } from "./remote.ts";
 import { plainUpdate, type UpdateEvent, type UpdateOutcome, type UpdateRow } from "./render.ts";
 import { cmdUpdate } from "./update.ts";
-import { preflight, updateCheckDeps, type PreflightCheck, type PreflightReport } from "./update-check.ts";
+import {
+  preflight,
+  updateCheckDeps,
+  type PreflightCheck,
+  type PreflightMember,
+  type PreflightReport,
+} from "./update-check.ts";
 import { awaitRunRecord, healthTimeoutMs, HEALTH_POLL_MS, readRun } from "./update-run.ts";
 
 // The tolerant `<semver>+<sha>` comparison lives in `bridge/version.ts` now — the health gate of the
@@ -91,6 +100,15 @@ export interface PackUpdateDeps extends PackAddDeps {
    * spawn ssh, and the preflight reaches every member over it.
    */
   preflight?(): Promise<PreflightReport>;
+  /**
+   * What this lead's RUNNING BRIDGE already heard from each member over the pack link (§19, M16/03).
+   *
+   * A seam for the same reason the preflight is one, and read through this collie's own
+   * `GET /api/update/check` because that is where the sweep banks it — this process holds no pack
+   * link of its own, and opening one to ask would be a second dial for a fact already in hand.
+   * Nothing here blocks: an answer that does not come is an empty list and a quieter transcript.
+   */
+  peerReported?(): Promise<readonly PackUpdateRow[]>;
   /** This lead's own update. Absent ⇒ the real `collie update`, resolved on first use. */
   readonly lead?: LeadUpdate;
   /** How this verb waits between polls. Absent ⇒ a real timer. */
@@ -101,6 +119,7 @@ export interface PackUpdateDeps extends PackAddDeps {
 type Wired = PackUpdateDeps & {
   emitUpdate(event: UpdateEvent): void;
   preflight(): Promise<PreflightReport>;
+  peerReported(): Promise<readonly PackUpdateRow[]>;
   readonly lead: LeadUpdate;
   readonly sleep: (ms: number) => Promise<void>;
 };
@@ -164,6 +183,7 @@ function wire(deps: PackUpdateDeps & { emitUpdate(event: UpdateEvent): void }): 
   return {
     ...deps,
     preflight: deps.preflight ?? (() => preflight(updateCheckDeps(deps.io))),
+    peerReported: deps.peerReported ?? (() => bankedPeerVerdicts(deps)),
     lead: deps.lead ?? lazyLead(deps.io),
     sleep: deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
   };
@@ -461,6 +481,11 @@ async function preflightGate(deps: Wired, targets: readonly Target[]): Promise<n
   const routed = targets.filter((t) => t.sshHost !== "");
   const named = new Set(routed.map((t) => t.member.memberId));
   const checked = await deps.preflight();
+  // What each member said about ITSELF over the pack link (§19, M16/03), beside what this walk found
+  // over ssh. Printed, never preferred: see {@link peerReportLines}.
+  for (const said of peerReportLines(checked.pack ?? [], await deps.peerReported(), named, deps.now())) {
+    line(deps, said);
+  }
   const reds: { readonly who: string; readonly check: PreflightCheck }[] = [
     ...checked.checks.filter(blocks).map((check) => ({ who: "this lead", check })),
     ...(checked.pack ?? [])
@@ -479,8 +504,81 @@ async function preflightGate(deps: Wired, targets: readonly Target[]): Promise<n
   return EXIT.FAIL;
 }
 
+/** How long this verb waits on its own bridge for a fact it can also do without. */
+const BANKED_BUDGET_MS = 2000;
+
+/**
+ * The `pack` array off THIS collie's own `GET /api/update/check`, or an empty list.
+ *
+ * A read, on the address the bridge BOUND (`cli/doctor.ts`'s `ownSnapshot` is the precedent and the
+ * reasoning): a peer sets `COLLIE_HOST` and never answers on loopback, and a wildcard bind answers
+ * everywhere. Every failure — no bridge, a gate, a body this build cannot read — is the same empty
+ * answer, because this is a nicety on a transcript and never a gate.
+ */
+async function bankedPeerVerdicts(deps: PackUpdateDeps): Promise<readonly PackUpdateRow[]> {
+  const host = resolveBridgeHost(deps.ctx.env);
+  const dialled = bindIsWildcard(host) ? "127.0.0.1" : host;
+  const bracketed = dialled.includes(":") && !dialled.startsWith("[") ? `[${dialled}]` : dialled;
+  try {
+    const answer = await deps.fetch(`http://${bracketed}:${String(deps.ctx.port)}/api/update/check`, {
+      signal: AbortSignal.timeout(BANKED_BUDGET_MS),
+    });
+    if (!answer.ok) return [];
+    // SAFETY: `Response.json()` answers a JSON value, and `parsePackRows` validates every field of
+    // it below — a row missing any of them is dropped rather than half-read. Nothing here becomes a
+    // path, a command or a credential; it is printed.
+    return parsePackRows((await answer.json()) as JsonValue);
+  } catch {
+    return [];
+  }
+}
+
 /** Does this check stop the run? See {@link preflightGate} for the one id that does not. */
 const blocks = (c: PreflightCheck): boolean => c.verdict === "red" && c.id !== "ops-record";
+
+// ── The peer-reported verdict, beside the ssh one (M16/03) ───────────────────
+
+/**
+ * What this run PRINTS about the verdict each member published over the pack link (§19).
+ *
+ * **It changes nothing.** Consent, ordering and abort behaviour are untouched: the ssh walk above is
+ * still the gate, because it is the only one that reached the machine this run is about to write to.
+ * What the link adds is a second, independent opinion — produced by the member itself, on its own
+ * clock — and a disagreement between the two is a fact worth a line rather than something to resolve
+ * by silently preferring one. The commonest cause is simply age: a link verdict from six hours ago
+ * and an ssh verdict from four seconds ago are different claims, so every line carries the stamp.
+ *
+ * A member the link has nothing on prints nothing: no line is better than a line about silence.
+ */
+export function peerReportLines(
+  ssh: readonly PreflightMember[],
+  reported: readonly PackUpdateRow[],
+  named: ReadonlySet<string>,
+  now: number,
+): string[] {
+  const out: string[] = [];
+  for (const row of reported) {
+    if (!named.has(row.name)) continue;
+    const reason = row.reasons[0] === undefined ? "" : ` — ${row.reasons[0]}`;
+    out.push(`preflight: ${row.name} reports ${row.verdict} over the link${reason} (${ageOf(row.asOf, now)})`);
+    const walked = ssh.find((m) => m.memberId === row.name);
+    if (walked === undefined || walked.verdict === row.verdict) continue;
+    out.push(
+      `           they disagree: ssh says ${walked.verdict}, the link says ${row.verdict} — this run follows the ssh walk`,
+    );
+  }
+  return out;
+}
+
+/** How old a member's own stamp is, in the plainest words. `null` ⇒ it has never produced one. */
+function ageOf(asOf: number | null, now: number): string {
+  if (asOf === null) return "never checked there";
+  const seconds = Math.max(0, Math.round((now - asOf) / 1000));
+  if (seconds < 90) return `as of ${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 90) return `as of ${minutes}m ago`;
+  return `as of ${Math.round(minutes / 60)}h ago`;
+}
 
 const nMembers = (n: number): string => `${n} member${n === 1 ? "" : "s"}`;
 

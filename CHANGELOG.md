@@ -28,6 +28,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Added
 
 - Every pack member reports its own update preflight over the link, and `GET /api/update/check` answers with a dated `pack` row per member.
+- `collie pack update` prints each member's peer-reported verdict beside its SSH one and names a disagreement.
 
 ## [1.4.1] - 2026-09-03
 
