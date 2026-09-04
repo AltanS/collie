@@ -28,14 +28,19 @@ Collie configuration (`.env`):
 ```bash
 COLLIE_HOST=127.0.0.1                       # keep loopback (default)
 COLLIE_DEVICE_HEADER=X-Device-Id            # the header your proxy injects
-COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop  # ids allowed to drive agents; others → read-only
-# COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # only if the proxy does NOT forward the public Host
+# ids allowed to drive agents; others → read-only
+COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop
+# only if the proxy does NOT forward the public Host
+# COLLIE_ALLOWED_ORIGINS=https://collie.example.com
 # REQUIRED unless the proxy forwards a Host Collie already knows: loopback, a
 # discovered Tailscale host, or an allowed origin's host
 # COLLIE_PUBLIC_HOSTS=collie.example.com
-# COLLIE_ALLOW_ANY_HOST=1                   # opt out of Host validation entirely (re-opens DNS rebinding)
-# COLLIE_TRUSTED_USER still composes on top if your ingress also injects Tailscale-User-Login
-# COLLIE_TRUSTED_USER_OPTIONAL=1            # accept a request carrying no Tailscale-User-Login at all
+# opt out of Host validation entirely (re-opens DNS rebinding)
+# COLLIE_ALLOW_ANY_HOST=1
+# COLLIE_TRUSTED_USER still composes on top if your ingress also injects
+# Tailscale-User-Login
+# accept a request carrying no Tailscale-User-Login at all
+# COLLIE_TRUSTED_USER_OPTIONAL=1
 ```
 
 Proxy requirements:
@@ -100,15 +105,21 @@ collie.example.com {
 Collie configuration (`.env`):
 
 ```bash
-COLLIE_SKIP_SERVE=1                                 # proxy is ingress; never run tailscale serve
-COLLIE_PUBLIC_HOSTS=collie.example.com              # REQUIRED — Host validation fails closed, and
-                                                    # `collie start` discovers no tailnet name here
-# COLLIE_ALLOW_ANY_HOST=1                           # opt out of Host validation (re-opens DNS rebinding)
-COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact public origin for the same-origin gate
+# proxy is ingress; never run tailscale serve
+COLLIE_SKIP_SERVE=1
+# REQUIRED — Host validation fails closed, and `collie start` discovers no
+# tailnet name here
+COLLIE_PUBLIC_HOSTS=collie.example.com
+# opt out of Host validation (re-opens DNS rebinding)
+# COLLIE_ALLOW_ANY_HOST=1
+# exact public origin for the same-origin gate
+COLLIE_ALLOWED_ORIGINS=https://collie.example.com
 COLLIE_DEVICE_HEADER=X-Device-Id                    # the header your proxy injects…
-COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop          # …and the ids allowed to drive; others → read-only
-# COLLIE_PUBLIC_URL=https://collie.example.com      # optional — status banner, `collie qr`, and the
-                                                    # address a lead hands joining machines (pack)
+# …and the ids allowed to drive; others → read-only
+COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop
+# optional — status banner, `collie qr`, and the address a lead hands
+# joining machines (pack)
+# COLLIE_PUBLIC_URL=https://collie.example.com
 ```
 
 `COLLIE_TRUSTED_USER` has no effect without Tailscale. Per-device headers or the proxy's own auth
@@ -193,15 +204,19 @@ acls:
 Collie configuration (`.env`):
 
 ```bash
-COLLIE_SERVE_MODE=http                                # proxy terminates TLS; this hop is tailnet-internal
+# proxy terminates TLS; this hop is tailnet-internal
+COLLIE_SERVE_MODE=http
 COLLIE_HOST=127.0.0.1                                 # keep loopback (default)
-COLLIE_DEVICE_HEADER=X-Tailnet-Device                 # header your forward-auth injects — REQUIRED here
-COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop            # ids allowed to drive; others + header-less → read-only
-COLLIE_PUBLIC_HOSTS=host:8787,host.your-tailnet.ts.net:8787   # REQUIRED — the Host the proxy forwards.
-                                                      # COLLIE_TAILSCALE_HOSTS carries the bare tailnet
-                                                      # name `collie start` found; a rewritten Host is
-                                                      # yours to list. COLLIE_ALLOW_ANY_HOST=1 opts out.
-COLLIE_ALLOWED_ORIGINS=https://collie.example.com     # the public origin the browser actually uses
+# header your forward-auth injects — REQUIRED here
+COLLIE_DEVICE_HEADER=X-Tailnet-Device
+# ids allowed to drive; others + header-less → read-only
+COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop
+# REQUIRED — the Host the proxy forwards. COLLIE_TAILSCALE_HOSTS carries the bare
+# tailnet name `collie start` found; a rewritten Host is yours to list.
+# COLLIE_ALLOW_ANY_HOST=1 opts out.
+COLLIE_PUBLIC_HOSTS=host:8787,host.your-tailnet.ts.net:8787
+# the public origin the browser actually uses
+COLLIE_ALLOWED_ORIGINS=https://collie.example.com
 ```
 
 `COLLIE_TRUSTED_USER` matches the identity of the ingress node, not the end user behind it.
@@ -235,9 +250,11 @@ Collie configuration (`.env`):
 
 ```bash
 COLLIE_SKIP_SERVE=1                                 # never run tailscale serve
-COLLIE_PUBLIC_HOSTS=collie.example.com              # REQUIRED — exact public host; Host validation
-                                                    # fails closed and finds no tailnet name here
-COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # exact public origin for the same-origin gate
+# REQUIRED — exact public host; Host validation fails closed and finds no
+# tailnet name here
+COLLIE_PUBLIC_HOSTS=collie.example.com
+# exact public origin for the same-origin gate
+COLLIE_ALLOWED_ORIGINS=https://collie.example.com
 ```
 
 Rules:
@@ -253,8 +270,10 @@ To host independent instances per user on a shared system ([ADR 0001](../.adr/00
 
 ```bash
 # ~/.config/herdr/plugins/config/herdr.collie/.env — one per Unix user
-COLLIE_PORT=8801                       # this user's loopback bridge port — unique per user
-COLLIE_SERVE_PORT=8443                 # this user's tailnet https listener — unique per user
+# this user's loopback bridge port — unique per user
+COLLIE_PORT=8801
+# this user's tailnet https listener — unique per user
+COLLIE_SERVE_PORT=8443
 COLLIE_TRUSTED_USER=dev-a@example.com  # only this tailnet login may drive these agents
 ```
 

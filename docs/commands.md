@@ -98,7 +98,7 @@ to print output inline. Output from `herdr plugin list --json` reflects the vers
 cache. You can force this with `herdr plugin link "$(pwd)"`. Herdr ≥0.8.0 re-reads the manifest from
 disk on each invocation.
 
-> **`scripts/collie-ctl.sh <verb>` remains supported.** It operates as a bootstrap shim: it locates
+> **Note.** `scripts/collie-ctl.sh <verb>` remains supported. It operates as a bootstrap shim: it locates
 > Bun, compiles `bin/collie` if the checkout lacks it, and passes along argv. A freshly linked clone
 > uses this path to build its initial binary. Herdr actions continue to point to this script because
 > Herdr <0.8.0 freezes the action definitions cached at install time
