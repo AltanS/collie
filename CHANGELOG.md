@@ -28,6 +28,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Changed
 
 - Docs carry phone screenshots of the update flow.
+- The refusal and `collie doctor` now spell the fix as `COLLIE_MUX=<mux> collie start`, and name the file it lands in.
+
+### Fixed
+
+- `COLLIE_MUX=tmux collie start` now writes the choice to `.env`, so the next plain `start` and the supervised unit both see it.
 
 ## [1.5.0] - 2026-09-04
 

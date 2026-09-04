@@ -7,7 +7,7 @@ import { resolveTmuxBinary, tmuxServerArgs, tmuxServerLabel } from "../bridge/mu
 import { ZELLIJ_MUX } from "../bridge/mux/zellij/adapter.ts";
 import { resolveZellijBinary, zellijBinaryCandidates } from "../bridge/mux/zellij/exec.ts";
 import { chooseSession, parseSessionList, ZELLIJ_LIST_SESSIONS_ARGS } from "../bridge/mux/zellij/protocol.ts";
-import { upsertEnvVars, type CliContext, type EnvVars } from "./context.ts";
+import { parseEnvFile, upsertEnvVars, type CliContext, type EnvVars } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
 
@@ -33,10 +33,17 @@ import type { Exec, Files } from "./sys.ts";
 //    be shared: each one has its own CLI.
 //  • **An explicit `COLLIE_MUX` wins outright and the probe never runs.** Not "probes and discards" —
 //    an operator who has chosen is not asked, and pays for nothing.
-//  • **The choice is PERSISTED, on both branches.** A supervised bridge reads its environment from
-//    the config-dir `.env` (`EnvironmentFile=` in the generated unit), so a selection this process
-//    only held in memory would not reach the process it selected for. Auto-selected and picked both
-//    land in the same file the install flow writes.
+//  • **The choice is PERSISTED, on all three branches.** A supervised bridge reads its environment
+//    from the config-dir `.env` (`EnvironmentFile=` in the generated unit), so a selection this
+//    process only held in memory would not reach the process it selected for. Auto-selected, picked
+//    and EXPLICIT all land in the same file the install flow writes, through the same
+//    `upsertEnvVars` write. `COLLIE_MUX=tmux collie start` used to drive tmux for exactly one run
+//    and leave nothing behind, so the next plain `start` asked again and the unit never saw it.
+//    Whether an explicit value came from the shell is read off the `.env` itself rather than
+//    carried on `CliContext`: `loadContext` merges the file OVER the ambient environment, so a name
+//    the merged env has and the file does not can only have come from the shell. `.env` is read
+//    here anyway, to upsert into it. A `.env` that already names one is left alone — it IS where
+//    the merged value came from, and `shadowNotes` has already said so when the shell disagreed.
 
 /** Where this module reaches the world. Satisfied structurally by `LifecycleDeps` and `DoctorDeps`. */
 export interface MuxProbeDeps {
@@ -206,9 +213,15 @@ function hintedMux(found: readonly MuxSighting[], env: CliContext["env"]): MuxSi
   return named.length === 1 ? (named[0] ?? null) : null;
 }
 
-/** What an operator has to type to end the standoff, ready to paste. */
-function fixCommand(mux: string, configDir: string): string {
-  return `printf 'COLLIE_MUX=${mux}\\n' >> ${join(configDir, ".env")} && collie start`;
+/**
+ * What an operator has to type to end the standoff, ready to paste.
+ *
+ * One command, not an append and then a run: `start` now writes an explicit `COLLIE_MUX` down
+ * itself (see the header), so naming the multiplexer on the command line settles it for every later
+ * run too. The file the choice lands in is named in the line above this one, not in the command.
+ */
+function fixCommand(mux: string): string {
+  return `COLLIE_MUX=${mux} collie start`;
 }
 
 /**
@@ -238,13 +251,21 @@ export function refusedMux(
 ): MuxRefusal {
   const placeholder = `<${muxNames(buildMuxRegistry()).join("|")}>`;
   const hint = hintedMux(found, env);
-  const command = fixCommand(hint?.mux ?? placeholder, configDir);
+  const command = fixCommand(hint?.mux ?? placeholder);
+  const envPath = join(configDir, ".env");
   if (found.length === 0) {
     const detail = "no COLLIE_MUX is set, and no multiplexers are running. Collie has nothing to mirror";
     return {
       detail,
       remedy: command,
-      lines: [`${detail}.`, "", "Start a multiplexer or set the variable, then run the command again:", `  ${command}`],
+      lines: [
+        `${detail}.`,
+        "",
+        "Start a multiplexer, or name the one to drive:",
+        `  ${command}`,
+        "",
+        `start writes that name to ${envPath}.`,
+      ],
     };
   }
   const headline =
@@ -263,8 +284,10 @@ export function refusedMux(
       ...rows,
       "",
       ...(hint === null ? [] : [`This instance already sets ${namingVar(hint.mux)}. You probably want ${hint.mux}.`, ""]),
-      "Add this line to your config file, then run the command again:",
+      "Name the one to drive:",
       `  ${command}`,
+      "",
+      `start writes that name to ${envPath}.`,
     ],
   };
 }
@@ -320,8 +343,48 @@ export interface MuxSettleDeps extends MuxChoiceDeps {
 }
 
 /**
+ * The explicit branch's half of the write: a `COLLIE_MUX` the SHELL supplied, put where the next run
+ * and the supervised unit will both find it.
+ *
+ * The shell is identified by absence: `loadContext` merges `.env` over the ambient environment, so a
+ * name in `deps.ctx.env` that the file does not carry came from outside the file. That reading costs
+ * one parse of the text this function already holds for the upsert, which is why it is preferred to a
+ * second field on `CliContext` — every verb constructs that context, and a provenance field carried
+ * past all of them for one branch of one verb is a field that can disagree with the file.
+ *
+ * Nothing is written when the file already names one: `.env` wins the merge, so that value IS what
+ * this run is using, and `shadowNotes` has already reported the shell's differing value.
+ */
+function landExplicit(deps: MuxSettleDeps, mux: string): number {
+  const envPath = join(deps.ctx.configDir, ".env");
+  const text = deps.files.read(envPath) ?? "";
+  const fromFile = parseEnvFile(text);
+  if ((fromFile.COLLIE_MUX ?? "").trim() !== "") return EXIT.OK;
+  // A name this build cannot drive is honoured for the run and NOT written down. The bridge refuses
+  // it at boot and `collie doctor` names the registered ones; freezing the typo into the operator's
+  // file would only add a file they have to edit to get out of it.
+  if (!muxNames(buildMuxRegistry()).includes(mux)) return EXIT.OK;
+  const vars: EnvVars = { COLLIE_MUX: mux };
+  // The endpoint travels with the name, on the same terms: set in the shell, absent from the file.
+  // A choice that only half lands is the bug this branch exists to fix — `COLLIE_MUX` alone would
+  // send the next run at that multiplexer's DEFAULT target rather than the one just driven. Herdr is
+  // the exception, exactly as in {@link muxVars}: its endpoint is `HERDR_SOCKET_PATH`, which Herdr
+  // injects into every action's environment, so pinning it here would outlive Herdr's own answer.
+  const endpointVar = muxEndpointVar(mux);
+  const endpoint = (deps.ctx.env[endpointVar] ?? "").trim();
+  if (mux !== HERDR_MUX && endpoint !== "" && (fromFile[endpointVar] ?? "") === "") vars[endpointVar] = endpoint;
+  deps.files.write(envPath, upsertEnvVars(text, vars), 0o600);
+  const also = vars[endpointVar] === undefined ? "" : ` and ${endpointVar}`;
+  deps.io.out(`took COLLIE_MUX=${mux} from your environment; wrote COLLIE_MUX=${mux}${also} to ${envPath}`);
+  return EXIT.OK;
+}
+
+/**
  * `collie start`'s first-run gate: decide the multiplexer, write it down, and put it in the
  * environment this run will hand the bridge.
+ *
+ * All three deciding branches write. An explicit `COLLIE_MUX` from the shell lands through
+ * {@link landExplicit}; auto and picked land the sighting below. Only the refusal writes nothing.
  *
  * Both halves of the write matter. The `.env` is what a SUPERVISED bridge reads (the generated unit
  * carries `EnvironmentFile=`), and `ctx.env` is what the unsupervised one is spawned with — a
@@ -331,7 +394,7 @@ export interface MuxSettleDeps extends MuxChoiceDeps {
  */
 export async function ensureMuxChosen(deps: MuxSettleDeps): Promise<number> {
   const decision = await chooseMux(deps);
-  if (decision.kind === "explicit") return EXIT.OK;
+  if (decision.kind === "explicit") return landExplicit(deps, decision.mux);
   if (decision.kind === "refused") {
     for (const [index, line] of decision.lines.entries()) {
       deps.io.err(index === 0 ? `error: ${line}` : line === "" ? "" : `       ${line}`);
