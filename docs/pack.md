@@ -67,7 +67,8 @@ manual enrollment or `pack add` for a given host, not both. `pack add` requires 
 on the remote host** and does not support `--insecure`. If the lead uses plaintext HTTP, run
 `collie pack join --insecure` manually on the joining machine.
 
-**Multiplexer selection is local to each node.** Configure `COLLIE_MUX` in the node's `.env` file.
+**Multiplexer selection is local to each node.** Configure `COLLIE_MUX` in that node's own `.env`,
+at `~/.config/collie/.env` on a binary install or in Herdr's plugin config dir on a Herdr install.
 The pack protocol contains no multiplexer-specific fields. Note that peers have only been tested
 with Herdr in v1 ([`PACK_PROTOCOL.md` §16](../PACK_PROTOCOL.md)).
 
@@ -76,7 +77,7 @@ with Herdr in v1 ([`PACK_PROTOCOL.md` §16](../PACK_PROTOCOL.md)).
 | --- | --- |
 | `collie pack invite` | Mint a single-use, 10-minute enrollment token (**on the lead**) |
 | `collie pack add <ssh-host>` | Install and enroll a peer over **your own SSH** (on the lead) |
-| `collie pack update <member>… \| --all` | Preflight every machine, then the lead, then each peer one at a time over **your own SSH**; the first failure stops the run ([above](upgrading.md#updating-the-rest-of-the-pack)) |
+| `collie pack update <member>… \| --all` | Preflight every machine, then the lead, then each peer one at a time over **your own SSH**; the first failure stops the run ([details](upgrading.md#updating-the-rest-of-the-pack)) |
 | `collie pack status` | Mode, members, reachability, secret pickup — and why a link is refused |
 | `collie pack rotate` | Reissue the pack secret and hand it to every reachable peer |
 | `collie pack remove <member>` | Unpin and forget a member (on the lead) |

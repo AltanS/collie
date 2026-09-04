@@ -170,7 +170,8 @@ collie restart       # 2. Collie reads them at start
 ```
 
 The `push-keys` command generates the keypair and writes `COLLIE_VAPID_PUBLIC` and
-`COLLIE_VAPID_PRIVATE` to the active `.env` file with file mode 600.
+`COLLIE_VAPID_PRIVATE` with file mode 600 to the active `.env`, which is `~/.config/collie/.env` on
+a binary install or the one in Herdr's plugin config dir on a Herdr install.
 
 Pass a contact URI as an argument to set the RFC 8292 subject claim:
 

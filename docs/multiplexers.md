@@ -24,7 +24,8 @@ COLLIE_MUX=zellij collie start
 Set the endpoint when the default target is not the one you want:
 
 ```bash
-# in your .env. See Configure for where that file lives.
+# in your .env: ~/.config/collie/.env, or Herdr's plugin config dir on a Herdr
+# install. See Configure for the full precedence.
 COLLIE_MUX=tmux
 COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock
 COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
@@ -93,8 +94,9 @@ reload their configuration, so restart them.
 > `/tmp` rather than a deep directory path.
 
 On tmux versions before 3.7 with `window-size` set to `manual`, creating a window crashes the
-server. Collie blocks window creation in this state. See [Requirements](install.md#requirements) for
-the fix.
+server. Collie blocks window creation in this state and tells you to run
+`tmux set -g window-size latest`; [Requirements](install.md#requirements) lists the tested
+versions.
 
 ### zellij notes
 
@@ -258,9 +260,10 @@ name, the session, and the target pane. Herdr tracks this natively. Setup detail
 [Pointing Collie at a multiplexer](#collie-writes-hooks-into-claudes-own-settings); this section
 explains the mechanism.
 
-The path above references `bin/collie` from the local checkout. A binary install points to the
-installed binary instead, [as described above](#collie-writes-hooks-into-claudes-own-settings). The
-`status` command performs no writes.
+The path above references `bin/collie` from the local checkout. A binary install points to
+`~/.local/bin/collie`, or to `~/.local/share/collie/current/bin/collie` when that name is not
+linked, [as described above](#collie-writes-hooks-into-claudes-own-settings). The `status` command
+performs no writes.
 
 Running `hooks uninstall claude` removes only entries added by Collie. It modifies your *global*
 Claude configuration, not project-level files. This is Linux-only: the liveness check inspects

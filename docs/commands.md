@@ -21,7 +21,7 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **Update** | `collie update` | Stage the newest release of your major, flip to it, restart and verify (`--check` preflights, `--status` reports, `--major` crosses one) |
 | **Rollback** | `collie update --rollback` | Put the previous version back (not on a Herdr-managed checkout, which has none staged) |
 | **Uninstall** | `collie uninstall` | Remove the service; keep `.env` and the install |
-| **Pair** | `collie pair` | Mint a code so a phone can be [paired](security.md#pair-a-device--the-write-credential) |
+| **Pair** | `collie pair` | Print an 8-character code, good for 10 minutes; enter it on the phone under Settings → Paired devices to get it [paired](security.md#pair-a-device--the-write-credential) |
 | **Devices** | `collie devices list` · `collie devices revoke <label>` | List / revoke paired devices |
 | **Link** | `collie link` · `collie unlink` | Put `collie` on your PATH ([below](#put-collie-on-your-path)) |
 | **Logs** | `collie logs` | Tail the journal / log file |
@@ -31,9 +31,11 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 
 The CLI also includes `build`, `serve`, `unserve`, `doctor`, and `pack …` for less frequent tasks.
 
-Both `start` and `status` output the **Collie is running** banner, documented in detail in
-[First run](install.md#first-run--what-youll-see). The reported version reads from the served bundle
-stamp, reflecting the active build.
+Both `start` and `status` output the **Collie is running** banner: a health mark and the version,
+then a `service`, a `local` and a `tailnet` line.
+[First run](install.md#first-run--what-youll-see) shows it in full, including what a failed health
+check prints instead. The reported version reads from the served bundle stamp, reflecting the active
+build.
 
 **Ink or plain text.** The `start`, `status`, `doctor`, `pack add`, and `pack status` commands
 render an interactive terminal UI when stdout is a TTY. Passing `--plain`, or redirecting output to

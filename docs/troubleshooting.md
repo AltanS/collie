@@ -80,8 +80,8 @@ push says it's disabled (the keys never reached the bridge — run `push-keys` a
 them in Settings → notifications); or it reports a send and nothing arrives (the phone is on a
 plain-HTTP origin, which is not a secure context — Settings flags it `insecure`).
 
-**Collie is gone after a reboot.** On Linux this is almost always lingering — see
-[Surviving reboots](upgrading.md#surviving-reboots) for the one command. On macOS the launchd agent starts at
+**Collie is gone after a reboot.** On Linux this is almost always lingering, so run
+`loginctl enable-linger $USER` ([Surviving reboots](upgrading.md#surviving-reboots)). On macOS the launchd agent starts at
 **login**, so check you're actually logged in (not sitting at the login window) and that the agent is
 loaded: `launchctl print gui/$(id -u)/herdr.collie`.
 

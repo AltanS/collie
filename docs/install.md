@@ -67,7 +67,9 @@ To pin a version or rescue an existing install (see
 COLLIE_TAG=v1.0.0 curl -fsSL https://colliepwa.dev/install.sh | sh
 ```
 
-For prereleases, pass `--beta`; see [Prereleases](upgrading.md#prereleases).
+For prereleases, pass `--beta`: it takes the newest prerelease, and the install then tracks that
+major's prereleases until the final release ships
+([Prereleases](upgrading.md#prereleases)).
 
 #### The same result, from source
 
@@ -113,8 +115,9 @@ herdr plugin link "$(pwd)"
 herdr plugin action invoke start --plugin herdr.collie
 ```
 
-Manage via [Herdr actions](commands.md#herdr-actions). For prereleases, see
-[Prereleases](upgrading.md#prereleases).
+Manage via [Herdr actions](commands.md#herdr-actions). For a prerelease, install the tag with
+`herdr plugin install AltanS/collie --ref <tag> --yes`, which is the whole opt-in
+([Prereleases](upgrading.md#prereleases)).
 
 ### Name your multiplexer
 
@@ -178,8 +181,10 @@ tailscale serve (https) → tailnet :443 -> 127.0.0.1:8787
 If the health check fails (`⚠ Collie isn't answering on :8787 yet`), see
 [Troubleshooting](troubleshooting.md#troubleshooting).
 
-`stop` halts the service; `uninstall` removes the service and proxy. System service details are in
-[`ARCHITECTURE.md`](../ARCHITECTURE.md) §3 and [Surviving reboots](upgrading.md#surviving-reboots).
+`stop` halts the service; `uninstall` removes the service and proxy. The bridge runs as a
+`systemd --user` service, a launchd agent on macOS, that starts at login and restarts on failure
+([`ARCHITECTURE.md`](../ARCHITECTURE.md) §3); on Linux `loginctl enable-linger $USER` makes it
+survive a reboot ([Surviving reboots](upgrading.md#surviving-reboots)).
 Configure user access in [Configure](configure.md#configure) and device access via
 [pairing](security.md#pair-a-device--the-write-credential) (`bin/collie pair`).
 
@@ -228,7 +233,8 @@ herdr plugin action invoke update --plugin herdr.collie   # Herdr-managed
 bin/collie update                                         # standalone
 ```
 
-Updates apply to the current major version. For major upgrades, rollbacks, and uninstalling, see
+Updates apply to the current major version; crossing one is `collie update --major`, or the
+`update-major` action on a Herdr-managed install. For that, rollbacks and uninstalling, see
 **[Manage & update](upgrading.md)**.
 
 ---

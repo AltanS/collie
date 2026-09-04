@@ -25,7 +25,8 @@ Key security boundaries and risks:
 - **A single instance exposes all sessions.** By default, one Collie process fronts every
   multiplexer session discovered under your configuration root, including sandbox sessions
   ([Multi-session](configure.md#multi-session)).
-- **Writes are recorded to `<state-dir>/audit.log`.** The server logs all incoming keystrokes,
+- **Writes are recorded to `<state-dir>/audit.log`**, which is `~/.local/state/collie/audit.log`
+  unless `COLLIE_STATE_DIR` moves it. The server logs all incoming keystrokes,
   replies, file uploads, and pane/tab lifecycle events. Note that an audit log provides visibility
   after the fact rather than access control
   ([ARCHITECTURE.md §6](../ARCHITECTURE.md#6-security-model)).
@@ -37,9 +38,10 @@ Key security boundaries and risks:
   default and fails closed; set `COLLIE_ALLOW_ANY_HOST=1` to disable it. Set `COLLIE_TRUSTED_USER`
   to reject requests where the `Tailscale-User-Login` header is missing or does not match (tagged
   nodes do not send this header; use `COLLIE_TRUSTED_USER_OPTIONAL=1` to permit missing headers). To
-  authorize specific hardware, use [pairing](#pair-a-device--the-write-credential) directly, or
-  configure `COLLIE_DEVICE_HEADER` and `COLLIE_DEVICE_ALLOWLIST` if your proxy injects device IDs
-  ([`docs/deployment.md`](deployment.md)).
+  authorize specific hardware, use [pairing](#pair-a-device--the-write-credential) directly, or, if
+  your proxy injects device IDs, set `COLLIE_DEVICE_HEADER` to the name of the header it injects and
+  `COLLIE_DEVICE_ALLOWLIST` to a comma-separated list of the ids allowed to write, every other
+  device staying read-only ([`docs/deployment.md`](deployment.md)).
 
 > 🚫 **Never use `tailscale funnel` with Collie.** Funnel routes traffic to the public internet,
 > whereas `tailscale serve` restricts access to your private tailnet. There is no supported use case

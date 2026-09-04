@@ -30,7 +30,9 @@ COLLIE_HOST=127.0.0.1                       # keep loopback (default)
 COLLIE_DEVICE_HEADER=X-Device-Id            # the header your proxy injects
 COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop  # ids allowed to drive agents; others → read-only
 # COLLIE_ALLOWED_ORIGINS=https://collie.example.com   # only if the proxy does NOT forward the public Host
-# COLLIE_PUBLIC_HOSTS=collie.example.com    # REQUIRED unless the proxy forwards a Host Collie already knows
+# REQUIRED unless the proxy forwards a Host Collie already knows: loopback, a
+# discovered Tailscale host, or an allowed origin's host
+# COLLIE_PUBLIC_HOSTS=collie.example.com
 # COLLIE_ALLOW_ANY_HOST=1                   # opt out of Host validation entirely (re-opens DNS rebinding)
 # COLLIE_TRUSTED_USER still composes on top if your ingress also injects Tailscale-User-Login
 # COLLIE_TRUSTED_USER_OPTIONAL=1            # accept a request carrying no Tailscale-User-Login at all
@@ -290,7 +292,8 @@ Create `~/.config/herdr/plugins/config/herdr.collie-<name>/.env`:
 ```bash
 COLLIE_INSTANCE=<name>        # required — [a-z0-9-], max 16 chars
 COLLIE_PORT=8788              # required for a named instance — no default is inferred
-COLLIE_STATE_DIR=/home/you/.local/state/collie-<name>   # not instance-suffixed by default
+# Unset, this defaults to ~/.local/state/collie, with no instance suffix
+COLLIE_STATE_DIR=/home/you/.local/state/collie-<name>
 ```
 
 `COLLIE_INSTANCE`, `COLLIE_PORT`, and `COLLIE_STATE_DIR` can all reside in that `.env` file. The

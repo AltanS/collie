@@ -146,6 +146,8 @@ page to be skimmed.
 - **One idea per paragraph, about four lines at 80 columns.** A caveat still stays in the same
   sentence as the claim it qualifies. Split the material around it rather than let the paragraph
   grow.
+- **A fact the reader needs now is stated inline**, the default, the path, the command, and the
+  link comes after, for the rest. `see X for where that lives` is the shape to avoid.
 - **Enumerable facts go in a table:** variables, flags, per-multiplexer differences.
 - **A code line fits 90 columns, trailing comment included.** The renderer scrolls, it does not
   wrap, so a long comment goes on its own line above the value.

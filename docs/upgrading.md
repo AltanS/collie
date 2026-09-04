@@ -17,8 +17,11 @@ cd ~/my/collie-checkout        && bin/collie version      # a source build or a 
 Run `bin/collie link` to symlink the binary into `~/.local/bin`
 ([Put `collie` on your PATH](commands.md#put-collie-on-your-path)).
 
-Configuration files (`.env`, `tailscale serve` state, paired devices, `stt.json`) sit outside the
-checkout and persist across updates (`bridge/solo-baseline.test.ts`).
+Configuration and state sit outside the checkout and persist across updates
+(`bridge/solo-baseline.test.ts`). `.env` and the `tailscale serve` record are in the config dir,
+`~/.config/collie` on a binary install or Herdr's plugin config dir on a Herdr install; paired
+devices and `stt.json` are in the state dir, `~/.local/state/collie` unless `COLLIE_STATE_DIR`
+moves it.
 
 ## Update, from the phone or the terminal
 
@@ -215,7 +218,8 @@ herdr plugin action invoke restart --plugin herdr.collie   # reinstall doesn't r
 herdr plugin action invoke version --plugin herdr.collie   # expect 0.23.1 or newer
 ```
 
-Config in the plugin directory is preserved.
+Your config in Herdr's plugin config dir, `~/.config/herdr/plugins/config/herdr.collie` by
+convention, is preserved.
 
 ### Updating the rest of the pack
 
