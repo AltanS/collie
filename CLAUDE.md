@@ -441,6 +441,8 @@ the pre-commit hook; a pure refactor takes the `SKIP_PACK_WIRE_CHECK=1` hatch
 **Code reaches a peer over the operator's own SSH, never over the pack link** — `pack add` installs
 it and `pack update` levels it, both pushing the lead's own commit as a `git bundle`; the link
 carries runtime data and never becomes a distribution channel
-([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md)). How the operator reached a member is
-remembered locally in `pack-ops.json`, which is never a wire field and never merged into the trust
+([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md), addendum 2026-09-04: a peer may also
+level ITSELF to the release its lead is running, fetching that public tag from GitHub over anonymous
+HTTPS on its own decision, which adds no code, route or verb to the link). How the operator
+reached a member is remembered locally in `pack-ops.json`, which is never a wire field and never merged into the trust
 store.

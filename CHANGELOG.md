@@ -27,28 +27,27 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- One confirm on the phone updates a whole pack: the lead first under its own health gate, then each peer, one at a time.
 - Updates page at `/settings/updates`: the check, the update card, a read-only line per pack member, and one action button.
+- One top-of-app update band, replacing the self-update row: release on offer, confirm just tapped, run in flight, new bridge, and peers following.
+- A peer follows its lead: it levels itself to the release its lead is running, taking the exact tag from GitHub over anonymous HTTPS, behind its own preflight, health gate and rollback. The lead grants one turn at a time and states nothing while it is mid-run.
 - Every pack member reports its own update preflight over the link, and `GET /api/update/check` answers with a dated `pack` row per member.
-- The snapshot and `GET /api/update/check` compose the update status from one place, so the band and the Updates page can never disagree about a run.
 - The Updates page and the band report each peer's leg of a pack-wide run: waiting, updating, updated, rolled back or unreachable.
 - `POST /api/update` accepts `peersOnly: true`, the Updates page's "Retry pack update": a new run whose only legs are the peers.
-- Known gap: a lead rolled back by hand after its peers have levelled leaves them ahead of it. No peer is ever stepped down over the pack link; the remedy is `collie pack update <member>` from the lead.
-- A peer follows its lead: it levels itself to the release its lead is running, taking the exact tag from GitHub over anonymous HTTPS, behind its own preflight, health gate and rollback. The lead grants one turn at a time and states nothing while it is mid-run.
 - `collie update --to-tag v<x.y.z>` pins an update to one exact release; it refuses a prerelease, a downgrade and a major crossing. Plumbing, not an operator verb.
 - `collie pack update` prints each member's peer-reported verdict beside its SSH one and names a disagreement.
-- One top-of-app update band, replacing the self-update row: release on offer, confirm just tapped, run in flight, new bridge, and peers following.
+- Known gap: a lead rolled back by hand after its peers have levelled leaves them ahead of it. No peer is ever stepped down over the pack link; the remedy is `collie pack update <member>` from the lead.
 
 ### Changed
 
 - Settings keeps one "Updates" row with a status line and a chevron; the footer update chip and the update card left the page.
 - An update push now opens the Updates page. The wire value is unchanged, so an old service worker still lands on Settings.
+- The snapshot and `GET /api/update/check` compose the update status from one place, so the band and the Updates page can never disagree about a run.
 
 ### Fixed
 
-- Pane detail: dragging the status line strip above the switcher handle no longer scrolls the
-  composer out of view.
-- Tapping a push notification opens the app again on Android; the tap no longer waits on a
-  discarded tab before it may open a window (regression since 1.2.0).
+- Pane detail: dragging the status line strip above the switcher handle no longer scrolls the composer out of view.
+- Tapping a push notification opens the app again on Android; the tap no longer waits on a discarded tab before it may open a window (regression since 1.2.0).
 
 ## [1.4.1] - 2026-09-03
 

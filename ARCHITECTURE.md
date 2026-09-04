@@ -81,7 +81,9 @@ exactly, and pays no tax for the feature ([`PACK_PROTOCOL.md` §11](./PACK_PROTO
   is Collie's own domain model: snapshots, pane grids, replies, history, uploads. What never crosses:
   software. `collie pack add` / `pack update` push a git bundle over the **operator's own ssh**
   ([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md)), so the link is never a distribution
-  channel.
+  channel. A peer may also level itself to the release its lead is running, taking that public tag
+  from GitHub over anonymous HTTPS on its own decision (ADR 0016's addendum,
+  [`PACK_PROTOCOL.md` §20](./PACK_PROTOCOL.md)); still no code, route or verb on the link.
 - **Two independent factors gate `/pack/v1/*`,** before any handler runs: **pinned mutual TLS** and
   the **pack secret** ([`PACK_PROTOCOL.md` §8](./PACK_PROTOCOL.md#8-trust-enrollment-factors-rotation)).
   Neither browser gate of §6 applies there, and a peer publishes nothing — its listener is a path

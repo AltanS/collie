@@ -58,9 +58,10 @@ export function worstVerdict(verdicts: readonly ("green" | "amber" | "red")[]): 
 /**
  * The argv of the preflight the PHONE runs.
  *
- * `--local` is the load-bearing word: the card updates the lead alone (ADR 0016 — a peer is
- * levelled from a terminal), so a peer must never be a reason to refuse the lead's own update, and
- * the member walk runs over the operator's SSH, which a bridge running as a service does not have.
+ * `--local` is the load-bearing word: this is the LEAD's own machine's answer. The pack's half of
+ * the preflight comes from the peers themselves over the pack link (§19, M16/03) and is merged
+ * below, never walked from here — the CLI's member walk runs over the operator's SSH, which a
+ * bridge running as a service does not have.
  */
 export function preflightCommand(binary: string): string[] {
   return [binary, "update", "--check", "--local", "--json"];
