@@ -19,6 +19,7 @@ import {
   packTimeoutBudget,
   packTimeoutClampWarning,
   packUrl,
+  parsePeerVersion,
   sweepPeers,
   takeDataBudget,
   type PackFetch,
@@ -1014,5 +1015,37 @@ describe("PeerClient — every dial is attested (§8.6)", () => {
     const { fetch, calls } = replying({ protocol: 1, member: "laptop" });
     await client(fetch).hello(laptop);
     expect(new Headers(calls[0]!.init.headers).get(DIAL_HEADER)).toBeNull();
+  });
+});
+
+describe("parsePeerVersion — the sweep's version sibling (§5, §19)", () => {
+  test("a carried version is read verbatim, and nothing about it is re-derived", () => {
+    expect(parsePeerVersion({ bridge: {}, version: "1.4.1" })).toBe("1.4.1");
+    // A build stamp and a prerelease tail are that machine's own spelling. They cross untouched.
+    expect(parsePeerVersion({ version: "1.5.0-beta.2+ab12cd3" })).toBe("1.5.0-beta.2+ab12cd3");
+    expect(parsePeerVersion({ version: "  1.4.1  " })).toBe("1.4.1");
+  });
+
+  test("absent means the answer SAID NOTHING — null, so the caller keeps what it had", () => {
+    // A peer older than the 2026-09-04 amendment omits the field on every sweep. Each of these
+    // reads the same way, and `bridge/pack/lead.ts` turns exactly this `null` into "pass no
+    // observation", which is what stops a sweep erasing a version a `hello` already taught.
+    expect(parsePeerVersion({ bridge: {}, agents: [] })).toBeNull();
+    expect(parsePeerVersion({ version: "" })).toBeNull();
+    expect(parsePeerVersion({ version: "   " })).toBeNull();
+    expect(parsePeerVersion({ version: 141 })).toBeNull();
+    expect(parsePeerVersion({ version: null })).toBeNull();
+    expect(parsePeerVersion(["1.4.1"])).toBeNull();
+    expect(parsePeerVersion("1.4.1")).toBeNull();
+    expect(parsePeerVersion(null)).toBeNull();
+  });
+
+  test("it sits BESIDE the other siblings and never reaches for one of them", () => {
+    const answer: JsonValue = {
+      version: "1.4.1",
+      updatePreflight: { verdict: "green", asOf: 1, checks: [] },
+      updateRun: { state: "done", to: "1.4.1", runId: "r-1", reason: null, updatedAt: 2 },
+    };
+    expect(parsePeerVersion(answer)).toBe("1.4.1");
   });
 });

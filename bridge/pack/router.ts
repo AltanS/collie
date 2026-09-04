@@ -11,7 +11,13 @@ import {
   unauthorizedResponse,
   type RefusedFactor,
 } from "./admission.ts";
-import { PACK_PREFLIGHT_FIELD, PACK_RUN_FIELD, type PeerPreflight, type PeerRunReport } from "../update-action.ts";
+import {
+  PACK_PREFLIGHT_FIELD,
+  PACK_RUN_FIELD,
+  PACK_VERSION_FIELD,
+  type PeerPreflight,
+  type PeerRunReport,
+} from "../update-action.ts";
 import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { apiPathFor } from "./forward.ts";
 import { HOST_PARAM } from "./registry.ts";
@@ -352,8 +358,13 @@ export interface PackRouterDeps {
    */
   readonly standby?: StandbySurface;
   /**
-   * This build's own version string, for `hello` (§5, §7.1) — bare, as `collie version` names it
-   * without its parenthetical (`bridge/version.ts`'s `collieVersionBare`).
+   * This build's own version string, for `hello` **and for every `snapshot` answer** (§5, §7.1,
+   * §19) — bare, as `collie version` names it without its parenthetical (`bridge/version.ts`'s
+   * `collieVersionBare`).
+   *
+   * Two routes carry one fact, and that is the 2026-09-04 amendment: the lead's poll dials
+   * `snapshot`, never `hello`, so a version that rides only `hello` is a version the lead learns
+   * only from a verdict probe — which a healthy pack never fires.
    *
    * **Threaded in once, at boot, by whoever constructs the router** (`bridge/index.ts`). It is not
    * read per request: the answer cannot change without a restart, and `hello` is the pack's most
@@ -918,6 +929,14 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // lead's page say "updating" and "rolled back" about a member instead of "still behind".
       const ownRun = deps.updateRun?.() ?? null;
       const withRun = ownRun === null ? withPreflight : { ...withPreflight, [PACK_RUN_FIELD]: ownRun };
+      // §5/§19: this machine's own running version, in that same seat — the 2026-09-04 amendment
+      // §5 itself named as the road ("an additive-optional field on `snapshot`'s response, not a
+      // second dial"). The lead's poll dials `snapshot` and never `hello`, so without this the lead
+      // learns a member's version only from a verdict probe after a sweep has already timed out —
+      // which in steady state is never. Absent ⇒ omitted, which the lead reads as "this answer said
+      // nothing" and keeps what it had; it is never read as "no version".
+      const withVersion =
+        deps.version === undefined ? withRun : { ...withRun, [PACK_VERSION_FIELD]: deps.version };
       // §20's two REQUEST headers, read LAST and answered with nothing. They are additive-optional
       // and absent-means-closed: a build with no `onFollow` ignores both, which is a correct peer,
       // and a peer that reads them still decides for itself. Handed over synchronously and never
@@ -926,7 +945,7 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
         leadRelease: headerValue(req, LEAD_RELEASE_HEADER),
         turn: headerValue(req, UPDATE_TURN_HEADER),
       });
-      return new Response(JSON.stringify(withRun), {
+      return new Response(JSON.stringify(withVersion), {
         status: 200,
         headers: packResponseHeaders(verdict.self),
       });

@@ -67,8 +67,11 @@ export function selectHostFrom(url: URL): HostSelector {
 }
 
 /**
- * What a `hello` observed about a member, folded in beside reachability. Absent from a `record()`
- * call means "this call learned nothing about the version" — see {@link PackRegistry.record}.
+ * What a call observed about a member, folded in beside reachability.
+ *
+ * Two calls carry one: a `hello` (§5) and, since the 2026-09-04 amendment, every `snapshot` answer
+ * that carried the version sibling (§19). Absent from a `record()` call means "this call learned
+ * nothing about the version" — see {@link PackRegistry.record}.
  */
 export interface PeerObservation {
   /** The reported version, or `null` when the member answered without the optional field (§7.1). */
@@ -105,8 +108,14 @@ export interface PeerState {
    */
   readonly reason: string | null;
   /**
-   * The version this member last reported over `hello` (§5), or `null` when it has reported none —
-   * never polled, or a build older than the 2026-08-12 amendment (§7.1).
+   * The version this member last reported — over the sweep's `snapshot` answer (§19, the 2026-09-04
+   * amendment) or over a `hello` (§5) — or `null` when it has reported none: never polled, or a
+   * build older than both amendments (§7.1).
+   *
+   * **The sweep is the one that keeps this current.** The lead's poll dials `snapshot` and never
+   * `hello`, and `hello` is only fired as a verdict probe after a sweep has already timed out
+   * (§10.4), so a version that rode `hello` alone stayed `null` on every healthy pack — which is
+   * what the phone's Updates page rendered and what the turn queue could never see move.
    *
    * **In memory only, and deliberately so.** A version describes a *process*, and a restart is
    * exactly what changes it, so a persisted one would survive the update it is meant to report. It
@@ -252,9 +261,12 @@ export class PackRegistry {
    */
   record(memberId: string, outcome: PeerOutcome<unknown>, observed?: PeerObservation): PeerState {
     const previous = this.peers.get(memberId);
-    // An OBSERVATION is authoritative, including its `null`: only `hello` carries a version (§5), so
-    // most calls pass none and the last one heard stands — but a member that came back on an older
-    // build and reported nothing must read as reporting nothing, not as its remembered version.
+    // An OBSERVATION is authoritative, including its `null`. A call that passes none has learned
+    // nothing about the version and the last one heard stands — that is the sweep's reading of a
+    // `snapshot` answer with no version sibling (§19), which is a peer older than the 2026-09-04
+    // amendment and must not unlearn what a `hello` taught. A call that passes `{ version: null }`
+    // has observed an ABSENCE: a member that came back on an older build and reported nothing over
+    // a route that always asks must read as reporting nothing, not as its remembered version.
     // Absent-means-closed (§7.1) applies to the wire field; here it is "observed nothing" vs
     // "observed absence", and only the second overwrites.
     const version = observed !== undefined ? observed.version : (previous?.version ?? null);

@@ -9,6 +9,7 @@ import type { Warrant } from "./trust-store.ts";
 import { parseCollisionReport, parsePairingReport, type PairingSync } from "./standby-devices.ts";
 import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
+import { PACK_VERSION_FIELD } from "../update-action.ts";
 
 // The LEAD side of a pack link: the client that dials a peer's `/pack/v1/*` surface.
 //
@@ -1019,6 +1020,28 @@ async function readRefusal(res: Response): Promise<{ error: string; code: string
   } catch {
     return null;
   }
+}
+
+/**
+ * Read a member's own running version off the answer its `snapshot` rode on (§5, §19).
+ *
+ * `null` for every shape this build cannot read as a version — absent, blank, not a string — and
+ * `null` means **"this answer said nothing about the version"**, never "this member has none". A
+ * peer older than the 2026-09-04 amendment simply omits the field, and a sweep must not erase what
+ * a `hello` already taught the lead. The caller is what makes that true: it passes a
+ * `PeerObservation` only when this returns non-`null`, and the registry's absent-observation branch
+ * then keeps the previous value (`bridge/pack/lead.ts`, `bridge/pack/registry.ts`).
+ *
+ * Nothing is re-derived here. The string is that machine's own spelling of its own build, passed
+ * through untouched, exactly as `hello`'s is.
+ */
+export function parsePeerVersion(value: JsonValue): string | null {
+  const rec = asRecord(value);
+  if (rec === null) return null;
+  const raw = rec[PACK_VERSION_FIELD];
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed === "" ? null : trimmed;
 }
 
 /**

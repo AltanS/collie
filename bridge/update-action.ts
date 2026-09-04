@@ -285,6 +285,15 @@ export interface PeerRunReport {
 /** The wire name of {@link PeerRunReport}'s field, beside {@link PACK_PREFLIGHT_FIELD} (§20). */
 export const PACK_RUN_FIELD = "updateRun";
 
+/**
+ * The wire name of the member's own running version on `snapshot`'s answer, in the same seat as
+ * {@link PACK_PREFLIGHT_FIELD} and {@link PACK_RUN_FIELD} (§5, §19 — the 2026-09-04 amendment).
+ *
+ * Spelled exactly as `hello` spells it, because it is the same fact: `hello` and `snapshot` are two
+ * places one version crosses one link, and a second spelling would invite a second reading.
+ */
+export const PACK_VERSION_FIELD = "version";
+
 /** How much of a reason crosses the link. A log tail is that machine's own business, not the pack's. */
 export const PACK_RUN_REASON_MAX = 240;
 
