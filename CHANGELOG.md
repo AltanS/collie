@@ -25,6 +25,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Changed
+
+- Docs carry phone screenshots of the update flow.
+
 ## [1.5.0] - 2026-09-04
 
 ### Added
