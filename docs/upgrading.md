@@ -33,6 +33,10 @@ Open **Settings** and select **Updates**. The card displays the running version,
 and the intermediate versions included in the update. If the host is on the newest release, the card
 says so and offers nothing.
 
+![Settings with the Updates row reading Up to date.](images/updates/settings-updates-row.png)
+
+![The Updates page on a host running the newest release.](images/updates/updates-page-up-to-date.png)
+
 Under that sits the preflight, one line per check: `doctor`, `disk`, `bun`, `tree`, `upstream` and
 `service`. On a lead, every pack member is checked too.
 
@@ -83,10 +87,20 @@ There is no per-peer button and no second confirmation prompt. For details, the 
 and the one case the phone cannot fix, see
 [Updating the rest of the pack](#updating-the-rest-of-the-pack).
 
+![The Updates page on a lead, with the preflight per member and one button for the pack.](images/updates/updates-page-pack-available.png)
+
 A band across the top of every screen carries the run: the release on offer, then
 `Starting update…`, `Updating to <version>`, `Updated to <version>. Tap to reload.`, and finally
 `Updating <n> peers: <names>` as the peers follow. A peer that rolled back is named there too, with
-**See Updates.** as the way back to the page.
+**See Updates.** as the way back to the page. The band appears in this sequence:
+
+![The band when a new release is ready to install.](images/updates/band-available.png)
+
+![The band while the update installation runs.](images/updates/band-updating.png)
+
+![The band after the new version answered.](images/updates/band-updated-reload.png)
+
+![The band while the peers update.](images/updates/band-peers.png)
 
 ### From the terminal
 
@@ -225,6 +239,8 @@ Two requirements decide whether a peer can follow at all:
 
 A peer that rolls back says so on the Updates page and does not retry on its own. Two paths give it
 another attempt:
+
+![The Updates page after a peer rollback, with Retry pack update.](images/updates/updates-page-peer-rolled-back.png)
 
 - **From the phone.** Once the lead is current and a peer is behind, the button reads
   **Retry pack update**. It starts a new run whose only legs are the peers, and that new run is what
