@@ -305,6 +305,10 @@ export const handlers = [
   http.get(/\/api\/pane\/[^/]+$/, () =>
     HttpResponse.json({ paneId: "w1:p1", text: paneTextWithDraft(), truncated: false, revision: 1 }),
   ),
+  // Live is opt-in; the default fixture has no OMP companion loaded.
+  http.get(/\/api\/pane\/[^/]+\/live$/, () =>
+    HttpResponse.json({ available: false, phase: "idle", muted: false, transcripts: [] }),
+  ),
   // Pane transcript history. Two turns, newest-anchored, with nothing older behind them.
   http.get(/\/api\/pane\/[^/]+\/history/, () =>
     HttpResponse.json({
