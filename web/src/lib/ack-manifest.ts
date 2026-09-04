@@ -168,6 +168,10 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The mic strip's `transcribing` phase holds while the clip is in flight and the transcript landing in the composer is the outcome; every refusal comes back as a VALUE and is spoken by the composer's onError on the status channel (hooks/use-stt-recorder.ts).",
   },
+  sendLiveCommand: {
+    channel: "inline",
+    why: "A live call's connection, mute state, transcripts, and failures are all facts of the open call sheet; success is visible in that sheet and a standing failure must stay beside Start, Mute, and End.",
+  },
 // `satisfies`, not an annotation: the KEYS stay known to the compiler (so a typo'd name is a type
 // error at any reader, rather than a silent `undefined`), while every entry is still checked against
 // the contract above. An open `Record<string, AckEntry>` annotation would throw that evidence away.

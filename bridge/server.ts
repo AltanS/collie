@@ -52,6 +52,7 @@ import type { PackHandler, PackSurface } from "./pack/router.ts";
 import type { PackTlsOptions } from "./pack/transport.ts";
 import { createSttAdmission, sttCapability, transcribeRequest } from "./stt/http.ts";
 import type { SttProvider } from "./stt/provider.ts";
+import { OmpLiveProxy, liveJson } from "./live/proxy.ts";
 import { MAX_UPLOAD_BYTES, uploadTooLarge } from "./uploads.ts";
 import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, journalAgentOf, toPaneWire } from "./types.ts";
 import type {
@@ -117,7 +118,7 @@ const CONTENT_TYPES = new Map<string, string>([
 // for styles only (the toast library injects a <style> tag) — it can't execute code.
 const CSP =
   "default-src 'self'; connect-src 'self'; img-src 'self' data:; " +
-  "style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self'; " +
+  "style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self'; media-src 'self' blob:; " +
   "manifest-src 'self'; base-uri 'none'; frame-ancestors 'none'";
 
 // Hardening headers set on EVERY response (static + API), applied centrally in the fetch wrapper.
@@ -578,6 +579,7 @@ export function startServer(opts: {
   // One gate per Bun server, not per request: two slow uploads and their two provider calls share
   // the same bounded process-local capacity (bridge/stt/http.ts).
   const sttAdmission = createSttAdmission();
+  const ompLive = new OmpLiveProxy();
   /** Who the requester is, across both device gates — see {@link requestDevice}. */
   const whois = (req: Request): DeviceAuth => requestDevice(req, cfg, pairing);
   const packLead = opts.packLead;
@@ -1079,6 +1081,32 @@ export function startServer(opts: {
         }
         return localRuntime(sessionName, req.headers.get("accept-encoding"));
       };
+
+      const liveMatch = /^\/api\/pane\/([^/]+)\/live$/.exec(pathname);
+      if (liveMatch) {
+        const denied = guard(req, cfg, req.method === "GET" ? "read" : "write", pairing);
+        if (denied) return denied;
+        if (!whois(req).authorized) return text("device not authorised", 403);
+        // Live discovery belongs to this machine. Never resolve a peer's pane against local files.
+        const local = host.kind === "local" ? null : packLead?.resolve(host, sessionName);
+        if (host.kind !== "local" && (!local || local.kind === "peer")) {
+          return secure(liveJson({ ok: false, error: "Open Collie on the OMP host to use Live." }, 501));
+        }
+        const rt = local?.kind === "local" ? local.runtime : localRuntime(sessionName, req.headers.get("accept-encoding"));
+        if (rt instanceof Response) return rt;
+        let paneId: string;
+        try {
+          paneId = decodeURIComponent(liveMatch[1]!);
+        } catch {
+          return secure(liveJson({ ok: false, error: "Invalid pane id" }, 400));
+        }
+        const pane = rt.engine.current().agents.find((candidate) => candidate.paneId === paneId);
+        if (!pane || pane.agent !== "omp") {
+          return secure(liveJson({ ok: false, error: "This pane is not running OMP." }, 404));
+        }
+        rt.engine.noteAttention();
+        return secure(await ompLive.handle(req, pane));
+      }
 
       // ── Live state (polled by the client) ────────────────────────────────
       if (pathname === "/api/snapshot") {
