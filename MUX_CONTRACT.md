@@ -136,7 +136,7 @@ its endpoint names.
 adapter `COLLIE_MUX` names and no other, and the Herdr adapter is the only thing that dials the path
 `HERDR_SOCKET_PATH` resolves to (`bridge/index.ts`). So Herdr need not be installed or running for a
 tmux or zellij collie — the
-[walkthrough](./docs/multiplexers.md#using-the-app-on-tmux-or-zellij) starts one without it.
+[walkthrough](./docs/multiplexers.md#pointing-collie-at-a-multiplexer) starts one without it.
 
 ### What a space and a tab ARE, per multiplexer
 

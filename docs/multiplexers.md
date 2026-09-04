@@ -1,105 +1,104 @@
-# tmux and zellij
+# Multiplexers
 
-Collie drives one multiplexer per install. Herdr is the default. This page covers the other two
-options: how to point Collie at a tmux server or a zellij session, what each backend supports, and
-the beacons Collie uses to detect an agent in a pane.
+Collie drives one multiplexer per install: Herdr, tmux or zellij. Herdr is the default. This page
+covers pointing Collie at any of the three, what each backend can answer, and the beacons Collie
+uses to detect an agent in a pane.
 
-## Using the app on tmux or zellij
+## Pointing Collie at a multiplexer
 
-> **Experimental in 1.0.** tmux and zellij support was tested on **tmux 3.6b** and **zellij 0.44.2**
-> on a single host. Herdr remains the default and primary supported backend. **Testers wanted:**
-> open an issue on [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …` or
-> `zellij: …`. Include your multiplexer, version, OS, and observed behavior (both working and
-> broken).
+> **Experimental in 1.0.** tmux and zellij were tested on **tmux 3.6b** and **zellij 0.44.2**, on a
+> single host. Herdr is the default and the primary supported backend. **Testers wanted:** open an
+> issue on [AltanS/collie](https://github.com/AltanS/collie/issues/new) titled `tmux: …` or
+> `zellij: …`, with your multiplexer, version, OS, and what you saw.
 
-Collie drives **one** multiplexer per install, configured by `COLLIE_MUX`. If unset on the first
-run, `start` probes for Herdr, tmux, and zellij, prompts for a selection, and writes the choice to
-`.env`. The walkthroughs below cover setting up `.env` to list your windows on the dashboard. For
-the full configuration reference, see
-[`MUX_CONTRACT.md` → Pointing a collie at a multiplexer](../MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer).
-
-**Herdr is not required in this mode.** When using `COLLIE_MUX=tmux` or `COLLIE_MUX=zellij`, the
-bridge loads only the selected adapter and ignores Herdr's socket. Multi-session discovery across
-Herdr config roots is disabled (`bridge/index.ts`). You do not need Herdr installed or running. Run
-Collie directly from the repository with `scripts/collie-ctl.sh start`. In this setup, `.env`
-resides in `~/.config/collie/` instead of the plugin configuration directory.
-
-### Pointing Collie at tmux
+Name the multiplexer on the command line:
 
 ```bash
-# in your .env — see Configure for where that file lives
-COLLIE_MUX=tmux
+COLLIE_MUX=herdr collie start
+COLLIE_MUX=tmux collie start
+COLLIE_MUX=zellij collie start
+```
+
+Set the endpoint when the default target is not the one you want:
+
+```bash
+# in your .env. See Configure for where that file lives.
+COLLIE_MUX=tmux                                           # herdr, tmux or zellij
+
+# tmux: which server
 COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock  # a socket PATH (tmux -S), because it has a /
 # COLLIE_MUX_ENDPOINT_TMUX=work                           # a socket NAME (tmux -L work), no /
 # COLLIE_MUX_ENDPOINT_TMUX=                               # empty: tmux's own default server
 # COLLIE_TMUX_BIN=/usr/bin/tmux                           # only if tmux sits somewhere unusual
-```
 
-`COLLIE_TMUX_BIN` is usually left unset. Collie checks a list of standard paths and deliberately
-avoids reading `PATH`, which background services and Herdr actions do not share with login shells.
-**Keep socket paths short.** Unix domain sockets longer than roughly 100 characters fail to connect,
-causing tmux to return `error connecting to … (File name too long)`. Use `/run/user/<uid>/` or
-`/tmp` rather than a deep directory path.
-
-Note: on tmux versions before 3.7 with `window-size` set to `manual`, creating a window crashes the
-server. Collie blocks window creation in this state. See [Requirements](install.md#requirements) for
-the fix.
-
-Setup steps:
-
-1. **Restart after editing `.env`:** `collie restart`.
-2. **Install the beacon hooks:** run `collie hooks install claude` once per host. Without hooks,
-   panes appear as generic shells named `bash`. This command updates your global
-   `~/.claude/settings.json` and leaves project configs untouched
-   ([details below](#collie-writes-hooks-into-claudes-own-settings)).
-3. **Start an agent in a visible window:** relaunch existing Claude instances so they pick up the
-   new hooks:
-
-```bash
-tmux -S /run/user/1000/collie-tmux.sock new-window -n claude
-# in that window
-claude
-```
-
-### Pointing Collie at zellij
-
-```bash
-# in your .env
-COLLIE_MUX=zellij
+# zellij: which session
 COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij                  # a session NAME, not a path
 # COLLIE_MUX_ENDPOINT_ZELLIJ=                             # empty: the single running session
 # COLLIE_ZELLIJ_BIN=/home/you/.local/bin/zellij           # only if zellij sits somewhere unusual
+
+# herdr: the socket is HERDR_SOCKET_PATH, not a COLLIE_MUX_ENDPOINT_ variable
 ```
+
+Then restart, install the beacon hooks, and start an agent where the phone can see it:
+
+```bash
+collie restart                                                 # after every .env edit
+collie hooks install claude                                    # once per host, tmux and zellij only
+
+tmux -S /run/user/1000/collie-tmux.sock new-window -n claude   # tmux
+zellij --session collie-zellij action new-tab --name claude    # zellij
+
+claude                                                         # in that window or tab
+```
+
+### What those commands did
+
+`COLLIE_MUX` on the command line sets the choice for that run and for every later run. `start`
+writes the name to `.env`, so running `collie start` later drives the same multiplexer. With
+`COLLIE_MUX` unset, `start` probes for Herdr, tmux, and zellij, prompts for a backend, and writes
+the answer to `.env`. For the full configuration reference, see
+[`MUX_CONTRACT.md` → Pointing a collie at a multiplexer](../MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer).
+
+`collie hooks install claude` installs Collie's [beacon](#agent-beacons-optional-linux) hooks, which
+tmux and zellij require. They expose panes as generic shells, so without hooks every pane appears as
+`bash`. The command updates `~/.claude/settings.json` and leaves project configs
+untouched ([details below](#collie-writes-hooks-into-claudes-own-settings)). Running Claude
+instances do not reload their configuration, so restart them.
+
+**Herdr is not required in this mode.** With `COLLIE_MUX=tmux` or `COLLIE_MUX=zellij`, the bridge
+loads only the selected adapter and ignores Herdr's socket. Multi-session discovery across Herdr
+config roots is disabled (`bridge/index.ts`). You do not need Herdr installed or running, and `.env`
+lives in `~/.config/collie/` instead of the plugin configuration directory.
+
+### tmux notes
+
+`COLLIE_TMUX_BIN` is usually left unset. Collie checks a list of standard paths and does not read
+`PATH`, which background services and Herdr actions do not share with login shells.
+
+**Keep socket paths short.** Unix domain sockets longer than roughly 100 characters fail to connect,
+and tmux returns `error connecting to … (File name too long)`. Use `/run/user/<uid>/` or
+`/tmp` rather than a deep directory path.
+
+On tmux versions before 3.7 with `window-size` set to `manual`, creating a window crashes the
+server. Collie blocks window creation in this state. See [Requirements](install.md#requirements) for
+the fix.
+
+### zellij notes
 
 If your distribution lacks zellij packages, download a binary from
 [zellij's GitHub releases](https://github.com/zellij-org/zellij/releases) and place it in your
 `PATH`.
 
-Leaving the endpoint empty defaults to the currently running session. If zero or multiple sessions
-exist, Collie halts with an error rather than selecting one automatically. If a named session exits,
-Collie reports it by name instead of switching to an active one. Zellij relies on `XDG_RUNTIME_DIR`
-to locate sessions; if Collie reports all sessions as exited, ensure the systemd service includes
+Leaving the endpoint empty defaults to the single running session. If zero or multiple sessions
+exist, Collie halts with an error instead of selecting one. If a named session exits,
+Collie reports it by name instead of switching to an active one. Zellij requires `XDG_RUNTIME_DIR`
+to locate sessions; if Collie reports all sessions as exited, verify that the systemd service includes
 this environment variable ([contract](../MUX_CONTRACT.md#pointing-a-collie-at-a-multiplexer)).
 
 **Zellij sessions persist independently of their initial terminal.** Create a session with
 `zellij -s collie-zellij` and detach using `Ctrl o` `d`. On headless hosts,
 `zellij attach --create-background collie-zellij` starts a detached session directly (verified on
-zellij 0.44.2). Collie manages active sessions but does not create or restart them.
-
-Setup steps:
-
-1. **Restart after editing `.env`:** `collie restart`.
-2. **Install the beacon hooks:** run `collie hooks install claude` once per host. Without hooks,
-   panes appear as generic shells named `bash`. This updates global `~/.claude/settings.json`
-   without modifying project settings
-   ([details below](#collie-writes-hooks-into-claudes-own-settings)).
-3. **Start an agent in a visible tab:** restart existing Claude instances to load the hooks:
-
-```bash
-zellij --session collie-zellij action new-tab --name claude
-# in that tab
-claude
-```
+zellij 0.44.2). Collie manages active sessions, but it does not create or restart them.
 
 ### Did it work?
 
@@ -220,7 +219,7 @@ A **beacon** is how an agent identifies itself to Collie. A hook in Claude Code 
 `collie beacon emit`, which writes a file containing the harness name, the session, and the target
 pane. Herdr tracks this natively. Beacons exist for **tmux and zellij**, where a pane otherwise
 appears as a generic shell. Setup details are in
-[Using the app on tmux or zellij](#collie-writes-hooks-into-claudes-own-settings); this section
+[Pointing Collie at a multiplexer](#collie-writes-hooks-into-claudes-own-settings); this section
 explains the mechanism.
 
 ```console

@@ -73,7 +73,7 @@ touchscreen. Collie lets you tap the agent that needs input, type normally, and 
 Collie is for developers running AI agents in a terminal multiplexer who want to resume sessions
 from a phone. Herdr is the primary supported target in 1.0. Support for **tmux and zellij is
 experimental**: both run, but testing is limited to a single operator on one machine. If you use
-either, [bug reports are welcome](./docs/multiplexers.md#using-the-app-on-tmux-or-zellij), including
+either, [bug reports are welcome](./docs/multiplexers.md#pointing-collie-at-a-multiplexer), including
 reports of working setups.
 
 The setup assumes a **[Tailscale](https://tailscale.com) tailnet**. Your phone and host must share a
@@ -120,7 +120,7 @@ requirements table, and what the initial run writes to the host.
 | [**Configure**](./docs/configure.md) | The `.env`, your own slash commands, keys, quick replies and typefaces; appearance, Zen mode, language |
 | [**Deployment**](./docs/deployment.md) | Front doors other than the default: an identity-aware proxy, a reverse proxy with no Tailscale, an off-host ingress, several Collies on one host (one per user, or several instances for one user), and a pack's standby door |
 | [**Commands**](./docs/commands.md) | Every `collie` verb, putting `collie` on your PATH, and the Herdr actions that mirror the verbs on a Herdr-managed install |
-| [**tmux and zellij**](./docs/multiplexers.md) | Running Collie without Herdr — both walkthroughs, what each multiplexer can answer, and agent beacons. Experimental in 1.0; bug reports wanted |
+| [**Multiplexers**](./docs/multiplexers.md) | Pointing Collie at Herdr, tmux or zellij, what each backend can answer, and agent beacons. Experimental in 1.0 for tmux and zellij; bug reports wanted |
 | [**Packs**](./docs/pack.md) | Several machines' Collies behind one URL: invite, join, deputy, failover |
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a pack, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
