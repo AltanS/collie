@@ -127,6 +127,32 @@ install** (`scripts/install.sh`'s versioned layout) is not a Herdr plugin and ha
 there the spelling is `collie update` / `collie restart`, and a string that may be read on either
 kind must come from the install kind (`cli/install-kind.ts`), never assume one.
 
+## Docs style (`docs/*.md`, published to colliepwa.dev)
+
+The website re-quotes these pages, so they are read on a phone: the renderer scrolls a code block
+instead of wrapping it, renders a `>` blockquote as a card, and silently drops raw HTML. Write every
+page to be skimmed.
+
+- **Commands before prose.** A section that has something to run opens with the command, then
+  explains it.
+- **One numbered step is one sentence and one command.** A step that needs a code block holds the
+  block indented under it. Explanation past one sentence goes in a paragraph after the list, never
+  inside the step.
+- **A callout is a real blockquote** (`> **Note.**`, `> **Experimental.**`), never a bold sentence
+  buried in a paragraph. The site renders the blockquote as a card; the bold sentence is lost.
+  The site colours the card by its bold lead word: `Note.` blue; `Experimental.`, `Caution.`,
+  `Warning.` amber; `Never`, `Danger.` red; else neutral. A callout needing severity opens with
+  one of these words bold; the phrase may continue (`**Experimental in 1.0.**` keys experimental).
+- **One idea per paragraph, about four lines at 80 columns.** A caveat still stays in the same
+  sentence as the claim it qualifies. Split the material around it rather than let the paragraph
+  grow.
+- **Enumerable facts go in a table:** variables, flags, per-multiplexer differences.
+- **A code line fits 90 columns, trailing comment included.** The renderer scrolls, it does not
+  wrap, so a long comment goes on its own line above the value.
+- **Every `##` opens with a one-line summary**, before any detail.
+- **No raw HTML and no `<details>`.** The site drops both without a word. Tables and blockquotes are
+  safe.
+
 ## Build / run (operational facts that are easy to forget)
 
 - **Every verb is spelled `bin/collie <verb>`** and implemented once, in `cli/`.
