@@ -25,30 +25,32 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-04
+
 ### Added
 
-- One confirm on the phone updates a whole pack: the lead first under its own health gate, then each peer, one at a time.
-- Updates page at `/settings/updates`: the check, the update card, a read-only line per pack member, and one action button.
-- One top-of-app update band, replacing the self-update row: release on offer, confirm just tapped, run in flight, new bridge, and peers following.
-- A peer follows its lead: it levels itself to the release its lead is running, taking the exact tag from GitHub over anonymous HTTPS, behind its own preflight, health gate and rollback. The lead grants one turn at a time and states nothing while it is mid-run.
-- Every pack member reports its own update preflight over the link, and `GET /api/update/check` answers with a dated `pack` row per member.
-- The Updates page and the band report each peer's leg of a pack-wide run: waiting, updating, updated, rolled back or unreachable.
-- `POST /api/update` accepts `peersOnly: true`, the Updates page's "Retry pack update": a new run whose only legs are the peers.
-- `collie update --to-tag v<x.y.z>` pins an update to one exact release; it refuses a prerelease, a downgrade and a major crossing. Plumbing, not an operator verb.
-- `collie pack update` prints each member's peer-reported verdict beside its SSH one and names a disagreement.
-- Known gap: a lead rolled back by hand after its peers have levelled leaves them ahead of it. No peer is ever stepped down over the pack link; the remedy is `collie pack update <member>` from the lead.
+- One confirm on the phone updates a whole pack: the lead first under its own health gate, then each peer, one at a time. ([e4d12af](https://github.com/AltanS/collie/commit/e4d12af))
+- Updates page at `/settings/updates`: the check, the update card, a read-only line per pack member, and one action button. ([9ab65bc](https://github.com/AltanS/collie/commit/9ab65bc))
+- One top-of-app update band, replacing the self-update row: release on offer, confirm just tapped, run in flight, new bridge, and peers following. ([ff4bf25](https://github.com/AltanS/collie/commit/ff4bf25))
+- A peer follows its lead: it levels itself to the release its lead is running, taking the exact tag from GitHub over anonymous HTTPS, behind its own preflight, health gate and rollback. The lead grants one turn at a time and states nothing while it is mid-run. ([0f8c337](https://github.com/AltanS/collie/commit/0f8c337))
+- Every pack member reports its own update preflight over the link, and `GET /api/update/check` answers with a dated `pack` row per member. ([4667c8a](https://github.com/AltanS/collie/commit/4667c8a))
+- The Updates page and the band report each peer's leg of a pack-wide run: waiting, updating, updated, rolled back or unreachable. ([07d305e](https://github.com/AltanS/collie/commit/07d305e))
+- `POST /api/update` accepts `peersOnly: true`, the Updates page's "Retry pack update": a new run whose only legs are the peers. ([bbfa7c1](https://github.com/AltanS/collie/commit/bbfa7c1))
+- `collie update --to-tag v<x.y.z>` pins an update to one exact release; it refuses a prerelease, a downgrade and a major crossing. Plumbing, not an operator verb. ([7c42d2f](https://github.com/AltanS/collie/commit/7c42d2f))
+- `collie pack update` prints each member's peer-reported verdict beside its SSH one and names a disagreement. ([9913b5a](https://github.com/AltanS/collie/commit/9913b5a))
+- Known gap: a lead rolled back by hand after its peers have levelled leaves them ahead of it. No peer is ever stepped down over the pack link; the remedy is `collie pack update <member>` from the lead. ([f61a246](https://github.com/AltanS/collie/commit/f61a246))
 
 ### Changed
 
-- Settings keeps one "Updates" row with a status line and a chevron; the footer update chip and the update card left the page.
-- An update push now opens the Updates page. The wire value is unchanged, so an old service worker still lands on Settings.
-- The snapshot and `GET /api/update/check` compose the update status from one place, so the band and the Updates page can never disagree about a run.
+- Settings keeps one "Updates" row with a status line and a chevron; the footer update chip and the update card left the page. ([9ab65bc](https://github.com/AltanS/collie/commit/9ab65bc))
+- An update push now opens the Updates page. The wire value is unchanged, so an old service worker still lands on Settings. ([9ab65bc](https://github.com/AltanS/collie/commit/9ab65bc))
+- The snapshot and `GET /api/update/check` compose the update status from one place, so the band and the Updates page can never disagree about a run. ([dcaa51d](https://github.com/AltanS/collie/commit/dcaa51d))
 
 ### Fixed
 
-- Pane detail: dragging the status line strip above the switcher handle no longer scrolls the composer out of view.
-- Tapping a push notification opens the app again on Android; the tap no longer waits on a discarded tab before it may open a window (regression since 1.2.0).
-- Every pack member reports its running version on the sweep, so the lead no longer shows a peer's version as blank and a peer that finished updating is marked done and hands on its turn.
+- Pane detail: dragging the status line strip above the switcher handle no longer scrolls the composer out of view. ([7b77d7c](https://github.com/AltanS/collie/commit/7b77d7c))
+- Tapping a push notification opens the app again on Android; the tap no longer waits on a discarded tab before it may open a window (regression since 1.2.0). ([ecee7c2](https://github.com/AltanS/collie/commit/ecee7c2))
+- Every pack member reports its running version on the sweep, so the lead no longer shows a peer's version as blank and a peer that finished updating is marked done and hands on its turn. ([94308d9](https://github.com/AltanS/collie/commit/94308d9))
 
 ## [1.4.1] - 2026-09-03
 
