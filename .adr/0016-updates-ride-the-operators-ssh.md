@@ -5,7 +5,9 @@ Status: **Accepted** (2026-08-15)
 Related: [ADR 0015](./0015-pack-add-pushes-over-the-operators-ssh.md) (the same channel, for the same
 reasons, one verb earlier) · [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (a
 peer listens for its lead and admits nobody else) · contract:
-[`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §7.1, §8.5, §11
+[`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §7.1, §8.5, §11 · narrowed in scope, not reversed, by
+[Addendum — 2026-09-04](#addendum--2026-09-04-peers-follow-and-the-link-still-carries-nothing)
+below (`PACK_PROTOCOL.md` §19, §20)
 
 ## Context
 
@@ -118,3 +120,117 @@ instance writes it never.
 - **Collie graduating from Herdr into a standalone multiplexer** (discussion #67) with a real remote
   protocol of its own. If such a channel exists and is operator-credentialed, this ADR's *mechanism*
   moves onto it; its *rule* — the pack link is not a distribution channel — survives unchanged.
+
+## Addendum — 2026-09-04: peers follow, and the link still carries nothing
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. This addendum records what
+M16 built on top of the decision, and answers the reader who stops at *Alternatives considered* and
+concludes the decision was reversed. It was not.
+
+### 1. What did not change
+
+The pack link carries **no code, no update route, no update verb and no order**. A peer's
+`/pack/v1/*` surface is still exactly what §5 lists, and `X-Pack-Protocol` is still `1`
+(`PACK_PROTOCOL.md` §20). A lead still cannot install anything anywhere. The decision sentence above
+still reads true, word for word: the lead distributes nothing, and a peer's source of code is
+GitHub.
+
+### 2. What is new
+
+A peer reads two additive-optional facts off the sweep its lead already makes: the release the lead
+is itself running and has **settled**, and a read-only turn token. On its own decision, and against
+its own guards, it then fetches that **public release tag** from GitHub over anonymous HTTPS and
+runs the same detached updater, health gate and rollback it runs for `collie update`. The headers
+are `X-Pack-Lead-Release` (`bridge/pack/follow.ts:37`) and `X-Pack-Update-Turn`
+(`bridge/pack/follow.ts:46`); the lead attaches them in `bridge/pack/peer-client.ts:627-629`, the
+peer reads them in `bridge/pack/router.ts:926-927`. The peer answers with an optional `updateRun`
+field beside its snapshot (`bridge/update-action.ts:285`, `bridge/index.ts:1595`), which is a report
+about itself and carries no pid, no log tail and no recovery command.
+
+### 3. The turn is state, not an order
+
+`X-Pack-Update-Turn` carries a member name and an opaque run id, and nothing else: no version, no
+ref, no URL, no command (`bridge/pack/follow.ts:46`, `:85-101`). It is a mutex token with a receipt.
+A peer ignores a turn that does not name itself, so a lead cannot address one peer and have another
+act. And `X-Pack-Lead-Release` can only ever name what the lead is itself running: it is composed
+from the same `collieVersionBare` the lead answers `hello` and `/api/health` with
+(`bridge/pack/follow.ts:68`, `bridge/index.ts:1176`). A lying lead therefore moves a peer onto a
+real Collie release and nowhere else, which is inside the threat model §8.5 already draws.
+
+### 4. Why this is not "a peer that polls the lead for a newer commit"
+
+That alternative is rejected above, and this is the paragraph that says why M16 is not it. Five
+facts, each checkable in the tree:
+
+- **The peer never dials.** It reads a header off a request its lead already made. There is no poll,
+  no client, no schedule, and no address for the lead on the peer's side to call. The headers ride
+  the existing sweep precisely because a running peer never dials its lead (`PACK_PROTOCOL.md` §20).
+- **The header cannot name anything but the lead's own running version.** There is no field in
+  which a lead could express "install this other thing" (`bridge/pack/follow.ts:68`).
+- **Every guard is on the peer.** Release-build-only, strictly-higher, no-major-crossing, a turn
+  naming this member, not-a-tag-already-rolled-back, preflight-green, tag-resolves: all eight are
+  evaluated peer-side (`bridge/pack/follow.ts:149`, `:249`). A lead cannot bypass one, because it never
+  evaluates one.
+- **One attempt per (tag, run id).** A peer that rolled back does not retry inside a run. Only a
+  fresh operator confirm on the phone mints a new run id, and that grants exactly one further
+  attempt (`bridge/pack/follow.ts:191-201`).
+- **One attempt per hour, on the peer.** `FOLLOW_ATTEMPT_INTERVAL_MS`
+  (`bridge/pack/follow.ts:52`) is enforced from the peer's own run record, so it survives that
+  machine's restart. A lead cycling the headers cannot cycle a peer through restarts.
+
+That is the argument, and here is the honest sentence that goes with it. **Adding these two headers
+is a narrowing of this ADR's "no route, no header and no protocol vocabulary" line.** Two headers
+were added. The route and the vocabulary were not, no code crosses the link, and the five facts
+above are why the narrowing is the smaller change. But it is a narrowing, and a reader who is told
+otherwise has no reason to trust the rest of this document.
+
+### 5. The two rejected alternatives, by name
+
+- **"A peer that polls the lead for a newer commit."** Both clauses of the refusal are about a peer
+  pulling **from its lead**: it "needs no compromise of the *lead's* operator at all", and it "turns
+  §7.1's benign skew into an automatic, unsupervised rollout". M16's peer pulls from GitHub, so the
+  lead is not a source of code and compromising it does not distribute one. And the rollout is not
+  unsupervised: it cannot begin without an operator confirm on the lead, and the lead's own settled
+  version bounds where it can go.
+- **"Reusing `collie update` on the peer instead of a bundle push."** Its second reason is answered
+  outright: `collie update --to-tag v<x.y.z>` pins the plan to one exact release
+  (`cli/update.ts:283-296`), so a peer levels to the tag the lead is running and never to a branch
+  tip. Its first reason is not answered, and this addendum will not pretend it is. **M16 assumes a
+  peer can reach `github.com` over HTTPS.** That is the remote-egress assumption ADR 0015 (b)
+  refused, narrowed here to one destination and one artifact kind. A peer that cannot reach GitHub
+  is reported as behind and levelled from the terminal, exactly as *Consequences* above already
+  describes for a peer with no ssh record.
+
+### 6. A third alternative, rejected here for the first time: give the bridge an SSH key or an agent
+
+It is the obvious way to let the phone drive `collie pack update` directly, and it is worse than
+what M16 builds. It puts a **standing shell credential for every peer** on the lead: readable by a
+network-facing, long-lived service, valid for every command on every machine, and still valid after
+the incident that exposed it. Outbound HTTPS to GitHub for a pinned public tag is a strictly smaller
+blast radius: no credential at all, one destination, one artifact kind, and a checksum the peer
+verifies for itself with the mechanism it already had. The argument above for keeping a stolen pack
+secret's worst case at "read the herd" applies here unchanged.
+
+### 7. An accepted gap
+
+A lead **rolled back by hand** after its peers have advanced leaves peers ahead of their lead.
+Nothing steps a peer down over the link, and nothing will: a lead that could move a peer backwards
+is a lead that could move it anywhere, which is the credential this ADR refuses. §7.1 makes the
+resulting skew harmless, and the remedy is `collie pack update <member>` from the lead, over the
+operator's own SSH, exactly as before.
+
+### 8. The sweep is now heartbeat and rollout trigger
+
+§10.1's poll was a liveness and data cadence. It now also carries the fact that starts an install,
+and that is a cost worth naming. The bound on it is one that already existed: `COLLIE_POLL_IDLE_MS`
+is clamped at `min: 1000` (`bridge/config.ts:493`), so no configuration makes a lead sweep faster
+than once a second. Together with the peer's one-attempt-an-hour limit, that is what keeps a rollout
+trigger from becoming a restart amplifier. The lead's turn queue is in-memory only
+(`bridge/pack/follow.ts:402`), so a lead restart re-derives it rather than resuming a turn that
+outlived the process it described.
+
+### 9. What would justify revisiting
+
+Unchanged. Neither trigger above has fired: this is not a fleet of appliances, and Collie has not
+become a standalone multiplexer. Both remain the cases that would move this ADR's mechanism rather
+than its rule.
