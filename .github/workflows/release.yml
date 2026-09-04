@@ -214,18 +214,32 @@ jobs:
           done
           ls -l
 
-      - name: Assemble release notes (CHANGELOG section + update commands)
+      - name: Assemble release notes (update commands + changelog link)
         id: notes
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           notes="$RUNNER_TEMP/notes.md"
-          # This version's CHANGELOG block: everything between its `## [x.y.z]` heading and the next.
-          awk -v ver="$version" '
-            $0 ~ ("^## \\[" ver "\\]") { grab = 1; next }
-            grab && /^## \[/ { exit }
-            grab { print }
-          ' CHANGELOG.md > "$RUNNER_TEMP/changelog.md" || true
+          # CHANGELOG.md is the one record of this release's changes; this step no longer copies its
+          # block in here, it links to the version's own heading instead. GitHub turns a Markdown
+          # heading into an anchor by lowercasing it, dropping brackets and dots, and turning each
+          # remaining space into a hyphen, so `## [1.5.0] - 2026-09-04` becomes `#150---2026-09-04`.
+          # Verified against a live rendered page, not assumed:
+          #   curl -sL https://github.com/$GITHUB_REPOSITORY/blob/v1.5.0/CHANGELOG.md \
+          #     | grep -o 'user-content-150---2026-09-04'
+          # Only the date is read out of the heading line; the anchor is built, not scraped, so this
+          # needs no HTML fetch at release time.
+          heading_line="$(grep -E "^## \[$version\] - [0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md | head -1 || true)"
+          if [ -n "$heading_line" ]; then
+            date="${heading_line##* }"
+            anchor="$(printf '%s' "$version" | tr -d '.')---$date"
+            changelog_link="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md#$anchor"
+          else
+            # Should never happen — the version gate already required this heading to exist — but a
+            # release must never fail over a link. Fall back to the bare file and say so in the log.
+            echo "::warning::CHANGELOG.md has no '## [$version] - YYYY-MM-DD' heading; linking the file without an anchor"
+            changelog_link="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md"
+          fi
           {
             echo "## Update"
             echo
@@ -233,7 +247,9 @@ jobs:
             echo
             # Two spellings, because there are two kinds of install and neither command works on the
             # other: a Herdr-managed checkout has plugin actions, a downloaded binary install has
-            # `collie` on PATH (M14/01 §8).
+            # `collie` on PATH (M14/01 §8). These commands are why this step exists at all: the
+            # phone's update banner (web/src/components/update-banner.tsx) links straight to this
+            # release page, so they must be here, not just in CHANGELOG.md.
             echo '```'
             echo "collie update                                              # downloaded install (install.sh or a tarball below)"
             echo "herdr plugin action invoke update --plugin herdr.collie    # Herdr plugin install"
@@ -246,10 +262,10 @@ jobs:
             # still find this line here (M14/01 §8).
             echo "**Coming from 0.x?** \`collie update\` will not cross a major. Follow [Upgrading from 0.x to 1.0](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/upgrading.md#upgrading-from-0x-to-10)."
             echo
-            if [ -s "$RUNNER_TEMP/changelog.md" ]; then
-              cat "$RUNNER_TEMP/changelog.md"
-              echo
-            fi
+            echo "## What changed"
+            echo
+            echo "Every change in this release, with its commit and who made it: [$version in the changelog]($changelog_link)."
+            echo
             echo "## Verify a download by hand"
             echo
             echo '```'
@@ -273,9 +289,16 @@ jobs:
           # that badge from the shipped release line, so mark it explicitly.
           flags=()
           case "$GITHUB_REF_NAME" in *-*) flags=(--prerelease) ;; esac
+          # `--generate-notes` appends GitHub's own summary — merged PRs with their authors, new
+          # contributors, and the "Full Changelog" compare link — after the notes file's content
+          # rather than replacing it (`gh release create --help`: "Additional release notes can be
+          # prepended to automatically generated notes"). That compare link matters here more than
+          # on most repos: most of Collie's history lands as direct commits, not PRs, so it is the
+          # one place every commit in the release is listed.
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
             --title "Collie $GITHUB_REF_NAME" \
             --notes-file "${{ steps.notes.outputs.file }}" \
+            --generate-notes \
             "$RUNNER_TEMP"/assets/*
 
   # ── Tell the website ───────────────────────────────────────────────────────
