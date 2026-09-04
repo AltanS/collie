@@ -166,7 +166,12 @@ export default defineConfig({
         start_url: "/",
         scope: "/",
         display: "standalone",
-        orientation: "portrait",
+        // Not locked to portrait: the manifest is the only thing that was stopping a tablet from
+        // rotating. The shell is fluid (max-w-full / max-w-screen, no phone-width container) and
+        // use-keyboard.ts already re-baselines the visual viewport on a width change so a portrait
+        // baseline doesn't read as "keyboard open" in landscape. A device with rotation lock on
+        // still stays portrait — this defers to the device instead of overriding it.
+        orientation: "any",
         background_color: "#0a0a0a",
         theme_color: "#0a0a0a",
         icons: [
