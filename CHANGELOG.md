@@ -26,12 +26,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
-- Docs carry phone screenshots of the update flow.
-- The refusal and `collie doctor` now spell the fix as `COLLIE_MUX=<mux> collie start`, and name the file it lands in.
-- `COLLIE_MUX=tmux collie start` now writes the choice to `.env`, so the next plain `start` and the supervised unit both see it.
-- The installed app no longer locks to portrait, so a tablet can run Collie in landscape, thanks @edwinhu (#162); the pane and history screens sit in a centred column above phone width, like every other screen.
-- Release pages link to the version's changelog section instead of copying it, and carry GitHub's generated list of pull requests, contributors and the compare link.
-- `collie pair` prints a QR code beside the code; scanning it opens Settings on the phone with the code filled in.
+## [1.5.1] - 2026-09-04
+
+- Docs carry phone screenshots of the update flow. ([23dfb1a](https://github.com/AltanS/collie/commit/23dfb1a))
+- The refusal and `collie doctor` now spell the fix as `COLLIE_MUX=<mux> collie start`, and name the file it lands in. ([1d458f6](https://github.com/AltanS/collie/commit/1d458f6))
+- `COLLIE_MUX=tmux collie start` now writes the choice to `.env`, so the next plain `start` and the supervised unit both see it. ([1d458f6](https://github.com/AltanS/collie/commit/1d458f6))
+- The installed app no longer locks to portrait, so a tablet can run Collie in landscape, thanks @edwinhu (#162); the pane and history screens sit in a centred column above phone width, like every other screen. ([28255ae](https://github.com/AltanS/collie/commit/28255ae))
+- Release pages link to the version's changelog section instead of copying it, and carry GitHub's generated list of pull requests, contributors and the compare link. ([cd6feaa](https://github.com/AltanS/collie/commit/cd6feaa))
+- `collie pair` prints a QR code beside the code; scanning it opens Settings on the phone with the code filled in. ([8c516b4](https://github.com/AltanS/collie/commit/8c516b4))
 
 ## [1.5.0] - 2026-09-04
 
