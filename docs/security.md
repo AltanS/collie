@@ -73,13 +73,14 @@ question, never carried by a flag or a default. Removing that promise would be a
 ## Pair a device — the write credential
 
 ```bash
-bin/collie pair          # on the host — prints an 8-character code, good for 10 minutes
+bin/collie pair          # on the host — prints an 8-character code and a QR code, good for 10 minutes
 ```
 
 Open Collie on the phone, go to **Settings** → **Paired devices**, and enter the code with a label
-for the device. The phone stores the returned token. Collie keeps only the hash, and the token is
-displayed once. You do not need to restart the process; the running daemon applies pairings and
-revocations on the next request.
+for the device, or scan the QR code printed by the command to open directly to that screen with
+the code already filled in. The phone stores the returned token. Collie keeps only the hash, and
+the token is displayed once. You do not need to restart the process; the running daemon applies
+pairings and revocations on the next request.
 
 The two device gates answer different questions, and you can run either, both, or neither:
 

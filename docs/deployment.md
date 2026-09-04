@@ -360,9 +360,11 @@ It does not fall back to another instance's configuration.
 
 ### Pairing is per instance
 
-`collie pair` writes a pairing code to that instance's state directory. Open that instance's
-specific URL on the phone and enter the code under Settings → Paired devices. A code minted for one
-instance cannot pair a device to any other instance
+`collie pair` writes a pairing code to that instance's state directory. The QR it prints encodes
+that instance's own URL, since each instance has its own state directory and, via
+`COLLIE_PUBLIC_URL` or its own port, its own front door. Open that instance's specific URL on the
+phone and enter the code under Settings → Paired devices. A code minted for one instance cannot
+pair a device to any other instance
 ([Pair a device](security.md#pair-a-device--the-write-credential)).
 
 ---

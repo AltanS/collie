@@ -21,7 +21,7 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **Update** | `collie update` | Stage the newest release of your major, flip to it, restart and verify (`--check` preflights, `--status` reports, `--major` crosses one) |
 | **Rollback** | `collie update --rollback` | Put the previous version back (not on a Herdr-managed checkout, which has none staged) |
 | **Uninstall** | `collie uninstall` | Remove the service; keep `.env` and the install |
-| **Pair** | `collie pair` | Print an 8-character code, good for 10 minutes; enter it on the phone under Settings → Paired devices to get it [paired](security.md#pair-a-device--the-write-credential) |
+| **Pair** | `collie pair` | Print an 8-character code and a QR code, good for 10 minutes; scan the QR code to open Settings → Paired devices with the code filled in, or enter the code manually to get it [paired](security.md#pair-a-device--the-write-credential) |
 | **Devices** | `collie devices list` · `collie devices revoke <label>` | List / revoke paired devices |
 | **Link** | `collie link` · `collie unlink` | Put `collie` on your PATH ([below](#put-collie-on-your-path)) |
 | **Logs** | `collie logs` | Tail the journal / log file |

@@ -12,13 +12,31 @@ import type { DevicesData } from "@/lib/loaders";
 // useLocation() to see whether it is the fragment the read-only strip linked to. Stub both (hoisted
 // so the vi.mock factory can close over them) so the card renders bare, exactly as
 // snooze-control.test.tsx does, and assert they get used.
-const { revalidate, hash } = vi.hoisted(() => ({
+const { revalidate, hash, search, setSearchParams } = vi.hoisted(() => ({
   revalidate: vi.fn(),
   hash: { current: "" },
+  search: { current: "" },
+  setSearchParams: vi.fn(),
 }));
 vi.mock("react-router", () => ({
   useRevalidator: () => ({ revalidate, state: "idle" }),
-  useLocation: () => ({ hash: hash.current, pathname: "/settings", search: "", state: null, key: "t" }),
+  useLocation: () => ({
+    hash: hash.current,
+    pathname: "/settings",
+    search: search.current,
+    state: null,
+    key: "t",
+  }),
+  // The QR `collie pair` prints lands on `/settings?pair=<code>#paired-devices`, so the form reads
+  // and then clears that one param. The setter records rather than navigates: what matters is that
+  // the spent code leaves the URL, and that it leaves it by replacing the entry.
+  useSearchParams: () => [
+    new URLSearchParams(search.current),
+    (next: URLSearchParams, opts?: { replace?: boolean }) => {
+      search.current = next.toString() === "" ? "" : `?${next.toString()}`;
+      setSearchParams(next, opts);
+    },
+  ],
 }));
 
 const UNPAIRED: DevicesData = { enforced: false, current: null, devices: [], error: false };
@@ -31,7 +49,9 @@ const PAIRED: DevicesData = {
 
 beforeEach(() => {
   revalidate.mockClear();
+  setSearchParams.mockClear();
   hash.current = "";
+  search.current = "";
 });
 
 describe("PairedDevices — pairing", () => {
@@ -104,6 +124,64 @@ describe("PairedDevices — pairing", () => {
     render(<PairedDevices data={{ ...PAIRED, current: null }} />);
 
     expect(screen.getByLabelText(/pairing code/i)).toBeInTheDocument();
+  });
+});
+
+describe("PairedDevices — arriving from the QR", () => {
+  // `?pair=<code>` is what the QR carries. The code is then already spelled, so the only thing left
+  // to type is the device name — which is where the keyboard should open.
+  test("prefills the code, upper-cased, scrolls the card in and puts focus on the name", () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    // Exactly what the QR carries: the param and NO fragment. `pair` alone has to move the card,
+    // because a fragment would let the browser focus the card and undo this.
+    search.current = "?pair=abcd2345";
+    render(<PairedDevices data={UNPAIRED} />);
+
+    expect(screen.getByLabelText(/pairing code/i)).toHaveValue("ABCD2345");
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(document.activeElement).toBe(screen.getByLabelText(/name for this device/i));
+    scrollIntoView.mockRestore();
+  });
+
+  test("the fragment WITHOUT a code still focuses the card, as the read-only strip needs", () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    hash.current = "#paired-devices";
+    render(<PairedDevices data={UNPAIRED} />);
+
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(document.activeElement).toBe(document.getElementById("paired-devices"));
+    scrollIntoView.mockRestore();
+  });
+
+  test("a URL carrying both still lands on the name field", () => {
+    // Collie never prints this one, but an operator can paste it together by hand. The code is
+    // filled in either way, so the field is still the only thing left to do.
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+    search.current = "?pair=abcd2345";
+    hash.current = "#paired-devices";
+    render(<PairedDevices data={UNPAIRED} />);
+
+    expect(document.activeElement).toBe(screen.getByLabelText(/name for this device/i));
+    scrollIntoView.mockRestore();
+  });
+
+  test("a spent code leaves the URL, so a reload cannot re-offer it", async () => {
+    const user = userEvent.setup();
+    server.use(
+      http.post("/api/pair", () => HttpResponse.json({ token: "tok-secret", label: "my phone" })),
+    );
+    search.current = "?pair=abcd2345";
+    render(<PairedDevices data={UNPAIRED} />);
+
+    await user.type(screen.getByLabelText(/name for this device/i), "my phone");
+    await user.click(screen.getByRole("button", { name: /pair this device/i }));
+
+    await waitFor(() => expect(setSearchParams).toHaveBeenCalled());
+    const [params, opts] = setSearchParams.mock.calls[0]!;
+    expect(params.has("pair")).toBe(false);
+    // Replace, not push: Back must not walk into the dead code either.
+    expect(opts).toEqual({ replace: true });
+    expect(search.current).toBe("");
   });
 });
 

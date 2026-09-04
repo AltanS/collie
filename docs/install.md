@@ -203,8 +203,10 @@ Configure user access in [Configure](configure.md#configure) and device access v
 Open the `tailnet` URL from the banner (retrieve anytime with `bin/collie url` or generate a QR code
 with `bin/collie qr`). Your client must be on the same tailnet.
 
-1. **Pair the device**: Run `bin/collie pair` on the host, then open Settings → Paired devices on
-   the client ([Pair a device](security.md#pair-a-device--the-write-credential)).
+1. **Pair the device**: Run `bin/collie pair` on the host. Scan the printed QR code to open
+   Settings → Paired devices on the client with the code filled in, or open Settings → Paired
+   devices on the client and type the code
+   ([Pair a device](security.md#pair-a-device--the-write-credential)).
 2. **Install PWA**: Tap *Add to Home Screen* in Safari (iOS) or Chrome (Android).
 
 Installing the PWA requires HTTPS; `COLLIE_SERVE_MODE=http` disables service workers, so the phone

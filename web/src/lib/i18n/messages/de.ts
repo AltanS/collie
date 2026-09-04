@@ -91,7 +91,8 @@ export const de: Dictionary = {
   "settings.devices.revoke": "Widerrufen",
   "settings.devices.revokeAria": "{label} widerrufen",
   "settings.devices.pair.title": "Dieses Gerät koppeln",
-  "settings.devices.pair.hint": "{command} auf dem Host ausführen und den ausgegebenen Code eingeben.",
+  "settings.devices.pair.hint":
+    "Führe {command} auf dem Host aus. Scanne dann den ausgegebenen Code oder gib ihn hier ein.",
   "settings.devices.pair.codeLabel": "Kopplungscode",
   "settings.devices.pair.codePlaceholder": "8 Zeichen",
   "settings.devices.pair.nameLabel": "Gerätename",
