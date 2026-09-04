@@ -236,7 +236,12 @@ export function BottomSheet({
           // as raised rather than as a hole; --rule (2.06:1 dark) then draws the edge, because this
           // is a cut between two REGIONS and not a component's own outline (DESIGN.md §4). Light
           // gains the same separation for free: white on rgb(245) instead of rgb(245) on rgb(245).
-          "relative z-10 max-h-[82dvh] w-full overflow-y-auto overscroll-contain rounded-t-md border-t border-rule bg-card shadow-2xl",
+          // `mx-auto w-full max-w-screen-sm`: the panel is content, not chrome, so it stops at the
+          // same 640px column every route's body uses and ui/toast-viewport.tsx already caps its
+          // floating layer at. The BACKDROP above stays `absolute inset-0` — the dim is the whole
+          // screen or it is not a dim. Without this the panel spanned the whole viewport, 1366px on
+          // a landscape 13-inch iPad, for rows that were drawn for a phone.
+          "relative z-10 mx-auto max-h-[82dvh] w-full max-w-screen-sm overflow-y-auto overscroll-contain rounded-t-md border-t border-rule bg-card shadow-2xl",
           // The slide-in entrance plays on a fresh open only. A peek has no entrance (it's tracking
           // the finger, not animating), and a drag that continues into an open gets its own 180ms
           // transform transition above rather than restarting from the keyframe's own 100%.

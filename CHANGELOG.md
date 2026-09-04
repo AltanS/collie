@@ -33,6 +33,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Fixed
 
 - `COLLIE_MUX=tmux collie start` now writes the choice to `.env`, so the next plain `start` and the supervised unit both see it.
+- The installed app no longer locks to portrait, so a tablet can run Collie in landscape, thanks @edwinhu (#162); the pane and history screens sit in a centred column above phone width, like every other screen.
 
 ## [1.5.0] - 2026-09-04
 

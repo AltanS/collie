@@ -36,12 +36,19 @@ import type { Scope } from "@/lib/scope";
 interface HeaderClaim {
   /** Show the stacked identity beside the mark: the "Collie" brand line over the "on <mux>" line. */
   wordmark: boolean;
-  /** `column` = the header is as wide as the route's own `max-w-screen-sm` content column, which is
-   *  what the dashboard, space, Settings and Pack screens have always been; `full` = edge to edge,
-   *  which is what the pane and history screens have always been. Invisible on a phone, where the
-   *  viewport is narrower than the column; on a desktop it is the difference between a 640px rule
-   *  under the header and a 1280px one, so it is a real property of the route and not a default. */
-  width: "column" | "full";
+  /** `column` = the header is as wide as the route's own `max-w-screen-sm` content column (640px),
+   *  which is what the dashboard, space, Settings, Pack and Updates screens have always been;
+   *  `wide` = the same idea one breakpoint out, `max-w-screen-md` (768px), which is what the pane
+   *  and history screens claim — they were `full` until landscape on a tablet showed what that
+   *  costs; `full` = edge to edge, the default, which the unclaimed shell and any route that names
+   *  no width get. Invisible on a portrait phone, where the viewport is narrower than either
+   *  column; on a desktop it is the difference between a 640px rule under the header and a 1280px
+   *  one, so it is a real property of the route and not a default.
+   *
+   *  The pane pair take 768 and not 640 because what sits under them is a terminal mirror: a 640px
+   *  column minus its 16px gutters clips an 80-column mirror. AgentChat's wrapper carries the
+   *  measurement. */
+  width: "column" | "wide" | "full";
   /** The route has taken the whole row (Settings, Pack, and either find bar). The shell then draws
    *  no mark, no caption and no slots — see `RouteHeader`. */
   override: boolean;
@@ -199,6 +206,7 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
           // when it comes back.
           claim.hidden ? "border-transparent" : "border-rule",
           claim.width === "column" && "mx-auto w-full max-w-screen-sm",
+          claim.width === "wide" && "mx-auto w-full max-w-screen-md",
         )}
       >
         {/* The row and the prerelease strip leave TOGETHER, and through `Collapse` — DESIGN.md §1's
@@ -380,9 +388,10 @@ interface RouteHeaderProps {
    *  inside a pane: the breadcrumb in `children` carries the context there, and the mark stands alone
    *  to save width. */
   wordmark?: boolean;
-  /** Whether this route's header is as wide as its `max-w-screen-sm` content column or edge to edge.
-   *  See `HeaderClaim.width`. Defaults to `full`, which is the plainer of the two. */
-  width?: "column" | "full";
+  /** Whether this route's header is as wide as its `max-w-screen-sm` content column (`column`), as
+   *  its `max-w-screen-md` one (`wide` — the pane and history screens), or edge to edge (`full`).
+   *  See `HeaderClaim.width`. Defaults to `full`, which is the plainest of the three. */
+  width?: "column" | "wide" | "full";
 
   /** Route-specific center content — the pane's `space › tab` breadcrumb. Rendered in a `flex-1
    *  min-w-0` region so a long breadcrumb truncates instead of pushing the pill off the row. Empty on

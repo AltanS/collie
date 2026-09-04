@@ -236,4 +236,21 @@ describe("BottomSheet: pull-driven peek", () => {
     expect(panel.className).toMatch(/animate-in/);
     expect(panel.className).toMatch(/slide-in-from-bottom/);
   });
+
+  it("caps the panel at the content column while the backdrop stays the whole screen", () => {
+    // The sheet is the app's only floating layer and it holds ordinary rows, so it stops at the same
+    // 640px every route body uses; ui/toast-viewport.tsx already caps its layer there. Uncapped, the
+    // panel spanned the whole viewport — 1366px on a landscape 13-inch iPad — for rows that were
+    // drawn for a phone. The dim is the exception and must not be capped with it.
+    const { container } = render(
+      <BottomSheet open onClose={vi.fn()} title="Switch pane">
+        body
+      </BottomSheet>,
+    );
+    const panel = container.querySelector<HTMLElement>('div[tabindex="-1"]')!;
+    expect(panel.className).toMatch(/\bmx-auto\b/);
+    expect(panel.className).toMatch(/\bmax-w-screen-sm\b/);
+    const backdrop = container.querySelector<HTMLElement>('button[aria-hidden="true"]');
+    expect(backdrop?.className).toMatch(/\babsolute inset-0\b/);
+  });
 });

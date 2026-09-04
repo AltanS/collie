@@ -166,11 +166,12 @@ export default defineConfig({
         start_url: "/",
         scope: "/",
         display: "standalone",
-        // Not locked to portrait: the manifest is the only thing that was stopping a tablet from
-        // rotating. The shell is fluid (max-w-full / max-w-screen, no phone-width container) and
-        // use-keyboard.ts already re-baselines the visual viewport on a width change so a portrait
-        // baseline doesn't read as "keyboard open" in landscape. A device with rotation lock on
-        // still stays portrait — this defers to the device instead of overriding it.
+        // Not locked to portrait: the manifest was the only thing stopping an installed Collie from
+        // rotating on a tablet. Every route lays out as a centred column rather than a fluid sheet —
+        // 640px on the dashboard, space, Settings, Pack and Updates, 768px on the pane and history
+        // screens above that breakpoint — so a wide viewport gets a real layout and not a stretched
+        // phone. `"any"` defers to the device instead of overriding it, so a tablet held in
+        // landscape with rotation lock on still stays portrait.
         orientation: "any",
         background_color: "#0a0a0a",
         theme_color: "#0a0a0a",

@@ -468,6 +468,8 @@ const PaneRoute = () => (
 const SettingsLikeRoute = () => (
   <HoistedRoute name="settings" width="column" override={<button type="button">Back</button>} />
 );
+// The pane's shape, as a fourth type: `width="wide"` rather than the dashboard's `column`.
+const WideRoute = () => <HoistedRoute name="wide" width="wide" onHome={() => {}} />;
 
 function renderHoisted(initialEntry = "/") {
   const router = createMemoryRouter(
@@ -485,6 +487,7 @@ function renderHoisted(initialEntry = "/") {
           { index: true, element: <DashRoute /> },
           { path: "pane", element: <PaneRoute /> },
           { path: "settings", element: <SettingsLikeRoute /> },
+          { path: "wide", element: <WideRoute /> },
         ],
       },
     ],
@@ -622,6 +625,23 @@ describe("the ONE header — hoisted above the outlet", () => {
     expect(header?.className).not.toContain("max-w-screen-sm");
     await go("/settings");
     expect(header?.className).toContain("max-w-screen-sm");
+  });
+
+  it("gives the wide claim the md column, not the sm one the other routes take", async () => {
+    // The third value, added when the PWA stopped locking to portrait. The pane and history screens
+    // were `full`, which on a 1366px landscape iPad spread a header, two strips, a toolbar and a
+    // composer across the whole width above a ~620px mirror. They claim `wide` now: 768px, one
+    // breakpoint out from the 640px the dashboard uses, because a 640px column minus its gutters
+    // clips an 80-column mirror. The two must not collapse into one class.
+    const { container, go } = renderHoisted();
+    const header = container.querySelector("header");
+    await go("/wide");
+    expect(header?.className).toContain("max-w-screen-md");
+    expect(header?.className).not.toContain("max-w-screen-sm");
+    // …and it is still a centred column rather than the full-bleed `full` the pane used to claim.
+    expect(header?.className).toContain("mx-auto");
+    await go("/pane");
+    expect(header?.className).not.toContain("max-w-screen-md");
   });
 
   it("refuses to render a route header with no host above it", () => {
