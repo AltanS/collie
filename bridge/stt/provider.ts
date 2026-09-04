@@ -54,8 +54,14 @@ export interface SttProvider {
   readonly id: string;
   /** Can this provider serve a request — asked for the capability flag, never with audio in hand. */
   status(): Promise<SttStatus>;
-  /** Transcribe one completed recording. Throws {@link SttError} on every failure. */
-  transcribe(input: SttAudio): Promise<SttResult>;
+  /**
+   * Transcribe one completed recording.
+   *
+   * The optional signal lets an HTTP caller stop waiting when its recording leaves; CLI callers
+   * have no caller signal. Throws {@link SttError} on provider failure and
+   * {@link SttCancelledError} when its caller cancelled.
+   */
+  transcribe(input: SttAudio, signal?: AbortSignal): Promise<SttResult>;
   /**
    * Let go of whatever this provider is holding open — OPTIONAL, and absent on a provider that is
    * nothing but a `fetch`.
@@ -100,4 +106,109 @@ function defaultMessage(kind: SttFailureKind): string {
   if (kind === "oversized") return "the transcription service answered with too much data";
   if (kind === "refused") return "the transcription service refused the recording";
   return "transcription is unavailable";
+}
+
+/** A caller stopped waiting; this is distinct from an upstream provider failure. */
+export class SttCancelledError extends Error {
+  constructor() {
+    super("transcription was cancelled");
+    this.name = "SttCancelledError";
+  }
+}
+
+/** One operation's optional deadline and caller-cancellation lifecycle. */
+export interface SttDeadline {
+  /** The signal cooperative work should receive. */
+  readonly signal: AbortSignal;
+  /** Race work against this lifecycle without taking ownership of the work itself. */
+  wait<T>(work: Promise<T>): Promise<T>;
+  /** Throw the cancellation or deadline error that stopped this lifecycle. */
+  throwIfAborted(): void;
+  /** Release the timer and caller listener once the operation has settled. */
+  close(): void;
+}
+
+/**
+ * Bind caller cancellation and an optional deadline into one operation signal.
+ *
+ * `wait` observes its work even after the lifecycle wins. That matters for shared Codex token
+ * acquisition: cancelling one caller must not cancel the broker's shared promise or leave a later
+ * rejection unobserved.
+ */
+export function createSttDeadline(caller: AbortSignal | undefined, timeoutMs?: number): SttDeadline {
+  const controller = new AbortController();
+  let stopped: "caller" | "timeout" | null = null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let closed = false;
+
+  const stop = (reason: "caller" | "timeout") => {
+    if (stopped !== null) return;
+    stopped = reason;
+    controller.abort();
+  };
+  const onCallerAbort = () => stop("caller");
+  if (caller?.aborted) stop("caller");
+  else caller?.addEventListener("abort", onCallerAbort, { once: true });
+  if (stopped === null && timeoutMs !== undefined) {
+    timer = setTimeout(() => stop("timeout"), timeoutMs);
+  }
+
+  const abortError = (): SttError | SttCancelledError =>
+    stopped === "timeout" ? new SttError("timeout") : new SttCancelledError();
+  const throwIfAborted = (): void => {
+    if (stopped !== null) throw abortError();
+  };
+
+  return {
+    signal: controller.signal,
+    throwIfAborted,
+    wait<T>(work: Promise<T>): Promise<T> {
+      return new Promise<T>((resolve, reject) => {
+        let settled = false;
+        const finish = (): boolean => {
+          if (settled) return false;
+          settled = true;
+          controller.signal.removeEventListener("abort", onAbort);
+          return true;
+        };
+        const onAbort = () => {
+          if (finish()) reject(abortError());
+        };
+
+        // Attach both handlers before looking at cancellation so an already-rejected phase remains
+        // observed even when the caller stopped at the phase boundary.
+        void work.then(
+          (value) => {
+            if (!finish()) return undefined;
+            try {
+              throwIfAborted();
+              resolve(value);
+            } catch (err) {
+              reject(err);
+            }
+            return undefined;
+          },
+          (err) => {
+            if (!finish()) return undefined;
+            try {
+              throwIfAborted();
+            } catch (abort) {
+              reject(abort);
+              return undefined;
+            }
+            reject(err);
+            return undefined;
+          },
+        );
+        controller.signal.addEventListener("abort", onAbort, { once: true });
+        if (controller.signal.aborted) onAbort();
+      });
+    },
+    close(): void {
+      if (closed) return;
+      closed = true;
+      if (timer !== undefined) clearTimeout(timer);
+      caller?.removeEventListener("abort", onCallerAbort);
+    },
+  };
 }

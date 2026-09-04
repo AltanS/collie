@@ -1,6 +1,6 @@
 import { apiError, type ApiErrorDetail, type ErrorCode } from "../error-codes.ts";
 import type { SttCapability } from "../types.ts";
-import { SttError, type SttProvider } from "./provider.ts";
+import { createSttDeadline, SttCancelledError, SttError, type SttProvider } from "./provider.ts";
 
 // ── THE ROUTE'S OWN RULES, AWAY FROM Bun.serve ───────────────────────────────────────────────
 //
@@ -158,24 +158,38 @@ export async function transcribeRequest(
       );
     }
 
+    // Race the provider itself as well as passing its signal. A provider that is slow to notice a
+    // disconnected caller must not pin one of the two admission slots after that caller leaves.
+    const caller = createSttDeadline(req.signal);
     try {
+      caller.throwIfAborted();
       // The caller's own filename never travels: the provider needs an extension, not metadata.
-      const result = await provider.transcribe({
-        audio,
-        mimeType,
-        filename: `recording.${extension}`,
-      });
+      const result = await caller.wait(
+        provider.transcribe(
+          {
+            audio,
+            mimeType,
+            filename: `recording.${extension}`,
+          },
+          req.signal,
+        ),
+      );
       return {
         response: jsonResponse({ ok: true, text: result.text }, 200),
         attempt: { status: 200, outcome: "ok", bytes: audio.byteLength },
       };
     } catch (err) {
+      if (err instanceof SttCancelledError) {
+        return fail(400, "invalid", "stt.unreadable", undefined, audio.byteLength);
+      }
       const kind = err instanceof SttError ? err.kind : "unavailable";
       // A deadline is a 504 because the request is still honestly in progress somewhere; everything
       // else is a 502, the bridge reporting that its upstream did not deliver.
       const status = kind === "timeout" ? 504 : 502;
       const message = err instanceof SttError ? err.message : "transcription is unavailable";
       return fail(status, kind, "stt.provider_failed", { reason: message, kind }, audio.byteLength);
+    } finally {
+      caller.close();
     }
   } finally {
     release();

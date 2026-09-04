@@ -5,7 +5,16 @@ import type { CodexSttSettings, SttWireIdentity } from "./config.ts";
 import { createCodexAuthBroker, type CodexAuthBroker } from "./codex-auth.ts";
 import { jsonRecord, jsonStringField } from "./json.ts";
 import type { FetchFn } from "./openai.ts";
-import { SttError, type SttAudio, type SttProvider, type SttResult, type SttStatus } from "./provider.ts";
+import {
+  createSttDeadline,
+  SttCancelledError,
+  SttError,
+  type SttAudio,
+  type SttDeadline,
+  type SttProvider,
+  type SttResult,
+  type SttStatus,
+} from "./provider.ts";
 import { discardBody, parseTranscript, readCapped } from "./transcript.ts";
 
 // ── THE CODEX PROVIDER ───────────────────────────────────────────────────────────────────────
@@ -39,7 +48,7 @@ import { discardBody, parseTranscript, readCapped } from "./transcript.ts";
 export const CODEX_TRANSCRIBE_URL = "https://chatgpt.com/backend-api/transcribe";
 
 /**
- * The whole-call deadline, headers and body together.
+ * The whole-operation deadline, including auth, one retry, and response cleanup.
  *
  * Two minutes, against openai.ts's one: this endpoint is on the far side of the public internet
  * from a phone-recorded clip, and a slow answer is still an answer worth waiting for.
@@ -102,19 +111,31 @@ export function createCodexSttProvider(settings: CodexSttSettings, deps: CodexSt
       return transport.broker.lastKnown();
     },
 
-    async transcribe(input: SttAudio): Promise<SttResult> {
-      const response = await transport.send(input, settings.wireIdentity);
-      if (isRedirect(response)) {
-        await discardBody(response);
-        throw new SttError("refused", "the Codex transcription endpoint tried to redirect the upload");
+    async transcribe(input: SttAudio, signal?: AbortSignal): Promise<SttResult> {
+      // One lifecycle owns token acquisition, both possible uploads, and every response phase. A
+      // 401 may refresh once, but it never earns a fresh two-minute budget.
+      const deadline = createSttDeadline(signal, transport.timeoutMs);
+      try {
+        const response = await transport.send(input, settings.wireIdentity, deadline);
+        if (isRedirect(response)) {
+          await deadline.wait(discardBody(response));
+          deadline.throwIfAborted();
+          throw new SttError("refused", "the Codex transcription endpoint tried to redirect the upload");
+        }
+        const body = await deadline.wait(readCapped(response, deadline.signal));
+        if (!response.ok) {
+          // The status, and only the status. The body of a ChatGPT error can name the account, the
+          // plan and an internal request id, and none of that belongs in a browser.
+          throw new SttError("refused", codexRefusal(response.status));
+        }
+        return { text: parseTranscript(body) };
+      } catch (err) {
+        deadline.throwIfAborted();
+        if (err instanceof SttError || err instanceof SttCancelledError) throw err;
+        throw new SttError("unavailable", "the Codex transcription endpoint could not be reached");
+      } finally {
+        deadline.close();
       }
-      const body = await readCapped(response);
-      if (!response.ok) {
-        // The status, and only the status. The body of a ChatGPT error can name the account, the
-        // plan and an internal request id, and none of that belongs in a browser.
-        throw new SttError("refused", codexRefusal(response.status));
-      }
-      return { text: parseTranscript(body) };
     },
 
     close(): void {
@@ -141,12 +162,15 @@ export async function probeCodexIdentity(
   deps: CodexSttDeps = {},
 ): Promise<SttWireIdentity> {
   const transport = createTransport(settings, deps);
+  // One probe includes honest identity, its possible refresh, and only then the fallback identity.
+  const deadline = createSttDeadline(undefined, transport.timeoutMs);
   const clip: SttAudio = { audio: silentWavBytes(), mimeType: "audio/wav", filename: "probe.wav" };
   const refusals: string[] = [];
   try {
     for (const identity of IDENTITY_ORDER) {
-      const response = await transport.send(clip, identity);
-      await discardBody(response);
+      const response = await transport.send(clip, identity, deadline);
+      await deadline.wait(discardBody(response));
+      deadline.throwIfAborted();
       if (response.ok && !isRedirect(response)) return identity;
       refusals.push(`${identity} → ${isRedirect(response) ? "a redirect" : codexRefusal(response.status)}`);
     }
@@ -155,6 +179,7 @@ export async function probeCodexIdentity(
       `the Codex transcription endpoint accepted neither identity (${refusals.join("; ")})`,
     );
   } finally {
+    deadline.close();
     // Only kill what this call started. A broker handed in by the caller outlives the probe.
     if (transport.owned) transport.broker.close();
   }
@@ -164,8 +189,10 @@ interface CodexTransport {
   readonly broker: CodexAuthBroker;
   /** True when the broker was built here, and is therefore this transport's to close. */
   readonly owned: boolean;
-  /** One upload, with the single 401 → refresh → retry-once dance around it. */
-  send(input: SttAudio, identity: SttWireIdentity): Promise<Response>;
+  /** The provider-local lifecycle budget, injectable only for hermetic tests. */
+  readonly timeoutMs: number;
+  /** One upload, with the single 401 → refresh → retry-once dance inside one lifecycle. */
+  send(input: SttAudio, identity: SttWireIdentity, deadline: SttDeadline): Promise<Response>;
 }
 
 function createTransport(settings: CodexSttSettings, deps: CodexSttDeps): CodexTransport {
@@ -177,46 +204,52 @@ function createTransport(settings: CodexSttSettings, deps: CodexSttDeps): CodexT
   const timeoutMs = deps.timeoutMs ?? CODEX_TIMEOUT_MS;
   const version = deps.version ?? collieVersionOnce();
 
-  async function once(input: SttAudio, identity: SttWireIdentity, refresh: boolean): Promise<Response> {
-    const { accessToken } = await broker.accessToken(refresh);
-    const form = new FormData();
-    form.append("file", new File([input.audio], input.filename, { type: input.mimeType }));
-
-    const controller = new AbortController();
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, timeoutMs);
+  async function once(
+    input: SttAudio,
+    identity: SttWireIdentity,
+    refresh: boolean,
+    deadline: SttDeadline,
+  ): Promise<Response> {
     try {
-      return await doFetch(CODEX_TRANSCRIBE_URL, {
-        method: "POST",
-        body: form,
-        headers: identityHeaders(identity, accessToken, accountIdFromJwt(accessToken), version),
-        // Manual, not "error": a 3xx has to be READ and refused as a 3xx, because the honest-identity
-        // probe needs to tell "this endpoint bounced me" apart from "the network broke".
-        redirect: "manual",
-        signal: controller.signal,
-      });
+      deadline.throwIfAborted();
+      // Do not abort a shared broker request: another caller may still need the same token. This
+      // lifecycle only stops waiting and continues to observe its eventual result.
+      const { accessToken } = await deadline.wait(broker.accessToken(refresh));
+      deadline.throwIfAborted();
+      const form = new FormData();
+      form.append("file", new File([input.audio], input.filename, { type: input.mimeType }));
+
+      return await deadline.wait(
+        doFetch(CODEX_TRANSCRIBE_URL, {
+          method: "POST",
+          body: form,
+          headers: identityHeaders(identity, accessToken, accountIdFromJwt(accessToken), version),
+          // Manual, not "error": a 3xx has to be READ and refused as a 3xx, because the honest-identity
+          // probe needs to tell "this endpoint bounced me" apart from "the network broke".
+          redirect: "manual",
+          signal: deadline.signal,
+        }),
+      );
     } catch (err) {
-      if (timedOut) throw new SttError("timeout");
-      if (err instanceof SttError) throw err;
+      deadline.throwIfAborted();
+      if (err instanceof SttError || err instanceof SttCancelledError) throw err;
       throw new SttError("unavailable", "the Codex transcription endpoint could not be reached");
-    } finally {
-      clearTimeout(timer);
     }
   }
 
   return {
     broker,
     owned: supplied === undefined,
-    async send(input, identity) {
-      const first = await once(input, identity, false);
+    timeoutMs,
+    async send(input, identity, deadline) {
+      const first = await once(input, identity, false, deadline);
+      deadline.throwIfAborted();
       if (first.status !== 401) return first;
       // A 401 means the borrowed session lapsed mid-flight. Ask Codex to renew it and re-upload
       // ONCE — the recording is already in memory, and a second 401 is a real refusal, not a race.
-      await discardBody(first);
-      return once(input, identity, true);
+      await deadline.wait(discardBody(first));
+      deadline.throwIfAborted();
+      return once(input, identity, true, deadline);
     },
   };
 }

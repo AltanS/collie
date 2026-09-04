@@ -21,14 +21,14 @@ export const MAX_PROVIDER_RESPONSE_BYTES = 256 * 1024;
  * Read through the stream rather than `response.text()` so an endpoint that promises 40 bytes and
  * sends 4 GB is cut off at 256 KiB instead of being buffered whole and measured afterwards.
  */
-export async function readCapped(response: Response): Promise<string> {
+export async function readCapped(response: Response, signal?: AbortSignal): Promise<string> {
   if (response.body === null) return "";
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithSignal(reader, signal);
       if (done) break;
       if (value === undefined) continue;
       total += value.byteLength;
@@ -36,9 +36,8 @@ export async function readCapped(response: Response): Promise<string> {
       chunks.push(value);
     }
   } finally {
-    await reader.cancel().catch(() => {
-      /* the stream is already done or already errored — nothing left to release */
-    });
+    // Cleanup cannot extend a provider operation: a broken source may never settle `cancel()`.
+    cancelReader(reader);
   }
   const joined = new Uint8Array(total);
   let at = 0;
@@ -59,6 +58,56 @@ export async function readCapped(response: Response): Promise<string> {
 export async function discardBody(response: Response): Promise<void> {
   await response.body?.cancel().catch(() => {
     /* already consumed or already errored */
+  });
+}
+
+/** The runtime's reader result without assuming which DOM-lib spelling Bun exposes. */
+type StreamReadResult<T> = Awaited<ReturnType<ReadableStreamDefaultReader<T>["read"]>>;
+
+/** Read one chunk, releasing a stalled reader as soon as the operation signal aborts. */
+function readWithSignal<T>(
+  reader: ReadableStreamDefaultReader<T>,
+  signal: AbortSignal | undefined,
+): Promise<StreamReadResult<T>> {
+  if (signal === undefined) return reader.read();
+  if (signal.aborted) {
+    cancelReader(reader);
+    return Promise.reject(new DOMException("aborted", "AbortError"));
+  }
+
+  const read = reader.read();
+  return new Promise<StreamReadResult<T>>((resolve, reject) => {
+    let settled = false;
+    const finish = (): boolean => {
+      if (settled) return false;
+      settled = true;
+      signal.removeEventListener("abort", onAbort);
+      return true;
+    };
+    const onAbort = () => {
+      if (!finish()) return;
+      cancelReader(reader);
+      reject(new DOMException("aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    if (signal.aborted) onAbort();
+    void read.then(
+      (value) => {
+        if (finish()) resolve(value);
+        return undefined;
+      },
+      (err) => {
+        if (finish()) reject(err);
+        return undefined;
+      },
+    );
+  });
+}
+
+/** Start reader cleanup without letting a non-cooperative source extend the operation. */
+function cancelReader<T>(reader: ReadableStreamDefaultReader<T>): void {
+  void reader.cancel().catch(() => {
+    /* the stream is already done or already errored — nothing left to release */
   });
 }
 
