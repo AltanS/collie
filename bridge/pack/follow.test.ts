@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import type { JsonValue } from "../json.ts";
 import type { PreflightReport } from "../update-action.ts";
 import type { UpdateRun } from "../update-run.ts";
 import { UPDATE_RUN_SCHEMA } from "../update-run.ts";
@@ -19,6 +20,9 @@ import {
   type FollowFacts,
   type TurnMember,
 } from "./follow.ts";
+import { member as fixtureMember, neverProxy } from "./fixtures.ts";
+import { PackLead } from "./lead.ts";
+import { PackRegistry } from "./registry.ts";
 
 // The peer's eight guards and the lead's turn queue, both as data. Nothing here spawns anything:
 // the one detached-updater spawn is a seam, and the preflight subprocess is another, so the whole
@@ -404,5 +408,83 @@ describe("the lead's turn queue", () => {
     expect(text).not.toContain("setTimeout");
     // And the one spawner rule: this module names the command and spawns nothing itself.
     expect(text).not.toContain("Bun.spawn");
+  });
+});
+
+// ── The queue over a REAL sweep (§5, §19, §20) ───────────────────────────────
+//
+// The tests above hand `UpdateTurns` a `TurnMember` directly, so they pin the fold and not the
+// wiring. This one drives a real `PackLead` instead, because the defect was entirely in the wiring:
+// the queue's "the member reports the new version" release could never fire, since the only route
+// that carried a version was `hello` and the sweep does not dial it. A member that had finished
+// updating was therefore never marked done, and its turn was released only by a rollback or by
+// three missed sweeps.
+
+describe("a member's turn ends when its SWEEP reports the target version", () => {
+  const LEAD_NOW = 1_754_000_000_000;
+  const body = { sessions: [], agents: [], shellPanes: [] };
+  const GREEN = { verdict: "green", asOf: 1, checks: [] };
+
+  function sweeping(answer: () => JsonValue) {
+    const roster = [
+      fixtureMember({ memberId: "attic", enrolledAt: 1 }),
+      fixtureMember({ memberId: "basement", enrolledAt: 2 }),
+    ];
+    const turns = new UpdateTurns();
+    const registry = new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => roster });
+    const lead = new PackLead({
+      registry,
+      snapshot: async (link) => ({
+        ok: true,
+        // `basement` is the next in line and stays behind throughout: it is what proves the turn was
+        // handed ON rather than merely dropped.
+        value: link.memberId === "attic" ? answer() : { ...body, version: "1.4.0", updatePreflight: GREEN },
+        status: 200,
+        member: null,
+        receivedAt: LEAD_NOW,
+        date: null,
+      }),
+      proxy: neverProxy,
+      self: { id: "desk", name: "the herd" },
+      now: () => LEAD_NOW,
+      follow: {
+        leadRelease: () => "1.4.1",
+        turns,
+        enrolledAt: (id) => roster.find((m) => m.memberId === id)?.enrolledAt ?? 0,
+      },
+    });
+    return { lead, turns, registry };
+  }
+
+  test("done, released, and handed straight on to the next member in enrolment order", async () => {
+    let running = "1.4.0";
+    const h = sweeping(() => ({ ...body, version: running, updatePreflight: GREEN }));
+    h.turns.begin(RUN_ID, "1.4.1");
+
+    await h.lead.sweep();
+    expect(h.turns.turnFor("attic")).toBe(`attic;${RUN_ID}`);
+    expect(h.turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("waiting");
+
+    // The member restarts onto the target and says so on the very next sweep — no `hello` anywhere.
+    running = "1.4.1";
+    await h.lead.sweep();
+    expect(h.registry.state("attic").version).toBe("1.4.1");
+    const leg = h.turns.peerLegs().find((l) => l.name === "attic");
+    expect(leg?.state).toBe("done");
+    expect(leg?.version).toBe("1.4.1");
+    expect(h.turns.turnFor("attic")).toBeNull();
+    expect(h.turns.turnFor("basement")).toBe(`basement;${RUN_ID}`);
+  });
+
+  test("a member that never reports one stays waiting — the turn is not released by silence", async () => {
+    // The pre-amendment shape, and the defect exactly: the member answers every sweep and the lead
+    // learns nothing, so the leg can never leave `waiting` on a version it was never told.
+    const h = sweeping(() => ({ ...body, updatePreflight: GREEN }));
+    h.turns.begin(RUN_ID, "1.4.1");
+    await h.lead.sweep();
+    await h.lead.sweep();
+    expect(h.registry.state("attic").version).toBeNull();
+    expect(h.turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("waiting");
+    expect(h.turns.turnFor("attic")).toBe(`attic;${RUN_ID}`);
   });
 });

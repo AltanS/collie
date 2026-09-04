@@ -2,7 +2,7 @@ import type { JsonValue } from "../json.ts";
 import type { SnapshotResponse } from "../types.ts";
 import { forwardToPeer, type ForwardDeps, type ForwardTransport } from "./forward.ts";
 import { mergeSnapshot, parsePeerSnapshot, type PeerContribution, type PeerSnapshotBody } from "./merge.ts";
-import { sweepPeers, type PackLink, type PeerOutcome } from "./peer-client.ts";
+import { parsePeerVersion, sweepPeers, type PackLink, type PeerOutcome } from "./peer-client.ts";
 import type { HostResolution, HostSelector, PackRegistry, PeerState } from "./registry.ts";
 import { PAIRING_LABEL_COLLISION } from "./router.ts";
 import {
@@ -316,7 +316,16 @@ export class PackLead {
         const outcome = outcomes.get(link.memberId);
         if (outcome === undefined) continue;
         const memberId = link.memberId;
-        this.deps.registry.record(memberId, outcome);
+        // §5/§19's version sibling, read off the very answer this sweep already has. An OBSERVATION
+        // is passed only when one was actually carried: `parsePeerVersion` answering `null` means
+        // this answer said nothing (a peer older than the amendment, or a body without the field),
+        // and the registry's absent-observation branch then keeps what `hello` last taught it.
+        // Erasing on silence would trade "never learned" for "unlearned once a sweep", which is worse.
+        //
+        // SAFETY: `value` is a peer's HTTP body after `res.json()` — a JsonValue by construction,
+        // the same cast and the same reason as `foldPeerMemory`'s below.
+        const seen = outcome.ok ? parsePeerVersion(outcome.value as JsonValue) : null;
+        this.deps.registry.record(memberId, outcome, seen === null ? undefined : { version: seen });
         // A sweep that died on its OWN clock has learned nothing about the machine (§10.4). Re-ask on
         // the patient budget, off this tick — never awaited, so the strict budget still bounds the
         // poll exactly as §10.1 requires. A refusal, a reset or a DNS failure is skipped: those are

@@ -974,3 +974,57 @@ describe("PackLead — each member's update preflight (§19)", () => {
     expect(asked).toEqual([false, true, false]);
   });
 });
+
+// ── §5/§19 — the member's own running version, banked by the same sweep ──────
+//
+// The defect this closes: a version was banked from `hello` alone, and `hello` is only dialled as a
+// verdict probe after a sweep has timed out (§10.4). A member answering every sweep therefore read
+// `"version": null` forever on `GET /api/update/check`, so the phone showed no peer version and
+// §20's turn queue could never see a member report the new one.
+
+describe("PackLead — each member's running version (§5, §19)", () => {
+  test("ONE sweep, no hello anywhere, and the row carries the version", async () => {
+    // `hello` is deliberately not wired: if the row is right, nothing dialled it.
+    const h = lead([member({ memberId: "laptop" })], () => ok({ ...body, version: "1.4.1" }));
+    await h.lead.sweep();
+    expect(h.registry.state("laptop").version).toBe("1.4.1");
+    expect(h.lead.updateRows()[0]).toEqual({
+      name: "laptop",
+      version: "1.4.1",
+      verdict: "unknown",
+      reasons: ["we could not check laptop"],
+      asOf: null,
+    });
+  });
+
+  test("a sweep that carried none never erases what the lead already knew", async () => {
+    let carry = true;
+    const h = lead([member({ memberId: "laptop" })], () =>
+      carry ? ok({ ...body, version: "1.4.1" }) : ok(body),
+    );
+    await h.lead.sweep();
+    // The member is replaced by a build older than this amendment — it answers, and states nothing.
+    carry = false;
+    await h.lead.sweep();
+    await h.lead.sweep();
+    expect(h.registry.state("laptop").version).toBe("1.4.1");
+  });
+
+  test("a member that moved reports the new version on the very next sweep", async () => {
+    let running = "1.4.1";
+    const h = lead([member({ memberId: "laptop" })], () => ok({ ...body, version: running }));
+    await h.lead.sweep();
+    running = "1.5.0";
+    await h.lead.sweep();
+    expect(h.lead.updateRows()[0]!.version).toBe("1.5.0");
+  });
+
+  test("a failed sweep keeps the last version — stale-never-vanish, exactly as the preflight is", async () => {
+    let answer = true;
+    const h = lead([member({ memberId: "laptop" })], () => (answer ? ok({ ...body, version: "1.4.1" }) : down));
+    await h.lead.sweep();
+    answer = false;
+    await h.lead.sweep();
+    expect(h.lead.updateRows()[0]!.version).toBe("1.4.1");
+  });
+});

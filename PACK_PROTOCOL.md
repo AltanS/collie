@@ -222,9 +222,12 @@ answering build:
   a lead and probes the lead on a peer — so the field rides an exchange that already happens *there*.
   The lead's poll (§10.1) deliberately does **not** dial `hello` — it dials `snapshot`, and gains no
   version leg: N extra round trips per poll to re-learn a fact that changes only on restart would be
-  §10.1's budget spent on nothing. If the running bridge ever needs the version continuously (rather
-  than at probe time), the road is an additive-optional field on `snapshot`'s response, per §7.1's
-  class rule — not a second dial.
+  §10.1's budget spent on nothing. **That road was taken on 2026-09-04, exactly as written here:**
+  the same `version` string now also rides `snapshot`'s response as an additive-optional sibling of
+  the body, per §7.1's class rule and with no second dial. It is registered in §19 ("The running
+  version, in the same seat"), and it is the field the lead's ledger is actually kept current from —
+  a probe fires only after a sweep has timed out (§10.4), so on a healthy pack `hello` is never
+  dialled at all.
 
 - `warrantGeneration` and `warrantRefreshedAt` are **OPTIONAL**, added 2026-08-20 (§18): the warrant
   this member holds, as a monotonic integer and an epoch-millisecond timestamp. **They are sent as a
@@ -2446,6 +2449,38 @@ and `pairingDigest` already occupy (§5, §18.14, §18.17), for the same reason.
 The report is produced by the member's own `collie update --check --local --json`
 (`bridge/update-action.ts`'s `preflightCommand`). **`--local` is unchanged and no SSH is anywhere on
 this path**: a member answers for itself, and never walks anybody else's machines.
+
+### The running version, in the same seat *(added 2026-09-04)*
+
+`GET /pack/v1/snapshot`'s response also carries an optional **`version`** — a bare string, the
+answering member's own running version, spelled exactly as `hello` spells it (§5, the 2026-08-12
+amendment). Same seat as `updatePreflight` and `updateRun`, same reason, same protocol integer:
+`X-Pack-Protocol` stays `1`.
+
+```json
+{ "version": "1.4.1" }
+```
+
+It exists because the ledger it feeds was empty. A member's version was banked from `hello` alone,
+and the lead's poll never dials `hello` — it dials `snapshot`, and fires `hello` only as a verdict
+probe after a sweep has already timed out (§10.4). On a pack whose members answer every sweep, that
+probe never fires, so the lead never learned a version at all: `GET /api/update/check` returned
+`"version": null` for a member that had just answered, the phone's Updates page showed no peer
+version, and §20's turn queue could never see a member *report the new version* — leaving a turn to
+be released only by a rollback or by three missed sweeps, and a member that had finished updating
+never marked done.
+
+- The lead **banks it as an observation, exactly as it banks `hello`'s** — same field, same memory,
+  same `TRUST_STORE_VERSION` of `1` (`bridge/pack/registry.ts`, `PeerState.version`). Two routes
+  report one fact; there is no second reading of it and no second place it is kept.
+- **Absent means "this answer said nothing", and the lead keeps the value it already had.** It is
+  never read as "this member has no version". A member older than this amendment omits the field on
+  every sweep, and erasing on its silence would unlearn what a `hello` had taught — trading "never
+  learned" for "unlearned once a cadence", which is worse.
+- The string is passed through untouched and **never re-derived**. Comparison against a target is
+  §20's business, on the lead's side, from the string the member sent.
+- No new route, no new dial, no new budget. The field rides an answer §10.1 already collects, so a
+  pack of any size pays nothing for it.
 
 ### The header
 

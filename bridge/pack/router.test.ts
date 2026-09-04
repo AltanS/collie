@@ -502,6 +502,42 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
     expect(await (await call(silent, PACK_SNAPSHOT_PATH, { headers: authed }))!.json()).toEqual(body);
   });
 
+  // ── §5/§19 — THE MEMBER'S OWN RUNNING VERSION, IN THAT SAME SEAT ───────────
+  // The lead's poll dials `snapshot` and never `hello`, so this is the only field that keeps the
+  // lead's version ledger current on a pack whose members answer every sweep.
+  test("version rides beside the body on every snapshot answer, and the protocol stays 1", async () => {
+    const h = harness(peerStore());
+    const body = ownSnapshot();
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => body,
+      version: "1.4.1",
+    });
+    const res = (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!;
+    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(await res.json()).toEqual({ ...body, version: "1.4.1" });
+    // The browser's own snapshot is untouched: a pack-only fact never leaks into it.
+    expect(body).toEqual(ownSnapshot());
+  });
+
+  test("version is OMITTED when the bridge was wired none — absent, never an empty string", async () => {
+    const h = harness(peerStore());
+    const body = ownSnapshot();
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => body,
+    });
+    const answered: unknown = await (await call(handler, PACK_SNAPSHOT_PATH, { headers: authed }))!.json();
+    expect(answered).toEqual(body);
+    // SAFETY: `toEqual(body)` above has already established that this is the object body, and
+    // `body` is an object literal — so the value is a non-null object by the line before.
+    expect(Object.hasOwn(answered as object, "version")).toBe(false);
+  });
+
   test("an UNADMITTED caller never reaches the follow headers either", async () => {
     const h = harness(peerStore());
     let seen = 0;

@@ -401,7 +401,7 @@ export interface PackMemberStatus {
   reason?: string;
   /** The lead's receipt time of the last successful call; `0` = never (§10.2). */
   lastSeenAt: number;
-  /** What this member last reported over `hello` (§7.1), when it has reported one. */
+  /** What this member last reported, over the sweep or over `hello` (§7.1, §19), when it has. */
   version?: string;
   /** This member has not picked up the current pack secret (§8.4). False for the lead. */
   secretBehind: boolean;
