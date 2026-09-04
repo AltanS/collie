@@ -22,14 +22,16 @@ checkout and persist across updates (`bridge/solo-baseline.test.ts`).
 
 ## Update, from the phone or the terminal
 
-There are two ways to take a release, and they run the same thing on the host: stage the new
-version beside the old one, flip a symlink, restart, and check that the service answers. The phone
-updates the machine it is talking to. The terminal updates this machine, or a whole pack.
+Two update paths exist, and both run the same steps on each host: stage the new release beside the
+active one, flip the symlink, restart, and check that the service answers. On a pack lead, both
+paths cover the whole pack. The phone is the short path. The terminal is the fallback for a machine
+the phone cannot level.
 
 ### From the phone
 
-Open **Settings**. The **Update Collie** card names the version you are running, the newest release,
-and the versions one update would fold in. On the newest release it says so and offers nothing.
+Open **Settings** and select **Updates**. The card displays the running version, the newest release,
+and the intermediate versions included in the update. If the host is on the newest release, the card
+says so and offers nothing.
 
 Under that sits the preflight, one line per check: `doctor`, `disk`, `bun`, `tree`, `upstream` and
 `service`. On a lead, every pack member is checked too.
@@ -74,8 +76,17 @@ the waiting patches with it. Held releases are folded, never dropped. The card a
 current state regardless of the window. The `updates` notification preference, under Settings →
 notifications ([Web Push](voice-and-push.md#web-push-optional)), is the single off switch.
 
-On a pack lead, the card updates the lead only. The peers are updated from the terminal, and the
-card says so.
+On a pack lead, the button shows **Update pack to `<version>`**, and one confirmation applies to
+every machine. The lead updates first, under its own health gate. Each peer then levels itself to
+the same release, one at a time, using its own preflight, its own health gate and its own rollback.
+There is no per-peer button and no second confirmation prompt. For details, the two recovery paths,
+and the one case the phone cannot fix, see
+[Updating the rest of the pack](#updating-the-rest-of-the-pack).
+
+A band across the top of every screen carries the run: the release on offer, then
+`Starting update…`, `Updating to <version>`, `Updated to <version>. Tap to reload.`, and finally
+`Updating <n> peers: <names>` as the peers follow. A peer that rolled back is named there too, with
+**See Updates.** as the way back to the page.
 
 ### From the terminal
 
@@ -99,8 +110,8 @@ bin/collie update                                            # Standalone
 version, the working tree, the upstream release list and the service unit, and on a lead it asks
 every pack member the same question over your own SSH. It exits 0 unless something is red, and
 `--json` prints a versioned report. Add `--local` to check this instance only and skip the pack
-members: that is what the phone's card runs, because the card updates the lead alone. The pack is
-checked from a terminal.
+members. The phone runs that local check on its own host and reads each peer's line over the pack
+link, so its preflight needs no SSH.
 
 `collie update` fetches the newest release of your current major and stages it. The command then
 hands the swap to a separate updater and exits, because the restart kills the bridge that asked for
@@ -194,29 +205,60 @@ Config in the plugin directory is preserved.
 
 ### Updating the rest of the pack
 
-A pack is updated from the lead, in a terminal. There is no button for it on the phone
-([ADR 0016](../.adr/0016-updates-ride-the-operators-ssh.md)): a phone tap has no
-terminal to answer the one consent question the flow asks before it touches N machines, and that
-question is not something to skip with a flag.
+Update a pack from the phone, with one tap and one confirmation. Open **Settings → Updates** on the
+lead and select **Update pack to `<version>`**. The preflight above the button covers every member,
+not just the lead. If a check is red anywhere, the button is disabled and names the failing machine
+and the reason.
+
+The lead updates first, under its own health gate. Only once it has settled does the first peer
+start. Each peer then levels **itself**: it reads the release its lead is running, fetches that
+exact tag from GitHub, and runs its own preflight, its own health gate and its own rollback. Peers
+move one at a time. The Updates page keeps a line per member: `waiting`, `checking`, `staging`,
+`restarting`, `verifying`, `updated`, `rolled back` or `unreachable`.
+
+Two requirements decide whether a peer can follow at all:
+
+- **A peer needs outbound HTTPS to `github.com`.** That is where its code comes from. Without that
+  access, the peer is reported as behind and is levelled from the terminal instead, below.
+- **A `-dev+` build never follows.** A machine on a development build stays on it, whatever its lead
+  is running.
+
+A peer that rolls back says so on the Updates page and does not retry on its own. Two paths give it
+another attempt:
+
+- **From the phone.** Once the lead is current and a peer is behind, the button reads
+  **Retry pack update**. It starts a new run whose only legs are the peers, and that new run is what
+  grants each of them one more attempt.
+- **From the terminal, on the lead.** Use this for a peer the phone cannot level at all. The command
+  is unchanged:
 
 ```bash
 collie pack update <member>…      # on the lead
 collie pack update --all
 ```
 
-It runs as one sequence over your own SSH. It preflights every machine first, with the same checks
-`collie update --check` runs locally. The phone's card never does this: its own preflight is
-`--local`, the lead alone. Then it updates the lead itself, if the lead is not yet running the
-build it is handing out. Then it takes each peer in turn: the peer is pushed the lead's
-commit as a git bundle, rebuilt, restarted, and polled until it answers the new build within the
-same 30 second budget.
+It runs as one sequence over your own SSH. It preflights every machine first, and prints each peer's
+own report beside the answer it gets over SSH, so a disagreement is explicit rather than averaged.
+It asks for one consent. It then updates the lead itself, if the lead is not yet running the build
+it is handing out. Next it takes each peer in turn: the peer is pushed the lead's commit as a git
+bundle, rebuilt, restarted, and polled until it answers the new build within the same 30 second
+budget.
 
 The first failure stops the run. Every member after it is left untouched and reported as
 "not attempted", and the summary names the one command that clears the failure. A lead that cannot
 take its own update touches no peer at all. Stopping there is safe, because a pack tolerates version
 skew ([PACK_PROTOCOL.md §7.1](../PACK_PROTOCOL.md#71-version-skew-inside-a-protocol-version)), so a
-half-updated pack is a supported state and pressing on is not. Code reaches a peer over your SSH and
-never over the pack link ([ADR 0016](../.adr/0016-updates-ride-the-operators-ssh.md)).
+half-updated pack is a supported state and pressing on is not.
+
+**One case the phone cannot fix.** If you roll the lead back by hand after its peers have levelled,
+the peers are left ahead of their lead. Nothing steps a peer down: a lead that could move a peer
+backwards is a lead that could move it anywhere. The skew is harmless, and the remedy is
+`collie pack update <member>` on the lead.
+
+Code reaches a peer over your SSH and never over the pack link
+([ADR 0016](../.adr/0016-updates-ride-the-operators-ssh.md), addendum 2026-09-04). When a peer
+levels itself, its code comes from GitHub over anonymous HTTPS and the peer decides for itself. The
+lead states only the version it is running and which peer may proceed.
 
 ### If the updater itself dies
 
