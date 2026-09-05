@@ -98,11 +98,25 @@ Two rows matter, and both are 100 columns wide:
   that fill lands near-black: a heavy full-width bar on a phone. The two diff rows beneath it carry
   their own backgrounds and must keep them.
 - the **labelled separator** `─ Worked for 3m 12s ──…`, a short rule, a label, then a rule to the
-  row's end. It is not a pure rule, so blocks.ts leaves it wrapping; the codex adapter clips it.
+  row's end. `blocks.ts` classifies that neutral structural row through shared `StyledLine.noWrap`;
+  the renderer clips it only while wrapping. Codex decoration remains fill-only.
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `codex--submitted-fill-labelled-rule.txt` | Finished turn: the near-white submitted-message row, an assistant line, two coloured diff rows, the labelled `Worked for` rule, then the idle composer and the two-field status row | `idle` |
+
+## Pi 0.85 working editor (reconstructed 2026-09-05)
+
+**Synthetic/sanitized structural reconstruction, not a capture.** Derived from Pi 0.85.0
+`CustomEditor`'s embedded `Working` top-border shape at 94 columns, its ANSI segmentation is
+constructed. It contains no private transcript payload and claims no byte-faithful captured
+provenance: it has a 94-column labelled rule, a 94-space editor row, and a 94-column bottom rule,
+with no final newline. It pins the neutral structural clipping path and raw fallback only; it is not
+evidence for an agent adapter or status grammar.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `pi--v085-working-editor.txt` | Working editor geometry: `── ⠴ Working ` followed by 81 rules, a padded blank editor row, and the bottom border | `working` |
 
 ## Grok corpus (live panes 2026-08-21–23)
 

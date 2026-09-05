@@ -55,7 +55,7 @@ export type { AutocompleteModel, AutocompleteEntry } from "./harness/autocomplet
 /** One visual line: the styled segments that make it up, with the line-terminating "\n" removed. */
 export interface StyledLine {
   segments: AnsiSegment[];
-  /** Keep this known terminal-width border on one visual row when the mirror wraps. */
+  /** Shared structural-clipping marker: keep this terminal-width row on one visual row only while wrapping. */
   noWrap?: true;
 }
 
@@ -192,8 +192,8 @@ export function splitLines(segments: AnsiSegment[]): StyledLine[] {
 }
 
 // A terminal-width horizontal border is visually useless when browser wrapping turns it into several rows.
-// This deliberately accepts only one repeated horizontal rule glyph (apart from terminal padding): labels,
-// mixed rows, corners/tables, prose, and ASCII rules keep the mirror's ordinary wrapping.
+// This deliberately accepts only one repeated horizontal rule glyph (apart from terminal padding): mixed
+// rows, corners/tables, prose, ASCII rules, and labels outside LABELLED_RULE_ROW keep ordinary wrapping.
 //
 // Twenty stands on two facts of its own, and deliberately cites no other threshold. (1) Nothing in prose,
 // markdown or code runs to twenty IDENTICAL rule glyphs, so the classifier cannot fire on real content.
@@ -211,6 +211,22 @@ const PURE_HORIZONTAL_BORDER = new RegExp(
   `^([${PURE_HORIZONTAL_RULE_GLYPH_CLASS}])\\1{${MIN_NO_WRAP_BORDER_LENGTH - 1},}$`,
 );
 
+// A LABELLED TERMINAL RULE: a short rule, one label, then a rule that runs to the row's end. It
+// falls through the bare-border test because the label interrupts its repetition. The complete row
+// shape is the guard: clipping hides a row's right edge, so a table, code, diff, prose, or a label
+// carrying a rule glyph keeps ordinary wrapping.
+//
+// The leading run is deliberately short; the trailing run is long enough that it would wrap on the
+// narrowest mirror. Leading and trailing glyphs are captured separately, so they may differ.
+const MAX_LEADING_RULE_RUN = 4;
+const MIN_TRAILING_RULE_RUN = 20;
+const RULE = PURE_HORIZONTAL_RULE_GLYPH_CLASS;
+const LABELLED_RULE_ROW = new RegExp(
+  `^\\s*([${RULE}])\\1{0,${MAX_LEADING_RULE_RUN - 1}} +` + // a short leading rule
+    `[^${RULE}\\s](?:[^${RULE}]*[^${RULE}\\s])? +` + // the label: no rule glyph, no edge space
+    `([${RULE}])\\2{${MIN_TRAILING_RULE_RUN - 1},}\\s*$`, // a rule to the row's end
+);
+
 // A FRAMED ROW: the first and the last non-space glyph are both frame edges (a boxed TUI menu row, a
 // panel border). Herdr spawns panes at desktop width while a phone mirror shows ~45 columns, so
 // wrapping such a row splits it across two or three ragged visual lines: the frame scrambles and the
@@ -222,7 +238,7 @@ const FRAME_ROW = new RegExp(`^\\s*[${FRAME_EDGE_GLYPH_CLASS}].*[${FRAME_EDGE_GL
 
 function styledLine(segments: AnsiSegment[]): StyledLine {
   const text = segments.map((segment) => segment.text).join("");
-  return PURE_HORIZONTAL_BORDER.test(text.trim()) || FRAME_ROW.test(text)
+  return PURE_HORIZONTAL_BORDER.test(text.trim()) || LABELLED_RULE_ROW.test(text) || FRAME_ROW.test(text)
     ? { segments, noWrap: true }
     : { segments };
 }

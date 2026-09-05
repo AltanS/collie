@@ -20,6 +20,14 @@ const blockText = (lines: StyledLine[]) =>
 // and segments that carry newlines mid-run — plus that styling survives a split.
 
 const ESC = "\x1b";
+const PI_WORKING_EDITOR = "pi--v085-working-editor.txt";
+const PI_WIDTH = 94;
+const PI_TOP = `── ⠴ Working ${"─".repeat(81)}`;
+const PI_FIXTURE_BYTES = [
+  `${ESC}[2m── ${ESC}[0m${ESC}[36m⠴ Working ${ESC}[0m${ESC}[2m${"─".repeat(81)}${ESC}[0m`,
+  `${ESC}[0m${" ".repeat(PI_WIDTH)}${ESC}[0m`,
+  `${ESC}[2m${"─".repeat(PI_WIDTH)}${ESC}[0m`,
+].join("\n");
 
 /** Minimal styled segment for constructing inputs directly (bypassing the parser). */
 const seg = (text: string, extra: Partial<AnsiSegment> = {}): AnsiSegment => ({
@@ -153,6 +161,67 @@ describe("splitLines — no-wrap terminal borders", () => {
     ["mixed content", `${"─".repeat(20)}x`],
     ["prose", "This ordinary prose should retain its normal wrapping behavior."],
   ])("does not mark %s", (_name, text) => {
+    expect(splitLines(parseAnsi(text))[0]!.noWrap).toBeUndefined();
+  });
+});
+
+describe("splitLines — labelled terminal rules", () => {
+  const labelled = (lead: string, label: string, tail: string, outer = "") =>
+    `${outer}${lead} ${label} ${tail}${outer}`;
+
+  it("keeps the reconstructed Pi editor byte- and segment-faithful under the raw fallback", () => {
+    const raw = readFileSync(join(PANES_DIR, PI_WORKING_EDITOR), "utf8");
+    const lines = fixtureLines(PI_WORKING_EDITOR);
+
+    expect(raw).toBe(PI_FIXTURE_BYTES);
+    expect(lines.map((line) => line.noWrap)).toEqual([true, undefined, true]);
+    expect(lines.map(lineText)).toEqual([PI_TOP, " ".repeat(PI_WIDTH), "─".repeat(PI_WIDTH)]);
+    expect(lines.map((line) => line.segments.map((segment) => segment.text))).toEqual([
+      ["── ", "⠴ Working ", "─".repeat(81)],
+      [" ".repeat(PI_WIDTH)],
+      ["─".repeat(PI_WIDTH)],
+    ]);
+
+    const blocks = buildBlocks(lines, { agent: "pi" });
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]!.kind).toBe("raw");
+    if (blocks[0]!.kind !== "raw") throw new Error("expected raw Pi fallback");
+    expect(blocks[0]!.lines).toBe(lines);
+  });
+
+  it("keeps the existing Codex labelled rule clipped through its normal pipeline", () => {
+    const blocks = buildBlocks(fixtureLines("codex--submitted-fill-labelled-rule.txt"), { agent: "codex" });
+    const raw = blocks.find((block) => block.kind === "raw");
+
+    expect(raw?.kind).toBe("raw");
+    if (raw?.kind !== "raw") return;
+    const rule = raw.lines.find((line) => lineText(line).includes("Worked for 3m 12s"));
+    expect(rule?.noWrap).toBe(true);
+  });
+
+  it.each([
+    ["one leading glyph and twenty trailing glyphs", labelled("─", "label", "─".repeat(20))],
+    [
+      "four leading glyphs, a different trailing glyph, and outer whitespace",
+      labelled("━".repeat(4), "two words", "─".repeat(20), "\t "),
+    ],
+  ])("marks %s", (_name, text) => {
+    expect(splitLines(parseAnsi(text))[0]!.noWrap).toBe(true);
+  });
+
+  it.each([
+    ["an empty label", labelled("─", "", "─".repeat(20))],
+    ["a five-glyph leading run", labelled("─".repeat(5), "label", "─".repeat(20))],
+    ["mixed leading glyphs", labelled("─━", "label", "─".repeat(20))],
+    ["a nineteen-glyph trailing run", labelled("─", "label", "─".repeat(19))],
+    ["mixed trailing glyphs", labelled("─", "label", `${"─".repeat(19)}━`)],
+    ["a label carrying a rule glyph", labelled("─", "a ─ b", "─".repeat(20))],
+    ["a tab before the label where ASCII spaces are required", `─\tlabel ${"─".repeat(20)}`],
+    ["a tab after the label where ASCII spaces are required", `─ label\t${"─".repeat(20)}`],
+    ["ASCII hyphens", labelled("-", "label", "-".repeat(20))],
+    ["a table row with a long inner rule", `| id | ${"─".repeat(40)} | note |`],
+    ["a rule with text after it", `${"─".repeat(40)} and then some prose about it`],
+  ])("leaves %s wrapping", (_name, text) => {
     expect(splitLines(parseAnsi(text))[0]!.noWrap).toBeUndefined();
   });
 });
