@@ -7,8 +7,8 @@ import { LOCALES, isLocale, t } from "@/lib/i18n";
 // The language selector. It shares the icon/title/description header of every other settings card,
 // but the control itself is a NATIVE <select>, not the vertical radiogroup this used to be.
 //
-// Six rows, each 44px, made the tallest card in Settings out of a set-once preference and pushed
-// everything below it off the screen — you scrolled past six languages to reach Haptics. A select
+// Seven rows, each 44px, made the tallest card in Settings out of a set-once preference and pushed
+// everything below it off the screen — you scrolled past seven languages to reach Haptics. A select
 // collapses that to one row and hands the list to the platform, which is also what makes it the
 // right control here rather than a prettier custom one: iOS and Android open their own wheel or
 // dialog, sized and scrolled the way the phone's own settings do, with the keyboard, the screen
@@ -17,7 +17,7 @@ import { LOCALES, isLocale, t } from "@/lib/i18n";
 //
 // Native names are never translated: LOCALES carries a language's own name for itself, which is the
 // only label useful to someone who cannot yet read the current UI language. The `lang` attribute on
-// each option says which language that name IS, so a screen reader pronounces 中文 with the right
+// each option says which language that name IS, so a screen reader pronounces it with the right
 // voice instead of reading it in the current UI language's.
 //
 // This card is the first surface actually wired to `t()` — its title and its one line of prose come

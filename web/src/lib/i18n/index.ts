@@ -52,6 +52,7 @@ const LOADERS = {
   ko: async () => (await import("./messages/ko")).ko,
   ja: async () => (await import("./messages/ja")).ja,
   zh: async () => (await import("./messages/zh")).zh,
+  "zh-TW": async () => (await import("./messages/zh-TW")).zhTW,
 } satisfies Record<Exclude<Locale, typeof DEFAULT_LOCALE>, () => Promise<Dictionary>>;
 
 const loaded = new Map<Locale, Dictionary>();
@@ -165,7 +166,7 @@ export function t(key: MessageKey, vars?: TemplateVars): string {
 
 const pluralRules = new Map<Locale, Intl.PluralRules>();
 
-/** `one` or `other` — the only two categories our six languages need. Anything else Intl reports
+/** `one` or `other` — the only two categories our seven languages need. Anything else Intl reports
  *  (`few`, `many`, `zero`, `two`) maps to `other`, which is the correct bucket for a dictionary
  *  that only carries the pair. */
 function pluralSuffix(locale: Locale, count: number): "one" | "other" {

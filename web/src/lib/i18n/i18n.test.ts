@@ -20,9 +20,10 @@ beforeEach(() => {
 });
 
 describe("isLocale", () => {
-  it("narrows the six we ship and refuses everything else", () => {
+  it("narrows the seven we ship and refuses everything else", () => {
     expect(isLocale("de")).toBe(true);
     expect(isLocale("zh")).toBe(true);
+    expect(isLocale("zh-TW")).toBe(true);
     expect(isLocale("de-DE")).toBe(false);
     expect(isLocale("")).toBe(false);
     expect(isLocale("toString")).toBe(false);
@@ -78,6 +79,13 @@ describe("plurals", () => {
     await whenLocaleReady("ja");
     expect(tn("space.overview.paneCount", 1)).toBe("1ペイン");
     expect(tn("space.overview.paneCount", 2)).toBe("2ペイン");
+  });
+
+  it("uses the Traditional Chinese bundle as its own locale", async () => {
+    setLocale("zh-TW");
+    await whenLocaleReady("zh-TW");
+    expect(t("settings.title")).toBe("設定");
+    expect(tn("space.overview.paneCount", 2)).toBe("2 個窗格");
   });
 
   it("lets the explicit count win over a stray vars.count", () => {
@@ -161,6 +169,8 @@ describe("document language", () => {
   it("stamps <html lang> with the active choice", () => {
     setLocale("ja");
     expect(document.documentElement.lang).toBe("ja");
+    setLocale("zh-TW");
+    expect(document.documentElement.lang).toBe("zh-TW");
     setLocale("en");
     expect(document.documentElement.lang).toBe("en");
   });

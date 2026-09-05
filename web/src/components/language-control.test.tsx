@@ -28,7 +28,8 @@ describe("LanguageControl", () => {
       "Español",
       "한국어",
       "日本語",
-      "中文",
+      "简体中文",
+      "繁體中文",
     ]);
     expect(select).toHaveValue("en");
   });
@@ -53,5 +54,16 @@ describe("LanguageControl", () => {
     await whenLocaleReady("de");
 
     expect(await screen.findByText("Sprache")).toBeInTheDocument();
+  });
+
+  it("loads Traditional Chinese independently from Simplified Chinese", async () => {
+    const user = userEvent.setup();
+    render(<LanguageControl />);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Language" }), "zh-TW");
+    await whenLocaleReady("zh-TW");
+
+    expect(await screen.findByText("語言")).toBeInTheDocument();
+    expect(localStorage.getItem(STORAGE_KEY)).toBe("zh-TW");
   });
 });
