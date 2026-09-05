@@ -133,8 +133,6 @@ export function createCodexSttProvider(settings: CodexSttSettings, deps: CodexSt
         deadline.throwIfAborted();
         if (err instanceof SttError || err instanceof SttCancelledError) throw err;
         throw new SttError("unavailable", "the Codex transcription endpoint could not be reached");
-      } finally {
-        deadline.close();
       }
     },
 
@@ -179,7 +177,6 @@ export async function probeCodexIdentity(
       `the Codex transcription endpoint accepted neither identity (${refusals.join("; ")})`,
     );
   } finally {
-    deadline.close();
     // Only kill what this call started. A broker handed in by the caller outlives the probe.
     if (transport.owned) transport.broker.close();
   }

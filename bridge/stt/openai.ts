@@ -120,8 +120,6 @@ export function createOpenAiSttProvider(
         // Everything else — DNS, TLS, a refused redirect, a socket reset — is one answer. The cause
         // is deliberately not attached: it is a string built from an operator-configured URL.
         throw new SttError("unavailable");
-      } finally {
-        deadline.close();
       }
     },
   };

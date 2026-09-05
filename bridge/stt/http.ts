@@ -5,7 +5,7 @@ import { createSttDeadline, SttCancelledError, SttError, type SttProvider } from
 // ── THE ROUTE'S OWN RULES, AWAY FROM Bun.serve ───────────────────────────────────────────────
 //
 // `POST /api/stt` is write-gated in server.ts and then handed straight here. Everything the route
-// decides — the size cap, the accepted containers, how many transcriptions may be in flight, and
+// decides — the size cap, the accepted containers, how many requests it is still waiting on, and
 // which status each failure earns — lives in this file so `bun test` can drive all of it; only the
 // dispatch line and the gate stay inside `Bun.serve`, which the runner cannot stand up (CLAUDE.md).
 //
@@ -17,12 +17,12 @@ import { createSttDeadline, SttCancelledError, SttError, type SttProvider } from
 export const MAX_STT_AUDIO_BYTES = 8 * 1024 * 1024;
 
 /**
- * How many transcriptions may be in flight at once, per process.
+ * How many transcriptions Collie is still waiting on at once, per process.
  *
- * Two, and the third caller is told so rather than queued. A transcription holds a whole recording
- * in memory for as long as an operator-configured endpoint takes to answer, so an unbounded route
- * turns a flaky endpoint into the bridge's memory ceiling. Refusing is honest and instant; queueing
- * would make the phone wait behind a request whose deadline it cannot see.
+ * Two, and the third caller is told so rather than queued. A disconnected caller returns its slot:
+ * cooperative provider work aborts, while late non-cooperative work may remain in flight but stays
+ * rejection-observed outside this gate. Refusing is honest and instant; queueing would make the
+ * phone wait behind a request whose deadline it cannot see.
  */
 export const MAX_CONCURRENT_STT = 2;
 
@@ -188,8 +188,6 @@ export async function transcribeRequest(
       const status = kind === "timeout" ? 504 : 502;
       const message = err instanceof SttError ? err.message : "transcription is unavailable";
       return fail(status, kind, "stt.provider_failed", { reason: message, kind }, audio.byteLength);
-    } finally {
-      caller.close();
     }
   } finally {
     release();

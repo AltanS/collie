@@ -124,8 +124,6 @@ export interface SttDeadline {
   wait<T>(work: Promise<T>): Promise<T>;
   /** Throw the cancellation or deadline error that stopped this lifecycle. */
   throwIfAborted(): void;
-  /** Release the timer and caller listener once the operation has settled. */
-  close(): void;
 }
 
 /**
@@ -136,31 +134,29 @@ export interface SttDeadline {
  * rejection unobserved.
  */
 export function createSttDeadline(caller: AbortSignal | undefined, timeoutMs?: number): SttDeadline {
-  const controller = new AbortController();
-  let stopped: "caller" | "timeout" | null = null;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  let closed = false;
-
-  const stop = (reason: "caller" | "timeout") => {
-    if (stopped !== null) return;
-    stopped = reason;
-    controller.abort();
-  };
-  const onCallerAbort = () => stop("caller");
-  if (caller?.aborted) stop("caller");
-  else caller?.addEventListener("abort", onCallerAbort, { once: true });
-  if (stopped === null && timeoutMs !== undefined) {
-    timer = setTimeout(() => stop("timeout"), timeoutMs);
+  const timeoutSignal = timeoutMs === undefined ? undefined : AbortSignal.timeout(timeoutMs);
+  // `any` keeps the first source's reason, including when both were already stopped. Put the caller
+  // first so caller cancellation wins that tie; retain the timeout source to classify its reason.
+  let signal: AbortSignal;
+  if (caller === undefined) {
+    signal = timeoutSignal ?? AbortSignal.any([]);
+  } else if (timeoutSignal === undefined) {
+    signal = caller;
+  } else {
+    signal = AbortSignal.any([caller, timeoutSignal]);
   }
 
+  // A caller may itself abort with a TimeoutError; only this exact source reason is our timeout.
+  const stoppedByTimeout = (): boolean =>
+    timeoutSignal?.aborted === true && signal.reason === timeoutSignal.reason;
   const abortError = (): SttError | SttCancelledError =>
-    stopped === "timeout" ? new SttError("timeout") : new SttCancelledError();
+    stoppedByTimeout() ? new SttError("timeout") : new SttCancelledError();
   const throwIfAborted = (): void => {
-    if (stopped !== null) throw abortError();
+    if (signal.aborted) throw abortError();
   };
 
   return {
-    signal: controller.signal,
+    signal,
     throwIfAborted,
     wait<T>(work: Promise<T>): Promise<T> {
       return new Promise<T>((resolve, reject) => {
@@ -168,7 +164,7 @@ export function createSttDeadline(caller: AbortSignal | undefined, timeoutMs?: n
         const finish = (): boolean => {
           if (settled) return false;
           settled = true;
-          controller.signal.removeEventListener("abort", onAbort);
+          signal.removeEventListener("abort", onAbort);
           return true;
         };
         const onAbort = () => {
@@ -200,15 +196,9 @@ export function createSttDeadline(caller: AbortSignal | undefined, timeoutMs?: n
             return undefined;
           },
         );
-        controller.signal.addEventListener("abort", onAbort, { once: true });
-        if (controller.signal.aborted) onAbort();
+        signal.addEventListener("abort", onAbort, { once: true });
+        if (signal.aborted) onAbort();
       });
-    },
-    close(): void {
-      if (closed) return;
-      closed = true;
-      if (timer !== undefined) clearTimeout(timer);
-      caller?.removeEventListener("abort", onCallerAbort);
     },
   };
 }
