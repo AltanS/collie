@@ -169,7 +169,7 @@ describe("splitLines — labelled terminal rules", () => {
   const labelled = (lead: string, label: string, tail: string, outer = "") =>
     `${outer}${lead} ${label} ${tail}${outer}`;
 
-  it("keeps the reconstructed Pi editor byte- and segment-faithful under the raw fallback", () => {
+  it("keeps the reconstructed Pi editor byte-faithful and refines only its rule runs under the raw fallback", () => {
     const raw = readFileSync(join(PANES_DIR, PI_WORKING_EDITOR), "utf8");
     const lines = fixtureLines(PI_WORKING_EDITOR);
 
@@ -177,10 +177,12 @@ describe("splitLines — labelled terminal rules", () => {
     expect(lines.map((line) => line.noWrap)).toEqual([true, undefined, true]);
     expect(lines.map(lineText)).toEqual([PI_TOP, " ".repeat(PI_WIDTH), "─".repeat(PI_WIDTH)]);
     expect(lines.map((line) => line.segments.map((segment) => segment.text))).toEqual([
-      ["── ", "⠴ Working ", "─".repeat(81)],
+      ["──", " ", "⠴ Working ", "─".repeat(81)],
       [" ".repeat(PI_WIDTH)],
       ["─".repeat(PI_WIDTH)],
     ]);
+    expect(lines[0]!.segments.map((segment) => segment.muted)).toEqual([true, false, false, true]);
+    expect(lines[1]!.segments[0]!.muted).toBe(false); // editor padding remains untouched
 
     const blocks = buildBlocks(lines, { agent: "pi" });
     expect(blocks).toHaveLength(1);
@@ -189,7 +191,27 @@ describe("splitLines — labelled terminal rules", () => {
     expect(blocks[0]!.lines).toBe(lines);
   });
 
-  it("keeps the existing Codex labelled rule clipped through its normal pipeline", () => {
+  it("refines live-shaped ANSI boundaries without changing the coloured spinner or label", () => {
+    const purple = "rgb(209,131,232)";
+    const tail = "─".repeat(20);
+    const parsed = parseAnsi(
+      `${ESC}[0m${ESC}[38;2;209;131;232m── ⠴${ESC}[0m ${ESC}[0m${ESC}[38;2;209;131;232mWorking ${tail}${ESC}[0m`,
+    );
+    const row = splitLines(parsed)[0]!;
+
+    expect(row.noWrap).toBe(true);
+    expect(row.segments.map((segment) => segment.text)).toEqual(["──", " ⠴", " ", "Working ", tail]);
+    expect(row.segments.map((segment) => segment.muted)).toEqual([true, false, false, false, true]);
+    expect(row.segments.map((segment) => segment.fg)).toEqual([purple, purple, undefined, purple, purple]);
+    // Refinement changes only text/muted at the cut: all ANSI style objects remain those the parser made.
+    expect(row.segments[0]!.style).toBe(parsed[0]!.style);
+    expect(row.segments[1]!.style).toBe(parsed[0]!.style);
+    expect(row.segments[2]).toBe(parsed[1]);
+    expect(row.segments[3]!.style).toBe(parsed[2]!.style);
+    expect(row.segments[4]!.style).toBe(parsed[2]!.style);
+  });
+
+  it("keeps the existing Codex labelled rule clipped while preserving its dim label", () => {
     const blocks = buildBlocks(fixtureLines("codex--submitted-fill-labelled-rule.txt"), { agent: "codex" });
     const raw = blocks.find((block) => block.kind === "raw");
 
@@ -197,6 +219,14 @@ describe("splitLines — labelled terminal rules", () => {
     if (raw?.kind !== "raw") return;
     const rule = raw.lines.find((line) => lineText(line).includes("Worked for 3m 12s"));
     expect(rule?.noWrap).toBe(true);
+    expect(rule?.segments.map((segment) => segment.text)).toEqual([
+      "─",
+      " Worked for 3m 12s ",
+      "─".repeat(80),
+    ]);
+    expect(rule?.segments.map((segment) => segment.muted)).toEqual([true, false, true]);
+    expect(rule?.segments[1]!.dim).toBe(true);
+    expect(rule?.segments[1]!.style.opacity).toBe(0.6);
   });
 
   it.each([
@@ -207,6 +237,15 @@ describe("splitLines — labelled terminal rules", () => {
     ],
   ])("marks %s", (_name, text) => {
     expect(splitLines(parseAnsi(text))[0]!.noWrap).toBe(true);
+  });
+
+  it("leaves a rejected shape unsplit with its segment identity intact", () => {
+    const segments = parseAnsi(`${ESC}[38;2;209;131;232m${labelled("─".repeat(5), "label", "─".repeat(20))}${ESC}[0m`);
+    const line = splitLines(segments)[0]!;
+
+    expect(line.noWrap).toBeUndefined();
+    expect(line.segments).toHaveLength(1);
+    expect(line.segments[0]).toBe(segments[0]);
   });
 
   it.each([

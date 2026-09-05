@@ -12,8 +12,9 @@
 //     floored in display cells — and not one of these constants.
 //   · `blocks.ts` (PURE_HORIZONTAL_BORDER / LABELLED_RULE_ROW) asks whether this whole structural
 //     row is TOO WIDE TO WRAP NICELY, setting shared StyledLine.noWrap for the renderer to clip
-//     only while wrapping. Its false positive crops a short rule. It can afford a broad glyph set
-//     and each row shape's own bounds.
+//     only while wrapping. Its labelled-row match also identifies its exact decorative rule runs.
+//     Its false positive crops a short rule or mutes decorative-looking glyphs, so it can afford a
+//     broad glyph set only with each row shape's own bounds.
 //   · `blocks.ts` (FRAME_ROW) asks whether this row is FRAMED, a boxed menu or a panel, for the same
 //     clipping decision. Its false positive clips a line of prose that opens and closes on a
 //     vertical stroke. Its alphabet is FRAME_EDGE_GLYPH_CLASS at the foot of this file.

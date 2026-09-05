@@ -5,6 +5,7 @@ import type { ComponentProps } from "react";
 import { AnsiOutput } from "./ansi-output";
 
 const ESC = "\x1b";
+const MUTED_RULE_COLOUR = "rgb(161, 161, 161)"; // #a1a1a1, --muted-foreground's dark half
 
 // The mirror renders in DARK space under every theme, and the light theme inverts it wholesale
 // (.adr/0002). These guard the two ways that arrangement silently breaks.
@@ -41,8 +42,6 @@ describe("terminal mirror colour space", () => {
     [...pre.querySelectorAll("span")].find(
       (s) => s.textContent?.includes(has) && s.querySelector("span") === null,
     );
-
-  const MUTED_RULE_COLOUR = "rgb(161, 161, 161)"; // #a1a1a1, --muted-foreground's dark half
 
   it("keeps muted rule glyphs on a literal dark-space grey", () => {
     const span = leafSpan(mirror("├────────────┤\n"), "─");
@@ -90,12 +89,20 @@ describe("mirror line wrapping", () => {
     expect(cls).not.toContain("whitespace-pre-wrap");
   });
 
-  it("keeps an ANSI labelled rule to one clipped row without changing its text, styles, links, or find offsets", () => {
+  it("keeps a live-shaped ANSI labelled rule clipped while muting only its rule runs", () => {
+    const purple = "rgb(209, 131, 232)";
+    const leadBg = "rgb(24, 25, 26)";
+    const labelBg = "rgb(27, 28, 29)";
     const url = "https://herdr.dev/docs";
-    const visibleRule = `─ Working ${url} ${"─".repeat(20)}`;
-    const rule = `${ESC}[41m─ Working ${url} ${ESC}[44m${"─".repeat(20)}${ESC}[0m`;
+    const tail = "─".repeat(20);
+    const visibleRule = `── ⠴ Working ${url} ${tail}`;
+    const rule =
+      `${ESC}[0m${ESC}[38;2;209;131;232;48;2;24;25;26m── ⠴${ESC}[0m ` +
+      `${ESC}[0m${ESC}[38;2;209;131;232;48;2;27;28;29mWorking ${url} ${tail}${ESC}[0m`;
     const text = `ordinary prose\n${rule}\n`;
-    const { container } = render(<AnsiOutput text={text} query="herdr" currentMatch={0} agent="pi" />);
+    const visibleText = `ordinary prose\n${visibleRule}\n`;
+    const query = `${url} ─`; // crosses the label → tail split introduced by structural refinement
+    const { container, rerender } = render(<AnsiOutput text={text} query={query} currentMatch={0} agent="pi" />);
     const pre = container.querySelector("pre")!;
     // `span.overflow-hidden`, not `span.inline-block`: the table-run scroller is an inline-block too.
     const clipped = pre.querySelector("span.overflow-hidden")!;
@@ -108,15 +115,25 @@ describe("mirror line wrapping", () => {
     expect(clipped.className).toContain("whitespace-pre");
     expect(clipped.className).not.toContain("whitespace-nowrap");
     expect(clipped.className).toContain("break-normal");
+    // Firefox must not restore LINK_CLASS's break-all inside a no-wrap row.
     expect(clipped.className).toContain("[&_a]:break-normal");
     expect(clipped.textContent).toBe(visibleRule);
-    expect(clipped.children).toHaveLength(2);
-    // SAFETY: `children` is typed `Element`, but the mirror renders every segment as a <span> with
-    // an inline style — which is exactly what these two lines assert. Two assertions, two reasons,
-    // same reason.
-    const [first, second] = [clipped.children[0] as HTMLElement, clipped.children[1] as HTMLElement];
-    expect(first.style.backgroundColor).toBe("var(--ansi-1)");
-    expect(second.style.backgroundColor).toBe("var(--ansi-4)");
+    expect(clipped.children).toHaveLength(5);
+    // SAFETY: `children` is typed Element, but these five nodes are the renderer's segment spans.
+    const [lead, spinner, separator, label, trailing] = [...clipped.children] as HTMLElement[];
+    expect(lead.style.color).toBe(MUTED_RULE_COLOUR);
+    expect(lead.style.fontWeight).toBe("400");
+    expect(lead.style.opacity).toBe("1");
+    expect(lead.style.backgroundColor).toBe(leadBg);
+    expect(spinner.style.color).toBe(purple);
+    expect(spinner.style.backgroundColor).toBe(leadBg);
+    expect(separator.style.color).toBe("");
+    expect(label.style.color).toBe(purple);
+    expect(label.style.backgroundColor).toBe(labelBg);
+    expect(trailing.style.color).toBe(MUTED_RULE_COLOUR);
+    expect(trailing.style.fontWeight).toBe("400");
+    expect(trailing.style.opacity).toBe("1");
+    expect(trailing.style.backgroundColor).toBe(labelBg);
     const anchor = clipped.querySelector("a")!;
     expect(anchor.getAttribute("href")).toBe(url);
     expect(anchor.getAttribute("target")).toBe("_blank");
@@ -125,8 +142,39 @@ describe("mirror line wrapping", () => {
     expect(anchor.className).toContain("cursor-pointer");
     expect(anchor.className).toContain("py-[0.35em]");
     const match = anchor.querySelector('[data-find-match="current"]')!;
-    expect(match.textContent).toBe("herdr");
-    expect(pre.textContent).toBe(`ordinary prose\n${visibleRule}\n`);
+    expect(match.textContent).toBe(url);
+    const offsetsOf = (selector: string) => {
+      const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+      const offsets: number[] = [];
+      let offset = 0;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (node.parentElement?.closest(selector) && !offsets.includes(offset)) offsets.push(offset);
+        offset += node.textContent!.length;
+      }
+      return offsets;
+    };
+    expect(offsetsOf('[data-find-match]')).toEqual([
+      visibleText.indexOf(url),
+      visibleText.indexOf(url) + url.length,
+      visibleText.indexOf(url) + url.length + 1,
+    ]);
+    expect(offsetsOf("a")).toEqual([visibleText.indexOf(url)]);
+    const textNodes = document.createTreeWalker(clipped, NodeFilter.SHOW_TEXT);
+    const nodes: Node[] = [];
+    for (let node = textNodes.nextNode(); node; node = textNodes.nextNode()) nodes.push(node);
+    const selection = document.getSelection()!;
+    const range = document.createRange();
+    range.setStart(nodes[0]!, 0);
+    range.setEnd(nodes.at(-1)!, nodes.at(-1)!.textContent!.length);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    expect(selection.toString()).toBe(visibleRule);
+    selection.removeAllRanges();
+    expect(pre.textContent).toBe(visibleText);
+
+    rerender(<AnsiOutput text={text} query={query} currentMatch={0} agent="pi" wrap={false} />);
+    expect(container.querySelector("span.overflow-hidden")).toBeNull();
+    expect(container.querySelector("pre")!.textContent).toBe(visibleText);
   });
 
   it("clips a plain border only while wrapping, leaving ordinary output and wrap-off panning alone", () => {

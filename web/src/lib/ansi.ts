@@ -20,7 +20,8 @@ export interface AnsiSegment {
   strike?: boolean;
   // Pre-computed presentation — consumed by AnsiOutput to avoid per-render allocation.
   style: CSSProperties;
-  /** True when the segment contains only box-drawing/rule glyphs; the renderer mutes it. */
+  /** True when this text is decorative terminal rule glyphs; the renderer mutes it. The parser
+   *  detects self-contained runs, and splitLines may refine a strict labelled row's exact runs. */
   muted: boolean;
   /** Adapter-owned presentation hint: retain the ANSI background on desktop, but suppress it at
    *  phone width. Codex uses this for its terminal-wide near-white user-message fill, which the
@@ -115,9 +116,11 @@ function applySgr(state: State, codes: number[]): void {
   }
 }
 
-// A segment that's nothing but box-drawing / horizontal-rule glyphs (ignoring spaces) — i.e. a TUI
-// border or separator, not real content. Conservative on purpose: only Unicode box-drawing and
-// dashes count (not ASCII `-`/`=`), so code and markdown rules in real output stay untouched.
+// Context-free parser check: a segment that's nothing but box-drawing / horizontal-rule glyphs
+// (ignoring spaces) is a TUI border or separator, not real content. Conservative on purpose: only
+// Unicode box-drawing and dashes count (not ASCII `-`/`=`), so code and markdown rules in real
+// output stay untouched. splitLines refines only the exact decorative runs when its strict
+// labelled-row structure supplies the context this parser intentionally lacks.
 const RULE_GLYPHS = new RegExp(`^[${BOX_DRAWING_RULE_GLYPH_CLASS}${UNICODE_DASH_RULE_GLYPH_CLASS}]+$`);
 function checkMuted(text: string): boolean {
   const compact = text.replace(/\s+/g, "");

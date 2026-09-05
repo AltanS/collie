@@ -98,8 +98,9 @@ Two rows matter, and both are 100 columns wide:
   that fill lands near-black: a heavy full-width bar on a phone. The two diff rows beneath it carry
   their own backgrounds and must keep them.
 - the **labelled separator** `─ Worked for 3m 12s ──…`, a short rule, a label, then a rule to the
-  row's end. `blocks.ts` classifies that neutral structural row through shared `StyledLine.noWrap`;
-  the renderer clips it only while wrapping. Codex decoration remains fill-only.
+  row's end. `blocks.ts` classifies that neutral structural row through shared `StyledLine.noWrap`
+  and mutes only its decorative rule runs; the renderer clips it only while wrapping. Codex
+  decoration remains fill-only.
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
@@ -111,8 +112,8 @@ Two rows matter, and both are 100 columns wide:
 `CustomEditor`'s embedded `Working` top-border shape at 94 columns, its ANSI segmentation is
 constructed. It contains no private transcript payload and claims no byte-faithful captured
 provenance: it has a 94-column labelled rule, a 94-space editor row, and a 94-column bottom rule,
-with no final newline. It pins the neutral structural clipping path and raw fallback only; it is not
-evidence for an agent adapter or status grammar.
+with no final newline. It pins the neutral structural clipping and decorative-rule refinement paths
+under the raw fallback only; it is not evidence for an agent adapter or status grammar.
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|

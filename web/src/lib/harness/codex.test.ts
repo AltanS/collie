@@ -600,9 +600,15 @@ describe("Codex mobile display cleanup", () => {
     expect(diffBackgrounds).toEqual(["rgb(33,58,43)", "rgb(74,34,34)"]);
   });
 
-  it("changes not one byte of the fixture's visible text", () => {
+  it("changes not one byte and leaves the already-refined labelled rule untouched", () => {
     const lines = fixtureLines(FIXTURE);
-    expect(decorateCodexDisplay(lines).map(lineText)).toEqual(lines.map(lineText));
+    const decorated = decorateCodexDisplay(lines);
+    const rule = lines.find((line) => lineText(line).includes("Worked for 3m 12s"))!;
+    const decoratedRule = decorated.find((line) => lineText(line).includes("Worked for 3m 12s"));
+
+    expect(decorated.map(lineText)).toEqual(lines.map(lineText));
+    expect(decoratedRule).toBe(rule);
+    expect(decoratedRule!.segments).toBe(rule.segments);
   });
 
   it("returns the same array when a screen carries neither row", () => {
