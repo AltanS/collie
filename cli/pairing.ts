@@ -11,7 +11,9 @@ import {
 } from "../bridge/pairing.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
-import type { Files } from "./sys.ts";
+import { urlToEncode } from "./qr.ts";
+import type { Exec, Files } from "./sys.ts";
+import { renderQr } from "../scripts/qr.ts";
 
 // `pair`, `devices list`, `devices revoke` — the operator's half of device pairing. The pure
 // decisions all live in `bridge/pairing.ts`; this module is the terminal, the two files under the
@@ -26,6 +28,13 @@ import type { Files } from "./sys.ts";
 // there to fence off. So the code is minted where that proof already exists and carried out of band —
 // eyes, from a terminal to a phone keyboard — and the UI's only job is to spend it.
 //
+// ── WHY THE CODE MAY ALSO BE A QR ────────────────────────────────────────────
+// `pair` prints the code as a QR that opens Settings with it filled in. That gives away nothing: the
+// terminal is already the out-of-band channel the code travels on, and whoever reads the QR is
+// whoever reads the line above it. The QR only spares the phone keyboard eight characters. The code
+// it carries is the same one — single-use, dead in 10 minutes, stored as a hash and never as itself
+// — so a screenshot of this terminal is worth exactly what a photograph of it was already worth.
+//
 // The same reasoning runs the other way for revocation: a lost phone is revoked from the machine, not
 // from the phone. `devices revoke` needs no service restart — the bridge re-reads
 // `paired-devices.json` per request (`readRegistrySync` in bridge/pairing.ts), so the device loses
@@ -38,6 +47,8 @@ export interface PairingDeps {
   ctx: CliContext;
   io: Io;
   files: Files;
+  /** The tailnet probes `urlToEncode` runs to decide whether the code is worth a QR. */
+  exec: Exec;
   /** Injected so a test can pin the printed expiry; production leaves it. */
   now?: () => number;
   /** Injected so a test can pin the minted code; production leaves it. */
@@ -84,8 +95,11 @@ const stamp = (ms: number): string => (ms > 0 ? new Date(ms).toISOString() : "ne
  * Only the code's HASH is written, so the string printed here is the only copy that will ever exist;
  * a second `pair` overwrites the pending file, which kills the previous code (that is the intended
  * way to cancel one, and the output says so).
+ *
+ * The QR below the code is best-effort and never a failure: the pending file is already on disk by
+ * the time it is drawn, so a missing URL or a broken renderer would only cost a keyboard shortcut.
  */
-export function cmdPair(deps: PairingDeps): number {
+export async function cmdPair(deps: PairingDeps): Promise<number> {
   const now = (deps.now ?? Date.now)();
   const code = generateCode(deps.random);
   const pending = newPending(code, now);
@@ -110,7 +124,40 @@ export function cmdPair(deps: PairingDeps): number {
   if (replaced) {
     deps.io.out("  A code from an earlier `collie pair` was still pending; it is now dead.");
   }
+  await printPairQr(deps, code);
   return EXIT.OK;
+}
+
+/**
+ * The scannable half. `urlToEncode` (cli/qr.ts) owns which URL is worth a QR and has already said on
+ * stderr why it refused, so the line here only points at that and reassures: the code above stands
+ * on its own, and the operator can still type it.
+ */
+async function printPairQr(deps: PairingDeps, code: string): Promise<void> {
+  const base = urlToEncode({ ctx: deps.ctx, io: deps.io, exec: deps.exec });
+  if (base === null) {
+    deps.io.out("  No QR: the bridge URL is unknown, see the note above; the code above still works.");
+    return;
+  }
+  // NO `#paired-devices` FRAGMENT, deliberately, even though the Settings card answers to one. HTML
+  // runs the focusing steps on a fragment target once it exists, and it does that AFTER the page's
+  // scripts — so the browser itself would pull focus onto the card and off the name field, which is
+  // the only thing left to type. `pair` alone is the signal: the card scrolls itself into view when
+  // it sees it (web/src/components/paired-devices.tsx). Measured in a browser, not reasoned about.
+  // `CODE_ALPHABET` is URL-safe, so the encode is a no-op — it is here so it stays true if it isn't.
+  const url = `${base.replace(/\/+$/, "")}/settings?pair=${encodeURIComponent(code)}`;
+  let drawn: string;
+  try {
+    drawn = await renderQr(url);
+  } catch (err) {
+    deps.io.out(`  No QR: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+  deps.io.out("");
+  for (const line of drawn.split("\n")) deps.io.out(line);
+  deps.io.out("");
+  deps.io.out(url);
+  deps.io.out("  Scan it: Collie opens Settings on the phone with the code filled in.");
 }
 
 // ── devices ──────────────────────────────────────────────────────────────────

@@ -175,10 +175,12 @@ async function packVerbDeps(io: Io, ui: Ui | null = null): Promise<PackAddDeps> 
 /**
  * The pairing verbs' seams: the resolved context (for `stateDir` — the SAME directory the bridge
  * resolves, which is the whole reason an enrolment made here is visible to the running service), the
- * output seam, and the filesystem. No service manager and no network: neither verb has either.
+ * output seam, the filesystem, and the process seam `pair` asks the tailnet for the URL its QR
+ * carries. No service manager: the bridge re-reads both files per request, so nothing restarts.
  */
 function pairingDeps(io: Io): PairingDeps {
-  return { ctx: loadContext(io.err), io, files: realFiles };
+  const ctx = loadContext(io.err);
+  return { ctx, io, files: realFiles, exec: realExec(ctx.env, ctx.home) };
 }
 
 /**
@@ -426,7 +428,7 @@ export const COMMANDS: readonly Command[] = [
   // re-reads per request, so neither restarts anything.
   {
     name: "pair",
-    summary: "mint a one-time code for a phone to pair with (enter it in Collie's Settings)",
+    summary: "mint a one-time code and a QR for a phone to pair with (scan it, or enter the code in Settings)",
     run: (_args, s) => cmdPair(pairingDeps(s.io)),
   },
   {

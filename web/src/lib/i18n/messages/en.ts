@@ -98,7 +98,8 @@ export const en = {
   "settings.devices.revoke": "Revoke",
   "settings.devices.revokeAria": "Revoke {label}",
   "settings.devices.pair.title": "Pair this device",
-  "settings.devices.pair.hint": "Run {command} on the host and type the code it prints.",
+  "settings.devices.pair.hint":
+    "Run {command} on the host, then scan the code it prints or type it here.",
   "settings.devices.pair.codeLabel": "Pairing code",
   "settings.devices.pair.codePlaceholder": "8 characters",
   "settings.devices.pair.nameLabel": "Name for this device",

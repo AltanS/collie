@@ -17,14 +17,18 @@ Supported hosts: Linux and macOS. Windows is experimental; see
 | [Herdr](https://herdr.dev) ≥ 0.7.0 | Herdr backend only | Required when `COLLIE_MUX=herdr`. Check with `herdr --version`. |
 | [Tailscale](https://tailscale.com) | Default access | `tailscale serve` proxies Collie to your tailnet. Optional if using [Variant C](deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale). |
 
-**No minimum tmux or zellij version is enforced.** The adapters were tested against tmux 3.4, tmux
-3.6b and zellij 0.44.2. One tmux edge case is handled: on a server using `window-size manual`, tmux
-below 3.7 crashes when creating a window, so Collie blocks the request and tells you to run
-`tmux set -g window-size latest`.
+> **Note.** No minimum tmux or zellij version is enforced. The adapters were tested against tmux
+> 3.4, tmux 3.6b and zellij 0.44.2. One tmux edge case is handled: on a server using
+> `window-size manual`, tmux below 3.7 crashes when creating a window, so Collie blocks the request
+> and tells you to run `tmux set -g window-size latest`.
 
-Soft dependencies: **Node.js** (formats MagicDNS names in logs), **systemd** / **launchd** (service
-supervision; falls back to `nohup`), and [`web-push`](https://www.npmjs.com/package/web-push)
-(optional, see [Web Push](voice-and-push.md#web-push-optional)).
+Soft dependencies, needed only for the features next to them:
+
+| Tool | Needed for |
+| --- | --- |
+| Node.js | Formats MagicDNS names in logs. |
+| systemd / launchd | Service supervision; falls back to `nohup`. |
+| [`web-push`](https://www.npmjs.com/package/web-push) | Optional, see [Web Push](voice-and-push.md#web-push-optional). |
 
 ## Install
 
@@ -123,10 +127,12 @@ Manage via [Herdr actions](commands.md#herdr-actions). For a prerelease, install
 
 Collie mirrors one backend: `COLLIE_MUX=herdr` (default), `tmux`, or `zellij`.
 
-**You do not have to set it up first.** The first `start` looks for a live Herdr socket, a running
-tmux server and zellij sessions, prints what it found, and writes your answer to the config `.env`,
-creating it. With no terminal to ask at, it takes the only backend it found and says which; with
-none, or with several, it refuses to start and names `COLLIE_MUX`.
+> **Note.** You do not have to set it up first.
+
+The first `start` looks for a live Herdr socket, a running tmux server and zellij sessions, prints
+what it found, and writes your answer to the config `.env`, creating it. With no terminal to ask at,
+it takes the only backend it found and says which; with none, or with several, it refuses to start
+and names `COLLIE_MUX`.
 
 To decide up front instead, seed that file **before** the first start. It is
 `~/.config/collie/.env` standalone, or the path `herdr plugin config-dir herdr.collie` prints:
@@ -140,11 +146,14 @@ Then set the backend and its endpoint:
 
 ```bash
 COLLIE_MUX=tmux                                           # or: zellij
-COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock  # zellij: COLLIE_MUX_ENDPOINT_ZELLIJ=<session>
+# zellij instead: COLLIE_MUX_ENDPOINT_ZELLIJ=<session>
+COLLIE_MUX_ENDPOINT_TMUX=/run/user/1000/collie-tmux.sock
 ```
 
-Do not run that `cp` after a start: it lands `.env.example` on top of the `COLLIE_MUX` the start
-just wrote. Afterwards, edit the file. See
+> **Caution.** Do not run that `cp` after a start: it lands `.env.example` on top of the
+> `COLLIE_MUX` the start just wrote.
+
+Afterwards, edit the file. See
 [Pointing Collie at a multiplexer](multiplexers.md#pointing-collie-at-a-multiplexer).
 
 ### Start it
@@ -185,6 +194,7 @@ If the health check fails (`⚠ Collie isn't answering on :8787 yet`), see
 `systemd --user` service, a launchd agent on macOS, that starts at login and restarts on failure
 ([`ARCHITECTURE.md`](../ARCHITECTURE.md) §3); on Linux `loginctl enable-linger $USER` makes it
 survive a reboot ([Surviving reboots](upgrading.md#surviving-reboots)).
+
 Configure user access in [Configure](configure.md#configure) and device access via
 [pairing](security.md#pair-a-device--the-write-credential) (`bin/collie pair`).
 
@@ -193,10 +203,14 @@ Configure user access in [Configure](configure.md#configure) and device access v
 Open the `tailnet` URL from the banner (retrieve anytime with `bin/collie url` or generate a QR code
 with `bin/collie qr`). Your client must be on the same tailnet.
 
-1. **Pair the device**: Run `bin/collie pair` on the host, then open Settings → Paired devices on
-   the client ([Pair a device](security.md#pair-a-device--the-write-credential)).
-2. **Install PWA**: Tap *Add to Home Screen* in Safari (iOS) or Chrome (Android). Requires HTTPS
-   (`COLLIE_SERVE_MODE=http` disables service workers).
+1. **Pair the device**: Run `bin/collie pair` on the host. Scan the printed QR code to open
+   Settings → Paired devices on the client with the code filled in, or open Settings → Paired
+   devices on the client and type the code
+   ([Pair a device](security.md#pair-a-device--the-write-credential)).
+2. **Install PWA**: Tap *Add to Home Screen* in Safari (iOS) or Chrome (Android).
+
+Installing the PWA requires HTTPS; `COLLIE_SERVE_MODE=http` disables service workers, so the phone
+can only use the browser tab in that mode.
 
 ### Is it actually working?
 
@@ -227,6 +241,8 @@ To restrict access, set `COLLIE_TRUSTED_USER=you@example.com` in `.env` and run 
 [Troubleshooting](troubleshooting.md#troubleshooting).
 
 ## Keep it up to date
+
+One command updates the current major version.
 
 ```bash
 herdr plugin action invoke update --plugin herdr.collie   # Herdr-managed

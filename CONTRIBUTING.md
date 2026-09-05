@@ -29,10 +29,12 @@ runs typechecks, executes tests, and warns if you push an untagged release.
 
 ## Versions
 
-Functional changes in `bridge/`, `cli/`, `web/src/`, `scripts/`, or the manifest require bumping the
-version in `herdr-plugin.toml`, `package.json`, and `web/package.json`, along with a new entry in
-`CHANGELOG.md`. Documentation-only changes (`*.md`) are exempt. The pre-commit hook checks for these
-updates; use `SKIP_VERSION_CHECK=1 git commit …` to bypass it for a single commit.
+Functional changes in `bridge/`, `cli/`, `web/src/`, `scripts/`, or the manifest require bumping
+the version in `herdr-plugin.toml`, `package.json`, and `web/package.json`, plus adding an entry
+to `CHANGELOG.md`. Place the entry as a single line at the end of the `## [Unreleased]` list
+without sub-headings or commit hashes. Documentation-only changes (`*.md`) are exempt. The
+pre-commit hook verifies these updates. Run `SKIP_VERSION_CHECK=1 git commit …` to bypass the
+hook for a single commit.
 
 **From a fork, do not bump versions.** Submit your functional commits and leave those four files
 unmodified. The release version depends on other merged changes, so maintainers set it to avoid

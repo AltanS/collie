@@ -11,7 +11,7 @@ import {
   PENDING_FILENAME,
   sha256Hex,
 } from "../bridge/pairing.ts";
-import { capture, context, type FakeFiles, fakeFiles, type SeededFiles, STATE } from "./fakes.ts";
+import { capture, context, type FakeFiles, fakeExec, fakeFiles, type SeededFiles, STATE } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import {
   cmdDevices,
@@ -33,10 +33,22 @@ const NOW = 1_700_000_000_000;
 /** Deterministic entropy: a fixed byte per position, so the minted code is a fixed string. */
 const fixedRandom = (byte: number) => (n: number) => Buffer.alloc(n, byte);
 
-function deps(seed: Record<string, string> = {}): PairingDeps & { io: ReturnType<typeof capture>; files: FakeFiles } {
+/** A tailnet that answers, so `pair` has a URL to draw; `status` of `{}` is a tailnet with no name. */
+const tailnetExec = (status = '{"Self":{"DNSName":"host.example."}}') =>
+  fakeExec({
+    answers: [
+      ["tailscale status --json", { stdout: status }],
+      ["timeout 3 /fake/tailscale debug netmap", { stdout: '{"PacketFilter":[{"SrcIPs":["*"]}]}' }],
+    ],
+  });
+
+function deps(
+  seed: Record<string, string> = {},
+  status?: string,
+): PairingDeps & { io: ReturnType<typeof capture>; files: FakeFiles } {
   const io = capture();
   const files = fakeFiles(seed);
-  return { ctx: context(), io, files, now: () => NOW, random: fixedRandom(0) };
+  return { ctx: context(), io, files, exec: tailnetExec(status), now: () => NOW, random: fixedRandom(0) };
 }
 
 function device(over: Partial<PairedDevice> = {}): PairedDevice {
@@ -54,9 +66,9 @@ const registryFile = (...devices: PairedDevice[]): SeededFiles => ({
 });
 
 describe("collie pair", () => {
-  test("writes the pending file the bridge reads — owner-only, hash only, never the code", () => {
+  test("writes the pending file the bridge reads — owner-only, hash only, never the code", async () => {
     const d = deps();
-    expect(cmdPair(d)).toBe(EXIT.OK);
+    expect(await cmdPair(d)).toBe(EXIT.OK);
 
     const entry = d.files.entries.get(PENDING);
     expect(entry).toBeDefined();
@@ -74,9 +86,9 @@ describe("collie pair", () => {
     expect(pending!.attemptsLeft).toBe(CODE_ATTEMPTS);
   });
 
-  test("prints the code, its expiry and where to type it — and never mentions a restart", () => {
+  test("prints the code, its expiry and where to type it — and never mentions a restart", async () => {
     const d = deps();
-    cmdPair(d);
+    await cmdPair(d);
     const out = d.io.stdout.join("\n");
     expect(d.io.stderr).toEqual([]);
     expect(out).toContain(new Date(NOW + CODE_TTL_MS).toISOString());
@@ -89,12 +101,12 @@ describe("collie pair", () => {
     expect(d.io.stdout[1]).toBe("");
   });
 
-  test("a second pair replaces the pending file and says the earlier code is dead", () => {
+  test("a second pair replaces the pending file and says the earlier code is dead", async () => {
     const d = deps();
-    cmdPair(d);
+    await cmdPair(d);
     const first = d.io.stdout[0]!;
     const second = { ...d, io: capture(), random: fixedRandom(1) };
-    expect(cmdPair(second)).toBe(EXIT.OK);
+    expect(await cmdPair(second)).toBe(EXIT.OK);
 
     const later = second.io.stdout[0]!;
     expect(later).not.toBe(first);
@@ -105,18 +117,43 @@ describe("collie pair", () => {
     );
   });
 
-  test("the first pair does not claim to have killed a code that never existed", () => {
+  test("the first pair does not claim to have killed a code that never existed", async () => {
     const d = deps();
-    cmdPair(d);
+    await cmdPair(d);
     expect(d.io.stdout.join("\n")).not.toContain("earlier");
   });
 
-  test("an unwritable state dir is an operational failure, not a code the phone can never spend", () => {
+  test("the code is also a QR that opens Settings with it filled in", async () => {
+    const d = deps();
+    expect(await cmdPair(d)).toBe(EXIT.OK);
+    const code = d.io.stdout[0]!;
+    const out = d.io.stdout.join("\n");
+    // The bare code still leads: a QR is the second way to carry it, never the only one.
+    expect(out).toContain(`https://host.example/settings?pair=${code}`);
+    // No fragment: the browser focuses a fragment target on load, which would take focus off the
+    // name field the phone is meant to land on.
+    expect(out).not.toContain("#paired-devices");
+    expect(out).toContain("\u2588");
+    expect(out).toContain("Scan it:");
+    expect(d.io.stderr).toEqual([]);
+  });
+
+  test("no tailnet name costs the QR and nothing else — the code is already on disk", async () => {
+    const d = deps({}, "{}");
+    expect(await cmdPair(d)).toBe(EXIT.OK);
+    expect(d.io.stdout[0]).toHaveLength(CODE_LENGTH);
+    expect(d.files.entries.has(PENDING)).toBe(true);
+    expect(d.io.stdout.join("\n")).toContain("No QR:");
+    // `urlToEncode` already said why, on stderr, in its own words.
+    expect(d.io.stderr.join("\n")).toContain("tailnet front door isn't up");
+  });
+
+  test("an unwritable state dir is an operational failure, not a code the phone can never spend", async () => {
     const d = deps();
     d.files.write = () => {
       throw new Error("EROFS: read-only file system");
     };
-    expect(cmdPair(d)).toBe(EXIT.FAIL);
+    expect(await cmdPair(d)).toBe(EXIT.FAIL);
     expect(d.io.stderr.join("\n")).toContain("EROFS");
   });
 });

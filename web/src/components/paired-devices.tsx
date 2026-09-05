@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { type RefObject, useEffect, useRef, useState } from "react";
 import { KeyRound, Loader2, Smartphone } from "lucide-react";
-import { useLocation, useRevalidator } from "react-router";
+import { useLocation, useRevalidator, useSearchParams } from "react-router";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -30,8 +30,9 @@ function splitAroundValue(message: string, value: string): [string, string] {
 // shape as every other write in the app.
 //
 // Enrolment is deliberately out-of-band: the operator runs `bin/collie pair` in a terminal on the
-// host and types the 8-character code in here. Nothing on this screen can mint a code, which is the
-// whole point — a phone that could ask for one would be a phone that could pair itself.
+// host and types the 8-character code in here, or scans the QR that verb prints and arrives with
+// `?pair=<code>` already filled in. Nothing on this screen can mint a code, which is the whole
+// point — a phone that could ask for one would be a phone that could pair itself.
 
 export function PairedDevices({ data }: { data: DevicesData }) {
   useLocale();
@@ -46,17 +47,31 @@ export function PairedDevices({ data }: { data: DevicesData }) {
   // Focus moves too, and that is the half that is not decoration: a screen reader follows focus, not
   // scroll, so scrolling alone would leave it reading the page from the top. `tabIndex={-1}` makes
   // the card focusable programmatically without putting it in the tab order.
+  //
+  // `?pair=` IS A SECOND WAY IN, AND IT CARRIES NO FRAGMENT ON PURPOSE. The QR `collie pair` prints
+  // spells `/settings?pair=<code>` and stops there. A fragment would undo the thing it is for: HTML
+  // runs the focusing steps on a fragment target as part of scrolling to it, after the page's own
+  // scripts, so the browser would put focus on this card — which is focusable, `tabIndex={-1}` — and
+  // take it off the name field the phone arrived to fill. No effect can outrun that, so the URL does
+  // not ask for it. This effect covers both arrivals: it scrolls either way, and the destination for
+  // focus is the difference. A tap on the read-only strip lands on the card; a scan lands on the
+  // field, because the code above it is already filled in and that is the only thing left to do.
   const cardRef = useRef<HTMLDivElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const { hash } = useLocation();
+  const [cardSearchParams] = useSearchParams();
+  const fromQr = cardSearchParams.get("pair") !== null;
   useEffect(() => {
-    if (hash !== `#${PAIRED_DEVICES_HASH}`) return;
+    if (hash !== `#${PAIRED_DEVICES_HASH}` && !fromQr) return;
     const card = cardRef.current;
     if (!card) return;
     card.scrollIntoView({ block: "start", behavior: "smooth" });
     // preventScroll: the smooth scroll above owns the movement; focus() would otherwise jump to it
-    // instantly and cancel it.
-    card.focus({ preventScroll: true });
-  }, [hash]);
+    // instantly and cancel it. On the scan path the name field may not be mounted at all — this
+    // phone is already paired, so the form is not shown — and then nothing takes focus.
+    const target = fromQr ? nameRef.current : card;
+    target?.focus({ preventScroll: true });
+  }, [hash, fromQr]);
 
   // Show the pairing form when this device has no credential the bridge would accept: it holds no
   // token, its token was rejected by a write, or the registry itself says it authenticated as
@@ -118,7 +133,7 @@ export function PairedDevices({ data }: { data: DevicesData }) {
         </ul>
       )}
 
-      {unpaired && <PairForm onPaired={() => revalidator.revalidate()} />}
+      {unpaired && <PairForm nameRef={nameRef} onPaired={() => revalidator.revalidate()} />}
     </Card>
   );
 }
@@ -206,9 +221,22 @@ function DeviceRow({
   );
 }
 
-function PairForm({ onPaired }: { onPaired: () => void }) {
+function PairForm({
+  nameRef,
+  onPaired,
+}: {
+  /** Owned by the card above, which decides where focus lands on each way in. */
+  nameRef: RefObject<HTMLInputElement | null>;
+  onPaired: () => void;
+}) {
   useLocale();
-  const [code, setCode] = useState("");
+  // `?pair=` is what the QR `collie pair` prints carries — the phone arrives with the code already
+  // spelled, so the only thing left to type is the device name, and that is where focus goes.
+  // Read once, as the initial state: after this the field is the operator's, and a re-render must
+  // not put a spent or edited code back.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [prefilled] = useState(() => (searchParams.get("pair") ?? "").trim().toUpperCase());
+  const [code, setCode] = useState(prefilled);
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -228,6 +256,13 @@ function PairForm({ onPaired }: { onPaired: () => void }) {
       setDeviceToken(res.token);
       setCode("");
       setLabel("");
+      // The code is spent, so drop it from the URL before a reload can re-offer it — replace, so
+      // Back does not walk into the dead code either.
+      if (searchParams.has("pair")) {
+        const next = new URLSearchParams(searchParams);
+        next.delete("pair");
+        setSearchParams(next, { replace: true });
+      }
       onPaired();
     } catch {
       setError(t("settings.devices.pair.networkError"));
@@ -276,6 +311,7 @@ function PairForm({ onPaired }: { onPaired: () => void }) {
         <input
           value={label}
           onChange={(e) => setLabel(e.target.value)}
+          ref={nameRef}
           placeholder={t("settings.devices.pair.namePlaceholder")}
           autoCorrect="off"
           autoComplete="off"

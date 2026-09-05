@@ -88,7 +88,8 @@ export const ja: Dictionary = {
   "settings.devices.revoke": "失効",
   "settings.devices.revokeAria": "{label} を失効",
   "settings.devices.pair.title": "この端末をペアリング",
-  "settings.devices.pair.hint": "ホスト上で {command} を実行し、出力されたコードを入力してください。",
+  "settings.devices.pair.hint":
+    "ホストで {command} を実行し、表示されたコードをスキャンするかここに入力してください。",
   "settings.devices.pair.codeLabel": "ペアリングコード",
   "settings.devices.pair.codePlaceholder": "8文字",
   "settings.devices.pair.nameLabel": "この端末の表示名",

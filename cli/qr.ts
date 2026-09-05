@@ -13,7 +13,8 @@ import { renderQr } from "../scripts/qr.ts";
 // this is a first-run convenience that shouldn't tax every start.
 //
 // What lives HERE is which URL is worth a QR at all; the drawing stays in `scripts/qr.ts`, whose
-// own suite decodes what it prints.
+// own suite decodes what it prints. `collie pair` draws a second QR from the same decision — it is
+// exported for that, so the refusals below are worded once and read identically from both verbs.
 
 /** What deciding on a URL needs: where things are, the tailnet, and somewhere to talk. */
 export interface QrDeps {
@@ -32,7 +33,7 @@ export interface QrDeps {
  *  - no tailnet name — encoding `bridgeUrl`'s loopback placeholder would send a phone to its OWN
  *    localhost.
  */
-function urlToEncode(deps: QrDeps): string | null {
+export function urlToEncode(deps: QrDeps): string | null {
   // Named by the operator: encode exactly that, and skip the tailnet probes below — they describe a
   // front door Collie published, which this URL by definition isn't.
   const named = configuredPublicUrl(deps.ctx.env);

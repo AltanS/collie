@@ -4,7 +4,10 @@
 # A) Versioning guard — override with: SKIP_VERSION_CHECK=1 git commit …
 #    1) versions must be consistent (check-version.sh)
 #    2) if functional code changed and the canonical version did NOT move, the commit must add at
-#       least one bullet under `## [Unreleased]` in CHANGELOG.md (the ordinary functional commit)
+#       least one bullet under `## [Unreleased]` in CHANGELOG.md (the ordinary functional commit).
+#       Tests (`*.test.ts`, `*.test.tsx`, `*.test.sh`) and the hooks themselves
+#       (`scripts/git-hooks/`) are not functional — they ship nothing, so a commit that only
+#       touches them records nothing, exactly as a doc-only one does not.
 #    3) if the canonical version DID move, it must move forward, and `## [Unreleased]` must be
 #       empty — the release commit folds those lines under the new `## [x.y.z]` heading
 #
@@ -31,8 +34,19 @@ else
   # (1) consistency
   "$ROOT/scripts/check-version.sh" >/dev/null
 
+  # Two kinds of file ship nothing, so neither is functional and neither is dropped from the
+  # CHANGELOG for lack of care:
+  #   - a test (`*.test.ts`, `*.test.tsx`, `*.test.sh`) — not in the binary, not in `web/dist`;
+  #     the three suffixes are the whole convention, every test in the tree is named one of them
+  #   - the git hooks themselves (`scripts/git-hooks/`) — they run on a developer's machine at
+  #     commit time and are not in the release tarball at all
+  # Neither is visible to an operator, so there is nothing for them to read a line about. A commit
+  # that touches one of these AND the code under it still records: the source file survives this
+  # filter, and the line is about the source.
+  functional="$(echo "$staged" | grep -vE '(\.test\.(ts|tsx|sh)$|^scripts/git-hooks/)' || true)"
+
   # (2)/(3) changelog-on-change — any functional path in this set must land a CHANGELOG line.
-  if echo "$staged" | grep -qE '^(bridge/|cli/|web/src/|web/public/|web/vite\.config\.ts|web/index\.html|web/package\.json|scripts/|systemd/|package\.json|herdr-plugin\.toml)'; then
+  if echo "$functional" | grep -qE '^(bridge/|cli/|web/src/|web/public/|web/vite\.config\.ts|web/index\.html|web/package\.json|scripts/|systemd/|package\.json|herdr-plugin\.toml)'; then
     read_ver() { sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
     cur="$(read_ver < "$ROOT/herdr-plugin.toml")"
     prev="$(git show HEAD:herdr-plugin.toml 2>/dev/null | read_ver || true)"
@@ -59,7 +73,7 @@ else
   Add one line under \`## [Unreleased]\` in CHANGELOG.md, in the same commit
   (### Added / ### Changed / ### Fixed; end with (#issue) where one exists, no commit hash),
   or bump the version in herdr-plugin.toml, package.json and web/package.json for a release commit.
-  (Doc-only changes need neither. Override once with SKIP_VERSION_CHECK=1 git commit.)
+  (Doc-only and test-only changes need neither. Override once with SKIP_VERSION_CHECK=1 git commit.)
 EOF
           exit 1
         fi

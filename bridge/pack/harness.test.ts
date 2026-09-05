@@ -1668,7 +1668,7 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
 
     // THE REAL VERB, on the real file — the path the drill ran.
     const revoked = await verb(hq, async (d) =>
-      cmdDevicesRevoke({ ctx: d.ctx, io: d.io, files: d.files }, ["drill"]),
+      cmdDevicesRevoke({ ctx: d.ctx, io: d.io, files: d.files, exec: d.exec }, ["drill"]),
     );
     expect(revoked.code).toBe(EXIT.OK);
     expect(revoked.out).toContain('revoked "drill"');

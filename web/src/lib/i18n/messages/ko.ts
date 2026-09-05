@@ -88,7 +88,8 @@ export const ko: Dictionary = {
   "settings.devices.revoke": "연결 해제",
   "settings.devices.revokeAria": "{label} 연결 해제",
   "settings.devices.pair.title": "기기 등록",
-  "settings.devices.pair.hint": "호스트에서 {command} 실행 후 출력된 코드를 입력합니다.",
+  "settings.devices.pair.hint":
+    "호스트에서 {command}를 실행한 뒤 출력된 코드를 스캔하거나 여기에 입력하세요.",
   "settings.devices.pair.codeLabel": "페어링 코드",
   "settings.devices.pair.codePlaceholder": "8자리 문자",
   "settings.devices.pair.nameLabel": "기기 이름",

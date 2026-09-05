@@ -10,8 +10,10 @@ Herdr installs have no `collie` on PATH; use Herdr action IDs
 `~/.local/share/collie/current/bin/collie` or `<checkout>/bin/collie`:
 
 ```bash
-cd ~/.local/share/collie/current && bin/collie version    # the install script's layout
-cd ~/my/collie-checkout        && bin/collie version      # a source build or a linked clone
+# the install script's layout
+cd ~/.local/share/collie/current && bin/collie version
+# a source build or a linked clone
+cd ~/my/collie-checkout && bin/collie version
 ```
 
 Run `bin/collie link` to symlink the binary into `~/.local/bin`
@@ -213,9 +215,12 @@ Installs from GitHub prior to 0.23.1 lack a branch tracking ref
 ([#63](https://github.com/AltanS/collie/issues/63)). Reinstall to restore update functionality:
 
 ```bash
-herdr plugin install AltanS/collie --yes          # replaces the checkout, rebuilds the UI
-herdr plugin action invoke restart --plugin herdr.collie   # reinstall doesn't restart the service
-herdr plugin action invoke version --plugin herdr.collie   # expect 0.23.1 or newer
+# replaces the checkout, rebuilds the UI
+herdr plugin install AltanS/collie --yes
+# reinstall doesn't restart the service
+herdr plugin action invoke restart --plugin herdr.collie
+# expect 0.23.1 or newer
+herdr plugin action invoke version --plugin herdr.collie
 ```
 
 Your config in Herdr's plugin config dir, `~/.config/herdr/plugins/config/herdr.collie` by
@@ -353,7 +358,8 @@ curl -fsSL https://colliepwa.dev/install.sh | sh -s -- --beta
 
 # Herdr-managed — install the tag; that is the whole opt-in
 herdr plugin install AltanS/collie --ref <tag> --yes
-herdr plugin action invoke restart --plugin herdr.collie   # a reinstall does not restart the service
+# a reinstall does not restart the service
+herdr plugin action invoke restart --plugin herdr.collie
 ```
 
 Resolve `<tag>` using [Resolving the newest release from a script](#resolving-the-newest-release-from-a-script).
@@ -488,7 +494,8 @@ git fetch upstream --tags
 git merge v1.0.0                                            # the tag you decided to take
 # resolve the conflicts, commit the merge, then rebuild and restart:
 bash scripts/collie-ctl.sh build
-bin/collie restart                                          # Herdr-managed: invoke the `restart` action
+# Herdr-managed: invoke the `restart` action instead
+bin/collie restart
 ```
 
 Do not use `update --major` on a fork; merge the `v1.*` tag manually. Run `collie doctor` to check

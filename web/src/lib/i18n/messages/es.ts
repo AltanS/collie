@@ -90,7 +90,7 @@ export const es: Dictionary = {
   "settings.devices.revokeAria": "Revocar {label}",
   "settings.devices.pair.title": "Vincular dispositivo",
   "settings.devices.pair.hint":
-    "Ejecuta {command} en el host e introduce el código mostrado.",
+    "Ejecuta {command} en el host, luego escanea el código que muestra o escríbelo aquí.",
   "settings.devices.pair.codeLabel": "Código de vinculación",
   "settings.devices.pair.codePlaceholder": "8 caracteres",
   "settings.devices.pair.nameLabel": "Nombre del dispositivo",

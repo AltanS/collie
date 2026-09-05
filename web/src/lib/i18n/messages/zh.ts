@@ -84,7 +84,7 @@ export const zh: Dictionary = {
   "settings.devices.revoke": "吊销",
   "settings.devices.revokeAria": "吊销 {label}",
   "settings.devices.pair.title": "配对此设备",
-  "settings.devices.pair.hint": "在主机运行 {command} 并输入输出的代码。",
+  "settings.devices.pair.hint": "在主机上运行 {command}，然后扫描其输出的代码或在此输入。",
   "settings.devices.pair.codeLabel": "配对代码",
   "settings.devices.pair.codePlaceholder": "8 位字符",
   "settings.devices.pair.nameLabel": "设备名称",

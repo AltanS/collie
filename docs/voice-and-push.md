@@ -191,7 +191,7 @@ all current subscriptions, requiring every device to resubscribe before it can r
 again. Providing a subject argument on an existing configuration updates only the contact address
 and preserves the current keys.
 
-> **On Herdr versions before 0.8.0**, actions remain fixed to the set cached during initial plugin
+> **Note.** On Herdr versions before 0.8.0, actions remain fixed to the set cached during initial plugin
 > installation ([ADR 0006](../.adr/0006-update-advances-the-checkout-herdr-installed.md)). The
 > `push-keys` and `push-test` actions will not appear until you run `herdr plugin install`. Run
 > `bash scripts/collie-ctl.sh push-keys` directly instead. The wrapper script passes the command
@@ -221,7 +221,8 @@ resets create new endpoints without always returning an HTTP 410. Collie updates
 device re-registers. You can view and delete stored endpoints directly:
 
 ```bash
-bin/collie push list                 # one line per device: service, since, user agent, endpoint tail
+# one line per device: service, since, user agent, endpoint tail
+bin/collie push list
 bin/collie push forget <substring>   # or: push forget --all
 ```
 

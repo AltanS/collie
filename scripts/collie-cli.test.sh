@@ -1609,8 +1609,9 @@ assert_contains "$STDOUT" "pack: none"
 # `pair` and `devices` are the only verbs that write a CREDENTIAL to disk, and they are the two an
 # operator runs from wherever they happen to be — including a Herdr action, with no login shell. So
 # what this section proves is what `bun test` cannot: that under `env -i` the code really lands in the
-# state dir the BRIDGE resolves (`HERDR_PLUGIN_STATE_DIR`), owner-only, with no restart and no tool
-# call anywhere in the path.
+# state dir the BRIDGE resolves (`HERDR_PLUGIN_STATE_DIR`), owner-only, with no restart, and that the
+# only tool either verb reaches for is the read-only tailnet probe behind `pair`'s QR — pinned below,
+# so it cannot quietly grow.
 PAIR_STATE="${TMP_ROOT}/pair-state"
 mkdir -p "$PAIR_STATE"
 # `CALLS` has been re-used as a plain string by the sections above, so — as in the pack section — the
@@ -1650,6 +1651,15 @@ FIRST_CODE="$CODE"
 pair_env pair || fail "a second \`collie pair\` failed: ${STDERR}"
 assert_contains "$STDOUT" "earlier \`collie pair\`"
 [ "$(printf '%s\n' "$STDOUT" | head -n1)" != "$FIRST_CODE" ] || fail "\`collie pair\` minted the same code twice"
+
+# Each `pair` asked the tailnet ONCE for this host's name — the probe behind its QR (cli/qr.ts) — and
+# nothing else: the fake answers with no name, so `urlToEncode` refuses before the packet-filter
+# probe, and the code stands on its own. Pinned as the whole log rather than tolerated, so a new
+# probe on this path shows up here and not on a phone with no login shell.
+assert_contains "$STDOUT" "No QR"
+assert_eq "$(cat "$PAIR_CALLS")" "$(printf 'tailscale status --json\ntailscale status --json')"
+# From here on the log belongs to `devices`, which must stay silent.
+: > "$PAIR_CALLS"
 
 # `devices list` reads a registry the bridge (not this CLI) wrote, and revoke drops one entry.
 cat > "${PAIR_STATE}/paired-devices.json" <<'EOF'
@@ -1699,7 +1709,7 @@ for args in "devices" "devices nonsense" "devices revoke"; do
 done
 assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie devices revoke <label>"
 
-# Not one of them shelled out to anything: no systemctl, no tailscale, no herdr.
+# Not one of the `devices` verbs shelled out to anything: no systemctl, no tailscale, no herdr.
 assert_eq "$(cat "$PAIR_CALLS")" ""
 
 # ── Speech-to-text (ADR 0029) ────────────────────────────────────────────────

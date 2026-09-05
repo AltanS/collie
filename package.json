@@ -1,6 +1,6 @@
 {
   "name": "collie",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "private": true,
   "license": "MIT",
   "description": "Collie — a mobile web UI to monitor and reply to the AI agents in your terminal, over Tailscale",
@@ -14,7 +14,7 @@
     "web:dev": "cd web && bun run dev",
     "lint": "oxlint --max-warnings 0",
     "lint:fix": "oxlint --fix --max-warnings 0",
-    "test": "bun test ./bridge && bun test ./cli && bun test ./scripts && bash scripts/collie-ctl.test.sh && bash scripts/collie-cli.test.sh && bash scripts/check-tag.test.sh",
+    "test": "bun test ./bridge && bun test ./cli && bun test ./scripts && bash scripts/collie-ctl.test.sh && bash scripts/collie-cli.test.sh && bash scripts/check-tag.test.sh && bash scripts/pre-commit.test.sh",
     "test:ctl": "bash scripts/collie-ctl.test.sh",
     "test:pack": "bun test ./bridge/pack/harness.test.ts",
     "typecheck": "bunx tsc --noEmit"
