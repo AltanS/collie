@@ -33,10 +33,10 @@ import type { AnsiSegment } from "@/lib/ansi";
 export const MIRROR_SPACE = "[color-scheme:dark] bg-[#0a0a0a] text-[#fafafa]";
 export const MIRROR_INVERT = "[filter:invert(1)_hue-rotate(180deg)] dark:[filter:none]";
 
-/** A segment's inline style. `muted` is the parser's own "this is TUI chrome" mark rather than an
- *  ANSI colour: drop the ANSI dim opacity so box-drawing and rule glyphs stay visible (var(--border)
- *  + dim was nearly invisible on mobile) and resolve it to #a1a1a1 — --muted-foreground's dark half,
- *  written literally to match MIRROR_SPACE, since everything on these surfaces is dark-space. */
+/** A segment's inline style. `muted` marks decorative TUI chrome rather than an ANSI colour: drop
+ *  the ANSI dim opacity so box-drawing and rule glyphs stay visible (var(--border) + dim was nearly
+ *  invisible on mobile) and resolve it to #a1a1a1 — --muted-foreground's dark half, written literally
+ *  to match MIRROR_SPACE, since everything on these surfaces is dark-space. */
 export function styleFor(s: AnsiSegment): CSSProperties {
   return s.muted ? { ...s.style, color: "#a1a1a1", fontWeight: 400, opacity: 1 } : s.style;
 }
