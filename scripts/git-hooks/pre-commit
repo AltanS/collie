@@ -5,8 +5,9 @@
 #    1) versions must be consistent (check-version.sh)
 #    2) if functional code changed and the canonical version did NOT move, the commit must add at
 #       least one bullet under `## [Unreleased]` in CHANGELOG.md (the ordinary functional commit).
-#       Test files (`*.test.ts`, `*.test.tsx`, `*.test.sh`) are not functional — they ship nothing,
-#       so a test-only commit records nothing, exactly as a doc-only one does not.
+#       Tests (`*.test.ts`, `*.test.tsx`, `*.test.sh`) and the hooks themselves
+#       (`scripts/git-hooks/`) are not functional — they ship nothing, so a commit that only
+#       touches them records nothing, exactly as a doc-only one does not.
 #    3) if the canonical version DID move, it must move forward, and `## [Unreleased]` must be
 #       empty — the release commit folds those lines under the new `## [x.y.z]` heading
 #
@@ -33,12 +34,16 @@ else
   # (1) consistency
   "$ROOT/scripts/check-version.sh" >/dev/null
 
-  # A test file ships nothing. It is not in the binary, not in `web/dist`, and no operator can see
-  # it change — so it is dropped before the functional question is asked, and a test-only commit
-  # needs no CHANGELOG line for the same reason a doc-only one does not. A commit that touches a
-  # test AND the code under it still records: the source file survives this filter. The three
-  # suffixes are the whole convention — every test in the tree is named one of them.
-  functional="$(echo "$staged" | grep -vE '\.test\.(ts|tsx|sh)$' || true)"
+  # Two kinds of file ship nothing, so neither is functional and neither is dropped from the
+  # CHANGELOG for lack of care:
+  #   - a test (`*.test.ts`, `*.test.tsx`, `*.test.sh`) — not in the binary, not in `web/dist`;
+  #     the three suffixes are the whole convention, every test in the tree is named one of them
+  #   - the git hooks themselves (`scripts/git-hooks/`) — they run on a developer's machine at
+  #     commit time and are not in the release tarball at all
+  # Neither is visible to an operator, so there is nothing for them to read a line about. A commit
+  # that touches one of these AND the code under it still records: the source file survives this
+  # filter, and the line is about the source.
+  functional="$(echo "$staged" | grep -vE '(\.test\.(ts|tsx|sh)$|^scripts/git-hooks/)' || true)"
 
   # (2)/(3) changelog-on-change — any functional path in this set must land a CHANGELOG line.
   if echo "$functional" | grep -qE '^(bridge/|cli/|web/src/|web/public/|web/vite\.config\.ts|web/index\.html|web/package\.json|scripts/|systemd/|package\.json|herdr-plugin\.toml)'; then
