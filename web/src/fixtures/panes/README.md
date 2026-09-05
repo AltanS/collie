@@ -235,19 +235,18 @@ All sandbox-generated (a scratch pane driven through the bridge) except `claude-
 which is a real pane working on this repo. Every `blocked` fixture's menu sits at the **buffer
 tail** — the invariant T2's detector leans on.
 
-## omp corpus
+## omp corpus (captured 2026-08-11, oh-my-pi `omp` v17.2.12, three sandbox panes)
 
-The second adapter's corpus (`web/src/lib/harness/omp/`). The original 2026-08-11 captures use
-oh-my-pi `omp` v17.2.12's boxed composer: the statusline is painted INTO the top border and the
-draft's LAST fragment sits ON the bottom border. The 2026-09-03 captures use OMP 18.1.6's
-configurable `rule` composer: a top rule, `❯` prompt rows, a blank gap, then a standalone statusline.
-None of Claude's chrome constants transfer to either layout.
+The second adapter's corpus (`web/src/lib/harness/omp/`). omp inverts Claude's composer layout — the
+statusline is painted INTO the box's top border, the draft's LAST fragment sits ON the bottom border
+with earlier fragments stacked above it, and autocomplete renders BELOW the box — so none of Claude's
+chrome constants transfer and every one of these captures had to be re-derived.
 
-The adapter is **Tier 1**: it strips chrome and re-surfaces the statusline and a stranded draft, and
-it up-levels **nothing**. All 25 captures are asserted that way (`harness/omp.test.ts`). Fourteen
-carry a live composer; the other eleven are modals the reply pre-flight has to refuse: six picker
-screens (`/model`, `/settings` and `/resume`, each with a moved-selection twin) plus five `ask`-tool
-screens.
+That adapter is **Tier 1**: it strips chrome and re-surfaces the statusline and a stranded draft, and
+it up-levels **nothing**. So every row below is a capture the adapter must leave as a raw block, and
+all twenty-one are asserted that way (`harness/omp.test.ts`). Ten carry a live composer; the other
+eleven are modals the reply pre-flight has to refuse, and they are **six picker screens** (`/model`,
+`/settings` and `/resume`, each with a moved-selection twin) plus **five `ask`-tool screens**.
 
 **What this corpus does not contain: omp's tool-approval dialog.** No capture of it exists here, so
 nothing below pins `composerReady` on the one screen where a wrong `true` would be worst — a reply
@@ -274,9 +273,6 @@ Capturing it is the first thing the later Tier-2 contribution owes, ahead of any
 | `omp--menu-dismissed.txt` | The welcome panel (a 100-cell `╭───┴───╮` box) plus an MCP failure notice above an empty composer. Negative control: a second, narrower box on screen must not be spliced into the composer's geometry | `idle` |
 | `omp--slash-palette.txt` | `/` typed: the autocomplete renders BELOW the box, at the box's own width, with one wrapped entry (3 rows) — a `skill:…` row, which omp assembles from the capturing machine and which is therefore NOT an omp built-in. `extractInputDraft` reads `"/"` | `idle` |
 | `omp--slash-palette--filtered.txt` | `/new` typed: five palette rows below the box, all omp built-ins — but note they are everything omp fuzzy-matched for `new`, an accident of one search rather than a curated set. One of three sources for `lib/agent-commands.ts`'s `omp` catalog (collie draws its own palette for an omp pane, because the chrome strip takes omp's); the other two are the tip line and this table — see below | `idle` |
-| `omp--v18-rule-idle.txt` | OMP 18.1.6 with `composer.shape: rule`, empty `❯` row, blank gap and standalone statusline | `idle` |
-| `omp--v18-rule-draft.txt` | The same rule composer with `COLLIE_RULE_DRAFT` stranded on its one prompt row | `idle` |
-| `omp--v18-rule-wrapped.txt` | A five-row rule draft whose final `s` is a styled inline suggestion, not part of the input buffer | `idle` |
 | `omp--select-menu.txt` | The `ask` tool's single-choice dialog (`╭─ Ask ─╮` box, `❯ ○ Red` rows, an `○ Other (type your own)` free-text escape). **Declined** — a different widget whose `handleInput` is unread, and whose escape row would strand a phone user in a free-text input | `blocked` |
 | `omp--select-menu-moved.txt` | The same dialog with the pointer moved | `blocked` |
 | `omp--select-multi.txt` | The `ask` tool's multi-select (`☐ Cheese` rows under a `toppings / Submit` chip row). **Declined** — same reasons, plus omp never numbers its options, so the shared multi-select model's `String(o.n)` walk has nothing to read | `blocked` |
@@ -298,7 +294,7 @@ warrants, and each row there is marked with which:
 
 1. **A palette row** — a line of omp's own `/` autocomplete in the two captures above.
 2. **omp's own tip line** — `` Tip: `/shake` rips heavy tool results out of context to reclaim tokens
-   without a full /compact `` , printed above the composer in the legacy box corpus. It names
+   without a full /compact `` , printed above the composer in 8 of these 20 captures. It names
    `/shake` and `/compact` outright and is where both of their descriptions come from.
 3. **This table** — a command it records as having been TYPED to produce a fixture (`/model`,
    `/settings`, `/resume`). That the command was run and its screen captured is stronger evidence
@@ -308,11 +304,10 @@ warrants, and each row there is marked with which:
 If you extend the catalog, extend this list first. A command with no warrant here is a guess, and the
 catalog types itself into a live shell.
 
-**The legacy box corpus was sanitized in place, length-preserving.** Everything identifying was
+**Sanitized in place, length-preserving — no capture here is raw.** Everything identifying was
 rewritten to a fabricated equivalent of the SAME byte length, ASCII for ASCII, so every row's column
-alignment and display width survives byte-for-byte. The three `omp--v18-rule-*` fixtures needed no
-substitution: their sandbox path, generic draft and public model/provider labels contain no account,
-host, home-directory, session or credential data. Two classes were replaced across the legacy files:
+alignment and display width survives byte-for-byte. Two classes were replaced, across all 20 files at
+once:
 
 - **Environment.** The cwd reads `…abc-0123456789ab/scratchpad/omp-sandbox`; MCP servers read `alfa` /
   `Sample Hub` / `example-cli` / `sandcastle` / `diagram-validator` / `skyline` / `pear` / `spinner`;
@@ -339,21 +334,50 @@ the two `Show Hardware Cursor` lines, and that `/Users/`, `/home/`, an email, a
 **⚠ Line endings vary per fixture and must NOT be normalised.** Each capture is either **all-CRLF or
 all-LF** — never mixed, never a lone `\r`, and none ends in a trailing newline — so a file's CRLF
 count always equals its `wc -l`, one FEWER than the rows it draws (27 CRLFs ⇒ 28 rows). The counts
-below are that `wc -l`, i.e. what `grep -c` reports. Twelve are all-CRLF: `menu-dismissed` 27,
-`select-menu` and `select-menu-moved` 55, `menu-model*` / `menu-resume*` / `menu-settings*` 56,
-`select-multi*` 58. The remaining thirteen — `fresh-idle`, `working`, `done`,
-`done--tool-result`, `draft-single`, `draft-ghost-suggestion`, `draft-ghost-suggestion-busy`,
-`draft-wrapped`, `slash-palette`, `slash-palette--filtered` and the three `v18-rule-*` captures —
-are all-LF with **zero**. The alternate screen is a good guess at which is which but not a rule:
-`omp--menu-dismissed.txt` paints an ordinary inline screen and is still all-CRLF, so re-measure
-rather than infer (`grep -c $'\r' <file>`). Any edit must be made in **binary mode**; a text-mode
-Python pass silently strips `\r` and changes every byte count.
+below are that `wc -l`, i.e. what `grep -c` reports. Twelve are all-CRLF: `menu-dismissed` 27, `select-menu` and
+`select-menu-moved` 55, `menu-model*` / `menu-resume*` / `menu-settings*` 56, `select-multi*` 58. The
+other ten — `fresh-idle`, `working`, `done`, `done--tool-result`, `draft-single`,
+`draft-ghost-suggestion`, `draft-ghost-suggestion-busy`, `draft-wrapped`, `slash-palette` and
+`slash-palette--filtered` — are all-LF
+with **zero**. The alternate screen is a
+good guess at which is which but not a rule: `omp--menu-dismissed.txt` paints an ordinary inline
+screen and is still all-CRLF, so re-measure rather than infer (`grep -c $'\r' <file>`). Any edit must
+be made in **binary mode**; a text-mode Python pass silently strips `\r` and changes every byte count.
 
 Two more things a future omp detector must not assume. omp's pickers run on the **alternate screen**,
 so `pane.read source=recent` returns exactly `viewport_rows` lines with no scrollback — "there is
 transcript above the dialog" is not available as corroborating evidence the way it is for Claude. And
 omp's `agent_status` stays `idle` while a picker is up; only the `ask` tool flips it to `blocked`.
 **Nothing may gate on `blocked`.**
+
+## OMP 18.1.10 rule composer corpus (captured 2026-09-05, sandbox pane)
+
+Three byte-faithful `pane.read format:ansi` captures from a throwaway Herdr pane in a generic git
+sandbox, with OMP 18.1.10 launched under an isolated `composer.shape: rule` config overlay. No
+substitution was needed: the visible cwd is the generic `…ie-rule-sandbox`, the draft text is
+synthetic, and the files contain no account, host, home-directory, session, credential-shaped string
+or UUID. All three are CRLF throughout with no trailing newline; their `wc -l` counts are 28, 28 and
+32 respectively.
+
+This shape has no bottom border. Its OMP-local scanner (`harness/omp/rule.ts`) therefore accepts only
+the complete renderer choreography at the pane tail: a top rule directly adjacent to `❯`, at most
+100 two-space continuation rows, exactly one blank gap, then one standalone status row as the final
+non-blank row. The OMP modal corpus and every Claude, Codex and Grok fixture are rejection cohorts;
+the adapter conformance suite requires `composerReady` and its prompt binding to decline them.
+Nothing is shared with the Claude harness beyond independently recognizing similar glyph geometry.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--v18-rule-idle.txt` | Empty `❯` row below the top rule, one blank gap, then the standalone status row | `idle` |
+| `omp--v18-rule-draft.txt` | The same tail with `COLLIE_RULE_DRAFT` stranded on its single prompt row | `idle` |
+| `omp--v18-rule-wrapped.txt` | A five-row wrapped draft whose final `s` is a styled inline suggestion, not part of the input buffer | `idle` |
+
+Live verification drove this checkout's real Collie UI against the same OMP 18.1.10 sandbox. With
+`COLLIE_RULE_18110_STALE` stranded in the rule composer, the guard bound the clear to that exact
+prompt, typed `COLLIE_RULE_18110_LIVE_ACK` with `submit:false`, read the pane back, then issued the
+empty `submit:true`; the pane rendered the exact marker and not the stale prefix. With `/model` open,
+the UI retained `COLLIE_RULE_18110_MODAL_GUARD`, offered the explicit override, sent no `/reply` or
+`/keys` write, and left the modal unchanged.
 
 ## Lessons already encoded here (don't re-learn them)
 

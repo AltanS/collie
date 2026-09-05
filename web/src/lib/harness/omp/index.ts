@@ -1,4 +1,4 @@
-// The omp adapter (oh-my-pi's `omp` CLI, v17.2.12 through v18.1.6) — the second registered harness.
+// The omp adapter (oh-my-pi's `omp` CLI, v17.2.12 through v18.1.10) — the second registered harness.
 // Its boxed-composer scanner (chrome.ts), rule-composer scanner (rule.ts) and shared lexing primitives
 // (markers.ts) live alongside this file; this module composes them into the HarnessAdapter block and
 // chrome re-surfacing surfaces.
@@ -61,7 +61,7 @@
 //     owes, ahead of any grammar.
 //
 // Two fixture-derived scanners now carry that chrome claim. The boxed OMP 17/18.1.2 form remains
-// anchored on `╰─ … ─╯` (closed or clipped) plus its adjacent top/status row. OMP 18.1.6's `rule`
+// anchored on `╰─ … ─╯` (closed or clipped) plus its adjacent top/status row. OMP 18.1.10's `rule`
 // form has no bottom border, so rule.ts instead requires its renderer's whole tail choreography:
 // a status-bearing top rule directly above `❯` plus bounded continuation rows, then exactly one blank
 // gap and one standalone status row at the buffer tail. Neither scanner searches past a completed
