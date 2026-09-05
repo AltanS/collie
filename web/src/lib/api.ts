@@ -8,6 +8,7 @@ import { abortSignalAfter, abortSignalAny } from "./env";
 import { asJsonString, parseJsonObject } from "./json";
 import { authHeader, clearNotPaired, markNotPaired, NOT_PAIRED_BODY } from "./pairing";
 import { isLead, normalizeScope, paneScopeKey, type Scope } from "./scope";
+import type { LiveCommand, LiveReply, LiveStatus } from "./live";
 import { observeServerBuild, SERVER_BUILD_HEADER } from "./server-build";
 import type {
   ActionResponse,
@@ -255,10 +256,10 @@ function captureBuild(res: Response): void {
  */
 type Recover<T> = (status: number, detail: string) => T | null;
 
-async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>): Promise<T> {
+async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>, timeoutOverride?: number): Promise<T> {
   // GET reads get the short leash; anything mutating gets the longer mutation budget.
   const method = init?.method?.toUpperCase() ?? "GET";
-  const timeoutMs = method === "GET" ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS;
+  const timeoutMs = timeoutOverride ?? (method === "GET" ? GET_TIMEOUT_MS : MUTATION_TIMEOUT_MS);
   const res = await apiFetch(path, {
     ...init,
     signal: withTimeout(init?.signal, timeoutMs),
@@ -297,8 +298,8 @@ async function doReq<T>(path: string, init?: RequestInit, recover?: Recover<T>):
 // Every mutating request (non-GET) feeds the app-wide busy signal so the top progress bar shows
 // while it's in flight; GET reads (snapshot/config polling) don't, or the bar would never rest.
 // trackBusy increments synchronously, so a caller sees `isBusy()` true the instant it fires.
-function req<T>(path: string, init?: RequestInit, recover?: Recover<T>): Promise<T> {
-  const op = doReq<T>(path, init, recover);
+function req<T>(path: string, init?: RequestInit, recover?: Recover<T>, timeoutOverride?: number): Promise<T> {
+  const op = doReq<T>(path, init, recover, timeoutOverride);
   const method = init?.method?.toUpperCase() ?? "GET";
   return method === "GET" ? op : trackBusy(op);
 }
@@ -932,5 +933,34 @@ export function transcribeAudio(audio: Blob, signal?: AbortSignal): Promise<SttR
         detail: fields?.detail,
       };
     })().finally(endLongUpload),
+  );
+}
+
+/** Read the OMP live-call capability and the current call state for one pane. */
+export function fetchLiveStatus(paneId: string, scope?: Scope): Promise<LiveStatus> {
+  return req<LiveStatus>(withScope(`/api/pane/${encodeURIComponent(paneId)}/live`, scope));
+}
+
+/**
+ * Advance one browser-owned OMP live-call lease through the same-origin, authenticated API path.
+ */
+export function sendLiveCommand(
+  paneId: string,
+  command: LiveCommand,
+  scope?: Scope,
+  keepalive = false,
+  timeoutOverride?: number,
+  signal?: AbortSignal,
+): Promise<LiveReply> {
+  return req<LiveReply>(
+    withScope(`/api/pane/${encodeURIComponent(paneId)}/live`, scope),
+    {
+      method: "POST",
+      body: JSON.stringify(command),
+      keepalive,
+      signal,
+    },
+    undefined,
+    timeoutOverride,
   );
 }

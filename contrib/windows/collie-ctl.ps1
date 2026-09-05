@@ -262,9 +262,11 @@ function Test-BridgeReady([int]$Attempts = 25) {
 }
 
 function Test-HerdrReady([int]$Attempts = 1) {
+  $headers = @{}
+  if ($env:COLLIE_TRUSTED_USER) { $headers["Tailscale-User-Login"] = $env:COLLIE_TRUSTED_USER }
   for ($i = 0; $i -lt $Attempts; $i++) {
     try {
-      $snapshot = Invoke-RestMethod -Uri "http://127.0.0.1:$($script:Port)/api/snapshot" -TimeoutSec 1
+      $snapshot = Invoke-RestMethod -Uri "http://127.0.0.1:$($script:Port)/api/snapshot" -Headers $headers -TimeoutSec 1
       if ($snapshot.bridge -eq "connected") { return $true }
     } catch {
       # The bridge or Herdr endpoint may still be starting.

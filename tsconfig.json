@@ -19,5 +19,5 @@
     // `--external`. Bun's bundler honours this map, so the compiled binary and `bunx tsc` agree.
     "paths": { "react-devtools-core": ["./cli/ui/devtools-stub.ts"] }
   },
-  "include": ["bridge", "cli", "scripts/**/*.ts"]
+  "include": ["bridge", "cli", "scripts/**/*.ts", "omp"]
 }

@@ -40,6 +40,7 @@ import { adapterFor } from "@/lib/harness";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { FindBar } from "@/components/find-bar";
 import { Composer, type ComposerHandle } from "@/components/composer";
+import { LiveCallControl } from "@/components/live-call";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
 import { TabStrip } from "@/components/tab-strip";
@@ -1822,6 +1823,14 @@ export function AgentChat({
                     <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
                   </button>
                 </Collapse>
+
+                {agent?.agent === "omp" && (
+                  <LiveCallControl
+                    paneId={paneId}
+                    scope={scope}
+                    disabled={gone || readOnly || hostBlock !== undefined}
+                  />
+                )}
 
                 <Composer
                   ref={composerRef}

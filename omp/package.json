@@ -1,0 +1,8 @@
+{
+  "name": "collie-omp-live",
+  "version": "0.1.0",
+  "private": true,
+  "omp": {
+    "extensions": ["./extension.ts"]
+  }
+}
