@@ -1,8 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, vi } from "bun:test";
 
 import { DEFAULT_STT_MODEL, type OpenAiSttSettings } from "./config.ts";
-import { MAX_PROVIDER_RESPONSE_BYTES, createOpenAiSttProvider, type FetchFn } from "./openai.ts";
-import { SttError, type SttAudio, type SttResult } from "./provider.ts";
+import { MAX_PROVIDER_RESPONSE_BYTES, STT_TIMEOUT_MS, createOpenAiSttProvider, type FetchFn } from "./openai.ts";
+import { SttCancelledError, SttError, type SttAudio, type SttResult } from "./provider.ts";
 
 // The provider talks to one operator-configured endpoint over plain `fetch`, and `fetch` is a
 // parameter — so every bound it claims (the redirect refusal, the deadline, the response cap, the
@@ -189,10 +189,70 @@ describe("openai-compatible provider — the bounds", () => {
     expect((await provider.transcribe(AUDIO)).text).toBe(padding);
   });
 
+  test("keeps its provider-local 60-second policy", () => {
+    expect(STT_TIMEOUT_MS).toBe(60_000);
+  });
+
   test("a provider that never answers becomes a `timeout`, and the request is aborted", async () => {
+    vi.useFakeTimers();
+    try {
+      let aborted = false;
+      const provider = createOpenAiSttProvider(SETTINGS, {
+        timeoutMs: 5,
+        fetch: (_url, init) =>
+          new Promise((_resolve, reject) => {
+            init.signal?.addEventListener("abort", () => {
+              aborted = true;
+              reject(new DOMException("aborted", "AbortError"));
+            });
+          }),
+      });
+
+      const transcription = provider.transcribe(AUDIO);
+      vi.advanceTimersByTime(5);
+      expect(await kindOf(() => transcription)).toBe("timeout");
+      expect(aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("one deadline includes a response body that stalls after headers", async () => {
+    vi.useFakeTimers();
+    try {
+      let pulls = 0;
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull() {
+          // Response construction pulls once; the second pull proves `readCapped` is now waiting.
+          pulls += 1;
+        },
+        cancel() {
+          cancelled = true;
+          return new Promise<void>(() => {});
+        },
+      });
+      const provider = createOpenAiSttProvider(SETTINGS, {
+        timeoutMs: 5,
+        fetch: async () => new Response(body),
+      });
+
+      const transcription = provider.transcribe(AUDIO);
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(pulls >= 2).toBe(true);
+      vi.advanceTimersByTime(5);
+      expect(await kindOf(() => transcription)).toBe("timeout");
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(cancelled).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("caller cancellation aborts the provider fetch without becoming an upstream failure", async () => {
+    const controller = new AbortController();
     let aborted = false;
     const provider = createOpenAiSttProvider(SETTINGS, {
-      timeoutMs: 5,
       fetch: (_url, init) =>
         new Promise((_resolve, reject) => {
           init.signal?.addEventListener("abort", () => {
@@ -202,7 +262,11 @@ describe("openai-compatible provider — the bounds", () => {
         }),
     });
 
-    expect(await kindOf(() => provider.transcribe(AUDIO))).toBe("timeout");
+    const transcription = provider.transcribe(AUDIO, controller.signal);
+    await Promise.resolve();
+    controller.abort();
+
+    await expect(transcription).rejects.toBeInstanceOf(SttCancelledError);
     expect(aborted).toBe(true);
   });
 

@@ -1,5 +1,13 @@
 import type { OpenAiSttSettings } from "./config.ts";
-import { SttError, type SttAudio, type SttProvider, type SttResult, type SttStatus } from "./provider.ts";
+import {
+  createSttDeadline,
+  SttCancelledError,
+  SttError,
+  type SttAudio,
+  type SttProvider,
+  type SttResult,
+  type SttStatus,
+} from "./provider.ts";
 import { MAX_PROVIDER_RESPONSE_BYTES, parseTranscript, readCapped } from "./transcript.ts";
 
 // ── THE OPENAI-COMPATIBLE PROVIDER ───────────────────────────────────────────────────────────
@@ -60,36 +68,34 @@ export function createOpenAiSttProvider(
       return { available: true };
     },
 
-    async transcribe(input: SttAudio): Promise<SttResult> {
-      const form = new FormData();
-      form.append("file", new File([input.audio], input.filename, { type: input.mimeType }));
-      form.append("model", settings.model);
-      form.append("response_format", "json");
-      // Sent only when the operator named one. An ABSENT field is auto-detect, which is the right
-      // default for somebody who mixes two languages in a sentence; a present one is the fix for the
-      // opposite complaint — a short clip in an accented voice coming back in a language nobody spoke.
-      if (settings.language !== undefined) form.append("language", settings.language);
-
-      const controller = new AbortController();
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, timeoutMs);
-
+    async transcribe(input: SttAudio, signal?: AbortSignal): Promise<SttResult> {
+      // One lifecycle owns both headers and the capped response body, under OpenAI's existing policy.
+      const deadline = createSttDeadline(signal, timeoutMs);
       try {
-        const response = await doFetch(endpoint, {
-          method: "POST",
-          body: form,
-          // No credential means NO HEADER, not an empty one: an endpoint that takes no
-          // authentication must see a request that carries none.
-          headers: settings.apiKey === undefined ? {} : { authorization: `Bearer ${settings.apiKey}` },
-          // A redirect would re-send the audio — and the bearer token — somewhere the operator did
-          // not configure. Refuse rather than follow.
-          redirect: "error",
-          signal: controller.signal,
-        });
-        const body = await readCapped(response);
+        deadline.throwIfAborted();
+        const form = new FormData();
+        form.append("file", new File([input.audio], input.filename, { type: input.mimeType }));
+        form.append("model", settings.model);
+        form.append("response_format", "json");
+        // Sent only when the operator named one. An ABSENT field is auto-detect, which is the right
+        // default for somebody who mixes two languages in a sentence; a present one is the fix for the
+        // opposite complaint — a short clip in an accented voice coming back in a language nobody spoke.
+        if (settings.language !== undefined) form.append("language", settings.language);
+
+        const response = await deadline.wait(
+          doFetch(endpoint, {
+            method: "POST",
+            body: form,
+            // No credential means NO HEADER, not an empty one: an endpoint that takes no
+            // authentication must see a request that carries none.
+            headers: settings.apiKey === undefined ? {} : { authorization: `Bearer ${settings.apiKey}` },
+            // A redirect would re-send the audio — and the bearer token — somewhere the operator did
+            // not configure. Refuse rather than follow.
+            redirect: "error",
+            signal: deadline.signal,
+          }),
+        );
+        const body = await deadline.wait(readCapped(response, deadline.signal));
         if (!response.ok) {
           // The status is worth logging locally; the BODY is not, and never reaches the browser —
           // an upstream error can name an account, a model or an internal host.
@@ -107,13 +113,13 @@ export function createOpenAiSttProvider(
         }
         return { text: parseTranscript(body) };
       } catch (err) {
-        if (timedOut) throw new SttError("timeout");
-        if (err instanceof SttError) throw err;
+        // Fetch and stream reads reject with generic abort errors. The owned lifecycle retains the
+        // caller-cancellation versus timeout distinction before any generic classification.
+        deadline.throwIfAborted();
+        if (err instanceof SttError || err instanceof SttCancelledError) throw err;
         // Everything else — DNS, TLS, a refused redirect, a socket reset — is one answer. The cause
         // is deliberately not attached: it is a string built from an operator-configured URL.
         throw new SttError("unavailable");
-      } finally {
-        clearTimeout(timer);
       }
     },
   };

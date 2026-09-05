@@ -15,7 +15,7 @@ import { SttError, type SttAudio, type SttProvider, type SttResult, type SttStat
 /** A provider under the test's control: what it answers, and what it was handed. */
 function fakeProvider(opts: {
   status?: SttStatus;
-  answer?: (input: SttAudio) => SttResult;
+  answer?: (input: SttAudio, signal?: AbortSignal) => SttResult;
   fail?: () => never;
 }) {
   const received: SttAudio[] = [];
@@ -24,20 +24,26 @@ function fakeProvider(opts: {
     async status() {
       return opts.status ?? { available: true };
     },
-    async transcribe(input) {
+    async transcribe(input, signal) {
       received.push(input);
       if (opts.fail) opts.fail();
-      return opts.answer?.(input) ?? { text: "spoken text" };
+      return opts.answer?.(input, signal) ?? { text: "spoken text" };
     },
   };
   return { provider, received };
 }
 
-function audioRequest(body: BodyInit, contentType = "audio/webm;codecs=opus", extra: HeadersInit = {}): Request {
+function audioRequest(
+  body: BodyInit,
+  contentType = "audio/webm;codecs=opus",
+  extra: HeadersInit = {},
+  signal?: AbortSignal,
+): Request {
   return new Request("http://localhost/api/stt", {
     method: "POST",
     headers: { "content-type": contentType, ...extra },
     body,
+    signal,
   });
 }
 
@@ -188,6 +194,55 @@ describe("POST /api/stt — two at a time, and the third is told so", () => {
     // The slots are given back, so a later caller is admitted again.
     const fourth = await transcribeRequest(provider, audioRequest(new Uint8Array([4]), "audio/webm"), admission);
     expect(fourth.response.status).toBe(200);
+  });
+
+  test("caller cancellation returns its slot while a non-cooperative provider finishes later", async () => {
+    let enterProvider: (() => void) | undefined;
+    const providerEntered = new Promise<void>((resolve) => {
+      enterProvider = resolve;
+    });
+    let rejectLate: (reason?: Error) => void = () => {};
+    const later = new Promise<SttResult>((_resolve, reject) => {
+      rejectLate = reject;
+    });
+    let receivedSignal: AbortSignal | undefined;
+    const provider: SttProvider = {
+      id: "openai-compatible",
+      async status() {
+        return { available: true };
+      },
+      transcribe(_input, signal) {
+        receivedSignal = signal;
+        enterProvider!();
+        return later;
+      },
+    };
+    const admission = createSttAdmission(1);
+    const controller = new AbortController();
+    const request = audioRequest(new Uint8Array([1]), "audio/webm", {}, controller.signal);
+    const abandoned = transcribeRequest(provider, request, admission);
+
+    await providerEntered;
+    controller.abort();
+    const stopped = await abandoned;
+
+    expect(receivedSignal).toBe(request.signal);
+    expect(stopped.response.status).toBe(400);
+    expect(await bodyOf(stopped.response)).toMatchObject({ ok: false, code: "stt.unreadable" });
+    expect(stopped.attempt).toEqual({ status: 400, outcome: "invalid", bytes: 1 });
+
+    const { provider: nextProvider } = fakeProvider({});
+    const next = await transcribeRequest(
+      nextProvider,
+      audioRequest(new Uint8Array([2]), "audio/webm"),
+      admission,
+    );
+    expect(next.response.status).toBe(200);
+
+    // The caller returned long before this non-cooperative provider did; its eventual failure must
+    // still be observed by the lifecycle rather than becoming an unhandled rejection.
+    rejectLate(new Error("late provider failure"));
+    await Bun.sleep(0);
   });
 
   test("a refused request never consumes a slot", async () => {

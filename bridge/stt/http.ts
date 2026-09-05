@@ -1,11 +1,11 @@
 import { apiError, type ApiErrorDetail, type ErrorCode } from "../error-codes.ts";
 import type { SttCapability } from "../types.ts";
-import { SttError, type SttProvider } from "./provider.ts";
+import { createSttDeadline, SttCancelledError, SttError, type SttProvider } from "./provider.ts";
 
 // ── THE ROUTE'S OWN RULES, AWAY FROM Bun.serve ───────────────────────────────────────────────
 //
 // `POST /api/stt` is write-gated in server.ts and then handed straight here. Everything the route
-// decides — the size cap, the accepted containers, how many transcriptions may be in flight, and
+// decides — the size cap, the accepted containers, how many requests it is still waiting on, and
 // which status each failure earns — lives in this file so `bun test` can drive all of it; only the
 // dispatch line and the gate stay inside `Bun.serve`, which the runner cannot stand up (CLAUDE.md).
 //
@@ -17,12 +17,12 @@ import { SttError, type SttProvider } from "./provider.ts";
 export const MAX_STT_AUDIO_BYTES = 8 * 1024 * 1024;
 
 /**
- * How many transcriptions may be in flight at once, per process.
+ * How many transcriptions Collie is still waiting on at once, per process.
  *
- * Two, and the third caller is told so rather than queued. A transcription holds a whole recording
- * in memory for as long as an operator-configured endpoint takes to answer, so an unbounded route
- * turns a flaky endpoint into the bridge's memory ceiling. Refusing is honest and instant; queueing
- * would make the phone wait behind a request whose deadline it cannot see.
+ * Two, and the third caller is told so rather than queued. A disconnected caller returns its slot:
+ * cooperative provider work aborts, while late non-cooperative work may remain in flight but stays
+ * rejection-observed outside this gate. Refusing is honest and instant; queueing would make the
+ * phone wait behind a request whose deadline it cannot see.
  */
 export const MAX_CONCURRENT_STT = 2;
 
@@ -158,18 +158,30 @@ export async function transcribeRequest(
       );
     }
 
+    // Race the provider itself as well as passing its signal. A provider that is slow to notice a
+    // disconnected caller must not pin one of the two admission slots after that caller leaves.
+    const caller = createSttDeadline(req.signal);
     try {
+      caller.throwIfAborted();
       // The caller's own filename never travels: the provider needs an extension, not metadata.
-      const result = await provider.transcribe({
-        audio,
-        mimeType,
-        filename: `recording.${extension}`,
-      });
+      const result = await caller.wait(
+        provider.transcribe(
+          {
+            audio,
+            mimeType,
+            filename: `recording.${extension}`,
+          },
+          req.signal,
+        ),
+      );
       return {
         response: jsonResponse({ ok: true, text: result.text }, 200),
         attempt: { status: 200, outcome: "ok", bytes: audio.byteLength },
       };
     } catch (err) {
+      if (err instanceof SttCancelledError) {
+        return fail(400, "invalid", "stt.unreadable", undefined, audio.byteLength);
+      }
       const kind = err instanceof SttError ? err.kind : "unavailable";
       // A deadline is a 504 because the request is still honestly in progress somewhere; everything
       // else is a 502, the bridge reporting that its upstream did not deliver.

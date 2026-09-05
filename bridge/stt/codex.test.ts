@@ -1,8 +1,9 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, vi } from "bun:test";
 
 import type { CodexSttSettings } from "./config.ts";
 import type { CodexAuthBroker } from "./codex-auth.ts";
 import {
+  CODEX_TIMEOUT_MS,
   CODEX_TRANSCRIBE_URL,
   accountIdFromJwt,
   createCodexSttProvider,
@@ -10,7 +11,7 @@ import {
   silentWavBytes,
 } from "./codex.ts";
 import type { FetchFn } from "./openai.ts";
-import { SttError, type SttAudio } from "./provider.ts";
+import { SttCancelledError, SttError, type SttAudio } from "./provider.ts";
 
 // What this provider puts on the wire is the thing ADR 0029 is about, so it is asserted here header
 // by header — including the header that must NOT be there. Everything is injected: no child is
@@ -87,6 +88,15 @@ function recorder(reply: (call: number) => Response): Recorder {
       return reply(calls.length);
     },
   };
+}
+
+/** A promise the test resolves at the exact point a lifecycle must stop waiting for it. */
+function held<T>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 describe("the codex provider — the identity on the wire", () => {
@@ -192,6 +202,28 @@ describe("the codex provider — a lapsed session", () => {
     expect(calls).toHaveLength(2);
     expect(broker.refreshes).toEqual([false, true]);
   });
+
+  test("a caller that cancels during the one 401 refresh never uploads the clip again", async () => {
+    const broker = fakeBroker();
+    const renewed = held<{ accessToken: string }>();
+    broker.accessToken = async (refresh = false) => {
+      broker.refreshes.push(refresh);
+      return refresh ? renewed.promise : { accessToken: flatClaimToken("acct-123") };
+    };
+    const { fetch, calls } = recorder(() => new Response("expired", { status: 401 }));
+    const provider = createCodexSttProvider(HONEST, { broker, fetch, prime: false, version: "1.2.3" });
+    const controller = new AbortController();
+    const transcription = provider.transcribe(CLIP, controller.signal);
+
+    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+    expect(broker.refreshes).toEqual([false, true]);
+    controller.abort();
+
+    await expect(transcription).rejects.toBeInstanceOf(SttCancelledError);
+    renewed.resolve({ accessToken: flatClaimToken("acct-123") });
+    await Bun.sleep(0);
+    expect(calls).toHaveLength(1);
+  });
 });
 
 describe("the codex provider — the bounds", () => {
@@ -261,23 +293,220 @@ describe("the codex provider — the bounds", () => {
     }
   });
 
-  test("the deadline is a timeout, not an unavailable", async () => {
-    const provider = createCodexSttProvider(HONEST, {
-      broker: fakeBroker(),
-      prime: false,
-      version: "1.2.3",
-      timeoutMs: 5,
-      fetch: (_input, init) =>
-        new Promise((_resolve, reject) => {
-          init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
-        }),
-    });
+  test("keeps its provider-local 120-second policy", () => {
+    expect(CODEX_TIMEOUT_MS).toBe(120_000);
+  });
 
-    const error = await provider.transcribe(CLIP).then(
-      () => null,
-      (err: Error) => err,
-    );
-    expect(error instanceof SttError ? error.kind : null).toBe("timeout");
+  test("the deadline is a timeout, not an unavailable", async () => {
+    const controller = new AbortController();
+    let transcription: Promise<unknown> | undefined;
+    vi.useFakeTimers();
+    try {
+      let started = false;
+      const provider = createCodexSttProvider(HONEST, {
+        broker: fakeBroker(),
+        prime: false,
+        version: "1.2.3",
+        timeoutMs: 5,
+        fetch: (_input, init) =>
+          new Promise((_resolve, reject) => {
+            started = true;
+            init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+          }),
+      });
+
+      transcription = provider.transcribe(CLIP, controller.signal);
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(started).toBe(true);
+      vi.advanceTimersByTime(5);
+
+      const error = await transcription.then(
+        () => null,
+        (err: Error) => err,
+      );
+      expect(error instanceof SttError ? error.kind : null).toBe("timeout");
+    } finally {
+      controller.abort();
+      if (transcription !== undefined) await transcription.catch(() => undefined);
+      vi.useRealTimers();
+    }
+  });
+
+  test("the deadline includes waiting for a token before a request starts", async () => {
+    const pendingToken = held<{ accessToken: string }>();
+    const controller = new AbortController();
+    let transcription: Promise<unknown> | undefined;
+    vi.useFakeTimers();
+    try {
+      const broker = fakeBroker();
+      broker.accessToken = async (refresh = false) => {
+        broker.refreshes.push(refresh);
+        return pendingToken.promise;
+      };
+      const { fetch, calls } = recorder(() => Response.json({ text: "late" }));
+      const provider = createCodexSttProvider(HONEST, {
+        broker,
+        fetch,
+        prime: false,
+        version: "1.2.3",
+        timeoutMs: 5,
+      });
+
+      transcription = provider.transcribe(CLIP, controller.signal);
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(broker.refreshes).toEqual([false]);
+      vi.advanceTimersByTime(5);
+
+      const error = await transcription.then(
+        () => null,
+        (err: Error) => err,
+      );
+      expect(error instanceof SttError ? error.kind : null).toBe("timeout");
+      expect(calls).toHaveLength(0);
+    } finally {
+      controller.abort();
+      pendingToken.resolve({ accessToken: flatClaimToken("acct-123") });
+      if (transcription !== undefined) await transcription.catch(() => undefined);
+      vi.useRealTimers();
+    }
+  });
+
+  test("the deadline includes a response body that stalls after headers", async () => {
+    const controller = new AbortController();
+    let transcription: Promise<unknown> | undefined;
+    vi.useFakeTimers();
+    try {
+      let pulls = 0;
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({
+        pull() {
+          // Response construction pulls once; the second pull proves `readCapped` is now waiting.
+          pulls += 1;
+        },
+        cancel() {
+          cancelled = true;
+          return new Promise<void>(() => {});
+        },
+      });
+      const provider = createCodexSttProvider(HONEST, {
+        broker: fakeBroker(),
+        prime: false,
+        version: "1.2.3",
+        timeoutMs: 5,
+        fetch: async () => new Response(body),
+      });
+
+      transcription = provider.transcribe(CLIP, controller.signal);
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(pulls >= 2).toBe(true);
+      vi.advanceTimersByTime(5);
+
+      const error = await transcription.then(
+        () => null,
+        (err: Error) => err,
+      );
+      expect(error instanceof SttError ? error.kind : null).toBe("timeout");
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(cancelled).toBe(true);
+    } finally {
+      controller.abort();
+      if (transcription !== undefined) await transcription.catch(() => undefined);
+      vi.useRealTimers();
+    }
+  });
+
+  test("a cancelled caller stops waiting for shared token work without cancelling it", async () => {
+    const broker = fakeBroker();
+    const sharedToken = held<{ accessToken: string }>();
+    broker.accessToken = async (refresh = false) => {
+      broker.refreshes.push(refresh);
+      return sharedToken.promise;
+    };
+    const { fetch, calls } = recorder(() => Response.json({ text: "second caller" }));
+    const provider = createCodexSttProvider(HONEST, { broker, fetch, prime: false, version: "1.2.3" });
+    const controller = new AbortController();
+    const first = provider.transcribe(CLIP, controller.signal);
+
+    for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+    controller.abort();
+    await expect(first).rejects.toBeInstanceOf(SttCancelledError);
+
+    const second = provider.transcribe(CLIP);
+    sharedToken.resolve({ accessToken: flatClaimToken("acct-123") });
+    expect(await second).toEqual({ text: "second caller" });
+    expect(calls).toHaveLength(1);
+    expect(broker.refreshes).toEqual([false, false]);
+  });
+
+  test("time spent in the first attempt reduces the one retry's remaining budget", async () => {
+    const firstResponse = held<Response>();
+    const controller = new AbortController();
+    let transcription: Promise<unknown> | undefined;
+    vi.useFakeTimers();
+    try {
+      const broker = fakeBroker();
+      const signals: AbortSignal[] = [];
+      let calls = 0;
+      const provider = createCodexSttProvider(HONEST, {
+        broker,
+        prime: false,
+        version: "1.2.3",
+        timeoutMs: 120,
+        fetch: (_input, init) => {
+          const signal = init.signal;
+          if (signal === null || signal === undefined) throw new Error("missing lifecycle signal");
+          signals.push(signal);
+          calls += 1;
+          if (calls === 1) return firstResponse.promise;
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), {
+              once: true,
+            });
+          });
+        },
+      });
+
+      transcription = provider.transcribe(CLIP, controller.signal);
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(calls).toBe(1);
+
+      vi.advanceTimersByTime(80);
+      firstResponse.resolve(new Response("expired", { status: 401 }));
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(calls).toBe(2);
+      expect(signals[1]).toBe(signals[0]);
+
+      let settled = false;
+      void transcription.then(
+        () => {
+          settled = true;
+          return undefined;
+        },
+        () => {
+          settled = true;
+          return undefined;
+        },
+      );
+      vi.advanceTimersByTime(39);
+      await Promise.resolve();
+      expect(signals[1]!.aborted).toBe(false);
+      expect(settled).toBe(false);
+
+      vi.advanceTimersByTime(1);
+      const error = await transcription.then(
+        () => null,
+        (err: Error) => err,
+      );
+      expect(signals[1]!.aborted).toBe(true);
+      expect(error instanceof SttError ? error.kind : null).toBe("timeout");
+      expect(calls).toBe(2);
+      expect(broker.refreshes).toEqual([false, true]);
+    } finally {
+      controller.abort();
+      firstResponse.resolve(new Response("expired", { status: 401 }));
+      if (transcription !== undefined) await transcription.catch(() => undefined);
+      vi.useRealTimers();
+    }
   });
 
   test("a body that is not a transcript is refused rather than surfaced", async () => {
@@ -398,6 +627,46 @@ describe("probeCodexIdentity — honest first, always", () => {
       "not signed in",
     );
     expect(calls).toHaveLength(0);
+  });
+
+  test("one probe lifecycle bounds body disposal before it can fall back", async () => {
+    let probe: Promise<unknown> | undefined;
+    vi.useFakeTimers();
+    try {
+      let cancelled = false;
+      const body = new ReadableStream<Uint8Array>({
+        cancel() {
+          cancelled = true;
+          return new Promise<void>(() => {});
+        },
+      });
+      const { fetch, calls } = recorder(() => new Response(body, { status: 403 }));
+
+      probe = probeCodexIdentity(HONEST, {
+        broker: fakeBroker(),
+        fetch,
+        version: "1.2.3",
+        timeoutMs: 5,
+      });
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(calls).toHaveLength(1);
+      for (let turn = 0; turn < 20; turn++) await Promise.resolve();
+      expect(cancelled).toBe(true);
+      vi.advanceTimersByTime(5);
+
+      const error = await probe.then(
+        () => null,
+        (err: Error) => err,
+      );
+      expect(error instanceof SttError ? error.kind : null).toBe("timeout");
+      expect(calls).toHaveLength(1);
+    } finally {
+      if (probe !== undefined) {
+        vi.runAllTimers();
+        await probe.catch(() => undefined);
+      }
+      vi.useRealTimers();
+    }
   });
 
   test("a broker the caller handed in is NOT closed by the probe; one the probe made is", async () => {
