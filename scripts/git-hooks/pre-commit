@@ -4,7 +4,9 @@
 # A) Versioning guard — override with: SKIP_VERSION_CHECK=1 git commit …
 #    1) versions must be consistent (check-version.sh)
 #    2) if functional code changed and the canonical version did NOT move, the commit must add at
-#       least one bullet under `## [Unreleased]` in CHANGELOG.md (the ordinary functional commit)
+#       least one bullet under `## [Unreleased]` in CHANGELOG.md (the ordinary functional commit).
+#       Test files (`*.test.ts`, `*.test.tsx`, `*.test.sh`) are not functional — they ship nothing,
+#       so a test-only commit records nothing, exactly as a doc-only one does not.
 #    3) if the canonical version DID move, it must move forward, and `## [Unreleased]` must be
 #       empty — the release commit folds those lines under the new `## [x.y.z]` heading
 #
@@ -31,8 +33,15 @@ else
   # (1) consistency
   "$ROOT/scripts/check-version.sh" >/dev/null
 
+  # A test file ships nothing. It is not in the binary, not in `web/dist`, and no operator can see
+  # it change — so it is dropped before the functional question is asked, and a test-only commit
+  # needs no CHANGELOG line for the same reason a doc-only one does not. A commit that touches a
+  # test AND the code under it still records: the source file survives this filter. The three
+  # suffixes are the whole convention — every test in the tree is named one of them.
+  functional="$(echo "$staged" | grep -vE '\.test\.(ts|tsx|sh)$' || true)"
+
   # (2)/(3) changelog-on-change — any functional path in this set must land a CHANGELOG line.
-  if echo "$staged" | grep -qE '^(bridge/|cli/|web/src/|web/public/|web/vite\.config\.ts|web/index\.html|web/package\.json|scripts/|systemd/|package\.json|herdr-plugin\.toml)'; then
+  if echo "$functional" | grep -qE '^(bridge/|cli/|web/src/|web/public/|web/vite\.config\.ts|web/index\.html|web/package\.json|scripts/|systemd/|package\.json|herdr-plugin\.toml)'; then
     read_ver() { sed -n 's/^[[:space:]]*version[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' | head -1; }
     cur="$(read_ver < "$ROOT/herdr-plugin.toml")"
     prev="$(git show HEAD:herdr-plugin.toml 2>/dev/null | read_ver || true)"
@@ -59,7 +68,7 @@ else
   Add one line under \`## [Unreleased]\` in CHANGELOG.md, in the same commit
   (### Added / ### Changed / ### Fixed; end with (#issue) where one exists, no commit hash),
   or bump the version in herdr-plugin.toml, package.json and web/package.json for a release commit.
-  (Doc-only changes need neither. Override once with SKIP_VERSION_CHECK=1 git commit.)
+  (Doc-only and test-only changes need neither. Override once with SKIP_VERSION_CHECK=1 git commit.)
 EOF
           exit 1
         fi

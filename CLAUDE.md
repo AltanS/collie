@@ -36,7 +36,8 @@ not part of that agreement.
 version because you fixed something; the version moves once, when the release is cut.
 
 **Before committing any functional change** (anything under `bridge/`, `cli/`, `web/src/`,
-`web/public/`, `scripts/`, `systemd/`, or the manifest / package files), you MUST, **in the same
+`web/public/`, `scripts/`, `systemd/`, or the manifest / package files, minus the test files carved
+out below), you MUST, **in the same
 commit**, add **one line** to `CHANGELOG.md` at the end of the `## [Unreleased]` list so the list
 stays in landing order. **Style: short**: write one line per change with no prose paragraphs. End
 the line with the issue or PR it answers where one exists (`… (#147)`), and with **no commit
@@ -81,8 +82,11 @@ the line in a follow-up `docs(changelog):` commit or by amending the merge. When
 a release commit, drop that one — authorship is preserved and `main` stays unreleased until you cut
 it.)
 
-Doc-only changes (`*.md`) need neither a bump nor a CHANGELOG line. This is enforced two ways, but
-**you are the first line — do it as part of the change, not after**:
+Doc-only changes (`*.md`) need neither a bump nor a CHANGELOG line, and neither do **test-only
+changes** (`*.test.ts`, `*.test.tsx`, `*.test.sh`). A test ships nothing: it is not in the binary,
+not in `web/dist`, and no operator can see it change, so there is nothing to record. Touch a test
+*and* the code under it and the ordinary rule is back — the source file is what the line is about.
+This is enforced two ways, but **you are the first line — do it as part of the change, not after**:
 
 **A docs change reaches colliepwa.dev only with a release.** Collie's `release.yml` tells the website
 on every tag, and the website re-quotes `docs/*.md` at the newest published release — so a doc-only
