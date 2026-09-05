@@ -1,4 +1,4 @@
-// OMP 18.1.6's `rule` composer, rendered by pi-tui's components/composer/rule.ts:
+// OMP 18.1.10's `rule` composer, rendered by pi-tui's components/composer/rule.ts:
 //
 //   ─────────────── <optional right status chip> ─
 //   ❯ <first draft row>

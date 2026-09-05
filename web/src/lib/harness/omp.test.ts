@@ -6,6 +6,7 @@ import { parseAnsi } from "../ansi";
 import { splitLines } from "../blocks";
 import { ompAdapter } from "./omp";
 import { lineText, rstrip } from "./omp/markers";
+import { locateRuleComposer } from "./omp/rule";
 import { describeAdapterConformance } from "./conformance";
 import { parseKeyHintFooter } from "./menu-hints";
 
@@ -33,6 +34,10 @@ const allCodexFixtures = readdirSync(PANES_DIR)
 const allGrokFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("grok--") && f.endsWith(".txt"))
   .toSorted();
+const allForeignFixtures = [...allClaudeFixtures, ...allCodexFixtures, ...allGrokFixtures];
+const allOmpModalFixtures = allOmpFixtures.filter(
+  (name) => name.startsWith("omp--menu-") || name.startsWith("omp--select-"),
+);
 
 // Every omp screen this adapter DECLINES — which is every screen IN THIS CORPUS, not every screen omp
 // can draw (omp's tool-approval dialog, in particular, was never captured; see omp/index.ts). These
@@ -91,7 +96,7 @@ const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
 
 describeAdapterConformance(ompAdapter, {
   ownFixtures,
-  foreignFixtures: [...allClaudeFixtures, ...allCodexFixtures, ...allGrokFixtures],
+  foreignFixtures: allForeignFixtures,
   neutralFixtures,
 });
 
@@ -218,9 +223,9 @@ describe("OMP 18 rule composer", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.kind).toBe("raw");
     if (blocks[0]!.kind === "raw") {
-      expect(lineText(blocks[0]!.lines.at(-1)!).trim()).toBe(
-        "reviews every turn and quietly injects advice",
-      );
+      const rawText = blocks[0]!.lines.map(lineText).join("\n");
+      expect(rawText).not.toContain("❯");
+      expect(rawText).not.toContain(lineText(status[0]!));
     }
   });
 
@@ -250,6 +255,38 @@ describe("OMP 18 rule composer", () => {
         "  phi chi psi omegas",
       ].join("\n"),
     );
+  });
+
+  it("declines once any ordinary output appears below the captured tail", () => {
+    const scrolled = [
+      ...fixtureLines("omp--v18-rule-draft.txt"),
+      ...splitLines(parseAnsi("ordinary output after the composer")),
+    ];
+    expect(locateRuleComposer(scrolled)).toBeNull();
+  });
+
+  it("accepts at most 100 continuation rows", () => {
+    const prefix = ["transcript", "────", "❯ head"];
+    const continuationRows = Array.from({ length: 100 }, (_, index) => `  row-${index}`);
+    const suffix = ["", " π · status"];
+    const atCap = splitLines(parseAnsi([...prefix, ...continuationRows, ...suffix].join("\n")));
+    const overCap = splitLines(
+      parseAnsi([...prefix, ...continuationRows, "  row-100", ...suffix].join("\n")),
+    );
+
+    expect(locateRuleComposer(atCap)).not.toBeNull();
+    expect(locateRuleComposer(overCap)).toBeNull();
+  });
+
+  it.each(allOmpModalFixtures)(
+    "%s: the rule scanner rejects an OMP modal fixture",
+    (name) => {
+      expect(locateRuleComposer(fixtureLines(name))).toBeNull();
+    },
+  );
+
+  it.each(allForeignFixtures)("%s: the rule scanner rejects a foreign fixture", (name) => {
+    expect(locateRuleComposer(fixtureLines(name))).toBeNull();
   });
 });
 
