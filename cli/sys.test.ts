@@ -67,6 +67,17 @@ describe("resolveTool", () => {
     expect(resolveTool(whichIs(null), files, {}, HOME, "bun")?.path).toBe(`${HOME}/.bun/bin/bun`);
   });
 
+  test("a candidate that is present but not executable is skipped, exactly as `[ -x ]` skips it", () => {
+    // Both shells ask `[ -x "$candidate" ]`. A path that exists and cannot be run — a half-written
+    // download, an empty file left where an uninstall took the binary from — is not the tool, and
+    // taking it would hand the update an absolute path that dies with EACCES.
+    const files = fakeFiles({ [`${HOME}/.bun/bin/bun`]: "", "/usr/bin/bun": "" });
+    files.notExecutable.add(`${HOME}/.bun/bin/bun`);
+    expect(resolveTool(whichIs(null), files, {}, HOME, "bun")?.path).toBe("/usr/bin/bun");
+    files.notExecutable.add("/usr/bin/bun");
+    expect(resolveTool(whichIs(null), files, {}, HOME, "bun")).toBeNull();
+  });
+
   test("nothing anywhere is null, never a guess", () => {
     expect(resolveTool(whichIs(null), fakeFiles(), {}, HOME, "bun")).toBeNull();
   });
@@ -128,6 +139,13 @@ describe("bun lookup parity", () => {
       );
     });
   }
+
+  test("both shell sources test a candidate with `[ -x ]`, the predicate resolveTool asks", async () => {
+    // The order is not the whole contract: a list walked with `[ -e ]` on one side and `[ -x ]` on
+    // the other resolves to different paths on the same host. `Files.executable` is this side's.
+    expect(await shim).toContain('if [ -x "$candidate" ]; then');
+    expect(await remote).toContain('if [ -x "$_c" ]; then printf');
+  });
 
   test("both shell sources take `command -v` only when the answer is absolute", async () => {
     expect(await shim).toContain("case \"$candidate\" in");

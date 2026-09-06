@@ -107,6 +107,12 @@ export interface FakeFiles extends Files {
   rootOwned: Set<string>;
   /** Paths this process may not write — how a test states a read-only root. Everything else is writable. */
   readOnly: Set<string>;
+  /**
+   * Paths that exist but carry no execute bit — how a test states the shell's `[ -x ]` saying no.
+   * Everything seeded is executable by default, because almost every seeded path is a data file no
+   * test ever runs, and the one lookup that asks ({@link resolveTool}) only ever asks about tools.
+   */
+  notExecutable: Set<string>;
   /** Destructive filesystem operations in order: `rm -rf <p>` / `mv <from> <to>`. Ordering is the assertion `build` lives or dies by. */
   ops: string[];
 }
@@ -117,6 +123,7 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
   const undeletable = new Set<string>();
   const rootOwned = new Set<string>();
   const readOnly = new Set<string>();
+  const notExecutable = new Set<string>();
   const ops: string[] = [];
   // Paths are a flat set, so a "directory" is whatever entries sit under it — enough to model the
   // staging swap, whose whole content is `web/dist/**`.
@@ -127,10 +134,12 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
     undeletable,
     rootOwned,
     readOnly,
+    notExecutable,
     ops,
     ownerUid: (p) => (rootOwned.has(p) ? 0 : 1000),
     writable: (p) => !readOnly.has(p),
     exists: (p) => under(p).length > 0,
+    executable: (p) => under(p).length > 0 && !notExecutable.has(p),
     read: (p) => entries.get(p)?.text ?? null,
     list: (p) => [
       ...new Set(
