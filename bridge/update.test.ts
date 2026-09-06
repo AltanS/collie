@@ -371,12 +371,15 @@ describe("restart needed — the files moved under a running process", () => {
   });
 
   it("restart command for the install kind, never a hard-coded string", () => {
-    // Three spellings, and the kind is the whole of what picks one (M14/01 §5.3, ADR 0035).
+    // Two spellings, and the kind is the whole of what picks one (M14/01 §5.3).
     expect(restartCommandFor("detached-checkout")).toBe("herdr plugin action invoke restart --plugin herdr.collie");
-    expect(restartCommandFor("packaged")).toBe("sudo systemctl restart collie");
-    for (const kind of ["linked-clone", "binary", "unknown"] as const) {
+    // A PACKAGED install takes the `collie` verb like any other non-Herdr kind. Our package ships no
+    // unit file at all — `collie start` writes the operator's own `--user` unit — so the system-unit
+    // spelling would name a unit that does not exist and ask for a password to restart it.
+    for (const kind of ["packaged", "linked-clone", "binary", "unknown"] as const) {
       expect(restartCommandFor(kind)).toBe("collie restart");
     }
+    expect(restartCommandFor("packaged")).not.toContain("sudo");
 
     // And the snapshot names the one this machine takes, off the same function.
     const swapped = { bootVersion: "1.5.0", liveVersion: () => "1.6.0" };

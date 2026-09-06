@@ -541,21 +541,26 @@ export class UpdateStateStore {
 /**
  * The command that restarts THIS Collie, spelled for the install kind — the one place it is spelled.
  *
- * The three spellings and why each machine gets the one it gets (M14/01 §5.3, ADR 0035):
+ * TWO spellings, and the split is Herdr-managed against everything else (M14/01 §5.3):
  *   • `detached-checkout` is Herdr-managed, and Herdr resolves the plugin's checkout, so its action
  *     runs from any directory where `bin/collie` would not.
- *   • `packaged` takes the SYSTEM unit spelling: a package manager installs a system unit, which is
- *     not the operator's to restart without `sudo`. It is the one kind that never updates itself,
- *     and it is the only kind that can reach the restart-needed state at all.
- *   • Everything else — a linked clone, a binary install, an unknown layout — takes the `collie`
- *     verb, which restarts the user unit and works anywhere the CLI is on PATH.
+ *   • Everything else — a linked clone, a binary install, an unknown layout and a PACKAGED install —
+ *     takes the `collie` verb, which drives the `systemd --user` unit and works anywhere the CLI is
+ *     on PATH.
+ *
+ * **A packaged install is not a system unit**, which is the mistake worth naming here because it is
+ * the obvious guess. Our package ships NO unit file: `collie start` writes the operator's own
+ * `~/.config/systemd/user` unit and drives it with `systemctl --user`
+ * (`packaging/aur/PKGBUILD`). So `sudo systemctl restart collie` names a unit that does not exist,
+ * and asks for a password to do it. Only UPDATING is someone else's on a packaged install (ADR
+ * 0035); restarting is still the operator's own, exactly as `update-banner.tsx` already had it.
  *
  * Pure and exported: the phone renders what the host answered, so this is the only derivation.
  */
 export function restartCommandFor(kind: UpdateStatus["installKind"]): string {
-  if (kind === "detached-checkout") return "herdr plugin action invoke restart --plugin herdr.collie";
-  if (kind === "packaged") return "sudo systemctl restart collie";
-  return "collie restart";
+  return kind === "detached-checkout"
+    ? "herdr plugin action invoke restart --plugin herdr.collie"
+    : "collie restart";
 }
 
 // ── The monitor ───────────────────────────────────────────────────────────────

@@ -148,14 +148,14 @@ describe("updateNotice — restart needed after a package swap", () => {
       updateNotice(
         someUpdate({
           restartNeeded: true,
-          restartCommand: "sudo systemctl restart collie",
+          restartCommand: "collie restart",
           bridgeStale: true,
           releaseAvailable: true,
         }),
       ),
     ).toEqual({
       line: "Collie was replaced on disk. Restart it.",
-      command: "sudo systemctl restart collie",
+      command: "collie restart",
     });
   });
 
@@ -176,9 +176,9 @@ describe("UpdateBanner", () => {
   });
 
   it("shows the package-swap restart line with the host's command", async () => {
-    renderBanner(someUpdate({ restartNeeded: true, restartCommand: "sudo systemctl restart collie" }));
+    renderBanner(someUpdate({ restartNeeded: true, restartCommand: "collie restart" }));
     expect(await screen.findByText("Collie was replaced on disk. Restart it.")).toBeInTheDocument();
-    expect(screen.getByText("sudo systemctl restart collie")).toBeInTheDocument();
+    expect(screen.getByText("collie restart")).toBeInTheDocument();
   });
 
   it("shows the restart line (no link) when the running bridge is stale", async () => {
