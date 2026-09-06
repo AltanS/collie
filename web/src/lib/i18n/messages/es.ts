@@ -758,7 +758,7 @@ export const es: Dictionary = {
   "apiError.update.major_confirm_required": "{version} pasa a una versión mayor y requiere confirmación explícita.",
   "apiError.update.target_mismatch": "Esta pantalla ofreció {asked}, pero este collie instalaría {would}. Recargue y vuelva a revisar.",
   "apiError.update.none_available": "No hay ninguna versión más reciente disponible.",
-  "apiError.update.system_owned": "Esta instalación pertenece a root. Actualízala de la misma forma en que se instaló.",
+  "apiError.update.packaged": "Las actualizaciones se gestionan con tu gestor de paquetes. Collie no reemplazará los archivos de esta instalación.",
   "apiError.update.start_failed": "No se pudo iniciar la actualización: {reason}",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "Actualizar Collie",

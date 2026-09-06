@@ -181,9 +181,9 @@ export type PackAction = "update-pack" | "update" | "retry-pack" | "none";
  * machine is current does a peer left behind become the thing the button is for.
  *
  * **`leadCanTake` YIELDS the release branch to the peers, and only when there are peers to yield
- * it to.** A system-owned install never takes a release from the phone (ADR 0035) — but levelling
+ * it to.** A packaged install never takes a release from the phone (ADR 0035) — but levelling
  * the peers is a different act, and it still works: the run pushes the build this lead ALREADY
- * runs, which is why the bridge decides the peers-only start ABOVE its own root-owned refusal
+ * runs, which is why the bridge decides the peers-only start ABOVE its own packaged refusal
  * (`bridge/update-action.ts`). Without this, the release short-circuit reached `update-pack`, the
  * card disabled it, and a packaged lead with a peer a version behind had no working button at all.
  *

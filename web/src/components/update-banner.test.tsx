@@ -172,7 +172,7 @@ describe("UpdateBanner", () => {
 describe("updateNotice — a system package", () => {
   it("names no update command for a major, and still links the release", () => {
     const notice = updateNotice(
-      someUpdate({ majorAvailable: "2.0.0", majorUrl: RELEASE_URL, installKind: "system-owned" }),
+      someUpdate({ majorAvailable: "2.0.0", majorUrl: RELEASE_URL, installKind: "packaged" }),
     );
     expect(notice?.command).toBeUndefined();
     expect(notice?.href).toBe(RELEASE_URL);
@@ -191,7 +191,7 @@ describe("updateNotice — a system package", () => {
 
   it("restart still carries a command — a package restarts like anything else on PATH", () => {
     // Only UPDATING is someone else's; the binary is on PATH and `collie restart` drives the unit.
-    expect(updateNotice(someUpdate({ bridgeStale: true, installKind: "system-owned" }))?.command).toBe(
+    expect(updateNotice(someUpdate({ bridgeStale: true, installKind: "packaged" }))?.command).toBe(
       "collie restart",
     );
   });

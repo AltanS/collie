@@ -727,7 +727,7 @@ export const zh: Dictionary = {
   "apiError.update.major_confirm_required": "{version} 跨越了大版本，需单独确认。",
   "apiError.update.target_mismatch": "当前界面显示的是 {asked}，但此 collie 将安装 {would}。请重新加载查看。",
   "apiError.update.none_available": "没有可更新的版本。",
-  "apiError.update.system_owned": "此安装归 root 所有。请以当初安装它的方式进行更新。",
+  "apiError.update.packaged": "更新由系统的包管理器提供。Collie 不会替换当前安装的文件。",
   "apiError.update.start_failed": "无法启动更新：{reason}",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "更新 Collie",

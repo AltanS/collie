@@ -53,6 +53,23 @@ const GREEN_SIX: PreflightReport = {
   ],
 };
 
+/** What a packaged install's own preflight looks like: short, green, and naming its command. */
+const PACKAGED: PreflightReport = {
+  schema: 1,
+  verdict: "green",
+  checks: [
+    { id: "doctor", verdict: "green", reason: "doctor reports no issues" },
+    {
+      id: "package",
+      verdict: "green",
+      reason: "updates come from your package manager",
+      remedy: "sudo pacman -Syu collie-bin",
+    },
+    { id: "upstream", verdict: "green", reason: "upstream is reachable" },
+    { id: "service", verdict: "green", reason: "collie.service is present" },
+  ],
+};
+
 /** Green overall, but one check inside it is red — the case a folded card must still surface. */
 const GREEN_WITH_ONE_RED: PreflightReport = {
   schema: 1,
@@ -662,31 +679,49 @@ describe("restarting gap is not an outage", () => {
 // that refusal. An enabled button here is a button that always fails.
 
 describe("UpdateCard — an install a package manager owns", () => {
-  it("disables the update action even though every check is green", async () => {
-    const update = info({ installKind: "system-owned" });
-    serveCheck(update, GREEN_SIX);
+  it("shows the package command IN PLACE OF the update button, not a greyed-out one", async () => {
+    // A disabled control is a thing to try again, and there is nothing here to try. The command is
+    // the operator's next move, and it is selectable text so a phone can copy it.
+    const update = info({ installKind: "packaged" });
+    serveCheck(update, PACKAGED);
     renderCard(update);
-    const button = await screen.findByRole("button", { name: /Update to 1\.4\.0/i });
-    await waitFor(() => expect(button).toBeDisabled());
+    expect(await screen.findByText("sudo pacman -Syu collie-bin")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Update to 1\.4\.0/i })).not.toBeInTheDocument();
+    // The version is still on screen: that a release exists is worth knowing however it is taken.
+    expect(screen.getByText(/Newest 1\.4\.0/)).toBeInTheDocument();
+  });
+
+  it("with no command to name, the sentence stands alone and the button is still gone", async () => {
+    // The prefix named no manager this build knows, so the CLI's `package` check carries no remedy.
+    const update = info({ installKind: "packaged" });
+    serveCheck(update, {
+      ...PACKAGED,
+      checks: PACKAGED.checks.map((c) =>
+        c.id === "package" ? { id: c.id, verdict: c.verdict, reason: c.reason } : c,
+      ),
+    });
+    renderCard(update);
+    expect(await screen.findByText(/package manager updates this install/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Update to 1\.4\.0/i })).not.toBeInTheDocument();
   });
 
   it("says who does update it, instead of showing a preflight failure that did not happen", async () => {
-    const update = info({ installKind: "system-owned" });
+    const update = info({ installKind: "packaged" });
     serveCheck(update, GREEN_SIX);
     renderCard(update);
     expect(await screen.findByText(/package manager updates this install/i)).toBeInTheDocument();
   });
 
-  it("disables crossing a major too — that is the same refusal, not a separate path", async () => {
+  it("offers no major crossing either — that is the same refusal, not a separate path", async () => {
     const update = info({
-      installKind: "system-owned",
+      installKind: "packaged",
       majorAvailable: "2.0.0",
       majorUrl: "https://github.com/AltanS/collie/releases/tag/v2.0.0",
     });
-    serveCheck(update, GREEN_SIX);
+    serveCheck(update, PACKAGED);
     renderCard(update);
-    const cross = await screen.findByRole("button", { name: /Cross to 2\.0\.0/i });
-    await waitFor(() => expect(cross).toBeDisabled());
+    expect(await screen.findByText("sudo pacman -Syu collie-bin")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cross to 2\.0\.0/i })).not.toBeInTheDocument();
   });
 
   it("a green preflight on any other kind still leaves the action enabled", async () => {
@@ -702,17 +737,17 @@ describe("UpdateCard — an install a package manager owns", () => {
   //
   // The lead cannot take the release. Levelling the peers to the build it ALREADY runs is a
   // different act and it works — `bridge/update-action.ts` decides the peers-only start above its
-  // own root-owned refusal for exactly this reason. What used to happen instead: the release
+  // own packaged refusal for exactly this reason. What used to happen instead: the release
   // short-circuit answered "Update pack to 1.4.0", the card disabled it, and the peers were
   // unreachable from the phone with an explanation that talked only about this machine.
 
   it("offers the peers-only run to a packaged lead whose peer is a version behind", async () => {
     const user = userEvent.setup();
-    const update = info({ installKind: "system-owned" });
+    const update = info({ installKind: "packaged" });
     const behind: UpdatePackMember[] = [
       { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
-    serveCheck(update, GREEN_SIX, behind);
+    serveCheck(update, PACKAGED, behind);
     let sent: StartBody | undefined;
     server.use(
       http.post("/api/update", async ({ request }) => {
@@ -746,15 +781,15 @@ describe("UpdateCard — an install a package manager owns", () => {
   // THE CONTROL. Same packaged lead, same release, and the one difference is that no peer needs
   // levelling — so there is nothing for the release branch to yield to, and the disabled button
   // stays as the card's only way to say a release exists and this machine is not taking it.
-  it("keeps the disabled release button when no peer needs levelling", async () => {
-    const update = info({ installKind: "system-owned" });
+  it("names the command and no button at all when no peer needs levelling", async () => {
+    const update = info({ installKind: "packaged" });
     const level: UpdatePackMember[] = [
       { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
-    serveCheck(update, GREEN_SIX, level);
+    serveCheck(update, PACKAGED, level);
     renderCard(update, LEAD_ROSTER);
-    const button = await screen.findByRole("button", { name: "Update pack to 1.4.0" });
-    await waitFor(() => expect(button).toBeDisabled());
+    expect(await screen.findByText("sudo pacman -Syu collie-bin")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Update pack to 1.4.0" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Retry pack update" })).not.toBeInTheDocument();
     expect(screen.getByText(/package manager updates this install/i)).toBeInTheDocument();
   });
@@ -796,11 +831,11 @@ describe("UpdateCard — an install a package manager owns", () => {
   });
 
   // A REAL fault must never hide behind the package-manager sentence. Before this, `packageManaged`
-  // was checked first, so a system-owned install with an actually broken preflight check (its own
-  // service or doctor, both of which the system-owned instance-check list still runs) showed only
+  // was checked first, so a packaged install with an actually broken preflight check (its own
+  // service or doctor, both of which the packaged instance-check list still runs) showed only
   // "your package manager updates this install" — true, and useless for finding the real problem.
   it("shows the genuine red reason, not the package-manager sentence, when BOTH are true", async () => {
-    const update = info({ installKind: "system-owned" });
+    const update = info({ installKind: "packaged" });
     serveCheck(update, RED);
     renderCard(update);
     // The red reason appears twice by design — once in the checks list, once as the blocked-reason

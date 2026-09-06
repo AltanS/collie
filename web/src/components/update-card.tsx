@@ -145,7 +145,11 @@ export function UpdateCard() {
   // refuses, and `POST /api/update` would do nothing but relay that refusal. Read HERE, above the
   // action, because it is one of the facts that decides which action there is — not merely whether
   // the button is greyed out.
-  const packageManaged = (snapshot?.installKind ?? check?.installKind) === "system-owned";
+  const packageManaged = (snapshot?.installKind ?? check?.installKind) === "packaged";
+  // The command the CLI resolved for this machine's prefix, off the preflight's own `package` check.
+  // The PHONE never derives it: the prefix is on the host, and a second derivation here would be a
+  // second thing to drift.
+  const packageCommand = packageManaged ? (check?.preflight?.checks.find((c) => c.id === PACKAGE_CHECK_ID)?.remedy ?? null) : null;
   // `leadCanTake: false` is what keeps the peers reachable from the phone. Without it the release
   // short-circuit answered `update-pack`, the card disabled it, and a packaged lead with a peer a
   // version behind was left with a disabled button and an explanation about its own install.
@@ -247,9 +251,9 @@ export function UpdateCard() {
   // manufactured red, because NOTHING IS WRONG with it. Its preflight is green on purpose, and
   // painting the card red would report a fault that does not exist.
   const blocked = packageManaged || (checked && (preflight === null || redCheck !== undefined));
-  // A REAL red check wins over the package-managed sentence, not the other way round. A system-owned
+  // A REAL red check wins over the package-managed sentence, not the other way round. A packaged
   // install's own preflight is short and green BY DESIGN — but `doctor` and `service` still run on it
-  // (`cli/update-check.ts`'s system-owned branch keeps both), and either can genuinely be red on a
+  // (`cli/update-check.ts`'s packaged branch keeps both), and either can genuinely be red on a
   // machine that also happens to be packaged. Checking packageManaged first would bury that fault
   // under a sentence about a boundary that is working exactly as designed, on every visit, until the
   // real problem is found some other way.
@@ -355,7 +359,14 @@ export function UpdateCard() {
                   {/* THE action button. One of the three labels, never two of them, and the label
                       states what the tap will actually do: level this machine, level the pack, or
                       run the peers again once this machine is already current. */}
-                  {action !== "none" && (
+                  {/* On a packaged install the command REPLACES the button rather than greying it
+                      out: a disabled control is a thing to try again, and there is nothing here to
+                      try. "Retry pack update" survives, because levelling the peers is a different
+                      act that works fine from a lead that cannot move itself. */}
+                  {packageCommand !== null && (
+                    <code className="select-all rounded bg-muted px-2 py-1 font-mono text-xs">{packageCommand}</code>
+                  )}
+                  {action !== "none" && !(packageManaged && action !== "retry-pack") && (
                     <Button
                       size="sm"
                       disabled={blocked && action !== "retry-pack"}
@@ -378,7 +389,7 @@ export function UpdateCard() {
                   {/* NOT a second update action: crossing a major is its own consent (ADR 0020),
                       the one thing the button above will never take. It appears only when a major
                       is actually waiting, which is rare, and it says "Cross", not "Update". */}
-                  {majorAvailable !== null && (
+                  {majorAvailable !== null && !packageManaged && (
                     <Button
                       variant="outline"
                       size="sm"
@@ -428,6 +439,13 @@ export function UpdateCard() {
     </Card>
   );
 }
+
+/**
+ * The `PreflightCheck.id` the CLI puts a packaged install's one line under — and the only place the
+ * phone reads a check by id. The KIND decides what the card does; this id only fetches the command
+ * that check already resolved, and its absence costs a command and nothing else.
+ */
+const PACKAGE_CHECK_ID = "package";
 
 /** The confirm's heading. Four asks, four sentences — a pack-wide run must not be consented to
  *  through the words written for one machine. */
