@@ -103,8 +103,8 @@ export interface FakeFiles extends Files {
   entries: Map<string, { text: string; mode?: number }>;
   /** Paths `remove` refuses to delete — the `rm -f` failures teardown must survive. */
   undeletable: Set<string>;
-  /** Roots the running user cannot write — how a test states an OS-package install. */
-  unwritable: Set<string>;
+  /** Paths owned by uid 0 — how a test states a system-owned tree. Everything else reads as uid 1000. */
+  rootOwned: Set<string>;
   /** Destructive filesystem operations in order: `rm -rf <p>` / `mv <from> <to>`. Ordering is the assertion `build` lives or dies by. */
   ops: string[];
 }
@@ -113,7 +113,7 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
   const entries = new Map<string, { text: string; mode?: number }>();
   for (const [p, text] of Object.entries(seed)) entries.set(p, { text });
   const undeletable = new Set<string>();
-  const unwritable = new Set<string>();
+  const rootOwned = new Set<string>();
   const ops: string[] = [];
   // Paths are a flat set, so a "directory" is whatever entries sit under it — enough to model the
   // staging swap, whose whole content is `web/dist/**`.
@@ -122,9 +122,9 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
   return {
     entries,
     undeletable,
-    unwritable,
+    rootOwned,
     ops,
-    writable: (p) => !unwritable.has(p),
+    ownerUid: (p) => (rootOwned.has(p) ? 0 : 1000),
     exists: (p) => under(p).length > 0,
     read: (p) => entries.get(p)?.text ?? null,
     list: (p) => [

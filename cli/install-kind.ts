@@ -10,7 +10,7 @@ import { collieBinary } from "./unit.ts";
 //
 // The detection is STRUCTURAL: no marker file is written by anything, and none is read as the
 // primary signal. Every kind is decided from shapes that already exist on disk — a git dir, a
-// root the running user cannot write,
+// root owned by uid 0,
 // `versions/<X.Y.Z>` parent with a `current` symlink beside it — because a marker is a fact that can
 // be copied, stale or absent while the tree around it says otherwise (M14/01 §4.2).
 //
@@ -62,11 +62,17 @@ export interface InstallProbe {
    */
   readonly hasMarker: boolean;
   /**
-   * Can the running user write into the root? Consulted LAST and only where nothing else claimed the
-   * tree, because it is the weakest signal here: it describes permissions rather than layout, and a
-   * checkout or a `versions/` layout means what it means whoever owns it.
+   * Who owns the root — the uid off `stat(2)`, or null when it could not be read.
+   *
+   * OWNERSHIP, never writability. `access(root, W_OK)` is true for uid 0, so a writability probe
+   * makes `collie update` and `sudo collie update` disagree about what kind of install this is, and
+   * hides a system-owned tree completely from a bridge running as root. Ownership is a fact about
+   * the tree rather than about who asked, so every caller reads the same answer.
+   *
+   * Consulted LAST and only where nothing else claimed the tree, because it is the weakest signal
+   * here: a checkout or a `versions/` layout means what it means whoever owns it.
    */
-  readonly rootWritable: boolean;
+  readonly rootOwnerUid: number | null;
 }
 
 export type InstallKind =
@@ -74,10 +80,16 @@ export type InstallKind =
   | { readonly kind: "detached-checkout"; readonly alsoLayout: boolean }
   | { readonly kind: "binary" }
   /**
-   * Someone else's package manager owns this tree — pacman, Homebrew, apt. Collie reads it, serves
-   * from it and reports its version, and never updates it: the operator's own package manager does.
+   * The tree is owned by root, and this is not a checkout or a `versions/` layout. Collie reads it,
+   * serves from it and reports its version, and never updates it in place.
+   *
+   * The name says OWNED, not "packaged", and that is deliberate. Root ownership is the fact on disk;
+   * that a package manager put it there is an inference, and usually a right one, but Collie cannot
+   * see it. A tarball someone unpacked as root looks identical, and telling that operator to run
+   * `pacman -Syu` would send them after a package that does not exist while the real remedy — fix
+   * the ownership, or reinstall the way they installed — goes unmentioned.
    */
-  | { readonly kind: "system-package" }
+  | { readonly kind: "system-owned" }
   | { readonly kind: "unknown"; readonly why: "no-marker" | "orphan-layout" | "loose-binary" };
 
 /**
@@ -102,16 +114,44 @@ export function classifyInstall(p: InstallProbe): InstallKind {
     return { kind: "unknown", why: "orphan-layout" };
   }
   if (!p.hasMarker) return { kind: "unknown", why: "no-marker" };
-  // Nothing above claimed the tree, and there IS a Collie here. A root the running user cannot write
-  // is one this process could never update — self-updating means replacing `bin/collie` and `web/dist`
-  // right here — so an update belongs to whoever can write it: the package manager that laid it down.
+  // Nothing above claimed the tree, and there IS a Collie here. A root owned by uid 0 is a tree the
+  // system administers: updating in place would mean replacing `bin/collie` and `web/dist` under
+  // whatever put them there, so Collie does not.
   //
-  // Asked last, and only in this branch, on purpose. Permissions are a weaker signal than layout: a
+  // OWNERSHIP, NOT WRITABILITY. `access(root, W_OK)` is true for uid 0, so a writability test would
+  // answer differently for `collie update` and `sudo collie update` — the same tree reported as two
+  // different kinds depending on how the command was typed, with the sudo spelling landing on the
+  // very "cannot tell how this Collie was installed" this branch exists to delete. It would also
+  // hide the kind entirely from a bridge running as root. Ownership does not move when the caller
+  // does.
+  //
+  // A NULL uid is not system-owned: nothing could be read, so nothing may be claimed, and
+  // `loose-binary` already says exactly that.
+  //
+  // Asked last, and only in this branch, on purpose. Ownership is a weaker signal than layout: a
   // `.git` or a `versions/` parent still means what it means in a root-owned tree, and reading
-  // writability earlier would reclassify a perfectly ordinary install the moment its permissions
-  // changed. Here it is the only question left, and it is the one that matters — this is the branch
-  // that used to fail as `loose-binary`, telling an operator their packaged Collie was unrecognisable.
-  return p.rootWritable ? { kind: "unknown", why: "loose-binary" } : { kind: "system-package" };
+  // ownership earlier would reclassify a perfectly ordinary install the moment someone chowned it.
+  return p.rootOwnerUid === 0 ? { kind: "system-owned" } : { kind: "unknown", why: "loose-binary" };
+}
+
+/**
+ * What a system-owned install is told, in ONE place.
+ *
+ * `update`, `doctor` and the preflight all need this sentence, and three copies would be three
+ * things to find when the wording — or the policy about naming a manager — changes.
+ *
+ * It asserts NO PROVENANCE, which is the correction that matters. Root ownership is the fact on
+ * disk; that a package manager put it there is an inference, and a tarball someone unpacked as root
+ * is indistinguishable. So the remedy names both ways out and neither as *the* command: an operator
+ * sent after `pacman -Syu` for a package that does not exist has been given a dead end, and the real
+ * fix — reinstall the way you installed, or take ownership — was never mentioned.
+ */
+export const SYSTEM_OWNED_REMEDY =
+  "take the new version the way this install arrived — through a package manager if one installed it, otherwise however you unpacked it — or take ownership of the directory";
+
+/** Why this install does not update itself, naming the root. The preflight and `doctor` share it. */
+export function systemOwnedReason(root: string): string {
+  return `${root} is owned by root, so this install does not update itself`;
 }
 
 // ── The probe, and what a binary install's paths are ─────────────────────────
@@ -181,7 +221,7 @@ export function probeInstall(
     currentResolvesHere:
       target !== null && (target === layout.versionsDir || target.startsWith(`${layout.versionsDir}/`)),
     hasMarker: deps.files.exists(join(root, "herdr-plugin.toml")),
-    rootWritable: deps.files.writable(root),
+    rootOwnerUid: deps.files.ownerUid(root),
   };
 }
 
