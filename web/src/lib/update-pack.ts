@@ -204,7 +204,12 @@ export function packAction(a: {
   leadCanTake?: boolean;
 }): PackAction {
   const peersNeedLevelling = a.behind > 0 || a.rolledBack > 0;
-  const yieldToPeers = a.leadCanTake === false && peersNeedLevelling;
+  // `a.hasPeers` is asserted here rather than assumed. Today `behind`/`rolledBack` can only be
+  // nonzero when there IS a peer to count, because the one caller derives all three from the same
+  // census — but that is an invariant of the caller, not of this function, and a future caller that
+  // computed them from a different source would otherwise see `packAction` yield to peers that do
+  // not exist.
+  const yieldToPeers = a.hasPeers && a.leadCanTake === false && peersNeedLevelling;
   if (a.releaseAvailable && !yieldToPeers) return a.hasPeers ? "update-pack" : "update";
   if (peersNeedLevelling) return "retry-pack";
   return "none";
