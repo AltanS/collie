@@ -767,6 +767,7 @@ updateTimer.unref();
 const packFollower =
   pack.mode === "peer" && canRunUpdate
     ? new PackFollower({
+        installKind,
         self: () => ({ version: packVersion, self: trustStore.current()?.self.memberId ?? "" }),
         // Re-read on every decision, never captured: it IS the memory, and the record on disk is
         // what survives this machine's own restart.

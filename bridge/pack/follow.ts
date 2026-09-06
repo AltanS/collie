@@ -1,3 +1,4 @@
+import type { InstallKind } from "../../cli/install-kind.ts";
 import { compareSemver, majorOf, parsePrereleaseTag } from "../update.ts";
 import type { PeerRunReport, PreflightReport } from "../update-action.ts";
 import { firstRed } from "../update-action.ts";
@@ -104,6 +105,7 @@ export function parseTurn(raw: string | null | undefined): { member: string; run
 
 /** Why a peer is not following. Every refusal is recorded, and every one of them names itself. */
 export type FollowRefusal =
+  | "system-owned"
   | "own-build-not-a-release"
   | "lead-states-nothing"
   | "not-higher"
@@ -124,6 +126,17 @@ const refuse = (reason: FollowRefusal, detail: string): FollowDecision => ({ kin
 
 /** Everything the pure guards decide from. All of it is already on this machine. */
 export interface FollowFacts {
+  /**
+   * This peer's own install kind (ADR 0035). A `system-owned` peer never follows: it cannot replace
+   * its own files, so `firstRed` — which the six-and-eight guards below rely on — finding nothing
+   * red proves nothing here. A system-owned install's preflight is GREEN BY DESIGN, so without this
+   * guard a peer in that shape would sail through every other check, spawn a detached
+   * `cli/update.ts` that refuses on its own system-owned branch, and repeat once an hour forever —
+   * the exact failure ADR 0035 exists to eliminate, on the pack-follow path instead of the phone tap.
+   * Checked FIRST, before the release-build guard, because it costs one comparison and never a
+   * subprocess, matching this function's own ordering rule (cheapest refusal first).
+   */
+  readonly installKind: InstallKind["kind"];
   /** This peer's own running version, bare — the same string it answers `hello` with. */
   readonly own: string;
   /** This peer's own member id, which is the name a turn addresses. */
@@ -147,6 +160,13 @@ export interface FollowFacts {
  * {@link followDecision} runs them in that position.
  */
 export function followGuards(f: FollowFacts): FollowDecision {
+  // ── 0. THIS PEER CANNOT REPLACE ITS OWN FILES ─────────────────────────────
+  // Ahead of guard 1 on purpose: a system-owned install is disqualified regardless of what it is
+  // running or what its lead states, so there is nothing upstream of this worth evaluating first.
+  if (f.installKind === "system-owned") {
+    return refuse("system-owned", "this install is owned by root, so it never self-levels (ADR 0035)");
+  }
+
   // ── 1. RELEASE BUILDS ONLY ─────────────────────────────────────────────────
   // A `1.4.1-dev+ab12cd3` build never self-levels, full stop. **This is what keeps the dev lane
   // still**: the dev pack's peer is the `~/apps/collie-next` checkout on minibuch, built from a
@@ -271,6 +291,12 @@ export async function followDecision(f: FollowFacts, e: FollowEffects): Promise<
 
 /** What the follower needs from the process around it. Every one of them is a seam index.ts fills. */
 export interface PackFollowerDeps {
+  /**
+   * This peer's own install kind. A plain value, not a getter: like the version and member id below,
+   * it cannot change under a running process (`bridge/index.ts` probes it once, the same read the
+   * update preflight and monitor share).
+   */
+  readonly installKind: InstallKind["kind"];
   /** This peer's own bare version and member id, resolved once at boot like every other identity. */
   readonly self: () => { readonly version: string; readonly self: string };
   /** The run record on disk as of now, resolved. Re-read every time — that is the memory. */
@@ -318,6 +344,7 @@ export class PackFollower {
     if (this.deciding) return;
     const id = this.deps.self();
     const facts: FollowFacts = {
+      installKind: this.deps.installKind,
       own: id.version,
       self: id.self,
       leadRelease: headers.leadRelease,
