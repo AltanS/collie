@@ -461,12 +461,7 @@ describe("the lead's turn queue", () => {
   test("the lead never grants a turn to a packaged member, whatever else the sweep says", () => {
     // Pure and offline: this is the whole of "the lead never grants a turn to a packaged member".
     // Green preflight, reachable, behind the target — every reason to be handed the turn but one.
-    for (const over of [
-      { verdict: "green" as const },
-      { verdict: "amber" as const },
-      { answered: false },
-      { run: { state: "verifying" as const, to: "v1.4.1", runId: RUN_ID, reason: null, updatedAt: NOW } },
-    ]) {
+    for (const over of [{ verdict: "green" as const }, { verdict: "amber" as const }, { answered: false }]) {
       const turns = new UpdateTurns();
       turns.begin(RUN_ID, "1.4.1");
       turns.observe([member({ memberId: "attic", installKind: "packaged", ...over })], NOW);
@@ -480,6 +475,41 @@ describe("the lead's turn queue", () => {
     older.begin(RUN_ID, "1.4.1");
     older.observe([member({ memberId: "attic" })], NOW);
     expect(older.turnFor("attic")).not.toBeNull();
+  });
+
+  test("a packaged member that has gone quiet reads unreachable, not calm", () => {
+    // `package-managed` takes the place of `waiting` and nothing else. A machine nobody has heard
+    // from in three sweeps may be off, and "waits for its package manager" would be a calm sentence
+    // about a peer that is not answering at all.
+    const turns = new UpdateTurns();
+    turns.begin(RUN_ID, "1.4.1");
+    for (let i = 0; i < TURN_MISSED_SWEEPS; i += 1) {
+      turns.observe([member({ memberId: "attic", installKind: "packaged", answered: false })], NOW);
+    }
+    const leg = turns.peerLegs().find((l) => l.name === "attic")!;
+    expect(leg.state).toBe("unreachable");
+    expect(leg.reason).toContain("missed");
+    expect(turns.turnFor("attic")).toBeNull();
+  });
+
+  test("a packaged member's own run record wins: it reads updating, never package-managed", () => {
+    // The member is the only witness to its own run. A packaged machine that is somehow moving —
+    // an operator running the updater by hand on it — is exactly the thing the page must not hide.
+    const turns = new UpdateTurns();
+    turns.begin(RUN_ID, "1.4.1");
+    turns.observe(
+      [
+        member({
+          memberId: "attic",
+          installKind: "packaged",
+          run: { state: "verifying", to: "v1.4.1", runId: RUN_ID, reason: null, updatedAt: NOW },
+        }),
+      ],
+      NOW,
+    );
+    expect(turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("updating");
+    // And it is still handed no turn: only a `waiting` leg is ever eligible.
+    expect(turns.turnFor("attic")).toBeNull();
   });
 
   test("a packaged member already on the target reads as done, which is the truer sentence", () => {

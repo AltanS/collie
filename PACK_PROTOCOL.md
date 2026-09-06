@@ -2624,6 +2624,12 @@ from its package manager (ADR 0035), so there is nothing a turn could authorise 
 it on `waiting` would say "about to move" about a machine that never will. The lead learns this from
 the member's own §19 report over the existing sweep — no new route, no new verb, no new header.
 
+It replaces `waiting` and nothing else. Every state the sweep OBSERVES outranks it: a packaged member
+already on the target reads `done`, one that reported its own run reads `updating` or `rolled-back`,
+and one that has missed three sweeps reads `unreachable`. A packaged machine can still be off, and it
+can still be moved by hand on its own console; the leg says what was seen before it says what the
+machine is.
+
 The queue is **never persisted**. §18.9's argument for `lastDialledAt` applies unchanged — a
 persisted turn would survive the restart it is meant to describe — so a lead restart re-derives the
 queue from the roster and re-grants, and a member already on the new version is simply not in it.

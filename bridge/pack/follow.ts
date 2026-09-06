@@ -546,13 +546,6 @@ function legOf(
   if (version !== null && compareSemver(version, a.target) >= 0) {
     return { ...base, state: "done", updatedAt: a.now };
   }
-  // A PACKAGE MANAGER OWNS THAT MACHINE (ADR 0035). Read after `done` — a packaged member already on
-  // the target is done, which is the truer sentence — and before everything a sweep observes, because
-  // this is a property of the machine rather than of this sweep: no answer, no run and no number of
-  // missed sweeps changes it. Terminal, so the queue never parks it on `waiting` and never waits.
-  if (m.installKind === "packaged") {
-    return { ...base, state: "package-managed", reason: `${m.memberId} takes its updates from its package manager` };
-  }
   if (m.run !== null && m.run.runId === a.runId) {
     if (PEER_IN_FLIGHT.has(m.run.state)) {
       return withStamp({ ...base, state: "updating" }, m.run.updatedAt);
@@ -566,6 +559,19 @@ function legOf(
   }
   if (a.misses >= TURN_MISSED_SWEEPS) {
     return { ...base, state: "unreachable", reason: `${m.memberId} has missed ${a.misses} sweeps` };
+  }
+  // A PACKAGE MANAGER OWNS THAT MACHINE (ADR 0035). It takes the place of `waiting` and NOTHING
+  // else, which is why it is read last of all.
+  //
+  // Every branch above it is a fact this sweep OBSERVED, and each one outranks it for its own
+  // reason. `done` is the truer sentence about a packaged member already on the target. A run
+  // record the member reported itself wins because the member is the only witness to its own run,
+  // and a packaged machine that is somehow moving is a thing the operator has to be able to see.
+  // `unreachable` wins because a packaged peer that has stopped answering is a peer nobody has
+  // heard from — saying "waits for its package manager" about it would state a calm fact about a
+  // machine that may be off.
+  if (m.installKind === "packaged") {
+    return { ...base, state: "package-managed", reason: `${m.memberId} takes its updates from its package manager` };
   }
   return { ...base, state: "waiting" };
 }
