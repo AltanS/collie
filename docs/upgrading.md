@@ -338,6 +338,14 @@ and will not level its pack. The bridge's own journal carries the other half: on
 `[pack] update <run id>: levelling peers to <version>` line per run, when the lead picks the record
 up. No such line, and the turns never started.
 
+### A pre-1.5.4 update stuck at bunx
+
+Before version 1.5.4, updates started from a phone run in a transient systemd user unit that lacks
+your PATH. When Bun lives only in `~/.bun/bin` on a checkout install, the checkout advances, but the
+rebuild fails with `bunx: command not found`. Fix this by running `collie update` once from a
+terminal where Bun is on PATH, or run the Herdr action, whose shim locates Bun itself. Either method
+rebuilds the advanced checkout. Starting in 1.5.4, the updater finds Bun on its own.
+
 Beside it sits `<state dir>/update.lock`, holding a pid and a timestamp. One run at a time. A record
 that still reads `preflight`, `staging`, `restarting` or `verifying`, has not moved for 10 minutes,
 and whose pid is no longer in the process table, is over: it reads as `interrupted`, and a new run
