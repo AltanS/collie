@@ -691,6 +691,23 @@ describe("UpdateCard — an install a package manager owns", () => {
     expect(screen.getByText(/Newest 1\.4\.0/)).toBeInTheDocument();
   });
 
+  it("takes the command off the snapshot first, and falls back to the preflight remedy", async () => {
+    // The snapshot carries the host's own answer since M17/02, so the card no longer has to dig it
+    // out of a check's remedy. It wins where both are present.
+    const fromSnapshot = info({ installKind: "packaged", packageCommand: "nix profile upgrade collie" });
+    serveCheck(fromSnapshot, PACKAGED);
+    const { unmount } = renderCard(fromSnapshot);
+    expect(await screen.findByText("nix profile upgrade collie")).toBeInTheDocument();
+    expect(screen.queryByText("sudo pacman -Syu collie-bin")).not.toBeInTheDocument();
+    unmount();
+
+    // And the fallback survives: a bridge older than the field still answers through the remedy.
+    const older = info({ installKind: "packaged" });
+    serveCheck(older, PACKAGED);
+    renderCard(older);
+    expect(await screen.findByText("sudo pacman -Syu collie-bin")).toBeInTheDocument();
+  });
+
   it("with no command to name, the sentence stands alone and the button is still gone", async () => {
     // The prefix named no manager this build knows, so the CLI's `package` check carries no remedy.
     const update = info({ installKind: "packaged" });

@@ -565,6 +565,10 @@ export interface UpdateMonitorDeps {
   /** How this Collie is installed, probed once at startup — it cannot change under a running process
    *  (an update restarts the service), so the monitor just reports it. */
   installKind: UpdateStatus["installKind"];
+  /** The package manager's upgrade command for this root, or null when there is none to name.
+   *  Resolved once at startup beside the kind, for the reason the kind is: it cannot change under a
+   *  running process, and the phone must never derive it. */
+  packageCommand: string | null;
   store: UpdateStore;
   now: () => number;
   /** Whether update pushes are enabled (the `updates` notify pref — the user's off-switch). */
@@ -696,8 +700,10 @@ export class UpdateMonitor {
       newerVersions: this.newerVersions,
     };
     // Assigned, never conditionally spread: an install that has never updated through the runner
-    // must carry NO `run` key rather than one whose value is `undefined`.
+    // must carry NO `run` key rather than one whose value is `undefined`. The same for the package
+    // command, which most installs have none of.
     if (run !== null) status.run = run;
+    if (this.deps.packageCommand !== null) status.packageCommand = this.deps.packageCommand;
     return status;
   }
 }

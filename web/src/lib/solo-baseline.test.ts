@@ -128,6 +128,9 @@ const UPDATE_INFO_KEYS = {
   // renders. Both optional — an older bridge sends neither.
   newerVersions: true,
   run: true,
+  // The package manager's own upgrade command (M17/02). Optional: only a packaged install under a
+  // prefix Collie recognises has one to name.
+  packageCommand: true,
 } satisfies Record<keyof UpdateInfo, true>;
 
 describe("solo zero-tax — the client's mirror types carry no pack dimension", () => {

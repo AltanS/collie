@@ -327,6 +327,14 @@ describe("the update run record on the snapshot", () => {
     expect(monitor.status().run).toEqual(run);
   });
 
+  it("names the package command only where the host resolved one", () => {
+    // Assigned, never spread as `undefined`: an install with none must carry NO key. The phone's
+    // fallback to the preflight remedy depends on the difference between absent and empty.
+    expect("packageCommand" in makeMonitor().monitor.status()).toBe(false);
+    const packaged = makeMonitor({ installKind: "packaged", packageCommand: "sudo pacman -Syu collie-bin" });
+    expect(packaged.monitor.status().packageCommand).toBe("sudo pacman -Syu collie-bin");
+  });
+
   it("an install that has never updated carries no run key at all", () => {
     const { monitor } = makeMonitor();
     expect("run" in monitor.status()).toBe(false);
@@ -347,6 +355,7 @@ function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
     repo: "AltanS/collie",
     current: "0.11.0",
     installKind: "detached-checkout",
+    packageCommand: null,
     startupStamp: "STAMP@boot",
     fetchTags: async () => apiTags("v0.12.0"),
     bridgeStamp: () => "STAMP@boot",

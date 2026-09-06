@@ -386,6 +386,15 @@ export interface UpdateInfo {
    * older bridge (pre-M14, the git-install era), which reads as Herdr-managed.
    */
   installKind?: UpdateInstallKind;
+  /**
+   * The package manager's own upgrade command for this machine, resolved on the HOST at boot.
+   * Absent on every kind but `packaged`, and absent on a packaged install under a prefix nobody
+   * recognises — there the boundary sentence stands alone.
+   *
+   * The phone never derives it: the prefix is a fact about that machine, and a second derivation
+   * here would be a second thing to drift.
+   */
+  packageCommand?: string;
   /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
   bridgeStale: boolean;
   /** When the upstream check last ran (epoch ms), or null if it hasn't. */

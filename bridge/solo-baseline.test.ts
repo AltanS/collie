@@ -321,6 +321,9 @@ const UPDATE_STATUS_KEYS = {
   run: true,
   // Every release newer than the running one (M15/05) — the card lists what one update folds in.
   newerVersions: true,
+  // The package manager's own upgrade command (M17/02). Optional: only a packaged install under a
+  // prefix Collie recognises has one to name.
+  packageCommand: true,
 } satisfies Record<keyof UpdateStatus, true>;
 
 const WORKSPACE_KEYS = {

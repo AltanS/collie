@@ -146,10 +146,13 @@ export function UpdateCard() {
   // action, because it is one of the facts that decides which action there is — not merely whether
   // the button is greyed out.
   const packageManaged = (snapshot?.installKind ?? check?.installKind) === "packaged";
-  // The command the CLI resolved for this machine's prefix, off the preflight's own `package` check.
-  // The PHONE never derives it: the prefix is on the host, and a second derivation here would be a
-  // second thing to drift.
-  const packageCommand = packageManaged ? (check?.preflight?.checks.find((c) => c.id === PACKAGE_CHECK_ID)?.remedy ?? null) : null;
+  // The command the HOST resolved for this machine's prefix. The snapshot carries it directly since
+  // M17/02; the preflight's own `package` check is the fallback, kept because a bridge older than
+  // that field still answers the question through its remedy. The PHONE never derives it: the prefix
+  // is on the host, and a second derivation here would be a second thing to drift.
+  const packageCommand = packageManaged
+    ? (snapshot?.packageCommand ?? check?.packageCommand ?? check?.preflight?.checks.find((c) => c.id === PACKAGE_CHECK_ID)?.remedy ?? null)
+    : null;
   // `leadCanTake: false` is what keeps the peers reachable from the phone. Without it the release
   // short-circuit answered `update-pack`, the card disabled it, and a packaged lead with a peer a
   // version behind was left with a disabled button and an explanation about its own install.

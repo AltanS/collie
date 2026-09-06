@@ -439,6 +439,15 @@ export interface UpdateStatus {
    * (detached) checkout; every other kind is told the `collie` verbs (M14/01 §5.3).
    */
   installKind: "linked-clone" | "detached-checkout" | "binary" | "packaged" | "unknown";
+  /**
+   * The package manager's own upgrade command for this machine, when the resolved root names a
+   * manager Collie recognises (`cli/package-command.ts`). Absent on every other kind, and absent on
+   * a packaged install under a prefix nobody recognises — there the boundary sentence stands alone.
+   *
+   * **Resolved on the HOST, once, at boot.** The prefix is a fact about this machine, and a second
+   * derivation on the phone would be a second thing to drift.
+   */
+  packageCommand?: string;
   /** The running process is behind the on-disk bridge source — needs `systemctl --user restart collie`. */
   bridgeStale: boolean;
   /** When the upstream check last completed (epoch ms), or null if it hasn't run yet. */
