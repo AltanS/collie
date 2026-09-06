@@ -538,6 +538,26 @@ export class UpdateStateStore {
   }
 }
 
+/**
+ * The command that restarts THIS Collie, spelled for the install kind — the one place it is spelled.
+ *
+ * The three spellings and why each machine gets the one it gets (M14/01 §5.3, ADR 0035):
+ *   • `detached-checkout` is Herdr-managed, and Herdr resolves the plugin's checkout, so its action
+ *     runs from any directory where `bin/collie` would not.
+ *   • `packaged` takes the SYSTEM unit spelling: a package manager installs a system unit, which is
+ *     not the operator's to restart without `sudo`. It is the one kind that never updates itself,
+ *     and it is the only kind that can reach the restart-needed state at all.
+ *   • Everything else — a linked clone, a binary install, an unknown layout — takes the `collie`
+ *     verb, which restarts the user unit and works anywhere the CLI is on PATH.
+ *
+ * Pure and exported: the phone renders what the host answered, so this is the only derivation.
+ */
+export function restartCommandFor(kind: UpdateStatus["installKind"]): string {
+  if (kind === "detached-checkout") return "herdr plugin action invoke restart --plugin herdr.collie";
+  if (kind === "packaged") return "sudo systemctl restart collie";
+  return "collie restart";
+}
+
 // ── The monitor ───────────────────────────────────────────────────────────────
 
 /** Persistence seam — just what the monitor needs from {@link UpdateStateStore}. */
@@ -565,6 +585,16 @@ export interface UpdateMonitorDeps {
   /** How this Collie is installed, probed once at startup — it cannot change under a running process
    *  (an update restarts the service), so the monitor just reports it. */
   installKind: UpdateStatus["installKind"];
+  /**
+   * The version this process was running when it started, read the way `collie version` reads it.
+   *
+   * Captured ONCE, at boot, beside the install kind — for the same reason the kind is: it cannot
+   * change under a running process. `liveVersion` re-reads the same files, and a difference between
+   * the two is the whole of the restart-needed signal. No new state file and no new mechanism.
+   */
+  bootVersion: string;
+  /** The same reading, taken NOW. Throttled by the monitor, never called per request unthrottled. */
+  liveVersion: () => string;
   /** The package manager's upgrade command for this root, or null when there is none to name.
    *  Resolved once at startup beside the kind, for the reason the kind is: it cannot change under a
    *  running process, and the phone must never derive it. */
@@ -595,6 +625,8 @@ export class UpdateMonitor {
   private checkedAt: number | null = null;
   private staleAt = Number.NEGATIVE_INFINITY;
   private staleValue = false;
+  private swappedAt = Number.NEGATIVE_INFINITY;
+  private swappedValue = false;
   private inFlight: Promise<void> | null = null;
 
   constructor(private readonly deps: UpdateMonitorDeps) {}
@@ -678,6 +710,22 @@ export class UpdateMonitor {
     return this.staleValue;
   }
 
+  /**
+   * Have the files on disk stopped naming the version this process is running?
+   *
+   * Throttled exactly as {@link bridgeStale} is, and for the same reason: this is two small file
+   * reads and the snapshot is polled. Latching is deliberately NOT done — a package manager that
+   * rolls its change back leaves a process whose code matches disk again, and a latched flag would
+   * keep asking for a restart nobody needs.
+   */
+  private versionSwapped(): boolean {
+    const now = this.deps.now();
+    if (now - this.swappedAt < STALE_TTL_MS) return this.swappedValue;
+    this.swappedValue = this.deps.liveVersion() !== this.deps.bootVersion;
+    this.swappedAt = now;
+    return this.swappedValue;
+  }
+
   /** The snapshot-facing status. Cheap: `latest` is cached from the last check, `bridgeStale` throttled. */
   status(): UpdateStatus {
     const { current } = this.deps;
@@ -694,6 +742,7 @@ export class UpdateMonitor {
           : githubReleaseUrl(this.deps.repo, this.majorAvailable),
       installKind: this.deps.installKind,
       bridgeStale: this.bridgeStale(),
+      restartNeeded: this.versionSwapped(),
       checkedAt: this.checkedAt,
       // The whole list, oldest first — the card names what a single update folds in (M15/05). Empty
       // until the first successful check, which reads as "nothing to name", the same as up to date.
@@ -704,6 +753,7 @@ export class UpdateMonitor {
     // command, which most installs have none of.
     if (run !== null) status.run = run;
     if (this.deps.packageCommand !== null) status.packageCommand = this.deps.packageCommand;
+    if (status.restartNeeded) status.restartCommand = restartCommandFor(this.deps.installKind);
     return status;
   }
 }

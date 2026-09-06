@@ -126,6 +126,7 @@ export const zhTW: Dictionary = {
   "settings.update.error": "檢查更新失敗。",
   "settings.update.upToDate": "已是最新版本",
   "settings.updateBanner.restart": "需要重新啟動 Bridge",
+  "settings.updateBanner.restartNeeded": "磁碟上的 Collie 已被取代，請重新啟動。",
   "settings.updateBanner.releaseAvailable": "Collie {version} 已發布",
   "settings.updateBanner.majorAvailable": "Collie {version} 發布（主要版本升級）",
   "settings.updateBanner.copyAria": "複製指令：{command}",

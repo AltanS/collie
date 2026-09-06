@@ -136,6 +136,7 @@ export const ko: Dictionary = {
   "settings.update.error": "업데이트를 확인하지 못했습니다.",
   "settings.update.upToDate": "최신 버전",
   "settings.updateBanner.restart": "브리지 재시작 필요",
+  "settings.updateBanner.restartNeeded": "디스크의 Collie가 교체되었습니다. 다시 시작하세요.",
   "settings.updateBanner.releaseAvailable": "Collie {version} 업데이트 가능",
   "settings.updateBanner.majorAvailable": "Collie {version} 메이저 업데이트 출시",
   "settings.updateBanner.copyAria": "명령어 복사: {command}",

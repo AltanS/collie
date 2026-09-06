@@ -148,6 +148,7 @@ export const en = {
   "settings.update.error": "Couldn't check.",
   "settings.update.upToDate": "Up to date",
   "settings.updateBanner.restart": "Bridge restart needed",
+  "settings.updateBanner.restartNeeded": "Collie was replaced on disk. Restart it.",
   "settings.updateBanner.releaseAvailable": "Collie {version} available",
   "settings.updateBanner.majorAvailable": "Collie {version} — a new major",
   "settings.updateBanner.copyAria": "Copy command: {command}",

@@ -139,12 +139,46 @@ function renderBanner(update: UpdateInfo | undefined) {
   return render(<RouterProvider router={router} />);
 }
 
+// ── A PACKAGE SWAP UNDER A LIVE PROCESS (M17/02) ─────────────────────────────
+// `pacman -Syu` replaces the root while the bridge runs, so the version on disk stops being the
+// version running. The HOST decides both the state and the command; the phone renders them.
+describe("updateNotice — restart needed after a package swap", () => {
+  it("outranks the stale-source restart and takes the host's own command", () => {
+    expect(
+      updateNotice(
+        someUpdate({
+          restartNeeded: true,
+          restartCommand: "sudo systemctl restart collie",
+          bridgeStale: true,
+          releaseAvailable: true,
+        }),
+      ),
+    ).toEqual({
+      line: "Collie was replaced on disk. Restart it.",
+      command: "sudo systemctl restart collie",
+    });
+  });
+
+  it("says nothing on a bridge that sends neither field, which is every install before this", () => {
+    expect(updateNotice(someUpdate({}))).toBeNull();
+    // And a raised flag with no command to name falls through rather than printing a bare line: a
+    // restart notice the operator cannot act on is a notice with nothing in it.
+    expect(updateNotice(someUpdate({ restartNeeded: true }))).toBeNull();
+  });
+});
+
 describe("UpdateBanner", () => {
   it("shows the release notice as a link to the release, with no command (the page carries it)", async () => {
     renderBanner(someUpdate({ releaseAvailable: true, latest: "0.10.3" }));
     const link = await screen.findByRole("link", { name: "Collie 0.10.3 available" });
     expect(link).toHaveAttribute("href", RELEASE_URL);
     expect(screen.queryByRole("button")).toBeNull(); // no copyable command for the release case
+  });
+
+  it("shows the package-swap restart line with the host's command", async () => {
+    renderBanner(someUpdate({ restartNeeded: true, restartCommand: "sudo systemctl restart collie" }));
+    expect(await screen.findByText("Collie was replaced on disk. Restart it.")).toBeInTheDocument();
+    expect(screen.getByText("sudo systemctl restart collie")).toBeInTheDocument();
   });
 
   it("shows the restart line (no link) when the running bridge is stale", async () => {

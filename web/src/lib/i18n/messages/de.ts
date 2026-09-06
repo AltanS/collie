@@ -141,6 +141,7 @@ export const de: Dictionary = {
   "settings.update.error": "Prüfung fehlgeschlagen.",
   "settings.update.upToDate": "Aktuell",
   "settings.updateBanner.restart": "Bridge-Neustart erforderlich",
+  "settings.updateBanner.restartNeeded": "Collie wurde auf der Festplatte ersetzt. Neu starten.",
   "settings.updateBanner.releaseAvailable": "Collie {version} verfügbar",
   "settings.updateBanner.majorAvailable": "Collie {version} (Major-Release)",
   "settings.updateBanner.copyAria": "Befehl kopieren: {command}",

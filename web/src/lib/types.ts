@@ -397,6 +397,13 @@ export interface UpdateInfo {
   packageCommand?: string;
   /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
   bridgeStale: boolean;
+  /**
+   * The VERSION on disk is no longer the version this process runs — a package manager replaced the
+   * root under a live bridge. Absent on a bridge older than M17/02, which reads as "not raised".
+   */
+  restartNeeded?: boolean;
+  /** The command that clears {@link restartNeeded}, spelled on the HOST for its install kind. */
+  restartCommand?: string;
   /** When the upstream check last ran (epoch ms), or null if it hasn't. */
   checkedAt: number | null;
   /** Every release newer than `current`, oldest first — what one update folds in. Absent on an

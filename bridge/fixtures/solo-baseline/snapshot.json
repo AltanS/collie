@@ -90,6 +90,7 @@
     "majorUrl": null,
     "installKind": "detached-checkout",
     "bridgeStale": false,
+    "restartNeeded": false,
     "checkedAt": null
   },
   "ts": 1754000000000

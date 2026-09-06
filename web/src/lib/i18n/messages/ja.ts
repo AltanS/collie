@@ -137,6 +137,7 @@ export const ja: Dictionary = {
   "settings.update.error": "確認に失敗しました。",
   "settings.update.upToDate": "最新バージョンです",
   "settings.updateBanner.restart": "Bridgeの再起動が必要です",
+  "settings.updateBanner.restartNeeded": "ディスク上の Collie が置き換えられました。再起動してください。",
   "settings.updateBanner.releaseAvailable": "Collie {version} が利用可能です",
   "settings.updateBanner.majorAvailable": "Collie {version} (メジャーアップデート)",
   "settings.updateBanner.copyAria": "コマンドをコピー: {command}",

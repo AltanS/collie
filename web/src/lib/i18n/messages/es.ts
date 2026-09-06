@@ -139,6 +139,7 @@ export const es: Dictionary = {
   "settings.update.error": "Error al comprobar.",
   "settings.update.upToDate": "Actualizado",
   "settings.updateBanner.restart": "Reinicio del bridge requerido",
+  "settings.updateBanner.restartNeeded": "Collie fue reemplazado en el disco. Reinícialo.",
   "settings.updateBanner.releaseAvailable": "Collie {version} disponible",
   "settings.updateBanner.majorAvailable": "Collie {version}, nueva versión mayor",
   "settings.updateBanner.copyAria": "Copiar comando: {command}",

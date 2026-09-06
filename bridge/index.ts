@@ -139,7 +139,7 @@ import {
   updateCadenceTick,
   updateStartCommand,
 } from "./update-action.ts";
-import { collieVersionBare } from "./version.ts";
+import { collieVersion, collieVersionBare } from "./version.ts";
 
 // How often the registry rescans the filesystem for sessions that appeared/disappeared after boot.
 const SESSION_REFRESH_MS = 15_000;
@@ -564,6 +564,12 @@ const updateRepo = process.env.COLLIE_UPDATE_REPO?.trim() || "AltanS/collie";
 // startup because the answer cannot change under a running process (an update restarts the service).
 // The banner spells its commands from this: Herdr actions for a Herdr-managed checkout, the `collie`
 // verbs for everything else (M14/01 §5.3).
+// The version this process is RUNNING, captured once, here, beside the kind — for the same reason
+// the kind is captured once: neither can change under a live process. A package manager can still
+// change the FILES, and `collieVersion` re-reads them on every call, so the difference between this
+// string and a fresh read is the restart-needed signal (M17/02). No new state file.
+const bootVersion = collieVersion(rootDir);
+
 const installKind = classifyInstall(
   probeInstall(
     { ctx: { home: homedir() }, exec: realExec(process.env, homedir()), files: realFiles, link: realLinkFs },
@@ -578,6 +584,10 @@ const updateMonitor = new UpdateMonitor({
   // takes Collie's own updater, and printing a package manager's command there would be a command
   // that does not apply. Resolved here, at boot, for the reason `installKind` is.
   packageCommand: installKind === "packaged" ? packageCommand(rootDir) : null,
+  bootVersion,
+  // Read from disk on each (throttled) snapshot: noticing that the files moved under this process is
+  // the whole job, so this one must NOT be cached the way `bootVersion` is.
+  liveVersion: () => collieVersion(rootDir),
   startupStamp: bridgeStampSync(bridgeDir, rootDir),
   fetchTags: githubTagsFetcher(updateRepo),
   bridgeStamp: () => bridgeStampSync(bridgeDir, rootDir),

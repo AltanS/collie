@@ -450,6 +450,22 @@ export interface UpdateStatus {
   packageCommand?: string;
   /** The running process is behind the on-disk bridge source — needs `systemctl --user restart collie`. */
   bridgeStale: boolean;
+  /**
+   * The VERSION on disk is no longer the version this process is running.
+   *
+   * Only a package manager can produce it: every other kind swaps files through Collie's own
+   * updater, which restarts the service as its last act. `pacman -Syu` replaces the root under a
+   * live process, and `collieVersion()` re-reads from disk on every call — so without this the
+   * bridge would answer with the NEW version while running the OLD code, on `/api/health`, on
+   * `hello` and therefore on the pack wire, where a lead reads it as "that peer already levelled".
+   *
+   * While it is raised, what this process puts ON THE PACK WIRE stays the version captured at boot:
+   * stale but true, never new but false.
+   */
+  restartNeeded: boolean;
+  /** The command that clears {@link restartNeeded}, spelled for the install kind. Absent when
+   *  nothing needs restarting. */
+  restartCommand?: string;
   /** When the upstream check last completed (epoch ms), or null if it hasn't run yet. */
   checkedAt: number | null;
   /**

@@ -127,6 +127,7 @@ export const zh: Dictionary = {
   "settings.update.error": "检查更新失败。",
   "settings.update.upToDate": "已是最新版本",
   "settings.updateBanner.restart": "需要重启网桥",
+  "settings.updateBanner.restartNeeded": "磁盘上的 Collie 已被替换，请重启。",
   "settings.updateBanner.releaseAvailable": "Collie {version} 已发布",
   "settings.updateBanner.majorAvailable": "Collie {version} 发布（主版本升级）",
   "settings.updateBanner.copyAria": "复制命令：{command}",

@@ -15,6 +15,7 @@ import {
   parseReleaseManifest,
   parseSemverTag,
   parseTagsResponse,
+  restartCommandFor,
   shouldNotify,
   stampOf,
   updateDigestBody,
@@ -341,6 +342,51 @@ describe("the update run record on the snapshot", () => {
   });
 });
 
+describe("restart needed — the files moved under a running process", () => {
+  it("is quiet while disk still names the version this process runs", () => {
+    const status = makeMonitor().monitor.status();
+    expect(status.restartNeeded).toBe(false);
+    // Nothing to restart, nothing to name: the command key is absent, not empty.
+    expect("restartCommand" in status).toBe(false);
+  });
+
+  it("is raised the moment a live read disagrees with the version captured at boot", () => {
+    // Exactly what `pacman -Syu` does: the files become 1.6.0 while this process is still 1.5.0.
+    let onDisk = "1.5.0";
+    const { monitor, tick } = makeMonitor({
+      current: "1.5.0",
+      bootVersion: "1.5.0",
+      liveVersion: () => onDisk,
+    });
+    expect(monitor.status().restartNeeded).toBe(false);
+    onDisk = "1.6.0";
+    tick(10_000); // past the throttle the read shares with `bridgeStale`
+    expect(monitor.status().restartNeeded).toBe(true);
+
+    // Not latched: a package manager that puts the old files back leaves a process that matches disk
+    // again, and asking for a restart nobody needs is worse than saying nothing.
+    onDisk = "1.5.0";
+    tick(10_000);
+    expect(monitor.status().restartNeeded).toBe(false);
+  });
+
+  it("restart command for the install kind, never a hard-coded string", () => {
+    // Three spellings, and the kind is the whole of what picks one (M14/01 §5.3, ADR 0035).
+    expect(restartCommandFor("detached-checkout")).toBe("herdr plugin action invoke restart --plugin herdr.collie");
+    expect(restartCommandFor("packaged")).toBe("sudo systemctl restart collie");
+    for (const kind of ["linked-clone", "binary", "unknown"] as const) {
+      expect(restartCommandFor(kind)).toBe("collie restart");
+    }
+
+    // And the snapshot names the one this machine takes, off the same function.
+    const swapped = { bootVersion: "1.5.0", liveVersion: () => "1.6.0" };
+    for (const kind of ["packaged", "detached-checkout", "binary"] as const) {
+      const status = makeMonitor({ installKind: kind, ...swapped }).monitor.status();
+      expect(status.restartCommand).toBe(restartCommandFor(kind));
+    }
+  });
+});
+
 /** Tag names as the `/tags` endpoint reports them — one parser, so the monitor's fixtures name what
  *  the CLI's binary updater reads too. The sha is arbitrary here: the banner never looks at it. */
 const apiTags = (...names: string[]): ApiTag[] => names.map((name) => ({ name, sha: `sha-${name}` }));
@@ -356,6 +402,8 @@ function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
     current: "0.11.0",
     installKind: "detached-checkout",
     packageCommand: null,
+    bootVersion: "0.11.0",
+    liveVersion: () => "0.11.0",
     startupStamp: "STAMP@boot",
     fetchTags: async () => apiTags("v0.12.0"),
     bridgeStamp: () => "STAMP@boot",
