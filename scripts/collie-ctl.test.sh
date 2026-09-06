@@ -187,7 +187,8 @@ test_bootstrap_without_bun_reports_it() {
   setup_case bootstrap-no-bun
   # PATH holds only the scratch dir (which has no `bun`), and $HOME is a temp dir with no ~/.bun —
   # so every absolute fallback resolve_bun tries misses too, unless the host has a system Bun.
-  if [ -x /usr/bin/bun ] || [ -x /usr/local/bin/bun ] || [ -x /opt/homebrew/bin/bun ]; then
+  if [ -x /usr/bin/bun ] || [ -x /usr/local/bin/bun ] || [ -x /opt/homebrew/bin/bun ] ||
+    [ -x /bin/bun ] || [ -x /usr/sbin/bun ] || [ -x /sbin/bun ]; then
     echo "  (skipping the no-Bun case: this host has Bun in a system location)" >&2
     return 0
   fi

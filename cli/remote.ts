@@ -192,6 +192,10 @@ export function shqPath(path: string): string {
  * locations — because `ssh host '/bin/sh -s'` is byte-for-byte the no-login-shell, no-`PATH`
  * environment that shim was written for. `command -v` reports a shell function as a bare word, so
  * only an absolute answer is taken (the same guard, for the same reason).
+ *
+ * The candidate list is the canonical one `cli/sys.ts` defines (`toolCandidates`), spelled in shell
+ * because it runs on the far machine. `cli/sys.test.ts` parses this constant and the shim and fails
+ * when any of the three disagree — add a candidate in all three or in none.
  */
 const TOOL_LOOKUP = [
   "collie_tool() {",

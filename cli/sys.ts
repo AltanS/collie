@@ -12,7 +12,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { connect } from "node:net";
 
 import type { Environment } from "./context.ts";
@@ -353,6 +353,73 @@ export const realFiles: Files = {
     }
   },
 };
+
+// ── One tool lookup list, spelled once ───────────────────────────────────────
+//
+// Three places used to look for Bun and no two of them looked in the same order: the shim's six
+// candidates (`scripts/collie-ctl.sh`), the remote probe's nine (`cli/remote.ts`), and the
+// preflight's bare `which`. An operator whose Bun sits in a directory their login shell exports and
+// a plugin action does not therefore got a RED preflight blocking an update the shim would have
+// built without complaint (#169).
+//
+// So the list lives here, once, and the two shell copies spell it in the same order because they
+// run where TypeScript cannot: `resolve_bun` bootstraps the binary Bun compiles, and `collie_tool`
+// is shipped down an ssh pipe. `cli/sys.test.ts` parses both files and fails on a drift.
+//
+// This is NOT `bridge/tools.ts`'s `findTool`, and it does not replace it. That one searches PATH
+// plus a generic fallback set for a system tool; this one is the Bun installer's own locations, it
+// honours `$BUN_INSTALL`, and it is a fixed ordered list on purpose — a shell can spell it.
+
+/**
+ * The absolute candidate paths for `tool`, in the canonical order. PURE: it reads nothing.
+ *
+ * `$BUN_INSTALL` is the operator's explicit choice, so it outranks the default `~/.bun`. An EMPTY
+ * value counts as unset, exactly as the shell's `${BUN_INSTALL:-…}` reads it.
+ */
+export function toolCandidates(env: Environment, home: string, tool: string): string[] {
+  const declared = env.BUN_INSTALL;
+  const bunRoot = declared === undefined || declared === "" ? join(home, ".bun") : declared;
+  return [
+    join(bunRoot, "bin", tool),
+    join(home, ".bun", "bin", tool),
+    join(home, ".local", "bin", tool),
+    `/usr/local/bin/${tool}`,
+    `/opt/homebrew/bin/${tool}`,
+    `/usr/bin/${tool}`,
+    `/bin/${tool}`,
+    `/usr/sbin/${tool}`,
+    `/sbin/${tool}`,
+  ];
+}
+
+/** Where a tool was found, and whether PATH is what named it. */
+export interface ResolvedTool {
+  readonly path: string;
+  /** True when PATH answered. False when it took a candidate this PATH does not name. */
+  readonly onPath: boolean;
+}
+
+/**
+ * Walk {@link toolCandidates} for `tool`: PATH first, then each candidate that exists.
+ *
+ * PATH's answer is taken ONLY when it is absolute. `command -v` reports a shell function or an
+ * alias as a bare word, and a bare word is not a path — it is whatever the caller's cwd and PATH
+ * make of it later. The shim and the remote probe both carry the same guard, for the same reason.
+ */
+export function resolveTool(
+  exec: Pick<Exec, "which">,
+  files: Pick<Files, "exists">,
+  env: Environment,
+  home: string,
+  tool: string,
+): ResolvedTool | null {
+  const onPath = exec.which(tool);
+  if (onPath !== null && isAbsolute(onPath)) return { path: onPath, onPath: true };
+  for (const candidate of toolCandidates(env, home, tool)) {
+    if (files.exists(candidate)) return { path: candidate, onPath: false };
+  }
+  return null;
+}
 
 // ── Readiness ────────────────────────────────────────────────────────────────
 // "Is the bridge up?" is a TCP connect to the loopback port, never a `systemctl is-active` reading:
