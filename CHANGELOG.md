@@ -26,6 +26,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+- The pack treats a packaged member as a quiet member instead of failing it, the phone says which host waits for its package manager, and a package swap under a running bridge asks for a restart.
+
 ## [1.5.4] - 2026-09-07
 
 - Confirming a pack update on the phone levels the peers on an ordinary checkout install, instead of updating only the lead and leaving "Retry pack update" to be tapped by hand. That install kind never recorded the run the lead's turn queue is rebuilt from after its own restart. ([d9eb459](https://github.com/AltanS/collie/commit/d9eb459))
