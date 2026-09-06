@@ -17,7 +17,7 @@ import {
   type SeededFiles,
 } from "./fakes.ts";
 import type { Net } from "./sys.ts";
-import { parseUpdateRun, STALE_AFTER_MS, UPDATE_RUN_SCHEMA } from "../bridge/update-run.ts";
+import { packTurnStart, parseUpdateRun, STALE_AFTER_MS, UPDATE_RUN_SCHEMA } from "../bridge/update-run.ts";
 import {
   boundTail,
   healthTimeoutMs,
@@ -732,6 +732,71 @@ describe("update", () => {
     // Nothing of the second half ran in THIS process.
     expect(h.restarts).toBe(0);
     expect(h.exec.calls.some((c) => c.includes("check-version.sh"))).toBe(false);
+  });
+
+  test("records the run it just finished, so a restarted lead can find its pack turns", async () => {
+    // The bug this pins: the in-place path wrote nothing, so `settleUpdateGate` in bridge/index.ts
+    // re-read a file that was not there, `updateTurns.begin` never ran, and no peer was ever handed
+    // its turn. The lead updated itself and the pack sat still until the operator retried by hand.
+    const h = harness({
+      installed: "0.31.1",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+        ...SHALLOW,
+      ],
+    });
+    expect(await cmdUpdate(h.deps, ["--run-id", "r-99"])).toBe(EXIT.OK);
+    const written = h.files.read(`${STATE}/update.json`);
+    const run = JSON.parse(written ?? "{}");
+    // `done` and a run id are the two things the gate reads; `to` is what the peers level to, and it
+    // is the version the tree advanced TO, never the one we booted on — the whole reason the read
+    // happens after the advance.
+    expect(run.state).toBe("done");
+    expect(run.runId).toBe("r-99");
+    expect(run.to).toBe(STAGED_TARGET);
+    expect(run.from).toBe("0.31.1");
+
+    // THE SEAM, held from both sides. The bug was never the missing file, it was that the bridge
+    // found nothing to start turns from. So the record this CLI just wrote goes through the BRIDGE's
+    // own parser and the BRIDGE's own predicate, and the pair it hands the turn queue is asserted
+    // here. Either side moving alone fails this test, which is what the old arrangement could not do.
+    expect(packTurnStart(parseUpdateRun(written))).toEqual({ runId: "r-99", to: STAGED_TARGET });
+  });
+
+  test("a run started from a terminal is recorded with no id, never a blank one", async () => {
+    const h = harness({
+      installed: "0.31.1",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+        ...SHALLOW,
+      ],
+    });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    const written = h.files.read(`${STATE}/update.json`);
+    const run = JSON.parse(written ?? "{}");
+    expect(run.state).toBe("done");
+    expect(run.runId ?? null).toBeNull();
+    // And the gate correctly starts NOTHING from it: a run with no id was nobody's pack confirm.
+    expect(packTurnStart(parseUpdateRun(written))).toBeNull();
+  });
+
+  test("a build that fails records nothing — the lead did not move, so no peer may", async () => {
+    const h = harness({
+      installed: "0.31.1",
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+        ...SHALLOW,
+        [`${ROOT}$ bun ${ROOT}/cli/main.ts _apply-update`, { code: 1 }],
+      ],
+    });
+    expect(await cmdUpdate(h.deps, ["--run-id", "r-99"])).toBe(EXIT.FAIL);
+    expect(h.files.read(`${STATE}/update.json`)).toBeNull();
   });
 
   test("a checkout that would not advance never reaches the rebuild", async () => {

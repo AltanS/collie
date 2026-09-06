@@ -304,6 +304,28 @@ export function updateLockHeld(
 }
 
 /**
+ * The `(runId, to)` a finished run hands the pack's turn queue, or null when this record starts no
+ * turns. The lead's own health gate settling is what calls it (`settleUpdateGate` in
+ * `bridge/index.ts`), on every poll tick, because the queue is in memory and the update restarted
+ * the process that held it — this record is the only thing that crossed the restart.
+ *
+ * A function rather than four conditions inline at the one call site, because the WRITER is in
+ * another tree: `cli/update.ts` decides what a finished run looks like on disk, and the two halves
+ * agreeing is the whole of the pack levelling. A test can hold a real written record against this
+ * and fail when either side moves; four conditions in `index.ts` could only be read, never run,
+ * because importing that module boots a bridge.
+ *
+ * All four are load-bearing. `done` because a run still in flight has nothing to level to yet.
+ * `runId` because the queue is keyed on it, and a run with none was started from a terminal by
+ * someone who never asked for a pack. `to` because that is the version the peers are levelling to.
+ */
+export function packTurnStart(run: UpdateRun | null): { readonly runId: string; readonly to: string } | null {
+  if (run === null || run.state !== "done") return null;
+  if (run.runId === undefined || run.to === null) return null;
+  return { runId: run.runId, to: run.to };
+}
+
+/**
  * The record on disk as of now, resolved — for the bridge, which reads it at startup and on every
  * update snapshot. Synchronous and tiny: one small file, read at most once per snapshot poll.
  */

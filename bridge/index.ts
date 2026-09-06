@@ -127,7 +127,7 @@ import {
   updateDigestBody,
 } from "./update.ts";
 import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
-import { readUpdateRun, updateLockHeld } from "./update-run.ts";
+import { packTurnStart, readUpdateRun, updateLockHeld } from "./update-run.ts";
 import {
   FreshPreflightGate,
   parsePreflightReport,
@@ -1331,11 +1331,16 @@ const packStatus =
  */
 let settledRunId: string | null = null;
 function settleUpdateGate(): void {
-  const run = readUpdateRun(cfg.stateDir);
-  if (run === null || run.state !== "done" || run.runId === undefined || run.to === null) return;
-  if (run.runId === settledRunId) return;
-  settledRunId = run.runId;
-  updateTurns.begin(run.runId, run.to);
+  const start = packTurnStart(readUpdateRun(cfg.stateDir));
+  if (start === null) return;
+  if (start.runId === settledRunId) return;
+  settledRunId = start.runId;
+  // The one line an operator can grep for in the BRIDGE's own journal, which is the journal they
+  // are already tailing. The update that wrote this record ran under a transient `--collect` unit
+  // whose name nobody knows and whose journal outlives it by nothing, so a trace left only there is
+  // a trace left nowhere. Once per run id per process, so a poll tick cannot make it a stream.
+  console.log(`[pack] update ${start.runId}: levelling peers to ${start.to}`);
+  updateTurns.begin(start.runId, start.to);
   packLead?.resweep();
 }
 

@@ -324,6 +324,20 @@ The updater writes one record, `<state dir>/update.json` (by default
 state, the version the run came from, the version it was going to, the updater's pid, and on a
 failure a tail of the service log and the recovery command.
 
+An update the phone started does not print to your terminal at all. It runs under a transient
+systemd unit of its own, named `collie-api-update-<stamp>`, and `--collect` removes that unit as
+soon as it exits, so its transcript is only in the journal:
+
+```bash
+journalctl --user -u 'collie-api-update-*' --since '30 min ago'
+```
+
+That is where to look when the phone reported success and something downstream did not happen — a
+warning that the run record could not be written, for instance, which is a lead that updated itself
+and will not level its pack. The bridge's own journal carries the other half: one
+`[pack] update <run id>: levelling peers to <version>` line per run, when the lead picks the record
+up. No such line, and the turns never started.
+
 Beside it sits `<state dir>/update.lock`, holding a pid and a timestamp. One run at a time. A record
 that still reads `preflight`, `staging`, `restarting` or `verifying`, has not moved for 10 minutes,
 and whose pid is no longer in the process table, is over: it reads as `interrupted`, and a new run

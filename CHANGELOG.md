@@ -37,6 +37,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - `collie update --check` looks for Bun where the shim and the remote probe look, `$BUN_INSTALL` included, so a Bun off your PATH is green with the path it will run rather than a red that blocks the update (#169).
 - `flake.nix` pins the tools a release is built with — Bun, Node, git, tmux and zellij — and the release workflow builds inside that flake, so a published binary names the toolchain that produced it.
 - A pre-commit guard refuses a `flake.lock` that moves outside a release commit, so the pinned toolchain and the version move together or not at all.
+- Confirming a pack update on the phone levels the peers on an ordinary checkout install, instead of updating only the lead and leaving "Retry pack update" to be tapped by hand. That install kind never recorded the run the lead's turn queue is rebuilt from after its own restart.
 
 ## [1.5.3] - 2026-09-06
 
