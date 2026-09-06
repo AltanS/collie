@@ -30,7 +30,7 @@ optdepends=(
   'herdr: run Collie as a Herdr plugin — `herdr plugin link /usr/lib/collie`'
 )
 
-provides=("$_pkgname")
+provides=("$_pkgname=$pkgver")
 conflicts=("$_pkgname")
 
 # !strip: the release binary is a Bun single-file executable — the bundle it runs from is embedded
@@ -52,6 +52,7 @@ _distdir() {
   case "$CARCH" in
     x86_64)  printf '%s' "$srcdir/collie-$pkgver-linux-x64" ;;
     aarch64) printf '%s' "$srcdir/collie-$pkgver-linux-arm64" ;;
+    *) error "unsupported CARCH '$CARCH': no release tarball for this architecture"; return 1 ;;
   esac
 }
 

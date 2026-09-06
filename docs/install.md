@@ -36,7 +36,7 @@ Three ways in:
 
 - **[Fresh install](#fresh-install)** — the install script, or the same result from source.
 - **[Through Herdr](#through-herdr)** — Collie goes in as a Herdr plugin, driven by plugin actions.
-- **[From a system package](#from-a-system-package)** — your distribution's package manager installs
+- **[From a system package](#from-a-system-owned)** — your distribution's package manager installs
   Collie and owns its updates.
 
 Herdr is one of the three multiplexers Collie can mirror, not a dependency of the program. Which one
@@ -144,6 +144,11 @@ Omarchy, where `pacman -Si herdr` names the `omarchy` repository.
 > writable by you, so replacing the binary in place is not something Collie can do — your package
 > manager takes the new version instead. See
 > [a packaged install](upgrading.md#a-packaged-install).
+
+> **Caution.** As of 1.5.2, `herdr plugin link /usr/lib/collie` registers a plugin whose action
+> buttons all fail: the shipped `herdr-plugin.toml` runs every action as
+> `bash scripts/collie-ctl.sh <verb>`, and the release payload does not contain that shim. This
+> clears itself on the first release cut after this note, which ships the shim in the payload.
 
 The `PKGBUILD` and its notes live in `packaging/aur/` in this repository. macOS is not packaged.
 
