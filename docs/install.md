@@ -140,9 +140,9 @@ The package installs the compiled binary the release already publishes. Nothing 
 machine: no Bun, no `git`, no compilation. This is the same channel Herdr itself arrives on under
 Omarchy, where `pacman -Si herdr` names the `omarchy` repository.
 
-> **Note.** Collie will not update a packaged install, and says so if you ask it to. The root is not
-> writable by you, so replacing the binary in place is not something Collie can do — your package
-> manager takes the new version instead. See
+> **Note.** Collie will not update a packaged install, and says so if you ask it to. It recognises
+> this by who OWNS the root, not by whether you can write it — `sudo` changes nothing — so your
+> package manager takes the new version instead. See
 > [a packaged install](upgrading.md#a-packaged-install).
 
 > **Caution.** As of 1.5.2, `herdr plugin link /usr/lib/collie` registers a plugin whose action
