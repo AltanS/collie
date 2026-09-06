@@ -149,6 +149,28 @@ const DISK_AMBER_KB = 1024 * 1024;
  */
 const MIN_BUN = "1.3.14";
 
+/**
+ * What to tell an operator whose Collie was laid down by a package manager.
+ *
+ * Deliberately does NOT name one manager as THE command. Collie can see that its root is not
+ * writable, which is what makes the update someone else's — but nothing on disk says whose. Naming
+ * examples is honest; naming one as the instruction would be a guess printed as a fact.
+ */
+const PACKAGE_MANAGER_REMEDY =
+  "update through the package manager that installed Collie (`pacman -Syu`, `brew upgrade`, …)";
+
+/**
+ * Every upstream verdict names `collie update` as its remedy, and an OS-package install must not run
+ * it. The one line that would mislead is replaced here rather than threaded through each plan branch
+ * — this is the single place that knows both the finished check and the install kind.
+ *
+ * The REASON is left exactly as it was: "v1.6.0 resolves on github.com/AltanS/collie" is true however
+ * the update is going to be applied, and an operator is better served knowing a release exists.
+ */
+function externallyManaged(check: PreflightCheck): PreflightCheck {
+  return check.remedy === undefined ? check : { ...check, remedy: PACKAGE_MANAGER_REMEDY };
+}
+
 /** The kinds that rebuild from source, and therefore need Bun. A binary install compiles nothing. */
 function buildsFromSource(install: InstallKind): boolean {
   return install.kind === "linked-clone" || install.kind === "detached-checkout";
@@ -569,6 +591,22 @@ export function serviceCheck(deps: UpdateCheckDeps): PreflightCheck {
 /** Every instance check, in the order they print. */
 export async function instanceChecks(deps: UpdateCheckDeps, toTag: string | null = null): Promise<PreflightCheck[]> {
   const install = classifyInstall(probeInstall(deps, deps.ctx.root));
+  if (install.kind === "system-package") {
+    // A SHORTER LIST, and every omission is a fact rather than a courtesy. No Bun check because
+    // nothing here compiles; no tree check because there is no working tree to be dirty; no disk
+    // floor because the floor exists for a staged payload and this install stages nothing — free
+    // space under a root we never write would be a red that no action could clear. What remains is
+    // what still means something: is this Collie healthy, is a release out, and is the service up.
+    return [
+      await doctorCheck(deps),
+      green(
+        "install",
+        `${deps.ctx.root} is not writable here, so a package manager owns this install and its updates`,
+      ),
+      externallyManaged(await upstreamCheck(deps, install, toTag)),
+      serviceCheck(deps),
+    ];
+  }
   const checks: PreflightCheck[] = [await doctorCheck(deps), diskCheck(deps, install)];
   if (buildsFromSource(install)) checks.push(bunCheck(deps));
   if (isCheckout(install)) checks.push(treeCheck(deps));

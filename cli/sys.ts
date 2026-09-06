@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import {
+  accessSync,
+  constants,
   existsSync,
   mkdirSync,
   openSync,
@@ -87,6 +89,15 @@ export interface Files {
    * how `build` can replace `bin/collie` while a supervised process is executing the old one.
    */
   rename(from: string, to: string): void;
+  /**
+   * May the RUNNING USER write into `p`? A read, despite the name — nothing is created to find out.
+   *
+   * It exists for one question: an install root this process cannot write is an install this process
+   * cannot update, whoever else can. {@link classifyInstall} reads it as the structural shape of an
+   * OS-package install, so it must never be answered by attempting a write — a probe file in
+   * `/usr/lib` that succeeded once as root would make the answer depend on who asked last.
+   */
+  writable(p: string): boolean;
 }
 
 /**
@@ -302,6 +313,16 @@ export const realFiles: Files = {
   },
   rename(from, to) {
     renameSync(from, to);
+  },
+  writable(p) {
+    try {
+      accessSync(p, constants.W_OK);
+      return true;
+    } catch {
+      // ENOENT lands here too, and `false` is the right answer for it: a root that is not there is
+      // not one this process can write into either.
+      return false;
+    }
   },
 };
 

@@ -10,6 +10,7 @@ import { collieBinary } from "./unit.ts";
 //
 // The detection is STRUCTURAL: no marker file is written by anything, and none is read as the
 // primary signal. Every kind is decided from shapes that already exist on disk — a git dir, a
+// root the running user cannot write,
 // `versions/<X.Y.Z>` parent with a `current` symlink beside it — because a marker is a fact that can
 // be copied, stale or absent while the tree around it says otherwise (M14/01 §4.2).
 //
@@ -56,20 +57,31 @@ export interface InstallProbe {
   readonly currentResolvesHere: boolean;
   /**
    * `herdr-plugin.toml` sits at the root. Not a marker the installer writes — it is the manifest
-   * Herdr reads and `bridge/root.ts` already requires — and it only ever picks BETWEEN the two
-   * `unknown` reasons, never a kind.
+   * Herdr reads and `bridge/root.ts` already requires — and it separates a Collie we cannot name
+   * from a directory that is not a Collie at all.
    */
   readonly hasMarker: boolean;
+  /**
+   * Can the running user write into the root? Consulted LAST and only where nothing else claimed the
+   * tree, because it is the weakest signal here: it describes permissions rather than layout, and a
+   * checkout or a `versions/` layout means what it means whoever owns it.
+   */
+  readonly rootWritable: boolean;
 }
 
 export type InstallKind =
   | { readonly kind: "linked-clone"; readonly alsoLayout: boolean }
   | { readonly kind: "detached-checkout"; readonly alsoLayout: boolean }
   | { readonly kind: "binary" }
+  /**
+   * Someone else's package manager owns this tree — pacman, Homebrew, apt. Collie reads it, serves
+   * from it and reports its version, and never updates it: the operator's own package manager does.
+   */
+  | { readonly kind: "system-package" }
   | { readonly kind: "unknown"; readonly why: "no-marker" | "orphan-layout" | "loose-binary" };
 
 /**
- * The four kinds, decided from the probe alone — pure, so `bun test` covers the whole truth table
+ * The five kinds, decided from the probe alone — pure, so `bun test` covers the whole truth table
  * with no filesystem, matching how `planUpdate` and `classifyLink` are already tested.
  *
  * **The degenerate both-signals case: git wins.** A clone placed at `<root>/versions/1.1.0` reports
@@ -89,7 +101,17 @@ export function classifyInstall(p: InstallProbe): InstallKind {
     // not. Guessing here would flip a symlink nobody published.
     return { kind: "unknown", why: "orphan-layout" };
   }
-  return { kind: "unknown", why: p.hasMarker ? "loose-binary" : "no-marker" };
+  if (!p.hasMarker) return { kind: "unknown", why: "no-marker" };
+  // Nothing above claimed the tree, and there IS a Collie here. A root the running user cannot write
+  // is one this process could never update — self-updating means replacing `bin/collie` and `web/dist`
+  // right here — so an update belongs to whoever can write it: the package manager that laid it down.
+  //
+  // Asked last, and only in this branch, on purpose. Permissions are a weaker signal than layout: a
+  // `.git` or a `versions/` parent still means what it means in a root-owned tree, and reading
+  // writability earlier would reclassify a perfectly ordinary install the moment its permissions
+  // changed. Here it is the only question left, and it is the one that matters — this is the branch
+  // that used to fail as `loose-binary`, telling an operator their packaged Collie was unrecognisable.
+  return p.rootWritable ? { kind: "unknown", why: "loose-binary" } : { kind: "system-package" };
 }
 
 // ── The probe, and what a binary install's paths are ─────────────────────────
@@ -159,6 +181,7 @@ export function probeInstall(
     currentResolvesHere:
       target !== null && (target === layout.versionsDir || target.startsWith(`${layout.versionsDir}/`)),
     hasMarker: deps.files.exists(join(root, "herdr-plugin.toml")),
+    rootWritable: deps.files.writable(root),
   };
 }
 

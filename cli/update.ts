@@ -889,6 +889,15 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     return EXIT.FAIL;
   }
   if (install.kind === "binary") return await updateBinary(deps, args);
+  if (install.kind === "system-package") {
+    // Not a failure to diagnose — a boundary to respect. Replacing `bin/collie` and `web/dist` means
+    // writing into this root, and this user cannot. Whoever can is the one that put them there.
+    deps.io.err(`error: ${deps.ctx.root} was installed by a package manager, which owns its updates.`);
+    deps.io.err("       That root is not writable here, so `collie update` has nothing it may replace.");
+    deps.io.err("       Take the new version the way you installed this one — `pacman -Syu` on Arch,");
+    deps.io.err("       `brew upgrade` on macOS — and the service restarts with it.");
+    return EXIT.FAIL;
+  }
   if (install.kind === "unknown") {
     deps.io.err(`error: cannot tell how this Collie was installed (${unknownEvidence(deps, install.why)}).`);
     deps.io.err("       `collie update` will not guess. A git checkout refreshes with:");
