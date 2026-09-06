@@ -27,6 +27,8 @@ import {
   originMatches,
   updateRepoOf,
   DEFAULT_UPDATE_REPO,
+  SYSTEM_OWNED_REMEDY,
+  systemOwnedReason,
 } from "./install-kind.ts";
 import type { Environment, EnvVars } from "./context.ts";
 import { EXIT } from "./io.ts";
@@ -887,7 +889,10 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
       // Above the checkout branch on purpose: the message below it is three sentences about
       // `versions/` layouts and `git checkout`, none of which exist here, and the real answer is the
       // package manager's own downgrade (`pacman -U` from the cache, `brew` an older formula).
-      deps.io.err(`error: ${deps.ctx.root} is owned by root — Collie stages no versions here to roll back to.`);
+      // Shares its REASON with the main refusal below via `systemOwnedReason` — only the remedy
+      // differs, because a rollback wants the PREVIOUS version, which `SYSTEM_OWNED_REMEDY` does not
+      // name.
+      deps.io.err(`error: ${systemOwnedReason(deps.ctx.root)}, and Collie stages no versions here to roll back to.`);
       deps.io.err("       Reinstall the previous version the way this one arrived.");
       return EXIT.FAIL;
     }
@@ -903,10 +908,13 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     // Not a failure to diagnose — a boundary to respect. What is OBSERVED is the ownership; who put
     // the tree there is not, so this says the first and offers both ways out rather than asserting a
     // package manager exists and sending an operator after one that does not.
-    deps.io.err(`error: ${deps.ctx.root} is owned by root, so \`collie update\` will not replace its files.`);
-    deps.io.err("       If a package manager installed it, take the new version from there.");
-    deps.io.err("       If you unpacked it yourself, reinstall it the same way, or take ownership of");
-    deps.io.err("       the directory and re-run this.");
+    //
+    // Both halves are the shared strings (`systemOwnedReason`, `SYSTEM_OWNED_REMEDY`), the same ones
+    // doctor's `install` line and the preflight's upstream remedy use, so a future reword of either
+    // reaches every surface at once instead of leaving this — the most user-visible of the three —
+    // stale.
+    deps.io.err(`error: ${systemOwnedReason(deps.ctx.root)}.`);
+    deps.io.err(`       \`collie update\` will not replace its files. Instead, ${SYSTEM_OWNED_REMEDY}.`);
     return EXIT.FAIL;
   }
   if (install.kind === "unknown") {

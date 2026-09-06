@@ -458,7 +458,7 @@ function versionsLayout(deps: DoctorDeps, install: InstallKind): Finding {
     // statement sitting three lines under an install line that says the opposite.
     return skipped(
       "versions",
-      `${root} is owned by root — Collie stages no versions in it`,
+      `${systemOwnedReason(root)}, so Collie stages no versions in it`,
       "whatever installed this keeps its own previous versions, if it keeps any",
     );
   }
@@ -527,7 +527,7 @@ function updateSource(deps: DoctorDeps, install: InstallKind): Finding {
     // Naming a GitHub repo here would answer a question this install does not have. Nothing Collie
     // does fetches from it: `update` refuses, and the release listing is only ever read to say
     // whether a newer version exists. Where the new files actually come from is not on disk.
-    return ok("update-source", `${deps.ctx.root} is owned by root — updates come from whatever installed it`);
+    return ok("update-source", `${systemOwnedReason(deps.ctx.root)}; updates come from whatever installed it`);
   }
   const isGit = install.kind === "linked-clone" || install.kind === "detached-checkout";
   if (!isGit) {

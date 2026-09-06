@@ -149,6 +149,17 @@ export function classifyInstall(p: InstallProbe): InstallKind {
 export const SYSTEM_OWNED_REMEDY =
   "take the new version the way this install arrived — through a package manager if one installed it, otherwise however you unpacked it — or take ownership of the directory";
 
+/**
+ * The `PreflightCheck.id` that names a system-owned install — the ONE producer is
+ * `cli/update-check.ts`'s `instanceChecks`, on its `system-owned` branch alone. A remote peer's
+ * install kind is not a wire field (that would be a protocol decision under ADR 0025), so this id,
+ * riding on the preflight report that already crosses, is what `cli/pack-update.ts`'s member walk
+ * reads to skip such a peer. One exported name rather than two files agreeing on the string
+ * `"install"` by convention — a future rename of either side now fails to compile instead of
+ * silently breaking the skip.
+ */
+export const SYSTEM_OWNED_CHECK_ID = "install";
+
 /** Why this install does not update itself, naming the root. The preflight and `doctor` share it. */
 export function systemOwnedReason(root: string): string {
   return `${root} is owned by root, so this install does not update itself`;

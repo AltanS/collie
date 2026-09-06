@@ -8,7 +8,7 @@ import { STALE_AFTER_MS, type UpdateRun } from "../bridge/update-run.ts";
 import { answersThisBuild } from "../bridge/version.ts";
 import { collieVersionBare } from "./context.ts";
 import { updateDeps } from "./deps.ts";
-import { SYSTEM_OWNED_REMEDY } from "./install-kind.ts";
+import { SYSTEM_OWNED_CHECK_ID, SYSTEM_OWNED_REMEDY } from "./install-kind.ts";
 import { EXIT, type Io } from "./io.ts";
 import { parsePackArgs, probeMembers } from "./pack.ts";
 import {
@@ -546,7 +546,8 @@ interface Gate {
  * make (ADR 0025). What is already crossing the ssh connection is the member's whole preflight
  * report, which is where this reads it from.
  */
-const SYSTEM_OWNED_CHECK = "install";
+// Imported rather than a local literal — see its own doc comment for why the two sides must not
+// drift independently.
 
 /**
  * Every member whose own preflight says its root is owned by root, mapped to the sentence that
@@ -558,7 +559,7 @@ const SYSTEM_OWNED_CHECK = "install";
 export function systemOwnedMembers(pack: readonly PreflightMember[]): ReadonlyMap<string, string> {
   const owned = new Map<string, string>();
   for (const member of pack) {
-    const check = member.checks.find((c) => c.id === SYSTEM_OWNED_CHECK);
+    const check = member.checks.find((c) => c.id === SYSTEM_OWNED_CHECK_ID);
     if (check !== undefined) owned.set(member.memberId, check.reason);
   }
   return owned;

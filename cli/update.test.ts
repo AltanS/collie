@@ -2058,8 +2058,8 @@ describe("cmdUpdate — a tree the system owns", () => {
     // BOTH exits, because the tree cannot say which one applies. Asserting a package manager sends
     // whoever unpacked this themselves after a package that does not exist, and never mentions the
     // remedy that would actually work.
-    expect(said).toContain("If a package manager installed it");
-    expect(said).toContain("take ownership");
+    expect(said).toContain("through a package manager if one installed it");
+    expect(said).toContain("take ownership of the directory");
     // The old wording for this shape. Printing it here is the bug the kind exists to fix.
     expect(said).not.toContain("cannot tell how this Collie was installed");
   });
