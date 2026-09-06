@@ -7,14 +7,13 @@ import { type OpsRecord, parsePackOps } from "../bridge/pack/ops-store.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
 import { UPDATE_RUN_SCHEMA, type UpdateRun } from "../bridge/update-run.ts";
 import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT, type SeededFiles, type SeededOps } from "./fakes.ts";
-import { SYSTEM_OWNED_REMEDY } from "./install-kind.ts";
 import { EXIT } from "./io.ts";
 import type { PackUpdateRow } from "../bridge/update-action.ts";
 import {
   answersThisBuild,
   cmdPackUpdate,
   peerReportLines,
-  systemOwnedMembers,
+  packagedMembers,
   type PackUpdateDeps,
 } from "./pack-update.ts";
 import type { RemoteResult } from "./remote.ts";
@@ -244,17 +243,11 @@ function redOn(memberId: string, check: PreflightCheck): PreflightReport {
 }
 
 /**
- * The check a system-owned member's OWN preflight carries (`cli/update-check.ts`'s `instanceChecks`).
+ * A green preflight in which the named members reported a `packaged` install kind.
+ *
  * Green, because nothing is wrong with such an install — which is the whole reason the walk has to
- * read it rather than wait for the gate to go red over it.
+ * read the KIND rather than wait for the gate to go red over it.
  */
-const ownedCheck = (root = "/usr/lib/collie"): PreflightCheck => ({
-  id: "install",
-  verdict: "green",
-  reason: `${root} is owned by root, so this install does not update itself`,
-});
-
-/** A green preflight in which the named members answered with {@link ownedCheck}. */
 function ownedOn(...memberIds: readonly string[]): PreflightReport {
   return {
     schema: PREFLIGHT_SCHEMA,
@@ -264,7 +257,11 @@ function ownedOn(...memberIds: readonly string[]): PreflightReport {
       memberId,
       host: `${memberId}.example`,
       verdict: "green" as const,
-      checks: [{ id: "reachable", verdict: "green" as const, reason: "answered over ssh" }, ownedCheck()],
+      installKind: "packaged" as const,
+      checks: [
+        { id: "reachable", verdict: "green" as const, reason: "answered over ssh" },
+        { id: "package", verdict: "green" as const, reason: "updates come from your package manager" },
+      ],
     })),
   };
 }
@@ -354,18 +351,17 @@ describe("what the probe decides, before anything is sent", () => {
     expect(h.confirms).toEqual([]);
   });
 
-  // ── A ROOT-OWNED PEER (ADR 0035) ──────────────────────────────────────────
+  // ── A PACKAGED PEER (ADR 0035) ────────────────────────────────────────────
   //
   // Its own preflight is GREEN, so the gate above cannot catch it and must not try to. What these
-  // pin is that the WALK reads that green report, and that the reading is what stops the push.
+  // pin is that the WALK reads the kind off that green report, and that the reading stops the push.
 
-  test("a system-owned member is skipped with its own sentence and the shared remedy", async () => {
+  test("a packaged member is skipped with the shared sentence", async () => {
     const h = harness({ preflight: ownedOn("nas") });
     expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
     const rendered = text(h.io);
-    expect(rendered).toContain("/usr/lib/collie is owned by root, so this install does not update itself");
-    expect(rendered).toContain(SYSTEM_OWNED_REMEDY);
-    expect(rendered).toContain("nas         skipped  owned by root");
+    expect(rendered).toContain("updates come from your package manager");
+    expect(rendered).toContain("nas         skipped  packaged");
     // The whole point: nothing was sent. No probe, no bundle, no restart — and no consent asked for
     // an operation with nothing in it.
     expect(h.calls).toEqual([]);
@@ -373,16 +369,15 @@ describe("what the probe decides, before anything is sent", () => {
   });
 
   // THE CONTROL for the test above. Identical run, identical member, and the ONE difference is that
-  // its report carries no `install` check — so the walk has nothing to read and the push proceeds.
-  // Revert the skip in `planAll` and the test above sees exactly this: a probe, a push, a restart.
-  test("control: the same member without that check is probed and pushed to as before", async () => {
+  // its report names no install kind — so the walk has nothing to read and the push proceeds.
+  test("control: the same member without that kind is probed and pushed to as before", async () => {
     const h = harness();
     expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
     expect(legs(h)).toContain("nas.example:install");
-    expect(text(h.io)).not.toContain("owned by root");
+    expect(text(h.io)).not.toContain("package manager");
   });
 
-  test("a system-owned member does not stop the members this run CAN level", async () => {
+  test("a packaged member does not stop the members this run CAN level", async () => {
     const h = harness({
       store: twoPeers(),
       ops: { nas: opsRecord("nas.example"), pi: opsRecord("pi.example") },
@@ -394,7 +389,7 @@ describe("what the probe decides, before anything is sent", () => {
     // `pi` was never reached at all — the skip is decided before a runner is opened for it.
     expect(legs(h).filter((l) => l.startsWith("pi."))).toEqual([]);
     // Counted apart from a member with no ssh record: two different things for the operator to do.
-    expect(h.confirms[0]).toContain("1 owned by root");
+    expect(h.confirms[0]).toContain("1 packaged");
     expect(h.confirms[0]).not.toContain("without an ssh record");
   });
 
@@ -434,25 +429,25 @@ describe("what the probe decides, before anything is sent", () => {
   });
 });
 
-describe("systemOwnedMembers reads the report's own vocabulary", () => {
-  test("a member that answered with an `install` check is named, with its own sentence", () => {
-    const owned = systemOwnedMembers(ownedOn("nas", "pi").pack ?? []);
-    expect([...owned.keys()]).toEqual(["nas", "pi"]);
-    expect(owned.get("nas")).toBe("/usr/lib/collie is owned by root, so this install does not update itself");
+describe("packagedMembers reads the install KIND, never a check id", () => {
+  test("a member whose report names `packaged` is in the set", () => {
+    const owned = packagedMembers(ownedOn("nas", "pi").pack ?? []);
+    expect([...owned]).toEqual(["nas", "pi"]);
   });
 
-  // The control: every OTHER kind of install emits no `install` check at all, so a report full of
-  // green checks under other ids says nothing about ownership and must not be read as if it did.
-  test("a member with no `install` check is not in the map", () => {
+  // The control, and the reason this reads a kind rather than an id. A report full of green checks
+  // — including one whose id happens to be `package` — says nothing about the kind, and a member
+  // older than the field says nothing either. Neither may be read as packaged.
+  test("a member that names no kind is not in the set, whatever its checks are called", () => {
     expect(
-      systemOwnedMembers([
+      packagedMembers([
         {
           memberId: "nas",
           host: "nas.example",
           verdict: "green",
           checks: [
             { id: "doctor", verdict: "green", reason: "collie doctor is clean" },
-            { id: "disk", verdict: "green", reason: "plenty of room" },
+            { id: "package", verdict: "green", reason: "a check that merely shares the name" },
           ],
         },
       ]).size,
