@@ -45,7 +45,10 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      # The build environment is `flake.nix`, not whatever Bun a setup action resolved on the day.
+      # This installer is the one that covers all three shipped runners — Linux x86_64, Linux
+      # aarch64 and macOS aarch64 — and it turns flakes on out of the box.
+      - uses: DeterminateSystems/nix-installer-action@v22
 
       - name: Build the payload
         id: build
@@ -53,6 +56,12 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
           BUN_TARGET: ${{ matrix.bun-target }}
         run: |
+          set -eu
+          # The build body below is unchanged, and it runs under `nix develop` — so `bun`, `node`,
+          # `git`, `tmux` and `zellij` are the versions `flake.lock` names, on every runner, rather
+          # than whatever the machine happened to carry. It is written to a file rather than piped,
+          # so nothing competes for the shell's stdin, and it keeps its own `set -eu`.
+          cat > "$RUNNER_TEMP/build-payload.sh" <<'PAYLOAD'
           set -eu
           version="${GITHUB_REF_NAME#v}"
           root="collie-$version-$PLATFORM"
@@ -100,6 +109,8 @@ jobs:
           tar -czf "$RUNNER_TEMP/$root.tar.gz" -C "$RUNNER_TEMP" "$root"
           echo "root=$root" >> "$GITHUB_OUTPUT"
           echo "tarball=$RUNNER_TEMP/$root.tar.gz" >> "$GITHUB_OUTPUT"
+          PAYLOAD
+          nix develop --command bash "$RUNNER_TEMP/build-payload.sh"
 
       - name: Describe the artifact
         env:
