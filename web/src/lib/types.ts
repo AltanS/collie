@@ -385,9 +385,25 @@ export interface UpdateInfo {
    * Herdr-managed (detached) checkout, every other kind is told the `collie` verbs. Absent on an
    * older bridge (pre-M14, the git-install era), which reads as Herdr-managed.
    */
-  installKind?: "linked-clone" | "detached-checkout" | "binary" | "packaged" | "unknown";
+  installKind?: UpdateInstallKind;
+  /**
+   * The package manager's own upgrade command for this machine, resolved on the HOST at boot.
+   * Absent on every kind but `packaged`, and absent on a packaged install under a prefix nobody
+   * recognises — there the boundary sentence stands alone.
+   *
+   * The phone never derives it: the prefix is a fact about that machine, and a second derivation
+   * here would be a second thing to drift.
+   */
+  packageCommand?: string;
   /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
   bridgeStale: boolean;
+  /**
+   * The VERSION on disk is no longer the version this process runs — a package manager replaced the
+   * root under a live bridge. Absent on a bridge older than M17/02, which reads as "not raised".
+   */
+  restartNeeded?: boolean;
+  /** The command that clears {@link restartNeeded}, spelled on the HOST for its install kind. */
+  restartCommand?: string;
   /** When the upstream check last ran (epoch ms), or null if it hasn't. */
   checkedAt: number | null;
   /** Every release newer than `current`, oldest first — what one update folds in. Absent on an
@@ -468,6 +484,14 @@ export interface UpdatePackMember {
    *  six-hour-old green and a four-second-old green are different facts, so every row that has
    *  reported is dated. */
   asOf: number | null;
+  /**
+   * How that member is installed, when its own report named a kind. Absent means unknown, and
+   * unknown counts as NOT packaged — an older bridge sends nothing and the page behaves as it did.
+   *
+   * A `packaged` member waits for its package manager, so the page says so and leaves it out of the
+   * peers-behind count: a count the operator cannot clear from the phone is a nag.
+   */
+  installKind?: UpdateInstallKind;
 }
 
 /** The bridge and the CLI (`bridge/pack/lead.ts`, `bridge/update-action.ts`, `cli/pack-update.ts`) know this row by this name. */
@@ -497,7 +521,18 @@ export interface UpdatePeerLeg {
  * The union stays open to the run states as well, because a bridge from before this split sent
  * those, and a client that dropped such a leg would lose the row nobody may lose.
  */
-export type UpdatePeerLegState = "waiting" | "updating" | "done" | "rolled-back" | "unreachable" | UpdateRunState;
+export type UpdatePeerLegState =
+  | "waiting"
+  | "updating"
+  | "done"
+  | "rolled-back"
+  | "unreachable"
+  /** A package manager owns that machine (ADR 0035). Terminal like `done`, and never a failure. */
+  | "package-managed"
+  | UpdateRunState;
+
+/** How a machine is installed, as the bridge reports it. Absent means unknown, never packaged. */
+export type UpdateInstallKind = "linked-clone" | "detached-checkout" | "binary" | "packaged" | "unknown";
 
 /** One preflight check (mirrors `cli/update-check.ts`). `id` is stable; the prose is not. */
 export interface PreflightCheck {

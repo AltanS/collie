@@ -6,12 +6,13 @@ import { es } from "./messages/es";
 import { ja } from "./messages/ja";
 import { ko } from "./messages/ko";
 import { zh } from "./messages/zh";
+import { zhTW } from "./messages/zh-TW";
 
 // ── THE BAND'S 40-CHARACTER BUDGET ──────────────────────────────────────────────────────────────
 //
 // The update band is ONE truncating row at the top of a phone, which is about forty characters wide.
 // A string that overflows it in German or Japanese is a string nobody can read — so the budget is
-// enforced here rather than recommended in a comment, over ALL SIX dictionaries, and it is why the
+// enforced here rather than recommended in a comment, over ALL SEVEN dictionaries, and it is why the
 // English strings are as terse as they are.
 //
 // The budget is measured with the SLOTS FILLED, because a slot is not what reaches the screen: the
@@ -35,6 +36,7 @@ const LOCALES: readonly (readonly [string, Dictionary])[] = [
   ["ja", ja],
   ["ko", ko],
   ["zh", zh],
+  ["zh-TW", zhTW],
 ];
 
 /** Every key the band can print, plus the aria-label on its dismiss. */
@@ -64,7 +66,7 @@ function bandKeys(): MessageKey[] {
 }
 
 describe("i18n — the update band", () => {
-  it("holds every band string to the 40 character budget in all six locales", () => {
+  it("holds every band string to the 40 character budget in all seven locales", () => {
     const keys = bandKeys();
     expect(keys.length).toBeGreaterThan(0); // the assertion must never pass by finding nothing
 
@@ -78,7 +80,7 @@ describe("i18n — the update band", () => {
     expect(over, `over the ${BUDGET}-character band budget`).toEqual([]);
   });
 
-  it("carries every band key in all six locales", () => {
+  it("carries every band key in all seven locales", () => {
     // `Dictionary` already makes a missing key a compile error; this is the runtime half, so a
     // hand-edited bundle that lost a line fails a test rather than printing `undefined`.
     const keys = bandKeys();

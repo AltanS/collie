@@ -43,6 +43,13 @@ export function updateNotice(update: UpdateInfo | undefined): UpdateNotice | nul
   // printing one would print the exact command that refuses. Restarting is still its own business
   // and `collie restart` works, because the binary is on PATH like any other packaged program.
   const selfUpdates = update.installKind !== "packaged";
+  // A PACKAGE SWAP UNDER A LIVE PROCESS (M17/02). Above `bridgeStale` because it is the stronger
+  // statement about the same machine: not "the source moved", but "the version on disk is no longer
+  // the version running". The command is the HOST's own answer, spelled there from the install kind
+  // — the phone renders it and never derives a second one.
+  if (update.restartNeeded === true && update.restartCommand !== undefined) {
+    return { line: t("settings.updateBanner.restartNeeded"), command: update.restartCommand };
+  }
   if (update.bridgeStale) {
     // No release page for "restart needed" — show the one command that restarts it, to copy.
     return {

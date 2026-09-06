@@ -15,6 +15,7 @@ import {
   parseReleaseManifest,
   parseSemverTag,
   parseTagsResponse,
+  restartCommandFor,
   shouldNotify,
   stampOf,
   updateDigestBody,
@@ -327,9 +328,65 @@ describe("the update run record on the snapshot", () => {
     expect(monitor.status().run).toEqual(run);
   });
 
+  it("names the package command only where the host resolved one", () => {
+    // Assigned, never spread as `undefined`: an install with none must carry NO key. The phone's
+    // fallback to the preflight remedy depends on the difference between absent and empty.
+    expect("packageCommand" in makeMonitor().monitor.status()).toBe(false);
+    const packaged = makeMonitor({ installKind: "packaged", packageCommand: "sudo pacman -Syu collie-bin" });
+    expect(packaged.monitor.status().packageCommand).toBe("sudo pacman -Syu collie-bin");
+  });
+
   it("an install that has never updated carries no run key at all", () => {
     const { monitor } = makeMonitor();
     expect("run" in monitor.status()).toBe(false);
+  });
+});
+
+describe("restart needed — the files moved under a running process", () => {
+  it("is quiet while disk still names the version this process runs", () => {
+    const status = makeMonitor().monitor.status();
+    expect(status.restartNeeded).toBe(false);
+    // Nothing to restart, nothing to name: the command key is absent, not empty.
+    expect("restartCommand" in status).toBe(false);
+  });
+
+  it("is raised the moment a live read disagrees with the version captured at boot", () => {
+    // Exactly what `pacman -Syu` does: the files become 1.6.0 while this process is still 1.5.0.
+    let onDisk = "1.5.0";
+    const { monitor, tick } = makeMonitor({
+      current: "1.5.0",
+      bootVersion: "1.5.0",
+      liveVersion: () => onDisk,
+    });
+    expect(monitor.status().restartNeeded).toBe(false);
+    onDisk = "1.6.0";
+    tick(10_000); // past the throttle the read shares with `bridgeStale`
+    expect(monitor.status().restartNeeded).toBe(true);
+
+    // Not latched: a package manager that puts the old files back leaves a process that matches disk
+    // again, and asking for a restart nobody needs is worse than saying nothing.
+    onDisk = "1.5.0";
+    tick(10_000);
+    expect(monitor.status().restartNeeded).toBe(false);
+  });
+
+  it("restart command for the install kind, never a hard-coded string", () => {
+    // Two spellings, and the kind is the whole of what picks one (M14/01 §5.3).
+    expect(restartCommandFor("detached-checkout")).toBe("herdr plugin action invoke restart --plugin herdr.collie");
+    // A PACKAGED install takes the `collie` verb like any other non-Herdr kind. Our package ships no
+    // unit file at all — `collie start` writes the operator's own `--user` unit — so the system-unit
+    // spelling would name a unit that does not exist and ask for a password to restart it.
+    for (const kind of ["packaged", "linked-clone", "binary", "unknown"] as const) {
+      expect(restartCommandFor(kind)).toBe("collie restart");
+    }
+    expect(restartCommandFor("packaged")).not.toContain("sudo");
+
+    // And the snapshot names the one this machine takes, off the same function.
+    const swapped = { bootVersion: "1.5.0", liveVersion: () => "1.6.0" };
+    for (const kind of ["packaged", "detached-checkout", "binary"] as const) {
+      const status = makeMonitor({ installKind: kind, ...swapped }).monitor.status();
+      expect(status.restartCommand).toBe(restartCommandFor(kind));
+    }
   });
 });
 
@@ -347,6 +404,9 @@ function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
     repo: "AltanS/collie",
     current: "0.11.0",
     installKind: "detached-checkout",
+    packageCommand: null,
+    bootVersion: "0.11.0",
+    liveVersion: () => "0.11.0",
     startupStamp: "STAMP@boot",
     fetchTags: async () => apiTags("v0.12.0"),
     bridgeStamp: () => "STAMP@boot",

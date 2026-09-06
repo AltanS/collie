@@ -16,6 +16,7 @@ import {
   type Scripted,
   type SeededFiles,
 } from "./fakes.ts";
+import type { InstallKind } from "./install-kind.ts";
 import type { Finding } from "./finding.ts";
 import { EXIT } from "./io.ts";
 import { COMMANDS } from "./program.ts";
@@ -758,6 +759,34 @@ describe("the human output", () => {
     const disk = lines.find((l) => l.includes("disk"))!;
     expect(disk).toContain("red:");
     expect(disk).toContain("→");
+  });
+
+  test("member row names the install kind", async () => {
+    const lead = (): TrustStoreData => leadStore({ peers: [member({ memberId: "nas" })] });
+    const base: PreflightReport = {
+      schema: PREFLIGHT_SCHEMA,
+      verdict: "green",
+      checks: [{ id: "disk", verdict: "green", reason: "9.0 GB free at /home/pat/collie" }],
+    };
+    // A member that names no kind is exactly what one older than the field puts on the wire.
+    const remoteReport = (installKind?: InstallKind["kind"]): PreflightReport =>
+      installKind === undefined ? base : { ...base, installKind };
+    const rowFor = async (installKind?: InstallKind["kind"]): Promise<string> => {
+      const h = harness({
+        store: lead(),
+        ops: { nas: record() },
+        remote: () => (script) =>
+          script.includes("update --check") ? ok(JSON.stringify(remoteReport(installKind))) : ok(probeOut()),
+      });
+      await cmdUpdateCheck(h.deps, []);
+      return h.io.stdout.find((l) => l.startsWith("  nas ("))!;
+    };
+
+    // The kind closes the row, so the operator sees which machines a package manager owns.
+    expect(await rowFor("packaged")).toBe("  nas (nas.local) — green · packaged");
+    expect(await rowFor("binary")).toBe("  nas (nas.local) — green · binary");
+    // A member that named no kind renders exactly as it did before the field existed.
+    expect(await rowFor()).toBe("  nas (nas.local) — green");
   });
 
   test("colour paints the verdict only, and only when asked", () => {

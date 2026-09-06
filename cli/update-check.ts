@@ -878,7 +878,11 @@ function render(deps: UpdateCheckDeps, report: PreflightReport): void {
   deps.io.out("");
   deps.io.out("pack:");
   for (const m of report.pack) {
-    deps.io.out(`  ${m.memberId} (${m.host === "" ? "no ssh record" : m.host}) — ${m.verdict}`);
+    // The kind closes the row when that member named one. It tells the operator at a glance which
+    // machines the phone will move and which a package manager owns — and a member that named none
+    // (one older than the field, or one this run never reached) reads exactly as it always did.
+    const kind = m.installKind === undefined ? "" : ` · ${m.installKind}`;
+    deps.io.out(`  ${m.memberId} (${m.host === "" ? "no ssh record" : m.host}) — ${m.verdict}${kind}`);
     for (const c of m.checks) deps.io.out(checkLine(c, colour, "    "));
   }
 }

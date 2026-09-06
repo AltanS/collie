@@ -93,6 +93,32 @@ describe("peersBehind", () => {
   });
 });
 
+describe("a packaged member", () => {
+  it("is left out of the peers-behind count — the operator cannot clear it from here", () => {
+    const pack = [
+      member({ name: "a", version: "1.3.0" }),
+      member({ name: "b", version: "1.3.0", installKind: "packaged" }),
+    ];
+    expect(peersBehind(pack, "1.4.0")).toBe(1);
+    // Absent means unknown, and unknown counts as not packaged: an older bridge behaves as before.
+    expect(peersBehind([member({ name: "b", version: "1.3.0" })], "1.4.0")).toBe(1);
+  });
+
+  it("says what it is waiting on, in neutral weight, whether the census or a leg reports it", () => {
+    const fromCensus = peerRows([member({ name: "b", version: "1.3.0", installKind: "packaged" })])[0]!;
+    expect(fromCensus.word).toBe("waits for the package manager");
+    expect(fromCensus.reason).toBeNull();
+    expect(fromCensus.inFlight).toBe(false);
+    // Rank 5 is `done`'s bucket — the neutral dot, never the blocked one.
+    expect(fromCensus.rank).toBe(5);
+
+    const fromLeg = peerRows([], [{ name: "b", state: "package-managed" }])[0]!;
+    expect(fromLeg.word).toBe("waits for the package manager");
+    expect(fromLeg.reason).toBeNull();
+    expect(fromLeg.rank).toBe(5);
+  });
+});
+
 describe("peersRolledBack", () => {
   it("counts every leg that ended badly, not only a rollback", () => {
     const legs: UpdatePeerLeg[] = [

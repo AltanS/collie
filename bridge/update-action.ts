@@ -42,7 +42,32 @@ export interface PreflightCheck {
 export interface PreflightReport {
   readonly schema: number;
   readonly verdict: "green" | "amber" | "red";
+  /**
+   * How the machine that produced this report is installed, when it named a kind this build knows.
+   *
+   * **A FIELD, never a check id** — an id labels a sentence and a sentence gets reworded; the kind
+   * is the fact. Absent means unknown, and unknown counts as not packaged, which is exactly how a
+   * report older than the field behaved before it existed.
+   */
+  readonly installKind?: UpdateStatus["installKind"];
   readonly checks: readonly PreflightCheck[];
+}
+
+/** The install kinds this build knows. A report naming anything else reads as unknown, never a kind. */
+const KNOWN_INSTALL_KINDS: ReadonlySet<string> = new Set<UpdateStatus["installKind"]>([
+  "linked-clone",
+  "detached-checkout",
+  "binary",
+  "packaged",
+  "unknown",
+]);
+
+/** The kind off a foreign document, or `undefined` for absent and for anything this build cannot read. */
+function readInstallKind(value: JsonValue | undefined): UpdateStatus["installKind"] | undefined {
+  if (typeof value !== "string" || !KNOWN_INSTALL_KINDS.has(value)) return undefined;
+  // SAFETY: `KNOWN_INSTALL_KINDS` holds exactly the five members of the union, and the guard above
+  // returned for every string that is not one of them.
+  return value as UpdateStatus["installKind"];
 }
 
 const VERDICTS: ReadonlySet<string> = new Set(["green", "amber", "red"]);
@@ -139,7 +164,10 @@ export function parsePreflightReport(stdout: string): PreflightReport | null {
   // the union, and the guard there returned for every string that is not one of them.
   const printed = verdict as "green" | "amber" | "red";
   const topLevel = rec.pack === undefined ? printed : worstVerdict(checks.map((c) => c.verdict));
-  return { schema: PREFLIGHT_SCHEMA, verdict: topLevel, checks };
+  const kind = readInstallKind(rec.installKind);
+  // Assigned, never conditionally spread: a report that named no kind must carry NO such key.
+  const report: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict: topLevel, checks };
+  return kind === undefined ? report : { ...report, installKind: kind };
 }
 
 /** The first red check in `report`, or null. What the refusal NAMES — "unavailable" is not a reason. */
@@ -177,6 +205,13 @@ export interface PeerPreflight {
   readonly verdict: "green" | "amber" | "red";
   /** When that member produced the report, on **its own** clock, epoch ms. Passed through untouched. */
   readonly asOf: number;
+  /**
+   * How that member is installed, when it named a kind (PACK_PROTOCOL.md §19, added 2026-09-06).
+   *
+   * Additive-optional with the closed reading §7.1 requires: **absent means unknown, and unknown is
+   * not packaged**, so a member older than this field is driven exactly as it was before it existed.
+   */
+  readonly installKind?: UpdateStatus["installKind"];
   readonly checks: readonly PreflightCheck[];
 }
 
@@ -213,13 +248,16 @@ export const PACK_PREFLIGHT_FIELD = "updatePreflight";
 /** What one member publishes beside its snapshot body. `null` ⇒ it has nothing to say, which is unknown. */
 export function peerPreflightWire(report: PreflightReport | null, asOf: number | null): PeerPreflight | null {
   if (report === null || asOf === null) return null;
-  return {
+  const wire: PeerPreflight = {
     verdict: report.verdict,
     asOf,
     // The remedy is deliberately dropped: it is a command for the operator of THAT machine, and the
     // lead's card names a member and a reason, never a shell line to run somewhere else.
     checks: packPreflightChecks(report.checks).map((c) => ({ id: c.id, verdict: c.verdict, reason: c.reason })),
   };
+  // Assigned, never conditionally spread: a member that knows no kind sends NO key rather than one
+  // whose value is `undefined`, which is what "absent" has to look like on the wire.
+  return report.installKind === undefined ? wire : { ...wire, installKind: report.installKind };
 }
 
 /**
@@ -252,12 +290,14 @@ export function parsePeerPreflight(value: JsonValue): PeerPreflight | null {
     // returned for every string that is not one of them.
     checks.push({ id, verdict: cv as "green" | "amber" | "red", reason });
   }
-  return {
+  const parsed: PeerPreflight = {
     // SAFETY: checked against `VERDICTS` above, which holds exactly the three members of the union.
     verdict: verdict as "green" | "amber" | "red",
     asOf,
     checks: packPreflightChecks(checks),
   };
+  const kind = readInstallKind(field.installKind);
+  return kind === undefined ? parsed : { ...parsed, installKind: kind };
 }
 
 // ── The pack's half of the RUN (M16/04) ──────────────────────────────────────
@@ -365,6 +405,15 @@ export interface PackUpdateRow {
   readonly reasons: readonly string[];
   /** That member's own stamp for the report, or `null` when there is no report to date. */
   readonly asOf: number | null;
+  /**
+   * How that member is installed, when its own report named a kind (§19). Absent means unknown, and
+   * unknown counts as not packaged.
+   *
+   * The page reads it for one thing only: a `packaged` member waits for its package manager, so it
+   * is shown as such and left out of the peers-behind count. A count the operator cannot clear from
+   * the phone is a nag, and the tap it would send them to refuses on that machine (ADR 0035).
+   */
+  readonly installKind?: UpdateStatus["installKind"];
 }
 
 /** What the lead knows about one member when it composes a row. All of it banked by the sweep. */
@@ -399,7 +448,7 @@ export function packUpdateRows(members: readonly PackMemberFacts[]): PackUpdateR
       return { name: m.name, version: m.version, verdict: "unknown", reasons: [unknownReason(m.name)], asOf: null };
     }
     const reasons = reasonsOf(m.preflight.checks);
-    return {
+    const row: PackUpdateRow = {
       name: m.name,
       version: m.version,
       verdict: m.preflight.verdict,
@@ -408,6 +457,9 @@ export function packUpdateRows(members: readonly PackMemberFacts[]): PackUpdateR
       reasons: m.preflight.verdict === "red" && reasons.length === 0 ? [unknownReason(m.name)] : reasons,
       asOf: m.preflight.asOf,
     };
+    // Assigned, never conditionally spread: a member that named no kind carries NO such key.
+    const kind = m.preflight.installKind;
+    return kind === undefined ? row : { ...row, installKind: kind };
   });
 }
 
@@ -432,7 +484,7 @@ export function parsePackRows(doc: JsonValue): PackUpdateRow[] {
     if (row === null) continue;
     const { name, verdict, version, reasons, asOf } = row;
     if (typeof name !== "string" || typeof verdict !== "string" || !PACK_VERDICTS.has(verdict)) continue;
-    out.push({
+    const parsed: PackUpdateRow = {
       name,
       version: typeof version === "string" ? version : null,
       // SAFETY: checked against `PACK_VERDICTS` on the line above, which holds exactly the four
@@ -440,7 +492,9 @@ export function parsePackRows(doc: JsonValue): PackUpdateRow[] {
       verdict: verdict as PackVerdict,
       reasons: Array.isArray(reasons) ? reasons.filter((r): r is string => typeof r === "string") : [],
       asOf: typeof asOf === "number" && Number.isSafeInteger(asOf) ? asOf : null,
-    });
+    };
+    const kind = readInstallKind(row.installKind);
+    out.push(kind === undefined ? parsed : { ...parsed, installKind: kind });
   }
   return out;
 }
