@@ -234,9 +234,18 @@ export function UpdateCard() {
   }
 
   const redCheck = preflight?.checks.find((c) => c.verdict === "red");
-  const blocked = checked && (preflight === null || redCheck !== undefined);
-  const blockedReason =
-    redCheck !== undefined ? redCheck.reason : t("settings.updateCard.preflightUnavailable");
+  // A packaged install never takes an update from here (ADR 0035): the root is not writable, the CLI
+  // refuses, and `POST /api/update` would do nothing but relay that refusal. The buttons are disabled
+  // for the same reason a red preflight disables them — the tap cannot succeed — but this is its own
+  // condition rather than a manufactured red, because NOTHING IS WRONG with this install. Its
+  // preflight is green on purpose, and painting the card red would report a fault that does not exist.
+  const packageManaged = (snapshot?.installKind ?? check?.installKind) === "system-package";
+  const blocked = packageManaged || (checked && (preflight === null || redCheck !== undefined));
+  const blockedReason = packageManaged
+    ? t("settings.updateCard.packageManaged")
+    : redCheck !== undefined
+      ? redCheck.reason
+      : t("settings.updateCard.preflightUnavailable");
 
   // Nothing to take: the running version already IS the newest, no major is waiting, and no run is
   // mid-flight. This is the state the operator sees on almost every visit, so it gets the loudest

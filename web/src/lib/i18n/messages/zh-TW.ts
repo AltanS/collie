@@ -744,6 +744,7 @@ export const zhTW: Dictionary = {
   "settings.updateCard.summary.amber.one": "{count} 項黃色",
   "settings.updateCard.summary.amber.other": "{count} 項黃色",
   "settings.updateCard.preflightUnavailable": "無法在此機器上執行預檢。",
+  "settings.updateCard.packageManaged": "此安裝由你的套件管理員更新，Collie 不會從這裡更新它。",
   "settings.updateCard.remedy": "修復指令：{command}",
   "settings.updateCard.confirmTitle": "更新至 {version}？",
   "settings.updateCard.confirmBody": "終端機工作階段會保持連線。行動裝置端檢視最多會中斷 30 秒。",

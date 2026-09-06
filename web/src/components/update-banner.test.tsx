@@ -163,3 +163,36 @@ describe("UpdateBanner", () => {
     expect(screen.queryByText(/available|restart/i)).toBeNull();
   });
 });
+
+// ── A packaged install (ADR 0035) ────────────────────────────────────────────
+// The kind that does not update itself. It is the one place the footer must NOT name an update
+// command: `collie update --major` is exactly what the CLI refuses on an unwritable root, so
+// printing it here would tell the operator to run the thing this build made fail.
+
+describe("updateNotice — a system package", () => {
+  it("names no update command for a major, and still links the release", () => {
+    const notice = updateNotice(
+      someUpdate({ majorAvailable: "2.0.0", majorUrl: RELEASE_URL, installKind: "system-package" }),
+    );
+    expect(notice?.command).toBeUndefined();
+    expect(notice?.href).toBe(RELEASE_URL);
+    // The LINE stays: that a major is out is worth knowing however it gets taken.
+    expect(notice?.line).toContain("2.0.0");
+  });
+
+  it("every other kind still gets its command, so this is not a blanket removal", () => {
+    expect(
+      updateNotice(someUpdate({ majorAvailable: "2.0.0", installKind: "detached-checkout" }))?.command,
+    ).toBe("herdr plugin action invoke update-major --plugin herdr.collie");
+    expect(updateNotice(someUpdate({ majorAvailable: "2.0.0", installKind: "binary" }))?.command).toBe(
+      "collie update --major",
+    );
+  });
+
+  it("restart still carries a command — a package restarts like anything else on PATH", () => {
+    // Only UPDATING is someone else's; the binary is on PATH and `collie restart` drives the unit.
+    expect(updateNotice(someUpdate({ bridgeStale: true, installKind: "system-package" }))?.command).toBe(
+      "collie restart",
+    );
+  });
+});

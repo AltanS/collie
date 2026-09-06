@@ -762,6 +762,7 @@ export const ko: Dictionary = {
   "settings.updateCard.summary.amber.one": "노란색 {count}개",
   "settings.updateCard.summary.amber.other": "노란색 {count}개",
   "settings.updateCard.preflightUnavailable": "이 머신에서 사전 점검을 실행할 수 없습니다.",
+  "settings.updateCard.packageManaged": "이 설치는 패키지 관리자가 업데이트합니다. Collie는 여기서 업데이트하지 않습니다.",
   "settings.updateCard.remedy": "해결 방법: {command}",
   "settings.updateCard.confirmTitle": "{version} 버전으로 업데이트하시겠습니까?",
   "settings.updateCard.confirmBody": "터미널 세션은 유지됩니다. 모바일 화면 연결은 최대 30초 동안 끊깁니다.",

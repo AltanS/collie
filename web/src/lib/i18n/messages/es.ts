@@ -779,6 +779,7 @@ export const es: Dictionary = {
   "settings.updateCard.summary.amber.one": "{count} ámbar",
   "settings.updateCard.summary.amber.other": "{count} ámbar",
   "settings.updateCard.preflightUnavailable": "No se pudo ejecutar la comprobación previa en este equipo.",
+  "settings.updateCard.packageManaged": "Tu gestor de paquetes actualiza esta instalación. Collie no la actualizará desde aquí.",
   "settings.updateCard.remedy": "Solución: {command}",
   "settings.updateCard.confirmTitle": "¿Actualizar a {version}?",
   "settings.updateCard.confirmBody": "La sesión de terminal se mantiene activa. La vista móvil se interrumpe hasta 30 segundos.",
