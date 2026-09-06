@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { fallbackDirs, findIn, findTool, searchDirs } from "./tools.ts";
+import { fallbackDirs, findIn, findTool, searchDirs, toolExts } from "./tools.ts";
 
 // The whole reason this module exists: Herdr spawns plugin actions with no login shell, so PATH may
 // be minimal or absent (the pre-shim collie-ctl.sh). PATH is a hint here, never the mechanism.
@@ -67,5 +67,43 @@ describe("findIn", () => {
 
   test("no dirs is null", () => {
     expect(findIn("git", [], () => true)).toBeNull();
+  });
+
+  // On Windows the executable is `git.exe`, and a lookup for the bare name finds nothing — which
+  // reads downstream as "git is not installed" rather than "we looked for the wrong filename".
+  test("every suffix is tried within a directory before moving to the next one", () => {
+    expect(findIn("git", ["/a", "/b"], (p) => p === "/b/git.exe", ["", ".exe"])).toBe("/b/git.exe");
+  });
+
+  test("the bare name wins over a suffixed sibling in the same directory", () => {
+    expect(findIn("git", ["/a"], () => true, ["", ".exe"])).toBe("/a/git");
+  });
+
+  test("PATH order still decides — an earlier dir's suffixed hit beats a later dir's bare one", () => {
+    expect(findIn("git", ["/a", "/b"], (p) => p === "/a/git.exe" || p === "/b/git", ["", ".exe"])).toBe(
+      "/a/git.exe",
+    );
+  });
+});
+
+describe("toolExts", () => {
+  // Off Windows there is no such thing as an executable suffix, so the search must not grow one:
+  // a lone `""` keeps `findIn` doing exactly what it did before suffixes existed.
+  test.skipIf(process.platform === "win32")("is the bare name alone off win32", () => {
+    expect(toolExts({ PATHEXT: ".COM;.EXE" })).toEqual([""]);
+  });
+
+  test.skipIf(process.platform !== "win32")("is the bare name first, then PATHEXT, on win32", () => {
+    expect(toolExts({ PATHEXT: ".COM;.EXE" })).toEqual(["", ".COM", ".EXE"]);
+  });
+
+  test.skipIf(process.platform !== "win32")("falls back to the standard suffixes with no PATHEXT", () => {
+    expect(toolExts({})).toEqual(["", ".COM", ".EXE", ".BAT", ".CMD"]);
+  });
+
+  // Windows spells it `PathExt`, and case survives only while the environment is the live
+  // `process.env` proxy — this module is handed plain copies of it.
+  test.skipIf(process.platform !== "win32")("reads the name case-insensitively on win32", () => {
+    expect(toolExts({ PathExt: ".COM;.EXE" })).toEqual(["", ".COM", ".EXE"]);
   });
 });

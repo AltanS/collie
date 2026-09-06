@@ -11,4 +11,5 @@ export {
   findTool,
   isExecutableFile,
   searchDirs,
+  toolExts,
 } from "../bridge/tools.ts";
