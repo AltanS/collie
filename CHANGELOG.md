@@ -27,6 +27,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ## [Unreleased]
 
 - `collie update` hands off to `systemd-run` only when the systemd user bus is reachable, not just when the binary exists, so a container with systemd installed but not running no longer wedges every update in staging, thanks @chernesk (#174).
+- Collie recognises an install its package manager owns, declines to update it, and names that manager's command instead, on the terminal and on the phone, thanks @mikebenner (#171).
+- The release tarball carries `scripts/collie-ctl.sh`, the shim every action in its own `herdr-plugin.toml` names, thanks @mikebenner (#171).
 
 ## [1.5.3] - 2026-09-06
 
