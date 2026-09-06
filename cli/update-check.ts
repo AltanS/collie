@@ -12,6 +12,7 @@ import type { Finding } from "./finding.ts";
 import {
   binaryLayout,
   classifyInstall,
+  SYSTEM_OWNED_CHECK_ID,
   SYSTEM_OWNED_REMEDY,
   systemOwnedReason,
   gitArgs,
@@ -167,6 +168,13 @@ const MIN_BUN = "1.3.14";
  * update gets applied, and an operator is better served knowing a release exists.
  */
 function systemOwnedRemedy(check: PreflightCheck): PreflightCheck {
+  // A plain substring test, matched against prose — the honest limit of this fix. A future reword of
+  // the major-crossing remedy that drops the literal phrase "collie update" would silently stop being
+  // caught here, with nothing to flag the drift: both sides are free-form strings, not a shared enum.
+  // The alternative — a field on PreflightCheck marking "this remedy names the self-update command" —
+  // is the structurally sound fix, and is a wider change than this one warrants today; two tests below
+  // pin that a remedy WITHOUT the phrase survives untouched, which is what would catch this class of
+  // regression in the meantime.
   if (check.remedy === undefined || !check.remedy.includes("collie update")) return check;
   return { ...check, remedy: SYSTEM_OWNED_REMEDY };
 }
@@ -599,7 +607,7 @@ export async function instanceChecks(deps: UpdateCheckDeps, toTag: string | null
     // what still means something: is this Collie healthy, is a release out, and is the service up.
     return [
       await doctorCheck(deps),
-      green("install", systemOwnedReason(deps.ctx.root)),
+      green(SYSTEM_OWNED_CHECK_ID, systemOwnedReason(deps.ctx.root)),
       systemOwnedRemedy(await upstreamCheck(deps, install, toTag)),
       serviceCheck(deps),
     ];
