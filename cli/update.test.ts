@@ -1028,6 +1028,8 @@ interface BinaryOptions {
   hooksCheck?: Partial<import("./sys.ts").ExecResult>;
   /** What `/api/health` answers, in order — the detached runner's gate polls it (M15/04). */
   health?: readonly HealthReply[];
+  /** Extra scripted answers, appended after the fixture's own — e.g. a failing systemd bus probe. */
+  answers?: Scripted["answers"];
 }
 
 /** One `/api/health` answer for the fake net: down, deposed, or up as some version. */
@@ -1068,7 +1070,7 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
     version("1.0.0"),
     [`${INST}/current/bin/collie hooks status --check`, over.hooksCheck ?? { code: EXIT.OK }],
   ];
-  const exec = fakeExec({ answers });
+  const exec = fakeExec({ answers: [...answers, ...(over.answers ?? [])] });
   const seed: SeededFiles = {
     [`${BROOT}/herdr-plugin.toml`]: 'id = "herdr.collie"\nversion = "1.0.0"\n',
     [`${BROOT}/bin/collie`]: "OLD BINARY",
@@ -1168,6 +1170,20 @@ describe("collie update on a binary install", () => {
     expect(h.exec.calls.join("\n")).not.toContain("bun ");
     // The state file says `staging`, so a bridge that comes up now reports a run in flight.
     expect(JSON.parse(h.files.read(`${STATE}/update.json`) ?? "{}").state).toBe("staging");
+    expect(h.exec.spawned[0]?.command[0]).toBe("systemd-run");
+  });
+
+  test("a systemd-run binary with no reachable user bus falls back to setsid, not a doomed handoff", async () => {
+    // The exact shape a container ships: the systemd package is on disk (`which systemd-run`
+    // finds it) but no user manager or session bus is running (`systemctl --user
+    // show-environment` fails) — the failure `handOff` used to miss, wedging every update behind
+    // a `systemd-run` that starts, can't reach the bus, and exits without ever handing off.
+    const h = binaryHarness({
+      others: ["0.9.0"],
+      answers: [["systemctl --user show-environment", { code: 1 }]],
+    });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.spawned[0]?.command[0]).toBe("setsid");
   });
 
   test("the runner flips `current` with one rename, restarts through it, and only then prunes", async () => {

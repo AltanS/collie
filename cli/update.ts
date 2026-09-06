@@ -15,7 +15,7 @@ import {
 import { STALE_AFTER_MS, type UpdateRun } from "../bridge/update-run.ts";
 import { manifestVersionFrom, readBuildInfo } from "../bridge/version.ts";
 import { type BuildDeps, cmdBuild } from "./build.ts";
-import { logFilePath } from "./lifecycle.ts";
+import { logFilePath, systemdUserReachable } from "./lifecycle.ts";
 import {
   binaryLayout,
   type BinaryLayout,
@@ -1964,7 +1964,7 @@ function handOff(
     args: applyArgv({ ...a, handoff: deps.pid }),
     unit: unitName(deps.ctx.instance),
     stamp: now.toString(36),
-    hasSystemdRun: deps.exec.which("systemd-run") !== null,
+    hasSystemdRun: deps.exec.which("systemd-run") !== null && systemdUserReachable(deps.exec),
     hasSetsid: deps.exec.which("setsid") !== null,
   });
   const pid = deps.exec.spawnDetached(plan.command, {

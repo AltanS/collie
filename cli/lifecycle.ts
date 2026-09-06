@@ -80,10 +80,23 @@ export type Tier = "systemd" | "launchd" | "unsupervised";
 const TIERS: readonly Tier[] = ["systemd", "launchd", "unsupervised"];
 
 /**
- * Which supervisor runs the bridge. `systemctl --user show-environment` succeeding — not merely
- * `systemctl` existing — is the gate, because a container or a machine with no user instance has
- * the binary and no bus (the pre-shim collie-ctl.sh). launchd is gated on Darwin too: the
- * `gui/<uid>` domain is Darwin-only.
+ * Whether the systemd user manager is actually reachable — `systemctl --user show-environment`
+ * succeeding, not merely `systemctl`/`systemd-run` existing on disk. A container commonly ships
+ * the systemd package (so the binaries are on `PATH`) without ever running a user instance or
+ * session bus, and `capture` fails distinctly from "not found": found, nonzero, `$DBUS_SESSION_BUS_
+ * ADDRESS` unset. Exported so every caller that needs "can I actually ask systemd to do something"
+ * — not just "is a binary present" — asks the same question the same way; `cli/update.ts`'s
+ * `handOff` learned the difference the hard way, retrying a doomed `systemd-run` forever.
+ */
+export function systemdUserReachable(exec: Exec): boolean {
+  const probe = exec.capture("systemctl", ["--user", "show-environment"]);
+  return probe.found && probe.code === 0;
+}
+
+/**
+ * Which supervisor runs the bridge. {@link systemdUserReachable} is the gate, because a container
+ * or a machine with no user instance has the binary and no bus (the pre-shim collie-ctl.sh).
+ * launchd is gated on Darwin too: the `gui/<uid>` domain is Darwin-only.
  *
  * `COLLIE_SUPERVISOR` pins the answer. The shell had no such knob because its tests could redefine
  * `have_launchd` in a heredoc; a compiled binary cannot be monkey-patched, so without this the
@@ -99,8 +112,7 @@ export function supervisionTier(
   const pinned = env.COLLIE_SUPERVISOR?.trim();
   const named = TIERS.find((tier) => tier === pinned);
   if (named !== undefined) return named;
-  const probe = exec.capture("systemctl", ["--user", "show-environment"]);
-  if (probe.found && probe.code === 0) return "systemd";
+  if (systemdUserReachable(exec)) return "systemd";
   if (platform === "darwin" && exec.which("launchctl") !== null) return "launchd";
   return "unsupervised";
 }
