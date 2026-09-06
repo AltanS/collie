@@ -76,6 +76,14 @@ const SYS_TOOLS = [
 function linkSystemTools(dir: string, without: readonly string[]): void {
   for (const tool of SYS_TOOLS) {
     if (without.includes(tool)) continue;
+    const resolved = Bun.which(tool);
+    if (resolved) {
+      symlinkSync(resolved, join(dir, tool));
+      continue;
+    }
+    // FHS fallback for hosts where the process PATH doesn't cover it (shouldn't normally
+    // trigger, since Bun.which() already walks $PATH — this is a last resort for a tool that
+    // is genuinely only ever found at a fixed FHS path).
     for (const base of ["/usr/bin", "/bin"]) {
       if (existsSync(`${base}/${tool}`)) {
         symlinkSync(`${base}/${tool}`, join(dir, tool));
