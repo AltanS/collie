@@ -26,6 +26,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+## [1.5.3] - 2026-09-06
+
+- Release checks and tag fetches stay on HTTPS when a git `insteadOf` rule rewrites GitHub URLs to SSH, so a service without an SSH key can update again, thanks @magoz (#170). ([b3bd127](https://github.com/AltanS/collie/commit/b3bd127))
+
 ## [1.5.2] - 2026-09-05
 
 - STT releases its admission slot immediately when a recording is cancelled, thanks @en-ver (#163). ([43c9cfe](https://github.com/AltanS/collie/commit/43c9cfe))
