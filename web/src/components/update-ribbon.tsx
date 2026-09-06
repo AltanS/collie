@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { ArrowUpCircle, Loader2, TriangleAlert, X } from "lucide-react";
+import { ArrowUpCircle, Loader2, Package, TriangleAlert, X } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { useLocale } from "@/hooks/use-locale";
@@ -169,6 +169,11 @@ function skinOf(view: RibbonView) {
   }
   if (view.kind === "starting" || view.kind === "updating" || view.kind === "peers") {
     return { Icon: Loader2, spin: true, ...TINT.working } as const;
+  }
+  // A packaged peer is a state, not an alarm and not a thing in progress: the ambient tint the band
+  // already uses, and a still icon. A spinner here would say the run is waiting on that machine.
+  if (view.kind === "package-managed") {
+    return { Icon: Package, spin: false, ...TINT.working } as const;
   }
   return { Icon: ArrowUpCircle, spin: false, ...TINT.working } as const;
 }

@@ -70,6 +70,7 @@ export type RibbonView =
   | { kind: "updated"; version: string }
   | { kind: "bundle" }
   | { kind: "peers"; names: string[] }
+  | { kind: "package-managed"; names: string[] }
   | { kind: "peer-failed"; name: string; reason: string }
   | { kind: "available"; version: string };
 
@@ -99,10 +100,17 @@ function phaseOf(state: UpdateRunState): RibbonPhase {
   return "restarting";
 }
 
-/** A leg nobody has finished. Written as "not done and not failed" rather than as a set of moving
+/** The leg states that are OVER. `package-managed` joins `done` here: a package manager owns that
+ *  machine (ADR 0035), so the run is not waiting on it and never will be. */
+const PEER_TERMINAL: ReadonlySet<UpdatePeerLegState> = new Set<UpdatePeerLegState>([
+  "done",
+  "package-managed",
+]);
+
+/** A leg nobody has finished. Written as "not over and not failed" rather than as a set of moving
  *  states, so a state this client has never heard of still counts as moving instead of vanishing. */
 function isMoving(leg: UpdatePeerLeg): boolean {
-  return leg.state !== "done" && !PEER_FAILED.has(leg.state);
+  return !PEER_TERMINAL.has(leg.state) && !PEER_FAILED.has(leg.state);
 }
 
 /** Cut on a word boundary, never mid-word, and mark the cut. */
@@ -153,6 +161,11 @@ export function ribbonView(input: RibbonInput): RibbonView {
     }
     const moving = legs.filter(isMoving).map((leg) => leg.name);
     if (moving.length > 0) return { kind: "peers", names: moving };
+    // Below the moving peers, never among them: the band's peers line is about what the run is
+    // waiting on, and it is waiting on nothing here. Named anyway, so the operator learns why that
+    // machine did not move without opening the page to find out.
+    const managed = legs.filter((leg) => leg.state === "package-managed").map((leg) => leg.name);
+    if (managed.length > 0) return { kind: "package-managed", names: managed };
   }
 
   // (a) — an offer, and only an offer. The tap navigates; nothing here starts anything.
@@ -181,6 +194,8 @@ export function ribbonText(view: RibbonView): string {
       return t("pwa.updateAvailable");
     case "peers":
       return tn("updateRibbon.peers", view.names.length, { names: view.names.join(", ") });
+    case "package-managed":
+      return tn("updateRibbon.packageManaged", view.names.length, { names: view.names.join(", ") });
     case "peer-failed":
       return `${t("updateRibbon.peerRolledBack", { name: view.name, reason: view.reason })} ${t("updateRibbon.seeUpdates")}`;
     case "available":

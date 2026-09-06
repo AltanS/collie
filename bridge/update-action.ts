@@ -405,6 +405,15 @@ export interface PackUpdateRow {
   readonly reasons: readonly string[];
   /** That member's own stamp for the report, or `null` when there is no report to date. */
   readonly asOf: number | null;
+  /**
+   * How that member is installed, when its own report named a kind (§19). Absent means unknown, and
+   * unknown counts as not packaged.
+   *
+   * The page reads it for one thing only: a `packaged` member waits for its package manager, so it
+   * is shown as such and left out of the peers-behind count. A count the operator cannot clear from
+   * the phone is a nag, and the tap it would send them to refuses on that machine (ADR 0035).
+   */
+  readonly installKind?: UpdateStatus["installKind"];
 }
 
 /** What the lead knows about one member when it composes a row. All of it banked by the sweep. */
@@ -439,7 +448,7 @@ export function packUpdateRows(members: readonly PackMemberFacts[]): PackUpdateR
       return { name: m.name, version: m.version, verdict: "unknown", reasons: [unknownReason(m.name)], asOf: null };
     }
     const reasons = reasonsOf(m.preflight.checks);
-    return {
+    const row: PackUpdateRow = {
       name: m.name,
       version: m.version,
       verdict: m.preflight.verdict,
@@ -448,6 +457,9 @@ export function packUpdateRows(members: readonly PackMemberFacts[]): PackUpdateR
       reasons: m.preflight.verdict === "red" && reasons.length === 0 ? [unknownReason(m.name)] : reasons,
       asOf: m.preflight.asOf,
     };
+    // Assigned, never conditionally spread: a member that named no kind carries NO such key.
+    const kind = m.preflight.installKind;
+    return kind === undefined ? row : { ...row, installKind: kind };
   });
 }
 
@@ -472,7 +484,7 @@ export function parsePackRows(doc: JsonValue): PackUpdateRow[] {
     if (row === null) continue;
     const { name, verdict, version, reasons, asOf } = row;
     if (typeof name !== "string" || typeof verdict !== "string" || !PACK_VERDICTS.has(verdict)) continue;
-    out.push({
+    const parsed: PackUpdateRow = {
       name,
       version: typeof version === "string" ? version : null,
       // SAFETY: checked against `PACK_VERDICTS` on the line above, which holds exactly the four
@@ -480,7 +492,9 @@ export function parsePackRows(doc: JsonValue): PackUpdateRow[] {
       verdict: verdict as PackVerdict,
       reasons: Array.isArray(reasons) ? reasons.filter((r): r is string => typeof r === "string") : [],
       asOf: typeof asOf === "number" && Number.isSafeInteger(asOf) ? asOf : null,
-    });
+    };
+    const kind = readInstallKind(row.installKind);
+    out.push(kind === undefined ? parsed : { ...parsed, installKind: kind });
   }
   return out;
 }

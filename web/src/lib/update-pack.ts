@@ -64,6 +64,8 @@ function rankOfVerdict(verdict: UpdatePackVerdict): number {
 function rankOfState(state: UpdatePeerLegState): number {
   if (FAILED.has(state)) return 0;
   if (IN_FLIGHT.has(state)) return 4;
+  // `package-managed` lands here with `done`: neutral weight, bottom of the list. It is a state, not
+  // a failure — nothing is wrong with a machine whose package manager owns it (ADR 0035).
   return 5;
 }
 
@@ -88,6 +90,8 @@ export function peerStateWord(state: UpdatePeerLegState): string {
       return t("settings.updateCard.peer.state.done");
     case "rolled-back":
       return t("settings.updateCard.peer.state.rolledBack");
+    case "package-managed":
+      return t("settings.updateCard.peer.state.packageManaged");
     case "stuck":
       return t("settings.updateCard.peer.state.stuck");
     case "interrupted":
@@ -125,15 +129,18 @@ export function peerRows(pack: UpdatePackMember[] = [], legs: UpdatePeerLeg[] = 
   for (const member of pack) {
     const bad = member.verdict === "red" || member.verdict === "unknown";
     const stated = member.reasons.join(" · ");
+    // A packaged member says what it is WAITING ON rather than what its preflight thought. Its
+    // preflight is green by design, and "green" on that row would read as "about to move".
+    const managed = member.installKind === "packaged";
     byName.set(member.name, {
       name: member.name,
       version: member.version,
-      word: peerVerdictWord(member.verdict),
+      word: managed ? peerStateWord("package-managed") : peerVerdictWord(member.verdict),
       // An unknown with no reason still says why in plain words: the lead asked and heard nothing.
       // A row that says "unknown" and nothing else is the row that reads as fine.
-      reason: bad ? stated || t("settings.updateCard.peer.unknownReason") : null,
+      reason: bad && !managed ? stated || t("settings.updateCard.peer.unknownReason") : null,
       asOf: member.asOf,
-      rank: rankOfVerdict(member.verdict),
+      rank: managed ? rankOfState("package-managed") : rankOfVerdict(member.verdict),
       inFlight: false,
     });
   }
@@ -162,7 +169,10 @@ export function peerRows(pack: UpdatePackMember[] = [], legs: UpdatePeerLeg[] = 
  */
 export function peersBehind(pack: UpdatePackMember[] = [], current: string): number {
   if (current === "") return 0;
-  return pack.filter((m) => m.version !== null && m.version !== current).length;
+  // A packaged member is left out for the same reason an unknown is: the operator cannot clear it
+  // from here. The tap the count sends them to refuses on that machine (ADR 0035), so counting it
+  // would be a nag with no button behind it. Its row still says what it is waiting on.
+  return pack.filter((m) => m.installKind !== "packaged" && m.version !== null && m.version !== current).length;
 }
 
 /** A peer that tried and rolled back is the case "Retry pack update" exists for. */

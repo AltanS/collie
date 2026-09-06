@@ -284,6 +284,32 @@ describe("updating 1 peer", () => {
   });
 });
 
+describe("a packaged peer waits for its package manager", () => {
+  it("says so instead of counting the peer among the ones still moving", async () => {
+    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
+    await renderBand(info({ run: run("done", { peers }) }));
+    expect(screen.getByText("minibuch waits for its package manager")).toBeInTheDocument();
+  });
+
+  it("is kept out of the peers line, which is about what the run is waiting on", async () => {
+    const peers: UpdatePeerLeg[] = [
+      { name: "minibuch", state: "restarting" },
+      { name: "cellar", state: "package-managed" },
+    ];
+    await renderBand(info({ run: run("done", { peers }) }));
+    // One peer, not two: the packaged machine is not one the run is waiting on.
+    expect(screen.getByText("Updating 1 peer: minibuch")).toBeInTheDocument();
+  });
+
+  it("never spins — a packaged peer is a state, never something in progress", async () => {
+    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
+    const { container } = await renderBand(info({ run: run("done", { peers }) }));
+    expect(container.querySelector(".animate-spin")).toBeNull();
+    // And it stays out of the red weight a rolled-back peer carries.
+    expect(band(container)!.className).not.toContain("status-blocked");
+  });
+});
+
 describe("dismissal is per version", () => {
   it("only the offer carries a dismiss", async () => {
     await renderBand(info({ run: run("restarting") }));

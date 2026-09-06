@@ -144,6 +144,23 @@ describe("updates page", () => {
     expect(within(list).queryAllByRole("button")).toHaveLength(0);
   });
 
+  it("says a packaged peer waits for its package manager, and counts it behind nothing", async () => {
+    const pack: UpdatePackMember[] = [
+      { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000, installKind: "packaged" },
+    ];
+    // This lead is already on the newest release, so the only thing that could give it an action is
+    // a peer counted behind. The packaged one is not counted, so the page has nothing to offer.
+    const current = info({ current: "1.4.0", releaseAvailable: false, newerVersions: [] });
+    serveCheck(current, pack);
+    renderUpdates(current, LEAD_ROSTER);
+    const list = await screen.findByRole("list", { name: "Pack members" });
+    expect(within(list).getByText(/waits for the package manager/)).toBeInTheDocument();
+    // Neutral weight: no red, and no reason line under the row.
+    expect(list.querySelector(".text-status-blocked")).toBeNull();
+    await waitFor(() => expect(screen.getByText("Up to date. Nothing to do.")).toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Retry pack update" })).not.toBeInTheDocument();
+  });
+
   it("offers exactly one action button on the page", async () => {
     serveCheck(info(), PACK);
     renderUpdates(info(), LEAD_ROSTER);
