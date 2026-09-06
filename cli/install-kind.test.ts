@@ -1,10 +1,11 @@
-import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { resolvePluginRoot } from "../bridge/root.ts";
 import { fakeExec, fakeFiles, fakeLinkFs } from "./fakes.ts";
+import { realFiles } from "./sys.ts";
 import {
   classifyInstall,
   detectInstall,
@@ -276,5 +277,43 @@ describe("classifyInstall — a tree the system owns", () => {
     };
     expect(probeInstall(deps, ROOT).rootOwnerUid).toBe(0);
     expect(detectInstall(deps)).toEqual({ kind: "system-owned" });
+  });
+});
+
+// ── ownerUid on a platform with no POSIX ownership ────────────────────────────
+// Node/Bun's `stat().uid` reports a constant 0 on win32 regardless of who owns the file — that is
+// "this platform has no such concept", not "root owns it", and the two must not collide: Collie
+// supports win32 (bridge/config.ts, bridge/dial.ts), and colliding them would make an ordinary
+// win32 install misclassify as system-owned and refuse to update forever.
+
+describe("realFiles.ownerUid — win32 has no uid to report", () => {
+  const original = process.platform;
+  afterEach(() => {
+    Object.defineProperty(process, "platform", { value: original, configurable: true });
+  });
+
+  test("win32 answers null, never 0, whatever stat() would say", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-owner-"));
+    try {
+      Object.defineProperty(process, "platform", { value: "win32", configurable: true });
+      expect(realFiles.ownerUid(dir)).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("off win32, a real directory answers its real stat().uid", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-owner-"));
+    try {
+      Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+      expect(realFiles.ownerUid(dir)).toBe(statSync(dir).uid);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a path that does not exist answers null, not an exception", () => {
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+    expect(realFiles.ownerUid("/no/such/path/at/all")).toBeNull();
   });
 });

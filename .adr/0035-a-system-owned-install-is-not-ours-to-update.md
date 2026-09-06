@@ -80,6 +80,13 @@ peers, and that is a different act.
   reversible — strictly stronger than anything Collie was going to do to itself.
 - **`sudo` changes nothing.** That is the whole point of choosing ownership. `sudo collie doctor`
   and `collie doctor` agree about what this install is, and a root-run bridge sees the kind.
+- **The predicate is POSIX-only, and win32 is read as "no answer" rather than "root".** Windows has
+  no uid, and Node/Bun's `stat().uid` reports a constant `0` there regardless of who owns the file —
+  colliding that with uid 0 meaning root would misclassify an ordinary win32 install as system-owned
+  the moment this shipped. `realFiles.ownerUid` returns `null` on `process.platform === "win32"`
+  before it ever calls `stat`, which reads as `loose-binary`, the same fallback a failed `stat`
+  already gets. A real win32 answer needs its own signal — the ACL, not a POSIX uid that platform
+  does not have — and is out of scope here.
 - **Refusing a root-owned tree we could have written is deliberate.** Running as root, Collie *could*
   replace the files. It must not: overwriting a package manager's files leaves its database lying
   about what is installed.
