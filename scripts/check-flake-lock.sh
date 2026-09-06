@@ -6,8 +6,9 @@
 # feature commit means the toolchain moved at a point no version records, so the binary a bisect
 # builds is not the binary the release built — and nothing in the tree says when it changed.
 #
-# So: a commit that stages `flake.lock` must also stage the three version files. That is what a
-# release commit does anyway, and it is the only commit allowed to touch the lock.
+# So: a commit that MOVES `flake.lock` (status M, a change to an already-tracked lock) must also
+# stage the three version files. A first arrival (status A) or a removal (status D) is not a move,
+# so it passes on its own — that is what let this guard's own lock land.
 #
 # Runs against the STAGED diff. Called standalone and by the pre-commit hook (guard D).
 # Override once with: SKIP_FLAKE_LOCK_CHECK=1 git commit …
@@ -26,16 +27,32 @@ if [ "${SKIP_FLAKE_LOCK_CHECK:-}" = "1" ]; then
   exit 0
 fi
 
-# The hook already has the staged list and passes it down; a standalone run computes its own.
+# The hook already has the staged list and passes it down; a standalone run computes its own. Used
+# only for the version-file check below — the lock's own status is judged separately, next.
 staged="${STAGED_FILES-}"
 if [ -z "${STAGED_FILES+x}" ]; then
   staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 fi
 
-if ! printf '%s\n' "$staged" | grep -qxF 'flake.lock'; then
-  echo "✓ flake.lock not staged"
-  exit 0
-fi
+# The lock's own staged status, straight from the index — regardless of what STAGED_FILES says.
+# This is what tells a first arrival (A) or a removal (D) from a move (M): only a move is a guarded
+# lock change; the other two, and no staged change at all, pass on their own.
+lock_status="$(git diff --cached --name-status -- flake.lock | cut -f1)"
+
+case "$lock_status" in
+  "")
+    echo "✓ flake.lock not staged"
+    exit 0
+    ;;
+  A)
+    echo "✓ flake.lock is a first arrival, not a move — no release commit needed"
+    exit 0
+    ;;
+  D)
+    echo "✓ flake.lock is being removed, not moved — no release commit needed"
+    exit 0
+    ;;
+esac
 
 missing=""
 for f in "${VERSION_FILES[@]}"; do

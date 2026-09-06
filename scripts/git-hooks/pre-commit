@@ -21,7 +21,8 @@
 #
 # D) flake.lock guard — override with: SKIP_FLAKE_LOCK_CHECK=1 git commit …
 #    `flake.lock` pins the toolchain a published binary was built with, so it moves only in a
-#    release commit — staged together with the three version files (check-flake-lock.sh).
+#    release commit — staged together with the three version files (check-flake-lock.sh). A first
+#    arrival or a removal of the lock passes on its own; only a change needs the release commit.
 #
 # The four are skippable independently: SKIP_VERSION_CHECK=1 does not disarm the lint guard.
 set -euo pipefail

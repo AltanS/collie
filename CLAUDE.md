@@ -240,7 +240,8 @@ page to be skimmed.
   a published binary was built with, so a lock that moves in a feature commit means the binary a
   bisect builds is not the binary the release built, and nothing in the tree says when it changed.
   The release recipe (*Versioning*, step 5) is where it moves; `scripts/check-flake-lock.sh` refuses
-  it anywhere else, with `SKIP_FLAKE_LOCK_CHECK=1` as its own hatch. The pinned Bun must also stay
+  it anywhere else, with `SKIP_FLAKE_LOCK_CHECK=1` as its own hatch. The guard judges a change to the
+  lock, so the first commit that adds it passes without a release commit. The pinned Bun must also stay
   at or above `MIN_BUN` in `cli/update-check.ts` — they are one fact, and
   `scripts/check-flake-bun.test.ts` fails when they drift apart.
 - Service: `systemd --user` unit `collie` on the deployment host; logs `journalctl --user -u collie -f`.
