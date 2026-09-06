@@ -27,7 +27,9 @@ import {
   originMatches,
   updateRepoOf,
   DEFAULT_UPDATE_REPO,
+  PACKAGED_SENTENCE,
 } from "./install-kind.ts";
+import { packageCommand } from "./package-command.ts";
 import type { Environment, EnvVars } from "./context.ts";
 import { EXIT } from "./io.ts";
 import { cmdLink, isCollieBinaryPath, type LinkReader, linkPath, type LinkWriter } from "./link.ts";
@@ -883,6 +885,18 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
   if (wantsStatus(args)) return cmdUpdateStatus(deps, args);
   if (args.includes("--rollback")) {
     if (install.kind === "binary") return await rollbackBinary(deps);
+    if (install.kind === "packaged") {
+      // Above the checkout branch on purpose: the message below it is three sentences about
+      // `versions/` layouts and `git checkout`, none of which exist here, and the real answer is the
+      // package manager's own downgrade (`pacman -U` from the cache, `brew` an older formula).
+      // The main refusal below names the command that takes the NEXT version; a rollback wants the
+      // previous one, which no `pacman -Syu` spelling reaches, so this one names the boundary and
+      // sends the operator to the manager rather than to a command.
+      deps.io.err(`error: ${deps.ctx.root} is a packaged install — ${PACKAGED_SENTENCE}, and Collie stages`);
+      deps.io.err("       no versions here to roll back to. Reinstall the previous version through");
+      deps.io.err("       your package manager.");
+      return EXIT.FAIL;
+    }
     if (staged && layout !== null) return await rollbackCheckout(deps, layout);
     deps.io.err("error: `--rollback` flips the `current` symlink back to the previous version, and this");
     deps.io.err("       install has no `versions/` layout to flip inside — a Herdr-managed checkout");
@@ -891,6 +905,18 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     return EXIT.FAIL;
   }
   if (install.kind === "binary") return await updateBinary(deps, args);
+  if (install.kind === "packaged") {
+    // Not a failure to diagnose — a boundary to respect (ADR 0035). The sentence is the shared one
+    // the preflight's `package` check and `doctor`'s install line print, so a reword reaches every
+    // surface at once. The COMMAND is named only where the resolved root names a manager we know;
+    // where it does not, Collie says the boundary and stops rather than guessing a manager and
+    // sending the operator after a package that may not exist.
+    const cmd = packageCommand(deps.ctx.root);
+    deps.io.err(`error: ${deps.ctx.root} is a packaged install — ${PACKAGED_SENTENCE}.`);
+    deps.io.err("       `collie update` will not replace its files.");
+    if (cmd !== null) deps.io.err(`       Take the new version with: ${cmd}`);
+    return EXIT.FAIL;
+  }
   if (install.kind === "unknown") {
     deps.io.err(`error: cannot tell how this Collie was installed (${unknownEvidence(deps, install.why)}).`);
     deps.io.err("       `collie update` will not guess. A git checkout refreshes with:");

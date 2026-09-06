@@ -1390,3 +1390,67 @@ async function plainFindings(): Promise<Finding[]> {
   // SAFETY: as in `findings` above — `--json` prints the serialised `Finding[]` and nothing else.
   return JSON.parse(fresh.io.stdout.join("\n")) as Finding[];
 }
+
+// ── A packaged install (ADR 0035) ──────────────────────────────────────────
+// doctor gained a `packaged` case, and the code review caught that its NEIGHBOURS did not: three
+// other findings key on install kind, and each fell through to a line that is false on this one.
+// Every case here is one of those, so the omission cannot come back quietly.
+
+describe("collie doctor — a packaged install", () => {
+  /** A Collie with a manifest, no `.git`, in a folder a package manager owns. */
+  function systemOwned(link: Record<string, LinkProbe> = {}) {
+    const h = harness(null, [], {
+      link,
+      answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }], ...(HEALTHY_ANSWERS ?? [])],
+      // The manifest is what makes this a Collie at all — `hasMarker` is asked before ownership, so
+      // without it the tree classifies `no-marker` and none of these findings would be exercised.
+      files: { ...healthyFiles(), [`${ROOT}/herdr-plugin.toml`]: 'id = "herdr.collie"\nversion = "1.5.2"\n' },
+    });
+    h.files.rootOwned.add(ROOT);
+    return h;
+  }
+
+  test("the install line reports the kind, the prefix and the PATH name pointing at it", async () => {
+    // The three facts an operator checks the install by hand with. Healthy, never a warning:
+    // nothing is wrong with this install.
+    const f = (await findings(systemOwned())).byCheck.get("install");
+    expect(f?.status).toBe("ok");
+    expect(f?.detail ?? "").toContain("packaged install");
+    expect(f?.detail ?? "").toContain(ROOT);
+    expect(f?.detail ?? "").toContain("updates come from your package manager");
+  });
+
+  test("the symlink is named when one points into this root, and its absence is stated", async () => {
+    const h = systemOwned();
+    // `/opt/collie` is the fake's root; a PATH name pointing into it is what a package installs.
+    expect((await findings(h)).byCheck.get("install")?.detail ?? "").toContain("no PATH name points at it");
+    const linked = systemOwned({ "/usr/bin/collie": { kind: "symlink", target: `${ROOT}/bin/collie` } });
+    expect((await findings(linked)).byCheck.get("install")?.detail ?? "").toContain("via /usr/bin/collie");
+  });
+
+  test("`versions` no longer promises a staging that will never happen", async () => {
+    // The regression the review found: the generic branch says "the next `collie update` stages
+    // one", three lines under an install line saying this install does not update itself.
+    const f = (await findings(systemOwned())).byCheck.get("versions");
+    expect(f?.status).toBe("skipped");
+    expect(f?.detail ?? "").not.toContain("stages one");
+  });
+
+  test("`update-source` does not name a GitHub repo this install never fetches from", async () => {
+    const f = (await findings(systemOwned())).byCheck.get("update-source");
+    expect(f?.detail ?? "").not.toContain("github.com");
+    expect(f?.detail ?? "").toContain("updates come from your package manager");
+  });
+
+  test("`restart-pending` is skipped, because this kind runs the same bridge-less payload", async () => {
+    const f = (await findings(systemOwned())).byCheck.get("restart-pending");
+    expect(f?.status).toBe("skipped");
+  });
+
+  test("a linked clone still gets every one of those answers the old way", async () => {
+    // The control. All four assertions above must fail on a checkout, or they are pinning nothing.
+    const run = await findings(harness(null));
+    expect(run.byCheck.get("update-source")?.detail ?? "").toContain("github.com");
+    expect(run.byCheck.get("versions")?.status).not.toBe("skipped");
+  });
+});

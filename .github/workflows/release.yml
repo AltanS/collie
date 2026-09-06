@@ -88,6 +88,14 @@ jobs:
           # bridge/index.ts reads `currentVersion` from — without it the bridge crashes at boot.
           cp herdr-plugin.toml package.json .env.example CHANGELOG.md LICENSE README.md "$stage/"
           cp -R docs "$stage/docs"
+          # The shim the MANIFEST names. Every `[[actions]]` entry in `herdr-plugin.toml` is frozen
+          # byte-for-byte as `bash scripts/collie-ctl.sh <verb>` (ADR 0006), so a payload that carries
+          # the manifest without the shim hands Herdr a set of action buttons that cannot resolve —
+          # which is exactly what an OS package built from this tarball would install. Only the shim
+          # is needed: it resolves nothing here and `exec`s `bin/collie`, which is already in $stage.
+          mkdir -p "$stage/scripts"
+          cp scripts/collie-ctl.sh "$stage/scripts/collie-ctl.sh"
+          chmod 0755 "$stage/scripts/collie-ctl.sh"
 
           tar -czf "$RUNNER_TEMP/$root.tar.gz" -C "$RUNNER_TEMP" "$root"
           echo "root=$root" >> "$GITHUB_OUTPUT"

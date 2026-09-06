@@ -758,6 +758,7 @@ export const es: Dictionary = {
   "apiError.update.major_confirm_required": "{version} pasa a una versión mayor y requiere confirmación explícita.",
   "apiError.update.target_mismatch": "Esta pantalla ofreció {asked}, pero este collie instalaría {would}. Recargue y vuelva a revisar.",
   "apiError.update.none_available": "No hay ninguna versión más reciente disponible.",
+  "apiError.update.packaged": "Las actualizaciones se gestionan con tu gestor de paquetes. Collie no reemplazará los archivos de esta instalación.",
   "apiError.update.start_failed": "No se pudo iniciar la actualización: {reason}",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "Actualizar Collie",
@@ -779,6 +780,7 @@ export const es: Dictionary = {
   "settings.updateCard.summary.amber.one": "{count} ámbar",
   "settings.updateCard.summary.amber.other": "{count} ámbar",
   "settings.updateCard.preflightUnavailable": "No se pudo ejecutar la comprobación previa en este equipo.",
+  "settings.updateCard.packageManaged": "Tu gestor de paquetes actualiza esta instalación. Collie no la actualizará desde aquí.",
   "settings.updateCard.remedy": "Solución: {command}",
   "settings.updateCard.confirmTitle": "¿Actualizar a {version}?",
   "settings.updateCard.confirmBody": "La sesión de terminal se mantiene activa. La vista móvil se interrumpe hasta 30 segundos.",

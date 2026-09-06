@@ -564,7 +564,10 @@ const updateRepo = process.env.COLLIE_UPDATE_REPO?.trim() || "AltanS/collie";
 // The banner spells its commands from this: Herdr actions for a Herdr-managed checkout, the `collie`
 // verbs for everything else (M14/01 §5.3).
 const installKind = classifyInstall(
-  probeInstall({ exec: realExec(process.env, homedir()), files: realFiles, link: realLinkFs }, rootDir),
+  probeInstall(
+    { ctx: { home: homedir() }, exec: realExec(process.env, homedir()), files: realFiles, link: realLinkFs },
+    rootDir,
+  ),
 ).kind;
 const updateMonitor = new UpdateMonitor({
   repo: updateRepo,
@@ -767,6 +770,7 @@ updateTimer.unref();
 const packFollower =
   pack.mode === "peer" && canRunUpdate
     ? new PackFollower({
+        installKind,
         self: () => ({ version: packVersion, self: trustStore.current()?.self.memberId ?? "" }),
         // Re-read on every decision, never captured: it IS the memory, and the record on disk is
         // what survives this machine's own restart.

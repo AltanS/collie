@@ -2024,3 +2024,64 @@ describe("the update run id", () => {
     expect(wantsRunId(["update", "--to-tag", "v1.1.0"])).toBeNull();
   });
 });
+
+// ── The install `update` must decline ────────────────────────────────────────
+// A package manager laid this Collie down in a folder it owns. Declining is the correct outcome,
+// not a diagnosis failure — and it has to READ that way, because the shape used to fall out as
+// `unknown` and tell operators their packaged install was unrecognisable.
+
+describe("cmdUpdate — a folder a package manager owns", () => {
+  /** A root with a marker, no `.git`, and outside `$HOME` — `/opt/collie`, the fake's own root. */
+  function packaged() {
+    return harness({ answers: [[`${GIT} rev-parse --git-dir`, { code: 128 }]], installed: "1.5.2" });
+  }
+
+  test("it refuses, and never reaches git, bun or the network", async () => {
+    const h = packaged();
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.exec.calls.some((c) => c.includes("ls-remote"))).toBe(false);
+    expect(h.exec.calls.some((c) => c.includes("bun"))).toBe(false);
+    expect(h.restarts).toBe(0);
+  });
+
+  test("it names the root and the boundary, and does not diagnose a fault", async () => {
+    const h = packaged();
+    await cmdUpdate(h.deps);
+    const said = h.io.stderr.join("\n");
+    expect(said).toContain(ROOT);
+    expect(said).toContain("updates come from your package manager");
+    // The old wording for this shape. Printing it here is the bug the kind exists to fix.
+    expect(said).not.toContain("cannot tell how this Collie was installed");
+    expect(said).not.toContain("herdr plugin install");
+  });
+
+  test("a root whose prefix names a manager gets the command; ours does not, so it gets none", async () => {
+    // `/opt/collie` is packaged and belongs to no manager this build knows, so Collie says the
+    // boundary and stops rather than guessing a command the operator cannot run.
+    const h = packaged();
+    await cmdUpdate(h.deps);
+    expect(h.io.stderr.join("\n")).not.toContain("Take the new version with:");
+  });
+
+  test("`--rollback` gets this boundary too, not the checkout lecture", async () => {
+    // `--rollback` is dispatched above the kind fork, so before this it fell through to three
+    // sentences about `versions/` layouts and `git checkout v<version>` — none of which exist here.
+    const h = packaged();
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    const said = h.io.stderr.join("\n");
+    expect(said).toContain("updates come from your package manager");
+    expect(said).not.toContain("git checkout");
+    expect(said).not.toContain("ADR 0006");
+  });
+
+  test("a writable, user-owned root INSIDE $HOME still reports the unknown it really is", async () => {
+    // The near-miss the predicate must keep refusing to claim: all three of clause 4's disjuncts are
+    // false here, so a tarball someone unpacked into their own home is still `loose-binary`.
+    const inHome = `${HOME}/collie`;
+    const h = harness({ answers: [[`git -C ${inHome} rev-parse --git-dir`, { code: 128 }]] });
+    h.files.entries.set(`${inHome}/herdr-plugin.toml`, { text: 'version = "1.5.2"\n' });
+    const deps = { ...h.deps, ctx: { ...h.deps.ctx, root: inHome } };
+    expect(await cmdUpdate(deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("cannot tell how this Collie was installed");
+  });
+});

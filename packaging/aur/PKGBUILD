@@ -1,0 +1,92 @@
+# Maintainer: Altan Sarisin <partners@sportsight.de>
+#
+# We publish and maintain this package ourselves. No co-maintainer (M17 principle 5). Niko
+# Lehtovirta's unpublished collie-bin PKGBUILD is prior art for the layout below, and prior art is
+# the whole of that relationship.
+
+# Collie ships a compiled Bun single-file executable in every GitHub release, so this package
+# downloads that tarball and installs it. Nothing is built here: no Bun, no git fetch, no
+# compilation. `pkgver` below is the only place the version is written.
+
+pkgname=collie-bin
+_pkgname=collie
+pkgver=1.5.3
+pkgrel=1
+pkgdesc="Phone web UI for the AI agents running in your terminal, served over Tailscale (official binary release)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/AltanS/collie"
+license=('MIT')
+
+# glibc: the only shared-library set the executable links (libc, libm, libpthread, libdl and the
+#        dynamic loader all come from it) — everything else Bun statically links.
+# bash:  every action in the shipped herdr-plugin.toml is spelled `bash scripts/collie-ctl.sh …`
+#        and those command strings are frozen byte-for-byte (ADR 0006).
+# systemd: `collie start` writes a `systemd --user` unit and drives it with `systemctl --user`;
+#        without it the CLI drops to its unsupervised tier and the bridge dies with the session.
+depends=('glibc' 'bash' 'systemd')
+
+# A package is NOT a Herdr plugin, so `herdr` is not listed here. It follows the download path:
+# `herdr plugin link` would register an action set whose commands run `scripts/collie-ctl.sh` out of
+# a tree pacman owns, and the update action there is one Collie refuses (ADR 0035). Every `collie`
+# verb on PATH works regardless.
+optdepends=(
+  'tailscale: publish the one managed front door with `collie serve` (the supported way to reach Collie from a phone)'
+)
+
+provides=("$_pkgname=$pkgver")
+conflicts=("$_pkgname")
+
+# !strip: the release binary is a Bun single-file executable — the bundle it runs from is embedded
+#         in the image, and stripping it produces a binary that no longer starts.
+# !debug: there is no source here to build a debug package from.
+options=('!strip' '!debug')
+
+_baseurl="$url/releases/download/v$pkgver"
+
+source_x86_64=("$pkgname-$pkgver-x86_64.tar.gz::$_baseurl/collie-$pkgver-linux-x64.tar.gz")
+source_aarch64=("$pkgname-$pkgver-aarch64.tar.gz::$_baseurl/collie-$pkgver-linux-arm64.tar.gz")
+
+# Taken verbatim from the published `<asset>.sha256` files of release v1.5.3.
+sha256sums_x86_64=('1a520153d13360cbc508e8325ebfdfbf080df64487a66b27f1212fbac893443c')
+sha256sums_aarch64=('04f5343d1060ae70569d6d6ced769e83beeb24b0044a162534f17b177602a239')
+
+# The tarball's own directory name, which carries the upstream platform spelling rather than $CARCH.
+_distdir() {
+  case "$CARCH" in
+    x86_64)  printf '%s' "$srcdir/collie-$pkgver-linux-x64" ;;
+    aarch64) printf '%s' "$srcdir/collie-$pkgver-linux-arm64" ;;
+    *) error "unsupported CARCH '$CARCH': no release tarball for this architecture"; return 1 ;;
+  esac
+}
+
+package() {
+  local _src _f
+  _src="$(_distdir)"
+
+  # The binary lives beside the tree it reads, not in /usr/bin. It resolves its own root as
+  # dirname(dirname(realpath(argv0))) and accepts that root only if herdr-plugin.toml sits in it
+  # (bridge/root.ts), so /usr/bin/collie is a SYMLINK: it resolves to /usr/lib/collie/bin/collie
+  # and the root comes out as /usr/lib/collie. Installing the file at /usr/bin/collie directly
+  # would make the root /usr, and the bridge would find neither web/dist nor the manifest.
+  install -Dm755 "$_src/bin/collie" "$pkgdir/usr/lib/$_pkgname/bin/collie"
+  install -d "$pkgdir/usr/bin"
+  ln -s "/usr/lib/$_pkgname/bin/collie" "$pkgdir/usr/bin/collie"
+
+  # Everything else keeps its path relative to that root: web/dist (the bridge serves it from disk
+  # at request time), herdr-plugin.toml, package.json (the bridge reads currentVersion from it),
+  # docs/, and scripts/ — which must stay beside the manifest, because the frozen action commands
+  # name it relatively.
+  while IFS= read -r -d '' _f; do
+    _f="${_f#./}"
+    case "$_f" in
+      bin/*|LICENSE) continue ;;
+      scripts/*)     install -Dm755 "$_src/$_f" "$pkgdir/usr/lib/$_pkgname/$_f" ;;
+      *)             install -Dm644 "$_src/$_f" "$pkgdir/usr/lib/$_pkgname/$_f" ;;
+    esac
+  done < <(find "$_src" -type f -printf '%P\0')
+
+  install -Dm644 "$_src/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+# No systemd unit is shipped: Collie writes its own `--user` unit through `collie start`, into the
+# operator's own ~/.config/systemd/user.

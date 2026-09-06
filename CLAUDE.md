@@ -139,8 +139,13 @@ user-facing update/restart instructions as Herdr plugin actions** — `herdr plu
 update --plugin herdr.collie` (or `restart`) — never `bin/collie …` / `systemctl … collie`, which
 depend on the caller's cwd and the unit name; the Herdr action runs from anywhere. A **binary
 install** (`scripts/install.sh`'s versioned layout) is not a Herdr plugin and has no such actions:
-there the spelling is `collie update` / `collie restart`, and a string that may be read on either
-kind must come from the install kind (`cli/install-kind.ts`), never assume one.
+there the spelling is `collie update` / `collie restart`. A **packaged install** (a folder a package
+manager owns — read-only, outside `$HOME`, or root-owned) takes neither: `collie update` REFUSES
+there, so printing it is printing the command that fails. The spelling is the package manager's own
+command where the resolved prefix names one, and the boundary sentence alone where it does not
+([ADR 0035](./.adr/0035-a-packaged-install-is-not-ours-to-update.md)). A string that may be read
+on more than one kind must come from the install kind (`cli/install-kind.ts`), never assume one —
+and "which kinds are there" is now three answers, not two.
 
 ## Docs style (`docs/*.md`, published to colliepwa.dev)
 

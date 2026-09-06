@@ -32,10 +32,12 @@ Soft dependencies, needed only for the features next to them:
 
 ## Install
 
-Two ways in:
+Three ways in:
 
 - **[Fresh install](#fresh-install)** — the install script, or the same result from source.
 - **[Through Herdr](#through-herdr)** — Collie goes in as a Herdr plugin, driven by plugin actions.
+- **[From a package](#from-a-package)** — your package manager installs Collie and owns its
+  updates.
 
 Herdr is one of the three multiplexers Collie can mirror, not a dependency of the program. Which one
 you mirror is the [step after this](#name-your-multiplexer).
@@ -122,6 +124,30 @@ herdr plugin action invoke start --plugin herdr.collie
 Manage via [Herdr actions](commands.md#herdr-actions). For a prerelease, install the tag with
 `herdr plugin install AltanS/collie --ref <tag> --yes`, which is the whole opt-in
 ([Prereleases](upgrading.md#prereleases)).
+
+### From a package
+
+Where Collie is packaged for your system, install it the way you install anything else:
+
+```bash
+makepkg -si     # from packaging/aur, until collie-bin is on the AUR
+collie start
+```
+
+The package installs the compiled binary the release already publishes. Nothing is built on your
+machine: no Bun, no `git`, no compilation. The whole release folder lands under one prefix
+(`/usr/lib/collie` on Arch) with `/usr/bin/collie` as a symlink into it.
+
+> **Note.** Collie will not update a packaged install, and says so if you ask it to. `collie update`
+> declines and names your package manager's command instead, and the phone shows the new version
+> with that command where the update button would be. See
+> [a packaged install](upgrading.md#a-packaged-install).
+
+A package is not a Herdr plugin. There is no `herdr plugin link` step: the plugin path registers
+action buttons that update the checkout, and this tree is your package manager's to update. Every
+`collie` verb on your PATH works the same either way.
+
+The `PKGBUILD` and its notes live in `packaging/aur/` in this repository. macOS is not packaged.
 
 ### Name your multiplexer
 

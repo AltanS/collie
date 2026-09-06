@@ -25,6 +25,36 @@ Configuration and state sit outside the checkout and persist across updates
 devices and `stt.json` are in the state dir, `~/.local/state/collie` unless `COLLIE_STATE_DIR`
 moves it.
 
+## A packaged install
+
+Where your package manager installed Collie, it updates Collie, and everything below this section
+does not apply:
+
+```bash
+sudo pacman -Syu collie-bin    # or `nix profile upgrade collie`, or `brew upgrade collie`
+```
+
+Collie recognises this install from shapes on disk: no `.git`, no `versions/` layout, the manifest
+the release payload carries, and a root that is read-only, outside your home directory, or owned by
+root. Any one of the last three is enough. It then refuses to update in place and names the command
+where it can tell which manager owns the folder:
+
+```
+error: /usr/lib/collie is a packaged install — updates come from your package manager.
+       `collie update` will not replace its files.
+       Take the new version with: sudo pacman -Syu collie-bin
+```
+
+Where the prefix names no manager Collie knows, it prints the first two lines and stops rather than
+guessing a command you cannot run.
+
+`collie doctor` reports the same install as healthy, and the phone's update card still shows that a
+newer release exists — with the package command in place of the update button.
+
+> **Note.** This is not a limitation to work around. The folder belongs to your package manager, and
+> replacing its files out from under it would leave its database lying about what is installed.
+> `sudo collie update` refuses the same way.
+
 ## Update, from the phone or the terminal
 
 Two update paths exist, and both run the same steps on each host: stage the new release beside the

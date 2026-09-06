@@ -53,8 +53,11 @@ import {
   probeInstall,
   publishedBinary,
   updateRepoOf,
+  PACKAGED_SENTENCE,
 } from "./install-kind.ts";
-import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs } from "./link.ts";
+import { packageCommand } from "./package-command.ts";
+import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs, resolveLinkTarget } from "./link.ts";
+import { collieBinary } from "./unit.ts";
 import type { Ui } from "./render.ts";
 import { failureLine, type MemberReach, parsePackArgs, probeMemberReach, VERSION_REPORTED_SINCE } from "./pack.ts";
 import { fingerprintRoot, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
@@ -361,6 +364,24 @@ function pathLink(deps: DoctorDeps): Finding {
  * makes it a binary install, and anything else is reported as unknown rather than guessed at. The
  * verdict comes from `classifyInstall`, which is also the one `collie update` forks on.
  */
+/**
+ * The PATH name that points INTO this root, or null when none of the usual ones does.
+ *
+ * A package installs `/usr/bin/collie` as a symlink into its own prefix, which is the layout
+ * `bridge/root.ts` resolves the root back through. The candidates are read, never written, and a
+ * name that points somewhere else is not this install's — so a second Collie on `$PATH` is reported
+ * as "no PATH name points at it" rather than claimed.
+ */
+function packageSymlink(deps: DoctorDeps): string | null {
+  const own = collieBinary(deps.ctx.root);
+  const candidates = ["/usr/bin/collie", "/usr/local/bin/collie", "/opt/homebrew/bin/collie", linkPath(deps.ctx.home)];
+  for (const at of candidates) {
+    const probe = deps.link.probe(at);
+    if (probe.kind === "symlink" && resolveLinkTarget(at, probe.target) === own) return at;
+  }
+  return null;
+}
+
 function installKind(deps: DoctorDeps, install: InstallKind): Finding {
   const root = deps.ctx.root;
   const version = collieVersionBare(root, (p) => deps.files.read(p));
@@ -401,6 +422,21 @@ function installKind(deps: DoctorDeps, install: InstallKind): Finding {
       const origin = originOf(deps.exec, root);
       const from = origin.kind === "repo" ? origin.repo : origin.kind === "other" ? origin.url : "no origin";
       return ok("install", `linked clone at ${root} (branch ${branch.stdout.trim() || "?"}, origin ${from})`);
+    }
+    case "packaged": {
+      // THREE FACTS, because they are the three an operator needs to check the install by hand: the
+      // kind, the prefix the root resolved to (which is what `bridge/root.ts` derived from a
+      // realpath'd `execPath`, and what decides whether `web/dist` is found), and the PATH name
+      // pointing into it (ADR 0021's pointer, here owned by the package manager rather than by
+      // `collie link`). Healthy, never a warning: nothing is wrong with this install.
+      const via = packageSymlink(deps);
+      const named = packageCommand(root);
+      const tail = [
+        `version ${version}`,
+        via === null ? "no PATH name points at it" : `via ${via}`,
+        named === null ? PACKAGED_SENTENCE : `${PACKAGED_SENTENCE} — \`${named}\``,
+      ].join(", ");
+      return ok("install", `packaged install at ${root} (${tail})`);
     }
     case "unknown":
       if (install.why === "orphan-layout") {
@@ -445,6 +481,17 @@ function versionsLayout(deps: DoctorDeps, install: InstallKind): Finding {
   const staged = isStagedCheckout(deps, root);
   if (install.kind === "unknown") {
     return skipped("versions", "install kind unknown — nothing to report a layout for", "see docs/install.md");
+  }
+  if (install.kind === "packaged") {
+    // The generic line below says "the next `collie update` stages one", which on this kind is a
+    // promise about the exact command that refuses. Before `packaged` existed the same tree was
+    // `unknown` and this check was skipped, so falling through would be a regression to a false
+    // statement sitting three lines under an install line that says the opposite.
+    return skipped(
+      "versions",
+      `a packaged install stages no versions — ${PACKAGED_SENTENCE}`,
+      "your package manager keeps its own previous versions, if it keeps any",
+    );
   }
   if (!staged && install.kind !== "binary") {
     if (install.kind === "detached-checkout") {
@@ -507,6 +554,13 @@ function worktreeDrift(deps: DoctorDeps, layout: BinaryLayout, dirs: readonly st
  */
 function updateSource(deps: DoctorDeps, install: InstallKind): Finding {
   const repo = updateRepoOf(deps.ctx.env);
+  if (install.kind === "packaged") {
+    // Naming a GitHub repo here would answer a question this install does not have. Nothing Collie
+    // does fetches from it: `update` refuses, and the release listing is only ever read to say
+    // whether a newer version exists. Where the new files actually come from is not on disk.
+    const named = packageCommand(deps.ctx.root);
+    return ok("update-source", named === null ? PACKAGED_SENTENCE : `${PACKAGED_SENTENCE} — \`${named}\``);
+  }
   const isGit = install.kind === "linked-clone" || install.kind === "detached-checkout";
   if (!isGit) {
     return repo === DEFAULT_UPDATE_REPO
@@ -837,11 +891,15 @@ function restartPending(install: InstallKind): Finding {
   // after, `bridgeStale` is permanently false, and that is correct rather than broken: there is no
   // on-disk source for the process to be behind, and the only way the code changes is an update,
   // which restarts the service itself (M14/01 §4.4). Written here so nobody "fixes" it later.
-  if (install.kind === "binary") {
+  // A packaged install runs the SAME payload for the same reason — the tree it was unpacked
+  // from carries `bin/collie` and no `bridge/` — so the carve-out is about the payload, not about
+  // the kind. What differs is only who restarts the service afterwards.
+  if (install.kind === "binary" || install.kind === "packaged") {
+    const who = install.kind === "binary" ? "`collie update` restarts the service itself" : "whatever installs the new version restarts it";
     return skipped(
       "restart-pending",
-      "a binary install ships no bridge/ source, so there is nothing for the running process to be" +
-        " behind — `collie update` restarts the service itself",
+      "this install ships no bridge/ source, so there is nothing for the running process to be" +
+        ` behind — ${who}`,
       "`collie logs` dates the running process",
     );
   }

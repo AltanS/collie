@@ -8,10 +8,17 @@ import { collieBinary } from "./unit.ts";
 // HOW THIS COLLIE GOT HERE, and where its updates come from — the two questions `update` and
 // `doctor` must answer the same way, so they are answered once, here.
 //
-// The detection is STRUCTURAL: no marker file is written by anything, and none is read as the
+// The detection is STRUCTURAL: no marker file is WRITTEN by anything, and none is read as the
 // primary signal. Every kind is decided from shapes that already exist on disk — a git dir, a
-// `versions/<X.Y.Z>` parent with a `current` symlink beside it — because a marker is a fact that can
-// be copied, stale or absent while the tree around it says otherwise (M14/01 §4.2).
+// `versions/<X.Y.Z>` parent with a `current` symlink beside it, a root that is read-only, outside
+// `$HOME` or owned by uid 0 — because a marker is a fact that can be copied, stale or absent while
+// the tree around it says otherwise (M14/01 §4.2).
+//
+// ONE kind does read the marker as part of its predicate, and the amendment is deliberate:
+// `packaged` requires `herdr-plugin.toml` at the root. That file is not written by an installer —
+// it ships INSIDE the release tarball every package wraps — so it is still a shape on disk rather
+// than a flag somebody set, and it is what separates a Collie we cannot name from a directory that
+// is not a Collie at all (ADR 0035).
 //
 // One canonical root: `CliContext.root`, which is `bridge/root.ts`'s `pluginRoot()` and nothing
 // else. A binary install's root is `<install-root>/versions/X.Y.Z` — the version directory the
@@ -56,20 +63,52 @@ export interface InstallProbe {
   readonly currentResolvesHere: boolean;
   /**
    * `herdr-plugin.toml` sits at the root. Not a marker the installer writes — it is the manifest
-   * Herdr reads and `bridge/root.ts` already requires — and it only ever picks BETWEEN the two
-   * `unknown` reasons, never a kind.
+   * Herdr reads and `bridge/root.ts` already requires — and it separates a Collie we cannot name
+   * from a directory that is not a Collie at all.
    */
   readonly hasMarker: boolean;
+  /**
+   * Who owns the root — the uid off `stat(2)`, or null when it could not be read.
+   *
+   * OWNERSHIP, never writability. `access(root, W_OK)` is true for uid 0, so a writability probe
+   * makes `collie update` and `sudo collie update` disagree about what kind of install this is, and
+   * hides a packaged tree completely from a bridge running as root. Ownership is a fact about
+   * the tree rather than about who asked, so every caller reads the same answer.
+   *
+   * Consulted LAST and only where nothing else claimed the tree, because it is the weakest signal
+   * here: a checkout or a `versions/` layout means what it means whoever owns it.
+   */
+  readonly rootOwnerUid: number | null;
+  /**
+   * The root refuses this process's writes — an `access(root, W_OK)` style probe through
+   * {@link Files.writable}.
+   *
+   * FALSE when it cannot be answered, which is the open direction: a probe that reached nothing has
+   * seen no evidence that a package manager owns this tree, and the other two disjuncts are still
+   * free to claim it. This is the Nix store's fact.
+   */
+  readonly rootIsReadOnly: boolean;
+  /** `!root.startsWith(ctx.home + "/")` — the root sits outside the operator's home. Homebrew's fact. */
+  readonly rootOutsideHome: boolean;
 }
 
 export type InstallKind =
   | { readonly kind: "linked-clone"; readonly alsoLayout: boolean }
   | { readonly kind: "detached-checkout"; readonly alsoLayout: boolean }
   | { readonly kind: "binary" }
+  /**
+   * A package manager owns this folder. Collie reads it, serves from it and reports its version,
+   * and never updates it in place (ADR 0035).
+   *
+   * Not a checkout, not a `versions/` layout, carrying the manifest the release payload ships, and
+   * sitting in a tree the operator does not administer — read-only, outside `$HOME`, or owned by
+   * root. Each of those three is on its own enough evidence; see {@link classifyInstall}.
+   */
+  | { readonly kind: "packaged" }
   | { readonly kind: "unknown"; readonly why: "no-marker" | "orphan-layout" | "loose-binary" };
 
 /**
- * The four kinds, decided from the probe alone — pure, so `bun test` covers the whole truth table
+ * The five kinds, decided from the probe alone — pure, so `bun test` covers the whole truth table
  * with no filesystem, matching how `planUpdate` and `classifyLink` are already tested.
  *
  * **The degenerate both-signals case: git wins.** A clone placed at `<root>/versions/1.1.0` reports
@@ -89,8 +128,40 @@ export function classifyInstall(p: InstallProbe): InstallKind {
     // not. Guessing here would flip a symlink nobody published.
     return { kind: "unknown", why: "orphan-layout" };
   }
-  return { kind: "unknown", why: p.hasMarker ? "loose-binary" : "no-marker" };
+  if (!p.hasMarker) return { kind: "unknown", why: "no-marker" };
+  // CLAUSE 4, and it is a DISJUNCTION of three probed facts. Nothing above claimed the tree, and
+  // there IS a Collie here. Any one of these three means the folder is administered by something
+  // other than the operator, and each covers a real packager the other two miss:
+  //
+  //   read-only  — the Nix store, which is mounted read-only and would answer nothing else;
+  //   outside $HOME — Homebrew's prefix, which the operator CAN write and still does not own;
+  //   owned by root — a tree unpacked as root inside `$HOME`, and the same tree probed as root,
+  //                   where `access(2)` lies because it is always true for uid 0.
+  //
+  // Asked last, and only in this branch, on purpose. All three are weaker signals than layout: a
+  // `.git` or a `versions/` parent still means what it means in a root-owned or read-only tree, and
+  // reading them earlier would reclassify a perfectly ordinary install the moment someone chowned it.
+  //
+  // A writable, user-owned tree inside `$HOME` stays `loose-binary`. That is the closed direction:
+  // Collie declines to update what it cannot describe rather than claiming a package manager that
+  // may not exist.
+  //
+  // NO PATH PREFIX IS EVIDENCE HERE. This module spells none. Every prefix Collie recognises lives
+  // in `package-command.ts`, and is read only to NAME a command once the kind is already decided
+  // (M17 principle 3).
+  const notOurs = p.rootIsReadOnly || p.rootOutsideHome || p.rootOwnerUid === 0;
+  return notOurs ? { kind: "packaged" } : { kind: "unknown", why: "loose-binary" };
 }
+
+/**
+ * What a packaged install is told, in ONE place — the preflight's `package` check, `collie update`'s
+ * refusal, `doctor`'s install line and the pack skip all print this sentence.
+ *
+ * It asserts a boundary and no more. Which manager owns the folder is a separate question, answered
+ * by `packageCommand` in `package-command.ts` where the prefix answers it, and left unanswered
+ * where it does not.
+ */
+export const PACKAGED_SENTENCE = "updates come from your package manager";
 
 // ── The probe, and what a binary install's paths are ─────────────────────────
 
@@ -144,7 +215,7 @@ export function publishedBinary(root: string, link: LinkReader): string {
 
 /** What the world says about `root` — one `git` call, one `lstat`, one `readlink`. All reads. */
 export function probeInstall(
-  deps: { readonly exec: Exec; readonly files: Files; readonly link: LinkReader },
+  deps: { readonly ctx: Pick<CliContext, "home">; readonly exec: Exec; readonly files: Files; readonly link: LinkReader },
   root: string,
 ): InstallProbe {
   const git = isGitCheckout(deps.exec, root);
@@ -159,6 +230,10 @@ export function probeInstall(
     currentResolvesHere:
       target !== null && (target === layout.versionsDir || target.startsWith(`${layout.versionsDir}/`)),
     hasMarker: deps.files.exists(join(root, "herdr-plugin.toml")),
+    rootOwnerUid: deps.files.ownerUid(root),
+    // `null` — the probe could not reach the question — is NOT read-only. See the field's comment.
+    rootIsReadOnly: deps.files.writable(root) === false,
+    rootOutsideHome: !root.startsWith(`${deps.ctx.home}/`),
   };
 }
 

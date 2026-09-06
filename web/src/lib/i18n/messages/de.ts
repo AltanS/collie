@@ -762,6 +762,7 @@ export const de: Dictionary = {
   "apiError.update.major_confirm_required": "{version} ist ein Major-Update und erfordert eine eigene Bestätigung.",
   "apiError.update.target_mismatch": "Angezeigt wurde {asked}, aber dieses Collie würde {would} installieren. Bitte neu laden und prüfen.",
   "apiError.update.none_available": "Keine neuere Version verfügbar.",
+  "apiError.update.packaged": "Updates erfolgen über deine Paketverwaltung. Collie ersetzt keine Dateien dieser Installation.",
   "apiError.update.start_failed": "Update konnte nicht gestartet werden: {reason}",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "Collie aktualisieren",
@@ -783,6 +784,7 @@ export const de: Dictionary = {
   "settings.updateCard.summary.amber.one": "{count} gelb",
   "settings.updateCard.summary.amber.other": "{count} gelb",
   "settings.updateCard.preflightUnavailable": "Der Preflight konnte auf diesem Rechner nicht ausgeführt werden.",
+  "settings.updateCard.packageManaged": "Diese Installation wird von deiner Paketverwaltung aktualisiert. Collie übernimmt das hier nicht.",
   "settings.updateCard.remedy": "Behebung: {command}",
   "settings.updateCard.confirmTitle": "Auf {version} aktualisieren?",
   "settings.updateCard.confirmBody": "Die Terminal-Sitzung bleibt aktiv. Die mobile Ansicht trennt sich für bis zu 30 Sekunden.",

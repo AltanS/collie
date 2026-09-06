@@ -723,6 +723,7 @@ export const zhTW: Dictionary = {
   "apiError.update.major_confirm_required": "{version} 跨越主要版本，需要另外確認。",
   "apiError.update.target_mismatch": "目前介面顯示的是 {asked}，但此 collie 將安裝 {would}。請重新載入查看。",
   "apiError.update.none_available": "沒有可更新的版本。",
+  "apiError.update.packaged": "更新由系統的套件管理工具提供。Collie 不會取代目前安裝的檔案。",
   "apiError.update.start_failed": "無法啟動更新：{reason}",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "更新 Collie",
@@ -744,6 +745,7 @@ export const zhTW: Dictionary = {
   "settings.updateCard.summary.amber.one": "{count} 項黃色",
   "settings.updateCard.summary.amber.other": "{count} 項黃色",
   "settings.updateCard.preflightUnavailable": "無法在此機器上執行預檢。",
+  "settings.updateCard.packageManaged": "此安裝由你的套件管理員更新，Collie 不會從這裡更新它。",
   "settings.updateCard.remedy": "修復指令：{command}",
   "settings.updateCard.confirmTitle": "更新至 {version}？",
   "settings.updateCard.confirmBody": "終端機工作階段會保持連線。行動裝置端檢視最多會中斷 30 秒。",

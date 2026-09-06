@@ -135,4 +135,36 @@ describe("packAction", () => {
   it("offers nothing when the whole pack is level", () => {
     expect(packAction({ releaseAvailable: false, hasPeers: true, behind: 0, rolledBack: 0 })).toBe("none");
   });
+
+  // ── A LEAD THAT CANNOT TAKE THE RELEASE ITSELF (ADR 0035) ─────────────────
+
+  it("yields the release branch to the peers when this lead cannot take it", () => {
+    expect(
+      packAction({ releaseAvailable: true, hasPeers: true, behind: 1, rolledBack: 0, leadCanTake: false }),
+    ).toBe("retry-pack");
+    expect(
+      packAction({ releaseAvailable: true, hasPeers: true, behind: 0, rolledBack: 1, leadCanTake: false }),
+    ).toBe("retry-pack");
+  });
+
+  // THE CONTROL for the pair above: one field differs, and the answer goes back to the button the
+  // card disables. Revert the `leadCanTake` branch and the two cases above return `update-pack` —
+  // exactly this — while this one keeps passing.
+  it("control: the same pack on a lead that CAN take it still names the pack", () => {
+    expect(packAction({ releaseAvailable: true, hasPeers: true, behind: 1, rolledBack: 0 })).toBe("update-pack");
+    expect(
+      packAction({ releaseAvailable: true, hasPeers: true, behind: 1, rolledBack: 0, leadCanTake: true }),
+    ).toBe("update-pack");
+  });
+
+  it("keeps the release button when there is no peer to yield it to", () => {
+    // Nothing for a peers-only run to do, so the disabled button stays: it is the card's only way
+    // to say a release exists and this machine is not the one that takes it.
+    expect(
+      packAction({ releaseAvailable: true, hasPeers: false, behind: 0, rolledBack: 0, leadCanTake: false }),
+    ).toBe("update");
+    expect(
+      packAction({ releaseAvailable: true, hasPeers: true, behind: 0, rolledBack: 0, leadCanTake: false }),
+    ).toBe("update-pack");
+  });
 });

@@ -12,6 +12,7 @@ import type { Finding } from "./finding.ts";
 import {
   binaryLayout,
   classifyInstall,
+  PACKAGED_SENTENCE,
   gitArgs,
   type InstallKind,
   originMatches,
@@ -19,6 +20,7 @@ import {
   probeInstall,
   updateRepoOf,
 } from "./install-kind.ts";
+import { packageCommand } from "./package-command.ts";
 import { EXIT, type Io } from "./io.ts";
 import { type LinkReader, realLinkFs } from "./link.ts";
 import { agentFilePath, unitFilePath, unitName } from "./unit.ts";
@@ -78,6 +80,16 @@ export interface PreflightCheck {
   readonly verdict: Verdict;
   readonly reason: string;
   readonly remedy?: string;
+  /**
+   * True when {@link PreflightCheck.remedy} names Collie's OWN self-update command.
+   *
+   * Set where the remedy is produced, and read in exactly one place: a packaged install must not be
+   * told to run the command that refuses on it, so that remedy is swapped for the package manager's
+   * (or dropped). A boolean rather than a substring test on the prose — the first cut matched
+   * `remedy.includes("collie update")`, which silently stops working the day the sentence is
+   * reworded, and which cannot distinguish this remedy from "check this machine's network".
+   */
+  readonly selfUpdateRemedy?: boolean;
 }
 
 /** One pack member's answer: how it was reached, and the checks that ran there. */
@@ -86,12 +98,22 @@ export interface PreflightMember {
   readonly host: string;
   readonly verdict: Verdict;
   readonly checks: readonly PreflightCheck[];
+  /**
+   * How that member is installed, straight off its own report. Absent ⇒ unknown, which is what a
+   * member older than this field answers and what a member we never reached answers.
+   *
+   * The KIND is the wire fact the pack flow branches on — never a check id, which is prose's
+   * neighbour and would make a rename of a check silently un-skip a packaged peer.
+   */
+  readonly installKind?: InstallKind["kind"];
 }
 
 /** The whole document `--json` prints, and the contract specs 05 and 06 read. */
 export interface PreflightReport {
   readonly schema: number;
   readonly verdict: Verdict;
+  /** How THIS machine is installed. Optional and absent-means-unknown, so the schema does not move. */
+  readonly installKind?: InstallKind["kind"];
   readonly checks: readonly PreflightCheck[];
   readonly pack?: readonly PreflightMember[];
 }
@@ -150,6 +172,29 @@ const DISK_AMBER_KB = 1024 * 1024;
  */
 const MIN_BUN = "1.3.14";
 
+/**
+ * Rewrite a remedy that names Collie's own self-update command, and ONLY such a remedy.
+ *
+ * `upstreamCheck` is also where "check this machine's network", "wait an hour, then re-run this
+ * check" and "reinstall from docs/install.md" come from. Those are red verdicts, so clobbering them
+ * would make the package sentence the blocking reason the phone displays — an offline host told to
+ * run its package manager, which fixes nothing and hides the real fault. So only the remedy that
+ * marked ITSELF as the self-update command is touched.
+ *
+ * The replacement is the package manager's command where the root names one, and NOTHING where it
+ * does not. Never prose: a remedy is the one command that clears the check, and a paragraph in that
+ * field is a sentence pretending to be a command.
+ *
+ * The REASON is never touched. "v1.6.0 resolves on github.com/AltanS/collie" is true however the
+ * update gets applied, and an operator is better served knowing a release exists.
+ */
+function packagedRemedy(check: PreflightCheck, root: string): PreflightCheck {
+  if (check.selfUpdateRemedy !== true) return check;
+  const cmd = packageCommand(root);
+  const { remedy: _dropped, selfUpdateRemedy: _flag, ...rest } = check;
+  return cmd === null ? rest : { ...rest, remedy: cmd };
+}
+
 /** The kinds that rebuild from source, and therefore need Bun. A binary install compiles nothing. */
 function buildsFromSource(install: InstallKind): boolean {
   return install.kind === "linked-clone" || install.kind === "detached-checkout";
@@ -190,11 +235,23 @@ export function topLevelMemberVerdict(member: PreflightMember): Verdict {
   return onlyOpsRecord ? "amber" : member.verdict;
 }
 
-const green = (id: string, reason: string): PreflightCheck => ({ id, verdict: "green", reason });
-const amber = (id: string, reason: string, remedy?: string): PreflightCheck =>
-  remedy === undefined ? { id, verdict: "amber", reason } : { id, verdict: "amber", reason, remedy };
+const green = (id: string, reason: string, remedy?: string): PreflightCheck =>
+  remedy === undefined ? { id, verdict: "green", reason } : { id, verdict: "green", reason, remedy };
+const amber = (id: string, reason: string, remedy?: string, selfUpdateRemedy?: boolean): PreflightCheck =>
+  remedy === undefined
+    ? { id, verdict: "amber", reason }
+    : selfUpdateRemedy === true
+      ? { id, verdict: "amber", reason, remedy, selfUpdateRemedy: true }
+      : { id, verdict: "amber", reason, remedy };
 const red = (id: string, reason: string, remedy?: string): PreflightCheck =>
   remedy === undefined ? { id, verdict: "red", reason } : { id, verdict: "red", reason, remedy };
+
+/**
+ * The `PreflightCheck.id` of the packaged install's one line. LOCAL, and deliberately not exported:
+ * the pack flow reads {@link PreflightMember.installKind}, the kind itself, never this id. A check
+ * id is a label on a sentence; the kind is the fact.
+ */
+const PACKAGE_CHECK_ID = "package";
 
 // ── Instance checks ──────────────────────────────────────────────────────────
 
@@ -400,6 +457,7 @@ export async function upstreamCheck(
       "upstream",
       `${target} is available on major ${plan.target.major}, and Collie ${plan.higher.version} is out — a NEW MAJOR a routine update never takes`,
       `take the release with \`collie update\`; cross the major with \`collie update --major\` (${MAJOR_ACTION})`,
+      true,
     );
   }
   return green("upstream", `${target} resolves on github.com/${configured} — an update would take it`);
@@ -414,6 +472,7 @@ function currentOrMajor(at: ReleaseTag, higher: ReleaseTag | null): PreflightChe
     "upstream",
     `already current on major ${at.major} (v${at.version}), but Collie ${higher.version} is out — a NEW MAJOR`,
     `read its release notes, then consent with \`collie update --major\` (${MAJOR_ACTION})`,
+    true,
   );
 }
 
@@ -541,8 +600,26 @@ export function serviceCheck(deps: UpdateCheckDeps): PreflightCheck {
 }
 
 /** Every instance check, in the order they print. */
-export async function instanceChecks(deps: UpdateCheckDeps, toTag: string | null = null): Promise<PreflightCheck[]> {
-  const install = classifyInstall(probeInstall(deps, deps.ctx.root));
+export async function instanceChecks(
+  deps: UpdateCheckDeps,
+  toTag: string | null = null,
+  known: InstallKind | null = null,
+): Promise<PreflightCheck[]> {
+  const install = known ?? classifyInstall(probeInstall(deps, deps.ctx.root));
+  if (install.kind === "packaged") {
+    // A SHORTER LIST, and every omission is a fact rather than a courtesy. No Bun check because
+    // nothing here compiles; no tree check because there is no working tree to be dirty; no disk
+    // floor because the floor exists for a staged payload and this install stages nothing — free
+    // space under a root we never write would be a red that no action could clear. What remains is
+    // what still means something: is this Collie healthy, is a release out, and is the service up.
+    const cmd = packageCommand(deps.ctx.root);
+    return [
+      await doctorCheck(deps),
+      green(PACKAGE_CHECK_ID, PACKAGED_SENTENCE, cmd ?? undefined),
+      packagedRemedy(await upstreamCheck(deps, install, toTag), deps.ctx.root),
+      serviceCheck(deps),
+    ];
+  }
   const checks: PreflightCheck[] = [await doctorCheck(deps), diskCheck(deps, install)];
   if (buildsFromSource(install)) checks.push(bunCheck(deps));
   if (isCheckout(install)) checks.push(treeCheck(deps));
@@ -587,9 +664,24 @@ export function parseReport(stdout: string): PreflightReport | null {
   if (doc.schema !== PREFLIGHT_SCHEMA || !Array.isArray(doc.checks)) return null;
   const verdict = doc.verdict;
   if (verdict !== "green" && verdict !== "amber" && verdict !== "red") return null;
-  const report: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict, checks: doc.checks };
+  // The kind is taken only when it is one this build knows. A member running a newer Collie may name
+  // a kind that does not exist here; that reads as unknown, which is the same as absent.
+  const kind = doc.installKind !== undefined && KNOWN_KINDS.has(doc.installKind) ? doc.installKind : undefined;
+  const report: PreflightReport =
+    kind === undefined
+      ? { schema: PREFLIGHT_SCHEMA, verdict, checks: doc.checks }
+      : { schema: PREFLIGHT_SCHEMA, verdict, installKind: kind, checks: doc.checks };
   return doc.pack === undefined ? report : { ...report, pack: doc.pack };
 }
+
+/** The kinds this build understands. A member naming anything else reads as unknown, never as a kind. */
+const KNOWN_KINDS: ReadonlySet<string> = new Set<InstallKind["kind"]>([
+  "linked-clone",
+  "detached-checkout",
+  "binary",
+  "packaged",
+  "unknown",
+]);
 
 /** ssh never started, or could not connect — the transport family, distinct from a remote failure. */
 const transportFailed = (r: RemoteResult): boolean => !r.spawned || r.code === 255;
@@ -604,12 +696,10 @@ async function memberChecks(
 ): Promise<PreflightMember> {
   const id = member.memberId;
   const host = record?.sshHost ?? "";
-  const done = (checks: readonly PreflightCheck[]): PreflightMember => ({
-    memberId: id,
-    host,
-    verdict: worst(checks.map((c) => c.verdict)),
-    checks,
-  });
+  const done = (checks: readonly PreflightCheck[], installKind?: InstallKind["kind"]): PreflightMember =>
+    installKind === undefined
+      ? { memberId: id, host, verdict: worst(checks.map((c) => c.verdict)), checks }
+      : { memberId: id, host, verdict: worst(checks.map((c) => c.verdict)), checks, installKind };
   if (host === "") {
     return done([
       red(
@@ -654,7 +744,7 @@ async function memberChecks(
     const present = green("collie-present", `a Collie at ${host}:${probe.checkout}`);
     const skew = skewCheck(probe.version, ourVersion);
     const remote = await remoteChecks(runner, probe.checkout);
-    return done([reached, present, skew, ...remote]);
+    return done([reached, present, skew, ...remote.checks], remote.installKind);
   } finally {
     runner.close();
   }
@@ -668,22 +758,29 @@ export function skewCheck(theirs: string, ours: string): PreflightCheck {
 }
 
 /** The member's own instance checks, asked of its own binary and merged in under the same ids. */
-async function remoteChecks(runner: RemoteRunner, root: string): Promise<readonly PreflightCheck[]> {
+async function remoteChecks(
+  runner: RemoteRunner,
+  root: string,
+): Promise<{ checks: readonly PreflightCheck[]; installKind?: InstallKind["kind"] }> {
   const r = await runner.run(remoteCheckScript(root));
   if (transportFailed(r)) {
-    return [red("preflight", `ssh dropped while asking that member for its preflight (exit ${r.code})`)];
+    return { checks: [red("preflight", `ssh dropped while asking that member for its preflight (exit ${r.code})`)] };
   }
   const report = parseReport(r.stdout);
   if (report === null) {
-    return [
-      amber(
-        "preflight",
-        "peer predates preflight — that Collie has no `update --check`, so its own checks could not be read",
-        "collie pack update <member> to level it to this lead's build",
-      ),
-    ];
+    return {
+      checks: [
+        amber(
+          "preflight",
+          "peer predates preflight — that Collie has no `update --check`, so its own checks could not be read",
+          "collie pack update <member> to level it to this lead's build",
+        ),
+      ],
+    };
   }
-  return report.checks;
+  return report.installKind === undefined
+    ? { checks: report.checks }
+    : { checks: report.checks, installKind: report.installKind };
 }
 
 const firstLine = (text: string): string => text.split("\n").find((l) => l.trim() !== "")?.trim() ?? "";
@@ -725,7 +822,11 @@ export interface PreflightOptions {
 
 /** The whole document, assembled. Pure of output — {@link cmdUpdateCheck} decides how to print it. */
 export async function preflight(deps: UpdateCheckDeps, opts: PreflightOptions = {}): Promise<PreflightReport> {
-  const checks = await instanceChecks(deps, opts.toTag ?? null);
+  // Probed ONCE and threaded through: the report names the kind (it is what the pack flow branches
+  // on) and the checks are chosen by it, and two probes could answer differently under a package
+  // swap mid-run.
+  const install = classifyInstall(probeInstall(deps, deps.ctx.root));
+  const checks = await instanceChecks(deps, opts.toTag ?? null, install);
   // Skipped ENTIRELY under `--local`: no trust store read, no ssh, and no `pack` key in the report.
   const pack = opts.local === true ? undefined : await packChecks(deps);
   // A member's contribution to the TOP verdict is `topLevelMemberVerdict`, not its own `.verdict` —
@@ -735,7 +836,7 @@ export async function preflight(deps: UpdateCheckDeps, opts: PreflightOptions = 
     ...checks.map((c) => c.verdict),
     ...(pack ?? []).map(topLevelMemberVerdict),
   ]);
-  const report: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict, checks };
+  const report: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict, installKind: install.kind, checks };
   return pack === undefined ? report : { ...report, pack };
 }
 

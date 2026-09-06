@@ -727,6 +727,7 @@ export const zh: Dictionary = {
   "apiError.update.major_confirm_required": "{version} 跨越了大版本，需单独确认。",
   "apiError.update.target_mismatch": "当前界面显示的是 {asked}，但此 collie 将安装 {would}。请重新加载查看。",
   "apiError.update.none_available": "没有可更新的版本。",
+  "apiError.update.packaged": "更新由系统的包管理器提供。Collie 不会替换当前安装的文件。",
   "apiError.update.start_failed": "无法启动更新：{reason}",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "更新 Collie",
@@ -748,6 +749,7 @@ export const zh: Dictionary = {
   "settings.updateCard.summary.amber.one": "{count} 项黄色",
   "settings.updateCard.summary.amber.other": "{count} 项黄色",
   "settings.updateCard.preflightUnavailable": "无法在此机器上运行预检。",
+  "settings.updateCard.packageManaged": "此安装由你的软件包管理器更新，Collie 不会从这里更新它。",
   "settings.updateCard.remedy": "修复命令：{command}",
   "settings.updateCard.confirmTitle": "更新至 {version}？",
   "settings.updateCard.confirmBody": "终端会话将保持连接。手机端视图将中断最多 30 秒。",

@@ -17,7 +17,8 @@ export interface UpdateNotice {
   /** A copyable command that resolves it, spelled for the install kind — the Herdr plugin action on a
    *  Herdr-managed checkout (Herdr resolves the plugin's checkout, so it runs from ANY directory), the
    *  `collie` verb everywhere else. Only the RESTART and MAJOR cases carry one; the release case sends
-   *  you to `href` instead, where the release notes carry the commands. */
+   *  you to `href` instead, where the release notes carry the commands. A `packaged` install
+   *  carries one on RESTART only — it never updates itself, so there is no update command to give. */
   command?: string;
   /** GitHub release page for the available version — the line links to it. Absent for the restart case. */
   href?: string;
@@ -37,6 +38,11 @@ export function updateNotice(update: UpdateInfo | undefined): UpdateNotice | nul
   // work everywhere the CLI is on PATH. An absent kind is an older bridge from the git-install era,
   // which is read as Herdr-managed so the advice never regresses mid-upgrade.
   const herdrManaged = update.installKind === undefined || update.installKind === "detached-checkout";
+  // A packaged install is the one kind that does not update itself at all: its root is not writable,
+  // so `collie update` refuses there by design (ADR 0035). It therefore gets NO update command —
+  // printing one would print the exact command that refuses. Restarting is still its own business
+  // and `collie restart` works, because the binary is on PATH like any other packaged program.
+  const selfUpdates = update.installKind !== "packaged";
   if (update.bridgeStale) {
     // No release page for "restart needed" — show the one command that restarts it, to copy.
     return {
@@ -58,9 +64,16 @@ export function updateNotice(update: UpdateInfo | undefined): UpdateNotice | nul
   // action will NOT take (ADR 0020) — so this line names the consent command instead of leaving the
   // operator to tap update, see it succeed, and still see a banner.
   if (update.majorAvailable) {
+    const line = t("settings.updateBanner.majorAvailable", { version: update.majorAvailable });
+    const href = update.majorUrl ?? undefined;
+    // The major line still appears on a packaged install — that a major is out is worth knowing
+    // however it gets taken — but it carries no command. Collie can see that its root is unwritable,
+    // which is what makes the update someone else's; nothing on disk says WHOSE, so there is no
+    // command it could honestly name in place of the one it must not print.
+    if (!selfUpdates) return { line, href };
     return {
-      line: t("settings.updateBanner.majorAvailable", { version: update.majorAvailable }),
-      href: update.majorUrl ?? undefined,
+      line,
+      href,
       command: herdrManaged
         ? "herdr plugin action invoke update-major --plugin herdr.collie"
         : "collie update --major",

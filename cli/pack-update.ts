@@ -8,6 +8,7 @@ import { STALE_AFTER_MS, type UpdateRun } from "../bridge/update-run.ts";
 import { answersThisBuild } from "../bridge/version.ts";
 import { collieVersionBare } from "./context.ts";
 import { updateDeps } from "./deps.ts";
+import { PACKAGED_SENTENCE } from "./install-kind.ts";
 import { EXIT, type Io } from "./io.ts";
 import { parsePackArgs, probeMembers } from "./pack.ts";
 import {
@@ -267,10 +268,10 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
   try {
     // 1. THE PREFLIGHT. Every machine this run intends to touch, asked spec 03's question, before a
     //    single one of them is touched. One red is the whole run.
-    const red = await preflightGate(deps, targets);
-    if (red !== null) return red;
+    const gate = await preflightGate(deps, targets);
+    if (gate.exit !== null) return gate.exit;
 
-    const ready = await planAll(deps, targets, commit, outcomes, runners);
+    const ready = await planAll(deps, targets, commit, outcomes, runners, gate.packaged);
     // 2. A member the probe refused has already failed, and the probe touched nothing at all — so
     //    the abort rule applies here too, one step earlier and for free.
     const refused = [...outcomes.values()].find((row) => row.outcome === "failed");
@@ -402,13 +403,25 @@ async function planAll(
   commit: string,
   outcomes: Map<string, UpdateRow>,
   runners: RemoteRunner[],
+  packaged: ReadonlySet<string>,
 ): Promise<readonly Planned[]> {
   const ready: Planned[] = [];
   for (const target of targets) {
     const id = target.member.memberId;
     if (target.sshHost === "") {
       plan(deps, id, "skipped", "no ssh record — run `collie pack add <host>` once to teach it");
-      outcomes.set(id, { memberId: id, outcome: "skipped", detail: "no ssh record" });
+      outcomes.set(id, { memberId: id, outcome: "skipped", detail: NO_ROUTE_DETAIL });
+      continue;
+    }
+    // A PACKAGED PEER IS SKIPPED, NOT PUSHED TO (ADR 0035). Before the probe, before the runner:
+    // there is nothing to learn over ssh that changes the answer, and the leg that would follow —
+    // a `git bundle` pushed into a root that is not a git checkout and is not this ssh user's to
+    // write — fails deep inside the push with a git or a permission error instead of one sentence
+    // naming the boundary. Skipped rather than fatal, exactly as an `ops-record` red is: a machine
+    // this run cannot level is not a reason to leave the machines it can level un-levelled.
+    if (packaged.has(id)) {
+      plan(deps, id, "skipped", PACKAGED_SENTENCE);
+      outcomes.set(id, { memberId: id, outcome: "skipped", detail: PACKAGED_DETAIL });
       continue;
     }
     const runner = deps.remote(target.sshHost);
@@ -476,8 +489,14 @@ async function planAll(
  * SKIPPED, because it has no route to it and never touches it; a preflight red about a machine
  * nobody is going to reach must not stop the machines that can be reached. Amber never blocks, by
  * spec 03's own rule: a gate that fires on a healthy host is a gate the operator learns to bypass.
+ *
+ * **It also reads each member's install KIND.** A packaged peer's report is green throughout —
+ * nothing is wrong with such an install — so nothing here can block on it, and nothing should: the
+ * fact it carries is not "this machine is unhealthy" but "this machine is not ours to write to". It
+ * is returned rather than acted on, because the place that acts on it is the member walk
+ * ({@link planAll}), which is where every other "leave this one alone" decision is already made.
  */
-async function preflightGate(deps: Wired, targets: readonly Target[]): Promise<number | null> {
+async function preflightGate(deps: Wired, targets: readonly Target[]): Promise<Gate> {
   const routed = targets.filter((t) => t.sshHost !== "");
   const named = new Set(routed.map((t) => t.member.memberId));
   const checked = await deps.preflight();
@@ -492,17 +511,52 @@ async function preflightGate(deps: Wired, targets: readonly Target[]): Promise<n
       .filter((m) => named.has(m.memberId))
       .flatMap((m) => m.checks.filter(blocks).map((check) => ({ who: m.memberId, check }))),
   ];
+  const packaged = packagedMembers(checked.pack ?? []);
   if (reds.length === 0) {
     line(deps, `preflight: nothing red on this lead${routed.length === 0 ? "" : ` or on ${nMembers(routed.length)}`}.`);
-    return null;
+    return { exit: null, packaged };
   }
   for (const { who, check } of reds) {
     deps.io.err(`error: the preflight is red on ${who} — ${check.reason}`);
     if (check.remedy !== undefined) deps.io.err(`       clear it with: ${check.remedy}`);
   }
   deps.io.err("       Nothing was pushed, built or restarted, on any member.");
-  return EXIT.FAIL;
+  return { exit: EXIT.FAIL, packaged };
 }
+
+/** What the gate learned: whether to stop, and which members are not this run's to write to. */
+interface Gate {
+  /** Non-null ⇒ the run stops here with this exit code. Nothing has been touched. */
+  readonly exit: number | null;
+  /** Every member whose own report named its install kind as `packaged`. */
+  readonly packaged: ReadonlySet<string>;
+}
+
+/**
+ * Every member whose own preflight reports a `packaged` install.
+ *
+ * **The KIND is what is read, never a check id.** A check id labels a sentence; the kind is the
+ * fact, and it rides on the member's report as {@link PreflightMember.installKind}. Matching on an
+ * id would make a rename of one green line silently un-skip a packaged peer, with a `git bundle`
+ * pushed into a package manager's folder as the first symptom.
+ *
+ * A member that names no kind — one older than the field, or one this run never reached — is not
+ * packaged, which is exactly how such a member behaved before this existed.
+ *
+ * Pure, and exported for the test: the whole of "does the walk recognise a packaged peer" is one
+ * report in and one set out.
+ */
+export function packagedMembers(pack: readonly PreflightMember[]): ReadonlySet<string> {
+  const packaged = new Set<string>();
+  for (const member of pack) if (member.installKind === "packaged") packaged.add(member.memberId);
+  return packaged;
+}
+
+/** The row detail a member skipped for having no route carries — and the count's discriminator. */
+const NO_ROUTE_DETAIL = "no ssh record";
+
+/** The same, for a member this run may not write to at all. Short: it is a table column. */
+const PACKAGED_DETAIL = "packaged";
 
 /** How long this verb waits on its own bridge for a fact it can also do without. */
 const BANKED_BUDGET_MS = 2000;
@@ -662,11 +716,18 @@ async function confirmBatch(
     .join(", ");
   const banked = [...outcomes.values()];
   const current = banked.filter((r) => r.outcome === "current").length;
-  const skipped = banked.filter((r) => r.outcome === "skipped").length;
+  // Two reasons a member is skipped, and they are counted apart: "3 skipped" that folds a peer with
+  // no ssh record into a peer this run may not write to would be one number the operator cannot act
+  // on. The row detail is the discriminator because it is also the word the summary table prints.
+  const skipped = (detail: string): number =>
+    banked.filter((r) => r.outcome === "skipped" && r.detail === detail).length;
+  const unrouted = skipped(NO_ROUTE_DETAIL);
+  const owned = skipped(PACKAGED_DETAIL);
   const refused = banked.filter((r) => r.outcome === "failed").length;
   const aside = [
     current === 0 ? "" : `${current} already current`,
-    skipped === 0 ? "" : `${skipped} without an ssh record`,
+    unrouted === 0 ? "" : `${unrouted} without an ssh record`,
+    owned === 0 ? "" : `${owned} packaged`,
     refused === 0 ? "" : `${refused} the probe refused`,
   ].filter((s) => s !== "");
   const question =
