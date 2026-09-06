@@ -1,7 +1,5 @@
 import { spawn } from "node:child_process";
 import {
-  accessSync,
-  constants,
   existsSync,
   mkdirSync,
   openSync,
@@ -9,6 +7,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
@@ -90,14 +89,15 @@ export interface Files {
    */
   rename(from: string, to: string): void;
   /**
-   * May the RUNNING USER write into `p`? A read, despite the name — nothing is created to find out.
+   * Who OWNS `p` — the uid off `stat(2)`, or null when it cannot be read at all.
    *
-   * It exists for one question: an install root this process cannot write is an install this process
-   * cannot update, whoever else can. {@link classifyInstall} reads it as the structural shape of an
-   * OS-package install, so it must never be answered by attempting a write — a probe file in
-   * `/usr/lib` that succeeded once as root would make the answer depend on who asked last.
+   * Ownership rather than writability, and that distinction is the whole point. `access(p, W_OK)` is
+   * always true for uid 0, so a writability probe answers a different question depending on who ran
+   * the command: `collie update` and `sudo collie update` would disagree about what kind of install
+   * this is, and a bridge running as root would never see a system-owned tree at all. Ownership is a
+   * fact about the tree, so every caller gets the same answer.
    */
-  writable(p: string): boolean;
+  ownerUid(p: string): number | null;
 }
 
 /**
@@ -314,14 +314,12 @@ export const realFiles: Files = {
   rename(from, to) {
     renameSync(from, to);
   },
-  writable(p) {
+  ownerUid(p) {
     try {
-      accessSync(p, constants.W_OK);
-      return true;
+      return statSync(p).uid;
     } catch {
-      // ENOENT lands here too, and `false` is the right answer for it: a root that is not there is
-      // not one this process can write into either.
-      return false;
+      // ENOENT, EACCES on a parent — nothing readable, so nothing to claim about the owner.
+      return null;
     }
   },
 };

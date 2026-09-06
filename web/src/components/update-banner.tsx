@@ -17,7 +17,7 @@ export interface UpdateNotice {
   /** A copyable command that resolves it, spelled for the install kind — the Herdr plugin action on a
    *  Herdr-managed checkout (Herdr resolves the plugin's checkout, so it runs from ANY directory), the
    *  `collie` verb everywhere else. Only the RESTART and MAJOR cases carry one; the release case sends
-   *  you to `href` instead, where the release notes carry the commands. A `system-package` install
+   *  you to `href` instead, where the release notes carry the commands. A `system-owned` install
    *  carries one on RESTART only — it never updates itself, so there is no update command to give. */
   command?: string;
   /** GitHub release page for the available version — the line links to it. Absent for the restart case. */
@@ -42,7 +42,7 @@ export function updateNotice(update: UpdateInfo | undefined): UpdateNotice | nul
   // so `collie update` refuses there by design (ADR 0035). It therefore gets NO update command —
   // printing one would print the exact command that refuses. Restarting is still its own business
   // and `collie restart` works, because the binary is on PATH like any other packaged program.
-  const selfUpdates = update.installKind !== "system-package";
+  const selfUpdates = update.installKind !== "system-owned";
   if (update.bridgeStale) {
     // No release page for "restart needed" — show the one command that restarts it, to copy.
     return {
