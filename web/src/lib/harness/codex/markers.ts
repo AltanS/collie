@@ -59,6 +59,11 @@ export function rstrip(text: string): string {
 const STATUS_ROW =
   /^ {2}\S.* · (?:(?:.* · )+Context \d+% (?:left|used)\b|Context \d+% (?:left|used)\b · \S)/;
 
+// Codex can render the queue hint and context metric on one raw footer row while a turn is active.
+// The key is configurable; the queue wording and context metric are the stable parts.
+const INLINE_QUEUE_CONTEXT_ROW =
+  /^ {2}\S.*\bto queue(?: message)?\s+\d+% context (?:left|used)\b/;
+
 /** The exact separator paint Codex renders between status fields. */
 const STATUS_SEPARATOR = " \u00b7 ";
 /** Bounds. A status field is a model name, a path or a branch — never a paragraph. */
@@ -178,7 +183,8 @@ function isStyledStatusRow(text: string, line: StyledLine): boolean {
  *  is located by the prompt-row-above-status shape at the buffer tail, not by any single row.
  *  `line` is the same row, styled; without it only the `Context`-bearing shape can be accepted. */
 export function isStatusRow(text: string, line?: StyledLine): boolean {
-  if (STATUS_ROW.test(rstrip(text))) return true;
+  const row = rstrip(text);
+  if (STATUS_ROW.test(row) || INLINE_QUEUE_CONTEXT_ROW.test(row)) return true;
   return line !== undefined && isStyledStatusRow(text, line);
 }
 

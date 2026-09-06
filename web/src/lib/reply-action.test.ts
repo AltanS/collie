@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
@@ -10,6 +13,8 @@ import { draftCarriesSend, sendGuardedReply } from "./reply-action";
 // approving whatever option was highlighted, while the bridge still reported {ok:true}.
 
 const BOX_RULE = "─".repeat(40); // clears the 20-glyph border threshold in harness/claude/markers
+const PANES_DIR = join(import.meta.dirname, "..", "fixtures", "panes");
+const fixtureText = (name: string) => readFileSync(join(PANES_DIR, name), "utf8");
 const paneWithDraft = (draft: string) => `some output\n${BOX_RULE}\n❯ ${draft}\n${BOX_RULE}`;
 // A focused permission dialog: no input box at the tail at all, so extractInputDraft sees nothing.
 const paneWithDialog = "Do you want to proceed?\n ❯ 1. Yes\n   2. No\n\n Esc to cancel";
@@ -183,6 +188,25 @@ describe("draftCarriesSend", () => {
 });
 
 describe("sendGuardedReply", () => {
+  // RED-FIRST regression: the visible Codex composer used to be classified as absent when its queue
+  // hint and context percentage shared one raw terminal row. This must still verify before submit.
+  it("types, verifies, and submits on Codex's inline queue/context footer", async () => {
+    const calls = harness(() => fixtureText("codex--queue-context-inline.txt"));
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text: "continue the release checklist",
+      agent: "codex",
+      ...instant,
+    });
+
+    expect(out).toEqual({ status: "sent" });
+    expect(calls).toEqual([
+      { text: "continue the release checklist", submit: false },
+      { text: "", submit: true },
+    ]);
+  });
+
   it("types, verifies the text on the input line, then submits", async () => {
     const calls = harness(() => paneWithDraft("ship it please"));
 
