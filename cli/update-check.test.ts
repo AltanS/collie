@@ -71,7 +71,9 @@ const HEALTHY: NonNullable<Scripted["answers"]> = [
   [`${GIT} ls-remote --tags`, { stdout: LS_REMOTE }],
   [`${GIT} rev-parse HEAD`, { stdout: "cccccccc\n" }],
   ["df -Pk", { stdout: df(50_000_000) }],
-  ["bun --version", { stdout: "1.3.14\n" }],
+  // `fakeExec.which` answers `/fake/<tool>`, and `bunCheck` now runs the RESOLVED path — so the
+  // version answer is keyed on that path, not on the bare name it used to spawn.
+  ["/fake/bun --version", { stdout: "1.3.14\n" }],
   ["systemctl --user show-environment", { code: 0 }],
   ["systemctl --user is-active collie", { stdout: "active\n" }],
 ];
@@ -295,8 +297,45 @@ describe("preflight — the bun check", () => {
   });
 
   test("an older bun is amber, never red", () => {
-    const check = bunCheck(harness({ answers: [["bun --version", { stdout: "1.1.0\n" }]] }).deps);
+    const check = bunCheck(harness({ answers: [["/fake/bun --version", { stdout: "1.1.0\n" }]] }).deps);
     expect(check.verdict).toBe("amber");
+  });
+
+  // #169: PATH alone made this red on a host the shim builds on happily. A Bun at a known candidate
+  // is green, and the reason names it — the operator's own shell will not show them that one.
+  test("bun off PATH at a known candidate is green, and the reason names the absolute path", () => {
+    const bun = `${HOME}/.bun/bin/bun`;
+    const h = harness({
+      absent: ["bun"],
+      answers: [[`${bun} --version`, { stdout: "1.3.14\n" }]],
+      files: { [bun]: "" },
+    });
+    const check = bunCheck(h.deps);
+    expect(check.verdict).toBe("green");
+    expect(check.reason).toContain(bun);
+    expect(h.exec.calls).toContain(`${bun} --version`);
+    // Never the bare name: that would answer for a different Bun than the update runs.
+    expect(h.exec.calls).not.toContain("bun --version");
+  });
+
+  test("$BUN_INSTALL is honoured, exactly as the shim honours it", () => {
+    const bun = "/opt/bun/bin/bun";
+    const h = harness({
+      absent: ["bun"],
+      answers: [[`${bun} --version`, { stdout: "1.3.14\n" }]],
+      env: { BUN_INSTALL: "/opt/bun" },
+      files: { [bun]: "", [`${HOME}/.bun/bin/bun`]: "" },
+    });
+    expect(bunCheck(h.deps).reason).toContain(bun);
+  });
+
+  test("`bun is not installed` keeps today's red, sentence for sentence", () => {
+    const check = bunCheck(harness({ absent: ["bun"] }).deps);
+    expect(check.verdict).toBe("red");
+    expect(check.reason).toBe(
+      "bun is not installed, and this install rebuilds from source — the update would stop after the fetch",
+    );
+    expect(check.remedy).toBe("install Bun from https://bun.sh, then re-run this check");
   });
 
   test("a binary install is never asked about bun", async () => {
