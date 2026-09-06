@@ -104,7 +104,7 @@ describe("what a lead may state about itself", () => {
 });
 
 describe("the peer's guards", () => {
-  test("guard 0: a packaged install never follows, whatever else is true", () => {
+  test("guard 0: a packaged peer refuses first, whatever else is true", () => {
     // The regression this pins. A packaged install's preflight is GREEN BY DESIGN, so before
     // this guard existed such a peer sailed straight through firstRed() in followDecision and spawned
     // a `collie update` every hour that could only ever refuse — the exact failure ADR 0035 exists to
@@ -458,7 +458,7 @@ describe("the lead's turn queue", () => {
     expect(turns.peerLegs().every((l) => l.state !== "waiting" && l.state !== "updating")).toBe(true);
   });
 
-  test("a packaged member is never eligible, whatever else the sweep says about it", () => {
+  test("the lead never grants a turn to a packaged member, whatever else the sweep says", () => {
     // Pure and offline: this is the whole of "the lead never grants a turn to a packaged member".
     // Green preflight, reachable, behind the target — every reason to be handed the turn but one.
     for (const over of [
