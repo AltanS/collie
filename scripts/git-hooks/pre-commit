@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Three independent guards. Install with: scripts/install-hooks.sh (sets core.hooksPath).
+# Four independent guards. Install with: scripts/install-hooks.sh (sets core.hooksPath).
 #
 # A) Versioning guard — override with: SKIP_VERSION_CHECK=1 git commit …
 #    1) versions must be consistent (check-version.sh)
@@ -19,7 +19,11 @@
 # C) Pack-wire guard — override with: SKIP_PACK_WIRE_CHECK=1 git commit …
 #    A staged change to the pack wire surface must record a protocol decision (check-pack-wire.sh).
 #
-# The three are skippable independently: SKIP_VERSION_CHECK=1 does not disarm the lint guard.
+# D) flake.lock guard — override with: SKIP_FLAKE_LOCK_CHECK=1 git commit …
+#    `flake.lock` pins the toolchain a published binary was built with, so it moves only in a
+#    release commit — staged together with the three version files (check-flake-lock.sh).
+#
+# The four are skippable independently: SKIP_VERSION_CHECK=1 does not disarm the lint guard.
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
@@ -105,6 +109,11 @@ fi
 # ---- (C) pack wire ----------------------------------------------------------------------------
 # The script owns the file list and the message; it reads the staged list we already computed.
 STAGED_FILES="$staged" "$ROOT/scripts/check-pack-wire.sh" >/dev/null
+
+# ---- (D) flake.lock ---------------------------------------------------------------------------
+# Same shape as (C): the script owns the file list and the message, and reads the staged list we
+# already computed.
+STAGED_FILES="$staged" "$ROOT/scripts/check-flake-lock.sh" >/dev/null
 
 # ---- (B) lint ---------------------------------------------------------------------------------
 if [ "${SKIP_LINT_CHECK:-}" = "1" ]; then

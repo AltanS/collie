@@ -31,6 +31,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - The release tarball carries `scripts/collie-ctl.sh`, the shim every action in its own `herdr-plugin.toml` names, thanks @mikebenner (#171).
 - The package command lives in its own module, so the install classifier spells no path prefix (#171).
 - `flake.nix` pins the tools a release is built with — Bun, Node, git, tmux and zellij — and the release workflow builds inside that flake, so a published binary names the toolchain that produced it.
+- A pre-commit guard refuses a `flake.lock` that moves outside a release commit, so the pinned toolchain and the version move together or not at all.
 
 ## [1.5.3] - 2026-09-06
 
