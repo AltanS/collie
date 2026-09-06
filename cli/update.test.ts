@@ -2024,3 +2024,45 @@ describe("the update run id", () => {
     expect(wantsRunId(["update", "--to-tag", "v1.1.0"])).toBeNull();
   });
 });
+
+// ── The install `update` must decline ────────────────────────────────────────
+// A package manager laid this Collie down under a root the running user cannot write. Declining is
+// the correct outcome, not a diagnosis failure — and it has to READ that way, because the shape used
+// to fall out as `unknown` and tell operators their packaged install was unrecognisable.
+
+describe("cmdUpdate — a system package", () => {
+  /** A root with a marker, no `.git`, and no write permission for this user. */
+  function packaged() {
+    const h = harness({
+      answers: [[`${GIT} rev-parse --git-dir`, { code: 128 }]],
+      installed: "1.5.2",
+    });
+    h.files.unwritable.add(ROOT);
+    return h;
+  }
+
+  test("it refuses, and never reaches git, bun or the network", async () => {
+    const h = packaged();
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.exec.calls.some((c) => c.includes("ls-remote"))).toBe(false);
+    expect(h.exec.calls.some((c) => c.includes("bun"))).toBe(false);
+    expect(h.restarts).toBe(0);
+  });
+
+  test("it says who owns the update, and does not claim it cannot tell", async () => {
+    const h = packaged();
+    await cmdUpdate(h.deps);
+    const said = h.io.stderr.join("\n");
+    expect(said).toContain("package manager");
+    expect(said).toContain(ROOT);
+    expect(said).toContain("not writable");
+    // The old wording for this shape. Printing it at a packaged install is the bug being fixed.
+    expect(said).not.toContain("cannot tell how this Collie was installed");
+  });
+
+  test("a writable root with the same shape still reports the unknown it really is", async () => {
+    const h = harness({ answers: [[`${GIT} rev-parse --git-dir`, { code: 128 }]], installed: "1.5.2" });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("cannot tell how this Collie was installed");
+  });
+});
