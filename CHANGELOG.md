@@ -26,6 +26,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+- `collie update` hands off to `systemd-run` only when the systemd user bus is reachable, not just when the binary exists, so a container with systemd installed but not running no longer wedges every update in staging, thanks @chernesk (#174).
+
 ## [1.5.3] - 2026-09-06
 
 - Release checks and tag fetches stay on HTTPS when a git `insteadOf` rule rewrites GitHub URLs to SSH, so a service without an SSH key can update again, thanks @magoz (#170). ([b3bd127](https://github.com/AltanS/collie/commit/b3bd127))
