@@ -54,8 +54,8 @@ import {
   publishedBinary,
   updateRepoOf,
   PACKAGED_SENTENCE,
-  packageCommand,
 } from "./install-kind.ts";
+import { packageCommand } from "./package-command.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs, resolveLinkTarget } from "./link.ts";
 import { collieBinary } from "./unit.ts";
 import type { Ui } from "./render.ts";

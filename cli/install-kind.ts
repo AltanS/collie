@@ -146,8 +146,9 @@ export function classifyInstall(p: InstallProbe): InstallKind {
   // Collie declines to update what it cannot describe rather than claiming a package manager that
   // may not exist.
   //
-  // NO PATH PREFIX IS EVIDENCE HERE. Every prefix this module spells lives in `packageCommand`, and
-  // is read only to NAME a command once the kind is already decided (M17 principle 3).
+  // NO PATH PREFIX IS EVIDENCE HERE. This module spells none. Every prefix Collie recognises lives
+  // in `package-command.ts`, and is read only to NAME a command once the kind is already decided
+  // (M17 principle 3).
   const notOurs = p.rootIsReadOnly || p.rootOutsideHome || p.rootOwnerUid === 0;
   return notOurs ? { kind: "packaged" } : { kind: "unknown", why: "loose-binary" };
 }
@@ -157,37 +158,10 @@ export function classifyInstall(p: InstallProbe): InstallKind {
  * refusal, `doctor`'s install line and the pack skip all print this sentence.
  *
  * It asserts a boundary and no more. Which manager owns the folder is a separate question, answered
- * by {@link packageCommand} where the prefix answers it and left unanswered where it does not.
+ * by `packageCommand` in `package-command.ts` where the prefix answers it, and left unanswered
+ * where it does not.
  */
 export const PACKAGED_SENTENCE = "updates come from your package manager";
-
-/**
- * The command that takes the new version, when the resolved root names a manager we know — else null.
- *
- * THE PREFIX IS NOT EVIDENCE. By the time this runs the kind is already decided, structurally, by
- * {@link classifyInstall}; this only chooses which words to print. A prefix nobody recognises costs
- * the operator a command, never a wrong kind (M17 principle 3), which is why an unknown prefix is
- * `null` and the caller falls back to {@link PACKAGED_SENTENCE} alone.
- *
- * The roots are the ones our own packages install to (M17 spec 05) plus Homebrew's two prefixes.
- */
-export function packageCommand(root: string): string | null {
-  const under = (prefix: string): boolean => root === prefix || root.startsWith(`${prefix}/`);
-  if (under("/usr/lib/collie")) return "sudo pacman -Syu collie-bin";
-  if (under("/nix/store")) return "nix profile upgrade collie";
-  if (under("/opt/homebrew") || under("/usr/local/Cellar")) return "brew upgrade collie";
-  return null;
-}
-
-/**
- * The whole sentence for a packaged install, with the command named when one is known.
- *
- * One spelling for every surface — a second would drift the moment either half is reworded.
- */
-export function packagedReason(root: string): string {
-  const cmd = packageCommand(root);
-  return cmd === null ? PACKAGED_SENTENCE : `${PACKAGED_SENTENCE} — \`${cmd}\``;
-}
 
 // ── The probe, and what a binary install's paths are ─────────────────────────
 

@@ -28,8 +28,8 @@ import {
   updateRepoOf,
   DEFAULT_UPDATE_REPO,
   PACKAGED_SENTENCE,
-  packageCommand,
 } from "./install-kind.ts";
+import { packageCommand } from "./package-command.ts";
 import type { Environment, EnvVars } from "./context.ts";
 import { EXIT } from "./io.ts";
 import { cmdLink, isCollieBinaryPath, type LinkReader, linkPath, type LinkWriter } from "./link.ts";

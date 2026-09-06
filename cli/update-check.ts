@@ -13,7 +13,6 @@ import {
   binaryLayout,
   classifyInstall,
   PACKAGED_SENTENCE,
-  packageCommand,
   gitArgs,
   type InstallKind,
   originMatches,
@@ -21,6 +20,7 @@ import {
   probeInstall,
   updateRepoOf,
 } from "./install-kind.ts";
+import { packageCommand } from "./package-command.ts";
 import { EXIT, type Io } from "./io.ts";
 import { type LinkReader, realLinkFs } from "./link.ts";
 import { agentFilePath, unitFilePath, unitName } from "./unit.ts";
