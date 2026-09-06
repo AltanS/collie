@@ -864,7 +864,7 @@ export const de: Dictionary = {
   "updateRibbon.peers.one": "{count} Peer wird aktualisiert: {names}",
   "updateRibbon.peers.other": "{count} Peers werden aktualisiert: {names}",
   "updateRibbon.packageManaged.one": "{names} wartet auf seinen Paketmanager",
-  "updateRibbon.packageManaged.other": "{names} warten auf ihre Paketmanager",
+  "updateRibbon.packageManaged.other": "{names} warten auf ihren Paketmanager",
   "updateRibbon.peerRolledBack": "{name} zurückgesetzt: {reason}.",
   "updateRibbon.seeUpdates": "Siehe Updates.",
   "updateRibbon.available": "Collie {version} da. Zum Update tippen.",
