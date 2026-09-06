@@ -26,19 +26,19 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
-- `collie update` hands off to `systemd-run` only when the systemd user bus is reachable, not just when the binary exists, so a container with systemd installed but not running no longer wedges every update in staging, thanks @chernesk (#174).
-- Collie recognises an install its package manager owns, declines to update it, and names that manager's command instead, on the terminal and on the phone, thanks @mikebenner (#171).
-- The release tarball carries `scripts/collie-ctl.sh`, the shim every action in its own `herdr-plugin.toml` names, thanks @mikebenner (#171).
-- The package command lives in its own module, so the install classifier spells no path prefix (#171).
-- The upload cap is a setting, `COLLIE_MAX_UPLOAD_MB`, and `COLLIE_UPLOAD_EXTRA_TYPES` adds text types the shipped list misses.
-- The pack lead's oversize refusal is named `upload_too_large`, not `image_too_large`, now that it is not only about images.
-- The composer attaches text files as well as images — markdown, code, config and logs — behind a paperclip in place of the picture icon.
-- A truncated error in the header opens on a tap, showing the whole message with a copy button.
-- `collie update --check` looks for Bun where the shim and the remote probe look, `$BUN_INSTALL` included, so a Bun off your PATH is green with the path it will run rather than a red that blocks the update (#169).
-- `flake.nix` pins the tools a release is built with — Bun, Node, git, tmux and zellij — and the release workflow builds inside that flake, so a published binary names the toolchain that produced it.
-- A pre-commit guard refuses a `flake.lock` that moves outside a release commit, so the pinned toolchain and the version move together or not at all.
-- Confirming a pack update on the phone levels the peers on an ordinary checkout install, instead of updating only the lead and leaving "Retry pack update" to be tapped by hand. That install kind never recorded the run the lead's turn queue is rebuilt from after its own restart.
-- `collie update` runs the Bun its own preflight found, a Bun off your PATH included, and a file that cannot be executed is no longer taken for one (#169).
+## [1.5.4] - 2026-09-07
+
+- Confirming a pack update on the phone levels the peers on an ordinary checkout install, instead of updating only the lead and leaving "Retry pack update" to be tapped by hand. That install kind never recorded the run the lead's turn queue is rebuilt from after its own restart. ([d9eb459](https://github.com/AltanS/collie/commit/d9eb459))
+- `collie update` hands off to `systemd-run` only when the systemd user bus is reachable, not just when the binary exists, so a container with systemd installed but not running no longer wedges every update in staging, thanks @chernesk (#174). ([cdbd1a9](https://github.com/AltanS/collie/commit/cdbd1a9))
+- Collie recognises an install its package manager owns, declines to update it, and names that manager's command instead, on the terminal and on the phone, thanks @mikebenner (#171). ([8fe3180](https://github.com/AltanS/collie/commit/8fe3180))
+- The release tarball carries `scripts/collie-ctl.sh`, the shim every action in its own `herdr-plugin.toml` names, thanks @mikebenner (#171). ([6eb2d17](https://github.com/AltanS/collie/commit/6eb2d17))
+- The upload cap is a setting, `COLLIE_MAX_UPLOAD_MB`, and `COLLIE_UPLOAD_EXTRA_TYPES` adds text types the shipped list misses. ([e1493f4](https://github.com/AltanS/collie/commit/e1493f4))
+- The pack lead's oversize refusal is named `upload_too_large`, not `image_too_large`, now that it is not only about images. ([e1493f4](https://github.com/AltanS/collie/commit/e1493f4))
+- The composer attaches text files as well as images — markdown, code, config and logs — behind a paperclip in place of the picture icon. ([9833ba3](https://github.com/AltanS/collie/commit/9833ba3))
+- A truncated error in the header opens on a tap, showing the whole message with a copy button. ([747afaa](https://github.com/AltanS/collie/commit/747afaa))
+- The update preflight and the update itself both look for Bun where the shim looks, `$BUN_INSTALL` included, so a Bun off your PATH is green with the path it will run rather than a red that blocks the update, and a file that cannot be executed is no longer taken for a Bun (#169). ([547b198](https://github.com/AltanS/collie/commit/547b198), [77b3f1e](https://github.com/AltanS/collie/commit/77b3f1e))
+- `flake.nix` pins the tools a release is built with — Bun, Node, git, tmux and zellij — and the release workflow builds inside that flake, so a published binary names the toolchain that produced it. ([7636222](https://github.com/AltanS/collie/commit/7636222))
+- A pre-commit guard refuses a `flake.lock` that moves outside a release commit, so the pinned toolchain and the version move together or not at all. ([b00afe1](https://github.com/AltanS/collie/commit/b00afe1))
 
 ## [1.5.3] - 2026-09-06
 
