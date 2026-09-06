@@ -315,6 +315,12 @@ export const realFiles: Files = {
     renameSync(from, to);
   },
   ownerUid(p) {
+    // Windows has no POSIX uid, and Node/Bun report a constant 0 there regardless of who owns the
+    // file — that is not "owned by root", it is "this platform does not have the concept", and the
+    // two must not collide: on win32 every non-checkout, non-versions/ install would misclassify as
+    // system-owned and `collie update` would refuse forever. `null` reads as "nothing to claim about
+    // the owner" exactly like a failed `stat`, which is what the caller already treats it as.
+    if (process.platform === "win32") return null;
     try {
       return statSync(p).uid;
     } catch {
