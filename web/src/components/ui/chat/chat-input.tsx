@@ -74,7 +74,7 @@ function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea"
         // turns an intrinsic width into a laid-out one. A difference that is normally invisible
         // becomes the layout.
         //
-        // The token is not hypothetical. `composer.tsx`'s `uploadImage()` appends the HOST path the
+        // The token is not hypothetical. `composer.tsx`'s `uploadFile()` appends the HOST path the
         // bridge returns for an attached image — one unbroken run of `/`-joined characters, easily
         // 60+ chars and never a break opportunity. That min-content width propagates up the bottom
         // region (the enclosing `Collapse`'s grid item, `ui/collapse.tsx`, which carries `min-w-0`

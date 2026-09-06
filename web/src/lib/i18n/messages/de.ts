@@ -211,7 +211,7 @@ export const de: Dictionary = {
   "composer.mic.manualHint": "Wird in das Eingabefeld eingefügt",
   "composer.mic.stop": "Stopp",
   "composer.mic.discardAria": "Aufnahme verwerfen",
-  "composer.attach.aria": "Bild anhängen",
+  "composer.attach.aria": "Datei anhängen",
   "composer.send.typeAnyway": "Trotzdem tippen",
   "composer.send.reallySend": "Senden bestätigen",
   "composer.send.stopTypingAria": "Eingabe ins Terminal abbrechen",
@@ -230,7 +230,9 @@ export const de: Dictionary = {
   "composer.destructive.confirm": "Destruktiv: {reason}. Erneut tippen zum Bestätigen.",
   "composer.destructive.confirmOnHost":
     "Destruktiv: {reason} auf {host}. Erneut tippen zum Bestätigen.",
-  "composer.upload.success": "Bild hinzugefügt, Pfad steht in der Nachricht",
+  "composer.upload.success": "Datei hinzugefügt, Pfad in Nachricht",
+  "composer.upload.tooLarge": "Die Datei ist größer als {max} MB, das Limit für diesen Collie.",
+  "composer.upload.badType": "Collie kann {name} nicht anhängen.",
   "composer.noEcho.title": "Passwortabfrage ohne Echo",
   "composer.noEcho.noLiveTyped":
     "Der Text steht unbestätigt im Pane. Da diese Ansicht nicht live ist, kann von hier aus nichts gesendet werden. Die Eingabe direkt im Terminal beantworten.",
@@ -702,11 +704,11 @@ export const de: Dictionary = {
   "apiError.launch.not_allowlisted": "Dieser Befehl ist kein definierter Launcher",
   "apiError.launch.pane_unknown": "Dieses Pane ist nicht mehr da, nichts wurde gestartet",
   "apiError.workspace.create_failed": "Space konnte nicht erstellt werden: {reason}",
-  "apiError.upload.too_large": "Bilddatei ist zu groß. Das Limit liegt bei 10 MB.",
+  "apiError.upload.too_large": "Die Datei ist zu groß, maximal sind {maxMb} MB erlaubt.",
   "apiError.upload.no_file": "Es wurde keine Datei übermittelt.",
   "apiError.upload.bad_type": "Collie unterstützt diesen Dateityp nicht: {type}",
   "apiError.upload.write_failed":
-    "Bild konnte auf dem Host nicht gespeichert werden: {reason}",
+    "Datei konnte nicht auf dem Host gespeichert werden: {reason}",
   "apiError.stt.unconfigured": "Spracherkennung ist auf dieser collie-Instanz nicht eingerichtet.",
   "apiError.stt.too_large": "Aufnahme ist zu lang. Bitte eine kürzere Aufnahme wählen.",
   "apiError.stt.bad_format":

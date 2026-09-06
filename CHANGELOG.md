@@ -32,6 +32,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - The package command lives in its own module, so the install classifier spells no path prefix (#171).
 - The upload cap is a setting, `COLLIE_MAX_UPLOAD_MB`, and `COLLIE_UPLOAD_EXTRA_TYPES` adds text types the shipped list misses.
 - The pack lead's oversize refusal is named `upload_too_large`, not `image_too_large`, now that it is not only about images.
+- The composer attaches text files as well as images — markdown, code, config and logs — behind a paperclip in place of the picture icon.
 
 ## [1.5.3] - 2026-09-06
 

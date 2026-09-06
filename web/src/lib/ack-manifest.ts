@@ -160,7 +160,7 @@ export const ACK_MANIFEST = {
     channel: "inline",
     why: "A failed revoke leaves the row it was aimed at still on screen, and that row is the only place the message is unambiguous about WHICH device is still paired.",
   },
-  uploadImage: {
+  uploadFile: {
     channel: "status",
     why: "Success appends a host path to the draft, which is easy to miss in a box the operator was already typing in, so the status line names what just went into it (components/composer.tsx).",
   },

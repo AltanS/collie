@@ -834,10 +834,12 @@ export function revokeDevice(label: string): Promise<DevicesResponse> {
 }
 
 /**
- * Upload an image; the bridge saves it to a host file and returns the path to reference in a
- * message. Uses multipart/form-data (NOT the JSON `req` helper — the browser sets the boundary).
+ * Upload an attachment — an image or a text file; the bridge saves it to a host file and returns the
+ * path to reference in a message. Uses multipart/form-data (NOT the JSON `req` helper — the browser
+ * sets the boundary). What the host will actually take is `/api/config`'s `upload` block, and
+ * lib/attachments.ts is where the phone reads it.
  */
-export function uploadImage(paneId: string, file: File, scope?: Scope): Promise<UploadResponse> {
+export function uploadFile(paneId: string, file: File, scope?: Scope): Promise<UploadResponse> {
   // Multipart, so it bypasses `req` (the browser sets the boundary) — track it explicitly instead.
   return trackBusy(
     (async () => {

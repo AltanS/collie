@@ -951,7 +951,7 @@ export const paneWorking: PaneFixture = {
 
 /**
  * The HOST PATH an image upload appends, verbatim in shape: one unbroken run with no space, no
- * hyphen and no other break opportunity in it. `composer.tsx`'s `uploadImage()` writes exactly this
+ * hyphen and no other break opportunity in it. `composer.tsx`'s `uploadFile()` writes exactly this
  * into the draft, so it is the widest token the field can be handed — and it arrives without the
  * operator typing a character.
  */

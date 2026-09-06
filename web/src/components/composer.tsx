@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ChangeEvent, ClipboardEvent, CSSProperties, ReactNode } from "react";
 import { useRevalidator } from "react-router";
-import { Check, ImagePlus, Keyboard, Loader2, Mic, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
+import { Check, Keyboard, Loader2, Mic, Paperclip, Send, Settings2, Slash, Square, Terminal, X, Zap } from "lucide-react";
 
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
@@ -26,7 +26,8 @@ import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { commandsFor } from "@/lib/agent-commands";
 import { useMuxCapability, useMuxUnsupportedKeys } from "@/lib/mux-capability";
-import { useOperatorCommands, useOperatorKeys } from "@/lib/operator-config";
+import { useOperatorCommands, useOperatorKeys, useUploadCapability } from "@/lib/operator-config";
+import { acceptAttribute, limitMb, rejectAttachment, uploadLimits } from "@/lib/attachments";
 import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { isDestructiveInput } from "@/lib/destructive";
 import { HostChip } from "@/components/host-chip";
@@ -123,7 +124,7 @@ interface ComposerProps {
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
 // own: quick actions, an agent-aware slash-command palette, an inline key tray (via
-// `pane.send_keys`), image upload, display prefs, and the reply Send (with a destructive-command
+// `pane.send_keys`), attachment upload, display prefs, and the reply Send (with a destructive-command
 // two-tap guard). Its state (draft, sending, upload, pending preview, its own Keys/Quick/Agent
 // sheets) is entirely local; it reaches AgentChat only through `onSent` (to re-follow the tail) and
 // exposes `focusInput` so the mirror tap can bring up the keyboard.
@@ -473,7 +474,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Three intervals, declared where the state already lives, so the Collie mark in the header spins
   // for exactly as long as the work does and not a frame longer. `sending` spans the whole guarded
   // send (type → settle → verify → submit), which is the interval the operator is actually waiting
-  // through; `uploading` spans the image POST; the recorder's `transcribing` phase spans the trip to
+  // through; `uploading` spans the attachment POST; the recorder's `transcribing` phase spans the trip to
   // the provider. Each is a boolean this component already renders from, so nothing new is tracked —
   // the mark just reads what the composer already knows.
   //
@@ -666,6 +667,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // visibility test here and the palette's own list below (same call, same arguments).
   const operatorCommands = useOperatorCommands();
   const commands = commandsFor(agent, operatorCommands);
+  // What this collie takes as an attachment, off the same one-shot /api/config read. On a bridge
+  // that publishes nothing (older than the field, or the read has not landed) `uploadLimits` answers
+  // with the contract that shipped before attachments — images, 10 MB — so the button is never
+  // dead and never offers what this host would refuse.
+  const limits = uploadLimits(useUploadCapability());
+  const accept = acceptAttribute(limits);
   // The Keys tray's preset row, resolved the same way from the same one-shot read of /api/config.
   const keyPresets = ctrlPresetsFor(agent, useOperatorKeys());
   // Empty on every adapter that refuses nothing, and empty for Herdr's six as far as this tray is
@@ -937,13 +944,27 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     focusInputEnd();
   }
 
-  // Upload an image; on success append its host path to the composer so the user can add context.
-  // Shared by the file picker and clipboard paste.
-  async function uploadImage(file: File) {
+  // Upload an attachment; on success append its host path to the composer so the user can add
+  // context. Shared by the file picker and clipboard paste.
+  //
+  // The two local refusals below are an ECONOMY, never a gate: the bridge asks the same two
+  // questions again on arrival, and its answer is the one that counts (it can read the bytes, which
+  // is the only way to catch a binary wearing a `.md` name). Spending a phone's uplink on 40 MB to
+  // be told 10 is the limit is the thing worth not doing.
+  async function uploadFile(file: File) {
     if (locked) return;
+    const refusal = rejectAttachment(file, limits);
+    if (refusal === "tooLarge") {
+      setStatus(translate("composer.upload.tooLarge", { max: limitMb(limits) }), "error");
+      return;
+    }
+    if (refusal === "badType") {
+      setStatus(translate("composer.upload.badType", { name: file.name }), "error");
+      return;
+    }
     setUploading(true);
     try {
-      const res = await api.uploadImage(paneId, file, scope);
+      const res = await api.uploadFile(paneId, file, scope);
       if (res.ok) {
         const path = res.path;
         direct.deactivateSilently();
@@ -960,29 +981,31 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
   }
 
-  async function onPickImage(e: ChangeEvent<HTMLInputElement>) {
+  async function onPickFile(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = ""; // allow re-picking the same file
     if (!file) return;
-    await uploadImage(file);
+    await uploadFile(file);
   }
 
-  // Paste an image straight from the clipboard (e.g. a screenshot) the same way the picker does.
-  // Only intercepts when the clipboard actually carries an image file — a plain text paste (the
-  // common case) falls through untouched.
-  function onPasteImage(e: ClipboardEvent<HTMLTextAreaElement>) {
+  // Paste a file straight from the clipboard (e.g. a screenshot) the same way the picker does.
+  //
+  // A PLAIN TEXT PASTE STILL FALLS THROUGH UNTOUCHED, and that stays true now that text files are
+  // attachable: the branch turns on `item.kind === "file"`, so pasted PROSE is prose and only a
+  // pasted FILE becomes an upload. Copying a `.md` in a file manager produces the second; selecting
+  // its contents in an editor produces the first, and neither has become the other.
+  function onPasteFile(e: ClipboardEvent<HTMLTextAreaElement>) {
     if (locked || direct.active) return;
     const items = e.clipboardData.items;
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
-      if (item.kind === "file" && item.type.startsWith("image/")) {
-        const file = item.getAsFile();
-        if (file) {
-          e.preventDefault();
-          void uploadImage(file);
-          return;
-        }
-      }
+      if (item.kind !== "file") continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      if (rejectAttachment(file, limits) === "badType") continue;
+      e.preventDefault();
+      void uploadFile(file);
+      return;
     }
   }
 
@@ -1017,10 +1040,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         </Collapse>
 
         {/* File input stays mounted here (not inside the keyboard-only key row) so the picker
-            callback survives the keyboard collapsing. Attach-image fires it from the reply-input row
+            callback survives the keyboard collapsing. Attach fires it from the reply-input row
             below (always visible, not gated behind the keyboard-open quick keys); structural commands
             (New tab/space, Kill) and Stop (Esc, in the Keys dock) live elsewhere. */}
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPickImage} />
+        <input ref={fileRef} type="file" accept={accept} hidden onChange={onPickFile} />
         {/* Keys / Quick / Display dock — a single in-flow site ABOVE the Controls row (so the toggle
             you tapped stays put and the panel grows over the mirror, not the input). Whichever of the
             mutually exclusive drawers is active renders here via the shared ComposerDock chrome. Keys
@@ -1414,7 +1437,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     }
                   }
             }
-            onPaste={onPasteImage}
+            onPaste={onPasteFile}
             placeholder={
               gone
                 ? translate("composer.placeholder.gone")
@@ -1487,7 +1510,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               {uploading ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (
-                <ImagePlus className="size-4" />
+                <Paperclip className="size-4" />
               )}
             </Button>
           </div>

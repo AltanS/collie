@@ -169,7 +169,7 @@ export function useDirectTyping({
    *
    * Do not read that as "every path that focuses the field cancels": three don't, and don't need to.
    * `deactivate`/`clearMode`, the `suspended` disarm, and the composer's own takeOverDraft /
-   * insertCommand / uploadImage all focus without cancelling — they are safe because a blur is only
+   * insertCommand / uploadFile all focus without cancelling — they are safe because a blur is only
    * ever pending while the mode is DISARMED (both schedulers call resetMode() in the same frame, and
    * the first two gate on `active`), and because their focus is itself deferred, so it queues behind
    * any pending blur and lands last.

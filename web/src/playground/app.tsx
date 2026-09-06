@@ -671,7 +671,7 @@ function PaneSection() {
 
       <Card
         label="pane — a just-uploaded image path in the draft"
-        reach="attach a picture. `uploadImage()` appends the HOST path the bridge returns, which is one
+        reach="attach a picture. `uploadFile()` appends the HOST path the bridge returns, which is one
           unbroken 70-odd-character token with no break opportunity in it — the widest thing that can
           ever land in this box, and it arrives without the operator typing a character."
         note="THE REGRESSION CARD for the Send button walking off the right edge. The field must wrap

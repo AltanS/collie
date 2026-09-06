@@ -83,7 +83,7 @@ describe("ack-manifest covers every mutating export of lib/api.ts", () => {
     const found = mutatingExportsOf(source);
     expect(found.length).toBeGreaterThan(10);
     expect(found).toContain("closePane");
-    expect(found).toContain("uploadImage");
+    expect(found).toContain("uploadFile");
     expect(found).toContain("transcribeAudio");
   });
 

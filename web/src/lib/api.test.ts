@@ -14,7 +14,7 @@ import {
   refreshNow,
   sendKeys,
   sendReply,
-  uploadImage,
+  uploadFile,
   sttTimeoutFor,
   transcribeAudio,
   withTimeout,
@@ -23,7 +23,7 @@ import {
 } from "./api";
 
 // The default happy-path handlers live in test/handlers.ts; here we focus on the write paths and the
-// ApiError-on-non-2xx contract that every mutation depends on (and uploadImage's separate code path).
+// ApiError-on-non-2xx contract that every mutation depends on (and uploadFile's separate code path).
 describe("api client", () => {
   it("sendReply returns the bridge's ok result on success", async () => {
     await expect(sendReply("w1:p1", "hi")).resolves.toEqual({ ok: true });
@@ -98,20 +98,20 @@ describe("api client", () => {
     });
   });
 
-  it("uploadImage posts multipart and returns the saved path", async () => {
+  it("uploadFile posts multipart and returns the saved path", async () => {
     server.use(
       http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path: "/tmp/x.png" })),
     );
     const file = new File(["x"], "x.png", { type: "image/png" });
-    await expect(uploadImage("w1:p1", file)).resolves.toEqual({ ok: true, path: "/tmp/x.png" });
+    await expect(uploadFile("w1:p1", file)).resolves.toEqual({ ok: true, path: "/tmp/x.png" });
   });
 
-  it("uploadImage throws on a non-2xx via its own (non-JSON) error path", async () => {
+  it("uploadFile throws on a non-2xx via its own (non-JSON) error path", async () => {
     server.use(
       http.post(/\/api\/pane\/[^/]+\/upload$/, () => new HttpResponse("too big", { status: 413 })),
     );
     const file = new File(["x"], "x.png", { type: "image/png" });
-    await expect(uploadImage("w1:p1", file)).rejects.toThrow(/413/);
+    await expect(uploadFile("w1:p1", file)).rejects.toThrow(/413/);
   });
 
   it("checkForUpdates POSTs (no body) and returns the fresh UpdateInfo", async () => {
@@ -170,7 +170,7 @@ describe("api client — request timeouts", () => {
       http.post(/\/api\/pane\/[^/]+\/upload$/, () => HttpResponse.json({ ok: true, path: "/x.png" })),
     );
     const spy = vi.spyOn(AbortSignal, "timeout");
-    await uploadImage("w1:p1", new File(["x"], "x.png", { type: "image/png" }));
+    await uploadFile("w1:p1", new File(["x"], "x.png", { type: "image/png" }));
     expect(spy).toHaveBeenCalledWith(60_000);
   });
 
@@ -448,7 +448,7 @@ describe("api client — identity proxy refusals", () => {
     await fetchSnapshot();
     await sendReply("w1:p1", "hi");
     await fetchPane("w1:p1");
-    await uploadImage("w1:p1", new File(["x"], "x.png", { type: "image/png" }));
+    await uploadFile("w1:p1", new File(["x"], "x.png", { type: "image/png" }));
     expect(seen.headers).toHaveLength(4);
     for (const headers of seen.headers) expect(headers.get(XHR_HEADER)).toBe(XHR_HEADER_VALUE);
     expect(seen.redirects).toEqual(["manual", "manual", "manual", "manual"]);
@@ -456,7 +456,7 @@ describe("api client — identity proxy refusals", () => {
 
   it("leaves the multipart upload without a content-type so the boundary survives", async () => {
     const seen = captureRequests();
-    await uploadImage("w1:p1", new File(["x"], "x.png", { type: "image/png" }));
+    await uploadFile("w1:p1", new File(["x"], "x.png", { type: "image/png" }));
     expect(seen.headers[0].get("content-type")).toBeNull();
   });
 

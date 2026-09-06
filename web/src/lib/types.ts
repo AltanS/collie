@@ -885,6 +885,27 @@ export interface BridgeConfig {
    * feature is absent, not disabled.
    */
   stt?: SttCapability;
+  /**
+   * What this collie accepts as an attachment. Mirrors `UploadCapability` in bridge/types.ts.
+   *
+   * **Absent is a bridge older than the field**, and the phone reads that as the contract that
+   * shipped before it: 10 MB, images only (lib/attachments.ts owns that fallback). So a
+   * mid-upgrade operator sees the old picker rather than an empty one.
+   */
+  upload?: UploadCapability;
+}
+
+/**
+ * What `/api/config` says about attachments — the two facts the picker needs before it opens.
+ * Both are the HOST's own settings, so a pack member with a different cap answers for itself.
+ */
+export interface UploadCapability {
+  /** Largest attachment accepted, decoded, in bytes. */
+  maxBytes: number;
+  /** Image extensions accepted, bare and lowercase. The bridge sniffs these from the bytes. */
+  imageTypes: string[];
+  /** Text extensions accepted, bare and lowercase. The bridge takes these from the name. */
+  textTypes: string[];
 }
 
 /**
