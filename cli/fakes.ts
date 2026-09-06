@@ -23,7 +23,8 @@ export interface FakeExec extends Exec {
   /**
    * `<tool> <args…>` for every call, in order. A {@link Exec.runIn} call is recorded with its
    * working directory prefixed — `<cwd>$ <tool> <args…>` — because for the build steps the cwd IS
-   * the difference between installing the root tree and installing `web/`.
+   * the difference between installing the root tree and installing `web/`. A `pathPrefix` is
+   * recorded the way a shell would write it: `<cwd>$ PATH=<dir>:$PATH <tool> <args…>`.
    */
   calls: string[];
   killed: number[];
@@ -59,8 +60,16 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
   const spawned: { command: string[]; env: Record<string, string>; logPath: string }[] = [];
   const absent = new Set(scripted.absent ?? []);
   const seen = new Map<string, number>();
-  const answer = (tool: string, args: readonly string[], cwd?: string): ExecResult => {
-    const line = (cwd === undefined ? "" : `${cwd}$ `) + [tool, ...args].join(" ");
+  const answer = (
+    tool: string,
+    args: readonly string[],
+    cwd?: string,
+    pathPrefix?: string,
+  ): ExecResult => {
+    const line =
+      (cwd === undefined ? "" : `${cwd}$ `) +
+      (pathPrefix === undefined ? "" : `PATH=${pathPrefix}:$PATH `) +
+      [tool, ...args].join(" ");
     calls.push(line);
     if (absent.has(tool)) return { code: 127, stdout: "", stderr: "", found: false };
     for (const [prefix, a] of scripted.answers ?? []) {
@@ -84,7 +93,7 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
       return r;
     },
     inherit: (tool, args) => answer(tool, args),
-    runIn: (tool, args, cwd) => answer(tool, args, cwd),
+    runIn: (tool, args, cwd, pathPrefix) => answer(tool, args, cwd, pathPrefix),
     spawnDetached(command, opts) {
       spawned.push({ command: [...command], env: opts.env, logPath: opts.logPath });
       return scripted.spawnPid === undefined ? 4242 : scripted.spawnPid;

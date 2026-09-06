@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { fakeFiles, HOME } from "./fakes.ts";
-import { resolveTool, toolCandidates } from "./sys.ts";
+import { resolveTool, toolCandidates, withPathPrefix } from "./sys.ts";
 
 // The one place Collie looks for Bun, and the proof that the two shell copies of it agree.
 //
@@ -80,6 +80,35 @@ describe("resolveTool", () => {
 
   test("nothing anywhere is null, never a guess", () => {
     expect(resolveTool(whichIs(null), fakeFiles(), {}, HOME, "bun")).toBeNull();
+  });
+});
+
+describe("the PATH a resolved tool's child gets", () => {
+  // A phone-started update runs in a transient systemd user unit with no operator PATH. Resolving
+  // Bun to `~/.bun/bin/bun` and spawning that absolute path is not enough: `bun cli/main.ts build`
+  // shells out to `bunx tsc`, and `bunx` is found by NAME or not at all. A lab run died exactly
+  // there — `bunx: command not found`, exit 127, checkout already advanced.
+  test("the resolved tool's directory goes to the FRONT, so it outranks anything else", () => {
+    expect(withPathPrefix({ PATH: "/usr/bin:/bin" }, "/home/pat/.bun/bin").PATH).toBe(
+      "/home/pat/.bun/bin:/usr/bin:/bin",
+    );
+  });
+
+  test("an empty or absent PATH becomes the directory alone, never a stray colon", () => {
+    expect(withPathPrefix({}, "/opt/bun/bin").PATH).toBe("/opt/bun/bin");
+    expect(withPathPrefix({ PATH: "" }, "/opt/bun/bin").PATH).toBe("/opt/bun/bin");
+  });
+
+  test("a directory already on the PATH is left where it is, as the shim leaves it", () => {
+    expect(withPathPrefix({ PATH: "/usr/bin:/opt/bun/bin" }, "/opt/bun/bin").PATH).toBe(
+      "/usr/bin:/opt/bun/bin",
+    );
+  });
+
+  test("no prefix hands back the same environment, untouched", () => {
+    const env = { PATH: "/usr/bin" };
+    expect(withPathPrefix(env, undefined)).toBe(env);
+    expect(withPathPrefix(env, "")).toBe(env);
   });
 });
 
