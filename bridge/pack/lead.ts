@@ -370,7 +370,7 @@ export class PackLead {
         const members = due.map((link): TurnMember => {
           const outcome = outcomes.get(link.memberId);
           const state = this.deps.registry.state(link.memberId);
-          return {
+          const turnMember: TurnMember = {
             memberId: link.memberId,
             enrolledAt: follow.enrolledAt(link.memberId),
             version: state.version,
@@ -380,6 +380,11 @@ export class PackLead {
             // construction, the same cast and the same reason as `parsePeerPreflight`'s above.
             run: outcome?.ok === true ? parsePeerRun(outcome.value as JsonValue) : null,
           };
+          // §19's field, banked with the rest of that member's own report. Assigned only when the
+          // member named a kind: absent is what "this member named no kind" has to look like, and
+          // absent counts as not packaged.
+          const kind = state.preflight?.installKind;
+          return kind === undefined ? turnMember : { ...turnMember, installKind: kind };
         });
         if (follow.turns.observe(members, this.now()).released) this.resweep();
       }

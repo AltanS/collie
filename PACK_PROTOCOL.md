@@ -428,6 +428,18 @@ updated machines, so build skew is the steady state (§7), and this section is t
   does today, and a code a reader does not recognise reads as *no code* — which renders that same
   sentence. `PACK_PROTOCOL_VERSION` stays `1`.
 
+- **A member's own preflight gained an optional `installKind`, and a peer's leg gained the
+  `package-managed` state** (added 2026-09-06, M17 spec 02). Both are additive-optional with the
+  closed reading this section requires. `installKind` (§19) names how that machine is installed;
+  **absent means unknown, and unknown counts as NOT packaged**, so a member older than the field is
+  driven exactly as it was before it existed, and a kind this build does not recognise reads as
+  absent. `package-managed` is a sixth value of the peer-leg state `GET /api/update/check` reports;
+  it is **terminal in the same sense `done` is** — the lead's turn queue never waits on it and a run
+  completes with one present. A reader that does not know the value renders it as it renders any
+  other unknown state, which is safe because the value is only ever **read**, never branched on to
+  take an action: the action it stands for is "do nothing to that machine". `PACK_PROTOCOL_VERSION`
+  stays `1`, no new route, no new verb and no new header.
+
 - **Skew is an observation, and it is rendered.** `collie pack status` compares each member's reported
   version against this build's and marks a difference as a `warn:`-class finding naming **both**
   versions and the remedy — `collie pack update <member>` on the lead, which levels that machine to
@@ -2452,6 +2464,13 @@ and `pairingDigest` already occupy (§5, §18.14, §18.17), for the same reason.
   (`checks-truncated`, verdict `green`) saying how many were left out: truncation is stated, never
   silent, and stating it never invents a finding. The poll's budget is §10.1's and this must not
   grow it.
+- `installKind` is optional and names how that member is installed — `linked-clone`,
+  `detached-checkout`, `binary`, `packaged` or `unknown` (`cli/install-kind.ts`, ADR 0035). It is a
+  **field, never a check id**: an id labels a sentence and a sentence gets reworded, while the kind
+  is the fact the lead acts on. A member reporting `packaged` is skipped by the turn queue and its
+  leg reads `package-managed` (§20). Absent, or a kind this build does not know, reads as unknown,
+  and **unknown counts as not packaged** (§7.1's closed reading — an absent field never widens, and
+  here the wider behaviour is the old one, which was already safe).
 - No `remedy`. It is a command for the operator of *that* machine, and the lead's card names a
   member and a reason, never a shell line to run somewhere else.
 - **Absent means unknown, and unknown is not green.** A member that has not run its check, whose
@@ -2597,6 +2616,13 @@ explainable rather than incidental. It grants one turn at a time.
 A turn is released on exactly three things: the member reports the new version; the member reports
 `rolled-back`; or the member misses **three consecutive sweeps**, after which it reads `unreachable`
 and the turn moves on.
+
+A member whose own report names its install kind as `packaged` is **never granted a turn at all**,
+and its leg reads `package-managed` rather than `waiting`. That state is terminal like `done`: the
+queue does not wait on it and a run completes with one present. A packaged machine takes its updates
+from its package manager (ADR 0035), so there is nothing a turn could authorise it to do, and parking
+it on `waiting` would say "about to move" about a machine that never will. The lead learns this from
+the member's own §19 report over the existing sweep — no new route, no new verb, no new header.
 
 The queue is **never persisted**. §18.9's argument for `lastDialledAt` applies unchanged — a
 persisted turn would survive the restart it is meant to describe — so a lead restart re-derives the

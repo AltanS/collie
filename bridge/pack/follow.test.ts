@@ -427,6 +427,68 @@ describe("the lead's turn queue", () => {
     expect(turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("done");
   });
 
+  test("package-managed is terminal: a run completes with a packaged member present", () => {
+    const turns = new UpdateTurns();
+    turns.begin(RUN_ID, "1.4.1");
+    turns.observe(
+      [
+        member({ memberId: "attic", enrolledAt: 1, installKind: "packaged" }),
+        member({ memberId: "basement", enrolledAt: 2 }),
+      ],
+      NOW,
+    );
+    const attic = turns.peerLegs().find((l) => l.name === "attic");
+    expect(attic?.state).toBe("package-managed");
+    // Terminal like `done`: the turn went straight past it to the next member, so nothing in the run
+    // is waiting on a machine that will never move.
+    expect(turns.turnFor("attic")).toBeNull();
+    expect(turns.turnFor("basement")).not.toBeNull();
+
+    // And the run completes with it present: `basement` reports the target, and the only member left
+    // is the packaged one, which holds no turn and blocks nothing.
+    const released = turns.observe(
+      [
+        member({ memberId: "attic", enrolledAt: 1, installKind: "packaged" }),
+        member({ memberId: "basement", enrolledAt: 2, version: "1.4.1" }),
+      ],
+      NOW,
+    );
+    expect(released.released).toBe(true);
+    expect(turns.turnFor("attic")).toBeNull();
+    expect(turns.peerLegs().every((l) => l.state !== "waiting" && l.state !== "updating")).toBe(true);
+  });
+
+  test("a packaged member is never eligible, whatever else the sweep says about it", () => {
+    // Pure and offline: this is the whole of "the lead never grants a turn to a packaged member".
+    // Green preflight, reachable, behind the target — every reason to be handed the turn but one.
+    for (const over of [
+      { verdict: "green" as const },
+      { verdict: "amber" as const },
+      { answered: false },
+      { run: { state: "verifying" as const, to: "v1.4.1", runId: RUN_ID, reason: null, updatedAt: NOW } },
+    ]) {
+      const turns = new UpdateTurns();
+      turns.begin(RUN_ID, "1.4.1");
+      turns.observe([member({ memberId: "attic", installKind: "packaged", ...over })], NOW);
+      expect(turns.turnFor("attic")).toBeNull();
+      expect(turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("package-managed");
+    }
+
+    // A member that names NO kind is unknown, and unknown is not packaged: it is driven exactly as
+    // it was before the field existed.
+    const older = new UpdateTurns();
+    older.begin(RUN_ID, "1.4.1");
+    older.observe([member({ memberId: "attic" })], NOW);
+    expect(older.turnFor("attic")).not.toBeNull();
+  });
+
+  test("a packaged member already on the target reads as done, which is the truer sentence", () => {
+    const turns = new UpdateTurns();
+    turns.begin(RUN_ID, "1.4.1");
+    turns.observe([member({ memberId: "attic", version: "1.4.1", installKind: "packaged" })], NOW);
+    expect(turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("done");
+  });
+
   test("no run means no turn and no legs — a lead that has confirmed nothing states nothing", () => {
     const turns = new UpdateTurns();
     expect(turns.observe([member({ memberId: "attic" })], NOW).released).toBe(false);

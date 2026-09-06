@@ -445,6 +445,17 @@ describe("a member's own preflight, as it crosses the link", () => {
     expect(peerPreflightWire(report, null)).toBeNull();
   });
 
+  test("the install kind rides as a field, and an unknown one reads as absent", () => {
+    expect(parsePeerPreflight(wire({ installKind: "packaged" }))?.installKind).toBe("packaged");
+    // Absent stays absent, and a kind this build does not know is the same as absent — never a kind.
+    expect(parsePeerPreflight(wire())).not.toHaveProperty("installKind");
+    expect(parsePeerPreflight(wire({ installKind: "flatpak" }))).not.toHaveProperty("installKind");
+    // And the emitting side: a report that named a kind publishes it, one that did not sends no key.
+    const report = REPORT("green", [CHECK("tree", "green", "working tree is clean")]);
+    expect(peerPreflightWire(report, 1)).not.toHaveProperty("installKind");
+    expect(peerPreflightWire({ ...report, installKind: "packaged" }, 1)?.installKind).toBe("packaged");
+  });
+
   test("the check list is capped at 16, truncation is stated, and it can never change a verdict", () => {
     const many = [
       CHECK("tree", "red", "working tree has tracked changes"),

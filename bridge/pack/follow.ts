@@ -385,8 +385,16 @@ export class PackFollower {
 
 // ── The lead's turn queue ────────────────────────────────────────────────────
 
-/** One peer's leg of a pack-wide run, as `GET /api/update/check` reports it. */
-export type PeerLegState = "waiting" | "updating" | "done" | "rolled-back" | "unreachable";
+/**
+ * One peer's leg of a pack-wide run, as `GET /api/update/check` reports it.
+ *
+ * `package-managed` is TERMINAL in the same sense `done` is: the queue never waits on it and a run
+ * completes with one present. It says the member's files belong to a package manager (ADR 0035), so
+ * nothing the lead can do moves that machine. It is additive-optional on the wire (PACK_PROTOCOL.md
+ * §7.1): a reader that does not know the value renders it as it renders any unknown state, and
+ * nothing ever branches on it to take an action.
+ */
+export type PeerLegState = "waiting" | "updating" | "done" | "rolled-back" | "unreachable" | "package-managed";
 
 /** One leg on the wire. Every field past the name is optional — a leg the lead knows little about. */
 export interface PeerLeg {
@@ -406,6 +414,14 @@ export interface TurnMember {
   readonly version: string | null;
   /** That member's own banked preflight verdict, or `null` — which is **unknown**, never green. */
   readonly verdict: "green" | "amber" | "red" | null;
+  /**
+   * That member's own install kind as its preflight reported it (§19), or absent.
+   *
+   * **Absent means unknown, and unknown is NOT packaged** — a member older than the field, or one
+   * this sweep never reached, behaves exactly as it did before the field existed. The kind is read,
+   * never a check id: an id labels a sentence and can be renamed, the kind is the fact.
+   */
+  readonly installKind?: InstallKind["kind"];
   /** Did this member answer THIS sweep? Three consecutive misses release its turn. */
   readonly answered: boolean;
   /** That member's own run record as it reported it (§20), or null. */
@@ -507,6 +523,8 @@ export interface TurnSweep {
 
 /** Whether a member may be handed the turn: behind, reachable, and preflight-clean. */
 function eligible(m: TurnMember, leg: PeerLeg | undefined): boolean {
+  // Every terminal state excludes, and `package-managed` is one of them — which is why a packaged
+  // member never receives `X-Pack-Update-Turn` without a second rule stated here.
   if (leg === undefined || leg.state !== "waiting") return false;
   // `null` is UNKNOWN and it blocks, exactly as it does on the card (§19): "we could not check this
   // machine" is not "this machine is fine".
@@ -527,6 +545,13 @@ function legOf(
   // `collie pack update <member>` over the operator's own SSH.
   if (version !== null && compareSemver(version, a.target) >= 0) {
     return { ...base, state: "done", updatedAt: a.now };
+  }
+  // A PACKAGE MANAGER OWNS THAT MACHINE (ADR 0035). Read after `done` — a packaged member already on
+  // the target is done, which is the truer sentence — and before everything a sweep observes, because
+  // this is a property of the machine rather than of this sweep: no answer, no run and no number of
+  // missed sweeps changes it. Terminal, so the queue never parks it on `waiting` and never waits.
+  if (m.installKind === "packaged") {
+    return { ...base, state: "package-managed", reason: `${m.memberId} takes its updates from its package manager` };
   }
   if (m.run !== null && m.run.runId === a.runId) {
     if (PEER_IN_FLIGHT.has(m.run.state)) {
