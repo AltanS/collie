@@ -64,6 +64,24 @@ describe("flake.nix and MIN_BUN", () => {
     }
   });
 
+  test("the nixpkgs revision in flake.nix is the one flake.lock recorded", () => {
+    // `inputs.nixpkgs.url` and the lock are one pin written twice, and only the LOCK is what `nix
+    // build` fetches. Editing the rev without running `nix flake lock` therefore builds the old
+    // nixpkgs under a new commit id, and the release would name a toolchain it did not use.
+    const declared = /inputs\.nixpkgs\.url = "github:NixOS\/nixpkgs\/([0-9a-f]{40})";/.exec(
+      readFileSync(join(ROOT, "flake.nix"), "utf8"),
+    );
+    if (declared === null) {
+      throw new Error("flake.nix no longer pins nixpkgs by a 40-character revision — this test reads that line");
+    }
+    // SAFETY: the shape is asserted, not trusted — every step to `rev` is optional, so a lock that
+    // does not have it reads as `undefined` and fails the comparison below rather than throwing.
+    const lock = JSON.parse(readFileSync(join(ROOT, "flake.lock"), "utf8")) as {
+      nodes: { nixpkgs?: { locked?: { rev?: string } } };
+    };
+    expect(lock.nodes.nixpkgs?.locked?.rev).toBe(declared[1]!);
+  });
+
   test("compare orders versions numerically, not as text", () => {
     expect(compare("1.10.0", "1.9.0")).toBe(1);
     expect(compare("1.3.14", "1.3.14")).toBe(0);
