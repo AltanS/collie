@@ -723,6 +723,7 @@ export const zhTW: Dictionary = {
   "apiError.update.major_confirm_required": "{version} 跨越主要版本，需要另外確認。",
   "apiError.update.target_mismatch": "目前介面顯示的是 {asked}，但此 collie 將安裝 {would}。請重新載入查看。",
   "apiError.update.none_available": "沒有可更新的版本。",
+  "apiError.update.system_owned": "此安裝歸 root 所有。請以當初安裝它的方式進行更新。",
   "apiError.update.start_failed": "無法啟動更新：{reason}",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "更新 Collie",

@@ -775,6 +775,7 @@ export const en = {
   "apiError.update.major_confirm_required": "{version} crosses a major, and a major needs its own confirm.",
   "apiError.update.target_mismatch": "This screen offered {asked}, but this collie would install {would}. Reload and read it again.",
   "apiError.update.none_available": "There is no newer release to take.",
+  "apiError.update.system_owned": "This install is owned by root. Update it the way it was installed.",
   "apiError.update.start_failed": "The update couldn't be started: {reason}",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "Update Collie",

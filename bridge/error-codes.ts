@@ -171,6 +171,12 @@ export const ERROR_CODES = {
   "update.target_mismatch": "this device asked for {asked}, but this collie would install {would}",
   /** Nothing newer to take. */
   "update.none_available": "there is no newer release to take",
+  /**
+   * The install is owned by root (ADR 0035). Its own preflight is GREEN, so nothing else on this
+   * gate would stop the start — which is exactly why this refusal exists here and not only in the
+   * client, whose disabled button this file's own contract calls a courtesy.
+   */
+  "update.system_owned": "this install is owned by root — Collie does not replace its files; update it the way it was installed",
   /** The handoff itself failed — nothing was staged and nothing restarted. */
   "update.start_failed": "the update could not be started: {reason}",
 } as const;
