@@ -748,6 +748,7 @@ export const zh: Dictionary = {
   "settings.updateCard.summary.amber.one": "{count} 项黄色",
   "settings.updateCard.summary.amber.other": "{count} 项黄色",
   "settings.updateCard.preflightUnavailable": "无法在此机器上运行预检。",
+  "settings.updateCard.packageManaged": "此安装由你的软件包管理器更新，Collie 不会从这里更新它。",
   "settings.updateCard.remedy": "修复命令：{command}",
   "settings.updateCard.confirmTitle": "更新至 {version}？",
   "settings.updateCard.confirmBody": "终端会话将保持连接。手机端视图将中断最多 30 秒。",

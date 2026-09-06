@@ -655,3 +655,46 @@ describe("restarting gap is not an outage", () => {
     expect(isReloadHeld()).toBe(false);
   });
 });
+
+// ── A packaged install (ADR 0035) ────────────────────────────────────────────
+// Its preflight is GREEN — nothing is wrong with it — but it can never take an update from this
+// card, because the CLI refuses on a root it cannot write and `POST /api/update` would only relay
+// that refusal. An enabled button here is a button that always fails.
+
+describe("UpdateCard — an install a package manager owns", () => {
+  it("disables the update action even though every check is green", async () => {
+    const update = info({ installKind: "system-package" });
+    serveCheck(update, GREEN_SIX);
+    renderCard(update);
+    const button = await screen.findByRole("button", { name: /Update to 1\.4\.0/i });
+    await waitFor(() => expect(button).toBeDisabled());
+  });
+
+  it("says who does update it, instead of showing a preflight failure that did not happen", async () => {
+    const update = info({ installKind: "system-package" });
+    serveCheck(update, GREEN_SIX);
+    renderCard(update);
+    expect(await screen.findByText(/package manager updates this install/i)).toBeInTheDocument();
+  });
+
+  it("disables crossing a major too — that is the same refusal, not a separate path", async () => {
+    const update = info({
+      installKind: "system-package",
+      majorAvailable: "2.0.0",
+      majorUrl: "https://github.com/AltanS/collie/releases/tag/v2.0.0",
+    });
+    serveCheck(update, GREEN_SIX);
+    renderCard(update);
+    const cross = await screen.findByRole("button", { name: /Cross to 2\.0\.0/i });
+    await waitFor(() => expect(cross).toBeDisabled());
+  });
+
+  it("a green preflight on any other kind still leaves the action enabled", async () => {
+    // The control that keeps the case above from passing for the wrong reason.
+    const update = info({ installKind: "detached-checkout" });
+    serveCheck(update, GREEN_SIX);
+    renderCard(update);
+    const button = await screen.findByRole("button", { name: /Update to 1\.4\.0/i });
+    await waitFor(() => expect(button).toBeEnabled());
+  });
+});

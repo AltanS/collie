@@ -770,6 +770,7 @@ export const ja: Dictionary = {
   "settings.updateCard.summary.amber.one": "黄 {count}件",
   "settings.updateCard.summary.amber.other": "黄 {count}件",
   "settings.updateCard.preflightUnavailable": "このマシンでは事前チェックを実行できませんでした。",
+  "settings.updateCard.packageManaged": "このインストールはパッケージマネージャーが更新します。Collie はここからは更新しません。",
   "settings.updateCard.remedy": "対処法: {command}",
   "settings.updateCard.confirmTitle": "{version} に更新しますか？",
   "settings.updateCard.confirmBody": "端末セッションは維持されます。スマホ画面は最大 30 秒間切断されます。",

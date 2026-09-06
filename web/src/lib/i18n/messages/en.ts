@@ -796,6 +796,7 @@ export const en = {
   "settings.updateCard.summary.amber.one": "{count} amber",
   "settings.updateCard.summary.amber.other": "{count} amber",
   "settings.updateCard.preflightUnavailable": "The preflight couldn't be run on this machine.",
+  "settings.updateCard.packageManaged": "Your package manager updates this install. Collie won't take it from here.",
   "settings.updateCard.remedy": "Fix: {command}",
   "settings.updateCard.confirmTitle": "Update to {version}?",
   "settings.updateCard.confirmBody": "Your terminal session stays alive. The phone view drops for up to 30 seconds.",

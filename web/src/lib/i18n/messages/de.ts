@@ -783,6 +783,7 @@ export const de: Dictionary = {
   "settings.updateCard.summary.amber.one": "{count} gelb",
   "settings.updateCard.summary.amber.other": "{count} gelb",
   "settings.updateCard.preflightUnavailable": "Der Preflight konnte auf diesem Rechner nicht ausgeführt werden.",
+  "settings.updateCard.packageManaged": "Diese Installation wird von deiner Paketverwaltung aktualisiert. Collie übernimmt das hier nicht.",
   "settings.updateCard.remedy": "Behebung: {command}",
   "settings.updateCard.confirmTitle": "Auf {version} aktualisieren?",
   "settings.updateCard.confirmBody": "Die Terminal-Sitzung bleibt aktiv. Die mobile Ansicht trennt sich für bis zu 30 Sekunden.",
