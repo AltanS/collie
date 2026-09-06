@@ -753,7 +753,7 @@ describe("the dispatcher", () => {
 // said yes, so the phone asked for Bun on a host whose service could not see it. A packaged install
 // is the honest end of that thread — nothing here compiles, and nothing here is even writable.
 
-describe("preflight — a package manager owns the install", () => {
+describe("preflight — a tree the system owns", () => {
   /** A Collie under a root the running user cannot write, with a release listing that answers. */
   function packaged(over: Parameters<typeof harness>[0] = {}) {
     const h = harness({
@@ -764,7 +764,7 @@ describe("preflight — a package manager owns the install", () => {
       },
       ...over,
     });
-    h.files.unwritable.add(ROOT);
+    h.files.rootOwned.add(ROOT);
     return h;
   }
 
@@ -785,7 +785,9 @@ describe("preflight — a package manager owns the install", () => {
     const check = byId(await preflight(packaged().deps), "install");
     expect(check.verdict).toBe("green");
     expect(check.reason).toContain(ROOT);
-    expect(check.reason).toContain("not writable");
+    expect(check.reason).toContain("owned by root");
+    // It states the OWNERSHIP and never asserts who installed it — the tree cannot say.
+    expect(check.reason).not.toContain("package manager");
   });
 
   test("an upstream remedy never tells this install to run `collie update`", async () => {
@@ -808,8 +810,36 @@ describe("preflight — a package manager owns the install", () => {
     const check = byId(await preflight(h.deps), "upstream");
     expect(check.remedy).toBeDefined();
     expect(check.remedy).not.toContain("collie update");
-    expect(check.remedy).toContain("package manager that installed Collie");
+    expect(check.remedy).toContain("the way this install arrived");
     // The REASON is untouched: that a release exists is true however it gets applied.
     expect(check.reason).toContain("2.0.0");
+  });
+
+  test("a remedy that has nothing to do with `collie update` is left ALONE", async () => {
+    // The regression this pins. The first cut replaced EVERY upstream remedy, so an offline
+    // system-owned host was told to run its package manager instead of "check this machine's
+    // network" — and because that check is red, the clobbered sentence became the blocking reason
+    // the phone displayed, hiding the real fault behind advice that fixes nothing.
+    const h = packaged({
+      net: {
+        ...deadNet,
+        getJson: () => Promise.resolve({ ok: false, failure: { status: null, message: "no route to host" } }),
+      },
+    });
+    const check = byId(await preflight(h.deps), "upstream");
+    expect(check.verdict).toBe("red");
+    expect(check.remedy).toContain("network");
+    expect(check.remedy).not.toContain("the way this install arrived");
+  });
+
+  test("the rate-limit remedy survives too — same rule, different sentence", async () => {
+    const h = packaged({
+      net: {
+        ...deadNet,
+        getJson: () => Promise.resolve({ ok: false, failure: { status: 429, message: "rate limited" } }),
+      },
+    });
+    const check = byId(await preflight(h.deps), "upstream");
+    expect(check.remedy).toContain("wait an hour");
   });
 });

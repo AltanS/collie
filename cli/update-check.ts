@@ -12,6 +12,8 @@ import type { Finding } from "./finding.ts";
 import {
   binaryLayout,
   classifyInstall,
+  SYSTEM_OWNED_REMEDY,
+  systemOwnedReason,
   gitArgs,
   type InstallKind,
   originMatches,
@@ -151,25 +153,23 @@ const DISK_AMBER_KB = 1024 * 1024;
 const MIN_BUN = "1.3.14";
 
 /**
- * What to tell an operator whose Collie was laid down by a package manager.
+ * Replace a remedy that tells a system-owned install to run `collie update`, and ONLY such a remedy.
  *
- * Deliberately does NOT name one manager as THE command. Collie can see that its root is not
- * writable, which is what makes the update someone else's — but nothing on disk says whose. Naming
- * examples is honest; naming one as the instruction would be a guess printed as a fact.
- */
-const PACKAGE_MANAGER_REMEDY =
-  "update through the package manager that installed Collie (`pacman -Syu`, `brew upgrade`, …)";
-
-/**
- * Every upstream verdict names `collie update` as its remedy, and an OS-package install must not run
- * it. The one line that would mislead is replaced here rather than threaded through each plan branch
- * — this is the single place that knows both the finished check and the install kind.
+ * The first cut of this replaced every remedy the upstream check carried, which was wrong and
+ * actively harmful: `upstreamCheck` is also where "check this machine's network", "wait an hour,
+ * then re-run this check" and "reinstall from docs/install.md" come from. Those are red verdicts, so
+ * the clobbered sentence became the blocking reason the phone card displayed — an offline host being
+ * told to run its package manager, which fixes nothing and hides the real fault.
  *
- * The REASON is left exactly as it was: "v1.6.0 resolves on github.com/AltanS/collie" is true however
- * the update is going to be applied, and an operator is better served knowing a release exists.
+ * So the test is the text: only a remedy that actually names `collie update` is the one this install
+ * must not follow. Everything else is advice that is true whoever applies the update.
+ *
+ * The REASON is never touched. "v1.6.0 resolves on github.com/AltanS/collie" is true however the
+ * update gets applied, and an operator is better served knowing a release exists.
  */
-function externallyManaged(check: PreflightCheck): PreflightCheck {
-  return check.remedy === undefined ? check : { ...check, remedy: PACKAGE_MANAGER_REMEDY };
+function systemOwnedRemedy(check: PreflightCheck): PreflightCheck {
+  if (check.remedy === undefined || !check.remedy.includes("collie update")) return check;
+  return { ...check, remedy: SYSTEM_OWNED_REMEDY };
 }
 
 /** The kinds that rebuild from source, and therefore need Bun. A binary install compiles nothing. */
@@ -565,7 +565,7 @@ export function serviceCheck(deps: UpdateCheckDeps): PreflightCheck {
 /** Every instance check, in the order they print. */
 export async function instanceChecks(deps: UpdateCheckDeps, toTag: string | null = null): Promise<PreflightCheck[]> {
   const install = classifyInstall(probeInstall(deps, deps.ctx.root));
-  if (install.kind === "system-package") {
+  if (install.kind === "system-owned") {
     // A SHORTER LIST, and every omission is a fact rather than a courtesy. No Bun check because
     // nothing here compiles; no tree check because there is no working tree to be dirty; no disk
     // floor because the floor exists for a staged payload and this install stages nothing — free
@@ -573,11 +573,8 @@ export async function instanceChecks(deps: UpdateCheckDeps, toTag: string | null
     // what still means something: is this Collie healthy, is a release out, and is the service up.
     return [
       await doctorCheck(deps),
-      green(
-        "install",
-        `${deps.ctx.root} is not writable here, so a package manager owns this install and its updates`,
-      ),
-      externallyManaged(await upstreamCheck(deps, install, toTag)),
+      green("install", systemOwnedReason(deps.ctx.root)),
+      systemOwnedRemedy(await upstreamCheck(deps, install, toTag)),
       serviceCheck(deps),
     ];
   }

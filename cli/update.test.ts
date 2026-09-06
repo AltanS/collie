@@ -2030,14 +2030,14 @@ describe("the update run id", () => {
 // the correct outcome, not a diagnosis failure — and it has to READ that way, because the shape used
 // to fall out as `unknown` and tell operators their packaged install was unrecognisable.
 
-describe("cmdUpdate — a system package", () => {
+describe("cmdUpdate — a tree the system owns", () => {
   /** A root with a marker, no `.git`, and no write permission for this user. */
   function packaged() {
     const h = harness({
       answers: [[`${GIT} rev-parse --git-dir`, { code: 128 }]],
       installed: "1.5.2",
     });
-    h.files.unwritable.add(ROOT);
+    h.files.rootOwned.add(ROOT);
     return h;
   }
 
@@ -2049,15 +2049,30 @@ describe("cmdUpdate — a system package", () => {
     expect(h.restarts).toBe(0);
   });
 
-  test("it says who owns the update, and does not claim it cannot tell", async () => {
+  test("it states the ownership, offers both ways out, and asserts no provenance", async () => {
     const h = packaged();
     await cmdUpdate(h.deps);
     const said = h.io.stderr.join("\n");
-    expect(said).toContain("package manager");
     expect(said).toContain(ROOT);
-    expect(said).toContain("not writable");
-    // The old wording for this shape. Printing it at a packaged install is the bug being fixed.
+    expect(said).toContain("owned by root");
+    // BOTH exits, because the tree cannot say which one applies. Asserting a package manager sends
+    // whoever unpacked this themselves after a package that does not exist, and never mentions the
+    // remedy that would actually work.
+    expect(said).toContain("If a package manager installed it");
+    expect(said).toContain("take ownership");
+    // The old wording for this shape. Printing it here is the bug the kind exists to fix.
     expect(said).not.toContain("cannot tell how this Collie was installed");
+  });
+
+  test("`--rollback` gets this boundary too, not the checkout lecture", async () => {
+    // `--rollback` is dispatched above the kind fork, so before this it fell through to three
+    // sentences about `versions/` layouts and `git checkout v<version>` — none of which exist here.
+    const h = packaged();
+    expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
+    const said = h.io.stderr.join("\n");
+    expect(said).toContain("owned by root");
+    expect(said).not.toContain("git checkout");
+    expect(said).not.toContain("ADR 0006");
   });
 
   test("a writable root with the same shape still reports the unknown it really is", async () => {
