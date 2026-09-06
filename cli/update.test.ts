@@ -64,9 +64,10 @@ import {
 // managed checkout is never re-linked.
 
 const GIT = `git -C ${ROOT}`;
+const TAG_REMOTE = "https::https://github.com/AltanS/collie.git";
 const DIST = `${ROOT}/web/dist`;
 
-// `git ls-remote --tags origin` as the remote actually answers: an ANNOTATED tag appears twice, and
+// `git ls-remote --tags` as the remote actually answers: an ANNOTATED tag appears twice, and
 // the peeled (`^{}`) line is the one naming a commit. `nightly` is the ref the anchor must drop;
 // `v1.1.0-rc.1` is parsed but reachable only by an install that is itself on a major-1 prerelease.
 const LS_REMOTE = [
@@ -386,7 +387,7 @@ describe("updateCheckout", () => {
       installed,
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
         ...SHALLOW,
         [`${GIT} log -1`, { stdout: "abc1234 the newest release\n" }],
@@ -471,7 +472,7 @@ describe("updateCheckout", () => {
     // A STORING refspec, not the bare ref: the bare form writes FETCH_HEAD and stores no local tag,
     // after which `vite.config.ts` finds no `refs/tags/v0.32.0` at HEAD and stamps the build `-dev`.
     expect(gitRuns(h.exec)).toEqual([
-      `${GIT} fetch --depth 1 origin +refs/tags/v0.32.0:refs/tags/v0.32.0`,
+      `${GIT} fetch --depth 1 ${TAG_REMOTE} +refs/tags/v0.32.0:refs/tags/v0.32.0`,
       `${GIT} checkout -q --detach --force FETCH_HEAD`,
     ]);
     expect(h.io.stdout.join("\n")).toContain("detach onto v0.32.0");
@@ -485,7 +486,7 @@ describe("updateCheckout", () => {
       installed: "0.32.0",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "b2peeled\n" }],
       ],
     });
@@ -498,7 +499,7 @@ describe("updateCheckout", () => {
   test("--major on a managed checkout detaches onto the next major's tag", () => {
     const h = managed([], "0.31.1");
     expect(updateCheckout(h.deps, { crossMajor: true }).code).toBe(EXIT.OK);
-    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch --depth 1 origin +refs/tags/v1.0.0:refs/tags/v1.0.0`);
+    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch --depth 1 ${TAG_REMOTE} +refs/tags/v1.0.0:refs/tags/v1.0.0`);
     expect(h.io.stdout.join("\n")).toContain("crossing to Collie 1.0.0");
   });
 
@@ -514,7 +515,7 @@ describe("updateCheckout", () => {
       installed: "1.0.0-beta.9",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: TRAIN_DONE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: TRAIN_DONE }],
         [`${GIT} rev-parse HEAD`, { stdout: "b9b9b9b9\n" }],
         ...SHALLOW,
         [`${GIT} log -1`, { stdout: "d0d0d0d the release\n" }],
@@ -522,7 +523,7 @@ describe("updateCheckout", () => {
     });
     expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     // v1.0.0, NOT v1.0.0-beta.10: the release supersedes every beta that led to it.
-    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch --depth 1 origin +refs/tags/v1.0.0:refs/tags/v1.0.0`);
+    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch --depth 1 ${TAG_REMOTE} +refs/tags/v1.0.0:refs/tags/v1.0.0`);
     expect(h.io.stdout.join("\n")).toContain("detach onto v1.0.0");
   });
 
@@ -531,7 +532,7 @@ describe("updateCheckout", () => {
       installed: "1.0.0-beta.9",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: BETA_TRAIN }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: BETA_TRAIN }],
         [`${GIT} rev-parse HEAD`, { stdout: "b9b9b9b9\n" }],
         ...SHALLOW,
         [`${GIT} log -1`, { stdout: "c0c0c0c the next beta\n" }],
@@ -540,7 +541,7 @@ describe("updateCheckout", () => {
     expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     // A prerelease tag name reaches `refs/tags/` untouched — it is a ref like any other.
     expect(gitRuns(h.exec)).toEqual([
-      `${GIT} fetch --depth 1 origin +refs/tags/v1.0.0-beta.10:refs/tags/v1.0.0-beta.10`,
+      `${GIT} fetch --depth 1 ${TAG_REMOTE} +refs/tags/v1.0.0-beta.10:refs/tags/v1.0.0-beta.10`,
       `${GIT} checkout -q --detach --force FETCH_HEAD`,
     ]);
     expect(h.io.stdout.join("\n")).toContain("detach onto v1.0.0-beta.10");
@@ -551,7 +552,7 @@ describe("updateCheckout", () => {
       installed: "1.0.0-beta.10",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: BETA_TRAIN }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: BETA_TRAIN }],
         [`${GIT} rev-parse HEAD`, { stdout: "c0c0c0c0\n" }],
       ],
     });
@@ -569,7 +570,7 @@ describe("updateCheckout", () => {
       installed: "1.0.0",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "cccccccc\n" }],
       ],
     });
@@ -584,7 +585,7 @@ describe("updateCheckout", () => {
       installed: "1.0.0-beta.5",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: ONLY_0X }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: ONLY_0X }],
         [`${GIT} rev-parse HEAD`, { stdout: "zzz\n" }],
       ],
     });
@@ -597,7 +598,7 @@ describe("updateCheckout", () => {
     const h = harness({
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "zzz\n" }],
         ...SHALLOW,
         [`${GIT} log -1`, { stdout: "abc1234 tip\n" }],
@@ -605,7 +606,7 @@ describe("updateCheckout", () => {
     });
     expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     expect(gitRuns(h.exec)).toEqual([
-      `${GIT} fetch --depth 1 origin +refs/tags/v1.0.0:refs/tags/v1.0.0`,
+      `${GIT} fetch --depth 1 ${TAG_REMOTE} +refs/tags/v1.0.0:refs/tags/v1.0.0`,
       `${GIT} checkout -q --detach --force FETCH_HEAD`,
     ]);
     expect(h.io.stdout.join("\n")).toContain("pinning to newest release tag v1.0.0");
@@ -615,7 +616,7 @@ describe("updateCheckout", () => {
     const h = harness({
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: "" }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: "" }],
         [`${GIT} rev-parse HEAD`, { stdout: "zzz\n" }],
       ],
     });
@@ -629,13 +630,13 @@ describe("updateCheckout", () => {
     // detached — a destruction the operator never asked for and cannot undo.
     const h = harness({ installed: "0.31.1", answers: [
       ...MANAGED,
-      [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+      [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
       [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
       ...FULL,
     ] });
     expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
     // …and the storing refspec rides along on the full-clone variant too.
-    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch origin +refs/tags/v0.32.0:refs/tags/v0.32.0`);
+    expect(gitRuns(h.exec)[0]).toBe(`${GIT} fetch ${TAG_REMOTE} +refs/tags/v0.32.0:refs/tags/v0.32.0`);
   });
 
   test("a non-git checkout names the reinstall command and fails", () => {
@@ -648,7 +649,7 @@ describe("updateCheckout", () => {
   test("an unreachable remote fails before anything moves", () => {
     const h = harness({
       installed: "0.31.1",
-      answers: [...MANAGED, [`${GIT} ls-remote --tags origin`, { code: 128 }]],
+      answers: [...MANAGED, [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { code: 128 }]],
     });
     expect(updateCheckout(h.deps).code).toBe(EXIT.FAIL);
     expect(gitRuns(h.exec)).toEqual([]);
@@ -658,7 +659,7 @@ describe("updateCheckout", () => {
   test("a failed fetch stops before the checkout", () => {
     const h = managed([[`${ROOT}$ ${GIT} fetch`, { code: 1 }]]);
     expect(updateCheckout(h.deps).code).toBe(EXIT.FAIL);
-    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch --depth 1 origin +refs/tags/v0.32.0:refs/tags/v0.32.0`]);
+    expect(gitRuns(h.exec)).toEqual([`${GIT} fetch --depth 1 ${TAG_REMOTE} +refs/tags/v0.32.0:refs/tags/v0.32.0`]);
   });
 });
 
@@ -721,7 +722,7 @@ describe("update", () => {
       installed: "0.31.1",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
         ...SHALLOW,
       ],
@@ -745,7 +746,7 @@ describe("update", () => {
       installed: "0.31.1",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
         ...SHALLOW,
       ],
@@ -766,7 +767,7 @@ describe("update", () => {
       installed: "0.32.0",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "b2peeled\n" }],
       ],
     });
@@ -823,7 +824,7 @@ describe("update", () => {
       installed: "0.31.1",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
         ...SHALLOW,
       ],
@@ -841,7 +842,7 @@ describe("update", () => {
       installed: "0.32.0",
       answers: [
         ...LINKED,
-        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "b2peeled\n" }],
       ],
     });
@@ -860,7 +861,7 @@ describe("update", () => {
       installed: "0.31.1",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
         ...SHALLOW,
       ],
@@ -877,7 +878,7 @@ describe("update", () => {
       installed: "0.31.1",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: ONLY_0X }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: ONLY_0X }],
         [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
         ...SHALLOW,
       ],
@@ -891,7 +892,7 @@ describe("update", () => {
       installed: "0.31.1",
       answers: [
         ...MANAGED,
-        [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
         ...SHALLOW,
       ],
@@ -938,7 +939,11 @@ describe("the origin assertion", () => {
 
   test("COLLIE_UPDATE_REPO moves the assertion — one override, banner and updater together", async () => {
     const h = harness({
-      answers: [...forked, ...MANAGED, [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }]],
+      answers: [
+        ...forked,
+        ...MANAGED,
+        [`${GIT} ls-remote --tags https::https://github.com/youngsecurity/collie.git`, { stdout: LS_REMOTE }],
+      ],
       installed: "1.0.0",
       env: { COLLIE_UPDATE_REPO: "youngsecurity/collie" },
     });
@@ -1376,7 +1381,7 @@ function legacyClone(over: { answers?: Scripted["answers"]; absent?: string[]; i
     answers: [
       ...(over.answers ?? []),
       ...(LINKED ?? []),
-      [`${GIT} ls-remote --tags origin`, { stdout: LS_REMOTE }],
+      [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
       [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
       ...(FULL ?? []),
     ],
@@ -1463,7 +1468,7 @@ describe("the staged checkout path", () => {
     const h = legacyClone();
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     // The tag is FETCHED and STORED, then a worktree of it is added beside the running install.
-    expect(gitRuns(h.exec)).toContain(`${GIT} fetch origin +refs/tags/v0.32.0:refs/tags/v0.32.0`);
+    expect(gitRuns(h.exec)).toContain(`${GIT} fetch ${TAG_REMOTE} +refs/tags/v0.32.0:refs/tags/v0.32.0`);
     expect(gitRuns(h.exec)).toContain(
       `${GIT} worktree add --detach --force ${WT("v0.32.0")} refs/tags/v0.32.0`,
     );
@@ -1533,7 +1538,7 @@ describe("the staged checkout path", () => {
   });
 
   test("a fetch that fails stops before any worktree is added", async () => {
-    const h = legacyClone({ answers: [[`${ROOT}$ git -C ${ROOT} fetch origin +refs/tags`, { code: 1 }]] });
+    const h = legacyClone({ answers: [[`${ROOT}$ git -C ${ROOT} fetch ${TAG_REMOTE} +refs/tags`, { code: 1 }]] });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("stopped at the FETCH stage");
     expect(gitRuns(h.exec).join("\n")).not.toContain("worktree add");
@@ -1548,7 +1553,7 @@ describe("the staged checkout path", () => {
   });
 
   test("a staged install that is already current stages nothing at all", async () => {
-    const h = stagedHarness({ answers: [[`git -C ${WT("v1.0.0")} ls-remote --tags origin`, { stdout: LS_REMOTE }]] });
+    const h = stagedHarness({ answers: [[`git -C ${WT("v1.0.0")} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }]] });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     expect(h.io.stdout.join("\n")).toContain("already current");
     expect(h.exec.calls.join("\n")).not.toContain("worktree add");

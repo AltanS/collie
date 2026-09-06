@@ -32,6 +32,7 @@ import type { Environment, EnvVars } from "./context.ts";
 import { EXIT } from "./io.ts";
 import { cmdLink, isCollieBinaryPath, type LinkReader, linkPath, type LinkWriter } from "./link.ts";
 import type { Exec, Files, Net, NetFailure } from "./sys.ts";
+import { tagRemote } from "./update-remote.ts";
 import { collieBinary, unitName } from "./unit.ts";
 import {
   driveApply,
@@ -600,7 +601,7 @@ function updateManaged(
   toTag: string | null,
 ): CheckoutOutcome {
   const root = deps.ctx.root;
-  const ls = deps.exec.capture("git", gitArgs(root, ["ls-remote", "--tags", "origin"]));
+  const ls = deps.exec.capture("git", gitArgs(root, ["ls-remote", "--tags", tagRemote(deps.exec, root)]));
   if (!ls.found || ls.code !== 0) {
     deps.io.err("error: could not list the upstream release tags — is the remote reachable?");
     return { code: EXIT.FAIL, moved: false, higher: null };
@@ -690,9 +691,10 @@ function detachOnto(deps: UpdateDeps, git: (args: readonly string[]) => number, 
   // `--depth 1` ONLY when we are already shallow, so an update never truncates the history of a full
   // clone someone happens to have detached.
   const spec = `+${ref}:${ref}`;
+  const remote = tagRemote(deps.exec, root);
   const fetch = isShallow(deps.exec, root)
-    ? ["fetch", "--depth", "1", "origin", spec]
-    : ["fetch", "origin", spec];
+    ? ["fetch", "--depth", "1", remote, spec]
+    : ["fetch", remote, spec];
   if (git(fetch) !== EXIT.OK) return EXIT.FAIL;
   // `--force` because `build` runs `bun install`, which can rewrite the TRACKED lockfiles: a plain
   // checkout would then refuse on the dirty tree and re-break the very update path this fixes.
@@ -1570,9 +1572,10 @@ function republishName(deps: UpdateDeps, root: string, previousBinary: string): 
 function fetchTag(deps: UpdateDeps, root: string, tag: string): boolean {
   const ref = `refs/tags/${tag}`;
   const spec = `+${ref}:${ref}`;
+  const remote = tagRemote(deps.exec, root);
   const args = isShallow(deps.exec, root)
-    ? ["fetch", "--depth", "1", "origin", spec]
-    : ["fetch", "origin", spec];
+    ? ["fetch", "--depth", "1", remote, spec]
+    : ["fetch", remote, spec];
   const r = deps.exec.runIn("git", gitArgs(root, args), root);
   if (!r.found) {
     deps.io.err("error: git not found — cannot stage a version");
@@ -1608,7 +1611,7 @@ async function updateStagedCheckout(
   // BEFORE any fetch. See {@link assertOrigin}: a fork's tags are not this install's to take.
   if (!assertOrigin(deps, git)) return EXIT.FAIL;
 
-  const ls = deps.exec.capture("git", gitArgs(git, ["ls-remote", "--tags", "origin"]));
+  const ls = deps.exec.capture("git", gitArgs(git, ["ls-remote", "--tags", tagRemote(deps.exec, git)]));
   if (!ls.found || ls.code !== 0) {
     deps.io.err("error: could not list the upstream release tags — is the remote reachable?");
     return EXIT.FAIL;
