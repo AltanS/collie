@@ -626,3 +626,45 @@ describe("the fresh-preflight request, across the link", () => {
     expect(runs).toBe(1);
   });
 });
+
+// ── A root-owned install (ADR 0035) ──────────────────────────────────────────
+// The gate that has to exist HERE, not only in the client. A system-owned install's preflight is
+// green on purpose — nothing is wrong with it — so every other check on this path passes it through.
+// The route that calls this says of itself that "the client's disabled button is a courtesy and this
+// is the actual gate", and without this refusal a stale bundle, a second tab or a plain POST mints a
+// run id and spawns a `collie update` whose only possible outcome is its own refusal.
+
+describe("updateStartVerdict — a root-owned install", () => {
+  test("refuses the start even though the preflight is entirely green", () => {
+    const v = updateStartVerdict(ask(), state({ installKind: "system-owned" }));
+    expect(v.kind).toBe("refuse");
+    if (v.kind !== "refuse") throw new Error("unreachable");
+    expect(v.status).toBe(409);
+    expect(JSON.stringify(v.body)).toContain("update.system_owned");
+  });
+
+  test("the very same state on any other kind still starts", () => {
+    // The control. Without it the case above would pass for a green report that refuses everything.
+    for (const kind of ["detached-checkout", "binary", "linked-clone", "unknown"] as const) {
+      expect(updateStartVerdict(ask(), state({ installKind: kind })).kind).not.toBe("refuse");
+    }
+    // And an absent kind — an older bridge — must not be refused either.
+    expect(updateStartVerdict(ask(), state()).kind).not.toBe("refuse");
+  });
+
+  test("a peers-only run is NOT refused: the lead cannot move itself, the peers are another act", () => {
+    // Placement, asserted. This refusal sits below the peers-only branch so that a packaged lead
+    // keeps the phone's only route to its peers. Moving it up would silently take that away.
+    const v = updateStartVerdict(
+      ask({ peersOnly: true }),
+      state({
+        installKind: "system-owned",
+        latest: "1.3.0",
+        // `rolled-back` is one of the two states peersNeedLevelling recognises; "behind" is not a
+        // leg state, it is a pack row's version comparison.
+        peers: [{ name: "attic", state: "rolled-back" }],
+      }),
+    );
+    expect(v.kind).not.toBe("refuse");
+  });
+});

@@ -762,6 +762,7 @@ export const de: Dictionary = {
   "apiError.update.major_confirm_required": "{version} ist ein Major-Update und erfordert eine eigene Bestätigung.",
   "apiError.update.target_mismatch": "Angezeigt wurde {asked}, aber dieses Collie würde {would} installieren. Bitte neu laden und prüfen.",
   "apiError.update.none_available": "Keine neuere Version verfügbar.",
+  "apiError.update.system_owned": "Diese Installation gehört root. Aktualisiere sie so, wie sie installiert wurde.",
   "apiError.update.start_failed": "Update konnte nicht gestartet werden: {reason}",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "Collie aktualisieren",

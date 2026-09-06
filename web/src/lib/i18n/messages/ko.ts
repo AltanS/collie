@@ -741,6 +741,7 @@ export const ko: Dictionary = {
   "apiError.update.major_confirm_required": "{version} 버전은 메이저 업데이트이므로 별도 승인이 필요합니다.",
   "apiError.update.target_mismatch": "화면에는 {asked} 버전이 표시되었으나 실제로는 {would} 버전이 설치됩니다. 화면을 새로고침하십시오.",
   "apiError.update.none_available": "설치할 최신 릴리스가 없습니다.",
+  "apiError.update.system_owned": "이 설치는 root가 소유합니다. 설치한 방식과 같은 방법으로 업데이트하세요.",
   "apiError.update.start_failed": "업데이트를 시작하지 못했습니다: {reason}",
   // --- settings.updateCard (the update card, M15/05) ---
   "settings.updateCard.title": "Collie 업데이트",
