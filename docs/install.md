@@ -32,10 +32,12 @@ Soft dependencies, needed only for the features next to them:
 
 ## Install
 
-Two ways in:
+Three ways in:
 
 - **[Fresh install](#fresh-install)** — the install script, or the same result from source.
 - **[Through Herdr](#through-herdr)** — Collie goes in as a Herdr plugin, driven by plugin actions.
+- **[From a system package](#from-a-system-package)** — your distribution's package manager installs
+  Collie and owns its updates.
 
 Herdr is one of the three multiplexers Collie can mirror, not a dependency of the program. Which one
 you mirror is the [step after this](#name-your-multiplexer).
@@ -122,6 +124,28 @@ herdr plugin action invoke start --plugin herdr.collie
 Manage via [Herdr actions](commands.md#herdr-actions). For a prerelease, install the tag with
 `herdr plugin install AltanS/collie --ref <tag> --yes`, which is the whole opt-in
 ([Prereleases](upgrading.md#prereleases)).
+
+### From a system package
+
+Where Collie is packaged for your system, install it the way you install anything else and register
+the installed tree with Herdr:
+
+```bash
+makepkg -si                      # from packaging/aur, until collie-bin is on the AUR
+herdr plugin link /usr/lib/collie
+collie start
+```
+
+The package installs the compiled binary the release already publishes. Nothing is built on your
+machine: no Bun, no `git`, no compilation. This is the same channel Herdr itself arrives on under
+Omarchy, where `pacman -Si herdr` names the `omarchy` repository.
+
+> **Note.** Collie will not update a packaged install, and says so if you ask it to. The root is not
+> writable by you, so replacing the binary in place is not something Collie can do — your package
+> manager takes the new version instead. See
+> [a packaged install](upgrading.md#a-packaged-install).
+
+The `PKGBUILD` and its notes live in `packaging/aur/` in this repository. macOS is not packaged.
 
 ### Name your multiplexer
 

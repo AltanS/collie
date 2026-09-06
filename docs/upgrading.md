@@ -25,6 +25,28 @@ Configuration and state sit outside the checkout and persist across updates
 devices and `stt.json` are in the state dir, `~/.local/state/collie` unless `COLLIE_STATE_DIR`
 moves it.
 
+## A packaged install
+
+Where your package manager installed Collie, it updates Collie, and everything below this section
+does not apply:
+
+```bash
+pacman -Syu          # or omarchy-update, or brew upgrade — whatever installed it
+```
+
+Collie recognises this install by a root it cannot write, refuses to update itself there, and names
+the boundary rather than guessing your package manager:
+
+```
+error: /usr/lib/collie was installed by a package manager, which owns its updates.
+```
+
+`collie doctor` reports the same install as healthy, and the phone's update card still tells you a
+newer release exists — it just does not offer to take it.
+
+> **Note.** This is not a limitation to work around. A root you cannot write is the whole reason
+> the update belongs to something that can, and that something is signed, versioned and reversible.
+
 ## Update, from the phone or the terminal
 
 Two update paths exist, and both run the same steps on each host: stage the new release beside the
