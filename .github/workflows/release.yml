@@ -166,7 +166,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      # The same flake as the payload job, for the same reason: this job builds the `web/dist`
+      # asset the demo runs, and reads the manifest back with Bun.
+      - uses: DeterminateSystems/nix-installer-action@v22
 
       - uses: actions/download-artifact@v4
         with:
@@ -183,7 +185,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          (cd web && bun install --frozen-lockfile && bun run build)
+          nix develop --command bash -c "cd web && bun install --frozen-lockfile && bun run build"
           tar -czf "$RUNNER_TEMP/assets/web-dist-$version.tar.gz" -C web dist
 
       - name: Write the integrity manifest
@@ -225,7 +227,7 @@ jobs:
           rm -f ./*.artifact.json
           # Machine-readable proof that the document we just wrote is JSON, before anyone downloads
           # it: a manifest that does not parse fails the release, not the operator's update.
-          bun -e 'JSON.parse(await Bun.file(process.argv[1]).text())' "collie-$version.manifest.json"
+          nix develop --command bun -e 'JSON.parse(await Bun.file(process.argv[1]).text())' "collie-$version.manifest.json"
           # A sidecar beside EVERY asset, including the manifest — `sha256sum -c <asset>.sha256` on
           # Linux, `shasum -a 256 -c` on macOS, both unmodified.
           for f in *.tar.gz *.manifest.json; do
