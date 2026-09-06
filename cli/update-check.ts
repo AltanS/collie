@@ -31,6 +31,7 @@ import {
   sshRunner,
 } from "./remote.ts";
 import { realExec, realFiles, realNet, type Exec, type Files, type Net } from "./sys.ts";
+import { tagRemote } from "./update-remote.ts";
 import {
   MAJOR_ACTION,
   parseApiTags,
@@ -367,7 +368,7 @@ export async function upstreamCheck(
   // `--to-tag` asks a different question of the same listing: not "what would an update take" but
   // "does THIS release resolve here, and may this install take it". It is what a peer following its
   // lead asks before it spawns anything (M16/04), and it is answered by the same `listTags()`
-  // through the same `anonymousTagUrl()` — no second listing, no credential, no new mechanism.
+  // through the same `tagRemote()` — no second listing, no credential, no new mechanism.
   if (toTag !== null) {
     const pinned = planToTag({ tags: listed.tags, installed, wanted: toTag });
     return pinned.kind === "refused"
@@ -424,33 +425,6 @@ type TagListing =
 const LS_REMOTE_TIMEOUT_MS = 15_000;
 
 /**
- * The URL a READ-ONLY tag listing should use for `origin`.
- *
- * Listing the tags of a public repository must not depend on a credential. The bridge runs as a
- * systemd user service with no access to the operator's SSH agent, so `git ls-remote origin` on a
- * checkout whose origin is `git@github.com:AltanS/collie.git` fails with "Permission denied
- * (publickey)" — a red preflight that has nothing to do with whether an update could succeed.
- * A GitHub SSH remote is therefore listed over anonymous HTTPS instead. Every other URL is used
- * exactly as git reports it: a self-hosted mirror or a local path is not ours to rewrite.
- */
-export function anonymousTagUrl(url: string): string {
-  const raw = url.trim();
-  const scp = /^git@github\.com:(.+)$/i.exec(raw);
-  const ssh = /^ssh:\/\/git@github\.com\/(.+)$/i.exec(raw);
-  const path = scp?.[1] ?? ssh?.[1];
-  if (path === undefined) return raw;
-  const repo = path.replace(/\/+$/, "").replace(/\.git$/, "");
-  return repo === "" ? raw : `https://github.com/${repo}.git`;
-}
-
-/** What `origin` is called on the wire for a read-only listing — the URL, or the name as a fallback. */
-function tagRemote(deps: UpdateCheckDeps): string {
-  const r = deps.exec.capture("git", gitArgs(deps.ctx.root, ["remote", "get-url", "origin"]));
-  const url = r.found && r.code === 0 ? r.stdout.trim() : "";
-  return url === "" ? "origin" : anonymousTagUrl(url);
-}
-
-/**
  * Why a `git ls-remote` failed, in the only two families a remedy can differ on.
  *
  * `network` is the one the operator fixes by getting the machine online; everything else is the
@@ -482,7 +456,7 @@ const TAG_REMEDY = {
  */
 async function listTags(deps: UpdateCheckDeps, install: InstallKind, repo: string): Promise<TagListing> {
   if (isCheckout(install)) {
-    const remote = tagRemote(deps);
+    const remote = tagRemote(deps.exec, deps.ctx.root);
     const ls = deps.exec.capture(
       "git",
       gitArgs(deps.ctx.root, ["ls-remote", "--tags", remote]),

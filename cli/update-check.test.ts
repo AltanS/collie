@@ -23,7 +23,6 @@ import type { RemoteResult, RemoteRunner } from "./remote.ts";
 import type { Net } from "./sys.ts";
 import { unitFilePath } from "./unit.ts";
 import {
-  anonymousTagUrl,
   bunCheck,
   checkLine,
   classifyTagFailure,
@@ -418,17 +417,8 @@ describe("preflight — the upstream check", () => {
     });
     await preflight(h.deps);
     const listing = h.exec.calls.find((c) => c.includes("ls-remote"))!;
-    expect(listing).toBe(`${GIT} ls-remote --tags https://github.com/AltanS/collie.git`);
+    expect(listing).toBe(`${GIT} ls-remote --tags https::https://github.com/AltanS/collie.git`);
     expect(h.exec.timeouts.find((t) => t.call.includes("ls-remote"))?.ms).toBe(15_000);
-  });
-
-  test("anonymousTagUrl maps the GitHub ssh spellings to https and leaves everything else alone", () => {
-    expect(anonymousTagUrl("git@github.com:a/b.git")).toBe("https://github.com/a/b.git");
-    expect(anonymousTagUrl("git@github.com:a/b")).toBe("https://github.com/a/b.git");
-    expect(anonymousTagUrl("ssh://git@github.com/a/b.git")).toBe("https://github.com/a/b.git");
-    expect(anonymousTagUrl("https://github.com/a/b.git")).toBe("https://github.com/a/b.git");
-    expect(anonymousTagUrl("git@git.example.com:a/b.git")).toBe("git@git.example.com:a/b.git");
-    expect(anonymousTagUrl("/srv/mirrors/collie.git")).toBe("/srv/mirrors/collie.git");
   });
 
   test("the failure classifier tells a dead network from a credential", () => {
