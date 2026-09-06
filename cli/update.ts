@@ -881,6 +881,14 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
   if (wantsStatus(args)) return cmdUpdateStatus(deps, args);
   if (args.includes("--rollback")) {
     if (install.kind === "binary") return await rollbackBinary(deps);
+    if (install.kind === "system-owned") {
+      // Above the checkout branch on purpose: the message below it is three sentences about
+      // `versions/` layouts and `git checkout`, none of which exist here, and the real answer is the
+      // package manager's own downgrade (`pacman -U` from the cache, `brew` an older formula).
+      deps.io.err(`error: ${deps.ctx.root} is owned by root — Collie stages no versions here to roll back to.`);
+      deps.io.err("       Reinstall the previous version the way this one arrived.");
+      return EXIT.FAIL;
+    }
     if (staged && layout !== null) return await rollbackCheckout(deps, layout);
     deps.io.err("error: `--rollback` flips the `current` symlink back to the previous version, and this");
     deps.io.err("       install has no `versions/` layout to flip inside — a Herdr-managed checkout");
@@ -889,13 +897,14 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     return EXIT.FAIL;
   }
   if (install.kind === "binary") return await updateBinary(deps, args);
-  if (install.kind === "system-package") {
-    // Not a failure to diagnose — a boundary to respect. Replacing `bin/collie` and `web/dist` means
-    // writing into this root, and this user cannot. Whoever can is the one that put them there.
-    deps.io.err(`error: ${deps.ctx.root} was installed by a package manager, which owns its updates.`);
-    deps.io.err("       That root is not writable here, so `collie update` has nothing it may replace.");
-    deps.io.err("       Take the new version the way you installed this one — `pacman -Syu` on Arch,");
-    deps.io.err("       `brew upgrade` on macOS — and the service restarts with it.");
+  if (install.kind === "system-owned") {
+    // Not a failure to diagnose — a boundary to respect. What is OBSERVED is the ownership; who put
+    // the tree there is not, so this says the first and offers both ways out rather than asserting a
+    // package manager exists and sending an operator after one that does not.
+    deps.io.err(`error: ${deps.ctx.root} is owned by root, so \`collie update\` will not replace its files.`);
+    deps.io.err("       If a package manager installed it, take the new version from there.");
+    deps.io.err("       If you unpacked it yourself, reinstall it the same way, or take ownership of");
+    deps.io.err("       the directory and re-run this.");
     return EXIT.FAIL;
   }
   if (install.kind === "unknown") {

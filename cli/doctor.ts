@@ -53,6 +53,7 @@ import {
   probeInstall,
   publishedBinary,
   updateRepoOf,
+  systemOwnedReason,
 } from "./install-kind.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs } from "./link.ts";
 import type { Ui } from "./render.ts";
@@ -402,11 +403,10 @@ function installKind(deps: DoctorDeps, install: InstallKind): Finding {
       const from = origin.kind === "repo" ? origin.repo : origin.kind === "other" ? origin.url : "no origin";
       return ok("install", `linked clone at ${root} (branch ${branch.stdout.trim() || "?"}, origin ${from})`);
     }
-    case "system-package":
-      return ok(
-        "install",
-        `system package at ${root} (version ${version}) — not writable here, so updates come from your package manager`,
-      );
+    case "system-owned":
+      // Ownership, never provenance: the tree says root owns it and says nothing about who put it
+      // there, so neither does this line. `systemOwnedReason` is the one spelling (ADR 0035).
+      return ok("install", `${systemOwnedReason(root)} (version ${version})`);
     case "unknown":
       if (install.why === "orphan-layout") {
         return warn(
@@ -450,6 +450,17 @@ function versionsLayout(deps: DoctorDeps, install: InstallKind): Finding {
   const staged = isStagedCheckout(deps, root);
   if (install.kind === "unknown") {
     return skipped("versions", "install kind unknown — nothing to report a layout for", "see docs/install.md");
+  }
+  if (install.kind === "system-owned") {
+    // The generic line below says "the next `collie update` stages one", which on this kind is a
+    // promise about the exact command that refuses. Before `system-owned` existed the same tree was
+    // `unknown` and this check was skipped, so falling through would be a regression to a false
+    // statement sitting three lines under an install line that says the opposite.
+    return skipped(
+      "versions",
+      `${root} is owned by root — Collie stages no versions in it`,
+      "whatever installed this keeps its own previous versions, if it keeps any",
+    );
   }
   if (!staged && install.kind !== "binary") {
     if (install.kind === "detached-checkout") {
@@ -512,6 +523,12 @@ function worktreeDrift(deps: DoctorDeps, layout: BinaryLayout, dirs: readonly st
  */
 function updateSource(deps: DoctorDeps, install: InstallKind): Finding {
   const repo = updateRepoOf(deps.ctx.env);
+  if (install.kind === "system-owned") {
+    // Naming a GitHub repo here would answer a question this install does not have. Nothing Collie
+    // does fetches from it: `update` refuses, and the release listing is only ever read to say
+    // whether a newer version exists. Where the new files actually come from is not on disk.
+    return ok("update-source", `${deps.ctx.root} is owned by root — updates come from whatever installed it`);
+  }
   const isGit = install.kind === "linked-clone" || install.kind === "detached-checkout";
   if (!isGit) {
     return repo === DEFAULT_UPDATE_REPO
@@ -842,11 +859,15 @@ function restartPending(install: InstallKind): Finding {
   // after, `bridgeStale` is permanently false, and that is correct rather than broken: there is no
   // on-disk source for the process to be behind, and the only way the code changes is an update,
   // which restarts the service itself (M14/01 §4.4). Written here so nobody "fixes" it later.
-  if (install.kind === "binary") {
+  // A system-owned install runs the SAME payload for the same reason — the tree it was unpacked
+  // from carries `bin/collie` and no `bridge/` — so the carve-out is about the payload, not about
+  // the kind. What differs is only who restarts the service afterwards.
+  if (install.kind === "binary" || install.kind === "system-owned") {
+    const who = install.kind === "binary" ? "`collie update` restarts the service itself" : "whatever installs the new version restarts it";
     return skipped(
       "restart-pending",
-      "a binary install ships no bridge/ source, so there is nothing for the running process to be" +
-        " behind — `collie update` restarts the service itself",
+      "this install ships no bridge/ source, so there is nothing for the running process to be" +
+        ` behind — ${who}`,
       "`collie logs` dates the running process",
     );
   }
