@@ -762,6 +762,27 @@ describe("UpdateCard — an install a package manager owns", () => {
   // The second control: an ORDINARY lead in the identical pack shape still leads with its own
   // update. Revert `leadCanTake` and this keeps passing while the two above stop — which is what
   // makes them a statement about the install kind rather than about being behind.
+  // An ORDINARY lead can land in `retry-pack` too — already current on releases, itself blocked by
+  // a genuinely red check, with a peer behind. The reason line is shown here on purpose: it answers
+  // exactly the question a "Retry pack update" button raises while this machine is not moving, and
+  // suppressing it (the pre-fix shape) is what let a packaged lead's OWN reason go unsaid. This is
+  // the case the review asked to see covered, not a boundary the card is trying to avoid.
+  it("an ordinary lead's own red reason shows under retry-pack too, not only a packaged lead's", async () => {
+    const update = info({ installKind: "detached-checkout", releaseAvailable: false });
+    const behind: UpdatePackMember[] = [
+      { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+    ];
+    serveCheck(update, RED, behind);
+    renderCard(update, LEAD_ROSTER);
+    const button = await screen.findByRole("button", { name: "Retry pack update" });
+    // NOT disabled: retry-pack is exempt from `blocked` (a peers-only run works even while this
+    // machine's own preflight is red — the two are unrelated moves). The point of this test is the
+    // REASON line, which is now shown alongside it rather than swallowed.
+    await waitFor(() => expect(button).toBeEnabled());
+    const reasonLine = document.querySelector("p.text-status-blocked");
+    expect(reasonLine).toHaveTextContent("2 tracked files are modified");
+  });
+
   it("control: an ordinary lead with a peer behind still takes the release itself", async () => {
     const update = info({ installKind: "detached-checkout" });
     const behind: UpdatePackMember[] = [
@@ -772,5 +793,22 @@ describe("UpdateCard — an install a package manager owns", () => {
     const button = await screen.findByRole("button", { name: "Update pack to 1.4.0" });
     await waitFor(() => expect(button).toBeEnabled());
     expect(screen.queryByRole("button", { name: "Retry pack update" })).not.toBeInTheDocument();
+  });
+
+  // A REAL fault must never hide behind the package-manager sentence. Before this, `packageManaged`
+  // was checked first, so a system-owned install with an actually broken preflight check (its own
+  // service or doctor, both of which the system-owned instance-check list still runs) showed only
+  // "your package manager updates this install" — true, and useless for finding the real problem.
+  it("shows the genuine red reason, not the package-manager sentence, when BOTH are true", async () => {
+    const update = info({ installKind: "system-owned" });
+    serveCheck(update, RED);
+    renderCard(update);
+    // The red reason appears twice by design — once in the checks list, once as the blocked-reason
+    // line — so this waits for it to land at all and then reads the specific line rather than
+    // asserting a single match, which the details list already rules out.
+    await waitFor(() => expect(screen.getAllByText("2 tracked files are modified").length).toBeGreaterThan(0));
+    const reasonLine = document.querySelector("p.text-status-blocked");
+    expect(reasonLine).toHaveTextContent("2 tracked files are modified");
+    expect(screen.queryByText(/package manager updates this install/i)).not.toBeInTheDocument();
   });
 });

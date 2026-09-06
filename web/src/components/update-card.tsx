@@ -247,11 +247,18 @@ export function UpdateCard() {
   // manufactured red, because NOTHING IS WRONG with it. Its preflight is green on purpose, and
   // painting the card red would report a fault that does not exist.
   const blocked = packageManaged || (checked && (preflight === null || redCheck !== undefined));
-  const blockedReason = packageManaged
-    ? t("settings.updateCard.packageManaged")
-    : redCheck !== undefined
+  // A REAL red check wins over the package-managed sentence, not the other way round. A system-owned
+  // install's own preflight is short and green BY DESIGN — but `doctor` and `service` still run on it
+  // (`cli/update-check.ts`'s system-owned branch keeps both), and either can genuinely be red on a
+  // machine that also happens to be packaged. Checking packageManaged first would bury that fault
+  // under a sentence about a boundary that is working exactly as designed, on every visit, until the
+  // real problem is found some other way.
+  const blockedReason =
+    redCheck !== undefined
       ? redCheck.reason
-      : t("settings.updateCard.preflightUnavailable");
+      : packageManaged
+        ? t("settings.updateCard.packageManaged")
+        : t("settings.updateCard.preflightUnavailable");
 
   // Nothing to take: the running version already IS the newest, no major is waiting, and no run is
   // mid-flight. This is the state the operator sees on almost every visit, so it gets the loudest
