@@ -44,6 +44,7 @@ const run = (over: Partial<UpdateRun> = {}): UpdateRun => ({
 });
 
 const facts = (over: Partial<FollowFacts> = {}): FollowFacts => ({
+  installKind: "detached-checkout",
   own: "1.4.0",
   self: "attic",
   leadRelease: "1.4.1",
@@ -102,6 +103,25 @@ describe("what a lead may state about itself", () => {
 });
 
 describe("the peer's guards", () => {
+  test("guard 0: a root-owned install never follows, whatever else is true", () => {
+    // The regression this pins. A system-owned install's preflight is GREEN BY DESIGN, so before
+    // this guard existed such a peer sailed straight through firstRed() in followDecision and spawned
+    // a `collie update` every hour that could only ever refuse — the exact failure ADR 0035 exists to
+    // eliminate, on this path instead of the phone tap. Every other fact here is otherwise a clean
+    // follow: a real answer would be `{ kind: "follow" }` without this guard.
+    const d = followGuards(facts({ installKind: "system-owned" }));
+    expect(d.kind).toBe("refuse");
+    expect(d.kind === "refuse" && d.reason).toBe("system-owned");
+  });
+
+  test("every other kind still reaches the ordinary guards", () => {
+    // The control: guard 0 must not fire on anything else, or it would silently stop every peer
+    // from following.
+    for (const kind of ["detached-checkout", "linked-clone", "binary", "unknown"] as const) {
+      expect(followGuards(facts({ installKind: kind })).kind).toBe("follow");
+    }
+  });
+
   test("guard 1: a dev build never follows, and says so", () => {
     const d = followGuards(facts({ own: "1.4.0-dev+ab12cd3" }));
     expect(d.kind).toBe("refuse");
@@ -216,11 +236,13 @@ describe("the follower spawns the one updater there is", () => {
   const follower = (over: {
     report?: PreflightReport | null;
     own?: string;
+    installKind?: FollowFacts["installKind"];
     record?: UpdateRun | null;
     start?: (a: { tag: string; runId: string }) => { ok: true } | { ok: false; reason: string };
   } = {}) => {
     const started: { tag: string; runId: string }[] = [];
     const f = new PackFollower({
+      installKind: over.installKind ?? "detached-checkout",
       self: () => ({ version: over.own ?? "1.4.0", self: "attic" }),
       run: () => over.record ?? null,
       preflight: () => Promise.resolve(over.report === undefined ? green : over.report),
@@ -249,6 +271,20 @@ describe("the follower spawns the one updater there is", () => {
     await Promise.resolve();
     expect(started).toEqual([]);
     expect(f.last()?.kind).toBe("refuse");
+  });
+
+  test("a system-owned peer never spawns the updater, on a green preflight, granted a real turn", async () => {
+    // End to end, through the same entry point the router calls on every sweep. Before the guard-0
+    // fix this reached firstRed(green) === null and called deps.start() — spawning a `collie update`
+    // that would only ever refuse on its own system-owned branch, once an hour, forever.
+    const { f, started } = follower({ installKind: "system-owned" });
+    f.observe({ leadRelease: "1.4.1", turn: formatTurn("attic", RUN_ID) });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(started).toEqual([]);
+    const last = f.last();
+    expect(last?.kind).toBe("refuse");
+    expect(last?.kind === "refuse" && last.reason).toBe("system-owned");
   });
 
   test("an updater that will not start is recorded as a refusal rather than thrown", async () => {
