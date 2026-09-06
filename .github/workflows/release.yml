@@ -227,7 +227,9 @@ jobs:
           rm -f ./*.artifact.json
           # Machine-readable proof that the document we just wrote is JSON, before anyone downloads
           # it: a manifest that does not parse fails the release, not the operator's update.
-          nix develop --command bun -e 'JSON.parse(await Bun.file(process.argv[1]).text())' "collie-$version.manifest.json"
+          # This step's cwd is $RUNNER_TEMP/assets, outside the checkout, so the flake must be
+          # named by path — `nix develop` alone finds no flake.nix above the assets directory.
+          nix develop "$GITHUB_WORKSPACE" --command bun -e 'JSON.parse(await Bun.file(process.argv[1]).text())' "collie-$version.manifest.json"
           # A sidecar beside EVERY asset, including the manifest — `sha256sum -c <asset>.sha256` on
           # Linux, `shasum -a 256 -c` on macOS, both unmodified.
           for f in *.tar.gz *.manifest.json; do
