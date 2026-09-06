@@ -32,7 +32,7 @@ import {
   shqPath,
   sshRunner,
 } from "./remote.ts";
-import { realExec, realFiles, realNet, type Exec, type Files, type Net } from "./sys.ts";
+import { realExec, realFiles, realNet, resolveTool, type Exec, type Files, type Net } from "./sys.ts";
 import { tagRemote } from "./update-remote.ts";
 import {
   MAJOR_ACTION,
@@ -328,29 +328,44 @@ export function diskCheck(deps: UpdateCheckDeps, install: InstallKind): Prefligh
   return green("disk", `${gib(kb)} free at ${dir}`);
 }
 
-/** `bun --version`'s first line, or null when it did not answer one. */
-function bunVersion(exec: Exec): string | null {
-  const r = exec.capture("bun", ["--version"]);
+/**
+ * `bun --version`'s first line, or null when it did not answer one.
+ *
+ * `bun` is the RESOLVED ABSOLUTE path, never the bare name: a bare name here would re-introduce the
+ * PATH dependence one layer down, and answer for a different Bun than the one the update will run.
+ */
+function bunVersion(exec: Exec, bun: string): string | null {
+  const r = exec.capture(bun, ["--version"]);
   if (!r.found || r.code !== 0) return null;
   const line = r.stdout.trim().split("\n")[0]?.trim();
   return line === undefined || line === "" ? null : line;
 }
 
-/** Bun's presence and version — asked ONLY of an install that rebuilds from source. */
+/**
+ * Bun's presence and version — asked ONLY of an install that rebuilds from source.
+ *
+ * Resolved through `cli/sys.ts`'s canonical candidate list, not through PATH alone. PATH alone is
+ * what made this check red on hosts the shim builds on happily: the shim has always looked past
+ * PATH, and a preflight that refuses an update the build would complete is worse than no preflight
+ * (#169). A Bun found off PATH is GREEN and the reason names the absolute path, because the
+ * operator should know which Bun runs — an interactive shell will not show them that one.
+ */
 export function bunCheck(deps: UpdateCheckDeps): PreflightCheck {
-  if (deps.exec.which("bun") === null) {
+  const bun = resolveTool(deps.exec, deps.files, deps.ctx.env, deps.ctx.home, "bun");
+  if (bun === null) {
     return red(
       "bun",
       "bun is not installed, and this install rebuilds from source — the update would stop after the fetch",
       "install Bun from https://bun.sh, then re-run this check",
     );
   }
-  const version = bunVersion(deps.exec);
+  const version = bunVersion(deps.exec, bun.path);
   if (version === null) return amber("bun", "bun is installed but `bun --version` said nothing readable");
   if (compareSemver(version, MIN_BUN) < 0) {
     return amber("bun", `bun ${version} is older than the ${MIN_BUN} this build was measured on`);
   }
-  return green("bun", `bun ${version}`);
+  if (bun.onPath) return green("bun", `bun ${version}`);
+  return green("bun", `bun ${version} at ${bun.path} — off this PATH, and that is the one an update runs`);
 }
 
 /**

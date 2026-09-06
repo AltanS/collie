@@ -34,6 +34,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - The pack lead's oversize refusal is named `upload_too_large`, not `image_too_large`, now that it is not only about images.
 - The composer attaches text files as well as images — markdown, code, config and logs — behind a paperclip in place of the picture icon.
 - A truncated error in the header opens on a tap, showing the whole message with a copy button.
+- `collie update --check` looks for Bun where the shim and the remote probe look, `$BUN_INSTALL` included, so a Bun off your PATH is green with the path it will run rather than a red that blocks the update (#169).
 
 ## [1.5.3] - 2026-09-06
 

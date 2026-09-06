@@ -31,12 +31,22 @@ COLLIE_BIN="${PLUGIN_ROOT}/bin/collie"
 # and then failed its build, leaving the checkout AHEAD of the web/dist being served while every
 # version string reported the new release — unnoticed across four invocations.
 #
+# The candidate list is not this file's own. It is the canonical one `cli/sys.ts` defines
+# (`toolCandidates`) and `cli/remote.ts`'s `TOOL_LOOKUP` also spells; `cli/sys.test.ts` parses
+# this function and fails when the three disagree. Add a candidate in all three or in none.
+#
 # An empty result is still fine: the caller below reports it and exits.
 resolve_bun() {
   local candidate
+  # ABSOLUTE answers only. `command -v` reports a shell function or an alias as a bare word, and a
+  # bare word is not a path — the same guard `cli/remote.ts` and `cli/sys.ts` carry.
   if candidate="$(command -v bun 2>/dev/null)"; then
-    printf '%s' "$candidate"
-    return 0
+    case "$candidate" in
+      /*)
+        printf '%s' "$candidate"
+        return 0
+        ;;
+    esac
   fi
   for candidate in \
     "${BUN_INSTALL:-${HOME}/.bun}/bin/bun" \
@@ -44,7 +54,10 @@ resolve_bun() {
     "${HOME}/.local/bin/bun" \
     /usr/local/bin/bun \
     /opt/homebrew/bin/bun \
-    /usr/bin/bun; do
+    /usr/bin/bun \
+    /bin/bun \
+    /usr/sbin/bun \
+    /sbin/bun; do
     if [ -x "$candidate" ]; then
       printf '%s' "$candidate"
       return 0
