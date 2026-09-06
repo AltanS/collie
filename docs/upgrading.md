@@ -34,18 +34,24 @@ does not apply:
 pacman -Syu          # or omarchy-update, or brew upgrade — whatever installed it
 ```
 
-Collie recognises this install by a root it cannot write, refuses to update itself there, and names
-the boundary rather than guessing your package manager:
+Collie recognises this install by who OWNS the root — not by whether you can write it, which
+`sudo` would make true of any tree — and refuses to update it there, naming the boundary without
+guessing which package manager is responsible:
 
 ```
-error: /usr/lib/collie was installed by a package manager, which owns its updates.
+error: /usr/lib/collie is owned by root, so `collie update` will not replace its files.
+       If a package manager installed it, take the new version from there.
+       If you unpacked it yourself, reinstall it the same way, or take ownership of
+       the directory and re-run this.
 ```
 
 `collie doctor` reports the same install as healthy, and the phone's update card still tells you a
 newer release exists — it just does not offer to take it.
 
-> **Note.** This is not a limitation to work around. A root you cannot write is the whole reason
-> the update belongs to something that can, and that something is signed, versioned and reversible.
+> **Note.** This is not a limitation to work around. Root ownership is the whole reason the update
+> belongs to something else, and running as root does not change the answer: `sudo collie update`
+> refuses exactly the same way, because replacing a package manager's files out from under it would
+> leave its own database lying about what is installed.
 
 ## Update, from the phone or the terminal
 
