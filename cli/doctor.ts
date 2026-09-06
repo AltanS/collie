@@ -402,6 +402,11 @@ function installKind(deps: DoctorDeps, install: InstallKind): Finding {
       const from = origin.kind === "repo" ? origin.repo : origin.kind === "other" ? origin.url : "no origin";
       return ok("install", `linked clone at ${root} (branch ${branch.stdout.trim() || "?"}, origin ${from})`);
     }
+    case "system-package":
+      return ok(
+        "install",
+        `system package at ${root} (version ${version}) — not writable here, so updates come from your package manager`,
+      );
     case "unknown":
       if (install.why === "orphan-layout") {
         return warn(
