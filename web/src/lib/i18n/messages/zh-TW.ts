@@ -361,6 +361,11 @@ export const zhTW: Dictionary = {
   "status.count.working.other": "{count} 項執行中",
   "status.shellBadge": "shell",
   "status.dismissAria": "關閉",
+  "status.detailAria": "顯示完整訊息",
+  "status.detail.title": "發生錯誤",
+  "status.detail.copy": "複製",
+  "status.detail.copied": "已複製",
+  "status.detail.dismiss": "關閉",
 
   // --- space (spaces overview/strip/view, tabs, panes, new-space) ---
   "space.overview.title": "工作區",

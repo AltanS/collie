@@ -378,6 +378,11 @@ export const ja: Dictionary = {
   "status.count.working.other": "{count}件が処理中です",
   "status.shellBadge": "シェル",
   "status.dismissAria": "閉じる",
+  "status.detailAria": "メッセージ全体を表示",
+  "status.detail.title": "エラー詳細",
+  "status.detail.copy": "コピー",
+  "status.detail.copied": "コピー完了",
+  "status.detail.dismiss": "閉じる",
 
   // --- space (spaces overview/strip/view, tabs, panes, new-space) ---
   "space.overview.title": "Space",

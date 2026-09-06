@@ -365,6 +365,11 @@ export const zh: Dictionary = {
   "status.count.working.other": "{count} 项运行中",
   "status.shellBadge": "shell",
   "status.dismissAria": "关闭",
+  "status.detailAria": "显示完整信息",
+  "status.detail.title": "出错了",
+  "status.detail.copy": "复制",
+  "status.detail.copied": "已复制",
+  "status.detail.dismiss": "关闭",
 
   // --- space (spaces overview/strip/view, tabs, panes, new-space) ---
   "space.overview.title": "工作区",

@@ -397,6 +397,11 @@ export const en = {
   "status.count.working.other": "{count} working",
   "status.shellBadge": "shell",
   "status.dismissAria": "Dismiss",
+  "status.detailAria": "Show the whole message",
+  "status.detail.title": "What went wrong",
+  "status.detail.copy": "Copy",
+  "status.detail.copied": "Copied",
+  "status.detail.dismiss": "Dismiss",
 
   // --- space (spaces overview/strip/view, tabs, panes, new-space) ---
   "space.overview.title": "Spaces",

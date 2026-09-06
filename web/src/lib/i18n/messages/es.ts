@@ -382,6 +382,11 @@ export const es: Dictionary = {
   "status.count.working.other": "{count} en ejecución",
   "status.shellBadge": "shell",
   "status.dismissAria": "Descartar",
+  "status.detailAria": "Mostrar el mensaje completo",
+  "status.detail.title": "Qué salió mal",
+  "status.detail.copy": "Copiar",
+  "status.detail.copied": "Copiado",
+  "status.detail.dismiss": "Cerrar",
 
   // --- space (spaces overview/strip/view, tabs, panes, new-space) ---
   "space.overview.title": "Espacios",

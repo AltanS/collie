@@ -383,6 +383,11 @@ export const de: Dictionary = {
   "status.count.working.other": "{count} laufen",
   "status.shellBadge": "shell",
   "status.dismissAria": "Verwerfen",
+  "status.detailAria": "Vollständige Nachricht anzeigen",
+  "status.detail.title": "Was schiefgelaufen ist",
+  "status.detail.copy": "Kopieren",
+  "status.detail.copied": "Kopiert",
+  "status.detail.dismiss": "Schließen",
 
   // --- space (spaces overview/strip/view, tabs, panes, new-space) ---
   "space.overview.title": "Spaces",

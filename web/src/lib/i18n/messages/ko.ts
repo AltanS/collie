@@ -376,6 +376,11 @@ export const ko: Dictionary = {
   "status.count.working.other": "{count}개 작업 중",
   "status.shellBadge": "셸",
   "status.dismissAria": "닫기",
+  "status.detailAria": "전체 메시지 보기",
+  "status.detail.title": "오류 내용",
+  "status.detail.copy": "복사",
+  "status.detail.copied": "복사됨",
+  "status.detail.dismiss": "닫기",
 
   // --- space (spaces overview/strip/view, tabs, panes, new-space) ---
   "space.overview.title": "스페이스",
