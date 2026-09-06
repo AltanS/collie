@@ -15,8 +15,8 @@ Sources, once:
 | Tag | What it is |
 | --- | --- |
 | **API** | [`HERDR_API.md`](./HERDR_API.md) — the verified Herdr socket contract (0.7.2, protocol 16) |
-| **T** | First-hand probe of **tmux 3.6b** on a throwaway server — [M10/04 Ground Truth](./.tracker/M10-mux-drivers/04-the-tmux-adapter.md) |
-| **Z** | First-hand probe of **zellij 0.44.2** — [M10/05 Ground Truth](./.tracker/M10-mux-drivers/05-the-zellij-adapter.md) |
+| **T** | First-hand probe of **tmux 3.6b** on a throwaway server — M10/04 ground truth |
+| **Z** | First-hand probe of **zellij 0.44.2** — M10/05 ground truth |
 | **L** | First-hand probe of this host's **live test instances** — 2026-08-25, tmux socket `/run/user/1000/collie-tmux.sock` and zellij session `collie-zellij` |
 | **H8** | First-hand probe of **herdr 0.8.2** (protocol 20) on this host — 2026-08-28, an isolated `herdr --session wtprobe` over a throwaway repo, worktree verbs only |
 | **?** | Not probed yet. The adapter's spec probes it and fills the cell in; **an unprobed cell is never declared supported.** |
