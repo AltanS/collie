@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { computeEtag } from "../http-cache.ts";
-import { MAX_UPLOAD_BYTES } from "../uploads.ts";
+import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 import {
   apiPathFor,
   forwardAuditAction,
@@ -71,7 +71,12 @@ function ok(res: Response): PeerOutcome<Response> {
 }
 
 function forward(req: Request, url: URL, deps: Partial<ForwardDeps> & { transport: ForwardTransport }) {
-  return forwardToPeer(req, url, { link: LINK, state: REACHABLE, ...deps });
+  return forwardToPeer(req, url, {
+    link: LINK,
+    state: REACHABLE,
+    maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+    ...deps,
+  });
 }
 
 function get(path: string, headers: Record<string, string> = {}): [Request, URL] {
@@ -610,14 +615,19 @@ describe("uploads land on the owning host (§13)", () => {
       body: "x",
       headers: { "content-type": "multipart/form-data; boundary=b", "content-length": String(50 * 1024 * 1024) },
     });
-    const res = await forwardToPeer(req, url, { link: LINK, state: REACHABLE, transport });
+    const res = await forwardToPeer(req, url, {
+      link: LINK,
+      state: REACHABLE,
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+      transport,
+    });
 
     expect(res.status).toBe(413);
     const body = await failureBody(res);
-    expect(body.code).toBe("image_too_large");
-    expect(body.error).toBe("image too large (max 10 MB)");
+    expect(body.code).toBe("upload_too_large");
+    expect(body.error).toBe("file too large (max 10 MB)");
     expect(calls).toHaveLength(0);
-    expect(MAX_UPLOAD_BYTES).toBe(10 * 1024 * 1024);
+    expect(DEFAULT_MAX_UPLOAD_BYTES).toBe(10 * 1024 * 1024);
   });
 
   test("a legal multipart body is forwarded with its boundary, and the peer's own path comes back", async () => {
@@ -633,7 +643,12 @@ describe("uploads land on the owning host (§13)", () => {
       body: "--b\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\nPNG\r\n--b--",
       headers: { "content-type": "multipart/form-data; boundary=b" },
     });
-    const res = await forwardToPeer(req, url, { link: LINK, state: REACHABLE, transport });
+    const res = await forwardToPeer(req, url, {
+      link: LINK,
+      state: REACHABLE,
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+      transport,
+    });
 
     expect(calls[0]!.route).toBe("pane/w1:p1/upload");
     expect(new Headers(calls[0]!.init.headers).get("content-type")).toBe("multipart/form-data; boundary=b");

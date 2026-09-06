@@ -23,6 +23,7 @@ import {
 import { member as fixtureMember, neverProxy } from "./fixtures.ts";
 import { PackLead } from "./lead.ts";
 import { PackRegistry } from "./registry.ts";
+import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 
 // The peer's eight guards and the lead's turn queue, both as data. Nothing here spawns anything:
 // the one detached-updater spawn is a seam, and the preflight subprocess is another, so the whole
@@ -482,6 +483,7 @@ describe("a member's turn ends when its SWEEP reports the target version", () =>
       }),
       proxy: neverProxy,
       self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
       now: () => LEAD_NOW,
       follow: {
         leadRelease: () => "1.4.1",

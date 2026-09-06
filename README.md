@@ -27,7 +27,7 @@ until explicitly configured.
 - **Quick actions and slash commands** configured per agent
 - **Keypad for terminal control keys**: `Esc`, `Ctrl+C`, arrows, and modifier combinations
 - **Output search** and full conversation history beyond standard terminal scrollback
-- **Image uploads** directly from the local camera roll
+- **File attachments**: images from the camera roll, and markdown, text and code files
 - **Device pairing** as the write credential: once a device is paired, every write needs its token
 - **Packs**: several machines' Collies behind one URL, with operator-triggered failover
 - **Six UI languages** and a per-device typeface setting

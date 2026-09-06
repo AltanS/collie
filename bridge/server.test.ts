@@ -25,6 +25,7 @@ import {
   parsePairRequest,
   parseSnoozeRequest,
   replyPane,
+  requestBodyCap,
   requestDevice,
   resolveStaticPath,
   sendReplySteps,
@@ -61,6 +62,8 @@ import {
 import { neverProxy } from "./pack/fixtures.ts";
 import { PackLead } from "./pack/lead.ts";
 import { PackRegistry } from "./pack/registry.ts";
+import { DEFAULT_MAX_UPLOAD_BYTES } from "./uploads.ts";
+import { MAX_STT_AUDIO_BYTES } from "./stt/http.ts";
 import { computeEtag } from "./http-cache.ts";
 import {
   MUX_LOGO_PATH,
@@ -80,6 +83,23 @@ import type { StateEngine } from "./state-engine.ts";
 function req(headers: Record<string, string>): Request {
   return new Request("http://collie.invalid/api/snapshot", { headers });
 }
+
+describe("requestBodyCap", () => {
+  test("is the upload cap plus headroom at the default", () => {
+    expect(requestBodyCap(cfg())).toBe(DEFAULT_MAX_UPLOAD_BYTES + 2 * 1024 * 1024);
+  });
+
+  test("never drops below what /api/stt reads, so a small upload cap cannot mute the microphone", () => {
+    // The floor `COLLIE_MAX_UPLOAD_MB=1` would otherwise stop the runtime at 3 MB, and a voice note
+    // between 3 and 8 MB would die there instead of getting the handler's own `stt.too_large`.
+    const cap = requestBodyCap(cfg({ maxUploadBytes: 1024 * 1024 }));
+    expect(cap).toBeGreaterThan(MAX_STT_AUDIO_BYTES);
+  });
+
+  test("follows the operator's number up when it is the larger of the two", () => {
+    expect(requestBodyCap(cfg({ maxUploadBytes: 64 * 1024 * 1024 }))).toBe(64 * 1024 * 1024 + 2 * 1024 * 1024);
+  });
+});
 
 function cfg(overrides: Partial<Config> = {}): Config {
   return {
@@ -127,6 +147,8 @@ function cfg(overrides: Partial<Config> = {}): Config {
     stateDir: "/tmp/state",
     multiSession: true,
     skipServe: false,
+    maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+    uploadExtraTypes: [],
     ...overrides,
   };
 }
@@ -1621,6 +1643,7 @@ function leadOverDeadPeer(): PackLead {
     snapshot: async () => ({ ok: false, state: "unreachable", reason: "connection refused", receivedAt: 1 }),
     proxy: neverProxy,
     self: { id: "desk", name: "the herd" },
+    maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
   });
 }
 

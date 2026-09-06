@@ -1042,7 +1042,7 @@ bytes may already be in the terminal, and a retry types them twice. Concretely:
 
 **On the wire** (what the phone renders on — `bridge/pack/forward.ts`): every lead-generated refusal
 is JSON with `{ok: false, code, error, host}` and a distinct status — `host_unreachable` (503),
-`host_incompatible` (503), `write_outcome_unknown` (504), `image_too_large` (413),
+`host_incompatible` (503), `write_outcome_unknown` (504), `upload_too_large` (413),
 `route_not_federated` (501, for a route outside §5's table). Never a bare 500,
 and never a silent success. A peer's *own* answer is never given one of these: it is passed through
 as itself (§9.1), including its 403 when the peer's write gate refuses.
@@ -1249,6 +1249,18 @@ The path is **phone → lead → owning peer's disk**.
 - The lead never stores the file and never rewrites the path.
 - Upload sweeping stays per-machine (`bridge/uploads.ts`, driven from `bridge/index.ts:195-202`) — the
   peer expires its own files.
+- **The size cap is per member, and the peer's is the one that decides.** It is the host's own
+  `COLLIE_MAX_UPLOAD_MB` (`cfg.maxUploadBytes`), not a protocol constant. The lead runs a
+  `Content-Length` pre-check against **its own** number before forwarding, so a phone on cellular
+  does not spend its uplink on a body that was always going to be refused; the peer then re-checks
+  the decoded size against its own when the bytes land. The pre-check can only refuse early, never
+  permit — so two members on two different numbers is legal, and merely confusing. Keep a pack on
+  one number.
+- **What may be written is the peer's decision too.** The accepted types are the peer's shipped list
+  plus its own `COLLIE_UPLOAD_EXTRA_TYPES` (`bridge/uploads.ts`), and the lead does not filter by
+  type at all. `/api/config`'s `upload` block reports the answering host's limits, so a phone on
+  `?h=peer` reads the LEAD's block and may offer a type the peer refuses. That refusal arrives as
+  the peer's own `upload.bad_type`, which is the correct place for it.
 
 ---
 

@@ -1,5 +1,5 @@
 import type { JsonObject } from "../json.ts";
-import { MAX_UPLOAD_BYTES, MAX_UPLOAD_OVERHEAD, uploadTooLarge } from "../uploads.ts";
+import { MAX_UPLOAD_OVERHEAD, uploadTooLarge } from "../uploads.ts";
 import { DEVICE_HEADER } from "./admission.ts";
 import type { PackLink, PeerFailure, PeerOutcome } from "./peer-client.ts";
 import { HOST_PARAM, type PeerState } from "./registry.ts";
@@ -262,7 +262,7 @@ export type ForwardErrorCode =
   | "host_unreachable"
   | "host_incompatible"
   | "write_outcome_unknown"
-  | "image_too_large"
+  | "upload_too_large"
   | "route_not_federated";
 
 /** A refusal the LEAD generated (as opposed to a peer's answer). Always JSON, never a bare 500. */
@@ -384,6 +384,12 @@ export interface ForwardDeps {
   readonly onExchange?: (receivedAt: number) => void;
   /** The operator's device, as the LEAD resolved it — forwarded as `X-Pack-Device` (§12). */
   readonly device?: string | null;
+  /**
+   * The LEAD's own upload cap in bytes (`cfg.maxUploadBytes`), for the §13 pre-check below. Passed
+   * in rather than imported because it is no longer a constant — it is this host's setting, and a
+   * peer with a different one enforces its own when the bytes arrive.
+   */
+  readonly maxUploadBytes: number;
 }
 
 /**
@@ -412,12 +418,17 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
   // §13: the size bound is enforced BEFORE forwarding as well as by the peer. A phone on cellular
   // must not spend its uplink twice — once to the lead, once to a peer that was always going to
   // reject it — and the lead must not become a place where 10 MB of someone else's image is buffered.
-  if (route.endsWith("/upload") && uploadTooLarge(req.headers.get("content-length"))) {
+  //
+  // The number is the LEAD's own `COLLIE_MAX_UPLOAD_MB`, because the lead is the only host in this
+  // decision. The peer re-checks against ITS number when the bytes land, and the peer's answer is
+  // the one that counts — this pre-check can only ever refuse early, never permit. Two members on
+  // two different numbers is therefore legal and merely confusing; keep a pack on one.
+  if (route.endsWith("/upload") && uploadTooLarge(req.headers.get("content-length"), deps.maxUploadBytes)) {
     return forwardError(
-      "image_too_large",
-      `image too large (max ${Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))} MB)`,
+      "upload_too_large",
+      `file too large (max ${Math.round(deps.maxUploadBytes / (1024 * 1024))} MB)`,
       413,
-      { host: deps.link.memberId, limit: MAX_UPLOAD_BYTES + MAX_UPLOAD_OVERHEAD },
+      { host: deps.link.memberId, limit: deps.maxUploadBytes + MAX_UPLOAD_OVERHEAD },
     );
   }
 

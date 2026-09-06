@@ -627,6 +627,7 @@ const CONFIG_KEYS = {
   themeFile: true,
   fontsDir: true,
   launchersFile: true,
+  maxUploadBytes: true,
   port: true,
   host: true,
   pollMs: true,
@@ -651,6 +652,7 @@ const CONFIG_KEYS = {
   stateDir: true,
   multiSession: true,
   skipServe: true,
+  uploadExtraTypes: true,
 } satisfies Record<keyof Config, true>;
 
 describe("solo zero-tax — config", () => {
@@ -670,6 +672,7 @@ describe("solo zero-tax — config", () => {
       "journalRoots",
       "keysFile",
       "launchersFile",
+      "maxUploadBytes",
       "multiSession",
       "mux",
       "muxEndpoint",
@@ -690,6 +693,7 @@ describe("solo zero-tax — config", () => {
       "transcript",
       "trustedUser",
       "trustedUserOptional",
+      "uploadExtraTypes",
       "vapidPrivate",
       "vapidPublic",
       "vapidSubject",
@@ -728,6 +732,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_GROK_ROOT",
       "COLLIE_HERDR_DIAL",
       "COLLIE_HOST",
+      "COLLIE_MAX_UPLOAD_MB",
       "COLLIE_MULTI_SESSION",
       "COLLIE_MUX",
       "COLLIE_MUX_ENDPOINT_",
@@ -748,6 +753,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_TRANSCRIPT_ROOT",
       "COLLIE_TRUSTED_USER",
       "COLLIE_TRUSTED_USER_OPTIONAL",
+      "COLLIE_UPLOAD_EXTRA_TYPES",
       "COLLIE_VAPID_PRIVATE",
       "COLLIE_VAPID_PUBLIC",
       "COLLIE_VAPID_SUBJECT",

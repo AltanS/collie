@@ -30,6 +30,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - Collie recognises an install its package manager owns, declines to update it, and names that manager's command instead, on the terminal and on the phone, thanks @mikebenner (#171).
 - The release tarball carries `scripts/collie-ctl.sh`, the shim every action in its own `herdr-plugin.toml` names, thanks @mikebenner (#171).
 - The package command lives in its own module, so the install classifier spells no path prefix (#171).
+- The upload cap is a setting, `COLLIE_MAX_UPLOAD_MB`, and `COLLIE_UPLOAD_EXTRA_TYPES` adds text types the shipped list misses.
+- The pack lead's oversize refusal is named `upload_too_large`, not `image_too_large`, now that it is not only about images.
 
 ## [1.5.3] - 2026-09-06
 

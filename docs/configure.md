@@ -223,6 +223,51 @@ Three behaviors to note:
 - **Live on next reload.** Changes do not require a restart, taking effect on the next page reload.
   Invalid configurations log errors visible via `journalctl --user -u collie -n 20`.
 
+## Attachments
+
+The paperclip beside the message box uploads a file to the host and puts its path in your message.
+
+```bash
+# in your .env
+COLLIE_MAX_UPLOAD_MB=25              # default 10, floor 1, ceiling 512
+COLLIE_UPLOAD_EXTRA_TYPES=rb,ex,zig  # bare extensions, no dot
+```
+
+Collie saves the file under `<state-dir>/uploads` with owner-only permissions and appends its
+absolute path to your draft. The agent reads it from that path, because a terminal cannot take a
+pasted file. Uploads are swept 48 hours after they are written.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `COLLIE_MAX_UPLOAD_MB` | `10` | Largest file accepted, in whole megabytes. Out of range or not a whole number falls back to the default and logs a warning. |
+| `COLLIE_UPLOAD_EXTRA_TYPES` | *(empty)* | Extra text types to accept, beyond the list below. Comma-separated bare extensions; a leading dot is forgiven and anything that is not letters and digits is dropped with a warning. |
+
+Two kinds of file are accepted, and they are checked differently.
+
+**Images** are identified by their signature bytes, never by their name or their declared type:
+`png`, `jpg`, `gif` and `webp`. SVG is refused on purpose, because it is script-bearing markup
+rather than a picture.
+
+**Text** is identified by its extension, with the bytes as a veto: a file whose first 4 KB contain a
+NUL or a stray control byte is refused whatever it is called. The shipped list is `md`, `markdown`,
+`txt`, `json`, `jsonl`, `yaml`, `yml`, `toml`, `csv`, `tsv`, `log`, `xml`, `html`, `htm`, `css`,
+`js`, `jsx`, `mjs`, `cjs`, `ts`, `tsx`, `py`, `go`, `rs`, `sh`, `bash`, `sql`, `diff` and `patch`.
+
+> **Note.** `COLLIE_UPLOAD_EXTRA_TYPES` adds text types only. An image needs a signature to check it
+> against, so there is no binary format you can add this way.
+
+Raising `COLLIE_MAX_UPLOAD_MB` raises two other numbers with it. The bridge reads a whole upload into
+memory before it can measure it, so a large cap plus several uploads at once is that much memory. And
+the runtime's body limit applies to every route, not only the upload one, so a large cap lets a large
+body reach any handler, where that handler's own limit then refuses it. Nothing is deleted before its
+48 hours are up, so the uploads directory holds at most what was sent in two days. Raise the number
+because you need it, not by default.
+
+In a [pack](pack.md), both settings are per machine, and the machine that stores the file is the one
+that enforces them. The lead refuses an oversize body before forwarding it, to save your uplink, but
+it refuses it against its own number. Set the same values on every member, or a peer will refuse
+what its lead let through.
+
 ## Multi-session
 
 By default, one Collie instance serves every Herdr session it finds.

@@ -816,6 +816,30 @@ export interface BridgeConfig {
    * decides whether to draw a button, not where the audio goes.
    */
   stt?: SttCapability;
+  /**
+   * What this collie accepts as an attachment. **Absent is a bridge older than this field**, which
+   * a client reads as the contract that shipped before it: 10 MB, images only. Present, it is the
+   * whole answer — the phone builds its file picker's `accept` list from it and refuses an oversize
+   * file before spending an uplink on a refusal it can already predict.
+   *
+   * Per HOST, not per pack: `?h=peer` reads the LEAD's config body, so a member with a different
+   * `COLLIE_MAX_UPLOAD_MB` still answers for itself when the bytes arrive. See docs/configure.md.
+   */
+  upload?: UploadCapability;
+}
+
+/**
+ * What `/api/config` says about attachments — the two facts a client needs to ask a sensible
+ * question before it uploads. Both are the host's own settings (`COLLIE_MAX_UPLOAD_MB`,
+ * `COLLIE_UPLOAD_EXTRA_TYPES` + the shipped list in bridge/uploads.ts).
+ */
+export interface UploadCapability {
+  /** Largest attachment accepted, decoded, in bytes. */
+  maxBytes: number;
+  /** Image extensions accepted, bare and lowercase — sniffed from the bytes, never from the name. */
+  imageTypes: string[];
+  /** Text extensions accepted, bare and lowercase — taken from the name, with a binary veto. */
+  textTypes: string[];
 }
 
 /**

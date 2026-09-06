@@ -1172,6 +1172,8 @@ const packLead = (() => {
   const client = packPeerClient(data);
   return new PackLead({
     registry: packRegistry,
+    // §13's refuse-before-forward budget: this lead's own cap, not a constant (COLLIE_MAX_UPLOAD_MB).
+    maxUploadBytes: cfg.maxUploadBytes,
     snapshot: (link, freshPreflight, follow) => client.snapshot(link, undefined, freshPreflight, follow),
     // §20's half of the sweep: what this lead may state about itself, and the queue that hands out
     // one turn at a time. Every member of it is read through, never captured — a lead settles

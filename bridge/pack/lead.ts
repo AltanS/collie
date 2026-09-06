@@ -110,6 +110,11 @@ export function dueForProbe(memory: PeerMemory | undefined, now: number): boolea
 export interface PackLeadDeps {
   readonly registry: PackRegistry;
   /**
+   * `cfg.maxUploadBytes` — this lead's own attachment cap, forwarded into every §13 pre-check.
+   * Per host, so a member on a different `COLLIE_MAX_UPLOAD_MB` is legal and answers for itself.
+   */
+  readonly maxUploadBytes: number;
+  /**
    * `(link) => the peer's /pack/v1/snapshot outcome`. Injected so the sweep is testable without TLS.
    *
    * `freshPreflight` is §19's one header reaching through: the phone's own on-demand read asks every
@@ -611,6 +616,8 @@ export class PackLead {
       link: resolved.link,
       state: resolved.state,
       transport: this.deps.proxy,
+      // This lead's own cap, for §13's refuse-before-forward. The peer enforces its own on arrival.
+      maxUploadBytes: this.deps.maxUploadBytes,
       // Every landed forward refreshes this member's receipt, so a watched peer's freshness tracks
       // the phone's cadence rather than the sweep's idle one. The registry owns the rules (successes
       // only, reachable members only, monotone) — this class just supplies the member id.

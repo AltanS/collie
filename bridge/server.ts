@@ -25,7 +25,7 @@ import type { Push, PushSubscription } from "./push.ts";
 import { RefreshCoalescer } from "./refresh.ts";
 import { herdTagFor, type SessionRegistry, type SessionRuntime, widenedPanes } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
-import { imageExtFromBytes, SNIFF_BYTES } from "./uploads.ts";
+import { IMAGE_EXTS, TEXT_EXTS, TEXT_SNIFF_BYTES, uploadExt } from "./uploads.ts";
 import type { UpdateMonitor } from "./update.ts";
 import {
   parseUpdateStartRequest,
@@ -50,9 +50,9 @@ import { packDeviceOf, packGate } from "./pack/peer-gate.ts";
 import { selectHostFrom, type HostSelector } from "./pack/registry.ts";
 import type { PackHandler, PackSurface } from "./pack/router.ts";
 import type { PackTlsOptions } from "./pack/transport.ts";
-import { createSttAdmission, sttCapability, transcribeRequest } from "./stt/http.ts";
+import { createSttAdmission, MAX_STT_AUDIO_BYTES, sttCapability, transcribeRequest } from "./stt/http.ts";
 import type { SttProvider } from "./stt/provider.ts";
-import { MAX_UPLOAD_BYTES, uploadTooLarge } from "./uploads.ts";
+import { uploadTooLarge } from "./uploads.ts";
 import { MUX_LOGO_PATH, OPERATOR_FONTS_PATH, journalAgentOf, toPaneWire } from "./types.ts";
 import type {
   ActionResponse,
@@ -75,13 +75,29 @@ import type {
   PaneWire,
   SnapshotResponse,
   SttCapability,
+  UploadCapability,
   UploadResponse,
 } from "./types.ts";
 
-// Hard cap the runtime enforces on ANY request body (Bun.serve maxRequestBodySize). Bigger than the
-// upload cap + overhead so the handler's own 413 fires first for honest clients; this cuts off a
-// chunked or lying client that never sends an accurate Content-Length.
-const MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024; // 12 MB
+// Headroom the runtime's own body cap (Bun.serve maxRequestBodySize) keeps above the operator's
+// upload cap. It has to sit above cap + multipart overhead so the handler's own 413 fires first for
+// honest clients; the rest of it is what cuts off a chunked or lying client that never sends an
+// accurate Content-Length. Derived from the cap rather than fixed, because the cap is now the
+// operator's number (`COLLIE_MAX_UPLOAD_MB`) and a constant here would silently veto a larger one.
+const REQUEST_BODY_HEADROOM = 2 * 1024 * 1024; // 2 MB, well clear of uploads.ts's multipart overhead
+
+/**
+ * The runtime's body cap for EVERY route, not just `/upload` — Bun applies it to the whole listener.
+ * So it is the largest body any handler is willing to read, plus the headroom above.
+ *
+ * The max is what makes an operator's small `COLLIE_MAX_UPLOAD_MB` safe: at the floor of 1 MB a
+ * fixed `cfg.maxUploadBytes + headroom` would be 3 MB, and a 5 MB voice note would be cut off by
+ * the runtime before `/api/stt` could answer its own `stt.too_large`. Each handler still enforces
+ * its own precise number; this only decides where the runtime stops reading.
+ */
+export function requestBodyCap(cfg: Config): number {
+  return Math.max(cfg.maxUploadBytes, MAX_STT_AUDIO_BYTES) + REQUEST_BODY_HEADROOM;
+}
 // Upper bound on the pane-read `lines` param — don't trust the client (or Herdr) to cap it.
 const MAX_READ_LINES = 10_000;
 const MAX_EXPECTED_PROMPT_CHARS = 8192;
@@ -91,7 +107,7 @@ const PROMPT_BINDING_BLANK_LINE_HEADROOM = 6;
 // first-poll delay, so the bridge never probes the network mid-boot) and never again once a check has
 // landed either way.
 const UPDATE_ON_DEMAND_POLL_TIMEOUT_MS = 5_000;
-// Image type is sniffed from magic bytes in uploadPane — never from the client-supplied MIME.
+// An image's type is sniffed from magic bytes in uploadPane — never from the client-supplied MIME.
 
 // The built PWA lives in web/dist (Vite output). If it's missing, the bridge still runs the API
 // — only the static UI 503s with a hint to build. Anchored on the resolved checkout root, NOT on
@@ -399,6 +415,12 @@ export function bridgeConfigBody(opts: {
    * configured none ships the same payload as before, the same rule `mode` follows.
    */
   stt?: SttCapability;
+  /**
+   * What this host accepts as an attachment. Optional here for the reason `mux` is — the pack-mode
+   * assertions build this body by hand and are about the pack — and always passed by the real
+   * handler, so an absent key on the wire means an older bridge and nothing else.
+   */
+  upload?: UploadCapability;
 }): BridgeConfig {
   const mode = modeForWire(opts.mode);
   const mine = opts.operatorCommands ?? [];
@@ -425,6 +447,9 @@ export function bridgeConfigBody(opts: {
   // Appended after the mux block, and omit-when-absent for the reason `mode` is: no key means no
   // microphone, which is precisely true of a collie with no provider configured.
   if (opts.stt !== undefined) wire.stt = opts.stt;
+  // Same omit-when-absent rule, and the same reading on the other end: no key is an older bridge,
+  // which the phone falls back to the pre-attachment contract for (images, 10 MB).
+  if (opts.upload !== undefined) wire.upload = opts.upload;
   return wire;
 }
 
@@ -949,7 +974,7 @@ export function startServer(opts: {
     port: cfg.port,
     // Runtime cap on any request body — a chunked/lying client is cut off here even if its
     // Content-Length is absent or false. The upload handler still does its own precise check.
-    maxRequestBodySize: MAX_REQUEST_BODY_BYTES,
+    maxRequestBodySize: requestBodyCap(cfg),
     // When TLS is present the handshake itself is the first factor: an unpinned or absent client
     // certificate never reaches `fetch` at all, so nothing below has to defend against it.
     tls: listenerTls,
@@ -1172,6 +1197,13 @@ export function startServer(opts: {
             operatorFonts: myFonts,
             mux: activeMux?.herdr,
             stt: sttWire,
+            // This host's own limits, read from cfg on every request like everything else here.
+            // A pack member answers with ITS number, which is the number that will judge the bytes.
+            upload: {
+              maxBytes: cfg.maxUploadBytes,
+              imageTypes: [...IMAGE_EXTS],
+              textTypes: [...TEXT_EXTS, ...cfg.uploadExtraTypes],
+            },
           }),
           req.headers.get("accept-encoding"),
         );
@@ -2885,9 +2917,23 @@ export async function launch(
   );
 }
 
-// Save an uploaded image to a host file and return its absolute path. The client then references
-// that path in a message; Claude Code / Codex read images by path (the terminal can't take a
-// pasted image over the socket). Validated by MIME and size; the filename is server-generated.
+/**
+ * The two numbers an oversize refusal carries: the exact byte cap for a client that computes, and
+ * the whole megabytes the sentence itself is written in. Both come off THIS host's config, so a
+ * phone talking to a pack reads each member's own limit rather than the lead's.
+ */
+function uploadLimitDetail(cfg: Config) {
+  return {
+    maxBytes: cfg.maxUploadBytes,
+    maxMb: Math.round(cfg.maxUploadBytes / (1024 * 1024)),
+  } satisfies ApiErrorDetail;
+}
+
+// Save an uploaded attachment to a host file and return its absolute path. The client then
+// references that path in a message; Claude Code / Codex read images and text files by path (the
+// terminal can't take a pasted file over the socket). What may be written is `uploadExt`'s decision
+// — bytes for an image, name plus a binary veto for a text file — and the filename is
+// server-generated, so nothing the client sent becomes a path component.
 async function uploadPane(
   cfg: Config,
   paneId: string,
@@ -2900,12 +2946,12 @@ async function uploadPane(
   // Reject an oversize upload by its declared Content-Length BEFORE buffering — req.formData()
   // reads the whole body into memory first, so a 100 MB "image" would be materialised just to fail
   // the size check below. Multipart adds a boundary + part headers, so allow a small slack.
-  if (uploadTooLarge(req.headers.get("content-length"))) {
+  if (uploadTooLarge(req.headers.get("content-length"), cfg.maxUploadBytes)) {
     return secure(
       new Response(
         JSON.stringify({
           ok: false,
-          ...apiError("upload.too_large", { maxBytes: MAX_UPLOAD_BYTES }),
+          ...apiError("upload.too_large", uploadLimitDetail(cfg)),
         } satisfies UploadResponse),
         { status: 413, headers: { "content-type": "application/json; charset=utf-8" } },
       ),
@@ -2921,8 +2967,8 @@ async function uploadPane(
   if (!(file instanceof File)) {
     return json({ ok: false, ...apiError("upload.no_file") } satisfies UploadResponse, ae);
   }
-  const head = new Uint8Array(await file.slice(0, SNIFF_BYTES).arrayBuffer());
-  const ext = imageExtFromBytes(head);
+  const head = new Uint8Array(await file.slice(0, TEXT_SNIFF_BYTES).arrayBuffer());
+  const ext = uploadExt(file.name, head, cfg.uploadExtraTypes);
   if (!ext) {
     // The client's own Content-Type rides along as the DETAIL only — it names what the operator
     // thought they sent, and the decision above never consulted it.
@@ -2931,9 +2977,9 @@ async function uploadPane(
       ae,
     );
   }
-  if (file.size > MAX_UPLOAD_BYTES) {
+  if (file.size > cfg.maxUploadBytes) {
     return json(
-      { ok: false, ...apiError("upload.too_large", { maxBytes: MAX_UPLOAD_BYTES }) } satisfies UploadResponse,
+      { ok: false, ...apiError("upload.too_large", uploadLimitDetail(cfg)) } satisfies UploadResponse,
       ae,
     );
   }

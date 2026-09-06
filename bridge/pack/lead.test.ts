@@ -14,6 +14,7 @@ import {
 import type { PackLink, PeerOutcome } from "./peer-client.ts";
 import { PackRegistry, type PeerState } from "./registry.ts";
 import type { TrustedMember, Warrant } from "./trust-store.ts";
+import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
 
 // The sweep and what it remembers. The registry owns a peer's HEALTH (M4/03); this class owns the
 // last-good BODY, which is what makes §10.2's "a peer's sessions never vanish" mechanical.
@@ -93,6 +94,7 @@ function lead(
     proxy: neverProxy,
     hello: opts.hello,
     self: { id: "desk", name: "the herd" },
+    maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
     now: () => clock,
   });
   return {
@@ -154,6 +156,7 @@ describe("PackLead — the sweep rides the lead's poll, it does not arm a timer"
       snapshot: () => Promise.reject(new Error("boom")),
       proxy: neverProxy,
       self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
     });
     await expect(l.sweep()).resolves.toBeUndefined();
     // And it can be swept again — the in-flight guard was released.
@@ -297,6 +300,7 @@ describe("PackLead — what it hands the notifier", () => {
       },
       proxy: neverProxy,
       self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
       onPeerSnapshot: (memberId, b) =>
         fresh.push({ memberId, blocked: b.agents.filter((a) => a.status === "blocked").length }),
       onPeerGone: (memberId) => gone.push(memberId),
@@ -374,6 +378,7 @@ describe("forward — the lead's per-pane hop (M4/05)", () => {
         };
       },
       self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
     });
 
     const url = new URL("https://lead.example/api/pane/w1:p1?host=laptop");
@@ -406,6 +411,7 @@ describe("a landed forward refreshes the receipt (§10.2)", () => {
       snapshot: async () => sweepScript(),
       proxy: async () => proxyScript(),
       self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
       now: () => NOW,
     });
     return {
@@ -617,6 +623,7 @@ describe("PackLead — the warrant re-push, on the sweep the lead already runs",
         opts.reachable === false ? down : ok({ ...body, ...reports[link.memberId] }),
       proxy: neverProxy,
       self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
       now: () => NOW,
       warrant: {
         current: async () => {
@@ -747,6 +754,7 @@ describe("PackLead — a pairing collision is REPORTED every sweep, never swallo
       snapshot: async () => (reports.reachable === false ? down : ok(answered)),
       proxy: neverProxy,
       self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
       now: () => NOW,
       pairing: {
         deputy: () => deputy,
@@ -830,6 +838,7 @@ describe("PackLead — a pairing collision is REPORTED every sweep, never swallo
         snapshot: async () => ok(answer),
         proxy: neverProxy,
         self: { id: "desk", name: "the herd" },
+        maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
         now: () => NOW,
         pairing: {
           deputy: () => "laptop",
@@ -889,6 +898,7 @@ describe("PackLead — a pairing collision is REPORTED every sweep, never swallo
       snapshot: async () => ok(body),
       proxy: neverProxy,
       self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
       now: () => NOW,
       warrant: {
         current: () => Promise.reject(new Error("boom")),
@@ -966,6 +976,7 @@ describe("PackLead — each member's update preflight (§19)", () => {
       },
       proxy: neverProxy,
       self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
       now: () => NOW,
     });
     await l.sweep();
