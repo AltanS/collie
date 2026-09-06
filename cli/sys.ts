@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import {
+  accessSync,
+  constants,
   existsSync,
   mkdirSync,
   openSync,
@@ -91,13 +93,20 @@ export interface Files {
   /**
    * Who OWNS `p` — the uid off `stat(2)`, or null when it cannot be read at all.
    *
-   * Ownership rather than writability, and that distinction is the whole point. `access(p, W_OK)` is
-   * always true for uid 0, so a writability probe answers a different question depending on who ran
-   * the command: `collie update` and `sudo collie update` would disagree about what kind of install
-   * this is, and a bridge running as root would never see a system-owned tree at all. Ownership is a
-   * fact about the tree, so every caller gets the same answer.
+   * One of the three facts a packaged install is recognised by, and the one that catches a tree
+   * unpacked as root inside `$HOME`. It is ownership, never writability: `access(p, W_OK)` is always
+   * true for uid 0, so a bridge running as root would otherwise see a package-manager-owned tree as its own.
    */
   ownerUid(p: string): number | null;
+  /**
+   * May this process write into `p` — an `access(p, W_OK)` probe, or null when it cannot be answered.
+   *
+   * Null is not "no". A path that cannot be stat'ed at all says nothing about who may write it, and
+   * {@link Files.ownerUid} is the fact that answers such a tree. The caller turns null into the open
+   * direction (not read-only), because claiming a read-only root from a failed probe would refuse
+   * updates on an install nobody could describe.
+   */
+  writable(p: string): boolean | null;
 }
 
 /**
@@ -317,15 +326,30 @@ export const realFiles: Files = {
   ownerUid(p) {
     // Windows has no POSIX uid, and Node/Bun report a constant 0 there regardless of who owns the
     // file — that is not "owned by root", it is "this platform does not have the concept", and the
-    // two must not collide: on win32 every non-checkout, non-versions/ install would misclassify as
-    // system-owned and `collie update` would refuse forever. `null` reads as "nothing to claim about
-    // the owner" exactly like a failed `stat`, which is what the caller already treats it as.
+    // two must not collide: on win32 every non-checkout, non-versions/ install would answer uid 0
+    // and `collie update` would refuse forever. `null` reads as "nothing to claim about the owner"
+    // exactly like a failed `stat`, which is what the caller already treats it as.
     if (process.platform === "win32") return null;
     try {
       return statSync(p).uid;
     } catch {
       // ENOENT, EACCES on a parent — nothing readable, so nothing to claim about the owner.
       return null;
+    }
+  },
+  writable(p) {
+    try {
+      accessSync(p, constants.W_OK);
+      return true;
+    } catch (e) {
+      // EACCES / EPERM / EROFS are an ANSWER: this process may not write here. Anything else —
+      // ENOENT above all — is the probe failing to reach the question, which is `null`.
+      //
+      // SAFETY: the assertion asserts NOTHING. `catch` binds `unknown`, every Node errno error
+      // carries a string `code`, and anything that does not read `undefined` here and falls to
+      // `null` — the same answer an unrecognised code gets. Nothing is called on the value.
+      const code = (e as { code?: string }).code;
+      return code === "EACCES" || code === "EPERM" || code === "EROFS" ? false : null;
     }
   },
 };

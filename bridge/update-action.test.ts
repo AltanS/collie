@@ -627,20 +627,20 @@ describe("the fresh-preflight request, across the link", () => {
   });
 });
 
-// ── A root-owned install (ADR 0035) ──────────────────────────────────────────
-// The gate that has to exist HERE, not only in the client. A system-owned install's preflight is
+// ── A packaged install (ADR 0035) ──────────────────────────────────────────
+// The gate that has to exist HERE, not only in the client. A packaged install's preflight is
 // green on purpose — nothing is wrong with it — so every other check on this path passes it through.
 // The route that calls this says of itself that "the client's disabled button is a courtesy and this
 // is the actual gate", and without this refusal a stale bundle, a second tab or a plain POST mints a
 // run id and spawns a `collie update` whose only possible outcome is its own refusal.
 
-describe("updateStartVerdict — a root-owned install", () => {
+describe("updateStartVerdict — a packaged install", () => {
   test("refuses the start even though the preflight is entirely green", () => {
-    const v = updateStartVerdict(ask(), state({ installKind: "system-owned" }));
+    const v = updateStartVerdict(ask(), state({ installKind: "packaged" }));
     expect(v.kind).toBe("refuse");
     if (v.kind !== "refuse") throw new Error("unreachable");
     expect(v.status).toBe(409);
-    expect(JSON.stringify(v.body)).toContain("update.system_owned");
+    expect(JSON.stringify(v.body)).toContain("update.packaged");
   });
 
   test("the very same state on any other kind still starts", () => {
@@ -658,7 +658,7 @@ describe("updateStartVerdict — a root-owned install", () => {
     const v = updateStartVerdict(
       ask({ peersOnly: true }),
       state({
-        installKind: "system-owned",
+        installKind: "packaged",
         latest: "1.3.0",
         // `rolled-back` is one of the two states peersNeedLevelling recognises; "behind" is not a
         // leg state, it is a pack row's version comparison.

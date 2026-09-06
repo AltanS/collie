@@ -2026,19 +2026,14 @@ describe("the update run id", () => {
 });
 
 // ── The install `update` must decline ────────────────────────────────────────
-// A package manager laid this Collie down under a root the running user cannot write. Declining is
-// the correct outcome, not a diagnosis failure — and it has to READ that way, because the shape used
-// to fall out as `unknown` and tell operators their packaged install was unrecognisable.
+// A package manager laid this Collie down in a folder it owns. Declining is the correct outcome,
+// not a diagnosis failure — and it has to READ that way, because the shape used to fall out as
+// `unknown` and tell operators their packaged install was unrecognisable.
 
-describe("cmdUpdate — a tree the system owns", () => {
-  /** A root with a marker, no `.git`, and no write permission for this user. */
+describe("cmdUpdate — a folder a package manager owns", () => {
+  /** A root with a marker, no `.git`, and outside `$HOME` — `/opt/collie`, the fake's own root. */
   function packaged() {
-    const h = harness({
-      answers: [[`${GIT} rev-parse --git-dir`, { code: 128 }]],
-      installed: "1.5.2",
-    });
-    h.files.rootOwned.add(ROOT);
-    return h;
+    return harness({ answers: [[`${GIT} rev-parse --git-dir`, { code: 128 }]], installed: "1.5.2" });
   }
 
   test("it refuses, and never reaches git, bun or the network", async () => {
@@ -2049,19 +2044,23 @@ describe("cmdUpdate — a tree the system owns", () => {
     expect(h.restarts).toBe(0);
   });
 
-  test("it states the ownership, offers both ways out, and asserts no provenance", async () => {
+  test("it names the root and the boundary, and does not diagnose a fault", async () => {
     const h = packaged();
     await cmdUpdate(h.deps);
     const said = h.io.stderr.join("\n");
     expect(said).toContain(ROOT);
-    expect(said).toContain("owned by root");
-    // BOTH exits, because the tree cannot say which one applies. Asserting a package manager sends
-    // whoever unpacked this themselves after a package that does not exist, and never mentions the
-    // remedy that would actually work.
-    expect(said).toContain("through a package manager if one installed it");
-    expect(said).toContain("take ownership of the directory");
+    expect(said).toContain("updates come from your package manager");
     // The old wording for this shape. Printing it here is the bug the kind exists to fix.
     expect(said).not.toContain("cannot tell how this Collie was installed");
+    expect(said).not.toContain("herdr plugin install");
+  });
+
+  test("a root whose prefix names a manager gets the command; ours does not, so it gets none", async () => {
+    // `/opt/collie` is packaged and belongs to no manager this build knows, so Collie says the
+    // boundary and stops rather than guessing a command the operator cannot run.
+    const h = packaged();
+    await cmdUpdate(h.deps);
+    expect(h.io.stderr.join("\n")).not.toContain("Take the new version with:");
   });
 
   test("`--rollback` gets this boundary too, not the checkout lecture", async () => {
@@ -2070,14 +2069,19 @@ describe("cmdUpdate — a tree the system owns", () => {
     const h = packaged();
     expect(await cmdUpdate(h.deps, ["--rollback"])).toBe(EXIT.FAIL);
     const said = h.io.stderr.join("\n");
-    expect(said).toContain("owned by root");
+    expect(said).toContain("updates come from your package manager");
     expect(said).not.toContain("git checkout");
     expect(said).not.toContain("ADR 0006");
   });
 
-  test("a writable root with the same shape still reports the unknown it really is", async () => {
-    const h = harness({ answers: [[`${GIT} rev-parse --git-dir`, { code: 128 }]], installed: "1.5.2" });
-    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+  test("a writable, user-owned root INSIDE $HOME still reports the unknown it really is", async () => {
+    // The near-miss the predicate must keep refusing to claim: all three of clause 4's disjuncts are
+    // false here, so a tarball someone unpacked into their own home is still `loose-binary`.
+    const inHome = `${HOME}/collie`;
+    const h = harness({ answers: [[`git -C ${inHome} rev-parse --git-dir`, { code: 128 }]] });
+    h.files.entries.set(`${inHome}/herdr-plugin.toml`, { text: 'version = "1.5.2"\n' });
+    const deps = { ...h.deps, ctx: { ...h.deps.ctx, root: inHome } };
+    expect(await cmdUpdate(deps)).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("cannot tell how this Collie was installed");
   });
 });

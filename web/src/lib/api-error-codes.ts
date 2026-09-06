@@ -107,7 +107,7 @@ export const API_ERROR_CODES = [
   "update.major_confirm_required",
   "update.target_mismatch",
   "update.none_available",
-  "update.system_owned",
+  "update.packaged",
   "update.start_failed",
 ] as const;
 

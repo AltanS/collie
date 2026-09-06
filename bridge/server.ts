@@ -1404,7 +1404,7 @@ export function startServer(opts: {
           run: status.run ?? null,
           lockHeld: action.lockHeld(),
           preflight: report,
-          // The one gate a green preflight cannot express: this root is root-owned, so there is
+          // The one gate a green preflight cannot express: a package manager owns this folder, so there is
           // nothing here Collie may replace (ADR 0035).
           installKind: status.installKind,
           // One confirm covers the pack (M16/03): the members' banked verdicts gate this start the

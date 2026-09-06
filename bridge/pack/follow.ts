@@ -105,7 +105,7 @@ export function parseTurn(raw: string | null | undefined): { member: string; run
 
 /** Why a peer is not following. Every refusal is recorded, and every one of them names itself. */
 export type FollowRefusal =
-  | "system-owned"
+  | "install-is-packaged"
   | "own-build-not-a-release"
   | "lead-states-nothing"
   | "not-higher"
@@ -127,11 +127,11 @@ const refuse = (reason: FollowRefusal, detail: string): FollowDecision => ({ kin
 /** Everything the pure guards decide from. All of it is already on this machine. */
 export interface FollowFacts {
   /**
-   * This peer's own install kind (ADR 0035). A `system-owned` peer never follows: it cannot replace
+   * This peer's own install kind (ADR 0035). A `packaged` peer never follows: it cannot replace
    * its own files, so `firstRed` — which the six-and-eight guards below rely on — finding nothing
-   * red proves nothing here. A system-owned install's preflight is GREEN BY DESIGN, so without this
+   * red proves nothing here. A packaged install's preflight is GREEN BY DESIGN, so without this
    * guard a peer in that shape would sail through every other check, spawn a detached
-   * `cli/update.ts` that refuses on its own system-owned branch, and repeat once an hour forever —
+   * `cli/update.ts` that refuses on its own packaged branch, and repeat once an hour forever —
    * the exact failure ADR 0035 exists to eliminate, on the pack-follow path instead of the phone tap.
    * Checked FIRST, before the release-build guard, because it costs one comparison and never a
    * subprocess, matching this function's own ordering rule (cheapest refusal first).
@@ -161,10 +161,10 @@ export interface FollowFacts {
  */
 export function followGuards(f: FollowFacts): FollowDecision {
   // ── 0. THIS PEER CANNOT REPLACE ITS OWN FILES ─────────────────────────────
-  // Ahead of guard 1 on purpose: a system-owned install is disqualified regardless of what it is
+  // Ahead of guard 1 on purpose: a packaged install is disqualified regardless of what it is
   // running or what its lead states, so there is nothing upstream of this worth evaluating first.
-  if (f.installKind === "system-owned") {
-    return refuse("system-owned", "this install is owned by root, so it never self-levels (ADR 0035)");
+  if (f.installKind === "packaged") {
+    return refuse("install-is-packaged", "updates come from this machine's package manager (ADR 0035)");
   }
 
   // ── 1. RELEASE BUILDS ONLY ─────────────────────────────────────────────────

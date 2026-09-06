@@ -664,7 +664,7 @@ export interface UpdateStartState {
   /** The freshly-run preflight, or null when it could not be run at all. */
   readonly preflight: PreflightReport | null;
   /**
-   * How this Collie is installed. Read for exactly one refusal: a `system-owned` root is one Collie
+   * How this Collie is installed. Read for exactly one refusal: a `packaged` root is one Collie
    * does not replace files in, and its preflight is green, so no other gate here would catch it.
    */
   readonly installKind?: UpdateStatus["installKind"];
@@ -728,19 +728,19 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
     return peersNeedLevelling(state) ? { kind: "peers", to: state.current } : refuse(409, "update.none_available");
   }
 
-  // ── A ROOT-OWNED INSTALL MOVES NOTHING OF ITS OWN (ADR 0035) ────────────────
+  // ── A PACKAGED INSTALL MOVES NOTHING OF ITS OWN (ADR 0035) ─────────────────
   // BELOW the peers-only branch on purpose. This install cannot move ITSELF, and that is the whole
   // claim; levelling the peers is a different act that works perfectly well from a lead that cannot
   // update itself, and refusing it here would take away the phone's only route to them.
   //
-  // ABOVE the preflight checks, because there is nothing for them to catch: a system-owned install's
+  // ABOVE the preflight checks, because there is nothing for them to catch: a packaged install's
   // preflight is deliberately green — nothing is wrong with it — so `firstRed` finds nothing and the
   // start would proceed. The client's disabled button is a courtesy, as the route that calls this
   // says outright; a cached bundle from before that button shipped, a second tab, or a plain POST
   // all arrive here with a green report. Without this line they mint a run id and spawn a
   // `collie update` whose only possible outcome is the refusal, recorded as a failed update on a
   // perfectly healthy machine.
-  if (state.installKind === "system-owned") return refuse(409, "update.system_owned");
+  if (state.installKind === "packaged") return refuse(409, "update.packaged");
 
   if (state.preflight === null) return refuse(503, "update.preflight_unavailable");
   const red = firstRed(state.preflight);

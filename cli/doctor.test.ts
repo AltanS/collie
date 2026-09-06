@@ -1391,15 +1391,16 @@ async function plainFindings(): Promise<Finding[]> {
   return JSON.parse(fresh.io.stdout.join("\n")) as Finding[];
 }
 
-// ── A root-owned install (ADR 0035) ──────────────────────────────────────────
-// doctor gained a `system-owned` case, and the code review caught that its NEIGHBOURS did not: three
+// ── A packaged install (ADR 0035) ──────────────────────────────────────────
+// doctor gained a `packaged` case, and the code review caught that its NEIGHBOURS did not: three
 // other findings key on install kind, and each fell through to a line that is false on this one.
 // Every case here is one of those, so the omission cannot come back quietly.
 
-describe("collie doctor — a root-owned install", () => {
-  /** A Collie with a manifest, no `.git` and a root owned by uid 0. */
-  function systemOwned() {
+describe("collie doctor — a packaged install", () => {
+  /** A Collie with a manifest, no `.git`, in a folder a package manager owns. */
+  function systemOwned(link: Record<string, LinkProbe> = {}) {
     const h = harness(null, [], {
+      link,
       answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }], ...(HEALTHY_ANSWERS ?? [])],
       // The manifest is what makes this a Collie at all — `hasMarker` is asked before ownership, so
       // without it the tree classifies `no-marker` and none of these findings would be exercised.
@@ -1409,12 +1410,22 @@ describe("collie doctor — a root-owned install", () => {
     return h;
   }
 
-  test("the install line reports it as healthy and claims no provenance", async () => {
+  test("the install line reports the kind, the prefix and the PATH name pointing at it", async () => {
+    // The three facts an operator checks the install by hand with. Healthy, never a warning:
+    // nothing is wrong with this install.
     const f = (await findings(systemOwned())).byCheck.get("install");
     expect(f?.status).toBe("ok");
-    expect(f?.detail ?? "").toContain("owned by root");
-    // The tree cannot say WHO installed it, so doctor does not.
-    expect(f?.detail ?? "").not.toContain("package manager");
+    expect(f?.detail ?? "").toContain("packaged install");
+    expect(f?.detail ?? "").toContain(ROOT);
+    expect(f?.detail ?? "").toContain("updates come from your package manager");
+  });
+
+  test("the symlink is named when one points into this root, and its absence is stated", async () => {
+    const h = systemOwned();
+    // `/opt/collie` is the fake's root; a PATH name pointing into it is what a package installs.
+    expect((await findings(h)).byCheck.get("install")?.detail ?? "").toContain("no PATH name points at it");
+    const linked = systemOwned({ "/usr/bin/collie": { kind: "symlink", target: `${ROOT}/bin/collie` } });
+    expect((await findings(linked)).byCheck.get("install")?.detail ?? "").toContain("via /usr/bin/collie");
   });
 
   test("`versions` no longer promises a staging that will never happen", async () => {
@@ -1428,7 +1439,7 @@ describe("collie doctor — a root-owned install", () => {
   test("`update-source` does not name a GitHub repo this install never fetches from", async () => {
     const f = (await findings(systemOwned())).byCheck.get("update-source");
     expect(f?.detail ?? "").not.toContain("github.com");
-    expect(f?.detail ?? "").toContain("owned by root");
+    expect(f?.detail ?? "").toContain("updates come from your package manager");
   });
 
   test("`restart-pending` is skipped, because this kind runs the same bridge-less payload", async () => {

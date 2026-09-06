@@ -36,8 +36,8 @@ Three ways in:
 
 - **[Fresh install](#fresh-install)** — the install script, or the same result from source.
 - **[Through Herdr](#through-herdr)** — Collie goes in as a Herdr plugin, driven by plugin actions.
-- **[From a system package](#from-a-system-owned)** — your distribution's package manager installs
-  Collie and owns its updates.
+- **[From a package](#from-a-package)** — your package manager installs Collie and owns its
+  updates.
 
 Herdr is one of the three multiplexers Collie can mirror, not a dependency of the program. Which one
 you mirror is the [step after this](#name-your-multiplexer).
@@ -125,30 +125,27 @@ Manage via [Herdr actions](commands.md#herdr-actions). For a prerelease, install
 `herdr plugin install AltanS/collie --ref <tag> --yes`, which is the whole opt-in
 ([Prereleases](upgrading.md#prereleases)).
 
-### From a system package
+### From a package
 
-Where Collie is packaged for your system, install it the way you install anything else and register
-the installed tree with Herdr:
+Where Collie is packaged for your system, install it the way you install anything else:
 
 ```bash
-makepkg -si                      # from packaging/aur, until collie-bin is on the AUR
-herdr plugin link /usr/lib/collie
+makepkg -si     # from packaging/aur, until collie-bin is on the AUR
 collie start
 ```
 
 The package installs the compiled binary the release already publishes. Nothing is built on your
-machine: no Bun, no `git`, no compilation. This is the same channel Herdr itself arrives on under
-Omarchy, where `pacman -Si herdr` names the `omarchy` repository.
+machine: no Bun, no `git`, no compilation. The whole release folder lands under one prefix
+(`/usr/lib/collie` on Arch) with `/usr/bin/collie` as a symlink into it.
 
-> **Note.** Collie will not update a packaged install, and says so if you ask it to. It recognises
-> this by who OWNS the root, not by whether you can write it — `sudo` changes nothing — so your
-> package manager takes the new version instead. See
+> **Note.** Collie will not update a packaged install, and says so if you ask it to. `collie update`
+> declines and names your package manager's command instead, and the phone shows the new version
+> with that command where the update button would be. See
 > [a packaged install](upgrading.md#a-packaged-install).
 
-> **Caution.** As of 1.5.2, `herdr plugin link /usr/lib/collie` registers a plugin whose action
-> buttons all fail: the shipped `herdr-plugin.toml` runs every action as
-> `bash scripts/collie-ctl.sh <verb>`, and the release payload does not contain that shim. This
-> clears itself on the first release cut after this note, which ships the shim in the payload.
+A package is not a Herdr plugin. There is no `herdr plugin link` step: the plugin path registers
+action buttons that update the checkout, and this tree is your package manager's to update. Every
+`collie` verb on your PATH works the same either way.
 
 The `PKGBUILD` and its notes live in `packaging/aur/` in this repository. macOS is not packaged.
 

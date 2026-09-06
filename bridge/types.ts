@@ -438,7 +438,7 @@ export interface UpdateStatus {
    * banner's command spelling is a function of it: Herdr actions reach only a Herdr-managed
    * (detached) checkout; every other kind is told the `collie` verbs (M14/01 §5.3).
    */
-  installKind: "linked-clone" | "detached-checkout" | "binary" | "system-owned" | "unknown";
+  installKind: "linked-clone" | "detached-checkout" | "binary" | "packaged" | "unknown";
   /** The running process is behind the on-disk bridge source — needs `systemctl --user restart collie`. */
   bridgeStale: boolean;
   /** When the upstream check last completed (epoch ms), or null if it hasn't run yet. */

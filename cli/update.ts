@@ -27,8 +27,8 @@ import {
   originMatches,
   updateRepoOf,
   DEFAULT_UPDATE_REPO,
-  SYSTEM_OWNED_REMEDY,
-  systemOwnedReason,
+  PACKAGED_SENTENCE,
+  packageCommand,
 } from "./install-kind.ts";
 import type { Environment, EnvVars } from "./context.ts";
 import { EXIT } from "./io.ts";
@@ -885,15 +885,16 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
   if (wantsStatus(args)) return cmdUpdateStatus(deps, args);
   if (args.includes("--rollback")) {
     if (install.kind === "binary") return await rollbackBinary(deps);
-    if (install.kind === "system-owned") {
+    if (install.kind === "packaged") {
       // Above the checkout branch on purpose: the message below it is three sentences about
       // `versions/` layouts and `git checkout`, none of which exist here, and the real answer is the
       // package manager's own downgrade (`pacman -U` from the cache, `brew` an older formula).
-      // Shares its REASON with the main refusal below via `systemOwnedReason` — only the remedy
-      // differs, because a rollback wants the PREVIOUS version, which `SYSTEM_OWNED_REMEDY` does not
-      // name.
-      deps.io.err(`error: ${systemOwnedReason(deps.ctx.root)}, and Collie stages no versions here to roll back to.`);
-      deps.io.err("       Reinstall the previous version the way this one arrived.");
+      // The main refusal below names the command that takes the NEXT version; a rollback wants the
+      // previous one, which no `pacman -Syu` spelling reaches, so this one names the boundary and
+      // sends the operator to the manager rather than to a command.
+      deps.io.err(`error: ${deps.ctx.root} is a packaged install — ${PACKAGED_SENTENCE}, and Collie stages`);
+      deps.io.err("       no versions here to roll back to. Reinstall the previous version through");
+      deps.io.err("       your package manager.");
       return EXIT.FAIL;
     }
     if (staged && layout !== null) return await rollbackCheckout(deps, layout);
@@ -904,17 +905,16 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     return EXIT.FAIL;
   }
   if (install.kind === "binary") return await updateBinary(deps, args);
-  if (install.kind === "system-owned") {
-    // Not a failure to diagnose — a boundary to respect. What is OBSERVED is the ownership; who put
-    // the tree there is not, so this says the first and offers both ways out rather than asserting a
-    // package manager exists and sending an operator after one that does not.
-    //
-    // Both halves are the shared strings (`systemOwnedReason`, `SYSTEM_OWNED_REMEDY`), the same ones
-    // doctor's `install` line and the preflight's upstream remedy use, so a future reword of either
-    // reaches every surface at once instead of leaving this — the most user-visible of the three —
-    // stale.
-    deps.io.err(`error: ${systemOwnedReason(deps.ctx.root)}.`);
-    deps.io.err(`       \`collie update\` will not replace its files. Instead, ${SYSTEM_OWNED_REMEDY}.`);
+  if (install.kind === "packaged") {
+    // Not a failure to diagnose — a boundary to respect (ADR 0035). The sentence is the shared one
+    // the preflight's `package` check and `doctor`'s install line print, so a reword reaches every
+    // surface at once. The COMMAND is named only where the resolved root names a manager we know;
+    // where it does not, Collie says the boundary and stops rather than guessing a manager and
+    // sending the operator after a package that may not exist.
+    const cmd = packageCommand(deps.ctx.root);
+    deps.io.err(`error: ${deps.ctx.root} is a packaged install — ${PACKAGED_SENTENCE}.`);
+    deps.io.err("       `collie update` will not replace its files.");
+    if (cmd !== null) deps.io.err(`       Take the new version with: ${cmd}`);
     return EXIT.FAIL;
   }
   if (install.kind === "unknown") {

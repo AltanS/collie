@@ -172,11 +172,11 @@ export const ERROR_CODES = {
   /** Nothing newer to take. */
   "update.none_available": "there is no newer release to take",
   /**
-   * The install is owned by root (ADR 0035). Its own preflight is GREEN, so nothing else on this
-   * gate would stop the start — which is exactly why this refusal exists here and not only in the
-   * client, whose disabled button this file's own contract calls a courtesy.
+   * A package manager owns this install's folder (ADR 0035). Its own preflight is GREEN, so nothing
+   * else on this gate would stop the start — which is exactly why this refusal exists here and not
+   * only in the client, whose disabled button this file's own contract calls a courtesy.
    */
-  "update.system_owned": "this install is owned by root — Collie does not replace its files; update it the way it was installed",
+  "update.packaged": "updates come from this machine's package manager — Collie does not replace its files",
   /** The handoff itself failed — nothing was staged and nothing restarted. */
   "update.start_failed": "the update could not be started: {reason}",
 } as const;

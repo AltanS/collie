@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { resolvePluginRoot } from "../bridge/root.ts";
-import { fakeExec, fakeFiles, fakeLinkFs } from "./fakes.ts";
+import { fakeExec, fakeFiles, fakeLinkFs, HOME } from "./fakes.ts";
 import { realFiles } from "./sys.ts";
 import {
   classifyInstall,
@@ -12,6 +12,8 @@ import {
   type InstallProbe,
   originMatches,
   originOf,
+  PACKAGED_SENTENCE,
+  packageCommand,
   parseGithubRemote,
   probeInstall,
   publishedBinary,
@@ -31,6 +33,8 @@ const probe = (over: Partial<InstallProbe> = {}): InstallProbe => ({
   currentResolvesHere: false,
   hasMarker: true,
   rootOwnerUid: 1000,
+  rootIsReadOnly: false,
+  rootOutsideHome: false,
   ...over,
 });
 
@@ -102,6 +106,8 @@ describe("probeInstall / detectInstall", () => {
       currentResolvesHere: true,
       hasMarker: true,
       rootOwnerUid: 1000,
+      rootIsReadOnly: false,
+      rootOutsideHome: true,
     });
     expect(detectInstall(deps)).toEqual({ kind: "binary" });
   });
@@ -205,78 +211,143 @@ describe("process.execPath is realpath-resolved", () => {
 });
 
 // ── The install nobody here can update ───────────────────────────────────────
-// A package manager lays Collie down under a root the running user cannot write. That is the whole
-// signal: self-updating means replacing `bin/collie` and `web/dist` in place, and this process
-// cannot. Before this kind existed the shape fell out as `unknown`/`loose-binary`, and `collie
-// update` told operators their perfectly ordinary packaged install was unrecognisable.
+// A package manager lays Collie down in a folder it owns, and updates that folder itself. The
+// predicate has four clauses and the fourth is a DISJUNCTION of three probed facts, because no one
+// of them covers every packager: the Nix store is read-only, Homebrew's prefix is writable and
+// outside `$HOME`, and a tarball unpacked as root is inside `$HOME` and owned by uid 0.
+//
+// Before this kind existed every one of those shapes fell out as `unknown`/`loose-binary`, and
+// `collie update` told operators their perfectly ordinary packaged install was unrecognisable.
 
-describe("classifyInstall — a tree the system owns", () => {
-  test("a marker in a root owned by uid 0 is a system-owned install", () => {
-    expect(classifyInstall(probe({ rootOwnerUid: 0 }))).toEqual({ kind: "system-owned" });
+describe("classifyInstall — a folder a package manager owns", () => {
+  test("clause 4 is satisfied by read-only ALONE — the Nix store's shape", () => {
+    expect(classifyInstall(probe({ rootIsReadOnly: true }))).toEqual({ kind: "packaged" });
   });
 
-  test("the same tree owned by a person is still the loose binary we could not name", () => {
-    expect(classifyInstall(probe({ rootOwnerUid: 1000 }))).toEqual({ kind: "unknown", why: "loose-binary" });
+  test("clause 4 is satisfied by outside-$HOME ALONE — Homebrew's shape", () => {
+    // The disjunct that carries Homebrew, and the reason read-only is not enough on its own:
+    // `/opt/homebrew` is writable by the operator who installed it and is still not their folder.
+    expect(
+      classifyInstall(probe({ rootOutsideHome: true, rootIsReadOnly: false, rootOwnerUid: 1000 })),
+    ).toEqual({ kind: "packaged" });
   });
 
-  test("OWNERSHIP, not writability: the answer cannot change with who typed the command", () => {
-    // The bug this predicate exists to avoid. `access(root, W_OK)` is true for uid 0, so a
-    // writability test would classify /usr/lib/collie one way for `collie update` and another for
-    // `sudo collie update` — the sudo spelling landing on the exact "cannot tell how this Collie was
-    // installed" the kind was added to delete. The probe carries an owner, so there is nothing left
-    // in it that varies with the caller.
-    const tree = probe({ rootOwnerUid: 0 });
-    expect(classifyInstall(tree)).toEqual({ kind: "system-owned" });
-    expect(classifyInstall({ ...tree })).toEqual(classifyInstall(tree));
+  test("clause 4 is satisfied by root ownership ALONE — a tree unpacked as root inside $HOME", () => {
+    // And the reason ownership survives alongside the other two: `access(2)` is always true for uid
+    // 0, so a bridge probing its own root AS root reads `writable` and would otherwise see nothing.
+    expect(classifyInstall(probe({ rootOwnerUid: 0 }))).toEqual({ kind: "packaged" });
   });
 
-  test("an unreadable owner claims nothing — null is not system-owned", () => {
-    // `stat` failed. Nothing could be read, so nothing may be asserted; `loose-binary` already says
-    // precisely that, and it refuses to update either way.
+  test("a writable, user-owned marker tree inside $HOME is still the loose binary we cannot name", () => {
+    // All three disjuncts false. The closed direction: Collie declines to update what it cannot
+    // describe rather than claiming a package manager that may not exist.
+    expect(classifyInstall(probe())).toEqual({ kind: "unknown", why: "loose-binary" });
+  });
+
+  test("an unreadable owner claims nothing on its own — null is not root", () => {
+    // `stat` failed. Nothing could be read, so nothing may be asserted, and a probe that could not
+    // answer read-only reads `false` for the same reason.
     expect(classifyInstall(probe({ rootOwnerUid: null }))).toEqual({ kind: "unknown", why: "loose-binary" });
   });
 
-  test("root-owned and no marker is not a Collie at all — the marker is asked first", () => {
-    // `no-marker` outranks writability on purpose: /usr/lib/something-else is not a Collie whose
-    // updates belong to pacman, it is a directory that is not a Collie. Claiming it would make
-    // `collie update` explain package management to someone who ran it in the wrong place.
-    expect(classifyInstall(probe({ rootOwnerUid: 0, hasMarker: false }))).toEqual({
-      kind: "unknown",
-      why: "no-marker",
-    });
+  test("no marker is not a Collie at all — clause 3 is asked before clause 4", () => {
+    // /usr/lib/something-else is not a Collie whose updates belong to pacman, it is a directory that
+    // is not a Collie. Claiming it would make `collie update` explain package management to someone
+    // who ran it in the wrong place.
+    for (const over of [{ rootOwnerUid: 0 }, { rootIsReadOnly: true }, { rootOutsideHome: true }]) {
+      expect(classifyInstall(probe({ ...over, hasMarker: false }))).toEqual({
+        kind: "unknown",
+        why: "no-marker",
+      });
+    }
   });
 
-  test("layout still outranks permissions: a checkout and a binary install keep their kind", () => {
-    // Writability is the WEAKEST signal here and is asked last. A root-owned clone is still a clone,
-    // and a root-owned versions/ layout is still a binary install — reading permissions earlier would
-    // silently reclassify a working install the moment someone chowned it.
-    expect(classifyInstall(probe({ isGitCheckout: true, rootOwnerUid: 0 }))).toEqual({
+  test("layout outranks clause 4: a checkout and a binary install keep their kind", () => {
+    // Clauses 1 and 2 are asked first. A read-only, root-owned clone is still a clone, and the same
+    // versions/ layout is still a binary install — reading clause 4 earlier would silently
+    // reclassify a working install the moment someone chowned it or moved it out of $HOME.
+    const owned = { rootOwnerUid: 0, rootIsReadOnly: true, rootOutsideHome: true } as const;
+    expect(classifyInstall(probe({ isGitCheckout: true, ...owned }))).toEqual({
       kind: "linked-clone",
       alsoLayout: false,
     });
-    expect(classifyInstall(probe({ isGitCheckout: true, isDetached: true, rootOwnerUid: 0 }))).toEqual({
+    expect(classifyInstall(probe({ isGitCheckout: true, isDetached: true, ...owned }))).toEqual({
       kind: "detached-checkout",
       alsoLayout: false,
     });
     expect(
       classifyInstall(
-        probe({ parentIsVersions: true, currentIsSymlink: true, currentResolvesHere: true, rootOwnerUid: 0 }),
+        probe({ parentIsVersions: true, currentIsSymlink: true, currentResolvesHere: true, ...owned }),
       ),
     ).toEqual({ kind: "binary" });
   });
 
   test("probeInstall asks the filesystem, and detectInstall carries the answer through", () => {
     const ROOT = "/usr/lib/collie";
-    const files = fakeFiles({ [`${ROOT}/herdr-plugin.toml`]: 'version = "1.5.2"\n' });
+    const files = fakeFiles({ [`${ROOT}/herdr-plugin.toml`]: 'version = "1.5.3"\n' });
     files.rootOwned.add(ROOT);
+    files.readOnly.add(ROOT);
     const deps = {
       ctx: context({}, { root: ROOT }),
       exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }]] }),
       files,
       link: fakeLinkFs(),
     };
-    expect(probeInstall(deps, ROOT).rootOwnerUid).toBe(0);
-    expect(detectInstall(deps)).toEqual({ kind: "system-owned" });
+    const p = probeInstall(deps, ROOT);
+    expect(p.rootOwnerUid).toBe(0);
+    expect(p.rootIsReadOnly).toBe(true);
+    expect(p.rootOutsideHome).toBe(true);
+    expect(detectInstall(deps)).toEqual({ kind: "packaged" });
+  });
+
+  test("the Homebrew shape end to end: writable, user-owned, outside $HOME", () => {
+    // The one a read-only-or-root-owned predicate would have missed entirely.
+    const ROOT = "/opt/homebrew/Cellar/collie/1.5.3";
+    const files = fakeFiles({ [`${ROOT}/herdr-plugin.toml`]: 'version = "1.5.3"\n' });
+    const deps = {
+      ctx: context({}, { root: ROOT }),
+      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }]] }),
+      files,
+      link: fakeLinkFs(),
+    };
+    const p = probeInstall(deps, ROOT);
+    expect(p.rootIsReadOnly).toBe(false);
+    expect(p.rootOwnerUid).toBe(1000);
+    expect(p.rootOutsideHome).toBe(true);
+    expect(detectInstall(deps)).toEqual({ kind: "packaged" });
+  });
+
+  test("a marker tree INSIDE $HOME that is writable and the operator's own is not packaged", () => {
+    const ROOT = `${HOME}/collie-unpacked`;
+    const files = fakeFiles({ [`${ROOT}/herdr-plugin.toml`]: 'version = "1.5.3"\n' });
+    const deps = {
+      ctx: context({}, { root: ROOT }),
+      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }]] }),
+      files,
+      link: fakeLinkFs(),
+    };
+    expect(probeInstall(deps, ROOT).rootOutsideHome).toBe(false);
+    expect(detectInstall(deps)).toEqual({ kind: "unknown", why: "loose-binary" });
+  });
+});
+
+// ── Naming the command, once the kind is already decided ─────────────────────
+// The prefix is NEVER evidence of the kind (M17 principle 3). It only chooses which words to print
+// after `classifyInstall` has already said `packaged`, and an unrecognised prefix costs the operator
+// a command, never a wrong kind.
+
+describe("packageCommand", () => {
+  test("each prefix we publish to names its own manager", () => {
+    expect(packageCommand("/usr/lib/collie")).toBe("sudo pacman -Syu collie-bin");
+    expect(packageCommand("/nix/store/abc123-collie-1.5.3")).toBe("nix profile upgrade collie");
+    expect(packageCommand("/opt/homebrew/Cellar/collie/1.5.3")).toBe("brew upgrade collie");
+    expect(packageCommand("/usr/local/Cellar/collie/1.5.3")).toBe("brew upgrade collie");
+  });
+
+  test("an unrecognised prefix answers null, and the sentence stands on its own", () => {
+    expect(packageCommand("/opt/vendor/collie")).toBeNull();
+    expect(packageCommand("/usr/lib/collie-something-else")).toBeNull();
+    expect(PACKAGED_SENTENCE).toBe("updates come from your package manager");
   });
 });
 
@@ -284,7 +355,7 @@ describe("classifyInstall — a tree the system owns", () => {
 // Node/Bun's `stat().uid` reports a constant 0 on win32 regardless of who owns the file — that is
 // "this platform has no such concept", not "root owns it", and the two must not collide: Collie
 // supports win32 (bridge/config.ts, bridge/dial.ts), and colliding them would make an ordinary
-// win32 install misclassify as system-owned and refuse to update forever.
+// win32 install answer uid 0 and refuse to update forever.
 
 describe("realFiles.ownerUid — win32 has no uid to report", () => {
   const original = process.platform;

@@ -31,27 +31,29 @@ Where your package manager installed Collie, it updates Collie, and everything b
 does not apply:
 
 ```bash
-pacman -Syu          # or omarchy-update, or brew upgrade — whatever installed it
+sudo pacman -Syu collie-bin    # or `nix profile upgrade collie`, or `brew upgrade collie`
 ```
 
-Collie recognises this install by who OWNS the root — not by whether you can write it, which
-`sudo` would make true of any tree — and refuses to update it there, naming the boundary without
-guessing which package manager is responsible:
+Collie recognises this install from shapes on disk: no `.git`, no `versions/` layout, the manifest
+the release payload carries, and a root that is read-only, outside your home directory, or owned by
+root. Any one of the last three is enough. It then refuses to update in place and names the command
+where it can tell which manager owns the folder:
 
 ```
-error: /usr/lib/collie is owned by root, so `collie update` will not replace its files.
-       If a package manager installed it, take the new version from there.
-       If you unpacked it yourself, reinstall it the same way, or take ownership of
-       the directory and re-run this.
+error: /usr/lib/collie is a packaged install — updates come from your package manager.
+       `collie update` will not replace its files.
+       Take the new version with: sudo pacman -Syu collie-bin
 ```
 
-`collie doctor` reports the same install as healthy, and the phone's update card still tells you a
-newer release exists — it just does not offer to take it.
+Where the prefix names no manager Collie knows, it prints the first two lines and stops rather than
+guessing a command you cannot run.
 
-> **Note.** This is not a limitation to work around. Root ownership is the whole reason the update
-> belongs to something else, and running as root does not change the answer: `sudo collie update`
-> refuses exactly the same way, because replacing a package manager's files out from under it would
-> leave its own database lying about what is installed.
+`collie doctor` reports the same install as healthy, and the phone's update card still shows that a
+newer release exists — with the package command in place of the update button.
+
+> **Note.** This is not a limitation to work around. The folder belongs to your package manager, and
+> replacing its files out from under it would leave its database lying about what is installed.
+> `sudo collie update` refuses the same way.
 
 ## Update, from the phone or the terminal
 

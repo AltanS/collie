@@ -753,8 +753,8 @@ describe("the dispatcher", () => {
 // said yes, so the phone asked for Bun on a host whose service could not see it. A packaged install
 // is the honest end of that thread — nothing here compiles, and nothing here is even writable.
 
-describe("preflight — a tree the system owns", () => {
-  /** A Collie under a root the running user cannot write, with a release listing that answers. */
+describe("preflight — a folder a package manager owns", () => {
+  /** A Collie in a folder a package manager owns, with a release listing that answers. */
   function packaged(over: Parameters<typeof harness>[0] = {}) {
     const h = harness({
       answers: [[`${GIT} rev-parse --git-dir`, { code: 128 }]],
@@ -772,7 +772,7 @@ describe("preflight — a tree the system owns", () => {
     // No bun: nothing compiles. No tree: there is no working tree. No disk: the floor exists for a
     // staged payload, and a red over free space nobody can act on is worse than no line at all.
     const report = await preflight(packaged().deps);
-    expect(report.checks.map((c) => c.id)).toEqual(["doctor", "install", "upstream", "service"]);
+    expect(report.checks.map((c) => c.id)).toEqual(["doctor", "package", "upstream", "service"]);
   });
 
   test("bun is never asked about, even when it is genuinely missing", async () => {
@@ -781,13 +781,41 @@ describe("preflight — a tree the system owns", () => {
     expect(report.verdict).not.toBe("red");
   });
 
-  test("the install check says why the others are absent, and names the root", async () => {
-    const check = byId(await preflight(packaged().deps), "install");
+  test("the `package` check says why the others are absent, in one sentence", async () => {
+    const check = byId(await preflight(packaged().deps), "package");
     expect(check.verdict).toBe("green");
-    expect(check.reason).toContain(ROOT);
-    expect(check.reason).toContain("owned by root");
-    // It states the OWNERSHIP and never asserts who installed it — the tree cannot say.
-    expect(check.reason).not.toContain("package manager");
+    expect(check.reason).toBe("updates come from your package manager");
+    // `/opt/collie` names no manager this build knows, so no command is invented for it.
+    expect(check.remedy).toBeUndefined();
+  });
+
+  test("the report names the kind, which is what the pack flow branches on", async () => {
+    expect((await preflight(packaged().deps)).installKind).toBe("packaged");
+  });
+
+  test("a prefix we publish to names its command, on the check and on the upstream remedy", async () => {
+    // The prefix is NOT what decided the kind — clause 4 did, before this runs. It only chooses the
+    // words, which is why an unrecognised prefix costs a command and never a misclassification.
+    const AUR = "/usr/lib/collie";
+    const h = packaged({
+      installed: "1.0.0",
+      answers: [[`git -C ${AUR} rev-parse --git-dir`, { code: 128 }]],
+      net: {
+        ...deadNet,
+        getJson: () =>
+          Promise.resolve({
+            ok: true,
+            value: [
+              { name: "v1.0.0", commit: { sha: "cccccccc" } },
+              { name: "v2.0.0", commit: { sha: "dddddddd" } },
+            ],
+          }),
+      },
+    });
+    h.files.entries.set(`${AUR}/herdr-plugin.toml`, { text: 'id = "herdr.collie"\nversion = "1.0.0"\n' });
+    const report = await preflight({ ...h.deps, ctx: { ...h.deps.ctx, root: AUR } });
+    expect(byId(report, "package").remedy).toBe("sudo pacman -Syu collie-bin");
+    expect(byId(report, "upstream").remedy).toBe("sudo pacman -Syu collie-bin");
   });
 
   test("an upstream remedy never tells this install to run `collie update`", async () => {
@@ -808,18 +836,19 @@ describe("preflight — a tree the system owns", () => {
       },
     });
     const check = byId(await preflight(h.deps), "upstream");
-    expect(check.remedy).toBeDefined();
-    expect(check.remedy).not.toContain("collie update");
-    expect(check.remedy).toContain("the way this install arrived");
+    // Cleared, never replaced with prose: this root names no manager, and a remedy is the one
+    // command that clears a check, not a paragraph pretending to be one.
+    expect(check.remedy).toBeUndefined();
+    expect(check.selfUpdateRemedy).toBeUndefined();
     // The REASON is untouched: that a release exists is true however it gets applied.
     expect(check.reason).toContain("2.0.0");
   });
 
   test("a remedy that has nothing to do with `collie update` is left ALONE", async () => {
     // The regression this pins. The first cut replaced EVERY upstream remedy, so an offline
-    // system-owned host was told to run its package manager instead of "check this machine's
-    // network" — and because that check is red, the clobbered sentence became the blocking reason
-    // the phone displayed, hiding the real fault behind advice that fixes nothing.
+    // packaged host was told to run its package manager instead of "check this machine's network" —
+    // and because that check is red, the clobbered sentence became the blocking reason the phone
+    // displayed, hiding the real fault behind advice that fixes nothing.
     const h = packaged({
       net: {
         ...deadNet,
@@ -829,7 +858,7 @@ describe("preflight — a tree the system owns", () => {
     const check = byId(await preflight(h.deps), "upstream");
     expect(check.verdict).toBe("red");
     expect(check.remedy).toContain("network");
-    expect(check.remedy).not.toContain("the way this install arrived");
+    expect(check.remedy).not.toContain("package manager");
   });
 
   test("the rate-limit remedy survives too — same rule, different sentence", async () => {

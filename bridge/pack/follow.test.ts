@@ -103,15 +103,15 @@ describe("what a lead may state about itself", () => {
 });
 
 describe("the peer's guards", () => {
-  test("guard 0: a root-owned install never follows, whatever else is true", () => {
-    // The regression this pins. A system-owned install's preflight is GREEN BY DESIGN, so before
+  test("guard 0: a packaged install never follows, whatever else is true", () => {
+    // The regression this pins. A packaged install's preflight is GREEN BY DESIGN, so before
     // this guard existed such a peer sailed straight through firstRed() in followDecision and spawned
     // a `collie update` every hour that could only ever refuse — the exact failure ADR 0035 exists to
     // eliminate, on this path instead of the phone tap. Every other fact here is otherwise a clean
     // follow: a real answer would be `{ kind: "follow" }` without this guard.
-    const d = followGuards(facts({ installKind: "system-owned" }));
+    const d = followGuards(facts({ installKind: "packaged" }));
     expect(d.kind).toBe("refuse");
-    expect(d.kind === "refuse" && d.reason).toBe("system-owned");
+    expect(d.kind === "refuse" && d.reason).toBe("install-is-packaged");
   });
 
   test("every other kind still reaches the ordinary guards", () => {
@@ -273,18 +273,18 @@ describe("the follower spawns the one updater there is", () => {
     expect(f.last()?.kind).toBe("refuse");
   });
 
-  test("a system-owned peer never spawns the updater, on a green preflight, granted a real turn", async () => {
+  test("a packaged peer never spawns the updater, on a green preflight, granted a real turn", async () => {
     // End to end, through the same entry point the router calls on every sweep. Before the guard-0
     // fix this reached firstRed(green) === null and called deps.start() — spawning a `collie update`
-    // that would only ever refuse on its own system-owned branch, once an hour, forever.
-    const { f, started } = follower({ installKind: "system-owned" });
+    // that would only ever refuse on its own packaged branch, once an hour, forever.
+    const { f, started } = follower({ installKind: "packaged" });
     f.observe({ leadRelease: "1.4.1", turn: formatTurn("attic", RUN_ID) });
     await Promise.resolve();
     await Promise.resolve();
     expect(started).toEqual([]);
     const last = f.last();
     expect(last?.kind).toBe("refuse");
-    expect(last?.kind === "refuse" && last.reason).toBe("system-owned");
+    expect(last?.kind === "refuse" && last.reason).toBe("install-is-packaged");
   });
 
   test("an updater that will not start is recorded as a refusal rather than thrown", async () => {
