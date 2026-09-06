@@ -67,7 +67,13 @@ version files.
    `([abc1234](https://github.com/AltanS/collie/commit/abc1234))`. Clean up the section: merge
    or reorder lines as needed, and delete entries for changes reverted before release.
 4. **Re-create an empty `## [Unreleased]` heading above it.**
-5. **Run `scripts/check-version.sh`** — it must print `✓`. Then tag and push (next paragraph).
+5. **Bump `flake.lock` if it is to move at all** — in this commit and no other. The input is
+   pinned by revision, so a bump is two edits: the `rev` in `flake.nix`, then `nix flake lock` to
+   re-record it. The lock pins the toolchain the published binary is built with (*Build / run* →
+   the flake), so a lock that moved in a feature commit describes a build nothing records. This is
+   the only commit allowed to touch it, and `scripts/check-flake-lock.sh` refuses the others.
+   Leaving it alone is the ordinary case; a release does not owe the lock a bump.
+6. **Run `scripts/check-version.sh`** — it must print `✓`. Then tag and push (next paragraph).
 
 **A PR from a fork is the exception: leave all four files alone.** Bump nothing, add no CHANGELOG
 line — send the functional commits only. The version is the maintainer's to pick, because it depends
@@ -101,7 +107,8 @@ up either. To publish sooner, run the website's sync by hand against a ref:
 - A **git pre-commit hook** (`scripts/git-hooks/pre-commit`, activate once with
   `scripts/install-hooks.sh`) blocks a functional commit that neither adds a line under
   `## [Unreleased]` nor bumps the version, and blocks a release commit (version bumped) whose
-  `## [Unreleased]` section still has lines in it. Escape hatch for a single commit:
+  `## [Unreleased]` section still has lines in it. The same hook holds guard (D), which refuses a
+  staged `flake.lock` that is not part of a release commit. Escape hatch for a single commit:
   `SKIP_VERSION_CHECK=1 git commit …` (every `SKIP_*` hatch is listed under *Linting* below).
 
 **Publish every release you cut — tag it when you push it.** Cutting a release means the three
@@ -218,6 +225,24 @@ page to be skimmed.
   every push — override once with `SKIP_TESTS=1 git push` (see *Linting* → escape hatches). The bits that genuinely need `Bun.serve` /
   `Bun.connect` (HTTP handlers, the socket client) stay unit-untested — Vitest-on-Node can't run them,
   so keep new backend logic pure/injectable enough for `bun test`, or exercise it through `web/`.
+- **`flake.nix` is the build environment, and `nix develop` is the reference.** It pins the five
+  tools this tree is built and checked with — Bun, Node, git, tmux, zellij — at one nixpkgs
+  revision, and `release.yml` builds every published payload inside it. Build and check through the
+  flake where you can (`nix develop --command bun run build`, and the same for `lint`, `test` and
+  both typechecks); a committed `.envrc` carries `use flake` for direnv users, and nobody is
+  obliged to allow it. **Do not install a build tool by hand** to get past a version problem — move
+  the pin, or say why you did not. Herdr is deliberately not pinned: it is the product's peer, not
+  one of Collie's build tools.
+- **`nix develop` is the reference, not a requirement.** A developer with no Nix works exactly as
+  today — `bun run build`, `bun run lint`, `bun test`, unchanged. No script, hook or `bun run`
+  target needs Nix to be installed.
+- **Never touch `flake.lock` outside a `chore(release): x.y.z` commit.** It records which toolchain
+  a published binary was built with, so a lock that moves in a feature commit means the binary a
+  bisect builds is not the binary the release built, and nothing in the tree says when it changed.
+  The release recipe (*Versioning*, step 5) is where it moves; `scripts/check-flake-lock.sh` refuses
+  it anywhere else, with `SKIP_FLAKE_LOCK_CHECK=1` as its own hatch. The pinned Bun must also stay
+  at or above `MIN_BUN` in `cli/update-check.ts` — they are one fact, and
+  `scripts/check-flake-bun.test.ts` fails when they drift apart.
 - Service: `systemd --user` unit `collie` on the deployment host; logs `journalctl --user -u collie -f`.
 - **Dependencies must be 7 days old to install** (`bunfig.toml` + `web/bunfig.toml`, mirrored in
   `.npmrc` for npm users) — a compromised release is usually pulled within hours. A brand-new
@@ -265,12 +290,13 @@ a single command; never export one.
 | `SKIP_VERSION_CHECK=1` | `git commit` (pre-commit hook) | the version-consistency + bump-on-change guard |
 | `SKIP_LINT_CHECK=1` | `git commit` (pre-commit hook) | oxlint over the staged files |
 | `SKIP_PACK_WIRE_CHECK=1` | `git commit` (pre-commit hook) | the pack-wire decision guard |
+| `SKIP_FLAKE_LOCK_CHECK=1` | `git commit` (pre-commit hook) | the `flake.lock`-only-in-a-release guard |
 | `SKIP_TYPECHECK=1` | `bun run build` / `collie build` | both typecheck steps |
 | `SKIP_TESTS=1` | `git push` (pre-push hook) | both test suites |
 | `SKIP_TAG_CHECK=1` | `git push` (pre-push hook) | the untagged-release warning |
 
-The pre-commit hook's three guards are **independent** — `SKIP_VERSION_CHECK=1` does not disarm the
-lint guard or the pack-wire guard.
+The pre-commit hook's four guards are **independent** — `SKIP_VERSION_CHECK=1` does not disarm the
+lint guard, the pack-wire guard or the `flake.lock` guard.
 
 ## Frontend data layer (React Router, not TanStack)
 
