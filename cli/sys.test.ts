@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { fakeFiles, HOME } from "./fakes.ts";
-import { resolveTool, toolCandidates } from "./sys.ts";
+import { resolveTool, toolCandidates, withPathPrefix } from "./sys.ts";
 
 // The one place Collie looks for Bun, and the proof that the two shell copies of it agree.
 //
@@ -67,8 +67,48 @@ describe("resolveTool", () => {
     expect(resolveTool(whichIs(null), files, {}, HOME, "bun")?.path).toBe(`${HOME}/.bun/bin/bun`);
   });
 
+  test("a candidate that is present but not executable is skipped, exactly as `[ -x ]` skips it", () => {
+    // Both shells ask `[ -x "$candidate" ]`. A path that exists and cannot be run — a half-written
+    // download, an empty file left where an uninstall took the binary from — is not the tool, and
+    // taking it would hand the update an absolute path that dies with EACCES.
+    const files = fakeFiles({ [`${HOME}/.bun/bin/bun`]: "", "/usr/bin/bun": "" });
+    files.notExecutable.add(`${HOME}/.bun/bin/bun`);
+    expect(resolveTool(whichIs(null), files, {}, HOME, "bun")?.path).toBe("/usr/bin/bun");
+    files.notExecutable.add("/usr/bin/bun");
+    expect(resolveTool(whichIs(null), files, {}, HOME, "bun")).toBeNull();
+  });
+
   test("nothing anywhere is null, never a guess", () => {
     expect(resolveTool(whichIs(null), fakeFiles(), {}, HOME, "bun")).toBeNull();
+  });
+});
+
+describe("the PATH a resolved tool's child gets", () => {
+  // A phone-started update runs in a transient systemd user unit with no operator PATH. Resolving
+  // Bun to `~/.bun/bin/bun` and spawning that absolute path is not enough: `bun cli/main.ts build`
+  // shells out to `bunx tsc`, and `bunx` is found by NAME or not at all. A lab run died exactly
+  // there — `bunx: command not found`, exit 127, checkout already advanced.
+  test("the resolved tool's directory goes to the FRONT, so it outranks anything else", () => {
+    expect(withPathPrefix({ PATH: "/usr/bin:/bin" }, "/home/pat/.bun/bin").PATH).toBe(
+      "/home/pat/.bun/bin:/usr/bin:/bin",
+    );
+  });
+
+  test("an empty or absent PATH becomes the directory alone, never a stray colon", () => {
+    expect(withPathPrefix({}, "/opt/bun/bin").PATH).toBe("/opt/bun/bin");
+    expect(withPathPrefix({ PATH: "" }, "/opt/bun/bin").PATH).toBe("/opt/bun/bin");
+  });
+
+  test("a directory already on the PATH is left where it is, as the shim leaves it", () => {
+    expect(withPathPrefix({ PATH: "/usr/bin:/opt/bun/bin" }, "/opt/bun/bin").PATH).toBe(
+      "/usr/bin:/opt/bun/bin",
+    );
+  });
+
+  test("no prefix hands back the same environment, untouched", () => {
+    const env = { PATH: "/usr/bin" };
+    expect(withPathPrefix(env, undefined)).toBe(env);
+    expect(withPathPrefix(env, "")).toBe(env);
   });
 });
 
@@ -128,6 +168,13 @@ describe("bun lookup parity", () => {
       );
     });
   }
+
+  test("both shell sources test a candidate with `[ -x ]`, the predicate resolveTool asks", async () => {
+    // The order is not the whole contract: a list walked with `[ -e ]` on one side and `[ -x ]` on
+    // the other resolves to different paths on the same host. `Files.executable` is this side's.
+    expect(await shim).toContain('if [ -x "$candidate" ]; then');
+    expect(await remote).toContain('if [ -x "$_c" ]; then printf');
+  });
 
   test("both shell sources take `command -v` only when the answer is absolute", async () => {
     expect(await shim).toContain("case \"$candidate\" in");

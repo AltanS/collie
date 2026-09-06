@@ -728,10 +728,29 @@ describe("update", () => {
       ],
     });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
-    expect(h.exec.calls).toContain(`${ROOT}$ bun ${ROOT}/cli/main.ts _apply-update`);
+    expect(h.exec.calls).toContain(`${ROOT}$ PATH=/fake:$PATH /fake/bun ${ROOT}/cli/main.ts _apply-update`);
     // Nothing of the second half ran in THIS process.
     expect(h.restarts).toBe(0);
     expect(h.exec.calls.some((c) => c.includes("check-version.sh"))).toBe(false);
+  });
+
+  test("the handoff re-execs the resolved Bun, even when PATH does not name it", async () => {
+    const h = harness({
+      installed: "0.31.1",
+      absent: ["bun"],
+      answers: [
+        ...MANAGED,
+        [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
+        [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
+        ...SHALLOW,
+      ],
+    });
+    h.files.entries.set("/opt/bun/bin/bun", { text: "" });
+    h.deps.ctx.env.BUN_INSTALL = "/opt/bun";
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain(
+      `${ROOT}$ PATH=/opt/bun/bin:$PATH /opt/bun/bin/bun ${ROOT}/cli/main.ts _apply-update`,
+    );
   });
 
   test("records the run it just finished, so a restarted lead can find its pack turns", async () => {
@@ -792,7 +811,7 @@ describe("update", () => {
         [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
         ...SHALLOW,
-        [`${ROOT}$ bun ${ROOT}/cli/main.ts _apply-update`, { code: 1 }],
+        [`${ROOT}$ PATH=/fake:$PATH /fake/bun ${ROOT}/cli/main.ts _apply-update`, { code: 1 }],
       ],
     });
     expect(await cmdUpdate(h.deps, ["--run-id", "r-99"])).toBe(EXIT.FAIL);
@@ -932,7 +951,7 @@ describe("update", () => {
       ],
     });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
-    expect(h.exec.calls).toContain(`${ROOT}$ bun ${ROOT}/cli/main.ts _apply-update`);
+    expect(h.exec.calls).toContain(`${ROOT}$ PATH=/fake:$PATH /fake/bun ${ROOT}/cli/main.ts _apply-update`);
     // Twice: once at the decision, once at the end.
     expect(h.io.stdout.filter((l) => l.includes("update-major --plugin herdr.collie"))).toHaveLength(2);
     expect(h.io.stdout.at(-1)).toContain("Collie 1.0.0 is out — a NEW MAJOR. Take it with:");
@@ -1554,7 +1573,7 @@ describe("the staged checkout path", () => {
       `${GIT} worktree add --detach --force ${WT("v0.32.0")} refs/tags/v0.32.0`,
     );
     // The build runs INSIDE the worktree, from the source that was just checked out there.
-    expect(h.exec.calls).toContain(`${WT("v0.32.0")}$ bun ${WT("v0.32.0")}/cli/main.ts build`);
+    expect(h.exec.calls).toContain(`${WT("v0.32.0")}$ PATH=/fake:$PATH /fake/bun ${WT("v0.32.0")}/cli/main.ts build`);
     // The marker is the build's last act…
     expect(JSON.parse(h.files.read(`${WT("v0.32.0")}/.collie-build`) ?? "{}")).toEqual({
       version: "0.32.0",
@@ -1606,7 +1625,7 @@ describe("the staged checkout path", () => {
   });
 
   test("a build fail leaves `current` where it was, names the stage, and takes the worktree away", async () => {
-    const h = legacyClone({ answers: [[`${WT("v0.32.0")}$ bun`, { code: 1 }]] });
+    const h = legacyClone({ answers: [[`${WT("v0.32.0")}$ PATH=/fake:$PATH /fake/bun`, { code: 1 }]] });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("stopped at the BUILD stage");
     expect(h.io.stderr.join("\n")).toContain("`current` never moved");
@@ -1616,6 +1635,33 @@ describe("the staged checkout path", () => {
     // …and both halves of the worktree go, directory and administrative record together.
     expect(h.files.ops).toContain(`rm -rf ${WT("v0.32.0")}`);
     expect(h.exec.calls).toContain(`${GIT} worktree prune`);
+  });
+
+  test("a Bun only off PATH still builds the stage, by its absolute path and on the child's PATH", async () => {
+    // #169's other half. The preflight already resolves Bun through the candidate list, so a Herdr
+    // action with no login shell reports GREEN — and the verb has to run the SAME Bun, or the
+    // operator is told the update can proceed by a check the update then contradicts.
+    const h = legacyClone({ absent: ["bun"] });
+    h.files.entries.set(`${HOME}/.bun/bin/bun`, { text: "" });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    // The directory rides along at the FRONT of the child's PATH, and that half is not decoration.
+    // A phone-started update runs in a transient systemd user unit with no operator PATH, and
+    // `bun cli/main.ts build` shells out to `bunx tsc` — found by NAME or not at all. A lab run on a
+    // host whose Bun lives only in `~/.bun/bin` advanced the checkout and then died there:
+    // `bunx: command not found`, exit 127, with no binary and no `web/dist` to show for it.
+    expect(h.exec.calls).toContain(
+      `${WT("v0.32.0")}$ PATH=${HOME}/.bun/bin:$PATH ${HOME}/.bun/bin/bun ${WT("v0.32.0")}/cli/main.ts build`,
+    );
+  });
+
+  test("the refusal is kept for the one case that earns it: nothing resolves anywhere", async () => {
+    // Same fixture as above minus the file — so what the guard reads is `resolveTool`'s null, never
+    // a bare `which` that a candidate would have answered.
+    const h = legacyClone({ absent: ["bun"] });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("bun not found");
+    expect(h.io.stderr.join("\n")).toContain("Nothing was changed.");
+    expect(gitRuns(h.exec).join("\n")).not.toContain("worktree add");
   });
 
   test("a fetch that fails stops before any worktree is added", async () => {

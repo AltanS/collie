@@ -52,8 +52,14 @@ export interface Exec {
    * Run `tool` in `cwd` with our own stdio — the build steps, whose output IS the operator's
    * progress report and whose working directory is load-bearing (the shell's `( cd … && bun … )`:
    * the root and `web/` trees are installed, typechecked and built separately).
+   *
+   * `pathPrefix`, when given, is prepended to the CHILD's `PATH`. A tool resolved to an absolute
+   * path off this PATH ({@link resolveTool}) still has children that look it up by NAME — `bun
+   * cli/main.ts build` spawns `bun install` and Vite — so running the absolute path alone would
+   * hand the grandchild the very lookup failure the resolution just repaired. `scripts/collie-ctl.sh`
+   * carries the same prepend for the same reason. Already-present directories are not re-added.
    */
-  runIn(tool: string, args: readonly string[], cwd: string): ExecResult;
+  runIn(tool: string, args: readonly string[], cwd: string, pathPrefix?: string): ExecResult;
   /**
    * Start the unsupervised bridge: detached, both streams appended to `logPath`, and unref'd so
    * this process can exit while it keeps running. Returns its pid, or null if it never started.
@@ -69,6 +75,19 @@ export interface Exec {
 
 export interface Files {
   exists(p: string): boolean;
+  /**
+   * May this process EXECUTE `p` — an `access(p, X_OK)` probe that a directory never passes.
+   *
+   * Separate from {@link Files.exists} because the two shell copies of the tool lookup ask `[ -x ]`,
+   * and `[ -e ]` would answer yes for things that cannot be run: a half-written download, a
+   * `~/.bun/bin/bun` left behind as an empty file, a directory that happens to carry the name.
+   * {@link resolveTool} must reject those exactly where the shim rejects them, or the preflight and
+   * the update would name a Bun that dies with EACCES.
+   *
+   * The directory case is explicit because search permission on a directory IS `X_OK`: without the
+   * `stat(2)`, a directory named `bun` would resolve as the tool.
+   */
+  executable(p: string): boolean;
   /** File contents, or null when missing/unreadable. */
   read(p: string): string | null;
   /**
@@ -214,6 +233,25 @@ export const realNet: Net = {
   },
 };
 
+/**
+ * `env` with `dir` at the FRONT of `PATH`, or `env` unchanged when there is nothing to add.
+ *
+ * The front, not the back: the directory is being added because it holds the tool this process
+ * already resolved, so it has to outrank anything else on the PATH that answers the same name.
+ *
+ * Mirrors the shim's `case ":${PATH}:" in *":${BUN_DIR}:"*) ;;` — a directory already on the PATH is
+ * left where it is rather than duplicated onto the front.
+ *
+ * Exported for `cli/sys.test.ts` only. A `runIn` runs its child with inherited stdio, so the env it
+ * built is not observable from the outside, and this is the half worth pinning.
+ */
+export function withPathPrefix(env: Environment, dir: string | undefined): Environment {
+  if (dir === undefined || dir === "") return env;
+  const path = env.PATH ?? "";
+  if (path.split(":").includes(dir)) return env;
+  return { ...env, PATH: path === "" ? dir : `${dir}:${path}` };
+}
+
 export function realExec(env: Environment, home: string): Exec {
   const resolve = (tool: string): string | null => findTool(tool, env, home);
   return {
@@ -240,12 +278,12 @@ export function realExec(env: Environment, home: string): Exec {
       });
       return { code: r.exitCode, stdout: "", stderr: "", found: true };
     },
-    runIn(tool, args, cwd) {
+    runIn(tool, args, cwd, pathPrefix) {
       const bin = resolve(tool);
       if (bin === null) return NOT_FOUND;
       const r = Bun.spawnSync([bin, ...args], {
         cwd,
-        env,
+        env: withPathPrefix(env, pathPrefix),
         stdout: "inherit",
         stderr: "inherit",
       });
@@ -293,6 +331,15 @@ export function realExec(env: Environment, home: string): Exec {
 
 export const realFiles: Files = {
   exists: (p) => existsSync(p),
+  executable(p) {
+    try {
+      if (statSync(p).isDirectory()) return false;
+      accessSync(p, constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  },
   read(p) {
     try {
       return readFileSync(p, "utf8");
@@ -366,6 +413,11 @@ export const realFiles: Files = {
 // run where TypeScript cannot: `resolve_bun` bootstraps the binary Bun compiles, and `collie_tool`
 // is shipped down an ssh pipe. `cli/sys.test.ts` parses both files and fails on a drift.
 //
+// The PREDICATE matches too, not just the order: both shells ask `[ -x "$candidate" ]`, so this side
+// asks {@link Files.executable} rather than {@link Files.exists}. A candidate that is present but
+// not runnable is not the tool, and all three copies have to agree on that or they resolve to
+// different paths on the same host.
+//
 // This is NOT `bridge/tools.ts`'s `findTool`, and it does not replace it. That one searches PATH
 // plus a generic fallback set for a system tool; this one is the Bun installer's own locations, it
 // honours `$BUN_INSTALL`, and it is a fixed ordered list on purpose — a shell can spell it.
@@ -400,7 +452,8 @@ export interface ResolvedTool {
 }
 
 /**
- * Walk {@link toolCandidates} for `tool`: PATH first, then each candidate that exists.
+ * Walk {@link toolCandidates} for `tool`: PATH first, then each candidate that is EXECUTABLE — the
+ * shells' `[ -x ]`, never a bare "is there a file here".
  *
  * PATH's answer is taken ONLY when it is absolute. `command -v` reports a shell function or an
  * alias as a bare word, and a bare word is not a path — it is whatever the caller's cwd and PATH
@@ -408,7 +461,7 @@ export interface ResolvedTool {
  */
 export function resolveTool(
   exec: Pick<Exec, "which">,
-  files: Pick<Files, "exists">,
+  files: Pick<Files, "executable">,
   env: Environment,
   home: string,
   tool: string,
@@ -416,7 +469,7 @@ export function resolveTool(
   const onPath = exec.which(tool);
   if (onPath !== null && isAbsolute(onPath)) return { path: onPath, onPath: true };
   for (const candidate of toolCandidates(env, home, tool)) {
-    if (files.exists(candidate)) return { path: candidate, onPath: false };
+    if (files.executable(candidate)) return { path: candidate, onPath: false };
   }
   return null;
 }

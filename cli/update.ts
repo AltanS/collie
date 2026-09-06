@@ -33,7 +33,7 @@ import { packageCommand } from "./package-command.ts";
 import type { Environment, EnvVars } from "./context.ts";
 import { EXIT } from "./io.ts";
 import { cmdLink, isCollieBinaryPath, type LinkReader, linkPath, type LinkWriter } from "./link.ts";
-import type { Exec, Files, Net, NetFailure } from "./sys.ts";
+import { type Exec, type Files, type Net, type NetFailure, type ResolvedTool, resolveTool } from "./sys.ts";
 import { tagRemote } from "./update-remote.ts";
 import { collieBinary, unitName } from "./unit.ts";
 import {
@@ -104,6 +104,22 @@ export interface UpdateDeps extends BuildDeps {
 // `cli/install-kind.ts` now that `doctor` asks them too. Re-exported because every caller and test
 // already spells them `from "./update.ts"`.
 export { isManagedCheckout };
+
+/**
+ * The Bun this update will RUN, or null when there is none — the same lookup `update --check`'s
+ * preflight reports (`cli/update-check.ts`) and the same one the shim bootstraps with.
+ *
+ * Not `exec.which("bun")`. Herdr invokes a plugin action with no login shell, so the directory the
+ * operator's profile exports is simply absent from PATH, and a bare name would refuse an update the
+ * shim would have built without complaint (#169). The preflight already told the operator it found
+ * a Bun at an absolute path; the verb has to run THAT one, or the two disagree on the same host.
+ *
+ * Callers spawn `path` and pass its `dirname` as the child's PATH prefix: `bun cli/main.ts build`
+ * spawns `bun` again by name for the two installs and the Vite build.
+ */
+function resolveBun(deps: UpdateDeps): ResolvedTool | null {
+  return resolveTool(deps.exec, deps.files, deps.ctx.env, deps.ctx.home, "bun");
+}
 
 /** The command that consents to a major crossing — printed wherever one is refused. */
 export const MAJOR_ACTION = "herdr plugin action invoke update-major --plugin herdr.collie";
@@ -1018,15 +1034,17 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     closeWithMajor(deps, advanced.higher);
     return EXIT.OK;
   }
-  if (deps.exec.which("bun") === null) {
+  const bun = resolveBun(deps);
+  if (bun === null) {
     deps.io.err("error: bun not found — the checkout advanced, but rebuilding needs Bun.");
     deps.io.err("       Install it from https://bun.sh and re-run update.");
     return EXIT.FAIL;
   }
   const r = deps.exec.runIn(
-    "bun",
+    bun.path,
     [join(deps.ctx.root, "cli", "main.ts"), "_apply-update"],
     deps.ctx.root,
+    dirname(bun.path),
   );
   if (!r.found || r.code !== 0) return EXIT.FAIL;
   recordInPlaceRun(deps, wantsRunId(args), from, advanced.to, startedAt);
@@ -1766,7 +1784,8 @@ async function updateStagedCheckout(
   const higher =
     plan.kind === "unknown-version" || (plan.kind === "advance" && plan.crossesMajor) ? null : plan.higher;
 
-  if (deps.exec.which("bun") === null) {
+  const bun = resolveBun(deps);
+  if (bun === null) {
     deps.io.err("error: bun not found — staging a version builds it, and that needs Bun.");
     deps.io.err("       Install it from https://bun.sh and re-run update. Nothing was changed.");
     return EXIT.FAIL;
@@ -1821,7 +1840,7 @@ async function updateStagedCheckout(
 
   // 3. The build, INSIDE the worktree and from the NEW source — the same handoff reason the in-place
   //    path re-execs for: the build logic that must run is the one that was just fetched.
-  const built = deps.exec.runIn("bun", [join(at, "cli", "main.ts"), "build"], at);
+  const built = deps.exec.runIn(bun.path, [join(at, "cli", "main.ts"), "build"], at, dirname(bun.path));
   if (!built.found || built.code !== 0) {
     deps.io.err(`error: update stopped at the BUILD stage — ${target.tag} did not build.`);
     deps.io.err("       `current` never moved: the running bridge and the served UI are unchanged.");

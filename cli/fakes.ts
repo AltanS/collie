@@ -23,7 +23,8 @@ export interface FakeExec extends Exec {
   /**
    * `<tool> <args…>` for every call, in order. A {@link Exec.runIn} call is recorded with its
    * working directory prefixed — `<cwd>$ <tool> <args…>` — because for the build steps the cwd IS
-   * the difference between installing the root tree and installing `web/`.
+   * the difference between installing the root tree and installing `web/`. A `pathPrefix` is
+   * recorded the way a shell would write it: `<cwd>$ PATH=<dir>:$PATH <tool> <args…>`.
    */
   calls: string[];
   killed: number[];
@@ -59,8 +60,16 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
   const spawned: { command: string[]; env: Record<string, string>; logPath: string }[] = [];
   const absent = new Set(scripted.absent ?? []);
   const seen = new Map<string, number>();
-  const answer = (tool: string, args: readonly string[], cwd?: string): ExecResult => {
-    const line = (cwd === undefined ? "" : `${cwd}$ `) + [tool, ...args].join(" ");
+  const answer = (
+    tool: string,
+    args: readonly string[],
+    cwd?: string,
+    pathPrefix?: string,
+  ): ExecResult => {
+    const line =
+      (cwd === undefined ? "" : `${cwd}$ `) +
+      (pathPrefix === undefined ? "" : `PATH=${pathPrefix}:$PATH `) +
+      [tool, ...args].join(" ");
     calls.push(line);
     if (absent.has(tool)) return { code: 127, stdout: "", stderr: "", found: false };
     for (const [prefix, a] of scripted.answers ?? []) {
@@ -84,7 +93,7 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
       return r;
     },
     inherit: (tool, args) => answer(tool, args),
-    runIn: (tool, args, cwd) => answer(tool, args, cwd),
+    runIn: (tool, args, cwd, pathPrefix) => answer(tool, args, cwd, pathPrefix),
     spawnDetached(command, opts) {
       spawned.push({ command: [...command], env: opts.env, logPath: opts.logPath });
       return scripted.spawnPid === undefined ? 4242 : scripted.spawnPid;
@@ -107,6 +116,12 @@ export interface FakeFiles extends Files {
   rootOwned: Set<string>;
   /** Paths this process may not write — how a test states a read-only root. Everything else is writable. */
   readOnly: Set<string>;
+  /**
+   * Paths that exist but carry no execute bit — how a test states the shell's `[ -x ]` saying no.
+   * Everything seeded is executable by default, because almost every seeded path is a data file no
+   * test ever runs, and the one lookup that asks ({@link resolveTool}) only ever asks about tools.
+   */
+  notExecutable: Set<string>;
   /** Destructive filesystem operations in order: `rm -rf <p>` / `mv <from> <to>`. Ordering is the assertion `build` lives or dies by. */
   ops: string[];
 }
@@ -117,6 +132,7 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
   const undeletable = new Set<string>();
   const rootOwned = new Set<string>();
   const readOnly = new Set<string>();
+  const notExecutable = new Set<string>();
   const ops: string[] = [];
   // Paths are a flat set, so a "directory" is whatever entries sit under it — enough to model the
   // staging swap, whose whole content is `web/dist/**`.
@@ -127,10 +143,12 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
     undeletable,
     rootOwned,
     readOnly,
+    notExecutable,
     ops,
     ownerUid: (p) => (rootOwned.has(p) ? 0 : 1000),
     writable: (p) => !readOnly.has(p),
     exists: (p) => under(p).length > 0,
+    executable: (p) => under(p).length > 0 && !notExecutable.has(p),
     read: (p) => entries.get(p)?.text ?? null,
     list: (p) => [
       ...new Set(
