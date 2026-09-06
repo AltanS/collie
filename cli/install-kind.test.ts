@@ -29,6 +29,7 @@ const probe = (over: Partial<InstallProbe> = {}): InstallProbe => ({
   currentIsSymlink: false,
   currentResolvesHere: false,
   hasMarker: true,
+  rootWritable: true,
   ...over,
 });
 
@@ -99,6 +100,7 @@ describe("probeInstall / detectInstall", () => {
       currentIsSymlink: true,
       currentResolvesHere: true,
       hasMarker: true,
+      rootWritable: true,
     });
     expect(detectInstall(deps)).toEqual({ kind: "binary" });
   });
@@ -198,5 +200,64 @@ describe("process.execPath is realpath-resolved", () => {
         exists: (p) => p === `${root}/herdr-plugin.toml`,
       }),
     ).toBe(root);
+  });
+});
+
+// ── The install nobody here can update ───────────────────────────────────────
+// A package manager lays Collie down under a root the running user cannot write. That is the whole
+// signal: self-updating means replacing `bin/collie` and `web/dist` in place, and this process
+// cannot. Before this kind existed the shape fell out as `unknown`/`loose-binary`, and `collie
+// update` told operators their perfectly ordinary packaged install was unrecognisable.
+
+describe("classifyInstall — a package manager owns the tree", () => {
+  test("a marker in a root this user cannot write is a system package", () => {
+    expect(classifyInstall(probe({ rootWritable: false }))).toEqual({ kind: "system-package" });
+  });
+
+  test("the same tree, writable, is still the loose binary we could not name", () => {
+    expect(classifyInstall(probe({ rootWritable: true }))).toEqual({ kind: "unknown", why: "loose-binary" });
+  });
+
+  test("unwritable and no marker is not a Collie at all — the marker is asked first", () => {
+    // `no-marker` outranks writability on purpose: /usr/lib/something-else is not a Collie whose
+    // updates belong to pacman, it is a directory that is not a Collie. Claiming it would make
+    // `collie update` explain package management to someone who ran it in the wrong place.
+    expect(classifyInstall(probe({ rootWritable: false, hasMarker: false }))).toEqual({
+      kind: "unknown",
+      why: "no-marker",
+    });
+  });
+
+  test("layout still outranks permissions: a checkout and a binary install keep their kind", () => {
+    // Writability is the WEAKEST signal here and is asked last. A root-owned clone is still a clone,
+    // and a root-owned versions/ layout is still a binary install — reading permissions earlier would
+    // silently reclassify a working install the moment someone chowned it.
+    expect(classifyInstall(probe({ isGitCheckout: true, rootWritable: false }))).toEqual({
+      kind: "linked-clone",
+      alsoLayout: false,
+    });
+    expect(classifyInstall(probe({ isGitCheckout: true, isDetached: true, rootWritable: false }))).toEqual({
+      kind: "detached-checkout",
+      alsoLayout: false,
+    });
+    expect(
+      classifyInstall(
+        probe({ parentIsVersions: true, currentIsSymlink: true, currentResolvesHere: true, rootWritable: false }),
+      ),
+    ).toEqual({ kind: "binary" });
+  });
+
+  test("probeInstall asks the filesystem, and detectInstall carries the answer through", () => {
+    const ROOT = "/usr/lib/collie";
+    const files = fakeFiles({ [`${ROOT}/herdr-plugin.toml`]: 'version = "1.5.2"\n' });
+    files.unwritable.add(ROOT);
+    const deps = {
+      ctx: context({}, { root: ROOT }),
+      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }]] }),
+      files,
+      link: fakeLinkFs(),
+    };
+    expect(probeInstall(deps, ROOT).rootWritable).toBe(false);
+    expect(detectInstall(deps)).toEqual({ kind: "system-package" });
   });
 });

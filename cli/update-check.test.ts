@@ -757,3 +757,69 @@ describe("the dispatcher", () => {
     expect(update.summary).toContain("--check");
   });
 });
+
+// ── An install whose updates are not Collie's to make ────────────────────────
+// The shape that started this: `herdr plugin install` leaves a git checkout, so `buildsFromSource`
+// said yes, so the phone asked for Bun on a host whose service could not see it. A packaged install
+// is the honest end of that thread — nothing here compiles, and nothing here is even writable.
+
+describe("preflight — a package manager owns the install", () => {
+  /** A Collie under a root the running user cannot write, with a release listing that answers. */
+  function packaged(over: Parameters<typeof harness>[0] = {}) {
+    const h = harness({
+      answers: [[`${GIT} rev-parse --git-dir`, { code: 128 }]],
+      net: {
+        ...deadNet,
+        getJson: () => Promise.resolve({ ok: true, value: [{ name: "v1.0.0", commit: { sha: "cccccccc" } }] }),
+      },
+      ...over,
+    });
+    h.files.unwritable.add(ROOT);
+    return h;
+  }
+
+  test("the list is shorter, and every omission is a fact", async () => {
+    // No bun: nothing compiles. No tree: there is no working tree. No disk: the floor exists for a
+    // staged payload, and a red over free space nobody can act on is worse than no line at all.
+    const report = await preflight(packaged().deps);
+    expect(report.checks.map((c) => c.id)).toEqual(["doctor", "install", "upstream", "service"]);
+  });
+
+  test("bun is never asked about, even when it is genuinely missing", async () => {
+    const report = await preflight(packaged({ absent: ["bun"] }).deps);
+    expect(report.checks.some((c) => c.id === "bun")).toBe(false);
+    expect(report.verdict).not.toBe("red");
+  });
+
+  test("the install check says why the others are absent, and names the root", async () => {
+    const check = byId(await preflight(packaged().deps), "install");
+    expect(check.verdict).toBe("green");
+    expect(check.reason).toContain(ROOT);
+    expect(check.reason).toContain("not writable");
+  });
+
+  test("an upstream remedy never tells this install to run `collie update`", async () => {
+    // A major sitting above the installed version is the case that carries a remedy, and its default
+    // wording is `collie update --major` — the one command this install must not run.
+    const h = packaged({
+      installed: "1.0.0",
+      net: {
+        ...deadNet,
+        getJson: () =>
+          Promise.resolve({
+            ok: true,
+            value: [
+              { name: "v1.0.0", commit: { sha: "cccccccc" } },
+              { name: "v2.0.0", commit: { sha: "dddddddd" } },
+            ],
+          }),
+      },
+    });
+    const check = byId(await preflight(h.deps), "upstream");
+    expect(check.remedy).toBeDefined();
+    expect(check.remedy).not.toContain("collie update");
+    expect(check.remedy).toContain("package manager that installed Collie");
+    // The REASON is untouched: that a release exists is true however it gets applied.
+    expect(check.reason).toContain("2.0.0");
+  });
+});
