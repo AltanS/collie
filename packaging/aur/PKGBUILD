@@ -1,8 +1,8 @@
-# Maintainer: <fill in before publishing to the AUR>
+# Maintainer: Altan Sarisin <partners@sportsight.de>
 #
-# Left blank deliberately. The AUR requires a maintainer line, and whoever actually uploads and
-# maintains this package is the person who belongs on it — not a guess. Nothing in this repo
-# records an address for that role.
+# We publish and maintain this package ourselves. No co-maintainer (M17 principle 5). Niko
+# Lehtovirta's unpublished collie-bin PKGBUILD is prior art for the layout below, and prior art is
+# the whole of that relationship.
 
 # Collie ships a compiled Bun single-file executable in every GitHub release, so this package
 # downloads that tarball and installs it. Nothing is built here: no Bun, no git fetch, no
@@ -10,7 +10,7 @@
 
 pkgname=collie-bin
 _pkgname=collie
-pkgver=1.5.2
+pkgver=1.5.3
 pkgrel=1
 pkgdesc="Phone web UI for the AI agents running in your terminal, served over Tailscale (official binary release)"
 arch=('x86_64' 'aarch64')
@@ -25,9 +25,12 @@ license=('MIT')
 #        without it the CLI drops to its unsupervised tier and the bridge dies with the session.
 depends=('glibc' 'bash' 'systemd')
 
+# A package is NOT a Herdr plugin, so `herdr` is not listed here. It follows the download path:
+# `herdr plugin link` would register an action set whose commands run `scripts/collie-ctl.sh` out of
+# a tree pacman owns, and the update action there is one Collie refuses (ADR 0035). Every `collie`
+# verb on PATH works regardless.
 optdepends=(
   'tailscale: publish the one managed front door with `collie serve` (the supported way to reach Collie from a phone)'
-  'herdr: run Collie as a Herdr plugin — `herdr plugin link /usr/lib/collie`'
 )
 
 provides=("$_pkgname=$pkgver")
@@ -43,9 +46,9 @@ _baseurl="$url/releases/download/v$pkgver"
 source_x86_64=("$pkgname-$pkgver-x86_64.tar.gz::$_baseurl/collie-$pkgver-linux-x64.tar.gz")
 source_aarch64=("$pkgname-$pkgver-aarch64.tar.gz::$_baseurl/collie-$pkgver-linux-arm64.tar.gz")
 
-# Taken verbatim from the published `<asset>.sha256` files of release v1.5.2.
-sha256sums_x86_64=('3a7357267b9b20ed3a830e6e7f40706bd158e28fe390c8cffb1b7cb24ce7f939')
-sha256sums_aarch64=('42fa0ac1f7b4900d67a1fab8ad9fc23dd063445b8de52ce4a52d244bd04d9d4d')
+# Taken verbatim from the published `<asset>.sha256` files of release v1.5.3.
+sha256sums_x86_64=('1a520153d13360cbc508e8325ebfdfbf080df64487a66b27f1212fbac893443c')
+sha256sums_aarch64=('04f5343d1060ae70569d6d6ced769e83beeb24b0044a162534f17b177602a239')
 
 # The tarball's own directory name, which carries the upstream platform spelling rather than $CARCH.
 _distdir() {

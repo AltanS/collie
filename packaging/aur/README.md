@@ -12,7 +12,7 @@ this is the same channel.
 | path | what |
 | --- | --- |
 | `/usr/bin/collie` | symlink into `/usr/lib/collie/bin/collie` |
-| `/usr/lib/collie/` | the release tree — `bin/`, `web/dist/`, `herdr-plugin.toml`, `package.json`, `docs/`, and `scripts/` once the release carries it |
+| `/usr/lib/collie/` | the release tree — `bin/`, `web/dist/`, `herdr-plugin.toml`, `package.json`, `docs/` and `scripts/` |
 | `/usr/share/licenses/collie-bin/LICENSE` | the licence |
 
 `/usr/bin/collie` is a symlink and not the file itself on purpose. The binary resolves its own root
@@ -20,11 +20,9 @@ as `dirname(dirname(realpath(argv0)))` and accepts that root only when `herdr-pl
 it, so the symlink resolves to `/usr/lib/collie` and the bridge finds `web/dist` and the manifest.
 The file installed straight into `/usr/bin` would resolve to `/usr` and find neither.
 
-> **Caution.** The 1.5.2 tarball does not carry `scripts/collie-ctl.sh`, and every action in the
-> shipped `herdr-plugin.toml` is spelled `bash scripts/collie-ctl.sh <verb>`. On a package built
-> from 1.5.2 the Herdr action buttons therefore cannot resolve. Every `collie` verb on your PATH
-> works regardless. The release workflow is fixed in the same pull request as this package, so the
-> first release cut after it carries the shim and `package()` installs it at the right path.
+> **Note.** A package is not a Herdr plugin, and `herdr plugin link /usr/lib/collie` is not part of
+> this install. The plugin path registers action buttons that update the checkout, and this tree is
+> pacman's to update. Every `collie` verb on your PATH works the same either way.
 
 No systemd unit is shipped. Collie writes its own `--user` unit into your home directory when you
 run `collie start`.
@@ -39,22 +37,18 @@ Run it from this directory. `-s` pulls any missing dependencies, `-i` installs t
 
 ## After installing
 
-Register the installed tree as a Herdr plugin:
-
-```
-herdr plugin link /usr/lib/collie
-```
-
-Then start it:
+Start it:
 
 ```
 collie start
 ```
 
-> **Note.** Collie detects a package-managed install and defers updates to pacman rather than
-> updating itself — that behaviour ships in the same pull request as this package.
+> **Note.** Collie classifies this tree as a `packaged` install and never updates it in place.
+> `collie update` declines and names `sudo pacman -Syu collie-bin` instead, and the phone shows the
+> new version with that command where the update button would be.
 
 ## Cutting a new version
 
 Set `pkgver` in the `PKGBUILD` — it is the only place the version is written — and replace both
-`sha256sums_*` lines with the values from that release's published `<asset>.sha256` files.
+`sha256sums_*` lines with the values from that release's published `<asset>.sha256` files. The
+package currently tracks 1.5.3.
