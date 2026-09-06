@@ -179,15 +179,34 @@ export type PackAction = "update-pack" | "update" | "retry-pack" | "none";
  * The order is the operator's order: if there is a release to take, taking it is the action, and
  * whether it covers peers is a fact about this pack rather than a second choice. Only once this
  * machine is current does a peer left behind become the thing the button is for.
+ *
+ * **`leadCanTake` YIELDS the release branch to the peers, and only when there are peers to yield
+ * it to.** A system-owned install never takes a release from the phone (ADR 0035) — but levelling
+ * the peers is a different act, and it still works: the run pushes the build this lead ALREADY
+ * runs, which is why the bridge decides the peers-only start ABOVE its own root-owned refusal
+ * (`bridge/update-action.ts`). Without this, the release short-circuit reached `update-pack`, the
+ * card disabled it, and a packaged lead with a peer a version behind had no working button at all.
+ *
+ * The branch is skipped, never relabelled: `update-pack` means "this machine and then the peers",
+ * and a tap that quietly did half of that would be the button saying one thing and doing another.
+ *
+ * And it is skipped only when `behind`/`rolledBack` says a peers-only run has something to do.
+ * With no peer to level, the disabled release button is the card's ONLY way to say that a release
+ * exists and this machine is not the one that takes it — dropping it would answer a real question
+ * with a blank space.
  */
 export function packAction(a: {
   releaseAvailable: boolean;
   hasPeers: boolean;
   behind: number;
   rolledBack: number;
+  /** False when this machine cannot take a release itself. Absent ⇒ it can, the ordinary install. */
+  leadCanTake?: boolean;
 }): PackAction {
-  if (a.releaseAvailable) return a.hasPeers ? "update-pack" : "update";
-  if (a.behind > 0 || a.rolledBack > 0) return "retry-pack";
+  const peersNeedLevelling = a.behind > 0 || a.rolledBack > 0;
+  const yieldToPeers = a.leadCanTake === false && peersNeedLevelling;
+  if (a.releaseAvailable && !yieldToPeers) return a.hasPeers ? "update-pack" : "update";
+  if (peersNeedLevelling) return "retry-pack";
   return "none";
 }
 

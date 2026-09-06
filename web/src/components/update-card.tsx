@@ -141,7 +141,15 @@ export function UpdateCard() {
   const hasPeers = rows.length > 0 || packLead;
   const behind = peersBehind(census, current);
   const rolledBack = peersRolledBack(legs);
-  const action = packAction({ releaseAvailable, hasPeers, behind, rolledBack });
+  // A packaged install never takes an update from here (ADR 0035): the root is not writable, the CLI
+  // refuses, and `POST /api/update` would do nothing but relay that refusal. Read HERE, above the
+  // action, because it is one of the facts that decides which action there is — not merely whether
+  // the button is greyed out.
+  const packageManaged = (snapshot?.installKind ?? check?.installKind) === "system-owned";
+  // `leadCanTake: false` is what keeps the peers reachable from the phone. Without it the release
+  // short-circuit answered `update-pack`, the card disabled it, and a packaged lead with a peer a
+  // version behind was left with a disabled button and an explanation about its own install.
+  const action = packAction({ releaseAvailable, hasPeers, behind, rolledBack, leadCanTake: !packageManaged });
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -234,12 +242,10 @@ export function UpdateCard() {
   }
 
   const redCheck = preflight?.checks.find((c) => c.verdict === "red");
-  // A packaged install never takes an update from here (ADR 0035): the root is not writable, the CLI
-  // refuses, and `POST /api/update` would do nothing but relay that refusal. The buttons are disabled
-  // for the same reason a red preflight disables them — the tap cannot succeed — but this is its own
-  // condition rather than a manufactured red, because NOTHING IS WRONG with this install. Its
-  // preflight is green on purpose, and painting the card red would report a fault that does not exist.
-  const packageManaged = (snapshot?.installKind ?? check?.installKind) === "system-package";
+  // The buttons that move THIS machine are disabled for the same reason a red preflight disables
+  // them — the tap cannot succeed — but a packaged install is its own condition rather than a
+  // manufactured red, because NOTHING IS WRONG with it. Its preflight is green on purpose, and
+  // painting the card red would report a fault that does not exist.
   const blocked = packageManaged || (checked && (preflight === null || redCheck !== undefined));
   const blockedReason = packageManaged
     ? t("settings.updateCard.packageManaged")
@@ -324,7 +330,7 @@ export function UpdateCard() {
           {confirming !== null ? (
             <div className="border-t border-border p-4">
               <div className="text-sm font-medium">{confirmTitle(confirming)}</div>
-              <p className="mt-1 text-sm text-muted-foreground">{confirmBody(confirming)}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{confirmBody(confirming, packageManaged)}</p>
               <div className="mt-3 flex items-center gap-2">
                 <Button size="sm" disabled={busy} onClick={() => void begin(confirming)}>
                   {busy && <Loader2 className="size-4 animate-spin" />}
@@ -392,10 +398,13 @@ export function UpdateCard() {
                   )}
                 </div>
                 {/* The red's OWN reason, in place of a generic "unavailable" — a red preflight has to
-                    be legible without leaving the phone. */}
-                {blocked && action !== "retry-pack" && (
-                  <p className="text-xs text-status-blocked">{blockedReason}</p>
-                )}
+                    be legible without leaving the phone.
+
+                    Printed even under a peers-only button, which is not disabled: the sentence says
+                    why THIS machine is not moving, and that is exactly the question a "Retry pack
+                    update" offered to a lead with a release waiting raises. Suppressing it there was
+                    how a packaged lead ended up with a button and no account of itself. */}
+                {blocked && <p className="text-xs text-status-blocked">{blockedReason}</p>}
                 {dismissed && <p className="text-xs text-muted-foreground">{t("settings.updateCard.dismissed")}</p>}
                 {majorAvailable !== null && (
                   <p className="text-xs text-muted-foreground">
@@ -422,10 +431,21 @@ function confirmTitle(ask: Confirm): string {
   return t("settings.updateCard.confirmTitle", { version: ask.version });
 }
 
-function confirmBody(ask: Confirm): string {
+/**
+ * The sentence under the title. `packageManaged` changes exactly one of them.
+ *
+ * The peers-only confirm normally reads "This machine is already current, so only the peers run" —
+ * true wherever that button used to appear, and FALSE on a packaged lead with a release waiting,
+ * which is the one place it can now appear as well. The reason that lead is sitting the run out is
+ * its install kind, not its version, so it says so instead. Neither sentence is new: a third one
+ * would be a seventh dictionary to keep in step with the other six for one branch.
+ */
+function confirmBody(ask: Confirm, packageManaged = false): string {
   if (ask.kind === "major") return t("settings.updateCard.majorConfirmBody", { version: ask.version });
   if (ask.kind === "pack") return t("settings.updateCard.packConfirmBody");
-  if (ask.kind === "retry") return t("settings.updateCard.retryConfirmBody");
+  if (ask.kind === "retry") {
+    return packageManaged ? t("settings.updateCard.packageManaged") : t("settings.updateCard.retryConfirmBody");
+  }
   return t("settings.updateCard.confirmBody");
 }
 

@@ -663,7 +663,7 @@ describe("restarting gap is not an outage", () => {
 
 describe("UpdateCard — an install a package manager owns", () => {
   it("disables the update action even though every check is green", async () => {
-    const update = info({ installKind: "system-package" });
+    const update = info({ installKind: "system-owned" });
     serveCheck(update, GREEN_SIX);
     renderCard(update);
     const button = await screen.findByRole("button", { name: /Update to 1\.4\.0/i });
@@ -671,7 +671,7 @@ describe("UpdateCard — an install a package manager owns", () => {
   });
 
   it("says who does update it, instead of showing a preflight failure that did not happen", async () => {
-    const update = info({ installKind: "system-package" });
+    const update = info({ installKind: "system-owned" });
     serveCheck(update, GREEN_SIX);
     renderCard(update);
     expect(await screen.findByText(/package manager updates this install/i)).toBeInTheDocument();
@@ -679,7 +679,7 @@ describe("UpdateCard — an install a package manager owns", () => {
 
   it("disables crossing a major too — that is the same refusal, not a separate path", async () => {
     const update = info({
-      installKind: "system-package",
+      installKind: "system-owned",
       majorAvailable: "2.0.0",
       majorUrl: "https://github.com/AltanS/collie/releases/tag/v2.0.0",
     });
@@ -696,5 +696,81 @@ describe("UpdateCard — an install a package manager owns", () => {
     renderCard(update);
     const button = await screen.findByRole("button", { name: /Update to 1\.4\.0/i });
     await waitFor(() => expect(button).toBeEnabled());
+  });
+
+  // ── AND ITS PEERS ARE STILL REACHABLE FROM HERE ────────────────────────────
+  //
+  // The lead cannot take the release. Levelling the peers to the build it ALREADY runs is a
+  // different act and it works — `bridge/update-action.ts` decides the peers-only start above its
+  // own root-owned refusal for exactly this reason. What used to happen instead: the release
+  // short-circuit answered "Update pack to 1.4.0", the card disabled it, and the peers were
+  // unreachable from the phone with an explanation that talked only about this machine.
+
+  it("offers the peers-only run to a packaged lead whose peer is a version behind", async () => {
+    const user = userEvent.setup();
+    const update = info({ installKind: "system-owned" });
+    const behind: UpdatePackMember[] = [
+      { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+    ];
+    serveCheck(update, GREEN_SIX, behind);
+    let sent: StartBody | undefined;
+    server.use(
+      http.post("/api/update", async ({ request }) => {
+        sent = await readStart(request);
+        return HttpResponse.json({ ok: true, to: "1.3.0", major: false, run: null });
+      }),
+    );
+    renderCard(update, LEAD_ROSTER);
+
+    const button = await screen.findByRole("button", { name: "Retry pack update" });
+    expect(button).toBeEnabled();
+    // The disabled release button is gone rather than sitting beside it: one action button, and it
+    // is the one whose tap can succeed.
+    expect(screen.queryByRole("button", { name: /Update pack to/ })).not.toBeInTheDocument();
+    // The card still says why THIS machine is not moving — that is the question a peers-only
+    // button raises while "Newest 1.4.0" is on screen above it.
+    expect(screen.getByText(/package manager updates this install/i)).toBeInTheDocument();
+
+    await user.click(button);
+    // Not "This machine is already current": it is not, and the confirm may not say it is.
+    expect(screen.getByText("Retry the pack update?")).toBeInTheDocument();
+    expect(screen.queryByText(/already current/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/package manager updates this install/i).length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("button", { name: "Yes, retry" }));
+    await waitFor(() => expect(sent).toBeDefined());
+    // Peers only, to the build this lead runs — never to the release it cannot take.
+    expect(sent).toMatchObject({ confirm: true, peersOnly: true, target: "1.3.0", major: false });
+  });
+
+  // THE CONTROL. Same packaged lead, same release, and the one difference is that no peer needs
+  // levelling — so there is nothing for the release branch to yield to, and the disabled button
+  // stays as the card's only way to say a release exists and this machine is not taking it.
+  it("keeps the disabled release button when no peer needs levelling", async () => {
+    const update = info({ installKind: "system-owned" });
+    const level: UpdatePackMember[] = [
+      { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+    ];
+    serveCheck(update, GREEN_SIX, level);
+    renderCard(update, LEAD_ROSTER);
+    const button = await screen.findByRole("button", { name: "Update pack to 1.4.0" });
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(screen.queryByRole("button", { name: "Retry pack update" })).not.toBeInTheDocument();
+    expect(screen.getByText(/package manager updates this install/i)).toBeInTheDocument();
+  });
+
+  // The second control: an ORDINARY lead in the identical pack shape still leads with its own
+  // update. Revert `leadCanTake` and this keeps passing while the two above stop — which is what
+  // makes them a statement about the install kind rather than about being behind.
+  it("control: an ordinary lead with a peer behind still takes the release itself", async () => {
+    const update = info({ installKind: "detached-checkout" });
+    const behind: UpdatePackMember[] = [
+      { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
+    ];
+    serveCheck(update, GREEN_SIX, behind);
+    renderCard(update, LEAD_ROSTER);
+    const button = await screen.findByRole("button", { name: "Update pack to 1.4.0" });
+    await waitFor(() => expect(button).toBeEnabled());
+    expect(screen.queryByRole("button", { name: "Retry pack update" })).not.toBeInTheDocument();
   });
 });

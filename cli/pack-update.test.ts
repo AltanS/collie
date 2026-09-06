@@ -7,9 +7,16 @@ import { type OpsRecord, parsePackOps } from "../bridge/pack/ops-store.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
 import { UPDATE_RUN_SCHEMA, type UpdateRun } from "../bridge/update-run.ts";
 import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT, type SeededFiles, type SeededOps } from "./fakes.ts";
+import { SYSTEM_OWNED_REMEDY } from "./install-kind.ts";
 import { EXIT } from "./io.ts";
 import type { PackUpdateRow } from "../bridge/update-action.ts";
-import { answersThisBuild, cmdPackUpdate, peerReportLines, type PackUpdateDeps } from "./pack-update.ts";
+import {
+  answersThisBuild,
+  cmdPackUpdate,
+  peerReportLines,
+  systemOwnedMembers,
+  type PackUpdateDeps,
+} from "./pack-update.ts";
 import type { RemoteResult } from "./remote.ts";
 import { PREFLIGHT_SCHEMA, type PreflightCheck, type PreflightReport } from "./update-check.ts";
 
@@ -236,6 +243,32 @@ function redOn(memberId: string, check: PreflightCheck): PreflightReport {
   };
 }
 
+/**
+ * The check a system-owned member's OWN preflight carries (`cli/update-check.ts`'s `instanceChecks`).
+ * Green, because nothing is wrong with such an install — which is the whole reason the walk has to
+ * read it rather than wait for the gate to go red over it.
+ */
+const ownedCheck = (root = "/usr/lib/collie"): PreflightCheck => ({
+  id: "install",
+  verdict: "green",
+  reason: `${root} is owned by root, so this install does not update itself`,
+});
+
+/** A green preflight in which the named members answered with {@link ownedCheck}. */
+function ownedOn(...memberIds: readonly string[]): PreflightReport {
+  return {
+    schema: PREFLIGHT_SCHEMA,
+    verdict: "green",
+    checks: [],
+    pack: memberIds.map((memberId) => ({
+      memberId,
+      host: `${memberId}.example`,
+      verdict: "green" as const,
+      checks: [{ id: "reachable", verdict: "green" as const, reason: "answered over ssh" }, ownedCheck()],
+    })),
+  };
+}
+
 /** A member's address in a fixture store — what the fake `fetch` matches a dial against. */
 function addressOf(data: TrustStoreData | null, memberId: string): string {
   return data?.peers.find((p) => p.memberId === memberId)?.address ?? "nowhere";
@@ -321,6 +354,50 @@ describe("what the probe decides, before anything is sent", () => {
     expect(h.confirms).toEqual([]);
   });
 
+  // ── A ROOT-OWNED PEER (ADR 0035) ──────────────────────────────────────────
+  //
+  // Its own preflight is GREEN, so the gate above cannot catch it and must not try to. What these
+  // pin is that the WALK reads that green report, and that the reading is what stops the push.
+
+  test("a system-owned member is skipped with its own sentence and the shared remedy", async () => {
+    const h = harness({ preflight: ownedOn("nas") });
+    expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    const rendered = text(h.io);
+    expect(rendered).toContain("/usr/lib/collie is owned by root, so this install does not update itself");
+    expect(rendered).toContain(SYSTEM_OWNED_REMEDY);
+    expect(rendered).toContain("nas         skipped  owned by root");
+    // The whole point: nothing was sent. No probe, no bundle, no restart — and no consent asked for
+    // an operation with nothing in it.
+    expect(h.calls).toEqual([]);
+    expect(h.confirms).toEqual([]);
+  });
+
+  // THE CONTROL for the test above. Identical run, identical member, and the ONE difference is that
+  // its report carries no `install` check — so the walk has nothing to read and the push proceeds.
+  // Revert the skip in `planAll` and the test above sees exactly this: a probe, a push, a restart.
+  test("control: the same member without that check is probed and pushed to as before", async () => {
+    const h = harness();
+    expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(legs(h)).toContain("nas.example:install");
+    expect(text(h.io)).not.toContain("owned by root");
+  });
+
+  test("a system-owned member does not stop the members this run CAN level", async () => {
+    const h = harness({
+      store: twoPeers(),
+      ops: { nas: opsRecord("nas.example"), pi: opsRecord("pi.example") },
+      hello: { nas: VERSION, pi: VERSION },
+      preflight: ownedOn("pi"),
+    });
+    expect(await cmdPackUpdate(h.deps, ["--all"])).toBe(EXIT.OK);
+    expect(legs(h)).toContain("nas.example:install");
+    // `pi` was never reached at all — the skip is decided before a runner is opened for it.
+    expect(legs(h).filter((l) => l.startsWith("pi."))).toEqual([]);
+    // Counted apart from a member with no ssh record: two different things for the operator to do.
+    expect(h.confirms[0]).toContain("1 owned by root");
+    expect(h.confirms[0]).not.toContain("without an ssh record");
+  });
+
   test("a member already at this commit is listed and left alone — no push, no prompt", async () => {
     const h = harness({ probes: { "nas.example": { commit: COMMIT, version: VERSION } } });
     expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
@@ -354,6 +431,32 @@ describe("what the probe decides, before anything is sent", () => {
     expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.FAIL);
     expect(text(h.io)).toContain("`ssh-add` your key");
     expect(text(h.io)).toContain("nas         FAILED");
+  });
+});
+
+describe("systemOwnedMembers reads the report's own vocabulary", () => {
+  test("a member that answered with an `install` check is named, with its own sentence", () => {
+    const owned = systemOwnedMembers(ownedOn("nas", "pi").pack ?? []);
+    expect([...owned.keys()]).toEqual(["nas", "pi"]);
+    expect(owned.get("nas")).toBe("/usr/lib/collie is owned by root, so this install does not update itself");
+  });
+
+  // The control: every OTHER kind of install emits no `install` check at all, so a report full of
+  // green checks under other ids says nothing about ownership and must not be read as if it did.
+  test("a member with no `install` check is not in the map", () => {
+    expect(
+      systemOwnedMembers([
+        {
+          memberId: "nas",
+          host: "nas.example",
+          verdict: "green",
+          checks: [
+            { id: "doctor", verdict: "green", reason: "collie doctor is clean" },
+            { id: "disk", verdict: "green", reason: "plenty of room" },
+          ],
+        },
+      ]).size,
+    ).toBe(0);
   });
 });
 
