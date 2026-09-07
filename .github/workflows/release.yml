@@ -14,6 +14,102 @@ permissions:
   contents: write # create the release
 
 jobs:
+  # ── CI must be green first ─────────────────────────────────────────────────
+  # 1.5.5 (2026-09-07) was published from a commit whose CI run had FAILED: the tag push started
+  # this workflow while ci.yml ran the same commit in its own workflow, and nothing joined the two.
+  # This job is that join. "Publish" may never precede "green".
+  gate:
+    name: CI must be green on the tagged commit
+    runs-on: ubuntu-latest
+    # The workflow's top-level grant is `contents: write` and an unlisted scope is NONE, so the run
+    # listing below would 403 without `actions: read` spelled here.
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      # No checkout: the question is about a commit on the server, not about a working tree. For a
+      # tag push `github.sha` is the commit the tag points at, which is the commit CI ran on.
+      - name: Wait for the CI run on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # The commit is RESOLVED, not assumed: for an annotated tag the push event can carry the
+          # tag object rather than the commit it points at, and `github.sha` is then the wrong id to
+          # look CI up by. The commits endpoint takes a tag name and answers with the commit.
+          if ! SHA="$(gh api "repos/$REPO/commits/$TAG" --jq .sha 2>/dev/null)" || [ -z "$SHA" ]; then
+            echo "✗ tag $TAG does not resolve to a commit in $REPO." >&2
+            exit 1
+          fi
+          echo "Tag $TAG points at commit $SHA."
+
+          # `git push --follow-tags` sends main and the tag in one push, so CI is normally still
+          # running when this starts. Waiting is the design: the release queues behind CI rather
+          # than racing it. 40 minutes is well past a full CI run and well short of a stuck one.
+          wait_seconds=2400
+          poll_seconds=30
+          # A run takes a few seconds to be registered after a push, so an empty listing is only
+          # believed after this much silence — long enough to outlive the race, short enough that a
+          # tag pointing at a commit main never saw fails while the operator is still watching.
+          grace_seconds=120
+
+          started="$(date +%s)"
+          while :; do
+            # `event=push` only: CI runs the push event on main, and a pull_request run for the
+            # same head sha tests a merge ref, so it does not prove main.
+            runs="$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?head_sha=$SHA&event=push&per_page=20")"
+            total="$(jq '.workflow_runs | length' <<<"$runs")"
+            success="$(jq '[.workflow_runs[] | select(.conclusion == "success")] | length' <<<"$runs")"
+            pending="$(jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "pending" or .status == "waiting")] | length' <<<"$runs")"
+            elapsed="$(( $(date +%s) - started ))"
+
+            if [ "$success" -gt 0 ]; then
+              echo "CI is green on $SHA."
+              jq -r '.workflow_runs[] | select(.conclusion == "success") | "  \(.html_url)"' <<<"$runs"
+              exit 0
+            fi
+
+            if [ "$total" -eq 0 ] && [ "$elapsed" -lt "$grace_seconds" ]; then
+              echo "No CI run registered for $SHA yet; waiting (${elapsed}s)."
+              sleep "$poll_seconds"; continue
+            fi
+
+            if [ "$total" -eq 0 ]; then
+              cat >&2 <<EOF
+          ✗ CI never ran on $SHA, so nothing proves this commit is releasable.
+            Either the tag does not point at a commit that was pushed to main, or CI was never
+            triggered on it. Push the commit to main first, let CI finish, then re-run this workflow:
+            $RUN_URL
+          EOF
+              exit 1
+            fi
+
+            if [ "$pending" -gt 0 ]; then
+              echo "CI is still running on $SHA (${pending} run(s) in flight, ${elapsed}s elapsed)."
+              if [ "$elapsed" -ge "$wait_seconds" ]; then
+                echo "✗ CI on $SHA did not finish within $((wait_seconds / 60)) minutes." >&2
+                jq -r '.workflow_runs[] | "  \(.status) \(.conclusion // "-") \(.html_url)"' <<<"$runs" >&2
+                exit 1
+              fi
+              sleep "$poll_seconds"; continue
+            fi
+
+            # Completed, and not one of them succeeded. The two ways to get here need two different
+            # answers, so name both rather than print a verdict the operator has to interpret.
+            latest_conclusion="$(jq -r '[.workflow_runs[] | select(.status == "completed")] | sort_by(.run_started_at) | last | .conclusion // "unknown"' <<<"$runs")"
+            latest_id="$(jq -r '[.workflow_runs[] | select(.status == "completed")] | sort_by(.run_started_at) | last | .id' <<<"$runs")"
+            {
+              echo "✗ CI on $SHA concluded '$latest_conclusion'. This release is not published."
+              jq -r '.workflow_runs[] | "  \(.conclusion // .status) \(.html_url)"' <<<"$runs"
+              echo "  cancelled: ci.yml's concurrency group cancels the main run when a second push lands while a release is being cut. Re-run CI for this commit with 'gh run rerun $latest_id', then re-run this Release workflow from $RUN_URL."
+              echo "  failure: fix it on main and cut a follow-up patch release with a new tag. Never move or re-point a published tag."
+            } >&2
+            exit 1
+          done
+
   # ── The per-platform payloads ──────────────────────────────────────────────
   # One job per artifact, because two of the constraints are hard:
   #   * macOS artifacts are BUILT ON macOS. A cross-produced Mach-O is unsigned, and an unsigned
@@ -26,6 +122,7 @@ jobs:
   # platform gets `collie update`'s honest "no artifact for your platform, build from source"
   # rather than a wrong binary. Uncomment a row to publish it.
   payload:
+    needs: gate
     strategy:
       fail-fast: true
       matrix:

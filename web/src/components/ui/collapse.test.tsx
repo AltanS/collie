@@ -104,6 +104,44 @@ describe("Collapse — animated presence for anything in flow", () => {
     expect(screen.queryByText("copy")).toBeNull();
   });
 
+  it("is painted CLOSED before it opens, so the transition has a start value", () => {
+    // THE BUG THIS PINS, found by measuring the running app and invisible to every test above.
+    // The enter used to flip `expanded` on a `setTimeout(0)`, which fires inside the same frame:
+    // the `0fr` state went into the DOM and out again with no rendering update between, so the
+    // browser had no start value, no transition ran, and a late-arriving section jumped to full
+    // height in one frame. A fold toggle looked fine — its child was already rendered and painted
+    // closed — which is why the fault hid in exactly the case the primitive exists for.
+    //
+    // jsdom has no layout, so the animation itself is still unobservable here. What IS observable
+    // is the ORDER: after the open flip, the row must still read `closed`. A refactor that opens it
+    // any sooner is a refactor that brings the jump back.
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <Collapse open={false}>
+        <p>copy</p>
+      </Collapse>,
+    );
+    rerender(
+      <Collapse open>
+        <p>copy</p>
+      </Collapse>,
+    );
+    // The child is mounted at once — it has to be, or there is nothing to give a height to.
+    expect(screen.getByText("copy")).toBeInTheDocument();
+    // And it is CLOSED, and stays closed across a macrotask. This is the whole assertion.
+    expect(container.firstElementChild).toHaveAttribute("data-state", "closed");
+    act(() => {
+      vi.advanceTimersByTime(0);
+    });
+    expect(container.firstElementChild).toHaveAttribute("data-state", "closed");
+
+    // Two frames later it is open, and the row is asked to grow.
+    act(() => {
+      vi.advanceTimersByTime(64);
+    });
+    expect(container.firstElementChild).toHaveAttribute("data-state", "open");
+  });
+
   it("spends the same number in CSS and in JavaScript", () => {
     // THE COUPLING. The transition's duration and the unmount timer are one number in two places
     // and nothing links them but this test: set the timer short and the child vanishes mid-slide,
