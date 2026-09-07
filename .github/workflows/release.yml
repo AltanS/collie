@@ -449,3 +449,125 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY_OWNER}/collie-website/dispatches" \
             -f event_type=collie-released \
             -f "client_payload[tag]=$GITHUB_REF_NAME"
+
+  # ── Refresh the packages ───────────────────────────────────────────────────
+  # `packaging/aur` and `packaging/nix` describe a release: a version and a sha256 per platform.
+  # This job rewrites those fields FROM `collie-<version>.manifest.json`, the integrity manifest the
+  # release job above wrote, and from nothing else. It downloads no payload, hashes no payload and
+  # builds nothing — the release already answered "what is the hash of this tarball", and a second
+  # answer computed here could differ from the first.
+  #
+  # It runs after the tag rather than inside the release commit, because `chore(release): x.y.z`
+  # does the version bump "and nothing else" (CLAUDE.md → Versioning), and the manifest it reads
+  # does not exist until the release is published.
+  #
+  # It publishes two ways, and neither one can fail the release, which is already downloadable:
+  #   * a push to the AUR repository, skipped with a notice when AUR_SSH_KEY is unset;
+  #   * a pull request against this repository carrying the same rewritten files.
+  refresh-packages:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    # A prerelease is skipped. Somebody following `collie-bin` on the AUR did not sign up for a
+    # beta. Same hyphen rule the release job uses to set `--prerelease` and notify-website uses to
+    # stay home, so the three cannot drift apart.
+    if: ${{ !contains(github.ref_name, '-') }}
+    steps:
+      # `main`, not the tag: the pull request this job opens has to branch off the line it targets.
+      # The manifest is fetched from the release, so nothing here depends on the tagged tree.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      # The same flake the payloads were built in, for the same reason: the Bun that runs the
+      # rewrite is the one `flake.lock` names, not whatever a setup action resolved today.
+      - uses: DeterminateSystems/nix-installer-action@v22
+
+      - name: Download this release's integrity manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          gh release download "$GITHUB_REF_NAME" \
+            --pattern "collie-$version.manifest.json" \
+            --dir "$RUNNER_TEMP"
+          echo "MANIFEST=$RUNNER_TEMP/collie-$version.manifest.json" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Rewrite packaging/ from the manifest
+        run: nix develop --command bun scripts/refresh-packages.ts --manifest "$MANIFEST"
+
+      # `.SRCINFO` is what the AUR reads, and only `makepkg` knows its format. The runner is Ubuntu,
+      # so the generator runs in an Arch container. It copies the PKGBUILD's own values; it computes
+      # nothing and reaches no network.
+      - name: Regenerate .SRCINFO with makepkg
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/packaging/aur:/pkg:ro" -w /tmp archlinux:latest bash -c '
+            set -e
+            useradd -m builder
+            cp /pkg/PKGBUILD /tmp/PKGBUILD
+            chown builder /tmp/PKGBUILD
+            su builder -c "cd /tmp && makepkg --printsrcinfo"
+          ' > packaging/aur/.SRCINFO
+          head -5 packaging/aur/.SRCINFO
+
+      # The second run is the proof. It re-reads both files from disk and compares every field it
+      # owns against the manifest, so what gets pushed is verified rather than intended.
+      - name: Verify packaging/ against the manifest
+        run: nix develop --command bun scripts/refresh-packages.ts --manifest "$MANIFEST" --check
+
+      - name: Push collie-bin to the AUR
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${AUR_SSH_KEY:-}" ]; then
+            echo "::notice::AUR push skipped because the AUR_SSH_KEY secret is not set. See packaging/aur/README.md for the one-time account and key setup."
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$AUR_SSH_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o IdentitiesOnly=yes"
+          git clone ssh://aur@aur.archlinux.org/collie-bin.git "$RUNNER_TEMP/aur"
+          cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO "$RUNNER_TEMP/aur/"
+          cd "$RUNNER_TEMP/aur"
+          git config user.name "Collie release"
+          git config user.email "altan@sportsight.de"
+          git add PKGBUILD .SRCINFO
+          if git diff --cached --quiet; then
+            echo "The AUR already carries $VERSION; nothing to push."
+            exit 0
+          fi
+          git commit -m "Update to $VERSION"
+          git push origin HEAD:master
+
+      # The in-repo copy is the source of truth these files are reviewed in, so it gets a pull
+      # request rather than a push to `main`. When the tagged commit already carried the right
+      # version and hashes, `git diff` is empty and no branch is created.
+      - name: Open a pull request with the rewritten package files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- packaging/; then
+            echo "packaging/ already matches $VERSION on main; no pull request needed."
+            exit 0
+          fi
+          branch="packaging/$VERSION"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add packaging/
+          git commit -m "chore(packaging): track $VERSION"
+          git push origin "$branch" --force
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "chore(packaging): track $VERSION" \
+            --body "Version and sha256 fields rewritten from \`collie-$VERSION.manifest.json\` by \`scripts/refresh-packages.ts\`, then verified against it with \`--check\`. No hash was computed here." \
+            || echo "::notice::A pull request for $branch already exists."
