@@ -180,8 +180,8 @@ export async function enablePush(): Promise<EnableResult> {
   }
   const body = subscribeBody(sub.toJSON(), rememberedEndpoint());
   await registerPushSubscription(body);
-  // Only a registration the bridge actually took supersedes the one we remembered — otherwise the
-  // next attempt must still be able to name the endpoint that is on the server.
+  // `registerPushSubscription` throws on any non-2xx reply, so this line runs only after the bridge
+  // took the registration; a failed attempt keeps the remembered endpoint that is on the server.
   rememberEndpoint(body.endpoint);
   setUserDisabled(false);
   return { ok: true };
