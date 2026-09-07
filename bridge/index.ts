@@ -17,6 +17,7 @@ import type { PackMode, PackStatusResponse } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import { exePathOf, exeReplaced } from "./exe-replaced.ts";
 import {
+  herdrActionCommand,
   instanceSuffixOf,
   managedHandlerPath,
   realFrontDoorExec,
@@ -229,12 +230,21 @@ let deposed: DeposedState | null = null;
  * warning and the bridge comes up anyway. A peer that failed to unpublish is a routing problem the
  * operator can still fix from a keyboard; a peer that refused to start is not.
  */
+/**
+ * `COLLIE_INSTANCE`, or `null` for the host's first Collie. Read here, once, and passed down.
+ *
+ * It names two things this process must not get wrong: the front door record it owns, and the Herdr
+ * plugin id it prints in a restart command. A named instance that printed the bare id would be
+ * telling the operator to restart its neighbour.
+ */
+const collieInstance = process.env.COLLIE_INSTANCE?.trim() || null;
+
 let frontDoorReleased = false;
 function releaseFrontDoor(mode: PackMode, isDeposed: boolean, why: string): void {
   if (frontDoorReleased) return;
   const handlerFile = managedHandlerPath(
     resolveConfigDir(),
-    instanceSuffixOf(process.env.COLLIE_INSTANCE),
+    instanceSuffixOf(collieInstance),
   );
   // The record — and nothing else — decides whether there is anything of ours to take down. An
   // unrecorded mapping is by definition not ours and is never touched.
@@ -632,6 +642,7 @@ const updateMonitor = new UpdateMonitor({
   repo: updateRepo,
   current: currentVersion,
   installKind,
+  instance: collieInstance,
   // Named only where it is true: a packaged install under a prefix we recognise. Every other kind
   // takes Collie's own updater, and printing a package manager's command there would be a command
   // that does not apply. Resolved here, at boot, for the reason `installKind` is.
@@ -1526,7 +1537,7 @@ async function performTakeover(deviceLabel: string): Promise<{ ok: boolean; mess
       `${outcome.repinned.length} peer(s). Exiting ${TAKEOVER_RESTART_EXIT} so the supervisor brings ` +
       "this machine back up in LEAD mode — that status is non-zero on purpose, because `Restart=" +
       "on-failure` does not revive a clean exit. If nothing restarts this process, its supervision is " +
-      "unmanaged: run `herdr plugin action invoke restart --plugin herdr.collie` here.",
+      `unmanaged: run \`${herdrActionCommand("restart", collieInstance)}\` here.`,
   );
   // Long enough for the answer above to reach the phone, short enough that the failover proxy's next
   // health check finds a lead. Not unref'd: this timer is the whole remaining purpose of the process.
@@ -1601,7 +1612,7 @@ const standbyServer =
           if (update !== null) return withStandbyVersion(update, packVersion);
           const answered =
             deposed !== null
-              ? deposedAnswer(deposed, outcomeNow(deposed, leadContact.facts()), url)
+              ? deposedAnswer(deposed, outcomeNow(deposed, leadContact.facts()), url, collieInstance)
               : (frontDoorHealth(pack.mode, url) ?? (standbyDoor === null ? null : await standbyDoor(req, url)));
           // STAMPED HERE, ONCE, so it covers every answer this port can make — including the 404 for
           // a path nobody owns and the deposed page, which are exactly the answers a runner probing a
@@ -1709,7 +1720,7 @@ const server = startServer({
   //
   // A solo instance answers `null` to all three and gains no route at all (§11).
   deposed: (_req, url) => {
-    if (deposed !== null) return deposedAnswer(deposed, outcomeNow(deposed, leadContact.facts()), url);
+    if (deposed !== null) return deposedAnswer(deposed, outcomeNow(deposed, leadContact.facts()), url, collieInstance);
     if (bootTrust === null) return null;
     const health = frontDoorHealth(pack.mode, url);
     if (health !== null) return health;

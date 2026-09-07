@@ -22,7 +22,7 @@ import { chmod, lstat, readFile, rename, writeFile } from "node:fs/promises";
 import { generateKeyPairSync } from "node:crypto";
 import { join } from "node:path";
 
-import type { CliContext } from "./context.ts";
+import { herdrActionCommand, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 
 /** The three vars that turn push on, in the order they are written. */
@@ -302,7 +302,7 @@ export async function cmdPushKeys(deps: PushKeysDeps, args: readonly string[]): 
 
   deps.io.out("");
   deps.io.out("Next:");
-  deps.io.out("  1. herdr plugin action invoke restart --plugin herdr.collie");
+  deps.io.out(`  1. ${herdrActionCommand("restart", deps.ctx.instance)}`);
   deps.io.out("  2. On your phone: open Collie → Settings → enable notifications");
   deps.io.out("  3. collie push test");
   return EXIT.OK;

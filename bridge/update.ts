@@ -3,6 +3,7 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
+import { herdrActionCommand } from "./front-door.ts";
 import type { UpdateStatus } from "./types.ts";
 import type { UpdateRun } from "./update-run.ts";
 
@@ -610,10 +611,8 @@ export class UpdateStateStore {
  *
  * Pure and exported: the phone renders what the host answered, so this is the only derivation.
  */
-export function restartCommandFor(kind: UpdateStatus["installKind"]): string {
-  return kind === "detached-checkout"
-    ? "herdr plugin action invoke restart --plugin herdr.collie"
-    : "collie restart";
+export function restartCommandFor(kind: UpdateStatus["installKind"], instance: string | null): string {
+  return kind === "detached-checkout" ? herdrActionCommand("restart", instance) : "collie restart";
 }
 
 // ── The monitor ───────────────────────────────────────────────────────────────
@@ -664,6 +663,9 @@ export interface UpdateMonitorDeps {
   /** How this Collie is installed, probed once at startup — it cannot change under a running process
    *  (an update restarts the service), so the monitor just reports it. */
   installKind: UpdateStatus["installKind"];
+  /** `COLLIE_INSTANCE`, or `null` for the host's first Collie — it names the plugin id the restart
+   *  command prints. Injected, not read here: the monitor resolves nothing from the environment. */
+  instance: string | null;
   /**
    * The version this process was running when it started, read the way `collie version` reads it.
    *
@@ -890,7 +892,7 @@ export class UpdateMonitor {
     // command, which most installs have none of.
     if (run !== null) status.run = run;
     if (this.deps.packageCommand !== null) status.packageCommand = this.deps.packageCommand;
-    if (status.restartNeeded) status.restartCommand = restartCommandFor(this.deps.installKind);
+    if (status.restartNeeded) status.restartCommand = restartCommandFor(this.deps.installKind, this.deps.instance);
     return status;
   }
 }

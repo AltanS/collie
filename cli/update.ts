@@ -30,7 +30,7 @@ import {
   PACKAGED_SENTENCE,
 } from "./install-kind.ts";
 import { packageCommand } from "./package-command.ts";
-import type { Environment, EnvVars } from "./context.ts";
+import { herdrActionCommand, type Environment, type EnvVars } from "./context.ts";
 import { EXIT } from "./io.ts";
 import { cmdLink, isCollieBinaryPath, type LinkReader, linkPath, type LinkWriter } from "./link.ts";
 import { type Exec, type Files, type Net, type NetFailure, type ResolvedTool, resolveTool } from "./sys.ts";
@@ -121,8 +121,13 @@ function resolveBun(deps: UpdateDeps): ResolvedTool | null {
   return resolveTool(deps.exec, deps.files, deps.ctx.env, deps.ctx.home, "bun");
 }
 
-/** The command that consents to a major crossing — printed wherever one is refused. */
-export const MAJOR_ACTION = "herdr plugin action invoke update-major --plugin herdr.collie";
+/**
+ * The command that consents to a major crossing — printed wherever one is refused.
+ *
+ * A function of the instance, not a constant: on a named instance the bare `herdr.collie` names the
+ * host's FIRST Collie, so an operator following it would cross a major on the wrong service.
+ */
+export const majorAction = (instance: string | null): string => herdrActionCommand("update-major", instance);
 
 // ── Target selection (pure — ADR 0020) ───────────────────────────────────────
 // A routine `update` no longer means "the tip of the default branch": it means "the newest RELEASE
@@ -483,7 +488,7 @@ function printCurrent(deps: UpdateDeps, at: ReleaseTag): void {
 function announceMajor(deps: UpdateDeps, higher: ReleaseTag | null): void {
   if (higher === null) return;
   deps.io.out(`note: Collie ${higher.version} is out — a NEW MAJOR, which a routine update never takes.`);
-  deps.io.out(`      Read its release notes, then consent to it with:  ${MAJOR_ACTION}`);
+  deps.io.out(`      Read its release notes, then consent to it with:  ${majorAction(deps.ctx.instance)}`);
 }
 
 /**
@@ -601,7 +606,7 @@ function updateLinked(
     if (!crossMajor && majorVerdict(installed, fetched) === "crosses") {
       deps.io.out(`refusing to update: ${installed} → ${fetched} (${ref}) crosses a MAJOR version.`);
       deps.io.out("A major means you have to change something — so it is never taken by a routine update.");
-      deps.io.out(`Read its release notes, then consent to it with:  ${MAJOR_ACTION}`);
+      deps.io.out(`Read its release notes, then consent to it with:  ${majorAction(deps.ctx.instance)}`);
       deps.io.out("(nothing was pulled — this checkout is unchanged)");
       return { code: EXIT.OK, moved: false, to: null, higher: null };
     }
@@ -811,7 +816,7 @@ function installIsIntact(deps: UpdateDeps): boolean {
  */
 function closeWithMajor(deps: UpdateDeps, higher: ReleaseTag | null): void {
   if (higher === null) return;
-  deps.io.out(`note: Collie ${higher.version} is out — a NEW MAJOR. Take it with:  ${MAJOR_ACTION}`);
+  deps.io.out(`note: Collie ${higher.version} is out — a NEW MAJOR. Take it with:  ${majorAction(deps.ctx.instance)}`);
 }
 
 /** The check is `hooks status --check`, which answers in milliseconds; a longer wait is a hang. */
@@ -868,7 +873,7 @@ export async function cmdApplyUpdate(deps: UpdateDeps, args: readonly string[] =
     // service is untouched and consistent — but the operator has to know the update did not land.
     deps.io.err("error: update stopped — the checkout advanced but the build failed.");
     deps.io.err("       The running bridge and the served UI are unchanged. Fix the build and re-run");
-    deps.io.err("       `herdr plugin action invoke update --plugin herdr.collie`.");
+    deps.io.err(`       \`${herdrActionCommand("update", deps.ctx.instance)}\`.`);
     return built;
   }
   const restarted = await deps.restart();

@@ -425,20 +425,25 @@ describe("restart needed — the files moved under a running process", () => {
 
   it("restart command for the install kind, never a hard-coded string", () => {
     // Two spellings, and the kind is the whole of what picks one (M14/01 §5.3).
-    expect(restartCommandFor("detached-checkout")).toBe("herdr plugin action invoke restart --plugin herdr.collie");
+    expect(restartCommandFor("detached-checkout", null)).toBe("herdr plugin action invoke restart --plugin herdr.collie");
+    // A named instance is registered with Herdr under its own suffixed plugin id, and the bare id is
+    // the host's FIRST Collie — so printing it would restart a service this one does not own.
+    expect(restartCommandFor("detached-checkout", "next")).toBe(
+      "herdr plugin action invoke restart --plugin herdr.collie-next",
+    );
     // A PACKAGED install takes the `collie` verb like any other non-Herdr kind. Our package ships no
     // unit file at all — `collie start` writes the operator's own `--user` unit — so the system-unit
     // spelling would name a unit that does not exist and ask for a password to restart it.
     for (const kind of ["packaged", "linked-clone", "binary", "unknown"] as const) {
-      expect(restartCommandFor(kind)).toBe("collie restart");
+      expect(restartCommandFor(kind, "next")).toBe("collie restart");
     }
-    expect(restartCommandFor("packaged")).not.toContain("sudo");
+    expect(restartCommandFor("packaged", null)).not.toContain("sudo");
 
     // And the snapshot names the one this machine takes, off the same function.
     const swapped = { bootVersion: "1.5.0", liveVersion: () => "1.6.0" };
     for (const kind of ["packaged", "detached-checkout", "binary"] as const) {
       const status = makeMonitor({ installKind: kind, ...swapped }).monitor.status();
-      expect(status.restartCommand).toBe(restartCommandFor(kind));
+      expect(status.restartCommand).toBe(restartCommandFor(kind, null));
     }
   });
 });
@@ -457,6 +462,7 @@ function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
     repo: "AltanS/collie",
     current: "0.11.0",
     installKind: "detached-checkout",
+    instance: null,
     packageCommand: null,
     bootVersion: "0.11.0",
     liveVersion: () => "0.11.0",

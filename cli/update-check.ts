@@ -35,7 +35,7 @@ import {
 import { realExec, realFiles, realNet, resolveTool, type Exec, type Files, type Net } from "./sys.ts";
 import { tagRemote } from "./update-remote.ts";
 import {
-  MAJOR_ACTION,
+  majorAction,
   parseApiTags,
   parseRemoteTags,
   planToTag,
@@ -465,13 +465,13 @@ export async function upstreamCheck(
   if (plan.kind === "no-release") {
     return amber("upstream", `github.com/${configured} publishes no release of major ${plan.major} yet`);
   }
-  if (plan.kind === "current") return currentOrMajor(plan.at, plan.higher);
+  if (plan.kind === "current") return currentOrMajor(plan.at, plan.higher, deps.ctx.instance);
   const target = `v${plan.target.version}`;
   if (plan.higher !== null) {
     return amber(
       "upstream",
       `${target} is available on major ${plan.target.major}, and Collie ${plan.higher.version} is out — a NEW MAJOR a routine update never takes`,
-      `take the release with \`collie update\`; cross the major with \`collie update --major\` (${MAJOR_ACTION})`,
+      `take the release with \`collie update\`; cross the major with \`collie update --major\` (${majorAction(deps.ctx.instance)})`,
       true,
     );
   }
@@ -479,14 +479,14 @@ export async function upstreamCheck(
 }
 
 /** "Already current" is a green with nothing to do; a major that is out on top of it is amber. */
-function currentOrMajor(at: ReleaseTag, higher: ReleaseTag | null): PreflightCheck {
+function currentOrMajor(at: ReleaseTag, higher: ReleaseTag | null, instance: string | null): PreflightCheck {
   if (higher === null) {
     return green("upstream", `already current — v${at.version} is the newest release of major ${at.major}`);
   }
   return amber(
     "upstream",
     `already current on major ${at.major} (v${at.version}), but Collie ${higher.version} is out — a NEW MAJOR`,
-    `read its release notes, then consent with \`collie update --major\` (${MAJOR_ACTION})`,
+    `read its release notes, then consent with \`collie update --major\` (${majorAction(instance)})`,
     true,
   );
 }

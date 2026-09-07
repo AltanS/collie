@@ -443,6 +443,14 @@ describe("updateCheckout", () => {
     expect(h.io.stdout.join("\n")).toContain("update-major --plugin herdr.collie");
   });
 
+  test("the consent command names THIS instance's plugin id, not the host's first Collie", () => {
+    // `COLLIE_INSTANCE=next` is registered with Herdr as `herdr.collie-next`. Printing the bare id
+    // here would send the operator to cross a major on a different service on the same host.
+    const h = linked("main", "1.0.0");
+    expect(updateCheckout({ ...h.deps, ctx: { ...h.deps.ctx, instance: "next" } }).code).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("update-major --plugin herdr.collie-next");
+  });
+
   test("--major lets the same clone through, on its branch and with its ff-only pull", () => {
     const h = linked("main", "1.0.0");
     expect(updateCheckout(h.deps, { crossMajor: true }).code).toBe(EXIT.OK);

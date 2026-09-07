@@ -1,5 +1,6 @@
 import type { PackChange } from "./enrollment.ts";
 import { isLeading } from "./enrollment.ts";
+import { herdrActionCommand } from "../front-door.ts";
 import { fingerprintOfCert } from "./identity.ts";
 import type { LeadContactFacts } from "./lead-contact.ts";
 import type { TrustedMember, TrustStoreData, Warrant } from "./trust-store.ts";
@@ -233,7 +234,7 @@ export const STANDBY_HEALTH_PATH = "/standby/health";
  * Failing the health check is what makes the un-torn-down door harmless in the meantime, and the page
  * names the command.
  */
-export function deposedPage(state: DeposedState, outcome: DeposedOutcome): string {
+export function deposedPage(state: DeposedState, outcome: DeposedOutcome, instance: string | null): string {
   const pack = state.packName === null ? "this pack" : `"${state.packName}"`;
   const lead = state.leadMemberId === null ? "another machine" : `"${state.leadMemberId}"`;
   const when = new Date(state.at).toISOString();
@@ -242,7 +243,7 @@ export function deposedPage(state: DeposedState, outcome: DeposedOutcome): strin
     `The pack is now led by ${lead} (warrant generation ${state.generation}).`,
     "Nothing here is live.",
     "",
-    ...deposedOutcomeLines(state, outcome),
+    ...deposedOutcomeLines(state, outcome, instance),
     "",
     "Its front door is still published — run `collie unserve` on this machine to take it down.",
   ];
@@ -257,11 +258,15 @@ export function deposedPage(state: DeposedState, outcome: DeposedOutcome): strin
  * not"). Two spellings of a terminal state is one spelling too many — the page and the verb read
  * this one.
  */
-export function deposedOutcomeLines(state: DeposedState, outcome: DeposedOutcome): string[] {
+export function deposedOutcomeLines(
+  state: DeposedState,
+  outcome: DeposedOutcome,
+  instance: string | null,
+): string[] {
   if (outcome === "healed") {
     return [
       "This machine has rejoined the pack as a peer. It takes effect at its next restart —",
-      "run `herdr plugin action invoke restart --plugin herdr.collie` here. Nothing else is needed:",
+      `run \`${herdrActionCommand("restart", instance)}\` here. Nothing else is needed:`,
       "the new lead already dials this machine, and its agents reappear on its first sweep.",
     ];
   }
@@ -290,14 +295,19 @@ function parkText(reason: ParkReason | null): string {
  * keeps answering, because the new lead must still be able to reach a machine it has just deposed
  * (RFC §8.1, path 1), while the app, the PWA and `/api/*` are gone.
  */
-export function deposedAnswer(state: DeposedState, outcome: DeposedOutcome, url: URL): Response {
+export function deposedAnswer(
+  state: DeposedState,
+  outcome: DeposedOutcome,
+  url: URL,
+  instance: string | null,
+): Response {
   if (url.pathname === STANDBY_HEALTH_PATH) {
     return new Response(JSON.stringify({ state: "deposed", outcome }), {
       status: 503,
       headers: { "content-type": "application/json; charset=utf-8" },
     });
   }
-  return new Response(deposedPage(state, outcome), {
+  return new Response(deposedPage(state, outcome, instance), {
     status: 200,
     headers: { "content-type": "text/plain; charset=utf-8" },
   });
