@@ -62,6 +62,7 @@ check "one x86_64 sha256, 64 hex digits" \
 check "one aarch64 sha256, 64 hex digits" \
   "grep -qE \"^sha256sums_aarch64=\\('[0-9a-f]{64}'\\)\$\" '$pkgbuild'"
 check "pkgver is a bare semver" "grep -qE '^pkgver=[0-9]+\\.[0-9]+\\.[0-9]+\$' '$pkgbuild'"
+check "pkgrel is a positive integer" "grep -qE '^pkgrel=[1-9][0-9]*\$' '$pkgbuild'"
 # The needle is assembled rather than written out, so this file is not its own first hit.
 needle="BEGIN OPENSSH PRIVATE"" KEY"
 check "no private key is in the tree" "! grep -rqF \"\$needle\" '$here'"
@@ -72,9 +73,11 @@ echo ".SRCINFO agrees with the PKGBUILD:"
 check "the file exists" "test -f '$srcinfo'"
 if [ -f "$srcinfo" ]; then
   pkgver="$(sed -n 's/^pkgver=//p' "$pkgbuild" | head -1)"
+  pkgrel="$(sed -n 's/^pkgrel=//p' "$pkgbuild" | head -1)"
   x64="$(sed -n "s/^sha256sums_x86_64=('\(.*\)')/\1/p" "$pkgbuild" | head -1)"
   a64="$(sed -n "s/^sha256sums_aarch64=('\(.*\)')/\1/p" "$pkgbuild" | head -1)"
   check "pkgver matches" "grep -qE '^[[:space:]]*pkgver = $pkgver\$' '$srcinfo'"
+  check "pkgrel matches" "grep -qE '^[[:space:]]*pkgrel = $pkgrel\$' '$srcinfo'"
   check "x86_64 sha256 matches" "grep -qE '^[[:space:]]*sha256sums_x86_64 = $x64\$' '$srcinfo'"
   check "aarch64 sha256 matches" "grep -qE '^[[:space:]]*sha256sums_aarch64 = $a64\$' '$srcinfo'"
   check "pkgbase is collie-bin" "grep -q '^pkgbase = collie-bin\$' '$srcinfo'"

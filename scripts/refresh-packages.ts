@@ -11,13 +11,22 @@
 //
 // Exactly two files are written, and in each one only the declared fields move:
 //
-//   packaging/aur/PKGBUILD      `pkgver`, `sha256sums_x86_64`, `sha256sums_aarch64`
+//   packaging/aur/PKGBUILD      `pkgver`, `pkgrel`, `sha256sums_x86_64`, `sha256sums_aarch64`
 //   packaging/nix/sources.json  `version`, and `url` + `sha256` per platform
 //
 // After writing, both files are READ BACK and every written field is compared against the
 // manifest. A rewrite that does not verify exits non-zero and says which field disagreed, because
 // pushing a package with a stale hash is the one failure that reaches a user as an unexplained
 // refusal to unpack.
+//
+// `pkgrel` is Arch's rebuild counter, and it follows one rule: a new upstream version resets it to
+// 1, a same-version rewrite whose hashes moved increments it, and a rewrite that changes nothing
+// leaves it alone. Without the increment, pacman sees `1.5.5-1` twice and never offers the corrected
+// package to anyone who already installed the first one.
+//
+// The verify pass does NOT re-read the PKGBUILD with the writer's regexes. It sources the file in a
+// bash subshell and prints the four variables, which is how makepkg itself reads them, so a file
+// that only LOOKS right to the writer's pattern is still caught.
 //
 // `--check` verifies and writes nothing. It is what the release job runs a second time, after the
 // rewrite, so the job proves the file on disk rather than the intention that produced it.
@@ -133,6 +142,75 @@ function downloadUrl(manifest: Manifest, artifact: ManifestArtifact): string {
   return `https://github.com/${manifest.repo}/releases/download/${manifest.tag}/${artifact.name}`;
 }
 
+/**
+ * Every platform the manifest lists must be one the tables above map, and every platform the tables
+ * name must be in the manifest. Both directions matter and neither is a warning: a new payload the
+ * release starts shipping is a packaging decision somebody has to make, and it must not be silently
+ * dropped, while a payload that disappeared would otherwise be noticed as a missing hash much later.
+ */
+function assertPlatformsMatch(manifest: Manifest): void {
+  const known = new Set<string>([...AUR_ARCHES.map((a) => a.platform), ...NIX_PLATFORMS.map((r) => r.platform)]);
+  const listed = new Set(manifest.artifacts.map((a) => String(a.platform)));
+
+  const unmapped = [...listed].filter((name) => !known.has(name)).toSorted();
+  if (unmapped.length > 0) {
+    throw new Error(
+      `the manifest lists platform(s) this script does not map: ${unmapped.join(", ")}. ` +
+        "Add the row to AUR_ARCHES or NIX_PLATFORMS, or decide deliberately not to package it.",
+    );
+  }
+  const missing = [...known].filter((name) => !listed.has(name)).toSorted();
+  if (missing.length > 0) {
+    throw new Error(`the manifest has no artifact for mapped platform(s): ${missing.join(", ")}`);
+  }
+}
+
+// ── Reading a PKGBUILD the way makepkg reads it ────────────────────────────
+
+/**
+ * The four fields this script owns, read by SOURCING the PKGBUILD in a bash subshell rather than by
+ * matching the writer's own regex. Two readers that share a pattern share its blind spots; makepkg
+ * sources the file, so sourcing it is the reading that decides whether a package is right.
+ */
+interface PkgbuildState {
+  readonly pkgver: string;
+  readonly pkgrel: string;
+  readonly shas: readonly string[];
+}
+
+const SOURCE_SNIPPET =
+  'source "$1"; printf "%s\\n" "$pkgver" "$pkgrel" "${sha256sums_x86_64[0]}" "${sha256sums_aarch64[0]}"';
+
+function sourcePkgbuild(path: string): PkgbuildState {
+  const out = Bun.spawnSync(["bash", "-c", SOURCE_SNIPPET, "bash", path]);
+  if (!out.success) {
+    throw new Error(`${path}: bash could not source it: ${out.stderr.toString().trim()}`);
+  }
+  const lines = out.stdout.toString().split("\n");
+  return {
+    pkgver: lines[0] ?? "",
+    pkgrel: lines[1] ?? "",
+    shas: [lines[2] ?? "", lines[3] ?? ""],
+  };
+}
+
+/**
+ * Arch's rebuild counter. A new upstream version resets it to 1; a corrected package for a version
+ * already published increments it, because pacman compares `pkgver-pkgrel` and would otherwise
+ * never offer the fix; an idempotent re-run leaves it where it is.
+ */
+function nextPkgrel(before: PkgbuildState, manifest: Manifest): string {
+  if (before.pkgver !== manifest.version) return "1";
+  const wanted = AUR_ARCHES.map((a) => artifactFor(manifest, a.platform).sha256);
+  const shasMoved = wanted.some((sha, i) => sha !== before.shas[i]);
+  if (!shasMoved) return before.pkgrel;
+  const current = Number.parseInt(before.pkgrel, 10);
+  if (!Number.isInteger(current) || current < 1) {
+    throw new Error(`packaging/aur/PKGBUILD pkgrel is "${before.pkgrel}", which is not a positive integer`);
+  }
+  return String(current + 1);
+}
+
 // ── Field-scoped rewrites ──────────────────────────────────────────────────
 
 /**
@@ -148,8 +226,9 @@ function replaceOneLine(text: string, pattern: RegExp, line: string, what: strin
   return text.replace(pattern, line);
 }
 
-function rewritePkgbuild(text: string, manifest: Manifest): string {
+function rewritePkgbuild(text: string, manifest: Manifest, pkgrel: string): string {
   let out = replaceOneLine(text, /^pkgver=.*$/m, `pkgver=${manifest.version}`, "PKGBUILD pkgver");
+  out = replaceOneLine(out, /^pkgrel=.*$/m, `pkgrel=${pkgrel}`, "PKGBUILD pkgrel");
   for (const arch of AUR_ARCHES) {
     const sha = artifactFor(manifest, arch.platform).sha256;
     out = replaceOneLine(
@@ -202,21 +281,65 @@ function encodeMatch(captured: string | undefined): string | null {
   return captured === undefined ? null : encode(captured);
 }
 
-function pkgbuildFields(text: string, manifest: Manifest): Field[] {
+/**
+ * The PKGBUILD's fields, read by sourcing the file. `expectedPkgrel` is the value the rewrite chose;
+ * in `--check` there was no rewrite, so it is null and the only claim made about `pkgrel` is that it
+ * is a positive integer.
+ */
+function pkgbuildFields(state: PkgbuildState, manifest: Manifest, expectedPkgrel: string | null): Field[] {
   const fields: Field[] = [
     {
       where: "packaging/aur/PKGBUILD pkgver",
       expected: encode(manifest.version),
-      found: encodeMatch(text.match(/^pkgver=(.*)$/m)?.[1]),
+      found: encode(state.pkgver),
     },
+    pkgrelField(state.pkgrel, expectedPkgrel),
   ];
-  for (const arch of AUR_ARCHES) {
+  AUR_ARCHES.forEach((arch, i) => {
     fields.push({
       where: `packaging/aur/PKGBUILD ${arch.arrayName}`,
       expected: encode(artifactFor(manifest, arch.platform).sha256),
-      found: encodeMatch(text.match(new RegExp(`^${arch.arrayName}=\\('([^']*)'\\)$`, "m"))?.[1]),
+      found: encode(state.shas[i] ?? ""),
     });
+  });
+  return fields;
+}
+
+/**
+ * `pkgrel` is the one field the manifest says nothing about, so it is checked against a shape when
+ * no rewrite chose a value: a positive integer, which is all pacman will compare.
+ */
+function pkgrelField(found: string, expected: string | null): Field {
+  if (expected !== null) {
+    return { where: "packaging/aur/PKGBUILD pkgrel", expected: encode(expected), found: encode(found) };
   }
+  const wellFormed = /^[1-9][0-9]*$/.test(found);
+  return {
+    where: "packaging/aur/PKGBUILD pkgrel",
+    expected: wellFormed ? encode(found) : encode("a positive integer"),
+    found: encode(found),
+  };
+}
+
+/**
+ * `.SRCINFO` is what the AUR reads; the PKGBUILD is what a person reads. A stale `.SRCINFO`
+ * publishes the wrong version with no other symptom, so the two are compared field by field. The
+ * manifest is not consulted here: the PKGBUILD has already been checked against it above, and this
+ * asks the narrower question of whether the generated file kept up.
+ */
+function srcinfoFields(srcinfo: string, state: PkgbuildState): Field[] {
+  const read = (key: string): string | null => srcinfo.match(new RegExp(`^\\s*${key} = (.*)$`, "m"))?.[1] ?? null;
+  const fields: Field[] = [
+    { where: "packaging/aur/.SRCINFO pkgver", expected: encode(state.pkgver), found: encodeMatch(read("pkgver") ?? undefined) },
+    { where: "packaging/aur/.SRCINFO pkgrel", expected: encode(state.pkgrel), found: encodeMatch(read("pkgrel") ?? undefined) },
+  ];
+  AUR_ARCHES.forEach((arch, i) => {
+    fields.push({
+      where: `packaging/aur/.SRCINFO ${arch.arrayName}`,
+      expected: encode(state.shas[i] ?? ""),
+      found: encodeMatch(read(arch.arrayName) ?? undefined),
+    });
+  });
   return fields;
 }
 
@@ -328,20 +451,38 @@ async function main(): Promise<number> {
     if (!existsSync(p)) throw new Error(`${p}: no such file`);
   }
 
+  assertPlatformsMatch(manifest);
   console.log(`Collie ${manifest.version} (${manifest.tag}), from ${opts.manifest}`);
 
+  // `expectedPkgrel` is null in --check: no rewrite chose a value there, so the only claim the
+  // verify pass can make about pkgrel is that it is a positive integer.
+  let expectedPkgrel: string | null = null;
   if (!opts.checkOnly) {
-    writeFileSync(pkgbuildPath, rewritePkgbuild(readFileSync(pkgbuildPath, "utf8"), manifest));
+    const before = sourcePkgbuild(pkgbuildPath);
+    expectedPkgrel = nextPkgrel(before, manifest);
+    console.log(`  pkgrel ${before.pkgver}-${before.pkgrel} → ${manifest.version}-${expectedPkgrel}`);
+    writeFileSync(pkgbuildPath, rewritePkgbuild(readFileSync(pkgbuildPath, "utf8"), manifest, expectedPkgrel));
     writeFileSync(sourcesPath, rewriteSources(readFileSync(sourcesPath, "utf8"), manifest));
     regenerateSrcinfo(join(opts.root, "packaging/aur"));
   }
 
   // Read back from disk, always — in `--check` this is the whole job, and after a rewrite it is
   // the proof. Neither branch trusts the strings this process just held in memory.
-  const bad = report([
-    ...pkgbuildFields(readFileSync(pkgbuildPath, "utf8"), manifest),
+  const after = sourcePkgbuild(pkgbuildPath);
+  const fields = [
+    ...pkgbuildFields(after, manifest, expectedPkgrel),
     ...sourcesFields(readFileSync(sourcesPath, "utf8"), manifest),
-  ]);
+  ];
+
+  // `.SRCINFO` is compared only in --check, and the release job runs --check AFTER the makepkg step
+  // that regenerates it. A rewrite on a machine with no makepkg leaves it stale on purpose, and
+  // saying so twice in one run would just be noise.
+  const srcinfoPath = join(opts.root, "packaging/aur/.SRCINFO");
+  if (opts.checkOnly && existsSync(srcinfoPath)) {
+    fields.push(...srcinfoFields(readFileSync(srcinfoPath, "utf8"), after));
+  }
+
+  const bad = report(fields);
 
   if (bad.length > 0) {
     console.error(
