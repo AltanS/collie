@@ -297,29 +297,44 @@ describe("stampOf", () => {
 function fakeStore(
   initial: string | null = null,
   pushedAt: string | null = null,
-): UpdateStore & { saved: string[]; pushes: string[]; closed: string[] } {
+): UpdateStore & { saved: string[]; pushes: string[]; closed: string[]; writes: number } {
   let last = initial;
   let stamp = pushedAt;
   let dismissed: string | null = null;
+  let dismissedPack: string | null = null;
   const saved: string[] = [];
   const pushes: string[] = [];
   const closed: string[] = [];
+  const counter = { writes: 0 };
   return {
     saved,
     pushes,
     closed,
+    get writes() {
+      return counter.writes;
+    },
     lastNotified: () => last,
     lastPushedAt: () => stamp,
     setLastNotified: async (v, at) => {
+      counter.writes += 1;
       last = v;
       stamp = at;
       saved.push(v);
       pushes.push(at);
     },
     dismissedVersion: () => dismissed,
-    setDismissedVersion: async (v) => {
-      dismissed = v;
-      closed.push(v);
+    dismissedPackVersion: () => dismissedPack,
+    setDismissed: async (scope, v, notified) => {
+      counter.writes += 1;
+      if (scope === "offer") dismissed = v;
+      else dismissedPack = v;
+      closed.push(`${scope}:${v}`);
+      if (notified !== undefined) {
+        last = notified.version;
+        stamp = notified.pushedAt;
+        saved.push(notified.version);
+        pushes.push(notified.pushedAt);
+      }
     },
   };
 }
@@ -546,7 +561,8 @@ describe("UpdateMonitor", () => {
       lastNotified: store.lastNotified,
       lastPushedAt: store.lastPushedAt,
       dismissedVersion: store.dismissedVersion,
-      setDismissedVersion: store.setDismissedVersion,
+      dismissedPackVersion: store.dismissedPackVersion,
+      setDismissed: store.setDismissed,
       setLastNotified: async (v, at) => {
         order.push(`persist:${v}`);
         await store.setLastNotified(v, at);
@@ -774,28 +790,30 @@ afterAll(async () => {
 });
 
 describe("the dismissed version", () => {
-  it("round-trips through the store, beside the notified version and in the same file", async () => {
+  it("round-trips both scopes through the store, in one file beside the push record", async () => {
     const cfg = await tempCfg();
     const store = new UpdateStateStore(cfg);
     await store.load();
     expect(store.dismissedVersion()).toBeNull(); // nothing saved yet reads as nothing dismissed
+    expect(store.dismissedPackVersion()).toBeNull();
 
-    await store.setLastNotified("1.6.0", "2026-09-07T09:00:00.000Z");
-    await store.setDismissedVersion("1.6.0");
+    await store.setDismissed("offer", "1.6.0", { version: "1.6.0", pushedAt: "2026-09-07T09:00:00.000Z" });
+    await store.setDismissed("pack", "1.5.0");
 
     const reloaded = new UpdateStateStore(cfg);
     await reloaded.load();
     expect(reloaded.dismissedVersion()).toBe("1.6.0");
-    // The one write carries BOTH fields — a dismissal must not forget the push record beside it.
+    // Two decisions, two fields: the pack notice was put down at a DIFFERENT version and neither
+    // overwrote the other.
+    expect(reloaded.dismissedPackVersion()).toBe("1.5.0");
+    // The offer's dismissal folded the snooze into the same write — a crash between two writes
+    // cannot leave a band closed with the push still armed for it.
     expect(reloaded.lastNotified()).toBe("1.6.0");
     expect(reloaded.lastPushedAt()).toBe("2026-09-07T09:00:00.000Z");
   });
 
-  it("survives a record written before this field existed, as nothing dismissed", async () => {
+  it("reads a record that carries neither key as nothing dismissed", async () => {
     const cfg = await tempCfg();
-    const seed = new UpdateStateStore(cfg);
-    await seed.load();
-    await seed.setLastNotified("1.5.0", "2026-09-06T09:00:00.000Z");
     await Bun.write(
       join(cfg.stateDir, "update-state.json"),
       JSON.stringify({ lastNotified: "1.5.0", lastPushedAt: "2026-09-06T09:00:00.000Z" }),
@@ -803,18 +821,46 @@ describe("the dismissed version", () => {
     const store = new UpdateStateStore(cfg);
     await store.load();
     expect(store.dismissedVersion()).toBeNull();
-    expect(store.lastNotified()).toBe("1.5.0");
+    expect(store.dismissedPackVersion()).toBeNull();
+    expect(store.lastNotified()).toBe("1.5.0"); // and the record beside them is still believed
   });
 
-  it("a dismiss also advances lastNotified, so tomorrow's digest does not re-name it", async () => {
+  it("a dismissed offer for the release upstream names also snoozes the digest, in one write", async () => {
     const { monitor, store } = makeMonitor();
     await monitor.checkRelease();
     expect(store.saved).toEqual(["0.12.0"]); // the first push announced it
+    const before = store.writes;
 
     await monitor.dismiss("0.12.0");
-    expect(store.closed).toEqual(["0.12.0"]);
-    expect(store.lastNotified()).toBe("0.12.0"); // snoozed in the same act
+    expect(store.closed).toEqual(["offer:0.12.0"]);
+    expect(store.lastNotified()).toBe("0.12.0");
+    expect(store.writes - before).toBe(1); // one act, one write
     expect(monitor.status().dismissedVersion).toBe("0.12.0");
+  });
+
+  it("a dismiss with scope pack hides a notice and leaves lastNotified alone", async () => {
+    const { monitor, store } = makeMonitor();
+    await monitor.checkRelease();
+    const notified = store.lastNotified();
+
+    await monitor.dismiss("0.12.0", "pack");
+    expect(store.closed).toEqual(["pack:0.12.0"]);
+    // The push is about THIS machine; the notice was about another one. Hiding it silences nothing.
+    expect(store.lastNotified()).toBe(notified);
+    expect(monitor.status().dismissedPackVersion).toBe("0.12.0");
+    expect(monitor.status().dismissedVersion).toBeNull(); // and the offer is untouched
+  });
+
+  it("a dismissed offer for a version that is not latest leaves lastNotified alone", async () => {
+    const { monitor, store } = makeMonitor();
+    await monitor.checkRelease();
+    const notified = store.lastNotified();
+
+    // Closing a band about 0.11.9 says nothing about the 0.12.0 the digest would push, and moving
+    // the record there would swallow the version upstream is actually naming.
+    await monitor.dismiss("0.11.9");
+    expect(monitor.status().dismissedVersion).toBe("0.11.9");
+    expect(store.lastNotified()).toBe(notified);
   });
 
   it("a dismiss is not a mute — a newer release is a different version and raises the band", async () => {

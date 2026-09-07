@@ -868,7 +868,8 @@ export const es: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} revirtió: {reason}.",
   "updateRibbon.seeUpdates": "Ver Actualizaciones.",
   "updateRibbon.available": "Collie {version} disponible. Actualiza.",
-  "updateRibbon.availablePackaged": "Collie {version}. Actualiza con {manager}.",
+  "updateRibbon.availablePackaged": "Collie {version} disponible vía {manager}.",
   "updateRibbon.availablePackagedUnnamed": "Collie {version} disponible.",
   "updateRibbon.dismiss": "Descartar esta versión",
+  "updateRibbon.hideNotice": "Ocultar este aviso",
 };

@@ -872,7 +872,8 @@ export const de: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} zurückgesetzt: {reason}.",
   "updateRibbon.seeUpdates": "Siehe Updates.",
   "updateRibbon.available": "Collie {version} da. Zum Update tippen.",
-  "updateRibbon.availablePackaged": "Collie {version} da. Update per {manager}.",
-  "updateRibbon.availablePackagedUnnamed": "Collie {version} da.",
+  "updateRibbon.availablePackaged": "Collie {version} über {manager} verfügbar.",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} verfügbar.",
   "updateRibbon.dismiss": "Diese Version ausblenden",
+  "updateRibbon.hideNotice": "Hinweis ausblenden",
 };

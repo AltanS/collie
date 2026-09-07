@@ -1937,7 +1937,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(handler).toContain("pack: opts.packLead?.updateRows() ?? []");
   });
 
-  test("the band's dismiss is ONE act: it records the version and snoozes the digest together", () => {
+  test("the band's dismiss carries a scope, and the monitor decides what it costs", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const at = src.indexOf('if (pathname === "/api/update/dismiss" && req.method === "POST")');
     expect(at).toBeGreaterThan(0);
@@ -1945,10 +1945,14 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     // Read-level, exactly like the snooze beside it — declining a notification about your own
     // machine is not terminal-driving.
     expect(handler).toContain('guard(req, cfg, "read", pairing)');
-    // One call, and the monitor is what pairs the record with the snooze. If the route ever spells
-    // the two halves itself, they can be edited apart.
-    expect(handler).toContain("await updateMonitor.dismiss(version)");
+    // One call, and the monitor is what decides whether the digest is snoozed with it. If the route
+    // ever spells that itself, the rule can be edited apart from the record it belongs to.
+    expect(handler).toContain('await updateMonitor.dismiss(version, asked ?? "offer")');
     expect(handler).not.toContain("snoozeDigest");
+    // WHICH band, because they are two decisions. An absent scope reads as the offer, which is what
+    // every client before the pack states could close.
+    expect(handler).toContain('asked !== "offer" && asked !== "pack"');
+    expect(handler).toContain('text("bad scope", 400)');
     // A version, checked before anything is written: the band is keyed by version, so an empty one
     // would dismiss nothing and pin the store to a fact that is not one.
     expect(handler).toContain('typeof version !== "string"');

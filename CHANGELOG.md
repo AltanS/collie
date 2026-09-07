@@ -31,7 +31,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
-- Closing the update band holds on every screen and can be done from the quiet pack states too, and a host whose updates come from its package manager reads "Collie 1.6.0 is out. Update with pacman." instead of an offer to tap.
+- The update band remembers a dismissal on the host instead of in one browser, the quiet pack notice can be put down on its own, and a host whose updates come from its package manager reads "Collie 1.6.0 available via pacman." instead of an offer to tap.
 
 ## [1.5.5] - 2026-09-07
 

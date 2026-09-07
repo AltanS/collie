@@ -859,7 +859,8 @@ export const ja: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} がロールバック: {reason}。",
   "updateRibbon.seeUpdates": "更新画面を確認。",
   "updateRibbon.available": "Collie {version} を利用可能。タップして更新。",
-  "updateRibbon.availablePackaged": "Collie {version} 公開。{manager} で更新。",
-  "updateRibbon.availablePackagedUnnamed": "Collie {version} 公開。",
+  "updateRibbon.availablePackaged": "Collie {version}（{manager}）が利用可能。",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} が利用可能。",
   "updateRibbon.dismiss": "このバージョンを非表示",
+  "updateRibbon.hideNotice": "この通知を非表示",
 };

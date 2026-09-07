@@ -324,7 +324,7 @@ describe("dismissal is per version, and it belongs to the machine", () => {
     await user.click(screen.getByRole("button", { name: "Dismiss this version" }));
     // Optimistic: the band is gone on the tap, not on the next poll.
     expect(band(container)).toBeNull();
-    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0");
+    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "offer");
   });
 
   it("stays down on the NEXT SCREEN, because the snapshot carries the dismissal", async () => {
@@ -355,14 +355,14 @@ describe("a packaged host on the band", () => {
 
   it("names the package manager and never offers a tap-to-update", async () => {
     await renderBand(packaged());
-    expect(screen.getByText("Collie 1.5.0 is out. Update with pacman.")).toBeInTheDocument();
+    expect(screen.getByText("Collie 1.5.0 available via pacman.")).toBeInTheDocument();
     expect(screen.queryByText(/Tap to update/)).toBeNull();
   });
 
   it("still taps through to the updates page, where the command is", async () => {
     const user = userEvent.setup();
     await renderBand(packaged());
-    await user.click(screen.getByText("Collie 1.5.0 is out. Update with pacman."));
+    await user.click(screen.getByText("Collie 1.5.0 available via pacman."));
     expect(await screen.findByText("the updates page")).toBeInTheDocument();
   });
 
@@ -371,7 +371,31 @@ describe("a packaged host on the band", () => {
     const { container } = await renderBand(packaged());
     await user.click(screen.getByRole("button", { name: "Dismiss this version" }));
     expect(band(container)).toBeNull();
-    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0");
+    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "offer");
+  });
+});
+
+describe("hiding the quiet pack notice", () => {
+  const managed: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
+  const quiet = () => info({ releaseAvailable: false, run: run("done", { peers: managed }) });
+
+  it("carries its own label — a notice about another machine, not this version", async () => {
+    await renderBand(quiet());
+    expect(screen.getByRole("button", { name: "Hide this notice" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dismiss this version" })).toBeNull();
+  });
+
+  it("hides on the tap and tells the bridge, in the pack scope", async () => {
+    const user = userEvent.setup();
+    const { container } = await renderBand(quiet());
+    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
+    expect(band(container)).toBeNull();
+    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "pack");
+  });
+
+  it("stays down for the next screen, off the snapshot's own field", async () => {
+    const { container } = await renderBand(info({ ...quiet(), dismissedPackVersion: "1.5.0" }));
+    expect(band(container)).toBeNull();
   });
 });
 

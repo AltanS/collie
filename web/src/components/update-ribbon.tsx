@@ -12,6 +12,7 @@ import { useScope } from "@/lib/session";
 import { useSelfUpdate } from "@/lib/self-update";
 import {
   clearUpdateStarted,
+  type Dismissal,
   dismissTarget,
   getUpdateStarted,
   ribbonText,
@@ -19,6 +20,7 @@ import {
   subscribeUpdateStarted,
   type RibbonView,
 } from "@/lib/update-ribbon";
+import type { DismissScope } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // ── THE UPDATE BAND ─────────────────────────────────────────────────────────────────────────────
@@ -76,9 +78,10 @@ export function UpdateRibbon() {
   const bundleStale = useSelfUpdate();
   const startedAt = useSyncExternalStore(subscribeUpdateStarted, getUpdateStarted, getUpdateStarted);
   // OPTIMISTIC ONLY. The dismissal itself lives on the bridge (M17/08) and arrives on the snapshot;
-  // this holds the version the operator just closed so the band drops on the tap rather than on the
-  // next poll. Keyed by version like the stored one, so a newer release still raises the band.
-  const [justDismissed, setJustDismissed] = useState<string | null>(null);
+  // this holds what the operator just closed so the band drops on the tap rather than on the next
+  // poll. Keyed by version AND scope like the stored one, so a newer version still raises the band
+  // and closing a pack notice does not hide this host's own offer.
+  const [justDismissed, setJustDismissed] = useState<Dismissal | null>(null);
 
   const update = data?.update;
   const runState = update?.run?.state;
@@ -93,7 +96,8 @@ export function UpdateRibbon() {
     update,
     startedAt,
     bundleStale,
-    dismissedVersion: justDismissed ?? update?.dismissedVersion ?? null,
+    dismissedVersion: dismissedIn("offer", justDismissed, update?.dismissedVersion),
+    dismissedPackVersion: dismissedIn("pack", justDismissed, update?.dismissedPackVersion),
     now: Date.now(),
   });
   if (view.kind === "silent") return null;
@@ -128,13 +132,13 @@ export function UpdateRibbon() {
       {target !== null && (
         <button
           type="button"
-          aria-label={t("updateRibbon.dismiss")}
+          aria-label={t(target.scope === "pack" ? "updateRibbon.hideNotice" : "updateRibbon.dismiss")}
           className="shrink-0 text-muted-foreground"
           onClick={() => {
             setJustDismissed(target);
-            // Told to the bridge so every OTHER screen's band drops too. A failed call is a courtesy
+            // Told to the bridge, which is where the decision belongs. A failed call is a courtesy
             // lost, not an error worth a line: this band is already gone, and the next tap re-sends.
-            void dismissUpdate(target).catch(() => {});
+            void dismissUpdate(target.version, target.scope).catch(() => {});
           }}
         >
           <X className="size-3.5" />
@@ -142,6 +146,17 @@ export function UpdateRibbon() {
       )}
     </div>
   );
+}
+
+/** What the reading should treat as dismissed in one scope: the tap this tab just made, when it was
+ *  in that scope, else what the bridge has recorded. */
+function dismissedIn(
+  scope: DismissScope,
+  local: Dismissal | null,
+  stored: string | null | undefined,
+): string | null {
+  if (local !== null && local.scope === scope) return local.version;
+  return stored ?? null;
 }
 
 /** Icon + tint per state. A failed peer is the only red the band can show; everything else is

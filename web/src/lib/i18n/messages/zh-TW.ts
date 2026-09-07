@@ -831,7 +831,8 @@ export const zhTW: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} 已復原：{reason}。",
   "updateRibbon.seeUpdates": "查看更新。",
   "updateRibbon.available": "Collie {version} 可用。點擊更新。",
-  "updateRibbon.availablePackaged": "Collie {version} 已發布。使用 {manager} 更新。",
-  "updateRibbon.availablePackagedUnnamed": "Collie {version} 已發布。",
+  "updateRibbon.availablePackaged": "Collie {version} 可透過 {manager} 取得。",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} 可用。",
   "updateRibbon.dismiss": "略過此版本",
+  "updateRibbon.hideNotice": "隱藏此通知",
 };

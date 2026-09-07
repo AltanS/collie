@@ -894,12 +894,16 @@ export const en = {
   "updateRibbon.seeUpdates": "See Updates.",
   "updateRibbon.available": "Collie {version} available. Tap to update.",
   // A packaged host cannot take the tap — its updates come from its package manager (ADR 0035) — so
-  // the band names the manager instead of offering an update that would refuse.
-  "updateRibbon.availablePackaged": "Collie {version} is out. Update with {manager}.",
+  // the band STATES the fact and names the manager. It does not instruct: the phone cannot run
+  // pacman, and a line that told the operator to would be telling them to go somewhere else.
+  "updateRibbon.availablePackaged": "Collie {version} available via {manager}.",
   // The same host under a prefix Collie does not recognise: there is no manager to name, so the band
   // states the version and points at the page that carries the boundary sentence.
-  "updateRibbon.availablePackagedUnnamed": "Collie {version} is out.",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} available.",
   "updateRibbon.dismiss": "Dismiss this version",
+  // The close on the two QUIET pack states. Not "dismiss this version": what is put down there is a
+  // notice about another machine, and this host's own offer is untouched by it.
+  "updateRibbon.hideNotice": "Hide this notice",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

@@ -493,6 +493,7 @@ export class UpdateStateStore {
   private lastVersion: string | null = null;
   private pushedAt: string | null = null;
   private dismissed: string | null = null;
+  private dismissedPack: string | null = null;
   private readonly file: string;
 
   constructor(private readonly cfg: Config) {
@@ -508,11 +509,13 @@ export class UpdateStateStore {
       const last = rec === null ? undefined : rec.lastNotified;
       const pushed = rec === null ? undefined : rec.lastPushedAt;
       const closed = rec === null ? undefined : rec.dismissedVersion;
+      const closedPack = rec === null ? undefined : rec.dismissedPackVersion;
       this.lastVersion = typeof last === "string" ? last : null;
-      // A record written before M17/08 carries no dismissal. It reads as "nothing dismissed", which
-      // is the band's own default — an operator who closed the band on an older build simply sees it
-      // once more.
+      // A record written before M17/08 carries neither dismissal. Both read as "nothing dismissed",
+      // which is the band's own default — an operator who closed the band on an older build simply
+      // sees it once more.
       this.dismissed = typeof closed === "string" ? closed : null;
+      this.dismissedPack = typeof closedPack === "string" ? closedPack : null;
       // A LEGACY record carries no timestamp. It reads as "no push yet" — the window opens at once
       // rather than crashing the monitor or pinning it shut for a day.
       this.pushedAt = typeof pushed === "string" ? pushed : null;
@@ -530,9 +533,15 @@ export class UpdateStateStore {
     return this.pushedAt;
   }
 
-  /** The release whose band the operator closed, or null when none was. */
+  /** The release whose OFFER the operator closed, or null when none was. */
   dismissedVersion(): string | null {
     return this.dismissed;
+  }
+
+  /** The version whose quiet PACK notice the operator closed, or null. A different decision from
+   *  the one above, and so a different field — see {@link DismissScope}. */
+  dismissedPackVersion(): string | null {
+    return this.dismissedPack;
   }
 
   async setLastNotified(version: string, pushedAt: string): Promise<void> {
@@ -542,14 +551,27 @@ export class UpdateStateStore {
   }
 
   /**
-   * Remember the release whose band the operator closed.
+   * Remember the version whose band the operator closed, in the scope they closed.
    *
    * It lives HERE, beside `lastNotified`, rather than in a browser: a dismissal is a decision about
    * this machine's update, and a decision kept per browser leaves the band up on the phone after it
    * was closed on the laptop (M17/08).
+   *
+   * `notified` folds the digest snooze into the SAME write. Two writes can be interrupted between
+   * them and leave half a decision on disk: a band closed with a push still armed for the version
+   * just declined, or the reverse.
    */
-  async setDismissedVersion(version: string): Promise<void> {
-    this.dismissed = version;
+  async setDismissed(
+    scope: DismissScope,
+    version: string,
+    notified?: { version: string; pushedAt: string },
+  ): Promise<void> {
+    if (scope === "offer") this.dismissed = version;
+    else this.dismissedPack = version;
+    if (notified !== undefined) {
+      this.lastVersion = notified.version;
+      this.pushedAt = notified.pushedAt;
+    }
     await this.write();
   }
 
@@ -561,6 +583,7 @@ export class UpdateStateStore {
       lastNotified: this.lastVersion,
       lastPushedAt: this.pushedAt,
       dismissedVersion: this.dismissed,
+      dismissedPackVersion: this.dismissedPack,
     };
     const tmp = `${this.file}.tmp`;
     await writeFile(tmp, JSON.stringify(body, null, 2), { mode: 0o600 });
@@ -595,16 +618,33 @@ export function restartCommandFor(kind: UpdateStatus["installKind"]): string {
 
 // ── The monitor ───────────────────────────────────────────────────────────────
 
+/**
+ * WHICH band was closed. Two decisions, never one key.
+ *
+ * `offer` is "a release is available on this machine". `pack` is "another machine is standing
+ * behind, and a package manager owns it". They are about different machines and they are put down
+ * separately: hiding a peer's quiet notice must not also hide this host's own offer, even when the
+ * two name the same version.
+ */
+export type DismissScope = "offer" | "pack";
+
 /** Persistence seam — just what the monitor needs from {@link UpdateStateStore}. */
 export interface UpdateStore {
   lastNotified(): string | null;
   /** ISO-8601 stamp of the last push, or null — the digest window is measured from it. */
   lastPushedAt(): string | null;
   setLastNotified(version: string, pushedAt: string): Promise<void>;
-  /** The release whose band was closed, or null. Reported on the snapshot, so one dismissal holds
-   *  on every screen. */
+  /** The release whose OFFER was closed, or null. Reported on the snapshot, so the decision holds
+   *  on every screen rather than in the browser that made it. */
   dismissedVersion(): string | null;
-  setDismissedVersion(version: string): Promise<void>;
+  /** The version whose quiet PACK notice was closed, or null. */
+  dismissedPackVersion(): string | null;
+  /** Record a dismissal, folding the digest snooze into the same write when one is asked for. */
+  setDismissed(
+    scope: DismissScope,
+    version: string,
+    notified?: { version: string; pushedAt: string },
+  ): Promise<void>;
 }
 
 export interface UpdateMonitorDeps {
@@ -741,17 +781,28 @@ export class UpdateMonitor {
   }
 
   /**
-   * The band was closed on some screen, for `version`.
+   * The band was closed, for `version`, in the scope it was closed in.
    *
-   * ONE act, not two: it records the version so every other screen's band drops on its next poll,
-   * and it runs {@link snoozeDigest} in the same call, because closing the band and then being
-   * pushed the same version tomorrow morning is the app arguing with a decision the operator
-   * already made. A NEWER release is a different version and raises the band again — which is why
-   * this is keyed by version and carries no clock of its own (the digest owns the clock).
+   * Closing the OFFER for the release this host is actually being offered also snoozes the digest,
+   * in the SAME write: being pushed tomorrow morning about a version just declined is the app
+   * arguing with a decision the operator already made. Two conditions gate that, and both matter:
+   *
+   *   • Scope. A quiet PACK notice is about another machine and the push is about this one, so
+   *     hiding it must never silence a release this host was never told about.
+   *   • The version. An offer for anything other than the release upstream currently names is not
+   *     the release the digest would push, and moving `lastNotified` there would either swallow the
+   *     current version or re-announce an old one.
+   *
+   * A NEWER release is a different version and raises the band again — this is not a mute, and it
+   * carries no clock of its own (the digest owns the clock).
    */
-  async dismiss(version: string): Promise<void> {
-    await this.deps.store.setDismissedVersion(version);
-    await this.snoozeDigest();
+  async dismiss(version: string, scope: DismissScope = "offer"): Promise<void> {
+    const snoozes = scope === "offer" && this.latest !== null && version === this.latest;
+    await this.deps.store.setDismissed(
+      scope,
+      version,
+      snoozes ? { version, pushedAt: this.nowIso() } : undefined,
+    );
   }
 
   /** Recompute (throttled) whether the running process is behind the on-disk bridge source. */
@@ -795,6 +846,7 @@ export class UpdateMonitor {
           : githubReleaseUrl(this.deps.repo, this.majorAvailable),
       installKind: this.deps.installKind,
       dismissedVersion: this.deps.store.dismissedVersion(),
+      dismissedPackVersion: this.deps.store.dismissedPackVersion(),
       bridgeStale: this.bridgeStale(),
       restartNeeded: this.versionSwapped(),
       checkedAt: this.checkedAt,

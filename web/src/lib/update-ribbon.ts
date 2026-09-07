@@ -1,5 +1,17 @@
 import { t, tn } from "./i18n";
-import type { UpdateInfo, UpdatePeerLeg, UpdatePeerLegState, UpdateRunState } from "./types";
+import type {
+  DismissScope,
+  UpdateInfo,
+  UpdatePeerLeg,
+  UpdatePeerLegState,
+  UpdateRunState,
+} from "./types";
+
+/** What a close sends: the scope it was closed in, and the version it was keyed to. */
+export interface Dismissal {
+  scope: DismissScope;
+  version: string;
+}
 
 // ── THE UPDATE BAND, AS A PURE READING ──────────────────────────────────────────────────────────
 //
@@ -84,15 +96,18 @@ export interface RibbonInput {
   /** `useSelfUpdate()`'s banner flag — see the header. Never re-derived here. */
   bundleStale: boolean;
   /**
-   * The version whose band the operator closed. A newer one is a different version, so it raises the
-   * band again.
+   * The version whose OFFER the operator closed. A newer one is a different version, so it raises
+   * the band again.
    *
    * It comes off the SNAPSHOT (`update.dismissedVersion`), not off this browser: a dismissal is a
-   * decision about the machine, and one kept per browser leaves the band up on every other screen
-   * (M17/08). The component may pass its own optimistic value on top, so the band drops on the tap
-   * rather than on the next poll.
+   * decision about the machine, and one kept per browser leaves the band up wherever it is read
+   * next (M17/08). The component may pass its own optimistic value on top, so the band drops on the
+   * tap rather than on the next poll.
    */
   dismissedVersion: string | null;
+  /** The version whose quiet PACK notice was closed (`update.dismissedPackVersion`). A separate
+   *  decision, so a separate input — see {@link DismissScope}. */
+  dismissedPackVersion: string | null;
   now: number;
 }
 
@@ -144,22 +159,23 @@ export function managerOf(command: string | undefined): string | null {
 }
 
 /**
- * The version a dismiss records, or null when this state cannot be dismissed at all.
+ * What a close on this state records, or null when the state cannot be closed at all.
  *
  * The rule is whether the state describes something that ENDS ON ITS OWN. A run in flight, a
  * finished run, a failed peer and a peer still moving all do, and "a dismissed run is a run the
  * operator can no longer see the end of" — so they carry no close. An offer and the two QUIET pack
  * states describe a standing fact, and a standing fact the operator has read is one they may put
- * down. Keyed by the version the pack is heading for, so a newer release raises the band again.
+ * down. Keyed by the version, so a newer one raises the band again — and by the SCOPE, so putting
+ * down a notice about another machine leaves this host's own offer alone.
  */
-export function dismissTarget(view: RibbonView): string | null {
+export function dismissTarget(view: RibbonView): Dismissal | null {
   switch (view.kind) {
     case "available":
     case "available-packaged":
-      return view.version;
+      return { scope: "offer", version: view.version };
     case "peers":
     case "package-managed":
-      return view.target;
+      return view.target === null ? null : { scope: "pack", version: view.target };
     default:
       return null;
   }
@@ -210,7 +226,7 @@ export function ribbonView(input: RibbonInput): RibbonView {
       return { kind: "peer-failed", name: failed.name, reason: truncateWords(reason, REASON_BUDGET) };
     }
     const target = targetOf(input, run.to);
-    const quiet = target !== null && target === input.dismissedVersion;
+    const quiet = target !== null && target === input.dismissedPackVersion;
     const moving = legs.filter(isMoving).map((leg) => leg.name);
     // A moving peer is undismissable, so its target is null however the pack was closed before: the
     // operator must be able to see the end of a run somebody is still driving.
