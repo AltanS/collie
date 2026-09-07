@@ -851,5 +851,7 @@ export const ko: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} 롤백됨: {reason}.",
   "updateRibbon.seeUpdates": "업데이트 화면 보기.",
   "updateRibbon.available": "Collie {version} 사용 가능. 탭하여 업데이트.",
+  "updateRibbon.availablePackaged": "Collie {version} 출시. {manager}에서 업데이트.",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} 출시.",
   "updateRibbon.dismiss": "이 버전 숨기기",
 };

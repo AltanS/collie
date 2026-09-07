@@ -893,6 +893,12 @@ export const en = {
   "updateRibbon.peerRolledBack": "{name} rolled back: {reason}.",
   "updateRibbon.seeUpdates": "See Updates.",
   "updateRibbon.available": "Collie {version} available. Tap to update.",
+  // A packaged host cannot take the tap — its updates come from its package manager (ADR 0035) — so
+  // the band names the manager instead of offering an update that would refuse.
+  "updateRibbon.availablePackaged": "Collie {version} is out. Update with {manager}.",
+  // The same host under a prefix Collie does not recognise: there is no manager to name, so the band
+  // states the version and points at the page that carries the boundary sentence.
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} is out.",
   "updateRibbon.dismiss": "Dismiss this version",
 } as const;
 

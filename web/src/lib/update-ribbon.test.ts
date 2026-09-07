@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   clearUpdateStarted,
+  dismissTarget,
   DONE_WINDOW_MS,
   getUpdateStarted,
   noteUpdateStarted,
   REASON_BUDGET,
+  managerOf,
   ribbonText,
   ribbonView,
   subscribeUpdateStarted,
@@ -97,6 +99,7 @@ describe("update ribbon states", () => {
     expect(read({ update: info({ run: run("done", { peers }) }) })).toEqual({
       kind: "peers",
       names: ["minibuch"],
+      target: null, // a moving peer carries no dismiss — see `dismissTarget`
     });
   });
 
@@ -117,6 +120,7 @@ describe("update ribbon states", () => {
     expect(read({ update: info({ run: run("done", { peers }) }) })).toEqual({
       kind: "peers",
       names: ["minibuch"],
+      target: null, // a moving peer carries no dismiss — see `dismissTarget`
     });
   });
 
@@ -247,5 +251,105 @@ describe("the just-posted store", () => {
     expect(getUpdateStarted()).toBeNull();
     expect(hits).toBe(2);
     off();
+  });
+});
+
+// ── A PACKAGED HOST (M17/08) ────────────────────────────────────────────────────────────────────
+//
+// `collie update` refuses on a machine a package manager owns (ADR 0035), so a band that offered a
+// tap-to-update there would be offering a tap that fails. The line names the manager instead, and
+// the tap still goes to the page, where the command is.
+
+describe("a packaged host reads its own line", () => {
+  const packaged = (over: Partial<UpdateInfo> = {}) =>
+    info({ installKind: "packaged", packageCommand: "sudo pacman -Syu", ...over });
+
+  it("names the manager from the host's own command, and never says Tap to update", () => {
+    const view = read({ update: packaged() });
+    expect(view).toEqual({ kind: "available-packaged", version: "1.5.0", manager: "pacman" });
+    expect(ribbonText(view)).toBe("Collie 1.5.0 is out. Update with pacman.");
+    expect(ribbonText(view)).not.toContain("Tap to update");
+  });
+
+  it("reads the manager past a sudo, and off nix and brew alike", () => {
+    expect(managerOf("sudo pacman -Syu")).toBe("pacman");
+    expect(managerOf("nix profile upgrade collie")).toBe("nix");
+    expect(managerOf("brew upgrade collie")).toBe("brew");
+    expect(managerOf(undefined)).toBeNull();
+    expect(managerOf("   ")).toBeNull();
+  });
+
+  it("states the version alone when the packaged host resolved no manager to name", () => {
+    const view = read({ update: packaged({ packageCommand: undefined }) });
+    expect(view).toEqual({ kind: "available-packaged", version: "1.5.0", manager: null });
+    expect(ribbonText(view)).toBe("Collie 1.5.0 is out. See Updates.");
+    expect(ribbonText(view)).not.toContain("Tap to update");
+  });
+
+  it("is dismissable, and the dismiss is keyed by the version it names", () => {
+    expect(dismissTarget(read({ update: packaged() }))).toBe("1.5.0");
+    expect(read({ update: packaged(), dismissedVersion: "1.5.0" })).toEqual({ kind: "silent" });
+  });
+
+  it("leaves every other install kind on the ordinary offer", () => {
+    const view = read({ update: info({ installKind: "binary", packageCommand: undefined }) });
+    expect(view).toEqual({ kind: "available", version: "1.5.0" });
+    expect(ribbonText(view)).toBe("Collie 1.5.0 available. Tap to update.");
+  });
+});
+
+// ── WHAT A DISMISS CAN CLOSE (M17/08) ───────────────────────────────────────────────────────────
+//
+// The rule is whether the state ends on its own. A run, a finished run and a failed peer do, and a
+// band the operator closed there is an ending they can no longer see. The offer and the QUIET pack
+// states do not: a machine a package manager owns can stand behind for weeks.
+
+describe("dismissing the quiet pack states", () => {
+  const managed: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
+  const quiet = (over: Partial<UpdateInfo> = {}) =>
+    info({ releaseAvailable: false, run: run("done", { peers: managed }), ...over });
+
+  it("offers a dismiss keyed by the version the pack is heading for", () => {
+    const view = read({ update: quiet() });
+    expect(view).toEqual({ kind: "package-managed", names: ["minibuch"], target: "1.5.0" });
+    expect(dismissTarget(view)).toBe("1.5.0");
+  });
+
+  it("keys the dismiss to the release upstream names when the run record names no target", () => {
+    const view = read({ update: quiet({ run: run("done", { peers: managed, to: null }) }) });
+    expect(dismissTarget(view)).toBe("1.5.0"); // `update.latest`, the fallback
+  });
+
+  it("hides the quiet band once that version was dismissed", () => {
+    expect(read({ update: quiet(), dismissedVersion: "1.5.0" })).toEqual({ kind: "silent" });
+  });
+
+  it("raises the band again for a newer target — a dismiss is a version, not a mute", () => {
+    const view = read({
+      update: quiet({ latest: "1.6.0", run: run("done", { peers: managed, to: "1.6.0" }) }),
+      dismissedVersion: "1.5.0",
+    });
+    expect(view).toMatchObject({ kind: "package-managed", target: "1.6.0" });
+  });
+
+  it("dismisses nothing while a peer is still moving", () => {
+    const peers: UpdatePeerLeg[] = [
+      { name: "minibuch", state: "restarting" },
+      { name: "cellar", state: "package-managed" },
+    ];
+    const view = read({ update: quiet({ run: run("done", { peers }) }), dismissedVersion: "1.5.0" });
+    // Still on screen despite the dismissal, and carrying no close: the operator has to be able to
+    // see the end of a run somebody is driving.
+    expect(view).toMatchObject({ kind: "peers", names: ["minibuch"] });
+    expect(dismissTarget(view)).toBeNull();
+  });
+
+  it("gives a run, a failed peer and the bundle row no dismiss at all", () => {
+    expect(dismissTarget(read({ update: info({ run: run("staging") }) }))).toBeNull();
+    expect(dismissTarget({ kind: "starting" })).toBeNull();
+    expect(dismissTarget({ kind: "updated", version: "1.5.0" })).toBeNull();
+    expect(dismissTarget({ kind: "bundle" })).toBeNull();
+    expect(dismissTarget({ kind: "peer-failed", name: "minibuch", reason: "gate" })).toBeNull();
+    expect(dismissTarget({ kind: "silent" })).toBeNull();
   });
 });

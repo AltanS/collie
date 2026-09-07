@@ -741,6 +741,17 @@ export function snoozeUpdate(): Promise<UpdateInfo> {
 }
 
 /**
+ * The update band was closed, for the version it named — the band's own dismiss (M17/08).
+ *
+ * The version goes to the BRIDGE rather than to this browser's storage, so the band drops on every
+ * other screen at its next poll, and the same request snoozes the digest. Not a mute: a newer
+ * release is a different version and raises the band again.
+ */
+export function dismissUpdate(version: string): Promise<UpdateInfo> {
+  return req<UpdateInfo>("/api/update/dismiss", { method: "POST", body: JSON.stringify({ version }) });
+}
+
+/**
  * The run record from the STANDBY door (`GET /standby/update`), for the window in which the front
  * door is not answering because the update is restarting it.
  *

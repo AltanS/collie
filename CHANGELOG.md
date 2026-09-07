@@ -29,6 +29,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - Collie is packaged for Arch and for Nix: `collie-bin` on the AUR, and `packages.<system>.collie` from this repository's flake. Both wrap the release tarball, neither builds anything, and neither updates itself, because the package manager owns that folder.
 - The flake's default package is Collie, so `nix run github:AltanS/collie` runs it. The pinned Bun the release is built with is still there, as `packages.<system>.bun`.
 
+## [Unreleased]
+
+- Closing the update band holds on every screen and can be done from the quiet pack states too, and a host whose updates come from its package manager reads "Collie 1.6.0 is out. Update with pacman." instead of an offer to tap.
+
 ## [1.5.5] - 2026-09-07
 
 - The pack treats a packaged member as a quiet member instead of failing it, the phone says which host waits for its package manager, and a package swap under a running bridge asks for a restart. ([1df2451](https://github.com/AltanS/collie/commit/1df2451))

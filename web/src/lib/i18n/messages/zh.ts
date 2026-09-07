@@ -837,5 +837,7 @@ export const zh: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} 已回滚：{reason}。",
   "updateRibbon.seeUpdates": "查看更新。",
   "updateRibbon.available": "Collie {version} 可用。点击更新。",
+  "updateRibbon.availablePackaged": "Collie {version} 已发布。使用 {manager} 更新。",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} 已发布。",
   "updateRibbon.dismiss": "忽略此版本",
 };
