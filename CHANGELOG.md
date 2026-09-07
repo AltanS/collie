@@ -28,7 +28,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - The pack treats a packaged member as a quiet member instead of failing it, the phone says which host waits for its package manager, and a package swap under a running bridge asks for a restart.
 - The attach button asks Photos or Files, so the camera roll is on offer again: one `accept` cannot carry `image/*` and thirty text extensions without the phone hiding the gallery.
-- The attach button answers a tap at once, with a haptic tick and a pressed tone, instead of waiting for the picker to arrive.
+- The attach button answers a tap at once, with a haptic tick and a filled tone that stays lit for as long as its menu stands.
+- The attach picker opens above the button rather than over it. A bottom sheet covered that button 42ms after the tap, so nothing drawn there to acknowledge the tap could be seen at all.
 - The Updates card holds its place while it checks and stays put for the whole run: the preflight and the peer lines arrive through a `Collapse`, the action button is disabled from the tap onward instead of vanishing, and it says what it is waiting for.
 - Codex prints its queue hint and its context metric on one footer row while a turn is active, and the parser now knows that shape, so a reply there stops reporting that it never reached the input box. Thanks to Fredrik Ekman. (#176)
 - The guarded submit is bound to the prompt the verifying read saw, so a dialog that takes focus between the typing and the Enter is refused instead of answered. Thanks to Fredrik Ekman. (#177)

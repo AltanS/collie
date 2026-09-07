@@ -23,8 +23,8 @@ import { QuickActionsContent } from "@/components/quick-actions";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
-import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow } from "@/components/action-sheet-rows";
+import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { commandsFor } from "@/lib/agent-commands";
@@ -1095,30 +1095,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         <input ref={photoRef} data-testid="attach-photos" type="file" accept={PHOTO_ACCEPT} hidden onChange={onPickFile} />
         <input ref={fileRef} data-testid="attach-files" type="file" accept={accept} hidden onChange={onPickFile} />
 
-        {/* The picker's own sheet. Two rows, no confirm — each one opens a native picker, which is
-            its own decision point. It closes BEFORE the click so the sheet is not left standing
-            behind the system UI, and the click still counts as the user gesture the browser
-            requires because both happen inside this handler. */}
-        <BottomSheet open={picking} onClose={() => setPicking(false)} title={translate("composer.attach.title")}>
-          <div className="space-y-1 pb-2">
-            <ActionRow
-              icon={<Image aria-hidden="true" className="size-4 shrink-0" />}
-              label={translate("composer.attach.photos")}
-              onClick={() => {
-                setPicking(false);
-                photoRef.current?.click();
-              }}
-            />
-            <ActionRow
-              icon={<FileText aria-hidden="true" className="size-4 shrink-0" />}
-              label={translate("composer.attach.files")}
-              onClick={() => {
-                setPicking(false);
-                fileRef.current?.click();
-              }}
-            />
-          </div>
-        </BottomSheet>
         {/* Keys / Quick / Display dock — a single in-flow site ABOVE the Controls row (so the toggle
             you tapped stays put and the panel grows over the mirror, not the input). Whichever of the
             mutually exclusive drawers is active renders here via the shared ComposerDock chrome. Keys
@@ -1569,6 +1545,33 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             disabled={locked}
             rows={1}
           />
+            {/* The picker, anchored to the field so it opens ABOVE the button rather than over it
+                (ui/anchored-menu.tsx carries the measurement). Two rows, no confirm — each one
+                opens a native picker, which is its own decision point. The menu closes BEFORE the
+                click so it is not left standing behind the system UI, and the click still counts as
+                the user gesture the browser requires because both happen in this one handler. */}
+            <AnchoredMenu
+              open={picking}
+              onClose={() => setPicking(false)}
+              label={translate("composer.attach.title")}
+            >
+              <ActionRow
+                icon={<Image aria-hidden="true" className="size-4 shrink-0" />}
+                label={translate("composer.attach.photos")}
+                onClick={() => {
+                  setPicking(false);
+                  photoRef.current?.click();
+                }}
+              />
+              <ActionRow
+                icon={<FileText aria-hidden="true" className="size-4 shrink-0" />}
+                label={translate("composer.attach.files")}
+                onClick={() => {
+                  setPicking(false);
+                  fileRef.current?.click();
+                }}
+              />
+            </AnchoredMenu>
             <Button
               type="button"
               variant="ghost"
@@ -1589,7 +1592,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 // `duration-0` on the way IN, and the base duration on the way out. A press has to
                 // answer immediately or it is not answering the press; the release is the part that
                 // wants easing. Removing both classes in one commit is what lets the exit animate.
-                pressed && "scale-95 bg-primary text-primary-foreground duration-0",
+                // Lit for the press, and then for as long as the menu it opened is standing: the
+                // menu is anchored above rather than over the button precisely so this can be seen,
+                // and a trigger that went dark under its own open menu would waste that.
+                (pressed || picking) && "scale-95 bg-primary text-primary-foreground duration-0",
               )}
               disabled={uploading || locked || direct.active}
               onPointerDown={(e) => e.preventDefault()}
@@ -1599,6 +1605,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 else photoRef.current?.click();
               }}
               aria-label={translate("composer.attach.aria")}
+              aria-haspopup="dialog"
+              aria-expanded={asksWhich ? picking : undefined}
             >
               {uploading ? (
                 <Loader2 className="size-4 animate-spin" />

@@ -2804,7 +2804,7 @@ describe("Composer — the attach picker offers photos as well as files", () => 
     expect(screen.getByTestId("attach-photos")).toHaveAttribute("accept", "image/*");
   });
 
-  it("flashes the icon and buzzes on the tap, so the press is felt before the sheet arrives", async () => {
+  it("flashes the icon and buzzes on the tap, and lets go once nothing is standing on it", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     const buzzes: unknown[] = [];
@@ -2817,10 +2817,14 @@ describe("Composer — the attach picker offers photos as well as files", () => 
         return true;
       },
     });
-    publishUpload({ maxBytes: 10 * 1024 * 1024, imageTypes: ["png"], textTypes: ["md"] });
+    // The PHOTOS-ONLY host, deliberately: there the tap opens a native picker and nothing else, so
+    // the flash is the whole of the acknowledgement and its timer is observable. On a host that
+    // opens the picker menu the button stays lit for as long as that menu stands, which the
+    // anchored-picker test above covers.
+    publishUpload({ maxBytes: 10 * 1024 * 1024, imageTypes: ["png"], textTypes: [] });
     renderComposer();
     await waitFor(() =>
-      expect(screen.getByTestId("attach-files")).toHaveAttribute("accept", "image/*,.png,.md"),
+      expect(screen.getByTestId("attach-files")).toHaveAttribute("accept", "image/*,.png"),
     );
 
     // Anchored on whitespace: the ghost variant carries `hover:bg-accent` at rest, and a bare
@@ -2837,16 +2841,24 @@ describe("Composer — the attach picker offers photos as well as files", () => 
     await waitFor(() => expect(attach.className).not.toMatch(PRESSED));
   });
 
-  it("opens the two-row sheet on a bridge that takes text as well", async () => {
+  it("opens the two-row picker on a bridge that takes text as well, ABOVE the button", async () => {
     const user = userEvent.setup();
     publishUpload({ maxBytes: 10 * 1024 * 1024, imageTypes: ["png"], textTypes: ["md"] });
     renderComposer();
     await waitFor(() =>
       expect(screen.getByTestId("attach-files")).toHaveAttribute("accept", "image/*,.png,.md"),
     );
-    await user.click(screen.getByRole("button", { name: "Attach file" }));
+    const attach = screen.getByRole("button", { name: "Attach file" });
+    expect(attach).toHaveAttribute("aria-expanded", "false");
+    await user.click(attach);
     expect(await screen.findByRole("button", { name: "Photos" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Files" })).toBeInTheDocument();
+    expect(attach).toHaveAttribute("aria-expanded", "true");
+    // ABOVE, not over. A bottom sheet covered this button 42ms after the tap, which is what made
+    // its press highlight unseeable; the anchor is what the highlight depends on.
+    expect(screen.getByRole("dialog").className).toMatch(/(^|\s)bottom-full(\s|$)/);
+    // And the trigger stays lit under its own open menu.
+    expect(attach.className).toMatch(/(^|\s)bg-primary(\s|$)/);
   });
 
   it("a photos-only bridge opens the camera roll directly — no sheet with one answer in it", async () => {
