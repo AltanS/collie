@@ -211,12 +211,25 @@ export function cmdServe(deps: ServeDeps): number {
   // by ASKING — it prints "HTTPS must be enabled…" and waits for an answer at a terminal it has not
   // got. The command then looks hung and the publish never lands (#172). The precondition is read
   // first, so the operator gets the one sentence that ends the wait instead of the wait.
-  if (deps.ctx.serveMode === "https" && tailnetCertDomains(deps.exec)?.length === 0) {
-    deps.io.err(
-      "error: HTTPS certificates are not enabled on this tailnet, so `tailscale serve` would stop" +
-        ` and wait for an answer nobody sees; ${HTTPS_DISABLED_HINT}`,
-    );
-    return EXIT.FAIL;
+  if (deps.ctx.serveMode === "https") {
+    const domains = tailnetCertDomains(deps.exec);
+    if (domains !== null && domains.length === 0) {
+      deps.io.err(
+        "error: HTTPS certificates are not enabled on this tailnet, so `tailscale serve` would stop" +
+          ` and wait for an answer nobody sees; ${HTTPS_DISABLED_HINT}`,
+      );
+      return EXIT.FAIL;
+    }
+    // `null` is "can't tell", never "no HTTPS" — the refusal above is deliberately not taken on a
+    // status document this build could not read. The publish goes ahead, and it says so, because
+    // the one failure it cannot rule out is the hang the check exists to prevent (#172).
+    if (domains === null) {
+      deps.io.err(
+        "warn: could not read this tailnet's HTTPS status from `tailscale status --json`;" +
+          " publishing anyway. If the command seems to hang, HTTPS is off:" +
+          ` ${HTTPS_DISABLED_HINT}`,
+      );
+    }
   }
 
   const proxy = `http://127.0.0.1:${deps.ctx.port}`;

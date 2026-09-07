@@ -289,8 +289,14 @@ collie restart
 reports the tool as up to date and moves nothing.
 
 The restart is not optional. Every version gets its own directory, and `collie start` bakes the
-directory it ran from into the `systemd --user` unit, so the service keeps serving the old version
-out of the old directory until you restart it. `collie restart` rewrites the unit with the new path.
+directory it ran from into the service definition, so the service keeps serving the old version out
+of the old directory until you restart it. `collie restart` rewrites that definition with the new
+path: the `systemd --user` unit on Linux, the `~/Library/LaunchAgents` plist on macOS. One command
+on both.
+
+> **Note.** A Mac administered only over SSH has no `gui/<uid>` domain to load an agent into. There
+> `collie start` says so and runs an unsupervised background bridge instead, with no restart on
+> failure and nothing at login. `collie restart` still moves it to the new directory.
 
 > **Note.** `collie update` declines here, and it names no package manager: it says `cannot tell how
 > this Collie was installed`. A mise tree sits inside your home directory, carries no `.git` of its

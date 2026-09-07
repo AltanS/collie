@@ -37,28 +37,27 @@ describe("ZenControl", () => {
 
     await user.click(screen.getByRole("switch", { name: /landscape/i }));
 
-    expect(autoZenEnabled()).toBe(true); // untouched default, not a flip
+    expect(autoZenEnabled()).toBe(false); // untouched default, not a flip
   });
 
   test("the rotation row keeps its stored value while the header is cycled", async () => {
     const user = userEvent.setup();
-    setAutoZenEnabled(false); // the operator who wants zen on a tap only
+    setAutoZenEnabled(true); // the operator who asked for zen on a turn of the phone
     render(<ZenControl />);
 
     const header = screen.getByRole("switch", { name: /zen/i });
     await user.click(header); // on
-    expect(screen.getByRole("switch", { name: /landscape/i })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: /landscape/i })).toBeChecked();
 
     await user.click(header); // off again
     await user.click(header); // and on
 
-    expect(autoZenEnabled()).toBe(false);
-    expect(screen.getByRole("switch", { name: /landscape/i })).not.toBeChecked();
+    expect(autoZenEnabled()).toBe(true);
+    expect(screen.getByRole("switch", { name: /landscape/i })).toBeChecked();
   });
 
   test("the rotation row writes its own bit once zen is available", async () => {
     const user = userEvent.setup();
-    setAutoZenEnabled(false);
     render(<ZenControl />);
 
     await user.click(screen.getByRole("switch", { name: /zen/i }));

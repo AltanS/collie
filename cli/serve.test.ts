@@ -327,6 +327,24 @@ describe("serve — publishing", () => {
     expect(h.files.exists(HANDLER_FILE)).toBe(false);
   });
 
+  test("an unreadable HTTPS status warns and publishes anyway", () => {
+    // Three answers, and `null` is the third: a status document this build cannot read says nothing
+    // about certificates, so refusing would break a publish that works. It publishes and says so,
+    // because the hang the check exists to prevent is the one thing it could not rule out.
+    const h = harness({
+      answers: [
+        [
+          "tailscale status --json",
+          { stdout: '{"Self":{"DNSName":"host.example."},"CertDomains":"host.example"}' },
+        ],
+      ],
+    });
+    expect(cmdServe(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.join("\n")).toContain("could not read this tailnet's HTTPS status");
+    expect(h.io.stderr.join("\n")).not.toContain("error:");
+    expect(h.exec.calls).toContain("tailscale serve --bg --set-path=/ 8787");
+  });
+
   test("certificates present publish as they always did; http mode never asks", () => {
     const https = harness();
     expect(cmdServe(https.deps)).toBe(EXIT.OK);
