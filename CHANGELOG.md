@@ -30,6 +30,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - The flake's default package is Collie, so `nix run github:AltanS/collie` runs it. The pinned Bun the release is built with is still there, as `packages.<system>.bun`.
 - The update band remembers a dismissal on the host instead of in one browser, the quiet pack notice can be put down on its own, and a host whose updates come from its package manager reads "Collie 1.6.0 available via pacman." instead of an offer to tap.
 - A Mac or an arm64 Linux host on 1.5.4 or 1.5.5 gets a binary that starts again. A host whose binary will not start reinstalls with `curl -fsSL https://colliepwa.dev/install.sh | COLLIE_TAG=v1.5.6 sh`; a host still on 1.5.3 updates as usual, and linux-x64 was never affected. Those two releases were compiled on the build environment's patched Bun, so the Mac binary loaded ICU out of `/nix/store` and the arm64 Linux binary named a `/nix/store` program interpreter. The release now compiles on the upstream Bun archive the flake pins and refuses any binary whose loader inputs point outside the system's own library roots, thanks @rapporbit (#184).
+- The pack journal names each peer's leg change, each incompatible verdict with the reason and the backoff it earns, and the moment a run settles. A run that sits waiting on a peer is now read out of `journalctl --user -u collie` instead of inferred from the arithmetic.
 
 ## [1.5.5] - 2026-09-07
 

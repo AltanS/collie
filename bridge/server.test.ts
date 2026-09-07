@@ -1638,6 +1638,7 @@ function leadOverDeadPeer(): PackLead {
     ],
   });
   return new PackLead({
+    log: () => {},
     registry,
     // Every dial fails, exactly as `PeerClient` reports a peer that is off: a value, not a throw.
     snapshot: async () => ({ ok: false, state: "unreachable", reason: "connection refused", receivedAt: 1 }),
