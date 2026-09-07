@@ -9,7 +9,7 @@ import { useLocale } from "@/hooks/use-locale";
 // Minimal modal focus handling (no deps, no full trap): on open move focus into the panel so
 // keyboard / screen-reader users land inside the dialog; on close restore focus to whatever was
 // focused before it opened. The panel must carry tabIndex={-1} to be a focus target.
-function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElement | null>) {
+export function useDialogFocus(open: boolean, panelRef: React.RefObject<HTMLElement | null>) {
   React.useEffect(() => {
     if (!open) return;
     // SAFETY: `document.activeElement` is typed `Element | null`; the only thing read off it below

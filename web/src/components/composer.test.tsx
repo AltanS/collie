@@ -2825,7 +2825,7 @@ describe("Composer — the attach picker offers photos as well as files", () => 
 
     // Anchored on whitespace: the ghost variant carries `hover:bg-accent` at rest, and a bare
     // substring match would read that as the pressed tone on every render.
-    const PRESSED = /(^|\s)bg-accent(\s|$)/;
+    const PRESSED = /(^|\s)bg-primary(\s|$)/;
     const attach = screen.getByRole("button", { name: "Attach file" });
     expect(attach.className).not.toMatch(PRESSED);
     await user.click(attach);

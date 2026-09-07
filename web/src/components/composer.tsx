@@ -1578,9 +1578,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // button it pairs with. Pinned to the bottom it stays put at any height.
               className={cn(
                 "absolute bottom-1 right-1 size-9 rounded-full text-muted-foreground",
-                // The press echo. `transition-all` is already in the button base, so both the tone
-                // and the scale ease rather than snap.
-                pressed && "scale-95 bg-accent text-accent-foreground",
+                // The press echo, in the tone this app already uses for "your press landed" —
+                // `variant="default"`, which is what a tapped quick reply and a busy dialog option
+                // both flip to. It was `bg-accent` first, and that was a token chosen by name
+                // rather than by looking: in the dark theme `accent` resolves to oklch(0.269),
+                // which is the SAME value as `muted` and sits 0.06 of lightness above the card it
+                // is drawn on. Measured through a real tap, it faded in over 180ms, held for 40,
+                // and faded out — a flash nobody could see on a phone. `primary` is oklch(0.922).
+                //
+                // `duration-0` on the way IN, and the base duration on the way out. A press has to
+                // answer immediately or it is not answering the press; the release is the part that
+                // wants easing. Removing both classes in one commit is what lets the exit animate.
+                pressed && "scale-95 bg-primary text-primary-foreground duration-0",
               )}
               disabled={uploading || locked || direct.active}
               onPointerDown={(e) => e.preventDefault()}

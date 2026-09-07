@@ -33,6 +33,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - Codex prints its queue hint and its context metric on one footer row while a turn is active, and the parser now knows that shape, so a reply there stops reporting that it never reached the input box. Thanks to Fredrik Ekman. (#176)
 - The guarded submit is bound to the prompt the verifying read saw, so a dialog that takes focus between the typing and the Enter is refused instead of answered. Thanks to Fredrik Ekman. (#177)
 - `Collapse` waits for a painted frame before it opens, so content that arrives late slides in instead of jumping. Every enter whose child mounted and opened together was a jump before this, which is every late arrival the primitive exists for.
+- New `AnchoredMenu`: a small menu that opens above its trigger instead of over it, for a control near the bottom edge that a bottom sheet would cover.
 
 ## [1.5.4] - 2026-09-07
 
