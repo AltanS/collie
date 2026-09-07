@@ -26,7 +26,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
-- Collie is packaged for Arch and for Nix: `collie-bin` on the AUR, and `packages.<system>.collie` from this repository's flake. Both wrap the release tarball, neither builds anything, and neither updates itself, because the package manager owns that folder.
+- Collie carries its own package recipes: `packaging/aur` for Arch (`collie-bin`, not yet on the AUR) and `packages.<system>.collie` from this repository's flake for Nix. Both wrap the release tarball, neither builds anything, and neither updates itself, because the package manager owns that folder.
 - The flake's default package is Collie, so `nix run github:AltanS/collie` runs it. The pinned Bun the release is built with is still there, as `packages.<system>.bun`.
 - The update band remembers a dismissal on the host instead of in one browser, the quiet pack notice can be put down on its own, and a host whose updates come from its package manager reads "Collie 1.6.0 available via pacman." instead of an offer to tap.
 - The macOS and Linux arm64 binaries start again on a machine without Nix. 1.5.4 and 1.5.5 were compiled on the build environment's patched Bun, so the Mac binary loaded ICU out of `/nix/store` and the arm64 Linux binary named a `/nix/store` program interpreter; the release now compiles on the upstream Bun archive the flake pins, and refuses any binary whose loader inputs name `/nix/store`. A Mac or arm64 Linux host stuck on a binary that will not start reinstalls with `curl -fsSL https://colliepwa.dev/install.sh | COLLIE_TAG=v1.5.6 sh`, thanks @rapporbit (#184).

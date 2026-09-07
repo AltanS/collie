@@ -545,7 +545,7 @@ ls ~/.local/share/collie/versions/
 To install a specific version directly:
 
 ```bash
-COLLIE_TAG=v1.0.0 curl -fsSL https://colliepwa.dev/install.sh | sh
+curl -fsSL https://colliepwa.dev/install.sh | COLLIE_TAG=v1.0.0 sh
 ```
 
 For checkouts or Herdr installs, run `git checkout <tag>` or

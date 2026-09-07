@@ -70,7 +70,7 @@ To pin a version or rescue an existing install (see
 [When collie will not run](upgrading.md#when-collie-will-not-run)):
 
 ```bash
-COLLIE_TAG=v1.0.0 curl -fsSL https://colliepwa.dev/install.sh | sh
+curl -fsSL https://colliepwa.dev/install.sh | COLLIE_TAG=v1.0.0 sh
 ```
 
 For prereleases, pass `--beta`: it takes the newest prerelease, and the install then tracks that
