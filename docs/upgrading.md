@@ -40,7 +40,7 @@ root. Any one of the last three is enough. It then refuses to update in place an
 where it can tell which manager owns the folder:
 
 ```
-error: /usr/lib/collie is a packaged install — updates come from your package manager.
+error: /opt/collie is a packaged install — updates come from your package manager.
        `collie update` will not replace its files.
        Take the new version with: sudo pacman -Syu collie-bin
 ```

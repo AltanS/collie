@@ -9,22 +9,31 @@ builds nothing: no Bun, no `git`, no compilation — `makepkg` downloads the rel
 architecture, checks its sha256, and unpacks it. Herdr itself ships in Omarchy's pacman repo, so
 this is the same channel.
 
+This is also the PKGBUILD Omarchy's own package repository gets: one file serves both channels, and
+[`../omarchy/README.md`](../omarchy/README.md) is what the pull request there consists of.
+
 `x86_64` and `aarch64` are packaged; the macOS tarball is not.
 
 ## What lands where
 
 | path | what |
 | --- | --- |
-| `/usr/bin/collie` | symlink into `/usr/lib/collie/bin/collie` |
-| `/usr/lib/collie/` | the release tree — `bin/`, `web/dist/`, `herdr-plugin.toml`, `package.json`, `docs/` and `scripts/` |
+| `/usr/bin/collie` | symlink into `/opt/collie/bin/collie` |
+| `/opt/collie/` | the release tree the run time reads — `bin/`, `web/dist/`, `herdr-plugin.toml`, `package.json`, `.env.example` and `scripts/` |
+| `/usr/share/doc/collie-bin/` | `README.md`, `CHANGELOG.md` and `docs/` |
 | `/usr/share/licenses/collie-bin/LICENSE` | the licence |
+
+`/opt/collie` is the layout Omarchy's package repository expects of an application that ships a
+whole tree, and the AUR takes it too. The documentation sits outside that tree because nothing under
+`bridge/` or `cli/` opens it: every `docs/…` string in the binary is prose telling you where to
+read, never a file it loads.
 
 `/usr/bin/collie` is a symlink and not the file itself on purpose. The binary resolves its own root
 as `dirname(dirname(realpath(argv0)))` and accepts that root only when `herdr-plugin.toml` sits in
-it, so the symlink resolves to `/usr/lib/collie` and the bridge finds `web/dist` and the manifest.
+it, so the symlink resolves to `/opt/collie` and the bridge finds `web/dist` and the manifest.
 The file installed straight into `/usr/bin` would resolve to `/usr` and find neither.
 
-> **Note.** A package is not a Herdr plugin, and `herdr plugin link /usr/lib/collie` is not part of
+> **Note.** A package is not a Herdr plugin, and `herdr plugin link /opt/collie` is not part of
 > this install. The plugin path registers action buttons that update the checkout, and this tree is
 > pacman's to update. Every `collie` verb on your PATH works the same either way.
 

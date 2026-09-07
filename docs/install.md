@@ -160,10 +160,26 @@ checks its sha256 against the release's integrity manifest. Later updates are `p
 or `yay -S collie-bin`, the same command you installed with. `sudo pacman -Syu collie-bin` works
 only where a repository carries the package, such as Omarchy's.
 
-The package installs the release tree to `/usr/lib/collie` and `/usr/bin/collie` as a symlink into
-it. It provides and conflicts with `collie`, so it and a future source package cannot both be
-installed. It enables no systemd unit: `collie start` writes your own `--user` unit, as it does
-after any install.
+The package installs the release tree to `/opt/collie` and `/usr/bin/collie` as a symlink into it.
+`README.md`, `CHANGELOG.md` and `docs/` land in `/usr/share/doc/collie-bin/`, and the licence in
+`/usr/share/licenses/collie-bin/`. It provides and conflicts with `collie`, so it and a future
+source package cannot both be installed. It enables no systemd unit: `collie start` writes your own
+`--user` unit, as it does after any install.
+
+#### Omarchy
+
+```bash
+sudo pacman -S collie-bin
+collie start
+```
+
+That works once `collie-bin` is in Omarchy's own package repository, and the pull request adding it
+is not merged yet. Until it is, build the same package from `packaging/aur` with `makepkg -si`, as
+on any Arch host above.
+
+Updates then come with `sudo pacman -Syu`, the command you already run to update the machine — an
+AUR helper is not involved, because `pkgs.omarchy.org` is a real pacman repository. It is the same
+`PKGBUILD` and the same `/opt/collie` layout either way.
 
 > **Note.** Updates come from your package manager, and Collie will not update itself here.
 > `collie update` declines instead, and the phone shows the new version with the package command
@@ -179,7 +195,7 @@ Remove it with `collie stop` first, then:
 sudo pacman -R collie-bin
 ```
 
-The package owns `/usr/lib/collie` and `/usr/bin/collie`, and removing it removes only those. Your
+The package owns `/opt/collie` and `/usr/bin/collie`, and removing it removes only those. Your
 own files stay: state in `~/.local/state/collie` (or `$COLLIE_STATE_DIR`), configuration in
 `~/.config/collie`, and the `systemd --user` unit at `~/.config/systemd/user/collie.service` that
 `collie start` wrote. Run `collie uninstall` before removing the package to drop that unit and the

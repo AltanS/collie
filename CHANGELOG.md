@@ -26,6 +26,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+- The Arch package installs to `/opt/collie`, the layout Omarchy's package repository expects, and ships the metadata that repository uses to follow Collie's releases; a host under `/opt/collie` is told `sudo pacman -Syu collie-bin` like one under `/usr/lib/collie`.
+
 ## [1.5.6] - 2026-09-07
 
 - Collie carries its own package recipes: `packaging/aur` for Arch (`collie-bin`, not yet on the AUR) and `packages.<system>.collie` from this repository's flake for Nix. Both wrap the release tarball, neither builds anything, and neither updates itself, because the package manager owns that folder. ([bb46def](https://github.com/AltanS/collie/commit/bb46def), [43a23a2](https://github.com/AltanS/collie/commit/43a23a2))

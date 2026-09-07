@@ -2166,12 +2166,19 @@ describe("cmdUpdate — a folder a package manager owns", () => {
     expect(said).not.toContain("herdr plugin install");
   });
 
-  test("a root whose prefix names a manager gets the command; ours does not, so it gets none", async () => {
-    // `/opt/collie` is packaged and belongs to no manager this build knows, so Collie says the
-    // boundary and stops rather than guessing a command the operator cannot run.
+  test("a root whose prefix names a manager gets the command; one nobody knows gets none", async () => {
+    // `/opt/collie` is where `collie-bin` installs, so the command is named. A root no manager
+    // claims gets the boundary and stops, rather than a command the operator cannot run.
     const h = packaged();
     await cmdUpdate(h.deps);
-    expect(h.io.stderr.join("\n")).not.toContain("Take the new version with:");
+    expect(h.io.stderr.join("\n")).toContain("Take the new version with: sudo pacman -Syu collie-bin");
+
+    const nameless = "/srv/collie";
+    const u = harness({ answers: [[`git -C ${nameless} rev-parse --git-dir`, { code: 128 }]], installed: "1.5.2" });
+    u.files.entries.set(`${nameless}/herdr-plugin.toml`, { text: 'version = "1.5.2"\n' });
+    expect(await cmdUpdate({ ...u.deps, ctx: { ...u.deps.ctx, root: nameless } })).toBe(EXIT.FAIL);
+    expect(u.io.stderr.join("\n")).toContain("updates come from your package manager");
+    expect(u.io.stderr.join("\n")).not.toContain("Take the new version with:");
   });
 
   test("`--rollback` gets this boundary too, not the checkout lecture", async () => {

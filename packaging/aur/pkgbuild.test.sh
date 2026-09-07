@@ -40,13 +40,31 @@ check "no toolchain makedepends" "! grep -qE '^makedepends=.*(bun|nodejs|npm|git
 check "no makedepends at all" "! grep -qE '^makedepends=' '$pkgbuild'"
 
 # ── The layout bridge/root.ts needs ────────────────────────────────────────
-# /usr/bin/collie must be a SYMLINK into /usr/lib/collie/bin/collie. The binary resolves its root as
+# /usr/bin/collie must be a SYMLINK into /opt/collie/bin/collie. The binary resolves its root as
 # dirname(dirname(realpath(argv0))) and accepts it only when herdr-plugin.toml sits there, so a file
 # installed straight into /usr/bin would resolve its root to /usr and find no web/dist.
-check "the tree lands under /usr/lib/collie" "grep -q '/usr/lib/' '$pkgbuild'"
-check "/usr/bin/collie is a symlink" "grep -qE 'ln -s.*usr/bin/collie' '$pkgbuild'"
+#
+# /opt/collie, not /usr/lib/collie: the one PKGBUILD serves the AUR and Omarchy's own package
+# repository, and that repository puts a whole application tree under /opt/<name> with a thin
+# /usr/bin symlink. See packaging/omarchy/README.md.
+check "the tree lands under /opt/collie" "grep -q 'pkgdir/opt/\$_pkgname' '$pkgbuild'"
+check "nothing is installed under /usr/lib" "! grep -q 'pkgdir/usr/lib' '$pkgbuild'"
+check "/usr/bin/collie is a symlink into /opt" "grep -qF 'ln -s \"/opt/\$_pkgname/bin/collie\"' '$pkgbuild'"
 check "the binary is installed under the prefix" "grep -qE 'install -Dm755 .*bin/collie' '$pkgbuild'"
 check "the licence is installed" "grep -q '/usr/share/licenses/' '$pkgbuild'"
+
+# ── The documentation leaves the install root ──────────────────────────────
+# Nothing under bridge/ or cli/ opens README.md, CHANGELOG.md or docs/ at run time, so they go
+# where a distribution package puts them and the run-time tree carries only what is read.
+check "README.md lands in /usr/share/doc" "grep -qF 'share/doc/\$pkgname/README.md' '$pkgbuild'"
+check "CHANGELOG.md lands in /usr/share/doc" "grep -qF 'share/doc/\$pkgname/CHANGELOG.md' '$pkgbuild'"
+check "docs/ lands in /usr/share/doc" "grep -qF 'share/doc/\$pkgname/docs/' '$pkgbuild'"
+check "none of the three stays in the install root" "grep -qE '^ *bin/\\*\\|LICENSE\\|README.md\\|CHANGELOG.md\\|docs/\\*\\) continue' '$pkgbuild'"
+
+# ── Dependencies Omarchy's repository accepts ──────────────────────────────
+check "depends is glibc and bash only" "grep -qF \"depends=('glibc' 'bash')\" '$pkgbuild'"
+check "no bare systemd dependency" "! grep -qE \"^depends=.*'systemd'\" '$pkgbuild'"
+check "herdr is optional, never required" "grep -qE \"^ *'herdr: \" '$pkgbuild'"
 
 # ── It does not take the operator's decisions ──────────────────────────────
 check "no systemd unit is enabled or started" "! grep -qE 'systemctl (enable|start)' '$pkgbuild'"
