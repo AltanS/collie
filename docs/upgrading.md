@@ -55,6 +55,24 @@ newer release exists — with the package command in place of the update button.
 > replacing its files out from under it would leave its database lying about what is installed.
 > `sudo collie update` refuses the same way.
 
+To take a new version, run your package manager and then restart the service:
+
+```bash
+paru -Syu collie-bin          # Arch, or your AUR helper of choice
+nix profile upgrade collie    # Nix
+collie restart
+```
+
+The restart is the part Collie cannot do for you, and it is not optional. Your package manager swaps
+the files under the running bridge, so that process keeps executing the old code while it already
+reports the new version. Collie sees that mismatch and says so: `collie doctor` raises
+`restart-pending`, and the phone shows a "Bridge restart needed" banner reading "Collie was replaced
+on disk. Restart it." Both clear the moment `collie restart` has run.
+
+In a [pack](pack.md#members-that-were-not-installed-by-installsh), a packaged member never takes an
+update from the phone. The pack lists it as "waits for the package manager" and counts the run as
+complete without it, so the two commands above are what levels it.
+
 ## Update, from the phone or the terminal
 
 Two update paths exist, and both run the same steps on each host: stage the new release beside the

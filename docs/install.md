@@ -127,27 +127,69 @@ Manage via [Herdr actions](commands.md#herdr-actions). For a prerelease, install
 
 ### From a package
 
-Where Collie is packaged for your system, install it the way you install anything else:
+Where Collie is packaged for your system, install it the way you install anything else. The package
+carries the compiled binary the release already publishes, so nothing is built on your machine: no
+Bun, no `git`, no compilation. The whole release folder lands under one prefix, with `collie` on
+your PATH as a symlink into it.
+
+A package is not a Herdr plugin. There is no `herdr plugin link` step: the plugin path registers
+action buttons that update a checkout, and this tree is your package manager's to update. Every
+`collie` verb on your PATH works the same either way.
+
+#### Arch
 
 ```bash
-makepkg -si     # from packaging/aur, until collie-bin is on the AUR
+paru -S collie-bin     # or: yay -S collie-bin
 collie start
 ```
 
-The package installs the compiled binary the release already publishes. Nothing is built on your
-machine: no Bun, no `git`, no compilation. The whole release folder lands under one prefix
-(`/usr/lib/collie` on Arch) with `/usr/bin/collie` as a symlink into it.
+`collie-bin` lives on the AUR, so an AUR helper is the short way. Without one, build it yourself:
 
-> **Note.** Collie will not update a packaged install, and says so if you ask it to. `collie update`
-> declines and names your package manager's command instead, and the phone shows the new version
-> with that command where the update button would be. See
-> [a packaged install](upgrading.md#a-packaged-install).
+```bash
+git clone https://aur.archlinux.org/collie-bin.git && cd collie-bin
+makepkg -si
+```
 
-A package is not a Herdr plugin. There is no `herdr plugin link` step: the plugin path registers
-action buttons that update the checkout, and this tree is your package manager's to update. Every
-`collie` verb on your PATH works the same either way.
+Both routes run the same `PKGBUILD`, which downloads the release tarball for your architecture and
+checks its sha256 against the release's integrity manifest.
 
-The `PKGBUILD` and its notes live in `packaging/aur/` in this repository. macOS is not packaged.
+The package installs the release tree to `/usr/lib/collie` and `/usr/bin/collie` as a symlink into
+it. It provides and conflicts with `collie`, so it and a future source package cannot both be
+installed. It enables no systemd unit: `collie start` writes your own `--user` unit, as it does
+after any install.
+
+> **Note.** Updates come from pacman, and Collie will not update itself here. `collie update`
+> declines and names `sudo pacman -Syu collie-bin` instead, and the phone shows the new version with
+> that command where the update button would be.
+
+In a [pack](pack.md), this machine never takes an update from the phone: the pack lists it as
+"waits for the package manager", and it levels only when you run pacman on it.
+
+#### Nix
+
+```bash
+nix profile install github:AltanS/collie#collie
+collie start
+```
+
+The flake exports `packages.<system>.collie` for `x86_64-linux`, `aarch64-linux` and
+`aarch64-darwin`. It fetches that platform's release tarball by the sha256 in the release's own
+integrity manifest, patches the binary's interpreter on Linux, and installs the release tree to
+`<store-path>/lib/collie` with `bin/collie` as a symlink into it. Run it once without installing
+with `nix run github:AltanS/collie#collie -- doctor`.
+
+There is no source build, on purpose: installing the dependencies needs the network and a Nix
+derivation has none, so the package wraps the binary the release already publishes and checksums.
+
+> **Note.** Updates come from nix, and Collie will not update itself here. `collie update` declines
+> and names `nix profile upgrade collie` instead, and the phone shows the new version with that
+> command where the update button would be.
+
+In a [pack](pack.md), this machine never takes an update from the phone: the pack lists it as
+"waits for the package manager", and it levels only when you run nix on it.
+
+The `PKGBUILD`, the Nix expression and their notes live in `packaging/` in this repository. macOS
+has no package yet; the `aarch64-darwin` flake output is the closest thing.
 
 ### Name your multiplexer
 

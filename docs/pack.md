@@ -73,6 +73,28 @@ The pack protocol contains no multiplexer-specific fields. Note that peers have 
 with Herdr in v1 ([`PACK_PROTOCOL.md` §16](../PACK_PROTOCOL.md)).
 
 
+## Members that were not installed by install.sh
+
+A pack updates every member from the phone, except the members whose files somebody else owns.
+
+`collie pack update` and the phone's one-tap pack update both stage a new release beside the old one
+and swap it in. That works on the two installs the install script and Herdr make, and it does not
+work on every install, so the pack reports the others instead of failing them.
+
+**A packaged member waits for its package manager.** Where pacman, nix or brew put the files, that
+manager owns them, and Collie will not replace a file it does not own
+([a packaged install](upgrading.md#a-packaged-install)). The pack never sends it an update, shows it
+as "waits for the package manager" with the command for its prefix where one can be named, and
+counts the run as complete without it. It levels when you run that command on that machine, and the
+line clears on the next check.
+
+**A source checkout is a full member.** A member you cloned and built yourself updates through git
+like any other checkout, takes the pack update, and needs nothing said about it here. The lead pulls
+the tag, rebuilds and restarts it exactly as it does its own.
+
+So a mixed pack is a normal pack. One tap levels every member the lead can update, names the ones it
+cannot, and the pack is level again once you have run their package managers.
+
 | Command | What it does |
 | --- | --- |
 | `collie pack invite` | Mint a single-use, 10-minute enrollment token (**on the lead**) |
