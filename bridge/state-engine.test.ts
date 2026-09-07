@@ -8,6 +8,7 @@ import {
 } from "./state-engine.ts";
 import { HerdrMux } from "./mux/herdr/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
+import { muxOk } from "./mux/types.ts";
 import type { MuxAdapter, MuxPane } from "./mux/types.ts";
 import { toPaneWire } from "./types.ts";
 import type { AgentStatus } from "./types.ts";
@@ -492,6 +493,72 @@ describe("StateEngine — session name enrichment", () => {
     await poll();
     expect(agent("w1:p1").sessionName).toBe("safe"); // last-known kept
     expect(engine.current().bridge).toBe("connected"); // the poll itself still succeeded
+  });
+
+  // THE READ FOLLOWS THE REVISION (#189).
+  //
+  // The scrape costs one socket read per claude pane per poll, so a herd of idle agents pays for a
+  // screen nobody changed. Herdr stamps every pane with a content revision, and the engine reads
+  // again only when that number moves. The tests above all leave `revision` at 0, which is exactly
+  // the skip path — these three pin the whole rule, so neither half can rot unseen.
+  const atRevision = (p: FakePane, revision: number): FakePane => ({ ...p, revision });
+
+  test("re-reads a claude pane whose revision moved, and the new name lands on the view", async () => {
+    const { herdr, poll, agent } = makeNameEngine();
+    herdr.panes = [atRevision(pane("w1:p1", "w1", "idle", "claude"), 7)];
+    herdr.texts.set("w1:p1", named("first"));
+    await poll();
+    herdr.panes = [atRevision(pane("w1:p1", "w1", "idle", "claude"), 8)]; // the screen changed
+    herdr.texts.set("w1:p1", named("second"));
+    await poll();
+    expect(herdr.reads.length).toBe(2);
+    expect(agent("w1:p1").sessionName).toBe("second");
+  });
+
+  test("skips the read entirely while the revision stands still", async () => {
+    const { herdr, poll, agent } = makeNameEngine();
+    herdr.panes = [atRevision(pane("w1:p1", "w1", "idle", "claude"), 7)];
+    herdr.texts.set("w1:p1", named("first"));
+    await poll();
+    // A name the second poll would pick up — if it read at all. It must not.
+    herdr.texts.set("w1:p1", named("never-seen"));
+    await poll();
+    expect(herdr.reads.length).toBe(1);
+    expect(agent("w1:p1").sessionName).toBe("first");
+  });
+
+  // tmux and zellij hand over no per-pane revision, so their panes have nothing to compare and must
+  // keep the old behaviour: read every poll. This one goes through the mux port directly — the
+  // Herdr wire type always carries a revision, so a pane without one cannot come from that adapter.
+  test("reads a pane that carries no revision on every poll (tmux, zellij)", async () => {
+    const claudePane: MuxPane = {
+      paneId: "%1",
+      spaceId: "$0",
+      spaceLabel: "collie",
+      spaceNumber: 1,
+      tabId: "@0",
+      cwd: "/home/you/demo",
+      focused: false,
+      alive: true,
+      agent: "claude",
+      status: "idle",
+    };
+    let reads = 0;
+    // SAFETY: this poll reaches `snapshot()` and the session-name `readGrid`, and nothing else.
+    const stub: Partial<MuxAdapter> = {
+      reachable: () => Promise.resolve(true),
+      snapshot: () => Promise.resolve({ panes: [claudePane], spaces: [], tabs: [] }),
+      readGrid: (paneId: string) => {
+        reads++;
+        return Promise.resolve(muxOk({ paneId, text: named("unstamped"), truncated: false, revision: 0 }));
+      },
+    };
+    // SAFETY: see above — every member this poll can reach is present on `stub`.
+    const engine = new StateEngine(stub as MuxAdapter, 1500);
+    await engine["poll"]();
+    await engine["poll"]();
+    expect(reads).toBe(2);
+    expect(engine.current().agents[0]!.sessionName).toBe("unstamped");
   });
 });
 
