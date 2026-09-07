@@ -21,6 +21,11 @@ graph TD
   op -.->|"ssh"| deputy
 ```
 
+A machine saved in Herdr is not a pack member. Herdr 0.9.0 lets one Herdr client hold several saved
+SSH machines, and Collie reads none of them: it talks to the local Herdr socket only
+([ADR 0022](../.adr/0022-the-mux-seam-is-a-port-collie-owns.md)), so a pack is the one way another
+machine's sessions reach the phone.
+
 **Two machines, one pack.** The lead is the instance your phone already reaches. The joining machine
 must have Collie installed and running. On the **lead**:
 
@@ -87,6 +92,12 @@ manager owns them, and Collie will not replace a file it does not own
 as "waits for the package manager" with the command for its prefix where one can be named, and
 counts the run as complete without it. It levels when you run that command on that machine, and the
 line clears on the next check.
+
+**A packaged LEAD still levels its members.** The lead declines its own move for the same reason,
+and that is the whole of the refusal: the phone still levels every member to the version the lead is
+running now, and the confirm covers them. After the package manager has moved the lead and you have
+run `collie restart` on it, nothing levels by itself; one more confirm on the phone's Updates page
+brings the members up to the lead's new version.
 
 **A source checkout is a full member.** A member you cloned and built yourself updates through git
 like any other checkout, takes the pack update, and needs nothing said about it here. The lead pulls

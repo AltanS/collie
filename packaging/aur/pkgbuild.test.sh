@@ -10,6 +10,7 @@ set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 pkgbuild="$here/PKGBUILD"
 srcinfo="$here/.SRCINFO"
+installfile="$here/collie-bin.install"
 
 fails=0
 ok() { printf '  ok   %s\n' "$1"; }
@@ -65,6 +66,7 @@ check "none of the three stays in the install root" "grep -qE '^ *bin/\\*\\|LICE
 check "depends is glibc and bash only" "grep -qF \"depends=('glibc' 'bash')\" '$pkgbuild'"
 check "no bare systemd dependency" "! grep -qE \"^depends=.*'systemd'\" '$pkgbuild'"
 check "herdr is optional, never required" "grep -qE \"^ *'herdr: \" '$pkgbuild'"
+check "tmux is optional too" "grep -qE \"^ *'tmux: \" '$pkgbuild'"
 
 # ── It does not take the operator's decisions ──────────────────────────────
 check "no systemd unit is enabled or started" "! grep -qE 'systemctl (enable|start)' '$pkgbuild'"
@@ -84,6 +86,28 @@ check "pkgrel is a positive integer" "grep -qE '^pkgrel=[1-9][0-9]*\$' '$pkgbuil
 # The needle is assembled rather than written out, so this file is not its own first hit.
 needle="BEGIN OPENSSH PRIVATE"" KEY"
 check "no private key is in the tree" "! grep -rqF \"\$needle\" '$here'"
+
+# ── The install scriptlet pacman runs ──────────────────────────────────────
+# Four functions. `pre_remove` is the one that runs while the files are still there, so it is the
+# only place a warning can still be acted on; the other three report what already happened.
+# It PRINTS and nothing else — the checks above already refuse an enabled unit or a linked plugin
+# anywhere in the PKGBUILD, and the same posture has to hold in the file pacman runs as root.
+echo "collie-bin.install:"
+check "the file exists" "test -f '$installfile'"
+check "the PKGBUILD names it" "grep -q '^install=collie-bin.install\$' '$pkgbuild'"
+check ".SRCINFO names it" "grep -qE '^[[:space:]]*install = collie-bin.install\$' '$srcinfo'"
+if [ -f "$installfile" ]; then
+  check "it is valid bash" "bash -n '$installfile'"
+  check "post_install is defined" "grep -qE '^post_install\\(\\) \\{' '$installfile'"
+  check "post_upgrade is defined" "grep -qE '^post_upgrade\\(\\) \\{' '$installfile'"
+  check "pre_remove is defined" "grep -qE '^pre_remove\\(\\) \\{' '$installfile'"
+  check "post_remove is defined" "grep -qE '^post_remove\\(\\) \\{' '$installfile'"
+  # It PRINTS and nothing else. Every executable line is an `echo ':: …'`, a function header or a
+  # closing brace — so pacman's root scriptlet enables no unit, links no plugin and writes no file,
+  # and a command that crept in here has nowhere to hide.
+  check "every executable line is an echo ':: …', a header or a brace" \
+    "! grep -vE \"^[[:space:]]*(#|\\\$|echo '::|(post_(install|upgrade|remove)|pre_remove)\\(\\) \\{\\\$|\\}\\\$)\" '$installfile' | grep -q ."
+fi
 
 # ── .SRCINFO is the AUR's copy of the same facts ───────────────────────────
 # The AUR reads .SRCINFO, not the PKGBUILD, so a stale one publishes the wrong version.

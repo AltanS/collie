@@ -546,8 +546,8 @@ jobs:
           docker run --rm -v "$PWD/packaging/aur:/pkg:ro" -w /tmp archlinux:latest bash -c '
             set -e
             useradd -m builder
-            cp /pkg/PKGBUILD /tmp/PKGBUILD
-            chown builder /tmp/PKGBUILD
+            cp /pkg/PKGBUILD /pkg/collie-bin.install /tmp/
+            chown builder /tmp/PKGBUILD /tmp/collie-bin.install
             su builder -c "cd /tmp && makepkg --printsrcinfo"
           ' > packaging/aur/.SRCINFO
           head -5 packaging/aur/.SRCINFO
@@ -572,11 +572,13 @@ jobs:
           ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o IdentitiesOnly=yes"
           git clone ssh://aur@aur.archlinux.org/collie-bin.git "$RUNNER_TEMP/aur"
-          cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO "$RUNNER_TEMP/aur/"
+          # The `.install` travels with the PKGBUILD: `install=collie-bin.install` names it, and an
+          # AUR clone without it fails `makepkg` on the missing file.
+          cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO packaging/aur/collie-bin.install "$RUNNER_TEMP/aur/"
           cd "$RUNNER_TEMP/aur"
           git config user.name "Collie release"
           git config user.email "altan@sportsight.de"
-          git add PKGBUILD .SRCINFO
+          git add PKGBUILD .SRCINFO collie-bin.install
           if git diff --cached --quiet; then
             echo "The AUR already carries $VERSION; nothing to push."
             exit 0

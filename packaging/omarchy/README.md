@@ -2,7 +2,7 @@
 
 Omarchy hosts get their software from `pkgs.omarchy.org`, a pacman repository built from
 [`omacom/omarchy-pkgs`](https://github.com/omacom/omarchy-pkgs). Getting `collie-bin` in there is a
-pull request against that repository carrying two files, and nothing in this directory is built,
+pull request against that repository carrying three files, and nothing in this directory is built,
 run or read by Collie itself.
 
 ## What the pull request consists of
@@ -10,9 +10,12 @@ run or read by Collie itself.
 | file in `omarchy-pkgs` | what to put there |
 | --- | --- |
 | `pkgbuilds/collie-bin/PKGBUILD` | a copy of [`../aur/PKGBUILD`](../aur/PKGBUILD) |
+| `pkgbuilds/collie-bin/collie-bin.install` | a copy of [`../aur/collie-bin.install`](../aur/collie-bin.install) |
 | `pkgbuilds/collie-bin/.omarchy/package.json` | a copy of [`package.json`](package.json) |
 
 No `.SRCINFO`. That repository's own sync step removes it, and it is the AUR's file, not pacman's.
+It strips only `.SRCINFO` and `.gitignore`, so the `.install` stays: 29 packages there already ship
+one, and it is what pacman prints after install, upgrade and removal.
 
 One PKGBUILD serves both channels, which is why the install root is `/opt/collie` with
 `/usr/bin/collie` as a symlink into it: that is the layout `omarchy-pkgs` uses for every package

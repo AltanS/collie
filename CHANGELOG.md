@@ -27,7 +27,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ## [Unreleased]
 
 - The Arch package installs to `/opt/collie`, the layout Omarchy's package repository expects, and ships the metadata that repository uses to follow Collie's releases; a host under `/opt/collie` is told `sudo pacman -Syu collie-bin` like one under `/usr/lib/collie`.
+- Every restart and update command Collie prints for Herdr names the plugin id of the instance that printed it. A host running a second Collie under `COLLIE_INSTANCE` used to be told to invoke `herdr.collie`, which is the host's first Collie and not the one asking, so following the line restarted the wrong service.
 - A package upgrade that replaces the binary under the running service is noticed even when the version does not move: `collie doctor` reports `restart-pending` against the executable itself and names `collie restart`, and the phone raises the same notice. `pacman` replaces the files and restarts nothing, and the check used to say something else did.
+- Installing, upgrading or removing the Arch package prints what to do next. pacman names `collie start` and the `COLLIE_MUX=herdr` form a host with two multiplexers needs, says the running service keeps the old build until `collie restart`, warns before a removal that the `systemd --user` unit and the tailscale serve mapping stay unless `collie uninstall` ran first, and afterwards names the directories left behind. Omarchy's repository carries the same file.
+- `collie pack update` on a packaged lead names the boundary instead of reporting a broken checkout. It used to fail with "is not a git checkout" about `/opt/collie`, which pacman owns and which carries no commit to push; it now says updates come from the package manager and sends the operator to the phone's Updates page, where the members still level to the version the lead is running.
 
 ## [1.5.6] - 2026-09-07
 

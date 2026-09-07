@@ -66,6 +66,9 @@ echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
 
 install -d -o builder /home/builder/build
 install -o builder /pkg/PKGBUILD /home/builder/build/PKGBUILD
+# `install=collie-bin.install` names it, and makepkg refuses a PKGBUILD whose install file is
+# missing — so the scriptlet is part of what this test builds, and pacman runs it on -i.
+install -o builder /pkg/collie-bin.install /home/builder/build/collie-bin.install
 
 # -s installs missing dependencies, -i installs the built package. No build() runs, because the
 # PKGBUILD has none: makepkg downloads the tarball, verifies its sha256 and unpacks it.

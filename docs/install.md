@@ -184,16 +184,16 @@ source package cannot both be installed. It enables no systemd unit: `collie sta
 Remove it in three steps:
 
 ```bash
-collie stop
+collie uninstall
 herdr plugin unlink herdr.collie   # only if you linked it
 sudo pacman -Rns collie-bin
 ```
 
-That removes `/opt/collie` and `/usr/bin/collie` and nothing else. Four things of your own stay,
-and you delete them by hand when you want them gone: the user unit at
-`~/.config/systemd/user/collie.service`, the state under `~/.local/state/collie/`, the
-configuration in `~/.config/collie`, and the Herdr plugin config at
-`~/.config/herdr/plugins/config/herdr.collie/.env`.
+`collie uninstall` stops the service, removes the `systemd --user` unit and takes down Collie's own
+`tailscale serve` mapping; pacman then removes `/opt/collie` and `/usr/bin/collie` and nothing else.
+Two directories of your own stay, and you delete them by hand when you want them gone: the state
+under `~/.local/state/collie/` (or `$COLLIE_STATE_DIR`), and the config dir holding your `.env`,
+which is `~/.config/herdr/plugins/config/herdr.collie/` on a host with Herdr.
 
 #### Omarchy
 
@@ -204,7 +204,8 @@ COLLIE_MUX=herdr collie start
 
 Omarchy ships tmux and Herdr both, and Collie mirrors one multiplexer per install, so the first
 start has to name the one to drive — it refuses to guess between two it can see. `start` writes
-that name to `~/.config/collie/.env`, and later starts are `collie start`.
+that name into Collie's `.env`, which on a host with Herdr is
+`~/.config/herdr/plugins/config/herdr.collie/.env`, and later starts are `collie start`.
 
 That works once `collie-bin` is in Omarchy's own package repository, and the pull request adding it
 is not merged yet. Until it is, build the same package from `packaging/aur` with `makepkg -si`, as
@@ -224,19 +225,7 @@ AUR helper is not involved, because `pkgs.omarchy.org` is a real pacman reposito
 In a [pack](pack.md), this machine never takes an update from the phone: the pack lists it as
 "waits for the package manager", and it levels only when you run your helper on it.
 
-Remove it in the same three steps as on Arch:
-
-```bash
-collie stop
-herdr plugin unlink herdr.collie   # only if you linked it
-sudo pacman -R collie-bin
-```
-
-The package owns `/opt/collie` and `/usr/bin/collie`, and removing it removes only those. Your
-own files stay: state in `~/.local/state/collie` (or `$COLLIE_STATE_DIR`), configuration in
-`~/.config/collie`, the Herdr plugin config at `~/.config/herdr/plugins/config/herdr.collie/.env`,
-and the `systemd --user` unit at `~/.config/systemd/user/collie.service` that `collie start` wrote. Run `collie uninstall` before removing the package to drop that unit and the
-port mapping, and delete the two directories yourself when you want them gone.
+Remove it with the same three steps as on Arch above.
 
 #### Nix
 

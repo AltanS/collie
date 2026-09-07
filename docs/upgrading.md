@@ -73,6 +73,11 @@ In a [pack](pack.md#members-that-were-not-installed-by-installsh), a packaged me
 update from the phone. The pack lists it as "waits for the package manager" and counts the run as
 complete without it, so the two commands above are what levels it.
 
+A packaged **lead** declines only its own move. The phone still levels every member to the version
+the lead is running, and one confirm covers them. After the two commands above have moved the lead,
+nothing levels by itself: tap the Updates page once more and the members follow to the lead's new
+version.
+
 ## Update, from the phone or the terminal
 
 Two update paths exist, and both run the same steps on each host: stage the new release beside the

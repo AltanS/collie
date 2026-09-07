@@ -41,7 +41,14 @@ depends=('glibc' 'bash')
 optdepends=(
   'tailscale: publish the one managed front door with `collie serve` (the supported way to reach Collie from a phone)'
   'herdr: read Herdr sessions from the phone — the multiplexer Omarchy ships, and one of the three Collie drives'
+  'tmux: mirror tmux sessions instead — one of the three multiplexers Collie drives, and Omarchy ships it too'
 )
+
+# What pacman prints after installing and upgrading, before a removal and after it. Print-only: it enables no unit,
+# links no plugin and writes no config, because every one of those is the operator's decision and
+# `collie start` is where they are made. omarchy-pkgs carries `.install` files beside the PKGBUILD
+# and its sync keeps them, so one file serves both channels here too.
+install=collie-bin.install
 
 # Spelled as plain strings, not as "$_pkgname=$pkgver": the name a user asks pacman for is
 # `collie`, and this package answers it whichever version it carries.
