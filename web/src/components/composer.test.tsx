@@ -9,6 +9,7 @@ import { clearStatus, useStatus } from "@/lib/status";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { loadDraft } from "@/lib/drafts";
 import { __resetOperatorCommands } from "@/lib/operator-config";
+import { setDenseKeysEnabled, __resetDenseKeys } from "@/lib/density";
 import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
 import { PackProvider } from "./pack-provider";
@@ -74,6 +75,13 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     setRawTerminal: vi.fn(),
     setTapToFocus: vi.fn(),
     onSent: vi.fn(),
+    // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+    // composer itself, and the roomy default renders no row at all.
+    spaceAgents: [],
+    onSelectPane: vi.fn(),
+    onOpenSwitcher: vi.fn(),
+    onHoldPane: vi.fn(),
+    rowVisible: false,
     ...overrides,
   };
   const router = createMemoryRouter([{ path: "/", element: <Composer {...props} /> }]);
@@ -125,6 +133,13 @@ function renderComposerWithStatus(
     setRawTerminal: vi.fn(),
     setTapToFocus: vi.fn(),
     onSent: vi.fn(),
+    // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+    // composer itself, and the roomy default renders no row at all.
+    spaceAgents: [],
+    onSelectPane: vi.fn(),
+    onOpenSwitcher: vi.fn(),
+    onHoldPane: vi.fn(),
+    rowVisible: false,
     ...overrides,
   };
   const router = createMemoryRouter([
@@ -500,6 +515,11 @@ describe("Composer — send", () => {
               setRawTerminal={vi.fn()}
               setTapToFocus={vi.fn()}
               onSent={vi.fn()}
+              spaceAgents={[]}
+              onSelectPane={vi.fn()}
+              onOpenSwitcher={vi.fn()}
+              onHoldPane={vi.fn()}
+              rowVisible={false}
             />
           </>
         );
@@ -593,6 +613,13 @@ describe("Composer — send", () => {
       setRawTerminal: vi.fn(),
       setTapToFocus: vi.fn(),
       onSent: vi.fn(),
+      // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+      // composer itself, and the roomy default renders no row at all.
+      spaceAgents: [],
+      onSelectPane: vi.fn(),
+      onOpenSwitcher: vi.fn(),
+      onHoldPane: vi.fn(),
+      rowVisible: false,
     };
     const router = createMemoryRouter([
       {
@@ -689,6 +716,11 @@ describe("Composer — typing into the terminal", () => {
             setRawTerminal={vi.fn()}
             setTapToFocus={vi.fn()}
             onSent={vi.fn()}
+            spaceAgents={[]}
+            onSelectPane={vi.fn()}
+            onOpenSwitcher={vi.fn()}
+            onHoldPane={vi.fn()}
+            rowVisible={false}
           />
         </>
       );
@@ -821,6 +853,11 @@ describe("Composer — typing into the terminal", () => {
             setRawTerminal={vi.fn()}
             setTapToFocus={vi.fn()}
             onSent={vi.fn()}
+            spaceAgents={[]}
+            onSelectPane={vi.fn()}
+            onOpenSwitcher={vi.fn()}
+            onHoldPane={vi.fn()}
+            rowVisible={false}
           />
         </>
       );
@@ -1012,6 +1049,11 @@ describe("Composer — typing into the terminal", () => {
             setRawTerminal={vi.fn()}
             setTapToFocus={vi.fn()}
             onSent={vi.fn()}
+            spaceAgents={[]}
+            onSelectPane={vi.fn()}
+            onOpenSwitcher={vi.fn()}
+            onHoldPane={vi.fn()}
+            rowVisible={false}
           />
         </>
       );
@@ -1730,6 +1772,13 @@ function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> 
       setRawTerminal: vi.fn(),
       setTapToFocus: vi.fn(),
       onSent: vi.fn(),
+      // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+      // composer itself, and the roomy default renders no row at all.
+      spaceAgents: [],
+      onSelectPane: vi.fn(),
+      onOpenSwitcher: vi.fn(),
+      onHoldPane: vi.fn(),
+      rowVisible: false,
       ...rest,
       terminalDraft: stable,
       rawTerminalDraft: raw,
@@ -2001,6 +2050,13 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
       setRawTerminal: vi.fn(),
       setTapToFocus: vi.fn(),
       onSent: vi.fn(),
+      // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+      // composer itself, and the roomy default renders no row at all.
+      spaceAgents: [],
+      onSelectPane: vi.fn(),
+      onOpenSwitcher: vi.fn(),
+      onHoldPane: vi.fn(),
+      rowVisible: false,
     };
     return (
       <>
@@ -2640,6 +2696,13 @@ describe("Composer — draft persistence", () => {
       setRawTerminal: vi.fn(),
       setTapToFocus: vi.fn(),
       onSent: vi.fn(),
+      // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+      // composer itself, and the roomy default renders no row at all.
+      spaceAgents: [],
+      onSelectPane: vi.fn(),
+      onOpenSwitcher: vi.fn(),
+      onHoldPane: vi.fn(),
+      rowVisible: false,
       ...overrides,
     };
   }
@@ -2780,5 +2843,83 @@ describe("Composer — a long upload path cannot widen the field", () => {
 
     await waitFor(() => expect(box).toHaveValue(path));
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+  });
+});
+
+// ── THE TWO LAYOUTS ───────────────────────────────────────────────────────────
+// One setting (lib/density.ts) decides which set of key surfaces this phone draws, and the whole
+// point of it being opt-in is that the roomy layout must be untouched while it is off. So these
+// pin the SWAP, in both directions: the entries an operator taps, and the promise that no surface
+// is served twice. Getting the branch backwards, or leaving both palettes mounted on one `drawer`
+// value, is exactly the bug that would otherwise ship silently.
+describe("Composer — the density swap", () => {
+  beforeEach(() => __resetDenseKeys());
+  afterEach(() => __resetDenseKeys());
+
+  const sessions = [
+    {
+      paneId: "w1:p1",
+      workspaceId: "w1",
+      workspaceLabel: "webapp",
+      workspaceNumber: 1,
+      tabId: "w1:t1",
+      agent: "claude",
+      status: "blocked",
+      cwd: "/home/you/webapp",
+      focused: false,
+    },
+  ] as const;
+
+  it("draws the Controls row and no rail while the setting is off", () => {
+    renderComposer();
+
+    // The roomy entries, all five, exactly as they were before the setting existed.
+    expect(screen.getByRole("group", { name: "Controls" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Keys" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quick" })).toBeInTheDocument();
+    // …and none of the dense surfaces.
+    expect(document.querySelector('[data-slot="key-rail"]')).toBeNull();
+    expect(document.querySelector('[data-slot="space-agents"]')).toBeNull();
+  });
+
+  it("swaps the Controls row for the rail and the sessions row while it is on", () => {
+    setDenseKeysEnabled(true);
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+
+    // The dense trade: two thin rows instead of one row of five labelled buttons.
+    expect(document.querySelector('[data-slot="key-rail"]')).not.toBeNull();
+    expect(document.querySelector('[data-slot="space-agents"]')).not.toBeNull();
+    expect(screen.queryByRole("group", { name: "Controls" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Quick" })).toBeNull();
+    // Esc is one tap away with no dock open — the rail's whole reason to spend a row.
+    expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
+  });
+
+  it("opens the Keys dock from whichever entry the layout gives it", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    // Roomy: the Controls row's Keys button.
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    expect(document.getElementById("dock-keys")).not.toBeNull();
+
+    cleanup();
+    setDenseKeysEnabled(true);
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+    // Dense: the rail's pad, which names the same dock through `aria-controls`.
+    const pad = screen.getByRole("button", { name: "Keys" });
+    expect(pad).toHaveAttribute("aria-controls", "dock-keys");
+    await user.click(pad);
+    expect(document.getElementById("dock-keys")).not.toBeNull();
+  });
+
+  it("mounts exactly one agent palette, in the home its layout gives it", async () => {
+    const user = userEvent.setup();
+    setDenseKeysEnabled(true);
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+    // Dense docks the palette IN FLOW, above the row whose pin opened it. Two surfaces answering
+    // one `drawer` value would both open on this single tap.
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    expect(document.getElementById("dock-cmd")).not.toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

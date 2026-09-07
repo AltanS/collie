@@ -28,6 +28,12 @@ export const es: Dictionary = {
   "settings.install.description": "Añade Collie a la pantalla de inicio con ventana dedicada e icono propio.",
   "settings.install.button": "Instalar",
   "settings.install.iosHint": "En iOS o iPadOS, selecciona Compartir y luego «Añadir a pantalla de inicio».",
+  // --- settings.pins ---
+  "settings.pins.title": "Pesta\u00f1as laterales",
+  "settings.pins.description": "En qu\u00e9 borde se acoplan las pesta\u00f1as /Agents y Teclas.",
+  "settings.pins.option.left": "Izquierda",
+  "settings.pins.option.right": "Derecha",
+
   "settings.density.title": "Superficies de teclas compactas",
   "settings.density.description": "Cuadrículas de teclas compactas y una fila de teclas siempre visible sobre el cuadro de respuesta, para que quepan más teclas en pantalla.",
   "settings.zen.title": "Modo zen",

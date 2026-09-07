@@ -1,8 +1,9 @@
 import { useRef } from "react";
 import type { TouchEvent } from "react";
 
-// Min vertical travel (px) before an upward drag counts as a swipe — small enough to feel light,
-// large enough that a tap or scroll jitter never trips it.
+// Min vertical travel (px) before a drag counts as a swipe — small enough to feel light, large
+// enough that a tap or scroll jitter never trips it. One threshold for both directions: a down
+// that is harder to start than an up would read as broken, not careful.
 const SWIPE_THRESHOLD = 36;
 
 /**
@@ -33,6 +34,35 @@ export function useSwipeUp(onSwipeUp: () => void, threshold = SWIPE_THRESHOLD) {
       const t = e.changedTouches[0];
       if (!t) return;
       if (isSwipeUp(t.clientX - s.x, t.clientY - s.y, threshold)) onSwipeUp();
+    },
+  };
+}
+/**
+ * Pure swipe-down test: the mirror of {@link isSwipeUp} — a dominant downward movement past the
+ * threshold. Separate function rather than a sign flag so each direction's call site reads plain.
+ */
+export function isSwipeDown(dx: number, dy: number, threshold = SWIPE_THRESHOLD): boolean {
+  return dy > threshold && Math.abs(dy) > Math.abs(dx);
+}
+
+/**
+ * Touch handlers that fire `onSwipeDown` on a downward fling. Same read-only shape as
+ * {@link useSwipeUp}: start/end points only, no per-frame tracking, never preventDefaults.
+ */
+export function useSwipeDown(onSwipeDown: () => void, threshold = SWIPE_THRESHOLD) {
+  const start = useRef<{ x: number; y: number } | null>(null);
+  return {
+    onTouchStart: (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (t) start.current = { x: t.clientX, y: t.clientY };
+    },
+    onTouchEnd: (e: TouchEvent) => {
+      const s = start.current;
+      start.current = null;
+      if (!s) return;
+      const t = e.changedTouches[0];
+      if (!t) return;
+      if (isSwipeDown(t.clientX - s.x, t.clientY - s.y, threshold)) onSwipeDown();
     },
   };
 }

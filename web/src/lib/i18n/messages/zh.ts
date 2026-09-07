@@ -29,6 +29,12 @@ export const zh: Dictionary = {
   "settings.install.description": "将 Collie 添加至主屏幕，支持全屏运行并显示独立图标。",
   "settings.install.button": "安装",
   "settings.install.iosHint": "在 iPhone 或 iPad 上，点击浏览器分享按钮，选择“添加到主屏幕”。",
+  // --- settings.pins ---
+  "settings.pins.title": "\u4fa7\u8fb9\u6807\u7b7e",
+  "settings.pins.description": "/Agents \u548c\u6309\u952e\u6807\u7b7e\u505c\u9760\u5728\u54ea\u4e00\u4fa7\u3002",
+  "settings.pins.option.left": "\u5de6\u4fa7",
+  "settings.pins.option.right": "\u53f3\u4fa7",
+
   "settings.density.title": "高密度按键界面",
   "settings.density.description": "以紧凑的按键网格搭配输入框上方常驻的按键行，让屏幕容纳更多按键。",
   "settings.zen.title": "专注模式",

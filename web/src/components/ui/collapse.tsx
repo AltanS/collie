@@ -68,6 +68,15 @@ export interface CollapseProps {
    */
   children: ReactNode;
   className?: string;
+  /**
+   * Snap both ways: no glide, no timers, no intermediate paint. For an edge that fires ALONGSIDE
+   * another Collapse going the other way — the agents row standing down while the dock site opens
+   * beneath it. Two opposing 240ms glides sum monotonic on paper but read as a bounce against a
+   * live-wrapping mirror, and the tail of an ease-out re-crosses wrap thresholds. The row's edge is
+   * 28px and reads as a mode switch; the dock keeps the glide, so each direction has exactly one
+   * moving box. Composing/keyboard edges keep the glide — only drawer-driven ones snap.
+   */
+  instant?: boolean;
 }
 
 /**
@@ -108,9 +117,12 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-export function Collapse({ open, children, className }: CollapseProps) {
+export function Collapse({ open, children, className, instant }: CollapseProps) {
   const reduced = usePrefersReducedMotion();
-  const ms = reduced ? 0 : COLLAPSE_MS;
+  // `instant` is the caller's snap; `reduced` is the operator's. Either way there is nothing to
+  // time — but only `instant` skips the intermediate paint (below), while the reduced path keeps
+  // its two-tick choreography with the paint frozen by `transition-none`.
+  const ms = reduced || instant ? 0 : COLLAPSE_MS;
 
   // Three pieces of state, one job each:
   //   rendered — is the child in the tree at all (the delayed-unmount half);
@@ -147,6 +159,14 @@ export function Collapse({ open, children, className }: CollapseProps) {
     }
     if (open) {
       setRendered(true);
+      if (instant) {
+        // Snap, not glide: everything lands in this commit, so no collapsed frame ever paints
+        // and no timer is ever set. The reduced path below keeps its two ticks with the paint
+        // frozen instead — same visible snap, different choreography, and its tests pin it.
+        setExpanded(true);
+        setSettled(true);
+        return;
+      }
       setSettled(false);
       // One tick later, so the browser paints the collapsed state first and has something to
       // transition FROM. Setting both in the same commit is a jump with extra steps.
@@ -156,6 +176,13 @@ export function Collapse({ open, children, className }: CollapseProps) {
         clearTimeout(start);
         clearTimeout(done);
       };
+    }
+    if (instant) {
+      // The exit snaps too: nothing to glide out, so nothing loiters — not even a tick.
+      setExpanded(false);
+      setSettled(true);
+      setRendered(false);
+      return;
     }
     setExpanded(false);
     setSettled(false);
@@ -170,7 +197,10 @@ export function Collapse({ open, children, className }: CollapseProps) {
       data-slot="collapse"
       data-state={expanded ? "open" : "closed"}
       className={cn(
-        "grid shrink-0 transition-all ease-out motion-reduce:transition-none",
+        "grid shrink-0",
+        // `instant` freezes the paint unconditionally; otherwise the glide runs unless the
+        // operator asked for reduced motion.
+        instant ? "transition-none" : "transition-all ease-out motion-reduce:transition-none",
         COLLAPSE_DURATION_CLASS,
         expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
         // The clip is only needed while the row is shorter than its content. Once open it is

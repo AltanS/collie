@@ -19,6 +19,7 @@ import { InstallControl } from "@/components/install-control";
 import { LanguageControl } from "@/components/language-control";
 import { FontSettingsControl } from "@/components/font-settings";
 import { DensityControl } from "@/components/density-control";
+import { PinSideControl } from "@/components/pin-side-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { UpdatesSettingsCard } from "@/components/updates-settings-card";
 import { Switch } from "@/components/ui/switch";
@@ -143,6 +144,12 @@ export function SettingsRoute() {
             per-device choice about how this phone presents itself. Off by default — see
             lib/density.ts for why it is one bit and not a scale. */}
         <DensityControl />
+
+        {/* The edge the dense layout's two pins dock to — the sessions row's Agent pin and the key
+            rail's pad. Directly under the toggle that puts them on screen, and it renders nothing
+            worth reading while that toggle is off, so it stays beside it rather than in a section
+            of its own. Left by default: a left-held phone reaches it with the holding thumb. */}
+        <PinSideControl />
 
         {/* Device behaviour sits with appearance — both are "how this phone treats you", as opposed
             to the herd/notification settings below. Renders nothing where vibrate is unsupported. */}

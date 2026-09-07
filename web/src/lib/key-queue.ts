@@ -88,6 +88,67 @@ export function keyLabel(key: string): string {
   return labels.join(" ");
 }
 
+// ── THE DENSE LABELS ──────────────────────────────────────────────────────────
+// The same chords drawn for a phone-sized key: `ctrl → "⌃"`, `space → "␣"`, and no separating
+// space where a glyph already reads as one part (`⌃C`, not `⌃ C`). A dense key box is ~40px wide,
+// so "Ctrl ⇧ P" wraps or clips where "⌃⇧P" fits.
+//
+// SEPARATE from `keyLabel` above, and deliberately not a widening of it: that one labels the
+// dialog buttons, the wizard rows and the prompt options too (option-button.tsx,
+// prompt-select-block.tsx, wizard-block.tsx, harness/prompt-model.ts), where there is room for
+// words and the glyphs would be a regression. Only the dense key surfaces call these.
+export function denseModifierLabel(m: Modifier): string {
+  if (m === "ctrl") return "⌃";
+  if (m === "alt") return "Alt";
+  return "⇧"; // shift
+}
+
+function denseLeadingModLabel(token: string): string | null {
+  const lower = token.toLowerCase();
+  if (lower === "ctrl" || lower === "alt" || lower === "shift") return denseModifierLabel(lower);
+  if (lower === "cmd") return "Cmd";
+  if (lower === "super") return "Super";
+  return null;
+}
+
+function denseBaseLabel(base: string): string {
+  const lower = base.toLowerCase();
+  if (lower === "escape") return "Esc";
+  if (lower === "enter") return "⏎";
+  if (lower === "space") return "␣";
+  if (base.length === 1) return base.toUpperCase();
+  return base;
+}
+
+// Join chord parts the way the platform draws them: a glyph modifier (⌃/⇧) abuts on both sides
+// (`⌃C`, `⇧Tab`, `⌃⇧P`, `⌃Alt⇧P`), while word labels keep their separating spaces (`Alt Tab`).
+export function joinChord(parts: readonly string[]): string {
+  const glyph = /^[⌃⇧]$/;
+  let out = "";
+  for (const part of parts) {
+    if (out !== "" && !glyph.test(out.slice(-1)) && !glyph.test(part)) out += " ";
+    out += part;
+  }
+  return out;
+}
+
+// `keyLabel`'s dense twin: `"ctrl+g" → "⌃G"`, `"ctrl+shift+p" → "⌃⇧P"`, `"shift+Tab" → "⇧Tab"`,
+// `"Space" → "␣"`. Same total behaviour on an unknown token — it falls back to itself.
+export function denseKeyLabel(key: string): string {
+  const tokens = key.split("+");
+  const labels: string[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const ml = denseLeadingModLabel(tokens[i]);
+    if (ml === null) break;
+    labels.push(ml);
+    i++;
+  }
+  const rest = tokens.slice(i).join("+");
+  if (rest.length > 0 || labels.length === 0) labels.push(denseBaseLabel(rest));
+  return joinChord(labels);
+}
+
 // The chords that interrupt / suspend / kill a running agent. NOTE: ctrl+c counts as danger HERE —
 // on the queued review-then-send path the Send button warns (destructive styling) for any of these.
 // This is intentionally broader than the nav-tray's *immediate* preset list, which two-tap-confirms

@@ -92,6 +92,13 @@ function baseProps(
     setRawTerminal: vi.fn(),
     setTapToFocus: vi.fn(),
     onSent: vi.fn(),
+    // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+    // composer itself, and the roomy default renders no row at all.
+    spaceAgents: [],
+    onSelectPane: vi.fn(),
+    onOpenSwitcher: vi.fn(),
+    onHoldPane: vi.fn(),
+    rowVisible: false,
     ...overrides,
   };
 }

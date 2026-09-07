@@ -29,6 +29,12 @@ export const de: Dictionary = {
   "settings.install.description": "Collie zum Startbildschirm hinzufügen: Vollbild und eigenes App-Icon.",
   "settings.install.button": "Installieren",
   "settings.install.iosHint": "Unter iOS und iPadOS über das Teilen-Menü des Browsers installieren: Teilen antippen, dann „Zum Home-Bildschirm“.",
+  // --- settings.pins ---
+  "settings.pins.title": "Seitenpins",
+  "settings.pins.description": "An welcher Kante die Tabs /Agents und Tasten angedockt sind.",
+  "settings.pins.option.left": "Links",
+  "settings.pins.option.right": "Rechts",
+
   "settings.density.title": "Kompakte Tastenflächen",
   "settings.density.description": "Kompakte Tastenraster und eine dauerhaft sichtbare Tastenreihe über dem Eingabefeld, damit mehr Tasten auf den Bildschirm passen.",
   "settings.zen.title": "Zen-Modus",
