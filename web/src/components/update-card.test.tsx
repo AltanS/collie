@@ -664,12 +664,14 @@ describe("restarting gap is not an outage", () => {
   it("self-update hold: the bundle reload is held for the length of the run", async () => {
     const view = renderCard(info({ run: runAt("restarting") }));
     await screen.findByText("Restarting. This is not an outage.");
-    expect(isReloadHeld()).toBe(true);
+    // The hold is set in a passive effect; findByText only proves the commit, so the
+    // assertion waits for the effect rather than racing it (this bit CI once).
+    await waitFor(() => expect(isReloadHeld()).toBe(true));
     view.unmount();
 
     renderCard(info({ run: runAt("done") }));
     await screen.findByText("Updated to 1.4.0.");
-    expect(isReloadHeld()).toBe(false);
+    await waitFor(() => expect(isReloadHeld()).toBe(false));
   });
 });
 
