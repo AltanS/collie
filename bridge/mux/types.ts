@@ -236,6 +236,12 @@ export interface MuxPane extends MuxIdentity {
    * capability, no grammar and no sort. See the module that composes it, beside the decorator.
    */
   readonly hint?: string;
+  /**
+   * Content revision from the multiplexer's snapshot — changes when the pane's screen changes.
+   * Herdr provides this natively; tmux and zellij can only derive it per-read, so it is absent
+   * from their snapshot and optional here.
+   */
+  readonly revision?: number;
 }
 
 /** One space — a project-scoped container of tabs. Collie's word; the port never uses another. */
