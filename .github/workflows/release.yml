@@ -174,30 +174,11 @@ jobs:
           # NO LINT STEP, here or anywhere on an operator's path: oxlint's allocator SIGABRTs below
           # roughly 7 GB of RAM and bricked real installs (1.0.0-beta.44). CI lints in its own
           # workflow, over the full tree, which is the only run that defines "passing".
-          # THE COMPILE RUNS ON THE UPSTREAM BUN, not on the one this shell just used. `bun build
-          # --compile` copies the RUNNING bun executable as the base of the binary it emits whenever
-          # the target matches the host, and nixpkgs patches its own copy of bun into the Nix store:
-          # autoPatchelf writes a /nix/store PT_INTERP on Linux, and the ICU relink points at a
-          # /nix/store libicucore on Darwin (flake.nix names both). Both travelled into the artifact,
-          # so collie-1.5.4 and collie-1.5.5 macos-arm64 and linux-arm64 aborted in the loader on
-          # every machine without a Nix store (#184). One base binary, two platforms, one fix.
-          #
-          # `bun.src` is the archive flake.nix ALREADY pins by URL and sha256, so the version pin
-          # holds — this is the same bun, before nixpkgs patched it. `bun install` and the web build
-          # above stay on the flake's bun; only the compile moves.
-          command -v unzip >/dev/null 2>&1 || { echo "no unzip on this runner, and the pinned bun ships as a zip" >&2; exit 1; }
-          zip="$(nix build "$GITHUB_WORKSPACE#bun.src" --print-out-paths --no-link)"
-          mkdir -p "$RUNNER_TEMP/upstream-bun"
-          unzip -q "$zip" -d "$RUNNER_TEMP/upstream-bun"
-          upstream_bun="$(find "$RUNNER_TEMP/upstream-bun" -type f -name bun | head -1)"
-          [ -n "$upstream_bun" ] || { echo "no bun executable inside $zip" >&2; exit 1; }
-          chmod 0755 "$upstream_bun"
-          # The two buns must agree, or this ships a binary built on a bun flake.lock never measured.
-          want="$(bun --version)"
-          got="$("$upstream_bun" --version)"
-          [ "$want" = "$got" ] || { echo "upstream bun is $got, the flake's bun is $want — the pin drifted" >&2; exit 1; }
-          echo "compiling on upstream bun $got from $zip"
-
+          # THE COMPILE RUNS ON THE UPSTREAM BUN, not on the one this shell just used, because
+          # `bun build --compile` copies the RUNNING bun as the base of what it emits and nixpkgs
+          # patches its own copy into the Nix store (#184). scripts/upstream-bun.sh realises the
+          # archive `flake.nix` pins and prints its bun; its header carries the whole argument.
+          upstream_bun="$(FLAKE_ROOT="$GITHUB_WORKSPACE" bash scripts/upstream-bun.sh)"
           "$upstream_bun" build --compile --target="$BUN_TARGET" ./cli/main.ts --outfile "$stage/bin/collie"
           chmod 0755 "$stage/bin/collie"
 
@@ -239,6 +220,7 @@ jobs:
       # The tarball is sealed HERE rather than in the build, because a tarball is what an operator
       # downloads: it must not exist before the binary inside it has been checked.
       - name: Check the binary an operator gets, then seal the tarball
+        # The id must stay `build`: "Describe the artifact" below reads this step's outputs.
         id: build
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -263,6 +245,8 @@ jobs:
           echo "root=$root" >> "$GITHUB_OUTPUT"
           echo "tarball=$RUNNER_TEMP/$root.tar.gz" >> "$GITHUB_OUTPUT"
 
+      # `steps.build` is the sealing step above, not the build body — the tarball is an output of
+      # the step that made it, so that id may not move.
       - name: Describe the artifact
         env:
           PLATFORM: ${{ matrix.platform }}
