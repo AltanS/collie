@@ -387,7 +387,7 @@ transcript above the dialog" is not available as corroborating evidence the way 
 omp's `agent_status` stays `idle` while a picker is up; only the `ask` tool flips it to `blocked`.
 **Nothing may gate on `blocked`.**
 
-## OMP 18.1.10 rule composer corpus (captured 2026-09-05, sandbox pane)
+## OMP 18.1.10 rule composer corpus (captured 2026-09-05, herdr 0.8.x, version not recorded by the capture, sandbox pane)
 
 Three byte-faithful `pane.read format:ansi` captures from a throwaway Herdr pane in a generic git
 sandbox, with OMP 18.1.10 launched under an isolated `composer.shape: rule` config overlay. No

@@ -42,6 +42,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - `collie serve` says when it could not read the tailnet's HTTPS status and publishes anyway. A `tailscale status --json` this build cannot read means "can't tell", never "no HTTPS", so the refusal above stays off that path; the line names the admin console in case the publish does stop and wait after all.
 - Turning the phone to landscape opens zen when zen is enabled, and turning it back closes it; a zen you opened yourself stays open through both. The switch sits under Zen in Settings, off until you turn it on, and it acts only while zen itself is on. Desktops and tablets are landscape all day and are not affected. Thanks @enieuwy (#182).
 - A reply whose opening scrolled off the terminal is shown in full from the agent's own log, in place of the rows it covers, and Settings → View → Full latest reply turns it off, thanks @sd2k (#185).
+- Collie recognises OMP's `rule` composer, so a phone reply reaches an OMP 18.1.10 pane configured with `composer.shape: rule` instead of stalling with "the message did not reach the input box", thanks @taiansu (#160).
 
 ## [1.5.6] - 2026-09-07
 
