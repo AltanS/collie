@@ -1,5 +1,9 @@
 # `collie-bin` — the Arch package
 
+`collie-bin` is not on the AUR yet. The AUR has paused new account registration, and the package
+will be published from our own account when registration reopens. Until then the PKGBUILD in this
+directory builds the same package with `makepkg -si`.
+
 `collie-bin` installs the compiled binary Collie already publishes with every GitHub release. It
 builds nothing: no Bun, no `git`, no compilation — `makepkg` downloads the release tarball for your
 architecture, checks its sha256, and unpacks it. Herdr itself ships in Omarchy's pacman repo, so

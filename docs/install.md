@@ -138,6 +138,10 @@ action buttons that update a checkout, and this tree is your package manager's t
 
 #### Arch
 
+`collie-bin` is not on the AUR yet. The AUR has paused new account registration, and the package
+will be published from our own account when registration reopens. Until then the PKGBUILD in
+`packaging/aur` builds the same package with `makepkg -si`.
+
 ```bash
 paru -S collie-bin     # or: yay -S collie-bin
 collie start
