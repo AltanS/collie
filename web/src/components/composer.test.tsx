@@ -2967,15 +2967,24 @@ describe("Composer — the density swap", () => {
   it("gives the dense docks no header, one shared cap, and no second boundary", async () => {
     const user = userEvent.setup();
     setDenseKeysEnabled(true);
-    renderComposer({ spaceAgents: sessions, rowVisible: true });
 
+    // One dock per render, because the sessions row — which owns the palette's pin — stands down
+    // while the Keys dock is open, so there is no sequence that has both on screen. The caps are
+    // still compared by VALUE, which is the fact that matters.
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
     await user.click(screen.getByRole("button", { name: "Keys" }));
     const keys = document.getElementById("dock-keys")!;
-    // No title, no ✕ — the rail pad the operator just pressed morphed into the close control.
+    // No title, no close control — the rail pad just pressed morphed into one.
     expect(keys.querySelector("[aria-label^='Close']")).toBeNull();
     expect(keys.className).not.toContain("border-t");
     const keysCap = keys.lastElementChild!.className;
+    // The whole site glides as ONE box in dense: the docks share a Collapse, so switching drawers
+    // is a single height change rather than an unmount racing a mount. The transition sits on
+    // Collapse's outer grid, two levels up from the dock (the inner box carries the clip).
+    expect(keys.parentElement!.parentElement!.className).toContain("transition-all");
 
+    cleanup();
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
     await user.click(screen.getByRole("button", { name: "Agent" }));
     const cmd = document.getElementById("dock-cmd")!;
     expect(cmd.querySelector("[aria-label^='Close']")).toBeNull();
@@ -2995,6 +3004,10 @@ describe("Composer — the density swap", () => {
     const keys = document.getElementById("dock-keys")!;
     expect(keys.className).toContain("border-t");
     expect(keys.lastElementChild!.className).toContain("max-h-[45dvh]");
+    // ...and roomy keeps upstream's MOTION too: the dock appears the instant its condition flips.
+    // The dense glide exists to stay in step with the row beneath it, which roomy does not have,
+    // so gliding here would be this setting changing a layout it is meant to leave alone.
+    expect(keys.parentElement!.parentElement!.className).toContain("transition-none");
 
     const close = keys.querySelector<HTMLElement>("[aria-label^='Close']")!;
     expect(close).not.toBeNull();

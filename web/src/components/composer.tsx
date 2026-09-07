@@ -446,6 +446,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [previewLatched, setPreviewLatched] = useState(false);
   // Composer sheets are mutually exclusive — at most one open (Keys / Quick / Agent / Display).
   const [drawer, setDrawer] = useState<ComposerDrawer>(null);
+  // Which opening this is — see requestDrawer for what the key on each dock below buys.
+  const [drawerSession, setDrawerSession] = useState(0);
   // Keys staged in the (unmounted-on-close) NavTray, pushed up so leaving the Keys dock can guard a
   // composed sequence. See requestDrawer.
   const [queuedKeys, setQueuedKeys] = useState(0);
@@ -472,6 +474,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       return;
     }
     discardConfirm.reset();
+    // A new opening gets a new session even when the last exit is still gliding. The session key
+    // on each dock turns a reopen into a real remount rather than a reconcile onto the held (still
+    // mounted, mid-exit) dock — which would resurrect the key queue the operator just discarded
+    // and re-arm the guard on chords they threw away. This is ADR 0005's rule surviving the glide:
+    // the queue must die with its dock, and now the dock outlives the close by 240ms.
+    if (next !== null && next !== drawer) setDrawerSession((s) => s + 1);
     setDrawer(next);
   }
   const closeDrawer = () => requestDrawer(null);
@@ -1149,8 +1157,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             The Agent palette also moves: roomy keeps it a covering BottomSheet below (it is a
             palette, not a pad), while dense docks it here in flow, because in the dense layout its
             entry is the agents row's pin sitting right beneath it. */}
+        {/* ── ONE SHARED GLIDE FOR THE WHOLE SITE ─────────────────────────────────────────────
+            The docks are wrapped in a SINGLE `Collapse` rather than each appearing on its own
+            condition, so the site has one animated box and switching drawers is one height change
+            instead of an unmount and a mount racing each other.
+
+            `instant` in ROOMY, on purpose: upstream's dock appears the moment its condition flips
+            and nothing below it moves, so a glide here would be a change to a layout this setting
+            is supposed to leave alone. DENSE glides, because it has a row directly beneath the
+            site and that row is what the motion has to stay in step with (see the row below). */}
+        <Collapse open={drawer !== null} instant={!dense}>
         {drawer === "keys" && (
           <ComposerDock
+            // Session key: a reopen mid-exit remounts instead of reconciling onto the held dock,
+            // which would resurrect the discarded queue (see requestDrawer / ADR 0005).
+            key={`dock-keys-${drawerSession}`}
             id="dock-keys"
             title={translate("composer.controls.keys")}
             host={writeHost}
@@ -1188,6 +1209,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         )}
         {drawer === "quick" && (
           <ComposerDock
+            key={`dock-quick-${drawerSession}`}
             title={translate("composer.controls.quick")}
             // Roomy-only surface: no Controls row, no Quick dock.
             dense={false}
@@ -1204,6 +1226,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         )}
         {drawer === "display" && (
           <ComposerDock
+            key={`dock-display-${drawerSession}`}
             title={translate("composer.controls.display")}
             // Roomy-only surface: the dense layout's mirror prefs live in the pane's own menu.
             dense={false}
@@ -1225,6 +1248,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             rows below already name what they send. */}
         {dense && drawer === "cmd" && (
           <ComposerDock
+            key={`dock-cmd-${drawerSession}`}
             id="dock-cmd"
             title={translate("commands.title")}
             // Always bare, on the one layout that mounts it: the pin below morphs into the close
@@ -1249,6 +1273,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             </div>
           </ComposerDock>
         )}
+        </Collapse>
         {/* The one action row: Keys · Quick · Agent · ⚙ (Agent only when the pane's agent has
             commands). Display prefs used to sit on a second, permanent icon-only "View" row above
             this one; folding them behind the ⚙ gives the mirror that row back. The gear is icon-only
@@ -1399,7 +1424,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <>
             {/* Stands down while the keyboard is up or the Keys dock is open: driving keys wants
                 the mirror, not a session switcher, and a keyboard already took the room. */}
-            <Collapse open={!composing && drawer !== "keys" && rowVisible} className="-mx-3">
+            {/* Snap out while the Keys dock OPENS, glide back alongside it shutting. The opening
+                snap keeps the open to ONE moving box: a row vanishing in glide beside a dock
+                gliding in read as a bounce against the live-wrapping mirror. The close stays
+                simultaneous — the dock's height against the row's 28px, one curve, one commit — so
+                the bottom edge moves one way only instead of reversing, which is what read as
+                overshoot. The keyboard/composing edges still glide both ways. */}
+            <Collapse
+              open={!composing && drawer !== "keys" && rowVisible}
+              instant={drawer === "keys"}
+              className="-mx-3"
+            >
               <SpaceAgentsRow
                 agents={spaceAgents}
                 currentPaneId={paneId}
