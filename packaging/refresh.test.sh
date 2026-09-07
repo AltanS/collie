@@ -69,6 +69,11 @@ srcinfo="$tmp/root/packaging/aur/.SRCINFO"
 before_pkgbuild="$(sha256sum "$here/aur/PKGBUILD" | cut -d' ' -f1)"
 before_sources="$(sha256sum "$here/nix/sources.json" | cut -d' ' -f1)"
 
+# What the checked-in tree happens to carry today. The test must never name a release: it runs both
+# on main and on the release job's branch, where these files are already one version ahead.
+tree_pkgver="$(sourced "$here/aur/PKGBUILD" pkgver)"
+tree_x64_sha="$(bash -c 'source "$1"; printf "%s" "${sha256sums_x86_64[0]}"' bash "$here/aur/PKGBUILD")"
+
 # Stands in for `makepkg --printsrcinfo` on a machine that has no makepkg: the four fields this
 # script compares, copied from the PKGBUILD into .SRCINFO. It is not a substitute for makepkg in the
 # release job, only a way to give the comparator a file that agrees.
@@ -107,7 +112,7 @@ check "the maintainer line survives" "grep -q '^# Maintainer: Altan Sarisin' '$p
 check "package() survives" "grep -q '^package() {' '$pkgbuild'"
 check "provides/conflicts survive" "grep -qF \"provides=('collie')\" '$pkgbuild'"
 check "the symlink line survives" "grep -qE 'ln -s.*usr/bin/collie' '$pkgbuild'"
-check "no stale 1.5.5 hash is left in the PKGBUILD" "! grep -q '16cd55c080a58f2fab' '$pkgbuild'"
+check "no stale checked-in hash is left in the PKGBUILD" "! grep -q '$tree_x64_sha' '$pkgbuild'"
 
 # ── pkgrel follows Arch's rule ─────────────────────────────────────────────
 # pacman compares `pkgver-pkgrel`. A corrected package for a version somebody already installed is
@@ -227,7 +232,8 @@ bun "$script" --root "$tmp/root2" > "$tmp/noargs.log" 2>&1
 rc=$?
 check "no --manifest exits non-zero" "test $rc -ne 0"
 check "it says --manifest is required" "grep -q -- '--manifest' '$tmp/noargs.log'"
-check "root2 was never rewritten" "grep -q '^pkgver=1.5.5$' '$tmp/root2/packaging/aur/PKGBUILD'"
+check "root2 was never rewritten" \
+  "test \"\$(sourced '$tmp/root2/packaging/aur/PKGBUILD' pkgver)\" = '$tree_pkgver'"
 
 # ── The real tree was never written ────────────────────────────────────────
 echo "the checked-in tree was not touched:"
