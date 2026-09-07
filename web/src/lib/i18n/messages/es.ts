@@ -30,6 +30,8 @@ export const es: Dictionary = {
   "settings.install.iosHint": "En iOS o iPadOS, selecciona Compartir y luego «Añadir a pantalla de inicio».",
   "settings.zen.title": "Modo zen",
   "settings.zen.description": "Añade una opción al menú de paneles para ocultar todo excepto el terminal.",
+  "settings.zen.auto.label": "Activar en horizontal",
+  "settings.zen.auto.hint": "Gira el teléfono de lado para abrir el modo zen automáticamente; gíralo de vuelta para cerrarlo.",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "Dictado directo",

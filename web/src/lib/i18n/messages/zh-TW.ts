@@ -30,6 +30,8 @@ export const zhTW: Dictionary = {
   "settings.install.iosHint": "在 iPhone 或 iPad 上，點選瀏覽器分享按鈕，選擇「加入主畫面」。",
   "settings.zen.title": "專注模式",
   "settings.zen.description": "在窗格選單中加入選項，隱藏終端機以外的所有介面元素。",
+  "settings.zen.auto.label": "橫向時自動啟用",
+  "settings.zen.auto.hint": "將手機橫向旋轉會自動開啟專注模式；轉回直向則自動關閉。",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "語音直接傳送",
