@@ -29,6 +29,7 @@ import type {
   WorktreeListResponse,
   WorktreeOpenResponse,
 } from "./types";
+import type { SubscribeBody } from "./push";
 
 export type { NotifyPrefs, UpdateInfo };
 
@@ -650,6 +651,11 @@ export function openWorktree(
  */
 export function fetchConfig(): Promise<BridgeConfig> {
   return req<BridgeConfig>("/api/config");
+}
+
+/** Register push through the same timeout, authentication and error handling as the other APIs. */
+export function registerPushSubscription(body: SubscribeBody): Promise<void> {
+  return req<void>("/api/subscribe", { method: "POST", body: JSON.stringify(body) });
 }
 
 /**

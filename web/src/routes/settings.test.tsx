@@ -1,9 +1,20 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { type DevicesData } from "@/lib/loaders";
 import { withHeaderHost } from "@/test/header-host";
 import { SettingsRoute } from "./settings";
+import { usePushControl } from "@/hooks/use-push";
+
+vi.mock("@/hooks/use-push", () => ({ usePushControl: vi.fn() }));
+
+beforeEach(() => {
+  vi.mocked(usePushControl).mockReturnValue({
+    state: { availability: "ready", subscribed: false, userDisabled: true },
+    busy: false,
+    setEnabled: vi.fn().mockResolvedValue({ ok: true }),
+  });
+});
 
 // Settings' HEADER, and only its header.
 //
@@ -69,5 +80,44 @@ describe("SettingsRoute — the update surfaces", () => {
     // Both of those live on /settings/updates now.
     expect(screen.queryByText("Update Collie")).toBeNull();
     expect(screen.queryByRole("button", { name: "Check for updates" })).toBeNull();
+  });
+});
+
+describe("SettingsRoute — recovering push setup", () => {
+  it("shows a thrown setup error and lets the user retry", async () => {
+    const setEnabled = vi.fn()
+      .mockRejectedValueOnce(new Error("Registration failed - push service error"))
+      .mockResolvedValueOnce({ ok: true });
+    vi.mocked(usePushControl).mockReturnValue({
+      state: { availability: "ready", subscribed: false, userDisabled: true },
+      busy: false, setEnabled,
+    });
+    renderSettings();
+    const toggle = await screen.findByRole("switch", { name: "Push notifications" });
+    fireEvent.click(toggle);
+    expect(await screen.findByRole("alert")).toHaveTextContent("push service error");
+    expect(toggle).toBeEnabled();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+    expect(setEnabled).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps the toggle retryable when configuration could not be checked", async () => {
+    vi.mocked(usePushControl).mockReturnValue({
+      state: { availability: "unavailable", subscribed: false, userDisabled: true },
+      busy: false, setEnabled: vi.fn().mockResolvedValue({ ok: true }),
+    });
+    renderSettings();
+    expect(await screen.findByRole("switch", { name: "Push notifications" })).toBeEnabled();
+    expect(screen.getByText(/Could not check notification setup/)).toBeInTheDocument();
+  });
+
+  it("keeps a denied browser permission from being treated as a transient failure", async () => {
+    vi.mocked(usePushControl).mockReturnValue({
+      state: { availability: "denied", subscribed: false, userDisabled: true },
+      busy: false, setEnabled: vi.fn().mockResolvedValue({ ok: true }),
+    });
+    renderSettings();
+    expect(await screen.findByRole("switch", { name: "Push notifications" })).toBeDisabled();
   });
 });

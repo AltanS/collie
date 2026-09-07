@@ -47,6 +47,8 @@ export const de: Dictionary = {
     "Benachrichtigungen sind blockiert. In den Browsereinstellungen aktivieren.",
   "settings.push.reason.unsupported": "Dieser Browser unterstützt keine Push-Benachrichtigungen.",
   "settings.push.reason.default": "Push-Benachrichtigungen konnten nicht aktiviert werden.",
+  "settings.push.reason.timeout": "Zeitüberschreitung beim Einrichten der Benachrichtigungen. Prüfe, ob dieses Gerät den Push-Dienst erreichen kann, und versuche es erneut.",
+  "settings.push.availability.unavailable": "Die Benachrichtigungseinstellungen konnten nicht geprüft werden. Prüfe deine Verbindung oder melde dich erneut an und versuche es noch einmal.",
   "settings.push.availability.insecure":
     "Über HTTP nicht verfügbar. Collie über HTTPS bereitstellen, um Push zu nutzen.",
   "settings.push.availability.serverOff":

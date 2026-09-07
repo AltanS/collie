@@ -46,6 +46,8 @@ export const zh: Dictionary = {
   "settings.push.reason.denied": "通知权限已被拒绝，请在浏览器设置中启用。",
   "settings.push.reason.unsupported": "当前浏览器不支持推送通知。",
   "settings.push.reason.default": "无法启用推送通知。",
+  "settings.push.reason.timeout": "通知设置超时。请确认当前设备能连接推送服务，然后重试。",
+  "settings.push.availability.unavailable": "无法检查通知配置。请检查网络或重新登录，然后重试。",
   "settings.push.availability.insecure": "普通 HTTP 环境不可用。请通过 HTTPS 部署 Collie 以启用推送。",
   "settings.push.availability.serverOff": "网桥缺少 VAPID 密钥配置，服务端已禁用推送功能。",
   "settings.push.availability.denied": "当前站点的通知权限已被拒绝。请在浏览器设置中重新允许。",

@@ -46,6 +46,8 @@ export const es: Dictionary = {
     "Notificaciones bloqueadas en los permisos del navegador.",
   "settings.push.reason.unsupported": "Este navegador no soporta Web Push.",
   "settings.push.reason.default": "No se pudieron activar las notificaciones push.",
+  "settings.push.reason.timeout": "Se agotó el tiempo para configurar las notificaciones. Comprueba que este dispositivo pueda conectarse al servicio push y vuelve a intentarlo.",
+  "settings.push.availability.unavailable": "No se pudo comprobar la configuración de notificaciones. Revisa la conexión o inicia sesión de nuevo y vuelve a intentarlo.",
   "settings.push.availability.insecure":
     "No disponible en HTTP. Sirve Collie sobre HTTPS para habilitar push.",
   "settings.push.availability.serverOff":

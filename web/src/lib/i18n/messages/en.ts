@@ -56,6 +56,8 @@ export const en = {
     "Notifications are blocked — enable them in your browser settings.",
   "settings.push.reason.unsupported": "This browser doesn't support push notifications.",
   "settings.push.reason.default": "Couldn't enable push notifications.",
+  "settings.push.reason.timeout": "Notification setup timed out. Check that this device can reach its push service, then try again.",
+  "settings.push.availability.unavailable": "Could not check notification setup. Check your connection or sign in again, then retry.",
   "settings.push.availability.insecure":
     "Unavailable over plain HTTP — serve Collie over HTTPS to enable push.",
   "settings.push.availability.serverOff":

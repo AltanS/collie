@@ -46,6 +46,8 @@ export const ko: Dictionary = {
   "settings.push.reason.denied": "알림 권한이 차단되어 있습니다. 브라우저 설정에서 활성화하십시오.",
   "settings.push.reason.unsupported": "이 브라우저는 푸시 알림을 지원하지 않습니다.",
   "settings.push.reason.default": "푸시 알림을 활성화할 수 없습니다.",
+  "settings.push.reason.timeout": "알림 설정 시간이 초과되었습니다. 이 기기에서 푸시 서비스에 연결할 수 있는지 확인한 후 다시 시도하세요.",
+  "settings.push.availability.unavailable": "알림 설정을 확인할 수 없습니다. 연결을 확인하거나 다시 로그인한 후 다시 시도하세요.",
   "settings.push.availability.insecure":
     "HTTP 연결에서는 푸시 알림을 지원하지 않습니다. HTTPS로 Collie를 호스팅하십시오.",
   "settings.push.availability.serverOff":

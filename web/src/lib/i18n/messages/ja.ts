@@ -45,6 +45,8 @@ export const ja: Dictionary = {
   "settings.push.reason.denied": "通知がブロックされています。ブラウザの設定で許可してください。",
   "settings.push.reason.unsupported": "使用中のブラウザはプッシュ通知に対応していません。",
   "settings.push.reason.default": "プッシュ通知を有効化できませんでした。",
+  "settings.push.reason.timeout": "通知の設定がタイムアウトしました。この端末がプッシュサービスに接続できることを確認して、もう一度お試しください。",
+  "settings.push.availability.unavailable": "通知の設定を確認できませんでした。接続を確認するか、再度ログインしてからお試しください。",
   "settings.push.availability.insecure":
     "HTTP 経由では利用できません。プッシュ通知には HTTPS 配信が必要です。",
   "settings.push.availability.serverOff":
