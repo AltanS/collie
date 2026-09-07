@@ -57,9 +57,22 @@
       forEachSystem = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
     in
     {
+      # `packages.<system>.collie` is Collie itself, and it WRAPS the release tarball rather than
+      # building it: `fetchurl` by the sha256 in packaging/nix/sources.json, which comes from that
+      # release's own integrity manifest, then `autoPatchelfHook` on Linux so the binary finds an
+      # interpreter on NixOS, then the whole tarball root into `$out/lib/collie` with
+      # `$out/bin/collie` as a symlink into it — the Arch package's layout, because bridge/root.ts
+      # resolves the install root through that symlink.
+      #
+      # A SOURCE BUILD IS DELIBERATELY OUT OF SCOPE. Installing the dependencies with `bun` needs
+      # the network and a Nix derivation has none, so a source build would mean vendoring every
+      # dependency or dropping the sandbox. The derivation and the rest of that reasoning live in
+      # packaging/nix/collie.nix; `packages.<system>.bun` below is the pinned build tool, which is a
+      # different thing and stays.
       packages = forEachSystem (pkgs: {
+        collie = pkgs.callPackage ./packaging/nix/collie.nix { };
         bun = pinBun pkgs;
-        default = pinBun pkgs;
+        default = pkgs.callPackage ./packaging/nix/collie.nix { };
       });
 
       devShells = forEachSystem (pkgs: {
