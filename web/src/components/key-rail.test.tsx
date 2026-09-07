@@ -9,9 +9,9 @@ import type { PinSide } from "@/hooks/use-pin-side";
 // mislabelled cap sends the wrong key into a live terminal. These pin the token, the refusal, the
 // pad's toggle contract and the edge the pin docks to.
 function renderRail(overrides: Partial<React.ComponentProps<typeof KeyRail>> = {}) {
-  const props = {
+  const props: React.ComponentProps<typeof KeyRail> = {
     onSend: vi.fn(async () => true),
-    unsupportedKeys: [] as readonly string[],
+    unsupportedKeys: [],
     directActive: false,
     onOpenPad: vi.fn(),
     padOpen: false,

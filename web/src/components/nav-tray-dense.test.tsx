@@ -41,22 +41,22 @@ describe("NavTrayDense", () => {
 
   it("two lanes: terminal left, numpad+F right, F-keys in one lane", () => {
     render(<NavTrayDense onSend={vi.fn()} />);
-    const left = document.querySelector('[data-slot="key-lane-left"]');
-    const right = document.querySelector('[data-slot="key-lane-right"]');
+    const left = document.querySelector<HTMLElement>('[data-slot="key-lane-left"]');
+    const right = document.querySelector<HTMLElement>('[data-slot="key-lane-right"]');
     expect(left).not.toBeNull();
     expect(right).not.toBeNull();
 
     // Control lives left, digits and F-keys right — never the reverse.
-    expect(within(left as HTMLElement).getByRole("button", { name: "Esc" })).toBeInTheDocument();
-    expect(within(right as HTMLElement).queryByRole("button", { name: "Esc" })).toBeNull();
+    expect(within(left!).getByRole("button", { name: "Esc" })).toBeInTheDocument();
+    expect(within(right!).queryByRole("button", { name: "Esc" })).toBeNull();
     for (const k of ["F1", "F7", "F12"]) {
-      expect(within(right as HTMLElement).getByRole("button", { name: k })).toBeInTheDocument();
-      expect(within(left as HTMLElement).queryByRole("button", { name: k })).toBeNull();
+      expect(within(right!).getByRole("button", { name: k })).toBeInTheDocument();
+      expect(within(left!).queryByRole("button", { name: k })).toBeNull();
     }
 
     // The numpad reads 7-8-9 on top with 0 above the dot, like hardware.
     const order = ["7", "8", "9", "/", "4", "1", "0", "."].map((n) =>
-      within(right as HTMLElement).getByRole("button", { name: n }),
+      within(right!).getByRole("button", { name: n }),
     );
     for (let i = 1; i < order.length; i++) {
       expect(
@@ -488,6 +488,7 @@ describe("NavTrayDense — hold to repeat", () => {
 
   /** Total keys delivered across every call, and the per-call arrays. */
   function delivered(onSend: ReturnType<typeof vi.fn>) {
+    // SAFETY: every call to this mock is NavTrayDense's own `onSend(keys: string[])`.
     const calls = onSend.mock.calls.map((c) => c[0] as string[]);
     return { calls, total: calls.reduce((n, a) => n + a.length, 0) };
   }

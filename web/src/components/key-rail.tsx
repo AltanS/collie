@@ -29,7 +29,9 @@ const DIRECT_KEYS = ["Backspace"] as const;
 // Glyph caps for the arrows and Space: text names would eat the row. Plain symbols need no
 // dictionary entry (key caps are excluded), and the aria-label keeps the wire name for readers
 // and tests.
-const GLYPHS: Record<string, string> = { Up: "↑", Down: "↓", Left: "←", Right: "→", Space: "␣" };
+// `satisfies`, not an annotation: the keys stay known, so a lookup for a cap that has no glyph is
+// typed as such rather than promised a string (anti-slop/no-known-value-widening).
+const GLYPHS = { Up: "↑", Down: "↓", Left: "←", Right: "→", Space: "␣" } satisfies Record<string, string>;
 
 interface KeyRailProps {
   /** Resolves true when the bridge accepted the keys — drives the ✓ echo. */
@@ -90,7 +92,9 @@ export function KeyRail({ onSend, unsupportedKeys, directActive, onOpenPad, padO
           // Greyed rather than removed: the rail order is fixed muscle memory, and pulling a key
           // out would move every key after it — the same call the dock's rail makes.
           const refused = !keysSendable([k], unsupportedKeys);
-          const glyph = GLYPHS[k];
+          // SAFETY: the `in` test on the line below is the check — the key is a GLYPHS key there.
+          // Most caps have no glyph and keep their word, so the lookup is asked, not assumed.
+          const glyph = k in GLYPHS ? GLYPHS[k as keyof typeof GLYPHS] : undefined;
           return (
             <Button
               key={k}

@@ -211,7 +211,10 @@ export function Collapse({ open, children, className, instant }: CollapseProps) 
     setSettled(false);
     const leave = window.setTimeout(() => setRendered(false), ms);
     return () => clearTimeout(leave);
-  }, [open, ms, reduced]);
+    // `instant` is read on both edges above, so it belongs here: a caller flipping it mid-life
+    // (the density toggle does, for the dock site) must re-run this rather than keep the
+    // choreography it was mounted with.
+  }, [open, ms, reduced, instant]);
 
   if (!rendered) return null;
 
