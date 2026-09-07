@@ -204,9 +204,12 @@ describe("sendGuardedReply", () => {
     });
 
     expect(out).toEqual({ status: "sent" });
+    // The submit carries the region the verifying read saw. Codex supplies `composerPrompt`, so the
+    // binding applies here as it does on every other adapter that does — this assertion is the
+    // meeting point of the two fixes and is written out rather than loosened.
     expect(calls).toEqual([
       { text: "continue the release checklist", submit: false },
-      { text: "", submit: true },
+      { text: "", submit: true, expected_prompt: "› continue the release checklist" },
     ]);
   });
 
