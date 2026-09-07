@@ -792,6 +792,7 @@ export const ja: Dictionary = {
   "settings.updateCard.majorConfirmAction": "{version} にメジャー更新する",
   "settings.updateCard.cancel": "キャンセル",
   "settings.updateCard.starting": "開始中…",
+  "settings.updateCard.startingSlow": "Still starting. The host has not reported the run yet.",
   "settings.updateCard.state.preflight": "このマシンを確認中…",
   "settings.updateCard.state.staging": "{version} をステージング中…",
   "settings.updateCard.state.restarting": "再起動中。停止障害ではありません。",

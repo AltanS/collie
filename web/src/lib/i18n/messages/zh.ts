@@ -770,6 +770,7 @@ export const zh: Dictionary = {
   "settings.updateCard.majorConfirmAction": "确认升级至 {version}",
   "settings.updateCard.cancel": "取消",
   "settings.updateCard.starting": "正在启动…",
+  "settings.updateCard.startingSlow": "Still starting. The host has not reported the run yet.",
   "settings.updateCard.state.preflight": "正在检查当前机器…",
   "settings.updateCard.state.staging": "正在暂存 {version}…",
   "settings.updateCard.state.restarting": "正在重启，服务未中断。",

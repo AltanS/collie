@@ -784,6 +784,7 @@ export const ko: Dictionary = {
   "settings.updateCard.majorConfirmAction": "{version} 메이저 버전으로 업데이트",
   "settings.updateCard.cancel": "취소",
   "settings.updateCard.starting": "시작 중…",
+  "settings.updateCard.startingSlow": "Still starting. The host has not reported the run yet.",
   "settings.updateCard.state.preflight": "머신 점검 중…",
   "settings.updateCard.state.staging": "{version} 준비 중…",
   "settings.updateCard.state.restarting": "재시작 중입니다. 서비스 장애가 아닙니다.",

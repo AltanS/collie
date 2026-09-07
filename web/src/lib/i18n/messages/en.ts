@@ -818,6 +818,7 @@ export const en = {
   "settings.updateCard.majorConfirmAction": "Yes, cross to {version}",
   "settings.updateCard.cancel": "Cancel",
   "settings.updateCard.starting": "Starting…",
+  "settings.updateCard.startingSlow": "Still starting. The host has not reported the run yet.",
   "settings.updateCard.state.preflight": "Checking this machine…",
   "settings.updateCard.state.staging": "Staging {version}…",
   "settings.updateCard.state.restarting": "Restarting. This is not an outage.",

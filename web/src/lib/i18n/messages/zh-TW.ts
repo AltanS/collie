@@ -766,6 +766,7 @@ export const zhTW: Dictionary = {
   "settings.updateCard.majorConfirmAction": "確認升級至 {version}",
   "settings.updateCard.cancel": "取消",
   "settings.updateCard.starting": "正在啟動…",
+  "settings.updateCard.startingSlow": "Still starting. The host has not reported the run yet.",
   "settings.updateCard.state.preflight": "正在檢查目前機器…",
   "settings.updateCard.state.staging": "正在暫存 {version}…",
   "settings.updateCard.state.restarting": "正在重新啟動，服務未中斷。",

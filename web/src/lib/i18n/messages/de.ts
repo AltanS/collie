@@ -805,6 +805,7 @@ export const de: Dictionary = {
   "settings.updateCard.majorConfirmAction": "Ja, Wechsel zu {version}",
   "settings.updateCard.cancel": "Abbrechen",
   "settings.updateCard.starting": "Wird gestartet…",
+  "settings.updateCard.startingSlow": "Still starting. The host has not reported the run yet.",
   "settings.updateCard.state.preflight": "Rechner wird geprüft…",
   "settings.updateCard.state.staging": "{version} wird vorbereitet…",
   "settings.updateCard.state.restarting": "Neustart läuft. Dies ist kein Ausfall.",

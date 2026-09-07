@@ -801,6 +801,7 @@ export const es: Dictionary = {
   "settings.updateCard.majorConfirmAction": "Sí, pasar a {version}",
   "settings.updateCard.cancel": "Cancelar",
   "settings.updateCard.starting": "Iniciando…",
+  "settings.updateCard.startingSlow": "Still starting. The host has not reported the run yet.",
   "settings.updateCard.state.preflight": "Comprobando este equipo…",
   "settings.updateCard.state.staging": "Preparando {version}…",
   "settings.updateCard.state.restarting": "Reiniciando. No es una interrupción del servicio.",

@@ -72,6 +72,23 @@ const IN_FLIGHT: ReadonlySet<UpdateRunState> = new Set<UpdateRunState>([
  *  cadence is resolved from what the operator is doing, which is not this. */
 const RUN_POLL_MS = 2000;
 
+/**
+ * How long the card waits, after its own tap, before it says the start is TAKING A WHILE.
+ *
+ * A DISPLAY threshold and nothing else. It was a control-unlock once — the button came back after
+ * 30s — and that was a guess about how long an update takes dressed up as a safety valve: an
+ * in-place checkout writes its run record only AFTER it has built (`recordInPlaceRun` in
+ * cli/update.ts), and a build on a slow host outlives any number this file could pick. Unlocking
+ * there would re-open the double-tap window this state exists to close, on exactly the machines
+ * least able to afford it.
+ *
+ * What actually guards a second tap is the bridge: `POST /api/update` holds a lock and answers
+ * `update.in_progress`. The disabled button is a courtesy, so it may stay disabled for as long as
+ * the run takes; what it may NOT do is stay disabled and say nothing, which is what the second
+ * sentence below is for.
+ */
+const STARTED_SLOW_MS = 60_000;
+
 /** The freshest of the records this card can hold. `updatedAt` decides — the standby door and the
  *  front door are two readers of ONE file, so the newer reading is simply the newer reading. */
 function freshest(...runs: (UpdateRun | undefined)[]): UpdateRun | undefined {
@@ -116,6 +133,14 @@ export function UpdateCard() {
   const [standbyRun, setStandbyRun] = useState<UpdateRun | undefined>();
   const [confirming, setConfirming] = useState<Confirm | null>(null);
   const [busy, setBusy] = useState(false);
+  /**
+   * THE GAP THE SECOND TAP FITTED IN. `POST /api/update` answers before the detached updater has
+   * written anything, so for a beat there is no record at all: `running` was false, the button was
+   * live, and the band overhead already said "Starting update…". This is the card's own half of the
+   * band's (s), held HERE rather than read off `lib/update-ribbon`'s store — the card must go inert
+   * on its own tap, not because some other component happens to be mounted and to clear a flag.
+   */
+  const [started, setStarted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
 
@@ -129,6 +154,10 @@ export function UpdateCard() {
   const run = freshest(standbyRun, snapshot?.run, check?.run);
   const runState = run?.state;
   const running = runState !== undefined && IN_FLIGHT.has(runState);
+  // Nothing on this card may be tapped while an update is being asked for, started, or driven.
+  // ONE reading, used by every control below, so a control cannot be forgotten in one of the three.
+  // `started` is the middle of those three and the one that was missing — see it below.
+  const moving = busy || started || running;
 
   // Whether this machine leads anybody. The roster answers it on every snapshot; the check's own
   // `pack` array answers it better, when the bridge is new enough to send one. Either is enough to
@@ -187,6 +216,27 @@ export function UpdateCard() {
     noteUpdateRun(runState);
   }, [runState]);
 
+  // (s) ends ONE way: the record speaks, and `running` takes the card from there. A POST that was
+  // accepted and then produced no record at all leaves the card inert — and that is the honest
+  // answer, because this card cannot tell that case apart from an update that is simply still
+  // building. The operator is not trapped: leaving `/settings/updates` unmounts this card, so
+  // coming back is the reset, and the bridge refuses a genuine second start on its own lock anyway.
+  useEffect(() => {
+    if (!started) return;
+    if (runState !== undefined && runState !== "idle") setStarted(false);
+  }, [started, runState]);
+
+  // The second sentence, on a timer that changes only WORDS. See {@link STARTED_SLOW_MS}.
+  const [startSlow, setStartSlow] = useState(false);
+  useEffect(() => {
+    if (!started) {
+      setStartSlow(false);
+      return;
+    }
+    const timer = setTimeout(() => setStartSlow(true), STARTED_SLOW_MS);
+    return () => clearTimeout(timer);
+  }, [started]);
+
   // The run poll. Only while a run is in flight, and it treats a failed front-door read as EXPECTED:
   // the bridge is restarting because that is what was asked for.
   useEffect(() => {
@@ -224,6 +274,7 @@ export function UpdateCard() {
       // immediately and hands off to a detached process, so the run record says nothing for a beat.
       // A silent band in that beat reads as "nothing happened" about the thing just consented to.
       noteUpdateStarted();
+      setStarted(true);
       setConfirming(null);
       if (answer.run !== null) setStandbyRun(answer.run);
       // Pull the snapshot now rather than waiting out the poll gap: the operator has just tapped,
@@ -234,6 +285,7 @@ export function UpdateCard() {
       // double tap lands here as `update.in_progress`, which is the idempotence being reported
       // rather than a second update being started.
       clearUpdateStarted(); // nothing was started, so the band must not say one was
+      setStarted(false);
       setError(describeThrownError(thrown));
       setConfirming(null);
     } finally {
@@ -316,39 +368,52 @@ export function UpdateCard() {
         </div>
       </div>
 
-      {run !== undefined && run.state !== "idle" && (
-        <RunSection
-          run={run}
-          // Retry re-opens the SAME confirm the first attempt went through. A dead end with no next
-          // action is what sends the operator to a terminal they may not have.
-          onRetry={() =>
-            setConfirming({
-              kind: "single",
-              version: run.to ?? latest ?? current,
-              major: false,
-              peersOnly: false,
-            })
-          }
-        />
-      )}
+      {/* EVERY ARRIVAL ON THIS CARD IS A `Collapse` (DESIGN.md §7, hard rule 1). The three sections
+          below are all async: the run record lands on a poll, and the peer lines and the preflight
+          land together when `GET /api/update/check` answers — which is a `doctor` and a `git`
+          away, so it is a second or two AFTER the card first paints. Mounted bare, each of them
+          teleported the action row down the screen while the operator's thumb was already on the
+          way to it. Wrapped, the row glides. */}
+      <Collapse open={run !== undefined && run.state !== "idle"}>
+        {run !== undefined && run.state !== "idle" ? (
+          <RunSection
+            run={run}
+            // Retry re-opens the SAME confirm the first attempt went through. A dead end with no next
+            // action is what sends the operator to a terminal they may not have.
+            onRetry={() =>
+              setConfirming({
+                kind: "single",
+                version: run.to ?? latest ?? current,
+                major: false,
+                peersOnly: false,
+              })
+            }
+          />
+        ) : null}
+      </Collapse>
 
       {/* The pack, as lines in this card. Drawn whether or not a run is in flight — a peer going
           quiet is exactly what the operator opened this page to see. On a solo install there is
           nothing here and the card grows no height at all. */}
-      {rows.length > 0 && <PeerSection rows={rows} />}
+      <Collapse open={rows.length > 0}>{rows.length > 0 ? <PeerSection rows={rows} /> : null}</Collapse>
 
-      {!running && (
-        <>
-          {preflight !== null && preflight.checks.length > 0 && (
-            <PreflightSection preflight={preflight} updateAvailable={updateAvailable} />
-          )}
+      {/* THE ACTION ROW STAYS PUT FOR THE WHOLE RUN. It used to unmount the moment a record
+          appeared, which is the same fault as the arrivals above wearing the opposite sign: the
+          card collapsed under the thumb at the one moment the operator was watching it. It is
+          DISABLED instead — `moving` covers the tap, the gap before the first record, and the run
+          itself, so there is no window in which the button can be pressed twice. */}
+      <Collapse open={preflight !== null && preflight.checks.length > 0}>
+        {preflight !== null && preflight.checks.length > 0 ? (
+          <PreflightSection preflight={preflight} updateAvailable={updateAvailable} />
+        ) : null}
+      </Collapse>
 
-          {confirming !== null ? (
+      {confirming !== null ? (
             <div className="border-t border-border p-4">
               <div className="text-sm font-medium">{confirmTitle(confirming)}</div>
               <p className="mt-1 text-sm text-muted-foreground">{confirmBody(confirming, packageManaged)}</p>
               <div className="mt-3 flex items-center gap-2">
-                <Button size="sm" disabled={busy} onClick={() => void begin(confirming)}>
+                <Button size="sm" disabled={moving} onClick={() => void begin(confirming)}>
                   {busy && <Loader2 className="size-4 animate-spin" />}
                   {confirmAction(confirming)}
                 </Button>
@@ -374,7 +439,7 @@ export function UpdateCard() {
                   {action !== "none" && !(packageManaged && action !== "retry-pack") && (
                     <Button
                       size="sm"
-                      disabled={blocked && action !== "retry-pack"}
+                      disabled={moving || (blocked && action !== "retry-pack")}
                       onClick={() =>
                         setConfirming(
                           action === "retry-pack"
@@ -398,7 +463,7 @@ export function UpdateCard() {
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={blocked}
+                      disabled={moving || blocked}
                       onClick={() =>
                         setConfirming({
                           kind: "major",
@@ -415,7 +480,7 @@ export function UpdateCard() {
                       push — and there is nothing to snooze once this machine is already current, so
                       a retry-only state grows no ghost row. */}
                   {!dismissed && updateAvailable && (
-                    <Button variant="ghost" size="sm" onClick={() => void dismiss()}>
+                    <Button variant="ghost" size="sm" disabled={moving} onClick={() => void dismiss()}>
                       {t("settings.updateCard.dismiss")}
                     </Button>
                   )}
@@ -427,7 +492,23 @@ export function UpdateCard() {
                     why THIS machine is not moving, and that is exactly the question a "Retry pack
                     update" offered to a lead with a release waiting raises. Suppressing it there was
                     how a packaged lead ended up with a button and no account of itself. */}
-                {blocked && <p className="text-xs text-status-blocked">{blockedReason}</p>}
+                {/* NOT while the card is inert. The sentence explains why a tap would not
+                    succeed, and there is no tap to explain while one is already running — and
+                    during the restart gap the preflight read fails BECAUSE the bridge is down, so
+                    printing "the preflight couldn't be run" there draws the outage this card exists
+                    not to draw. */}
+                {blocked && !moving && <p className="text-xs text-status-blocked">{blockedReason}</p>}
+                {/* A DISABLED BUTTON MUST NOT BE SILENT. `running` has the run section above to
+                    narrate it; the gap before the first record had nothing, so the button simply
+                    went grey and stayed grey with no account of itself. */}
+                {started && (
+                  <p className="flex items-center gap-1.5 text-xs text-status-working">
+                    <Loader2 aria-hidden="true" className="size-3 shrink-0 animate-spin" />
+                    {startSlow
+                      ? t("settings.updateCard.startingSlow")
+                      : t("settings.updateCard.starting")}
+                  </p>
+                )}
                 {dismissed && <p className="text-xs text-muted-foreground">{t("settings.updateCard.dismissed")}</p>}
                 {majorAvailable !== null && (
                   <p className="text-xs text-muted-foreground">
@@ -437,8 +518,6 @@ export function UpdateCard() {
               </div>
             )
           )}
-        </>
-      )}
 
       {error !== null && <p className="border-t border-border px-4 py-2.5 text-xs text-status-blocked">{error}</p>}
     </Card>
