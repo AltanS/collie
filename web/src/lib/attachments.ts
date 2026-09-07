@@ -41,6 +41,27 @@ export function acceptAttribute(limits: UploadCapability): string {
 }
 
 /**
+ * The `accept` for the PHOTOS half of the picker — `image/*`, and nothing beside it.
+ *
+ * A phone offers the camera roll only when it can map EVERY entry in `accept` to a gallery. The
+ * extension list {@link acceptAttribute} builds is what makes a `.md` pickable, and it is also what
+ * makes both Android and iOS drop the gallery and open the file browser alone. The two asks cannot
+ * share one input, so they are two, and the attach button asks which one first.
+ */
+export const PHOTO_ACCEPT = "image/*";
+
+/**
+ * Does this host take anything that is not an image?
+ *
+ * It decides whether the attach button ASKS at all. A bridge that publishes no text types — every
+ * bridge older than the field, through {@link uploadLimits}'s fallback — has one answer to give, so
+ * the button opens the camera roll directly and the operator never sees a choice with one option.
+ */
+export function offersFiles(limits: UploadCapability): boolean {
+  return limits.textTypes.length > 0;
+}
+
+/**
  * Whether this file is worth sending — the same two questions the bridge asks, minus the byte sniff
  * it alone can do. `null` means send it; a string is the reason not to, keyed for `t()`.
  *

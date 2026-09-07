@@ -2127,9 +2127,8 @@ describe("Composer — reload-guard hold (no-SW self-update safety gate)", () =>
     expect(isReloadHeld()).toBe(false);
 
     const file = new File(["x"], "shot.png", { type: "image/png" });
-    // SAFETY: the composer renders exactly one `input[type=file]` (its upload trigger), and
-    // `querySelector` is typed `Element | null` for an arbitrary selector string.
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    // SAFETY: `getByTestId` throws when the element is absent, and this id is on an `<input>`.
+    const fileInput = screen.getByTestId("attach-files") as HTMLInputElement;
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     await waitFor(() => expect(isReloadHeld()).toBe(true)); // uploading → held
@@ -2178,10 +2177,11 @@ describe("Composer — attachment limits published by this bridge", () => {
     );
   }
 
+  // The FILES input, not the photos one. The composer renders two (lib/attachments.ts explains
+  // why); the photos input's `accept` is the constant `image/*` and says nothing about what this
+  // bridge published, so every assertion here is about the second.
   async function waitForPublishedAccept(accept: string) {
-    await waitFor(() =>
-      expect(document.querySelector('input[type="file"]')).toHaveAttribute("accept", accept),
-    );
+    await waitFor(() => expect(screen.getByTestId("attach-files")).toHaveAttribute("accept", accept));
   }
 
   it("refuses a file larger than the published cap and never calls the upload API", async () => {
@@ -2197,9 +2197,8 @@ describe("Composer — attachment limits published by this bridge", () => {
     await waitForPublishedAccept("image/*,.png");
 
     const file = new File(["x".repeat(2 * 1024 * 1024)], "shot.png", { type: "image/png" });
-    // SAFETY: the composer renders exactly one `input[type=file]` (its upload trigger), and
-    // `querySelector` is typed `Element | null` for an arbitrary selector string.
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    // SAFETY: `getByTestId` throws when the element is absent, and this id is on an `<input>`.
+    const fileInput = screen.getByTestId("attach-files") as HTMLInputElement;
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent(/bigger than 1 MB/));
@@ -2215,9 +2214,8 @@ describe("Composer — attachment limits published by this bridge", () => {
     await waitForPublishedAccept("image/*,.png,.md");
 
     const file = new File(["# hi"], "notes.md", { type: "text/markdown" });
-    // SAFETY: the composer renders exactly one `input[type=file]` (its upload trigger), and
-    // `querySelector` is typed `Element | null` for an arbitrary selector string.
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    // SAFETY: `getByTestId` throws when the element is absent, and this id is on an `<input>`.
+    const fileInput = screen.getByTestId("attach-files") as HTMLInputElement;
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     const box = screen.getByPlaceholderText(/type a reply/i);
@@ -2237,9 +2235,8 @@ describe("Composer — attachment limits published by this bridge", () => {
     await waitForPublishedAccept("image/*,.png,.md");
 
     const file = new File(["puts 1"], "app.rb", { type: "text/x-ruby" });
-    // SAFETY: the composer renders exactly one `input[type=file]` (its upload trigger), and
-    // `querySelector` is typed `Element | null` for an arbitrary selector string.
-    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+    // SAFETY: `getByTestId` throws when the element is absent, and this id is on an `<input>`.
+    const fileInput = screen.getByTestId("attach-files") as HTMLInputElement;
     fireEvent.change(fileInput, { target: { files: [file] } });
 
     await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("Collie can't attach app.rb."));
@@ -2780,5 +2777,114 @@ describe("Composer — a long upload path cannot widen the field", () => {
 
     await waitFor(() => expect(box).toHaveValue(path));
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+  });
+});
+
+// ── THE PICKER ASKS WHICH, BECAUSE ONE INPUT CANNOT ─────────────────────────────────────────────
+//
+// A phone offers the camera roll only when every entry in `accept` maps to a gallery, so the
+// extension list that makes a `.md` pickable is what hid the gallery: the attach button opened the
+// file browser and nothing else. Two inputs, and one question in front of them.
+describe("Composer — the attach picker offers photos as well as files", () => {
+  beforeEach(() => __resetOperatorCommands());
+  afterEach(() => __resetOperatorCommands());
+
+  function publishUpload(upload: { maxBytes: number; imageTypes: string[]; textTypes: string[] }) {
+    server.use(
+      http.get("/api/config", () => HttpResponse.json({ push: false, vapidPublicKey: "", upload })),
+    );
+  }
+
+  it("the photos input asks for image/* alone, whatever else the bridge publishes", async () => {
+    publishUpload({ maxBytes: 10 * 1024 * 1024, imageTypes: ["png"], textTypes: ["md", "ts"] });
+    renderComposer();
+    await waitFor(() =>
+      expect(screen.getByTestId("attach-files")).toHaveAttribute("accept", "image/*,.png,.md,.ts"),
+    );
+    expect(screen.getByTestId("attach-photos")).toHaveAttribute("accept", "image/*");
+  });
+
+  it("flashes the icon and buzzes on the tap, so the press is felt before the sheet arrives", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const buzzes: unknown[] = [];
+    // `navigator.vibrate` is undefined in jsdom, which is also how iOS Safari behaves — so the
+    // stub is what makes the call observable, not a change in behaviour.
+    Object.defineProperty(navigator, "vibrate", {
+      configurable: true,
+      value: (ms: number) => {
+        buzzes.push(ms);
+        return true;
+      },
+    });
+    publishUpload({ maxBytes: 10 * 1024 * 1024, imageTypes: ["png"], textTypes: ["md"] });
+    renderComposer();
+    await waitFor(() =>
+      expect(screen.getByTestId("attach-files")).toHaveAttribute("accept", "image/*,.png,.md"),
+    );
+
+    // Anchored on whitespace: the ghost variant carries `hover:bg-accent` at rest, and a bare
+    // substring match would read that as the pressed tone on every render.
+    const PRESSED = /(^|\s)bg-accent(\s|$)/;
+    const attach = screen.getByRole("button", { name: "Attach file" });
+    expect(attach.className).not.toMatch(PRESSED);
+    await user.click(attach);
+    expect(buzzes).toHaveLength(1);
+    expect(attach.className).toMatch(PRESSED);
+
+    // The flash is a timer, not a state the button can get stuck in.
+    await vi.advanceTimersByTimeAsync(400);
+    await waitFor(() => expect(attach.className).not.toMatch(PRESSED));
+  });
+
+  it("opens the two-row sheet on a bridge that takes text as well", async () => {
+    const user = userEvent.setup();
+    publishUpload({ maxBytes: 10 * 1024 * 1024, imageTypes: ["png"], textTypes: ["md"] });
+    renderComposer();
+    await waitFor(() =>
+      expect(screen.getByTestId("attach-files")).toHaveAttribute("accept", "image/*,.png,.md"),
+    );
+    await user.click(screen.getByRole("button", { name: "Attach file" }));
+    expect(await screen.findByRole("button", { name: "Photos" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Files" })).toBeInTheDocument();
+  });
+
+  it("a photos-only bridge opens the camera roll directly — no sheet with one answer in it", async () => {
+    const user = userEvent.setup();
+    publishUpload({ maxBytes: 10 * 1024 * 1024, imageTypes: ["png"], textTypes: [] });
+    renderComposer();
+    await waitFor(() =>
+      expect(screen.getByTestId("attach-files")).toHaveAttribute("accept", "image/*,.png"),
+    );
+    let opened: string | null = null;
+    for (const id of ["attach-photos", "attach-files"]) {
+      screen.getByTestId(id).addEventListener("click", () => {
+        opened = id;
+      });
+    }
+    await user.click(screen.getByRole("button", { name: "Attach file" }));
+    expect(screen.queryByRole("button", { name: "Photos" })).not.toBeInTheDocument();
+    expect(opened).toBe("attach-photos");
+  });
+
+  it("each row opens its own input, and the sheet closes behind it", async () => {
+    const user = userEvent.setup();
+    publishUpload({ maxBytes: 10 * 1024 * 1024, imageTypes: ["png"], textTypes: ["md"] });
+    renderComposer();
+    await waitFor(() =>
+      expect(screen.getByTestId("attach-files")).toHaveAttribute("accept", "image/*,.png,.md"),
+    );
+    const opened: string[] = [];
+    for (const id of ["attach-photos", "attach-files"]) {
+      screen.getByTestId(id).addEventListener("click", () => opened.push(id));
+    }
+
+    await user.click(screen.getByRole("button", { name: "Attach file" }));
+    await user.click(await screen.findByRole("button", { name: "Photos" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Photos" })).not.toBeInTheDocument());
+
+    await user.click(screen.getByRole("button", { name: "Attach file" }));
+    await user.click(await screen.findByRole("button", { name: "Files" }));
+    expect(opened).toEqual(["attach-photos", "attach-files"]);
   });
 });

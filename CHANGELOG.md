@@ -27,6 +27,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ## [Unreleased]
 
 - The pack treats a packaged member as a quiet member instead of failing it, the phone says which host waits for its package manager, and a package swap under a running bridge asks for a restart.
+- The attach button asks Photos or Files, so the camera roll is on offer again: one `accept` cannot carry `image/*` and thirty text extensions without the phone hiding the gallery.
+- The attach button answers a tap at once, with a haptic tick and a pressed tone, instead of waiting for the picker to arrive.
 
 ## [1.5.4] - 2026-09-07
 
