@@ -296,6 +296,7 @@ const PANE_WIRE_KEYS = {
   // Also not a pack dimension: an optional sentence the bridge composes for one kind of pane
   // (M11/05). Absent on every pane in this baseline, so no golden byte moved.
   hint: true,
+  revision: true,
   // The OTHER half of a pane's address, and the one field here that is written by a request rather
   // than by the pane's own state: present only when the caller asked to widen (`?sessions=all`),
   // and then on every pane in the body. Nothing in this baseline asks, so it is absent on every
@@ -415,6 +416,7 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "paneId",
       "paneLabel",
       "readableLines",
+      "revision",
       "session",
       "sessionName",
       "status",

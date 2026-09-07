@@ -227,6 +227,12 @@ export interface MuxPane extends MuxIdentity {
    * port's answer to "which agent runs here" is `agentDetection` or `"shell"` — never a process
    * name, however much this one looks like an identity.
    */
+  /**
+   * Content revision from the multiplexer's snapshot — changes when the pane's screen changes.
+   * Herdr provides this natively; tmux and zellij can only derive it per-read, so it is absent from
+   * their snapshot and optional here.
+   */
+  readonly revision?: number;
   readonly foregroundCommand?: string;
   /**
    * A finished English sentence for the operator about this pane, composed server-side.

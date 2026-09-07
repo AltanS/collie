@@ -100,6 +100,11 @@ export interface AgentView {
    */
   hint?: string;
   /**
+   * Content revision from the multiplexer's snapshot. Changes when the pane's screen changes; absent
+   * on multiplexers that cannot provide it from their listing (tmux, zellij).
+   */
+  revision?: number;
+  /**
    * Epoch ms of this agent's last observed status transition (bridge/activity.ts). The only thing
    * that can make a pane read as unseen. Absent until the ledger has an entry, and on the very
    * first poll after a fresh install.

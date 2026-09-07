@@ -146,6 +146,7 @@ function toView(pane: MuxPane, kind: "agent" | "shell"): AgentView {
   // reads as a shell, and its transcript is still readable. Server-side only, like the ref itself.
   if (pane.sessionAgent) view.sessionAgent = pane.sessionAgent;
   if (pane.readableLines !== undefined) view.readableLines = pane.readableLines;
+  if (pane.revision !== undefined) view.revision = pane.revision;
   // A finished sentence for the operator, composed server-side and carried through untouched. It is
   // presentation: nothing in this engine reads it, and it never reaches `agent` or `status` above.
   if (pane.hint) view.hint = pane.hint;
@@ -186,6 +187,10 @@ export class StateEngine {
   // when a pane momentarily hides its input box (a dialog / working spinner) — only cleared when the
   // pane itself vanishes (see the removal loop). Enriched from pane text each poll (see enrichSessionNames).
   private readonly sessionNames = new Map<string, string>();
+  // Revision at which each pane was last enriched. When the multiplexer provides a revision on the
+  // snapshot (Herdr does; tmux/zellij don't) enrichSessionNames skips the readGrid RPC for any pane
+  // whose revision hasn't moved — turning O(claude_panes) socket calls per poll into O(changed).
+  private readonly enrichedAt = new Map<string, number>();
   private readonly transitionListeners = new Set<TransitionListener>();
   private readonly removeListeners = new Set<RemoveListener>();
   private readonly updateListeners = new Set<UpdateListener>();
@@ -407,6 +412,7 @@ export class StateEngine {
         if (live.has(id)) continue;
         this.prevStatus.delete(id);
         this.sessionNames.delete(id); // drop the cached name so a reused pane id starts clean
+        this.enrichedAt.delete(id);
         for (const fn of this.removeListeners) fn(id);
       }
 
@@ -470,6 +476,13 @@ export class StateEngine {
     if (claude.length === 0) return;
     await Promise.all(
       claude.map(async (a) => {
+        // When the multiplexer provides a content revision (Herdr does), skip the readGrid RPC for
+        // any pane whose screen hasn't changed since the last enrichment. A session with many idle
+        // claude panes drops from O(n) socket calls per poll to O(changed).
+        if (a.revision !== undefined) {
+          const prev = this.enrichedAt.get(a.paneId);
+          if (prev !== undefined && prev === a.revision) return;
+        }
         try {
           // `viewport` — never `recent`; see SESSION_NAME_READ_LINES for what a `recent` read does
           // to the operator's screen. The viewport is also strictly safer to parse: `recent` hands
@@ -484,6 +497,7 @@ export class StateEngine {
           if (!read.ok) return;
           const name = extractClaudeSessionName(read.value.text);
           if (name) this.sessionNames.set(a.paneId, name);
+          if (a.revision !== undefined) this.enrichedAt.set(a.paneId, a.revision);
         } catch {
           // Keep whatever's cached (if anything) — a transient read failure must not blank the name.
         }
