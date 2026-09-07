@@ -139,32 +139,45 @@ action buttons that update a checkout, and this tree is your package manager's t
 #### Arch
 
 `collie-bin` is not on the AUR yet. The AUR has paused new account registration, and the package
-will be published from our own account when registration reopens. Until then the PKGBUILD in
-`packaging/aur` builds the same package with `makepkg -si`.
+will be published from our own account when registration reopens. Until then, build it from a
+clone of this repository:
+
+```bash
+git clone https://github.com/AltanS/collie.git && cd collie/packaging/aur
+makepkg -si
+collie start
+```
+
+`makepkg` downloads the release tarball for your architecture, checks its sha256 against the
+release's integrity manifest, and unpacks it. No Bun, no `git` clone of anything else, no
+compilation.
+
+**Once it is on the AUR**, an AUR helper installs the same `PKGBUILD`:
 
 ```bash
 paru -S collie-bin     # or: yay -S collie-bin
 collie start
 ```
 
-`collie-bin` comes from the AUR, which plain `pacman` cannot fetch, so an AUR helper is the short
-way. Without one, build it yourself:
-
-```bash
-git clone https://aur.archlinux.org/collie-bin.git && cd collie-bin
-makepkg -si
-```
-
-Both routes run the same `PKGBUILD`, which downloads the release tarball for your architecture and
-checks its sha256 against the release's integrity manifest. Later updates are `paru -S collie-bin`
-or `yay -S collie-bin`, the same command you installed with. `sudo pacman -Syu collie-bin` works
-only where a repository carries the package, such as Omarchy's.
+Later updates are `paru -S collie-bin` or `yay -S collie-bin`, the same command you installed
+with. `sudo pacman -Syu collie-bin` works only where a repository carries the package, such as
+Omarchy's.
 
 The package installs the release tree to `/opt/collie` and `/usr/bin/collie` as a symlink into it.
 `README.md`, `CHANGELOG.md` and `docs/` land in `/usr/share/doc/collie-bin/`, and the licence in
 `/usr/share/licenses/collie-bin/`. It provides and conflicts with `collie`, so it and a future
 source package cannot both be installed. It enables no systemd unit: `collie start` writes your own
 `--user` unit, as it does after any install.
+
+Remove it with `collie stop` first, then:
+
+```bash
+sudo pacman -Rns collie-bin
+```
+
+That removes `/opt/collie` and `/usr/bin/collie` and nothing else. The user unit `collie start`
+wrote at `~/.config/systemd/user/collie.service` and the state under `~/.local/state/collie/`
+stay; delete them by hand if you want them gone.
 
 #### Omarchy
 
@@ -182,9 +195,10 @@ AUR helper is not involved, because `pkgs.omarchy.org` is a real pacman reposito
 `PKGBUILD` and the same `/opt/collie` layout either way.
 
 > **Note.** Updates come from your package manager, and Collie will not update itself here.
-> `collie update` declines instead, and the phone shows the new version with the package command
-> where the update button would be. Collie names the `sudo pacman -Syu collie-bin` form, which is
-> the repository spelling; on an AUR install run your helper instead.
+> `collie update` declines instead. The phone's update band reads "Collie x.y.z available via
+> pacman.", and the Updates page shows the command to copy in place of an update button, because
+> the package manager owns that folder. Collie names the `sudo pacman -Syu collie-bin` form, which
+> is the repository spelling; on an AUR install run your helper instead.
 
 In a [pack](pack.md), this machine never takes an update from the phone: the pack lists it as
 "waits for the package manager", and it levels only when you run your helper on it.

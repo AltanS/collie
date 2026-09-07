@@ -45,3 +45,26 @@ which is the same command spelled for one package.
 
 Until the pull request is merged, an Omarchy host builds the same package from
 [`../aur/PKGBUILD`](../aur/PKGBUILD) with `makepkg -si`.
+
+## Order of operations
+
+The first pull request to `omarchy-pkgs` is opened only after the first Collie release whose
+binary knows `/opt/collie` is published. That way the very first package a user installs already
+names its own upgrade command, instead of a host installing today's package and then hitting a
+version that does not yet know how to point at `sudo pacman -Syu`.
+
+## Reconciliation
+
+`omarchy-pkgs`' copy is reviewed and may be edited by its maintainers once the pull request is
+open. After a merge, diff `pkgbuilds/collie-bin/PKGBUILD` there against
+[`../aur/PKGBUILD`](../aur/PKGBUILD) here and carry every accepted edit back into this repository.
+That keeps this file the single source, so the next release's refresh does not silently undo their
+change.
+
+## Policy notes
+
+`min_release_age` is deliberately not set here, a choice: leaving it unset lets a hotfix reach
+Omarchy as soon as their sync runs, rather than sitting behind a delay for no gain. Prereleases are
+skipped by `omarchy-pkgs`' own sync tooling (`helpers/upstream-github.sh`), not by anything in this
+file. `digests: true` reads the sha256 GitHub attaches to each release asset; verified on
+2026-09-07 to equal the release's own `.sha256` file.
