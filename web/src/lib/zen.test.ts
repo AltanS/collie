@@ -51,14 +51,21 @@ describe("zen", () => {
   });
 });
 
-// The auto-landscape bit: independent storage, same default (off) — a rotation that empties the
-// screen of every control is opt-in, and the two bits are asked for separately.
+// The auto-landscape bit: independent storage, and the opposite default (on). It cannot act while
+// zen itself is off, so it costs nothing until zen is turned on — and once it is, the rotation is
+// what the operator wanted anyway.
 describe("auto-zen (landscape)", () => {
   beforeEach(() => __resetZen());
   afterEach(() => __resetZen());
 
-  it("is off unless the operator turns it on", () => {
+  it("is on by default, because it is inert until zen itself is turned on", () => {
+    expect(autoZenEnabled()).toBe(true);
+  });
+
+  it("stays off once the operator turns it off, so zen opens on a tap only", () => {
+    setAutoZenEnabled(false);
     expect(autoZenEnabled()).toBe(false);
+    expect(localStorage.getItem("collie:auto-zen-enabled:v1")).toBe("0");
   });
 
   it("round-trips through the stored value, not just memory", () => {
@@ -73,10 +80,10 @@ describe("auto-zen (landscape)", () => {
 
   it("__resetZen clears both tiers, independently of the main zen bit", () => {
     setZenEnabled(true);
-    setAutoZenEnabled(true);
+    setAutoZenEnabled(false);
     __resetZen();
     expect(zenEnabled()).toBe(false);
-    expect(autoZenEnabled()).toBe(false);
+    expect(autoZenEnabled()).toBe(true);
     expect(localStorage.getItem("collie:auto-zen-enabled:v1")).toBeNull();
   });
 

@@ -348,7 +348,9 @@ export function AgentChat({
   }
   // Auto-zen follows the ROTATION, and only the rotation: turning the phone sideways enters zen
   // (a narrow tall mirror becomes a short wide one, and every chrome row costs terminal lines),
-  // turning it back leaves. But only a zen this effect entered — a hand-entered zen (the actions
+  // turning it back leaves. The query asks for a SHORT landscape viewport, not landscape alone:
+  // under 520px of height is a phone on its side, where the chrome rows hurt. A desktop window and
+  // a tablet are landscape all day and have the height to spare, so neither one ever matches. But only a zen this effect entered — a hand-entered zen (the actions
   // sheet's row, tapped in either orientation) is the operator's explicit choice and rotation must
   // not steal it, so `autoZen` marks the effect's own entry and the portrait exit fires only on a
   // marked one. Gated on `autoZenActive` — BOTH the Settings availability toggle and its own
@@ -361,7 +363,7 @@ export function AgentChat({
   // just made — so it acts ONLY on a flip (`wasLandscape`), never re-asserts. Without that, tapping
   // the floating way out in landscape would exit and instantly re-enter. The ref starts portrait so
   // mounting already sideways counts as a flip and opens chrome-free, matching a reload in hand.
-  const landscape = useMediaQuery("(orientation: landscape)");
+  const landscape = useMediaQuery("(orientation: landscape) and (max-height: 520px)");
   const autoZenSetting = useAutoZenEnabled();
   const autoZenActive = zenAvailable && autoZenSetting;
   const autoZen = useRef(false);
@@ -369,6 +371,10 @@ export function AgentChat({
   useEffect(() => {
     const flipped = landscape !== wasLandscape.current;
     wasLandscape.current = landscape;
+    // Not in zen means the mark is stale, whoever cleared it: the floating way out, a pane switch,
+    // the setting going off. Clearing it here means a zen the operator exits by hand and then opens
+    // by hand again is HIS zen, and the rotation back to portrait leaves it alone.
+    if (!zen) autoZen.current = false;
     if (!autoZenActive) {
       if (zen && autoZen.current) {
         autoZen.current = false;

@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils";
 // device that has never turned zen on has nothing for the sub-row to gate. Disabled rather than
 // hidden while the header switch is off, so turning zen on doesn't also silently flip a choice the
 // operator can no longer see; the stored preference underneath is untouched either way (lib/zen.ts
-// defaults it off, so rotation changes nothing until it is asked for).
+// defaults it ON, which is inert until the header switch above it goes on).
 export function ZenControl() {
   useLocale();
   const enabled = useZenEnabled();

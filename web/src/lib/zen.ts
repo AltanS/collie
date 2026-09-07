@@ -7,12 +7,12 @@ import { useSyncExternalStore } from "react";
 // gates whether the entry point exists at all. Default OFF — zen takes away every way back except
 // one floating button, so it is opt-in.
 //
-// A second, independent bit rides alongside it: whether rotating the phone to landscape should
-// ENTER zen automatically (AgentChat's own rotation effect). Default OFF, like zen itself — a
-// rotation that empties the screen of every control is a surprise unless it was asked for, and
-// the two bits are asked for separately: one operator wants zen on a tap only, another wants the
-// phone to do it on its own. It is meaningless while zen itself is unavailable, which AgentChat
-// enforces by gating its rotation effect on BOTH bits, not by hiding this one.
+// A second, independent bit rides alongside it: whether turning the phone to a SHORT landscape
+// viewport should ENTER zen automatically (AgentChat's own rotation effect). Default ON, because
+// it cannot act alone — it is meaningless while zen itself is unavailable, which AgentChat enforces
+// by gating its rotation effect on BOTH bits, not by hiding this one. So the operator who turns zen
+// on gets the rotation with it, and the operator who wants zen on a tap only turns this row back
+// off. It stays a separate bit because those are two different asks.
 //
 // The active zen state itself is NOT here: it is transient local state in AgentChat, reset by the
 // key={paneId} remount, so a pane always opens normal.
@@ -20,7 +20,12 @@ import { useSyncExternalStore } from "react";
 const STORAGE_KEY = "collie:zen-enabled:v1";
 const DEFAULT_ENABLED = false;
 const AUTO_STORAGE_KEY = "collie:auto-zen-enabled:v1";
-const DEFAULT_AUTO_ENABLED = false;
+// Default ON, unlike zen itself. This bit does nothing on its own: it is read only after zen is
+// available, and that gate defaults OFF, so an install that never opens Settings still never sees
+// a rotation empty the screen. And the media query behind it asks for a short landscape viewport,
+// which a desktop window and a tablet never match. What is left is a phone whose operator has just
+// asked for zen, and for him the rotation is the point, so he gets it without a second tap.
+const DEFAULT_AUTO_ENABLED = true;
 
 let enabled = load();
 let autoEnabled = loadAuto();

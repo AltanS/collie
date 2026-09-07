@@ -1826,17 +1826,25 @@ describe("AgentChat — zen mode", () => {
   });
 
   describe("auto-zen follows the rotation", () => {
-    // A controllable `matchMedia` fake for `(orientation: landscape)`: the shared stub in
-    // test/setup.ts never fires, which is fine for every other suite and useless for the one
-    // mechanism here that has no other trigger. Installed per case, removed after.
+    // The query AgentChat asks for, spelled out once so a case can say what it is holding.
+    const LANDSCAPE_QUERY = "(orientation: landscape) and (max-height: 520px)";
+
+    // A controllable `matchMedia` fake for the rotation query: the shared stub in test/setup.ts
+    // never fires, which is fine for every other suite and useless for the one mechanism here that
+    // has no other trigger. Installed per case, removed after.
+    //
+    // `viewportHeight` is what makes the fake honest about the `and (max-height: 520px)` half of the
+    // query. A query the viewport is too tall for can never match, however the phone is held, so the
+    // fake hands back a dead list for it rather than the live one — which is exactly what a desktop
+    // browser does.
     let emitOrientation: (landscape: boolean) => void;
-    function installOrientation(initial: boolean) {
+    function installOrientation(initial: boolean, viewportHeight = 380) {
       // The fake speaks only the half of MediaQueryListEvent the hook reads (`matches`) — a full
       // event object here would need a cast that discards type evidence for nothing.
       const listeners = new Set<(e: { matches: boolean }) => void>();
       const mql = {
         matches: initial,
-        media: "(orientation: landscape)",
+        media: LANDSCAPE_QUERY,
         onchange: null,
         addEventListener: (_: string, fn: (e: { matches: boolean }) => void) => {
           void listeners.add(fn);
@@ -1845,7 +1853,17 @@ describe("AgentChat — zen mode", () => {
           void listeners.delete(fn);
         },
       };
-      vi.stubGlobal("matchMedia", () => mql);
+      const dead = {
+        matches: false,
+        media: LANDSCAPE_QUERY,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      };
+      const short = viewportHeight <= 520;
+      vi.stubGlobal("matchMedia", (query: string) =>
+        query.includes("max-height: 520px") && !short ? dead : mql,
+      );
       emitOrientation = (landscape: boolean) => {
         mql.matches = landscape;
         for (const fn of listeners) fn({ matches: landscape });
@@ -1879,10 +1897,11 @@ describe("AgentChat — zen mode", () => {
       expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
     });
 
-    it("does nothing on rotation until the landscape sub-toggle is turned on", async () => {
-      // The two bits are independent, and BOTH default off: turning zen on alone must leave
-      // rotation inert while the hand entry point (the actions sheet's row) works normally.
+    it("does nothing on rotation once the landscape sub-toggle is turned off", async () => {
+      // The two bits are independent: the operator who wants zen on a tap only turns this row off,
+      // and rotation goes inert while the hand entry point (the actions sheet's row) still works.
       setZenEnabled(true);
+      setAutoZenEnabled(false);
       installOrientation(false);
       const { container } = renderChat();
 
@@ -1924,6 +1943,45 @@ describe("AgentChat — zen mode", () => {
       expect(headerRowOf(container)).not.toBeNull();
       act(() => emitOrientation(true));
       await waitFor(() => expect(headerRowOf(container)).toBeNull());
+    });
+
+    it("keeps a zen the operator re-opened by hand when the phone turns back", async () => {
+      // The mark says "the rotation opened this one". A hand exit clears the zen, so the mark is
+      // stale from that moment, and the hand entry that follows is the operator's own zen. Turning
+      // the phone back to portrait must leave it standing, exactly as it does for a zen that was
+      // opened by hand in the first place.
+      setZenEnabled(true);
+      setAutoZenEnabled(true);
+      installOrientation(false);
+      const user = userEvent.setup();
+      const { container } = renderChat();
+
+      act(() => emitOrientation(true));
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+
+      await user.click(screen.getByRole("button", { name: "Exit zen mode" }));
+      await waitFor(() => expect(headerRowOf(container)).not.toBeNull());
+
+      await enterZen(user);
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+
+      act(() => emitOrientation(false));
+      expect(headerRowOf(container)).toBeNull();
+      expect(screen.getByRole("button", { name: "Exit zen mode" })).toBeInTheDocument();
+    });
+
+    it("ignores a landscape viewport tall enough to be a desktop or a tablet", async () => {
+      // Chrome rows cost terminal lines on a phone held sideways, not on a 900px-tall window that
+      // is landscape all day. The `and (max-height: 520px)` half of the query is what tells them
+      // apart, so this case holds it: same setting, same flip, no zen.
+      setZenEnabled(true);
+      setAutoZenEnabled(true);
+      installOrientation(false, 900);
+      const { container } = renderChat();
+
+      act(() => emitOrientation(true));
+      expect(headerRowOf(container)).not.toBeNull();
+      expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
     });
   });
 });
