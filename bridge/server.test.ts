@@ -1937,6 +1937,28 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(handler).toContain("pack: opts.packLead?.updateRows() ?? []");
   });
 
+  test("the band's dismiss is ONE act: it records the version and snoozes the digest together", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const at = src.indexOf('if (pathname === "/api/update/dismiss" && req.method === "POST")');
+    expect(at).toBeGreaterThan(0);
+    const handler = src.slice(at, src.indexOf("\n      }\n", at));
+    // Read-level, exactly like the snooze beside it — declining a notification about your own
+    // machine is not terminal-driving.
+    expect(handler).toContain('guard(req, cfg, "read", pairing)');
+    // One call, and the monitor is what pairs the record with the snooze. If the route ever spells
+    // the two halves itself, they can be edited apart.
+    expect(handler).toContain("await updateMonitor.dismiss(version)");
+    expect(handler).not.toContain("snoozeDigest");
+    // A version, checked before anything is written: the band is keyed by version, so an empty one
+    // would dismiss nothing and pin the store to a fact that is not one.
+    expect(handler).toContain('typeof version !== "string"');
+    expect(handler).toContain("400");
+    // It answers the same object the snooze does, so the tab that tapped is already up to date.
+    expect(handler).toContain("updateMonitor.status()");
+    // And it starts nothing: closing a band is not an update.
+    expect(handler).not.toContain("action.start");
+  });
+
   test("update status: the run record reaches the phone through the status the card already polls", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     // One status object, three surfaces: the snapshot's `update`, the forced check, and the card's

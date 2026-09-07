@@ -1348,6 +1348,31 @@ export function startServer(opts: {
         await updateMonitor.snoozeDigest();
         return json(updateMonitor.status(), req.headers.get("accept-encoding"));
       }
+      if (pathname === "/api/update/dismiss" && req.method === "POST") {
+        // The update band was closed, on some screen, for the version it named. ONE act: the version
+        // is recorded on the bridge so every OTHER screen's band drops on its next poll, and the
+        // digest is snoozed in the same request, because closing the band and then being pushed the
+        // same version tomorrow is the app arguing with a decision already made (M17/08).
+        //
+        // Read-level, exactly like the snooze beside it: declining a notification about your own
+        // machine isn't terminal-driving. Not a mute either — `updatesEnabled()` stays the only off
+        // switch, and a NEWER release raises the band again.
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        let body: JsonValue;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; the version is checked
+          // for being a non-empty string below before anything is written.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          return text("bad request", 400);
+        }
+        const record = body !== null && typeof body === "object" && !Array.isArray(body) ? body : null;
+        const version = record === null ? undefined : record.version;
+        if (typeof version !== "string" || version.trim() === "") return text("bad version", 400);
+        await updateMonitor.dismiss(version);
+        return json(updateMonitor.status(), req.headers.get("accept-encoding"));
+      }
       if (pathname === "/api/update/check" && req.method === "GET") {
         // The card's own read: everything `POST /api/update/check` answers, plus the PREFLIGHT that
         // decides whether the update button is live and what it says when it is not (M15/05).

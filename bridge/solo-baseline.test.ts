@@ -159,6 +159,7 @@ const updateStatus: UpdateStatus = {
   majorAvailable: null,
   majorUrl: null,
   installKind: "detached-checkout",
+  dismissedVersion: null,
   bridgeStale: false,
   restartNeeded: false,
   checkedAt: null,
@@ -329,6 +330,10 @@ const UPDATE_STATUS_KEYS = {
   // clears it — the latter optional, because most installs never reach the state.
   restartNeeded: true,
   restartCommand: true,
+  // The release whose band the operator closed (M17/08) — required and null when none was, so the
+  // golden below carries one more key. It is a fact about the HOST, which is the whole point: a
+  // dismissal kept per browser leaves the band up on every other screen.
+  dismissedVersion: true,
 } satisfies Record<keyof UpdateStatus, true>;
 
 const WORKSPACE_KEYS = {
@@ -426,6 +431,9 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "bridgeStale",
       "checkedAt",
       "current",
+      // The release whose band the operator closed (M17/08). Required and null when none was — the
+      // one key this milestone adds to every snapshot body, which the golden records.
+      "dismissedVersion",
       "installKind",
       "latest",
       "latestUrl",
@@ -605,6 +613,9 @@ describe("solo zero-tax — routes", () => {
       // (`collie pack update`), never over the link (ADR 0016).
       "/api/update",
       "/api/update/check",
+      // Closing the update band (M17/08) — solo, no pack sibling: it writes the lead's own update
+      // record, and the band a peer's operator closes is that machine's own decision.
+      "/api/update/dismiss",
       // The digest's "remind me next digest" dismiss — solo, no pack sibling: it writes the lead's
       // own notify record, and a peer never pushes an update notification of its own.
       "/api/update/snooze",

@@ -492,6 +492,7 @@ export function parseReleaseManifest(data: JsonValue): ManifestVerdict {
 export class UpdateStateStore {
   private lastVersion: string | null = null;
   private pushedAt: string | null = null;
+  private dismissed: string | null = null;
   private readonly file: string;
 
   constructor(private readonly cfg: Config) {
@@ -506,7 +507,12 @@ export class UpdateStateStore {
       const rec = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? raw : null;
       const last = rec === null ? undefined : rec.lastNotified;
       const pushed = rec === null ? undefined : rec.lastPushedAt;
+      const closed = rec === null ? undefined : rec.dismissedVersion;
       this.lastVersion = typeof last === "string" ? last : null;
+      // A record written before M17/08 carries no dismissal. It reads as "nothing dismissed", which
+      // is the band's own default — an operator who closed the band on an older build simply sees it
+      // once more.
+      this.dismissed = typeof closed === "string" ? closed : null;
       // A LEGACY record carries no timestamp. It reads as "no push yet" — the window opens at once
       // rather than crashing the monitor or pinning it shut for a day.
       this.pushedAt = typeof pushed === "string" ? pushed : null;
@@ -524,16 +530,40 @@ export class UpdateStateStore {
     return this.pushedAt;
   }
 
+  /** The release whose band the operator closed, or null when none was. */
+  dismissedVersion(): string | null {
+    return this.dismissed;
+  }
+
   async setLastNotified(version: string, pushedAt: string): Promise<void> {
     this.lastVersion = version;
     this.pushedAt = pushedAt;
+    await this.write();
+  }
+
+  /**
+   * Remember the release whose band the operator closed.
+   *
+   * It lives HERE, beside `lastNotified`, rather than in a browser: a dismissal is a decision about
+   * this machine's update, and a decision kept per browser leaves the band up on the phone after it
+   * was closed on the laptop (M17/08).
+   */
+  async setDismissedVersion(version: string): Promise<void> {
+    this.dismissed = version;
+    await this.write();
+  }
+
+  /** One record, one atomic write (tmp + rename), matching Push/NotifyPrefs/Snooze — a crash
+   *  mid-write can't leave a corrupt file that would re-nag (or worse) on the next load. */
+  private async write(): Promise<void> {
     await mkdir(this.cfg.stateDir, { recursive: true, mode: 0o700 });
-    // Atomic write (tmp + rename), matching Push/NotifyPrefs/Snooze — a crash mid-write can't leave a
-    // corrupt file that would re-nag (or worse) on the next load.
+    const body = {
+      lastNotified: this.lastVersion,
+      lastPushedAt: this.pushedAt,
+      dismissedVersion: this.dismissed,
+    };
     const tmp = `${this.file}.tmp`;
-    await writeFile(tmp, JSON.stringify({ lastNotified: version, lastPushedAt: pushedAt }, null, 2), {
-      mode: 0o600,
-    });
+    await writeFile(tmp, JSON.stringify(body, null, 2), { mode: 0o600 });
     await rename(tmp, this.file);
   }
 }
@@ -571,6 +601,10 @@ export interface UpdateStore {
   /** ISO-8601 stamp of the last push, or null — the digest window is measured from it. */
   lastPushedAt(): string | null;
   setLastNotified(version: string, pushedAt: string): Promise<void>;
+  /** The release whose band was closed, or null. Reported on the snapshot, so one dismissal holds
+   *  on every screen. */
+  dismissedVersion(): string | null;
+  setDismissedVersion(version: string): Promise<void>;
 }
 
 export interface UpdateMonitorDeps {
@@ -706,6 +740,20 @@ export class UpdateMonitor {
     await this.deps.store.setLastNotified(this.latest, this.nowIso());
   }
 
+  /**
+   * The band was closed on some screen, for `version`.
+   *
+   * ONE act, not two: it records the version so every other screen's band drops on its next poll,
+   * and it runs {@link snoozeDigest} in the same call, because closing the band and then being
+   * pushed the same version tomorrow morning is the app arguing with a decision the operator
+   * already made. A NEWER release is a different version and raises the band again — which is why
+   * this is keyed by version and carries no clock of its own (the digest owns the clock).
+   */
+  async dismiss(version: string): Promise<void> {
+    await this.deps.store.setDismissedVersion(version);
+    await this.snoozeDigest();
+  }
+
   /** Recompute (throttled) whether the running process is behind the on-disk bridge source. */
   private bridgeStale(): boolean {
     const now = this.deps.now();
@@ -746,6 +794,7 @@ export class UpdateMonitor {
           ? null
           : githubReleaseUrl(this.deps.repo, this.majorAvailable),
       installKind: this.deps.installKind,
+      dismissedVersion: this.deps.store.dismissedVersion(),
       bridgeStale: this.bridgeStale(),
       restartNeeded: this.versionSwapped(),
       checkedAt: this.checkedAt,

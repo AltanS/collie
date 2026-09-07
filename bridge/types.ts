@@ -448,6 +448,14 @@ export interface UpdateStatus {
    * derivation on the phone would be a second thing to drift.
    */
   packageCommand?: string;
+  /**
+   * The release whose band the operator closed, or null when none was closed.
+   *
+   * It is the BRIDGE's fact, not a browser's: a dismissal is a decision about this machine's
+   * update, so it holds on every screen that polls this snapshot (M17/08). Keyed by version — a
+   * newer release is a different fact and raises the band again.
+   */
+  dismissedVersion: string | null;
   /** The running process is behind the on-disk bridge source — needs `systemctl --user restart collie`. */
   bridgeStale: boolean;
   /**

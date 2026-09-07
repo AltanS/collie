@@ -89,6 +89,7 @@
     "majorAvailable": null,
     "majorUrl": null,
     "installKind": "detached-checkout",
+    "dismissedVersion": null,
     "bridgeStale": false,
     "restartNeeded": false,
     "checkedAt": null

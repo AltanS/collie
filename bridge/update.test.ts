@@ -1,4 +1,9 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { loadConfig } from "./config.ts";
 
 import {
   type ApiTag,
@@ -22,6 +27,7 @@ import {
   updatesNewerThan,
   UpdateMonitor,
   type UpdateMonitorDeps,
+  UpdateStateStore,
   type UpdateStore,
 } from "./update.ts";
 
@@ -291,14 +297,17 @@ describe("stampOf", () => {
 function fakeStore(
   initial: string | null = null,
   pushedAt: string | null = null,
-): UpdateStore & { saved: string[]; pushes: string[] } {
+): UpdateStore & { saved: string[]; pushes: string[]; closed: string[] } {
   let last = initial;
   let stamp = pushedAt;
+  let dismissed: string | null = null;
   const saved: string[] = [];
   const pushes: string[] = [];
+  const closed: string[] = [];
   return {
     saved,
     pushes,
+    closed,
     lastNotified: () => last,
     lastPushedAt: () => stamp,
     setLastNotified: async (v, at) => {
@@ -306,6 +315,11 @@ function fakeStore(
       stamp = at;
       saved.push(v);
       pushes.push(at);
+    },
+    dismissedVersion: () => dismissed,
+    setDismissedVersion: async (v) => {
+      dismissed = v;
+      closed.push(v);
     },
   };
 }
@@ -531,6 +545,8 @@ describe("UpdateMonitor", () => {
     const wrapped: UpdateStore = {
       lastNotified: store.lastNotified,
       lastPushedAt: store.lastPushedAt,
+      dismissedVersion: store.dismissedVersion,
+      setDismissedVersion: store.setDismissedVersion,
       setLastNotified: async (v, at) => {
         order.push(`persist:${v}`);
         await store.setLastNotified(v, at);
@@ -736,5 +752,78 @@ describe("parseReleaseManifest", () => {
     expect(v.ok).toBe(true);
     if (!v.ok) return;
     expect(v.manifest.artifacts).toHaveLength(1);
+  });
+});
+
+// ── The band's dismissal (M17/08) ─────────────────────────────────────────────
+//
+// A dismissal is a decision about THIS MACHINE's update, so it is kept here rather than in one
+// browser's storage — and it is one act, not two: the version is recorded and the digest is snoozed
+// in the same call, because closing the band and then being pushed the same version tomorrow is the
+// app arguing with a decision already made.
+
+const dismissDirs: string[] = [];
+async function tempCfg() {
+  const stateDir = await mkdtemp(join(tmpdir(), "collie-update-dismiss-"));
+  dismissDirs.push(stateDir);
+  return { ...loadConfig(), stateDir };
+}
+
+afterAll(async () => {
+  await Promise.all(dismissDirs.map((d) => rm(d, { recursive: true, force: true })));
+});
+
+describe("the dismissed version", () => {
+  it("round-trips through the store, beside the notified version and in the same file", async () => {
+    const cfg = await tempCfg();
+    const store = new UpdateStateStore(cfg);
+    await store.load();
+    expect(store.dismissedVersion()).toBeNull(); // nothing saved yet reads as nothing dismissed
+
+    await store.setLastNotified("1.6.0", "2026-09-07T09:00:00.000Z");
+    await store.setDismissedVersion("1.6.0");
+
+    const reloaded = new UpdateStateStore(cfg);
+    await reloaded.load();
+    expect(reloaded.dismissedVersion()).toBe("1.6.0");
+    // The one write carries BOTH fields — a dismissal must not forget the push record beside it.
+    expect(reloaded.lastNotified()).toBe("1.6.0");
+    expect(reloaded.lastPushedAt()).toBe("2026-09-07T09:00:00.000Z");
+  });
+
+  it("survives a record written before this field existed, as nothing dismissed", async () => {
+    const cfg = await tempCfg();
+    const seed = new UpdateStateStore(cfg);
+    await seed.load();
+    await seed.setLastNotified("1.5.0", "2026-09-06T09:00:00.000Z");
+    await Bun.write(
+      join(cfg.stateDir, "update-state.json"),
+      JSON.stringify({ lastNotified: "1.5.0", lastPushedAt: "2026-09-06T09:00:00.000Z" }),
+    );
+    const store = new UpdateStateStore(cfg);
+    await store.load();
+    expect(store.dismissedVersion()).toBeNull();
+    expect(store.lastNotified()).toBe("1.5.0");
+  });
+
+  it("a dismiss also advances lastNotified, so tomorrow's digest does not re-name it", async () => {
+    const { monitor, store } = makeMonitor();
+    await monitor.checkRelease();
+    expect(store.saved).toEqual(["0.12.0"]); // the first push announced it
+
+    await monitor.dismiss("0.12.0");
+    expect(store.closed).toEqual(["0.12.0"]);
+    expect(store.lastNotified()).toBe("0.12.0"); // snoozed in the same act
+    expect(monitor.status().dismissedVersion).toBe("0.12.0");
+  });
+
+  it("a dismiss is not a mute — a newer release is a different version and raises the band", async () => {
+    const { monitor } = makeMonitor();
+    await monitor.checkRelease();
+    await monitor.dismiss("0.12.0");
+    expect(monitor.status()).toMatchObject({ latest: "0.12.0", dismissedVersion: "0.12.0" });
+    // The snapshot keeps saying a release is available; only the BAND reads the two together, and it
+    // reads them as different facts the moment upstream moves on.
+    expect(monitor.status().releaseAvailable).toBe(true);
   });
 });

@@ -395,6 +395,12 @@ export interface UpdateInfo {
    * here would be a second thing to drift.
    */
   packageCommand?: string;
+  /**
+   * The release whose update band the operator closed, or null. Held by the BRIDGE, so one dismiss
+   * on the phone drops the band on the laptop too (M17/08). Absent on a bridge older than that,
+   * which reads as "nothing dismissed".
+   */
+  dismissedVersion?: string | null;
   /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
   bridgeStale: boolean;
   /**
