@@ -1,5 +1,13 @@
 import type { UploadCapability } from "@/lib/types";
-import { acceptAttribute, extensionOf, limitMb, rejectAttachment, uploadLimits } from "./attachments";
+import {
+  acceptAttribute,
+  extensionOf,
+  limitMb,
+  offersFiles,
+  PHOTO_ACCEPT,
+  rejectAttachment,
+  uploadLimits,
+} from "./attachments";
 
 // Pure unit tests — the whole surface is decision functions with no store, no network, no DOM.
 // See the header comment in attachments.ts for the contract each test below is pinning.
@@ -36,6 +44,22 @@ describe("acceptAttribute", () => {
   it("still leads with image/* when one of the two lists is empty", () => {
     const limits: UploadCapability = { maxBytes: 1, imageTypes: [], textTypes: ["rb"] };
     expect(acceptAttribute(limits)).toBe("image/*,.rb");
+  });
+});
+
+describe("the photos half of the picker", () => {
+  it("is image/* and nothing else — the one accept a camera roll is offered for", () => {
+    expect(PHOTO_ACCEPT).toBe("image/*");
+  });
+
+  it("offersFiles is true only when the bridge takes something that is not an image", () => {
+    const images: UploadCapability = { maxBytes: 1, imageTypes: ["png"], textTypes: [] };
+    expect(offersFiles(images)).toBe(false);
+    expect(offersFiles({ ...images, textTypes: ["md"] })).toBe(true);
+  });
+
+  it("the pre-attachment fallback asks nothing: it has one answer to give", () => {
+    expect(offersFiles(uploadLimits(null))).toBe(false);
   });
 });
 

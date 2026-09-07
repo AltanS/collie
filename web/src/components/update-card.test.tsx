@@ -664,12 +664,14 @@ describe("restarting gap is not an outage", () => {
   it("self-update hold: the bundle reload is held for the length of the run", async () => {
     const view = renderCard(info({ run: runAt("restarting") }));
     await screen.findByText("Restarting. This is not an outage.");
-    expect(isReloadHeld()).toBe(true);
+    // The hold is set in a passive effect; findByText only proves the commit, so the
+    // assertion waits for the effect rather than racing it (this bit CI once).
+    await waitFor(() => expect(isReloadHeld()).toBe(true));
     view.unmount();
 
     renderCard(info({ run: runAt("done") }));
     await screen.findByText("Updated to 1.4.0.");
-    expect(isReloadHeld()).toBe(false);
+    await waitFor(() => expect(isReloadHeld()).toBe(false));
   });
 });
 
@@ -862,5 +864,75 @@ describe("UpdateCard — an install a package manager owns", () => {
     const reasonLine = document.querySelector("p.text-status-blocked");
     expect(reasonLine).toHaveTextContent("2 tracked files are modified");
     expect(screen.queryByText(/package manager updates this install/i)).not.toBeInTheDocument();
+  });
+});
+
+// ── THE CARD GOES INERT ON ITS OWN TAP, AND STAYS PUT WHILE IT DOES ─────────────────────────────
+//
+// Two faults, one shape. `POST /api/update` answers before the updater has written anything, so
+// there was a beat with no run record: the button was live and a second tap fitted in it. And the
+// whole action row used to unmount the moment a record appeared, so the card collapsed under the
+// thumb at the one moment the operator was watching it.
+describe("the action row while an update is being asked for and driven", () => {
+  it("disables the button between the tap and the first run record", async () => {
+    const user = userEvent.setup();
+    let posts = 0;
+    server.use(
+      http.post("/api/update", () => {
+        posts++;
+        // `run: null` is the gap itself: accepted, and nothing to show for it yet.
+        return HttpResponse.json({ ok: true, to: "1.4.0", major: false, run: null }, { status: 202 });
+      }),
+    );
+    renderCard(info());
+    await user.click(await screen.findByRole("button", { name: "Update to 1.4.0" }));
+    await user.click(screen.getByRole("button", { name: "Yes, update" }));
+    await waitFor(() => expect(posts).toBe(1));
+
+    const button = await screen.findByRole("button", { name: "Update to 1.4.0" });
+    await waitFor(() => expect(button).toBeDisabled());
+    await user.click(button);
+    expect(posts).toBe(1);
+  });
+
+  it("says what it is waiting for, and says it louder when the start is slow", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    server.use(
+      http.post("/api/update", () =>
+        HttpResponse.json({ ok: true, to: "1.4.0", major: false, run: null }, { status: 202 }),
+      ),
+    );
+    renderCard(info());
+    await user.click(await screen.findByRole("button", { name: "Update to 1.4.0" }));
+    await user.click(screen.getByRole("button", { name: "Yes, update" }));
+    const button = await screen.findByRole("button", { name: "Update to 1.4.0" });
+    await waitFor(() => expect(button).toBeDisabled());
+    // A disabled button must never be a silent one.
+    expect(await screen.findByText("Starting…")).toBeInTheDocument();
+
+    await vi.advanceTimersByTimeAsync(61_000);
+    expect(
+      await screen.findByText("Still starting. The host has not reported the run yet."),
+    ).toBeInTheDocument();
+    // The words changed. The BUTTON did not: an in-place checkout writes its record only after it
+    // has built, so a wall clock cannot tell a slow build from a dead updater, and unlocking on one
+    // would re-open the double tap on exactly the slowest machines.
+    expect(button).toBeDisabled();
+  });
+
+  it("keeps the button on screen — disabled — for the whole run, instead of unmounting it", async () => {
+    renderCard(info({ run: runAt("restarting") }));
+    const button = await screen.findByRole("button", { name: "Update to 1.4.0" });
+    expect(button).toBeDisabled();
+    expect(screen.getByText("Restarting. This is not an outage.")).toBeInTheDocument();
+  });
+
+  it("the preflight arrives inside a Collapse, so the button does not teleport when doctor lands", async () => {
+    renderCard(info());
+    // The list is the card's only async arrival above the action row. Its wrapper is the sanctioned
+    // one (DESIGN.md §7, hard rule 1); a bare mount is what moved the row.
+    const check = await screen.findByText("4.2 GB free");
+    expect(check.closest("[data-slot='collapse']")).not.toBeNull();
   });
 });

@@ -3,30 +3,18 @@
 This file tracks all notable changes to Collie, ordered newest version first. The project follows
 [Semantic Versioning](https://semver.org/). Each version contains a single flat list of changes
 in landing order, oldest first. Every entry links to its commit and credits the contributor where
-there is one. The `## [Unreleased]` section contains merged work waiting for release. The release
-commit renames this heading to `## [x.y.z] - YYYY-MM-DD`, adds the commit hashes, and adds a new
-empty `## [Unreleased]` section above it. The newest numbered `## [x.y.z]` heading (excluding the
-Unreleased heading) **must** match the `version` field in `herdr-plugin.toml`, `package.json`,
-and `web/package.json`, which `scripts/check-version.sh` checks. See [`CLAUDE.md`](./CLAUDE.md) →
-*Versioning* for the bump policy.
+there is one. The `## [Unreleased]
 
-## Upgrading
+## [1.5.5] - 2026-09-07
 
-**Already on 1.x?** Run `collie update`, or run
-`herdr plugin action invoke update --plugin herdr.collie`. Check the result with
-`bin/collie version` (or `herdr plugin action invoke version --plugin herdr.collie`). It shows the
-newest tag. The phone PWA updates itself within about a minute; no reload needed.
-
-**Coming from 0.x?** Upgrade with one command. Do not use `collie update`. From the Herdr
-plugin: `herdr plugin action invoke update-major --plugin herdr.collie`. From a checkout you can
-reach: `bin/collie update --major`. Fresh install:
-`curl -fsSL https://colliepwa.dev/install.sh | sh`. Neither upgrade path assumes a `collie` on your
-PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgrading from 0.x to
-1.0*.
-
-## [Unreleased]
-
-- The pack treats a packaged member as a quiet member instead of failing it, the phone says which host waits for its package manager, and a package swap under a running bridge asks for a restart.
+- The pack treats a packaged member as a quiet member instead of failing it, the phone says which host waits for its package manager, and a package swap under a running bridge asks for a restart. ([1df2451](https://github.com/AltanS/collie/commit/1df2451))
+- The attach button asks Photos or Files, so the camera roll is on offer again: one `accept` cannot carry `image/*` and thirty text extensions without a phone hiding the gallery. ([9fa55a7](https://github.com/AltanS/collie/commit/9fa55a7))
+- The attach button answers a tap at once, with a haptic tick and a filled tone, and its picker opens above the button rather than over it. A bottom sheet covered that button 42ms after the tap, so nothing drawn there to acknowledge the tap could be seen at all. ([9fa55a7](https://github.com/AltanS/collie/commit/9fa55a7), [495b9c7](https://github.com/AltanS/collie/commit/495b9c7))
+- The Updates card holds its place while it checks and stays put for the whole run: the preflight and the peer lines arrive through a `Collapse`, the action button is disabled from the tap onward instead of vanishing, and it says what it is waiting for. ([689dcb2](https://github.com/AltanS/collie/commit/689dcb2))
+- Codex prints its queue hint and its context metric on one footer row while a turn is active, and the parser now knows that shape, so a reply there stops reporting that it never reached the input box, thanks @stekman08 (#176). ([0ad4f2f](https://github.com/AltanS/collie/commit/0ad4f2f))
+- The guarded submit is bound to the prompt the verifying read saw, so a dialog that takes focus between the typing and the Enter is refused instead of answered, thanks @stekman08 (#177). ([e7c1c78](https://github.com/AltanS/collie/commit/e7c1c78))
+- `Collapse` waits for a painted frame before it opens, so content that arrives late slides in instead of jumping. Every enter whose child mounted and opened together was a jump before this, which is every late arrival the primitive exists for. ([bffe062](https://github.com/AltanS/collie/commit/bffe062))
+- New `AnchoredMenu` primitive: a small menu that opens above its trigger instead of over it, for a control near the bottom edge that a bottom sheet would cover. ([ffd89b0](https://github.com/AltanS/collie/commit/ffd89b0))
 
 ## [1.5.4] - 2026-09-07
 

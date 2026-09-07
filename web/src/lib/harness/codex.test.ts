@@ -37,6 +37,7 @@ const PINNED = [
   "codex--draft-wrapped.txt",
   "codex--draft.txt",
   "codex--fresh-idle.txt",
+  "codex--queue-context-inline.txt",
   "codex--submitted-fill-labelled-rule.txt",
   "codex--trust-prompt.txt",
   "codex--v0150-custom-status.txt",
@@ -85,6 +86,7 @@ describe("composerReady — the gate the reply path pre-flights on", () => {
     "codex--draft-wrapped.txt",
     "codex--v0151-draft-indented-line.txt",
     "codex--working.txt",
+    "codex--queue-context-inline.txt",
   ])(
     "%s: the composer is on screen ⇒ true",
     (name) => {
@@ -160,6 +162,19 @@ describe("chrome", () => {
     expect(status).toHaveLength(1);
     expect(lineText(status[0]!)).toMatch(/ · Context \d+% left/);
     expect(codexAdapter.composerPrompt!(lines)).toMatch(/^› /);
+  });
+
+  // RED-FIRST regression: before the parser fix, this real footer shape made the visible composer
+  // indistinguishable from a modal and the guarded reply stalled before submit.
+  it("locates the composer when queue hint and context percentage share one footer row", () => {
+    const lines = fixtureLines("codex--queue-context-inline.txt");
+    expect(lineText(lines.at(-1)!)).toContain("to queue message");
+    expect(lineText(lines.at(-1)!)).toContain("93% context left");
+    expect(locateComposer(lines)).not.toBeNull();
+    expect(codexAdapter.composerReady!(lines)).toBe(true);
+    expect(codexAdapter.extractInputDraft(lines)).toBe(
+      "continue the release checklist",
+    );
   });
 
   it("a transcript `› ` echo without a status row beneath is not a composer", () => {
