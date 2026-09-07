@@ -559,15 +559,34 @@ jobs:
             exit 0
           fi
           branch="packaging/$VERSION"
+          # An existing branch is somebody's work, or a re-run's. It is never overwritten: a force
+          # push here would silently discard a review comment's fix on the same branch name.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "::notice::Branch $branch already exists on the remote, so nothing was pushed and no pull request was opened. Check it, and delete it if it is stale."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "$branch"
           git add packaging/
           git commit -m "chore(packaging): track $VERSION"
-          git push origin "$branch" --force
-          gh pr create \
+          git push origin "$branch"
+          if ! gh pr create \
             --base main \
             --head "$branch" \
             --title "chore(packaging): track $VERSION" \
-            --body "Version and sha256 fields rewritten from \`collie-$VERSION.manifest.json\` by \`scripts/refresh-packages.ts\`, then verified against it with \`--check\`. No hash was computed here." \
-            || echo "::notice::A pull request for $branch already exists."
+            --body "Version and sha256 fields rewritten from \`collie-$VERSION.manifest.json\` by \`scripts/refresh-packages.ts\`, then verified against it with \`--check\`. No hash was computed here."; then
+            # The branch is pushed either way, so the work is not lost. The usual cause is a
+            # repository setting rather than anything in this file, and it is named here because a
+            # bare "gh pr create failed" sends the next reader looking in the wrong place.
+            echo "::notice::Branch $branch was pushed but no pull request could be opened. Open it by hand."
+            {
+              echo "### Packaging pull request not opened"
+              echo
+              echo "Branch \`$branch\` is pushed and carries the rewritten \`packaging/\` files."
+              echo "\`gh pr create\` failed. The likely cause is the repository setting"
+              echo "**Allow GitHub Actions to create and approve pull requests**"
+              echo "(Settings → Actions → General → Workflow permissions), which is off by default."
+              echo "Turn it on, or open the pull request by hand from that branch."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
