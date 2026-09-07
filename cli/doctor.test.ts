@@ -78,10 +78,18 @@ const HEALTHY_ANSWERS: Scripted["answers"] = [
   [`git -C ${ROOT} remote get-url origin`, { stdout: "https://github.com/AltanS/collie.git\n" }],
   [`git -C ${ROOT} symbolic-ref --short HEAD`, { stdout: "main\n" }],
   ["herdr integration status", { stdout: INTEGRATION_OK }],
-  ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } }) }],
+  [
+    "tailscale status --json",
+    // `CertDomains` is what says this tailnet HAS https at all — without it the front-door check
+    // reports a tailnet that can carry no door (#172), which is not what these fixtures describe.
+    { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." }, CertDomains: ["laptop.tail.ts.net"] }) },
+  ],
   ["tailscale serve status --json", { stdout: SERVE_OK }],
   ...netmapAnswers(NETMAP_OPEN),
 ];
+
+/** A status that names no node but DOES name a certificate domain: no hostname, https available. */
+const CERTS_ONLY = JSON.stringify({ CertDomains: ["laptop.tail.ts.net"] });
 
 /**
  * The files a healthy install has: a built bundle, a Herdr socket, an ownership record — and the
@@ -321,7 +329,7 @@ describe("collie doctor — the contract", () => {
     const h = harness(LEAD, [new Error("connection refused")], {
       files: { [HANDLER]: "" },
       answers: [
-        ["tailscale status --json", { stdout: "{}" }],
+        ["tailscale status --json", { stdout: CERTS_ONLY }],
         ["tailscale serve status --json", { stdout: "{}" }],
         ["tailscale debug netmap", { stdout: NETMAP_DENY }],
       ],
@@ -531,7 +539,7 @@ describe("collie doctor — the local checks", () => {
     const denied = await findings(
       harness(null, [], {
         answers: [
-          ["tailscale status --json", { stdout: "{}" }],
+          ["tailscale status --json", { stdout: CERTS_ONLY }],
           ["tailscale serve status --json", { stdout: SERVE_OK }],
           ...netmapAnswers(NETMAP_DENY),
         ],
@@ -558,7 +566,7 @@ describe("collie doctor — the local checks", () => {
     const stolen = await findings(
       harness(null, [], {
         answers: [
-          ["tailscale status --json", { stdout: "{}" }],
+          ["tailscale status --json", { stdout: CERTS_ONLY }],
           [
             "tailscale serve status --json",
             {
@@ -576,6 +584,21 @@ describe("collie doctor — the local checks", () => {
     expect(stolen.byCheck.get("front-door")?.status).toBe("warn");
   });
 
+  test("front-door: a tailnet with no HTTPS certificates warns with the console pointer (#172)", async () => {
+    const { byCheck } = await findings(
+      harness(null, [], {
+        answers: [
+          ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } }) }],
+          ["tailscale serve status --json", { stdout: SERVE_OK }],
+          ...netmapAnswers(NETMAP_OPEN),
+        ],
+      }),
+    );
+    expect(byCheck.get("front-door")?.status).toBe("warn");
+    expect(byCheck.get("front-door")?.detail).toContain("no HTTPS certificates");
+    expect(byCheck.get("front-door")?.remedy).toContain("https://login.tailscale.com/admin/dns");
+  });
+
   test("front-door: a LEAD with no mapping and no COLLIE_SKIP_SERVE is an error", async () => {
     const files = { ...healthyFiles(), ...markerFile(LEAD) };
     delete files[HANDLER];
@@ -583,7 +606,7 @@ describe("collie doctor — the local checks", () => {
       harness(LEAD, [hello()], {
         files,
         answers: [
-          ["tailscale status --json", { stdout: "{}" }],
+          ["tailscale status --json", { stdout: CERTS_ONLY }],
           ["tailscale serve status --json", { stdout: "{}" }],
           ...netmapAnswers(NETMAP_OPEN),
         ],

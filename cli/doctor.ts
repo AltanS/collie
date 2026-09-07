@@ -65,7 +65,12 @@ import { failureLine, type MemberReach, parsePackArgs, probeMemberReach, VERSION
 import { fingerprintRoot, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMarker } from "./update.ts";
-import { tailnetInboundBlocked, tailnetName } from "./tailnet.ts";
+import {
+  HTTPS_DISABLED_HINT,
+  tailnetCertDomains,
+  tailnetInboundBlocked,
+  tailnetName,
+} from "./tailnet.ts";
 
 // `collie doctor` — one read-only pass over the traps that fail silently (M7/02).
 //
@@ -757,6 +762,16 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
       "front-door",
       "no `tailscale` here — the published mapping cannot be read",
       "install tailscale and `collie serve`, or set COLLIE_SKIP_SERVE=1 if you own the ingress (docs/deployment.md Variant E)",
+    );
+  }
+  // No certificates, no https door — and `tailscale serve` says so by asking a question at a
+  // terminal a service has not got (#172). `collie serve` refuses on this same fact; doctor names it
+  // here so the operator reads it before they type the verb.
+  if (deps.ctx.serveMode === "https" && tailnetCertDomains(deps.exec)?.length === 0) {
+    return warn(
+      "front-door",
+      "this tailnet has no HTTPS certificates, so an https front door cannot be published",
+      HTTPS_DISABLED_HINT,
     );
   }
   const status = liveServeStatus(deps);

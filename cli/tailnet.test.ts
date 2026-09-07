@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   bridgeUrlFrom,
+  certDomains,
   configuredPublicUrl,
   dialableBridgeHost,
   localBridgeHostPort,
@@ -122,5 +123,26 @@ describe("the local bridge address", () => {
   test("an IPv6 literal is bracketed, and one already bracketed is left alone", () => {
     expect(localBridgeUrl({ COLLIE_HOST: "fd7a::1" }, 8787)).toBe("http://[fd7a::1]:8787");
     expect(localBridgeUrl({ COLLIE_HOST: "[fd7a::1]" }, 8787)).toBe("http://[fd7a::1]:8787");
+  });
+});
+
+describe("certDomains — has this tailnet got HTTPS at all? (#172)", () => {
+  test("a named domain, an empty list and an absent key are three different answers", () => {
+    expect(certDomains('{"CertDomains":["host.example"]}')).toEqual(["host.example"]);
+    // Absent, null and empty all mean the same thing: no certificates. That is an ANSWER.
+    expect(certDomains('{"Self":{"DNSName":"host.example."}}')).toEqual([]);
+    expect(certDomains('{"CertDomains":null}')).toEqual([]);
+    expect(certDomains('{"CertDomains":[]}')).toEqual([]);
+  });
+
+  test("anything unreadable is `can't tell`, never `no HTTPS`", () => {
+    // A false "your tailnet has no HTTPS" would refuse a publish that works.
+    expect(certDomains("not json")).toBeNull();
+    expect(certDomains("7")).toBeNull();
+    expect(certDomains('{"CertDomains":"host.example"}')).toBeNull();
+  });
+
+  test("blank entries are dropped, so a list of nothing reads as no certificates", () => {
+    expect(certDomains('{"CertDomains":["  ",""]}')).toEqual([]);
   });
 });

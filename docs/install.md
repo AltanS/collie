@@ -311,7 +311,9 @@ bin/collie start                                         # standalone
 `start` will:
 1. Build `web/dist` if missing.
 2. Launch the bridge under `systemd --user` (or launchd/`nohup`).
-3. Run `tailscale serve --bg 8787` (HTTPS :443 → 127.0.0.1:8787).
+3. Run `tailscale serve --bg 8787` (HTTPS :443 → 127.0.0.1:8787). Your tailnet needs HTTPS
+   enabled for this ([admin console](https://login.tailscale.com/admin/dns) → "Enable HTTPS");
+   Collie says so and stops if it isn't.
 4. Print the connection banner.
 
 ## First run — what you'll see
