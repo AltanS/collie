@@ -27,6 +27,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ## [Unreleased]
 
 - Collie is packaged for Arch and for Nix: `collie-bin` on the AUR, and `packages.<system>.collie` from this repository's flake. Both wrap the release tarball, neither builds anything, and neither updates itself, because the package manager owns that folder.
+- The flake's default package is Collie, so `nix run github:AltanS/collie` runs it. The pinned Bun the release is built with is still there, as `packages.<system>.bun`.
 
 ## [1.5.5] - 2026-09-07
 

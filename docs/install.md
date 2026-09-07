@@ -143,7 +143,8 @@ paru -S collie-bin     # or: yay -S collie-bin
 collie start
 ```
 
-`collie-bin` lives on the AUR, so an AUR helper is the short way. Without one, build it yourself:
+`collie-bin` comes from the AUR, which plain `pacman` cannot fetch, so an AUR helper is the short
+way. Without one, build it yourself:
 
 ```bash
 git clone https://aur.archlinux.org/collie-bin.git && cd collie-bin
@@ -151,19 +152,34 @@ makepkg -si
 ```
 
 Both routes run the same `PKGBUILD`, which downloads the release tarball for your architecture and
-checks its sha256 against the release's integrity manifest.
+checks its sha256 against the release's integrity manifest. Later updates are `paru -S collie-bin`
+or `yay -S collie-bin`, the same command you installed with. `sudo pacman -Syu collie-bin` works
+only where a repository carries the package, such as Omarchy's.
 
 The package installs the release tree to `/usr/lib/collie` and `/usr/bin/collie` as a symlink into
 it. It provides and conflicts with `collie`, so it and a future source package cannot both be
 installed. It enables no systemd unit: `collie start` writes your own `--user` unit, as it does
 after any install.
 
-> **Note.** Updates come from pacman, and Collie will not update itself here. `collie update`
-> declines and names `sudo pacman -Syu collie-bin` instead, and the phone shows the new version with
-> that command where the update button would be.
+> **Note.** Updates come from your package manager, and Collie will not update itself here.
+> `collie update` declines instead, and the phone shows the new version with the package command
+> where the update button would be. Collie names the `sudo pacman -Syu collie-bin` form, which is
+> the repository spelling; on an AUR install run your helper instead.
 
 In a [pack](pack.md), this machine never takes an update from the phone: the pack lists it as
-"waits for the package manager", and it levels only when you run pacman on it.
+"waits for the package manager", and it levels only when you run your helper on it.
+
+Remove it with `collie stop` first, then:
+
+```bash
+sudo pacman -R collie-bin
+```
+
+The package owns `/usr/lib/collie` and `/usr/bin/collie`, and removing it removes only those. Your
+own files stay: state in `~/.local/state/collie` (or `$COLLIE_STATE_DIR`), configuration in
+`~/.config/collie`, and the `systemd --user` unit at `~/.config/systemd/user/collie.service` that
+`collie start` wrote. Run `collie uninstall` before removing the package to drop that unit and the
+port mapping, and delete the two directories yourself when you want them gone.
 
 #### Nix
 
@@ -181,12 +197,27 @@ with `nix run github:AltanS/collie#collie -- doctor`.
 There is no source build, on purpose: installing the dependencies needs the network and a Nix
 derivation has none, so the package wraps the binary the release already publishes and checksums.
 
+There is no NixOS module yet, only the flake package, so `nix profile` is the path: install it into
+your profile as above, or add the flake output to a `home-manager` or `environment.systemPackages`
+list yourself.
+
 > **Note.** Updates come from nix, and Collie will not update itself here. `collie update` declines
 > and names `nix profile upgrade collie` instead, and the phone shows the new version with that
 > command where the update button would be.
 
 In a [pack](pack.md), this machine never takes an update from the phone: the pack lists it as
 "waits for the package manager", and it levels only when you run nix on it.
+
+Remove it with `collie stop` first, then:
+
+```bash
+nix profile remove collie
+```
+
+That drops the store path from your profile and nothing else. Your own files stay: state in
+`~/.local/state/collie` (or `$COLLIE_STATE_DIR`), configuration in `~/.config/collie`, and the
+`systemd --user` unit at `~/.config/systemd/user/collie.service` that `collie start` wrote. Run
+`collie uninstall` before removing the package to drop that unit and the port mapping.
 
 The `PKGBUILD`, the Nix expression and their notes live in `packaging/` in this repository. macOS
 has no package yet; the `aarch64-darwin` flake output is the closest thing.
