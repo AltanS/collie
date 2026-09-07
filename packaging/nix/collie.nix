@@ -77,6 +77,17 @@ stdenv.mkDerivation {
     runHook postInstall
   '';
 
+  # The binary is a Bun single-file executable: the bundle it runs from is appended to the ELF
+  # image, so a hook that rewrites the file can leave something that links but no longer starts.
+  # autoPatchelfHook is fine today, and this phase is what tells us the day it, or a nixpkgs
+  # change under it, stops being fine. `--version` is the cheapest verb that reads the bundle.
+  doInstallCheck = true;
+  installCheckPhase = ''
+    runHook preInstallCheck
+    echo "collie --version says: $("$out/bin/collie" --version)"
+    runHook postInstallCheck
+  '';
+
   meta = {
     description = "Phone web UI for the AI agents running in your terminal, served over Tailscale";
     homepage = "https://github.com/AltanS/collie";
