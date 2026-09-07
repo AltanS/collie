@@ -1833,9 +1833,22 @@ export function AgentChat({
                     the end of the exit so it leaves the tab order with the pixels.
 
                     Also shown whenever launchers are declared, even with a single pane and no
-                    shells: a lone pane with launchers still needs a way to reach them. */}
+                    shells: a lone pane with launchers still needs a way to reach them.
+
+                    GONE IN THE DENSE LAYOUT (lib/density.ts). This handle is 30px whose only job is
+                    to reach the switcher sheet, and the dense sessions row below already carries a
+                    handle of its own: the up-chevron centred on the chrome border, which makes the
+                    same `onOpenSwitcher` call beside the same swipe, and lists the sessions the
+                    sheet would have shown while it does it. Two handles for one errand is the height
+                    the dense layout exists to buy back.
+
+                    The guard is the ROW's own condition, not a layout check, so the handle returns
+                    wherever the row does not draw. `tabPanes` contains the open pane itself, so on a
+                    live pane that is never — it matters for a GONE pane, where the row has nothing
+                    to list and the sheet is the way back to something alive. */}
                 <Collapse
                   open={
+                    !(dense && tabPanes.length > 0) &&
                     !composing &&
                     (agents.length + shellPanes.length > 0 || launchers.length > 0)
                   }

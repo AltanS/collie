@@ -2922,4 +2922,20 @@ describe("Composer — the density swap", () => {
     expect(document.getElementById("dock-cmd")).not.toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
+
+  // The status band states this pane's status as a word; the dense row badges every session with a
+  // StatusDot, this one included. Drawing both puts the same fact on screen twice, one row apart,
+  // which is the height the dense layout is supposed to be buying back.
+  it("states the status once — the band in roomy, the row's dots in dense", () => {
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+    expect(document.querySelector('[data-slot="composer-status"]')).not.toBeNull();
+    expect(document.querySelector('[data-slot="space-agents"]')).toBeNull();
+
+    cleanup();
+    setDenseKeysEnabled(true);
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+
+    expect(document.querySelector('[data-slot="composer-status"]')).toBeNull();
+    expect(document.querySelector('[data-slot="space-agents"]')).not.toBeNull();
+  });
 });

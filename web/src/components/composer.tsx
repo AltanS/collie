@@ -1279,13 +1279,30 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             sits between. `px-2.5` then puts the content back at the 10px inset the controls row
             asked for, so nothing on this line moved by a pixel: the band is what absorbs the old
             `-mx-0.5`, a 2px overhang that was invisible on this unpainted strip either way. */}
-        <div
-          data-slot="composer-status"
-          className="-mx-3 flex h-[14px] items-center justify-end gap-1.5 border-y border-border px-2.5 text-[10px]/3"
-        >
-          <HostChip host={writeHost} variant="caption" className="min-w-0" />
-          <StatusWordSlot status={statusWord} stale={stale} />
-        </div>
+        {/* ROOMY ONLY (lib/density.ts). The dense sessions row below badges every session with its
+            own StatusDot, THIS pane's included, so the word here is a second reading of the same
+            fact one row apart — and the row states it about a NAMED session rather than about an
+            unnamed "here". Everything above about this band's geometry still governs, for the one
+            layout that draws it.
+
+            WHAT THE DENSE LAYOUT GIVES UP WITH IT, SAID PLAINLY: on a PACK this band is the only
+            always-visible naming of the machine a send would reach. `HostChip` keeps its hide rule
+            to itself precisely so no caller drops a chip where it mattered (host-chip.tsx §"THE
+            HIDE RULE LIVES HERE"), and this is a caller dropping one — the dense layout names the
+            host only on an OPEN dock's header (`variant="target"` above). It costs nothing on the
+            solo installs the setting exists for, and the dense sessions row is the obvious home for
+            a self-hiding chip if a pack ever wants the density. Not done here: the row is gated on
+            sibling panes, so it would answer for some pack panes and not others, and a naming
+            surface that is sometimes absent is worse than one that is always elsewhere. */}
+        {!dense && (
+          <div
+            data-slot="composer-status"
+            className="-mx-3 flex h-[14px] items-center justify-end gap-1.5 border-y border-border px-2.5 text-[10px]/3"
+          >
+            <HostChip host={writeHost} variant="caption" className="min-w-0" />
+            <StatusWordSlot status={statusWord} stale={stale} />
+          </div>
+        )}
         {/* ── THE ROW UNDER THE DOCK: ONE LAYOUT OR THE OTHER (lib/density.ts) ─────────────
             ROOMY keeps the Controls row below — Keys · Type · Quick · Agent · ⚙, five labelled
             buttons that each open one of the docks above.

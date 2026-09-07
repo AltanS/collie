@@ -2213,4 +2213,30 @@ describe("AgentChat — the density swap stands the strips down", () => {
     expect(row).not.toBeNull();
     expect(within(row).getAllByRole("button").length).toBeGreaterThan(1);
   });
+
+  // The 30px grab handle above the composer and the row's up-chevron make the SAME
+  // `onOpenSwitcher` call. Keeping both is the two-handles-for-one-errand bug; keeping neither
+  // would strand the sheet, so this pins which one survives in each layout.
+  it("spends one handle on the switcher, not two", () => {
+    // Both carry the same accessible name, so counting is the assertion and a global query would
+    // pass in either layout for the wrong reason.
+    const handles = () => screen.queryAllByRole("button", { name: "Switch pane" });
+    const inRow = () => {
+      const row = document.querySelector<HTMLElement>('[data-slot="space-agents"]');
+      return row ? within(row).queryAllByRole("button", { name: "Switch pane" }).length : 0;
+    };
+
+    renderStrips();
+    // Roomy: exactly one, and it is the standalone grab handle — no row exists to hold it.
+    expect(handles()).toHaveLength(1);
+    expect(inRow()).toBe(0);
+
+    cleanup();
+    setDenseKeysEnabled(true);
+    renderStrips();
+
+    // Dense: still exactly one, and now it is the row's up-chevron.
+    expect(handles()).toHaveLength(1);
+    expect(inRow()).toBe(1);
+  });
 });
