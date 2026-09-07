@@ -1,5 +1,5 @@
 import { accessSync, constants } from "node:fs";
-import { delimiter, isAbsolute, join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 // Finding an external tool (`herdr`, `git`, `systemctl`, `tailscale`, `journalctl`) when there may
 // be no PATH at all.
@@ -36,14 +36,23 @@ export function fallbackDirs(home: string): string[] {
 /**
  * The full search list: absolute PATH entries first (if any), then {@link fallbackDirs}.
  *
- * `node:path`'s `delimiter` rather than a literal `":"` — Windows separates PATH with `;`, and a
- * `:` split there does not merely miss entries, it shreds every one of them at its drive letter
- * (`C:\Program Files\Git\cmd` becomes `C` and `\Program Files\Git\cmd`), so the absolute-only
- * filter below drops the lot and PATH contributes nothing at all.
+ * The separator comes from `platform`, not from a literal `":"` — Windows separates PATH with `;`,
+ * and a `:` split there does not merely miss entries, it shreds every one of them at its drive
+ * letter (`C:\Program Files\Git\cmd` becomes `C` and `\Program Files\Git\cmd`), so the
+ * absolute-only filter below drops the lot and PATH contributes nothing at all.
+ *
+ * `platform` is a parameter defaulting to `process.platform` rather than a read of it, the way
+ * `bridge/config.ts`'s `defaultSocketPath` takes its own: it makes the Windows branch reachable
+ * from a test on any host. We do not test on Windows hardware, so an injected platform is the only
+ * way this branch is ever exercised.
  */
-export function searchDirs(path: string | undefined, home: string): string[] {
+export function searchDirs(
+  path: string | undefined,
+  home: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
   const fromPath = (path ?? "")
-    .split(delimiter)
+    .split(platform === "win32" ? ";" : ":")
     .map((d) => d.trim())
     .filter((d) => d.length > 0 && isAbsolute(d));
   const seen = new Set<string>();
@@ -65,10 +74,14 @@ export function searchDirs(path: string | undefined, home: string): string[] {
  * tool search then silently falls back to the POSIX directory list and reports every Windows tool
  * as "not installed on this host".
  */
-function envGet(env: Record<string, string | undefined>, name: string): string | undefined {
+function envGet(
+  env: Record<string, string | undefined>,
+  name: string,
+  platform: NodeJS.Platform,
+): string | undefined {
   const direct = env[name];
   if (direct !== undefined) return direct;
-  if (process.platform !== "win32") return undefined;
+  if (platform !== "win32") return undefined;
   const wanted = name.toLowerCase();
   for (const key of Object.keys(env)) {
     if (key.toLowerCase() === wanted) return env[key];
@@ -82,9 +95,12 @@ function envGet(env: Record<string, string | undefined>, name: string): string |
  * `herdr.exe`, `python3.exe`, and a lookup for the bare name finds nothing — which reads downstream
  * as "not installed" rather than "we looked in the wrong place".
  */
-export function toolExts(env: Record<string, string | undefined>): string[] {
-  if (process.platform !== "win32") return [""];
-  const raw = envGet(env, "PATHEXT") ?? ".COM;.EXE;.BAT;.CMD";
+export function toolExts(
+  env: Record<string, string | undefined>,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  if (platform !== "win32") return [""];
+  const raw = envGet(env, "PATHEXT", platform) ?? ".COM;.EXE;.BAT;.CMD";
   const ext = raw.split(";").map((e) => e.trim()).filter((e) => e !== "");
   return ["", ...ext];
 }
@@ -131,7 +147,13 @@ export function findTool(
   name: string,
   env: Record<string, string | undefined>,
   home: string,
+  platform: NodeJS.Platform = process.platform,
 ): string | null {
   if (isAbsolute(name)) return isExecutableFile(name) ? name : null;
-  return findIn(name, searchDirs(envGet(env, "PATH"), home), isExecutableFile, toolExts(env));
+  return findIn(
+    name,
+    searchDirs(envGet(env, "PATH", platform), home, platform),
+    isExecutableFile,
+    toolExts(env, platform),
+  );
 }
