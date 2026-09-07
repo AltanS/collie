@@ -26,6 +26,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+- mise installs Collie on Linux and macOS: `mise use -g github:AltanS/collie@<version>` fetches the release tarball for that platform, and the install page documents it beside the Arch and Nix routes. mise owns updates on such a tree, with `mise upgrade --bump` and a `collie restart` to move the service off the old version directory. `collie update` declines there without naming a package manager, because a mise tree is neither a checkout nor a packaged install, and the page says so.
 - `collie-bin` is not on the AUR yet, and the install page says so. The AUR has paused new account registration, so the Arch route is a clone of this repository and `makepkg -si` in `packaging/aur`, with the `paru -S collie-bin` line kept below it under "Once it is on the AUR".
 - The Arch package installs to `/opt/collie`, the layout Omarchy's package repository expects, and ships the metadata that repository uses to follow Collie's releases; a host under `/opt/collie` is told `sudo pacman -Syu collie-bin` like one under `/usr/lib/collie`.
 - Every restart and update command Collie prints for Herdr names the plugin id of the instance that printed it. A host running a second Collie under `COLLIE_INSTANCE` used to be told to invoke `herdr.collie`, which is the host's first Collie and not the one asking, so following the line restarted the wrong service.

@@ -58,10 +58,16 @@ newer release exists — with the package command in place of the update button.
 To take a new version, run your package manager and then restart the service:
 
 ```bash
-paru -Syu collie-bin          # Arch, or your AUR helper of choice
-nix profile upgrade collie    # Nix
+paru -Syu collie-bin                              # Arch, or your AUR helper of choice
+nix profile upgrade collie                        # Nix
+mise upgrade --bump github:AltanS/collie          # mise
 collie restart
 ```
+
+A mise install is the odd one out: Collie does not read it as packaged, because the tree sits in
+your home directory with no `.git` and no `versions/` layout, so `collie update` declines with
+`cannot tell how this Collie was installed` and names no manager. mise still owns it. See
+[Install](install.md#mise).
 
 The restart is the part Collie cannot do for you, and it is not optional. Your package manager swaps
 the files under the running bridge, so that process keeps executing the old code while it already

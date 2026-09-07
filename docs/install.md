@@ -265,6 +265,50 @@ That drops the store path from your profile and nothing else. Your own files sta
 `systemd --user` unit at `~/.config/systemd/user/collie.service` that `collie start` wrote. Run
 `collie uninstall` before removing the package to drop that unit and the port mapping.
 
+#### mise
+
+```bash
+mise use -g github:AltanS/collie@1.5.6
+collie start
+```
+
+`mise use -g` writes the tool into `~/.config/mise/config.toml` and puts the release's `bin/` on
+your PATH. The `github` backend fetches that platform's release tarball, so this works on Linux and
+macOS with no Bun and no compilation. The whole tree lands under
+`~/.local/share/mise/installs/github-altan-s-collie/<version>/`, `web/dist` and `herdr-plugin.toml`
+included, and `collie` resolves its own root from there.
+
+Take a new version with the same `mise use` line and a newer tag, or let mise pick the latest:
+
+```bash
+mise upgrade --bump github:AltanS/collie
+collie restart
+```
+
+`--bump` is the flag that matters. A pinned `1.5.6` is a range of one, so a plain `mise upgrade`
+reports the tool as up to date and moves nothing.
+
+The restart is not optional. Every version gets its own directory, and `collie start` bakes the
+directory it ran from into the `systemd --user` unit, so the service keeps serving the old version
+out of the old directory until you restart it. `collie restart` rewrites the unit with the new path.
+
+> **Note.** `collie update` declines here, and it names no package manager: it says `cannot tell how
+> this Collie was installed`. A mise tree sits inside your home directory, carries no `.git` of its
+> own and has no `versions/` layout above it, so Collie reads it as neither a checkout nor a
+> package. mise owns updates on this install, and the two commands above are what moves it.
+
+Remove it with `collie uninstall` first, then:
+
+```bash
+mise uninstall github:AltanS/collie@1.5.6
+mise unuse github:AltanS/collie
+```
+
+`uninstall` deletes that version's directory, `unuse` drops the line from the config. Spell the tool
+with its full `github:` name for both; the short `collie` works for `upgrade` and not for
+`uninstall`. Your own files stay: state in `~/.local/state/collie` (or `$COLLIE_STATE_DIR`), and
+configuration in `~/.config/collie`.
+
 The `PKGBUILD`, the Nix expression and their notes live in `packaging/` in this repository. macOS
 has no package yet; the `aarch64-darwin` flake output is the closest thing.
 
