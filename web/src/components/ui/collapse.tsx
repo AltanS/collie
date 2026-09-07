@@ -148,12 +148,35 @@ export function Collapse({ open, children, className }: CollapseProps) {
     if (open) {
       setRendered(true);
       setSettled(false);
-      // One tick later, so the browser paints the collapsed state first and has something to
-      // transition FROM. Setting both in the same commit is a jump with extra steps.
-      const start = window.setTimeout(() => setExpanded(true), 0);
+      // ONE PAINTED FRAME LATER — not one macrotask later, which is what this used to be and what
+      // made the whole enter animation a lie.
+      //
+      // A transition needs a start value, and a start value is a style the browser has actually
+      // resolved. `setTimeout(0)` fires within a millisecond, long before any rendering update, so
+      // the `0fr` class went into the DOM and straight back out again inside a single frame: the
+      // row jumped to full height and nothing animated. It went unseen because it is invisible to
+      // every test — jsdom has no layout — and because the OTHER enter path, a child that was
+      // already rendered and merely folded, was painted closed and animated correctly. What broke
+      // was exactly the case this primitive exists for: content that arrives late.
+      //
+      // MEASURED against the running app. Sampling the Updates card per frame while its preflight
+      // landed: the action button read 346px, then 762px on the next frame, with the arriving
+      // sections already carrying `data-state="open"` and their full pixel height — they were never
+      // closed for a frame that could be painted. A fold toggle on the same box, same session, gave
+      // thirteen eased steps over 240ms.
+      //
+      // Two frames, because one is not enough: the first callback still runs BEFORE the paint it
+      // belongs to, so the closed state is only guaranteed on screen by the second. Under reduced
+      // motion there is nothing to give a start value to, and the open is immediate.
+      let second = 0;
+      const first = reduced ? 0 : requestAnimationFrame(() => {
+        second = requestAnimationFrame(() => setExpanded(true));
+      });
+      if (reduced) setExpanded(true);
       const done = window.setTimeout(() => setSettled(true), ms + 16);
       return () => {
-        clearTimeout(start);
+        cancelAnimationFrame(first);
+        cancelAnimationFrame(second);
         clearTimeout(done);
       };
     }
@@ -161,7 +184,7 @@ export function Collapse({ open, children, className }: CollapseProps) {
     setSettled(false);
     const leave = window.setTimeout(() => setRendered(false), ms);
     return () => clearTimeout(leave);
-  }, [open, ms]);
+  }, [open, ms, reduced]);
 
   if (!rendered) return null;
 
