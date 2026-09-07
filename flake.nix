@@ -26,7 +26,10 @@
       # nixpkgs at the revision above ships an older Bun than MIN_BUN, so the version is pinned here
       # rather than taken from the set. Only `version` and the release archives move; the
       # derivation — autopatchelf on Linux, the ICU relink and the ad-hoc signature on Darwin — is
-      # nixpkgs' and stays nixpkgs'. The hashes are the sha256 of the published archives.
+      # nixpkgs' and stays nixpkgs'. The hashes are the sha256 of the published archives. Those
+      # patches must not reach a shipped binary, because `bun build --compile` copies the running
+      # bun as its base, so the release compiles on the unpatched archive instead — `bun.src`, the
+      # same URL and hash pinned here (.github/workflows/release.yml and #184).
       pinBun =
         pkgs:
         pkgs.bun.overrideAttrs (

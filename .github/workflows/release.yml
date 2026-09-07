@@ -148,7 +148,6 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v22
 
       - name: Build the payload
-        id: build
         env:
           PLATFORM: ${{ matrix.platform }}
           BUN_TARGET: ${{ matrix.bun-target }}
@@ -175,7 +174,31 @@ jobs:
           # NO LINT STEP, here or anywhere on an operator's path: oxlint's allocator SIGABRTs below
           # roughly 7 GB of RAM and bricked real installs (1.0.0-beta.44). CI lints in its own
           # workflow, over the full tree, which is the only run that defines "passing".
-          bun build --compile --target="$BUN_TARGET" ./cli/main.ts --outfile "$stage/bin/collie"
+          # THE COMPILE RUNS ON THE UPSTREAM BUN, not on the one this shell just used. `bun build
+          # --compile` copies the RUNNING bun executable as the base of the binary it emits whenever
+          # the target matches the host, and nixpkgs patches its own copy of bun into the Nix store:
+          # autoPatchelf writes a /nix/store PT_INTERP on Linux, and the ICU relink points at a
+          # /nix/store libicucore on Darwin (flake.nix names both). Both travelled into the artifact,
+          # so collie-1.5.4 and collie-1.5.5 macos-arm64 and linux-arm64 aborted in the loader on
+          # every machine without a Nix store (#184). One base binary, two platforms, one fix.
+          #
+          # `bun.src` is the archive flake.nix ALREADY pins by URL and sha256, so the version pin
+          # holds — this is the same bun, before nixpkgs patched it. `bun install` and the web build
+          # above stay on the flake's bun; only the compile moves.
+          command -v unzip >/dev/null 2>&1 || { echo "no unzip on this runner, and the pinned bun ships as a zip" >&2; exit 1; }
+          zip="$(nix build "$GITHUB_WORKSPACE#bun.src" --print-out-paths --no-link)"
+          mkdir -p "$RUNNER_TEMP/upstream-bun"
+          unzip -q "$zip" -d "$RUNNER_TEMP/upstream-bun"
+          upstream_bun="$(find "$RUNNER_TEMP/upstream-bun" -type f -name bun | head -1)"
+          [ -n "$upstream_bun" ] || { echo "no bun executable inside $zip" >&2; exit 1; }
+          chmod 0755 "$upstream_bun"
+          # The two buns must agree, or this ships a binary built on a bun flake.lock never measured.
+          want="$(bun --version)"
+          got="$("$upstream_bun" --version)"
+          [ "$want" = "$got" ] || { echo "upstream bun is $got, the flake's bun is $want — the pin drifted" >&2; exit 1; }
+          echo "compiling on upstream bun $got from $zip"
+
+          "$upstream_bun" build --compile --target="$BUN_TARGET" ./cli/main.ts --outfile "$stage/bin/collie"
           chmod 0755 "$stage/bin/collie"
 
           # Ad-hoc codesign makes the binary RUNNABLE on Apple Silicon. It makes no claim about who
@@ -203,11 +226,42 @@ jobs:
           cp scripts/collie-ctl.sh "$stage/scripts/collie-ctl.sh"
           chmod 0755 "$stage/scripts/collie-ctl.sh"
 
+          PAYLOAD
+          nix develop --command bash "$RUNNER_TEMP/build-payload.sh"
+
+      # OUTSIDE `nix develop`, and that is the whole point of it being its own step. Everything
+      # above ran inside the flake, and the bun derivation's own install check runs inside Nix too,
+      # so neither can see a link into the build machine's store. Nor can simply STARTING the binary
+      # here: nix-installer-action left a /nix/store on this runner, so a binary that only runs
+      # because that store exists runs perfectly. The loader check is the guard; the version run
+      # after it only proves the binary that passed the check is the binary that works (#184).
+      #
+      # The tarball is sealed HERE rather than in the build, because a tarball is what an operator
+      # downloads: it must not exist before the binary inside it has been checked.
+      - name: Check the binary an operator gets, then seal the tarball
+        id: build
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          # Recomputed from the same two facts the build body used, rather than carried across: the
+          # tag and the matrix platform are both already in this step's environment.
+          version="${GITHUB_REF_NAME#v}"
+          root="collie-$version-$PLATFORM"
+          stage="$RUNNER_TEMP/$root"
+
+          bash scripts/check-payload-links.sh "$stage/bin/collie"
+
+          reported="$("$stage/bin/collie" version)"
+          case "$reported" in
+            "$version"*) ;;
+            *) echo "the compiled binary reports '$reported', which does not start with '$version'" >&2; exit 1 ;;
+          esac
+          echo "✓ $root/bin/collie reports $reported"
+
           tar -czf "$RUNNER_TEMP/$root.tar.gz" -C "$RUNNER_TEMP" "$root"
           echo "root=$root" >> "$GITHUB_OUTPUT"
           echo "tarball=$RUNNER_TEMP/$root.tar.gz" >> "$GITHUB_OUTPUT"
-          PAYLOAD
-          nix develop --command bash "$RUNNER_TEMP/build-payload.sh"
 
       - name: Describe the artifact
         env:
