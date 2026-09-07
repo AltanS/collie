@@ -42,7 +42,13 @@ export function ZenControl() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-4 border-t border-border px-4 py-3">
+      {/* The sub-row's text hangs under the header's TEXT, not under its icon: `pl-12` is the card's
+          own `px-4` (16px) plus the icon gutter above it (a `size-5` glyph and `gap-3` = 32px), so
+          one left edge runs down the card. Deliberately NOT NotifyPrefsControl's flush `px-4`: its
+          rows are PEERS under a single header, so a shared left edge at the card edge is right
+          there. This row is a DEPENDENT of the titled row above it, and starting it in that row's
+          icon gutter reads as a second heading rather than as something the switch above governs. */}
+      <div className="flex items-center justify-between gap-4 border-t border-border py-3 pl-12 pr-4">
         <div className="min-w-0">
           <div className={cn("text-sm font-medium", !enabled && "text-muted-foreground")}>
             {t("settings.zen.auto.label")}
