@@ -31,6 +31,8 @@ export const zh: Dictionary = {
   "settings.install.iosHint": "在 iPhone 或 iPad 上，点击浏览器分享按钮，选择“添加到主屏幕”。",
   "settings.zen.title": "专注模式",
   "settings.zen.description": "在面板菜单中添加选项，隐藏终端以外的所有界面元素。",
+  "settings.zen.auto.label": "横屏时自动启用",
+  "settings.zen.auto.hint": "将手机横向旋转会自动打开专注模式；转回竖屏则自动关闭。",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "语音直接发送",

@@ -30,6 +30,8 @@ export const ja: Dictionary = {
   "settings.install.iosHint": "iOS または iPadOS では、ブラウザの共有メニューから「ホーム画面に追加」を選択します。",
   "settings.zen.title": "Zen モード",
   "settings.zen.description": "ペインメニューに、ターミナル以外のUI要素を非表示にする項目を追加します。",
+  "settings.zen.auto.label": "横向きで自動的に有効化",
+  "settings.zen.auto.hint": "本体を横向きにすると Zen モードが自動的に開き、縦に戻すと閉じます。",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "ハンズフリー音声入力",

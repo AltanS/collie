@@ -4,15 +4,24 @@ import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
-import { setZenEnabled, useZenEnabled } from "@/lib/zen";
+import { setAutoZenEnabled, setZenEnabled, useAutoZenEnabled, useZenEnabled } from "@/lib/zen";
+import { cn } from "@/lib/utils";
 
 // Zen mode's availability gate, next to Haptics and Hands-free: all three are "how this phone treats
 // you". The pane's own actions sheet hosts zen's ENTRY, but not this — a persisted per-device
 // capability toggle is not a rendering pref, and it is not something you reach for mid-session.
 // Default off, so the extra menu row only appears for people who asked for it.
+//
+// The auto-landscape sub-row is NotifyPrefsControl's shape (a header switch plus a dependent row
+// below it), not a second card: the two bits are the same feature at different granularity, and a
+// device that has never turned zen on has nothing for the sub-row to gate. Disabled rather than
+// hidden while the header switch is off, so turning zen on doesn't also silently flip a choice the
+// operator can no longer see; the stored preference underneath is untouched either way (lib/zen.ts
+// defaults it off, so rotation changes nothing until it is asked for).
 export function ZenControl() {
   useLocale();
   const enabled = useZenEnabled();
+  const autoLandscape = useAutoZenEnabled();
 
   return (
     <Card className="gap-0 py-0">
@@ -31,6 +40,21 @@ export function ZenControl() {
             aria-label={t("settings.zen.title")}
           />
         </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 border-t border-border px-4 py-3">
+        <div className="min-w-0">
+          <div className={cn("text-sm font-medium", !enabled && "text-muted-foreground")}>
+            {t("settings.zen.auto.label")}
+          </div>
+          <p className="text-xs text-muted-foreground">{t("settings.zen.auto.hint")}</p>
+        </div>
+        <Switch
+          checked={autoLandscape}
+          disabled={!enabled}
+          onCheckedChange={setAutoZenEnabled}
+          aria-label={t("settings.zen.auto.label")}
+        />
       </div>
     </Card>
   );

@@ -40,6 +40,8 @@ export const en = {
   "settings.install.iosHint": "On an iPhone or iPad, install from the browser's share sheet: tap Share, then \"Add to Home Screen\".",
   "settings.zen.title": "Zen mode",
   "settings.zen.description": "Adds a row to the pane menu that hides everything but the terminal.",
+  "settings.zen.auto.label": "Enter on landscape",
+  "settings.zen.auto.hint": "Rotate the phone sideways to open zen automatically; rotate back to close it.",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "Hands-free voice",

@@ -31,6 +31,8 @@ export const de: Dictionary = {
   "settings.install.iosHint": "Unter iOS und iPadOS über das Teilen-Menü des Browsers installieren: Teilen antippen, dann „Zum Home-Bildschirm“.",
   "settings.zen.title": "Zen-Modus",
   "settings.zen.description": "Fügt dem Menü einen Eintrag hinzu, der alle Elemente außer dem Terminal ausblendet.",
+  "settings.zen.auto.label": "Bei Querformat aktivieren",
+  "settings.zen.auto.hint": "Beim seitlichen Drehen öffnet sich der Zen-Modus automatisch; beim Zurückdrehen schließt er sich wieder.",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "Freisprechen",

@@ -31,6 +31,8 @@ export const ko: Dictionary = {
   "settings.install.iosHint": "iPhone 및 iPad에서는 브라우저 공유 메뉴에서 \"홈 화면에 추가\"를 선택하여 설치합니다.",
   "settings.zen.title": "젠 모드",
   "settings.zen.description": "터미널만 남기고 나머지 UI를 숨기는 메뉴 항목을 추가합니다.",
+  "settings.zen.auto.label": "가로 모드에서 자동 실행",
+  "settings.zen.auto.hint": "휴대폰을 옆으로 돌리면 젠 모드가 자동으로 열리고, 다시 돌리면 닫힙니다.",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "음성 직접 전송",

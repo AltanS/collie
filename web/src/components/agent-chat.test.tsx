@@ -20,7 +20,7 @@ vi.mock("@/lib/wizard-action", () => ({
 
 import { server } from "@/test/setup";
 import { clearStatus, setStatus } from "@/lib/status";
-import { setZenEnabled, __resetZen } from "@/lib/zen";
+import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
 import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { submitPromptOption } from "@/lib/prompt-action";
@@ -1823,6 +1823,108 @@ describe("AgentChat — zen mode", () => {
 
     expect(headerRowOf(container)).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
+  });
+
+  describe("auto-zen follows the rotation", () => {
+    // A controllable `matchMedia` fake for `(orientation: landscape)`: the shared stub in
+    // test/setup.ts never fires, which is fine for every other suite and useless for the one
+    // mechanism here that has no other trigger. Installed per case, removed after.
+    let emitOrientation: (landscape: boolean) => void;
+    function installOrientation(initial: boolean) {
+      // The fake speaks only the half of MediaQueryListEvent the hook reads (`matches`) — a full
+      // event object here would need a cast that discards type evidence for nothing.
+      const listeners = new Set<(e: { matches: boolean }) => void>();
+      const mql = {
+        matches: initial,
+        media: "(orientation: landscape)",
+        onchange: null,
+        addEventListener: (_: string, fn: (e: { matches: boolean }) => void) => {
+          void listeners.add(fn);
+        },
+        removeEventListener: (_: string, fn: (e: { matches: boolean }) => void) => {
+          void listeners.delete(fn);
+        },
+      };
+      vi.stubGlobal("matchMedia", () => mql);
+      emitOrientation = (landscape: boolean) => {
+        mql.matches = landscape;
+        for (const fn of listeners) fn({ matches: landscape });
+      };
+    }
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("enters zen on rotation to landscape and leaves on rotation back", async () => {
+      setZenEnabled(true);
+      setAutoZenEnabled(true);
+      installOrientation(false);
+      const { container } = renderChat();
+      expect(headerRowOf(container)).not.toBeNull();
+
+      act(() => emitOrientation(true));
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+      expect(screen.getByRole("button", { name: "Exit zen mode" })).toBeInTheDocument();
+
+      act(() => emitOrientation(false));
+      await waitFor(() => expect(headerRowOf(container)).not.toBeNull());
+      expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
+    });
+
+    it("does nothing while zen itself is unavailable", async () => {
+      setAutoZenEnabled(true);
+      installOrientation(false);
+      const { container } = renderChat();
+
+      act(() => emitOrientation(true));
+      expect(headerRowOf(container)).not.toBeNull();
+      expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
+    });
+
+    it("does nothing on rotation until the landscape sub-toggle is turned on", async () => {
+      // The two bits are independent, and BOTH default off: turning zen on alone must leave
+      // rotation inert while the hand entry point (the actions sheet's row) works normally.
+      setZenEnabled(true);
+      installOrientation(false);
+      const { container } = renderChat();
+
+      act(() => emitOrientation(true));
+      expect(headerRowOf(container)).not.toBeNull();
+      expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
+    });
+
+    it("leaves a hand-entered zen alone on both flips", async () => {
+      setZenEnabled(true);
+      setAutoZenEnabled(true);
+      installOrientation(false);
+      const user = userEvent.setup();
+      const { container } = renderChat();
+
+      await enterZen(user);
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+
+      act(() => emitOrientation(true));
+      expect(headerRowOf(container)).toBeNull();
+      act(() => emitOrientation(false));
+      expect(headerRowOf(container)).toBeNull();
+    });
+
+    it("a hand exit in landscape stays out until the next rotation", async () => {
+      setZenEnabled(true);
+      setAutoZenEnabled(true);
+      installOrientation(false);
+      const user = userEvent.setup();
+      const { container } = renderChat();
+
+      act(() => emitOrientation(true));
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+
+      await user.click(screen.getByRole("button", { name: "Exit zen mode" }));
+      await waitFor(() => expect(headerRowOf(container)).not.toBeNull());
+
+      act(() => emitOrientation(false));
+      expect(headerRowOf(container)).not.toBeNull();
+      act(() => emitOrientation(true));
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+    });
   });
 });
 
