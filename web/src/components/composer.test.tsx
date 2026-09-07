@@ -2959,4 +2959,46 @@ describe("Composer — the density swap", () => {
     expect(tight).toContain("max-h-[min(10rem,30dvh)]");
     expect(tight).toContain("wrap-anywhere");
   });
+
+  // ── THE DOCK ITSELF, WHICH IS WHERE THE PORT KEPT DRIFTING ──────────────────
+  // Three facts, one test, because they are one decision (`dense` on ComposerDock) and a partial
+  // regression is what shipped twice: a dense dock has NO header row, BOTH dense docks open to the
+  // SAME cap, and neither draws a top rule (the chrome block above already draws that boundary).
+  it("gives the dense docks no header, one shared cap, and no second boundary", async () => {
+    const user = userEvent.setup();
+    setDenseKeysEnabled(true);
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    const keys = document.getElementById("dock-keys")!;
+    // No title, no ✕ — the rail pad the operator just pressed morphed into the close control.
+    expect(keys.querySelector("[aria-label^='Close']")).toBeNull();
+    expect(keys.className).not.toContain("border-t");
+    const keysCap = keys.lastElementChild!.className;
+
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    const cmd = document.getElementById("dock-cmd")!;
+    expect(cmd.querySelector("[aria-label^='Close']")).toBeNull();
+    expect(cmd.className).not.toContain("border-t");
+    // ONE cap, not two that agree today: switching docks must not resize the surface under the
+    // thumb, and two literals would drift the first time one was tuned.
+    expect(cmd.lastElementChild!.className).toBe(keysCap);
+    expect(keysCap).toContain("max-h-[30dvh]");
+  });
+
+  // Roomy keeps upstream's dock exactly: a titled header with a working ✕, and the top rule.
+  it("leaves the roomy dock its header and its rule", async () => {
+    const user = userEvent.setup();
+    renderComposer({});
+
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    const keys = document.getElementById("dock-keys")!;
+    expect(keys.className).toContain("border-t");
+    expect(keys.lastElementChild!.className).toContain("max-h-[45dvh]");
+
+    const close = keys.querySelector<HTMLElement>("[aria-label^='Close']")!;
+    expect(close).not.toBeNull();
+    await user.click(close);
+    expect(document.getElementById("dock-keys")).toBeNull();
+  });
 });

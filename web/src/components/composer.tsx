@@ -8,6 +8,7 @@ import type { DisplayPrefs } from "@/hooks/use-display-prefs";
 import type { AgentStatus, AgentView } from "@/lib/types";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
+import { useSwipeDown } from "@/hooks/use-swipe";
 import { useLocale } from "@/hooks/use-locale";
 import { t as translate, tn as translatePlural } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
@@ -220,6 +221,8 @@ function ComposerDock({
   title,
   id,
   host,
+  bare,
+  dense,
   onClose,
   children,
 }: {
@@ -230,28 +233,78 @@ function ComposerDock({
   id?: string;
   /** The machine a key sent from this dock lands on. Renders nothing on a single-host install. */
   host?: string;
+  /**
+   * Skip the header row entirely — no title, no host chip, no ✕.
+   *
+   * The header earns its ~34px in the ROOMY layout, where the only thing that opened this dock was
+   * a labelled button in a row of five and the title is what says which of them you pressed. In the
+   * DENSE layout the toggle is a single pinned control that MORPHS into a close control while open
+   * (key-rail.tsx / space-agents-row.tsx both wear the shared MorphIcon), so the title restates
+   * what the operator just tapped and the ✕ duplicates a control still on screen. A dock whose
+   * whole purpose is to fit more keys on the glass may not spend a row saying its own name.
+   *
+   * Not offered blindly: a dock the caller made bare must leave the host named somewhere, which is
+   * the caller's business and stated at each call site.
+   */
+  bare?: boolean;
+  /**
+   * Which layout this dock is drawing, which decides BOTH the body cap and the top rule — one
+   * argument, so no call site can pair a dense cap with a roomy border.
+   *
+   * ROOMY: 45dvh under a header, and upstream's `border-t` against the mirror.
+   * DENSE: 30dvh for BOTH docks, so switching between Keys and the palette never resizes the
+   * surface under the thumb (two caps that merely agreed would drift the first time one was
+   * tuned), and NO top rule — the chrome block in agent-chat.tsx already draws that boundary, and
+   * two components drawing one boundary is a fault this codebase has fixed twice
+   * (`space-strip.tsx` / `tab-strip.tsx`). In roomy the header row separates the two, so the
+   * doubling does not read; in dense the dock's body butts straight onto it.
+   */
+  dense: boolean;
   onClose: () => void;
   children: ReactNode;
 }) {
+  // Swipe-down to close: the sheets' own gesture, on in-flow chrome. It matters most on a BARE
+  // dock, where the ✕ is gone and the morphed toggle is the only button left — the fling is the
+  // second way out. Only while the body sits at the top, so a fling that also scrolled stays a
+  // scroll (the BottomSheet's atTop rule, same reason). It closes through `onClose`, so the Keys
+  // queue's discard confirm guards the gesture exactly as it guards the toggle (ADR 0005).
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const swipe = useSwipeDown(() => {
+    if ((bodyRef.current?.scrollTop ?? 0) <= 0) onClose();
+  });
   return (
-    <div id={id} className="-mx-3 mb-2 flex flex-col border-t border-border bg-background">
-      <div className="flex items-center justify-between px-3 pt-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <SectionLabel>{title}</SectionLabel>
-          {/* A key press from the Keys dock IS a write into a terminal — the dock names which one. */}
-          <HostChip host={host} variant="target" />
+    <div
+      id={id}
+      className={cn(
+        "-mx-3 mb-2 flex flex-col bg-background",
+        !dense && "border-t border-border",
+      )}
+      {...swipe}
+    >
+      {!bare && (
+        <div className="flex items-center justify-between px-3 pt-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <SectionLabel>{title}</SectionLabel>
+            {/* A key press from the Keys dock IS a write into a terminal — the dock names which one. */}
+            <HostChip host={host} variant="target" />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground"
+            onClick={onClose}
+            aria-label={translate("composer.dock.closeAria", { title })}
+          >
+            <X className="size-4" />
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-muted-foreground"
-          onClick={onClose}
-          aria-label={translate("composer.dock.closeAria", { title })}
-        >
-          <X className="size-4" />
-        </Button>
+      )}
+      <div
+        ref={bodyRef}
+        className={cn("min-h-0 overflow-y-auto", dense ? "max-h-[30dvh]" : "max-h-[45dvh]")}
+      >
+        {children}
       </div>
-      <div className="max-h-[45dvh] min-h-0 overflow-y-auto">{children}</div>
     </div>
   );
 }
@@ -1101,6 +1154,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             id="dock-keys"
             title={translate("composer.controls.keys")}
             host={writeHost}
+            // Bare in the dense layout, but ONLY where the header has nothing left to say: on a
+            // pack it still names the machine these keys land on, because a key press is a write
+            // into a real terminal and no other always-visible surface in the dense layout names
+            // it (the status band that used to is gone). On a solo install — every install today —
+            // HostChip renders nothing, so the header is a title above a control the operator just
+            // pressed, and it goes.
+            bare={dense && writeHost == null}
+            dense={dense}
             onClose={closeDrawer}
           >
             {dense ? (
@@ -1126,7 +1187,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </ComposerDock>
         )}
         {drawer === "quick" && (
-          <ComposerDock title={translate("composer.controls.quick")} onClose={closeDrawer}>
+          <ComposerDock
+            title={translate("composer.controls.quick")}
+            // Roomy-only surface: no Controls row, no Quick dock.
+            dense={false}
+            onClose={closeDrawer}
+          >
             <QuickActionsContent
               onSend={(t) => send(t, false)}
               onClose={closeDrawer}
@@ -1137,7 +1203,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </ComposerDock>
         )}
         {drawer === "display" && (
-          <ComposerDock title={translate("composer.controls.display")} onClose={closeDrawer}>
+          <ComposerDock
+            title={translate("composer.controls.display")}
+            // Roomy-only surface: the dense layout's mirror prefs live in the pane's own menu.
+            dense={false}
+            onClose={closeDrawer}
+          >
             <DisplayPrefsContent
               prefs={prefs}
               setWrap={setWrap}
@@ -1153,7 +1224,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             panel grows above it. Never a header: the pin morphs into the close control, and the
             rows below already name what they send. */}
         {dense && drawer === "cmd" && (
-          <ComposerDock id="dock-cmd" title={translate("commands.title")} onClose={closeDrawer}>
+          <ComposerDock
+            id="dock-cmd"
+            title={translate("commands.title")}
+            // Always bare, on the one layout that mounts it: the pin below morphs into the close
+            // control, and the search field's own placeholder names the machine on a pack, so
+            // unlike Keys there is nothing the header alone would say.
+            bare
+            dense
+            onClose={closeDrawer}
+          >
             {/* Breathing room under the dock's top rule — no header row to spend it, so the chips
                 would otherwise butt against the border. */}
             <div className="pt-2">
