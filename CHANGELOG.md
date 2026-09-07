@@ -3,7 +3,28 @@
 This file tracks all notable changes to Collie, ordered newest version first. The project follows
 [Semantic Versioning](https://semver.org/). Each version contains a single flat list of changes
 in landing order, oldest first. Every entry links to its commit and credits the contributor where
-there is one. The `## [Unreleased]
+there is one. The `## [Unreleased]` section contains merged work waiting for release. The release
+commit renames this heading to `## [x.y.z] - YYYY-MM-DD`, adds the commit hashes, and adds a new
+empty `## [Unreleased]` section above it. The newest numbered `## [x.y.z]` heading (excluding the
+Unreleased heading) **must** match the `version` field in `herdr-plugin.toml`, `package.json`,
+and `web/package.json`, which `scripts/check-version.sh` checks. See [`CLAUDE.md`](./CLAUDE.md) →
+*Versioning* for the bump policy.
+
+## Upgrading
+
+**Already on 1.x?** Run `collie update`, or run
+`herdr plugin action invoke update --plugin herdr.collie`. Check the result with
+`bin/collie version` (or `herdr plugin action invoke version --plugin herdr.collie`). It shows the
+newest tag. The phone PWA updates itself within about a minute; no reload needed.
+
+**Coming from 0.x?** Upgrade with one command. Do not use `collie update`. From the Herdr
+plugin: `herdr plugin action invoke update-major --plugin herdr.collie`. From a checkout you can
+reach: `bin/collie update --major`. Fresh install:
+`curl -fsSL https://colliepwa.dev/install.sh | sh`. Neither upgrade path assumes a `collie` on your
+PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgrading from 0.x to
+1.0*.
+
+## [Unreleased]
 
 ## [1.5.5] - 2026-09-07
 
