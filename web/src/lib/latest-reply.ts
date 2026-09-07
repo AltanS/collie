@@ -90,6 +90,9 @@ export interface ReplyPlacement {
   endLine: number;
 }
 
+/** A verdict with no rows to replace — every fit but `clipped` ends here. */
+const elsewhere = (fit: ReplyFit): ReplyPlacement => ({ fit, endLine: -1 });
+
 /**
  * Locate a journal turn on the mirror.
  *
@@ -110,8 +113,6 @@ export interface ReplyPlacement {
  * each row's cumulative folded length and finding the first that reaches the tail probe's end.
  */
 export function locateReply(mirrorText: string, entry: TranscriptEntry): ReplyPlacement {
-  const elsewhere = (fit: ReplyFit): ReplyPlacement => ({ fit, endLine: -1 });
-
   const reply = fold(replyProse(entry));
   if (reply.length < PROBE_CHARS * 2) return elsewhere("whole");
   if (proseTruncated(entry)) return elsewhere("off-screen");

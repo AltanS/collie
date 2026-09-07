@@ -9,7 +9,7 @@ import { useLatestReply } from "./use-latest-reply";
 // fetch when the feature is off, and never a reply left over from the pane you just left.
 
 /** Count history requests, keeping the default handler's response. */
-function countHistory(): { hits: () => number } {
+function countHistory() {
   let hits = 0;
   server.use(
     http.get(/\/api\/pane\/[^/]+\/history/, () => {

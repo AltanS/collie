@@ -41,6 +41,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - A Claude pane is read for its session name only when its screen has changed, so a herd of idle agents no longer costs one socket read per pane per poll. This uses Herdr's pane revision; tmux and zellij panes are read as before. Thanks to @sd2k (#189).
 - `collie serve` says when it could not read the tailnet's HTTPS status and publishes anyway. A `tailscale status --json` this build cannot read means "can't tell", never "no HTTPS", so the refusal above stays off that path; the line names the admin console in case the publish does stop and wait after all.
 - Turning the phone to landscape opens zen when zen is enabled, and turning it back closes it; a zen you opened yourself stays open through both. The switch sits under Zen in Settings, off until you turn it on, and it acts only while zen itself is on. Desktops and tablets are landscape all day and are not affected. Thanks @enieuwy (#182).
+- A reply whose opening scrolled off the terminal is shown in full from the agent's own log, in place of the rows it covers, and Settings → View → Full latest reply turns it off, thanks @sd2k (#185).
 
 ## [1.5.6] - 2026-09-07
 

@@ -66,11 +66,14 @@ export function useLatestReply({
     if (!enabled || settled === "") return;
     const abort = new AbortController();
     let live = true;
-    fetchHistory(paneId, { limit: TURNS }, scope, abort.signal)
-      .then((page) => {
+    void (async () => {
+      try {
+        const page = await fetchHistory(paneId, { limit: TURNS }, scope, abort.signal);
         if (live && page.available) setReply(newestReply(page.entries));
-      })
-      .catch(() => {});
+      } catch {
+        // A cancelled or failed read leaves the previous reply in place.
+      }
+    })();
     return () => {
       live = false;
       abort.abort();

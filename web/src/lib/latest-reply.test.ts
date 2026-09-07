@@ -1,5 +1,5 @@
 import { fold, locateReply, newestReply, PROBE_CHARS, replyProse } from "./latest-reply";
-import type { TranscriptEntry } from "./types";
+import type { TranscriptEntry, TranscriptPart } from "./types";
 
 // The predicates behind "the mirror is only showing the end of this reply". The cases that matter are
 // the ones where the two sides of the comparison are written differently — Markdown source against a
@@ -10,11 +10,14 @@ function turn(
   text: string,
   extra: { uuid?: string; truncated?: boolean } = {},
 ): TranscriptEntry {
+  const parts: TranscriptPart[] = [
+    extra.truncated ? { kind: "text", text, truncated: true } : { kind: "text", text },
+  ];
   return {
     uuid: extra.uuid ?? `${role}-${text.slice(0, 8)}`,
     ts: "2026-08-28T10:00:00.000Z",
     role,
-    parts: [{ kind: "text", text, ...(extra.truncated ? { truncated: true } : {}) }],
+    parts,
   };
 }
 
@@ -58,7 +61,8 @@ function rendered(text: string, cols = 40): string {
 
 describe("fold", () => {
   it("erases every difference between Markdown source and a wrapped, coloured render", () => {
-    expect(fold("**bold** text")).toBe(fold("\x1b[1mbold\x1b[0m text".replace(/\x1b\[\d+m/g, "")));
+    // The SGR-painted form "\x1b[1mbold\x1b[0m text" reaches fold with its escapes already stripped.
+    expect(fold("**bold** text")).toBe(fold("bold text"));
     expect(fold("hello world")).toBe(fold("hello\n  world"));
     expect(fold("- a bullet")).toBe(fold("  • a bullet"));
   });
