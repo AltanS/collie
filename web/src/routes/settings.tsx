@@ -18,6 +18,7 @@ import { ZenControl } from "@/components/zen-control";
 import { InstallControl } from "@/components/install-control";
 import { LanguageControl } from "@/components/language-control";
 import { FontSettingsControl } from "@/components/font-settings";
+import { DensityControl } from "@/components/density-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { UpdatesSettingsCard } from "@/components/updates-settings-card";
 import { Switch } from "@/components/ui/switch";
@@ -137,6 +138,11 @@ export function SettingsRoute() {
             own voice first, the thing it renders second. */}
         <TypefaceControl />
         <FontSettingsControl />
+
+        {/* Density sits with appearance, under the fonts: it is the same kind of standing,
+            per-device choice about how this phone presents itself. Off by default — see
+            lib/density.ts for why it is one bit and not a scale. */}
+        <DensityControl />
 
         {/* Device behaviour sits with appearance — both are "how this phone treats you", as opposed
             to the herd/notification settings below. Renders nothing where vibrate is unsupported. */}

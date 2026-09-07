@@ -28,6 +28,8 @@ export const es: Dictionary = {
   "settings.install.description": "Añade Collie a la pantalla de inicio con ventana dedicada e icono propio.",
   "settings.install.button": "Instalar",
   "settings.install.iosHint": "En iOS o iPadOS, selecciona Compartir y luego «Añadir a pantalla de inicio».",
+  "settings.density.title": "Superficies de teclas compactas",
+  "settings.density.description": "Cuadrículas de teclas compactas y una fila de teclas siempre visible sobre el cuadro de respuesta, para que quepan más teclas en pantalla.",
   "settings.zen.title": "Modo zen",
   "settings.zen.description": "Añade una opción al menú de paneles para ocultar todo excepto el terminal.",
 

@@ -29,6 +29,8 @@ export const ko: Dictionary = {
   "settings.install.description": "Collie를 홈 화면에 추가하여 전용 아이콘과 전체 화면으로 실행합니다.",
   "settings.install.button": "설치",
   "settings.install.iosHint": "iPhone 및 iPad에서는 브라우저 공유 메뉴에서 \"홈 화면에 추가\"를 선택하여 설치합니다.",
+  "settings.density.title": "고밀도 키 화면",
+  "settings.density.description": "키 그리드를 좁게 배치하고 입력창 위에 항상 보이는 키 행을 두어 화면에 더 많은 키가 들어갑니다.",
   "settings.zen.title": "젠 모드",
   "settings.zen.description": "터미널만 남기고 나머지 UI를 숨기는 메뉴 항목을 추가합니다.",
 
