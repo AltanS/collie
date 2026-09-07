@@ -186,6 +186,9 @@ export class StateEngine {
   // when a pane momentarily hides its input box (a dialog / working spinner) — only cleared when the
   // pane itself vanishes (see the removal loop). Enriched from pane text each poll (see enrichSessionNames).
   private readonly sessionNames = new Map<string, string>();
+  // Revision at which each pane was last enriched. enrichSessionNames skips the readGrid RPC for
+  // any pane whose revision hasn't moved — O(claude_panes) socket calls per poll → O(changed).
+  private readonly enrichedAt = new Map<string, number>();
   private readonly transitionListeners = new Set<TransitionListener>();
   private readonly removeListeners = new Set<RemoveListener>();
   private readonly updateListeners = new Set<UpdateListener>();
@@ -407,12 +410,18 @@ export class StateEngine {
         if (live.has(id)) continue;
         this.prevStatus.delete(id);
         this.sessionNames.delete(id); // drop the cached name so a reused pane id starts clean
+        this.enrichedAt.delete(id);
         for (const fn of this.removeListeners) fn(id);
       }
 
       // Enrich claude panes with their own `/rename` session name (read from pane text). Best-effort:
-      // a failed read keeps the last-known name and never fails the poll.
-      await this.enrichSessionNames(agents);
+      // a failed read keeps the last-known name and never fails the poll. The revision map lets
+      // unchanged panes skip the readGrid RPC entirely.
+      const revisions = new Map<string, number>();
+      for (const p of panes) {
+        if (p.revision !== undefined) revisions.set(p.paneId, p.revision);
+      }
+      await this.enrichSessionNames(agents, revisions);
 
       this.agents = agents;
       this.shellPanes = shellPanes;
@@ -465,11 +474,19 @@ export class StateEngine {
    * multiplexer that cannot hand over a rendered grid declines the read, which reads here as
    * "keep whatever's cached" — exactly like a read that failed.
    */
-  private async enrichSessionNames(agents: AgentView[]): Promise<void> {
+  private async enrichSessionNames(
+    agents: AgentView[],
+    revisions: Map<string, number>,
+  ): Promise<void> {
     const claude = agents.filter((a) => a.agent === "claude");
     if (claude.length === 0) return;
     await Promise.all(
       claude.map(async (a) => {
+        const rev = revisions.get(a.paneId);
+        if (rev !== undefined) {
+          const prev = this.enrichedAt.get(a.paneId);
+          if (prev !== undefined && prev === rev) return;
+        }
         try {
           // `viewport` — never `recent`; see SESSION_NAME_READ_LINES for what a `recent` read does
           // to the operator's screen. The viewport is also strictly safer to parse: `recent` hands
@@ -484,6 +501,7 @@ export class StateEngine {
           if (!read.ok) return;
           const name = extractClaudeSessionName(read.value.text);
           if (name) this.sessionNames.set(a.paneId, name);
+          if (rev !== undefined) this.enrichedAt.set(a.paneId, rev);
         } catch {
           // Keep whatever's cached (if anything) — a transient read failure must not blank the name.
         }

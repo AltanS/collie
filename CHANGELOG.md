@@ -26,6 +26,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+- `enrichSessionNames` skips the `readGrid` RPC for panes whose content revision hasn't changed since the last enrichment, dropping the per-poll cost from O(claude_panes) socket calls to O(changed_panes) (#187)
+
 ## [1.5.6] - 2026-09-07
 
 - Collie carries its own package recipes: `packaging/aur` for Arch (`collie-bin`, not yet on the AUR) and `packages.<system>.collie` from this repository's flake for Nix. Both wrap the release tarball, neither builds anything, and neither updates itself, because the package manager owns that folder. ([bb46def](https://github.com/AltanS/collie/commit/bb46def), [43a23a2](https://github.com/AltanS/collie/commit/43a23a2))
