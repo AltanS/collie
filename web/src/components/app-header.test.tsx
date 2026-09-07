@@ -12,6 +12,7 @@ import { AppHeaderHost, RouteHeader, SettingsGear } from "./app-header";
 import { StatusBadge } from "./status-badge";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth, isLostLatched } from "@/lib/connection-health";
+import { setDenseKeysEnabled, __resetDenseKeys } from "@/lib/density";
 import { PackProvider } from "./pack-provider";
 import type { BridgeStatus, ServerSummary } from "@/lib/types";
 
@@ -49,6 +50,9 @@ function LocationProbe() {
 
 describe("the header — the one shared shell", () => {
   beforeEach(() => __resetConnectionHealth());
+  // The floor is per-device state, so it has to leave every case as it found it — the roomy
+  // assertions above and below this one would otherwise depend on test order.
+  afterEach(() => __resetDenseKeys());
 
   it("is calm in the PANE variant while live — breadcrumb + status badge, no pill, no wordmark", () => {
     // Connection copy lives in the top ConnectionBanner now; the header carries none. A healthy pane
@@ -120,6 +124,29 @@ describe("the header — the one shared shell", () => {
     expect(rowOf(dash.container)).toContain("min-h-15");
     expect(rowOf(dash.container)).not.toMatch(/(^|\s)h-\d/);
     // Same row, whatever the caller handed in — the geometry is the shell's, not the route's.
+    expect(rowOf(pane.container)).toBe(rowOf(dash.container));
+  });
+
+  it("lowers the floor for the dense layout, and still states one height for every route", () => {
+    // 52px = the same 44px tap target + the row's own `py-1`, so the dense floor stops reserving
+    // 8px nothing in the row asks for. The property that matters is not the number but that it is
+    // still ONE number: a floor that varied by route is the 4px navigation jump this row exists to
+    // have fixed, and a density setting would be a fresh way to reintroduce it.
+    setDenseKeysEnabled(true);
+    const dash = renderHeader(
+      <Header bridge="connected" error={false} wordmark rightTrail={<SettingsGear />} />,
+    );
+    const pane = renderHeader(
+      <Header bridge="connected" error={false} onHome={() => {}}>
+        <span>webapp › main</span>
+      </Header>,
+    );
+    const rowOf = (c: HTMLElement) =>
+      c.querySelector('header [data-slot="header-row"]')?.className ?? "";
+
+    expect(rowOf(dash.container)).toContain("min-h-13");
+    expect(rowOf(dash.container)).not.toContain("min-h-15");
+    expect(rowOf(dash.container)).not.toMatch(/(^|\s)h-\d/);
     expect(rowOf(pane.container)).toBe(rowOf(dash.container));
   });
 

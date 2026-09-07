@@ -17,6 +17,7 @@ import { useNavigate } from "react-router";
 import { isConnecting } from "@/lib/connection";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { useDenseKeysEnabled } from "@/lib/density";
 import { useLocale } from "@/hooks/use-locale";
 import { useMuxLogoUrl, useMuxName } from "@/lib/mux-capability";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
@@ -159,6 +160,10 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
   const [overrideHost, setOverrideHost] = useState<HTMLElement | null>(null);
   const [claim, setClaim] = useState<HeaderClaim>(UNCLAIMED);
   const home = useRef<{ owner: string; fn?: () => void } | null>(null);
+  // Which floor this row states (see the row itself, below). Read in the shell rather than per
+  // route: the row is mounted once for the life of the app, so one read keeps every route the same
+  // height and a navigation cannot change it.
+  const dense = useDenseKeysEnabled();
   // Who owns the row right now. THE TRANSITION FRAME: React tears the leaving route's fibers down
   // before it runs the arriving route's layout effects, so the normal order is release-then-claim and
   // the arriving route always wins. This token makes that ordering irrelevant — a release only lands
@@ -250,7 +255,20 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
               `py-2` would now read identically and would hand a future taller-than-44px child its 8px
               back. That is a PROPOSAL, not a change — the number is left exactly where it was measured,
               one variable at a time. */}
-          <div data-slot="header-row" className="flex min-h-15 items-center gap-2 pl-4 pr-2 py-1">
+          {/* DENSE LOWERS THE FLOOR TO 52px (lib/density.ts): `min-h-13` = the same 44px tap target
+              plus this row's own `py-1`, which is the arithmetic the paragraph above states — so the
+              floor stops reserving 8px that nothing in the row asks for. The pane's block is two
+              lines and 36px, so it still centres with air either side; no control loses its target,
+              because the target was never what the extra 8px was for. Every route mounts this row,
+              so the setting reaches the dashboard too — which is intended: it is one answer to "how
+              tight does this phone draw", not a pane-only trade. */}
+          <div
+            data-slot="header-row"
+            className={cn(
+              "flex items-center gap-2 py-1 pl-4 pr-2",
+              dense ? "min-h-13" : "min-h-15",
+            )}
+          >
             {!claim.override && (
               <>
                 {/* The mark is the shell's, not a slot — which is now literal rather than a promise: it

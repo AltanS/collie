@@ -2938,4 +2938,25 @@ describe("Composer — the density swap", () => {
     expect(document.querySelector('[data-slot="composer-status"]')).toBeNull();
     expect(document.querySelector('[data-slot="space-agents"]')).not.toBeNull();
   });
+
+  // The reply box is the tallest single thing in the cluster, so the dense layout shortens it too:
+  // 36px + `py-1.5` instead of 44px + `py-2.5`. Pinned because it is the one dense surface that
+  // goes under the 44px comfort floor on purpose (chat-input.tsx says why), and a later tidy-up
+  // that "restored" the target would silently take the density back.
+  it("shortens the reply box in dense and leaves everything else about it alone", () => {
+    renderComposer({});
+    const roomy = document.querySelector('[data-slot="chat-input"]')!.className;
+    expect(roomy).toContain("min-h-11");
+    expect(roomy).toContain("py-2.5");
+
+    cleanup();
+    setDenseKeysEnabled(true);
+    renderComposer({});
+    const tight = document.querySelector('[data-slot="chat-input"]')!.className;
+    expect(tight).toContain("min-h-9");
+    expect(tight).toContain("py-1.5");
+    // The cap and the wrap rules are not density's business — both layouts keep them.
+    expect(tight).toContain("max-h-[min(10rem,30dvh)]");
+    expect(tight).toContain("wrap-anywhere");
+  });
 });
