@@ -35,7 +35,7 @@ export const zhTW: Dictionary = {
   "settings.pins.option.right": "\u53f3\u5074",
 
   "settings.density.title": "高密度按鍵介面",
-  "settings.density.description": "以緊密的按鍵格線搭配輸入框上方常駐的按鍵列，讓畫面容納更多按鍵。",
+  "settings.density.description": "以緊密的按鍵格線搭配常駐的按鍵列：按鍵始終在畫面上，終端機也保留更多行。",
   "settings.zen.title": "專注模式",
   "settings.zen.description": "在窗格選單中加入選項，隱藏終端機以外的所有介面元素。",
 

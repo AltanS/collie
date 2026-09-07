@@ -36,7 +36,7 @@ export const zh: Dictionary = {
   "settings.pins.option.right": "\u53f3\u4fa7",
 
   "settings.density.title": "高密度按键界面",
-  "settings.density.description": "以紧凑的按键网格搭配输入框上方常驻的按键行，让屏幕容纳更多按键。",
+  "settings.density.description": "以紧凑的按键网格搭配常驻的按键行：按键始终在屏幕上，终端也保留更多行。",
   "settings.zen.title": "专注模式",
   "settings.zen.description": "在面板菜单中添加选项，隐藏终端以外的所有界面元素。",
 

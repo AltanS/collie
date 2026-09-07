@@ -36,7 +36,7 @@ export const ko: Dictionary = {
   "settings.pins.option.right": "\uc624\ub978\ucabd",
 
   "settings.density.title": "고밀도 키 화면",
-  "settings.density.description": "키 그리드를 좁게 배치하고 입력창 위에 항상 보이는 키 행을 두어 화면에 더 많은 키가 들어갑니다.",
+  "settings.density.description": "키 그리드를 좁게 배치하고 항상 보이는 키 행을 둡니다. 키는 화면에 남고 터미널은 더 많은 줄을 유지합니다.",
   "settings.zen.title": "젠 모드",
   "settings.zen.description": "터미널만 남기고 나머지 UI를 숨기는 메뉴 항목을 추가합니다.",
 

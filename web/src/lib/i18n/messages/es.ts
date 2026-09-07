@@ -35,7 +35,7 @@ export const es: Dictionary = {
   "settings.pins.option.right": "Derecha",
 
   "settings.density.title": "Superficies de teclas compactas",
-  "settings.density.description": "Cuadrículas de teclas compactas y una fila de teclas siempre visible sobre el cuadro de respuesta, para que quepan más teclas en pantalla.",
+  "settings.density.description": "Cuadrículas de teclas compactas y una fila de teclas siempre visible: las teclas se quedan en pantalla y al terminal le quedan más líneas.",
   "settings.zen.title": "Modo zen",
   "settings.zen.description": "Añade una opción al menú de paneles para ocultar todo excepto el terminal.",
 

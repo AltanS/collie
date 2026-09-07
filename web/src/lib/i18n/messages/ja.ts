@@ -35,7 +35,7 @@ export const ja: Dictionary = {
   "settings.pins.option.right": "\u53f3",
 
   "settings.density.title": "高密度のキー配置",
-  "settings.density.description": "キーのグリッドを詰めて表示し、入力欄の上に常時表示のキー行を置くことで、画面に収まるキーが増えます。",
+  "settings.density.description": "キーのグリッドを詰め、常時表示のキー行を置きます。キーは画面に残り、ターミナルの行数が増えます。",
   "settings.zen.title": "Zen モード",
   "settings.zen.description": "ペインメニューに、ターミナル以外のUI要素を非表示にする項目を追加します。",
 

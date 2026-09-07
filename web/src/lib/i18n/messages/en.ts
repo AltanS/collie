@@ -45,7 +45,7 @@ export const en = {
   "settings.pins.option.right": "Right",
 
   "settings.density.title": "Dense key surfaces",
-  "settings.density.description": "Compact key grids and an always-on key row above the reply box, so more keys fit on screen.",
+  "settings.density.description": "Compact key grids and an always-on key row, so the keys stay on screen and the terminal keeps more of its rows.",
   "settings.zen.title": "Zen mode",
   "settings.zen.description": "Adds a row to the pane menu that hides everything but the terminal.",
 
