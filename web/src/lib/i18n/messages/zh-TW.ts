@@ -45,6 +45,8 @@ export const zhTW: Dictionary = {
   "settings.push.reason.denied": "通知權限已被拒絕，請在瀏覽器設定中啟用。",
   "settings.push.reason.unsupported": "目前瀏覽器不支援推播通知。",
   "settings.push.reason.default": "無法啟用推播通知。",
+  "settings.push.reason.timeout": "通知設定逾時。請確認目前裝置能連線至推播服務，然後重試。",
+  "settings.push.availability.unavailable": "無法檢查通知設定。請檢查網路或重新登入，然後重試。",
   "settings.push.availability.insecure": "一般 HTTP 環境不可用。請透過 HTTPS 部署 Collie 以啟用推播。",
   "settings.push.availability.serverOff": "Bridge 缺少 VAPID 金鑰設定，伺服器端已停用推播功能。",
   "settings.push.availability.denied": "目前網站的通知權限已被拒絕。請在瀏覽器設定中重新允許。",

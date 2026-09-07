@@ -140,6 +140,10 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The switch flips optimistically under the thumb; the server's merged view then reconciles it, and a REVERT is paired with an error status because a switch that moves back in silence misinforms anyone who has stopped looking (hooks/use-notify-prefs.ts).",
   },
+  registerPushSubscription: {
+    channel: "inline",
+    why: "Settings switches on only after the bridge acknowledges registration; setup failures stay beside the switch so the operator can read them and retry (routes/settings.tsx).",
+  },
   checkForUpdates: {
     channel: "inline",
     why: "The answer — up to date, an offer, or 'the check itself failed' — is a standing fact about this install that belongs in the card that states it, and it must not fade out from under the operator (components/update-check-control.tsx).",
