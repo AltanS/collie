@@ -4,12 +4,13 @@ import { useEffect, useState } from "react";
 // all re-render on flip. Reads once for the initial render and re-reads on (re)subscribe, so a
 // flip between render and effect still lands. No matchMedia (SSR) reads false, permanently.
 export function useMediaQuery(query: string): boolean {
-  const [matches, setMatches] = useState<boolean>(
-    () => typeof window.matchMedia === "function" && window.matchMedia(query).matches,
-  );
+  // `?.()` rather than a `typeof` probe (anti-slop/no-runtime-typeof): the absence of `matchMedia`
+  // is not an untyped value to parse, it is an API this environment does not have — jsdom without
+  // the polyfill, and the worker tsconfig's DOM. An optional call reads that directly.
+  const [matches, setMatches] = useState<boolean>(() => window.matchMedia?.(query).matches ?? false);
   useEffect(() => {
-    if (typeof window.matchMedia !== "function") return;
-    const mql = window.matchMedia(query);
+    const mql = window.matchMedia?.(query);
+    if (!mql) return;
     setMatches(mql.matches);
     const onChange = (e: MediaQueryListEvent) => setMatches(e.matches);
     mql.addEventListener("change", onChange);
