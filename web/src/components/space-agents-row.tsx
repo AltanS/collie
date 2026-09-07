@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Bot, ChevronUp, X } from "lucide-react";
+import { Bot, X } from "lucide-react";
 
 import { MorphIcon } from "@/components/ui/morph-icon";
 
@@ -14,8 +14,8 @@ import { paneDisplayName, statusLabel, type AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // The row that replaced the tab strip, the pane strip and the switcher handle: every agent
-// working in this space as a horizontally scrollable run of session titles, with a small
-// up-pill centred against its top border that opens the full switcher sheet. Tapping a title
+// working in this space as a horizontally scrollable run of session titles, with a small grab
+// handle under its top border that opens the full switcher sheet. Tapping a title
 // switches straight to that pane; the open one reads as current. Titles come from
 // `paneDisplayName` (operator label, then the agent's own session name, then the agent kind),
 // the same precedence the old pane pills used, so the row and the sheet never disagree about
@@ -101,12 +101,10 @@ export function SpaceAgentsRow({
   ) : null;
 
   return (
-    // The pill's own lane: 10px of top padding whose upper half the pill vacates — it rides
-    // centred ON the chrome border above this row (half over the statusline, half in this
-    // lane), never on the chips: the scroller centres the current chip, so anything lower
-    // would cover exactly the title the eye is looking for. In-flow costs 10px of chrome;
-    // the statusline lends the top half its bottom-centre 48px, the emptiest patch of that
-    // strip.
+    // The handle's own lane: 10px of top padding it fills without displacing anything, and
+    // never on the chips — the scroller centres the current chip, so anything lower would
+    // cover exactly the title the eye is looking for. In-flow costs 10px of chrome, and the
+    // handle takes no more than the lane.
     // `touch-pan-x`: vertical drags belong to the swipe-up, not the browser. Without it a
     // swipe-up starts a viewport rubber-band (and a pull-to-refresh where one exists) while
     // the gesture also fires — the whole page bounces under the thumb. pan-x keeps the
@@ -117,27 +115,28 @@ export function SpaceAgentsRow({
       className="relative touch-pan-x overscroll-y-none px-3 pt-2.5"
       {...swipe}
     >
-      {/* The up-pill: the swipe-up's visible twin. A bare gesture has no affordance — nothing
-          says UP opens the picker — so the handle sits mid-screen (an easier target than the
-          old edge cravat it replaces) wearing the gesture's own arrow. Same sheet, same
-          accessible name the handle always answered to. */}
+      {/* The grab handle: the swipe-up's visible twin. A bare gesture has no affordance —
+          nothing says UP opens the picker — so the handle sits mid-screen, an easier target
+          than the old edge cravat it replaces, wearing the SAME bar this app already uses for
+          "this surface opens" (the switcher pull in `agent-chat.tsx`, the sheet's own pull in
+          `ui/sheet.tsx`). Same accessible name the handle always answered to.
+
+          Tight UNDER the border, not straddling it. The bar is the house shape; a shape that
+          rides ON the rule cannot be: a real border does not survive a clip, so the silhouette
+          had to be faked with doubled drop-shadows, and the pinched hexagon that made the
+          direction legible was a form nothing else here wears. Under the rule, the bar sits
+          wholly on chrome and needs neither.
+
+          Still absolute, so it costs no layout: the 10px lane below the border already exists
+          for it (`pt-2.5`), and the 6px bar centres there with 2px of air on each side. */}
       <button
         type="button"
         onClick={onOpenSwitcher}
         aria-label={translate("chat.switcher.aria")}
         aria-haspopup="dialog"
-        // Tapered, not capped: a hexagon clip pinches both ends to soft points, so the
-        // handle reads as a direction (up) rather than a button among buttons. A real
-        // border cannot survive the clip (it is cut where the polygon leaves the box), so
-        // the edge is a doubled 1px silhouette shadow instead — filters apply after the
-        // clip and follow the points. It wears the icon's own colour, not the rule
-        // colour: a rule hairline vanishes on dark chrome, while the icon tone holds on
-        // the terminal above and the chrome below in both themes. 12px tall, centred on
-        // the border: 6px over the statusline, 6px in the lane below it.
-        className="absolute -top-1.5 left-1/2 z-10 flex h-3 w-14 -translate-x-1/2 touch-manipulation items-center justify-center bg-muted text-muted-foreground transition-colors select-none hover:bg-muted/60 active:scale-95 [clip-path:polygon(0%_50%,18%_0%,82%_0%,100%_50%,82%_100%,18%_100%)]"
-        style={{ filter: "drop-shadow(0 0 1px currentColor) drop-shadow(0 0 1px currentColor)" }}
+        className="absolute top-0 left-1/2 z-10 flex h-2.5 w-16 -translate-x-1/2 touch-manipulation items-center justify-center rounded-md transition-colors select-none active:bg-muted/50"
       >
-        <ChevronUp className="size-2.5" />
+        <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
       </button>
       {/* Chips plus the pinned /Agents door: the scroller takes the free width and fades under
           the pin, the rail's own arrangement. The pin renders on the configured side (a plain
