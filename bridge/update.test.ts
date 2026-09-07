@@ -399,6 +399,30 @@ describe("restart needed — the files moved under a running process", () => {
     expect(monitor.status().restartNeeded).toBe(false);
   });
 
+  it("is raised when the EXECUTABLE moved and no version string did — the same-version rebuild", () => {
+    // `pacman -U` of a new pkgrel: the files on disk still name 1.5.0, the process still runs 1.5.0,
+    // and the binary behind it is a different file. Version-only detection is blind to this.
+    let replaced = false;
+    const { monitor, tick } = makeMonitor({
+      current: "1.5.0",
+      installKind: "packaged",
+      bootVersion: "1.5.0",
+      liveVersion: () => "1.5.0",
+      exeReplaced: () => replaced,
+    });
+    expect(monitor.status().restartNeeded).toBe(false);
+    replaced = true;
+    tick(10_000); // the same throttle the version read is behind
+    const status = monitor.status();
+    expect(status.restartNeeded).toBe(true);
+    expect(status.restartCommand).toBe("collie restart");
+
+    // Not latched, exactly as the version half is not.
+    replaced = false;
+    tick(10_000);
+    expect(monitor.status().restartNeeded).toBe(false);
+  });
+
   it("restart command for the install kind, never a hard-coded string", () => {
     // Two spellings, and the kind is the whole of what picks one (M14/01 §5.3).
     expect(restartCommandFor("detached-checkout")).toBe("herdr plugin action invoke restart --plugin herdr.collie");
@@ -436,6 +460,8 @@ function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
     packageCommand: null,
     bootVersion: "0.11.0",
     liveVersion: () => "0.11.0",
+    // The executable is where it was unless a case moves it — the ordinary machine.
+    exeReplaced: () => false,
     startupStamp: "STAMP@boot",
     fetchTags: async () => apiTags("v0.12.0"),
     bridgeStamp: () => "STAMP@boot",

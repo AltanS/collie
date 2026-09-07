@@ -417,8 +417,9 @@ export interface UpdateInfo {
   /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
   bridgeStale: boolean;
   /**
-   * The VERSION on disk is no longer the version this process runs — a package manager replaced the
-   * root under a live bridge. Absent on a bridge older than M17/02, which reads as "not raised".
+   * The collie on disk is no longer the one this process runs — a package manager replaced the root
+   * under a live bridge, either with a new version or with a rebuild of the same one. Absent on a
+   * bridge older than M17/02, which reads as "not raised".
    */
   restartNeeded?: boolean;
   /** The command that clears {@link restartNeeded}, spelled on the HOST for its install kind. */

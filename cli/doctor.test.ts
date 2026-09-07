@@ -1398,10 +1398,10 @@ async function plainFindings(): Promise<Finding[]> {
 
 describe("collie doctor — a packaged install", () => {
   /** A Collie with a manifest, no `.git`, in a folder a package manager owns. */
-  function systemOwned(link: Record<string, LinkProbe> = {}) {
+  function systemOwned(link: Record<string, LinkProbe> = {}, answers: Scripted["answers"] = []) {
     const h = harness(null, [], {
       link,
-      answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }], ...(HEALTHY_ANSWERS ?? [])],
+      answers: [...answers, [`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }], ...(HEALTHY_ANSWERS ?? [])],
       // The manifest is what makes this a Collie at all — `hasMarker` is asked before ownership, so
       // without it the tree classifies `no-marker` and none of these findings would be exercised.
       files: { ...healthyFiles(), [`${ROOT}/herdr-plugin.toml`]: 'id = "herdr.collie"\nversion = "1.5.2"\n' },
@@ -1442,9 +1442,57 @@ describe("collie doctor — a packaged install", () => {
     expect(f?.detail ?? "").toContain("updates come from your package manager");
   });
 
-  test("`restart-pending` is skipped, because this kind runs the same bridge-less payload", async () => {
+  // ── restart-pending, the check this kind is the whole reason for ───────────
+  // `pacman -U` replaces `bin/collie` under a live service and restarts nothing. Everything below
+  // is that machine: a pid from the unit, and an executable that either is or is not the installed
+  // one. The old skip reason claimed "whatever installs the new version restarts it", which is
+  // exactly what a package manager does not do.
+
+  const MAIN_PID = "systemctl --user show collie --property=MainPID --value";
+  const PID = 4242;
+  const EXE = `/proc/${String(PID)}/exe`;
+  const BINARY = `${ROOT}/bin/collie`;
+  const supervised = (link: Record<string, LinkProbe> = {}) =>
+    systemOwned(link, [[MAIN_PID, { stdout: `${String(PID)}\n` }]]);
+
+  test("`restart-pending` fires when the running collie was unlinked under the service", async () => {
+    const h = supervised();
+    h.files.links.set(EXE, `${BINARY} (deleted)`);
+    const f = (await findings(h)).byCheck.get("restart-pending");
+    expect(f?.status).toBe("warn");
+    expect(f?.detail ?? "").toContain(BINARY);
+    expect(f?.remedy).toContain("collie restart");
+  });
+
+  test("`restart-pending` fires on a same-version rebuild, where no version string moved", async () => {
+    // The inode is the only witness here: `pacman -U` of a new pkgrel writes a NEW file at the same
+    // path, so the link resolves, every version file agrees, and the process is still stale.
+    const h = supervised();
+    h.files.links.set(EXE, BINARY);
+    h.files.stats.set(EXE, { inode: 111, mtimeMs: 0 });
+    h.files.stats.set(BINARY, { inode: 222, mtimeMs: 0 });
+    const f = (await findings(h)).byCheck.get("restart-pending");
+    expect(f?.status).toBe("warn");
+    expect(f?.remedy).toContain("collie restart");
+  });
+
+  test("`restart-pending` passes when the process and the file are one inode", async () => {
+    const h = supervised();
+    h.files.links.set(EXE, BINARY);
+    h.files.stats.set(EXE, { inode: 111, mtimeMs: 0 });
+    h.files.stats.set(BINARY, { inode: 111, mtimeMs: 0 });
+    const f = (await findings(h)).byCheck.get("restart-pending");
+    expect(f?.status).toBe("ok");
+    expect(f?.detail ?? "").toContain(BINARY);
+    expect(f?.remedy).toBeNull();
+  });
+
+  test("`restart-pending` is skipped with no pid, and no longer claims anything restarts the process", async () => {
     const f = (await findings(systemOwned())).byCheck.get("restart-pending");
     expect(f?.status).toBe("skipped");
+    expect(f?.detail ?? "").toContain("no pid");
+    expect(f?.detail ?? "").not.toContain("restarts it");
+    expect(f?.remedy).toContain("collie restart");
   });
 
   test("a linked clone still gets every one of those answers the old way", async () => {

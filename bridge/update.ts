@@ -674,6 +674,19 @@ export interface UpdateMonitorDeps {
   bootVersion: string;
   /** The same reading, taken NOW. Throttled by the monitor, never called per request unthrottled. */
   liveVersion: () => string;
+  /**
+   * Has the binary this process is EXECUTING been replaced on disk (`bridge/exe-replaced.ts`)?
+   *
+   * The half {@link liveVersion} cannot see. A package manager that rebuilds the SAME version — a
+   * new Arch pkgrel, say — replaces `bin/collie` under the live service and moves no version string
+   * at all, so the version comparison stays quiet while the process serves the old code. The
+   * executable is the only witness to that, and it is one readlink plus two `stat`s.
+   *
+   * Injected, and throttled by the monitor exactly as {@link liveVersion} is. Answering `false` is
+   * what an install this cannot be asked about looks like — the version comparison then decides
+   * alone, as it did before.
+   */
+  exeReplaced: () => boolean;
   /** The package manager's upgrade command for this root, or null when there is none to name.
    *  Resolved once at startup beside the kind, for the reason the kind is: it cannot change under a
    *  running process, and the phone must never derive it. */
@@ -706,6 +719,8 @@ export class UpdateMonitor {
   private staleValue = false;
   private swappedAt = Number.NEGATIVE_INFINITY;
   private swappedValue = false;
+  private exeAt = Number.NEGATIVE_INFINITY;
+  private exeValue = false;
   private inFlight: Promise<void> | null = null;
 
   constructor(private readonly deps: UpdateMonitorDeps) {}
@@ -830,6 +845,19 @@ export class UpdateMonitor {
     return this.swappedValue;
   }
 
+  /**
+   * Has the executable moved under this process? Throttled as {@link versionSwapped} is, and not
+   * latched for the same reason: a package manager that rolls its change back leaves a process
+   * running the file that is on disk again.
+   */
+  private exeSwapped(): boolean {
+    const now = this.deps.now();
+    if (now - this.exeAt < STALE_TTL_MS) return this.exeValue;
+    this.exeValue = this.deps.exeReplaced();
+    this.exeAt = now;
+    return this.exeValue;
+  }
+
   /** The snapshot-facing status. Cheap: `latest` is cached from the last check, `bridgeStale` throttled. */
   status(): UpdateStatus {
     const { current } = this.deps;
@@ -848,7 +876,10 @@ export class UpdateMonitor {
       dismissedVersion: this.deps.store.dismissedVersion(),
       dismissedPackVersion: this.deps.store.dismissedPackVersion(),
       bridgeStale: this.bridgeStale(),
-      restartNeeded: this.versionSwapped(),
+      // Two witnesses to one fact, and either is enough: the version files stopped naming what this
+      // process runs, or the executable itself was replaced. The second catches the rebuild of an
+      // identical version, which the first cannot see.
+      restartNeeded: this.versionSwapped() || this.exeSwapped(),
       checkedAt: this.checkedAt,
       // The whole list, oldest first — the card names what a single update folds in (M15/05). Empty
       // until the first successful check, which reads as "nothing to name", the same as up to date.

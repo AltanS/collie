@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
@@ -15,6 +15,7 @@ import { withAgentHints } from "./beacon/hint.ts";
 import { loadConfig, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
 import type { PackMode, PackStatusResponse } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
+import { exePathOf, exeReplaced } from "./exe-replaced.ts";
 import {
   instanceSuffixOf,
   managedHandlerPath,
@@ -576,6 +577,57 @@ const installKind = classifyInstall(
     rootDir,
   ),
 ).kind;
+/**
+ * Has the collie this process is executing been replaced on disk? Linux, and single-file installs.
+ *
+ * The signal the version comparison cannot give. A package manager unlinks `bin/collie` and writes a
+ * new one, restarting nothing: on Arch the service stays active on the deleted inode and keeps
+ * serving, and when the rebuild carries the same version, every file on disk still agrees with
+ * `bootVersion`. `/proc/self/exe` is the one thing that disagrees.
+ *
+ * Scoped twice, and both scopes are the honest shape of the question rather than caution:
+ *  - **Linux only.** `/proc/self/exe` is where the kernel states this, and there is no second place.
+ *  - **`binary` and `packaged` only.** Those two ship one file and no `bridge/` source; on a checkout
+ *    the answer is already `bridgeStale`, whose comparison is over the source the process would
+ *    re-read, and a rebuilt `bin/collie` there would raise both bands for one fact.
+ *
+ * One readlink and two `stat`s, and the monitor throttles it to the snapshot's cadence.
+ */
+function selfExeReplaced(): boolean {
+  if (process.platform !== "linux") return false;
+  if (installKind !== "binary" && installKind !== "packaged") return false;
+  const link = readLinkOrNull(SELF_EXE);
+  const installedPath = exePathOf(link);
+  if (installedPath === null) return false;
+  return exeReplaced({
+    exeLink: link,
+    exeInode: inodeOrNull(SELF_EXE),
+    installedInode: inodeOrNull(installedPath),
+    // Both are Linux-only fallbacks for a host that has no `/proc`, which this branch already has.
+    installedMtimeMs: null,
+    startedAtMs: null,
+  });
+}
+
+/** Where Linux states which executable this process is running. */
+const SELF_EXE = "/proc/self/exe";
+
+function readLinkOrNull(p: string): string | null {
+  try {
+    return readlinkSync(p);
+  } catch {
+    return null;
+  }
+}
+
+function inodeOrNull(p: string): number | null {
+  try {
+    return Number(statSync(p).ino);
+  } catch {
+    return null;
+  }
+}
+
 const updateMonitor = new UpdateMonitor({
   repo: updateRepo,
   current: currentVersion,
@@ -588,6 +640,9 @@ const updateMonitor = new UpdateMonitor({
   // Read from disk on each (throttled) snapshot: noticing that the files moved under this process is
   // the whole job, so this one must NOT be cached the way `bootVersion` is.
   liveVersion: () => collieVersion(rootDir),
+  // The other half of restart-needed: the executable itself, for the package swap that moves no
+  // version string (M17/02, the Arch pkgrel rebuild).
+  exeReplaced: selfExeReplaced,
   startupStamp: bridgeStampSync(bridgeDir, rootDir),
   fetchTags: githubTagsFetcher(updateRepo),
   bridgeStamp: () => bridgeStampSync(bridgeDir, rootDir),
