@@ -1,0 +1,22 @@
+pkgbase = collie-bin
+	pkgdesc = Phone web UI for the AI agents running in your terminal, served over Tailscale (official binary release)
+	pkgver = 1.5.5
+	pkgrel = 1
+	url = https://github.com/AltanS/collie
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	depends = glibc
+	depends = bash
+	depends = systemd
+	optdepends = tailscale: publish the one managed front door with `collie serve` (the supported way to reach Collie from a phone)
+	provides = collie
+	conflicts = collie
+	options = !strip
+	options = !debug
+	source_x86_64 = collie-bin-1.5.5-x86_64.tar.gz::https://github.com/AltanS/collie/releases/download/v1.5.5/collie-1.5.5-linux-x64.tar.gz
+	sha256sums_x86_64 = 16cd55c080a58f2fabc5bfecef6cf3f70ae66586a8ebf16cc208f90f0201f5d1
+	source_aarch64 = collie-bin-1.5.5-aarch64.tar.gz::https://github.com/AltanS/collie/releases/download/v1.5.5/collie-1.5.5-linux-arm64.tar.gz
+	sha256sums_aarch64 = a0e8638fd636e03807e09fe9fa434c8334b381c5b53e311b4f5cef225f8b5bb1
+
+pkgname = collie-bin

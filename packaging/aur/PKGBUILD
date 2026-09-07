@@ -1,8 +1,9 @@
-# Maintainer: Altan Sarisin <partners@sportsight.de>
+# Maintainer: Altan Sarisin <altan@sportsight.de>
 #
-# We publish and maintain this package ourselves. No co-maintainer (M17 principle 5). Niko
-# Lehtovirta's unpublished collie-bin PKGBUILD is prior art for the layout below, and prior art is
-# the whole of that relationship.
+# We author, publish and maintain this package ourselves, and nobody else is named here.
+# Prior art: Niko Lehtovirta's unpublished collie-bin PKGBUILD arrived at the same
+# /usr/lib/collie layout, and reading it confirmed the shape below. That is the whole of the
+# relationship.
 
 # Collie ships a compiled Bun single-file executable in every GitHub release, so this package
 # downloads that tarball and installs it. Nothing is built here: no Bun, no git fetch, no
@@ -10,7 +11,7 @@
 
 pkgname=collie-bin
 _pkgname=collie
-pkgver=1.5.3
+pkgver=1.5.5
 pkgrel=1
 pkgdesc="Phone web UI for the AI agents running in your terminal, served over Tailscale (official binary release)"
 arch=('x86_64' 'aarch64')
@@ -33,8 +34,10 @@ optdepends=(
   'tailscale: publish the one managed front door with `collie serve` (the supported way to reach Collie from a phone)'
 )
 
-provides=("$_pkgname=$pkgver")
-conflicts=("$_pkgname")
+# Spelled as plain strings, not as "$_pkgname=$pkgver": the name a user asks pacman for is
+# `collie`, and this package answers it whichever version it carries.
+provides=('collie')
+conflicts=('collie')
 
 # !strip: the release binary is a Bun single-file executable — the bundle it runs from is embedded
 #         in the image, and stripping it produces a binary that no longer starts.
@@ -46,9 +49,12 @@ _baseurl="$url/releases/download/v$pkgver"
 source_x86_64=("$pkgname-$pkgver-x86_64.tar.gz::$_baseurl/collie-$pkgver-linux-x64.tar.gz")
 source_aarch64=("$pkgname-$pkgver-aarch64.tar.gz::$_baseurl/collie-$pkgver-linux-arm64.tar.gz")
 
-# Taken verbatim from the published `<asset>.sha256` files of release v1.5.3.
-sha256sums_x86_64=('1a520153d13360cbc508e8325ebfdfbf080df64487a66b27f1212fbac893443c')
-sha256sums_aarch64=('04f5343d1060ae70569d6d6ced769e83beeb24b0044a162534f17b177602a239')
+# Taken from `collie-$pkgver.manifest.json`, the integrity manifest the release job writes. These
+# three lines — `pkgver` above and the two arrays below — are the only ones
+# `scripts/refresh-packages.ts` rewrites, and it copies them from that manifest. Nothing here
+# hashes a file itself.
+sha256sums_x86_64=('16cd55c080a58f2fabc5bfecef6cf3f70ae66586a8ebf16cc208f90f0201f5d1')
+sha256sums_aarch64=('a0e8638fd636e03807e09fe9fa434c8334b381c5b53e311b4f5cef225f8b5bb1')
 
 # The tarball's own directory name, which carries the upstream platform spelling rather than $CARCH.
 _distdir() {

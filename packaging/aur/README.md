@@ -49,6 +49,55 @@ collie start
 
 ## Cutting a new version
 
-Set `pkgver` in the `PKGBUILD` — it is the only place the version is written — and replace both
-`sha256sums_*` lines with the values from that release's published `<asset>.sha256` files. The
-package currently tracks 1.5.3.
+Nobody edits `pkgver` or a hash by hand. `.github/workflows/release.yml`'s `refresh-packages` job
+runs after every non-prerelease release, downloads that release's `collie-<version>.manifest.json`,
+and runs `scripts/refresh-packages.ts`, which writes `pkgver` and both `sha256sums_*` lines from the
+manifest and then re-reads the file to prove every value matches. A mismatch fails the job before
+anything is pushed.
+
+To do it locally against a manifest you already have:
+
+```bash
+bun scripts/refresh-packages.ts --manifest collie-1.5.5.manifest.json
+bun scripts/refresh-packages.ts --manifest collie-1.5.5.manifest.json --check
+```
+
+`--manifest` also takes a URL. `--check` verifies and writes nothing.
+
+`.SRCINFO` is regenerated with `makepkg --printsrcinfo` when `makepkg` is on PATH. On a machine
+without it the script leaves the file alone and says so, and the release job runs on Ubuntu, so the
+job's `.SRCINFO` comes from the container step described below.
+
+## The AUR account and the push key — a manual step, done once
+
+The refresh job pushes to `ssh://aur@aur.archlinux.org/collie-bin.git` with an SSH key held as a
+repository secret. Nothing in this tree holds a private key, and nothing ever should.
+
+1. Register an account on [aur.archlinux.org](https://aur.archlinux.org/register), under our own
+   name, and confirm the address it mails you.
+2. Generate a key pair used for nothing else:
+
+   ```bash
+   ssh-keygen -t ed25519 -C "aur@collie" -f ~/.ssh/aur_collie -N ""
+   ```
+
+3. Paste `~/.ssh/aur_collie.pub` into the **SSH Public Key** field of your AUR account, under My
+   Account, and save.
+4. Store the private half as the repository secret `AUR_SSH_KEY`:
+
+   ```bash
+   gh secret set AUR_SSH_KEY -R AltanS/collie < ~/.ssh/aur_collie
+   ```
+
+5. Create the package on the AUR by pushing it once by hand, because the AUR creates a repository on
+   its first push and the job does not:
+
+   ```bash
+   git clone ssh://aur@aur.archlinux.org/collie-bin.git /tmp/collie-bin
+   cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO /tmp/collie-bin/
+   cd /tmp/collie-bin && git add PKGBUILD .SRCINFO && git commit -m "Initial import" && git push
+   ```
+
+> **Note.** Until `AUR_SSH_KEY` is set, the refresh job prints a notice saying the AUR push was
+> skipped and carries on. It does not fail the release. The pull request it opens against this
+> repository is the other half, and that half runs either way.
