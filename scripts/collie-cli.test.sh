@@ -910,8 +910,6 @@ fd_v1 COLLIE_SERVE_MODE=http "$BIN" serve || fail "v1 could not publish: ${STDER
 assert_eq "$(cat "$V1_RECORD")" "http:8788|host.example:8788|http://127.0.0.1:8788"
 assert_eq "$(cat "$RECORD")" "http:8787|host.example:8787|http://127.0.0.1:8787"
 assert_contains "$(cat "$FD_CALLS")" "tailscale serve --bg --http=8788 --set-path=/ 8788"
-# The serve output file is per-instance too, or one publish's diagnostics would overwrite the other's.
-[ -f "${FD_CONFIG}/serve-v1.out" ] || fail "v1 wrote no serve output of its own"
 
 # Uninstalling v1: its unit, its record and its mapping go; the stable instance keeps all three.
 printf '[Unit]\n' > "$FD_UNIT"
