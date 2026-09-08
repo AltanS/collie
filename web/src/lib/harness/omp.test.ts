@@ -165,6 +165,8 @@ describe("ompBuildBlocks emits nothing but raw", () => {
         "buildBlocks", // raw-only, asserted above
         "composerPrompt", // the row a destructive write BINDS to; it sends nothing itself
         "composerReady", // the pre-flight's refusal
+        "replyChunks", // lossless transport plan, not a dialog action
+        "draftIsOpaque", // never take over an opaque paste chip as literal text
         "extractInputDraft", // the stranded-draft preview + the type-then-verify half
         "extractStatusLines", // the statusline the strip peels off the mirror
       ].toSorted(),

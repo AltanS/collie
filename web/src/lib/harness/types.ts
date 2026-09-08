@@ -12,6 +12,9 @@
 import type { Block, StyledLine } from "../blocks";
 
 export interface HarnessAdapter {
+  /** Lossless transport pastes. Intermediate parts must be verified before continuing;
+   * only the complete reply can authorise Enter. Other harnesses stay single-paste. */
+  replyChunks?(text: string): string[];
   /** The exact Herdr snapshot `agent` string this adapter claims (its registry key). */
   agent: string;
   /** The adapter's OWN full block pipeline over the pane's styled lines — for Claude that is the
