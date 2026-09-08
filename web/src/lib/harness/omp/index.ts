@@ -69,6 +69,8 @@
 
 import type { Block, StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
+import { locatePiComposer, piDraft } from "./pi-shape";
+import { ompOpaqueDraft, ompReplyChunks } from "./reply-chunks";
 import {
   composerPrompt as boxComposerPrompt,
   extractInputDraft as extractBoxInputDraft,
@@ -103,30 +105,41 @@ export function ompBuildBlocks(lines: StyledLine[]): Block[] {
 }
 
 export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
+  const pi = locatePiComposer(lines);
+  if (pi) return lines.slice(pi.bottom + 1, pi.suggestEnd);
   const rule = locateRuleComposer(lines);
   return rule === null ? extractBoxStatusLines(lines) : extractRuleStatusLines(lines, rule);
 }
 
 export function extractInputDraft(lines: StyledLine[]): string | null {
+  const pi = locatePiComposer(lines);
+  if (pi) return piDraft(lines, pi);
   const rule = locateRuleComposer(lines);
   return rule === null ? extractBoxInputDraft(lines) : extractRuleInputDraft(lines, rule);
 }
 
-function stripChrome(lines: StyledLine[]): StyledLine[] {
+export function stripChrome(lines: StyledLine[]): StyledLine[] {
+  const pi = locatePiComposer(lines);
+  if (pi) return lines.slice(0, pi.top);
   const rule = locateRuleComposer(lines);
   return rule === null ? stripBoxChrome(lines) : stripRuleChrome(lines, rule);
 }
 
-function hasComposer(lines: StyledLine[]): boolean {
+export function hasComposer(lines: StyledLine[]): boolean {
+  if (locatePiComposer(lines)) return true;
   return locateRuleComposer(lines) !== null || hasBoxComposer(lines);
 }
 
-function composerPrompt(lines: StyledLine[]): string | null {
+export function composerPrompt(lines: StyledLine[]): string | null {
+  const pi = locatePiComposer(lines);
+  if (pi) return lines.slice(pi.top, pi.bottom + 1).map((line) => line.segments.map((s) => s.text).join("").trimEnd()).join("\n");
   const rule = locateRuleComposer(lines);
   return rule === null ? boxComposerPrompt(lines) : ruleComposerPrompt(lines, rule);
 }
 
 export const ompAdapter: HarnessAdapter = {
+  replyChunks: ompReplyChunks,
+  draftIsOpaque: ompOpaqueDraft,
   agent: "omp",
   buildBlocks: ompBuildBlocks,
   extractStatusLines,
@@ -138,8 +151,6 @@ export const ompAdapter: HarnessAdapter = {
   // box's bottom prompt row or all of the rule composer's prompt rows. The box scanner declines when
   // a long palette pushes that row out of range; the rule region ends one status row from the tail.
   composerPrompt,
-  // `draftCarriesSend` / `draftIsOpaque` are deliberately ABSENT, which is the documented default:
-  // omp echoes typed text back verbatim (see the draft-single / draft-wrapped captures) and has no
-  // paste-collapse token of its own, so the reply guard's generic literal-substring match already sees
-  // what it needs and there is nothing extra for these hooks to read.
+  // Numbered paste chips contain no content evidence. Keep literal verification
+  // by sending small, independently checked transport pastes instead.
 };
