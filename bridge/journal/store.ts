@@ -93,4 +93,28 @@ export class TranscriptStore {
       fileTruncated: !complete,
     };
   }
+
+  /**
+   * Read image URLs present in recent transcript turns of this session ref.
+   * Returns empty array if unavailable or no images found.
+   */
+  async getLatestImages(
+    adapter: JournalAdapter,
+    ref: AgentSessionRef,
+    limit = 20,
+  ): Promise<string[]> {
+    const page = await this.page(adapter, ref, { limit });
+    if (!page) return [];
+    const urls: string[] = [];
+    for (const entry of page.entries) {
+      for (const part of entry.parts) {
+        if (part.kind === "image" && part.url) {
+          urls.push(part.url);
+        } else if (part.kind === "tool" && part.result?.imageUrl) {
+          urls.push(part.result.imageUrl);
+        }
+      }
+    }
+    return urls;
+  }
 }

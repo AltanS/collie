@@ -449,7 +449,7 @@ export const AnsiOutput = memo(function AnsiOutput({
           li++;
         }
         const clusterIndex = imageClusterIndex++;
-        const imageUrl = images && images[clusterIndex];
+        const imageUrl = images && (images[clusterIndex] ?? images[images.length - 1]);
         if (imageUrl) {
           nodes.push(
             <div key={`kitty-img-${clusterStart}`} className="my-2 select-none overflow-hidden rounded-md border border-border/40 bg-black/20 text-center">

@@ -961,7 +961,7 @@ export function startServer(opts: {
       const device = isRead ? null : caller.device();
       const audit_ = caller.audit;
 
-      if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
+      if (!action && req.method === "GET") return readPane(herdr, cfg, journals, transcripts, rt.engine, paneId, url, req);
       if (action === "history" && req.method === "GET")
         return paneHistory(cfg, journals, transcripts, rt.engine, paneId, url, req);
       if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit_, device, session);
@@ -1763,6 +1763,9 @@ export function startupWarnings(cfg: Config): string[] {
 async function readPane(
   herdr: MuxAdapter,
   cfg: Config,
+  journals: Record<string, JournalAdapter> | null,
+  transcripts: TranscriptStore | null,
+  engine: StateEngine,
   paneId: string,
   url: URL,
   req: Request,
@@ -1781,9 +1784,18 @@ async function readPane(
     // to `strip` would move someone's screen on every revalidate — see the adapter's `readGrid`.
     const read = await herdr.readGrid(paneId, { scope: "recent", lines, styling: "preserve" });
     if (!read.ok) return text(`${herdr.mux} read failed: ${read.detail}`, 502);
-    const data = paneReadResponse(paneId, read.value);
-    // ETag is derived from the serialised body — if content hasn't changed the client gets a 304
-    // and skips the whole transfer (the big win on a cellular link).
+    let extraImages: string[] | undefined;
+    if (cfg.transcript && transcripts && journals) {
+      const { agents, shellPanes } = engine.current();
+      const pane = [...agents, ...shellPanes].find((a) => a.paneId === paneId);
+      if (pane?.agentSession) {
+        const adapter = adapterFor(journals, journalAgentOf(pane));
+        if (adapter) {
+          extraImages = await transcripts.getLatestImages(adapter, pane.agentSession, 20);
+        }
+      }
+    }
+    const data = paneReadResponse(paneId, read.value, extraImages);
     const bodyStr = JSON.stringify(data);
     const etag = computeEtag(bodyStr);
     // Tag pane polls too (both the 304 and the full body), so a client that only has a pane open —
