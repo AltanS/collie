@@ -522,6 +522,7 @@ function toMuxPane(
   // Scrollback depth + viewport = what a `recent` read can yield. Omitted when the server predates
   // `scroll`, so an older Herdr reads as "unknown" rather than "zero".
   if (raw.scroll) pane.readableLines = raw.scroll.max_offset_from_bottom + raw.scroll.viewport_rows;
+  pane.revision = raw.revision;
   return pane;
 }
 

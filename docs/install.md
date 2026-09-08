@@ -70,7 +70,7 @@ To pin a version or rescue an existing install (see
 [When collie will not run](upgrading.md#when-collie-will-not-run)):
 
 ```bash
-COLLIE_TAG=v1.0.0 curl -fsSL https://colliepwa.dev/install.sh | sh
+curl -fsSL https://colliepwa.dev/install.sh | COLLIE_TAG=v1.0.0 sh
 ```
 
 For prereleases, pass `--beta`: it takes the newest prerelease, and the install then tracks that
@@ -127,27 +127,196 @@ Manage via [Herdr actions](commands.md#herdr-actions). For a prerelease, install
 
 ### From a package
 
-Where Collie is packaged for your system, install it the way you install anything else:
+Where Collie is packaged for your system, install it the way you install anything else. The package
+carries the compiled binary the release already publishes, so nothing is built on your machine: no
+Bun, no `git`, no compilation. The whole release folder lands under one prefix, with `collie` on
+your PATH as a symlink into it.
+
+A package is not a Herdr plugin, and every `collie` verb on your PATH works the same either way. To
+get Collie's buttons inside Herdr, link the installed tree once:
 
 ```bash
-makepkg -si     # from packaging/aur, until collie-bin is on the AUR
+herdr plugin link /opt/collie
+```
+
+Herdr does not scan `/opt`, so it never finds the package on its own. The plugin's `update` and
+`update-major` actions then refuse and name your package manager instead. That is correct, not a
+fault: this tree is your package manager's to update.
+
+#### Arch
+
+`collie-bin` is not on the AUR yet. The AUR has paused new account registration, and the package
+will be published from our own account when registration reopens. Until then, build it from a
+clone of this repository:
+
+```bash
+git clone https://github.com/AltanS/collie.git && cd collie/packaging/aur
+makepkg -si
 collie start
 ```
 
-The package installs the compiled binary the release already publishes. Nothing is built on your
-machine: no Bun, no `git`, no compilation. The whole release folder lands under one prefix
-(`/usr/lib/collie` on Arch) with `/usr/bin/collie` as a symlink into it.
+`makepkg` downloads the release tarball for your architecture, checks its sha256 against the
+release's integrity manifest, and unpacks it. No Bun, no `git` clone of anything else, no
+compilation.
 
-> **Note.** Collie will not update a packaged install, and says so if you ask it to. `collie update`
-> declines and names your package manager's command instead, and the phone shows the new version
-> with that command where the update button would be. See
-> [a packaged install](upgrading.md#a-packaged-install).
+**Once it is on the AUR**, an AUR helper installs the same `PKGBUILD`:
 
-A package is not a Herdr plugin. There is no `herdr plugin link` step: the plugin path registers
-action buttons that update the checkout, and this tree is your package manager's to update. Every
-`collie` verb on your PATH works the same either way.
+```bash
+paru -S collie-bin     # or: yay -S collie-bin
+collie start
+```
 
-The `PKGBUILD` and its notes live in `packaging/aur/` in this repository. macOS is not packaged.
+Later updates are `paru -S collie-bin` or `yay -S collie-bin`, the same command you installed
+with. `sudo pacman -Syu collie-bin` works only where a repository carries the package, such as
+Omarchy's.
+
+The package installs the release tree to `/opt/collie` and `/usr/bin/collie` as a symlink into it.
+`README.md`, `CHANGELOG.md` and `docs/` land in `/usr/share/doc/collie-bin/`, and the licence in
+`/usr/share/licenses/collie-bin/`. It provides and conflicts with `collie`, so it and a future
+source package cannot both be installed. It enables no systemd unit: `collie start` writes your own
+`--user` unit, as it does after any install.
+
+> **Note.** Run `collie restart` after every upgrade. `pacman` replaces the files and restarts
+> nothing, so the service keeps serving the old build on a deleted binary until you restart it.
+> `collie doctor` reports it as `restart-pending`, and the phone shows "Collie was replaced on
+> disk. Restart it." with the command to run.
+
+Remove it in three steps:
+
+```bash
+collie uninstall
+herdr plugin unlink herdr.collie   # only if you linked it
+sudo pacman -Rns collie-bin
+```
+
+`collie uninstall` stops the service, removes the `systemd --user` unit and takes down Collie's own
+`tailscale serve` mapping; pacman then removes `/opt/collie` and `/usr/bin/collie` and nothing else.
+Two directories of your own stay, and you delete them by hand when you want them gone: the state
+under `~/.local/state/collie/` (or `$COLLIE_STATE_DIR`), and the config dir holding your `.env`,
+which is `~/.config/herdr/plugins/config/herdr.collie/` on a host with Herdr.
+
+#### Omarchy
+
+```bash
+sudo pacman -S collie-bin
+COLLIE_MUX=herdr collie start
+```
+
+Omarchy ships tmux and Herdr both, and Collie mirrors one multiplexer per install, so the first
+start has to name the one to drive — it refuses to guess between two it can see. `start` writes
+that name into Collie's `.env`, which on a host with Herdr is
+`~/.config/herdr/plugins/config/herdr.collie/.env`, and later starts are `collie start`.
+
+That works once `collie-bin` is in Omarchy's own package repository, and the pull request adding it
+is not merged yet. Until it is, build the same package from `packaging/aur` with `makepkg -si`, as
+on any Arch host above.
+
+Updates then come with `sudo pacman -Syu`, the command you already run to update the machine — an
+AUR helper is not involved, because `pkgs.omarchy.org` is a real pacman repository. It is the same
+`PKGBUILD` and the same `/opt/collie` layout either way.
+
+> **Note.** Updates come from your package manager, and Collie will not update itself here.
+> `collie update` declines instead. The phone's update band reads "Collie x.y.z available via
+> pacman.", and the Updates page shows the command to copy in place of an update button, because
+> the package manager owns that folder. Collie names the `sudo pacman -Syu collie-bin` form, which
+> is the repository spelling; on an AUR install run your helper instead. Run `collie restart`
+> after the upgrade, for the reason above: pacman restarts nothing.
+
+In a [pack](pack.md), this machine never takes an update from the phone: the pack lists it as
+"waits for the package manager", and it levels only when you run your helper on it.
+
+Remove it with the same three steps as on Arch above.
+
+#### Nix
+
+```bash
+nix profile install github:AltanS/collie#collie
+collie start
+```
+
+The flake exports `packages.<system>.collie` for `x86_64-linux`, `aarch64-linux` and
+`aarch64-darwin`. It fetches that platform's release tarball by the sha256 in the release's own
+integrity manifest, patches the binary's interpreter on Linux, and installs the release tree to
+`<store-path>/lib/collie` with `bin/collie` as a symlink into it. Run it once without installing
+with `nix run github:AltanS/collie#collie -- doctor`.
+
+There is no source build, on purpose: installing the dependencies needs the network and a Nix
+derivation has none, so the package wraps the binary the release already publishes and checksums.
+
+There is no NixOS module yet, only the flake package, so `nix profile` is the path: install it into
+your profile as above, or add the flake output to a `home-manager` or `environment.systemPackages`
+list yourself.
+
+> **Note.** Updates come from nix, and Collie will not update itself here. `collie update` declines
+> and names `nix profile upgrade collie` instead, and the phone shows the new version with that
+> command where the update button would be.
+
+In a [pack](pack.md), this machine never takes an update from the phone: the pack lists it as
+"waits for the package manager", and it levels only when you run nix on it.
+
+Remove it with `collie stop` first, then:
+
+```bash
+nix profile remove collie
+```
+
+That drops the store path from your profile and nothing else. Your own files stay: state in
+`~/.local/state/collie` (or `$COLLIE_STATE_DIR`), configuration in `~/.config/collie`, and the
+`systemd --user` unit at `~/.config/systemd/user/collie.service` that `collie start` wrote. Run
+`collie uninstall` before removing the package to drop that unit and the port mapping.
+
+#### mise
+
+```bash
+mise use -g github:AltanS/collie@1.5.6
+collie start
+```
+
+`mise use -g` writes the tool into `~/.config/mise/config.toml` and puts the release's `bin/` on
+your PATH. The `github` backend fetches that platform's release tarball, so this works on Linux and
+macOS with no Bun and no compilation. The whole tree lands under
+`~/.local/share/mise/installs/github-altan-s-collie/<version>/`, `web/dist` and `herdr-plugin.toml`
+included, and `collie` resolves its own root from there.
+
+Take a new version with the same `mise use` line and a newer tag, or let mise pick the latest:
+
+```bash
+mise upgrade --bump github:AltanS/collie
+collie restart
+```
+
+`--bump` is the flag that matters. A pinned `1.5.6` is a range of one, so a plain `mise upgrade`
+reports the tool as up to date and moves nothing.
+
+The restart is not optional. Every version gets its own directory, and `collie start` bakes the
+directory it ran from into the service definition, so the service keeps serving the old version out
+of the old directory until you restart it. `collie restart` rewrites that definition with the new
+path: the `systemd --user` unit on Linux, the `~/Library/LaunchAgents` plist on macOS. One command
+on both.
+
+> **Note.** A Mac administered only over SSH has no `gui/<uid>` domain to load an agent into. There
+> `collie start` says so and runs an unsupervised background bridge instead, with no restart on
+> failure and nothing at login. `collie restart` still moves it to the new directory.
+
+> **Note.** `collie update` declines here, and it names no package manager: it says `cannot tell how
+> this Collie was installed`. A mise tree sits inside your home directory, carries no `.git` of its
+> own and has no `versions/` layout above it, so Collie reads it as neither a checkout nor a
+> package. mise owns updates on this install, and the two commands above are what moves it.
+
+Remove it with `collie uninstall` first, then:
+
+```bash
+mise uninstall github:AltanS/collie@1.5.6
+mise unuse github:AltanS/collie
+```
+
+`uninstall` deletes that version's directory, `unuse` drops the line from the config. Spell the tool
+with its full `github:` name for both; the short `collie` works for `upgrade` and not for
+`uninstall`. Your own files stay: state in `~/.local/state/collie` (or `$COLLIE_STATE_DIR`), and
+configuration in `~/.config/collie`.
+
+The `PKGBUILD`, the Nix expression and their notes live in `packaging/` in this repository. macOS
+has no package yet; the `aarch64-darwin` flake output is the closest thing.
 
 ### Name your multiplexer
 
@@ -192,7 +361,9 @@ bin/collie start                                         # standalone
 `start` will:
 1. Build `web/dist` if missing.
 2. Launch the bridge under `systemd --user` (or launchd/`nohup`).
-3. Run `tailscale serve --bg 8787` (HTTPS :443 → 127.0.0.1:8787).
+3. Run `tailscale serve --bg 8787` (HTTPS :443 → 127.0.0.1:8787). Your tailnet needs HTTPS
+   enabled for this ([admin console](https://login.tailscale.com/admin/dns) → "Enable HTTPS");
+   Collie says so and stops if it isn't.
 4. Print the connection banner.
 
 ## First run — what you'll see

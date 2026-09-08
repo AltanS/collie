@@ -19,7 +19,7 @@ describe("useDisplayPrefs", () => {
 
   it("returns defaults when localStorage is empty", () => {
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true });
   });
 
   it("persists wrap=true and reloads it on mount", () => {
@@ -37,9 +37,12 @@ describe("useDisplayPrefs", () => {
   });
 
   it("loads persisted prefs from localStorage on mount", () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false, fontSize: 14, rawTerminal: true, tapToFocus: false }));
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ wrap: false, fontSize: 14, rawTerminal: true, tapToFocus: false, expandClippedReply: false }),
+    );
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 14, draftFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: false });
+    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 14, draftFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: false, expandClippedReply: false });
   });
 
   it("persists rawTerminal and reloads it on mount (the escape hatch survives a reload)", () => {
@@ -66,7 +69,7 @@ describe("useDisplayPrefs", () => {
   it("reads a pre-tapToFocus payload without discarding the prefs it does have", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ wrap: false, fontSize: 15, rawTerminal: true }));
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 15, draftFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: true });
+    expect(result.current.prefs).toEqual({ wrap: false, fontSize: 15, draftFontSize: 14, fontFamily: "system", rawTerminal: true, tapToFocus: true, expandClippedReply: true });
   });
 
   it("persists fontFamily and reloads it on mount", () => {
@@ -146,6 +149,28 @@ describe("useDisplayPrefs", () => {
     const { result } = renderHook(() => useDisplayPrefs());
     act(() => result.current.stepFontSize(-10)); // 12 - 10 = 2 → clamp to 9
     expect(result.current.prefs.fontSize).toBe(9);
+  });
+
+  it("persists expandClippedReply and reloads it on mount", () => {
+    const { result } = renderHook(() => useDisplayPrefs());
+    expect(result.current.prefs.expandClippedReply).toBe(true);
+    act(() => result.current.setExpandClippedReply(false));
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).expandClippedReply).toBe(false);
+    const { result: reloaded } = renderHook(() => useDisplayPrefs());
+    expect(reloaded.current.prefs.expandClippedReply).toBe(false);
+  });
+
+  // Same reasoning as the tapToFocus case above: the key stayed at v4, so an older payload must keep
+  // every choice it does carry and take the default for the one it doesn't.
+  it("reads a pre-expandClippedReply payload without discarding the prefs it does have", () => {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ wrap: false, fontSize: 15, rawTerminal: true, tapToFocus: false }),
+    );
+    const { result } = renderHook(() => useDisplayPrefs());
+    expect(result.current.prefs.expandClippedReply).toBe(true);
+    expect(result.current.prefs.tapToFocus).toBe(false);
+    expect(result.current.prefs.fontSize).toBe(15);
   });
 
   // ── THE DRAFT FIELD'S OWN SIZE ────────────────────────────────────────────────────────────────
@@ -231,12 +256,12 @@ describe("useDisplayPrefs — the rest", () => {
   it("falls back to defaults on malformed JSON", () => {
     localStorage.setItem(STORAGE_KEY, "not-json{{{");
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true });
   });
 
   it("falls back to defaults when stored value is not an object", () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(42));
     const { result } = renderHook(() => useDisplayPrefs());
-    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true });
+    expect(result.current.prefs).toEqual({ wrap: true, fontSize: 10, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true });
   });
 });

@@ -45,6 +45,9 @@ const BAND_PREFIX = "updateRibbon.";
 /** One representative value per slot. See the header for why `reason` is empty. */
 const SAMPLE = {
   version: "1.5.0",
+  // The longest manager name the band can print today: pacman, nix and brew are the three
+  // `cli/package-command.ts` resolves.
+  manager: "pacman",
   count: "1",
   name: "minibuch",
   names: "minibuch",

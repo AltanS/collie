@@ -35,7 +35,7 @@ import { chooseSession, parseSessionList, ZELLIJ_LIST_SESSIONS_ARGS } from "../b
 import { bindIsWildcard } from "../bridge/pack/config.ts";
 import { deriveMode } from "../bridge/pack/mode.ts";
 import type { HelloResult, PackFetch, PeerOutcome } from "../bridge/pack/peer-client.ts";
-import { packRuntimePath, parseMarker, rosterDrift } from "../bridge/pack/staleness.ts";
+import { packRuntimePath, parseMarker, rosterDrift, type PackRuntimeMarker } from "../bridge/pack/staleness.ts";
 import { enrollmentOf, TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
@@ -57,13 +57,20 @@ import {
 } from "./install-kind.ts";
 import { packageCommand } from "./package-command.ts";
 import { classifyLink, linkDir, linkPath, type LinkReader, onPath, realLinkFs, resolveLinkTarget } from "./link.ts";
-import { collieBinary } from "./unit.ts";
+import { classifyExe, exePathOf, type ExeEvidence } from "../bridge/exe-replaced.ts";
+import { collieBinary, unitName } from "./unit.ts";
+import { pidFilePath } from "./lifecycle.ts";
 import type { Ui } from "./render.ts";
 import { failureLine, type MemberReach, parsePackArgs, probeMemberReach, VERSION_REPORTED_SINCE } from "./pack.ts";
 import { fingerprintRoot, parseRecord, parseServeStatus, rootAvailability } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import { BUILD_MARKER, currentVersionDir, listVersions, platformId, readBuildMarker } from "./update.ts";
-import { tailnetInboundBlocked, tailnetName } from "./tailnet.ts";
+import {
+  HTTPS_DISABLED_HINT,
+  tailnetCertDomains,
+  tailnetInboundBlocked,
+  tailnetName,
+} from "./tailnet.ts";
 
 // `collie doctor` — one read-only pass over the traps that fail silently (M7/02).
 //
@@ -168,6 +175,9 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   // How this Collie got here, and where its updates come from — read once, and by the same functions
   // `collie update` decides on, so the two verbs can never disagree about what they are looking at.
   const install = classifyInstall(probeInstall(deps, deps.ctx.root));
+  // The one artefact a running bridge leaves behind, read once: `restart-pending` takes the pid and
+  // the boot stamp out of it, and `storeDrift` below reads the same marker for the roster.
+  const runtimeMarker = parseMarker(deps.files.read(packRuntimePath(deps.ctx.stateDir)));
   const local: Finding[] = [
     identity(deps),
     webDist(deps),
@@ -193,7 +203,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
       files: deps.files,
       snapshot: () => ownSnapshot(deps),
     })),
-    restartPending(install),
+    restartPending(deps, install, runtimeMarker),
     clock(inPack, probes),
   ].filter((f) => appliesToMux(f.check, chosen.name));
   const pack: Finding[] =
@@ -754,6 +764,16 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
       "install tailscale and `collie serve`, or set COLLIE_SKIP_SERVE=1 if you own the ingress (docs/deployment.md Variant E)",
     );
   }
+  // No certificates, no https door — and `tailscale serve` says so by asking a question at a
+  // terminal a service has not got (#172). `collie serve` refuses on this same fact; doctor names it
+  // here so the operator reads it before they type the verb.
+  if (deps.ctx.serveMode === "https" && tailnetCertDomains(deps.exec)?.length === 0) {
+    return warn(
+      "front-door",
+      "this tailnet has no HTTPS certificates, so an https front door cannot be published",
+      HTTPS_DISABLED_HINT,
+    );
+  }
   const status = liveServeStatus(deps);
   if (status === null) {
     return skipped(
@@ -874,41 +894,113 @@ async function ownSnapshot(deps: DoctorDeps): Promise<string | null> {
 const SNAPSHOT_BUDGET_MS = 3000;
 
 /**
- * Rebuilt but not restarted — the repo's documented #1 "my change didn't take" trap — and `doctor`
- * **cannot see it**, honestly reported as such.
+ * Is the running bridge still executing the collie that is installed?
  *
- * The running bridge leaves exactly one artefact behind (`pack-runtime.json`, bridge/pack/staleness.ts)
- * and it records `bootedAt`, `pid`, the mode and the roster — **not a version**. `/api/config`'s build
- * id is read off `web/dist` at request time, so it describes the bundle on disk rather than the
- * process; nothing else the bridge writes names the code it is running. Answering this check would
- * therefore take a new field, a new file or a new route — all three forbidden here — so it ships
- * `skipped` rather than approximating. A diagnostic that overstates its coverage invites someone to
- * skip a real check on its strength.
+ * Two different questions live under one check id, because the operator's question is one:
+ * "is what I am talking to the code that is on this disk?"
+ *
+ * ── ON A SINGLE-FILE INSTALL (`binary`, `packaged`) IT IS ANSWERED ───────────
+ * The payload ships no `bridge/` — the bridge is compiled INTO `bin/collie` — so there is no source
+ * tree for the process to be behind, and `bridgeStale` is permanently false there. What there IS is
+ * an executable, and a package manager replaces it and restarts NOTHING. Observed on Arch:
+ * `pacman -U` of a rebuilt `collie-bin` leaves the service active on a deleted inode, still serving
+ * the old code, while every version file around it describes the new build. On a rebuild of the same
+ * version the version comparison in `bridge/update.ts` cannot see it at all, because no version
+ * string moved.
+ *
+ * So the executable is read directly: `/proc/<pid>/exe` of the bridge's own pid, judged by
+ * {@link classifyExe}. The check was previously skipped here with the sentence "whatever installs
+ * the new version restarts it", which is simply false for a package manager.
+ *
+ * ── ON A CHECKOUT IT STILL IS NOT ───────────────────────────────────────────
+ * There the process may be behind `bridge/*.ts`, and the running bridge leaves exactly one artefact
+ * (`pack-runtime.json`, bridge/pack/staleness.ts) recording `bootedAt`, `pid`, the mode and the
+ * roster — not a version, and not a source stamp. Answering that would take a new field, a new file
+ * or a new route, so it ships `skipped` rather than approximating.
  */
-function restartPending(install: InstallKind): Finding {
-  // On a binary install the question does not arise. The payload ships no `bridge/` — the bridge is
-  // compiled INTO `bin/collie` — so `bridgeStampSync` reads an empty stamp at boot and every time
-  // after, `bridgeStale` is permanently false, and that is correct rather than broken: there is no
-  // on-disk source for the process to be behind, and the only way the code changes is an update,
-  // which restarts the service itself (M14/01 §4.4). Written here so nobody "fixes" it later.
-  // A packaged install runs the SAME payload for the same reason — the tree it was unpacked
-  // from carries `bin/collie` and no `bridge/` — so the carve-out is about the payload, not about
-  // the kind. What differs is only who restarts the service afterwards.
-  if (install.kind === "binary" || install.kind === "packaged") {
-    const who = install.kind === "binary" ? "`collie update` restarts the service itself" : "whatever installs the new version restarts it";
+function restartPending(deps: DoctorDeps, install: InstallKind, marker: PackRuntimeMarker | null): Finding {
+  if (install.kind !== "binary" && install.kind !== "packaged") {
     return skipped(
       "restart-pending",
-      "this install ships no bridge/ source, so there is nothing for the running process to be" +
-        ` behind — ${who}`,
-      "`collie logs` dates the running process",
+      "the running bridge records no version — `pack-runtime.json` carries its boot time, pid, mode and" +
+        " roster, and nothing names the code it is executing",
+      "`collie restart` after any build if in doubt; `collie logs` dates the running process",
     );
   }
-  return skipped(
-    "restart-pending",
-    "the running bridge records no version — `pack-runtime.json` carries its boot time, pid, mode and" +
-      " roster, and nothing names the code it is executing",
-    "`collie restart` after any build if in doubt; `collie logs` dates the running process",
-  );
+  const pid = bridgePid(deps, marker);
+  const evidence = exeEvidence(deps, pid, marker);
+  const installed = exePathOf(evidence.exeLink) ?? collieBinary(deps.ctx.root);
+  switch (classifyExe(evidence)) {
+    case "replaced":
+      return warn(
+        "restart-pending",
+        `the running bridge is executing a collie that ${installed} no longer holds — the files were` +
+          " replaced under it and nothing restarted it",
+        "`collie restart`",
+      );
+    case "current":
+      return ok("restart-pending", `the running bridge is executing ${installed}, the installed collie`);
+    case "unknown":
+      return skipped(
+        "restart-pending",
+        pid === null
+          ? "no pid for the bridge — without one there is no executable to compare against the" +
+              " installed collie"
+          : `the executable behind pid ${String(pid)} could not be read, so it cannot be compared` +
+              " against the installed collie",
+        "`collie restart` after a package upgrade — a package manager replaces the files and restarts" +
+          " nothing; `collie logs` dates the running process",
+      );
+  }
+}
+
+/**
+ * The bridge's pid, from the tier that started it: the systemd unit's `MainPID`, else the pidfile
+ * the unsupervised tier writes, else the pid the running bridge recorded in `pack-runtime.json`.
+ *
+ * Read-only throughout — `systemctl show` prints a property and touches nothing.
+ */
+function bridgePid(deps: DoctorDeps, marker: PackRuntimeMarker | null): number | null {
+  const shown = deps.exec.capture("systemctl", [
+    "--user",
+    "show",
+    unitName(deps.ctx.instance),
+    "--property=MainPID",
+    "--value",
+  ]);
+  const main = shown.found && shown.code === 0 ? Number(shown.stdout.trim()) : Number.NaN;
+  if (Number.isInteger(main) && main > 1) return main;
+  const fromFile = Number(deps.files.read(pidFilePath(deps.ctx.configDir, deps.ctx.instance))?.trim() ?? "");
+  if (Number.isInteger(fromFile) && fromFile > 1) return fromFile;
+  // A bridge that neither systemd nor the pidfile tier owns still wrote its own pid, but only in a
+  // pack — a solo instance writes no marker (PACK_PROTOCOL.md §11's zero-tax contract).
+  return marker === null ? null : marker.pid;
+}
+
+/**
+ * The five probes {@link classifyExe} judges. Each one is allowed to decline, and every one of them
+ * is a read.
+ *
+ * `startedAtMs` comes from the marker only when it names THIS pid: it is the boot stamp of the
+ * process that wrote it, and taken from any other pid it would be a start time for a process it does
+ * not describe. That is the mtime fallback's only source here, which is why a non-Linux solo install
+ * lands on `unknown` rather than on a guess.
+ */
+function exeEvidence(deps: DoctorDeps, pid: number | null, marker: PackRuntimeMarker | null): ExeEvidence {
+  if (pid === null) {
+    return { exeLink: null, exeInode: null, installedInode: null, installedMtimeMs: null, startedAtMs: null };
+  }
+  const procExe = `/proc/${String(pid)}/exe`;
+  const exeLink = deps.files.readlink(procExe);
+  const installedPath = exePathOf(exeLink) ?? collieBinary(deps.ctx.root);
+  const installed = deps.files.stat(installedPath);
+  return {
+    exeLink,
+    exeInode: deps.files.stat(procExe)?.inode ?? null,
+    installedInode: installed?.inode ?? null,
+    installedMtimeMs: installed?.mtimeMs ?? null,
+    startedAtMs: marker !== null && marker.pid === pid ? marker.bootedAt : null,
+  };
 }
 
 /**

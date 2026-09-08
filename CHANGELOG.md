@@ -1,9 +1,75 @@
 # Changelog
 
 This file tracks all notable changes to Collie, ordered newest version first. The project follows
-[Semantic Versioning](https://semver.org/). Each version contains a single flat list of changes
-in landing order, oldest first. Every entry links to its commit and credits the contributor where
-there is one. The `## [Unreleased]
+[Semantic Versioning](https://semver.org/). From 1.6.0 on, a version's changes are grouped under
+`### Added`, `### Changed`, `### Fixed`, `### Packaging` and `### Docs`, in that order and only
+where there is content, and every bullet opens with a short bold lead sentence, which is the line
+the GitHub Release page prints. Older versions carry a single flat list. Every entry links to its commit and credits the contributor where there is one. The
+`## [Unreleased]` section contains merged work waiting for release. The release
+commit renames this heading to `## [x.y.z] - YYYY-MM-DD`, adds the commit hashes, and adds a new
+empty `## [Unreleased]` section above it. The newest numbered `## [x.y.z]` heading (excluding the
+Unreleased heading) **must** match the `version` field in `herdr-plugin.toml`, `package.json`,
+and `web/package.json`, which `scripts/check-version.sh` checks. See [`CLAUDE.md`](./CLAUDE.md) →
+*Versioning* for the bump policy.
+
+## Upgrading
+
+**Already on 1.x?** Run `collie update`, or run
+`herdr plugin action invoke update --plugin herdr.collie`. Check the result with
+`bin/collie version` (or `herdr plugin action invoke version --plugin herdr.collie`). It shows the
+newest tag. The phone PWA updates itself within about a minute; no reload needed.
+
+**Coming from 0.x?** Upgrade with one command. Do not use `collie update`. From the Herdr
+plugin: `herdr plugin action invoke update-major --plugin herdr.collie`. From a checkout you can
+reach: `bin/collie update --major`. Fresh install:
+`curl -fsSL https://colliepwa.dev/install.sh | sh`. Neither upgrade path assumes a `collie` on your
+PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgrading from 0.x to
+1.0*.
+
+## [Unreleased]
+
+### Fixed
+
+- **The release page lists what changed, grouped, and drops GitHub's own list.** The update command still sits at the top, unfolded, and below it the page now prints the changelog's own lead sentences under Added, Changed, Fixed, Packaging and Docs, then the version's changelog section for the commits and a compare link against the previous tag. GitHub's generated list only knew merged pull requests, and most of Collie's history lands as direct commits, so it read as an almost empty release.
+
+## [1.6.0] - 2026-09-08
+
+### Added
+
+- **mise installs Collie on Linux and macOS.** `mise use -g github:AltanS/collie@<version>` fetches the release tarball for that platform, and the install page documents it beside the Arch and Nix routes. mise owns updates on such a tree, with `mise upgrade --bump` and a `collie restart` to move the service off the old version directory, whether that service is a systemd unit or a launchd agent. `collie update` declines there without naming a package manager, because a mise tree is neither a checkout nor a packaged install, and the page says so. ([0febef5](https://github.com/AltanS/collie/commit/0febef5), [0062b91](https://github.com/AltanS/collie/commit/0062b91))
+- **`collie doctor` and `collie update` find their tools on Windows.** The tool search finds `git`, `herdr`, `python3` and `bun`: it reads `PATH` with the Windows separator, tries the `PATHEXT` suffixes, and reads the variable under either spelling, so a Windows host no longer reports every tool as missing and the Updates page gets a real preflight. Windows stays a source-only platform that we do not test on hardware. The search can also find a `.cmd` or `.bat` shim that Collie then cannot start, because it spawns these tools without a shell, so a Windows host needs the `.exe` builds of `git`, `herdr`, `bun` and `python3` on `PATH`. Thanks to @jz-wilson (#175). ([d80ebbe](https://github.com/AltanS/collie/commit/d80ebbe), [daa5bdb](https://github.com/AltanS/collie/commit/daa5bdb), [0062b91](https://github.com/AltanS/collie/commit/0062b91))
+- **A Claude pane is read only when its screen has changed.** A herd of idle agents no longer costs one socket read per pane per poll, because the pane is read for its session name only after a change. This uses Herdr's pane revision; tmux and zellij panes are read as before. Thanks to @sd2k (#189). ([198fe20](https://github.com/AltanS/collie/commit/198fe20), [258341b](https://github.com/AltanS/collie/commit/258341b))
+- **Turning the phone to landscape opens zen.** Turning it back closes it, and a zen you opened yourself stays open through both. This works when zen is enabled. The switch sits under Zen in Settings, off until you turn it on, and it acts only while zen itself is on. Desktops and tablets are landscape all day and are not affected. Thanks @enieuwy (#182). ([36d7b97](https://github.com/AltanS/collie/commit/36d7b97), [3e1033d](https://github.com/AltanS/collie/commit/3e1033d), [5af27c9](https://github.com/AltanS/collie/commit/5af27c9), [4bf3696](https://github.com/AltanS/collie/commit/4bf3696))
+- **A reply that scrolled off the terminal is shown in full.** The reply comes from the agent's own log, in place of the rows it covers, and Settings → View → Full latest reply turns it off. Thanks @sd2k (#185). ([46d2fe6](https://github.com/AltanS/collie/commit/46d2fe6), [d433ce8](https://github.com/AltanS/collie/commit/d433ce8))
+- **Collie recognises OMP's `rule` composer.** A phone reply reaches an OMP 18.1.10 pane configured with `composer.shape: rule` instead of stalling with "the message did not reach the input box". Thanks @taiansu (#160). ([72fbfec](https://github.com/AltanS/collie/commit/72fbfec), [67b72e3](https://github.com/AltanS/collie/commit/67b72e3))
+
+### Fixed
+
+- **Every command Collie prints for Herdr names its own plugin id.** This holds for every restart and update command, and names the plugin id of the instance that printed it. A host running a second Collie under `COLLIE_INSTANCE` used to be told to invoke `herdr.collie`, which is the host's first Collie and not the one asking, so following the line restarted the wrong service. ([68bb345](https://github.com/AltanS/collie/commit/68bb345))
+- **A binary replaced under the running service is noticed.** A package upgrade is caught even when the version does not move: `collie doctor` reports `restart-pending` against the executable itself and names `collie restart`, and the phone raises the same notice. `pacman` replaces the files and restarts nothing, and the check used to say something else did. ([4cb544e](https://github.com/AltanS/collie/commit/4cb544e))
+- **`collie pack update` on a packaged lead names the boundary.** It no longer reports a broken checkout. It used to fail with "is not a git checkout" about `/opt/collie`, which pacman owns and which carries no commit to push; it now says updates come from the package manager and sends the operator to the phone's Updates page, where the members still level to the version the lead is running. ([187a0dd](https://github.com/AltanS/collie/commit/187a0dd))
+- **`collie serve` stops when the tailnet has no HTTPS.** It says so instead of looking hung. Tailscale asks for HTTPS to be enabled and waits for the answer, and Collie captured that question until the command returned, which is the one case where it never does. Collie now reads the tailnet's certificate domains first and names the admin console, `collie doctor` reports the same tailnet, and the publish runs on the operator's own terminal so anything tailscale prints while it waits is visible. Thanks @nikolauska (#172). ([da8afeb](https://github.com/AltanS/collie/commit/da8afeb))
+- **Turning on notifications no longer sticks on "setting up".** A configuration read that fails leaves the switch retryable instead of disabling it, every service worker and PushManager wait is bounded at 30 seconds, registration goes through the shared API client so a sign-in redirect or a server error is reported beside the switch, and the phone reads as subscribed only after the bridge acknowledged the endpoint this device registered. Thanks @Shujakuinkuraudo (#178, #179). ([6fa2694](https://github.com/AltanS/collie/commit/6fa2694))
+- **`collie serve` says when it cannot read the HTTPS status.** It publishes anyway. A `tailscale status --json` this build cannot read means "can't tell", never "no HTTPS", so the refusal above stays off that path; the line names the admin console in case the publish does stop and wait after all. ([0062b91](https://github.com/AltanS/collie/commit/0062b91))
+
+### Packaging
+
+- **`collie-bin` is not on the AUR yet.** The install page says so. The AUR has paused new account registration, so the Arch route is a clone of this repository and `makepkg -si` in `packaging/aur`, with the `paru -S collie-bin` line kept below it under "Once it is on the AUR". ([d7dd6d9](https://github.com/AltanS/collie/commit/d7dd6d9))
+- **The Arch package installs to `/opt/collie`.** That is the layout Omarchy's package repository expects, and the package ships the metadata that repository uses to follow Collie's releases; a host under `/opt/collie` is told `sudo pacman -Syu collie-bin` like one under `/usr/lib/collie`. ([4480964](https://github.com/AltanS/collie/commit/4480964))
+- **The Arch package prints what to do next.** This covers installing, upgrading or removing it. pacman names `collie start` and the `COLLIE_MUX=herdr` form a host with two multiplexers needs, says the running service keeps the old build until `collie restart`, warns before a removal that the `systemd --user` unit and the tailscale serve mapping stay unless `collie uninstall` ran first, and afterwards names the directories left behind. Omarchy's repository carries the same file. ([187a0dd](https://github.com/AltanS/collie/commit/187a0dd))
+- **The Arch package trims `depends` and files its docs.** It no longer names `systemd` in `depends`, which is the init of every Arch and Omarchy host anyway, and it offers `herdr` and `tmux` as optional dependencies, one per multiplexer Collie can drive on such a host. `README.md`, `CHANGELOG.md` and `docs/` now install to `/usr/share/doc/collie-bin/` and the licence to `/usr/share/licenses/collie-bin/`, instead of sitting in the install root where nothing reads them at run time. ([4480964](https://github.com/AltanS/collie/commit/4480964))
+
+### Docs
+
+- **A packaged install can be linked into Herdr.** `herdr plugin link /opt/collie` registers Collie's action buttons there, and Herdr never finds the package on its own because it does not scan `/opt`. The install page used to say there is no `herdr plugin link` step at all, and the plugin's `update` and `update-major` actions declining on a packaged tree is the design, not a fault. ([e4e7e9f](https://github.com/AltanS/collie/commit/e4e7e9f))
+
+## [1.5.6] - 2026-09-07
+
+- Collie carries its own package recipes: `packaging/aur` for Arch (`collie-bin`, not yet on the AUR) and `packages.<system>.collie` from this repository's flake for Nix. Both wrap the release tarball, neither builds anything, and neither updates itself, because the package manager owns that folder. ([bb46def](https://github.com/AltanS/collie/commit/bb46def), [43a23a2](https://github.com/AltanS/collie/commit/43a23a2))
+- The flake's default package is Collie, so `nix run github:AltanS/collie` runs it. The pinned Bun the release is built with is still there, as `packages.<system>.bun`. ([43a23a2](https://github.com/AltanS/collie/commit/43a23a2))
+- The update band remembers a dismissal on the host instead of in one browser, the quiet pack notice can be put down on its own, and a host whose updates come from its package manager reads "Collie 1.6.0 available via pacman." instead of an offer to tap. ([23b5934](https://github.com/AltanS/collie/commit/23b5934), [2be3547](https://github.com/AltanS/collie/commit/2be3547), [f630c1c](https://github.com/AltanS/collie/commit/f630c1c))
+- A Mac or an arm64 Linux host on 1.5.4 or 1.5.5 gets a binary that starts again. A host whose binary will not start reinstalls with `curl -fsSL https://colliepwa.dev/install.sh | COLLIE_TAG=v1.5.6 sh`; a host still on 1.5.3 updates as usual, and linux-x64 was never affected. Those two releases were compiled on the build environment's patched Bun, so the Mac binary loaded ICU out of `/nix/store` and the arm64 Linux binary named a `/nix/store` program interpreter. The release now compiles on the upstream Bun archive the flake pins and refuses any binary whose loader inputs point outside the system's own library roots, thanks @rapporbit (#184). ([33df273](https://github.com/AltanS/collie/commit/33df273), [9d07868](https://github.com/AltanS/collie/commit/9d07868))
+- The pack journal names each peer's leg change, each incompatible verdict with the reason and the backoff it earns, and the moment a run settles. A run that sits waiting on a peer is now read out of `journalctl --user -u collie` instead of inferred from the arithmetic. ([3ea0108](https://github.com/AltanS/collie/commit/3ea0108))
 
 ## [1.5.5] - 2026-09-07
 

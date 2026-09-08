@@ -1,0 +1,10 @@
+{
+  "upstream": {
+    "github": "AltanS/collie",
+    "digests": true,
+    "assets": {
+      "x86_64": "collie-{pkgver}-linux-x64.tar.gz",
+      "aarch64": "collie-{pkgver}-linux-arm64.tar.gz"
+    }
+  }
+}

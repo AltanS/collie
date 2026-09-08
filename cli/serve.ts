@@ -1,5 +1,5 @@
 import type { CliContext, ServeMode } from "./context.ts";
-import { DEFAULT_SERVE_PORT, instanceSuffix, parseServePort } from "./context.ts";
+import { DEFAULT_SERVE_PORT, parseServePort } from "./context.ts";
 import {
   fingerprintRoot,
   formatRecord,
@@ -17,7 +17,13 @@ import { deriveMode, type PackMode } from "../bridge/pack/mode.ts";
 import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/pack/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
-import { bridgeUrl, localBridgeHostPort, tailnetName } from "./tailnet.ts";
+import {
+  bridgeUrl,
+  HTTPS_DISABLED_HINT,
+  localBridgeHostPort,
+  tailnetCertDomains,
+  tailnetName,
+} from "./tailnet.ts";
 
 // The single managed front door, ported from the pre-shim `collie-ctl.sh`. ADR 0001 is the whole
 // point of it: Collie manages exactly ONE `tailscale serve` mapping, records it, and only ever tears
@@ -201,6 +207,31 @@ export function cmdServe(deps: ServeDeps): number {
     return EXIT.FAIL;
   }
 
+  // A tailnet with no certificates cannot carry an https front door, and `tailscale serve` says so
+  // by ASKING — it prints "HTTPS must be enabled…" and waits for an answer at a terminal it has not
+  // got. The command then looks hung and the publish never lands (#172). The precondition is read
+  // first, so the operator gets the one sentence that ends the wait instead of the wait.
+  if (deps.ctx.serveMode === "https") {
+    const domains = tailnetCertDomains(deps.exec);
+    if (domains !== null && domains.length === 0) {
+      deps.io.err(
+        "error: HTTPS certificates are not enabled on this tailnet, so `tailscale serve` would stop" +
+          ` and wait for an answer nobody sees; ${HTTPS_DISABLED_HINT}`,
+      );
+      return EXIT.FAIL;
+    }
+    // `null` is "can't tell", never "no HTTPS" — the refusal above is deliberately not taken on a
+    // status document this build could not read. The publish goes ahead, and it says so, because
+    // the one failure it cannot rule out is the hang the check exists to prevent (#172).
+    if (domains === null) {
+      deps.io.err(
+        "warn: could not read this tailnet's HTTPS status from `tailscale status --json`;" +
+          " publishing anyway. If the command seems to hang, HTTPS is off:" +
+          ` ${HTTPS_DISABLED_HINT}`,
+      );
+    }
+  }
+
   const proxy = `http://127.0.0.1:${deps.ctx.port}`;
   const listenerPort = deps.ctx.serveMode === "http" ? deps.ctx.port : httpsPort;
   if (!ensureRootAvailable(deps, listenerPort, deps.ctx.serveMode, proxy)) return EXIT.FAIL;
@@ -216,11 +247,12 @@ export function cmdServe(deps: ServeDeps): number {
   deps.files.write(deps.ctx.handlerFile, formatRecord(record));
 
   const args = publishArgs(deps.ctx.serveMode, deps.ctx.port, httpsPort);
-  const r = deps.exec.capture("tailscale", args);
-  // The shell captured this into ${CONFIG_DIR}/serve.out and `cat`-ed it on failure; the file stays
-  // so an operator who went looking for it after a failed publish still finds it.
-  const output = `${r.stdout}${r.stderr}`;
-  deps.files.write(serveOutPath(deps.ctx), output);
+  // OUR stdio, not a capture (#172). The shell captured this into `${CONFIG_DIR}/serve.out` and
+  // `cat`-ed it on failure, which reads back everything `tailscale serve` said — but only once it
+  // has returned. Anything it prints WHILE it waits then reaches nobody, and the operator watches a
+  // command that looks hung. Nothing parses this output, so letting it through costs nothing and
+  // buys back every question tailscale decides to ask.
+  const r = deps.exec.inherit("tailscale", args);
   if (r.found && r.code === 0) {
     deps.io.out(
       deps.ctx.serveMode === "http"
@@ -232,10 +264,10 @@ export function cmdServe(deps: ServeDeps): number {
   deps.files.remove(deps.ctx.handlerFile);
   deps.io.out(
     deps.ctx.serveMode === "http"
-      ? "note: tailscale serve failed (try 'sudo tailscale set --operator=$USER'):"
-      : "note: tailscale serve (https) failed — on Headscale/.internal domains use COLLIE_SERVE_MODE=http:",
+      ? "note: tailscale serve failed (try 'sudo tailscale set --operator=$USER')"
+      : "note: tailscale serve (https) failed — on Headscale/.internal domains use COLLIE_SERVE_MODE=http",
   );
-  if (output.trim() !== "") deps.io.out(output.trimEnd());
+  // No echo of the failure text: tailscale printed it on this terminal as it happened.
   return EXIT.FAIL;
 }
 
@@ -287,10 +319,6 @@ function publishArgs(mode: ServeMode, bridgePort: number, httpsPort: number): st
   if (httpsPort === DEFAULT_SERVE_PORT) return ["serve", "--bg", "--set-path=/", target];
   return ["serve", "--bg", `--https=${httpsPort}`, "--set-path=/", target];
 }
-
-/** Per-instance, like every other file the CLI drops in the config dir — two instances may share one. */
-export const serveOutPath = (ctx: CliContext): string =>
-  `${ctx.configDir}/serve${instanceSuffix(ctx.instance)}.out`;
 
 /** The publish-side gate. True means "go ahead"; it prints its own refusal otherwise. */
 function ensureRootAvailable(

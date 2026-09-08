@@ -56,6 +56,17 @@ export interface DisplayPrefs {
    * that IS ours to give.
    */
   tapToFocus: boolean;
+  /**
+   * Whether a reply whose opening has scrolled off the mirror is re-shown in full above it, read from
+   * the agent's own session log (default: true).
+   *
+   * An agent's TUI runs on the alternate screen, so the mirror is the viewport and nothing more — a
+   * long answer loses its start, and reading it used to mean leaving the pane for the history route.
+   * On, the pane puts it back in place; off, the pane behaves exactly as it did before this existed.
+   * The cost of "on" is one journal read per finished message (see hooks/use-latest-reply.ts), which
+   * is why it is a pref at all rather than unconditional.
+   */
+  expandClippedReply: boolean;
 }
 
 /** The terminal font families offered in Settings. A closed list, not a free-text box: an
@@ -178,6 +189,7 @@ const DEFAULTS: DisplayPrefs = {
   fontFamily: "system",
   rawTerminal: false,
   tapToFocus: true,
+  expandClippedReply: true,
 };
 
 function readFontFamily(value: string | undefined): FontFamily {
@@ -266,6 +278,7 @@ function loadPrefs(): DisplayPrefs {
       fontFamily: readFontFamily(asJsonString(p.fontFamily)),
       rawTerminal: asJsonBoolean(p.rawTerminal) ?? DEFAULTS.rawTerminal,
       tapToFocus: asJsonBoolean(p.tapToFocus) ?? DEFAULTS.tapToFocus,
+      expandClippedReply: asJsonBoolean(p.expandClippedReply) ?? DEFAULTS.expandClippedReply,
     };
   } catch {
     return DEFAULTS;
@@ -298,6 +311,8 @@ export interface UseDisplayPrefsReturn {
   setRawTerminal: (raw: boolean) => void;
   /** Toggle or explicitly set whether a mirror tap focuses the composer. */
   setTapToFocus: (tapToFocus: boolean) => void;
+  /** Toggle or explicitly set whether a clipped reply is re-shown in full above the mirror. */
+  setExpandClippedReply: (expandClippedReply: boolean) => void;
 }
 
 export function useDisplayPrefs(): UseDisplayPrefsReturn {
@@ -359,6 +374,14 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     });
   }, []);
 
+  const setExpandClippedReply = useCallback((expandClippedReply: boolean) => {
+    setPrefs((p) => {
+      const next: DisplayPrefs = { ...p, expandClippedReply };
+      savePrefs(next);
+      return next;
+    });
+  }, []);
+
   return {
     prefs,
     setWrap,
@@ -368,5 +391,6 @@ export function useDisplayPrefs(): UseDisplayPrefsReturn {
     stepDraftFontSize,
     setRawTerminal,
     setTapToFocus,
+    setExpandClippedReply,
   };
 }

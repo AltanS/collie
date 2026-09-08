@@ -30,6 +30,8 @@ export const zhTW: Dictionary = {
   "settings.install.iosHint": "在 iPhone 或 iPad 上，點選瀏覽器分享按鈕，選擇「加入主畫面」。",
   "settings.zen.title": "專注模式",
   "settings.zen.description": "在窗格選單中加入選項，隱藏終端機以外的所有介面元素。",
+  "settings.zen.auto.label": "橫向時自動啟用",
+  "settings.zen.auto.hint": "將手機橫向旋轉會自動開啟專注模式；轉回直向則自動關閉。",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "語音直接傳送",
@@ -45,6 +47,8 @@ export const zhTW: Dictionary = {
   "settings.push.reason.denied": "通知權限已被拒絕，請在瀏覽器設定中啟用。",
   "settings.push.reason.unsupported": "目前瀏覽器不支援推播通知。",
   "settings.push.reason.default": "無法啟用推播通知。",
+  "settings.push.reason.timeout": "通知設定逾時。請確認目前裝置能連線至推播服務，然後重試。",
+  "settings.push.availability.unavailable": "無法檢查通知設定。請檢查網路或重新登入，然後重試。",
   "settings.push.availability.insecure": "一般 HTTP 環境不可用。請透過 HTTPS 部署 Collie 以啟用推播。",
   "settings.push.availability.serverOff": "Bridge 缺少 VAPID 金鑰設定，伺服器端已停用推播功能。",
   "settings.push.availability.denied": "目前網站的通知權限已被拒絕。請在瀏覽器設定中重新允許。",
@@ -160,6 +164,9 @@ export const zhTW: Dictionary = {
   "settings.display.tapToType.label": "點擊喚出鍵盤",
   "settings.display.tapToType.hint":
     "啟用後點擊鏡像任意位置都會彈出鍵盤。關閉後鏡像以文件模式互動，僅點擊輸入框時喚出鍵盤。",
+  "settings.display.fullReply.label": "完整顯示最新回覆",
+  "settings.display.fullReply.hint":
+    "Agent 的終端機不保留回捲緩衝，較長回覆的開頭會遺失。啟用後會從 Agent 自身的記錄取出完整回覆，取代它所覆蓋的那幾行。",
   "settings.display.rawTerminal.label": "原始終端機",
   "settings.display.rawTerminal.hint":
     "僅顯示純終端機鏡像，隱藏提示按鈕與狀態列。適用於對話框呈現異常時透過按鍵手動操作。",
@@ -258,6 +265,9 @@ export const zhTW: Dictionary = {
   "chat.scrollback.loading": "正在載入…",
   "chat.scrollback.noSessionReported":
     "{agent} 尚未向 Herdr 回報工作階段。請安裝或更新對應的 Herdr 整合，並在目前窗格重新啟動該 Agent。",
+  "chat.fullReply.title": "完整回覆",
+  "chat.fullReply.fromTranscript": "來自記錄",
+  "chat.fullReply.showingTerminal": "正在顯示終端機",
   "chat.output.empty": "（暫無近期輸出）",
   "chat.switcher.aria": "切換窗格",
   "chat.switcher.title": "切換窗格",
@@ -831,5 +841,8 @@ export const zhTW: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} 已復原：{reason}。",
   "updateRibbon.seeUpdates": "查看更新。",
   "updateRibbon.available": "Collie {version} 可用。點擊更新。",
+  "updateRibbon.availablePackaged": "Collie {version} 可透過 {manager} 取得。",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} 可用。",
   "updateRibbon.dismiss": "略過此版本",
+  "updateRibbon.hideNotice": "隱藏此通知",
 };

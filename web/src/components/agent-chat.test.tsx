@@ -20,7 +20,7 @@ vi.mock("@/lib/wizard-action", () => ({
 
 import { server } from "@/test/setup";
 import { clearStatus, setStatus } from "@/lib/status";
-import { setZenEnabled, __resetZen } from "@/lib/zen";
+import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
 import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { submitPromptOption } from "@/lib/prompt-action";
@@ -1824,6 +1824,166 @@ describe("AgentChat — zen mode", () => {
     expect(headerRowOf(container)).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
   });
+
+  describe("auto-zen follows the rotation", () => {
+    // The query AgentChat asks for, spelled out once so a case can say what it is holding.
+    const LANDSCAPE_QUERY = "(orientation: landscape) and (max-height: 520px)";
+
+    // A controllable `matchMedia` fake for the rotation query: the shared stub in test/setup.ts
+    // never fires, which is fine for every other suite and useless for the one mechanism here that
+    // has no other trigger. Installed per case, removed after.
+    //
+    // `viewportHeight` is what makes the fake honest about the `and (max-height: 520px)` half of the
+    // query. A query the viewport is too tall for can never match, however the phone is held, so the
+    // fake hands back a dead list for it rather than the live one — which is exactly what a desktop
+    // browser does.
+    let emitOrientation: (landscape: boolean) => void;
+    function installOrientation(initial: boolean, viewportHeight = 380) {
+      // The fake speaks only the half of MediaQueryListEvent the hook reads (`matches`) — a full
+      // event object here would need a cast that discards type evidence for nothing.
+      const listeners = new Set<(e: { matches: boolean }) => void>();
+      const mql = {
+        matches: initial,
+        media: LANDSCAPE_QUERY,
+        onchange: null,
+        addEventListener: (_: string, fn: (e: { matches: boolean }) => void) => {
+          void listeners.add(fn);
+        },
+        removeEventListener: (_: string, fn: (e: { matches: boolean }) => void) => {
+          void listeners.delete(fn);
+        },
+      };
+      const dead = {
+        matches: false,
+        media: LANDSCAPE_QUERY,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      };
+      const short = viewportHeight <= 520;
+      vi.stubGlobal("matchMedia", (query: string) =>
+        query.includes("max-height: 520px") && !short ? dead : mql,
+      );
+      emitOrientation = (landscape: boolean) => {
+        mql.matches = landscape;
+        for (const fn of listeners) fn({ matches: landscape });
+      };
+    }
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("enters zen on rotation to landscape and leaves on rotation back", async () => {
+      setZenEnabled(true);
+      setAutoZenEnabled(true);
+      installOrientation(false);
+      const { container } = renderChat();
+      expect(headerRowOf(container)).not.toBeNull();
+
+      act(() => emitOrientation(true));
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+      expect(screen.getByRole("button", { name: "Exit zen mode" })).toBeInTheDocument();
+
+      act(() => emitOrientation(false));
+      await waitFor(() => expect(headerRowOf(container)).not.toBeNull());
+      expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
+    });
+
+    it("does nothing while zen itself is unavailable", async () => {
+      setAutoZenEnabled(true);
+      installOrientation(false);
+      const { container } = renderChat();
+
+      act(() => emitOrientation(true));
+      expect(headerRowOf(container)).not.toBeNull();
+      expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
+    });
+
+    it("does nothing on rotation once the landscape sub-toggle is turned off", async () => {
+      // The two bits are independent: the operator who wants zen on a tap only turns this row off,
+      // and rotation goes inert while the hand entry point (the actions sheet's row) still works.
+      setZenEnabled(true);
+      setAutoZenEnabled(false);
+      installOrientation(false);
+      const { container } = renderChat();
+
+      act(() => emitOrientation(true));
+      expect(headerRowOf(container)).not.toBeNull();
+      expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
+    });
+
+    it("leaves a hand-entered zen alone on both flips", async () => {
+      setZenEnabled(true);
+      setAutoZenEnabled(true);
+      installOrientation(false);
+      const user = userEvent.setup();
+      const { container } = renderChat();
+
+      await enterZen(user);
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+
+      act(() => emitOrientation(true));
+      expect(headerRowOf(container)).toBeNull();
+      act(() => emitOrientation(false));
+      expect(headerRowOf(container)).toBeNull();
+    });
+
+    it("a hand exit in landscape stays out until the next rotation", async () => {
+      setZenEnabled(true);
+      setAutoZenEnabled(true);
+      installOrientation(false);
+      const user = userEvent.setup();
+      const { container } = renderChat();
+
+      act(() => emitOrientation(true));
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+
+      await user.click(screen.getByRole("button", { name: "Exit zen mode" }));
+      await waitFor(() => expect(headerRowOf(container)).not.toBeNull());
+
+      act(() => emitOrientation(false));
+      expect(headerRowOf(container)).not.toBeNull();
+      act(() => emitOrientation(true));
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+    });
+
+    it("keeps a zen the operator re-opened by hand when the phone turns back", async () => {
+      // The mark says "the rotation opened this one". A hand exit clears the zen, so the mark is
+      // stale from that moment, and the hand entry that follows is the operator's own zen. Turning
+      // the phone back to portrait must leave it standing, exactly as it does for a zen that was
+      // opened by hand in the first place.
+      setZenEnabled(true);
+      setAutoZenEnabled(true);
+      installOrientation(false);
+      const user = userEvent.setup();
+      const { container } = renderChat();
+
+      act(() => emitOrientation(true));
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+
+      await user.click(screen.getByRole("button", { name: "Exit zen mode" }));
+      await waitFor(() => expect(headerRowOf(container)).not.toBeNull());
+
+      await enterZen(user);
+      await waitFor(() => expect(headerRowOf(container)).toBeNull());
+
+      act(() => emitOrientation(false));
+      expect(headerRowOf(container)).toBeNull();
+      expect(screen.getByRole("button", { name: "Exit zen mode" })).toBeInTheDocument();
+    });
+
+    it("ignores a landscape viewport tall enough to be a desktop or a tablet", async () => {
+      // Chrome rows cost terminal lines on a phone held sideways, not on a 900px-tall window that
+      // is landscape all day. The `and (max-height: 520px)` half of the query is what tells them
+      // apart, so this case holds it: same setting, same flip, no zen.
+      setZenEnabled(true);
+      setAutoZenEnabled(true);
+      installOrientation(false, 900);
+      const { container } = renderChat();
+
+      act(() => emitOrientation(true));
+      expect(headerRowOf(container)).not.toBeNull();
+      expect(screen.queryByRole("button", { name: "Exit zen mode" })).not.toBeInTheDocument();
+    });
+  });
 });
 
 // ── THE FOLDED STRIPS ─────────────────────────────────────────────────────────
@@ -2174,5 +2334,136 @@ describe("AgentChat: Launch section in the switcher", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: "Switch pane" }));
     expect(screen.queryByText("Launch")).toBeNull();
+  });
+});
+
+// Putting a clipped reply back. An agent pane's terminal keeps no scrollback, so a reply longer than
+// the pane is tall reaches the mirror with its opening already gone; the agent's own journal still has
+// it. What has to hold here is BOTH halves: the full message appears when the mirror is showing its
+// tail, and nothing appears when the journal's newest turn is not the message on screen (a streaming
+// reply, a stale read) — presenting an older reply as the current one is the failure that matters.
+describe("AgentChat — full latest reply", () => {
+  const REPLY = [
+    "Short answer: approve-only. The author knows when they want it to land; your job was the",
+    "approval. Enabling auto-merge makes you the actor for the merge itself, which is a materially",
+    "bigger claim than saying this looks fine to me.",
+  ].join(" ");
+
+  /** Serve one assistant turn as the pane's journal, and count the reads so a negative assertion can
+   *  wait for the fetch to have landed rather than racing it. */
+  function withJournalReply(text: string): () => number {
+    let hits = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, () => {
+        hits += 1;
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          available: true,
+          entries: [
+            {
+              uuid: "reply-1",
+              ts: "2026-08-28T09:14:00.000Z",
+              role: "assistant",
+              parts: [{ kind: "text", text }],
+            },
+          ],
+          hasMore: false,
+          total: 1,
+          fileTruncated: false,
+        });
+      }),
+    );
+    return () => hits;
+  }
+
+  const card = () => screen.queryByRole("button", { name: /full reply/i });
+  const sessionAgent = () => ({ ...fixtureAgents[0]!, hasSession: true, readableLines: 51 });
+  /** Just the terminal mirror's text — the card renders the same words, so a screen-wide query can't
+   *  tell which surface a match came from. */
+  const mirror = () => document.querySelector("pre")?.textContent ?? "";
+
+  // A screen holding the END of the reply, then what the agent did next.
+  const AFTER = "abc1234 fix";
+  const SCREEN = `${REPLY.slice(120)}\n\nBash(git log --oneline)\n  ${AFTER}`;
+
+  it("shows the whole message, and takes the rows it covers out of the mirror", async () => {
+    withJournalReply(REPLY);
+    renderChat({ agent: sessionAgent(), agents: [sessionAgent()], text: SCREEN });
+    await waitFor(() => expect(card()).toBeInTheDocument());
+
+    // The opening the terminal lost is on screen now, from the transcript…
+    expect(screen.getByText(/Short answer: approve-only/)).toBeInTheDocument();
+    // …the rows that held its tail are gone, so the words appear exactly once…
+    expect(mirror()).not.toContain("bigger claim");
+    // …and the terminal below the reply is untouched.
+    expect(mirror()).toContain(AFTER);
+  });
+
+  it("gives the terminal rows back when you collapse it", async () => {
+    const user = userEvent.setup();
+    withJournalReply(REPLY);
+    renderChat({ agent: sessionAgent(), agents: [sessionAgent()], text: SCREEN });
+    await waitFor(() => expect(card()).toBeInTheDocument());
+
+    await user.click(card()!);
+    expect(screen.queryByText(/Short answer: approve-only/)).not.toBeInTheDocument();
+    expect(mirror()).toContain("bigger claim"); // the raw rows are back
+    expect(card()).toBeInTheDocument(); // and the header stays, so it can be reopened
+  });
+
+  // Find searches the mirror and highlights only there, so a hidden row would be a match you can see
+  // but cannot find. Opening find restores the whole mirror and stands the card down.
+  it("hands the whole mirror back while the find bar is open", async () => {
+    const user = userEvent.setup();
+    withJournalReply(REPLY);
+    renderChat({ agent: sessionAgent(), agents: [sessionAgent()], text: SCREEN });
+    await waitFor(() => expect(card()).toBeInTheDocument());
+
+    await openFind(user);
+    expect(card()).not.toBeInTheDocument();
+    expect(mirror()).toContain("bigger claim");
+  });
+
+  it("shows nothing when the journal's newest reply is not what the mirror is showing", async () => {
+    const hits = withJournalReply(REPLY);
+    renderChat({
+      agent: sessionAgent(),
+      agents: [sessionAgent()],
+      text: "an entirely different screen",
+    });
+    await waitFor(() => expect(hits()).toBe(1));
+    await waitFor(() => expect(card()).not.toBeInTheDocument());
+  });
+
+  it("shows nothing when the mirror already holds the whole reply", async () => {
+    const hits = withJournalReply(REPLY);
+    renderChat({ agent: sessionAgent(), agents: [sessionAgent()], text: REPLY });
+    await waitFor(() => expect(hits()).toBe(1));
+    await waitFor(() => expect(card()).not.toBeInTheDocument());
+    expect(screen.getAllByText(/Short answer/).length).toBe(1); // the mirror's copy, and only it
+  });
+
+  // The pref is the whole opt-out: off, the pane is exactly what it was before this existed — and it
+  // costs no journal read either, which is the reason it is a pref rather than always-on.
+  it("reads no journal at all once the operator turns it off", async () => {
+    localStorage.setItem(
+      "collie:display-prefs:v4",
+      JSON.stringify({ wrap: true, fontSize: 12, expandClippedReply: false }),
+    );
+    const hits = withJournalReply(REPLY);
+    renderChat({ agent: sessionAgent(), agents: [sessionAgent()], text: REPLY.slice(120) });
+    await waitFor(() => expect(screen.getByText(/bigger claim/)).toBeInTheDocument());
+    expect(hits()).toBe(0);
+    expect(card()).not.toBeInTheDocument();
+    localStorage.clear();
+  });
+
+  it("reads no journal at all on a pane that has none", async () => {
+    const hits = withJournalReply(REPLY);
+    const shell = { ...fixtureAgents[0]!, kind: "shell" as const, readableLines: 51 };
+    renderChat({ agent: shell, agents: [shell], text: REPLY.slice(120) });
+    await waitFor(() => expect(screen.getByText(/bigger claim/)).toBeInTheDocument());
+    expect(hits()).toBe(0);
+    expect(card()).not.toBeInTheDocument();
   });
 });

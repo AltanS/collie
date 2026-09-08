@@ -1416,6 +1416,36 @@ export function startServer(opts: {
         await updateMonitor.snoozeDigest();
         return json(updateMonitor.status(), req.headers.get("accept-encoding"));
       }
+      if (pathname === "/api/update/dismiss" && req.method === "POST") {
+        // The update band was closed, for the version it named, in the scope it was closed in. The
+        // version is recorded on the bridge rather than in the browser that closed it, so the band
+        // stays down wherever it is read next (M17/08). Closing THIS host's offer also snoozes the
+        // digest, in the monitor's one write — hiding a notice about another machine does not.
+        //
+        // Read-level, exactly like the snooze beside it: declining a notification about your own
+        // machine isn't terminal-driving. Not a mute either — `updatesEnabled()` stays the only off
+        // switch, and a NEWER release raises the band again.
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        let body: JsonValue;
+        try {
+          // SAFETY: `Request.json()` output IS a JsonValue by construction; the version is checked
+          // for being a non-empty string below before anything is written.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          return text("bad request", 400);
+        }
+        const record = body !== null && typeof body === "object" && !Array.isArray(body) ? body : null;
+        const version = record === null ? undefined : record.version;
+        if (typeof version !== "string" || version.trim() === "") return text("bad version", 400);
+        // WHICH band, because they are two decisions: the offer this host was given, and the quiet
+        // notice about a machine a package manager owns. Absent reads as the offer, which is what
+        // every client before the pack states could close.
+        const asked = record === null ? undefined : record.scope;
+        if (asked !== undefined && asked !== "offer" && asked !== "pack") return text("bad scope", 400);
+        await updateMonitor.dismiss(version, asked ?? "offer");
+        return json(updateMonitor.status(), req.headers.get("accept-encoding"));
+      }
       if (pathname === "/api/update/check" && req.method === "GET") {
         // The card's own read: everything `POST /api/update/check` answers, plus the PREFLIGHT that
         // decides whether the update button is live and what it says when it is not (M15/05).

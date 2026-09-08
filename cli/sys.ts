@@ -7,6 +7,7 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   renameSync,
   rmSync,
   statSync,
@@ -126,6 +127,20 @@ export interface Files {
    * updates on an install nobody could describe.
    */
   writable(p: string): boolean | null;
+  /**
+   * `stat(2)`'s two facts about `p` — the inode and the last modification, in epoch ms — or null
+   * when it cannot be read at all. Symlinks are FOLLOWED, which is what makes it answer about
+   * `/proc/<pid>/exe`: the inode it reports there is the executable the process is running, even
+   * after the file behind it has been unlinked.
+   *
+   * Added for the restart-pending check (`cli/doctor.ts`). A package manager replaces `bin/collie`
+   * and restarts nothing, so the running process and the installed file are two different inodes at
+   * one path — and on a rebuild of the same version, the inode is the only thing that says so.
+   */
+  stat(p: string): { inode: number; mtimeMs: number } | null;
+  /** Where a symlink points, unresolved, or null when `p` is not one. `/proc/<pid>/exe` answers with
+   *  a path carrying ` (deleted)` when the executable behind it is gone — the whole signal. */
+  readlink(p: string): string | null;
 }
 
 /**
@@ -397,6 +412,23 @@ export const realFiles: Files = {
       // `null` — the same answer an unrecognised code gets. Nothing is called on the value.
       const code = (e as { code?: string }).code;
       return code === "EACCES" || code === "EPERM" || code === "EROFS" ? false : null;
+    }
+  },
+  stat(p) {
+    try {
+      const s = statSync(p);
+      return { inode: Number(s.ino), mtimeMs: s.mtimeMs };
+    } catch {
+      // ENOENT on a path nothing sits at, EACCES on another user's `/proc` entry — both are
+      // "no fact", which is what the decision treats null as.
+      return null;
+    }
+  },
+  readlink(p) {
+    try {
+      return readlinkSync(p);
+    } catch {
+      return null;
     }
   },
 };

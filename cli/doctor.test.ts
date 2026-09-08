@@ -78,10 +78,18 @@ const HEALTHY_ANSWERS: Scripted["answers"] = [
   [`git -C ${ROOT} remote get-url origin`, { stdout: "https://github.com/AltanS/collie.git\n" }],
   [`git -C ${ROOT} symbolic-ref --short HEAD`, { stdout: "main\n" }],
   ["herdr integration status", { stdout: INTEGRATION_OK }],
-  ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } }) }],
+  [
+    "tailscale status --json",
+    // `CertDomains` is what says this tailnet HAS https at all — without it the front-door check
+    // reports a tailnet that can carry no door (#172), which is not what these fixtures describe.
+    { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." }, CertDomains: ["laptop.tail.ts.net"] }) },
+  ],
   ["tailscale serve status --json", { stdout: SERVE_OK }],
   ...netmapAnswers(NETMAP_OPEN),
 ];
+
+/** A status that names no node but DOES name a certificate domain: no hostname, https available. */
+const CERTS_ONLY = JSON.stringify({ CertDomains: ["laptop.tail.ts.net"] });
 
 /**
  * The files a healthy install has: a built bundle, a Herdr socket, an ownership record — and the
@@ -321,7 +329,7 @@ describe("collie doctor — the contract", () => {
     const h = harness(LEAD, [new Error("connection refused")], {
       files: { [HANDLER]: "" },
       answers: [
-        ["tailscale status --json", { stdout: "{}" }],
+        ["tailscale status --json", { stdout: CERTS_ONLY }],
         ["tailscale serve status --json", { stdout: "{}" }],
         ["tailscale debug netmap", { stdout: NETMAP_DENY }],
       ],
@@ -531,7 +539,7 @@ describe("collie doctor — the local checks", () => {
     const denied = await findings(
       harness(null, [], {
         answers: [
-          ["tailscale status --json", { stdout: "{}" }],
+          ["tailscale status --json", { stdout: CERTS_ONLY }],
           ["tailscale serve status --json", { stdout: SERVE_OK }],
           ...netmapAnswers(NETMAP_DENY),
         ],
@@ -558,7 +566,7 @@ describe("collie doctor — the local checks", () => {
     const stolen = await findings(
       harness(null, [], {
         answers: [
-          ["tailscale status --json", { stdout: "{}" }],
+          ["tailscale status --json", { stdout: CERTS_ONLY }],
           [
             "tailscale serve status --json",
             {
@@ -576,6 +584,21 @@ describe("collie doctor — the local checks", () => {
     expect(stolen.byCheck.get("front-door")?.status).toBe("warn");
   });
 
+  test("front-door: a tailnet with no HTTPS certificates warns with the console pointer (#172)", async () => {
+    const { byCheck } = await findings(
+      harness(null, [], {
+        answers: [
+          ["tailscale status --json", { stdout: JSON.stringify({ Self: { DNSName: "laptop.tail.ts.net." } }) }],
+          ["tailscale serve status --json", { stdout: SERVE_OK }],
+          ...netmapAnswers(NETMAP_OPEN),
+        ],
+      }),
+    );
+    expect(byCheck.get("front-door")?.status).toBe("warn");
+    expect(byCheck.get("front-door")?.detail).toContain("no HTTPS certificates");
+    expect(byCheck.get("front-door")?.remedy).toContain("https://login.tailscale.com/admin/dns");
+  });
+
   test("front-door: a LEAD with no mapping and no COLLIE_SKIP_SERVE is an error", async () => {
     const files = { ...healthyFiles(), ...markerFile(LEAD) };
     delete files[HANDLER];
@@ -583,7 +606,7 @@ describe("collie doctor — the local checks", () => {
       harness(LEAD, [hello()], {
         files,
         answers: [
-          ["tailscale status --json", { stdout: "{}" }],
+          ["tailscale status --json", { stdout: CERTS_ONLY }],
           ["tailscale serve status --json", { stdout: "{}" }],
           ...netmapAnswers(NETMAP_OPEN),
         ],
@@ -1398,10 +1421,10 @@ async function plainFindings(): Promise<Finding[]> {
 
 describe("collie doctor — a packaged install", () => {
   /** A Collie with a manifest, no `.git`, in a folder a package manager owns. */
-  function systemOwned(link: Record<string, LinkProbe> = {}) {
+  function systemOwned(link: Record<string, LinkProbe> = {}, answers: Scripted["answers"] = []) {
     const h = harness(null, [], {
       link,
-      answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }], ...(HEALTHY_ANSWERS ?? [])],
+      answers: [...answers, [`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }], ...(HEALTHY_ANSWERS ?? [])],
       // The manifest is what makes this a Collie at all — `hasMarker` is asked before ownership, so
       // without it the tree classifies `no-marker` and none of these findings would be exercised.
       files: { ...healthyFiles(), [`${ROOT}/herdr-plugin.toml`]: 'id = "herdr.collie"\nversion = "1.5.2"\n' },
@@ -1442,9 +1465,57 @@ describe("collie doctor — a packaged install", () => {
     expect(f?.detail ?? "").toContain("updates come from your package manager");
   });
 
-  test("`restart-pending` is skipped, because this kind runs the same bridge-less payload", async () => {
+  // ── restart-pending, the check this kind is the whole reason for ───────────
+  // `pacman -U` replaces `bin/collie` under a live service and restarts nothing. Everything below
+  // is that machine: a pid from the unit, and an executable that either is or is not the installed
+  // one. The old skip reason claimed "whatever installs the new version restarts it", which is
+  // exactly what a package manager does not do.
+
+  const MAIN_PID = "systemctl --user show collie --property=MainPID --value";
+  const PID = 4242;
+  const EXE = `/proc/${String(PID)}/exe`;
+  const BINARY = `${ROOT}/bin/collie`;
+  const supervised = (link: Record<string, LinkProbe> = {}) =>
+    systemOwned(link, [[MAIN_PID, { stdout: `${String(PID)}\n` }]]);
+
+  test("`restart-pending` fires when the running collie was unlinked under the service", async () => {
+    const h = supervised();
+    h.files.links.set(EXE, `${BINARY} (deleted)`);
+    const f = (await findings(h)).byCheck.get("restart-pending");
+    expect(f?.status).toBe("warn");
+    expect(f?.detail ?? "").toContain(BINARY);
+    expect(f?.remedy).toContain("collie restart");
+  });
+
+  test("`restart-pending` fires on a same-version rebuild, where no version string moved", async () => {
+    // The inode is the only witness here: `pacman -U` of a new pkgrel writes a NEW file at the same
+    // path, so the link resolves, every version file agrees, and the process is still stale.
+    const h = supervised();
+    h.files.links.set(EXE, BINARY);
+    h.files.stats.set(EXE, { inode: 111, mtimeMs: 0 });
+    h.files.stats.set(BINARY, { inode: 222, mtimeMs: 0 });
+    const f = (await findings(h)).byCheck.get("restart-pending");
+    expect(f?.status).toBe("warn");
+    expect(f?.remedy).toContain("collie restart");
+  });
+
+  test("`restart-pending` passes when the process and the file are one inode", async () => {
+    const h = supervised();
+    h.files.links.set(EXE, BINARY);
+    h.files.stats.set(EXE, { inode: 111, mtimeMs: 0 });
+    h.files.stats.set(BINARY, { inode: 111, mtimeMs: 0 });
+    const f = (await findings(h)).byCheck.get("restart-pending");
+    expect(f?.status).toBe("ok");
+    expect(f?.detail ?? "").toContain(BINARY);
+    expect(f?.remedy).toBeNull();
+  });
+
+  test("`restart-pending` is skipped with no pid, and no longer claims anything restarts the process", async () => {
     const f = (await findings(systemOwned())).byCheck.get("restart-pending");
     expect(f?.status).toBe("skipped");
+    expect(f?.detail ?? "").toContain("no pid");
+    expect(f?.detail ?? "").not.toContain("restarts it");
+    expect(f?.remedy).toContain("collie restart");
   });
 
   test("a linked clone still gets every one of those answers the old way", async () => {

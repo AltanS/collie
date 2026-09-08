@@ -2,10 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   clearUpdateStarted,
+  dismissTarget,
   DONE_WINDOW_MS,
   getUpdateStarted,
   noteUpdateStarted,
   REASON_BUDGET,
+  managerOf,
   ribbonText,
   ribbonView,
   subscribeUpdateStarted,
@@ -49,6 +51,7 @@ const read = (over: Partial<RibbonInput> = {}) =>
     startedAt: null,
     bundleStale: false,
     dismissedVersion: null,
+    dismissedPackVersion: null,
     now: NOW,
     ...over,
   });
@@ -97,6 +100,7 @@ describe("update ribbon states", () => {
     expect(read({ update: info({ run: run("done", { peers }) }) })).toEqual({
       kind: "peers",
       names: ["minibuch"],
+      target: null, // a moving peer carries no dismiss — see `dismissTarget`
     });
   });
 
@@ -117,6 +121,7 @@ describe("update ribbon states", () => {
     expect(read({ update: info({ run: run("done", { peers }) }) })).toEqual({
       kind: "peers",
       names: ["minibuch"],
+      target: null, // a moving peer carries no dismiss — see `dismissTarget`
     });
   });
 
@@ -247,5 +252,139 @@ describe("the just-posted store", () => {
     expect(getUpdateStarted()).toBeNull();
     expect(hits).toBe(2);
     off();
+  });
+});
+
+// ── A PACKAGED HOST (M17/08) ────────────────────────────────────────────────────────────────────
+//
+// `collie update` refuses on a machine a package manager owns (ADR 0035), so a band that offered a
+// tap-to-update there would be offering a tap that fails. The line names the manager instead, and
+// the tap still goes to the page, where the command is.
+
+describe("a packaged host reads its own line", () => {
+  const packaged = (over: Partial<UpdateInfo> = {}) =>
+    info({ installKind: "packaged", packageCommand: "sudo pacman -Syu", ...over });
+
+  it("names the manager from the host's own command, and never says Tap to update", () => {
+    const view = read({ update: packaged() });
+    expect(view).toEqual({ kind: "available-packaged", version: "1.5.0", manager: "pacman" });
+    expect(ribbonText(view)).toBe("Collie 1.5.0 available via pacman.");
+    expect(ribbonText(view)).not.toContain("Tap to update");
+  });
+
+  it("reads the manager off the three commands a host can actually resolve", () => {
+    // The exact strings `cli/package-command.ts` names, sudo and all.
+    expect(managerOf("sudo pacman -Syu collie-bin")).toBe("pacman");
+    expect(managerOf("nix profile upgrade collie")).toBe("nix");
+    expect(managerOf("brew upgrade collie")).toBe("brew");
+    // And no command at all — a packaged install under a prefix nobody recognises.
+    expect(managerOf(undefined)).toBeNull();
+    expect(managerOf("   ")).toBeNull();
+  });
+
+  it("states the version alone when the packaged host resolved no manager to name", () => {
+    const view = read({ update: packaged({ packageCommand: undefined }) });
+    expect(view).toEqual({ kind: "available-packaged", version: "1.5.0", manager: null });
+    expect(ribbonText(view)).toBe("Collie 1.5.0 available. See Updates.");
+    expect(ribbonText(view)).not.toContain("Tap to update");
+  });
+
+  it("is dismissable in the OFFER scope, keyed by the version it names", () => {
+    expect(dismissTarget(read({ update: packaged() }))).toEqual({ scope: "offer", version: "1.5.0" });
+    expect(read({ update: packaged(), dismissedVersion: "1.5.0" })).toEqual({ kind: "silent" });
+    // And a pack notice put down at the same version leaves this host's own offer standing: two
+    // decisions, two keys.
+    expect(read({ update: packaged(), dismissedPackVersion: "1.5.0" })).toMatchObject({
+      kind: "available-packaged",
+    });
+  });
+
+  it("leaves every other install kind on the ordinary offer", () => {
+    const view = read({ update: info({ installKind: "binary", packageCommand: undefined }) });
+    expect(view).toEqual({ kind: "available", version: "1.5.0" });
+    expect(ribbonText(view)).toBe("Collie 1.5.0 available. Tap to update.");
+  });
+});
+
+// ── WHAT A DISMISS CAN CLOSE (M17/08) ───────────────────────────────────────────────────────────
+//
+// The rule is whether the state ends on its own. A run, a finished run and a failed peer do, and a
+// band the operator closed there is an ending they can no longer see. The offer and the QUIET pack
+// states do not: a machine a package manager owns can stand behind for weeks.
+
+describe("dismissing the quiet pack states", () => {
+  const managed: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
+  const quiet = (over: Partial<UpdateInfo> = {}) =>
+    info({ releaseAvailable: false, run: run("done", { peers: managed }), ...over });
+
+  it("offers a dismiss in the PACK scope, keyed by the version the pack is heading for", () => {
+    const view = read({ update: quiet() });
+    expect(view).toEqual({ kind: "package-managed", names: ["minibuch"], target: "1.5.0" });
+    expect(dismissTarget(view)).toEqual({ scope: "pack", version: "1.5.0" });
+  });
+
+  it("keys the dismiss to the release upstream names when the run record names no target", () => {
+    const view = read({ update: quiet({ run: run("done", { peers: managed, to: null }) }) });
+    expect(dismissTarget(view)).toEqual({ scope: "pack", version: "1.5.0" }); // `update.latest`
+  });
+
+  it("hides the quiet band once that version was dismissed IN ITS OWN SCOPE", () => {
+    expect(read({ update: quiet(), dismissedPackVersion: "1.5.0" })).toEqual({ kind: "silent" });
+  });
+
+  it("is untouched by a dismissed offer at the same version — two decisions, two keys", () => {
+    // The offer is about THIS host and the notice is about another machine. Putting one down must
+    // not put the other down with it.
+    expect(read({ update: quiet(), dismissedVersion: "1.5.0" })).toMatchObject({
+      kind: "package-managed",
+    });
+  });
+
+  it("raises the band again for a newer target — a dismiss is a version, not a mute", () => {
+    const view = read({
+      update: quiet({ latest: "1.6.0", run: run("done", { peers: managed, to: "1.6.0" }) }),
+      dismissedPackVersion: "1.5.0",
+    });
+    expect(view).toMatchObject({ kind: "package-managed", target: "1.6.0" });
+  });
+
+  it("lets a failed leg win over any dismissal, at the dismissed version or not", () => {
+    // A rolled-back peer is not a standing fact somebody may put down: it is the end of a run the
+    // operator asked for, and it outranks every dismissal there is.
+    const peers: UpdatePeerLeg[] = [
+      { name: "minibuch", state: "rolled-back", reason: "health gate timed out" },
+      { name: "cellar", state: "package-managed" },
+    ];
+    const view = read({
+      update: quiet({ run: run("done", { peers }) }),
+      dismissedVersion: "1.5.0",
+      dismissedPackVersion: "1.5.0",
+    });
+    expect(view).toMatchObject({ kind: "peer-failed", name: "minibuch" });
+    expect(dismissTarget(view)).toBeNull();
+  });
+
+  it("dismisses nothing while a peer is still moving", () => {
+    const peers: UpdatePeerLeg[] = [
+      { name: "minibuch", state: "restarting" },
+      { name: "cellar", state: "package-managed" },
+    ];
+    const view = read({
+      update: quiet({ run: run("done", { peers }) }),
+      dismissedPackVersion: "1.5.0",
+    });
+    // Still on screen despite the dismissal, and carrying no close: the operator has to be able to
+    // see the end of a run somebody is driving.
+    expect(view).toMatchObject({ kind: "peers", names: ["minibuch"] });
+    expect(dismissTarget(view)).toBeNull();
+  });
+
+  it("gives a run, a failed peer and the bundle row no dismiss at all", () => {
+    expect(dismissTarget(read({ update: info({ run: run("staging") }) }))).toBeNull();
+    expect(dismissTarget({ kind: "starting" })).toBeNull();
+    expect(dismissTarget({ kind: "updated", version: "1.5.0" })).toBeNull();
+    expect(dismissTarget({ kind: "bundle" })).toBeNull();
+    expect(dismissTarget({ kind: "peer-failed", name: "minibuch", reason: "gate" })).toBeNull();
+    expect(dismissTarget({ kind: "silent" })).toBeNull();
   });
 });

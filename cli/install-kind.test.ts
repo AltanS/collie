@@ -298,6 +298,28 @@ describe("classifyInstall — a folder a package manager owns", () => {
     expect(detectInstall(deps)).toEqual({ kind: "packaged" });
   });
 
+  test("the Arch package's /opt root classifies exactly as the /usr/lib one did", () => {
+    // The layout `collie-bin` installs since it took the shape Omarchy's repository expects. The
+    // prefix is NOT what decides this — install-kind spells no prefix at all — so the facts are the
+    // same three: root-owned, read-only, outside $HOME, with the marker at the root.
+    const ROOT = "/opt/collie";
+    const files = fakeFiles({ [`${ROOT}/herdr-plugin.toml`]: 'version = "1.5.6"\n' });
+    files.rootOwned.add(ROOT);
+    files.readOnly.add(ROOT);
+    const deps = {
+      ctx: context({}, { root: ROOT }),
+      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }]] }),
+      files,
+      link: fakeLinkFs(),
+    };
+    const p = probeInstall(deps, ROOT);
+    expect(p.hasMarker).toBe(true);
+    expect(p.parentIsVersions).toBe(false);
+    expect(p.isGitCheckout).toBe(false);
+    expect(p.rootOutsideHome).toBe(true);
+    expect(detectInstall(deps)).toEqual({ kind: "packaged" });
+  });
+
   test("the Homebrew shape end to end: writable, user-owned, outside $HOME", () => {
     // The one a read-only-or-root-owned predicate would have missed entirely.
     const ROOT = "/opt/homebrew/Cellar/collie/1.5.3";

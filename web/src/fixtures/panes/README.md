@@ -387,6 +387,35 @@ transcript above the dialog" is not available as corroborating evidence the way 
 omp's `agent_status` stays `idle` while a picker is up; only the `ask` tool flips it to `blocked`.
 **Nothing may gate on `blocked`.**
 
+## OMP 18.1.10 rule composer corpus (captured 2026-09-05, herdr 0.8.x, version not recorded by the capture, sandbox pane)
+
+Three byte-faithful `pane.read format:ansi` captures from a throwaway Herdr pane in a generic git
+sandbox, with OMP 18.1.10 launched under an isolated `composer.shape: rule` config overlay. No
+substitution was needed: the visible cwd is the generic `…ie-rule-sandbox`, the draft text is
+synthetic, and the files contain no account, host, home-directory, session, credential-shaped string
+or UUID. All three are CRLF throughout with no trailing newline; their `wc -l` counts are 28, 28 and
+32 respectively.
+
+This shape has no bottom border. Its OMP-local scanner (`harness/omp/rule.ts`) therefore accepts only
+the complete renderer choreography at the pane tail: a top rule directly adjacent to `❯`, at most
+100 two-space continuation rows, exactly one blank gap, then one standalone status row as the final
+non-blank row. The OMP modal corpus and every Claude, Codex and Grok fixture are rejection cohorts;
+the adapter conformance suite requires `composerReady` and its prompt binding to decline them.
+Nothing is shared with the Claude harness beyond independently recognizing similar glyph geometry.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--v18-rule-idle.txt` | Empty `❯` row below the top rule, one blank gap, then the standalone status row | `idle` |
+| `omp--v18-rule-draft.txt` | The same tail with `COLLIE_RULE_DRAFT` stranded on its single prompt row | `idle` |
+| `omp--v18-rule-wrapped.txt` | A five-row wrapped draft whose final `s` is a styled inline suggestion, not part of the input buffer | `idle` |
+
+Live verification drove this checkout's real Collie UI against the same OMP 18.1.10 sandbox. With
+`COLLIE_RULE_18110_STALE` stranded in the rule composer, the guard bound the clear to that exact
+prompt, typed `COLLIE_RULE_18110_LIVE_ACK` with `submit:false`, read the pane back, then issued the
+empty `submit:true`; the pane rendered the exact marker and not the stale prefix. With `/model` open,
+the UI retained `COLLIE_RULE_18110_MODAL_GUARD`, offered the explicit override, sent no `/reply` or
+`/keys` write, and left the modal unchanged.
+
 ## Lessons already encoded here (don't re-learn them)
 
 - **Match on parsed text, not raw bytes**: SGR codes sit *between* glyphs (`❯` and `1.` are in

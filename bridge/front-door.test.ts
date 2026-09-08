@@ -1,9 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   formatRecord,
+  herdrActionCommand,
   instanceSuffixOf,
   managedHandlerPath,
+  PLUGIN_ID,
+  pluginIdFor,
   releaseManagedFrontDoor,
   shouldReleaseFrontDoor,
   type FrontDoorDeps,
@@ -85,6 +90,49 @@ describe("the record file both processes have to name identically", () => {
     expect(managedHandlerPath("/config", instanceSuffixOf("v1"))).toBe(
       "/config/tailscale-managed-handler-v1",
     );
+  });
+});
+
+const REPO = join(import.meta.dir, "..");
+
+/** Every non-test `.ts` under one directory, recursively. */
+function sources(dir: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) found.push(...sources(path));
+    else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) found.push(path);
+  }
+  return found;
+}
+
+describe("the plugin id every operator-facing command prints", () => {
+  test("the unsuffixed instance is the host's first Collie", () => {
+    expect(pluginIdFor(null)).toBe("herdr.collie");
+    expect(herdrActionCommand("restart", null)).toBe("herdr plugin action invoke restart --plugin herdr.collie");
+  });
+
+  test("a named instance is registered under its own id, and prints that one", () => {
+    // The same join as the plugin config dir. A command printing the bare id on this machine would
+    // be telling the operator to restart the neighbouring Collie, not this one.
+    expect(pluginIdFor("next")).toBe("herdr.collie-next");
+    expect(herdrActionCommand("update-major", "next")).toBe(
+      "herdr plugin action invoke update-major --plugin herdr.collie-next",
+    );
+  });
+
+  // The invariant the two tests above rest on: `herdrActionCommand` is the ONE place the flag is
+  // spelled. Any second copy is a bare `herdr.collie` frozen into the source, and on a host running
+  // `COLLIE_INSTANCE=next` that copy prints a command which restarts the neighbouring Collie.
+  // `front-door.ts` itself is the one file allowed to contain the string, in the comment that says
+  // exactly this.
+  test("no other source under bridge/ or cli/ spells the flag itself", () => {
+    const needle = `--plugin ${PLUGIN_ID}`;
+    const allowed = join(REPO, "bridge", "front-door.ts");
+    const offenders = [...sources(join(REPO, "bridge")), ...sources(join(REPO, "cli"))].filter(
+      (file) => file !== allowed && readFileSync(file, "utf8").includes(needle),
+    );
+    expect(offenders).toEqual([]);
   });
 });
 

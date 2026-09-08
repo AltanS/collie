@@ -79,6 +79,7 @@ function lead(
 ) {
   const roster = [...members];
   const calls: string[] = [];
+  const journal: string[] = [];
   let clock = NOW;
   const registry = new PackRegistry({
     sessions: { get: () => undefined },
@@ -86,6 +87,7 @@ function lead(
     members: () => roster,
   });
   const l = new PackLead({
+    log: (line) => journal.push(line),
     registry,
     snapshot: async (link) => {
       calls.push(link.memberId);
@@ -101,6 +103,7 @@ function lead(
     lead: l,
     registry,
     calls,
+    journal,
     roster,
     advance: (ms: number) => {
       clock += ms;
@@ -152,6 +155,7 @@ describe("PackLead — the sweep rides the lead's poll, it does not arm a timer"
   test("a transport that throws degrades the pack, it does not take the poll loop down", async () => {
     const registry = new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => [member({ memberId: "laptop" })] });
     const l = new PackLead({
+      log: () => {},
       registry,
       snapshot: () => Promise.reject(new Error("boom")),
       proxy: neverProxy,
@@ -293,6 +297,7 @@ describe("PackLead — what it hands the notifier", () => {
       members: () => roster,
     });
     const l = new PackLead({
+      log: () => {},
       registry,
       snapshot: async (link) => {
         calls.push(link.memberId);
@@ -364,6 +369,7 @@ describe("forward — the lead's per-pane hop (M4/05)", () => {
     });
     const dials: string[] = [];
     const packLead = new PackLead({
+      log: () => {},
       registry,
       snapshot: async () => ({ ok: false, state: "unreachable", reason: "unused", receivedAt: 0 }),
       proxy: async (_link, route) => {
@@ -407,6 +413,7 @@ describe("a landed forward refreshes the receipt (§10.2)", () => {
       members: () => [member({ memberId: "laptop" })],
     });
     const l = new PackLead({
+      log: () => {},
       registry,
       snapshot: async () => sweepScript(),
       proxy: async () => proxyScript(),
@@ -618,6 +625,7 @@ describe("PackLead — the warrant re-push, on the sweep the lead already runs",
     let currents = 0;
     const members = Object.keys(reports).map((memberId) => member({ memberId }));
     const l = new PackLead({
+      log: () => {},
       registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
       snapshot: async (link) =>
         opts.reachable === false ? down : ok({ ...body, ...reports[link.memberId] }),
@@ -750,6 +758,7 @@ describe("PackLead — a pairing collision is REPORTED every sweep, never swallo
     if (reports.digest !== undefined) answered.pairingDigest = reports.digest;
     if (reports.collision !== undefined) answered.pairingCollision = reports.collision;
     const l = new PackLead({
+      log: () => {},
       registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
       snapshot: async () => (reports.reachable === false ? down : ok(answered)),
       proxy: neverProxy,
@@ -834,6 +843,7 @@ describe("PackLead — a pairing collision is REPORTED every sweep, never swallo
       const members = [member({ memberId: "laptop" })];
       const answer = reported === null ? body : { ...body, pairingDigest: reported };
       const l = new PackLead({
+        log: () => {},
         registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
         snapshot: async () => ok(answer),
         proxy: neverProxy,
@@ -894,6 +904,7 @@ describe("PackLead — a pairing collision is REPORTED every sweep, never swallo
     const pushes: string[] = [];
     const members = [member({ memberId: "laptop" })];
     const l = new PackLead({
+      log: () => {},
       registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
       snapshot: async () => ok(body),
       proxy: neverProxy,
@@ -969,6 +980,7 @@ describe("PackLead — each member's update preflight (§19)", () => {
     const asked: boolean[] = [];
     const members = [member({ memberId: "laptop" })];
     const l = new PackLead({
+      log: () => {},
       registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
       snapshot: async (_link, freshPreflight) => {
         asked.push(freshPreflight === true);
@@ -1037,5 +1049,65 @@ describe("PackLead — each member's running version (§5, §19)", () => {
     answer = false;
     await h.lead.sweep();
     expect(h.lead.updateRows()[0]!.version).toBe("1.4.1");
+  });
+});
+
+// ── What the journal says ────────────────────────────────────────────────────
+//
+// 2026-09-07: a pack levelled in seventeen seconds and the lead's run record still read "moving" a
+// quarter of an hour later. The journal held one line for the whole run, so the incompatible ladder
+// could only be inferred from the arithmetic. These tests pin the lines that would have said it.
+
+describe("PackLead — the journal names a verdict once per transition", () => {
+  test("an incompatible verdict names its reason and the backoff it earned", async () => {
+    const h = lead([member({ memberId: "laptop" })], () => skewed);
+    await h.lead.sweep();
+    expect(h.journal).toEqual(["[pack] laptop: incompatible (peer answered protocol 2), next dial in 30s"]);
+  });
+
+  test("a member repeating itself writes nothing — the line is per transition, not per sweep", async () => {
+    const h = lead([member({ memberId: "laptop" })], () => down);
+    await h.lead.sweep();
+    await h.lead.sweep();
+    await h.lead.sweep();
+    expect(h.journal).toEqual(["[pack] laptop: unreachable (timed out)"]);
+  });
+
+  test("each step of the backoff ladder is its own line, because the step is the fact", async () => {
+    const h = lead([member({ memberId: "laptop" })], () => skewed);
+    await h.lead.sweep();
+    h.advance(INCOMPATIBLE_BACKOFF_MS[0]!);
+    await h.lead.sweep();
+    expect(h.journal).toEqual([
+      "[pack] laptop: incompatible (peer answered protocol 2), next dial in 30s",
+      "[pack] laptop: incompatible (peer answered protocol 2), next dial in 120s",
+    ]);
+  });
+
+  test("a member that comes back off the ladder says how many verdicts it took", async () => {
+    let answer = false;
+    const h = lead([member({ memberId: "laptop" })], () => (answer ? ok(body) : skewed));
+    await h.lead.sweep();
+    answer = true;
+    h.advance(INCOMPATIBLE_BACKOFF_MS[0]!);
+    await h.lead.sweep();
+    await h.lead.sweep();
+    expect(h.journal).toEqual([
+      "[pack] laptop: incompatible (peer answered protocol 2), next dial in 30s",
+      "[pack] laptop: reachable again after 1 incompatible verdict(s)",
+    ]);
+  });
+
+  test("a member that goes down and comes back writes one line each way, and the first answer writes none", async () => {
+    let answer = true;
+    const h = lead([member({ memberId: "laptop" })], () => (answer ? ok(body) : down));
+    await h.lead.sweep();
+    expect(h.journal).toEqual([]);
+    answer = false;
+    await h.lead.sweep();
+    answer = true;
+    await h.lead.sweep();
+    await h.lead.sweep();
+    expect(h.journal).toEqual(["[pack] laptop: unreachable (timed out)", "[pack] laptop: reachable again"]);
   });
 });

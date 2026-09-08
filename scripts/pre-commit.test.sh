@@ -49,19 +49,43 @@ write_version() {
   printf '{ "version": "%s" }\n' "$1" > "${REPO}/web/package.json"
 }
 
-# The CHANGELOG, with the bullets of the `## [Unreleased]` section given as arguments. No argument
-# leaves the section empty, which is the state a release commit must reach.
+# The CHANGELOG, with the bullets of the `## [Unreleased]` section given as arguments. Each is
+# written under a `### Fixed` heading with a bold lead, the shape the release page is built from.
+# No argument leaves the section empty, which is the state a release commit must reach.
 write_changelog() {
   {
     echo "# Changelog"
     echo
     echo "## [Unreleased]"
     echo
-    for line in "$@"; do echo "- $line"; done
-    [ "$#" -eq 0 ] || echo
+    if [ "$#" -gt 0 ]; then
+      echo "### Fixed"
+      echo
+      for line in "$@"; do echo "- **${line}.** The detail follows here."; done
+      echo
+    fi
     echo "## [1.0.0] - 2026-01-01"
     echo
-    echo "- the first one"
+    echo "### Fixed"
+    echo
+    echo "- **The first one.** The detail follows here."
+  } > "${REPO}/CHANGELOG.md"
+}
+
+# The same section written by hand, so a case can put a badly shaped bullet in it.
+write_changelog_raw() {
+  {
+    echo "# Changelog"
+    echo
+    echo "## [Unreleased]"
+    echo
+    for line in "$@"; do echo "$line"; done
+    echo
+    echo "## [1.0.0] - 2026-01-01"
+    echo
+    echo "### Fixed"
+    echo
+    echo "- **The first one.** The detail follows here."
   } > "${REPO}/CHANGELOG.md"
 }
 
@@ -185,6 +209,58 @@ write_changelog "the first bullet, reworded again"
 run_guard
 assert_blocked "a reworded bullet is not a new one" "functional code changed but nothing was recorded"
 git reset -q --hard HEAD~1
+
+# ── The shape the release page is built from ─────────────────────────────────
+# Since 1.6.0 `scripts/release-notes.ts` prints each Unreleased bullet's bold lead under its group
+# heading on the GitHub Release page. A bullet the script cannot read is refused here, at commit
+# time, rather than at tag time when the page is already being published.
+
+# A group heading is not a bullet: adding one records nothing, so the guard still asks for a line.
+touch_file cli/pairing.ts
+write_changelog_raw "### Added"
+run_guard
+assert_blocked "a group heading is not a bullet" "functional code changed but nothing was recorded"
+
+# A bullet with no bold lead has nothing for the release page to print.
+touch_file cli/pairing.ts
+write_changelog_raw "### Fixed" "" "- the pairing code now does the thing"
+run_guard
+assert_blocked "a bullet with no bold lead" "no bold lead:"
+
+# A lead whose bold is never closed is the same failure, caught by the same guard.
+touch_file cli/pairing.ts
+write_changelog_raw "### Fixed" "" "- **the pairing code now does the thing"
+run_guard
+assert_blocked "a bullet whose bold lead never closes" "no bold lead:"
+
+# A bullet above every group heading has no group to be printed under.
+touch_file cli/pairing.ts
+write_changelog_raw "- **The pairing code does the thing.** No group owns it."
+run_guard
+assert_blocked "a bullet above every group heading" "above a group:"
+
+# A group heading that is not one of the five is refused: the release page has no column for it.
+touch_file cli/pairing.ts
+write_changelog_raw "### Removed" "" "- **The pairing code does the thing.** The detail follows here."
+run_guard
+assert_blocked "an unknown group heading" "unknown group:"
+
+# The shape the guard wants, spelled out: a group heading, a bold lead, then the detail.
+touch_file cli/pairing.ts
+write_changelog_raw "### Fixed" "" "- **The pairing code does the thing.** The detail follows here. (#147)"
+run_guard
+assert_allowed "a grouped bullet with a bold lead"
+
+# All five groups at once, each with its own bullet, is the shape a release folds away whole.
+touch_file cli/pairing.ts
+write_changelog_raw \
+  "### Added" "" "- **A verb arrives.** The detail follows here." "" \
+  "### Changed" "" "- **A default moves.** The detail follows here." "" \
+  "### Fixed" "" "- **A bug goes away.** The detail follows here." "" \
+  "### Packaging" "" "- **The package files its docs.** The detail follows here." "" \
+  "### Docs" "" "- **A page names the route.** The detail follows here."
+run_guard
+assert_allowed "all five groups at once"
 
 # ── The release commit ───────────────────────────────────────────────────────
 # The version moved, so the guard switches to the other question: did the Unreleased section get

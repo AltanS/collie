@@ -1,4 +1,5 @@
-import { fetchConfig, XHR_HEADER, XHR_HEADER_VALUE } from "@/lib/api";
+import { fetchConfig, registerPushSubscription } from "@/lib/api";
+import { t } from "@/lib/i18n";
 import type { BridgeConfig } from "@/lib/types";
 
 // Client-side control of Web Push: the browser subscription plus a per-device preference. We persist
@@ -18,17 +19,20 @@ import type { BridgeConfig } from "@/lib/types";
 const PREF_KEY = "collie:push-disabled";
 /** The endpoint this device last registered with the bridge, so the next one can supersede it. */
 const ENDPOINT_KEY = "collie:push-endpoint";
+let volatileEndpoint: string | null | undefined;
+const PUSH_OPERATION_TIMEOUT_MS = 30_000;
 
 export type PushAvailability =
   | "unsupported" // browser lacks service worker / Push API
   | "insecure" // not a secure context (plain HTTP) — Push can't run
   | "server-off" // the bridge has no VAPID keys configured
+  | "unavailable" // configuration could not be checked; allow a retry
   | "denied" // notifications blocked at the OS/browser level
   | "ready"; // available to toggle
 
 export interface PushState {
   availability: PushAvailability;
-  /** A live PushManager subscription currently exists on this device. */
+  /** This device has a subscription it successfully registered with the bridge. */
   subscribed: boolean;
   /** The user turned push off here (persisted), so we don't auto-resubscribe. */
   userDisabled: boolean;
@@ -57,6 +61,7 @@ function setUserDisabled(disabled: boolean): void {
 }
 
 function rememberedEndpoint(): string | null {
+  if (volatileEndpoint !== undefined) return volatileEndpoint;
   try {
     return localStorage.getItem(ENDPOINT_KEY);
   } catch {
@@ -68,8 +73,29 @@ function rememberEndpoint(endpoint: string | null): void {
   try {
     if (endpoint === null) localStorage.removeItem(ENDPOINT_KEY);
     else localStorage.setItem(ENDPOINT_KEY, endpoint);
+    volatileEndpoint = undefined;
   } catch {
-    /* private mode / storage blocked — we just can't supersede next time */
+    // Keep the acknowledgement for this page when persistent storage is unavailable.
+    volatileEndpoint = endpoint;
+  }
+}
+
+// PushManager operations cannot be aborted. Stop awaiting a stalled operation so Settings can
+// recover; a late subscription may be reused on retry, but must not register itself behind the UI.
+async function pushOperation<T>(operation: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(t("settings.push.reason.timeout"))),
+          PUSH_OPERATION_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
@@ -128,38 +154,35 @@ export async function enablePush(): Promise<EnableResult> {
   if (!pushSupported()) return { ok: false, reason: "unsupported" };
   if (!window.isSecureContext) return { ok: false, reason: "insecure" };
 
-  const reg = await navigator.serviceWorker.register("/sw.js");
+  await pushOperation(navigator.serviceWorker.register("/sw.js"));
+  const reg = await pushOperation(navigator.serviceWorker.ready);
   const cfg = await fetchConfig();
   if (!cfg.push || !cfg.vapidPublicKey) return { ok: false, reason: "server-off" };
   if (Notification.permission === "denied") return { ok: false, reason: "denied" };
   if (Notification.permission !== "granted") {
-    const perm = await Notification.requestPermission();
+    const perm = await pushOperation(Notification.requestPermission());
     if (perm !== "granted") return { ok: false, reason: "denied" };
   }
 
   const serverKey = urlB64ToUint8Array(cfg.vapidPublicKey);
-  let sub = await reg.pushManager.getSubscription();
+  let sub = await pushOperation(reg.pushManager.getSubscription());
   // A stale subscription bound to a rotated (or otherwise different) VAPID key would keep receiving
   // nothing — drop it and re-subscribe fresh against the current key.
   if (sub && !keysMatch(sub.options.applicationServerKey, serverKey)) {
-    await sub.unsubscribe();
+    await pushOperation(sub.unsubscribe());
     sub = null;
   }
   if (!sub) {
-    sub = await reg.pushManager.subscribe({
+    sub = await pushOperation(reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: serverKey,
-    });
+    }));
   }
   const body = subscribeBody(sub.toJSON(), rememberedEndpoint());
-  const res = await fetch("/api/subscribe", {
-    method: "POST",
-    headers: { "content-type": "application/json", [XHR_HEADER]: XHR_HEADER_VALUE },
-    body: JSON.stringify(body),
-  });
-  // Only a registration the bridge actually took supersedes the one we remembered — otherwise the
-  // next attempt must still be able to name the endpoint that is on the server.
-  if (res.ok) rememberEndpoint(body.endpoint);
+  await registerPushSubscription(body);
+  // `registerPushSubscription` throws on any non-2xx reply, so this line runs only after the bridge
+  // took the registration; a failed attempt keeps the remembered endpoint that is on the server.
+  rememberEndpoint(body.endpoint);
   setUserDisabled(false);
   return { ok: true };
 }
@@ -172,9 +195,9 @@ export async function disablePush(): Promise<void> {
   setUserDisabled(true);
   if (!pushSupported()) return;
   try {
-    const reg = await navigator.serviceWorker.getRegistration();
-    const sub = await reg?.pushManager.getSubscription();
-    await sub?.unsubscribe();
+    const reg = await pushOperation(navigator.serviceWorker.getRegistration());
+    const sub = reg ? await pushOperation(reg.pushManager.getSubscription()) : null;
+    if (sub) await pushOperation(sub.unsubscribe());
     rememberEndpoint(null);
   } catch {
     /* best-effort: the persisted preference still prevents re-subscription */
@@ -189,8 +212,9 @@ export async function getPushState(): Promise<PushState> {
 
   let subscribed = false;
   try {
-    const reg = await navigator.serviceWorker.getRegistration();
-    subscribed = Boolean(await reg?.pushManager.getSubscription());
+    const reg = await pushOperation(navigator.serviceWorker.getRegistration());
+    const sub = reg ? await pushOperation(reg.pushManager.getSubscription()) : null;
+    subscribed = sub !== null && sub.endpoint === rememberedEndpoint();
   } catch {
     /* ignore — treat as not subscribed */
   }
@@ -203,7 +227,7 @@ export async function getPushState(): Promise<PushState> {
   try {
     cfg = await fetchConfig();
   } catch {
-    cfg = { push: false, vapidPublicKey: "" };
+    return { availability: "unavailable", subscribed, userDisabled };
   }
   if (!cfg.push || !cfg.vapidPublicKey) {
     return { availability: "server-off", subscribed, userDisabled };

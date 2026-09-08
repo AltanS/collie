@@ -159,6 +159,8 @@ const updateStatus: UpdateStatus = {
   majorAvailable: null,
   majorUrl: null,
   installKind: "detached-checkout",
+  dismissedVersion: null,
+  dismissedPackVersion: null,
   bridgeStale: false,
   restartNeeded: false,
   checkedAt: null,
@@ -329,6 +331,12 @@ const UPDATE_STATUS_KEYS = {
   // clears it — the latter optional, because most installs never reach the state.
   restartNeeded: true,
   restartCommand: true,
+  // The two bands the operator can close (M17/08) — the offer for this host, and the quiet notice
+  // about a machine a package manager owns. Two decisions, two keys, both required and null when
+  // nothing was closed, so the golden below carries two more. They are facts about the HOST, which
+  // is the whole point: a dismissal kept per browser is a dismissal that holds in one browser.
+  dismissedVersion: true,
+  dismissedPackVersion: true,
 } satisfies Record<keyof UpdateStatus, true>;
 
 const WORKSPACE_KEYS = {
@@ -426,6 +434,10 @@ describe("solo zero-tax — wire shapes carry no pack dimension", () => {
       "bridgeStale",
       "checkedAt",
       "current",
+      // The two bands the operator can close (M17/08): this host's offer, and the quiet notice about
+      // a machine a package manager owns. Required and null when nothing was closed.
+      "dismissedPackVersion",
+      "dismissedVersion",
       "installKind",
       "latest",
       "latestUrl",
@@ -606,6 +618,9 @@ describe("solo zero-tax — routes", () => {
       // (`collie pack update`), never over the link (ADR 0016).
       "/api/update",
       "/api/update/check",
+      // Closing the update band (M17/08) — solo, no pack sibling: it writes the lead's own update
+      // record, and the band a peer's operator closes is that machine's own decision.
+      "/api/update/dismiss",
       // The digest's "remind me next digest" dismiss — solo, no pack sibling: it writes the lead's
       // own notify record, and a peer never pushes an update notification of its own.
       "/api/update/snooze",

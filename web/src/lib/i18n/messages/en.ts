@@ -40,6 +40,8 @@ export const en = {
   "settings.install.iosHint": "On an iPhone or iPad, install from the browser's share sheet: tap Share, then \"Add to Home Screen\".",
   "settings.zen.title": "Zen mode",
   "settings.zen.description": "Adds a row to the pane menu that hides everything but the terminal.",
+  "settings.zen.auto.label": "Enter on landscape",
+  "settings.zen.auto.hint": "Rotate the phone sideways to open zen automatically; rotate back to close it.",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "Hands-free voice",
@@ -56,6 +58,8 @@ export const en = {
     "Notifications are blocked — enable them in your browser settings.",
   "settings.push.reason.unsupported": "This browser doesn't support push notifications.",
   "settings.push.reason.default": "Couldn't enable push notifications.",
+  "settings.push.reason.timeout": "Notification setup timed out. Check that this device can reach its push service, then try again.",
+  "settings.push.availability.unavailable": "Could not check notification setup. Check your connection or sign in again, then retry.",
   "settings.push.availability.insecure":
     "Unavailable over plain HTTP — serve Collie over HTTPS to enable push.",
   "settings.push.availability.serverOff":
@@ -187,6 +191,9 @@ export const en = {
   "settings.display.tapToType.label": "Tap to type",
   "settings.display.tapToType.hint":
     "On, tapping the mirror anywhere opens the keyboard. Off, the mirror behaves like a document — taps land on the text and only the composer opens the keyboard.",
+  "settings.display.fullReply.label": "Full latest reply",
+  "settings.display.fullReply.hint":
+    "An agent's terminal keeps no scrollback, so a long answer loses its start. On, that reply is shown in full from the agent's own log, in place of the rows it covers.",
   "settings.display.rawTerminal.label": "Raw terminal",
   "settings.display.rawTerminal.hint":
     "Shows the plain mirror — no tappable prompt buttons, no chrome or status strips. Use it when a dialog renders wrong and you want to drive it by hand from Keys.",
@@ -294,6 +301,9 @@ export const en = {
   "chat.scrollback.loading": "Loading…",
   "chat.scrollback.noSessionReported":
     "{agent} has not reported a session to Herdr. Install or update the Herdr integration for it, then restart the agent in this pane.",
+  "chat.fullReply.title": "Full reply",
+  "chat.fullReply.fromTranscript": "from transcript",
+  "chat.fullReply.showingTerminal": "showing the terminal",
   "chat.output.empty": "(no recent output)",
   "chat.switcher.aria": "Switch pane",
   "chat.switcher.title": "Switch pane",
@@ -893,7 +903,17 @@ export const en = {
   "updateRibbon.peerRolledBack": "{name} rolled back: {reason}.",
   "updateRibbon.seeUpdates": "See Updates.",
   "updateRibbon.available": "Collie {version} available. Tap to update.",
+  // A packaged host cannot take the tap — its updates come from its package manager (ADR 0035) — so
+  // the band STATES the fact and names the manager. It does not instruct: the phone cannot run
+  // pacman, and a line that told the operator to would be telling them to go somewhere else.
+  "updateRibbon.availablePackaged": "Collie {version} available via {manager}.",
+  // The same host under a prefix Collie does not recognise: there is no manager to name, so the band
+  // states the version and points at the page that carries the boundary sentence.
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} available.",
   "updateRibbon.dismiss": "Dismiss this version",
+  // The close on the two QUIET pack states. Not "dismiss this version": what is put down there is a
+  // notice about another machine, and this host's own offer is untouched by it.
+  "updateRibbon.hideNotice": "Hide this notice",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

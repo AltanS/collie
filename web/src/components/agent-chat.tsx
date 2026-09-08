@@ -17,13 +17,15 @@ import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useLaunchers } from "@/lib/launchers";
 import { buzz } from "@/lib/haptics";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
+import { useLatestReply } from "@/hooks/use-latest-reply";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
 import { isConnecting } from "@/lib/connection";
 import { t, type MessageKey } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
 import { setFollowing as publishFollowing, stampSend } from "@/lib/poll-intent";
-import { useZenEnabled } from "@/lib/zen";
+import { useAutoZenEnabled, useZenEnabled } from "@/lib/zen";
+import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
@@ -39,6 +41,7 @@ import { splitLines } from "@/lib/blocks";
 import { adapterFor } from "@/lib/harness";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { FindBar } from "@/components/find-bar";
+import { LatestReply } from "@/components/latest-reply";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
@@ -62,6 +65,7 @@ import { submitMenuKeys } from "@/lib/menu-action";
 import type { PromptBlockAction } from "@/components/prompt-select-block";
 import type { PreviewBlockAction } from "@/components/preview-select-block";
 import type { MenuBlockAction } from "@/components/menu-block";
+import { locateReply } from "@/lib/latest-reply";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { cwdBeyondName } from "@/lib/pane-name";
 import { useMuxCapability } from "@/lib/mux-capability";
@@ -195,7 +199,8 @@ export function AgentChat({
   const { newTab, launch, launching, creatingTab } = useSpaceActions();
   const { launchers, home: launchersHome } = useLaunchers(scope);
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
-  const { prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus } = useDisplayPrefs();
+  const { prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply } =
+    useDisplayPrefs();
   // The chosen terminal font (Settings → Terminal font), applied by re-pointing `--font-mono` on
   // the two mirror surfaces below and NOWHERE else — see mirrorFont() for how, and why it is not a
   // custom property. Scoped to terminal CONTENT on purpose: app chrome that happens to be monospace
@@ -345,6 +350,51 @@ export function AgentChat({
     closeFind();
     setZen(true);
   }
+  // Auto-zen follows the ROTATION, and only the rotation: turning the phone sideways enters zen
+  // (a narrow tall mirror becomes a short wide one, and every chrome row costs terminal lines),
+  // turning it back leaves. The query asks for a SHORT landscape viewport, not landscape alone:
+  // under 520px of height is a phone on its side, where the chrome rows hurt. A desktop window and
+  // a tablet are landscape all day and have the height to spare, so neither one ever matches. But only a zen this effect entered — a hand-entered zen (the actions
+  // sheet's row, tapped in either orientation) is the operator's explicit choice and rotation must
+  // not steal it, so `autoZen` marks the effect's own entry and the portrait exit fires only on a
+  // marked one. Gated on `autoZenActive` — BOTH the Settings availability toggle and its own
+  // landscape sub-toggle (lib/zen.ts) must be on — so either one going off kills both paths; losing
+  // it mid-zen exits a marked entry rather than stranding it. Entry goes through `enterZen`, never
+  // bare setZen, so the find bar, sheets and staged key queue clear exactly as they do on a manual
+  // entry.
+  //
+  // The effect fires on every one of its deps changing — including the `zen` change a hand exit
+  // just made — so it acts ONLY on a flip (`wasLandscape`), never re-asserts. Without that, tapping
+  // the floating way out in landscape would exit and instantly re-enter. The ref starts portrait so
+  // mounting already sideways counts as a flip and opens chrome-free, matching a reload in hand.
+  const landscape = useMediaQuery("(orientation: landscape) and (max-height: 520px)");
+  const autoZenSetting = useAutoZenEnabled();
+  const autoZenActive = zenAvailable && autoZenSetting;
+  const autoZen = useRef(false);
+  const wasLandscape = useRef(false);
+  useEffect(() => {
+    const flipped = landscape !== wasLandscape.current;
+    wasLandscape.current = landscape;
+    // Not in zen means the mark is stale, whoever cleared it: the floating way out, a pane switch,
+    // the setting going off. Clearing it here means a zen the operator exits by hand and then opens
+    // by hand again is HIS zen, and the rotation back to portrait leaves it alone.
+    if (!zen) autoZen.current = false;
+    if (!autoZenActive) {
+      if (zen && autoZen.current) {
+        autoZen.current = false;
+        setZen(false);
+      }
+      return;
+    }
+    if (!flipped) return;
+    if (landscape && !zen) {
+      enterZen();
+      autoZen.current = true;
+    } else if (!landscape && zen && autoZen.current) {
+      autoZen.current = false;
+      setZen(false);
+    }
+  }, [landscape, zen, autoZenActive]);
   const listRef = useRef<ChatMessageListHandle>(null);
   const composerRef = useRef<ComposerHandle>(null);
 
@@ -641,6 +691,41 @@ export function AgentChat({
     agent?.readableLines !== undefined &&
     requestedLines < agent.readableLines &&
     canGrowRequestedLines(paneId, scope);
+
+  // The newest reply, REPLACING the mirror rows that could only hold its end.
+  //
+  // The mirror IS the viewport for an agent pane (alternate screen, no scrollback ring), so a reply
+  // longer than the pane is tall has lost its opening by the time you read it, and getting it back
+  // used to mean leaving for the history route. The journal has it; `locateReply` decides whether this
+  // particular turn is the one on screen and whether its start is missing — and answers "not this
+  // message" for a stale/streaming/clamped read, which is the case that must render nothing rather
+  // than pass an older reply off as the current one (lib/latest-reply.ts).
+  //
+  // It also returns where those rows END, and the card takes their place rather than sitting on top of
+  // them: rendering the message in full above its own last few terminal rows printed the same text
+  // twice. Everything BELOW the reply — tool calls, a dialog, the cursor — is untouched, so the mirror
+  // still reads as the live screen, just starting where the message finished.
+  //
+  // Memoised on the DISPLAYED text: it folds a whole screenful, and it runs beside the grammar
+  // passes above on every poll.
+  const latestReply = useLatestReply({
+    paneId,
+    scope,
+    enabled: historyAvailable && prefs.expandClippedReply,
+    mirrorText: display,
+  });
+  const placement = useMemo(
+    () => (latestReply ? locateReply(display, latestReply) : null),
+    [latestReply, display],
+  );
+  // Find searches the mirror, so while it is open the mirror is WHOLE and the card stands down —
+  // otherwise a hit inside the reply would be unfindable in the one surface find can highlight.
+  const clippedReply = placement?.fit === "clipped" && !findOpen ? latestReply : null;
+  // Collapsing the card is a judgement about ONE message ("show me the raw rows instead"), so it is
+  // remembered by uuid: a new reply arrives expanded without an effect to reset anything.
+  const [collapsedReply, setCollapsedReply] = useState<string | null>(null);
+  const replyOpen = clippedReply !== null && collapsedReply !== clippedReply.uuid;
+  const hiddenMirrorLines = replyOpen && placement ? placement.endLine + 1 : 0;
 
   // Load older scrollback: raise the per-pane requested line count and refetch. The enlarged buffer
   // prepends older lines at the top, so we adopt it into the frozen display and re-anchor the scroll
@@ -1649,6 +1734,18 @@ export function AgentChat({
                       {t("chat.scrollback.noSessionReported", { agent: agent?.agent ?? "" })}
                     </p>
                   )}
+                  {/* The newest reply in full, standing IN PLACE OF the rows it covers (the mirror
+                      below starts after it — see hideLeadingLines). It appears above a bottom-pinned
+                      scroller, which ChatMessageList's child-list observer re-pins, so the live tail
+                      never moves. */}
+                  {clippedReply && (
+                    <LatestReply
+                      entry={clippedReply}
+                      agent={agent?.agent}
+                      open={replyOpen}
+                      onToggle={() => setCollapsedReply(replyOpen ? clippedReply.uuid : null)}
+                    />
+                  )}
                   <AnsiOutput
                     text={display}
                     wrap={prefs.wrap}
@@ -1663,6 +1760,7 @@ export function AgentChat({
                     onMultiSelectAction={handleMultiSelectAction}
                     onMenuAction={handleMenuAction}
                     promptDisabled={readOnly || gone}
+                    hideLeadingLines={hiddenMirrorLines}
                   />
                 </>
               ) : (
@@ -1865,6 +1963,7 @@ export function AgentChat({
                   stepFontSize={stepFontSize}
                   setRawTerminal={setRawTerminal}
                   setTapToFocus={setTapToFocus}
+                  setExpandClippedReply={setExpandClippedReply}
                   onSent={onSent}
                 />
               </div>
