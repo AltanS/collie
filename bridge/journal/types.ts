@@ -32,13 +32,15 @@ export type TranscriptPart =
    * reasoning summaries. The branch is universal; only the harnesses that fill it differ.
    */
   | { kind: "thinking"; text: string; truncated?: boolean }
+  /** An image attachment or tool output. */
+  | { kind: "image"; url: string; mimeType?: string }
   /** A tool call. `result` is filled in from the result row that answers it, when one exists. */
   | {
       kind: "tool";
       name: string;
       /** One-line gist of the call's input (the file read, the command run) — never the whole input. */
       summary: string;
-      result?: { text: string; truncated?: boolean; isError?: boolean };
+      result?: { text: string; truncated?: boolean; isError?: boolean; imageUrl?: string };
     };
 
 /**

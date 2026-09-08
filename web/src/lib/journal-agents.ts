@@ -23,7 +23,7 @@
 // answer a question about a sentence. Adding a journal adapter there means adding its name here.
 
 /** The Herdr `agent` strings this build can read a session log for. Mirrors `journalAgents()`. */
-const JOURNAL_AGENTS: ReadonlySet<string> = new Set(["claude", "codex", "grok", "opencode", "pi"]);
+const JOURNAL_AGENTS: ReadonlySet<string> = new Set(["claude", "codex", "grok", "omp", "opencode", "pi"]);
 
 /**
  * Whether `agent` is one whose sessions Collie could read a transcript from.

@@ -22,8 +22,7 @@
 import { readdir } from "node:fs/promises";
 
 import type { JsonObject, JsonValue } from "../json.ts";
-import { join } from "node:path";
-
+import { dirname, join } from "node:path";
 import {
   containedRealpath,
   containedRealpathIn,
@@ -48,6 +47,12 @@ export function isPiSessionId(value: string): boolean {
   return SESSION_ID_RE.test(value);
 }
 
+/** pi / omp content-addressed blob hash: 64-hex SHA-256 digest. */
+const BLOB_HASH_RE = /^[0-9a-f]{64}$/i;
+
+export function isBlobHash(value: string): boolean {
+  return BLOB_HASH_RE.test(value);
+}
 /** Flatten a pi content list into text, keeping only `text` blocks. */
 function textBlocks(content: JsonValue | undefined): string {
   if (typeof content === "string") return content;
@@ -63,17 +68,43 @@ function textBlocks(content: JsonValue | undefined): string {
     .join("\n");
 }
 
+/** Convert a pi image block or url into a client-renderable URL. */
+function resolveImageUrl(data: string, mimeType?: string): string {
+  if (data.startsWith("blob:sha256:")) {
+    const hash = data.slice("blob:sha256:".length);
+    return `/api/blobs/${hash}`;
+  }
+  if (data.startsWith("data:") || data.startsWith("http://") || data.startsWith("https://")) {
+    return data;
+  }
+  const mime = mimeType || "image/png";
+  return `data:${mime};base64,${data}`;
+}
+
+/** Extract first image URL from a content block list. */
+function extractImageUrl(content: JsonValue | undefined): { url: string; mimeType?: string } | undefined {
+  if (!Array.isArray(content)) return undefined;
+  for (const b of content) {
+    if (b !== null && typeof b === "object" && !Array.isArray(b) && b.type === "image" && typeof b.data === "string") {
+      const mimeType = typeof b.mimeType === "string" ? b.mimeType : undefined;
+      return { url: resolveImageUrl(b.data, mimeType), mimeType };
+    }
+  }
+  return undefined;
+}
+
 /** A session-log line, once JSON.parse has admitted it is an object at all. */
 type PiRow = JsonObject;
 
-/** A `tool` part's answered result — {@link Clamped} plus the error flag the result row carried. */
-type ToolResult = Clamped & { isError?: boolean };
+/** A `tool` part's answered result — {@link Clamped} plus the error flag and optional image URL. */
+type ToolResult = Clamped & { isError?: boolean; imageUrl?: string };
 
 /** One row's `toolResult` payload, folded onto the call it answers. */
-function toolResult(text: string, isError: boolean): ToolResult {
+function toolResult(text: string, isError: boolean, imageUrl?: string): ToolResult {
   const result: ToolResult = clamp(text, MAX_RESULT_CHARS);
   // Assigned, never conditionally spread: `isError` is ABSENT when false, not `false`.
   if (isError) result.isError = true;
+  if (imageUrl) result.imageUrl = imageUrl;
   return result;
 }
 
@@ -115,12 +146,14 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
       const target = pendingTools.get(id);
       const resultText = stripAnsi(textBlocks(m.content));
       const isError = m.isError === true;
+      const img = extractImageUrl(m.content);
+      const imageUrl = img?.url;
       if (target) {
         // Mutated in place — the part already sits in an emitted entry, which is why results attach
         // without reordering anything.
         pendingTools.delete(id);
-        target.result = toolResult(resultText, isError);
-      } else if (resultText.trim() !== "") {
+        target.result = toolResult(resultText, isError, imageUrl);
+      } else if (resultText.trim() !== "" || imageUrl) {
         // Orphan result (its call fell outside a tail-read window) — kept unattached so the window
         // never silently drops output.
         entries.push({
@@ -132,7 +165,7 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
               kind: "tool",
               name: typeof m.toolName === "string" ? m.toolName : "result",
               summary: "",
-              result: toolResult(resultText, isError),
+              result: toolResult(resultText, isError, imageUrl),
             },
           ],
         });
@@ -151,6 +184,9 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
       } else if (b.type === "thinking" && typeof b.thinking === "string") {
         if (b.thinking.trim() !== "")
           parts.push({ kind: "thinking", ...clamp(stripAnsi(b.thinking), MAX_TEXT_CHARS) });
+      } else if (b.type === "image" && typeof b.data === "string") {
+        const mimeType = typeof b.mimeType === "string" ? b.mimeType : undefined;
+        parts.push({ kind: "image", url: resolveImageUrl(b.data, mimeType), mimeType });
       } else if (b.type === "toolCall") {
         const part: Extract<TranscriptPart, { kind: "tool" }> = {
           kind: "tool",
@@ -251,4 +287,26 @@ export function piJournal(roots: string | readonly string[]): JournalAdapter {
     source: new PiTranscriptSource(roots),
     parse: parsePiTranscript,
   };
+}
+
+/**
+ * Resolve a content-addressed blob hash to an absolute file path contained within one of the
+ * configured pi/omp blob directories (sibling `blobs/` to each `sessions/` root).
+ *
+ * Validates that hash is a 64-character hex string and that the resolved file exists and is
+ * contained within one of the derived blob roots.
+ */
+export async function resolveBlobPath(
+  hash: string,
+  sessionRoots: readonly string[],
+): Promise<string | null> {
+  if (!isBlobHash(hash)) return null;
+  const blobRoots = sessionRoots.map((r) => join(dirname(r), "blobs"));
+  for (const blobDir of blobRoots) {
+    const candidate = join(blobDir, hash);
+    if (!(await exists(candidate))) continue;
+    const real = await containedRealpathIn(candidate, blobRoots);
+    if (real !== null) return real;
+  }
+  return null;
 }
