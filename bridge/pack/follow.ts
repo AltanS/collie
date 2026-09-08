@@ -447,6 +447,14 @@ export class UpdateTurns {
   private held: string | null = null;
   private readonly missed = new Map<string, number>();
   private readonly legs = new Map<string, PeerLeg>();
+  /** Whether this run's settling line has been written. One per run, never one per sweep. */
+  private settledLogged = false;
+
+  /**
+   * `log` is where a `[pack]` line goes — `console.log`, the bridge's journal, unless a caller
+   * says otherwise. Injected so a test asserts the sentence and the suite stays silent.
+   */
+  constructor(private readonly log: (line: string) => void = (line) => console.log(line)) {}
 
   /** A run has started on this lead. Every peer behind `target` becomes a candidate. */
   begin(runId: string, target: string): void {
@@ -455,6 +463,7 @@ export class UpdateTurns {
     this.held = null;
     this.missed.clear();
     this.legs.clear();
+    this.settledLogged = false;
   }
 
   /** No run is being driven. The queue empties; nothing about it was ever on disk. */
@@ -463,6 +472,7 @@ export class UpdateTurns {
     this.held = null;
     this.missed.clear();
     this.legs.clear();
+    this.settledLogged = false;
   }
 
   /** The run this lead is currently driving, or null. */
@@ -500,12 +510,21 @@ export class UpdateTurns {
       const misses = m.answered ? 0 : (this.missed.get(m.memberId) ?? 0) + 1;
       this.missed.set(m.memberId, misses);
       const leg = legOf(m, { target, runId, misses, now });
+      const was = this.legs.get(m.memberId);
       this.legs.set(m.memberId, leg);
+      // `legOf` mints a fresh object every sweep, so the STATE is compared and never the object.
+      // That is what keeps a member sitting in `updating` for ten minutes to one line.
+      if (was?.state !== leg.state) {
+        this.log(
+          `[pack] update ${shortRunId(runId)}: ${m.memberId} ${was?.state ?? "new"} -> ${leg.state} (${leg.version ?? "unknown"})`,
+        );
+      }
       if (this.held === m.memberId && leg.state !== "waiting" && leg.state !== "updating") {
         this.held = null;
         released = true;
       }
     }
+    this.logSettled(runId);
 
     if (this.held === null) {
       const next = ordered.find((m) => eligible(m, this.legs.get(m.memberId)));
@@ -513,6 +532,33 @@ export class UpdateTurns {
     }
     return { released };
   }
+
+  /**
+   * Say that the run has stopped moving, once, the sweep every leg first reaches a terminal state.
+   *
+   * It is the line the 2026-09-07 drill wanted most: the pack levelled in seventeen seconds and the
+   * lead's own record still read "moving" a quarter of an hour later, with nothing in the journal to
+   * say which of the two was wrong.
+   */
+  private logSettled(runId: string): void {
+    if (this.settledLogged || this.legs.size === 0) return;
+    const legs = [...this.legs.values()];
+    if (legs.some((l) => l.state === "waiting" || l.state === "updating")) return;
+    this.settledLogged = true;
+    const count = (state: PeerLegState): number => legs.filter((l) => l.state === state).length;
+    const parts = [`${count("done")} peer(s) done`];
+    // Every other terminal state is named with its own count. Lumping them under "failed" would
+    // report a packaged member, which nothing failed at, as a failure.
+    for (const state of ["rolled-back", "unreachable", "package-managed"] as const) {
+      if (count(state) > 0) parts.push(`${count(state)} ${state}`);
+    }
+    this.log(`[pack] update ${shortRunId(runId)}: settled, ${parts.join(", ")}`);
+  }
+}
+
+/** A run id is long and opaque; eight characters is enough to grep one run out of a journal. */
+function shortRunId(runId: string): string {
+  return runId.slice(0, 8);
 }
 
 /** What one folded sweep answers. Named, because a turn being released is what earns a re-sweep. */

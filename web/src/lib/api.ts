@@ -13,6 +13,7 @@ import type {
   ActionResponse,
   BridgeConfig,
   CreateResponse,
+  DismissScope,
   DevicesResponse,
   LaunchersResponse,
   NotifyPrefs,
@@ -29,6 +30,7 @@ import type {
   WorktreeListResponse,
   WorktreeOpenResponse,
 } from "./types";
+import type { SubscribeBody } from "./push";
 
 export type { NotifyPrefs, UpdateInfo };
 
@@ -652,6 +654,11 @@ export function fetchConfig(): Promise<BridgeConfig> {
   return req<BridgeConfig>("/api/config");
 }
 
+/** Register push through the same timeout, authentication and error handling as the other APIs. */
+export function registerPushSubscription(body: SubscribeBody): Promise<void> {
+  return req<void>("/api/subscribe", { method: "POST", body: JSON.stringify(body) });
+}
+
 /**
  * Set (or clear) the global notification snooze. `snoozedUntil` is an epoch-ms deadline; `null`
  * resumes immediately. Affects every device — it's a quiet-hours switch, not a per-device toggle.
@@ -738,6 +745,22 @@ export function startUpdate(a: {
 /** "Remind me next digest" — the card's dismiss. Not a mute: the banner keeps showing. */
 export function snoozeUpdate(): Promise<UpdateInfo> {
   return req<UpdateInfo>("/api/update/snooze", { method: "POST" });
+}
+
+/**
+ * The update band was closed, for the version it named — the band's own dismiss (M17/08).
+ *
+ * The version goes to the BRIDGE rather than to this browser's storage, so the decision holds
+ * wherever the band is read next. `scope` says WHICH band: `offer` is a release available on this
+ * machine, and closing it snoozes the digest for that version too; `pack` is the quiet notice about
+ * a machine a package manager owns, and closing it touches no push. Not a mute either way — a newer
+ * version is a different fact and raises the band again.
+ */
+export function dismissUpdate(version: string, scope: DismissScope = "offer"): Promise<UpdateInfo> {
+  return req<UpdateInfo>("/api/update/dismiss", {
+    method: "POST",
+    body: JSON.stringify({ version, scope }),
+  });
 }
 
 /**

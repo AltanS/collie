@@ -562,7 +562,7 @@ describe("the status banner", () => {
 
   test("prints the tailnet URL, or the proxy line under COLLIE_SKIP_SERVE", async () => {
     const tailnet = harness({
-      answers: [["tailscale status --json", { stdout: '{"Self":{"DNSName":"host.example."}}' }]],
+      answers: [["tailscale status --json", { stdout: '{"Self":{"DNSName":"host.example."},"CertDomains":["host.example"]}' }]],
     });
     expect((await statusBanner(tailnet.deps)).join("\n")).toContain("tailnet   https://host.example");
 
@@ -591,7 +591,7 @@ describe("url", () => {
   test("https by default, http+port in http mode, loopback when the tailnet has no name", () => {
     const withName = (over: HarnessOptions = {}): string => {
       const h = harness({
-        answers: [["tailscale status --json", { stdout: '{"Self":{"DNSName":"host.example."}}' }]],
+        answers: [["tailscale status --json", { stdout: '{"Self":{"DNSName":"host.example."},"CertDomains":["host.example"]}' }]],
         ...over,
       });
       cmdUrl(h.deps);
@@ -601,7 +601,7 @@ describe("url", () => {
     expect(withName({ env: { COLLIE_SERVE_MODE: "http" } })).toBe("https://host.example");
 
     const http = harness({
-      answers: [["tailscale status --json", { stdout: '{"Self":{"DNSName":"host.example."}}' }]],
+      answers: [["tailscale status --json", { stdout: '{"Self":{"DNSName":"host.example."},"CertDomains":["host.example"]}' }]],
     });
     http.deps.ctx.serveMode = "http";
     cmdUrl(http.deps);

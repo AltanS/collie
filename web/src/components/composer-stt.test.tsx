@@ -86,11 +86,12 @@ function baseProps(
     text: "pane output",
     terminalDraft: null,
     rawTerminalDraft: null,
-    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true },
+    prefs: { wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true },
     setWrap: vi.fn(),
     stepFontSize: vi.fn(),
     setRawTerminal: vi.fn(),
     setTapToFocus: vi.fn(),
+    setExpandClippedReply: vi.fn(),
     onSent: vi.fn(),
     // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
     // composer itself, and the roomy default renders no row at all.

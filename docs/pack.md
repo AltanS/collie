@@ -21,6 +21,11 @@ graph TD
   op -.->|"ssh"| deputy
 ```
 
+A machine saved in Herdr is not a pack member. Herdr 0.9.0 lets one Herdr client hold several saved
+SSH machines, and Collie reads none of them: it talks to the local Herdr socket only
+([ADR 0022](../.adr/0022-the-mux-seam-is-a-port-collie-owns.md)), so a pack is the one way another
+machine's sessions reach the phone.
+
 **Two machines, one pack.** The lead is the instance your phone already reaches. The joining machine
 must have Collie installed and running. On the **lead**:
 
@@ -72,6 +77,34 @@ at `~/.config/collie/.env` on a binary install or in Herdr's plugin config dir o
 The pack protocol contains no multiplexer-specific fields. Note that peers have only been tested
 with Herdr in v1 ([`PACK_PROTOCOL.md` §16](../PACK_PROTOCOL.md)).
 
+
+## Members that were not installed by install.sh
+
+A pack updates every member from the phone, except the members whose files somebody else owns.
+
+`collie pack update` and the phone's one-tap pack update both stage a new release beside the old one
+and swap it in. That works on the two installs the install script and Herdr make, and it does not
+work on every install, so the pack reports the others instead of failing them.
+
+**A packaged member waits for its package manager.** Where pacman, nix or brew put the files, that
+manager owns them, and Collie will not replace a file it does not own
+([a packaged install](upgrading.md#a-packaged-install)). The pack never sends it an update, shows it
+as "waits for the package manager" with the command for its prefix where one can be named, and
+counts the run as complete without it. It levels when you run that command on that machine, and the
+line clears on the next check.
+
+**A packaged LEAD still levels its members.** The lead declines its own move for the same reason,
+and that is the whole of the refusal: the phone still levels every member to the version the lead is
+running now, and the confirm covers them. After the package manager has moved the lead and you have
+run `collie restart` on it, nothing levels by itself; one more confirm on the phone's Updates page
+brings the members up to the lead's new version.
+
+**A source checkout is a full member.** A member you cloned and built yourself updates through git
+like any other checkout, takes the pack update, and needs nothing said about it here. The lead pulls
+the tag, rebuilds and restarts it exactly as it does its own.
+
+So a mixed pack is a normal pack. One tap levels every member the lead can update, names the ones it
+cannot, and the pack is level again once you have run their package managers.
 
 | Command | What it does |
 | --- | --- |

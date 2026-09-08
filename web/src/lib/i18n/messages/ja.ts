@@ -38,6 +38,8 @@ export const ja: Dictionary = {
   "settings.density.description": "キーのグリッドを詰め、常時表示のキー行を置きます。キーは画面に残り、ターミナルの行数が増えます。",
   "settings.zen.title": "Zen モード",
   "settings.zen.description": "ペインメニューに、ターミナル以外のUI要素を非表示にする項目を追加します。",
+  "settings.zen.auto.label": "横向きで自動的に有効化",
+  "settings.zen.auto.hint": "本体を横向きにすると Zen モードが自動的に開き、縦に戻すと閉じます。",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "ハンズフリー音声入力",
@@ -53,6 +55,8 @@ export const ja: Dictionary = {
   "settings.push.reason.denied": "通知がブロックされています。ブラウザの設定で許可してください。",
   "settings.push.reason.unsupported": "使用中のブラウザはプッシュ通知に対応していません。",
   "settings.push.reason.default": "プッシュ通知を有効化できませんでした。",
+  "settings.push.reason.timeout": "通知の設定がタイムアウトしました。この端末がプッシュサービスに接続できることを確認して、もう一度お試しください。",
+  "settings.push.availability.unavailable": "通知の設定を確認できませんでした。接続を確認するか、再度ログインしてからお試しください。",
   "settings.push.availability.insecure":
     "HTTP 経由では利用できません。プッシュ通知には HTTPS 配信が必要です。",
   "settings.push.availability.serverOff":
@@ -179,6 +183,9 @@ export const ja: Dictionary = {
   "settings.display.tapToType.label": "タップで入力開始",
   "settings.display.tapToType.hint":
     "有効時はターミナル領域のタップでキーボードが開きます。無効時はテキスト選択が優先され、キーボードは入力欄タップ時のみ開きます。",
+  "settings.display.fullReply.label": "最新の返答を全文表示",
+  "settings.display.fullReply.hint":
+    "エージェントのターミナルはスクロールバックを保持しないため、長い返答は冒頭が失われます。有効時はエージェント自身のログから全文を表示し、該当する行を置き換えます。",
   "settings.display.rawTerminal.label": "未加工ターミナル",
   "settings.display.rawTerminal.hint":
     "プロンプトボタンやステータス表示を除いた素の出力を表示します。ダイアログの表示崩れを手動で制御する際に使用します。",
@@ -280,6 +287,9 @@ export const ja: Dictionary = {
   "chat.scrollback.loading": "読み込み中…",
   "chat.scrollback.noSessionReported":
     "{agent} のセッションが Herdr に報告されていません。Herdr 連携をインストールまたは更新し、このペインでエージェントを再起動してください。",
+  "chat.fullReply.title": "返答の全文",
+  "chat.fullReply.fromTranscript": "ログより",
+  "chat.fullReply.showingTerminal": "ターミナルを表示中",
   "chat.output.empty": "(直近の出力なし)",
   "chat.switcher.aria": "ペインを切り替え",
   "chat.switcher.title": "ペインを切り替え",
@@ -867,5 +877,8 @@ export const ja: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} がロールバック: {reason}。",
   "updateRibbon.seeUpdates": "更新画面を確認。",
   "updateRibbon.available": "Collie {version} を利用可能。タップして更新。",
+  "updateRibbon.availablePackaged": "Collie {version}（{manager}）が利用可能。",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} が利用可能。",
   "updateRibbon.dismiss": "このバージョンを非表示",
+  "updateRibbon.hideNotice": "この通知を非表示",
 };

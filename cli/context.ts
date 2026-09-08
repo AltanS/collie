@@ -4,10 +4,19 @@ import { join } from "node:path";
 
 import { DEFAULT_PORT, defaultSocketPath, resolveStateDir } from "../bridge/config.ts";
 import { pluginRoot } from "../bridge/root.ts";
-import { instanceSuffixOf, managedHandlerPath, type ServeMode } from "../bridge/front-door.ts";
+import {
+  herdrActionCommand,
+  instanceSuffixOf,
+  managedHandlerPath,
+  PLUGIN_ID,
+  pluginIdFor,
+  type ServeMode,
+} from "../bridge/front-door.ts";
 import { findTool } from "./tools.ts";
 
-export const PLUGIN_ID = "herdr.collie";
+// The plugin id and the two spellings built from it live in `bridge/front-door.ts`, beside the
+// instance suffix they share — the bridge prints them too. Re-exported here, where every verb reads.
+export { herdrActionCommand, PLUGIN_ID, pluginIdFor };
 
 /**
  * Everything a verb needs about *where things are*, resolved exactly once and passed down. No verb

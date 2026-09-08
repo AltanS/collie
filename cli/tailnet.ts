@@ -209,3 +209,51 @@ export function tailnetInboundBlocked(exec: Exec): boolean {
   if (!r.found || r.code !== 0) return false;
   return packetFilterDeniesAll(r.stdout);
 }
+
+// ── Does this tailnet have HTTPS at all? ─────────────────────────────────────
+// `tailscale serve` on :443 does not FAIL on a tailnet without certificates. It prints a question —
+// "HTTPS must be enabled, do you want to enable it?" — and waits. A caller that captures its output
+// reaches the operator only once the command returns, which is exactly the thing that never happens
+// (#172). So the precondition is read here, before anything is published.
+
+/**
+ * The domains this tailnet can issue certificates for — `CertDomains` off `tailscale status --json`.
+ *
+ * Three answers, and the third is not the second: a list, an empty list ("this tailnet has no
+ * HTTPS"), and `null` ("can't tell"). Unreadable JSON, a top-level value that is not an object, and
+ * a `CertDomains` that is not an array are all `null`, because a false "your tailnet has no HTTPS"
+ * would refuse a publish that works.
+ */
+export function certDomains(statusJson: string): string[] | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(statusJson);
+  } catch {
+    return null;
+  }
+  // `JSON.parse` yields plain objects and arrays for every document shape; a bare number or string
+  // is not a status document, and reading "no HTTPS" off one would be a refusal built on garbage.
+  if (!(data instanceof Object)) return null;
+  // SAFETY: narrowed to an object above, and the field is re-checked on the next two lines before
+  // anything is read off it — a record that disagrees with the documented shape falls to `null`.
+  const list = (data as { CertDomains?: unknown }).CertDomains;
+  // Absent and `null` are the shape a tailnet without HTTPS answers with — an ANSWER, not a gap.
+  if (list === undefined || list === null) return [];
+  if (!Array.isArray(list)) return null;
+  // SAFETY: `Array.isArray` on the line above; each entry is stringified, never trusted as one.
+  return (list as unknown[]).map((entry) => String(entry).trim()).filter((domain) => domain !== "");
+}
+
+/** {@link certDomains} over a live `tailscale status --json`. A missing or down CLI can't tell. */
+export function tailnetCertDomains(exec: Exec): string[] | null {
+  const r = exec.capture("tailscale", ["status", "--json"]);
+  if (!r.found || r.code !== 0) return null;
+  return certDomains(r.stdout);
+}
+
+/**
+ * What `collie serve` and `collie doctor` both say when the tailnet has no certificates. One string,
+ * because two copies of an instruction drift and the operator only ever sees one of them.
+ */
+export const HTTPS_DISABLED_HINT =
+  'enable HTTPS in the admin console (https://login.tailscale.com/admin/dns, "Enable HTTPS"), then run `collie serve` again';

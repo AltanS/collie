@@ -30,6 +30,7 @@ import { type DevicesData } from "@/lib/loaders";
 import { homePath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
 import type { PushAvailability } from "@/lib/push";
+import { describeThrownError } from "@/lib/api-error-message";
 import { useOptionalRootData } from "@/lib/route-data";
 
 const EMPTY_DEVICES: DevicesData = { enforced: false, current: null, devices: [], error: false };
@@ -66,13 +67,18 @@ export function SettingsRoute() {
   // "On" = the user hasn't disabled it AND a live subscription exists on this device.
   const on = Boolean(state && !state.userDisabled && state.subscribed);
   const blocked = Boolean(state && state.availability !== "ready");
-  // When blocked we can still allow turning OFF a lingering subscription, but never turning ON.
-  const toggleDisabled = busy || !state || (blocked && !on);
+  // Capability/permission refusals block enabling; a failed config read must remain retryable.
+  const toggleDisabled =
+    busy || !state || (blocked && !on && state.availability !== "unavailable");
 
   async function toggle(next: boolean) {
     setError(null);
-    const res = await setEnabled(next);
-    if (next && !res.ok) setError(reasonText(res.reason));
+    try {
+      const res = await setEnabled(next);
+      if (next && !res.ok) setError(reasonText(res.reason));
+    } catch (err) {
+      setError(describeThrownError(err));
+    }
   }
 
   return (
@@ -192,7 +198,7 @@ export function SettingsRoute() {
             </p>
           )}
           {error && (
-            <p className="border-t border-border px-4 py-2.5 text-xs text-status-blocked">
+            <p role="alert" className="border-t border-border px-4 py-2.5 text-xs text-status-blocked">
               {error}
             </p>
           )}
@@ -246,6 +252,8 @@ function reasonText(reason: PushAvailability | undefined): string {
       return t("settings.push.reason.insecure");
     case "server-off":
       return t("settings.push.reason.serverOff");
+    case "unavailable":
+      return t("settings.push.availability.unavailable");
     case "denied":
       return t("settings.push.reason.denied");
     case "unsupported":
@@ -261,6 +269,8 @@ function availabilityNote(a: PushAvailability): string {
       return t("settings.push.availability.insecure");
     case "server-off":
       return t("settings.push.availability.serverOff");
+    case "unavailable":
+      return t("settings.push.availability.unavailable");
     case "denied":
       return t("settings.push.availability.denied");
     case "unsupported":

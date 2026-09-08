@@ -38,6 +38,12 @@ import {
 
 const OURS = "http://127.0.0.1:8787";
 
+/** A tailnet with a name AND certificates — the shape every publish test assumes (#172). */
+const STATUS_HTTPS_ON = JSON.stringify({
+  Self: { DNSName: "host.example." },
+  CertDomains: ["host.example"],
+});
+
 const status = (json: string): ServeStatus => parseServeStatus(json);
 
 const web = (hostPort: string, path: string, proxy: string): string =>
@@ -211,7 +217,7 @@ function harness(
   // defaults below it.
   const answers: Scripted["answers"] = [
     ...(over.answers ?? []),
-    ["tailscale status --json", { stdout: '{"Self":{"DNSName":"host.example."}}' }],
+    ["tailscale status --json", { stdout: STATUS_HTTPS_ON }],
     ["tailscale serve status --json", { stdout: over.serveStatus ?? "{}" }],
   ];
   const exec = fakeExec({ ...over, answers });
@@ -296,15 +302,61 @@ describe("serve — publishing", () => {
     expect(cmdServe(h.deps)).toBe(EXIT.FAIL);
     expect(h.files.exists(HANDLER_FILE)).toBe(false);
     expect(h.io.stdout.join("\n")).toContain("sudo tailscale set --operator=$USER");
-    expect(h.io.stdout.join("\n")).toContain("access denied");
-    // The captured output stays on disk where the shell left it.
-    expect(h.files.read(`${CONFIG}/serve.out`)).toContain("access denied");
+    // Tailscale's own words are not re-printed here: the publish runs on OUR stdio, so "access
+    // denied" reached the terminal as tailscale said it, and nothing is captured to echo back (#172).
+    expect(h.io.stdout.join("\n")).not.toContain("access denied");
+    expect(h.files.exists(`${CONFIG}/serve.out`)).toBe(false);
   });
 
   test("the https failure hint names the Headscale escape hatch", () => {
     const h = harness({ answers: [["tailscale serve --bg", { code: 1 }]] });
     expect(cmdServe(h.deps)).toBe(EXIT.FAIL);
     expect(h.io.stdout.join("\n")).toContain("COLLIE_SERVE_MODE=http");
+  });
+
+  test("a tailnet with no certificates is SAID, not waited on (#172)", () => {
+    // `tailscale serve` answers this case with a question at a terminal a service has not got, so
+    // the operator saw a hung command and no reason. Nothing may be published on the way to saying so.
+    const h = harness({
+      answers: [["tailscale status --json", { stdout: '{"Self":{"DNSName":"host.example."}}' }]],
+    });
+    expect(cmdServe(h.deps)).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("HTTPS certificates are not enabled on this tailnet");
+    expect(h.io.stderr.join("\n")).toContain("https://login.tailscale.com/admin/dns");
+    expect(h.exec.calls.some((c) => c.includes("--bg"))).toBe(false);
+    expect(h.files.exists(HANDLER_FILE)).toBe(false);
+  });
+
+  test("an unreadable HTTPS status warns and publishes anyway", () => {
+    // Three answers, and `null` is the third: a status document this build cannot read says nothing
+    // about certificates, so refusing would break a publish that works. It publishes and says so,
+    // because the hang the check exists to prevent is the one thing it could not rule out.
+    const h = harness({
+      answers: [
+        [
+          "tailscale status --json",
+          { stdout: '{"Self":{"DNSName":"host.example."},"CertDomains":"host.example"}' },
+        ],
+      ],
+    });
+    expect(cmdServe(h.deps)).toBe(EXIT.OK);
+    expect(h.io.stderr.join("\n")).toContain("could not read this tailnet's HTTPS status");
+    expect(h.io.stderr.join("\n")).not.toContain("error:");
+    expect(h.exec.calls).toContain("tailscale serve --bg --set-path=/ 8787");
+  });
+
+  test("certificates present publish as they always did; http mode never asks", () => {
+    const https = harness();
+    expect(cmdServe(https.deps)).toBe(EXIT.OK);
+    expect(https.exec.calls).toContain("tailscale serve --bg --set-path=/ 8787");
+
+    // An http front door needs no certificate, so an https-less tailnet must not refuse it.
+    const plain = harness({
+      serveMode: "http",
+      answers: [["tailscale status --json", { stdout: '{"Self":{"DNSName":"host.example."}}' }]],
+    });
+    expect(cmdServe(plain.deps)).toBe(EXIT.OK);
+    expect(plain.exec.calls).toContain("tailscale serve --bg --http=8787 --set-path=/ 8787");
   });
 
   test("a mapping we can't name is one we can't prove we own: no tailscale, no hostname", () => {

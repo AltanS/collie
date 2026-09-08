@@ -39,6 +39,8 @@ export const zh: Dictionary = {
   "settings.density.description": "以紧凑的按键网格搭配常驻的按键行：按键始终在屏幕上，终端也保留更多行。",
   "settings.zen.title": "专注模式",
   "settings.zen.description": "在面板菜单中添加选项，隐藏终端以外的所有界面元素。",
+  "settings.zen.auto.label": "横屏时自动启用",
+  "settings.zen.auto.hint": "将手机横向旋转会自动打开专注模式；转回竖屏则自动关闭。",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "语音直接发送",
@@ -54,6 +56,8 @@ export const zh: Dictionary = {
   "settings.push.reason.denied": "通知权限已被拒绝，请在浏览器设置中启用。",
   "settings.push.reason.unsupported": "当前浏览器不支持推送通知。",
   "settings.push.reason.default": "无法启用推送通知。",
+  "settings.push.reason.timeout": "通知设置超时。请确认当前设备能连接推送服务，然后重试。",
+  "settings.push.availability.unavailable": "无法检查通知配置。请检查网络或重新登录，然后重试。",
   "settings.push.availability.insecure": "普通 HTTP 环境不可用。请通过 HTTPS 部署 Collie 以启用推送。",
   "settings.push.availability.serverOff": "网桥缺少 VAPID 密钥配置，服务端已禁用推送功能。",
   "settings.push.availability.denied": "当前站点的通知权限已被拒绝。请在浏览器设置中重新允许。",
@@ -169,6 +173,9 @@ export const zh: Dictionary = {
   "settings.display.tapToType.label": "点击唤起键盘",
   "settings.display.tapToType.hint":
     "开启后点击镜像任意位置均弹出键盘。关闭后镜像以文档模式交互，仅点击输入框时调出键盘。",
+  "settings.display.fullReply.label": "完整显示最新回复",
+  "settings.display.fullReply.hint":
+    "智能体终端不保留回滚缓冲，长回复的开头会丢失。开启后将从智能体自身日志中取出完整回复，替换它所覆盖的那几行。",
   "settings.display.rawTerminal.label": "原始终端",
   "settings.display.rawTerminal.hint":
     "仅显示纯终端镜像，隐藏提示按钮与状态栏。适用于对话框渲染异常时通过按键手动操作。",
@@ -267,6 +274,9 @@ export const zh: Dictionary = {
   "chat.scrollback.loading": "正在加载…",
   "chat.scrollback.noSessionReported":
     "{agent} 尚未向 Herdr 上报会话。请安装或更新对应的 Herdr 集成，并在当前窗格重启该 Agent。",
+  "chat.fullReply.title": "完整回复",
+  "chat.fullReply.fromTranscript": "来自日志",
+  "chat.fullReply.showingTerminal": "正在显示终端",
   "chat.output.empty": "（暂无近期输出）",
   "chat.switcher.aria": "切换窗格",
   "chat.switcher.title": "切换窗格",
@@ -845,5 +855,8 @@ export const zh: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} 已回滚：{reason}。",
   "updateRibbon.seeUpdates": "查看更新。",
   "updateRibbon.available": "Collie {version} 可用。点击更新。",
+  "updateRibbon.availablePackaged": "Collie {version} 可通过 {manager} 获取。",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} 可用。",
   "updateRibbon.dismiss": "忽略此版本",
+  "updateRibbon.hideNotice": "隐藏此通知",
 };

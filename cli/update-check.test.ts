@@ -853,7 +853,19 @@ describe("preflight — a folder a package manager owns", () => {
     const check = byId(await preflight(packaged().deps), "package");
     expect(check.verdict).toBe("green");
     expect(check.reason).toBe("updates come from your package manager");
-    // `/opt/collie` names no manager this build knows, so no command is invented for it.
+    // `/opt/collie` is where `collie-bin` installs, so the command is named beside the sentence.
+    expect(check.remedy).toBe("sudo pacman -Syu collie-bin");
+  });
+
+  test("a root no manager claims gets the sentence and no command", async () => {
+    // The other half of the same rule: an unrecognised prefix costs the operator a command, never a
+    // wrong kind, and Collie never invents one it cannot run.
+    const NAMELESS = "/srv/collie";
+    const h = packaged({ answers: [[`git -C ${NAMELESS} rev-parse --git-dir`, { code: 128 }]] });
+    h.files.entries.set(`${NAMELESS}/herdr-plugin.toml`, { text: 'id = "herdr.collie"\nversion = "1.0.0"\n' });
+    const check = byId(await preflight({ ...h.deps, ctx: { ...h.deps.ctx, root: NAMELESS } }), "package");
+    expect(check.verdict).toBe("green");
+    expect(check.reason).toBe("updates come from your package manager");
     expect(check.remedy).toBeUndefined();
   });
 
@@ -904,9 +916,10 @@ describe("preflight — a folder a package manager owns", () => {
       },
     });
     const check = byId(await preflight(h.deps), "upstream");
-    // Cleared, never replaced with prose: this root names no manager, and a remedy is the one
-    // command that clears a check, not a paragraph pretending to be one.
-    expect(check.remedy).toBeUndefined();
+    // Replaced by the package manager's own command, never by prose: a remedy is the one command
+    // that clears a check, not a paragraph pretending to be one.
+    expect(check.remedy).toBe("sudo pacman -Syu collie-bin");
+    expect(check.remedy).not.toContain("collie update");
     expect(check.selfUpdateRemedy).toBeUndefined();
     // The REASON is untouched: that a release exists is true however it gets applied.
     expect(check.reason).toContain("2.0.0");

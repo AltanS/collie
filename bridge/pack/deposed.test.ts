@@ -184,7 +184,7 @@ describe("what a deposed collie serves (§18.12)", () => {
   const healed = deposedStateFrom(data, warrant, selfHeal(data, warrant), T0);
 
   test("the health check FAILS — that is what stops a proxy routing the phone back here", () => {
-    const res = deposedAnswer(healed, "healed", new URL(`https://desk.example${STANDBY_HEALTH_PATH}`));
+    const res = deposedAnswer(healed, "healed", new URL(`https://desk.example${STANDBY_HEALTH_PATH}`), null);
     expect(res.status).toBe(503);
   });
 
@@ -193,20 +193,25 @@ describe("what a deposed collie serves (§18.12)", () => {
     // reached it is told what happened. `text/plain` so an operator-typed pack name reaches a browser
     // with no markup around it and no escaping question to get wrong.
     for (const path of ["/", "/api/snapshot", "/settings", "/anything/at/all"]) {
-      const res = deposedAnswer(healed, "healed", new URL(`https://desk.example${path}`));
+      const res = deposedAnswer(healed, "healed", new URL(`https://desk.example${path}`), null);
       expect(res.status).toBe(200);
       expect(res.headers.get("content-type")).toBe("text/plain; charset=utf-8");
     }
   });
 
   test("the page NAMES which of the three outcomes it is in", () => {
-    expect(deposedPage(healed, "healed")).toContain("rejoined the pack as a peer");
-    expect(deposedPage(healed, "parked-rotated")).toContain("collie join");
+    expect(deposedPage(healed, "healed", null)).toContain("rejoined the pack as a peer");
+    expect(deposedPage(healed, "parked-rotated", null)).toContain("collie join");
     const parked = deposedStateFrom(data, warrant, selfHeal(data, null), T0);
-    expect(deposedPage(parked, "parked-unverifiable")).toContain("no warrant to verify");
+    expect(deposedPage(parked, "parked-unverifiable", null)).toContain("no warrant to verify");
     // And it always names the machine that leads now, the generation, and the one command this
     // machine's own operator still owns (ADR 0001: Collie does not tear down another's ingress).
-    expect(deposedPage(healed, "healed")).toContain('"nas"');
-    expect(deposedPage(healed, "healed")).toContain("collie unserve");
+    expect(deposedPage(healed, "healed", null)).toContain('"nas"');
+    expect(deposedPage(healed, "healed", null)).toContain("collie unserve");
+  });
+
+  test("the restart command names THIS instance's plugin id, not the host's first Collie", () => {
+    expect(deposedPage(healed, "healed", null)).toContain("--plugin herdr.collie`");
+    expect(deposedPage(healed, "healed", "next")).toContain("--plugin herdr.collie-next`");
   });
 });

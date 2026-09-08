@@ -1732,7 +1732,7 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
       20_000,
       async () => `deputy marker: ${JSON.stringify(runtimeMarkerOf(aide))}`,
     );
-    const deputyLines = peerWarrantLines(aide.store()!, runtimeMarkerOf(aide), Date.now())
+    const deputyLines = peerWarrantLines(aide.store()!, runtimeMarkerOf(aide), Date.now(), null)
       .map((l) => l.text)
       .join("\n");
     expect(deputyLines).toContain("deputy role ACTIVE at this boot");
@@ -1744,7 +1744,7 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
       20_000,
       async () => `witness marker: ${JSON.stringify(runtimeMarkerOf(witness))}`,
     );
-    const witnessLines = peerWarrantLines(witness.store()!, runtimeMarkerOf(witness), Date.now())
+    const witnessLines = peerWarrantLines(witness.store()!, runtimeMarkerOf(witness), Date.now(), null)
       .map((l) => l.text)
       .join("\n");
     expect(witnessLines).toContain("anchored at this boot");

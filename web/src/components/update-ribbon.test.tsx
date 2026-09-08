@@ -10,7 +10,8 @@ import { __resetSelfUpdate, __setReloadImpl, startSelfUpdate } from "@/lib/self-
 import { __resetServerBuild, observeServerBuild } from "@/lib/server-build";
 import { clearUpdateStarted, noteUpdateStarted } from "@/lib/update-ribbon";
 import type { UpdateInfo, UpdatePeerLeg, UpdateRun, UpdateRunState } from "@/lib/types";
-import { BAND_CLASS, UpdateRibbon, __resetUpdateRibbon } from "./update-ribbon";
+import { dismissUpdate } from "@/lib/api";
+import { BAND_CLASS, UpdateRibbon } from "./update-ribbon";
 
 // The ONE update band. The reading behind it is pinned in `lib/update-ribbon.test.ts`; this file is
 // about the row that reaches the screen — its words, its tap, its dismiss, and the two structural
@@ -20,6 +21,9 @@ import { BAND_CLASS, UpdateRibbon, __resetUpdateRibbon } from "./update-ribbon";
 // build id that is not ours, observed twice (the hysteresis), with or without a reload hold.
 
 vi.mock("@/lib/pwa", () => ({ checkForUpdate: vi.fn() }));
+// The dismiss posts to the bridge (M17/08). What it SENDS is the assertion; the round trip itself is
+// the bridge's own test.
+vi.mock("@/lib/api", () => ({ dismissUpdate: vi.fn(async () => undefined) }));
 
 // BUILD.id under vitest is "test" (vitest.config `define`). Any other id reads as stale.
 const NEWER_BUILD = "1.5.0+new.1";
@@ -104,7 +108,6 @@ let stop: () => void;
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
-  __resetUpdateRibbon();
   __resetServerBuild();
   __resetReloadGuard();
   __resetSelfUpdate();
@@ -115,7 +118,6 @@ beforeEach(() => {
 afterEach(() => {
   stop();
   clearUpdateStarted();
-  __resetUpdateRibbon();
 });
 
 describe("update ribbon states — the row on screen", () => {
@@ -310,29 +312,90 @@ describe("a packaged peer waits for its package manager", () => {
   });
 });
 
-describe("dismissal is per version", () => {
-  it("only the offer carries a dismiss", async () => {
+describe("dismissal is per version, and it belongs to the machine", () => {
+  it("a run in flight carries no dismiss", async () => {
     await renderBand(info({ run: run("restarting") }));
     expect(screen.queryByRole("button", { name: "Dismiss this version" })).toBeNull();
   });
 
-  it("dismissing hides the offer, and it survives a re-render (a poll)", async () => {
+  it("dismissing hides the band at once and tells the bridge which version", async () => {
     const user = userEvent.setup();
-    const { container, rerender } = await renderBand(info());
+    const { container } = await renderBand(info());
     await user.click(screen.getByRole("button", { name: "Dismiss this version" }));
+    // Optimistic: the band is gone on the tap, not on the next poll.
     expect(band(container)).toBeNull();
-    rerender(<div />); // the poll re-renders the tree; the pin is storage, not component state
-    const second = await renderBand(info());
-    expect(band(second.container)).toBeNull();
+    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "offer");
+  });
+
+  it("stays down on the NEXT SCREEN, because the snapshot carries the dismissal", async () => {
+    // The second render is another browser (or this one after a poll): no local state, and the band
+    // is still gone. This is the whole of M17/08 — the decision is the machine's, not the browser's.
+    const { container } = await renderBand(info({ dismissedVersion: "1.5.0" }));
+    expect(band(container)).toBeNull();
   });
 
   it("a newer release brings it back", async () => {
-    const user = userEvent.setup();
-    await renderBand(info());
-    await user.click(screen.getByRole("button", { name: "Dismiss this version" }));
-    const next = await renderBand(info({ latest: "1.6.0" }));
-    expect(band(next.container)).not.toBeNull();
+    const { container } = await renderBand(info({ latest: "1.6.0", dismissedVersion: "1.5.0" }));
+    expect(band(container)).not.toBeNull();
     expect(screen.getByText("Collie 1.6.0 available. Tap to update.")).toBeInTheDocument();
+  });
+
+  it("a failed dismiss is a courtesy lost, not an error on screen", async () => {
+    vi.mocked(dismissUpdate).mockRejectedValueOnce(new Error("offline"));
+    const user = userEvent.setup();
+    const { container } = await renderBand(info());
+    await user.click(screen.getByRole("button", { name: "Dismiss this version" }));
+    expect(band(container)).toBeNull();
+  });
+});
+
+describe("a packaged host on the band", () => {
+  const packaged = (over: Partial<UpdateInfo> = {}) =>
+    info({ installKind: "packaged", packageCommand: "sudo pacman -Syu", ...over });
+
+  it("names the package manager and never offers a tap-to-update", async () => {
+    await renderBand(packaged());
+    expect(screen.getByText("Collie 1.5.0 available via pacman.")).toBeInTheDocument();
+    expect(screen.queryByText(/Tap to update/)).toBeNull();
+  });
+
+  it("still taps through to the updates page, where the command is", async () => {
+    const user = userEvent.setup();
+    await renderBand(packaged());
+    await user.click(screen.getByText("Collie 1.5.0 available via pacman."));
+    expect(await screen.findByText("the updates page")).toBeInTheDocument();
+  });
+
+  it("can be dismissed, like the offer it replaces", async () => {
+    const user = userEvent.setup();
+    const { container } = await renderBand(packaged());
+    await user.click(screen.getByRole("button", { name: "Dismiss this version" }));
+    expect(band(container)).toBeNull();
+    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "offer");
+  });
+});
+
+describe("hiding the quiet pack notice", () => {
+  const managed: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
+  const quiet = () => info({ releaseAvailable: false, run: run("done", { peers: managed }) });
+
+  it("carries its own label — a notice about another machine, not this version", async () => {
+    await renderBand(quiet());
+    expect(screen.getByRole("button", { name: "Hide this notice" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dismiss this version" })).toBeNull();
+  });
+
+  it("hides on the tap and tells the bridge, in the pack scope", async () => {
+    const user = userEvent.setup();
+    const { container } = await renderBand(quiet());
+    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
+    expect(band(container)).toBeNull();
+    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "pack");
+  });
+
+  it("stays down for the next screen, off the snapshot's own field", async () => {
+    const { container } = await renderBand(info({ ...quiet(), dismissedPackVersion: "1.5.0" }));
+    expect(band(container)).toBeNull();
   });
 });
 

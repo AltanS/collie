@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { parseAnsi, type AnsiSegment } from "@/lib/ansi";
 import { buildBlocks } from "@/lib/harness";
 import {
+  dropLeadingLines,
   lineText,
   splitLines,
   type Block,
@@ -84,6 +85,16 @@ export interface AnsiOutputProps {
   onMenuAction?: (action: MenuBlockAction, menu: MenuModel) => void | Promise<void>;
   /** Disable the prompt-select/wizard/preview/multi-select/menu buttons (read-only / gone pane). */
   promptDisabled?: boolean;
+  /**
+   * Hide this many screen rows off the TOP of the mirror. Default 0.
+   *
+   * Purely presentational and applied AFTER the grammars have run over the whole screen, so no
+   * detection, guard or draft probe can see it. Its one caller (AgentChat) uses it to drop the rows a
+   * clipped reply occupies while the full message is rendered from the journal directly above them —
+   * printing both was the same text twice. Find offsets are recomputed over what is left, which is
+   * why AgentChat sets this to 0 whenever the find bar is open.
+   */
+  hideLeadingLines?: number;
 }
 
 // Stable empty result so the "not searching" path keeps the same `matches` reference across polls
@@ -217,13 +228,18 @@ export const AnsiOutput = memo(function AnsiOutput({
   onMultiSelectAction,
   onMenuAction,
   promptDisabled,
+  hideLeadingLines = 0,
 }: AnsiOutputProps) {
   const segments = useMemo(() => parseAnsi(text), [text]);
   const blocks = useMemo(() => buildBlocks(splitLines(segments), { agent }), [segments, agent]);
 
   const rawBlocks = useMemo(
-    () => blocks.filter((b): b is RawBlock => b.kind === "raw"),
-    [blocks],
+    () =>
+      dropLeadingLines(
+        blocks.filter((b): b is RawBlock => b.kind === "raw"),
+        hideLeadingLines,
+      ),
+    [blocks, hideLeadingLines],
   );
   const promptBlock = useMemo(
     () => blocks.find((b): b is PromptBlock => b.kind === "prompt-select") ?? null,

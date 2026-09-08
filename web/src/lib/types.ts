@@ -366,6 +366,15 @@ export interface PackMemberStatus {
  * on the snapshot — an older bridge omits it entirely, which the client treats as "no info" (the
  * update banner renders nothing). `latest` is null when the newest upstream release isn't known.
  */
+/**
+ * WHICH update band a dismissal is about (mirrors `DismissScope` in `bridge/update.ts`).
+ *
+ * `offer` is "a release is available on this machine"; `pack` is "that machine is standing behind,
+ * and a package manager owns it". Two decisions, two fields on {@link UpdateInfo}: putting one down
+ * must not put the other down with it, even when both name the same version.
+ */
+export type DismissScope = "offer" | "pack";
+
 export interface UpdateInfo {
   /** The version this bridge is running, e.g. "0.11.0". */
   current: string;
@@ -395,11 +404,22 @@ export interface UpdateInfo {
    * here would be a second thing to drift.
    */
   packageCommand?: string;
+  /**
+   * The release whose OFFER the operator closed, or null. Held by the BRIDGE, so the decision holds
+   * on every screen (M17/08). Absent on an older bridge, which reads as "nothing dismissed".
+   */
+  dismissedVersion?: string | null;
+  /**
+   * The version whose quiet PACK notice the operator closed, or null. A separate decision from the
+   * offer above: they are about different machines. Absent on an older bridge.
+   */
+  dismissedPackVersion?: string | null;
   /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
   bridgeStale: boolean;
   /**
-   * The VERSION on disk is no longer the version this process runs — a package manager replaced the
-   * root under a live bridge. Absent on a bridge older than M17/02, which reads as "not raised".
+   * The collie on disk is no longer the one this process runs — a package manager replaced the root
+   * under a live bridge, either with a new version or with a rebuild of the same one. Absent on a
+   * bridge older than M17/02, which reads as "not raised".
    */
   restartNeeded?: boolean;
   /** The command that clears {@link restartNeeded}, spelled on the HOST for its install kind. */
