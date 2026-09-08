@@ -21,12 +21,20 @@ import {
   peersRolledBack,
   type PeerRow,
 } from "@/lib/update-pack";
-import { clearUpdateStarted, noteUpdateStarted } from "@/lib/update-ribbon";
+import {
+  clearUpdateStarted,
+  minutesWord,
+  noteUpdateStarted,
+  packMoving,
+  readRun,
+  runInFlight,
+} from "@/lib/update-ribbon";
 import { cn } from "@/lib/utils";
 import type {
   PreflightCheck,
   PreflightReport,
   UpdateCheckResponse,
+  UpdatePeerLeg,
   UpdateRun,
   UpdateRunState,
 } from "@/lib/types";
@@ -59,18 +67,60 @@ import type {
 // there falls through to the standby door (`GET /standby/update`, PACK_PROTOCOL.md §18.15) and, if
 // that is unreachable too, changes nothing on screen and tries again.
 
-/** The run states somebody is still driving. Progress, never failure. */
-const IN_FLIGHT: ReadonlySet<UpdateRunState> = new Set<UpdateRunState>([
-  "preflight",
-  "staging",
-  "restarting",
-  "verifying",
-]);
 
-/** How often the card looks while a run is in flight. Its own beat, and only while one is running —
- *  the snapshot poll (hooks/use-polling.ts) carries the run record the rest of the time, and its
- *  cadence is resolved from what the operator is doing, which is not this. */
-const RUN_POLL_MS = 2000;
+/**
+ * How often the card asks the STANDBY DOOR while a run is in flight (M20/08).
+ *
+ * This used to be a front-door poll as well, `fetchUpdateState` every two seconds beside the
+ * snapshot poll and the card's own mount read: three loops over one route. The snapshot poll now
+ * runs at `HOT_MS` while a run is in flight (`hooks/use-polling.ts`) and carries the same run
+ * record, so the front-door half is gone and this timer answers only the question nothing else can.
+ *
+ * That question is the restart gap. `GET /standby/update` (PACK_PROTOCOL.md §18.15) is the one
+ * reader that works while the bridge this page is served from is down, which is exactly the minute
+ * the operator called the most confusing. Nothing else on this screen can reach it.
+ */
+const STANDBY_POLL_MS = 2000;
+
+/**
+ * The four in-flight states, in the order a run passes through them (M20/08).
+ *
+ * Rendered as a row of four marks with the current one filled, which is the cheapest thing on this
+ * card that says "of four things, this is the second". Four sentences over several minutes told the
+ * operator what was happening and never where in the run they were.
+ */
+const RUN_PHASES: readonly UpdateRunState[] = ["preflight", "staging", "restarting", "verifying"];
+
+/**
+ * How long the restart may take before the card stops calling it normal (M20/08).
+ *
+ * The bridge is genuinely gone in this window and the phone cannot tell an update from an outage, so
+ * "Restarting. This is not an outage." is the right sentence — for a while. Past this it has become
+ * one, or near enough that saying otherwise is the screen lying to somebody who can see it is wrong.
+ *
+ * A DISPLAY threshold and nothing else, exactly as {@link STARTED_SLOW_MS} is. It unlocks no control
+ * and shortens no timeout. Ninety seconds is comfortably longer than every restart the drill has
+ * produced and short enough that a genuine failure is named while the operator is still watching.
+ */
+const RESTART_BOUND_MS = 90_000;
+
+/**
+ * A counter that runs on THE PHONE'S OWN CLOCK, never off a poll result (M20/08).
+ *
+ * This is the whole point. During `restarting` the bridge is down, every poll fails, and a number
+ * derived from the last successful read would freeze at exactly the moment the operator most needs
+ * proof that something is alive. A `setInterval` on the phone cannot be stopped by a dead server.
+ */
+function useTick(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [active]);
+  return now;
+}
 
 /**
  * How long the card waits, after its own tap, before it says the start is TAKING A WHILE.
@@ -95,7 +145,14 @@ function freshest(...runs: (UpdateRun | undefined)[]): UpdateRun | undefined {
   let best: UpdateRun | undefined;
   for (const run of runs) {
     if (run === undefined) continue;
-    if (best === undefined || run.updatedAt >= best.updatedAt) best = run;
+    // `>` and not `>=` (M20/14). Copies of one run tie on `updatedAt` — a peer leg moving does not
+    // touch it — and `>=` handed every tie to the LAST argument, which is this card's own
+    // `GET /api/update/check` copy, fetched when the card mounted and not since. `>` hands a tie to
+    // the FIRST, and the arguments are ordered by how live each source is: the standby door during a
+    // restart, then the snapshot poll, then the card's own copy. This decides the run's STATE only;
+    // where its LEGS are read from is `peerLegsOf`, which no longer consults this record at all while
+    // the status carries legs of its own.
+    if (best === undefined || run.updatedAt > best.updatedAt) best = run;
   }
   return best;
 }
@@ -153,7 +210,7 @@ export function UpdateCard() {
   const preflight = check?.preflight ?? null;
   const run = freshest(standbyRun, snapshot?.run, check?.run);
   const runState = run?.state;
-  const running = runState !== undefined && IN_FLIGHT.has(runState);
+  const running = runInFlight(run);
   // Nothing on this card may be tapped while an update is being asked for, started, or driven.
   // ONE reading, used by every control below, so a control cannot be forgotten in one of the three.
   // `started` is the middle of those three and the one that was missing — see it below.
@@ -165,7 +222,15 @@ export function UpdateCard() {
   const servers = data?.servers ?? [];
   const packLead = servers.length > 1 && servers.some((s) => s.isLead);
   const census = check?.pack ?? [];
-  const legs = run?.peers ?? [];
+  // Read through the SHARED reader, never off `run.peers` directly (M20/09). A peers-only run has no
+  // record on this machine at all, so its legs ride the status rather than the run, and a component
+  // that reached for one field would be blind to exactly the run it was opened to watch.
+  // ONE READING, and the same one the band takes (M20/04). The card used to ask "does the record
+  // still list a moving peer?" while the band asked "did the run finish under ten minutes ago?", so
+  // on 2026-09-07 the band went quiet while this card kept the same peer moving for five more
+  // minutes. Neither surface interprets a record any more.
+  const reading = readRun({ update: snapshot ?? check, run, now: Date.now() });
+  const legs = [...reading.legs];
   const rows = peerRows(census, legs);
   const hasPeers = rows.length > 0 || packLead;
   const behind = peersBehind(census, current);
@@ -202,7 +267,15 @@ export function UpdateCard() {
 
   // Read once on mount, and again whenever a run reaches a terminal state — the preflight's answer
   // is a different answer after an update than it was before one.
-  const settled = !running;
+  //
+  // "A RUN" IS THE PACK'S RUN AND NOT ONLY THIS MACHINE'S (M20/09). `running` reads the local record,
+  // and a peers-only run never writes one, so this flag never toggled and the effect never re-fired:
+  // `fetchUpdateState` was called once at mount and the census on screen then aged without bound.
+  // That is the reported symptom, a peer's version that only a pull-to-refresh could correct.
+  //
+  // `packMoving` is the same function the band reads, so the card cannot keep asking after the band
+  // has gone quiet, or stop asking before it does.
+  const settled = !running && !packMoving(snapshot ?? check, run);
   useEffect(() => {
     const ac = new AbortController();
     void load(ac.signal);
@@ -237,28 +310,22 @@ export function UpdateCard() {
     return () => clearTimeout(timer);
   }, [started]);
 
-  // The run poll. Only while a run is in flight, and it treats a failed front-door read as EXPECTED:
-  // the bridge is restarting because that is what was asked for.
+  // THE DOOR THAT STAYS OPEN. Only while a run is in flight, and a failure here is EXPECTED twice
+  // over: there may be no deputy at all, and the bridge is restarting because that is what was
+  // asked for. Either way it changes nothing on screen and looks again in a moment.
   useEffect(() => {
     if (!running) return;
     let alive = true;
     const timer = setInterval(() => {
       void (async () => {
         try {
-          const fresh = await fetchUpdateState();
-          if (alive) setCheck(fresh);
+          const fromStandby = await fetchStandbyRun();
+          if (alive) setStandbyRun(fromStandby);
         } catch {
-          // The restart gap. Ask the door that stays open, and if that is unreachable too, say
-          // nothing and look again in a moment.
-          try {
-            const fromStandby = await fetchStandbyRun();
-            if (alive) setStandbyRun(fromStandby);
-          } catch {
-            /* expected while the front door is down — never an error on screen */
-          }
+          /* expected — never an error on screen */
         }
       })();
-    }, RUN_POLL_MS);
+    }, STANDBY_POLL_MS);
     return () => {
       alive = false;
       clearInterval(timer);
@@ -307,6 +374,14 @@ export function UpdateCard() {
   // them — the tap cannot succeed — but a packaged install is its own condition rather than a
   // manufactured red, because NOTHING IS WRONG with it. Its preflight is green on purpose, and
   // painting the card red would report a fault that does not exist.
+  // THE PREFLIGHT HAS NOT ANSWERED YET, so nothing about this machine is known (M20/07). Measured on
+  // 2026-09-08: the button reported `disabled: false` for the whole ~1.16 s the read was out,
+  // because `blocked` reads `checked` and `checked` is false until it returns. A live button in that
+  // window is a button that can start an update no check has cleared. This is a THIRD state and not
+  // a fourth reason to be blocked: nothing is wrong here, the answer is simply still out, and the
+  // label says so rather than leaving a grey control with no account of itself.
+  const pending = !checked;
+  const summary = actionSummary(preflight, rows.length);
   const blocked = packageManaged || (checked && (preflight === null || redCheck !== undefined));
   // A REAL red check wins over the package-managed sentence, not the other way round. A packaged
   // install's own preflight is short and green BY DESIGN — but `doctor` and `service` still run on it
@@ -368,12 +443,146 @@ export function UpdateCard() {
         </div>
       </div>
 
+      {/* THE ACTION ROW SITS ABOVE EVERY ARRIVAL, AND THAT IS THE WHOLE POINT (M20/07).
+          Measured on 2026-09-08 at 390 x 844: with the row last, the peer census (57 px) and the
+          auto-opened Details (311 px) landed together at about 1.16 s and pushed the button 368 px
+          down the screen, straight out from under a thumb already on its way. With the confirm
+          open, its own Cancel rendered at y = 854 against an 844 px viewport.
+
+          Above the row is the version header, which has no async content at all, so the row's
+          position is a function of nothing that can arrive late. Below it is everything that can.
+
+          The sections stay INSIDE this card, so the fact that blocks a confirm is still readable
+          without moving to a second surface, which is the principle the old ordering comment argued
+          for. What that principle needs is the same card, not a place above the button, and the
+          one-line summary beside the button carries the deciding fact into the row itself. */}
+      {confirming !== null ? (
+        <div className="border-t border-border p-4">
+          <div className="text-sm font-medium">{confirmTitle(confirming)}</div>
+          <p className="mt-1 text-sm text-muted-foreground">{confirmBody(confirming, packageManaged)}</p>
+          <div className="mt-3 flex items-center gap-2">
+            <Button size="sm" disabled={moving} onClick={() => void begin(confirming)}>
+              {busy && <Loader2 className="size-4 animate-spin" />}
+              {confirmAction(confirming)}
+            </Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(null)}>
+              {t("settings.updateCard.cancel")}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        (action !== "none" || majorAvailable !== null) && (
+          <div className="flex flex-col gap-2 border-t border-border p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* THE action button. One of the three labels, never two of them, and the label
+                  states what the tap will actually do: level this machine, level the pack, or
+                  run the peers again once this machine is already current. */}
+              {/* On a packaged install the command REPLACES the button rather than greying it
+                  out: a disabled control is a thing to try again, and there is nothing here to
+                  try. "Retry pack update" survives, because levelling the peers is a different
+                  act that works fine from a lead that cannot move itself. */}
+              {packageCommand !== null && (
+                <code className="select-all rounded bg-muted px-2 py-1 font-mono text-xs">{packageCommand}</code>
+              )}
+              {action !== "none" && !(packageManaged && action !== "retry-pack") && (
+                <Button
+                  size="sm"
+                  disabled={moving || pending || (blocked && action !== "retry-pack")}
+                  onClick={() =>
+                    setConfirming(
+                      action === "retry-pack"
+                        ? { kind: "retry", version: current, major: false, peersOnly: true }
+                        : {
+                            kind: action === "update-pack" ? "pack" : "single",
+                            version: latest ?? current,
+                            major: false,
+                            peersOnly: false,
+                          },
+                    )
+                  }
+                >
+                  {pending && <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin" />}
+                  {pending ? t("settings.updateCard.checking") : packActionLabel(action, latest ?? current)}
+                </Button>
+              )}
+              {/* NOT a second update action: crossing a major is its own consent (ADR 0020),
+                  the one thing the button above will never take. It appears only when a major
+                  is actually waiting, which is rare, and it says "Cross", not "Update". */}
+              {majorAvailable !== null && !packageManaged && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={moving || pending || blocked}
+                  onClick={() =>
+                    setConfirming({
+                      kind: "major",
+                      version: majorAvailable,
+                      major: true,
+                      peersOnly: false,
+                    })
+                  }
+                >
+                  {t("settings.updateCard.majorAction", { version: majorAvailable })}
+                </Button>
+              )}
+              {/* The dismiss is not an action on the update, it is a courtesy about the digest
+                  push — and there is nothing to snooze once this machine is already current, so
+                  a retry-only state grows no ghost row. */}
+              {!dismissed && updateAvailable && (
+                <Button variant="ghost" size="sm" disabled={moving} onClick={() => void dismiss()}>
+                  {t("settings.updateCard.dismiss")}
+                </Button>
+              )}
+              {/* The deciding fact, in the row that carries the tap. `ml-auto` so it settles to the
+                  trailing edge and the buttons keep the leading one, and it wraps under them rather
+                  than squeezing a button on a narrow phone. */}
+              {summary !== null && (
+                <span className="ml-auto text-xs text-muted-foreground">{summary}</span>
+              )}
+            </div>
+            {/* The red's OWN reason, in place of a generic "unavailable" — a red preflight has to
+                be legible without leaving the phone.
+
+                Printed even under a peers-only button, which is not disabled: the sentence says
+                why THIS machine is not moving, and that is exactly the question a "Retry pack
+                update" offered to a lead with a release waiting raises. Suppressing it there was
+                how a packaged lead ended up with a button and no account of itself. */}
+            {/* NOT while the card is inert. The sentence explains why a tap would not
+                succeed, and there is no tap to explain while one is already running — and
+                during the restart gap the preflight read fails BECAUSE the bridge is down, so
+                printing "the preflight couldn't be run" there draws the outage this card exists
+                not to draw. */}
+            {blocked && !moving && <p className="text-xs text-status-blocked">{blockedReason}</p>}
+            {/* A DISABLED BUTTON MUST NOT BE SILENT. `running` has the run section above to
+                narrate it; the gap before the first record had nothing, so the button simply
+                went grey and stayed grey with no account of itself. */}
+            {started && (
+              <p className="flex items-center gap-1.5 text-xs text-status-working">
+                <Loader2 aria-hidden="true" className="size-3 shrink-0 animate-spin" />
+                {startSlow
+                  ? t("settings.updateCard.startingSlow")
+                  : t("settings.updateCard.starting")}
+              </p>
+            )}
+            {dismissed && <p className="text-xs text-muted-foreground">{t("settings.updateCard.dismissed")}</p>}
+            {majorAvailable !== null && (
+              <p className="text-xs text-muted-foreground">
+                {t("settings.updateCard.majorNote", { version: majorAvailable })}
+              </p>
+            )}
+          </div>
+        )
+      )}
+
       {/* EVERY ARRIVAL ON THIS CARD IS A `Collapse` (DESIGN.md §7, hard rule 1). The three sections
           below are all async: the run record lands on a poll, and the peer lines and the preflight
           land together when `GET /api/update/check` answers — which is a `doctor` and a `git`
-          away, so it is a second or two AFTER the card first paints. Mounted bare, each of them
-          teleported the action row down the screen while the operator's thumb was already on the
-          way to it. Wrapped, the row glides. */}
+          away, so it is a second or two AFTER the card first paints.
+
+          They now sit BELOW the action row, so their growth pushes the bottom of the card rather
+          than the only control on it. Each still wears the `Collapse`: the row above is fixed
+          either way, and a section that snapped open would still jump the page under a reader who
+          is looking at the section. */}
       <Collapse open={run !== undefined && run.state !== "idle"}>
         {run !== undefined && run.state !== "idle" ? (
           <RunSection
@@ -395,129 +604,33 @@ export function UpdateCard() {
       {/* The pack, as lines in this card. Drawn whether or not a run is in flight — a peer going
           quiet is exactly what the operator opened this page to see. On a solo install there is
           nothing here and the card grows no height at all. */}
-      <Collapse open={rows.length > 0}>{rows.length > 0 ? <PeerSection rows={rows} /> : null}</Collapse>
+      <Collapse open={rows.length > 0}>
+        {rows.length > 0 ? (
+          <PeerSection
+            rows={rows}
+            now={Date.now()}
+            failed={reading.failed}
+            // Past the patience window the page says the thing the band has no room for. The band
+            // names the elapsed time in forty characters; the sentence that makes the wait bearable
+            // belongs where a tap on that band lands (M20/04).
+            slow={reading.slow}
+            // RETRY NOW IS NOT A SECOND DIALLER (M20/04). It opens the same peers-only confirm the
+            // pack-wide retry opens, which begins a run and re-sweeps. Spec 01's urgency rule then
+            // dials every member with an open leg on every sweep, whatever backoff it was on, so the
+            // member is due without this browser clearing anything. Spec 02's reset is reserved for
+            // the pack link's own two-factor admission, and a browser is not that.
+            onRetry={() => setConfirming({ kind: "retry", version: current, major: false, peersOnly: true })}
+          />
+        ) : null}
+      </Collapse>
 
-      {/* THE ACTION ROW STAYS PUT FOR THE WHOLE RUN. It used to unmount the moment a record
-          appeared, which is the same fault as the arrivals above wearing the opposite sign: the
-          card collapsed under the thumb at the one moment the operator was watching it. It is
-          DISABLED instead — `moving` covers the tap, the gap before the first record, and the run
-          itself, so there is no window in which the button can be pressed twice. */}
+      {/* The preflight in full, under the row its one-line summary already reports into. */}
       <Collapse open={preflight !== null && preflight.checks.length > 0}>
         {preflight !== null && preflight.checks.length > 0 ? (
           <PreflightSection preflight={preflight} updateAvailable={updateAvailable} />
         ) : null}
       </Collapse>
 
-      {confirming !== null ? (
-            <div className="border-t border-border p-4">
-              <div className="text-sm font-medium">{confirmTitle(confirming)}</div>
-              <p className="mt-1 text-sm text-muted-foreground">{confirmBody(confirming, packageManaged)}</p>
-              <div className="mt-3 flex items-center gap-2">
-                <Button size="sm" disabled={moving} onClick={() => void begin(confirming)}>
-                  {busy && <Loader2 className="size-4 animate-spin" />}
-                  {confirmAction(confirming)}
-                </Button>
-                <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(null)}>
-                  {t("settings.updateCard.cancel")}
-                </Button>
-              </div>
-            </div>
-          ) : (
-            (action !== "none" || majorAvailable !== null) && (
-              <div className="flex flex-col gap-2 border-t border-border p-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  {/* THE action button. One of the three labels, never two of them, and the label
-                      states what the tap will actually do: level this machine, level the pack, or
-                      run the peers again once this machine is already current. */}
-                  {/* On a packaged install the command REPLACES the button rather than greying it
-                      out: a disabled control is a thing to try again, and there is nothing here to
-                      try. "Retry pack update" survives, because levelling the peers is a different
-                      act that works fine from a lead that cannot move itself. */}
-                  {packageCommand !== null && (
-                    <code className="select-all rounded bg-muted px-2 py-1 font-mono text-xs">{packageCommand}</code>
-                  )}
-                  {action !== "none" && !(packageManaged && action !== "retry-pack") && (
-                    <Button
-                      size="sm"
-                      disabled={moving || (blocked && action !== "retry-pack")}
-                      onClick={() =>
-                        setConfirming(
-                          action === "retry-pack"
-                            ? { kind: "retry", version: current, major: false, peersOnly: true }
-                            : {
-                                kind: action === "update-pack" ? "pack" : "single",
-                                version: latest ?? current,
-                                major: false,
-                                peersOnly: false,
-                              },
-                        )
-                      }
-                    >
-                      {packActionLabel(action, latest ?? current)}
-                    </Button>
-                  )}
-                  {/* NOT a second update action: crossing a major is its own consent (ADR 0020),
-                      the one thing the button above will never take. It appears only when a major
-                      is actually waiting, which is rare, and it says "Cross", not "Update". */}
-                  {majorAvailable !== null && !packageManaged && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={moving || blocked}
-                      onClick={() =>
-                        setConfirming({
-                          kind: "major",
-                          version: majorAvailable,
-                          major: true,
-                          peersOnly: false,
-                        })
-                      }
-                    >
-                      {t("settings.updateCard.majorAction", { version: majorAvailable })}
-                    </Button>
-                  )}
-                  {/* The dismiss is not an action on the update, it is a courtesy about the digest
-                      push — and there is nothing to snooze once this machine is already current, so
-                      a retry-only state grows no ghost row. */}
-                  {!dismissed && updateAvailable && (
-                    <Button variant="ghost" size="sm" disabled={moving} onClick={() => void dismiss()}>
-                      {t("settings.updateCard.dismiss")}
-                    </Button>
-                  )}
-                </div>
-                {/* The red's OWN reason, in place of a generic "unavailable" — a red preflight has to
-                    be legible without leaving the phone.
-
-                    Printed even under a peers-only button, which is not disabled: the sentence says
-                    why THIS machine is not moving, and that is exactly the question a "Retry pack
-                    update" offered to a lead with a release waiting raises. Suppressing it there was
-                    how a packaged lead ended up with a button and no account of itself. */}
-                {/* NOT while the card is inert. The sentence explains why a tap would not
-                    succeed, and there is no tap to explain while one is already running — and
-                    during the restart gap the preflight read fails BECAUSE the bridge is down, so
-                    printing "the preflight couldn't be run" there draws the outage this card exists
-                    not to draw. */}
-                {blocked && !moving && <p className="text-xs text-status-blocked">{blockedReason}</p>}
-                {/* A DISABLED BUTTON MUST NOT BE SILENT. `running` has the run section above to
-                    narrate it; the gap before the first record had nothing, so the button simply
-                    went grey and stayed grey with no account of itself. */}
-                {started && (
-                  <p className="flex items-center gap-1.5 text-xs text-status-working">
-                    <Loader2 aria-hidden="true" className="size-3 shrink-0 animate-spin" />
-                    {startSlow
-                      ? t("settings.updateCard.startingSlow")
-                      : t("settings.updateCard.starting")}
-                  </p>
-                )}
-                {dismissed && <p className="text-xs text-muted-foreground">{t("settings.updateCard.dismissed")}</p>}
-                {majorAvailable !== null && (
-                  <p className="text-xs text-muted-foreground">
-                    {t("settings.updateCard.majorNote", { version: majorAvailable })}
-                  </p>
-                )}
-              </div>
-            )
-          )}
 
       {error !== null && <p className="border-t border-border px-4 py-2.5 text-xs text-status-blocked">{error}</p>}
     </Card>
@@ -575,7 +688,21 @@ function confirmAction(ask: Confirm): string {
  * unknown or a leg that failed. Each is dated from the stamp its source carried, so a six-hour-old
  * green and a four-second-old green are told apart.
  */
-function PeerSection({ rows }: { rows: PeerRow[] }) {
+function PeerSection({
+  rows,
+  now,
+  failed,
+  slow,
+  onRetry,
+}: {
+  rows: PeerRow[];
+  now: number;
+  /** The leg that went wrong, or null. The card names it in the same words the band does. */
+  failed: UpdatePeerLeg | null;
+  /** The run has passed the patience window, so the page says waiting is the whole job. */
+  slow: boolean;
+  onRetry: () => void;
+}) {
   return (
     <div className="border-t border-border px-4 py-3">
       <ul aria-label={t("settings.updateCard.peers.label")} className="space-y-1.5">
@@ -596,13 +723,40 @@ function PeerSection({ rows }: { rows: PeerRow[] }) {
                 {row.version ?? t("settings.updateCard.peer.versionUnknown")}
                 {" · "}
                 {row.word}
-                {row.asOf !== null && ` · ${t("settings.updateCard.peer.asOf", { ago: timeAgoShort(row.asOf) })}`}
+                {/* A MOVING ROW COUNTS, IT DOES NOT REPORT A CHECK (M20/04). Both readings come off
+                    the same stamp, the leg's own `updatedAt` as that machine reported it, but "for
+                    3 min" is the sentence an operator watching a run needs and "checked 3 min ago"
+                    is the one they need about a machine that is standing still. */}
+                {row.asOf !== null &&
+                  (row.inFlight
+                    ? ` · ${t("settings.updateCard.peer.movingFor", { elapsed: minutesWord(now - row.asOf) })}`
+                    : ` · ${t("settings.updateCard.peer.asOf", { ago: timeAgoShort(row.asOf) })}`)}
               </span>
               {row.reason !== null && <span className="block text-status-blocked">{row.reason}</span>}
             </span>
           </li>
         ))}
       </ul>
+      {slow && failed === null && (
+        <p className="mt-2 text-xs text-muted-foreground">{t("settings.updateCard.packPatience")}</p>
+      )}
+      {/* THE SAME SENTENCE THE BAND SHOWS, in the same words (M20/04). The row above already carries
+          the state and the reason, but an operator who arrived from the band must find what the band
+          said, and a page that rephrases it reads as a second, different fact. */}
+      {failed !== null && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-border pt-2">
+          <p className="min-w-0 flex-1 text-xs text-status-blocked">
+            {t("updateRibbon.peerFailed", {
+              name: failed.name,
+              reason: failed.reason ?? t("settings.updateCard.peer.unknownReason"),
+            })}
+          </p>
+          <Button variant="outline" size="sm" onClick={onRetry}>
+            <RotateCcw className="size-4" />
+            {t("settings.updateCard.retryNow")}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
@@ -636,6 +790,24 @@ function preflightSummary(checks: PreflightCheck[]): string {
   const parts: string[] = [];
   if (red > 0) parts.push(tn("settings.updateCard.summary.red", red));
   if (amber > 0) parts.push(tn("settings.updateCard.summary.amber", amber));
+  return parts.join(" · ");
+}
+
+/**
+ * The one line that rides BESIDE the action button: what the preflight found, and how many peers the
+ * tap will move (M20/07).
+ *
+ * The detail moved below the button when the row moved above it. The fact that decides the tap did
+ * not: "1 amber · 1 peer" is the whole of what an operator needs before pressing, and it is readable
+ * without scrolling past a section that is 311 px tall on a phone.
+ *
+ * `null` while the preflight is still out, because a summary of nothing is a claim about a machine
+ * nobody has checked. The pending label on the button is what speaks in that window.
+ */
+function actionSummary(preflight: PreflightReport | null, peers: number): string | null {
+  if (preflight === null) return null;
+  const parts = [preflightSummary(preflight.checks)];
+  if (peers > 0) parts.push(tn("settings.updateCard.summary.peers", peers));
   return parts.join(" · ");
 }
 
@@ -712,9 +884,17 @@ function PreflightSection({
  * progress state that looked like a failure state would be read as one.
  */
 function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
-  const inFlight = IN_FLIGHT.has(run.state);
+  const inFlight = runInFlight(run);
   const version = run.to ?? run.from ?? "";
   const still = run.from ?? "";
+  const now = useTick(inFlight);
+  // Off the run's OWN start stamp, which the host wrote, so the number is the run's age and not this
+  // tab's age. A phone opened mid-run joins the count where the run actually is.
+  const elapsed = run.startedAt > 0 ? Math.max(0, now - run.startedAt) : null;
+  // The restart is timed from the transition into it, not from the run's start: a slow build before
+  // it must not spend the restart's patience. `updatedAt` is the stamp of the current state.
+  const restartOver =
+    run.state === "restarting" && run.updatedAt > 0 && now - run.updatedAt >= RESTART_BOUND_MS;
 
   return (
     <div className="border-t border-border px-4 py-3">
@@ -728,8 +908,36 @@ function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
         role="status"
       >
         {inFlight && <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" />}
-        <span className="min-w-0">{stateLine(run, version, still)}</span>
+        <span className="min-w-0">{stateLine(run, version, still, restartOver)}</span>
       </div>
+
+      {/* PROOF OF LIFE, and the cheapest there is (M20/08). Four sentences over several minutes said
+          what was happening and never where in the run the operator was, or for how long. The marks
+          answer the first, the counter answers the second, and the counter keeps moving through the
+          restart, when every poll fails and it is the only thing on screen that can. */}
+      {inFlight && (
+        <div className="mt-2 flex items-center gap-2">
+          <div className="flex items-center gap-1" role="presentation">
+            {RUN_PHASES.map((phase, index) => (
+              <span
+                key={phase}
+                aria-hidden="true"
+                className={cn(
+                  "h-1 w-5 rounded-full",
+                  index <= RUN_PHASES.indexOf(run.state) ? "bg-status-working" : "bg-muted",
+                )}
+              />
+            ))}
+          </div>
+          <span className="text-xs tabular-nums text-muted-foreground">
+            {t("settings.updateCard.phaseOf", {
+              step: String(RUN_PHASES.indexOf(run.state) + 1),
+              total: String(RUN_PHASES.length),
+            })}
+            {elapsed !== null && ` · ${clockOf(elapsed)}`}
+          </span>
+        </div>
+      )}
 
       {inFlight && (
         <p className="mt-1 text-xs text-muted-foreground">{t("settings.updateCard.progressNote")}</p>
@@ -756,15 +964,26 @@ function RunSection({ run, onRetry }: { run: UpdateRun; onRetry: () => void }) {
   );
 }
 
+/** `m:ss`, ticking. Monospaced digits at the call site, so the row does not jitter every second. */
+function clockOf(ms: number): string {
+  const total = Math.floor(ms / 1000);
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
 /** The sentence for a run's state. Every state has one — a state with no line reads as a hang. */
-function stateLine(run: UpdateRun, version: string, still: string): string {
+function stateLine(run: UpdateRun, version: string, still: string, restartOver = false): string {
   switch (run.state) {
     case "preflight":
       return t("settings.updateCard.state.preflight");
     case "staging":
       return t("settings.updateCard.state.staging", { version });
     case "restarting":
-      return t("settings.updateCard.state.restarting");
+      // "THIS IS NOT AN OUTAGE" MUST NOT SURVIVE BECOMING ONE (M20/08). Past the bound the screen
+      // stops reassuring and starts saying what to check. A sentence the operator can see is wrong
+      // costs more than the silence it replaced.
+      return restartOver
+        ? t("settings.updateCard.state.restartingSlow")
+        : t("settings.updateCard.state.restarting");
     case "verifying":
       return t("settings.updateCard.state.verifying");
     case "done":

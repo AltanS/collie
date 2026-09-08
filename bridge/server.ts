@@ -27,6 +27,7 @@ import { herdTagFor, type SessionRegistry, type SessionRuntime, widenedPanes } f
 import type { Snooze } from "./snooze.ts";
 import { IMAGE_EXTS, TEXT_EXTS, TEXT_SNIFF_BYTES, uploadExt } from "./uploads.ts";
 import type { UpdateMonitor } from "./update.ts";
+import { readStagingLog } from "./staging-log.ts";
 import {
   parseUpdateStartRequest,
   updateStartVerdict,
@@ -75,6 +76,7 @@ import type {
   PaneWire,
   SnapshotResponse,
   SttCapability,
+  UpdateStatus,
   UploadCapability,
   UploadResponse,
 } from "./types.ts";
@@ -963,10 +965,55 @@ export function startServer(opts: {
    * bridge with no run in flight send precisely today's object.
    */
   function updateStatusWithPeers() {
-    const status = updateMonitor.status();
+    const status = withStagingTail(updateMonitor.status());
     const legs = opts.packLead?.updatePeers() ?? [];
-    if (status.run === undefined || status.run === null || legs.length === 0) return status;
-    return { ...status, run: { ...status.run, peers: legs } };
+    if (legs.length === 0) return status;
+    // §20's one clock (M20/01). Omitted while the run is still moving, so "absent" keeps meaning
+    // "not settled" on a phone talking to a bridge that predates the field.
+    const settledAt = opts.packLead?.updateSettledAt() ?? null;
+    const packState = settledAt === null ? { peers: legs } : { peers: legs, settledAt };
+    // A PEERS-ONLY RUN IS STILL A RUN (M20/09). "Retry pack update" never calls the updater on this
+    // machine — it begins the turn queue and re-sweeps — so nothing is written to `update.json` and
+    // `status.run` is null for the whole run. The old guard dropped the live legs on exactly that
+    // path, and the phone then had no way to learn the run had started, let alone finished.
+    //
+    // The legs ride the RUN when there is one and the STATUS when there is not. Two positions, one
+    // reader: `peerLegsOf` in `web/src/lib/update-ribbon.ts` is where both surfaces ask. Sending
+    // them at the top level unconditionally would be a second copy of a field already shipped on
+    // `run`, and a phone older than this change would then have two places to disagree about.
+    if (status.run === undefined || status.run === null) return { ...status, ...packState };
+    // AND THEY RIDE THEIR OWN RUN, NEVER THE NEXT ONE. The legs outlive the run that made them, so
+    // the outcome stays on the screen the operator confirmed on — which means a later run would
+    // otherwise carry the previous run's peer rows, and its failures, as if they were its own.
+    //
+    // They are not DROPPED when they belong to a different run, they fall to the top level, which is
+    // the position for legs this machine's record does not own. Dropping them was the first shape of
+    // this guard and it re-opened spec 09 on the commonest path there is: a local update leaves a
+    // `done` record behind, the operator then taps "Retry pack update", and that peers-only run has
+    // a different run id and no record of its own. The legs would be discarded for the whole run and
+    // the phone would learn nothing, which is the very bug this composer exists to fix.
+    if (opts.packLead?.updateLegsRun() !== status.run.runId) return { ...status, ...packState };
+    return { ...status, run: { ...status.run, ...packState } };
+  }
+
+  /**
+   * The staging progress file, folded into the run record it belongs to (M20/10).
+   *
+   * ONE OBJECT ON THE WIRE. The client is given no second channel to poll and no route to tail: a
+   * second client-visible source about one run is a second thing that can disagree with the run
+   * record, which is the fault the composer above was written to avoid. So the tail rides `logTail`,
+   * the field the card already renders under "Log tail".
+   *
+   * Only while STAGING, and only when the run carries no tail of its own. A failure's tail is the
+   * service log, which is the more useful document at that point and must not be overwritten by the
+   * build output that preceded it.
+   */
+  function withStagingTail(status: UpdateStatus): UpdateStatus {
+    const run = status.run;
+    if (run === undefined || run.state !== "staging" || run.logTail !== undefined) return status;
+    if (run.runId === undefined) return status;
+    const tail = readStagingLog(cfg.stateDir, run.runId);
+    return tail === null ? status : { ...status, run: { ...run, logTail: tail } };
   }
 
   const server = Bun.serve({

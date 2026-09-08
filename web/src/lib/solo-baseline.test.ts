@@ -140,6 +140,11 @@ const UPDATE_INFO_KEYS = {
   // band is read next. Optional here: a bridge older than the fields sends neither.
   dismissedVersion: true,
   dismissedPackVersion: true,
+  // The peer legs of a run this machine has no record of, and that run's settle stamp (M20/09,
+  // M20/01). Both optional and both ABSENT on a solo install: a machine with no pack has no legs,
+  // so the solo payload is byte-identical to what it was.
+  peers: true,
+  settledAt: true,
 } satisfies Record<keyof UpdateInfo, true>;
 
 describe("solo zero-tax — the client's mirror types carry no pack dimension", () => {
@@ -221,11 +226,15 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
       // The package manager's own upgrade command (M17/02) — optional, present only on a packaged
       // install under a prefix Collie recognises.
       "packageCommand",
+      // The peers-only run's legs and its settle stamp (M20/09, M20/01). Optional, and a solo
+      // install never carries either.
+      "peers",
       "releaseAvailable",
       // The command that clears the restart, optional beside the flag that raises it (M17/02).
       "restartCommand",
       "restartNeeded",
       "run",
+      "settledAt",
     ]);
   });
 

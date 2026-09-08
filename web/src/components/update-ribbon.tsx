@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { ArrowUpCircle, Loader2, Package, TriangleAlert, X } from "lucide-react";
+import { ArrowUpCircle, Loader2, Package, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { useLocale } from "@/hooks/use-locale";
@@ -172,6 +172,13 @@ function skinOf(view: RibbonView) {
   // already uses, and a still icon. A spinner here would say the run is waiting on that machine.
   if (view.kind === "package-managed") {
     return { Icon: Package, spin: false, ...TINT.working } as const;
+  }
+  // A RELOAD IS NOT AN OFFER (M20/05). `updated` and `bundle` both say "the bundle on this screen is
+  // behind, reload it", and `ArrowUpCircle` is the universal mark for "a new version is available".
+  // Wearing it here made the operator read the band as a second offer, tap it expecting something to
+  // start, and see nothing start. Still, never spinning: nothing is in flight until the tap.
+  if (view.kind === "updated" || view.kind === "bundle") {
+    return { Icon: RefreshCw, spin: false, ...TINT.working } as const;
   }
   return { Icon: ArrowUpCircle, spin: false, ...TINT.working } as const;
 }

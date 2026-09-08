@@ -154,7 +154,7 @@ describe("update ribbon states — the row on screen", () => {
     ];
     await renderBand(info({ run: run("done", { peers }) }));
     expect(
-      screen.getByText("minibuch rolled back: health gate timed out. See Updates."),
+      screen.getByText("Could not update minibuch: health gate timed out. See Updates."),
     ).toBeInTheDocument();
     // No retry on the band: the retry is the Updates page's single action.
     expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
@@ -210,6 +210,36 @@ describe("restarting gap is not an outage — on screen", () => {
     expect(screen.getByText("Updating to 1.5.0. Restarting")).toBeInTheDocument();
     expect(band(container)?.className).toContain("bg-status-working/15");
     expect(band(container)?.className).not.toContain("status-blocked");
+  });
+});
+
+describe("a reload prompt does not look like an offer (M20/05)", () => {
+  /** The band's leading icon, by the class lucide stamps on every one of its svgs. */
+  function icon(container: HTMLElement): string | null {
+    const svg = band(container)?.querySelector("svg");
+    return svg === null || svg === undefined ? null : (svg.getAttribute("class")?.match(/lucide-[a-z-]+/)?.[0] ?? null);
+  }
+
+  it("an OFFER keeps the up-arrow: there is a new version, and a tap starts something", async () => {
+    const { container } = await renderBand(info());
+    expect(icon(container)).toBe("lucide-circle-arrow-up");
+  });
+
+  it("a stale BUNDLE asks for a reload, and wears the reload mark", async () => {
+    holdReload("an-open-composer-draft");
+    confirmStaleBundle();
+    const { container } = await renderBand(info({ releaseAvailable: false }));
+    expect(icon(container)).toBe("lucide-refresh-cw");
+  });
+
+  it("an UPDATED run asks for a reload too, and wears the same mark", async () => {
+    // The 2026-09-07 reading: the up-arrow here says "another new version", so the operator taps
+    // expecting an update to start and sees nothing start. The pack has already updated; what is
+    // left is this screen.
+    holdReload("an-open-composer-draft");
+    confirmStaleBundle();
+    const { container } = await renderBand(info({ run: run("done") }));
+    expect(icon(container)).toBe("lucide-refresh-cw");
   });
 });
 

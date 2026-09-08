@@ -6,6 +6,8 @@ import type { UpdateRun } from "../update-run.ts";
 import { UPDATE_RUN_SCHEMA } from "../update-run.ts";
 import {
   FOLLOW_ATTEMPT_INTERVAL_MS,
+  LEG_WALL_CLOCK_MS,
+  LEG_WALL_CLOCK_REASON,
   followDecision,
   followGuards,
   formatTurn,
@@ -242,6 +244,7 @@ describe("the follower spawns the one updater there is", () => {
     start?: (a: { tag: string; runId: string }) => { ok: true } | { ok: false; reason: string };
   } = {}) => {
     const started: { tag: string; runId: string }[] = [];
+    const lines: string[] = [];
     const f = new PackFollower({
       installKind: over.installKind ?? "detached-checkout",
       self: () => ({ version: over.own ?? "1.4.0", self: "attic" }),
@@ -254,8 +257,9 @@ describe("the follower spawns the one updater there is", () => {
           return { ok: true };
         }),
       now: () => NOW,
+      log: (line) => lines.push(line),
     });
-    return { f, started };
+    return { f, started, lines };
   };
 
   test("a granted turn on a green machine starts the updater once", async () => {
@@ -286,6 +290,70 @@ describe("the follower spawns the one updater there is", () => {
     const last = f.last();
     expect(last?.kind).toBe("refuse");
     expect(last?.kind === "refuse" && last.reason).toBe("install-is-packaged");
+  });
+
+  // ── The peer says why it is standing still (M20/11) ──────────────────────
+  // The rehearsal on the VM pack found the hole this closes: two peers refused to follow, said
+  // nothing, and the lead spent the whole twenty minute wall clock before failing them with a
+  // reason that names no cause.
+
+  test("a refusal puts its reason on this peer's own journal", async () => {
+    const { f, lines } = follower({ installKind: "packaged" });
+    f.observe({ leadRelease: "1.4.1", turn: formatTurn("attic", RUN_ID) });
+    expect(lines).toEqual([
+      "[pack] follow: not self-levelling (install-is-packaged) — updates come from this machine's package manager (ADR 0035)",
+    ]);
+  });
+
+  test("a refusal on a sweep whose turn names somebody else is not worth a line", async () => {
+    // Measured on the VM pack: keyed on the reason alone, the journal took roughly a line a second,
+    // because the reason flaps between `no-turn`, `lead-states-nothing` and the real one as the lead
+    // drops its release header mid-run and addresses one member at a time.
+    const { f, lines } = follower({ installKind: "packaged" });
+    for (let i = 0; i < 10; i += 1) f.observe({ leadRelease: "1.4.1", turn: formatTurn("basement", RUN_ID) });
+    for (let i = 0; i < 10; i += 1) f.observe({ leadRelease: null, turn: null });
+    expect(lines).toEqual([]);
+    // And the moment the turn does name this machine, the reason is on the journal.
+    f.observe({ leadRelease: "1.4.1", turn: formatTurn("attic", RUN_ID) });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("install-is-packaged");
+  });
+
+  test("the same refusal, sweep after sweep, is one line and not one per sweep", async () => {
+    const { f, lines } = follower({ own: "1.4.0-dev+ab12cd3" });
+    for (let i = 0; i < 20; i += 1) f.observe({ leadRelease: "1.4.1", turn: formatTurn("attic", RUN_ID) });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("own-build-not-a-release");
+  });
+
+  test("a refusal that changes its reason says so again", async () => {
+    let kind: FollowFacts["installKind"] = "packaged";
+    const lines: string[] = [];
+    const f = new PackFollower({
+      get installKind() {
+        return kind;
+      },
+      self: () => ({ version: "1.4.0-dev+ab12cd3", self: "attic" }),
+      run: () => null,
+      preflight: () => Promise.resolve(green),
+      start: () => ({ ok: true }),
+      now: () => NOW,
+      log: (line) => lines.push(line),
+    });
+    f.observe({ leadRelease: "1.4.1", turn: formatTurn("attic", RUN_ID) });
+    kind = "detached-checkout";
+    f.observe({ leadRelease: "1.4.1", turn: formatTurn("attic", RUN_ID) });
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain("install-is-packaged");
+    expect(lines[1]).toContain("own-build-not-a-release");
+  });
+
+  test("a follow names the tag and the run it belongs to", async () => {
+    const { f, lines } = follower();
+    f.observe({ leadRelease: "1.4.1", turn: formatTurn("attic", RUN_ID) });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(lines).toEqual([`[pack] follow: self-levelling to v1.4.1 (run ${RUN_ID.slice(0, 8)})`]);
   });
 
   test("an updater that will not start is recorded as a refusal rather than thrown", async () => {
@@ -481,10 +549,17 @@ describe("the lead's turn queue", () => {
     // `package-managed` takes the place of `waiting` and nothing else. A machine nobody has heard
     // from in three sweeps may be off, and "waits for its package manager" would be a calm sentence
     // about a peer that is not answering at all.
+    //
+    // `loft` is here to keep the RUN open. A run all of whose legs are terminal settles on the sweep
+    // that finds them so (M20/01), and `package-managed` is terminal — so a pack of one packaged
+    // member would correctly end before the third sweep, and never reach the case under test.
     const turns = new UpdateTurns(() => {});
     turns.begin(RUN_ID, "1.4.1");
     for (let i = 0; i < TURN_MISSED_SWEEPS; i += 1) {
-      turns.observe([member({ memberId: "attic", installKind: "packaged", answered: false })], NOW);
+      turns.observe(
+        [member({ memberId: "attic", installKind: "packaged", answered: false }), member({ memberId: "loft" })],
+        NOW,
+      );
     }
     const leg = turns.peerLegs().find((l) => l.name === "attic")!;
     expect(leg.state).toBe("unreachable");
@@ -519,16 +594,41 @@ describe("the lead's turn queue", () => {
     expect(turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("done");
   });
 
-  test("no run means no turn and no legs — a lead that has confirmed nothing states nothing", () => {
+  test("no run means no turn — a lead that has confirmed nothing states nothing", () => {
     const turns = new UpdateTurns(() => {});
     expect(turns.observe([member({ memberId: "attic" })], NOW).released).toBe(false);
     expect(turns.peerLegs()).toEqual([]);
     expect(turns.turnFor("attic")).toBeNull();
+  });
+
+  test("end() stops the queue and KEEPS the last run's legs; begin() is what clears them", () => {
+    // The split matters on the phone. The operator is looking at the page they confirmed on, and
+    // clearing the rows the instant the run ends would take the outcome off the screen at exactly
+    // the moment they earned it. A new run replaces them; nothing else does (M20/01).
+    const turns = new UpdateTurns(() => {});
     turns.begin(RUN_ID, "1.4.1");
     turns.observe([member({ memberId: "attic" })], NOW);
     turns.end();
-    expect(turns.peerLegs()).toEqual([]);
     expect(turns.turnFor("attic")).toBeNull();
+    expect(turns.peerLegs().map((l) => l.name)).toEqual(["attic"]);
+    turns.end(); // idempotent
+    expect(turns.peerLegs().map((l) => l.name)).toEqual(["attic"]);
+    turns.begin("run-two", "1.4.2");
+    expect(turns.peerLegs()).toEqual([]);
+  });
+
+  test("legs that outlive their run still NAME it, so a later run cannot wear them", () => {
+    // The composer attaches these rows to the run record on screen. Legs that survive `end` and
+    // forget which run made them are the previous run's peers, and its failures, presented under the
+    // next run's id (M20/01, after review).
+    const turns = new UpdateTurns(() => {});
+    expect(turns.legsRun()).toBeNull();
+    turns.begin(RUN_ID, "1.4.1");
+    turns.observe([member({ memberId: "attic" })], NOW);
+    turns.end();
+    expect(turns.legsRun()).toBe(RUN_ID);
+    turns.begin("run-two", "1.4.2");
+    expect(turns.legsRun()).toBe("run-two");
   });
 
   test("no second timer: the queue arms nothing and moves only when a sweep folds it", async () => {
@@ -687,5 +787,263 @@ describe("the turn queue names each leg change and the moment a run settles", ()
       "[pack] update r-abc: attic updating -> rolled-back (1.4.0)",
       "[pack] update r-abc: settled, 1 peer(s) done, 1 rolled-back",
     ]);
+  });
+});
+
+// ── A run always ends (M20/01) ───────────────────────────────────────────────
+//
+// The 2026-09-07 drill's run had every fact needed to close it and no code that could. Three holes
+// are pinned here: the schedule that could not see a live run, the leg that could wait forever, and
+// the settle that no production path ever called.
+
+describe("a run always ends, on its own, within a bounded time", () => {
+  const member = (over: Partial<TurnMember> & { memberId: string }): TurnMember => ({
+    enrolledAt: 1,
+    version: "1.4.0",
+    verdict: "green",
+    answered: true,
+    run: null,
+    ...over,
+  });
+
+  test("a member with an open leg is urgent; one with a terminal leg is not, and no run is not", () => {
+    const turns = new UpdateTurns(() => {});
+    // No run: nobody is urgent, so every peer keeps exactly the backoff it earned.
+    expect(turns.hasOpenLeg("attic")).toBe(false);
+    turns.begin(RUN_ID, "1.4.1");
+    // A member the run has never folded is urgent: the first sweep of a run must reach everybody,
+    // and a peer already sitting on the ten-minute step of the ladder is exactly the one it must
+    // reach. This is the drill's twelve and a half minutes, closed.
+    expect(turns.hasOpenLeg("attic")).toBe(true);
+    turns.observe([member({ memberId: "attic" }), member({ memberId: "basement", enrolledAt: 2 })], NOW);
+    expect(turns.hasOpenLeg("attic")).toBe(true);
+    turns.observe([member({ memberId: "attic", version: "1.4.1" }), member({ memberId: "basement", enrolledAt: 2 })], NOW);
+    expect(turns.hasOpenLeg("attic")).toBe(false);
+    expect(turns.hasOpenLeg("basement")).toBe(true);
+  });
+
+  test("a leg that has not changed state for the wall clock fails, and the run then settles", () => {
+    const journal: string[] = [];
+    const turns = new UpdateTurns((line) => journal.push(line));
+    turns.begin(RUN_ID, "1.4.1");
+    const moving = member({
+      memberId: "attic",
+      run: { runId: RUN_ID, state: "staging", to: "1.4.1", reason: null, updatedAt: NOW },
+    });
+    turns.observe([moving], NOW);
+    expect(turns.settledAt()).toBeNull();
+
+    // One tick short of the wall clock the leg is still open, and the run is still a run.
+    turns.observe([moving], NOW + LEG_WALL_CLOCK_MS - 1);
+    expect(turns.peerLegs()[0]?.state).toBe("updating");
+    expect(turns.settledAt()).toBeNull();
+
+    turns.observe([moving], NOW + LEG_WALL_CLOCK_MS);
+    const leg = turns.peerLegs()[0]!;
+    expect(leg.state).toBe("unreachable");
+    expect(leg.reason).toBe(LEG_WALL_CLOCK_REASON);
+    expect(turns.settledAt()).toBe(NOW + LEG_WALL_CLOCK_MS);
+    expect(journal.at(-1)).toContain("settled");
+    // And the queue is over: no turn is granted from here, whoever asks.
+    expect(turns.turnFor("attic")).toBeNull();
+  });
+
+  test("the wall clock reads each leg's OWN last change, not the run's start", () => {
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.4.1");
+    const staging = (at: number): TurnMember =>
+      member({ memberId: "attic", run: { runId: RUN_ID, state: "staging", to: "1.4.1", reason: null, updatedAt: at } });
+    turns.observe([member({ memberId: "attic" }), member({ memberId: "basement", enrolledAt: 2 })], NOW);
+    // `attic` moves from waiting to updating half way through the window, which restarts ITS clock
+    // and no other. A run's start would have failed both legs together.
+    const half = NOW + LEG_WALL_CLOCK_MS / 2;
+    turns.observe([staging(half), member({ memberId: "basement", enrolledAt: 2, version: "1.4.1" })], half);
+    turns.observe([staging(half), member({ memberId: "basement", enrolledAt: 2, version: "1.4.1" })], NOW + LEG_WALL_CLOCK_MS);
+    expect(turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("updating");
+    turns.observe([staging(half), member({ memberId: "basement", enrolledAt: 2, version: "1.4.1" })], half + LEG_WALL_CLOCK_MS);
+    expect(turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("unreachable");
+  });
+
+  test("a member merely QUEUED is not failed for a wait another member's build is spending", () => {
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.4.1");
+    // Two peers, and turns are serial: `attic` holds it and `basement` waits behind it. Answering
+    // every sweep on time is all `basement` can do, so the wall clock must not be its own.
+    const attic = (at: number): TurnMember =>
+      member({ memberId: "attic", run: { runId: RUN_ID, state: "staging", to: "1.4.1", reason: null, updatedAt: at } });
+    const basement = member({ memberId: "basement", enrolledAt: 2 });
+    turns.observe([member({ memberId: "attic" }), basement], NOW);
+    expect(turns.turnFor("attic")).not.toBeNull();
+
+    // `attic` grinds through the whole window and finishes at the last tick before it expires.
+    turns.observe([attic(NOW), basement], NOW + LEG_WALL_CLOCK_MS - 1);
+    const passed = NOW + LEG_WALL_CLOCK_MS - 1;
+    turns.observe([member({ memberId: "attic", version: "1.4.1" }), basement], passed);
+    // Nineteen minutes have gone by and `basement` has not been asked for anything yet. It is still
+    // waiting, and it now holds the turn.
+    expect(turns.peerLegs().find((l) => l.name === "basement")?.state).toBe("waiting");
+    expect(turns.turnFor("basement")).not.toBeNull();
+
+    // Its own clock starts at the GRANT, so it has the whole window from there.
+    turns.observe([member({ memberId: "attic", version: "1.4.1" }), basement], passed + LEG_WALL_CLOCK_MS - 1);
+    expect(turns.peerLegs().find((l) => l.name === "basement")?.state).toBe("waiting");
+    turns.observe([member({ memberId: "attic", version: "1.4.1" }), basement], passed + LEG_WALL_CLOCK_MS);
+    expect(turns.peerLegs().find((l) => l.name === "basement")?.state).toBe("unreachable");
+  });
+
+  test("a run where NOTHING moves still ends, even with no member holding the turn", () => {
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.4.1");
+    // An unknown verdict is never eligible, so this member never receives the turn. Without the
+    // run-level clock its leg would stay `waiting` for as long as the process lives.
+    const unchecked = member({ memberId: "attic", verdict: null });
+    turns.observe([unchecked], NOW);
+    expect(turns.turnFor("attic")).toBeNull();
+    turns.observe([unchecked], NOW + LEG_WALL_CLOCK_MS - 1);
+    expect(turns.settledAt()).toBeNull();
+    turns.observe([unchecked], NOW + LEG_WALL_CLOCK_MS);
+    expect(turns.peerLegs()[0]?.state).toBe("unreachable");
+    expect(turns.settledAt()).toBe(NOW + LEG_WALL_CLOCK_MS);
+  });
+
+  test("all legs terminal settles ONCE, stamps the clock, and ends the queue", () => {
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.4.1");
+    turns.observe([member({ memberId: "attic" })], NOW);
+    expect(turns.settledAt()).toBeNull();
+    expect(turns.current()).not.toBeNull();
+
+    turns.observe([member({ memberId: "attic", version: "1.4.1" })], NOW + 1000);
+    expect(turns.settledAt()).toBe(NOW + 1000);
+    // `end()` was called from a production path, which is what never happened before this spec.
+    expect(turns.current()).toBeNull();
+
+    // A later sweep re-settles nothing: the stamp is the moment it first stopped moving, and a
+    // clock that crept forward every tick would be a clock the band could never go quiet on.
+    turns.observe([member({ memberId: "attic", version: "1.4.1" })], NOW + 9000);
+    expect(turns.settledAt()).toBe(NOW + 1000);
+    // And the legs are still readable, so the page keeps the outcome the operator earned.
+    expect(turns.peerLegs().map((l) => l.state)).toEqual(["done"]);
+  });
+
+  test("a lead with no peers settles its run on the first sweep rather than holding it open", () => {
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.4.1");
+    expect(turns.settledAt()).toBeNull();
+    turns.observe([], NOW);
+    expect(turns.settledAt()).toBe(NOW);
+    expect(turns.current()).toBeNull();
+  });
+
+  test("a new run clears the last one's stamp and legs", () => {
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.4.1");
+    turns.observe([member({ memberId: "attic", version: "1.4.1" })], NOW);
+    expect(turns.settledAt()).toBe(NOW);
+    turns.begin("r-two", "1.4.2");
+    expect(turns.settledAt()).toBeNull();
+    expect(turns.peerLegs()).toEqual([]);
+  });
+});
+
+
+describe("every leg carries a clock the band can read", () => {
+  // M20/12. Found by the VM rehearsal: two peers sat on `waiting` for twenty minutes and the card
+  // never showed "No action needed, this finishes on its own", because that sentence is gated on an
+  // elapsed time the band reads off a leg stamp, and a queued leg carried none.
+  const member = (over: Partial<TurnMember> & { memberId: string }): TurnMember => ({
+    enrolledAt: 1,
+    version: "1.4.0",
+    verdict: "green",
+    answered: true,
+    run: null,
+    ...over,
+  });
+
+  test("a queued leg is stamped with the moment this lead first saw that state", () => {
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.4.1");
+    const held = member({ memberId: "attic" });
+    const queued = member({ memberId: "basement", enrolledAt: 2 });
+    turns.observe([held, queued], NOW);
+    turns.observe([held, queued], NOW + 90_000);
+    const leg = turns.peerLegs().find((l) => l.name === "basement");
+    expect(leg?.state).toBe("waiting");
+    expect(leg?.updatedAt).toBe(NOW);
+  });
+
+  test("the wall clock's own failure carries the moment it failed", () => {
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.4.1");
+    const moving = member({
+      memberId: "attic",
+      run: { runId: RUN_ID, state: "staging", to: "1.4.1", reason: null, updatedAt: NOW },
+    });
+    turns.observe([moving], NOW);
+    turns.observe([moving], NOW + LEG_WALL_CLOCK_MS);
+    const leg = turns.peerLegs()[0]!;
+    expect(leg.state).toBe("unreachable");
+    expect(leg.reason).toBe(LEG_WALL_CLOCK_REASON);
+    expect(leg.updatedAt).toBe(NOW + LEG_WALL_CLOCK_MS);
+  });
+});
+
+
+describe("a leg the wall clock failed stays failed", () => {
+  // M20/13, measured on the VM pack on 2026-09-08. The clock fired and the very next sweep undid it:
+  //   11:05:37  member waiting -> unreachable (no change for 20 minutes)
+  //   11:05:38  member unreachable -> waiting (1.7.1+0c7132b)
+  // `legOf` reads the member's facts, and a member that answers every sweep and never moves has the
+  // same facts a second later. The run was queued afresh, so it could not end.
+  const member = (over: Partial<TurnMember> & { memberId: string }): TurnMember => ({
+    enrolledAt: 1,
+    version: "1.4.0",
+    verdict: "green",
+    answered: true,
+    run: null,
+    ...over,
+  });
+
+  test("the sweep after the failure does not put the leg back to waiting", () => {
+    const journal: string[] = [];
+    const turns = new UpdateTurns((line) => journal.push(line));
+    turns.begin(RUN_ID, "1.4.1");
+    const stuck = member({ memberId: "attic" });
+    turns.observe([stuck], NOW);
+    turns.observe([stuck], NOW + LEG_WALL_CLOCK_MS);
+    expect(turns.peerLegs()[0]?.state).toBe("unreachable");
+    // The sweep one second later, with the member answering exactly as before.
+    turns.observe([stuck], NOW + LEG_WALL_CLOCK_MS + 1_000);
+    const leg = turns.peerLegs()[0]!;
+    expect(leg.state).toBe("unreachable");
+    expect(leg.reason).toBe(LEG_WALL_CLOCK_REASON);
+    expect(journal.filter((l) => l.includes("-> waiting"))).toHaveLength(1);
+  });
+
+  test("a one-peer run settles on the failure and stays settled", () => {
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.4.1");
+    const stuck = member({ memberId: "attic" });
+    turns.observe([stuck], NOW);
+    turns.observe([stuck], NOW + LEG_WALL_CLOCK_MS);
+    expect(turns.settledAt()).toBe(NOW + LEG_WALL_CLOCK_MS);
+    turns.observe([stuck], NOW + LEG_WALL_CLOCK_MS + 60_000);
+    expect(turns.settledAt()).toBe(NOW + LEG_WALL_CLOCK_MS);
+    expect(turns.hasOpenLeg("attic")).toBe(false);
+  });
+
+  test("a member that takes the build after all is read as done, not held on the old failure", () => {
+    // Two members, so the run is still open after the first one fails and the sweep still folds.
+    const turns = new UpdateTurns(() => {});
+    turns.begin(RUN_ID, "1.4.1");
+    const behind = member({ memberId: "basement", enrolledAt: 2 });
+    turns.observe([member({ memberId: "attic" }), behind], NOW);
+    turns.observe([member({ memberId: "attic" }), behind], NOW + LEG_WALL_CLOCK_MS);
+    expect(turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("unreachable");
+    turns.observe(
+      [member({ memberId: "attic", version: "1.4.1" }), behind],
+      NOW + LEG_WALL_CLOCK_MS + 1_000,
+    );
+    expect(turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("done");
   });
 });

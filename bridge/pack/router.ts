@@ -336,6 +336,20 @@ export interface PackRouterDeps {
    */
   readonly onLeadDialled?: (at: number) => void;
   /**
+   * **An admitted request from a member of THIS collie's roster just landed** (M20/02) — the lead's
+   * mirror of {@link PackRouterDeps.onLeadDialled}, and the evidence that any backoff this lead holds
+   * against that member is a guess about a machine that is plainly reachable.
+   *
+   * Fired here and nowhere else, which is what makes "admitted" mean the two `/pack/v1` factors and
+   * nothing weaker: it sits after `admitPackRequest` and after the deputy refusal, so a browser route
+   * cannot reach it by any spelling. Every admitted route counts, exactly as `onLeadDialled` counts a
+   * poll and a proxied read alike.
+   *
+   * A notification, never a control. It takes nothing back, it is not awaited, and the far side is
+   * forbidden to dial from it — the next sweep tick does that (`PackLead.noteAdmittedContact`).
+   */
+  readonly onMemberDialled?: (memberId: string) => void;
+  /**
    * The pinned lead was **identified and refused on the pack secret** — §8.4's rotation, seen from
    * the side that was dropped. Recorded so RFC §8.3's *stranded by a rotation* can be named rather
    * than mistaken for silence; see `lead-contact.ts`.
@@ -777,6 +791,11 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
     if (data !== null && data.lead !== null && verdict.member.memberId === data.lead.memberId) {
       deps.onLeadDialled?.(now());
     }
+
+    // M20/02, and the lead's half of the same receipt: a member of this collie's own roster spoke to
+    // it, so it is due. Stamped in the same place and for the same reason — after both factors and
+    // before any route runs, so a `leave`, a `hello` and a warrant delivery all count as contact.
+    deps.onMemberDialled?.(verdict.member.memberId);
 
     // §18.10, and it runs before dispatch because it is an answer about the CALLER rather than about
     // the route: a member that follows somebody else has nothing useful to say on any of them.

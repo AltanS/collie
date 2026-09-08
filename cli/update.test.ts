@@ -30,6 +30,7 @@ import {
   scrubSecrets,
 } from "./update-run.ts";
 import { EXIT } from "./io.ts";
+import { stagingLogPath, tailOf } from "../bridge/staging-log.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { latestUpdateInMajor } from "../bridge/update.ts";
 import {
@@ -789,7 +790,8 @@ describe("update", () => {
     // found nothing to start turns from. So the record this CLI just wrote goes through the BRIDGE's
     // own parser and the BRIDGE's own predicate, and the pair it hands the turn queue is asserted
     // here. Either side moving alone fails this test, which is what the old arrangement could not do.
-    expect(packTurnStart(parseUpdateRun(written))).toEqual({ runId: "r-99", to: STAGED_TARGET });
+    // `at` is the record's own `updatedAt`, which is what ages the run on a restart (M20/01).
+    expect(packTurnStart(parseUpdateRun(written))).toEqual({ runId: "r-99", to: STAGED_TARGET, at: run.updatedAt });
   });
 
   test("a run started from a terminal is recorded with no id, never a blank one", async () => {
@@ -2209,5 +2211,149 @@ describe("cmdUpdate — a folder a package manager owns", () => {
     const deps = { ...h.deps, ctx: { ...h.deps.ctx, root: inHome } };
     expect(await cmdUpdate(deps)).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("cannot tell how this Collie was installed");
+  });
+});
+
+// ── Staging reports itself while it builds (M20/10) ─────────────────────────
+//
+// The fetch and the build are the longest window of an update and were the one window with nothing
+// on the wire: `handOff` wrote the first record AFTER they finished, so the phone showed "Starting…"
+// and then "Still starting. The host has not reported the run yet." over the part that takes the
+// time.
+
+describe("staging reports itself while it builds", () => {
+  const RUN = "r-staging";
+
+  test("a run record and a progress line exist BEFORE the build ends, on the binary path", async () => {
+    const h = binaryHarness({});
+    expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.OK);
+
+    // The record is written at the top of the window, not at the bottom. It is the SAME `staging`
+    // state the wire already carries, so no reader needs a new word — it simply arrives earlier.
+    const ops = h.files.ops.join("\n");
+    expect(ops).toContain(`${STATE}/update.json`);
+
+    const log = h.files.read(stagingLogPath(STATE, RUN));
+    expect(log).not.toBeNull();
+    // Whole lines, and the steps in the order they happened.
+    expect(log!.endsWith("\n")).toBe(true);
+    const lines = log!.trimEnd().split("\n");
+    expect(lines[0]).toContain("fetching");
+    expect(lines.some((l) => l.includes("unpacking"))).toBe(true);
+    expect(lines.some((l) => l.includes("runs here"))).toBe(true);
+
+    // And the bridge's own reader gets whole lines out of what the CLI just wrote. Both sides of the
+    // seam, in one assertion: a writer that changed shape would fail here rather than in production.
+    expect(tailOf(log!)).toBe(lines.join("\n"));
+  });
+
+  test("the progress file is written BEFORE any launcher runs, so no tier can miss it", async () => {
+    // The three-tier ladder — `systemd-run --user --collect`, then `setsid`, then a bare spawn —
+    // launches the RUNNER, after staging is over. Only the first tier has a journal, its unit name
+    // carries a stamp recorded nowhere, and `--collect` takes the unit away when it exits.
+    //
+    // So the progress file is not a launcher concern at all. It is written by the staging process
+    // itself, and this asserts the ordering that makes all three tiers one case: every write is on
+    // disk before anything is spawned. A test per tier would assert the same fact three times and
+    // still not say why.
+    const h = binaryHarness({ others: ["0.9.0"] });
+    expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.OK);
+    expect(h.files.read(stagingLogPath(STATE, RUN))).not.toBeNull();
+    // The path itself names no unit and no stamp — the two things a journal lookup would need and
+    // the two things this install cannot recover.
+    expect(stagingLogPath(STATE, RUN)).not.toContain("collie-api-update");
+
+    // The second tier, reached the way a container reaches it, writes the same file.
+    const noBus = binaryHarness({ answers: [["systemctl --user show-environment", { code: 1 }]] });
+    expect(await cmdUpdate(noBus.deps, ["--run-id", RUN])).toBe(EXIT.OK);
+    expect(noBus.exec.spawned[0]?.command[0]).toBe("setsid");
+    expect(noBus.files.read(stagingLogPath(STATE, RUN))).not.toBeNull();
+  });
+
+  test("a staging that gives up puts the record back to idle instead of leaving a live-looking run", async () => {
+    // The window opens at the FETCH, and the fetch is also the first thing that can fail. Every
+    // failure below that line returns an exit code and writes nothing more, so without an explicit
+    // close the record sits at `staging` until the staleness rule reports `interrupted` ten minutes
+    // later — about a process that exited cleanly with the real diagnosis already on the terminal.
+    // The phone reads that record as a live run and disables the button, so the retry is not on
+    // offer either. `abort` is the state machine's own word for it.
+    const h = binaryHarness({ manifest: null });
+    expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(run?.state).toBe("idle");
+    // `to` survives the abort, which is the proof the `staging` record was written before the fetch
+    // rather than never written at all.
+    expect(run?.to).toBe(NEW);
+    expect(run?.reason).toContain("staging");
+    // Nothing was launched, so nothing is coming later to correct the record.
+    expect(h.exec.spawned).toEqual([]);
+  });
+
+  test("a second update beside a live one writes nothing: `update.json` keeps one writer", async () => {
+    // `handOff` refuses a concurrent update, but it refuses at the END of staging — and this record
+    // is written at the START of it. Two processes writing one file is the rule the whole update
+    // wire rests on, so the lock is read before the window opens, not minutes after.
+    const h = binaryHarness({});
+    const at = 1_700_000_000_000;
+    const live = {
+      schema: UPDATE_RUN_SCHEMA,
+      state: "restarting",
+      from: "1.0.0",
+      to: NEW,
+      startedAt: at,
+      updatedAt: at,
+      pid: 999,
+      attempt: 0,
+    } as const;
+    h.files.write(RUN_FILE, JSON.stringify(live));
+    h.files.write(LOCK_FILE, JSON.stringify({ pid: 999, at }));
+    h.deps.exec.processCommand = (pid) => (pid === 999 ? "collie _apply-update" : null);
+
+    expect(await cmdUpdate(h.deps, ["--run-id", RUN])).toBe(EXIT.FAIL);
+    // The live run's record is exactly as its own updater left it.
+    expect(parseUpdateRun(h.files.read(RUN_FILE))).toEqual(live);
+    // And no progress file was written beside it, nor the live run's own file removed under it.
+    expect(h.files.ops.join("\n")).not.toContain("update-staging-");
+  });
+
+  test("a live run with no lock yet is still not written over: the lock alone does not cover the window", async () => {
+    // The lock is TAKEN at `handOff`, i.e. at the end of staging. So two updates started inside one
+    // staging window both read an unheld lock, and the lock check above lets both through. The
+    // record on disk is the other half of the same question: an in-flight state another live process
+    // wrote is that process's record, and `readUpdateRun` has already applied the staleness rule to
+    // it, so a crashed updater does not block a retry for ever.
+    //
+    // This narrows the window rather than closing it. Whichever process reaches `handOff` first takes
+    // the lock and the other is refused there, which is the pre-existing design and is unchanged.
+    const h = binaryHarness({});
+    const at = 1_700_000_000_000;
+    const live = {
+      schema: UPDATE_RUN_SCHEMA,
+      state: "staging",
+      from: "1.0.0",
+      to: NEW,
+      startedAt: at,
+      updatedAt: at,
+      pid: 999,
+      attempt: 0,
+    } as const;
+    h.files.write(RUN_FILE, JSON.stringify(live));
+    h.files.write(stagingLogPath(STATE, "r-live"), "fetching 1.2.3\n");
+    h.deps.exec.processCommand = (pid) => (pid === 999 ? "collie _apply-update" : null);
+    // No lock file at all — that is the whole point of this case.
+
+    await cmdUpdate(h.deps, ["--run-id", RUN]);
+    // This run opened no window: no progress file of its own, and the live run's file still there.
+    expect(h.files.read(stagingLogPath(STATE, RUN))).toBeNull();
+    expect(h.files.read(stagingLogPath(STATE, "r-live"))).not.toBeNull();
+  });
+
+  test("a run with no id writes no progress file, and stages exactly as before", async () => {
+    // An operator running `collie update` in a terminal has no run id, so there is no name to key a
+    // file to and nobody polling it. The record is still written early.
+    const h = binaryHarness({});
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.files.ops.join("\n")).not.toContain("update-staging-");
+    expect(JSON.parse(h.files.read(`${STATE}/update.json`) ?? "{}").state).toBe("staging");
   });
 });

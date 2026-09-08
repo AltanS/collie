@@ -187,6 +187,27 @@ export interface LinkWarmth {
 /** A link nothing is known about yet: cold, and owed its one patient attempt. */
 export const COLD_LINK: LinkWarmth = { warm: false, bootstrapSpent: false };
 
+/**
+ * How long a member may answer with NO `X-Pack-Protocol` header before the lead stops calling it
+ * merely unreachable and puts it on the incompatible ladder (§7, §10.2).
+ *
+ * A DURATION, and not a count of answers, on counsel of 2026-09-08. A count was written first and it
+ * measures the wrong thing. The lead's cadence moves between 1500 ms and 12 000 ms, and this same
+ * client also carries `hello`, the phone's proxied reads, warrant push and pairing push, so an
+ * operator with the phone open spends five answers in seven seconds while an idle lead takes a
+ * minute. The bound would then be tightest exactly when the operator is watching, which is the
+ * shape of the incident this milestone exists for. A restart takes the seconds it takes whatever
+ * anybody is polling at, so the bound is in seconds too.
+ *
+ * Sixty of them: enough for a service restart and a proxy reload, which is the case the patience is
+ * for. A peer being levelled is covered for longer than this by spec 01 anyway, since a member in a
+ * live run is dialled every sweep whatever ladder it is on. A stranger that never sends the header
+ * costs 240 tiny dials at the fastest legal cadence before it lands on the ladder.
+ *
+ * Lead-local. It is never on the wire, so moving it needs no protocol bump.
+ */
+export const HEADERLESS_PATIENCE_MS = 60_000;
+
 /** The budget for one data dial, and the warmth to remember while it is in flight. */
 export interface TakenBudget {
   readonly budgetMs: number;
@@ -473,7 +494,8 @@ export function packUrl(address: string, route: string, params?: Record<string, 
  * lead believes about peer X" lives in the registry (bridge/pack/registry.ts) and there is exactly one
  * place to look for it.
  *
- * The one thing it does remember is {@link LinkWarmth} — whether a dial to an address has ever
+ * It remembers two things, both small and both about the wire rather than the member. First,
+ * {@link LinkWarmth} — whether a dial to an address has ever
  * succeeded — because the budget for the NEXT request depends on whether a handshake has already been
  * paid for, and nothing outside this class knows that. It is transport bookkeeping, not state about a
  * member: it decides a timeout and never a verdict, it is never persisted, and losing it costs one
@@ -481,12 +503,27 @@ export function packUrl(address: string, route: string, params?: Record<string, 
  * (`collie reconnect`) is a different connection and correctly starts cold again. Bounded by the
  * roster, since an address only ever comes from the trust store.
  *
+ * Second, when a member's current run of answers carrying NO protocol header began, keyed by member
+ * id. That one does reach a verdict, which is why it is documented on the field itself, bounded by
+ * {@link HEADERLESS_PATIENCE_MS}, and dropped by {@link PeerClient.forget} when a member leaves.
+ *
  * Zero tax otherwise — constructing one arms nothing, and a solo lead never constructs one because it
  * has no peers to hand it.
  */
 export class PeerClient {
   private readonly now: () => number;
   private readonly warmth = new Map<string, LinkWarmth>();
+  /**
+   * When a member's current run of headerless answers STARTED, keyed by member id.
+   *
+   * This is the ONE memory here that reaches a verdict, and it is here rather than in the registry
+   * because it is a fact about the ANSWERS this client has read, not a belief about the member:
+   * nothing outside this class ever sees a header. It is never persisted, and losing it on a restart
+   * costs at most one more patient minute, which is the safe direction to fail in. Bounded by the
+   * roster, cleared by {@link PeerClient.forget} when a member leaves, and cleared by any answer that
+   * names a version. See {@link HEADERLESS_PATIENCE_MS}.
+   */
+  private readonly headerless = new Map<string, number>();
 
   constructor(private readonly deps: PeerClientDeps) {
     this.now = deps.now ?? Date.now;
@@ -809,17 +846,61 @@ export class PeerClient {
     // cannot read is a mismatch, not a parse error." Reading the body first would turn a v2 peer's
     // perfectly well-formed answer into a parse failure and hide the real cause.
     const received = parseProtocolHeader(res.headers.get(PROTOCOL_HEADER));
+    // An answer that NAMES a version tells us the peer is speaking, whatever it said. That ends any
+    // headerless run, so a peer that restarts behind a proxy starts from zero the next time.
+    if (received !== null) this.headerless.delete(link.memberId);
     if (received === null && res.status === 401) {
       // An unadmitted caller gets a bare 401 with NO version banner (§8.5, `unauthorizedResponse`).
       // That is the shape of a rotated secret or a dropped pin, and §10.2 files an auth failure under
       // `unreachable` — not `incompatible`, which would put it on the slow backoff and leave the
       // operator waiting ten minutes after fixing the very thing `pack status` told them to fix.
+      //
+      // It does NOT count as a headerless run. This branch already names the cause the operator can
+      // act on, and a run counted here would put a wrong secret on the ten minute ladder, which is
+      // the exact cost the branch above was written to avoid.
       return this.fail({ state: "unreachable", reason: `${route}: refused by the peer (unauthorized)` });
     }
-    if (received !== PACK_PROTOCOL_VERSION) {
+    if (received === null) {
+      // MISSING is not FOREIGN (§7). A missing header says we learned NOTHING about this peer's
+      // version: a proxy in front of a peer that is restarting, a 502 from a reverse proxy, a 404
+      // from a wrong path, a solo collie that answers no pack route at all (§11). None of them is a
+      // skew, and filing them as `incompatible` puts a peer that will be back in seconds on the
+      // 30/120/600 s ladder.
+      //
+      // The MECHANISM is proved on the dev pack, 2026-09-08: a peer's port fronted by a plain 200
+      // that carries no header made a 1.6.0 lead log `incompatible (snapshot: peer answered protocol
+      // none, this build speaks 1), next dial in 30s`, then `in 120s`. That reproduction is induced.
+      // It says what this branch does; it does NOT say this is what happened on 2026-09-07, and the
+      // spec keeps the competing story open. See `.tracker/M20-pack-keeps-sight/03-*.md` → Evidence.
+      //
+      // The rule is BOUNDED by {@link HEADERLESS_PATIENCE_MS}, in seconds and not in answers: past
+      // that the member falls onto the incompatible ladder, so a peer that is truly foreign is not
+      // dialled at the poll rate for ever.
+      const since = this.headerless.get(link.memberId) ?? this.now();
+      this.headerless.set(link.memberId, since);
+      const waited = this.now() - since;
+      if (waited < HEADERLESS_PATIENCE_MS) {
+        // The STATUS rides the reason: a 502 and a 503 are the same verdict and not the same story,
+        // and the operator is the one who can tell a proxy from a peer. So does the time already
+        // spent, once there is any, so the move onto the ladder is not a surprise when it comes.
+        const seconds = Math.floor(waited / 1000);
+        const plain = `${route}: peer answered ${res.status} with no pack protocol header`;
+        return this.fail({
+          state: "unreachable",
+          reason: seconds < 1 ? plain : `${plain}, ${seconds}s so far`,
+        });
+      }
       return this.fail({
         state: "incompatible",
-        reason: `${route}: peer answered protocol ${received ?? "none"}, this build speaks ${PACK_PROTOCOL_VERSION}`,
+        reason: `${route}: peer answered ${res.status} with no pack protocol header for over ${Math.round(HEADERLESS_PATIENCE_MS / 1000)}s, this build speaks ${PACK_PROTOCOL_VERSION}`,
+        expected: PACK_PROTOCOL_VERSION,
+        received: null,
+      });
+    }
+    if (received !== null && received !== PACK_PROTOCOL_VERSION) {
+      return this.fail({
+        state: "incompatible",
+        reason: `${route}: peer answered protocol ${received}, this build speaks ${PACK_PROTOCOL_VERSION}`,
         expected: PACK_PROTOCOL_VERSION,
         received,
       });
@@ -902,6 +983,20 @@ export class PeerClient {
     const taken = takeDataBudget(this.warmth.get(link.address) ?? COLD_LINK, this.deps.timeoutMs, patient);
     this.warmth.set(link.address, taken.next);
     return taken.budgetMs;
+  }
+
+  /**
+   * A member has left the roster: drop what this client remembers about it.
+   *
+   * Both maps are bounded by the ids and addresses this process has seen, so leaving them would be
+   * untidy rather than a leak. It is the VERDICT that makes this worth a call: a member pruned while
+   * its headerless run was nearly spent, then enrolled again under the same id, would inherit that
+   * run and land on the ladder on its first headerless answer. The lead calls this where it prunes
+   * its other per-member memory, so there is one place that forgets a member.
+   */
+  forget(memberId: string, address?: string): void {
+    this.headerless.delete(memberId);
+    if (address !== undefined) this.warmth.delete(address);
   }
 
   /** Remember whether this link's transport reached the far side. See {@link foldWarmth}. */

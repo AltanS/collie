@@ -12,7 +12,8 @@ import {
   parseReleaseManifest,
   parseTagsResponse,
 } from "../bridge/update.ts";
-import { STALE_AFTER_MS, type UpdateRun } from "../bridge/update-run.ts";
+import { STALE_AFTER_MS, inFlight, type UpdateRun } from "../bridge/update-run.ts";
+import { STAGING_LOG_LINES, STAGING_LOG_PREFIX, stagingLogPath } from "../bridge/staging-log.ts";
 import { manifestVersionFrom, readBuildInfo } from "../bridge/version.ts";
 import { type BuildDeps, cmdBuild } from "./build.ts";
 import { logFilePath, systemdUserReachable } from "./lifecycle.ts";
@@ -995,7 +996,7 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     deps.io.err("       Take a specific release with `git checkout v<version>` and rebuild.");
     return EXIT.FAIL;
   }
-  if (install.kind === "binary") return await updateBinary(deps, args);
+  if (install.kind === "binary") return await withStagingRecord(deps, () => updateBinary(deps, args));
   if (install.kind === "packaged") {
     // Not a failure to diagnose — a boundary to respect (ADR 0035). The sentence is the shared one
     // the preflight's `package` check and `doctor`'s install line print, so a reword reaches every
@@ -1016,7 +1017,7 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     deps.io.err("       with a `current` symlink beside it; see docs/install.md.");
     return EXIT.FAIL;
   }
-  if (staged && layout !== null) return await updateStagedCheckout(deps, layout, args);
+  if (staged && layout !== null) return await withStagingRecord(deps, () => updateStagedCheckout(deps, layout, args));
   // Read BEFORE the advance rewrites the manifest — this is the version being left behind, and it is
   // the only moment it is still on disk. `handOff`'s callers get theirs from the `versions/` layout;
   // an in-place checkout has no previous directory to name, so the manifest is the whole record of it.
@@ -1292,6 +1293,16 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
       : `updating Collie (binary install: ${target.tag} for ${platform})…`,
   );
 
+  // THE STAGING WINDOW OPENS HERE (M20/10), at the first step that costs time. Everything above is
+  // local: a version read, a tag list, a plan. Below it are two network round trips, an unpack and a
+  // smoke, and until this record existed the phone had nothing to say about any of them.
+  const progress = beginStaging(deps, {
+    from: currentVersionDir(deps, layout),
+    to: target.version,
+    runId: wantsRunId(args),
+  });
+  progress.note(`fetching ${target.version} for ${platform}`);
+
   // 5. The manifest, and this platform's artifact inside it.
   const manifestUrl = releaseAssetUrl(repo, target.tag, manifestAssetName(target.version));
   const manifestResponse = await deps.net.getJson(manifestUrl);
@@ -1340,6 +1351,7 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   }
 
   // 8. Lay down: extract, check the payload is whole, then ONE rename into `versions/<version>`.
+  progress.note(`unpacking ${artifact.name}`);
   const unpacked = join(layout.stagingDir, "x");
   deps.files.mkdirp(unpacked);
   const untar = deps.exec.capture("tar", ["-xzf", tarball, "-C", unpacked]);
@@ -1368,6 +1380,7 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   deps.files.removeTree(layout.stagingDir);
 
   // 9. Smoke BEFORE the flip: nothing the operator can see has moved yet.
+  progress.note(`checking that ${target.version} runs here`);
   if (!smoke(deps, laid, target.version)) {
     toTrash(deps, layout, target.version);
     deps.io.err(`error: ${target.version} did not run here (\`collie version\` failed before the swap).`);
@@ -1804,6 +1817,16 @@ async function updateStagedCheckout(
     deps.io.out(`  first staged update: ${layout.versionsDir} and ${layout.currentLink} are created now.`);
   }
 
+  // THE STAGING WINDOW OPENS HERE (M20/10), at the first step that costs time. The fetch, the
+  // worktree and the build are minutes on slow hardware, and until this record existed the phone had
+  // nothing to say about any of them but "Starting…".
+  const progress = beginStaging(deps, {
+    from: stagedCurrent(deps, layout)?.dir ?? null,
+    to: target.version,
+    runId: wantsRunId(args),
+  });
+  progress.note(`fetching ${target.tag}`);
+
   // 1. The tag, stored locally — a worktree is added from a ref, and the ref has to exist here.
   if (!fetchTag(deps, git, target.tag)) {
     deps.io.err(`error: update stopped at the FETCH stage — ${target.tag} could not be fetched.`);
@@ -1845,6 +1868,10 @@ async function updateStagedCheckout(
 
   // 3. The build, INSIDE the worktree and from the NEW source — the same handoff reason the in-place
   //    path re-execs for: the build logic that must run is the one that was just fetched.
+  //
+  // THE LONGEST STEP OF THE LONGEST WINDOW. Said out loud before it starts, because a minute of
+  // silence here is the minute that produced "Still starting. The host has not reported the run yet."
+  progress.note(`building ${target.tag} — this is the slow part`);
   const built = deps.exec.runIn(bun.path, [join(at, "cli", "main.ts"), "build"], at, dirname(bun.path));
   if (!built.found || built.code !== 0) {
     deps.io.err(`error: update stopped at the BUILD stage — ${target.tag} did not build.`);
@@ -1855,6 +1882,7 @@ async function updateStagedCheckout(
   }
 
   // 4. The marker, LAST — the evidence the flip demands.
+  progress.note(`${target.version} built, handing off to the runner`);
   writeBuildMarker(deps, at, { version: target.version, commit: target.commit });
 
   // 5. HAND OFF. The flip, the restart, the health gate and the one rollback all happen in the
@@ -2053,6 +2081,125 @@ function updateLockVerdict(deps: UpdateDeps): ReturnType<typeof lockVerdict> {
 /** The record on disk as of now, or null — the staleness rule applied through the process table. */
 function currentRun(deps: UpdateDeps): UpdateRun | null {
   return readRun(deps.files, deps.ctx.stateDir, deps.now(), (pid) => deps.exec.processCommand(pid) !== null);
+}
+
+/**
+ * Run one of the two staging arms, and close the record behind it if it did not hand off.
+ *
+ * `beginStaging` writes `staging` at the FIRST expensive step, which is the whole point of it — but
+ * every failure below that line (a fetch, a worktree, a build, a smoke) returns an exit code and
+ * writes nothing. Without this the record would sit at `staging` until the staleness rule caught it
+ * ten minutes later and reported `interrupted`, "the updater pid is gone", about a process that had
+ * exited cleanly with a diagnosis already on the operator's terminal. Worse, the phone reads that
+ * record as a live run and disables the button, so the retry is not offered either.
+ *
+ * `abort` is the state machine's own word for it: staging gave up, nothing had moved, the record
+ * goes back to `idle` carrying the reason.
+ */
+async function withStagingRecord(deps: UpdateDeps, arm: () => Promise<number>): Promise<number> {
+  const code = await arm();
+  if (code !== EXIT.OK) abandonStaging(deps);
+  return code;
+}
+
+/** Return this process's own `staging` record to `idle`. Another process's record is never touched. */
+function abandonStaging(deps: UpdateDeps): void {
+  try {
+    const run = currentRun(deps);
+    if (run === null || run.state !== "staging" || run.pid !== deps.pid) return;
+    writeRun(deps.files, deps.ctx.stateDir, reduce(run, { kind: "abort", reason: STAGING_GAVE_UP }, deps.now()));
+  } catch {
+    /* see `beginStaging`: nothing about the record may fail an update, and this one has failed already */
+  }
+}
+
+/** What an aborted staging record says. The terminal above it has already said which step and why. */
+const STAGING_GAVE_UP = "staging stopped before the new version was laid down";
+
+/**
+ * THE STAGING WINDOW, REPORTING ITSELF (M20/10).
+ *
+ * Two things start together and end together: a `staging` run record on disk, written BEFORE the
+ * fetch rather than after the build, and a progress file this recorder appends whole lines to.
+ * Between them the phone has a state to render and something in it that changes, over the one part
+ * of an update that actually takes a minute.
+ *
+ * `staging` is the existing state and not a new one. The wire already carries it, every reader
+ * already renders it as "Staging {version}…", and a seventh run state would be a word on the wire
+ * that no released phone knows for a window it already has a word for. It is simply written earlier
+ * than it used to be, which is what the operator was missing.
+ *
+ * NOTHING HERE MAY FAIL AN UPDATE. Every write is best-effort: a state directory that cannot be
+ * written is a progress file that does not exist, and a progress file that does not exist reads as
+ * "this bridge is older than the field" — exactly the absent-means-closed reading the rest of the
+ * update wire takes.
+ */
+interface StagingProgress {
+  /** Say what is happening now. One whole line, appended, bounded to the last few. */
+  note(line: string): void;
+}
+
+function beginStaging(deps: UpdateDeps, a: { from: string | null; to: string; runId: string | null }): StagingProgress {
+  const now = deps.now();
+  // THE LOCK IS READ FIRST. `handOff` refuses a second update, but it refuses at the END of staging,
+  // and this record is written at the start of it — so without this a terminal `collie update` run
+  // beside a live one would overwrite the live run's record, and its progress file, minutes before
+  // being told no. `update.json` has one writer at a time, and that is how it stays that way.
+  if (!updateLockVerdict(deps).ok) return { note: () => {} };
+  // AND A LIVE RECORD IS NOT OVERWRITTEN EITHER, which is the rest of that same question. The lock is
+  // taken at `handOff`, i.e. at the END of staging, so two updates started minutes apart inside one
+  // staging window both read an unheld lock and the check above lets both through. The record on
+  // disk closes the gap: an in-flight state that another process wrote is that process's record, and
+  // `readUpdateRun` has already applied the staleness rule to it, so a crashed updater's marker does
+  // not block a retry for ever. One writer at a time, which is the file's whole contract.
+  const live = currentRun(deps);
+  if (live !== null && live.pid !== deps.pid && inFlight(live.state)) return { note: () => {} };
+  // The record FIRST, so the phone has something to read from the first second. `handOff` writes the
+  // same state again when staging ends; `reduce` is a pure fold over the same events, so the second
+  // write is the same shape with a later `updatedAt` rather than a contradiction.
+  try {
+    writeRun(
+      deps.files,
+      deps.ctx.stateDir,
+      reduce(
+        reduce(idleRun(now), { kind: "begin", from: a.from, to: a.to, pid: deps.pid, runId: a.runId }, now),
+        { kind: "stage" },
+        now,
+      ),
+    );
+  } catch {
+    /* a record nobody could write is a record the phone reads as absent — never a failed update */
+  }
+  if (a.runId === null) return { note: () => {} };
+  const path = stagingLogPath(deps.ctx.stateDir, a.runId);
+  // The PREVIOUS run's file goes now, on the one tick that knows a new run has started. Keyed names
+  // already make a stale file unreadable as the current one; this is so they do not accumulate.
+  try {
+    for (const name of deps.files.list(deps.ctx.stateDir)) {
+      if (name.startsWith(STAGING_LOG_PREFIX) && join(deps.ctx.stateDir, name) !== path) {
+        deps.files.remove(join(deps.ctx.stateDir, name));
+      }
+    }
+  } catch {
+    /* best effort — a leftover file is untidy, never wrong */
+  }
+  // Held in memory and rewritten whole, which is what bounds the file and what guarantees it always
+  // ends on a line boundary. `Files` has `write` and no `append`, and adding one for this would be a
+  // new seam for every verb to carry for the sake of forty lines.
+  const kept: string[] = [];
+  return {
+    note(line) {
+      for (const part of line.split("\n")) {
+        if (part.trim() !== "") kept.push(part);
+      }
+      if (kept.length > STAGING_LOG_LINES) kept.splice(0, kept.length - STAGING_LOG_LINES);
+      try {
+        deps.files.write(path, `${kept.join("\n")}\n`, 0o600);
+      } catch {
+        /* see the header: never fail an update over a progress line */
+      }
+    },
+  };
 }
 
 /**

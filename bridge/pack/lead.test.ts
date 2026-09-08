@@ -4,14 +4,18 @@ import type { SnapshotResponse } from "../types.ts";
 import type { PeerPreflight } from "../update-action.ts";
 import { member, neverProxy } from "./fixtures.ts";
 import {
+  clearPeerBackoff,
+  CONTACT_RESET_FLOOR_MS,
   dueForProbe,
   foldPeerMemory,
   incompatibleBackoffMs,
   INCOMPATIBLE_BACKOFF_MS,
+  MAX_CONTACT_RESETS,
   PackLead,
   type PeerMemory,
 } from "./lead.ts";
 import type { PackLink, PeerOutcome } from "./peer-client.ts";
+import { TURN_MISSED_SWEEPS, UpdateTurns } from "./follow.ts";
 import { PackRegistry, type PeerState } from "./registry.ts";
 import type { TrustedMember, Warrant } from "./trust-store.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "../uploads.ts";
@@ -75,7 +79,10 @@ function localBody(): SnapshotResponse {
 function lead(
   members: TrustedMember[],
   script: (link: PackLink, call: number) => PeerOutcome<unknown>,
-  opts: { hello?: (link: PackLink) => Promise<PeerOutcome<{ readonly version: string | null }>> } = {},
+  opts: {
+    hello?: (link: PackLink) => Promise<PeerOutcome<{ readonly version: string | null }>>;
+    turns?: UpdateTurns;
+  } = {},
 ) {
   const roster = [...members];
   const calls: string[] = [];
@@ -98,6 +105,14 @@ function lead(
     self: { id: "desk", name: "the herd" },
     maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
     now: () => clock,
+    follow:
+      opts.turns === undefined
+        ? undefined
+        : {
+            leadRelease: () => "1.4.1",
+            turns: opts.turns,
+            enrolledAt: (id) => roster.find((m) => m.memberId === id)?.enrolledAt ?? 0,
+          },
   });
   return {
     lead: l,
@@ -1109,5 +1124,213 @@ describe("PackLead — the journal names a verdict once per transition", () => {
     await h.lead.sweep();
     await h.lead.sweep();
     expect(h.journal).toEqual(["[pack] laptop: unreachable (timed out)", "[pack] laptop: reachable again"]);
+  });
+});
+
+// ── A live run keeps its members due (M20/01) ────────────────────────────────
+
+describe("the schedule reads the live run, and the fold runs on every tick", () => {
+  test("dueForProbe: urgent overrides the backoff, and never writes it", () => {
+    const backed: PeerMemory = { body: null, incompatibleRuns: 3, probeAfter: NOW + 600_000 };
+    expect(dueForProbe(backed, NOW)).toBe(false);
+    expect(dueForProbe(backed, NOW, true)).toBe(true);
+    // The record is untouched, so the ladder the peer earned is waiting the moment the run ends.
+    expect(backed.probeAfter).toBe(NOW + 600_000);
+  });
+
+  test("a peer on the incompatible ladder is dialled every sweep while a run holds its leg", async () => {
+    // The 2026-09-07 incident, as a test. The peer answered three dials as `incompatible`, which put
+    // it on the ten-minute step, and the run then waited out a backoff it had no business waiting on.
+    // Now the run's open leg overrides the ladder, so the three dials land on three consecutive
+    // sweeps rather than across twelve and a half minutes, and the run ends on the third.
+    const turns = new UpdateTurns(() => {});
+    const h = lead([member({ memberId: "minibuch" })], () => skewed, { turns });
+    turns.begin("r-live", "1.4.1");
+    for (let i = 0; i < TURN_MISSED_SWEEPS; i += 1) {
+      await h.lead.sweep();
+      h.advance(1500); // the ordinary sweep cadence, far under the shortest backoff step
+    }
+    expect(h.calls.length).toBe(TURN_MISSED_SWEEPS);
+    // Three misses is unreachable, unreachable is terminal, and a run with no open leg is over.
+    expect(turns.peerLegs()[0]?.state).toBe("unreachable");
+    expect(turns.settledAt()).not.toBeNull();
+
+    // The control, and the half that must NOT change: with the run over, the same peer on the same
+    // ladder is skipped again, and the backoff it earned is the one it kept.
+    const before = h.calls.length;
+    await h.lead.sweep();
+    expect(h.calls.length).toBe(before);
+  });
+
+  test("a run that BEGINS during a sweep is not settled on the roster that sweep asked about", async () => {
+    // The dials take seconds, and the operator's confirm lands in the middle of them. `due` was
+    // computed before the run existed, so a backed-off peer is not in it — and folding that list
+    // would settle the new run on a roster it has never looked at, leaving the one peer it was
+    // started for undialled and the phone with an empty, silent run.
+    const turns = new UpdateTurns(() => {});
+    const roster = [member({ memberId: "attic" }), member({ memberId: "basement", enrolledAt: 2 })];
+    let begun = false;
+    const h = lead(roster, (link) => {
+      // `basement` climbs the incompatible ladder first; `attic` always answers, already levelled.
+      if (link.memberId === "basement") return skewed;
+      // THE RACE: the confirm lands while this dial is in flight.
+      if (begun) turns.begin("r-live", "1.4.1");
+      // Already on the target, so `attic`'s own leg is terminal the moment it is folded. That is
+      // what makes the stale fold able to settle the run with `basement` never dialled.
+      return ok({ ...localBody(), version: "1.4.1" });
+    }, { turns });
+    for (let i = 0; i < INCOMPATIBLE_BACKOFF_MS.length; i += 1) {
+      if (i > 0) h.advance(incompatibleBackoffMs(i));
+      await h.lead.sweep();
+    }
+    const dials = h.calls.filter((c) => c === "basement").length;
+
+    begun = true;
+    await h.lead.sweep();
+    // The run is still open, and `basement` still has its leg to be dialled for.
+    expect(turns.current()?.runId).toBe("r-live");
+    expect(turns.settledAt()).toBeNull();
+    // The immediate re-sweep is the second half: it recomputes `due` under the new run, where
+    // `basement`'s open leg overrides the ladder it is sitting on.
+    await new Promise((r) => setTimeout(r, 5));
+    expect(h.calls.filter((c) => c === "basement").length).toBeGreaterThan(dials);
+  });
+
+  test("a lead with no peers due still folds, so its run settles instead of hanging", async () => {
+    // `due` is empty on every sweep here, which used to return before the fold. The run then had no
+    // way to end at all: `begin` was reachable and `end` was not.
+    const turns = new UpdateTurns(() => {});
+    const h = lead([], () => skewed, { turns });
+    turns.begin("r-live", "1.4.1");
+    expect(turns.settledAt()).toBeNull();
+    await h.lead.sweep();
+    expect(h.calls).toEqual([]);
+    expect(turns.settledAt()).toBe(NOW);
+    expect(turns.current()).toBeNull();
+  });
+});
+
+// ── Any admitted contact clears the backoff (M20/02) ─────────────────────────
+//
+// The backoff is a lead-side GUESS about a peer it cannot reach. A peer that speaks to us is direct
+// evidence that the guess is stale, and on 2026-09-07 that evidence was thrown away.
+
+describe("a peer that speaks to us is due", () => {
+  /** A lead whose one member has climbed to the top of the incompatible ladder. */
+  async function backedOff() {
+    const h = lead([member({ memberId: "minibuch" })], () => skewed);
+    for (let i = 0; i < INCOMPATIBLE_BACKOFF_MS.length; i += 1) {
+      if (i > 0) h.advance(incompatibleBackoffMs(i));
+      await h.lead.sweep();
+    }
+    const dials = h.calls.length;
+    // One more sweep straight away is skipped: the ladder is holding it.
+    await h.lead.sweep();
+    expect(h.calls.length).toBe(dials);
+    return { ...h, dials };
+  }
+
+  test("the fold helper zeroes both fields, carries the rest, and invents nothing", () => {
+    const memory: PeerMemory = { body: null, incompatibleRuns: 3, probeAfter: NOW + 600_000 };
+    expect(clearPeerBackoff(memory)).toEqual({ body: null, incompatibleRuns: 0, probeAfter: 0 });
+    // Pure: the input is untouched, so the only writer of `this.memory` is still the one that sets it.
+    expect(memory.probeAfter).toBe(NOW + 600_000);
+    // A member with no entry has no backoff to clear and is already due.
+    expect(clearPeerBackoff(undefined)).toBeUndefined();
+  });
+
+  test("the last good body survives a reset — a schedule change is never a knowledge change", async () => {
+    const h = lead([member({ memberId: "minibuch" })], (_l, call) => (call === 1 ? ok(body) : skewed));
+    await h.lead.sweep(); // banks the body
+    h.advance(incompatibleBackoffMs(1));
+    await h.lead.sweep(); // incompatible, so the ladder starts
+    const banked = h.lead.contributions()[0]?.body;
+    expect(banked?.sessions).toEqual(body.sessions);
+    h.lead.noteAdmittedContact("minibuch");
+    // §10.2: a peer's sessions never vanish. The reset moved the SCHEDULE and nothing else.
+    expect(h.lead.contributions()[0]?.body).toEqual(banked);
+  });
+
+  test("contact marks the member due, and the NEXT sweep does the dial — the seam dials nothing", async () => {
+    const h = await backedOff();
+    h.lead.noteAdmittedContact("minibuch");
+    // Nothing was dialled by the call itself. One dialler, and it is the sweep.
+    expect(h.calls.length).toBe(h.dials);
+    await h.lead.sweep();
+    expect(h.calls.length).toBe(h.dials + 1);
+  });
+
+  test("a caller this lead does not lead changes nothing", async () => {
+    const h = await backedOff();
+    h.lead.noteAdmittedContact("a-stranger");
+    await h.lead.sweep();
+    expect(h.calls.length).toBe(h.dials);
+  });
+
+  test("a second contact inside the floor is ignored", async () => {
+    const h = await backedOff();
+    h.lead.noteAdmittedContact("minibuch");
+    await h.lead.sweep(); // spends the reset: the answer is incompatible again, so the ladder returns
+    const dials = h.calls.length;
+    h.advance(CONTACT_RESET_FLOOR_MS - 1);
+    h.lead.noteAdmittedContact("minibuch");
+    await h.lead.sweep();
+    expect(h.calls.length).toBe(dials);
+    // One millisecond past the floor, the same contact is honoured.
+    h.advance(1);
+    h.lead.noteAdmittedContact("minibuch");
+    await h.lead.sweep();
+    expect(h.calls.length).toBe(dials + 1);
+  });
+
+  test("a peer that can reach us and cannot serve us runs out of resets, and the ladder stands", async () => {
+    const h = await backedOff();
+    for (let i = 0; i < MAX_CONTACT_RESETS + 2; i += 1) {
+      h.lead.noteAdmittedContact("minibuch");
+      await h.lead.sweep();
+      h.advance(CONTACT_RESET_FLOOR_MS);
+    }
+    // Five resets earned five dials. The sixth and seventh contacts earned nothing.
+    expect(h.calls.length).toBe(h.dials + MAX_CONTACT_RESETS);
+  });
+
+  test("one ok answer clears the counter, so a recovered peer starts from a full allowance", async () => {
+    let healthy = false;
+    const h = lead([member({ memberId: "minibuch" })], () => (healthy ? ok(body) : skewed));
+    await h.lead.sweep();
+    for (let i = 0; i < MAX_CONTACT_RESETS; i += 1) {
+      h.advance(CONTACT_RESET_FLOOR_MS);
+      h.lead.noteAdmittedContact("minibuch");
+      await h.lead.sweep();
+    }
+    const spent = h.calls.length;
+    h.advance(CONTACT_RESET_FLOOR_MS);
+    h.lead.noteAdmittedContact("minibuch");
+    await h.lead.sweep();
+    expect(h.calls.length).toBe(spent); // exhausted
+
+    // It answers once, which settles the question the counter was asking.
+    healthy = true;
+    h.advance(INCOMPATIBLE_BACKOFF_MS.at(-1)!);
+    await h.lead.sweep();
+    healthy = false;
+    h.advance(incompatibleBackoffMs(1));
+    await h.lead.sweep(); // back on the ladder, from step one
+    const after = h.calls.length;
+    h.advance(CONTACT_RESET_FLOOR_MS);
+    h.lead.noteAdmittedContact("minibuch");
+    await h.lead.sweep();
+    expect(h.calls.length).toBe(after + 1);
+  });
+
+  test("a genuine version skew returns to the ladder on the very next verdict", async () => {
+    const h = await backedOff();
+    h.lead.noteAdmittedContact("minibuch");
+    await h.lead.sweep();
+    const dials = h.calls.length;
+    // The peer answered with the same foreign version, so the ladder is right about it again.
+    h.advance(CONTACT_RESET_FLOOR_MS);
+    await h.lead.sweep();
+    expect(h.calls.length).toBe(dials);
   });
 });

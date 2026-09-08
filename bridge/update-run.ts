@@ -113,7 +113,15 @@ export interface UpdateRun {
   readonly runId?: string;
   /** Why the run is where it is, when that needs a sentence. */
   readonly reason?: string;
-  /** A bounded, credential-scrubbed tail of the service log, recorded on a failure. */
+  /**
+   * A bounded tail of what the run has to show for itself.
+   *
+   * Two sources, never both at once. On a FAILURE it is the credential-scrubbed service log, written
+   * into the record by the runner. While STAGING it is the fetch-and-build progress the staging
+   * process wrote beside this file, folded in by the bridge on read (M20/10,
+   * `bridge/staging-log.ts`) — never written to disk here, and never shown once a failure has a tail
+   * of its own to show, because the service log is the more useful document at that point.
+   */
   readonly logTail?: string;
   /** The command the operator runs by hand — carried only by `stuck`. */
   readonly recovery?: string;
@@ -319,10 +327,15 @@ export function updateLockHeld(
  * `runId` because the queue is keyed on it, and a run with none was started from a terminal by
  * someone who never asked for a pack. `to` because that is the version the peers are levelling to.
  */
-export function packTurnStart(run: UpdateRun | null): { readonly runId: string; readonly to: string } | null {
+export function packTurnStart(
+  run: UpdateRun | null,
+): { readonly runId: string; readonly to: string; readonly at: number } | null {
   if (run === null || run.state !== "done") return null;
   if (run.runId === undefined || run.to === null) return null;
-  return { runId: run.runId, to: run.to };
+  // `updatedAt` is the moment this machine finished, which is the moment the levelling could have
+  // begun. A caller that re-derives the queue after a restart ages the run against it, so a record
+  // left behind by a crash days ago cannot start a levelling run today (M20/01).
+  return { runId: run.runId, to: run.to, at: run.updatedAt };
 }
 
 /**

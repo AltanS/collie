@@ -20,7 +20,7 @@ import {
   stampTopology,
 } from "@/lib/poll-intent";
 import type { HomeData } from "@/lib/loaders";
-import type { AgentView } from "@/lib/types";
+import type { AgentView, UpdateInfo, UpdateRun } from "@/lib/types";
 
 // usePolling reads useRevalidator(); drive its state/revalidate directly (hoisted so the vi.mock
 // factory can close over the holder). intervalFor is pure and doesn't touch it.
@@ -438,4 +438,72 @@ describe("usePolling — bursts and the follow intent", () => {
     expect(rr.revalidate).not.toHaveBeenCalled(); // frozen mirror, slow poll
   });
 
+});
+
+// ── An update run is the cadence's business (M20/08) ────────────────────────
+
+describe("an update in flight is the fastest thing on the screen it is on", () => {
+  const run = (state: UpdateRun["state"], over: Partial<UpdateRun> = {}): UpdateRun => ({
+    schema: 1,
+    state,
+    from: "1.5.0",
+    to: "1.6.0",
+    startedAt: 1_000,
+    updatedAt: 2_000,
+    pid: 42,
+    attempt: 0,
+    ...over,
+  });
+
+  /** The everyday shape of the block, with only what the case is about changed. */
+  const withRun = (over: Partial<UpdateInfo>): HomeData => ({
+    ...makeData([]),
+    update: {
+      current: "1.5.0",
+      latest: "1.6.0",
+      latestUrl: null,
+      releaseAvailable: false,
+      majorAvailable: null,
+      majorUrl: null,
+      bridgeStale: false,
+      checkedAt: null,
+      ...over,
+    },
+  });
+
+  it("a run somebody is still driving polls at HOT_MS, on a page with no pane and an idle herd", () => {
+    // Measured on 2026-09-08: `/settings/updates` opens no pane, so with an idle herd this page fell
+    // to rule 5 and polled every six seconds for the whole update. The one screen where the operator
+    // is provably watching something happen was the slowest screen in the app.
+    for (const state of ["preflight", "staging", "restarting", "verifying"] as const) {
+      expect(intervalFor(withRun({ run: run(state) }), null)).toBe(HOT_MS);
+    }
+  });
+
+  it("a terminal run does not — a finished update is not a reason to keep the radio warm", () => {
+    for (const state of ["done", "rolled-back", "stuck", "interrupted", "idle"] as const) {
+      expect(intervalFor(withRun({ run: run(state) }), null)).toBe(IDLE_MS);
+    }
+    expect(intervalFor(withRun({}), null)).toBe(IDLE_MS);
+  });
+
+  it("a PEERS-ONLY run counts too, and it has no local record at all (M20/09)", () => {
+    // "Retry pack update" writes nothing to `update.json`, so a rule that read only `run` would poll
+    // that whole run at six seconds.
+    expect(intervalFor(withRun({ peers: [{ name: "minibuch", state: "updating" }] }), null)).toBe(HOT_MS);
+    // And it stops when the lead says the run settled, not when a timer says so.
+    expect(
+      intervalFor(
+        withRun({ peers: [{ name: "minibuch", state: "done" }], settledAt: 5_000 }),
+        null,
+      ),
+    ).toBe(IDLE_MS);
+  });
+
+  it("a pane the operator is actually on still outranks it", () => {
+    // The rule sits BELOW the pane rules on purpose: a page left open on Updates must not out-argue
+    // a mirror somebody is reading.
+    const data = withRun({ run: run("staging") });
+    expect(intervalFor(data, "w1:p1", { bursting: true, following: true, changed: false })).toBe(BURST_MS);
+  });
 });

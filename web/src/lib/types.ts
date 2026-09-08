@@ -431,6 +431,23 @@ export interface UpdateInfo {
   newerVersions?: string[];
   /** The detached updater's run record. Absent when this install has never run one. */
   run?: UpdateRun;
+  /**
+   * The peer legs of a pack-wide run that this machine has NO run record for (M20/09).
+   *
+   * "Retry pack update" levels the peers without touching this machine, so nothing is written to
+   * `update.json` and `run` is absent for the whole run. The legs then ride here instead of being
+   * dropped. When `run` IS present they ride `run.peers`, exactly as they always have.
+   *
+   * Two positions, ONE reader: `peerLegsOf` in `lib/update-ribbon.ts`. Nothing else may read either
+   * field directly, or the band and the card go back to disagreeing about the same run.
+   */
+  peers?: UpdatePeerLeg[];
+  /**
+   * When every leg of that peers-only run reached a terminal state (M20/01), or absent while one is
+   * still open. `run.settledAt` carries it when there is a run record. Same two positions, same one
+   * reader, {@link packSettledAt}.
+   */
+  settledAt?: number;
 }
 
 /**
@@ -465,7 +482,11 @@ export interface UpdateRun {
   attempt: number;
   /** Why it is where it is, when that needs a sentence. */
   reason?: string;
-  /** A bounded, credential-scrubbed tail of the service log, recorded on a failure. */
+  /**
+   * A bounded tail of what the run has to show for itself. On a failure it is the service log; while
+   * staging it is the fetch-and-build progress (M20/10). Never both, and absent on a bridge older
+   * than either.
+   */
   logTail?: string;
   /** The command the operator runs by hand — carried only by `stuck`. */
   recovery?: string;
@@ -480,6 +501,12 @@ export interface UpdateRun {
    * facts on it rather than a broken one.
    */
   peers?: UpdatePeerLeg[];
+  /**
+   * When every peer leg of this run reached a terminal state (M20/01). Absent while one leg is still
+   * open, and absent on a bridge that predates the field — both read as "not settled", which is the
+   * reading that keeps a page polling rather than one that declares a moving pack finished.
+   */
+  settledAt?: number;
 }
 
 /**

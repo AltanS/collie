@@ -22,6 +22,7 @@ import {
   parsePeerVersion,
   sweepPeers,
   takeDataBudget,
+  HEADERLESS_PATIENCE_MS,
   type PackFetch,
   type PackLink,
   type PeerClientDeps,
@@ -66,6 +67,7 @@ function client(
     device?: string | null;
     sign?: PeerClientDeps["sign"];
     dialSign?: PeerClientDeps["dialSign"];
+    now?: () => number;
   } = {},
 ) {
   return new PeerClient({
@@ -74,7 +76,7 @@ function client(
     timeoutMs: over.timeoutMs ?? 50,
     patientTimeoutMs: over.patientTimeoutMs,
     fetch,
-    now: () => 1_000,
+    now: over.now ?? (() => 1_000),
     device: over.device === undefined ? undefined : () => over.device ?? null,
     sign: over.sign,
     dialSign: over.dialSign,
@@ -432,12 +434,155 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     expect(outcome.expected).toBe(1);
   });
 
-  test("a response with NO version header is incompatible, never defaulted to 1", async () => {
+  test("a response with NO version header is never defaulted to 1", async () => {
     const { fetch } = replying({ ok: true }, { protocol: null });
     const outcome = await client(fetch).snapshot(laptop);
     if (outcome.ok) throw new Error("expected a failure");
+    expect(outcome.state).toBe("unreachable");
+  });
+
+  // A MISSING header and a FOREIGN header are two different findings (§7). Missing says the lead
+  // learned nothing about this peer's version; foreign says the lead learned it cannot speak to it.
+  // Filing the first as the second put a peer that was merely restarting on the 30/120/600 s ladder.
+  for (const status of [200, 404, 502, 503]) {
+    test(`a headerless ${status} is unreachable, and the reason names the status`, async () => {
+      const { fetch } = replying({ ok: true }, { protocol: null, status });
+      const outcome = await client(fetch).snapshot(laptop);
+      if (outcome.ok) throw new Error("expected a failure");
+      if (outcome.state !== "unreachable") throw new Error(`expected unreachable, got ${outcome.state}`);
+      expect(outcome.reason).toContain(`peer answered ${status} with no pack protocol header`);
+      // The peer DID answer, so this is not the clock firing and §10.4 must not read it as a slow link.
+      expect(outcome.timedOut ?? false).toBe(false);
+    });
+  }
+
+  // The bound is a DURATION and not a count of answers, because the cadence between two answers is
+  // anywhere from 1.5 s to 12 s and this client also carries `hello`, the phone's proxied reads and
+  // the warrant push. A count is tightest exactly when the operator is watching (counsel 2026-09-08).
+  test("patience is measured in SECONDS, not in answers — twenty dials inside the window stay unreachable", async () => {
+    const { fetch } = replying({ ok: true }, { protocol: null, status: 502 });
+    let clock = 1_000;
+    const peer = client(fetch, { now: () => clock });
+    for (let i = 0; i < 20; i += 1) {
+      clock += 1_500; // the active sweep, i.e. a phone is open
+      const outcome = await peer.snapshot(laptop);
+      expect(outcome.ok === false && outcome.state).toBe("unreachable");
+    }
+  });
+
+  test("past the patience window the member falls back onto the incompatible ladder", async () => {
+    const { fetch } = replying({ ok: true }, { protocol: null, status: 502 });
+    let clock = 1_000;
+    const peer = client(fetch, { now: () => clock });
+    const first = await peer.snapshot(laptop);
+    expect(first.ok === false && first.state).toBe("unreachable");
+    clock += HEADERLESS_PATIENCE_MS;
+    const past = await peer.snapshot(laptop);
+    if (past.ok) throw new Error("expected a failure");
+    if (past.state !== "incompatible") throw new Error(`expected incompatible, got ${past.state}`);
+    expect(past.reason).toContain("for over 60s");
+    expect(past.received).toBeNull();
+    expect(past.expected).toBe(1);
+  });
+
+  test("the reason names the time already spent, so the move onto the ladder is not a surprise", async () => {
+    const { fetch } = replying({ ok: true }, { protocol: null, status: 503 });
+    let clock = 1_000;
+    const peer = client(fetch, { now: () => clock });
+    await peer.snapshot(laptop);
+    clock += 41_000;
+    const later = await peer.snapshot(laptop);
+    expect(later.ok === false && later.reason).toContain("41s so far");
+  });
+
+  test("an answer that carries a header clears the headerless run", async () => {
+    let protocol: string | null = null;
+    const fetch: PackFetch = async () => {
+      const headers = new Headers({ "content-type": "application/json" });
+      if (protocol !== null) headers.set(PROTOCOL_HEADER, protocol);
+      headers.set(MEMBER_HEADER, "laptop");
+      return new Response("{}", { status: protocol === null ? 502 : 200, headers });
+    };
+    let clock = 1_000;
+    const peer = client(fetch, { now: () => clock });
+    await peer.snapshot(laptop);
+    clock += HEADERLESS_PATIENCE_MS - 1_000;
+    // The peer finished its restart and answers properly. That is what resets the run, and the NEXT
+    // outage must get a fresh patient minute rather than land on the ladder on its first answer.
+    protocol = "1";
+    await peer.snapshot(laptop);
+    protocol = null;
+    clock += 2_000;
+    const after = await peer.snapshot(laptop);
+    expect(after.ok === false && after.state).toBe("unreachable");
+  });
+
+  test("two members are patient independently — one spent run does not ladder the other", async () => {
+    const { fetch } = replying({ ok: true }, { protocol: null, status: 502 });
+    let clock = 1_000;
+    const peer = client(fetch, { now: () => clock });
+    await peer.snapshot(laptop);
+    clock += HEADERLESS_PATIENCE_MS;
+    const spent = await peer.snapshot(laptop);
+    expect(spent.ok === false && spent.state).toBe("incompatible");
+    // The other member has answered nothing yet. Its window opens now, on its own clock.
+    const desk: PackLink = { memberId: "desk-2", address: "desk2.example:8787" };
+    const other = await peer.snapshot(desk);
+    expect(other.ok === false && other.state).toBe("unreachable");
+  });
+
+  test("a connection failure between two headerless answers neither spends the window nor renews it", async () => {
+    let dead = false;
+    const fetch: PackFetch = async () => {
+      if (dead) throw new Error("connect ECONNREFUSED");
+      const headers = new Headers({ "content-type": "application/json" });
+      headers.set(MEMBER_HEADER, "laptop");
+      return new Response("{}", { status: 502, headers });
+    };
+    let clock = 1_000;
+    const peer = client(fetch, { now: () => clock });
+    await peer.snapshot(laptop);
+    // A dead socket says nothing about a header, so the window it opened keeps running.
+    dead = true;
+    clock += 30_000;
+    expect((await peer.snapshot(laptop)).ok === false).toBe(true);
+    dead = false;
+    clock += 31_000;
+    const past = await peer.snapshot(laptop);
+    expect(past.ok === false && past.state).toBe("incompatible");
+  });
+
+  test("a bare 401 keeps its own reason and never opens a headerless window", async () => {
+    const { fetch } = replying({}, { protocol: null, status: 401 });
+    let clock = 1_000;
+    const peer = client(fetch, { now: () => clock });
+    for (let i = 0; i < 8; i += 1) {
+      clock += 30_000;
+      const outcome = await peer.snapshot(laptop);
+      expect(outcome.ok === false && outcome.state).toBe("unreachable");
+      expect(outcome.ok === false && outcome.reason).toContain("refused by the peer (unauthorized)");
+    }
+  });
+
+  test("`forget` drops the window, so a member that rejoins under the same id is patient again", async () => {
+    const { fetch } = replying({ ok: true }, { protocol: null, status: 502 });
+    let clock = 1_000;
+    const peer = client(fetch, { now: () => clock });
+    await peer.snapshot(laptop);
+    clock += HEADERLESS_PATIENCE_MS;
+    const laddered = await peer.snapshot(laptop);
+    expect(laddered.ok === false && laddered.state).toBe("incompatible");
+    peer.forget(laptop.memberId);
+    const rejoined = await peer.snapshot(laptop);
+    expect(rejoined.ok === false && rejoined.state).toBe("unreachable");
+  });
+
+  test("a NAMED foreign version is incompatible on the very first answer", async () => {
+    const { fetch } = replying({ some: "v2 shape" }, { protocol: "2" });
+    const outcome = await client(fetch).snapshot(laptop);
+    if (outcome.ok) throw new Error("expected a failure");
     if (outcome.state !== "incompatible") throw new Error(`expected incompatible, got ${outcome.state}`);
-    expect(outcome.received).toBeNull();
+    expect(outcome.received).toBe(2);
   });
 
   test("a matching version with an unparseable body is unreachable, not incompatible", async () => {

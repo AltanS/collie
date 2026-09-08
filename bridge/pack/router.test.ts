@@ -1857,6 +1857,43 @@ describe("Gap A — a peer knows when its lead last called (§18.9)", () => {
   });
 });
 
+describe("a member that speaks to its lead is due (M20/02)", () => {
+  test("every ADMITTED call from a roster member is contact, on every route it lands on", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    const contacted: string[] = [];
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0 + 1,
+      onMemberDialled: (id) => contacted.push(id),
+    });
+    await call(handler, PACK_HELLO_PATH, { headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) } });
+    await call(handler, PACK_HELLO_PATH, { headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0 + 1) } });
+    expect(contacted).toEqual(["nas", "nas"]);
+  });
+
+  test("GUARD ONE: a caller refused on either factor is not contact", async () => {
+    // The whole safety of the reset rests here. `admitPackRequest` runs first, so a caller that
+    // failed the pin or the secret never reaches the seam, and no browser route is on this side of
+    // the check at all.
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    const contacted: string[] = [];
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0,
+      onMemberDialled: (id) => contacted.push(id),
+    });
+    // Right member, wrong secret: §8.1's second factor, and nothing landed.
+    await call(handler, PACK_HELLO_PATH, {
+      headers: { authorization: "Bearer nope", "x-pack-protocol": "1", ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
+    });
+    // Right secret, no identity at all: a browser route's whole posture, and it is refused here.
+    await call(handler, PACK_HELLO_PATH, { headers: authed });
+    expect(contacted).toEqual([]);
+  });
+});
+
 describe("Gap B — lead_conflict, the named answer (§18.10)", () => {
   /** A peer that has re-pinned to `nas`, still holding the warrant `desk` signed naming `nas`. */
   function rePinned(): TrustStoreData {

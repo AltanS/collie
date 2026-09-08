@@ -379,6 +379,30 @@ and peer are separately updated machines, so skew is the steady state, not an ed
   and the version fields are the pack additions.)
 - The lead applies the same rule to a peer's **response** header: a reply with a version it cannot
   read is a mismatch, not a parse error.
+- **A missing header and an unreadable one are two different findings, and the lead may not conflate
+  them.** *(added 2026-09-08)* An unreadable or foreign header means the lead **learned** something:
+  this peer names a grammar this build cannot speak, and that cannot resolve on its own. A missing
+  header means the lead learned **nothing** about the peer's version. A process part way through a
+  proxy in front of a peer that is restarting, a `502` from a reverse proxy, a `404` from a wrong
+  path, and a solo collie that serves no pack route at all (§11) all answer with no header, and none
+  of them is a skew. (A peer dialled DIRECTLY while it restarts refuses the connection, which was
+  never on this path.)
+  - A response with **no** `X-Pack-Protocol` is therefore `unreachable` (§10.2), with the HTTP status
+    in the reason so the operator can tell a proxy from a peer.
+  - The rule is **bounded by a DURATION, not by a count of answers**: once a member has been
+    answering without a header for longer than the lead's patience window, sixty seconds, it falls
+    back onto the incompatible ladder, so a permanent stranger is not dialled at the poll rate for
+    ever. Any answer that names a version closes the window. The bound is lead-local, never on the
+    wire, and moving it needs no protocol change. It is a duration because the gap between two
+    answers is not fixed: the sweep runs between 1500 ms and 12 000 ms and the same client also
+    carries `hello`, proxied reads and the warrant push, so a count would be tightest exactly when
+    the operator is watching.
+  - A bare `401` keeps its own branch and its own reason (§8.5). It is already `unreachable`, it
+    already names the cause the operator can act on, and it opens no window.
+  - **This rule is about a peer's RESPONSE.** The receiving side is unchanged: a REQUEST that
+    arrives with no `X-Pack-Protocol` is still refused with `409` and `protocol_mismatch`
+    (`bridge/pack/admission.ts`), because a caller that names no version has not met §7's exact-1
+    window.
 - **An incompatible peer is a distinct state from an unreachable one** (§10). It is not retried on the
   poll cadence, its sessions are shown from last-good state marked incompatible, and the reason string
   is surfaced verbatim in the UI and in `collie pack status`.
@@ -997,8 +1021,8 @@ never crosses a pack link.
 | State | Meaning | Retried on the poll? | Presented as |
 |---|---|---|---|
 | **reachable** | Last poll succeeded within budget | yes | live |
-| **unreachable** | Timeout, connection refused, TLS failure, auth failure | yes | last-good state, **stale**, with `lastSeenAt` |
-| **incompatible** | `X-Pack-Protocol` mismatch (§7) | no (probed on a slow backoff) | last-good state, **incompatible**, with the peer's reason |
+| **unreachable** | Timeout, connection refused, TLS failure, auth failure, or an answer with **no** protocol header at all (§7) | yes | last-good state, **stale**, with `lastSeenAt` |
+| **incompatible** | `X-Pack-Protocol` names a version this build cannot speak (§7) | no (probed on a slow backoff) | last-good state, **incompatible**, with the peer's reason |
 | **conflicted** *(added 2026-08-20)* | The member answered §18.10's named `409`: it follows a **different lead** | no — there is nothing useful to fetch from a machine that belongs to someone else's view of the pack | last-good state, **conflicted**, naming the lead it follows and that lead's warrant generation |
 
 - **Unreachable is a value, never an error.** A down, slow, skewed or unauthenticated peer **never**
@@ -1027,6 +1051,12 @@ never crosses a pack link.
   beside an old receipt is a normal, common state, and writes to such a member are **not** refused
   (§10.3 refuses on the lead's boolean alone). A surface may therefore only print "unreachable", or
   claim that replies and keys are refused, when that boolean is false.
+- **A missing protocol header is unreachable, an unreadable one is incompatible.** *(added
+  2026-09-08)* The two look alike on the wire and they are opposite findings: one says the lead
+  learned nothing, the other says the lead learned it cannot speak to this member. Filing the first
+  as the second puts a peer that is merely coming back on the 30/120/600 s ladder; that mechanism was
+  reproduced on the dev pack on 2026-09-08, and it is a candidate cause of the 2026-09-07 blind
+  window rather than a proven one. §7 holds the rule and its patience window.
 - **`conflicted` is none of the other three, and a surface may not spell it as one.** It is not
   `unreachable` — the member answered, and answered precisely. It is not `incompatible` — this build
   reads that member's protocol perfectly well; the two merely share a `409`, told apart by the body's

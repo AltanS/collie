@@ -2432,10 +2432,25 @@ describe("update status peers — the legs of a pack-wide run", () => {
     // From the queue the sweep folds, never from a dial: `updatePeers()` is a read of banked state,
     // exactly as `updateRows()` is.
     const at = src.indexOf("function updateStatusWithPeers()");
-    const composer = src.slice(at, at + 600);
+    const composer = src.slice(at, at + 3400);
     expect(composer).toContain("opts.packLead?.updatePeers() ?? []");
-    expect(composer).toContain("run: { ...status.run, peers: legs }");
+    expect(composer).toContain("return { ...status, run: { ...status.run, ...packState } };");
+    // §20's one clock (M20/01), on the same composer and never a second one.
+    expect(composer).toContain("opts.packLead?.updateSettledAt() ?? null");
+    // M20/09: a peers-only run has no local record, so the legs ride the STATUS instead of being
+    // dropped. The guard that dropped them is gone, and nothing has taken its place.
+    expect(composer).toContain("return { ...status, ...packState };");
+    expect(composer).not.toContain("status.run === null || legs.length === 0");
     expect(composer).not.toContain("sweep(");
+    // M20/01, after review: the legs outlive their run, so the composer names the run they describe
+    // before it attaches them to the run on screen.
+    expect(composer).toContain("opts.packLead?.updateLegsRun() !== status.run.runId");
+    // And after counsel: legs from another run FALL to the top level, they are not discarded. A local
+    // update leaves a `done` record behind, so the commonest peers-only run there is — "Retry pack
+    // update" after an update — has a different run id and would otherwise be invisible for its whole
+    // life, which is spec 09's bug wearing spec 01's guard.
+    expect(composer).toContain("!== status.run.runId) return { ...status, ...packState };");
+    expect(composer).not.toContain("!== status.run.runId) return status;");
     // And there is still no fourth endpoint with a fifth shape.
     expect(src).not.toContain('"/api/update/status"');
   });

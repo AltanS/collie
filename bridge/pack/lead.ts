@@ -102,9 +102,51 @@ export function foldPeerMemory(
   return { ...base, incompatibleRuns: 0, probeAfter: 0 };
 }
 
-/** Whether this member is dialled on this tick. Only an incompatible one is ever skipped. */
-export function dueForProbe(memory: PeerMemory | undefined, now: number): boolean {
-  return memory === undefined || now >= memory.probeAfter;
+/**
+ * At most one backoff reset per member per this window (M20/02).
+ *
+ * The reset is triggered by the peer, so without a floor a peer that dials in a loop would keep
+ * itself permanently due and turn the ladder into a hot loop this lead pays for. Ten seconds is far
+ * longer than the sweep cadence, so the reset always gets its dial, and far shorter than the ladder's
+ * first step, so it is still a shortcut.
+ */
+export const CONTACT_RESET_FLOOR_MS = 10_000;
+
+/**
+ * How many resets one member gets before the ladder stands (M20/02).
+ *
+ * Contact is EVIDENCE that the lead's guess is stale, and five pieces of evidence that never once
+ * produced a successful sweep answer is not evidence any more, it is a peer that can reach us and
+ * cannot serve us. The ladder is the right answer to that, and the counter is cleared by the one
+ * thing that settles the question: an `ok` answer to a real dial.
+ */
+export const MAX_CONTACT_RESETS = 5;
+
+/**
+ * `memory` with its incompatible backoff forgotten — pure, and the only shape a reset may take.
+ *
+ * `undefined` in, `undefined` out: a member this lead has never folded has no backoff to clear and is
+ * already due, so there is nothing here to invent. Every other field is carried through untouched,
+ * `body` above all: the last good snapshot is what §10.2 promises a peer's sessions never lose, and a
+ * reset is about the SCHEDULE and never about what this lead knows.
+ */
+export function clearPeerBackoff(memory: PeerMemory | undefined): PeerMemory | undefined {
+  if (memory === undefined) return undefined;
+  return { ...memory, incompatibleRuns: 0, probeAfter: 0 };
+}
+
+/**
+ * Whether this member is dialled on this tick. Only an incompatible one is ever skipped, and only
+ * while no live run is waiting on it.
+ *
+ * `urgent` is the run's veto (M20/01): a member with an open leg is dialled every sweep, whatever
+ * `probeAfter` holds. It is a SECOND RULE and not a cap, which is the counsel decision of
+ * 2026-09-07. A cap would write the run's opinion into the backoff record, and the peer's real
+ * backoff would be gone the moment the run touched it. Here the run reads and never writes, so the
+ * ladder the peer earned is intact and waiting the moment the run is over.
+ */
+export function dueForProbe(memory: PeerMemory | undefined, now: number, urgent = false): boolean {
+  return urgent || memory === undefined || now >= memory.probeAfter;
 }
 
 export interface PackLeadDeps {
@@ -291,6 +333,8 @@ export class PackLead {
   private readonly pushingWarrant = new Set<string>();
   /** At most one pairing sync in flight. **Nothing about what landed is remembered** — §18.14. */
   private pushingPairing = false;
+  /** Per member: when its backoff was last cleared by contact, and how many times running (M20/02). */
+  private readonly contactResets = new Map<string, { at: number; count: number }>();
 
   constructor(private readonly deps: PackLeadDeps) {
     this.now = deps.now ?? Date.now;
@@ -317,16 +361,32 @@ export class PackLead {
       for (const id of this.deps.registry.prune()) {
         this.memory.delete(id);
         this.loggedState.delete(id);
+        this.contactResets.delete(id);
         this.deps.onPeerGone?.(id);
       }
 
-      const now = this.now();
-      const due = this.deps.registry.links().filter((l) => dueForProbe(this.memory.get(l.memberId), now));
-      if (due.length === 0) return;
-
       // §20: what this lead may state, computed ONCE per sweep. The turn is per member — at most
-      // one member holds it — so it is read inside the loop below.
+      // one member holds it — so it is read inside the loop below. Read before `due`, because the
+      // run's open legs are half of what makes a member due.
       const follow = this.deps.follow;
+      const now = this.now();
+      // The run this sweep is ABOUT, read before the dials. `due` is computed from it and cannot be
+      // recomputed halfway: a run that begins while the dials are in flight (the operator's confirm,
+      // or the boot-time gate) has a roster this sweep never asked about, and folding it would settle
+      // that run on a list of members it has not looked at once. See the guard below the dials.
+      const runAtStart = follow?.turns.current()?.runId ?? null;
+      const due = this.deps.registry
+        .links()
+        .filter((l) => dueForProbe(this.memory.get(l.memberId), now, follow?.turns.hasOpenLeg(l.memberId) ?? false));
+      // A QUIET SWEEP IS NOT A STILL ONE. Nobody is due, so nobody is dialled — but the fold and the
+      // settle check still run, because a leg that has aged past the wall clock can end on the
+      // evidence already in hand. Returning before them is what let the drill's run sit open with
+      // every fact needed to close it already banked.
+      if (due.length === 0) {
+        this.foldTurns(follow, [], new Map());
+        return;
+      }
+
       const leadRelease = follow?.leadRelease() ?? null;
       const outcomes = await sweepPeers(due, (link) =>
         this.deps.snapshot(link, opts.freshPreflight === true, {
@@ -371,6 +431,9 @@ export class PackLead {
         const previous = this.memory.get(memberId);
         const next = foldPeerMemory(previous, outcome, this.now());
         this.memory.set(memberId, next);
+        // The question the reset counter exists to ask is now settled for this member: it answered a
+        // real dial. Whatever it took to get here, the ladder starts from zero again (M20/02).
+        if (outcome.ok) this.contactResets.delete(memberId);
         this.logVerdict(memberId, outcome, previous, next);
         // Identity, not equality: `parsePeerSnapshot` mints a fresh object on every success and the
         // fold RETAINS the old one on every failure, so `!==` is exactly "this poll produced a body".
@@ -384,28 +447,14 @@ export class PackLead {
       // back, and who has now missed three sweeps. A turn RELEASED here earns an immediate re-sweep
       // — the third of the three triggers — so the next member starts within one sweep of its turn
       // rather than within the periodic cadence.
-      if (follow !== undefined) {
-        const members = due.map((link): TurnMember => {
-          const outcome = outcomes.get(link.memberId);
-          const state = this.deps.registry.state(link.memberId);
-          const turnMember: TurnMember = {
-            memberId: link.memberId,
-            enrolledAt: follow.enrolledAt(link.memberId),
-            version: state.version,
-            verdict: state.preflight?.verdict ?? null,
-            answered: outcome?.ok === true,
-            // SAFETY: `value` is a peer's HTTP body after `res.json()` — a JsonValue by
-            // construction, the same cast and the same reason as `parsePeerPreflight`'s above.
-            run: outcome?.ok === true ? parsePeerRun(outcome.value as JsonValue) : null,
-          };
-          // §19's field, banked with the rest of that member's own report. Assigned only when the
-          // member named a kind: absent is what "this member named no kind" has to look like, and
-          // absent counts as not packaged.
-          const kind = state.preflight?.installKind;
-          return kind === undefined ? turnMember : { ...turnMember, installKind: kind };
-        });
-        if (follow.turns.observe(members, this.now()).released) this.resweep();
+      // A DIFFERENT run now, or none: everything above was banked for the old one. The registry
+      // keeps what the peers said, which is true whatever run is live, and the fold is skipped —
+      // the immediate re-sweep below asks the new run's own question, with its own `due`.
+        if ((follow?.turns.current()?.runId ?? null) !== runAtStart) {
+        this.resweep();
+        return;
       }
+      this.foldTurns(follow, due, outcomes);
 
       // ── TWO INDEPENDENT DISTRIBUTIONS, TWO INDEPENDENT GUARDS ─────────────
       // They used to share this try, and a live drill showed what that costs: the warrant half awaits
@@ -421,6 +470,43 @@ export class PackLead {
     } finally {
       this.sweeping = false;
     }
+  }
+
+  /**
+   * §20's fold, after every member's answer is banked: who is behind, who is moving, who fell back,
+   * and who has now missed three sweeps.
+   *
+   * Called on EVERY sweep tick, including one where nobody was due — the leg fold, the wall clock
+   * and the settle check are the run's only way to end, so a tick that skips them is a tick a frozen
+   * run survives. A turn RELEASED here earns an immediate re-sweep, the third of the three triggers,
+   * so the next member starts within one sweep of its turn rather than within the periodic cadence.
+   */
+  private foldTurns(
+    follow: PackLeadDeps["follow"],
+    due: readonly PackLink[],
+    outcomes: ReadonlyMap<string, PeerOutcome<unknown>>,
+  ): void {
+    if (follow === undefined) return;
+    const members = due.map((link): TurnMember => {
+      const outcome = outcomes.get(link.memberId);
+      const state = this.deps.registry.state(link.memberId);
+      const turnMember: TurnMember = {
+        memberId: link.memberId,
+        enrolledAt: follow.enrolledAt(link.memberId),
+        version: state.version,
+        verdict: state.preflight?.verdict ?? null,
+        answered: outcome?.ok === true,
+        // SAFETY: `value` is a peer's HTTP body after `res.json()` — a JsonValue by
+        // construction, the same cast and the same reason as `parsePeerPreflight`'s above.
+        run: outcome?.ok === true ? parsePeerRun(outcome.value as JsonValue) : null,
+      };
+      // §19's field, banked with the rest of that member's own report. Assigned only when the
+      // member named a kind: absent is what "this member named no kind" has to look like, and
+      // absent counts as not packaged.
+      const kind = state.preflight?.installKind;
+      return kind === undefined ? turnMember : { ...turnMember, installKind: kind };
+    });
+    if (follow.turns.observe(members, this.now()).released) this.resweep();
   }
 
   /**
@@ -647,6 +733,10 @@ export class PackLead {
       const outcome = await hello(link);
       if (this.deps.registry.links().some((l) => l.memberId === link.memberId)) {
         this.deps.registry.recordProbe(link.memberId, outcome, { version: outcome.ok ? outcome.value.version : null });
+        // A probe that ANSWERED is the same evidence an inbound dial is: this machine is reachable,
+        // whatever the ladder says (M20/02). It goes through the same seam, so it obeys the same two
+        // floors, and it dials nothing of its own — the next sweep tick does.
+        if (outcome.ok) this.noteAdmittedContact(link.memberId);
       }
     } catch (err) {
       // Defensive, exactly as `sweep` is: failure is a value everywhere in the pack client, so a
@@ -718,6 +808,58 @@ export class PackLead {
    */
   updatePeers(): PeerLeg[] {
     return this.deps.follow?.turns.peerLegs() ?? [];
+  }
+
+  /** The run those legs describe, live or over, or null. The composer checks it before it attaches. */
+  updateLegsRun(): string | null {
+    return this.deps.follow?.turns.legsRun() ?? null;
+  }
+
+  /**
+   * When the run this lead drove last reached a terminal state on every leg, or null while one is
+   * still open (M20/01).
+   *
+   * The band and the Updates card both read this one value, so neither can claim the pack is moving
+   * after the other has gone quiet. It dials nobody.
+   */
+  updateSettledAt(): number | null {
+    return this.deps.follow?.turns.settledAt() ?? null;
+  }
+
+  /**
+   * An admitted peer reached this lead, so the backoff this lead is holding against it is stale
+   * (M20/02). Mark it due now and return.
+   *
+   * **This never dials.** It writes `probeAfter = 0` and the next sweep tick, 1.5 s away, does the
+   * dial — which keeps one dialler in this process and keeps `this.probing` meaningful. A handler
+   * that dialled would let an inbound request make this lead reach a machine, which is the thing
+   * `updateRows` and `updatePeers` are careful never to allow either.
+   *
+   * **Admitted is the caller's word and it is granted by POSITION**, exactly as the peer-check
+   * exemption is (`bridge/server.ts`): the one caller sits in `bridge/pack/router.ts` after
+   * `admitPackRequest` has passed both factors, the pin and the secret, and after the deputy is
+   * refused. No browser route can reach it, because no browser route is on that side of the check.
+   *
+   * Two floors bound it, {@link CONTACT_RESET_FLOOR_MS} and {@link MAX_CONTACT_RESETS}.
+   */
+  noteAdmittedContact(memberId: string): void {
+    // A caller this lead does not lead is not a member whose schedule this owns.
+    if (!this.deps.registry.links().some((l) => l.memberId === memberId)) return;
+    const memory = this.memory.get(memberId);
+    // No entry is already due, and a zero `probeAfter` is already due. Neither spends a reset: the
+    // counter must count resets that actually changed something, or an ordinary healthy peer's
+    // traffic would exhaust its own allowance and take the shortcut away when it finally needed it.
+    if (memory === undefined || memory.probeAfter === 0) return;
+    const now = this.now();
+    const seen = this.contactResets.get(memberId);
+    if (seen !== undefined) {
+      if (now - seen.at < CONTACT_RESET_FLOOR_MS) return;
+      if (seen.count >= MAX_CONTACT_RESETS) return;
+    }
+    const cleared = clearPeerBackoff(memory);
+    if (cleared === undefined) return;
+    this.memory.set(memberId, cleared);
+    this.contactResets.set(memberId, { at: now, count: (seen?.count ?? 0) + 1 });
   }
 
   /**

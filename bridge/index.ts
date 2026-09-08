@@ -61,7 +61,7 @@ import { packStatusBody } from "./pack/status-wire.ts";
 import { herdPushGate, PeerNotifier } from "./pack/notify.ts";
 import { packHelloBudget, packTimeoutBudget, packTimeoutClampWarning, PeerClient } from "./pack/peer-client.ts";
 import { PackRegistry } from "./pack/registry.ts";
-import { leadReleaseHeader, PackFollower, UpdateTurns } from "./pack/follow.ts";
+import { leadReleaseHeader, LEG_WALL_CLOCK_MS, PackFollower, UpdateTurns } from "./pack/follow.ts";
 import { createPackRouter, type PackRouterDeps } from "./pack/router.ts";
 import {
   checkpointMarker,
@@ -1276,7 +1276,13 @@ const packLead = (() => {
     // Notifications for a peer's panes, derived on the lead from the body this sweep just parsed and
     // pushed through the same coordinator machinery a local session uses (M4/06).
     onPeerSnapshot: (memberId, body) => peerNotifier?.observe(memberId, body),
-    onPeerGone: (memberId) => peerNotifier?.forget(memberId),
+    onPeerGone: (memberId) => {
+      peerNotifier?.forget(memberId);
+      // The client remembers one thing that reaches a verdict, how long this member has been
+      // answering without a protocol header (M20/03). A member pruned with that run nearly spent,
+      // then enrolled again under the same id, would inherit it and land on the ladder at once.
+      client.forget(memberId);
+    },
     // Warrant distribution (§18). Read through the store on every sweep for the reason the secret and
     // the roster are: `pack deputy` writes the designation in another process, and a captured copy
     // would keep pushing a warrant the operator has already superseded. A lead that has named nobody
@@ -1416,6 +1422,18 @@ function settleUpdateGate(): void {
   if (start === null) return;
   if (start.runId === settledRunId) return;
   settledRunId = start.runId;
+  // A RUN OLDER THAN THE WALL CLOCK IS OVER (M20/01). The record on disk survives a crash, a power
+  // cut and a week of downtime, and re-deriving the queue from it would start levelling peers
+  // against a confirm the operator gave long ago and has every right to consider finished. The leg
+  // wall clock is the same bound the live run uses, so a run cannot end one way in memory and
+  // another way across a restart.
+  const age = Date.now() - start.at;
+  if (start.at > 0 && age >= LEG_WALL_CLOCK_MS) {
+    console.log(
+      `[pack] update ${start.runId}: not levelling, that run finished ${Math.round(age / 60_000)} minutes ago`,
+    );
+    return;
+  }
   // The one line an operator can grep for in the BRIDGE's own journal, which is the journal they
   // are already tailing. The update that wrote this record ran under a transient `--collect` unit
   // whose name nobody knows and whose journal outlives it by nothing, so a trace left only there is
@@ -1692,6 +1710,10 @@ const server = startServer({
             onMembershipChange: packStoreChanged,
             // Gap A (§18.9), and its rotation-shaped sibling. Two receipts, one holder, in memory.
             onLeadDialled: (at) => leadContact.record(at),
+            // M20/02: a peer that speaks to us is due. It marks the member due now and dials nothing;
+            // the sweep 1.5 s later is what dials. A solo instance and a peer both pass a `packLead`
+            // of `undefined`, so this is a no-op there.
+            onMemberDialled: (memberId) => packLead?.noteAdmittedContact(memberId),
             onLeadRefused: (at) => leadContact.recordSecretRefusal(at),
             // §18.12's delivery path 1: the new lead tells this one, on first contact. The router has
             // already verified the proof against THIS collie's own certificate and written the healed

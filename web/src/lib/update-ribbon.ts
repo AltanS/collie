@@ -4,6 +4,7 @@ import type {
   UpdateInfo,
   UpdatePeerLeg,
   UpdatePeerLegState,
+  UpdateRun,
   UpdateRunState,
 } from "./types";
 
@@ -41,13 +42,25 @@ export interface Dismissal {
 // A rolled-back peer is named with its reason, and the reason is a peer's own prose of unbounded
 // length. It is cut on a word boundary to `REASON_BUDGET`, and the Updates page carries it whole.
 
-/** The run states that are somebody still driving it. Mirrors the card's own set. */
-const IN_FLIGHT: ReadonlySet<UpdateRunState> = new Set<UpdateRunState>([
+/**
+ * The run states that are somebody still driving it. THE one copy (M20/08).
+ *
+ * It used to be written out here, in the card and about to be written a third time in the poll
+ * cadence. Three copies of one four-word set is three chances for a screen to think a run is over
+ * while another thinks it is running, which is the same class of bug as the two clocks spec 04
+ * closed. Exported, so a fourth copy has no excuse.
+ */
+export const RUN_IN_FLIGHT: ReadonlySet<UpdateRunState> = new Set<UpdateRunState>([
   "preflight",
   "staging",
   "restarting",
   "verifying",
 ]);
+
+/** Whether somebody is still driving THIS machine's run. Absent or terminal reads as no. */
+export function runInFlight(run: UpdateRun | undefined): boolean {
+  return run !== undefined && RUN_IN_FLIGHT.has(run.state);
+}
 
 /** A peer leg that went wrong. `rolled-back` is the one the band names; the other two read the same
  *  way to an operator and point at the same page. */
@@ -81,9 +94,22 @@ export type RibbonView =
   | { kind: "updating"; phase: RibbonPhase; version: string }
   | { kind: "updated"; version: string }
   | { kind: "bundle" }
-  | { kind: "peers"; names: string[]; target: string | null }
+  | {
+      kind: "peers";
+      names: string[];
+      target: string | null;
+      /** How long the slowest moving leg has been at it, or null before the patience window. */
+      elapsedMs: number | null;
+    }
   | { kind: "package-managed"; names: string[]; target: string | null }
-  | { kind: "peer-failed"; name: string; reason: string }
+  | {
+      kind: "peer-failed";
+      name: string;
+      reason: string;
+      /** What the run was heading for, so the operator can put the sentence down. Null when nothing
+       *  names a version to key the dismissal to, and the band then stays. */
+      target: string | null;
+    }
   | { kind: "available"; version: string }
   | { kind: "available-packaged"; version: string; manager: string | null };
 
@@ -137,6 +163,154 @@ function isMoving(leg: UpdatePeerLeg): boolean {
   return !PEER_TERMINAL.has(leg.state) && !PEER_FAILED.has(leg.state);
 }
 
+/**
+ * EVERY PEER LEG THIS BRIDGE REPORTED, wherever it rode (M20/09).
+ *
+ * The legs sit on `run.peers` when this machine has a run record and on `update.peers` when it does
+ * not. A peers-only run is the second case: "Retry pack update" begins the turn queue and re-sweeps
+ * without ever calling the updater here, so `update.json` is never written and `run` is absent for
+ * the whole run.
+ *
+ * THIS IS THE ONLY PLACE EITHER FIELD IS READ. Both surfaces ask here, so neither can be looking at
+ * a run the other cannot see — which is precisely how the 2026-09-07 drill produced a band that had
+ * gone quiet over a card that had not.
+ */
+export function peerLegsOf(update: UpdateInfo | undefined, run?: UpdateRun): UpdatePeerLeg[] {
+  // THE LIVE STATUS FIRST, and the caller's own record only if the status carries no legs at all
+  // (M20/14). `run` is whatever the caller had lying about — on the Updates card that is the freshest
+  // of the standby door, the snapshot poll and its OWN `GET /api/update/check`, and that last one is
+  // fetched when the card mounts and not again. The two positions above are one bridge answer, taken
+  // together, and mixing a cached record's legs into a live status is how the card came to render
+  // last run's failures over this run.
+  //
+  // Measured on the VM pack, on a peers-only retry: the band read "Updating 1 peer: member2" while
+  // the card showed both members unreachable from the run before, for the whole run. The card's
+  // cached copy of the PREVIOUS run still carried that run's legs, because the legs only move to the
+  // top level once a newer run owns them (M20/09) — so the cached copy was not stale in any way a
+  // timestamp could see. It was simply the wrong document to read legs out of.
+  return update?.run?.peers ?? update?.peers ?? run?.peers ?? [];
+}
+
+/**
+ * When the run those legs belong to settled, or null while it is still moving (M20/01).
+ *
+ * Read from the same two positions as {@link peerLegsOf}, and for the same reason.
+ */
+export function packSettledAt(update: UpdateInfo | undefined, run?: UpdateRun): number | null {
+  // FROM THE SAME DOCUMENT THE LEGS CAME FROM (M20/14). A settle stamp read out of one answer and
+  // legs read out of another is two accounts of one run, which is the whole disease. So if the live
+  // status carries legs at all, its settle stamp is the answer — including when it has none, which is
+  // what a run still moving looks like.
+  if (update?.run?.peers !== undefined || update?.peers !== undefined) {
+    return update.run?.settledAt ?? update.settledAt ?? null;
+  }
+  return run?.settledAt ?? null;
+}
+
+/**
+ * IS THE PACK STILL MOVING? The one clock the band and the card both read (M20/04).
+ *
+ * Keyed on `settledAt` from spec 01, which is the lead's own answer rather than a second fold of the
+ * rows: the moment every leg went terminal, stamped once. A client that folded the rows itself would
+ * be a second opinion about a question the lead has already answered, and two opinions is what the
+ * drill produced.
+ *
+ * `settledAt` absent is NOT "settled". It is what an older bridge sends and what a moving run sends,
+ * and both of those must keep a page polling. So the fold below is the fallback, and it errs the
+ * same way `isMoving` does: a leg state this client has never heard of counts as moving.
+ */
+export function packMoving(update: UpdateInfo | undefined, run?: UpdateRun): boolean {
+  const legs = peerLegsOf(update, run);
+  if (legs.length === 0) return false;
+  if (packSettledAt(update, run) !== null) return false;
+  return legs.some(isMoving);
+}
+
+/**
+ * How long a pack run runs before the band stops assuming the operator will simply wait (M20/04).
+ *
+ * On 2026-09-07 an operator watched "Updating 1 peer: minibuch" for twelve minutes with no elapsed
+ * time, no reassurance and nothing a tap could change, and did the only thing left: tapped again,
+ * many times. Two minutes is longer than every healthy leg the drill has produced and short enough
+ * that a stuck one is named while the operator is still looking.
+ */
+export const PACK_PATIENCE_MS = 2 * 60_000;
+
+/**
+ * EVERYTHING THE UI KNOWS ABOUT ONE RUN, read once (M20/04).
+ *
+ * Two surfaces reading one record with two rules is the bug this closes. The band asked "did the run
+ * finish less than ten minutes ago?" and the card asked "does the record still list a moving peer?".
+ * Those are different questions, so on 2026-09-07 the band went quiet at ten minutes while the card
+ * kept the same peer moving for five more. Neither surface interprets a record any more; both read
+ * this.
+ */
+export interface RunReading {
+  /** The record about THIS machine, or undefined when it has none. */
+  readonly run: UpdateRun | undefined;
+  /** Every peer leg, wherever it rode (see {@link peerLegsOf}). */
+  readonly legs: readonly UpdatePeerLeg[];
+  /** When the lead stamped the run settled, or null while a leg is open. THE key. */
+  readonly settledAt: number | null;
+  /** Is the pack still moving? Never a time comparison. */
+  readonly moving: boolean;
+  /** The legs still moving, in the order the lead reported them. */
+  readonly movingLegs: readonly UpdatePeerLeg[];
+  /** The first leg that went wrong, or null. `rolled-back` and its siblings. */
+  readonly failed: UpdatePeerLeg | null;
+  /** The legs a package manager owns. Terminal, and never a failure (ADR 0035). */
+  readonly managed: readonly UpdatePeerLeg[];
+  /**
+   * How long the oldest MOVING leg has held its state, or null when nothing is moving.
+   *
+   * Off each leg's own `updatedAt`, which the lead passes through from the member's own record, so
+   * it is that machine's account of itself and not this browser's guess.
+   */
+  readonly elapsedMs: number | null;
+  /** Has the run run longer than {@link PACK_PATIENCE_MS}? What changes the band's words. */
+  readonly slow: boolean;
+}
+
+/** How long this leg has held its current state, or null when it carries no stamp. */
+export function legElapsedMs(leg: UpdatePeerLeg, now: number): number | null {
+  if (leg.updatedAt === undefined) return null;
+  const since = now - leg.updatedAt;
+  return since < 0 ? 0 : since;
+}
+
+/** Read one run, once. The ONLY place a run record is interpreted for the UI (M20/04). */
+export function readRun(input: { update: UpdateInfo | undefined; run?: UpdateRun; now: number }): RunReading {
+  const legs = peerLegsOf(input.update, input.run);
+  const settledAt = packSettledAt(input.update, input.run);
+  const moving = packMoving(input.update, input.run);
+  const movingLegs = moving ? legs.filter(isMoving) : [];
+  const stamps = movingLegs.map((leg) => legElapsedMs(leg, input.now)).filter((ms): ms is number => ms !== null);
+  const elapsedMs = stamps.length === 0 ? null : Math.max(...stamps);
+  return {
+    run: input.run ?? input.update?.run,
+    legs,
+    settledAt,
+    moving,
+    movingLegs,
+    failed: legs.find((leg) => PEER_FAILED.has(leg.state)) ?? null,
+    managed: legs.filter((leg) => leg.state === "package-managed"),
+    elapsedMs,
+    slow: elapsedMs !== null && elapsedMs >= PACK_PATIENCE_MS,
+  };
+}
+
+/**
+ * A duration as whole minutes, for a band that is read at a glance.
+ *
+ * Rounded DOWN, never up: "3 min" about a run at 3:59 is honest, and "4 min" about one at 3:01 is a
+ * claim the operator can catch the screen making. Under a minute reads as "less than a minute"
+ * rather than as seconds, because a band that counts seconds is a band that asks to be watched.
+ */
+export function minutesWord(ms: number): string {
+  const minutes = Math.floor(ms / 60_000);
+  return minutes < 1 ? t("updateRibbon.underAMinute") : tn("updateRibbon.minutes", minutes);
+}
+
 /** Cut on a word boundary, never mid-word, and mark the cut. */
 export function truncateWords(text: string, max: number): string {
   if (text.length <= max) return text;
@@ -176,6 +350,12 @@ export function dismissTarget(view: RibbonView): Dismissal | null {
     case "peers":
     case "package-managed":
       return view.target === null ? null : { scope: "pack", version: view.target };
+    // A FAILED LEG IS CLOSABLE, and by this rule's own logic (M20/04). The rule is whether the state
+    // describes something that ends on its own. A failed leg is the one pack state that does not:
+    // it is terminal, the run is over, and the sentence would otherwise stand until another run
+    // replaces it. An operator who has read it may put it down.
+    case "peer-failed":
+      return view.target === null ? null : { scope: "pack", version: view.target };
     default:
       return null;
   }
@@ -199,7 +379,7 @@ export function ribbonView(input: RibbonInput): RibbonView {
 
   // (b) — a run in flight. A failed poll during `restarting` simply leaves the last record in place,
   // so this branch keeps saying "Restarting" rather than becoming an error.
-  if (run !== undefined && IN_FLIGHT.has(run.state)) {
+  if (run !== undefined && RUN_IN_FLIGHT.has(run.state)) {
     return {
       kind: "updating",
       phase: phaseOf(run.state),
@@ -217,26 +397,46 @@ export function ribbonView(input: RibbonInput): RibbonView {
   // has always been, with its own words. Above (d) and (a) because it is the same slot.
   if (input.bundleStale) return { kind: "bundle" };
 
-  // (d) — the lead is done and the pack is not.
-  if (finished) {
-    const legs = run.peers ?? [];
-    const failed = legs.find((leg) => PEER_FAILED.has(leg.state));
-    if (failed !== undefined) {
-      const reason = failed.reason ?? t("settings.updateCard.peer.unknownReason");
-      return { kind: "peer-failed", name: failed.name, reason: truncateWords(reason, REASON_BUDGET) };
+  // (d) — the pack is not done. NO TIME WINDOW, and no `finished` gate (M20/04).
+  //
+  // It used to hang off `finished`, so a moving peer inherited (c)'s ten-minute window and the band
+  // fell silent at ten minutes over a card that was still counting. It also required a `done` record
+  // on THIS machine, so a peers-only run — which writes none — was invisible to the band entirely
+  // (M20/09). Both gates are gone. What ends this branch is `settledAt`, the lead's own answer,
+  // stamped once when the last leg went terminal.
+  {
+    const reading = readRun({ update: input.update, now: input.now });
+    const target = targetOf(input, run?.to ?? null);
+    if (reading.failed !== null) {
+      const reason = reading.failed.reason ?? t("settings.updateCard.peer.unknownReason");
+      return {
+        kind: "peer-failed",
+        name: reading.failed.name,
+        reason: truncateWords(reason, REASON_BUDGET),
+        target,
+      };
     }
-    const target = targetOf(input, run.to);
     const quiet = target !== null && target === input.dismissedPackVersion;
-    const moving = legs.filter(isMoving).map((leg) => leg.name);
     // A moving peer is undismissable, so its target is null however the pack was closed before: the
     // operator must be able to see the end of a run somebody is still driving.
-    if (moving.length > 0) return { kind: "peers", names: moving, target: null };
+    if (reading.movingLegs.length > 0) {
+      return {
+        kind: "peers",
+        names: reading.movingLegs.map((leg) => leg.name),
+        target: null,
+        // Past the patience window the band stops assuming the operator will simply wait: it says
+        // how long, and it says nobody has to do anything. Before it, the words are unchanged.
+        elapsedMs: reading.slow ? reading.elapsedMs : null,
+      };
+    }
     // Below the moving peers, never among them: the band's peers line is about what the run is
     // waiting on, and it is waiting on nothing here. Named anyway, so the operator learns why that
     // machine did not move without opening the page to find out — and closable, because a machine
     // a package manager owns can stand behind for weeks and a band nobody can put down is a nag.
-    const managed = legs.filter((leg) => leg.state === "package-managed").map((leg) => leg.name);
-    if (managed.length > 0 && !quiet) return { kind: "package-managed", names: managed, target };
+    // Still gated on `finished`: it is a QUIET standing fact, not a run in progress, and raising it
+    // about a run nobody started would be a nag with no run behind it.
+    const managed = reading.managed.map((leg) => leg.name);
+    if (finished && managed.length > 0 && !quiet) return { kind: "package-managed", names: managed, target };
   }
 
   // (a) — an offer, and only an offer. The tap navigates; nothing here starts anything.
@@ -269,12 +469,31 @@ export function ribbonText(view: RibbonView): string {
       return t("updateRibbon.updated", { version: view.version });
     case "bundle":
       return t("pwa.updateAvailable");
-    case "peers":
-      return tn("updateRibbon.peers", view.names.length, { names: view.names.join(", ") });
+    case "peers": {
+      const line = tn("updateRibbon.peers", view.names.length, { names: view.names.join(", ") });
+      // PAST THE PATIENCE WINDOW THE BAND NAMES THE TIME (M20/04). Before it, the words are exactly
+      // what they were. After it, the one fact the operator does not have is how long this has been
+      // going, and on 2026-09-07 not having it is what turned a wait into a dozen taps.
+      //
+      // The reassurance sentence that goes with it — "No action needed, this finishes on its own" —
+      // lives on the Updates CARD and not here. This band is one truncating row about forty
+      // characters wide (`i18n/update-ribbon-budget.test.ts` enforces it over all seven locales), and
+      // a sentence that long would be a sentence nobody reads the end of. A tap lands on the card,
+      // which is where there is room to say it.
+      if (view.elapsedMs === null) return line;
+      return tn("updateRibbon.peersSlow", view.names.length, {
+        names: view.names.join(", "),
+        elapsed: minutesWord(view.elapsedMs),
+      });
+    }
     case "package-managed":
       return tn("updateRibbon.packageManaged", view.names.length, { names: view.names.join(", ") });
     case "peer-failed":
-      return `${t("updateRibbon.peerRolledBack", { name: view.name, reason: view.reason })} ${t("updateRibbon.seeUpdates")}`;
+      // ONE SENTENCE FOR ALL FOUR FAILED STATES (M20/04). It used to say "rolled back" about every
+      // one of them, which is a specific and often false claim: an `unreachable` peer did not roll
+      // back, nobody heard from it. "Could not update" is true of all four, and the reason that
+      // follows is where the specifics belong.
+      return `${t("updateRibbon.peerFailed", { name: view.name, reason: view.reason })} ${t("updateRibbon.seeUpdates")}`;
     case "available":
       return t("updateRibbon.available", { version: view.version });
     case "available-packaged":
