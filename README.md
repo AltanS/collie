@@ -125,6 +125,7 @@ requirements table, and what the initial run writes to the host.
 | [**Voice input and Web Push**](./docs/voice-and-push.md) | The microphone in the composer, and notifications when an agent is waiting on you |
 | [**Manage & update**](./docs/upgrading.md) | Update from the phone or the terminal, roll back, update a pack, cross a major, stop, uninstall, and upgrading a 0.x install to 1.0 |
 | [**Troubleshooting**](./docs/troubleshooting.md) | Symptoms in the words you would actually search for |
+| **For an AI agent** | `collie skill` prints a brief on how Collie works, and `collie docs` prints the pages above, both out of the binary and with no network |
 
 Repository-level specifications live at the root: [`ARCHITECTURE.md`](./ARCHITECTURE.md) ·
 [`docs/deployment.md`](./docs/deployment.md) · [`MUX_CONTRACT.md`](./MUX_CONTRACT.md) ·

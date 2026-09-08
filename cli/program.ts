@@ -13,6 +13,7 @@ import {
 } from "./hooks.ts";
 import { lifecycleDeps, updateDeps } from "./deps.ts";
 import { cmdDoctor, doctorDeps } from "./doctor.ts";
+import { cmdDocs, cmdSkill } from "./docs.ts";
 import { EXIT, type Io, realIo } from "./io.ts";
 import {
   cmdExecBridge,
@@ -582,6 +583,22 @@ export const COMMANDS: readonly Command[] = [
     summary: "a member moved: re-point at its new address without re-enrolling anything",
     run: async (args, s) => cmdReconnect(await packVerbDeps(s.io), args),
   },
+  // The manual, printed out of the binary rather than fetched or read off disk (`cli/docs-embed.ts`
+  // says why). Both verbs are read-only and neither draws a terminal view, so `--plain` is moot.
+  {
+    name: "skill",
+    summary: "print the agent-facing brief on Collie, for an AI agent in this terminal (also `collie --skill`)",
+    run(_args, s) {
+      const ctx = loadContext(s.io.err);
+      return cmdSkill(s.io, collieVersion(ctx.root));
+    },
+  },
+  {
+    name: "docs",
+    summary:
+      "print an operator page embedded in this binary (no argument lists them, `docs <name>` prints one, `--all` prints every one behind a marker)",
+    run: (args, s) => cmdDocs(s.io, args),
+  },
   {
     name: "help",
     summary: "print this help",
@@ -622,13 +639,16 @@ export function helpText(commands: readonly Command[] = COMMANDS): string[] {
 }
 
 /**
- * The two reflexes every operator has, spelled as the verbs they mean.
+ * The reflexes every operator has, spelled as the verbs they mean.
  *
  * `collie --version` used to print `error: unknown command \`--version\`` and the usage line — a verb
  * table where `version` exists and `--version` is a typo is a distinction only the implementer cares
  * about. `-V` is the long option's conventional short form; `-v` is left alone, because it is the one
  * a future `--verbose` would want and a flag that changed meaning later is worse than one that never
  * existed.
+ *
+ * `--skill` is the third of them, and it is here for the same reason: an agent reaching for the brief
+ * types the flag spelling as often as the verb, and the two must not answer differently.
  *
  * Only the FIRST argument is rewritten. `collie logs --version` is an argument to `logs`, exactly as
  * every other flag reaching a verb is (`buildProgram` turns commander's own `-h` off for the same
@@ -637,6 +657,7 @@ export function helpText(commands: readonly Command[] = COMMANDS): string[] {
 export function normalizeArgv(argv: readonly string[]): readonly string[] {
   const first = argv[0];
   if (first === "--version" || first === "-V") return ["version", ...argv.slice(1)];
+  if (first === "--skill") return ["skill", ...argv.slice(1)];
   return argv;
 }
 

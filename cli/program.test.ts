@@ -78,6 +78,9 @@ const PUSH_VERBS = ["push"];
 // operator's own terminal is the only right place to configure, because they mint or accept a
 // credential.
 const STT_VERBS = ["stt"];
+// The manual, printed out of the binary: `collie skill` for an AI agent, `collie docs` for the
+// operator pages. Neither was ever a shell verb — there was nothing to print before it was embedded.
+const MANUAL_VERBS = ["skill", "docs"];
 
 function capture(): Io & { stdout: string[]; stderr: string[] } {
   const stdout: string[] = [];
@@ -96,6 +99,7 @@ describe("the verb table", () => {
       ...PUSH_VERBS,
       ...STT_VERBS,
       ...PACK_VERBS,
+      ...MANUAL_VERBS,
       "help",
     ]);
   });
@@ -352,7 +356,9 @@ describe("exit codes", () => {
       // real state dir. cli/beacon.test.ts drives it against fakes.
       ...BEACON_VERBS,
     ];
-    const readOnly = ["version", "help"];
+    // `skill` and `docs` print text compiled into this binary. They read nothing, resolve no state
+    // dir and touch no machine, so the suite may run them for real.
+    const readOnly = ["version", "help", "skill", "docs"];
     for (const name of [...worldTouching, ...readOnly]) expect(findCommand(name)).toBeDefined();
     expect([...worldTouching, ...readOnly].length).toBe(COMMANDS.length);
     // The grep stops at the verb's closing quote, NOT at the `"]` that used to follow it: a verb
@@ -401,6 +407,8 @@ describe("exit codes", () => {
     expect(normalizeArgv(["--version"])).toEqual(["version"]);
     expect(normalizeArgv(["-V"])).toEqual(["version"]);
     expect(normalizeArgv(["logs", "--version"])).toEqual(["logs", "--version"]);
+    expect(normalizeArgv(["--skill"])).toEqual(["skill"]);
+    expect(normalizeArgv(["logs", "--skill"])).toEqual(["logs", "--skill"]);
     // `-v` is left for a future `--verbose`; a flag that changes meaning later is worse than none.
     expect(normalizeArgv(["-v"])).toEqual(["-v"]);
     expect(normalizeArgv([])).toEqual([]);

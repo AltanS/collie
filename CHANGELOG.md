@@ -28,6 +28,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **An agent in your terminal can read the manual.** `collie skill` prints a brief on how Collie works, and `collie docs` prints the operator pages, both out of the compiled binary rather than off disk, so a packaged install answers exactly what a checkout does and neither needs the network. `collie docs` lists the ten pages, `collie docs <name>` prints one, and `collie docs --all` prints every one behind a marker an agent can split on. `collie --skill` is the flag spelling of the first.
+
 ### Fixed
 
 - **The release page lists what changed, grouped, and drops GitHub's own list.** The update command still sits at the top, unfolded, and below it the page now prints the changelog's own lead sentences under Added, Changed, Fixed, Packaging and Docs, then the version's changelog section for the commits and a compare link against the previous tag. GitHub's generated list only knew merged pull requests, and most of Collie's history lands as direct commits, so it read as an almost empty release.

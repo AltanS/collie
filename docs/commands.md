@@ -18,6 +18,8 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **URL** | `collie url` | Print the tailnet URL |
 | **QR** | `collie qr` | The same URL as a scannable code |
 | **Version** | `collie version` | The running version (`0.x.y+sha`) |
+| **Skill** | `collie skill` | The agent-facing brief on Collie, for an AI agent in your terminal (also `collie --skill`) |
+| **Docs** | `collie docs` · `collie docs <name>` · `collie docs --all` | These pages, printed out of the binary itself |
 | **Update** | `collie update` | Stage the newest release of your major, flip to it, restart and verify (`--check` preflights, `--status` reports, `--major` crosses one) |
 | **Rollback** | `collie update --rollback` | Put the previous version back (not on a Herdr-managed checkout, which has none staged) |
 | **Uninstall** | `collie uninstall` | Remove the service; keep `.env` and the install |
