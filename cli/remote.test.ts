@@ -9,7 +9,18 @@ import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
 import { fp, leadStore, material, member, PACK, T0 } from "../bridge/pack/fixtures.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
-import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT, type SeededOps } from "./fakes.ts";
+import {
+  capture,
+  context,
+  fakeExec,
+  fakeFiles,
+  fakeOps,
+  HOME,
+  ROOT,
+  type SeededFiles,
+  type SeededOps,
+} from "./fakes.ts";
+import { sshResolveArgs } from "./candidates.ts";
 import type { Environment } from "./context.ts";
 import { EXIT } from "./io.ts";
 import { cmdPack, type PackDeps } from "./pack.ts";
@@ -108,6 +119,8 @@ interface Harness {
   closed: number;
   data(): TrustStoreData | null;
   restarts: number;
+  /** Every LOCAL spawn, in order — what the candidate picker asked this machine. */
+  exec: { calls: string[] };
 }
 
 interface HarnessOptions {
@@ -125,6 +138,14 @@ interface HarnessOptions {
   env?: Record<string, string>;
   /** Seed for the ops store — how `pack add` remembers a host it already reached. */
   ops?: SeededOps;
+  /** `~/.ssh/config`'s contents, for the candidate picker. Absent ⇒ there is no such file. */
+  sshConfig?: string;
+  /** Any other file the picker may read — an ssh `Include` target, say. */
+  extraFiles?: Readonly<Record<string, string>>;
+  /** `herdr machine list --json`'s stdout. Absent ⇒ there is no `herdr` binary to ask. */
+  machines?: string;
+  /** `ssh -G <target>` output per target. Absent ⇒ there is no `ssh` to resolve with. */
+  resolve?: Readonly<Record<string, string>>;
 }
 
 function harness(opts: HarnessOptions = {}): Harness {
@@ -144,13 +165,24 @@ function harness(opts: HarnessOptions = {}): Harness {
   let restarts = 0;
   let closed = 0;
 
+  // The candidate picker's two sources, and the resolver. All three are ABSENT by default, so every
+  // test written before the picker existed sees the machine it always saw: no ssh config, no `herdr`
+  // to ask for a machine list, and no `ssh` to resolve an alias with.
+  const seeded: SeededFiles = { ...opts.extraFiles };
+  if (opts.sshConfig !== undefined) seeded[`${HOME}/.ssh/config`] = opts.sshConfig;
+  const answers: [string, Partial<ReturnType<typeof realExec>["capture"]> | { stdout: string }][] = [
+    [`git -C ${ROOT} rev-parse HEAD`, { stdout: `${COMMIT}\n` }],
+    [`git -C ${ROOT} status --porcelain`, { stdout: "" }],
+    [`git -C ${ROOT} show ${COMMIT}:herdr-plugin.toml`, { stdout: `version = "${VERSION}"\n` }],
+    ["tailscale status --json", { stdout: TAILSCALE_JSON }],
+  ];
+  if (opts.machines !== undefined) answers.push(["herdr machine list --json", { stdout: opts.machines }]);
+  for (const [target, stdout] of Object.entries(opts.resolve ?? {})) {
+    answers.push([`ssh ${sshResolveArgs(target).join(" ")}`, { stdout }]);
+  }
   const exec = fakeExec({
-    answers: [
-      [`git -C ${ROOT} rev-parse HEAD`, { stdout: `${COMMIT}\n` }],
-      [`git -C ${ROOT} status --porcelain`, { stdout: "" }],
-      [`git -C ${ROOT} show ${COMMIT}:herdr-plugin.toml`, { stdout: `version = "${VERSION}"\n` }],
-      ["tailscale status --json", { stdout: TAILSCALE_JSON }],
-    ],
+    absent: [...(opts.machines === undefined ? ["herdr"] : []), ...(opts.resolve === undefined ? ["ssh"] : [])],
+    answers,
   });
 
   const deps: PackAddDeps = {
@@ -159,7 +191,7 @@ function harness(opts: HarnessOptions = {}): Harness {
     ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000", ...opts.env }),
     io: out,
     exec,
-    files: fakeFiles(),
+    files: fakeFiles(seeded),
     store,
     ops,
     // SAFETY: `AuditLog` hands its sink the line it just serialised from an `AuditEntry` — the
@@ -232,6 +264,7 @@ function harness(opts: HarnessOptions = {}): Harness {
     get restarts() {
       return restarts;
     },
+    exec,
   };
 }
 
@@ -435,6 +468,142 @@ describe("collie pack add", () => {
   test("no host is a usage error", async () => {
     const h = harness();
     expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  // ── The candidate picker (M22/07) ───────────────────────────────────────────
+  // With a target NOTHING below runs and every golden above still matches. With none, `pack add`
+  // offers the machines this box already knows about and the operator picks one.
+
+  test("an absent herdr and an absent ssh config both yield no candidates and no error", async () => {
+    const h = harness();
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(h.io.stdout).toEqual([]);
+    expect(text(h.io)).toContain("usage: collie pack add <ssh-host>");
+    expect(text(h.io)).not.toContain("warn:");
+    expect(text(h.io)).not.toContain("Candidate hosts");
+  });
+
+  test("a target skips the picker entirely — nothing local is asked", async () => {
+    const h = harness({ sshConfig: "Host attic", machines: '[{"target":"nas"}]', resolve: {} });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.exec.calls.filter((c) => c.startsWith("ssh ") || c.startsWith("herdr "))).toEqual([]);
+  });
+
+  test("no host lists the ssh config candidates and adds the one the operator picks", async () => {
+    const h = harness({ sshConfig: "Host attic\nHost build-box", prompt: "2" });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(h.io.stdout).toContain("Candidate hosts on this machine:");
+    // Each row states its source, so a name's origin is never a guess.
+    expect(h.io.stdout.some((l) => l.includes("1  attic      ssh config"))).toBe(true);
+    expect(h.io.stdout.some((l) => l.includes("2  build-box  ssh config"))).toBe(true);
+    expect(text(h.io)).toContain("probing build-box…");
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install", "configure", "membership", "enroll"]);
+  });
+
+  test("a name may be typed instead of a number, and the existing confirm still runs", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "attic" });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("probing attic…");
+    expect(h.calls.map((c) => c.leg)).toEqual(["probe", "install", "configure", "membership", "enroll"]);
+  });
+
+  test("two aliases for one machine are ONE row, showing both names and both sources", async () => {
+    const h = harness({
+      sshConfig: "Host attic",
+      machines: '[{"target":"op@attic.lan:22","label":"attic"}]',
+      resolve: {
+        attic: "user op\nhostname attic.lan\nport 22",
+        "op@attic.lan:22": "user op\nhostname attic.lan\nport 22",
+      },
+      prompt: "",
+    });
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    const rows = h.io.stdout.filter((l) => l.includes("ssh config") || l.includes("herdr"));
+    expect(rows).toEqual(["   1  attic  ssh config, herdr  also op@attic.lan:22"]);
+    expect(h.io.stdout).toContain("Nothing was added.");
+  });
+
+  test("a candidate already in the pack is marked with its member id rather than dropped", async () => {
+    const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      ops: { nas: { sshHost: "nas-box", path: REMOTE_CHECKOUT, port: 8787, recordedAt: T0 } },
+      sshConfig: "Host nas-box\nHost attic",
+      prompt: "1",
+      after: leadStore({
+        peers: [
+          member({ memberId: "nas", address: "100.64.0.9:8787" }),
+          member({ memberId: "attic", address: "100.64.0.9:8787" }),
+        ],
+      }),
+    });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    // The source tag and the mark are SEPARATE columns: "where the name came from" and "this lead
+    // already has it" are different facts, and a merged column would read as one.
+    expect(h.io.stdout.some((l) => l.includes('nas-box  ssh config  already enrolled as "nas"'))).toBe(true);
+    // Marked, not offered: number 1 is the OTHER row.
+    expect(text(h.io)).toContain("probing attic…");
+  });
+
+  test("every candidate already enrolled is a refusal, and it says which", async () => {
+    const h = harness({
+      store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
+      ops: { nas: { sshHost: "nas-box", path: REMOTE_CHECKOUT, port: 8787, recordedAt: T0 } },
+      sshConfig: "Host nas-box",
+    });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain("every candidate above is already a member of this pack");
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("the resolver spawns nothing but `ssh -G`, over a config with ProxyCommand and Include", async () => {
+    const h = harness({
+      sshConfig: [
+        "Host bastion",
+        "  HostName bastion.example",
+        "Host attic",
+        "  ProxyCommand corkscrew proxy 8080 %h %p",
+        "Match host attic exec \"corkscrew --probe\"",
+        "  ForwardAgent yes",
+        "Include work/hosts",
+      ].join("\n"),
+      extraFiles: { [`${HOME}/.ssh/work/hosts`]: "Host office\n  ProxyJump bastion" },
+      machines: "[]",
+      resolve: {},
+      prompt: "",
+    });
+    expect(await run(h, [])).toBe(EXIT.STATE);
+    // The recorded spawns, in full: the machine list, then one `ssh -G` per alias. No ProxyCommand
+    // ran, no connection was made, and no leg script reached the transport.
+    expect(h.exec.calls).toEqual([
+      "herdr machine list --json",
+      "ssh -G bastion",
+      "ssh -G attic",
+      "ssh -G office",
+    ]);
+    expect(h.exec.calls.every((c) => !c.startsWith("ssh") || c.startsWith("ssh -G "))).toBe(true);
+    expect(h.exec.calls.some((c) => c.includes("corkscrew"))).toBe(false);
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("a broken herdr is one warn line and no candidates, never a failure", async () => {
+    const h = harness({ sshConfig: "Host attic", machines: "{ not a list }", prompt: "1" });
+    expect(await run(h, [])).toBe(EXIT.OK);
+    expect(h.io.stderr.filter((l) => l.startsWith("warn: `herdr machine list --json`"))).toHaveLength(1);
+    expect(text(h.io)).toContain("probing attic…");
+  });
+
+  test("a non-interactive run with candidates refuses rather than picking one", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: null });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain("it would have asked which host to add");
+    expect(h.calls).toHaveLength(0);
+  });
+
+  test("an answer that names nothing on the list is refused, never guessed at", async () => {
+    const h = harness({ sshConfig: "Host attic", prompt: "somewhere-else" });
+    expect(await run(h, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain('error: "somewhere-else" is not one of the candidates above.');
     expect(h.calls).toHaveLength(0);
   });
 

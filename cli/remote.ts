@@ -3,14 +3,29 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { DEFAULT_PORT } from "../bridge/config.ts";
+import type { HostProbe } from "../bridge/mux/host-candidates.ts";
+import { muxHostCandidates } from "../bridge/mux/registry.ts";
 import { commitPackChange, mintInvite } from "../bridge/pack/enrollment.ts";
 import type { OpsRecord } from "../bridge/pack/ops-store.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
 import { parseUpdateRun, type UpdateRun } from "../bridge/update-run.ts";
+import {
+  CANDIDATE_QUESTION,
+  markCandidates,
+  mergeCandidates,
+  offeredCandidates,
+  pickCandidate,
+  renderCandidateList,
+  resolvedSshTarget,
+  SSH_CONFIG_SOURCE,
+  type RosterEntry,
+  type SourcedCandidates,
+} from "./candidates.ts";
 import { collieVersion, INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { ensureStore, parsePackArgs, probeMembers, resolveSelfAddress, type PackDeps } from "./pack.ts";
 import { plainAdd, type AddEvent } from "./render.ts";
+import { sshConfigCandidates } from "./ssh-config.ts";
 import { findTool } from "./tools.ts";
 import { unitName } from "./unit.ts";
 
@@ -764,13 +779,111 @@ export async function cmdPackAdd(deps: PackAddDeps, args: readonly string[]): Pr
   }
 }
 
+// ── The candidate picker ─────────────────────────────────────────────────────
+// `collie pack add` with no target used to be a usage error. It now offers the machines this box
+// already knows about and lets the operator pick one (M22/07). With a target NOTHING below runs, and
+// the verb takes the same path it always did, byte for byte.
+//
+// NOTHING IS EVER ADDED WITHOUT THE OPERATOR PICKING IT. A candidate is a suggestion; the pick
+// chooses a host, and the four-leg run — including its confirm — is unchanged from that point on.
+// The merge, the mark and the rendering live in `./candidates.ts`; the two sources in
+// `./ssh-config.ts` and behind `MuxAdapterFactory.hostCandidates` (ADR 0036 (c)).
+
+/** The picker's answer: the host to add, or the exit code this run ends with. */
+type Chosen = { readonly host: string } | { readonly code: number };
+
+/**
+ * The candidate providers' world, over seams this suite already fakes.
+ *
+ * `Exec` and not {@link RemoteRunner}: every call the picker makes runs on THIS machine — `ssh -G`
+ * resolves a local config file without connecting, and a multiplexer's machine list is local
+ * client-side state. `RemoteRunner` is the far side, and there is no far side yet.
+ */
+function candidateProbe(deps: Wired): HostProbe {
+  return {
+    run: (tool, args, timeoutMs) => deps.exec.capture(tool, args, timeoutMs),
+    warn: (line) => deps.io.err(line),
+  };
+}
+
+/**
+ * This lead's own roster, as a join the candidate list can mark against.
+ *
+ * The enrolled peers come from the trust store and how each was reached comes from the ops store
+ * (`bridge/pack/ops-store.ts`, ADR 0016) — `pack add` has WRITTEN `sshHost` since M7/01 and this is
+ * the first read of it here. Empty on a peer and on a solo collie: neither has members to mark.
+ */
+async function leadRoster(deps: Wired, probe: HostProbe): Promise<readonly RosterEntry[]> {
+  const trust = await deps.store.load();
+  if (trust === null || trust.lead !== null) return [];
+  const { data } = await deps.ops.load();
+  if (data === null) return [];
+  const roster: RosterEntry[] = [];
+  for (const peer of trust.peers) {
+    const record = data.members[peer.memberId];
+    if (record === undefined) continue;
+    const sshHost = record.sshHost;
+    roster.push({ memberId: peer.memberId, sshHost, key: resolvedSshTarget(sshHost, probe) ?? sshHost });
+  }
+  return roster;
+}
+
+/** Every provider's candidates, `ssh config` first and the multiplexers after it, in registry order. */
+function candidateSources(deps: Wired, probe: HostProbe): readonly SourcedCandidates[] {
+  const sources: SourcedCandidates[] = [
+    { source: SSH_CONFIG_SOURCE, candidates: sshConfigCandidates(deps.files, deps.ctx.home) },
+  ];
+  for (const answer of muxHostCandidates(probe)) {
+    sources.push({ source: answer.mux, candidates: answer.candidates });
+  }
+  return sources.filter((source) => source.candidates.length > 0);
+}
+
+/** List the candidates and take the operator's pick. */
+async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
+  const probe = candidateProbe(deps);
+  const rows = markCandidates(
+    mergeCandidates(candidateSources(deps, probe), (target) => resolvedSshTarget(target, probe)),
+    await leadRoster(deps, probe),
+  );
+  // No candidates at all is TODAY'S ANSWER, unchanged: there is nothing to offer and the operator
+  // has to name a host, which is what the usage line says.
+  if (rows.length === 0) {
+    for (const line of USAGE) deps.io.err(line);
+    return { code: EXIT.USAGE };
+  }
+  for (const line of renderCandidateList(rows)) deps.io.out(line);
+  if (offeredCandidates(rows).length === 0) {
+    deps.io.err("error: every candidate above is already a member of this pack.");
+    for (const line of USAGE) deps.io.err(line);
+    return { code: EXIT.USAGE };
+  }
+  const answer = await deps.prompt(CANDIDATE_QUESTION);
+  if (answer === null) {
+    deps.io.err("error: this run is not interactive, and it would have asked which host to add.");
+    deps.io.err("       Name one instead: `collie pack add <ssh-host>`.");
+    return { code: EXIT.USAGE };
+  }
+  if (answer.trim() === "") {
+    deps.io.out("Nothing was added.");
+    return { code: EXIT.STATE };
+  }
+  const picked = pickCandidate(rows, answer);
+  if (picked === null) {
+    deps.io.err(`error: "${answer.trim()}" is not one of the candidates above.`);
+    deps.io.err("       Pick a number, or run `collie pack add <ssh-host>` with the name.");
+    return { code: EXIT.USAGE };
+  }
+  return { host: picked };
+}
+
 async function packAddRun(deps: Wired, args: readonly string[]): Promise<number> {
   const { positional, flags } = parsePackArgs(args);
-  const host = positional[0];
-  if (host === undefined || host === "") {
-    for (const line of USAGE) deps.io.err(line);
-    return EXIT.USAGE;
-  }
+  const named = positional[0];
+  // No target is no longer a refusal — it is the candidate list ({@link chooseCandidateHost}).
+  const chosen: Chosen = named === undefined || named === "" ? await chooseCandidateHost(deps) : { host: named };
+  if ("code" in chosen) return chosen.code;
+  const host = chosen.host;
   deps.emit({ kind: "title", host });
   const port = parsePort(flags.port);
   if (port === null) {

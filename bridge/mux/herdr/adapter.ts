@@ -25,6 +25,7 @@
 import { meaningfulTabLabel, meaningfulTerminalTitle } from "../../activity.ts";
 import type { DialMode } from "../../dial.ts";
 import { declareCapabilities } from "../capabilities.ts";
+import { herdrMachineCandidates } from "./machine-list.ts";
 import { HERDR_LOGO_SVG } from "./logo.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
@@ -579,4 +580,9 @@ export const herdrMuxFactory: MuxAdapterFactory = {
   describeTarget(endpoint: string) {
     return `socket ${endpoint}`;
   },
+  // Herdr 0.9.0 links machines, so it is the one adapter with a list of ssh targets to offer
+  // (ADR 0036 (c)). It is NOT read off the socket and it is not a pane question — see
+  // `./machine-list.ts`. Nothing here enrols anything; `collie pack add` offers the list and the
+  // operator picks.
+  hostCandidates: herdrMachineCandidates,
 };

@@ -55,6 +55,13 @@ running tmux or zellij never appears in Herdr's list.
 | Where you see it | your Herdr window | your phone |
 | Works with tmux and zellij | no | yes |
 
+`collie pack add` with no target offers candidates from both lists, so you never type a host twice.
+It reads `Host` entries in your `~/.ssh/config` and runs `herdr machine list --json`. It merges the
+two lists on the ssh target each name resolves to. The command follows an `Include` in that config
+one level deep, and only for paths under `~/.ssh/`. It does not offer an alias in a file included
+from an included file. Each row shows where the name came from: `ssh config`, `herdr`, or both. A
+row for a machine already in this pack carries that member's id instead of a number.
+
 ## Two machines, one pack
 
 The lead is the instance your phone already reaches. The joining machine

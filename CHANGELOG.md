@@ -31,6 +31,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Added
 
 - **An agent in your terminal can read the manual.** `collie skill` prints a brief on how Collie works, and `collie docs` prints the operator pages, both out of the compiled binary rather than off disk, so a packaged install answers exactly what a checkout does and neither needs the network. `collie docs` lists the ten pages, `collie docs <name>` prints one, and `collie docs --all` prints every one behind a marker an agent can split on. `collie --skill` is the flag spelling of the first.
+- **`pack add` offers the hosts this machine already knows.** `collie pack add` with no target now lists candidates instead of printing the usage line: the `Host` entries in your `~/.ssh/config`, and the machines `herdr machine list --json` reports. One machine is one row, merged on the ssh target each name resolves to with `ssh -G`, which never connects. Each row says whether the name came from your ssh config, from herdr, or from both, and a row this lead already leads carries that member's id and is not offered. An `Include` is followed one level deep and only under `~/.ssh/`. Nothing is added until you pick a row, and the confirm still runs. With a target the verb behaves exactly as before.
 
 ### Fixed
 
