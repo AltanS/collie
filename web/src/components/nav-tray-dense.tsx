@@ -106,7 +106,7 @@ function DenseKeyQueueStrip({
             onClick={() => onRemove(i)}
             aria-label={t("keys.queue.removeAria", { label })}
             className={cn(
-              "inline-flex h-8 items-center gap-1 rounded-md border border-border bg-muted/50 px-2 text-xs font-medium",
+              "inline-flex min-h-11 min-w-11 items-center gap-1 rounded-md border border-border bg-muted/50 px-2 text-xs font-medium",
               isDangerKey(key) && "border-destructive/40 text-destructive",
             )}
           >
@@ -138,7 +138,7 @@ function DenseKeyQueueStrip({
           disabled={disabled}
           onChange={(e) => onBaseChar(e.target.value)}
           aria-label={t("keys.queue.charAria")}
-          className="h-8 w-14 rounded-md border border-input bg-transparent px-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+          className="h-11 w-14 rounded-md border border-input bg-transparent px-2 text-sm placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
         />
       )}
 
@@ -147,7 +147,7 @@ function DenseKeyQueueStrip({
           type="button"
           variant={danger ? "destructive" : "default"}
           size="sm"
-          className="h-8"
+          className="min-h-11 min-w-11"
           disabled={disabled || queue.length === 0}
           onClick={onSend}
         >
@@ -157,7 +157,7 @@ function DenseKeyQueueStrip({
           type="button"
           variant="ghost"
           size="icon"
-          className="size-8 text-muted-foreground"
+          className="size-11 text-muted-foreground"
           disabled={disabled}
           onClick={onClear}
           aria-label={t("keys.queue.clearAria")}
@@ -175,6 +175,13 @@ const NO_REFUSED_KEYS: readonly string[] = [];
 // real actions (tmux windows, CLI hotkeys, agent-extension views like pi's CE Workflow: F7 opens
 // its orchestrator). Without buttons for them, a phone-only user has no route to any such keybind.
 const FN_KEYS = ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"];
+
+// The same transparent ::before technique as STRIP_TAP_TARGET, sized for this grid's 36px
+// faces and 1px Button border: -5px reaches 4px vertically; -3px reaches 2px horizontally.
+// A 40px-wide face therefore answers a 44×44px target. gap-y-2 / gap-x-1 keep those targets
+// disjoint. The scroller's py-1 / px-0.5 retain their reach at the grid's outer edges.
+const GRID_TAP_TARGET =
+  "relative before:absolute before:-inset-y-[5px] before:-inset-x-[3px] before:content-['']";
 
 // Symbol keys, three full 8-grid rows. Herdr types any literal one-character string
 // (HERDR_API.md), so these ride the ordinary navBtn path - no grammar work, and the
@@ -304,7 +311,7 @@ export function NavTrayDense({
         aria-label={aria}
         // touch-action/select-none: without them a held button on iOS starts a text selection and
         // Android may treat the hold as a scroll gesture, both of which cancel the pointer stream.
-        className={`h-9 touch-manipulation px-0 text-xs font-medium select-none ${span} ${held || phase !== "idle" ? "" : "bg-muted"}`}
+        className={`${GRID_TAP_TARGET} h-9 touch-manipulation px-0 text-xs font-medium select-none ${span} ${held || phase !== "idle" ? "" : "bg-muted"}`}
       >
         {held ? (
           <span className="mx-auto flex items-center gap-1">
@@ -333,7 +340,7 @@ export function NavTrayDense({
         size="sm"
         disabled={disabled}
         onClick={() => fire([d], d)}
-        className={idle ? `h-9 bg-muted font-mono text-sm ${span}` : `h-9 font-mono text-sm ${span}`}
+        className={cn(GRID_TAP_TARGET, "h-9 font-mono text-sm", span, idle && "bg-muted")}
       >
         {phase === "done" ? <Check className="size-4" /> : d}
       </Button>
@@ -354,7 +361,7 @@ export function NavTrayDense({
         onClick={() => arm(m)}
         aria-pressed={mode !== "off"}
         aria-label={aria}
-        className={mode === "off" ? "h-9 bg-muted px-0 text-xs font-medium" : "h-9 px-0 text-xs font-medium"}
+        className={cn(GRID_TAP_TARGET, "h-9 px-0 text-xs font-medium", mode === "off" && "bg-muted")}
       >
         {mode === "locked" && <Lock className="size-3" />}
         {label}
@@ -376,7 +383,7 @@ export function NavTrayDense({
         disabled={disabled || !keysSendable([c.chord], unsupportedKeys)}
         onClick={() => pressCtrl({ label, keys: [c.chord], danger: c.danger })}
         aria-label={"Ctrl+" + c.chord.slice(5).toUpperCase()}
-        className={live ? "h-9 px-0 text-xs font-medium" : "h-9 bg-muted px-0 text-xs font-medium"}
+        className={cn(GRID_TAP_TARGET, "h-9 px-0 text-xs font-medium", !live && "bg-muted")}
       >
         {pending === label ? (
           t("keys.confirm.label")
@@ -408,15 +415,18 @@ export function NavTrayDense({
 
       <>
           {/* Two lanes, Termius-style: a 4-column terminal lane and a 4-column numpad lane with
-              a wider gutter between them (outer gap-3 vs inner gap-1). Both lanes run 9 rows, so
+              a wider gutter between them (outer gap-3 vs inner gap-x-1). Both lanes run 9 rows, so
               the pairs stay aligned. Left: control block, inline arrows (the inverted-T cost two
               rows for four keys; hold-to-repeat still applies), wide Space, symbols, the
               agent-CLI combos (^D keeps its danger two-tap), the rare-symbol tail. Right: a
               faithful numpad (7-8-9 top row, 0 wide, operators, dot), symbols, F1-F12 in ONE
               lane — never spread across. Deliberately NOT here: Termius's Home/PgUp/PgDn/End/
               Del/Ins block — Herdr answers every one with invalid_key (HERDR_API.md). */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid grid-cols-4 content-start gap-1" data-slot="key-lane-left">
+          {/* Eight 40px faces plus gaps need 356px. Below that, scroll rather than overlap hit
+              targets or shrink them. Padding belongs inside this scroller, not on its parent. */}
+          <div className="overflow-x-auto overscroll-x-contain px-0.5 py-1">
+          <div className="grid min-w-[22.25rem] grid-cols-2 gap-3">
+            <div className="grid grid-cols-4 content-start gap-x-1 gap-y-2" data-slot="key-lane-left">
               {navBtn("Esc", ["Escape"])}
               {navBtn("Tab", ["Tab"])}
               {modBtn("shift", "\u21e7", "Shift")}
@@ -435,7 +445,7 @@ export function NavTrayDense({
                 size="sm"
                 disabled={disabled || !keysSendable(["Space"], unsupportedKeys)}
                 onClick={() => fire(["Space"], "Space")}
-                className={echo.phaseOf("Space") === "idle" ? "col-span-4 h-9 bg-muted text-xs font-medium" : "col-span-4 h-9 text-xs font-medium"}
+                className={cn(GRID_TAP_TARGET, "col-span-4 h-9 text-xs font-medium", echo.phaseOf("Space") === "idle" && "bg-muted")}
               >
                 {echo.phaseOf("Space") === "done" ? <Check className="size-4" /> : "Space"}
               </Button>
@@ -443,7 +453,7 @@ export function NavTrayDense({
               {QUICK_COMBOS.map(comboBtn)}
               {SYMBOLS_TAIL.map((sym) => navBtn(sym, [sym]))}
             </div>
-            <div className="grid grid-cols-4 content-start gap-1" data-slot="key-lane-right">
+            <div className="grid grid-cols-4 content-start gap-x-1 gap-y-2" data-slot="key-lane-right">
               {digitBtn("7")}
               {digitBtn("8")}
               {digitBtn("9")}
@@ -463,6 +473,7 @@ export function NavTrayDense({
               {FN_KEYS.map((k) => navBtn(k, [k]))}
             </div>
           </div>
+          </div>
 
           {/* Presets (collapsed by default; expanding keeps everything inline, never covering the
               mirror). On the immediate path a danger preset needs a second tap; while composing a
@@ -473,7 +484,7 @@ export function NavTrayDense({
             <button
               type="button"
               onClick={() => setCtrlOpen((o) => !o)}
-              className="flex items-center gap-1 px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
+              className="flex min-h-11 items-center gap-1 px-1 py-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground"
             >
               {t("keys.presets.label")}
               <ChevronDown className={cn("size-3 transition-transform", ctrlOpen && "rotate-180")} />
@@ -494,7 +505,7 @@ export function NavTrayDense({
                       disabled={disabled || !keysSendable(item.keys, unsupportedKeys)}
                       onClick={() => pressCtrl(item)}
                       className={cn(
-                        "h-10 text-sm font-medium",
+                        "min-h-11 text-sm font-medium",
                         item.danger && !isPending && phase === "idle" && "text-destructive",
                       )}
                     >

@@ -49,6 +49,13 @@ describe("KeyRail", () => {
     }
   });
 
+  it("puts interrupt immediately after Escape, before the scrollable tail", () => {
+    renderRail();
+    const buttons = screen.getAllByRole("button");
+    const escapeIndex = buttons.indexOf(screen.getByRole("button", { name: "Esc" }));
+    expect(buttons[escapeIndex + 1]).toHaveAccessibleName("⌃C");
+  });
+
   it("sends ⇧Tab and ^C as +-joined chords, never tmux spelling", async () => {
     const user = userEvent.setup();
     const props = renderRail();

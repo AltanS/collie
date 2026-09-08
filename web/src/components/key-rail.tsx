@@ -2,6 +2,7 @@ import { Check, Keyboard, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { MorphIcon } from "@/components/ui/morph-icon";
+import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useLocale } from "@/hooks/use-locale";
 import { usePinSide } from "@/hooks/use-pin-side";
@@ -9,8 +10,8 @@ import { t as translate } from "@/lib/i18n";
 import { denseKeyLabel } from "@/lib/key-queue";
 import { keysSendable } from "@/lib/mux-capability";
 
-// The fixed key rail: Termius's single quick-picker row, one tap, no dock open. Esc, Tab, ⇧Tab,
-// the four arrows, ^C — the keys a phone keyboard cannot send — plus a pinned pad tab that
+// The fixed key rail: Termius's single quick-picker row, one tap, no dock open. Esc, ^C, Tab, ⇧Tab,
+// the four arrows — the keys a phone keyboard cannot send — plus a pinned pad tab that
 // toggles the full Keys dock (it carries `aria-expanded`, and shares the Keys toggle's old
 // dictionary string so nothing gains a key). The rail replaced the Controls row outright, so the
 // Quick/Display docks have no entry — nothing here is derived from the screen or from the
@@ -23,7 +24,7 @@ import { keysSendable } from "@/lib/mux-capability";
 // Every key passes `keysSendable` and greys in place when the multiplexer refuses it, exactly
 // like the dock's own rail. One-shot fires go through the composer's `pressKeys`, so the dialog
 // refusal and the echo accounting are the same path the dock uses.
-const RAIL_KEYS = ["Escape", "Tab", "shift+Tab", "Up", "Down", "Left", "Right", "ctrl+c", "Enter", "Space"] as const;
+const RAIL_KEYS = ["Escape", "ctrl+c", "Tab", "shift+Tab", "Up", "Down", "Left", "Right", "Enter", "Space"] as const;
 const DIRECT_KEYS = ["Backspace"] as const;
 
 // Glyph caps for the arrows and Space: text names would eat the row. Plain symbols need no
@@ -68,8 +69,8 @@ export function KeyRail({ onSend, unsupportedKeys, directActive, onOpenPad, padO
       aria-controls="dock-keys"
       className={
         side === "left"
-          ? "h-8 shrink-0 touch-manipulation rounded-r-full rounded-l-none bg-muted pl-3 pr-2.5 text-muted-foreground select-none"
-          : "h-8 shrink-0 touch-manipulation rounded-l-full rounded-r-none bg-muted pl-2.5 pr-3 text-muted-foreground select-none"
+          ? `${STRIP_TAP_TARGET} before:-inset-x-px h-8 min-w-11 shrink-0 touch-manipulation rounded-r-full rounded-l-none bg-muted pl-3 pr-2.5 text-muted-foreground select-none`
+          : `${STRIP_TAP_TARGET} before:-inset-x-px h-8 min-w-11 shrink-0 touch-manipulation rounded-l-full rounded-r-none bg-muted pl-2.5 pr-3 text-muted-foreground select-none`
       }
     >
       {/* Open state reads as a close control: the shared MorphIcon crossfades and untwists the
@@ -86,7 +87,10 @@ export function KeyRail({ onSend, unsupportedKeys, directActive, onOpenPad, padO
       className={side === "left" ? "-ml-3 mb-2 flex items-center gap-1.5" : "-mr-3 mb-2 flex items-center gap-1.5"}
     >
       {side === "left" && pad}
-      <div className="flex flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain [mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Like LabelledStrip, keep the hit extension inside the scroller's clip: 32px faces plus
+          py-1.5 give each key a 44px touch height. min-w-11 supplies the other axis; -1px insets
+          reach the border edges, not a neighbour. ^C follows Escape without a sideways scroll. */}
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-1.5 [mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {keys.map((k) => {
           const phase = echo.phaseOf(k);
           // Greyed rather than removed: the rail order is fixed muscle memory, and pulling a key
@@ -104,7 +108,7 @@ export function KeyRail({ onSend, unsupportedKeys, directActive, onOpenPad, padO
               disabled={disabled || refused}
               onClick={() => void echo.run(k, () => onSend([k]))}
               aria-label={glyph ? k : undefined}
-              className="h-8 shrink-0 touch-manipulation px-2.5 font-mono text-xs text-muted-foreground select-none"
+              className={`${STRIP_TAP_TARGET} before:-inset-x-px h-8 min-w-11 shrink-0 touch-manipulation px-2.5 font-mono text-xs text-muted-foreground select-none`}
             >
               {phase === "done" ? <Check className="size-4" /> : (glyph ?? denseKeyLabel(k))}
             </Button>

@@ -10,10 +10,10 @@ import { useDenseKeysEnabled } from "@/lib/density";
 function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea">) {
   // Read here rather than taken as a prop, for the reason host-chip.tsx gives about its own hide
   // rule: two callers mount this field (the composer and the pane view's own), and a rule each
-  // caller has to remember is a rule one of them eventually forgets. The dense box is 36px on a
-  // 44px comfort floor — DELIBERATE and the one place the dense layout goes under that target,
-  // because a textarea is a field you tap INTO and then type in, not a control you hit repeatedly,
-  // and its hit area is the whole width of the row. Every other dense surface keeps min-h-11.
+  // caller has to remember is a rule one of them eventually forgets. The dense box draws at
+  // 36px, below DESIGN.md's 44px tap floor; the whole row width does not supply missing height.
+  // The rail and tray keep smaller key faces with extended hit areas, not min-h-11 on every
+  // dense surface. This textarea's 36px height is a separate choice, not evidence of that floor.
   const dense = useDenseKeysEnabled();
   return (
     <textarea

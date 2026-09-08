@@ -9,7 +9,7 @@ import { useSyncExternalStore } from "react";
 // OFF, so an install that never opens Settings renders exactly what it rendered before.
 //
 // It is deliberately ONE bit, not a scale. The dense layout is a set of choices that only read
-// together (smaller targets buy more keys per row, which is what makes a single rail worth its
+// together (compact key faces buy more keys per row, which is what makes a single rail worth its
 // row); a per-surface dial would let a phone land on combinations nobody laid out or looked at.
 //
 // The bit is per-device and never travels: it is a property of the glass and the thumb in front of
