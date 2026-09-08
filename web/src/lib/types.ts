@@ -617,11 +617,12 @@ export interface PaneReadResponse {
 export type TranscriptPart =
   | { kind: "text"; text: string; truncated?: boolean }
   | { kind: "thinking"; text: string; truncated?: boolean }
+  | { kind: "image"; url: string; mimeType?: string }
   | {
       kind: "tool";
       name: string;
       summary: string;
-      result?: { text: string; truncated?: boolean; isError?: boolean };
+      result?: { text: string; truncated?: boolean; isError?: boolean; imageUrl?: string };
     };
 
 /**

@@ -17,6 +17,8 @@ export function searchableText(entry: TranscriptEntry): string {
   for (const part of entry.parts) {
     if (part.kind === "tool") {
       parts.push(part.name, part.summary);
+    } else if (part.kind === "image") {
+      // Image parts have no searchable text.
     } else {
       parts.push(part.text);
     }

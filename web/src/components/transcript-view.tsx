@@ -96,12 +96,26 @@ function ToolPart({ part, query }: { part: Extract<TranscriptPart, { kind: "tool
         )}
       </button>
       {open && result && (
-        <pre className="overflow-x-auto border-t px-2 py-1.5 font-mono text-[11px] leading-snug whitespace-pre-wrap">
-          {result.text}
-          {result.truncated && (
-            <span className="text-muted-foreground">{`\n${t("transcript.outputTruncated")}`}</span>
+        <div className="border-t">
+          {result.imageUrl && (
+            <div className="p-2 border-b bg-background/50">
+              <img
+                src={result.imageUrl}
+                alt="Tool output"
+                className="max-h-96 w-auto max-w-full rounded border object-contain"
+                loading="lazy"
+              />
+            </div>
           )}
-        </pre>
+          {result.text && (
+            <pre className="overflow-x-auto px-2 py-1.5 font-mono text-[11px] leading-snug whitespace-pre-wrap">
+              {result.text}
+              {result.truncated && (
+                <span className="text-muted-foreground">{`\n${t("transcript.outputTruncated")}`}</span>
+              )}
+            </pre>
+          )}
+        </div>
       )}
     </div>
   );
@@ -110,6 +124,18 @@ function ToolPart({ part, query }: { part: Extract<TranscriptPart, { kind: "tool
 function Part({ part, query }: { part: TranscriptPart; query: string }) {
   // Tool output is COMMAND output, not prose — it stays verbatim in a monospace block (see ToolPart).
   if (part.kind === "tool") return <ToolPart part={part} query={query} />;
+  if (part.kind === "image") {
+    return (
+      <div className="my-1.5">
+        <img
+          src={part.url}
+          alt="Attachment"
+          className="max-h-96 w-auto max-w-full rounded border object-contain shadow-xs"
+          loading="lazy"
+        />
+      </div>
+    );
+  }
   // Prose is Markdown, so it renders formatted. MarkdownText emits React elements only — never
   // markup — so this keeps the same XSS boundary the raw text node had.
   return (

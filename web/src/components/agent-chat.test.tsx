@@ -1132,7 +1132,7 @@ describe("AgentChat — no session reported", () => {
   });
 
   it("says nothing for an agent with no journal adapter — there is no transcript to promise", () => {
-    const agent = { ...fixtureAgents[0]!, agent: "omp" }; // block grammars, no journal
+    const agent = { ...fixtureAgents[0]!, agent: "unknown-agent" }; // block grammars, no journal
     renderChat({ agent, agents: [agent] });
     expect(noSessionNote()).not.toBeInTheDocument();
   });

@@ -67,7 +67,9 @@ export function adapterFor(
   registry: Record<string, JournalAdapter>,
   agent: string | undefined,
 ): JournalAdapter | undefined {
-  return agent !== undefined && Object.hasOwn(registry, agent) ? registry[agent] : undefined;
+  if (agent === undefined) return undefined;
+  const canonical = agent === "omp" ? "pi" : agent;
+  return Object.hasOwn(registry, canonical) ? registry[canonical] : undefined;
 }
 
 /** The agents this build can serve a journal for — used by the probe script and by tests. */

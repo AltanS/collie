@@ -36,6 +36,7 @@ import type { StateEngine } from "./state-engine.ts";
 import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter } from "./journal/types.ts";
+import { isBlobHash, resolveBlobPath } from "./journal/pi.ts";
 import {
   bearerToken,
   normalizeLabel,
@@ -379,6 +380,29 @@ export function operatorFontResponse(
   };
   if (notModified(ifNoneMatch, etag)) {
     // RFC 7232 §4.1: a 304 echoes the validators and carries no body.
+    return secure(new Response(null, { status: 304, headers }));
+  }
+  return secure(new Response(bytes, { headers }));
+}
+
+/**
+ * `GET /api/blobs/<hash>` response constructor.
+ *
+ * Pure and exported so status, caching, and content-type headers can be tested without standing up
+ * Bun.serve.
+ */
+export function blobResponse(
+  bytes: Uint8Array<ArrayBuffer>,
+  contentType: string,
+  ifNoneMatch: string | null,
+): Response {
+  const etag = computeEtag(bytes);
+  const headers = {
+    "content-type": contentType,
+    "cache-control": "public, max-age=31536000, immutable",
+    etag,
+  };
+  if (notModified(ifNoneMatch, etag)) {
     return secure(new Response(null, { status: 304, headers }));
   }
   return secure(new Response(bytes, { headers }));
@@ -815,6 +839,50 @@ export function startServer(opts: {
       if (rt instanceof Response) return rt;
       return launchersRoute(operatorLaunchers, req.headers.get("accept-encoding"));
     }
+    // ── Blobs: content-addressed image and media store (pi / omp journal blobs) ──
+    if (pathname.startsWith("/api/blobs/") && req.method === "GET") {
+      const denied = caller.gate("read");
+      if (denied) return denied;
+      const raw = pathname.slice("/api/blobs/".length);
+      let hash: string;
+      try {
+        hash = decodeURIComponent(raw);
+      } catch {
+        return text("malformed URL", 400);
+      }
+      if (!isBlobHash(hash)) return text("invalid blob hash", 400);
+      const real = await resolveBlobPath(hash, cfg.journalRoots.pi);
+      if (real === null) return text("blob not found", 404);
+      const file = Bun.file(real);
+      const buf = await file.slice(0, 16).arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let contentType = file.type;
+      if (!contentType || contentType === "application/octet-stream") {
+        if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+          contentType = "image/png";
+        } else if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+          contentType = "image/jpeg";
+        } else if (
+          bytes[0] === 0x52 &&
+          bytes[1] === 0x49 &&
+          bytes[2] === 0x46 &&
+          bytes[3] === 0x46 &&
+          bytes[8] === 0x57 &&
+          bytes[9] === 0x45 &&
+          bytes[10] === 0x42 &&
+          bytes[11] === 0x50
+        ) {
+          contentType = "image/webp";
+        } else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+          contentType = "image/gif";
+        } else {
+          contentType = "application/octet-stream";
+        }
+      }
+      const content = await file.bytes();
+      return blobResponse(content, contentType, req.headers.get("if-none-match"));
+    }
+
 
     // ── Worktrees: list / create / open / remove, all scoped to a space (ADR 0032) ──
     const worktreeListMatch = pathname.match(WORKTREE_LIST_ROUTE);

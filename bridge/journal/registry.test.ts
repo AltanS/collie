@@ -32,6 +32,10 @@ describe("adapterFor", () => {
     expect(adapterFor(registry, agent)?.agent).toBe(agent);
   });
 
+  test("resolves pi for omp agent alias", () => {
+    expect(adapterFor(registry, "omp")?.agent).toBe("pi");
+  });
+
   test("an agent with no journal is undefined, not a throw", () => {
     expect(adapterFor(registry, "aider")).toBeUndefined();
     expect(adapterFor(registry, undefined)).toBeUndefined();
@@ -59,6 +63,6 @@ describe("the frontend mirror", () => {
     // The `new Set([…])` literal alone — the prose around it names agents too ("claude-code").
     const literal = /new Set\(\[([^\]]*)\]\)/.exec(source)?.[1] ?? "";
     const listed = [...literal.matchAll(/"([a-z][a-z0-9-]*)"/g)].map((m) => m[1]);
-    expect(listed.toSorted()).toEqual([...KNOWN_HARNESS_NAMES].toSorted());
+    expect(listed.toSorted()).toEqual([...KNOWN_HARNESS_NAMES, "omp"].toSorted());
   });
 });

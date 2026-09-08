@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { updateStartVerdict, type PackUpdateRow } from "./update-action.ts";
 
 import {
+  blobResponse,
   bridgeConfigBody,
   muxConfigBody,
   muxLogoResponse,
@@ -2387,6 +2388,30 @@ describe("GET /api/launchers — this host's own rows, home included", () => {
     const res = await launchersRoute(() => Promise.resolve([]), null);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ launchers: [], home: homedir() });
+  });
+});
+
+describe("GET /api/blobs/<hash> — content-addressed media response", () => {
+  test("answers 200 with content-type, immutable cache header, and etag", async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const res = blobResponse(bytes, "image/png", null);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    const etag = res.headers.get("etag");
+    expect(etag).toBeTruthy();
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+  });
+
+  test("answers 304 with no body when if-none-match matches etag", async () => {
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+    const initial = blobResponse(bytes, "image/png", null);
+    const etag = initial.headers.get("etag")!;
+    const res = blobResponse(bytes, "image/png", etag);
+    expect(res.status).toBe(304);
+    expect(res.headers.get("etag")).toBe(etag);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(await res.text()).toBe("");
   });
 });
 
