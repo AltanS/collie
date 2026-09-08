@@ -38,11 +38,15 @@ version because you fixed something; the version moves once, when the release is
 **Before committing any functional change** (anything under `bridge/`, `cli/`, `web/src/`,
 `web/public/`, `scripts/`, `systemd/`, or the manifest / package files, minus the tests and hooks
 carved out below), you MUST, **in the same
-commit**, add **one line** to `CHANGELOG.md` at the end of the `## [Unreleased]` list so the list
-stays in landing order. **Style: short**: write one line per change with no prose paragraphs. End
-the line with the issue or PR it answers where one exists (`… (#147)`), and with **no commit
-hash**: the hash does not exist yet, and the release commit adds it. Do not touch the three
-version files.
+commit**, add **one bullet** to `CHANGELOG.md` at the end of the `## [Unreleased]` list so the
+list stays in landing order. **Style: a group, a bold lead, then the detail.** The bullet sits
+under one of five level-3 headings, in this order and only where there is content: `### Added`,
+`### Changed`, `### Fixed`, `### Packaging`, `### Docs`. It opens with a short bold lead sentence, present tense,
+about ten words, the period inside the `**`, and the detail follows in the same bullet:
+`- **The lead sentence.** The detail follows here.` End with the thanks and the issue or PR it
+answers where one exists (`Thanks @handle (#147).`), and with **no commit hash**: the hash does not
+exist yet, and the release commit adds it. The lead is what the GitHub Release page prints, so
+write it as the sentence an operator reads there. Do not touch the three version files.
 
 **Cutting a release is one `chore(release): x.y.z` commit** that does all of this and nothing else:
 
@@ -61,8 +65,9 @@ version files.
 
    The person cutting the release decides. When in doubt, pick patch.
 2. **Bump** all three version files to that number.
-3. **Rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`**, using the release date. The lines
-   remain in landing order, oldest first, because each was appended to the end. **Append each
+3. **Rename `## [Unreleased]` to `## [x.y.z] - YYYY-MM-DD`**, using the release date. The four
+   `###` group headings and their bullets come along as they are; within a group the bullets stay
+   in landing order, oldest first, because each was appended to the end. **Append each
    line's short commit hash** in the link format
    `([abc1234](https://github.com/AltanS/collie/commit/abc1234))`. Clean up the section: merge
    or reorder lines as needed, and delete entries for changes reverted before release.
@@ -106,8 +111,9 @@ up either. To publish sooner, run the website's sync by hand against a ref:
   disagree).
 - A **git pre-commit hook** (`scripts/git-hooks/pre-commit`, activate once with
   `scripts/install-hooks.sh`) blocks a functional commit that neither adds a line under
-  `## [Unreleased]` nor bumps the version, and blocks a release commit (version bumped) whose
-  `## [Unreleased]` section still has lines in it. The same hook holds guard (D), which refuses a
+  `## [Unreleased]` nor bumps the version, blocks a commit whose staged `## [Unreleased]` bullets
+  are not grouped under one of the five `###` headings or do not open with a bold lead, and blocks
+  a release commit (version bumped) whose `## [Unreleased]` section still has lines in it. The same hook holds guard (D), which refuses a
   staged `flake.lock` that is not part of a release commit. Escape hatch for a single commit:
   `SKIP_VERSION_CHECK=1 git commit …` (every `SKIP_*` hatch is listed under *Linting* below).
 
@@ -147,10 +153,23 @@ mid-flight. The gate then sees `cancelled`, not `success`, and refuses. Re-runni
 and then re-running the Release workflow clears it, but the cheaper move is the old rule: hold the
 push until the release is out.
 
-**The GitHub Release page is built, not written.** `release.yml` populates it with the update
-commands, a link to that version's section in `CHANGELOG.md`, and GitHub's generated notes:
-merged pull requests with their authors, new contributors, and the "Full Changelog" compare link
-listing every commit. Nobody writes release notes by hand.
+**The GitHub Release page is built, not written.** `release.yml` runs
+`scripts/release-notes.ts` over `CHANGELOG.md` and hands the result to `gh release create`. The
+order on the page is the reader's, not the file's: **`## Update` first and unfolded**, because a
+phone arrives here from the in-app banner to copy one command and must not have to open anything
+to see it; then `## What changed`, the bold lead of every bullet in that version's section, one
+line each, under its group's name; then a link to the section itself for the commits and a compare
+link; then the by-hand verify recipe, the one block that sits in a `<details>`.
+
+The compare link's other end is a **real tag, asked of git** (`git describe --tags` on the tagged
+commit's parent), never derived from a CHANGELOG heading: betas 33 to 41 have headings and no tags,
+so a derived link would 404. No previous tag means no compare line. GitHub's generated notes are no
+longer appended either: that list only knew merged pull requests, and most of Collie's history
+lands as direct commits or cherry-picks that keep the author, so it read as if almost nothing had
+shipped. Nobody writes release notes by hand, and a bullet the script cannot read stops the release
+rather than publishing an empty page. `scripts/release-notes.test.ts` pins the body's shape and
+also reads this repo's own `CHANGELOG.md`, so a badly shaped bullet is red in CI on the commit that
+wrote it; the pre-commit hook refuses one at commit time, and the tag-time failure is the backstop.
 
 `scripts/check-tag.sh` checks this: with no arguments it asks whether the version the repo currently
 claims has a tag; given a rev-list selector it asks the same of every `chore(release):` commit the

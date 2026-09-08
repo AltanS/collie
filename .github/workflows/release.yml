@@ -301,6 +301,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The release notes carry a compare link against the PREVIOUS tag, and the step below
+          # asks git for it with `git describe --tags`. A default checkout is one commit deep and
+          # carries no tags at all, so `describe` would answer nothing and the compare line would
+          # silently disappear from every release page. Full depth is the cheap fix: this job is
+          # not the one that builds the payloads.
+          fetch-depth: 0
       # The same flake as the payload job, for the same reason: this job builds the `web/dist`
       # asset the demo runs, and reads the manifest back with Bun.
       - uses: DeterminateSystems/nix-installer-action@v22
@@ -372,69 +379,43 @@ jobs:
           done
           ls -l
 
-      - name: Assemble release notes (update commands + changelog link)
+      - name: Assemble release notes from CHANGELOG.md
         id: notes
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           notes="$RUNNER_TEMP/notes.md"
-          # CHANGELOG.md is the one record of this release's changes; this step no longer copies its
-          # block in here, it links to the version's own heading instead. GitHub turns a Markdown
-          # heading into an anchor by lowercasing it, dropping brackets and dots, and turning each
-          # remaining space into a hyphen, so `## [1.5.0] - 2026-09-04` becomes `#150---2026-09-04`.
-          # Verified against a live rendered page, not assumed:
-          #   curl -sL https://github.com/$GITHUB_REPOSITORY/blob/v1.5.0/CHANGELOG.md \
-          #     | grep -o 'user-content-150---2026-09-04'
-          # Only the date is read out of the heading line; the anchor is built, not scraped, so this
-          # needs no HTML fetch at release time.
-          heading_line="$(grep -E "^## \[$version\] - [0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md | head -1 || true)"
-          if [ -n "$heading_line" ]; then
-            date="${heading_line##* }"
-            anchor="$(printf '%s' "$version" | tr -d '.')---$date"
-            changelog_link="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md#$anchor"
-          else
-            # Should never happen — the version gate already required this heading to exist — but a
-            # release must never fail over a link. Fall back to the bare file and say so in the log.
-            echo "::warning::CHANGELOG.md has no '## [$version] - YYYY-MM-DD' heading; linking the file without an anchor"
-            changelog_link="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md"
-          fi
-          {
-            echo "## Update"
-            echo
-            echo "**Already on 1.x?** One command, then the phone updates itself within a minute."
-            echo
-            # Two spellings, because there are two kinds of install and neither command works on the
-            # other: a Herdr-managed checkout has plugin actions, a downloaded binary install has
-            # `collie` on PATH (M14/01 §8). These commands are why this step exists at all: the
-            # phone's update banner (web/src/components/update-banner.tsx) links straight to this
-            # release page, so they must be here, not just in CHANGELOG.md.
-            echo '```'
-            echo "collie update                                              # downloaded install (install.sh or a tarball below)"
-            echo "herdr plugin action invoke update --plugin herdr.collie    # Herdr plugin install"
-            echo '```'
-            echo
-            echo "Check with \`collie version\` or \`herdr plugin action invoke version --plugin herdr.collie\`."
-            echo
-            # The 0.x crossing rides on EVERY release, not only 1.0.0's. A 0.x install's update
-            # banner points at the newest release, so a reader who never opens 1.0.0's notes must
-            # still find this line here (M14/01 §8).
-            echo "**Coming from 0.x?** \`collie update\` will not cross a major. Follow [Upgrading from 0.x to 1.0](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/upgrading.md#upgrading-from-0x-to-10)."
-            echo
-            echo "## What changed"
-            echo
-            echo "Every change in this release, with its commit and who made it: [$version in the changelog]($changelog_link)."
-            echo
-            echo "## Verify a download by hand"
-            echo
-            echo '```'
-            echo "curl -fLO https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/collie-$version-linux-x64.tar.gz"
-            echo "curl -fLO https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/collie-$version-linux-x64.tar.gz.sha256"
-            echo "sha256sum -c collie-$version-linux-x64.tar.gz.sha256   # macOS: shasum -a 256 -c"
-            echo '```'
-            echo
-            echo "A sha256 catches a corrupt or truncated download. It does not prove who built the file,"
-            echo "HTTPS and the pinned github.com host carry that."
-          } > "$notes"
+          # CHANGELOG.md is the one record of this release's changes, and the page is built from it.
+          # The page's order is the reader's: the update commands first and unfolded, because a
+          # phone arrives here from the in-app banner to copy one command; then what changed, the
+          # leads of that version's bullets under their group headings; then the changelog link and
+          # the compare link; then the verify recipe, the one block that is folded. The anchor is
+          # the script's job now, so no shell here builds it.
+          # `scripts/release-notes.test.ts` pins the shape, over fixtures AND over this repo's own
+          # CHANGELOG, so a badly shaped bullet is red in CI long before a tag is pushed.
+          #
+          # The script exits 1 when the section cannot be read: no heading for this version, a
+          # bullet with no bold lead, a bullet above every group heading. There is deliberately no
+          # fallback body: the page's content IS that section, so a release published without it
+          # would list nothing at all, and the version gate has already required the heading to
+          # exist. Fix the CHANGELOG and re-run the workflow.
+          #
+          # The compare link's other end is a REAL TAG, asked of git, never derived from the
+          # CHANGELOG. Betas 33 to 41 were cut in the CHANGELOG and never tagged (CLAUDE.md,
+          # *Versioning*), so a heading-derived link would point at a ref that does not exist and
+          # 404. `describe` starts at the tagged commit's parent, so it names the tag before this
+          # one; an empty answer, which is what the very first release gets, means no compare line.
+          prev="$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          previous=()
+          [ -z "$prev" ] || previous=(--previous-tag "$prev")
+          echo "compare base: ${prev:-<none>}"
+          # Same flake as every other bun invocation in this workflow, so the notes are produced by
+          # the Bun the release is built with.
+          nix develop --command bun scripts/release-notes.ts \
+            --version "$version" \
+            --repo "$GITHUB_REPOSITORY" \
+            --tag "$GITHUB_REF_NAME" \
+            "${previous[@]}" > "$notes"
           echo "file=$notes" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
@@ -447,16 +428,14 @@ jobs:
           # that badge from the shipped release line, so mark it explicitly.
           flags=()
           case "$GITHUB_REF_NAME" in *-*) flags=(--prerelease) ;; esac
-          # `--generate-notes` appends GitHub's own summary — merged PRs with their authors, new
-          # contributors, and the "Full Changelog" compare link — after the notes file's content
-          # rather than replacing it (`gh release create --help`: "Additional release notes can be
-          # prepended to automatically generated notes"). That compare link matters here more than
-          # on most repos: most of Collie's history lands as direct commits, not PRs, so it is the
-          # one place every commit in the release is listed.
+          # No `--generate-notes`. GitHub's generated summary only knows merged pull requests, and
+          # most of Collie's history lands as direct commits or as cherry-picks that keep the
+          # author, so that list showed a handful of entries under a release that moved twenty
+          # things and read as if almost nothing had happened. The compare link was the one part
+          # worth keeping, and the notes file now writes it itself.
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
             --title "Collie $GITHUB_REF_NAME" \
             --notes-file "${{ steps.notes.outputs.file }}" \
-            --generate-notes \
             "$RUNNER_TEMP"/assets/*
 
   # ── Tell the website ───────────────────────────────────────────────────────
