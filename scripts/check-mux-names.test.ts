@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -15,8 +15,9 @@ interface Run {
   out: string;
 }
 
-function run(target?: string): Run {
-  const proc = Bun.spawnSync(["bash", SCRIPT, ...(target === undefined ? [] : [target])], {
+function run(target?: string, bridgeTarget?: string): Run {
+  const args = [target, bridgeTarget].filter((a): a is string => a !== undefined);
+  const proc = Bun.spawnSync(["bash", SCRIPT, ...args], {
     cwd: join(import.meta.dir, ".."),
   });
   return {
@@ -55,6 +56,85 @@ describe("check-mux-names — the real tree", () => {
     // invisible is a guard nobody notices going empty.
     const { out } = run();
     for (const name of ["herdr", "tmux", "zellij"]) expect(out).toContain(name);
+  });
+});
+
+/**
+ * A scratch BRIDGE tree, scanned as if it were `bridge/`.
+ *
+ * The second half of the guard (M22/02): above the mux seam a name may be spelled but never
+ * COMPARED. The web target stays the real `web/src` so the first scan still passes, this case is
+ * about the second one, and a run that failed earlier would prove nothing about it.
+ */
+function scanBridge(files: Record<string, string>): Run {
+  const dir = mkdtempSync(join(tmpdir(), "collie-mux-bridge-"));
+  try {
+    writeFileSync(join(dir, "innocent.ts"), "export const ok = true;\n");
+    for (const [name, contents] of Object.entries(files)) {
+      writeFileSync(join(dir, name), contents);
+    }
+    return run("web/src", dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe("check-mux-names, the bridge above the seam", () => {
+  test("the real bridge compares no name outside bridge/mux, apart from the endpoint default", () => {
+    const { code, out } = run();
+    expect(out).toContain("no multiplexer name is compared");
+    expect(code).toBe(0);
+  });
+
+  test("a name literal compared with === fails the check", () => {
+    const { code, out } = scanBridge({ "gate.ts": 'export const g = (m: string) => m === "tmux";\n' });
+    expect(code).toBe(1);
+    expect(out).toContain("COMPARED above the mux seam");
+    expect(out).toContain("gate.ts");
+  });
+
+  test("DEFAULT_MUX in a comparison fails too, it is the gate this milestone removed", () => {
+    const src = "export const multi = (cfg: Cfg) => cfg.multiSession && cfg.mux === DEFAULT_MUX;\n";
+    expect(scanBridge({ "gate.ts": src }).code).toBe(1);
+  });
+
+  test("the endpoint default passes, the one comparison the bridge is allowed", () => {
+    // The shape of all three permitted sites: the default-name ternary, whose arms are the herdr
+    // socket path and the per-adapter endpoint.
+    const src =
+      "export const e = (cfg: Cfg) => (cfg.mux === DEFAULT_MUX ? cfg.socketPath : cfg.muxEndpoint);\n";
+    const { code, out } = scanBridge({ "endpoint.ts": src });
+    expect(out).toContain("1 endpoint-default site");
+    expect(code).toBe(0);
+  });
+
+  test("a comparison inside bridge/mux is out of scope, that is where a name is a behaviour", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-mux-bridge-"));
+    try {
+      writeFileSync(join(dir, "innocent.ts"), "export const ok = true;\n");
+      const nested = join(dir, "mux");
+      mkdirSync(nested);
+      writeFileSync(join(nested, "adapter.ts"), 'export const m = (x: string) => x === "zellij";\n');
+      expect(run("web/src", dir).code).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a test file may compare a name, that is how the behaviour above is asserted", () => {
+    const src = 'const cfg = { mux: "tmux" };\nexport const t = cfg.mux === "tmux";\n';
+    expect(scanBridge({ "thing.test.ts": src }).code).toBe(0);
+  });
+
+  test("an empty bridge scan is refused, not passed", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-mux-bridge-empty-"));
+    try {
+      const { code, out } = run("web/src", dir);
+      expect(code).toBe(1);
+      expect(out).toContain("no bridge files to scan");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

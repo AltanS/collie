@@ -23,7 +23,7 @@ import {
 } from "./prompt-binding.ts";
 import type { Push, PushSubscription } from "./push.ts";
 import { RefreshCoalescer } from "./refresh.ts";
-import { herdTagFor, type SessionRegistry, type SessionRuntime, widenedPanes } from "./sessions.ts";
+import { herdTagFor, selectView, type SessionRegistry, type SessionRuntime, widenedPanes } from "./sessions.ts";
 import type { Snooze } from "./snooze.ts";
 import { IMAGE_EXTS, TEXT_EXTS, TEXT_SNIFF_BYTES, uploadExt } from "./uploads.ts";
 import type { UpdateMonitor } from "./update.ts";
@@ -48,6 +48,7 @@ import { modeForWire } from "./pack/mode.ts";
 import type { PackRuntime } from "./pack/config.ts";
 import type { PackLead } from "./pack/lead.ts";
 import { packDeviceOf, packGate } from "./pack/peer-gate.ts";
+import { snapshotPlan } from "./pack/merge.ts";
 import { selectHostFrom, type HostSelector } from "./pack/registry.ts";
 import type { PackHandler, PackSurface } from "./pack/router.ts";
 import type { PackTlsOptions } from "./pack/transport.ts";
@@ -398,6 +399,14 @@ export function bridgeConfigBody(opts: {
    */
   mux?: MuxPublication;
   /**
+   * A MEMBER's own block, already in wire shape, for `/api/config?host=<member>` (M22/03).
+   *
+   * When present it REPLACES what `mux` would have produced, in the same position, so a member's
+   * answer differs from the lead's in the block's contents and in nothing else. Absent means "answer
+   * for this host", which is both the solo body and the lead's own answer with no `host=` on it.
+   */
+  muxWire?: MuxConfig;
+  /**
    * The operator's own palette rows. Omitted entirely when there are none, so an operator who never
    * wrote a `commands.toml` ships the same payload as before — the same reasoning `mode` follows.
    */
@@ -445,7 +454,8 @@ export function bridgeConfigBody(opts: {
   // omit-when-default. There is no default to omit — "no mux key" already means something on the
   // phone (an older bridge, read as fully capable), so a Herdr bridge staying silent here would be
   // indistinguishable from one that cannot answer.
-  if (opts.mux !== undefined) wire.mux = muxConfigBody(opts.mux);
+  if (opts.muxWire !== undefined) wire.mux = opts.muxWire;
+  else if (opts.mux !== undefined) wire.mux = muxConfigBody(opts.mux);
   // Appended after the mux block, and omit-when-absent for the reason `mode` is: no key means no
   // microphone, which is precisely true of a collie with no provider configured.
   if (opts.stt !== undefined) wire.stt = opts.stt;
@@ -918,12 +928,21 @@ export function startServer(opts: {
   // the PEER's own log with `via:"pack"` and the originating member (§12). The lead's verdict is not
   // an input — it never crosses the wire.
   const packHandler = opts.packRouter?.({
-    // Never widened, and stated rather than defaulted: a peer answers its lead with the session the
-    // lead asked for, and no lead asks for more than one yet. Turning this on is a PACK_PROTOCOL
-    // change (§7.1, additive-optional) and belongs in the commit that also teaches the sweep to ask
-    // and `merge.ts` to carry the tag — not to a default argument that quietly widens a wire the
-    // spec has not been amended for.
-    snapshot: (session) => localSnapshot(session, null, false),
+    // The view comes off the LEAD's request (`bridge/pack/router.ts` reads it with the same
+    // `selectView` the browser route uses), never from a literal here: this line used to hard-code a
+    // narrow answer, which made a member's second session unreachable no matter what the phone asked
+    // (M22/06). `?sessions=all` is additive and optional under §7.1, so PACK_PROTOCOL_VERSION does
+    // not move, and a lead that does not send it still gets the primary session. A pack request may
+    // still not name a host — widening is a second dimension of ONE machine, and a peer has no
+    // peers (§4).
+    snapshot: (view) => localSnapshot(view.session, null, view.widen),
+    // M22/03: this collie's own capability declaration, for `hello`. The SAME expression the
+    // `/api/config` route below publishes to a browser — the primary session's adapter — so a peer
+    // cannot report capabilities that differ from the ones it serves its own operator.
+    mux: () => {
+      const active = registry.get();
+      return active === undefined ? null : muxConfigBody(active.herdr);
+    },
     dispatch: async (req, url, from) => {
       const session = url.searchParams.get("session") ?? undefined;
       const device = packDeviceOf(req);
@@ -1162,13 +1181,21 @@ export function startServer(opts: {
         // `/pack/v1/snapshot`, and a lead sweeps on its own clock whether or not anybody is reading
         // it — stamping there would pin every peer at `watched` for the life of the pack).
         registry.get(sessionName)?.engine.noteAttention();
-        // `?sessions=all` WIDENS the pane lists to every local session (see localSnapshot). One
-        // exact spelling and nothing else is accepted: the parameter is a switch, not a list, and a
-        // typo must read as "no" rather than as some third behaviour. It does NOT replace `?session=`
-        // — the ambient session still decides `bridge`, `workspaces`, `tabs` and the 404 below, so a
-        // widened view of an unknown session is still an unknown session.
-        const widen = url.searchParams.get("sessions") === "all";
-        const body = localSnapshot(sessionName, device.enforced ? device : null, widen);
+        // `?sessions=all` WIDENS the pane lists to every session on ONE machine (see localSnapshot).
+        // One exact spelling and nothing else is accepted: the parameter is a switch, not a list, and
+        // a typo must read as "no" rather than as some third behaviour. It does NOT replace
+        // `?session=` — the named session still decides `bridge`, `workspaces`, `tabs` and the 404
+        // below, so a widened view of an unknown session is still an unknown session.
+        //
+        // WHICH MACHINE is the other half, and the two compose (M22/06). `?host=` was resolved above
+        // for every session-scoped route; this route is the one that answers from the lead's own
+        // registry plus its CACHE of every member, so it never forwards and it reads the host here
+        // rather than through the gate. No host, or the lead, and the view lands on this collie's own
+        // registry exactly as it always has — which is the only body a solo install can get, because
+        // it cannot emit the parameter at all (§11). A member, and the view lands on that member's
+        // cached body at the merge instead, where `narrowPeerBody` applies it.
+        const plan = snapshotPlan(host.kind === "member" ? host.id : null, selectView(url));
+        const body = localSnapshot(plan.local.session, device.enforced ? device : null, plan.local.widen);
         if (!body) return unknownSession();
         // The ONE place the lead re-serialises (§9.2). With no pack this is the identity function's
         // absence: `body` goes out as assembled, same keys, same order, same bytes, same ETag.
@@ -1177,7 +1204,7 @@ export function startServer(opts: {
         // Tag every snapshot poll with the on-disk build id so an open client notices a live rebuild
         // between polls — the no-service-worker self-update path (web/src/lib/self-update.ts).
         return withBuildHeader(
-          json(packLead ? packLead.merge(body) : body, req.headers.get("accept-encoding")),
+          json(packLead ? packLead.merge(body, plan) : body, req.headers.get("accept-encoding")),
           await buildId(),
         );
       }
@@ -1228,6 +1255,29 @@ export function startServer(opts: {
         // is not a choice. `?.` only because `get()` is total over a Map — the primary is created
         // eagerly in the constructor and never disposed.
         const activeMux = registry.get();
+        // ── `?host=<member>`: THIS MEMBER's capability declaration (M22/03) ──────────────────
+        //
+        // Answered from what the lead already holds, and never forwarded: `config` is on
+        // `bridge/pack/forward.ts`'s not-forwarded list and must stay there, because a config read
+        // is the request every page load makes and it must not be able to make the lead dial a
+        // machine. The lead learned the block from that member's last `hello`.
+        //
+        // The host selector is the one `target()` above already resolved, so an unknown or
+        // ill-formed member id gets the same 404 every host-scoped route gives it. It is never
+        // silently rewritten to the lead: quietly answering for a different machine is the exact
+        // failure the host dimension exists to prevent.
+        const scoped = host.kind === "local" ? undefined : packLead?.resolve(host);
+        if (host.kind !== "local" && scoped === undefined) {
+          return jsonError(
+            apiError("host.unknown", { host: host.kind === "member" ? host.id : host.raw }),
+            404,
+            req.headers.get("accept-encoding"),
+          );
+        }
+        // A member that has published nothing answers with the LEAD's block, because absent means
+        // "use the lead's" — which is byte for byte the reading the phone gives every pane today.
+        // The lead's own entry resolves `local`, so it takes its own branch and its own adapter.
+        const memberMux = scoped?.kind === "peer" ? packLead?.muxFor(scoped.link.memberId) : null;
         // Re-resolved per request for the same reason `commands.toml` is: `collie stt setup` is
         // live, and this is where the phone learns whether to draw a microphone at all. `?? undefined`
         // because "no provider" must OMIT the key, never send a null one (PACK_PROTOCOL.md §11).
@@ -1243,6 +1293,9 @@ export function startServer(opts: {
             operatorQuickReplies: myReplies,
             operatorFonts: myFonts,
             mux: activeMux?.herdr,
+            // Assigned through `?? undefined` rather than conditionally, so the no-`host=` request
+            // builds the byte-identical body it always did (PACK_PROTOCOL.md §11).
+            muxWire: memberMux ?? undefined,
             stt: sttWire,
             // This host's own limits, read from cfg on every request like everything else here.
             // A pack member answers with ITS number, which is the number that will judge the bytes.

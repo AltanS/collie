@@ -20,6 +20,7 @@ import { homePath } from "@/lib/nav";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import type { AgentView, PackMemberStatus, PackStatusResponse } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 // The pack census: the whole pack drawn as a FORMATION, and the answer to "how is my pack doing?".
 //
@@ -203,7 +204,7 @@ function MemberSheet({
           {/* The lead's own word for this member, and its reason VERBATIM under it — never
               paraphrased, because the operator's next move is to read it and go fix a version, a
               route or a second lead somewhere. */}
-          <span className={healthTone(member.health)}>{healthWord(member.health)}</span>
+          <span className={healthTone(member)}>{healthWord(member)}</span>
         </Row>
         {member.reason !== undefined && member.reason !== "" && (
           <Row label={t("pack.member.reason")}>
@@ -272,6 +273,23 @@ function MemberSheet({
           </>
         )}
       </ListGroup>
+
+      {/* What the operator is being asked to do about this link, in one sentence, and it is the half of
+          §10.2's split that a word alone cannot carry: "reconnecting" without "nothing to do" still
+          reads as a summons. The sentence is present exactly when the lead offered the distinction, so
+          an older lead's rows say nothing extra rather than something invented. */}
+      {member.linkState !== undefined && (
+        <p
+          className={cn(
+            "text-xs",
+            member.linkState === "attention" ? "text-status-blocked" : "text-muted-foreground",
+          )}
+        >
+          {member.linkState === "attention"
+            ? t("connection.host.attentionAction")
+            : t("connection.host.reconnectingAction")}
+        </p>
+      )}
 
       {/* Two warnings, as sentences rather than badges: each one describes something the operator has
           to go and do, and a coloured dot would have to be decoded first. */}

@@ -587,7 +587,7 @@ export const COMMANDS: readonly Command[] = [
   // says why). Both verbs are read-only and neither draws a terminal view, so `--plain` is moot.
   {
     name: "skill",
-    summary: "print the agent-facing brief on Collie, for an AI agent in this terminal (also `collie --skill`)",
+    summary: "print the agent-facing brief on Collie, for an AI coding agent working in this terminal (also `collie --skill`)",
     run(_args, s) {
       const ctx = loadContext(s.io.err);
       return cmdSkill(s.io, collieVersion(ctx.root));

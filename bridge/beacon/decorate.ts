@@ -325,6 +325,9 @@ export function withAgentBeacons(
     listWorktrees: (scope) => adapter.listWorktrees(scope),
     createWorktree: (request) => adapter.createWorktree(request),
     openWorktree: (request) => adapter.openWorktree(request),
+    // A beacon says which agent is in a pane. It says nothing about which SESSIONS this machine has,
+    // so the wrapped adapter's answer passes through untouched.
+    listSessions: () => adapter.listSessions(),
     // Untouched, and the header says why a beacon change fires nothing here.
     watch: (options) => adapter.watch(options),
   };

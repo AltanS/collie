@@ -2,12 +2,17 @@ import { describe, expect, test } from "bun:test";
 
 import { computeEtag } from "../http-cache.ts";
 import type { PaneWire, SessionSummary, SnapshotResponse, TabView, WorkspaceView } from "../types.ts";
+import { NARROW_VIEW } from "../sessions.ts";
 import {
   leadLabel,
   MAX_PEER_PANES,
   MAX_PEER_SESSIONS,
   mergeSnapshot,
+  narrowPeerBody,
+  NARROW_PLAN,
   parsePeerSnapshot,
+  snapshotPlan,
+  SWEEP_VIEW,
   serverSummaryFor,
   type PeerContribution,
   type PeerSnapshotBody,
@@ -605,5 +610,145 @@ describe("serverSummaryFor — §9.2's shape, exactly", () => {
       contribution({ state: state({ memberId: "l", health: "incompatible", reason: "speaks 2" }) }),
     );
     expect(skewed.protocolDetail).toBe("speaks 2");
+  });
+
+  test("linkState rides along when the registry has one, and is OMITTED when it has not (§7.1)", () => {
+    // Additive and optional: the key is absent for a reachable member and absent for a lead older
+    // than the field, and an absent key is what tells a phone to keep printing the single old word.
+    const reachable = serverSummaryFor(contribution({ state: state({ memberId: "l" }) }));
+    expect("linkState" in reachable).toBe(false);
+    const retrying = serverSummaryFor(
+      contribution({
+        state: state({ memberId: "l", health: "unreachable", reason: "timed out", linkState: "reconnecting" }),
+      }),
+    );
+    expect(retrying.linkState).toBe("reconnecting");
+    // The wire word does not change with it. That is the whole compatibility claim.
+    expect(retrying.reachable).toBe(false);
+    const stuck = serverSummaryFor(
+      contribution({
+        state: state({ memberId: "l", health: "unreachable", reason: "unauthorized", linkState: "attention" }),
+      }),
+    );
+    expect(stuck.linkState).toBe("attention");
+  });
+});
+
+// ── M22/06: the sweep widens, the merge narrows ──────────────────────────────
+// One function does the narrowing, and it is the only place a cached peer body is cut down. The
+// lead's cache holds every session a member runs, because a view the lead does not hold cannot be
+// fetched inside a phone poll (§10.1).
+
+describe("narrowPeerBody — a widened cached body, cut to the view a request asked for", () => {
+  const widened: PeerSnapshotBody = {
+    sessions: [session({ name: "default" }), session({ name: "work", isPrimary: false })],
+    agents: [
+      pane({ paneId: "l1:p1", session: "default" }),
+      pane({ paneId: "l1:p2", session: "work" }),
+    ],
+    shellPanes: [pane({ paneId: "l1:p9", kind: "shell", agent: "shell", session: "work" })],
+    workspaces: [],
+    tabs: [],
+  };
+
+  test("the sweep's view is the widened one, and it names no session", () => {
+    expect(SWEEP_VIEW).toEqual({ session: undefined, widen: true });
+  });
+
+  test("no widening asked: the member's primary session, and the tag comes off", () => {
+    const narrowed = narrowPeerBody(widened, NARROW_VIEW)!;
+    expect(narrowed.agents.map((p) => p.paneId)).toEqual(["l1:p1"]);
+    expect(narrowed.shellPanes).toEqual([]);
+    // The invariant `widenedPanes` states: an unwidened body carries NO `session` key at all, or an
+    // untagged pane would mean two things depending on how the body was built.
+    expect(JSON.stringify(narrowed)).not.toContain('"session"');
+  });
+
+  test("a named session reaches the panes of that session and nothing else", () => {
+    const narrowed = narrowPeerBody(widened, { session: "work", widen: false })!;
+    expect(narrowed.agents.map((p) => p.paneId)).toEqual(["l1:p2"]);
+    expect(narrowed.shellPanes.map((p) => p.paneId)).toEqual(["l1:p9"]);
+    expect(JSON.stringify(narrowed)).not.toContain('"session"');
+  });
+
+  test("widening asked: the body is untouched, tags and all", () => {
+    expect(narrowPeerBody(widened, { session: undefined, widen: true })).toBe(widened);
+  });
+
+  test("the session list is never narrowed — a peer's sessions never vanish (§10.2)", () => {
+    expect(narrowPeerBody(widened, NARROW_VIEW)!.sessions.map((s) => s.name)).toEqual(["default", "work"]);
+  });
+
+  test("a member with one session produces the body it produced before widening existed", () => {
+    // The zero-cost claim. Its panes come back untagged and in the same order, so the merged body is
+    // byte-identical to the pre-M22/06 one.
+    const one: PeerSnapshotBody = {
+      sessions: [session({ name: "default" })],
+      agents: [pane({ paneId: "l1:p1", session: "default" })],
+      shellPanes: [],
+      workspaces: [],
+      tabs: [],
+    };
+    const before: PeerSnapshotBody = { ...one, agents: [pane({ paneId: "l1:p1" })] };
+    expect(narrowPeerBody(one, NARROW_VIEW)).toEqual(before);
+  });
+
+  test("an untagged pane is kept: that is what a member too old to widen answers with", () => {
+    const old: PeerSnapshotBody = {
+      sessions: [session({ name: "default" })],
+      agents: [pane({ paneId: "l1:p1" })],
+      shellPanes: [],
+      workspaces: [],
+      tabs: [],
+    };
+    expect(narrowPeerBody(old, NARROW_VIEW)).toEqual(old);
+    expect(narrowPeerBody(old, { session: "work", widen: false })).toEqual(old);
+  });
+
+  test("a body that never parsed stays null — nothing here invents one", () => {
+    expect(narrowPeerBody(null, NARROW_VIEW)).toBeNull();
+    expect(narrowPeerBody(null, SWEEP_VIEW)).toBeNull();
+  });
+
+  test("nothing flagged primary: the list's own order decides, which is primary-first", () => {
+    // A member whose summaries predate `isPrimary`, or whose flag did not survive the parse. The
+    // registry publishes the primary first (`SessionRegistry.ordered`), so the first row is the
+    // session a narrow request would have been served.
+    const unflagged: PeerSnapshotBody = {
+      ...widened,
+      sessions: widened.sessions.map((s) => session({ ...s, isPrimary: false })),
+    };
+    expect(narrowPeerBody(unflagged, NARROW_VIEW)!.agents.map((p) => p.paneId)).toEqual(["l1:p1"]);
+  });
+
+  test("a member with no session list at all is left alone rather than emptied", () => {
+    const sessionless: PeerSnapshotBody = { ...widened, sessions: [] };
+    expect(narrowPeerBody(sessionless, NARROW_VIEW)).toBe(sessionless);
+  });
+});
+
+describe("snapshotPlan — `?h=` says which machine, `?all=1` says how much of it", () => {
+  test("no host: the lead takes the view as asked, every member stays narrow", () => {
+    const plan = snapshotPlan(null, { session: "work", widen: true });
+    expect(plan.local).toEqual({ session: "work", widen: true });
+    expect(plan.peer("laptop")).toEqual(NARROW_VIEW);
+  });
+
+  test("a member: that member takes the view, the lead falls back to its own primary", () => {
+    const plan = snapshotPlan("laptop", { session: "work", widen: true });
+    expect(plan.peer("laptop")).toEqual({ session: "work", widen: true });
+    expect(plan.local).toEqual(NARROW_VIEW);
+    expect(plan.peer("desktop")).toEqual(NARROW_VIEW);
+  });
+
+  test("a member id nobody holds widens nothing and dials nothing", () => {
+    const plan = snapshotPlan("ghost", { session: undefined, widen: true });
+    expect(plan.local).toEqual(NARROW_VIEW);
+    expect(plan.peer("laptop")).toEqual(NARROW_VIEW);
+  });
+
+  test("NARROW_PLAN is the plan for a request that asks for nothing", () => {
+    expect(NARROW_PLAN.local).toEqual(NARROW_VIEW);
+    expect(NARROW_PLAN.peer("laptop")).toEqual(NARROW_VIEW);
   });
 });

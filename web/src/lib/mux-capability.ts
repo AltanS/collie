@@ -1,6 +1,13 @@
 import { useEffect, useSyncExternalStore } from "react";
 
-import { getMuxConfig, loadOperatorCommands, subscribeOperatorConfig } from "@/lib/operator-config";
+import {
+  getHostMuxConfig,
+  getMuxConfig,
+  loadHostMuxConfig,
+  loadOperatorCommands,
+  subscribeOperatorConfig,
+} from "@/lib/operator-config";
+import { normalizeHost, type Scope } from "@/lib/scope";
 import type { MuxCapability, MuxConfig, MuxTopologyLatency } from "@/lib/types";
 
 // THE ONE QUESTION THE UI MAY ASK ABOUT THE MULTIPLEXER: "can you do this?" — never "which one are
@@ -107,15 +114,66 @@ function useMuxConfig(): MuxConfig | null {
 }
 
 /**
- * Ask one capability. The hook every gated control uses, and the only shape it should take.
+ * The declaration that governs ONE SCOPE's panes: the member's own when the scope names one, the
+ * lead's otherwise (M22/03).
+ *
+ * A pack member runs its own multiplexer, so "can you do this?" has a different answer per machine.
+ * The host comes off the scope exactly as every other scoped read takes it (`HOST_PARAM`, lib/scope
+ * — absent and blank both mean the lead), and the LEAD's read is untouched: no host, no second
+ * request, and a solo install reaches the branch below not once.
+ *
+ * **A member's absent block falls back to the lead's**, which is the reading the whole feature is
+ * built to preserve: the phone reads the lead's config once today and applies it to every pane, so
+ * an older peer, a read still in flight and a member with no declaration all keep producing exactly
+ * that. Never "every capability present" — that fail-open direction belongs one level down, to an
+ * absent capability KEY inside a block that IS present (see the module header).
+ */
+function useScopedMuxConfig(scope?: Scope): MuxConfig | null {
+  const host = normalizeHost(scope?.host);
+  const lead = useMuxConfig();
+  useEffect(() => {
+    if (host !== undefined) void loadHostMuxConfig(host);
+  }, [host]);
+  // `getHostMuxConfig` answers out of a map, so the snapshot is referentially stable between reads —
+  // the requirement `useSyncExternalStore` makes of every getter it is handed.
+  const member = useSyncExternalStore(
+    subscribeOperatorConfig,
+    () => (host === undefined ? null : getHostMuxConfig(host)),
+    () => (host === undefined ? null : getHostMuxConfig(host)),
+  );
+  return scopedMuxConfig(lead, member);
+}
+
+/**
+ * Which of the two declarations governs a scope's panes: the member's when it has one, the lead's
+ * otherwise.
+ *
+ * Pure, and exported for {@link muxCapability}'s reason — this is the sentence the whole per-host
+ * feature rests on, and it is asserted against this rather than through a rendered component.
+ *
+ * **A `null` member is the lead's answer, never "every capability present".** Three things arrive as
+ * `null` here and all three must read the same way: a member whose bridge predates the field, a
+ * member whose read is still in flight, and a member whose read failed. Each of them is a pane the
+ * phone renders today off the lead's single config read, and each of them keeps doing exactly that.
+ */
+export function scopedMuxConfig(lead: MuxConfig | null, member: MuxConfig | null): MuxConfig | null {
+  return member ?? lead;
+}
+
+/**
+ * Ask one capability, of the machine the scope names. The hook every gated control uses.
+ *
+ * `scope` is how a control on a pack member's pane asks THAT member (M22/03). Absent means the lead,
+ * which is every solo install and every dashboard surface that has no host in hand, and that answer
+ * is byte for byte the one this hook has always given.
  *
  * Composes WITH the app's existing locks — it never replaces one. A capability says whether a thing
  * is possible at all; the idle pause (ADR 0007), the read-only device, the send-mode arming
  * (send-mode-menu.tsx) and the composer's `composerReady` pre-flight all still say whether it may
  * happen NOW, and every one of them still has to agree.
  */
-export function useMuxCapability(capability: MuxCapability): MuxCapabilityState {
-  return muxCapability(useMuxConfig(), capability);
+export function useMuxCapability(capability: MuxCapability, scope?: Scope): MuxCapabilityState {
+  return muxCapability(useScopedMuxConfig(scope), capability);
 }
 
 /**

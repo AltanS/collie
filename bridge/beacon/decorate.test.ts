@@ -12,6 +12,7 @@ import {
   type MuxAdapter,
   type MuxGridRequest,
   type MuxPane,
+  type MuxSession,
   type MuxSnapshot,
   type MuxSpaceRequest,
   type MuxSubscription,
@@ -135,6 +136,11 @@ class StubAdapter implements MuxAdapter {
   createSpace(request: MuxSpaceRequest) {
     this.note("createSpace", request);
     return Promise.resolve(muxOk({ paneId: "%9", spaceId: "space", spaceLabel: "space", tabId: "tab", cwd: "/tmp" }));
+  }
+
+  listSessions() {
+    this.note("listSessions");
+    return Promise.resolve(muxOk<readonly MuxSession[]>([{ name: "default", endpoint: "/tmp/stub.sock" }]));
   }
 
   listWorktrees(scope: MuxWorktreeScope) {
@@ -261,6 +267,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     listWorktrees: true,
     createWorktree: true,
     openWorktree: true,
+    listSessions: true,
     watch: true,
   } satisfies Record<keyof Required<MuxAdapter>, true>;
 

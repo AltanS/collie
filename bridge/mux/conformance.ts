@@ -204,6 +204,9 @@ function livePanes(snapshot: MuxSnapshot): readonly MuxPane[] {
  * The four capabilities missing from it are missing for a reason: `agentDetection` and
  * `agentSessionRef` are fields on a pane record rather than calls (their answer is checked on the
  * snapshot), and the two push capabilities are properties of `watch`, which every adapter has.
+ * `listSessions` IS in the table, and it is the one entry that is not about a pane: it asks what
+ * else of this multiplexer runs on this machine, which is a question with a refusal shape like any
+ * other (M22/02).
  */
 interface CapabilityCall {
   readonly capability: MuxCapability;
@@ -338,6 +341,14 @@ function capabilityCalls(adapter: MuxAdapter, targets: CallTargets): CapabilityC
       // probe must never run it against a real multiplexer (the header's rule).
       writes: true,
       run: async () => refusalOf(await adapter.setFocus(targets.paneId)),
+    },
+    {
+      capability: "listSessions",
+      // A read, and the reason it is safe against a live multiplexer: an adapter that keeps such a
+      // list answers it from configuration it already has, and one that does not refuses before it
+      // looks anything up.
+      writes: false,
+      run: async () => refusalOf(await adapter.listSessions()),
     },
     // The destructive pair is last so a world that runs the whole table top-down still has a pane and
     // a tab to aim the earlier calls at.
@@ -491,6 +502,35 @@ const snapshotIsWellFormed: MuxReadCheck = {
       if (!isValidMuxId(tab.tabId)) problems.push(`tab id "${tab.tabId}" is not transport-safe`);
       if (!spaceIds.has(tab.spaceId)) problems.push(`tab "${tab.tabId}" names space "${tab.spaceId}", which is not in the snapshot`);
     }
+    // A COUNT IS A COUNT OF WHAT THE SNAPSHOT CARRIES (MUX_CONTRACT.md § Contract-owned rules,
+    // *Counts*). Measured on the zellij leg of M22/04: zellij's own tab listing counts its plugin
+    // panes — a tab-bar, a status-bar, a floating release-notes pane — which the adapter correctly
+    // drops, so a tab said "3 panes" over the 2 the operator could reach. A count nobody grades is a
+    // count that drifts, and the phone renders it beside the panes it contradicts.
+    const panesPerTab = new Map<string, number>();
+    const panesPerSpace = new Map<string, number>();
+    const tabsPerSpace = new Map<string, number>();
+    for (const pane of snapshot.panes) {
+      panesPerTab.set(pane.tabId, (panesPerTab.get(pane.tabId) ?? 0) + 1);
+      panesPerSpace.set(pane.spaceId, (panesPerSpace.get(pane.spaceId) ?? 0) + 1);
+    }
+    for (const tab of snapshot.tabs) tabsPerSpace.set(tab.spaceId, (tabsPerSpace.get(tab.spaceId) ?? 0) + 1);
+    for (const tab of snapshot.tabs) {
+      const carried = panesPerTab.get(tab.tabId) ?? 0;
+      if (tab.paneCount !== carried) {
+        problems.push(`tab "${tab.tabId}" reports paneCount ${String(tab.paneCount)} and the snapshot carries ${String(carried)} of its panes`);
+      }
+    }
+    for (const space of snapshot.spaces) {
+      const panes = panesPerSpace.get(space.spaceId) ?? 0;
+      const tabs = tabsPerSpace.get(space.spaceId) ?? 0;
+      if (space.paneCount !== panes) {
+        problems.push(`space "${space.spaceId}" reports paneCount ${String(space.paneCount)} and the snapshot carries ${String(panes)} of its panes`);
+      }
+      if (space.tabCount !== tabs) {
+        problems.push(`space "${space.spaceId}" reports tabCount ${String(space.tabCount)} and the snapshot carries ${String(tabs)} of its tabs`);
+      }
+    }
     for (const pane of snapshot.panes) {
       if (!spaceIds.has(pane.spaceId)) problems.push(`pane "${pane.paneId}" names space "${pane.spaceId}", which is not in the snapshot`);
       if (!tabIds.has(pane.tabId)) problems.push(`pane "${pane.paneId}" names tab "${pane.tabId}", which is not in the snapshot`);
@@ -591,6 +631,30 @@ const gridReadAnswersTheContract: MuxReadCheck = {
   },
 };
 
+const sessionListIsWellFormed: MuxReadCheck = {
+  name: "a declared session list names this machine's instances, with an endpoint each",
+  async run(adapter) {
+    if (!declares(adapter, "listSessions")) return [];
+    const answer = await adapter.listSessions();
+    if (!answer.ok) return [`listSessions is declared but answered ${describeRefusal(answer)}`];
+    const problems: string[] = [];
+    const seen = new Set<string>();
+    for (const session of answer.value) {
+      // A name is a Map key in bridge/sessions.ts and a `?session=` value on the wire, so an empty
+      // one is a session nothing can select and a duplicate one is two herds under one key.
+      if (session.name.length === 0) problems.push("a session was reported with an empty name");
+      else if (seen.has(session.name)) problems.push(`two sessions share the name "${session.name}"`);
+      seen.add(session.name);
+      // An entry with no endpoint is the failure this capability exists to prevent: a list the
+      // bridge can read and cannot dial. An adapter in that position declares the capability absent.
+      if (session.endpoint.length === 0) {
+        problems.push(`session "${session.name}" was reported with no endpoint to dial`);
+      }
+    }
+    return problems;
+  },
+};
+
 const focusIsReportedHonestly: MuxReadCheck = {
   name: "at most one pane per space is focused, and a focused pane is alive",
   async run(adapter) {
@@ -633,6 +697,12 @@ const spaceCapacityMatchesTheWorld: MuxReadCheck = {
  * The live probe (scripts/mux-probe.ts) runs exactly this list, which is the whole reason the split
  * exists: nothing here types, renames, closes or kills. Calls to undeclared verbs are in it because
  * an undeclared verb refuses before it touches anything — that is the property being tested.
+ *
+ * THERE IS A THIRD PLACE THIS LIST RUNS, and it grades less than the other two: scripts/pack-mux-probe.ts
+ * points it at a PEER's multiplexer through the lead's HTTP surface with `?host=` (M22/04). The
+ * transport there is §5's route table, not the mux port, so four of these checks cannot be graded
+ * across a link at all. Which four, and why each one, is a table in MUX_CONTRACT.md
+ * § "Conformance across a pack link" — read it before reading a pack run as covering the port.
  */
 export const MUX_READ_ONLY_CHECKS: readonly MuxReadCheck[] = [
   declarationIsWellFormed,
@@ -643,6 +713,7 @@ export const MUX_READ_ONLY_CHECKS: readonly MuxReadCheck[] = [
   undeclaredPaneFactsAreAbsent,
   gridReadAnswersTheContract,
   focusIsReportedHonestly,
+  sessionListIsWellFormed,
   spaceCapacityMatchesTheWorld,
   latencyIsDeclared,
   refreshIsHarmless,

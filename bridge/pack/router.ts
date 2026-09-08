@@ -61,7 +61,8 @@ import {
 import type { TrustedMember, TrustStore, TrustStoreData, Warrant } from "./trust-store.ts";
 import { checkWarrantPush, currentWarrant, parseWarrant, storeWarrant, warrantReportOf, type WarrantRefusal } from "./warrant.ts";
 import { deposedStateFrom, isDepositionProof, selfHeal, type DeposedState } from "./deposed.ts";
-import type { SnapshotResponse } from "../types.ts";
+import { selectView, type SnapshotView } from "../sessions.ts";
+import type { MuxConfig, SnapshotResponse } from "../types.ts";
 
 // The `/pack/v1/*` surface. This module exists **so that `bridge/server.ts` contains no pack route
 // literal at all**: a solo instance's route table is asserted, by reading server.ts's source, to be
@@ -85,6 +86,16 @@ export const PACK_PREFIX = "/pack/v1/";
 export const PACK_ENROLL_PATH = "/pack/v1/enroll";
 export const PACK_HELLO_PATH = "/pack/v1/hello";
 export const PACK_SNAPSHOT_PATH = "/pack/v1/snapshot";
+
+/**
+ * The OPTIONAL field a `hello` answer carries its own multiplexer block on (§5, §7.1; M22/03).
+ *
+ * One spelling, read by the lead's client and written by the handler below, so the two halves cannot
+ * drift. **Absent means "use the lead's answer"**, never "every capability present": a peer that
+ * predates this field, or one whose bridge has no adapter in hand, keeps producing exactly the
+ * reading the phone gives it today, which is the lead's own block applied to every pane.
+ */
+export const PACK_MUX_FIELD = "mux";
 
 /**
  * The lead's REQUEST for a fresh preflight on the snapshot it is about to read (§19).
@@ -237,8 +248,13 @@ const DEPUTY_ROUTES: ReadonlySet<string> = new Set<string>([PACK_TAKEOVER_PATH, 
  *
  * Injected from `bridge/server.ts`, which hands over the very closure it serves browsers from —
  * a peer therefore cannot answer its lead with a body that differs from its own `/api/snapshot`.
+ *
+ * It takes the whole {@link SnapshotView} — which session, and whether to widen to all of them —
+ * because a lead may ask a member for every session it runs (M22/06). The view is READ OFF THE
+ * REQUEST here, exactly as `/api/snapshot` reads it; it is never a constant at the injection site,
+ * which is how this surface came to be permanently narrow before that spec.
  */
-export type SnapshotSource = (session?: string) => SnapshotResponse | undefined;
+export type SnapshotSource = (view: SnapshotView) => SnapshotResponse | undefined;
 
 /**
  * Run one session-scoped route — the pane family, tabs, workspaces — as this collie would for its
@@ -250,10 +266,23 @@ export type SnapshotSource = (session?: string) => SnapshotResponse | undefined;
  */
 export type ApiDispatch = (req: Request, url: URL, from: string) => Promise<Response>;
 
+/**
+ * This collie's own multiplexer block, exactly as its `/api/config` publishes it, or `null` when it
+ * has no adapter in hand (M22/03).
+ *
+ * A FUNCTION, and injected from `bridge/server.ts` for {@link SnapshotSource}'s reason: the answer
+ * comes off the same session registry the browser route reads, so a peer cannot report capabilities
+ * that differ from the ones it serves its own operator. Absent on this surface ⇒ the field is simply
+ * omitted from `hello`, which the lead reads as "use the lead's answer".
+ */
+export type MuxSource = () => MuxConfig | null;
+
 /** What this collie exposes to an admitted lead. Absent ⇒ that half of §5's table simply 404s. */
 export interface PackSurface {
   readonly snapshot?: SnapshotSource;
   readonly dispatch?: ApiDispatch;
+  /** This collie's own capability declaration, for `hello`. See {@link MuxSource}. */
+  readonly mux?: MuxSource;
 }
 
 /**
@@ -295,6 +324,8 @@ export interface PackRouterDeps {
   readonly snapshot?: SnapshotSource;
   /** Absent ⇒ the per-pane/tab/workspace half of §5's table 404s. */
   readonly dispatch?: ApiDispatch;
+  /** Absent ⇒ `hello` carries no capability block, which reads as "use the lead's" (M22/03). */
+  readonly mux?: MuxSource;
   /**
    * Whether the listener this handler is mounted on was built pin-enforcing
    * (`bridge/pack/transport.ts`). **Defaults to `false`, which admits nothing but a signed request.**
@@ -524,7 +555,31 @@ type HelloBody = {
   warrantActiveGeneration?: number;
   pairingDigest?: string;
   pairingCollision?: string[];
+  /** This peer's own capability declaration (§7.1's amendment of 2026-09-08). See {@link PACK_MUX_FIELD}. */
+  mux?: MuxConfig;
 };
+
+/**
+ * This machine's block as it may travel to a lead: everything the browser gets, minus `logoUrl`.
+ *
+ * The mark is a PATH, and a path only answers on the machine that serves it. A lead republishing this
+ * member's block would hand the phone its OWN `/api/mux/logo.svg`, so the member's name would arrive
+ * beside the lead's picture. Absent means "no picture for you", which the header already renders as
+ * text alone, so the honest answer costs nothing.
+ */
+function portableMuxBlock(declared: MuxConfig): MuxConfig {
+  const portable: MuxConfig = {
+    name: declared.name,
+    capabilities: declared.capabilities,
+    unsupportedKeys: declared.unsupportedKeys,
+    notes: declared.notes,
+  };
+  // Assigned, never conditionally spread: an absent value must carry NO key rather than a null one,
+  // which is the rule every optional field on this surface follows (§11).
+  if (declared.spaces !== undefined) portable.spaces = declared.spaces;
+  if (declared.topologyLatency !== undefined) portable.topologyLatency = declared.topologyLatency;
+  return portable;
+}
 
 /**
  * A box rather than a bare `let`, so a refusal decided inside `commitPackChange`'s callback survives
@@ -856,6 +911,22 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // nothing else — no hash, no token, no device count.
       const clash = deps.standby?.syncedCollision() ?? [];
       if (clash.length > 0) hello.pairingCollision = [...clash];
+      // M22/03: what THIS machine's multiplexer can do, so the lead can answer `/api/config?host=`
+      // for this member without forwarding a config read (ADR 0011 keeps the pack link the only
+      // cross-machine transport, and `forward.ts` keeps `config` off the forwarded list).
+      //
+      // Admissible here for `member`'s reason: it is the same block this peer already publishes to
+      // every read client of its own `/api/config`, and it names no secret. It rides `hello` rather
+      // than `snapshot` because it changes only when this bridge restarts, and the snapshot is
+      // polled every 1500 ms (§10.1) — a total capability block on every poll would be bytes spent
+      // on a value that cannot move.
+      //
+      // `logoUrl` is deliberately NOT carried. It is a path, and the path is only meaningful on the
+      // machine that serves it: the lead answering its own `/api/mux/logo.svg` for a member's block
+      // would put the LEAD's mark beside the MEMBER's name. Absent means "no picture for you", which
+      // the header already renders as text alone.
+      const declared = deps.mux?.() ?? null;
+      if (declared !== null) hello.mux = portableMuxBlock(declared);
       return new Response(JSON.stringify(hello), {
         status: 200,
         headers: packResponseHeaders(verdict.self),
@@ -902,7 +973,14 @@ export function createPackRouter(deps: PackRouterDeps): PackHandler {
       // never a merged one — a pack link never forwards a `host=`, because a peer has no peers (§4).
       // `?session=` is honoured with the identical semantics the browser API has: absent ⇒ primary,
       // unknown ⇒ 404, and the name is only ever a registry key.
-      const body = deps.snapshot(url.searchParams.get("session") ?? undefined);
+      //
+      // `?sessions=all` widens the answer to every session on THIS machine (M22/06), read by the same
+      // function `/api/snapshot` reads it with and additive-optional under §7.1: a lead that does not
+      // send it gets the primary session, which is every lead built before that spec.
+      // **WIDENING NEVER TRAVELS AS A HOST.** It is a second dimension of one machine, so a widened
+      // ask says `sessions=all` and never a `host=`, and the refusal below still stands for the
+      // dispatched routes.
+      const body = deps.snapshot(selectView(url));
       if (body === undefined) {
         return new Response(JSON.stringify({ error: "unknown session" }), {
           status: 404,

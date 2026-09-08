@@ -283,6 +283,16 @@ export interface ServerSummary {
   protocol: "ok" | "incompatible" | "unknown";
   /** The peer's refusal reason, verbatim, when incompatible — rendered as text, never paraphrased. */
   protocolDetail?: string;
+  /**
+   * §10.2's presentation split for a member that is not answering. `reconnecting` means the lead is
+   * retrying inside its budget and nothing is asked of the operator; `attention` means re-dialling
+   * cannot fix it.
+   *
+   * **Absent means "no distinction offered"**: a reachable member, or a lead older than the field.
+   * Beside `reachable: false` an absent value therefore renders today's single word, which is what
+   * keeps a new phone honest in front of an old lead (§7.1).
+   */
+  linkState?: "reconnecting" | "attention";
   /** Epoch ms, stamped by the LEAD on receipt — never the peer's clock (§10.2). `0` = never answered. */
   lastSeenAt: number;
 }
@@ -359,6 +369,12 @@ export interface PackMemberStatus {
   provisional: boolean;
   /** Set only when `health` is `conflicted`: who this member thinks leads, and under what warrant. */
   conflict?: { leadMemberId: string; warrantGeneration: number | null };
+  /**
+   * §10.2's presentation split, the same field {@link ServerSummary.linkState} carries — and NOT a
+   * fifth value of `health`. Absent means the lead offered no distinction, and the page then prints
+   * the word it always printed.
+   */
+  linkState?: "reconnecting" | "attention";
 }
 
 /**

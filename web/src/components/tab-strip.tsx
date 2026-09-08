@@ -105,7 +105,8 @@ export function TabStrip({
 }: TabStripProps) {
   useLocale();
   const [sheetTab, setSheetTab] = useState<TabView | null>(null);
-  const newTab = useMuxCapability("createTab");
+  // Asked of the machine these tabs live on (M22/03); absent scope is the lead, as everywhere.
+  const newTab = useMuxCapability("createTab", scope);
   // Actions need both callbacks wired (revalidate on rename, fall back on close); without them the
   // tabs stay plain tap-to-switch — long-press is inert.
   const actionsEnabled = !!onRenamed && !!onClosed;

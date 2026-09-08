@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { keysSendable, muxCapability, muxTopologyLatency } from "./mux-capability";
+import { keysSendable, muxCapability, muxTopologyLatency, scopedMuxConfig } from "./mux-capability";
 import type { MuxConfig } from "./types";
 
 // The two rules every gated control in the app leans on, asserted where they live rather than
@@ -117,5 +117,60 @@ describe("muxTopologyLatency — absent means push, and only an explicit bound i
 
   it("an explicit push is push — the same answer as absence, arrived at honestly", () => {
     expect(muxTopologyLatency(cfg({ topologyLatency: { kind: "push" } }))).toEqual({ kind: "push" });
+  });
+});
+
+// ── PER-HOST: a pack member runs its own multiplexer (M22/03) ────────────────────────────────────
+//
+// The lead answers `/api/config?host=<member>` with that member's own declaration, from what its
+// last `hello` taught it, and the web asks with the scope's host. Two absent rules meet here, one
+// per level, and they point in different directions on purpose:
+//
+//   • an absent capability KEY inside a block that IS present reads as CAPABLE (the top of this
+//     file, unchanged);
+//   • an absent BLOCK for a member reads as THE LEAD'S ANSWER, which is what the phone already does
+//     with every pane on every host.
+//
+// The request behaviour that feeds this — one read per host id, nothing on the wire without a host —
+// is asserted in mux-capability-host.test.tsx, where the hook can be rendered.
+
+describe("scopedMuxConfig — a member answers for itself, and silence means the lead", () => {
+  const lead = cfg({ name: "lead-mux", capabilities: { createWorktree: false, renamePane: true } });
+  const member = cfg({ name: "member-mux", capabilities: { createWorktree: true } });
+
+  it("a member that declared a block answers with it, whatever the lead said", () => {
+    expect(scopedMuxConfig(lead, member)).toBe(member);
+    // The whole point of the feature: a capability the LEAD does not have, on the member's panes.
+    expect(muxCapability(scopedMuxConfig(lead, member), "createWorktree").capable).toBe(true);
+    expect(muxCapability(scopedMuxConfig(lead, null), "createWorktree").capable).toBe(false);
+  });
+
+  it("a member with no block of its own takes the lead's — never `all capable`", () => {
+    // An older peer, a read in flight and a failed read all arrive as `null`, and all three are
+    // panes the phone renders off the lead's answer today. None of them may become "capable".
+    expect(scopedMuxConfig(lead, null)).toBe(lead);
+    expect(muxCapability(scopedMuxConfig(lead, null), "createWorktree").capable).toBe(false);
+  });
+
+  it("a capability the member's block does not mention is still capable", () => {
+    // The fail-open rule survives the per-host lookup, one level down: the block is present, the
+    // key is not, and a mid-upgrade member must not have working controls hidden.
+    expect(muxCapability(scopedMuxConfig(lead, member), "closePane").capable).toBe(true);
+  });
+
+  it("neither side answering is `null`, which is exactly today's pre-answer state", () => {
+    expect(scopedMuxConfig(null, null)).toBeNull();
+    expect(muxCapability(scopedMuxConfig(null, null), "renamePane").capable).toBe(true);
+  });
+
+  it("the note and the name come from whichever block won", () => {
+    const declined = cfg({
+      name: "member-mux",
+      capabilities: { agentSessionRef: false },
+      notes: { agentSessionRef: "this multiplexer keeps no agent session log for Collie to read." },
+    });
+    const state = muxCapability(scopedMuxConfig(lead, declined), "agentSessionRef");
+    expect(state.mux).toBe("member-mux");
+    expect(state.note).toBe("this multiplexer keeps no agent session log for Collie to read.");
   });
 });

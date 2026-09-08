@@ -7,11 +7,13 @@ import {
   chooseSession,
   closeTabArgs,
   dumpScreenArgs,
+  newTabArgs,
   parsePaneList,
   parseSessionList,
   parseStreamEvent,
   parseTabList,
   renameTabArgs,
+  saysNoSession,
   sendKeysArgs,
   subscribeArgs,
   tabNumberOf,
@@ -111,7 +113,7 @@ describe("parseTabList", () => {
   ]);
 
   test("counts tiled and floating panes together — both are places a shell runs", () => {
-    expect(parseTabList(probed)).toEqual([{ tabNumber: 0, position: 0, name: "Tab #1", active: true, paneCount: 2 }]);
+    expect(parseTabList(probed)).toEqual([{ tabNumber: 0, position: 0, name: "Tab #1", active: true }]);
   });
 });
 
@@ -281,3 +283,42 @@ describe("toZellijKey", () => {
     expect(toZellijKey("")).toEqual({ ok: false, reason: "unparsed" });
   });
 });
+
+describe("newTabArgs", () => {
+  test("a real cwd becomes `--cwd <path>`", () => {
+    expect(newTabArgs("work", "/home/op/repo")).toEqual(["action", "new-tab", "--name", "work", "--cwd", "/home/op/repo"]);
+  });
+
+  // The launch bug this closed: a zellij pane reports NO working directory, so the launch route
+  // handed the adapter `""` and `--cwd ` reached zellij with no value. zellij refused the whole
+  // call — *The argument '--cwd <CWD>' requires a value but none was supplied* — so a launcher row
+  // beside any zellij pane could not run at all (measured, M22/04 zellij leg).
+  test.each([
+    ["absent", undefined],
+    ["empty", ""],
+    ["blank", "  "],
+  ] as const)("a %s cwd is left off entirely, never sent as an empty value", (_name, cwd: string | undefined) => {
+    expect(newTabArgs(undefined, cwd)).toEqual(["action", "new-tab"]);
+  });
+});
+
+describe("saysNoSession", () => {
+  test.each([
+    ["a name zellij does not know", "Session 'work' not found. The following sessions are active:\nlab"],
+    ["a box with no sessions at all", "No active zellij sessions found."],
+    // The one a live run found: `action --session lab` after `zellij kill-session lab`, exit 1.
+    // Before this, the binding kept a name it could no longer use.
+    ["a session that has exited", "There is no active session!"],
+  ] as const)("%s is zellij saying the session is gone", (_name, text: string) => {
+    expect(saysNoSession(text)).toBe(true);
+  });
+
+  test.each([
+    ["an unparseable listing", "not JSON"],
+    ["a pane that is gone", "Pane terminal_9 not found in this session"],
+    ["a bad key", 'Invalid key at position 1: "Nonsense"'],
+  ] as const)("%s is not", (_name, text: string) => {
+    expect(saysNoSession(text)).toBe(false);
+  });
+});
+

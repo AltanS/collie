@@ -201,6 +201,17 @@ the same handlers. There is no second handler set, no second semantic, and no He
 `?session=` is accepted on every session-scoped pack route with today's exact semantics (absent →
 primary). It is the peer's *own* session registry that resolves it.
 
+`?sessions=all` is accepted on `GET /pack/v1/snapshot` alone, **OPTIONAL**, added 2026-09-08
+(M22/06). It widens the answer's two pane lists to every session the answering member runs, each pane
+tagged with the session it came from, which is the same body that member's own `/api/snapshot` serves
+for `?sessions=all`. `all` is the only value with meaning, and anything else reads as absent. A member
+that ignores the parameter is a **correct member** — its answer is then its primary session, exactly
+as before — so `PACK_PROTOCOL_VERSION` does not move (§7.1). The lead sends it on every sweep and
+narrows the cached body per request (`bridge/pack/merge.ts`), because the phone's poll cannot afford a
+dial the lead's cache cannot already answer (§10.1). **Widening is a second dimension of ONE machine
+and never travels as a host:** a pack request may still not name a `host=`, because a peer has no
+peers (§4).
+
 **`hello`'s response body** is the one place both versions cross a link — the wire contract and the
 answering build:
 
@@ -267,6 +278,21 @@ answering build:
   the operator chose and nothing else — no hash, no token, no count — and it is a **finding, never a
   refusal**: the sync it describes has already been applied, because a receiver that refused it would
   be holding a revoked credential live at its own standby door.
+
+- `mux` is **OPTIONAL**, added 2026-09-08 (M22/03): the block this member's own `/api/config`
+  publishes about the multiplexer underneath it — its registry name, its capability answers, its
+  refused key spellings, its adapter notes, its space capacity and its declared topology latency.
+  **An absent field means "use the lead's answer", never "every capability present"** (§7.1). That
+  reading is today's behaviour exactly: the phone reads the lead's `/api/config` once and applies it
+  to every pane on every host, so a peer that publishes nothing keeps producing the answer it already
+  gets. The lead caches what it learned beside the rest of that member's state and **replaces it on
+  every successful hello**, never merging, so a restart or an adapter change cannot leave a stale key
+  behind; the lead then answers `/api/config?host=<member>` from that cache and dials nobody. It
+  rides `hello` rather than `snapshot` because it changes only when that member's bridge restarts,
+  and `snapshot` is polled every 1500 ms (§10.1). `logoUrl` is deliberately **not** carried: the mark
+  is a path, and a path only answers on the machine that serves it. It names no secret, and it is
+  admissible here for `member`'s reason, being the same block that member already serves to every
+  read client of its own front door.
 
 `hello` gains nothing else. It is what an *admitted* member uses to confirm a link, so it must not
 become a place to learn something an unadmitted caller wants; a version is admissible there for the
@@ -464,10 +490,38 @@ updated machines, so build skew is the steady state (§7), and this section is t
   take an action: the action it stands for is "do nothing to that machine". `PACK_PROTOCOL_VERSION`
   stays `1`, no new route, no new verb and no new header.
 
+- **An addition a lead has no reader for is INERT, not merely tolerated — measured, not assumed**
+  (2026-09-08, §16's version-skew leg). This section's promise used to rest on a unit test with a
+  stand-in field. It has now been walked with the two real builds: a **1.6.0** lead binary, leading
+  the lab's own pack, over a **tmux** member and a **zellij** member both built from M22, whose
+  `hello` carries this milestone's `mux` block with the whole capability table in it. What was
+  measured is stronger than "it stayed up". The lead's published bodies for a member on M22 and for
+  the same machine, same multiplexer, same panes rebuilt on **1.6.0** are **field-identical** —
+  every key name and every value across `/api/snapshot`'s panes, tabs, spaces, sessions and
+  `servers` row and `/api/pack`'s member row — except the one string this section exists to report,
+  `version`. Nothing from the newer member reached the older lead's output, and nothing the older
+  lead needed was missing from it. Its journal over the whole run held **no `error`, no `unknown`
+  and no `unexpected` line**, and the only `warn`-class line was the lab's own wide-bind notice,
+  which predates the leg. **The test that pins this now names the field** rather than a stand-in
+  (`bridge/pack/peer-client.test.ts`), so a change that makes `hello`'s reader depend on `mux`
+  fails at commit time. Read the additive fields this milestone shipped in that light: `mux` on
+  `hello` is ignored by an older lead; `sessions=all` on the sweep is a param an older lead never
+  sends, and its absence is already pinned as today's narrow answer (`bridge/pack/router.test.ts`);
+  and `linkState` is computed by the LEAD and published on ITS surface, so an older lead simply
+  never emits it — its host row went `reachable: false` with `health: "unreachable"`, a reason, no
+  `linkState`, and the peer's panes last-good, which is §10.2 without §10.2's presentation split
+  and is precisely what that lead does with a member of its own age.
+
 - **Skew is an observation, and it is rendered.** `collie pack status` compares each member's reported
   version against this build's and marks a difference as a `warn:`-class finding naming **both**
-  versions and the remedy — `collie pack update <member>` on the lead, which levels that machine to
-  this build over the operator's own ssh (ADR 0016), or `collie update` on the machine itself. A member that answers `hello` without the field
+  versions and the remedy. **Which side is behind picks the remedy, and the other one is not
+  printed** (added 2026-09-08, §16's version-skew leg found the unconditional form): a member behind
+  this lead is levelled with `collie pack update <member>` here, over the operator's own ssh (ADR
+  0016); a member AHEAD of this lead means the lead is the older machine, so the line says so and
+  names `collie update` HERE — `pack update` from an older lead pushes ITS build outwards and would
+  take that member backwards, which is why the wrong remedy is worse than none. Two different
+  strings for one semver — a build stamp, an `unknown` — have no direction, so the warn names both
+  versions and no command. A member that answers `hello` without the field
   renders honestly as pre-amendment (e.g. `version pre-1.0.0-alpha.12 (not reported)`), never as
   `unknown`-shaped noise and never as an error. The `incompatible` state stays reserved for §7's
   protocol mismatch; nothing here produces it.
@@ -1015,13 +1069,28 @@ never crosses a pack link.
   is decided by a probe on its own budget, never by this one.
 - The peer sweep is a *part of* the existing poll, not a second timer. A solo lead runs no sweep at
   all (§11).
+- **A forwarded WRITE is not a poll, and gets its own budget.** *(added 2026-09-08)* The budget above
+  bounds the **sweep**, where a slow peer stalls the lead's own snapshot for every phone watching.
+  A write forwarded to a member (§5, §10.3) is one operator's one request, awaited on that request's
+  own path, and it asks the member to *do* something: a launch spawns a process and has the
+  multiplexer build a tab. Measured in the VM lab on 2026-09-08, that took about 2 s on a zellij
+  member and straddled the 1200 ms poll budget in roughly two tries out of three — so the phone read
+  `write_outcome_unknown` over a tab that had in fact been created, which is the one outcome §10.3
+  exists to keep rare, produced by arithmetic rather than by a fault. Every write route in §5's table
+  therefore dials on `WRITE_BUDGET_MS` (`bridge/pack/peer-client.ts`, **5000 ms**), and every
+  forwarded **read** keeps the poll budget exactly, bootstrap credit and all. The write budget is
+  passed as an explicit deadline, so it spends no bootstrap credit (§10.4) and never enters the
+  sweep's budget accounting. It sits well inside the phone's own 20 s mutation deadline
+  (`web/src/lib/api.ts`), so the deadline that fires first is still the lead's and the phone still
+  gets §10.3's legible answer rather than a dead socket. Lead-local, never on the wire, so it is not
+  a version-negotiated value (§7.1).
 
 ### 10.2 Four distinct states, never conflated *(a fourth added 2026-08-20)*
 
 | State | Meaning | Retried on the poll? | Presented as |
 |---|---|---|---|
 | **reachable** | Last poll succeeded within budget | yes | live |
-| **unreachable** | Timeout, connection refused, TLS failure, auth failure, or an answer with **no** protocol header at all (§7) | yes | last-good state, **stale**, with `lastSeenAt` |
+| **unreachable** | Timeout, connection refused, TLS failure, auth failure, or an answer with **no** protocol header at all (§7) | yes | last-good state, **stale**, with `lastSeenAt` — and split for the operator into Reconnecting and Attention, below |
 | **incompatible** | `X-Pack-Protocol` names a version this build cannot speak (§7) | no (probed on a slow backoff) | last-good state, **incompatible**, with the peer's reason |
 | **conflicted** *(added 2026-08-20)* | The member answered §18.10's named `409`: it follows a **different lead** | no — there is nothing useful to fetch from a machine that belongs to someone else's view of the pack | last-good state, **conflicted**, naming the lead it follows and that lead's warrant generation |
 
@@ -1057,6 +1126,28 @@ never crosses a pack link.
   as the second puts a peer that is merely coming back on the 30/120/600 s ladder; that mechanism was
   reproduced on the dev pack on 2026-09-08, and it is a candidate cause of the 2026-09-07 blind
   window rather than a proven one. §7 holds the rule and its patience window.
+- **`unreachable` is presented as two words, and neither is a fifth wire state.** *(added
+  2026-09-08)* Four causes shared one word, and the operator's next move is not the same in all four:
+  a timeout clears itself, a rotated secret does not. So the lead carries its own reading beside the
+  health value, as an **additive, optional** field (§7.1) named `linkState`, on `ServerSummary` and on
+  the pack page's member row:
+
+  | `linkState` | The lead's claim | Presented as | The operator |
+  |---|---|---|---|
+  | `reconnecting` | It is retrying, and it is inside its budget. A timeout, a refused connection, a member part way through a restart. | the quiet reading, styled like stale, **never red** | does nothing |
+  | `attention` | Re-dialling will not fix this. Auth refused (§8.5), a protocol this build cannot speak (§7), a member in another pack (§18.10), a member that said no (§14.3), or a spent retry budget. | the loud reading | must go and look |
+
+  - **`health` does not change, and `PACK_PROTOCOL_VERSION` stays `1`.** An unreachable member is
+    still `unreachable` on the wire, so a released phone renders exactly what it renders today.
+  - **The field is OMITTED when there is nothing to say** — every reachable member, and every member
+    of a lead older than the field. An absent value beside a member that is *not* reachable therefore
+    means "this lead offers no distinction", and the surface prints the single old word rather than
+    inventing one. Absent is never read as `reconnecting`.
+  - **The budget is a count of silent sweeps**, and it is the same count that fails a run's leg
+    (§20), so one lead holds one idea of how much silence is too much. It is lead-local, never on the
+    wire, and moving it needs no protocol change.
+  - Red for a condition that clears on the next poll is the mistake this split exists to avoid: a
+    screen that shouts about a correct outcome teaches the operator to distrust it.
 - **`conflicted` is none of the other three, and a surface may not spell it as one.** It is not
   `unreachable` — the member answered, and answered precisely. It is not `incompatible` — this build
   reads that member's protocol perfectly well; the two merely share a `409`, told apart by the body's
@@ -1689,15 +1780,68 @@ section before running it; its costs are not summarised here.
 
 ## 16. Reserved for a future version — explicitly unbuilt
 
-Named here so v1's shape does not foreclose them, and so nobody mistakes a reservation for a plan:
+Named here so v1's shape does not foreclose them, and so nobody mistakes a reservation for a plan.
+One entry below has since been discharged and is kept in place with its result, because the useful
+record is the reservation and the run that closed it, side by side:
 
 - **Streaming freshness.** A peer→lead push or long-lived stream replacing the poll of §10.1. The
   version header (§7) is what makes adding it a negotiation rather than a flag day. **Nothing in v1
   implements or half-implements this.**
 - **An upload-read route** (§5), if a use case ever needs the lead to serve a peer-stored image.
-- **A non-Herdr peer.** The seam exists (§2, [ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md))
-  but **nothing in v1 exercises it** — no peer fronts anything but Herdr, so the seam is a promise,
-  not a verified property.
+- **A non-Herdr peer — EXERCISED on 2026-09-08 for both tmux AND zellij, no longer a reservation.**
+  The seam (§2,
+  [ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md)) was walked for the first time
+  in the VM lab: a **tmux** peer, enrolled under a **herdr** lead, with a real ssh reach, its own
+  config root and its own trust store. Every feature in this document's peer table was driven on
+  that peer through the lead: the merge carried its own tmux ids (`%0`, `$0`, `@0`), a pane read
+  returned its grid, a typed reply ran a command in its shell, `send-keys` landed, a `meta` chord
+  came back as the mux contract's `refused` with tmux's own reason, `history` answered `no-session`
+  off the peer's own disk, an upload wrote to the peer's uploads dir and handed back a pastable path,
+  `launchers` read the peer's own `launchers.toml` and not the lead's, `/api/config?host=` published
+  the peer's tmux capability block distinct from the lead's herdr one, the deputy warrant armed on it
+  in two phases, and `pack update` levelled it over the operator's ssh. The read-only mux conformance
+  set was run against its panes through the lead
+  ([`scripts/pack-mux-probe.ts`](./scripts/pack-mux-probe.ts)): **10 of 12 checks pass, and the two
+  that do not are properties of §5's route table rather than of the peer** — four port verbs have no
+  forwardable route, and the pane-read route fixes the grid request shape. Run adapter-locally on the
+  peer itself, the same twelve pass. **A zellij peer was then run the same way, on the same day**, on
+  a second member of the same pack: one zellij session with three tabs and two splits, the merge
+  carried its own ids (`terminal_0`, the constant space `session`, `tab_0`), every feature in the
+  peer table answered, a `meta` chord came back `refused` with zellij's own reason, and the same
+  **10 of 12 through the lead and 12 of 12 adapter-locally** came back — the identical two failures,
+  which is what turns "a property of the route table" from a reading into a measurement. It found
+  two things tmux could not: a tab's pane count came off zellij's own listing, which counts the
+  plugin panes the adapter drops, and a launcher row beside any zellij pane failed outright because
+  zellij reports no pane working directory and the empty string reached its CLI as a flag value. Both
+  are now contract-owned rules (*Counts*, *A blank `cwd`*), met by all three adapters.
+  What the runs found, and where each finding is carried:
+  [`MUX_CONTRACT.md`](./MUX_CONTRACT.md) § *Conformance across a pack link*, which also records the
+  two operator-visible gaps neither leg could close from where it stood. One: a peer whose
+  multiplexer dies keeps its panes on the merged snapshot while its host row still reads healthy,
+  because `ServerSummary` has no per-host equivalent of `SnapshotResponse.bridge`; that reproduced on
+  both multiplexers. Two: a forwarded WRITE was given the lead's POLL budget (§10.1, 1200 ms by
+  default), and a launch onto the zellij peer straddled it — `write_outcome_unknown` over a tab that
+  had in fact been created; **closed on 2026-09-08**, a forwarded write now carries its own
+  `WRITE_BUDGET_MS` and §10.1 holds the rule. Both were pack-side decisions; the first is still
+  recorded rather than taken.
+  **The version-skew leg ran on the same day, 2026-09-08, and it closes this entry.** A lead built
+  from the real released **1.6.0** tag took over the lab's own pack — same trust store, same
+  members, same addresses — and led the tmux member and the zellij member, both built from this
+  milestone, for the whole run. Every read in the peer table answered on both peers: the merged
+  snapshot carried all of both peers' own pane, tab and space ids beside the lead's herdr pane, the
+  host rows and the pack page rows read healthy, a pane read returned each peer's grid, a typed
+  reply ran on it, `send-keys` landed, each multiplexer's `meta` refusal came back with its own
+  reason, `history` answered off the peer's own disk, an upload wrote to the peer's uploads dir,
+  `launchers` read the peer's own file, and a launcher ran there. The **1.6.0** lead was then
+  measured against a member rebuilt on **1.6.0** on the same machine, multiplexer and panes: its
+  published bodies are **field-identical** for the two members bar the `version` string, and its
+  journal held no `error`, `unknown` or `unexpected` line — §7.1 states that property and names the
+  test that pins it. Two differences are the lead's own age and are recorded as such rather than as
+  defects: it has no per-host capability answer, so `/api/config?host=<peer>` returns the LEAD's
+  block and `?host=<unknown>` returns `200` instead of `404`
+  ([`MUX_CONTRACT.md`](./MUX_CONTRACT.md) § *Conformance across a pack link* names the consequence
+  and the remedy); and it publishes no `linkState`, so §10.2's four states render as the two that
+  build has. **Nothing about this reservation is outstanding.**
 - **A route-level rule letting a peer adopt a lead it does not already pin.** Needed only once a peer
   can pin more than its single lead — roaming, multiple leads, a mesh — where the transport stops
   being the whole answer. It would reuse §8.6's signing primitives as a **signed handover** from the

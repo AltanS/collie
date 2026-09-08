@@ -276,3 +276,24 @@ describe("packStatusBody — nothing secret reaches the wire", () => {
     expect(body).not.toMatch(/fingerprint|certPem|keyPem|secret"|token/i);
   });
 });
+
+describe("packStatusBody — §10.2's presentation split, copied and never derived (M22/05)", () => {
+  test("a member's linkState reaches its row, and the lead's own row never carries one", () => {
+    const body = packStatusBody(
+      sources({
+        peers: [
+          contribution({ memberId: "laptop", health: "unreachable", reason: "timed out", linkState: "reconnecting" }),
+        ],
+      }),
+    )!;
+    expect(body.members[0]!.isLead).toBe(true);
+    expect(body.members[0]!.linkState).toBeUndefined();
+    expect(body.members[1]!.health).toBe("unreachable");
+    expect(body.members[1]!.linkState).toBe("reconnecting");
+  });
+
+  test("the key is OMITTED when the registry has nothing to say, never sent as null (§11)", () => {
+    const body = packStatusBody(sources({ peers: [contribution({ memberId: "laptop" })] }))!;
+    expect("linkState" in body.members[1]!).toBe(false);
+  });
+});

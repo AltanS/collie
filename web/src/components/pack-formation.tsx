@@ -1,7 +1,7 @@
 import { Crown, Server, Shield } from "lucide-react";
 
 import { useLocale } from "@/hooks/use-locale";
-import { hostHealth, type HostHealth } from "@/lib/host-health";
+import { hostHealth, linkPresentation, type HostHealth } from "@/lib/host-health";
 import { HOST_TEXT_CLASSES, countsFor, hostSlot, type HostCounts } from "@/lib/hosts";
 import { t, tn } from "@/lib/i18n";
 import type { PackMemberStatus, PackStatusResponse, ServerSummary } from "@/lib/types";
@@ -154,6 +154,10 @@ export function asServerSummary(m: PackMemberStatus): ServerSummary {
     protocol: m.health === "incompatible" ? "incompatible" : m.lastSeenAt > 0 ? "ok" : "unknown",
     protocolDetail: m.reason,
     lastSeenAt: m.lastSeenAt,
+    // Carried, not re-derived. The lead decided the split on the answer itself (§10.2), and an absent
+    // value has to stay absent all the way to `linkPresentation` or this page would invent a
+    // distinction the lead never made.
+    linkState: m.linkState,
   };
 }
 
@@ -173,12 +177,26 @@ export function memberHealth(
   return map.get(m.id) ?? hostHealth(asServerSummary(m), { at: 0, pollMs: 0 });
 }
 
-export function healthWord(health: PackMemberStatus["health"]): string {
-  switch (health) {
+/** The two facts the health word and its tone are read from. A member row, or anything shaped like one. */
+export type MemberLink = Pick<PackMemberStatus, "health" | "linkState">;
+
+/**
+ * §10.2's presentation split for an `unreachable` member, and only for that one.
+ *
+ * `incompatible` and `conflicted` keep their own words: each already names what the operator has to
+ * go and fix, and "needs attention" would be the vaguer of the two sentences. `unreachable` is the
+ * word that covered four different situations, so it is the word that splits.
+ */
+function unreachableReading(m: MemberLink): ReturnType<typeof linkPresentation> {
+  return linkPresentation(m.health !== "reachable", m.linkState);
+}
+
+export function healthWord(m: MemberLink): string {
+  switch (m.health) {
     case "reachable":
       return t("pack.health.reachable");
     case "unreachable":
-      return t("pack.health.unreachable");
+      return unreachableWord(unreachableReading(m));
     case "incompatible":
       return t("pack.health.incompatible");
     case "conflicted":
@@ -191,12 +209,25 @@ export function healthWord(health: PackMemberStatus["health"]): string {
  * fix it, and a machine that simply is not answering stays plain — a page where everything shouts
  * says nothing. Never `status-working` for `reachable`: that token means "needs attention".
  */
-export function healthTone(health: PackMemberStatus["health"]): string {
-  switch (health) {
+/** The word for one reading. Split out so `healthWord` reads as one line per wire state. */
+function unreachableWord(reading: ReturnType<typeof linkPresentation>): string {
+  if (reading === "reconnecting") return t("connection.host.reconnecting");
+  if (reading === "attention") return t("connection.host.attention");
+  // `ok` cannot reach here, and `unreachable` is the undifferentiated old word a lead without the
+  // field sends. Both take the string this page has always printed.
+  return t("pack.health.unreachable");
+}
+
+export function healthTone(m: MemberLink): string {
+  switch (m.health) {
     case "reachable":
       return "text-status-done";
     case "unreachable":
-      return "text-muted-foreground";
+      // The same reading the WORD came from, so the two cannot drift. `reconnecting` and the
+      // undifferentiated old word both stay plain — the lead is retrying, and a page where everything
+      // shouts says nothing. `attention` is the one that earns the red, because the operator is the
+      // only thing that will move it.
+      return unreachableReading(m) === "attention" ? "text-status-blocked" : "text-muted-foreground";
     case "incompatible":
     case "conflicted":
       return "text-status-blocked";
@@ -222,7 +253,12 @@ interface RingStyle {
  * from "we heard from it a while ago".
  */
 function ringStyle(m: PackMemberStatus, health: HostHealth): RingStyle {
-  if (health.incompatible || m.health === "conflicted") return { tone: "text-status-blocked" };
+  // `attention` joins the loud two, and for their reason: the lead has told us that dialling again
+  // will not fix this, so the ring is a go-and-fix-it ring. `reconnecting` deliberately does NOT —
+  // it falls through to the presented state below and takes the amber a stale receipt takes.
+  if (health.incompatible || m.health === "conflicted" || unreachableReading(m) === "attention") {
+    return { tone: "text-status-blocked" };
+  }
   if (health.state === "live") return { tone: "text-status-done" };
   if (health.state === "stale") return { tone: "text-status-working", dash: "7 5" };
   return { tone: "text-status-unknown", dash: "2 5" };
@@ -362,8 +398,8 @@ function FormationNodeMark({
   const roleWord = node.role === "lead" ? t("connection.host.lead") : t("pack.role.deputy");
   const label =
     node.role === "peer"
-      ? t("pack.node.ariaPlain", { name, health: healthWord(m.health) })
-      : t("pack.node.aria", { name, role: roleWord, health: healthWord(m.health) });
+      ? t("pack.node.ariaPlain", { name, health: healthWord(m) })
+      : t("pack.node.aria", { name, role: roleWord, health: healthWord(m) });
   const badge = node.role === "peer" ? null : badgeWidth(roleWord);
 
   return (

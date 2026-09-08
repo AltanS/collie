@@ -101,9 +101,13 @@ export function PaneActionsSheet({
   // this sheet is byte-identical to today everywhere except a pack with a quiet member.
   const hostBlock = useHostWriteBlock(pane?.host);
   // What the multiplexer underneath can actually do to a pane (M10/06) — asked per row, below.
-  const canRename = useMuxCapability("renamePane");
-  const canClose = useMuxCapability("closePane");
-  const canFocus = useMuxCapability("setFocus");
+  // Asked of the PANE's own machine, for `hostBlock`'s reason one step on (M22/03): a member runs
+  // its own multiplexer, so a row this sheet offers has to be a row that machine can carry out.
+  // Undefined on a solo install and for a pane on the lead, which is the lead's own answer.
+  const paneHost = { host: pane?.host };
+  const canRename = useMuxCapability("renamePane", paneHost);
+  const canClose = useMuxCapability("closePane", paneHost);
+  const canFocus = useMuxCapability("setFocus", paneHost);
   const [focusing, setFocusing] = useState(false);
   // The mux name for the "Focus in <mux>" row and its toast — see `focusMux` below for why this
   // is gated to panes on the LOCAL machine before it's trusted.

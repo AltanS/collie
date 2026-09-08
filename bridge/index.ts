@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { join } from "node:path";
@@ -27,6 +27,7 @@ import {
 } from "./front-door.ts";
 import { HERDR_DIAL_MODE_OPTION } from "./mux/herdr/adapter.ts";
 import { DEFAULT_TIMEOUT_MS } from "./mux/herdr/client.ts";
+import { deriveConfigRoot } from "./mux/herdr/sessions.ts";
 import {
   buildMuxRegistry,
   createMux,
@@ -115,7 +116,6 @@ import { Push } from "./push.ts";
 import { pluginRoot } from "./root.ts";
 import { buildId, startServer } from "./server.ts";
 import {
-  deriveConfigRoot,
   herdTagFor,
   SessionRegistry,
   type SessionFactory,
@@ -980,27 +980,16 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
   return { herdr, engine, poker, notifications };
 };
 
-// List the session directory names under `<configRoot>/sessions` (empty if the dir doesn't exist).
-const listSessionDirs = (dir: string): string[] => {
-  try {
-    return readdirSync(dir, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name);
-  } catch {
-    return [];
-  }
-};
-
 const registry = new SessionRegistry({
   configRoot: deriveConfigRoot(cfg.socketPath),
   primarySocketPath: cfg.socketPath,
   factory: makeSession,
-  // Multi-session discovery walks HERDR's config root for herdr sockets — it is that adapter's own
-  // shape, not the port's, so it is off for any other multiplexer rather than scanning for sockets
-  // nothing there would answer. A tmux collie fronts one tmux server, which is what its endpoint names.
-  multiSession: cfg.multiSession && cfg.mux === DEFAULT_MUX,
-  listSessionDirs,
-  exists: (p) => existsSync(p),
+  // The OPERATOR's switch, and nothing else. Whether this multiplexer has other instances on this
+  // machine to front is the adapter's own `listSessions` declaration, asked by `registry.refresh()`.
+  // An adapter that keeps no such list refuses the call and the registry pins to the primary. This
+  // line used to compare `cfg.mux` with the default multiplexer's name, which decided a feature by
+  // a multiplexer's NAME rather than by anything the adapter said (ADR 0022, ADR 0036, M22/02).
+  multiSession: cfg.multiSession,
 });
 
 // Fail soft with a clear message if the PRIMARY multiplexer isn't reachable at startup. Other
@@ -1255,7 +1244,9 @@ const packLead = (() => {
     registry: packRegistry,
     // §13's refuse-before-forward budget: this lead's own cap, not a constant (COLLIE_MAX_UPLOAD_MB).
     maxUploadBytes: cfg.maxUploadBytes,
-    snapshot: (link, freshPreflight, follow) => client.snapshot(link, undefined, freshPreflight, follow),
+    // The sweep's ask is the LEAD's decision, not this wiring's: `PackLead` passes the view (M22/06)
+    // and this hands it to the transport unchanged.
+    snapshot: (link, view, freshPreflight, follow) => client.snapshot(link, view, freshPreflight, follow),
     // §20's half of the sweep: what this lead may state about itself, and the queue that hands out
     // one turn at a time. Every member of it is read through, never captured — a lead settles
     // mid-life, and the roster changes under a running bridge.
@@ -1271,7 +1262,9 @@ const packLead = (() => {
     hello: (link) => client.hello(link),
     // The per-pane forward (§5, §9.1). `proxy`, not `raw`: the peer's own status codes — its 304
     // above all — are the answer, and flattening them would cost the conditional-GET win end to end.
-    proxy: (link, route, params, init) => client.proxy(link, route, params, init),
+    // The budget is passed THROUGH rather than chosen here: `forward.ts` owns the read/write split
+    // (§10.1's 2026-09-08 amendment), and a write's WRITE_BUDGET_MS must not be a wiring detail.
+    proxy: (link, route, params, init, budgetMs) => client.proxy(link, route, params, init, budgetMs),
     self: packSelfOf(data),
     // Notifications for a peer's panes, derived on the lead from the body this sweep just parsed and
     // pushed through the same coordinator machinery a local session uses (M4/06).

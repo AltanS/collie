@@ -38,7 +38,8 @@ export function HomeRoute() {
   // shows the repo ITSELF (a worktree's own space would branch from the same repo, so listing both
   // would offer the same thing twice under two names). In the spaces list's order, so the first
   // entry — the sheet's default — is the repo most recently used.
-  const canCreateWorktree = useMuxCapability("createWorktree");
+  // Asked of the machine this view is showing (M22/03): absent `?h=` is the lead, as everywhere.
+  const canCreateWorktree = useMuxCapability("createWorktree", data.scope);
   const worktreeRepos: WorktreeRepo[] = canCreateWorktree
     ? data.workspaces
         .filter((w) => w.repoRoot !== undefined && w.isWorktree === false)

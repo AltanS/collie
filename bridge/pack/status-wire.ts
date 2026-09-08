@@ -167,6 +167,10 @@ function peerRow(
   // never sent as null (PACK_PROTOCOL.md §11).
   if (state.reason !== null) row.reason = state.reason;
   if (state.version !== null) row.version = state.version;
+  // §10.2's presentation split, copied and never re-derived — the registry decided it, on the answer
+  // itself. Omitted when the registry has nothing to say, which is what tells an OLD phone (and a new
+  // phone reading an old lead) to keep rendering the single word.
+  if (state.linkState !== undefined) row.linkState = state.linkState;
   // Only in the state it describes, and only from the registry's own record of it — the answering
   // peer named a member and a generation and is not a directory, so there is nothing else to carry.
   if (state.health === "conflicted" && state.conflict !== null) {

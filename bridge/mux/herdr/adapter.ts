@@ -26,6 +26,7 @@ import { meaningfulTabLabel, meaningfulTerminalTitle } from "../../activity.ts";
 import type { DialMode } from "../../dial.ts";
 import { declareCapabilities } from "../capabilities.ts";
 import { herdrMachineCandidates } from "./machine-list.ts";
+import { herdrSessionSource } from "./sessions.ts";
 import { HERDR_LOGO_SVG } from "./logo.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
@@ -34,6 +35,7 @@ import {
   muxOk,
   muxRefused,
   muxUnreachable,
+  requestedCwd,
   type MuxAck,
   type MuxAdapter,
   type MuxCreatedPane,
@@ -42,6 +44,7 @@ import {
   type MuxOutcome,
   type MuxPane,
   type MuxRefusalOutcome,
+  type MuxSession,
   type MuxSnapshot,
   type MuxSpace,
   type MuxSpaceRequest,
@@ -101,6 +104,7 @@ const HERDR_CAPABILITIES = declareCapabilities({
     "openWorktree",
     "pushTopologyEvents",
     "pushPaneEvents",
+    "listSessions",
   ],
   unsupportedKeys: HERDR_UNSENDABLE_KEYS,
   // Herdr announces every structure change on `events.subscribe`, so there is no census and no
@@ -210,7 +214,17 @@ export class HerdrMux implements MuxAdapter {
   // rather than engine state: which methods a server has is a fact about this multiplexer.
   private supportsSessionSnapshot = true;
 
-  constructor(private readonly client: HerdrRpc) {}
+  /**
+   * The client is the socket; `sessions` is where the OTHER sessions of this Herdr install are.
+   *
+   * Injected rather than read from the filesystem in here, so the whole translation layer stays
+   * testable with no filesystem and no socket (`./sessions.ts` § herdrSessionSource). The factory
+   * below builds the real one from this adapter's own endpoint.
+   */
+  constructor(
+    private readonly client: HerdrRpc,
+    private readonly sessions: () => readonly MuxSession[],
+  ) {}
 
   /** Reachability for the connected/disconnected banner — one cheap list call. */
   reachable(): Promise<boolean> {
@@ -351,7 +365,10 @@ export class HerdrMux implements MuxAdapter {
     // Assigned, never spread: an absent label must stay absent (herdr stores "" literally).
     const opts: Parameters<HerdrClient["createTab"]>[1] = {};
     if (request.label !== undefined) opts.label = request.label;
-    if (request.cwd !== undefined) opts.cwd = request.cwd;
+    // A blank `cwd` is "none asked for" and is left off entirely, so the daemon opens where it would
+    // have anyway (MUX_CONTRACT.md § Contract-owned rules, *A blank cwd*).
+    const asked = requestedCwd(request.cwd);
+    if (asked !== undefined) opts.cwd = asked;
     try {
       const created = await this.client.createTab(request.spaceId, opts);
       return muxOk(toCreatedPane(created));
@@ -370,6 +387,9 @@ export class HerdrMux implements MuxAdapter {
 
   /** A new space with a fresh shell pane. Herdr returns the workspace record, so its label is real. */
   async createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
+    // `cwd` is REQUIRED by herdr's own `workspace.create`, so there is no "leave it off" here. A
+    // blank one is passed through as blank rather than replaced with a path Collie invented: the
+    // daemon owns its default, and inventing one is the guess the contract forbids everywhere else.
     const opts: Parameters<HerdrClient["createWorkspace"]>[0] = { cwd: request.cwd };
     if (request.label !== undefined) opts.label = request.label;
     try {
@@ -422,6 +442,18 @@ export class HerdrMux implements MuxAdapter {
    * caller re-reads, which is why an event naming no pane falls to the topology side (re-read more,
    * never less).
    */
+  /**
+   * Every Herdr session on this machine, the configured one included.
+   *
+   * A directory listing and a few `exists` calls, no round trip: a session that is running has its
+   * socket on disk and a cleanly stopped one has removed it, so the answer costs nothing on the
+   * socket that types into the operator's terminals. Never a throw, an unreadable directory reads
+   * as "nothing named", which is the same answer a box with one session gives.
+   */
+  listSessions(): Promise<MuxOutcome<readonly MuxSession[]>> {
+    return Promise.resolve(muxOk(this.sessions()));
+  }
+
   watch(options: MuxWatchOptions): MuxSubscription {
     return this.client.subscribeEvents({
       subscriptions: buildSubscriptions(options.panes),
@@ -575,6 +607,7 @@ export const herdrMuxFactory: MuxAdapterFactory = {
   create(target: MuxTarget) {
     return new HerdrMux(
       new HerdrClient(target.endpoint, target.timeoutMs || DEFAULT_TIMEOUT_MS, dialModeOf(target.options)),
+      herdrSessionSource(target.endpoint),
     );
   },
   describeTarget(endpoint: string) {

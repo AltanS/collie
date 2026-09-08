@@ -97,6 +97,15 @@ export interface HostHealth {
   incompatible: boolean;
   /** The peer's refusal reason, verbatim; rendered as text, never paraphrased. */
   protocolDetail?: string;
+  /**
+   * The lead's own reading of a link that is not answering (§10.2's presentation split), copied off
+   * the snapshot and never derived here: `reconnecting` while the lead is retrying inside its budget,
+   * `attention` once re-dialling cannot fix it.
+   *
+   * **Absent means the lead offered no distinction** — a reachable member, or a lead older than the
+   * field. {@link linkPresentation} is where that absence becomes today's word.
+   */
+  linkState?: ServerSummary["linkState"];
   /** Epoch ms on the LEAD's clock; `0` = never answered. */
   lastSeenAt: number;
   /** "last seen 4m" / "never seen", computed once, against the lead's clock — see the header. */
@@ -170,6 +179,7 @@ export function hostHealth(s: ServerSummary, { at, pollMs }: HostHealthOptions):
     name,
     incompatible,
     protocolDetail: s.protocolDetail,
+    linkState: s.linkState,
     lastSeenAt: s.lastSeenAt,
     lastSeenLabel,
     isLead: s.isLead,
@@ -277,4 +287,27 @@ export function writeRefusal(h: HostHealth | undefined): string | undefined {
   }
   if (!h.writable) return t("connection.stale.unreachable", { name: h.name, label: h.lastSeenLabel });
   return undefined;
+}
+
+/**
+ * What a surface SAYS about a link, in one word: the presentation split of PACK_PROTOCOL.md §10.2.
+ *
+ * - `ok` — nothing to say.
+ * - `reconnecting` — the lead is retrying and is inside its budget. Quiet, and never red: a
+ *   condition that fixes itself in one poll must not shout, or the operator learns to distrust every
+ *   red thing on the screen.
+ * - `attention` — the operator must act. Auth refused, a protocol this build cannot speak, a member
+ *   in somebody else's pack, or a retry budget the lead has spent.
+ * - `unreachable` — today's undifferentiated word, and the ONLY reading of an absent `linkState` on a
+ *   degraded member: that lead does not make the distinction, so this phone may not invent one.
+ *
+ * **One value, so a chip's styling and its label cannot drift** — the rule host-chip.tsx keeps for
+ * `writable`, one axis over. Both the chip and the pack page call this, so the two screens can never
+ * describe one machine two ways.
+ */
+export type LinkPresentation = "ok" | "reconnecting" | "attention" | "unreachable";
+
+export function linkPresentation(degraded: boolean, linkState: HostHealth["linkState"]): LinkPresentation {
+  if (!degraded) return "ok";
+  return linkState ?? "unreachable";
 }

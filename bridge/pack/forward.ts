@@ -1,7 +1,7 @@
 import type { JsonObject } from "../json.ts";
 import { MAX_UPLOAD_OVERHEAD, uploadTooLarge } from "../uploads.ts";
 import { DEVICE_HEADER } from "./admission.ts";
-import type { PackLink, PeerFailure, PeerOutcome } from "./peer-client.ts";
+import { type PackLink, type PeerFailure, type PeerOutcome, WRITE_BUDGET_MS } from "./peer-client.ts";
 import { HOST_PARAM, type PeerState } from "./registry.ts";
 
 // The LEAD side of a per-pane request: `?host=laptop` came in, the pane lives on the laptop, so the
@@ -353,12 +353,20 @@ export function classifyReadFailure(failure: PeerFailure, memberId: string): Res
   return forwardError(code, `host ${memberId}: ${failure.reason}`, 503, { host: memberId });
 }
 
-/** The transport, narrowed to what forwarding needs — {@link PackLead.forward} in production. */
+/**
+ * The transport, narrowed to what forwarding needs — {@link PackLead.forward} in production.
+ *
+ * `budgetMs` is the deadline for THIS dial, and it is present for exactly one shape of request: a
+ * forwarded write, on {@link WRITE_BUDGET_MS} (§10.1). Absent means "the transport's own default",
+ * which for `PeerClient.proxy` is the poll budget plus a cold link's bootstrap credit — i.e. every
+ * forwarded read keeps the budget it has always had.
+ */
 export type ForwardTransport = (
   link: PackLink,
   route: string,
   params: Record<string, string>,
   init: RequestInit,
+  budgetMs?: number,
 ) => Promise<PeerOutcome<Response>>;
 
 export interface ForwardDeps {
@@ -446,7 +454,20 @@ export async function forwardToPeer(req: Request, url: URL, deps: ForwardDeps): 
     init.duplex = "half";
   }
 
-  const outcome = await deps.transport(deps.link, route, forwardParams(url), init);
+  // ── A WRITE IS NOT A POLL ────────────────────────────────────────────────────
+  // A read rides the sweep's budget (§10.1): it asks a peer for bytes it already holds, and a slow
+  // one must not stall the lead's own snapshot. A write asks the peer to DO something — a launch
+  // spawns a process and has a multiplexer build a tab — and 1200 ms of that is a coin flip. Measured
+  // on a zellij member in the VM lab, 2026-09-08: roughly two launches in three straddled the poll
+  // budget and came back `write_outcome_unknown` over a tab that existed. So a write carries
+  // WRITE_BUDGET_MS, on this operator's own request path, and spends none of the sweep's accounting.
+  const outcome = await deps.transport(
+    deps.link,
+    route,
+    forwardParams(url),
+    init,
+    kind === "write" ? WRITE_BUDGET_MS : undefined,
+  );
   const action = forwardAuditAction(route);
   const paneId = forwardPaneId(route);
   const session = url.searchParams.get("session");

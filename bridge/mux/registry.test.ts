@@ -37,6 +37,7 @@ function stubAdapter(mux: string, target: MuxTarget): MuxAdapter {
     renameTab: () => Promise.resolve(muxUnsupported("renameTab", "stub")),
     closeTab: () => Promise.resolve(muxUnsupported("closeTab", "stub")),
     createSpace: () => Promise.resolve(muxUnsupported("createSpace", "stub")),
+    listSessions: () => Promise.resolve(muxUnsupported("listSessions", "stub")),
     watch: () => ({ close: () => muxAck() }),
   };
 }
@@ -46,6 +47,45 @@ function stubFactory(mux: string): MuxAdapterFactory {
 }
 
 const target: MuxTarget = { endpoint: "/tmp/probe.sock", timeoutMs: 5000, options: {} };
+
+// ── The mux port carries no host, and the compiler is what says so ────────────
+//
+// ADR 0022 and ADR 0036: a mux adapter is host-local, and {@link MuxTarget} is the shape that would
+// grow the field if anything ever did. The rule is worth a TYPE-level assertion rather than a
+// runtime one, because the failure it guards against is somebody ADDING the field, and by the time
+// a test could read it, the field exists and every route can already reach across a machine.
+//
+// `bun run typecheck` is what fails. Named `AssertNoHostOnMuxTarget` so the guard is greppable from
+// the ADR and from the pack code that leans on it (PACK_PROTOCOL.md §9.2: a pack link never forwards
+// a `host=`, because there is nowhere for it to go).
+
+/** `true` only while `K` is not a key of `T`. */
+type Lacks<T, K extends string> = K extends keyof T ? false : true;
+
+/**
+ * The assertion. `MuxTarget` must have no `host` key, under any spelling the port could take one in:
+ * a machine is reached by talking to the Collie running on it, never by dialling its multiplexer.
+ *
+ * Add `host` (or `hostname`, or `machine`) to `MuxTarget` and this line stops compiling.
+ */
+type AssertNoHostOnMuxTarget = [
+  Lacks<MuxTarget, "host">,
+  Lacks<MuxTarget, "hostname">,
+  Lacks<MuxTarget, "machine">,
+];
+
+/** Reads the type above, so it is not an unused declaration. `[true, true, true]` or it fails. */
+const noHostOnMuxTarget: AssertNoHostOnMuxTarget = [true, true, true];
+
+describe("the mux port is host-local", () => {
+  test("MuxTarget carries no host, and the guard above is compile-time", () => {
+    // The runtime half is a formality, the sentence that matters is the type annotation above,
+    // which `bun run typecheck` enforces. This keeps the constant read and names the rule in the
+    // suite's own output.
+    expect(noHostOnMuxTarget).toEqual([true, true, true]);
+    expect(Object.keys(target)).not.toContain("host");
+  });
+});
 
 describe("buildMuxRegistry", () => {
   test("every key IS its factory's own name — the map can't drift from the factories", () => {

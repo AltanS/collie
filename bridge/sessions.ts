@@ -1,4 +1,4 @@
-import { basename, dirname, join } from "node:path";
+import { basename, dirname } from "node:path";
 
 import type { EventPoker } from "./event-poker.ts";
 import type { MuxAdapter } from "./mux/types.ts";
@@ -7,20 +7,25 @@ import type { StateEngine } from "./state-engine.ts";
 import type { SessionSummary } from "./types.ts";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Multi-session support. Herdr can run several named sessions, each its own server
-// with its own unix socket:
-//   • default session:  <configRoot>/herdr.sock
-//   • named session:     <configRoot>/sessions/<name>/herdr.sock
-// ONE bridge process fronts N sessions. The primary session (cfg.socketPath) maps to
-// all of today's behaviour; everything else is additive and opt-in.
+// Multi-session support. A multiplexer may run several instances on one machine, each
+// with its own endpoint. ONE bridge process fronts N of them. The primary session
+// (cfg.socketPath) maps to all of today's behaviour; everything else is additive and
+// opt-in.
+//
+// WHERE THOSE INSTANCES ARE IS THE ADAPTER'S ANSWER, never this file's. `refresh()`
+// asks the primary adapter's `listSessions` capability and starts a runtime per answer;
+// an adapter that declares the capability absent refuses, and the registry then pins to
+// the primary for good. That is what makes this module free of any one multiplexer's
+// layout, Herdr's socket shape lives in bridge/mux/herdr/sessions.ts (ADR 0022,
+// ADR 0036, M22/02). What stays here is the registry, the naming rules and the
+// browser-facing selection.
 //
 // SECURITY: a client-supplied session name is ONLY ever a Map key lookup here — it is
-// NEVER used to build a filesystem path. Sockets are discovered from the fs (trusted
-// configRoot + a directory listing); the name a browser sends can only select among
-// what discovery already found, never reach a path.
+// NEVER used to build a path, and no path is built here at all. The name a browser sends
+// can only select among what the adapter already reported.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The default session's name — the one whose socket is `<configRoot>/herdr.sock`. */
+/** The default session's name, the one whose endpoint sits directly in the config root. */
 export const DEFAULT_SESSION_NAME = "default";
 /** The base notification tag; the whole herd of one session shares this slot. */
 const HERD_TAG_BASE = "collie:herd";
@@ -35,48 +40,19 @@ export function herdTagFor(isPrimary: boolean, name: string): string {
 }
 
 /**
- * The config root that holds a session layout, derived from a socket path. If the socket sits at
- * `…/sessions/<name>/herdr.sock` the root is the prefix before `/sessions/`; otherwise it's just the
- * socket's directory (the default session's `<root>/herdr.sock`). Pure + exported for tests.
- */
-export function deriveConfigRoot(socketPath: string): string {
-  const dir = dirname(socketPath); // <root>  OR  <root>/sessions/<name>
-  const parent = dirname(dir); // <parentOfRoot>  OR  <root>/sessions
-  if (basename(parent) === "sessions") return dirname(parent);
-  return dir;
-}
-
-/**
- * The registry name for a socket, relative to a config root: `"default"` for `<root>/herdr.sock`,
- * else the directory name under `<root>/sessions/`. Pure + exported for tests.
+ * The registry name for a session's endpoint, relative to a config root: `"default"` when the
+ * endpoint sits directly in the root, else the name of the directory holding it. Pure + exported for
+ * tests.
+ *
+ * A NAMING RULE, not a layout: it reads the endpoint the operator configured and never builds a
+ * path. Which endpoints exist is the adapter's answer ({@link MuxAdapter.listSessions}), and every
+ * discovered session is named by the adapter that found it, so this is only ever asked about the
+ * primary, whose runtime is spawned before any discovery can run.
  */
 export function sessionNameFor(socketPath: string, configRoot: string): string {
   const dir = dirname(socketPath); // <root>  OR  <root>/sessions/<name>
   if (dir === configRoot) return DEFAULT_SESSION_NAME;
   return basename(dir);
-}
-
-/**
- * Discover every running herdr session under a config root: the default (`<root>/herdr.sock`) plus
- * each `<root>/sessions/<name>/herdr.sock` that currently exists. `listSessionDirs` and `exists` are
- * injected (real fs in the bridge, fakes in tests) so this stays pure and unit-testable — and so the
- * only filesystem input is the trusted config root, never a client-supplied name. A cleanly stopped
- * session removes its socket, so a socket's presence is the liveness signal we scan for.
- */
-export function discoverSessionSockets(
-  configRoot: string,
-  listSessionDirs: (dir: string) => string[],
-  exists: (p: string) => boolean,
-): Array<{ name: string; socketPath: string }> {
-  const found: Array<{ name: string; socketPath: string }> = [];
-  const defaultSock = join(configRoot, "herdr.sock");
-  if (exists(defaultSock)) found.push({ name: DEFAULT_SESSION_NAME, socketPath: defaultSock });
-  const sessionsDir = join(configRoot, "sessions");
-  for (const name of listSessionDirs(sessionsDir)) {
-    const sock = join(sessionsDir, name, "herdr.sock");
-    if (exists(sock)) found.push({ name, socketPath: sock });
-  }
-  return found;
 }
 
 /** The live per-session pieces a factory builds. push/snooze/notify-prefs/audit stay process-global. */
@@ -104,18 +80,66 @@ export interface SessionRuntime extends SessionParts {
 export type SessionFactory = (name: string, socketPath: string, isPrimary: boolean) => SessionParts;
 
 interface SessionRegistryOpts {
-  /** The config root that holds the session layout (see {@link deriveConfigRoot}). */
+  /** The root the primary's endpoint is named against (see {@link sessionNameFor}). */
   configRoot: string;
   /** The primary session's socket (cfg.socketPath) — always present, never disposed. */
   primarySocketPath: string;
   /** Builds a live runtime for a session. */
   factory: SessionFactory;
-  /** When false, the registry pins to the primary only and refresh() never scans the fs. */
+  /**
+   * The OPERATOR's switch (`COLLIE_MULTI_SESSION`). When false, the registry pins to the primary
+   * only and refresh() asks nothing.
+   *
+   * The outer of the two falseable things, and deliberately separate from the inner one: the
+   * adapter's `listSessions` declaration says whether this multiplexer has anything to offer, and
+   * this says whether the operator wants it. Either one alone pins the registry to the primary.
+   */
   multiSession: boolean;
-  /** Lists the session directory names under `<configRoot>/sessions` (real fs in the bridge). */
-  listSessionDirs: (dir: string) => string[];
-  /** Whether a path exists (real fs in the bridge). */
-  exists: (p: string) => boolean;
+}
+
+/**
+ * The wire query key for the session dimension: `session=`. `?s=` is the browser URL spelling
+ * (web/src/lib/scope.ts), translated in web/src/lib/api.ts before a request leaves the client.
+ */
+export const SESSION_PARAM = "session";
+
+/**
+ * The wire query key that WIDENS a snapshot to every session on ONE machine, and the ONE value it
+ * accepts. `?sessions=all` on the wire; `?all=1` is the browser URL spelling.
+ *
+ * One exact spelling and nothing else: the parameter is a switch, not a list, so a typo reads as
+ * "no" rather than as some third behaviour.
+ */
+export const SESSIONS_PARAM = "sessions";
+export const SESSIONS_ALL = "all";
+
+/**
+ * How much of ONE machine a snapshot asks for: which session, and whether to widen to all of them.
+ *
+ * The pair travels together because it is read together — a widened view of an unknown session is
+ * still an unknown session — and because carrying it as one value is what keeps `widen` off every
+ * call as a bare boolean. A literal `false` at a call site is how the peer surface came to be
+ * permanently narrow (M22/06); a named value has to be built by somebody who knows the request.
+ */
+export interface SnapshotView {
+  /** The session name the request named, or `undefined` for this machine's primary session. */
+  readonly session: string | undefined;
+  /** Whether every session on this machine contributes its panes. */
+  readonly widen: boolean;
+}
+
+/** Today's ask, and the one every machine the request did not name gets: primary, unwidened. */
+export const NARROW_VIEW: SnapshotView = { session: undefined, widen: false };
+
+/**
+ * Read the view off a request URL. The ONE place the two params become one value, so the browser
+ * route and the pack surface cannot disagree about what `?sessions=all` means (§5).
+ */
+export function selectView(url: URL): SnapshotView {
+  return {
+    session: url.searchParams.get(SESSION_PARAM) ?? undefined,
+    widen: url.searchParams.get(SESSIONS_PARAM) === SESSIONS_ALL,
+  };
 }
 
 /**
@@ -144,24 +168,19 @@ export function widenedPanes<T extends { session?: string }>(
 
 /**
  * Owns the set of live session runtimes. The primary is created eagerly and kept forever; other
- * sessions are discovered from the filesystem by {@link refresh} and disposed when their socket goes
- * away. Client-facing lookups ({@link get}) are Map lookups by name — a name never becomes a path.
+ * sessions are the multiplexer's own answer, asked by {@link refresh} and disposed when the
+ * multiplexer stops reporting them. Client-facing lookups ({@link get}) are Map lookups by name — a
+ * name never becomes a path.
  */
 export class SessionRegistry {
   private readonly runtimes = new Map<string, SessionRuntime>();
-  private readonly configRoot: string;
   private readonly factory: SessionFactory;
   private readonly multiSession: boolean;
-  private readonly listSessionDirs: (dir: string) => string[];
-  private readonly exists: (p: string) => boolean;
   private readonly primaryName: string;
 
   constructor(opts: SessionRegistryOpts) {
-    this.configRoot = opts.configRoot;
     this.factory = opts.factory;
     this.multiSession = opts.multiSession;
-    this.listSessionDirs = opts.listSessionDirs;
-    this.exists = opts.exists;
     this.primaryName = sessionNameFor(opts.primarySocketPath, opts.configRoot);
     // The primary comes up eagerly — it's the fallback for every session-less request.
     this.runtimes.set(this.primaryName, this.spawn(this.primaryName, opts.primarySocketPath, true));
@@ -226,19 +245,30 @@ export class SessionRegistry {
   }
 
   /**
-   * Rescan the filesystem: start a runtime for any newly-appeared session, dispose one whose socket
-   * has gone away. The primary is always retained even if discovery momentarily misses it. A no-op
-   * when multi-session is off. Safe to call on a timer — connect failures for a stale socket surface
-   * as `reachable:false`, never a throw.
+   * Ask the multiplexer again: start a runtime for any newly-appeared session, dispose one that has
+   * gone away. The primary is always retained even if discovery momentarily misses it.
+   *
+   * Two ways to be a no-op, and they are different facts. The operator's switch off means "do not
+   * front more than one" and is checked first. An adapter that answers the contract's `unsupported`
+   * means "this multiplexer keeps no such list", and the registry then leaves the primary as the
+   * only session, the same outcome, arrived at honestly, and never confused with an EMPTY list,
+   * which says "it keeps one and there is nothing else in it right now" and does dispose what went
+   * away.
+   *
+   * Safe to call on a timer, a stale endpoint surfaces as `reachable:false` on its session, never a
+   * throw, and the adapter's answer is an outcome rather than an exception by contract.
    */
   async refresh(): Promise<void> {
     if (!this.multiSession) return;
-    const discovered = discoverSessionSockets(this.configRoot, this.listSessionDirs, this.exists);
+    const primary = this.runtimes.get(this.primaryName);
+    if (primary === undefined) return;
+    const answer = await primary.herdr.listSessions();
+    if (!answer.ok) return;
     const seen = new Set<string>([this.primaryName]);
-    for (const { name, socketPath } of discovered) {
+    for (const { name, endpoint } of answer.value) {
       seen.add(name);
       if (this.runtimes.has(name)) continue;
-      this.runtimes.set(name, this.spawn(name, socketPath, false));
+      this.runtimes.set(name, this.spawn(name, endpoint, false));
     }
     for (const [name, rt] of this.runtimes) {
       if (seen.has(name)) continue; // primaryName is always in `seen` → never disposed

@@ -58,7 +58,9 @@ import {
 } from "../bridge/pack/standby-devices.ts";
 import { packRuntimePath, parseMarker, rosterDrift } from "../bridge/pack/staleness.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
-import { deriveConfigRoot, discoverSessionSockets, herdTagFor } from "../bridge/sessions.ts";
+import { deriveConfigRoot, discoverSessionSockets } from "../bridge/mux/herdr/sessions.ts";
+import { herdTagFor } from "../bridge/sessions.ts";
+import { compareSemver } from "../bridge/update.ts";
 import { collieVersionBare, DEFAULT_SERVE_PORT, type CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
 import { dropEnvAssignments } from "./push-keys.ts";
@@ -1423,11 +1425,29 @@ function versionLines(reported: string | null, ours: string, memberId: string): 
   // there is no older machine to name. Report theirs and stay quiet rather than warn about a skew
   // whose other half we cannot state.
   if (ours === "unknown") return [`    version ${reported}`];
-  return [
-    `    version ${reported} — warn: this machine runs ${ours}`,
-    `            Build skew refuses nothing (§7.1) — the link keeps working. Level it from here:`,
-    `            \`collie pack update ${memberId}\` (over your own ssh, ADR 0016).`,
-  ];
+  const head = `    version ${reported} — warn: this machine runs ${ours}`;
+  const preamble = `            Build skew refuses nothing (§7.1) — the link keeps working.`;
+  // WHICH SIDE IS BEHIND DECIDES THE REMEDY, and printing the wrong one is worse than printing
+  // none: `pack update` pushes THIS lead's build onto that member, so on a lead that is itself the
+  // older machine the old unconditional line told the operator to level a newer member DOWN.
+  // Measured on 2026-09-08 with a real 1.6.0 lead over two members built from main
+  // (PACK_PROTOCOL.md §16, the version-skew leg). §7.1 names both remedies; this picks the one that
+  // matches the direction. A comparison that comes back equal has no direction to state — two
+  // different strings for one semver (a build stamp, `unknown`) is not a skew anybody levels — so
+  // it keeps the neutral sentence and names no command.
+  const direction = compareSemver(reported, ours);
+  if (direction > 0) {
+    return [
+      head,
+      `${preamble} THIS machine is the older one, so`,
+      `            level it first: \`collie update\` here. \`collie pack update ${memberId}\` from here`,
+      `            would push this build onto that member and take it BACKWARDS.`,
+    ];
+  }
+  if (direction < 0) {
+    return [head, `${preamble} Level it from here:`, `            \`collie pack update ${memberId}\` (over your own ssh, ADR 0016).`];
+  }
+  return [head, `${preamble} Neither build is the older one.`];
 }
 
 /**

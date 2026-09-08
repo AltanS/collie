@@ -128,6 +128,60 @@ export function getMuxConfig(): MuxConfig | null {
   return currentMux;
 }
 
+// ── ONE MEMBER's OWN BLOCK (M22/03) ─────────────────────────────────────────────────────────────
+//
+// The store above is the LEAD's answer, read once and held for the page. A pack member runs its own
+// multiplexer, so a control on that member's pane has to ask that member's declaration, and the lead
+// answers it on `/api/config?host=<member>` from what the member's last `hello` taught it.
+//
+// A SECOND MAP RATHER THAN A SECOND STORE, and it stays out of the one-shot read's way:
+//
+//  • **Cached per host id, for the life of the page**, exactly as the lead's read is cached. The
+//    block cannot change without that member's bridge restarting, which the phone cannot miss.
+//  • **Issued ONLY when a scope names a non-lead host.** A solo install has no `?h=` to emit, so it
+//    never reaches this map and never makes a second request — the zero-tax rule, client side.
+//  • **A miss is `null`, and `null` means "use the lead's".** So the read in flight, the failed read
+//    and the member that publishes no block all render the answer the phone gives today.
+//  • **A failed read is not cached**, on the same terms the lead's read is not, so a later mount
+//    tries again.
+
+const hostMux = new Map<string, MuxConfig | null>();
+const hostMuxInflight = new Map<string, Promise<void>>();
+
+/**
+ * Read one member's own mux block, once per host id per page load. Concurrent callers share the one
+ * in-flight request.
+ */
+export function loadHostMuxConfig(host: string): Promise<void> {
+  if (hostMux.has(host)) return Promise.resolve();
+  const running = hostMuxInflight.get(host);
+  if (running) return running;
+  const started = (async () => {
+    try {
+      // The HOST alone. No session rides along: `/api/config` is not session-scoped, and sending a
+      // session name would put a parameter on the wire that the route does not read.
+      const cfg = await fetchConfig({ host });
+      hostMux.set(host, cfg.mux ?? null);
+      emit();
+    } catch {
+      // Additive feature — see the header. Nothing is cached, so a later mount asks again.
+    } finally {
+      hostMuxInflight.delete(host);
+    }
+  })();
+  hostMuxInflight.set(host, started);
+  return started;
+}
+
+/**
+ * One member's own mux block, or `null` when nothing has said otherwise: no read yet, a failed read,
+ * or a member the lead has no declaration for. All three mean "use the lead's answer", which is what
+ * lib/mux-capability.ts turns them into.
+ */
+export function getHostMuxConfig(host: string): MuxConfig | null {
+  return hostMux.get(host) ?? null;
+}
+
 /**
  * The speech-to-text block, or `null` when nothing said otherwise (no read yet, a failed read, or a
  * bridge with no provider configured). Consumers go through lib/stt.ts, which owns the rule that
@@ -226,6 +280,8 @@ export function useOperatorQuickReplies(): readonly OperatorQuickReplyRow[] {
 
 /** Test helper — reset module state between cases. */
 export function __resetOperatorCommands(): void {
+  hostMux.clear();
+  hostMuxInflight.clear();
   current = [];
   currentKeys = [];
   currentReplies = [];

@@ -1336,6 +1336,42 @@ describe("collie pack status", () => {
     expect(rendered).not.toContain("INCOMPATIBLE");
   });
 
+  test("a lead that is ITSELF the older machine never offers `pack update` (§7.1 skew direction)", async () => {
+    // The version-skew leg (PACK_PROTOCOL.md §16, 2026-09-08) ran a real 1.6.0 lead over two members
+    // built from main, and this line told the operator to `collie pack update` them — which pushes
+    // the LEAD's build outwards and would have taken both members backwards. The remedy has to
+    // follow the direction, and the wrong one must not be printed at all.
+    const h = withVersion(
+      harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+        jsonReply({ protocol: 1, member: "nas", version: "1.8.3+26909caa" }, 200, "nas"),
+      ]),
+      "1.6.0+3e8aaf8",
+    );
+    await cmdPackStatus(h.deps, []);
+    const rendered = text(h.io);
+    expect(rendered).toContain("version 1.8.3+26909caa — warn: this machine runs 1.6.0+3e8aaf8");
+    expect(rendered).toContain("THIS machine is the older one");
+    expect(rendered).toContain("`collie update` here");
+    expect(rendered).toContain("BACKWARDS");
+    expect(rendered).not.toContain("Level it from here");
+    expect(rendered).toContain("reachable");
+  });
+
+  test("two strings for one semver name no direction and no command (§7.1)", async () => {
+    // A build stamp is not a skew anybody levels, so the warn names both and stops there.
+    const h = withVersion(
+      harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
+        jsonReply({ protocol: 1, member: "nas", version: "1.8.3+aaaaaaa" }, 200, "nas"),
+      ]),
+      "1.8.3+bbbbbbb",
+    );
+    await cmdPackStatus(h.deps, []);
+    const rendered = text(h.io);
+    expect(rendered).toContain("Neither build is the older one.");
+    expect(rendered).not.toContain("collie pack update nas");
+    expect(rendered).not.toContain("collie update` here");
+  });
+
   test("a member answering without the field renders as pre-amendment, never as `unknown`", async () => {
     const h = withVersion(
       harness(leadStore({ peers: [member({ memberId: "nas" })] }), [

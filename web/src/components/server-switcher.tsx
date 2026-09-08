@@ -6,7 +6,7 @@ import { Check, Crown, Network, Server } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BottomSheet } from "@/components/ui/sheet";
 import { homePath, packPath } from "@/lib/nav";
-import { hostHealth } from "@/lib/host-health";
+import { hostHealth, linkPresentation, type HostHealth } from "@/lib/host-health";
 import { usePack } from "@/components/pack-provider";
 import { HOST_TEXT_CLASSES, countsFor, hostCounts, hostSlot } from "@/lib/hosts";
 import type { Scope } from "@/lib/scope";
@@ -168,9 +168,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                                   receipt beside `reachable: true` is an old receipt, not a down
                                   machine, and this row spelled it "unreachable" beside a peer whose
                                   every request was landing. See host-stale-banner.tsx's table. */}
-                              {h.writable
-                                ? h.lastSeenLabel
-                                : t("connection.host.unreachableSuffix", { label: h.lastSeenLabel })}
+                              {h.writable ? h.lastSeenLabel : degradedLabel(h)}
                             </span>
                           )
                         )}
@@ -225,4 +223,18 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
       )}
     </>
   );
+}
+
+/**
+ * The word beside a member this lead cannot write to, with its receipt age — §10.2's presentation
+ * split, in the same three readings the host chip gives (lib/host-health.ts `linkPresentation`).
+ *
+ * `reconnecting` keeps the row plain on purpose: the lead is retrying inside its budget, the row is
+ * still listed with its counts, and there is nothing here for the operator to do.
+ */
+function degradedLabel(h: HostHealth): string {
+  const link = linkPresentation(true, h.linkState);
+  if (link === "reconnecting") return t("connection.host.reconnectingSuffix", { label: h.lastSeenLabel });
+  if (link === "attention") return t("connection.host.attentionSuffix", { label: h.lastSeenLabel });
+  return t("connection.host.unreachableSuffix", { label: h.lastSeenLabel });
 }

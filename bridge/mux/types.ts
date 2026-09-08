@@ -350,13 +350,34 @@ export interface MuxCreatedPane {
 export interface MuxTabRequest {
   readonly spaceId: string;
   readonly label?: string;
+  /**
+   * Where to open it, or nothing.
+   *
+   * A BLANK STRING IS NOTHING, and it is not a defensive nicety: {@link MuxPane.cwd} is empty when
+   * the multiplexer reports no working directory, and the launch route hands a neighbouring pane's
+   * `cwd` straight through here. So "unknown" arrives spelled `""`, and an adapter that turned that
+   * into a flag asked its multiplexer to open a tab in a directory called nothing (measured on
+   * zellij, M22/04: `--cwd ` with no value, and zellij refused the whole launch).
+   * MUX_CONTRACT.md § Contract-owned rules, *A blank cwd*.
+   */
   readonly cwd?: string;
 }
 
-/** What a new space asks for. */
+/** What a new space asks for. `cwd` follows {@link MuxTabRequest.cwd}: blank is nothing. */
 export interface MuxSpaceRequest {
   readonly cwd: string;
   readonly label?: string;
+}
+
+/**
+ * The directory a create request actually asked for, or `undefined` when it asked for none.
+ *
+ * One function rather than three `!== undefined && !== ""` tests, because the rule is the
+ * contract's and a per-adapter spelling of it is how it comes to be spelled three ways
+ * (MUX_CONTRACT.md § Contract-owned rules, *A blank cwd*).
+ */
+export function requestedCwd(cwd: string | undefined): string | undefined {
+  return cwd === undefined || cwd.trim().length === 0 ? undefined : cwd;
 }
 
 // ── Worktrees ─────────────────────────────────────────────────────────────────
@@ -457,6 +478,26 @@ export interface MuxWatchOptions {
   onUp(): void;
   /** The watch ended, for any reason, exactly once. Reconnect/backoff belong to the caller. */
   onDown(reason: string): void;
+}
+
+/**
+ * ONE OTHER INSTANCE OF THIS MULTIPLEXER, ON THIS MACHINE.
+ *
+ * What "instance" means is the multiplexer's own answer, and it is the thing a second Collie session
+ * would be built against: a Herdr session's socket, and nothing at all on a multiplexer that keeps no
+ * such list. `endpoint` is opaque here exactly as {@link MuxTarget.endpoint} is opaque in the
+ * registry, and for the same reason: one adapter's address is meaningless to another.
+ *
+ * `name` is what the operator's phone will call it, so it is short, stable, and the multiplexer's own
+ * word for the thing. It is a Map key in `bridge/sessions.ts` and NEVER used to build a path.
+ *
+ * IT CARRIES NO HOST, and it may never grow one: everything listed here runs on this machine, which
+ * is the whole of what a mux adapter can see (ADR 0011, ADR 0022, ADR 0036). Another machine is
+ * reached by talking to the Collie on it.
+ */
+export interface MuxSession {
+  readonly name: string;
+  readonly endpoint: string;
 }
 
 /** The handle a watch hands back. `close()` is idempotent. */
@@ -580,6 +621,27 @@ export interface MuxAdapter {
 
   /** Show an existing worktree as a space. Needs `openWorktree`. */
   openWorktree(request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>>;
+
+  /**
+   * The OTHER instances of this multiplexer on this machine, each with the endpoint to dial it.
+   * Needs `listSessions`.
+   *
+   * One bridge can front several of them: `bridge/sessions.ts` starts a runtime per answer, and the
+   * phone selects one with `?session=<name>`. The primary is the one the operator configured, and it
+   * is listed like any other when the multiplexer lists it.
+   *
+   * THE DECLARED-FALSE ANSWER IS `unsupported`, naming this capability, not a throw, and not an
+   * empty list. An empty list is a real answer with a different meaning ("this multiplexer keeps
+   * such a list, and right now it holds nothing else"), and the two must stay tellable apart: the
+   * first pins the registry to the primary for good, the second is a state that changes by itself.
+   *
+   * A read, and a cheap one: it is called on the registry's rescan timer, so an adapter that has to
+   * shell out to answer says so in its own note (MUX_CONTRACT.md).
+   *
+   * Host-local like every other method here. A session is on THIS machine or it is not this
+   * adapter's to report (ADR 0036).
+   */
+  listSessions(): Promise<MuxOutcome<readonly MuxSession[]>>;
 
   /** Watch for change. Always available — an adapter with no push satisfies it by polling. */
   watch(options: MuxWatchOptions): MuxSubscription;

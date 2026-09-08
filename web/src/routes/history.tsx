@@ -57,10 +57,10 @@ export function HistoryRoute() {
   const root = useRootData();
   const { paneId = "" } = useParams();
   const navigate = useNavigate();
-  // Whether an agent session log can exist here at all — a property of the multiplexer, not of this
-  // pane. See the empty-state branch below for what it changes.
-  const sessionLog = useMuxCapability("agentSessionRef");
   const scope = data.scope;
+  // Whether an agent session log can exist here at all — a property of the multiplexer THIS PANE's
+  // machine runs (M22/03), not of the pane. See the empty-state branch below for what it changes.
+  const sessionLog = useMuxCapability("agentSessionRef", scope);
 
   const agent =
     root.agents.find((a) => a.paneId === paneId) ??

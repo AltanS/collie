@@ -8,6 +8,7 @@ import { AuditLog, fileAuditAppender, formatAuditLine, type AuditEntry } from ".
 import { ActivityLedger } from "./activity.ts";
 import { loadConfig, type Config } from "./config.ts";
 import { computeEtag } from "./http-cache.ts";
+import { muxOk } from "./mux/types.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
 import type { PushMessage } from "./push.ts";
 import { TrustStore } from "./pack/trust-store.ts";
@@ -188,7 +189,8 @@ const hasJournal = (agent: string) => agent === "claude";
  */
 function soloRegistry(): SessionRegistry {
   const factory: SessionFactory = () => ({
-    herdr: stubPart<SessionParts["herdr"]>({}),
+    // The registry's only discovery: an adapter reporting nothing but the primary itself.
+    herdr: stubPart<SessionParts["herdr"]>({ listSessions: () => Promise.resolve(muxOk([])) }),
     engine: stubPart<SessionParts["engine"]>({ current: () => engineSnapshot, stop: () => {} }),
     poker: stubPart<SessionParts["poker"]>({ stop: () => {} }),
     notifications: stubPart<SessionParts["notifications"]>({ clearAll: () => {} }),
@@ -198,8 +200,6 @@ function soloRegistry(): SessionRegistry {
     primarySocketPath: "/home/you/.config/herdr/herdr.sock",
     factory,
     multiSession: true,
-    listSessionDirs: () => [],
-    exists: () => false,
   });
 }
 

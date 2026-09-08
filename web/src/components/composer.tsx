@@ -267,8 +267,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Two capabilities, one lock: a reply is `typeText` then `sendKeys` (bridge/mux/capabilities.ts),
   // and half a reply is not a feature. `typeText`'s reason is preferred when both are missing —
   // it is the half that fails first.
-  const canType = useMuxCapability("typeText");
-  const canSendKeys = useMuxCapability("sendKeys");
+  // Asked of the machine this row is on (M22/03) — the ambient scope IS the target here, exactly as
+  // `writeHost` below says of the write itself.
+  const canType = useMuxCapability("typeText", scope);
+  const canSendKeys = useMuxCapability("sendKeys", scope);
   const missingSend = !canType.capable ? canType : !canSendKeys.capable ? canSendKeys : null;
   const locked = gone || readOnly || hostBlock !== undefined || missingSend !== null;
   // The machine every write on this row lands on. The pane view addresses one host (the pane's own,

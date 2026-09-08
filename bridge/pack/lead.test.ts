@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import type { SnapshotResponse } from "../types.ts";
+import type { SnapshotView } from "../sessions.ts";
+import type { MuxConfig, SnapshotResponse } from "../types.ts";
 import type { PeerPreflight } from "../update-action.ts";
-import { member, neverProxy } from "./fixtures.ts";
+import { member, muxCaps, neverProxy } from "./fixtures.ts";
+import { NARROW_PLAN, snapshotPlan, SWEEP_VIEW, type PeerSnapshotWire } from "./merge.ts";
 import {
   clearPeerBackoff,
   CONTACT_RESET_FLOOR_MS,
@@ -80,7 +82,9 @@ function lead(
   members: TrustedMember[],
   script: (link: PackLink, call: number) => PeerOutcome<unknown>,
   opts: {
-    hello?: (link: PackLink) => Promise<PeerOutcome<{ readonly version: string | null }>>;
+    hello?: (
+      link: PackLink,
+    ) => Promise<PeerOutcome<{ readonly version: string | null; readonly mux?: MuxConfig | null }>>;
     turns?: UpdateTurns;
   } = {},
 ) {
@@ -199,7 +203,7 @@ describe("PackLead — a peer's sessions never vanish (§10.2)", () => {
     expect(c.state.lastSeenAt).toBe(NOW);
     expect(c.body?.agents).toHaveLength(1);
 
-    const merged = h.lead.merge(localBody());
+    const merged = h.lead.merge(localBody(), NARROW_PLAN);
     expect(merged.agents.map((p) => p.host)).toEqual(["laptop"]);
     expect(merged.servers!.find((s) => s.id === "laptop")!.reachable).toBe(false);
   });
@@ -219,7 +223,7 @@ describe("PackLead — a peer's sessions never vanish (§10.2)", () => {
     h.roster.length = 0; // `collie leave`, a revocation, or a rotation that dropped it
     await h.lead.sweep();
     expect(h.lead.contributions()).toEqual([]);
-    expect(h.lead.merge(localBody()).servers).toEqual([
+    expect(h.lead.merge(localBody(), NARROW_PLAN).servers).toEqual([
       { id: "desk", name: "the herd", isLead: true, reachable: true, protocol: "ok", lastSeenAt: NOW },
     ]);
   });
@@ -545,7 +549,10 @@ describe("a sweep that died on its own clock earns a patient re-ask (§10.4)", (
     await h.lead.sweep(); // …then the timeout that produced the live "unreachable forever"
 
     await Bun.sleep(5); // the probe is never awaited by the sweep — that is the point of it
-    expect(probed).toEqual(["laptop"]);
+    // TWO hellos, and they are two different questions on one seam: the good poll earned the
+    // once-per-link capability ask (M22/03), then the timeout earned §10.4's verdict probe. The
+    // verdict is what this test is about, and it is the second one.
+    expect(probed).toEqual(["laptop", "laptop"]);
     const state = h.registry.state("laptop");
     expect(state.health).toBe("reachable");
     expect(state.version).toBe("1.0.0");
@@ -997,7 +1004,7 @@ describe("PackLead — each member's update preflight (§19)", () => {
     const l = new PackLead({
       log: () => {},
       registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
-      snapshot: async (_link, freshPreflight) => {
+      snapshot: async (_link, _view, freshPreflight) => {
         asked.push(freshPreflight === true);
         return ok(body);
       },
@@ -1332,5 +1339,312 @@ describe("a peer that speaks to us is due", () => {
     h.advance(CONTACT_RESET_FLOOR_MS);
     await h.lead.sweep();
     expect(h.calls.length).toBe(dials);
+  });
+});
+
+// ── The dial generation, and the reply it drops (M22/05) ─────────────────────
+
+describe("a reply from an older dial is dropped, never merged (M22/05)", () => {
+  /** Our own budget fired, so the member earns the patient probe of §10.4. */
+  const budgetMissed: PeerOutcome<unknown> = {
+    ok: false,
+    state: "unreachable",
+    reason: "snapshot: timed out after 1200ms",
+    timedOut: true,
+    receivedAt: NOW,
+  };
+  /** The probe's answer, and the harmful one: a FAILURE landing after the member came back. */
+  const helloDown: PeerOutcome<{ version: string | null }> = {
+    ok: false,
+    state: "unreachable",
+    reason: "hello: connection refused",
+    receivedAt: NOW,
+  };
+
+  /**
+   * Sweep 1 times out and fires a probe that is left in flight. Sweep 2 answers, so the member is
+   * reachable and current. Then the probe's reply lands — from a dial two generations old.
+   */
+  async function overtaken() {
+    let land: (v: PeerOutcome<{ version: string | null }>) => void = () => {};
+    const h = lead([member({ memberId: "laptop" })], (_l, call) => (call === 1 ? budgetMissed : ok(body)), {
+      hello: () =>
+        new Promise((resolve) => {
+          land = resolve;
+        }),
+    });
+    await h.lead.sweep();
+    await Bun.sleep(5); // the probe is never awaited by the sweep — that is the point of it
+    await h.lead.sweep();
+    return { ...h, land: (v: PeerOutcome<{ version: string | null }>) => land(v) };
+  }
+
+  test("the newer answer stands: a stale hello cannot un-reach a member that came back", async () => {
+    const h = await overtaken();
+    expect(h.registry.state("laptop").health).toBe("reachable");
+
+    h.land(helloDown);
+    await Bun.sleep(5);
+
+    // Without the fence this is the bug: the probe of a dial made BEFORE the member answered would
+    // fold its own failure over the top and the lead would report an older world as the current one.
+    const state = h.registry.state("laptop");
+    expect(state.health).toBe("reachable");
+    expect(state.reason).toBeNull();
+    expect(state.lastSeenAt).toBe(NOW);
+  });
+
+  test("the drop is a value the lead logs and ignores — it names both dials", async () => {
+    const h = await overtaken();
+    h.land(helloDown);
+    await Bun.sleep(5);
+    // Sweep 1 claimed dial 1, its probe claimed 2, sweep 2 claimed 3. The reply carries 2.
+    expect(h.journal).toContain("[pack] laptop: dropped a stale hello reply, dial 2 of 3");
+  });
+
+  test("nothing about the dropped reply reaches the merge", async () => {
+    const h = await overtaken();
+    h.land(helloDown);
+    await Bun.sleep(5);
+    const merged = h.lead.merge(localBody(), NARROW_PLAN);
+    const peer = merged.servers?.find((s) => s.id === "laptop");
+    expect(peer?.reachable).toBe(true);
+    // §10.2 holds either way — the rows never vanish — but they are the rows of the dial that won.
+    expect(merged.agents.filter((a) => a.host === "laptop").length).toBe(1);
+  });
+
+  test("a reply from the CURRENT dial is folded exactly as before", async () => {
+    // The fence may only ever drop an overtaken reply. A probe whose dial is still the newest one is
+    // the §10.4 path, unchanged: the machine answered, so it is reachable with the slow-link note.
+    const h = lead([member({ memberId: "laptop" })], (_l, call) => (call === 1 ? ok(body) : budgetMissed), {
+      hello: () =>
+        Promise.resolve({
+          ok: true as const,
+          value: { version: "1.6.0" },
+          status: 200,
+          member: "laptop",
+          receivedAt: NOW,
+          date: null,
+        }),
+    });
+    await h.lead.sweep();
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.registry.state("laptop").health).toBe("reachable");
+    expect(h.registry.state("laptop").version).toBe("1.6.0");
+    expect(h.journal.some((l) => l.includes("dropped a stale"))).toBe(false);
+  });
+});
+
+// ── M22/03: the lead holds one capability block per member ───────────────────
+//
+// The map of machines is Collie's, and a mux reports one machine (ADR 0036). So a member's
+// capability declaration is a fact about THAT machine, learned over the pack link and answered per
+// host. Absent is the one reading that matters most: it means "use the lead's answer", which is
+// byte for byte what the phone does today with the lead's single `/api/config` read.
+
+describe("a member's capability block rides `hello` and is answered per host (M22/03)", () => {
+  /** A fabricated declaration. The name is deliberately not a real multiplexer's — nothing reads it. */
+  function block(over: Partial<MuxConfig> = {}): MuxConfig {
+    return {
+      name: "reference",
+      capabilities: muxCaps({ createSpace: true }),
+      unsupportedKeys: [],
+      notes: {},
+      ...over,
+    };
+  }
+
+  /** A hello answer carrying (or omitting) a block, shaped like the client's own. */
+  function hello(mux: MuxConfig | null): PeerOutcome<{ version: string | null; mux: MuxConfig | null }> {
+    return { ok: true, value: { version: "1.7.0", mux }, status: 200, member: "laptop", receivedAt: NOW, date: null };
+  }
+
+  test("one good sweep earns one hello, and the block lands under that member", async () => {
+    // The sweep dials `snapshot`, never `hello`, so the block has to be asked for. Once per link.
+    const answers = [hello(block()), hello(block({ name: "second" }))];
+    let asked = 0;
+    const h = lead([member({ memberId: "laptop" })], () => ok(body), {
+      hello: () => Promise.resolve(answers[Math.min(asked++, answers.length - 1)]!),
+    });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(asked).toBe(1);
+    expect(h.lead.muxFor("laptop")?.name).toBe("reference");
+    // Three more polls, and no second question: the answer is as fresh as the link is.
+    await h.lead.sweep();
+    await h.lead.sweep();
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(asked).toBe(1);
+  });
+
+  test("a member that has said nothing answers `null`, which the route reads as the lead's", async () => {
+    // A peer older than this amendment, and a peer whose bridge holds no adapter, are the same
+    // value here — and that value is NOT "every capability present".
+    const h = lead([member({ memberId: "laptop" })], () => ok(body), { hello: () => Promise.resolve(hello(null)) });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.lead.muxFor("laptop")).toBeNull();
+    // And a member id nobody holds is the same `null`, so the route never invents a machine.
+    expect(h.lead.muxFor("nobody")).toBeNull();
+  });
+
+  test("replaces the capability block", async () => {
+    // THE RULE, and the reason it is a rule: a restart or an adapter change is a WHOLE new
+    // declaration. Folding the new answer into the old one would leave a key alive that the member
+    // no longer answers for, and the lead would serve it to a phone as that member's own word.
+    const answers = [
+      hello(block({ capabilities: muxCaps({ createSpace: true, renamePane: true }) })),
+      hello(block({ name: "after-restart", capabilities: muxCaps({ createSpace: false }) })),
+      hello(null),
+    ];
+    let asked = 0;
+    // Every sweep fails, so the link drops each time and the next success re-asks.
+    const h = lead([member({ memberId: "laptop" })], (_l, call) => (call % 2 === 1 ? ok(body) : down), {
+      hello: () => Promise.resolve(answers[Math.min(asked++, answers.length - 1)]!),
+    });
+    await h.lead.sweep(); // ok → learns the first declaration
+    await Bun.sleep(5);
+    expect(h.lead.muxFor("laptop")?.capabilities).toEqual(muxCaps({ createSpace: true, renamePane: true }));
+
+    await h.lead.sweep(); // down → the link dropped, so the next return re-asks
+    await h.lead.sweep(); // ok → the SECOND declaration, whole
+    await Bun.sleep(5);
+    const replaced = h.lead.muxFor("laptop");
+    expect(replaced?.name).toBe("after-restart");
+    // `renamePane` is GONE rather than retained. A merge would have kept it at `true`.
+    expect(replaced?.capabilities).toEqual(muxCaps({ createSpace: false }));
+
+    await h.lead.sweep(); // down
+    await h.lead.sweep(); // ok, and this time the member publishes nothing at all
+    await Bun.sleep(5);
+    // Dropped, not retained: the member's current answer is "nothing", and nothing means the lead's.
+    expect(h.lead.muxFor("laptop")).toBeNull();
+  });
+
+  test("a capability the lead lacks belongs to the member that declared it, and to nobody else", async () => {
+    // Two members, one declaration. This is the whole per-host claim: the lead answers `?host=nas`
+    // with the NAS's own word and `?host=laptop` with `null`, which is the lead's own block.
+    const declared = block({ capabilities: muxCaps({ createWorktree: true }) });
+    const h = lead([member({ memberId: "nas" }), member({ memberId: "laptop" })], () => ok(body), {
+      hello: (link) => Promise.resolve(link.memberId === "nas" ? hello(declared) : hello(null)),
+    });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.lead.muxFor("nas")?.capabilities).toEqual(muxCaps({ createWorktree: true }));
+    expect(h.lead.muxFor("laptop")).toBeNull();
+  });
+
+  test("a member that leaves takes its block with it", async () => {
+    const h = lead([member({ memberId: "laptop" })], () => ok(body), {
+      hello: () => Promise.resolve(hello(block())),
+    });
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.lead.muxFor("laptop")).not.toBeNull();
+
+    h.roster.length = 0; // a `leave`, a revocation or a rotation
+    await h.lead.sweep();
+    expect(h.lead.muxFor("laptop")).toBeNull();
+  });
+
+  test("a lead wired without a hello never asks, and answers `null` for every member", async () => {
+    // The pre-amendment wiring, and a solo-shaped lead in tests: no probe seam, so no question.
+    const h = lead([member({ memberId: "laptop" })], () => ok(body));
+    await h.lead.sweep();
+    await Bun.sleep(5);
+    expect(h.lead.muxFor("laptop")).toBeNull();
+  });
+});
+
+// ── M22/06: the sweep widens, the merge narrows ──────────────────────────────
+// The lead answers the phone from its cache (§10.1's 1200 ms budget under a 1500 ms poll), so a
+// member's second session is reachable only if the SWEEP already asked for it. The narrowing is then
+// the merge's job, and it happens per request.
+
+describe("PackLead — every dial asks for every session, and the merge narrows it back (M22/06)", () => {
+  /** A member running two sessions, answering the widened ask: every pane carries its session. */
+  const widened = {
+    sessions: [
+      { name: "default", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 0 },
+      { name: "work", isPrimary: false, reachable: true, agents: 1, working: 0, blocked: 0 },
+    ],
+    agents: [
+      { ...body.agents[0]!, paneId: "w1:p1", session: "default" },
+      { ...body.agents[0]!, paneId: "w1:p2", session: "work" },
+    ],
+    shellPanes: [],
+  };
+
+  function leadOver(answer: PeerSnapshotWire) {
+    const views: SnapshotView[] = [];
+    const members = [member({ memberId: "laptop" })];
+    const l = new PackLead({
+      log: () => {},
+      registry: new PackRegistry({ sessions: { get: () => undefined }, self: "desk", members: () => members }),
+      snapshot: async (_link, view) => {
+        views.push(view);
+        return ok(answer);
+      },
+      proxy: neverProxy,
+      self: { id: "desk", name: "the herd" },
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+      now: () => NOW,
+    });
+    return { lead: l, views };
+  }
+
+  test("the sweep's ask is the widened view, on every dial and with no session named", async () => {
+    const h = leadOver(widened);
+    await h.lead.sweep();
+    expect(h.views).toEqual([SWEEP_VIEW]);
+    expect(SWEEP_VIEW).toEqual({ session: undefined, widen: true });
+  });
+
+  test("with nothing asked, the merged body is the member's primary session and carries no tag", async () => {
+    const h = leadOver(widened);
+    await h.lead.sweep();
+    const merged = h.lead.merge(localBody(), NARROW_PLAN);
+    // One pane, the primary's — and `session` is GONE, which is what makes a one-session member's
+    // contribution byte-identical to the pre-widening one (bridge/sessions.ts's widenedPanes rule).
+    expect(merged.agents.map((p) => [p.paneId, p.session])).toEqual([["w1:p1", undefined]]);
+    expect(JSON.stringify(merged.agents)).not.toContain('"session"');
+  });
+
+  test("`?all=1&host=<member>` yields that member's other sessions, tagged", async () => {
+    const h = leadOver(widened);
+    await h.lead.sweep();
+    const merged = h.lead.merge(localBody(), snapshotPlan("laptop", { session: undefined, widen: true }));
+    expect(merged.agents.map((p) => [p.paneId, p.session])).toEqual([
+      ["w1:p1", "default"],
+      ["w1:p2", "work"],
+    ]);
+    expect(merged.agents.every((p) => p.host === "laptop")).toBe(true);
+  });
+
+  test("`?host=<member>&session=<other>` reaches a pane in the member's second session", async () => {
+    // The latent gap this spec closes: the sweep used to pin the cache to the member's primary, so
+    // this pane was invisible to the phone however it asked.
+    const h = leadOver(widened);
+    await h.lead.sweep();
+    const merged = h.lead.merge(localBody(), snapshotPlan("laptop", { session: "work", widen: false }));
+    expect(merged.agents.map((p) => p.paneId)).toEqual(["w1:p2"]);
+  });
+
+  test("a widened ask about ONE member leaves the others narrow", async () => {
+    const h = leadOver(widened);
+    await h.lead.sweep();
+    const merged = h.lead.merge(localBody(), snapshotPlan("desktop", { session: undefined, widen: true }));
+    expect(merged.agents.map((p) => p.paneId)).toEqual(["w1:p1"]);
+  });
+
+  test("a member too old to widen answers as it always did, and narrows to itself", async () => {
+    // It ignores the parameter, so its panes arrive untagged. Dropping them would lose a machine.
+    const h = leadOver(body);
+    await h.lead.sweep();
+    expect(h.lead.merge(localBody(), NARROW_PLAN).agents.map((p) => p.paneId)).toEqual(["w1:p1"]);
+    const wide = h.lead.merge(localBody(), snapshotPlan("laptop", { session: undefined, widen: true }));
+    expect(wide.agents.map((p) => p.paneId)).toEqual(["w1:p1"]);
   });
 });

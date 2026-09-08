@@ -15,8 +15,9 @@
 //
 // **This module is deliberately react-free.** lib/session.ts owns the hooks (and therefore the
 // react-router import) and re-exports everything here; the service worker (src/sw.ts) cannot import
-// anything that pulls in react, and it needs to build these exact strings — see its hand-inlined
-// sessionSearchParam(), which this module exists to eventually replace.
+// anything that pulls in react, and it needs to build these exact strings. It no longer builds them
+// by hand: it reaches them through lib/push-decision's notificationPath, so the URL it compares is
+// byte-identical to the one the router produces for the same scope.
 //
 // A client-supplied host is only ever a REGISTRY KEY on the lead — it selects among members the
 // trust store already holds. It never becomes a path, and never an address the lead dials. Same rule
@@ -32,10 +33,15 @@ export const HOST_PARAM = "h";
  * The browser URL query key that WIDENS the home view to every Herdr session on ONE machine
  * (`?all=1`). Absent, and anything other than `1`, means "no".
  *
- * WHICH machine, precisely: today it is the collie the phone is connected to, NOT the machine `?h=`
- * names. `/api/snapshot` resolves `session=` against the lead's own registry and does not read
- * `host=` at all — a pre-existing gap, and the one the pack half of this feature closes. Until then
- * a widened view on `?h=peer` widens the lead. Do not write code that assumes otherwise.
+ * WHICH machine: the one `?h=` names, and the lead when it names none. The two params compose —
+ * `?h=` says which machine and this says how much of that machine. `/api/snapshot` reads the
+ * resolved host together with `sessions=all`: no host widens the lead's own registry, and a member
+ * widens that member's rows out of the lead's cache, which the lead's sweep keeps widened for
+ * exactly this (`bridge/pack/merge.ts` narrows it back for every request that did not ask).
+ *
+ * A machine that is not in the pack widens nothing. A widened view is a statement about panes only:
+ * the space and tab navigators stay the addressed session's, one dimension down from a pack, where
+ * the same is already true of every peer.
  *
  * IT IS DELIBERATELY NOT PART OF {@link Scope}, and that is the load-bearing decision in this
  * feature. A scope is an ADDRESS — it says which pane a read or a write lands on, and it is threaded

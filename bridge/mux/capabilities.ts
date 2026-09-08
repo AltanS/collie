@@ -42,6 +42,7 @@ export const MUX_CAPABILITIES = [
   "openWorktree",
   "pushTopologyEvents",
   "pushPaneEvents",
+  "listSessions",
 ] as const;
 
 /** One declarable capability. */
@@ -103,6 +104,8 @@ export const MUX_CAPABILITY_ROUTES = {
     "bridge/event-poker.ts — panes/tabs/spaces appearing, closing or being renamed arrive as a push, so the snapshot poll can idle. Absent ⇒ the adapter polls to keep the same promise, and the poker learns nothing.",
   pushPaneEvents:
     "bridge/event-poker.ts — one pane's content or status changing arrives as a push. Same fallback, same promise.",
+  listSessions:
+    "bridge/sessions.ts `SessionRegistry.refresh()`, the OTHER instances of this multiplexer on this machine, each with the endpoint to dial it, so one bridge can front them all. It fills the snapshot's `sessions` list and what `?session=<name>` can select. ABSENT IS THE DEFAULT AND IT IS THE HARMLESS DIRECTION: the registry pins to the primary, the phone sees the one session it saw before this capability existed, and nothing scans anything. Stated here rather than left implicit, because the absence of this key decides whether a filesystem or a process listing is walked at all (M22 counsel).",
 } satisfies Record<MuxCapability, string>;
 
 /**
@@ -208,6 +211,7 @@ export function declareCapabilities(input: MuxCapabilityInput): MuxCapabilityDec
     openWorktree: claimed.has("openWorktree"),
     pushTopologyEvents: claimed.has("pushTopologyEvents"),
     pushPaneEvents: claimed.has("pushPaneEvents"),
+    listSessions: claimed.has("listSessions"),
   } satisfies Record<MuxCapability, boolean>;
   return {
     supports,

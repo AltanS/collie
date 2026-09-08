@@ -334,6 +334,16 @@ export interface ServerSummary {
   /** The peer's refusal reason, verbatim, when incompatible. */
   protocolDetail?: string;
   /**
+   * §10.2's presentation split for a member that is not answering, exactly as
+   * {@link PackMemberStatus.linkState} carries it: `reconnecting` needs nothing of the operator,
+   * `attention` does.
+   *
+   * Additive and optional (§7.1): omitted for a reachable member, and omitted by a lead that predates
+   * the field. An absent value beside `reachable: false` therefore means "no distinction offered",
+   * and the chip renders today's word.
+   */
+  linkState?: "reconnecting" | "attention";
+  /**
    * Epoch ms, **stamped by the lead on receipt — never the peer's clock** (§10.2). The client
    * derives "stale since …" from it (stale once older than 3 × pollMs or 15 s, whichever is first);
    * `0` means this member has never answered.
@@ -409,6 +419,17 @@ export interface PackMemberStatus {
   provisional: boolean;
   /** Who a `conflicted` member says it follows instead (§18.10). Present only in that state. */
   conflict?: { leadMemberId: string; warrantGeneration: number | null };
+  /**
+   * {@link PeerState.linkState} — §10.2's **presentation split**, and NOT a fifth value of `health`.
+   *
+   * `reconnecting` says the lead is retrying inside its budget and the operator does nothing.
+   * `attention` says re-dialling cannot fix this and the operator must look.
+   *
+   * **Omitted whenever there is nothing to say**, which is every reachable member — and omitted by a
+   * lead older than this field, so an absent value on a member that is NOT reachable means "this lead
+   * does not make the distinction" and the page renders today's single word (§7.1).
+   */
+  linkState?: "reconnecting" | "attention";
 }
 
 /**

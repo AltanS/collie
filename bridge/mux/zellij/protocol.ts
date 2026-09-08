@@ -23,6 +23,7 @@
 // for `--all --json` and nothing here ever reads a column.
 
 import type { JsonObject, JsonValue } from "../../json.ts";
+import { requestedCwd } from "../types.ts";
 
 // ── The argv ──────────────────────────────────────────────────────────────────
 
@@ -89,11 +90,19 @@ export function closePaneArgs(paneId: string): string[] {
   return ["action", "close-pane", "--pane-id", paneId];
 }
 
-/** A new tab, opening a fresh shell. zellij prints the new tab's stable id and nothing else. */
+/**
+ * A new tab, opening a fresh shell. zellij prints the new tab's stable id and nothing else.
+ *
+ * `cwd` goes through {@link requestedCwd} first: zellij's `--cwd` takes a value, and an empty one
+ * makes zellij refuse the whole call with *The argument '--cwd <CWD>' requires a value but none was
+ * supplied* — which is what a launch beside a zellij pane used to hit, because a zellij pane reports
+ * no working directory and the route passes that empty string down (measured, M22/04 zellij leg).
+ */
 export function newTabArgs(label: string | undefined, cwd: string | undefined): string[] {
   const args = ["action", "new-tab"];
   if (label !== undefined) args.push("--name", label);
-  if (cwd !== undefined) args.push("--cwd", cwd);
+  const asked = requestedCwd(cwd);
+  if (asked !== undefined) args.push("--cwd", asked);
   return args;
 }
 
@@ -198,13 +207,20 @@ export function censusSignature(panes: readonly ZellijPaneRecord[]): string {
     .join("\n");
 }
 
-/** One tab, as zellij's listing describes it. */
+/**
+ * One tab, as zellij's listing describes it.
+ *
+ * **No pane count.** zellij's listing carries one — `selectable_tiled_panes_count` plus
+ * `selectable_floating_panes_count` — and it counts zellij's own PLUGIN panes, which
+ * {@link parsePaneList} drops. Carrying it here is how a tab came to claim three panes over the two
+ * an operator could reach (measured, M22/04 zellij leg), so the field is gone and the adapter counts
+ * the panes it publishes instead (MUX_CONTRACT.md § Contract-owned rules, *Counts*).
+ */
 export interface ZellijTabRecord {
   readonly tabNumber: number;
   readonly position: number;
   readonly name: string;
   readonly active: boolean;
-  readonly paneCount: number;
 }
 
 /** One session zellij knows about, and whether it is still running. */
@@ -260,9 +276,6 @@ export function parseTabList(stdout: string): ZellijTabRecord[] | null {
       position: readInteger(row, "position") ?? 0,
       name: readText(row, "name") ?? "",
       active: readFlag(row, "active"),
-      paneCount:
-        (readInteger(row, "selectable_tiled_panes_count") ?? 0) +
-        (readInteger(row, "selectable_floating_panes_count") ?? 0),
     });
   }
   return tabs;
@@ -365,9 +378,24 @@ export function parseStreamEvent(line: string): ZellijStreamEvent | null {
 
 // ── Refusals ──────────────────────────────────────────────────────────────────
 
-/** Whether zellij said the session itself is not there — the one failure an exit code does prove. */
+/**
+ * Whether zellij said the session itself is not there — the one failure an exit code does prove.
+ *
+ * THREE SPELLINGS, not two, and the third cost a run to find. `action` against a name zellij does
+ * not know says *not found. The following sessions are active: …*; a box with none says *No active
+ * zellij sessions*; and `action --session <name>` against a session that has EXITED says
+ * **There is no active session!** on stderr with exit 1 (probed on 0.44.2, and measured on the
+ * M22/04 zellij leg by killing a live peer's session). Missing that third one left the binding
+ * holding a name it could no longer use, so the operator read *could not read the session's listing*
+ * instead of the sentence `chooseSession` already writes for an exited session — the one that says
+ * an `attach` brings it back.
+ */
 export function saysNoSession(text: string): boolean {
-  return /not found\.?\s*(the following sessions|$)/iu.test(text) || text.includes("No active zellij sessions");
+  return (
+    /not found\.?\s*(the following sessions|$)/iu.test(text) ||
+    text.includes("No active zellij sessions") ||
+    /there is no active session/iu.test(text)
+  );
 }
 
 /** Whether the pane stream refused because the pane does not exist. */

@@ -23,7 +23,8 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 function asMux(fake: Partial<HerdrClient>): MuxAdapter {
   // SAFETY: a watch calls nothing on its client but `subscribeEvents`, which FakeClient implements;
   // no other member is reachable from the poker's code paths.
-  return new HerdrMux(fake as HerdrClient);
+  // A watch never asks for the session list, so an empty one is unobservable here.
+  return new HerdrMux(fake as HerdrClient, () => []);
 }
 
 // Derived from the real client rather than restated, so a change to the subscription contract shows

@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import type { JsonValue } from "../json.ts";
+import { NARROW_VIEW } from "../sessions.ts";
 
 import { PROTOCOL_HEADER, MEMBER_HEADER, DEVICE_HEADER } from "./admission.ts";
-import { leadStore, material, member, PACK, T0 } from "./fixtures.ts";
+import { leadStore, material, member, muxCaps, PACK, T0 } from "./fixtures.ts";
 import { signDial, verifyDial, DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
+import { SWEEP_VIEW } from "./merge.ts";
 import { mintWarrant } from "./warrant.ts";
 import {
   COLD_LINK,
@@ -19,10 +21,12 @@ import {
   packTimeoutBudget,
   packTimeoutClampWarning,
   packUrl,
+  parseMuxReport,
   parsePeerVersion,
   sweepPeers,
   takeDataBudget,
   HEADERLESS_PATIENCE_MS,
+  WRITE_BUDGET_MS,
   type PackFetch,
   type PackLink,
   type PeerClientDeps,
@@ -269,7 +273,7 @@ describe("PeerClient — the request the lead sends (§6)", () => {
     const c = client(fetch);
     await c.snapshot(laptop);
     expect(new Headers(calls[0]!.init.headers).get("X-Pack-Lead-Release")).toBeNull();
-    await c.snapshot(laptop, undefined, false, { leadRelease: "1.5.0" });
+    await c.snapshot(laptop, NARROW_VIEW, false, { leadRelease: "1.5.0" });
     expect(new Headers(calls[1]!.init.headers).get("X-Pack-Lead-Release")).toBe("1.5.0");
     // The protocol integer does not move for an additive-optional field (§7.1).
     expect(new Headers(calls[1]!.init.headers).get(PROTOCOL_HEADER)).toBe("1");
@@ -277,7 +281,7 @@ describe("PeerClient — the request the lead sends (§6)", () => {
 
   test("a lead mid-run states nothing: a null release sends no header at all", async () => {
     const { fetch, calls } = replying({});
-    await client(fetch).snapshot(laptop, undefined, false, { leadRelease: null, turn: null });
+    await client(fetch).snapshot(laptop, NARROW_VIEW, false, { leadRelease: null, turn: null });
     const headers = new Headers(calls[0]!.init.headers);
     expect(headers.get("X-Pack-Lead-Release")).toBeNull();
     expect(headers.get("X-Pack-Update-Turn")).toBeNull();
@@ -286,8 +290,8 @@ describe("PeerClient — the request the lead sends (§6)", () => {
   test("the turn names no code — a member and a run id, and it goes to one member at a time", async () => {
     const { fetch, calls } = replying({});
     const c = client(fetch);
-    await c.snapshot(laptop, undefined, false, { leadRelease: "1.5.0", turn: "laptop;r-7" });
-    await c.snapshot(laptop, undefined, false, { leadRelease: "1.5.0" });
+    await c.snapshot(laptop, NARROW_VIEW, false, { leadRelease: "1.5.0", turn: "laptop;r-7" });
+    await c.snapshot(laptop, NARROW_VIEW, false, { leadRelease: "1.5.0" });
     const first = new Headers(calls[0]!.init.headers).get("X-Pack-Update-Turn");
     expect(first).toBe("laptop;r-7");
     // No version, no ref, no URL, no command.
@@ -301,7 +305,7 @@ describe("PeerClient — the request the lead sends (§6)", () => {
   test("the follow headers do not buy the patient budget — only §19's fresh does", async () => {
     const { fetch, calls } = replying({});
     const c = client(fetch);
-    await c.snapshot(laptop, undefined, false, { leadRelease: "1.5.0", turn: "laptop;r-7" });
+    await c.snapshot(laptop, NARROW_VIEW, false, { leadRelease: "1.5.0", turn: "laptop;r-7" });
     // A lead with something to state must not become a lead that polls more slowly (§10.1).
     expect(calls[0]!.init.headers).toBeDefined();
     expect(new Headers(calls[0]!.init.headers).get("X-Pack-Preflight")).toBeNull();
@@ -311,13 +315,33 @@ describe("PeerClient — the request the lead sends (§6)", () => {
     const { fetch, calls } = replying({});
     const c = client(fetch);
     await c.snapshot(laptop);
-    await c.snapshot(laptop, "");
-    await c.snapshot(laptop, "work");
+    await c.snapshot(laptop, { session: "", widen: false });
+    await c.snapshot(laptop, { session: "work", widen: false });
     expect(calls.map((c2) => c2.url)).toEqual([
       "https://laptop.example:8787/pack/v1/snapshot",
       "https://laptop.example:8787/pack/v1/snapshot",
       "https://laptop.example:8787/pack/v1/snapshot?session=work",
     ]);
+  });
+
+  // M22/06: the widening switch, additive and optional. The lead's sweep sends it on every dial; a
+  // member too old to read it answers with its primary session and nothing refuses.
+  test("`snapshot` asks for every session only when the view widens, and never as a host", async () => {
+    const { fetch, calls } = replying({});
+    const c = client(fetch);
+    await c.snapshot(laptop, SWEEP_VIEW);
+    await c.snapshot(laptop, { session: "work", widen: true });
+    await c.snapshot(laptop, NARROW_VIEW);
+    expect(calls.map((c2) => c2.url)).toEqual([
+      "https://laptop.example:8787/pack/v1/snapshot?sessions=all",
+      "https://laptop.example:8787/pack/v1/snapshot?session=work&sessions=all",
+      // A narrow ask puts the same bytes on the wire it always has.
+      "https://laptop.example:8787/pack/v1/snapshot",
+    ]);
+    // The protocol integer does not move for an additive-optional parameter (§7.1)…
+    expect(new Headers(calls[0]!.init.headers).get(PROTOCOL_HEADER)).toBe("1");
+    // …and widening travels as a session dimension, never as a host: a peer has no peers (§4).
+    expect(calls.map((c2) => c2.url).join(" ")).not.toContain("host=");
   });
 });
 
@@ -327,10 +351,11 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     const outcome = await client(fetch).hello(laptop);
     expect(outcome).toEqual({
       ok: true,
-      // `version`, `warrantGeneration` and `warrantActiveGeneration` are all OPTIONAL on the wire and
-      // all read as `null` when absent (§7.1, §18.7, §18.17) — never as "up to date" or "armed", which
-      // is what makes the lead push rather than assume, what keeps the boot gate from reading a silent
-      // member as agreement, and what keeps an absent activation on the ops file's lower bound.
+      // `version`, `warrantGeneration`, `warrantActiveGeneration` and `mux` are all OPTIONAL on the
+      // wire and all read as `null` when absent (§7.1, §18.7, §18.17, M22/03) — never as "up to date",
+      // "armed" or "every capability present", which is what makes the lead push rather than assume,
+      // what keeps the boot gate from reading a silent member as agreement, what keeps an absent
+      // activation on the ops file's lower bound, and what makes an absent block mean "the lead's".
       value: {
         protocol: 1,
         member: "laptop",
@@ -338,6 +363,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
         warrantGeneration: null,
         warrantActiveGeneration: null,
         pairingDigest: null, pairingCollision: null,
+        mux: null,
       },
       status: 200,
       member: "laptop",
@@ -561,7 +587,20 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
       const outcome = await peer.snapshot(laptop);
       expect(outcome.ok === false && outcome.state).toBe("unreachable");
       expect(outcome.ok === false && outcome.reason).toContain("refused by the peer (unauthorized)");
+      // The peer ANSWERED, and it said no. `authRefused` is the one bit the transport carries for
+      // §10.2's presentation split, so the operator is told to fix the secret rather than to wait.
+      expect(outcome.ok === false && outcome.state === "unreachable" && outcome.authRefused).toBe(true);
     }
+  });
+
+  test("a timeout carries no `authRefused` — absent means 'not that', as `timedOut`'s absence does", async () => {
+    const fetch: PackFetch = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      });
+    const outcome = await client(fetch, { timeoutMs: 10 }).snapshot(laptop);
+    expect(outcome.ok === false && outcome.state === "unreachable" && outcome.authRefused).toBeUndefined();
+    expect(outcome.ok === false && outcome.state === "unreachable" && outcome.timedOut).toBe(true);
   });
 
   test("`forget` drops the window, so a member that rejoins under the same id is patient again", async () => {
@@ -626,6 +665,39 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     const outcome = await client(fetch).hello(laptop);
     expect(outcome.ok).toBe(true);
     expect(outcome.ok && outcome.value.member).toBe("laptop");
+  });
+
+  test("M22's own `mux` block changes nothing an older lead reads off `hello` (§7.1, §16 skew leg)", async () => {
+    // The stand-in above pins the CLASS. This pins THE FIELD this milestone actually added, because
+    // the version-skew leg (PACK_PROTOCOL.md §16, 2026-09-08) measured a real 1.6.0 lead reading a
+    // real current-tree peer's `hello` — a body carrying the full capability table, `listSessions`
+    // included — and it has to keep behaving exactly as it does with a 1.6.0 member. A 1.6.0 lead
+    // has no reader for `mux` at all, so what must hold is that the block is INERT: every field an
+    // older parser does read comes back the same with it and without it. That is the property, not
+    // "no exception was thrown" — so it is asserted as an equality between the two answers.
+    const bare = { protocol: 1, member: "laptop", version: "9.9.9" };
+    const withMux = {
+      ...bare,
+      mux: {
+        name: "tmux",
+        capabilities: muxCaps({ listSessions: false, paneGrid: true }),
+        unsupportedKeys: [],
+        notes: { listSessions: "tmux has no instance registry" },
+        spaces: "many",
+        topologyLatency: { kind: "push" },
+      },
+    };
+    const [plain, decorated] = await Promise.all([
+      client(replying(bare).fetch).hello(laptop),
+      client(replying(withMux).fetch).hello(laptop),
+    ]);
+    if (!plain.ok || !decorated.ok) throw new Error("both hellos answer 200; the assertions below need their values");
+    // THIS build reads the block (`parseMuxReport`, M22/03) and so gains one field. A 1.6.0 build
+    // has no such reader, and the older reading is what this asserts: blank out the one field only
+    // this milestone knows about, and the two answers are the same object.
+    expect({ ...decorated.value, mux: null }).toEqual({ ...plain.value, mux: null });
+    expect(decorated.value.mux?.name).toBe("tmux");
+    expect(plain.value.mux).toBeNull();
   });
 
   test("an unusable stored address fails as unreachable without dialling anything", async () => {
@@ -896,6 +968,58 @@ describe("two budgets, and which call runs on which (§10.4)", () => {
     expect(!dead.ok && dead.state === "unreachable" && dead.timedOut).toBe(false);
     expect(!dead.ok && dead.reason).toBe("snapshot: nothing accepted a connection at this address");
   });
+});
+
+// ── The third budget: a forwarded WRITE (§10.1, amended 2026-09-08) ──────────
+
+describe("a forwarded write's own budget (§10.1)", () => {
+  /** Stalls until the client's own budget aborts it, so the reason names the deadline that fired. */
+  const stalling: PackFetch = (_url, init) =>
+    new Promise((_resolve, reject) => {
+      init.signal?.addEventListener("abort", () => reject(new Error("The operation was aborted.")));
+    });
+
+  test("`proxy` runs on the budget it is given, and says which one fired", async () => {
+    const c = client(stalling, { timeoutMs: 5, patientTimeoutMs: 40 });
+    const written = await c.proxy(laptop, "launch", undefined, { method: "POST" }, 90);
+    expect(!written.ok && written.reason).toBe("launch: timed out after 90ms");
+  });
+
+  test("an explicit budget spends NO bootstrap credit — the sweep's accounting is untouched", async () => {
+    const c = client(stalling, { timeoutMs: 5, patientTimeoutMs: 40 });
+    // Two forwarded writes on a cold link, both on their own budget.
+    expect(!(await c.proxy(laptop, "launch", undefined, { method: "POST" }, 90)).ok).toBe(true);
+    expect(!(await c.proxy(laptop, "launch", undefined, { method: "POST" }, 90)).ok).toBe(true);
+    // The credit is still there for the sweep, which is the call the poll fraction is sized for.
+    const sweep = await c.snapshot(laptop);
+    expect(!sweep.ok && sweep.reason).toBe("snapshot: timed out after 40ms");
+  });
+
+  test("a forwarded READ keeps the poll budget and the credit, unchanged", async () => {
+    const c = client(stalling, { timeoutMs: 5, patientTimeoutMs: 40 });
+    const first = await c.proxy(laptop, "pane/w1:p1", undefined, {});
+    expect(!first.ok && first.reason).toBe("pane/w1:p1: timed out after 40ms");
+    const second = await c.proxy(laptop, "pane/w1:p1", undefined, {});
+    expect(!second.ok && second.reason).toBe("pane/w1:p1: timed out after 5ms");
+  });
+
+  test("on the real clock: 2 s of work misses the poll budget and fits inside WRITE_BUDGET_MS", async () => {
+    // The measured case, on real timers rather than modelled: a launch onto a zellij member spawns a
+    // process and has the multiplexer build a tab. Around 2 s — under 1200 ms it is an abort the lead
+    // can only report as ambiguous (§10.3), and under 5000 ms it is the peer's own answer.
+    const slow: PackFetch = (url, init) =>
+      new Promise((resolve, reject) => {
+        init.signal?.addEventListener("abort", () => reject(new Error("The operation was aborted.")));
+        setTimeout(() => void replying({ ok: true }).fetch(url, init).then(resolve, reject), 2000);
+      });
+    // No patient budget wired, so the poll budget is the honest comparison and not the credit.
+    const c = client(slow, { timeoutMs: packTimeoutBudget(1500, {}) });
+    const missed = await c.proxy(laptop, "launch", undefined, { method: "POST" });
+    expect(!missed.ok && missed.reason).toBe(`launch: timed out after ${DEFAULT_PACK_TIMEOUT_MS}ms`);
+    const landed = await c.proxy(laptop, "launch", undefined, { method: "POST" }, WRITE_BUDGET_MS);
+    expect(landed.ok).toBe(true);
+    expect(landed.ok && landed.status).toBe(200);
+  }, 10_000);
 });
 
 // ── F18: the runtime's voice never reaches an operator ───────────────────────
@@ -1192,5 +1316,71 @@ describe("parsePeerVersion — the sweep's version sibling (§5, §19)", () => {
       updateRun: { state: "done", to: "1.4.1", runId: "r-1", reason: null, updatedAt: 2 },
     };
     expect(parsePeerVersion(answer)).toBe("1.4.1");
+  });
+});
+
+// ── M22/03: a member's own capability block, off its `hello` answer ───────────
+//
+// The lead REPUBLISHES this to a phone on `/api/config?host=<member>`, so it is bounded and
+// re-checked field by field here. Absent, and anything half-formed, is `null` — and `null` means
+// "use the lead's answer", never "every capability present".
+
+describe("parseMuxReport — a member's declaration, bounded and re-checked", () => {
+  const block = { name: "reference", capabilities: { createSpace: true }, unsupportedKeys: [], notes: {} };
+
+  test("a well-formed block comes through with its answers intact", () => {
+    expect(parseMuxReport({ protocol: 1, member: "nas", mux: block })).toEqual({
+      name: "reference",
+      capabilities: muxCaps({ createSpace: true }),
+      unsupportedKeys: [],
+      notes: {},
+    });
+  });
+
+  test("every shape that is not a block is `null`, which reads as the lead's answer", () => {
+    const absent = [null, 42, "mux", [], {}, { mux: null }, { mux: "reference" }, { mux: [] }];
+    for (const body of absent) expect(parseMuxReport(body)).toBeNull();
+    // A name is required, and so is a capabilities object: a block naming nothing answers nothing.
+    expect(parseMuxReport({ mux: { ...block, name: "  " } })).toBeNull();
+    expect(parseMuxReport({ mux: { ...block, name: "x".repeat(65) } })).toBeNull();
+    expect(parseMuxReport({ mux: { name: "reference" } })).toBeNull();
+  });
+
+  test("a capability key this build never heard of SURVIVES — the fail-open direction", () => {
+    // `capabilities` is total for the bridge that built it, not for every version a client knows.
+    // A newer member answering a key this lead lacks is honest, and the phone may well know it.
+    const wire = parseMuxReport({ mux: { ...block, capabilities: { createSpace: true, teleportPane: false } } });
+    expect(wire?.capabilities).toEqual(muxCaps({ createSpace: true, teleportPane: false }));
+  });
+
+  test("a non-boolean answer is dropped, not coerced", () => {
+    const wire = parseMuxReport({ mux: { ...block, capabilities: { createSpace: "yes", closePane: false } } });
+    expect(wire?.capabilities).toEqual(muxCaps({ closePane: false }));
+  });
+
+  test("`logoUrl` never survives the link — a path only answers on the machine that serves it", () => {
+    const wire = parseMuxReport({ mux: { ...block, logoUrl: "/api/mux/logo.svg" } });
+    expect(wire === null ? true : Object.hasOwn(wire, "logoUrl")).toBe(false);
+  });
+
+  test("the optional siblings are read, and an unreadable one leaves no key at all", () => {
+    expect(parseMuxReport({ mux: { ...block, spaces: "one" } })?.spaces).toBe("one");
+    expect(Object.hasOwn(parseMuxReport({ mux: { ...block, spaces: "several" } })!, "spaces")).toBe(false);
+    expect(parseMuxReport({ mux: { ...block, topologyLatency: { kind: "bounded", ms: 9000 } } })?.topologyLatency).toEqual({
+      kind: "bounded",
+      ms: 9000,
+    });
+    expect(
+      Object.hasOwn(parseMuxReport({ mux: { ...block, topologyLatency: { kind: "bounded" } } })!, "topologyLatency"),
+    ).toBe(false);
+  });
+
+  test("strings and collections are capped, so a member cannot make the lead serve an unbounded body", () => {
+    const keys = Array.from({ length: 300 }, (_, i) => `k${i}`);
+    const wire = parseMuxReport({
+      mux: { ...block, unsupportedKeys: [...keys, "x".repeat(2000)], notes: { createSpace: "y".repeat(2000) } },
+    });
+    expect(wire?.unsupportedKeys).toHaveLength(256);
+    expect(wire?.notes).toEqual({});
   });
 });

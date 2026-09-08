@@ -2,6 +2,7 @@ import { createTrustStore, selfIdentity, type IdentityMaterial } from "./enrollm
 import { mintIdentity } from "./identity.ts";
 import type { ForwardTransport } from "./forward.ts";
 import type { PackIdentity, TrustStoreData, TrustedMember } from "./trust-store.ts";
+import type { MuxConfig } from "../types.ts";
 
 // Shared test fixtures for the pack modules. Not a test file itself (so `bun test` doesn't collect
 // it) and not imported by any production path — it exists so five test files agree on what a member,
@@ -91,4 +92,20 @@ export const neverProxy: ForwardTransport = (link, route) => {
 export function counterRandom(prefix: string): (bytes: number) => string {
   let n = 0;
   return () => `${prefix}${++n}`;
+}
+
+/**
+ * A capability map written as the handful of keys one case is about (M22/03).
+ *
+ * `MuxConfig.capabilities` is TOTAL for the build that produced it, and a test fixture is not that
+ * build: spelling all nineteen keys to assert one would bury the assertion. It also has to accept a
+ * key NO build here knows, because a newer member answering one is the case that proves an unknown
+ * key survives the wire reader. So: one narrowing, in one place, rather than one per assertion.
+ */
+export function muxCaps(answers: Readonly<Record<string, boolean>>): MuxConfig["capabilities"] {
+  // SAFETY: the nominal key type is the union of capability names this build knows, and the value
+  // type is `boolean`, which is what every entry of the argument is. Nothing downstream reads the
+  // result as total — the wire reader under test treats an absent key as unanswered, and the phone
+  // reads an absent key as capable (web/src/lib/mux-capability.ts).
+  return answers as MuxConfig["capabilities"];
 }

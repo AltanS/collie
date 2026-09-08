@@ -67,6 +67,66 @@ describe("HostChip — the hide rule lives here", () => {
   });
 });
 
+// ── §10.2's presentation split, on the chip (M22/05) ─────────────────────────
+
+describe("HostChip — Reconnecting says nothing is owed, Attention says something is", () => {
+  /** The same three machines, plus one the lead has split for us. */
+  const withLink = (linkState: ServerSummary["linkState"]) => {
+    const servers: ServerSummary[] = [
+      ...fixtureServers,
+      { id: "shed", name: "shed", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 400, linkState },
+    ];
+    return ({ children }: { children: React.ReactNode }) => (
+      <PackProvider servers={servers}>{children}</PackProvider>
+    );
+  };
+
+  it("a retrying link reads 'reconnecting', not 'unreachable'", () => {
+    render(<HostChip host="shed" />, { wrapper: withLink("reconnecting") });
+    expect(screen.getByLabelText(/shed \(reconnecting\)/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/unreachable/i)).not.toBeInTheDocument();
+  });
+
+  it("a link the operator has to fix reads 'needs attention'", () => {
+    render(<HostChip host="shed" />, { wrapper: withLink("attention") });
+    expect(screen.getByLabelText(/shed \(needs attention\)/i)).toBeInTheDocument();
+  });
+
+  it("the two never read as the same situation", () => {
+    render(<HostChip host="shed" />, { wrapper: withLink("reconnecting") });
+    const retrying = screen.getByLabelText(/shed/i).getAttribute("aria-label");
+    cleanup();
+    render(<HostChip host="shed" />, { wrapper: withLink("attention") });
+    expect(screen.getByLabelText(/shed/i).getAttribute("aria-label")).not.toBe(retrying);
+  });
+
+  it("RECONNECTING IS NOT RED, and the styling reads the same condition as the word", () => {
+    // A condition the lead clears on its own next poll must not wear the colour that means "go and
+    // fix this", or the operator learns to ignore that colour. It still carries the DASH, because
+    // the tag is still not taking writes.
+    render(<HostChip host="shed" />, { wrapper: withLink("reconnecting") });
+    const quiet = screen.getByLabelText(/shed/i).className;
+    expect(quiet).toContain("border-dashed");
+    expect(quiet).toContain("status-working");
+    expect(quiet).not.toContain("status-blocked");
+    cleanup();
+    render(<HostChip host="shed" />, { wrapper: withLink("attention") });
+    expect(screen.getByLabelText(/shed/i).className).toContain("status-blocked");
+  });
+
+  it("a lead that offers no split renders exactly today's word (§7.1)", () => {
+    render(<HostChip host="shed" />, { wrapper: withLink(undefined) });
+    expect(screen.getByLabelText(/shed \(unreachable\)/i)).toBeInTheDocument();
+  });
+
+  it("the caption variant carries the split too, and keeps the fault in its glyph", () => {
+    render(<HostChip host="shed" variant="caption" />, { wrapper: withLink("reconnecting") });
+    const caption = screen.getByLabelText(/sends to host: shed \(reconnecting\)/i);
+    expect(caption.className).toContain("text-status-working");
+    expect(caption.querySelector("svg")).not.toBeNull();
+  });
+});
+
 describe("the herd list — one cross-host 'Needs you', labelled not split", () => {
   it("a one-host install renders zero host chrome in any row", () => {
     render(<AgentList agents={fixtureAgents} onOpen={vi.fn()} />, { wrapper: one });

@@ -17,7 +17,7 @@ import {
   type ForwardErrorCode,
   type ForwardTransport,
 } from "./forward.ts";
-import type { PackLink, PeerOutcome } from "./peer-client.ts";
+import { packTimeoutBudget, WRITE_BUDGET_MS, type PackLink, type PeerOutcome } from "./peer-client.ts";
 import type { PeerState } from "./registry.ts";
 
 // The lead's forwarding path (PACK_PROTOCOL.md §5, §9.1, §10.3, §12, §13).
@@ -58,9 +58,14 @@ const SKEWED: PeerState = {
 
 /** Records every dial, so "was this attempted?" and "was it retried?" are assertable facts. */
 function transportOf(answer: (init: RequestInit) => PeerOutcome<Response>) {
-  const calls: { route: string; params: Record<string, string>; init: RequestInit }[] = [];
-  const transport: ForwardTransport = async (_link, route, params, init) => {
-    calls.push({ route, params, init });
+  const calls: {
+    route: string;
+    params: Record<string, string>;
+    init: RequestInit;
+    budgetMs: number | undefined;
+  }[] = [];
+  const transport: ForwardTransport = async (_link, route, params, init, budgetMs) => {
+    calls.push({ route, params, init, budgetMs });
     return answer(init);
   };
   return { transport, calls };
@@ -566,6 +571,99 @@ describe("an attempted write whose outcome is unknown (§10.3, .adr/0010 over a 
   });
 });
 
+// ── A forwarded write is not a poll (§10.1, amended 2026-09-08) ──────────────
+
+describe("a forwarded write carries its own budget (§10.1)", () => {
+  test("every write route dials on WRITE_BUDGET_MS", async () => {
+    // §5's write routes, one of each shape `forwardKind` decides on.
+    const writes = [
+      "/api/pane/w1:p1/reply",
+      "/api/pane/w1:p1/keys",
+      "/api/pane/w1:p1/close",
+      "/api/pane/w1:p1/rename",
+      "/api/pane/w1:p1/focus",
+      "/api/pane/w1:p1/upload",
+      "/api/tab",
+      "/api/tab/w1/rename",
+      "/api/tab/w1/close",
+      "/api/workspace",
+      "/api/launch",
+    ];
+    for (const path of writes) {
+      const { transport, calls } = transportOf(() => ok(new Response("{}")));
+      const [req, url] = post(`${path}?host=laptop`, "{}");
+      await forward(req, url, { transport });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.budgetMs).toBe(WRITE_BUDGET_MS);
+    }
+  });
+
+  test("a read passes NO budget, so it keeps the poll budget and its bootstrap credit", async () => {
+    // The transport's own default is `PeerClient.proxy`'s: the strict per-poll budget plus the one
+    // patient attempt a cold link is owed. Passing anything here would take that credit away.
+    for (const path of ["/api/pane/w1:p1", "/api/pane/w1:p1/history", "/api/launchers"]) {
+      const { transport, calls } = transportOf(() => ok(new Response("{}")));
+      const [req, url] = get(`${path}?host=laptop`);
+      await forward(req, url, { transport });
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.budgetMs).toBeUndefined();
+    }
+  });
+
+  test("the write budget outlasts the poll budget it replaced", () => {
+    // The arithmetic the fix rests on. 1200 ms under a 1500 ms poll is §10.1's default pair.
+    expect(WRITE_BUDGET_MS).toBeGreaterThan(packTimeoutBudget(1500, {}));
+  });
+
+  /**
+   * A transport that models the ONE thing the budget decides: whether the peer's work fits inside
+   * it. `workMs` is how long the member takes; over budget is the abort `dial` produces, which
+   * §10.3 then has to call ambiguous. Modelled rather than slept, because the decision under test is
+   * "which number is the deadline", and the real clock is pinned in `peer-client.test.ts`.
+   */
+  function budgeted(workMs: number) {
+    const calls: number[] = [];
+    const transport: ForwardTransport = async (_link, route, _params, _init, budgetMs) => {
+      const deadline = budgetMs ?? packTimeoutBudget(1500, {});
+      calls.push(deadline);
+      if (workMs <= deadline) return ok(new Response("{}"));
+      return {
+        ok: false,
+        state: "unreachable",
+        reason: `${route}: timed out after ${deadline}ms`,
+        timedOut: true,
+        receivedAt: 2,
+      };
+    };
+    return { transport, calls };
+  }
+
+  test("a launch onto a member that takes 2 s answers `ok`, not `write_outcome_unknown`", async () => {
+    // The measured case: a zellij member spawns a process and builds a tab. ~2 s, every time.
+    const dial = budgeted(2000);
+    const [req, url] = post("/api/launch?host=laptop", `{"id":"claude"}`);
+    const res = await forward(req, url, { transport: dial.transport });
+    expect(res.status).toBe(200);
+    expect(dial.calls).toEqual([WRITE_BUDGET_MS]);
+  });
+
+  test("…and on the poll budget it did NOT — the regression this closes", async () => {
+    // Same 2 s of work, dialled the way it was before: the deadline fires first, and §10.3 has to
+    // report an outcome it cannot know over a tab the member had in fact created.
+    const dial = budgeted(2000);
+    const [req, url] = post("/api/launch?host=laptop", `{"id":"claude"}`);
+    const res = await forwardToPeer(req, url, {
+      link: LINK,
+      state: REACHABLE,
+      maxUploadBytes: DEFAULT_MAX_UPLOAD_BYTES,
+      // The old transport shape: it ignores the budget the caller passes.
+      transport: (link, route, params, init) => dial.transport(link, route, params, init),
+    });
+    expect(res.status).toBe(504);
+    expect((await failureBody(res)).code).toBe("write_outcome_unknown");
+  });
+});
+
 // ── §12 The lead's own record of the forward ─────────────────────────────────
 
 describe("the lead audits the forward, and the peer audits the action (§12)", () => {
@@ -687,5 +785,31 @@ describe("journal, uploads and state stay host-local", () => {
     expect(calls[0]!.params).toEqual({ limit: "200" });
     expect(await res.text()).toBe(transcript);
     expect(res.headers.get("etag")).toBe('"peer-history"');
+  });
+  // ── What §5 does NOT carry, pinned (M22/04) ───────────────────────────────
+  //
+  // Measured on 2026-09-08 with a tmux peer under a herdr lead: the read-only mux conformance set,
+  // aimed at that peer through this surface, could not grade four of its twelve checks — because
+  // four verbs of the mux port have no forwardable route here at all.
+  //
+  // This test pins that as a FACT rather than leaving it a surprise. It is not an assertion that the
+  // gap is right. If a route is added, this test goes red, and the table in MUX_CONTRACT.md
+  // § "Conformance across a pack link" is what has to be corrected in the same change.
+  test("four mux-port verbs have no forwardable pack route, and the contract says which", () => {
+    // The shapes a route for each would take, in this surface's own grammar.
+    const unreachable = [
+      "sessions",
+      "workspace/w1/worktrees",
+      "workspace/w1/worktree",
+      "workspace/w1/worktree/open",
+    ];
+    for (const route of unreachable) {
+      expect(packRouteFor(`/api/${route}`)).toBeNull();
+      expect(apiPathFor(route)).toBeNull();
+    }
+    // And the contract names the gap, so the two cannot drift apart silently.
+    const contract = readFileSync(join(import.meta.dir, "..", "..", "MUX_CONTRACT.md"), "utf8");
+    expect(contract).toContain("## Conformance across a pack link");
+    expect(contract).toContain("listSessions` and the three worktree verbs have no forwardable route");
   });
 });

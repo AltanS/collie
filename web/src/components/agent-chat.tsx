@@ -665,7 +665,7 @@ export function AgentChat({
   // session", which is a per-pane answer an operator can act on by starting an agent; this one says
   // "nothing here will ever name one", which is a property of the multiplexer and needs saying out
   // loud. Hiding it is what leaves someone wondering whether Collie is broken.
-  const sessionLog = useMuxCapability("agentSessionRef");
+  const sessionLog = useMuxCapability("agentSessionRef", scope);
   const historyAvailable = Boolean(agent?.hasSession) && sessionLog.capable;
   // A FOURTH state, and the per-pane sibling of the third (#137). `hasSession` folds two facts into
   // one flag bridge-side — "this pane named a session" AND "this agent has a journal adapter" — so
@@ -685,7 +685,7 @@ export function AgentChat({
   // Scrollback has its own capability, and it is a genuinely different one: a multiplexer can keep
   // screen history while knowing nothing about agents. Hidden rather than explained when absent —
   // "there is nothing older to load" is not a fact anyone comes looking for.
-  const scrollback = useMuxCapability("gridScrollback");
+  const scrollback = useMuxCapability("gridScrollback", scope);
   const moreScrollback =
     scrollback.capable &&
     agent?.readableLines !== undefined &&

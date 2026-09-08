@@ -649,9 +649,15 @@ export function openWorktree(
  * Read once per page load by lib/operator-config.ts, which is the only caller that should exist:
  * every field here is startup-resolved on the bridge, so a second channel would be a second answer
  * to the same question.
+ *
+ * `scope` names ONE MEMBER of the pack, and then the only field that differs is `mux`: the lead
+ * answers that member's own capability declaration, from what its last `hello` taught it, and every
+ * other field stays the lead's own (M22/03). It is NOT forwarded to the member, so this read cannot
+ * make the lead dial a machine. Absent, which is every solo install and every lead-scoped read, puts
+ * nothing on the wire and gets the byte-identical body it always did.
  */
-export function fetchConfig(): Promise<BridgeConfig> {
-  return req<BridgeConfig>("/api/config");
+export function fetchConfig(scope?: Scope): Promise<BridgeConfig> {
+  return req<BridgeConfig>(withScope("/api/config", scope));
 }
 
 /** Register push through the same timeout, authentication and error handling as the other APIs. */

@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
 import { AuditLog, type AuditEntry } from "../audit.ts";
-import type { SnapshotResponse } from "../types.ts";
+import type { SnapshotView } from "../sessions.ts";
+import { MUX_LOGO_PATH, type SnapshotResponse } from "../types.ts";
 import { PACK_PREFLIGHT_MAX_CHECKS, PACK_PREFLIGHT_TRUNCATED_ID, peerPreflightWire } from "../update-action.ts";
 import { MEMBER_HEADER } from "./admission.ts";
 import { HANDOVER_TTL_MS, mintInvite, type EnrollResponse } from "./enrollment.ts";
-import { counterRandom, fp, leadStore, material, member, PACK, peerStore, T0 } from "./fixtures.ts";
+import { counterRandom, fp, leadStore, material, member, muxCaps, PACK, peerStore, T0 } from "./fixtures.ts";
 import {
   createPackRouter,
   PACK_ENROLL_PATH,
@@ -146,6 +147,53 @@ describe("GET /pack/v1/hello — behind both factors", () => {
     expect(await res.json()).toEqual({ protocol: 1, member: "desk", version: "1.0.0-alpha.12" });
   });
 
+  test("it carries this machine's own capability block, minus the mark (M22/03)", async () => {
+    // The lead needs this to answer `/api/config?host=<member>` without forwarding a config read.
+    // `logoUrl` is deliberately dropped: it is a path, and a path only answers on the machine that
+    // serves it, so a lead republishing it would put the LEAD's mark beside this member's name.
+    const h = harness(leadStore({ peers: [nas] }));
+    const handler = createPackRouter({
+      store: h.store,
+      audit: h.audit,
+      now: () => T0,
+      mux: () => ({
+        name: "reference",
+        capabilities: muxCaps({ createWorktree: true }),
+        unsupportedKeys: ["PageUp"],
+        notes: {},
+        spaces: "many",
+        logoUrl: MUX_LOGO_PATH,
+        topologyLatency: { kind: "push" },
+      }),
+    });
+    const res = (await call(handler, PACK_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
+    }))!;
+    expect(await res.json()).toEqual({
+      protocol: 1,
+      member: "desk",
+      mux: {
+        name: "reference",
+        capabilities: { createWorktree: true },
+        unsupportedKeys: ["PageUp"],
+        notes: {},
+        spaces: "many",
+        topologyLatency: { kind: "push" },
+      },
+    });
+  });
+
+  test("a machine with no adapter in hand omits the block, which reads as the lead's (M22/03)", async () => {
+    // Absent is NOT "every capability present". It means "use the lead's answer", which is exactly
+    // the reading the phone gives every pane today.
+    const h = harness(leadStore({ peers: [nas] }));
+    const handler = createPackRouter({ store: h.store, audit: h.audit, now: () => T0, mux: () => null });
+    const res = (await call(handler, PACK_HELLO_PATH, {
+      headers: { ...authed, ...signed("nas", "GET", PACK_HELLO_PATH, "", T0) },
+    }))!;
+    expect(Object.hasOwn(await res.json(), "mux")).toBe(false);
+  });
+
   test("a router built without a version simply omits the field — absent, never empty (§7.1)", async () => {
     // The optional field's own absent-means-closed rule, applied to the responder: nothing sends
     // `"version": null` or `""`, because a prober reads absence as "older than the amendment" and a
@@ -257,13 +305,36 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
   test("?session= is passed through to the injected source", async () => {
     const h = harness(peerStore());
     const calls: Array<string | undefined> = [];
-    const source: SnapshotSource = (session) => {
-      calls.push(session);
+    const source: SnapshotSource = (view) => {
+      calls.push(view.session);
       return ownSnapshot();
     };
     const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, snapshot: source });
     await call(handler, `${PACK_SNAPSHOT_PATH}?session=collie-demo`, { headers: authed });
     expect(calls).toEqual(["collie-demo"]);
+  });
+
+  // M22/06: the peer surface can answer a WIDENED snapshot. It used to hard-code the narrow view, so
+  // no lead could ask for a member's second session at all.
+  test("?sessions=all reaches the injected source, and absent means today's narrow answer", async () => {
+    const h = harness(peerStore());
+    const views: SnapshotView[] = [];
+    const source: SnapshotSource = (view) => {
+      views.push(view);
+      return ownSnapshot();
+    };
+    const handler = createPackRouter({ store: h.store, audit: h.audit, transportPinned: true, snapshot: source });
+    await call(handler, `${PACK_SNAPSHOT_PATH}?sessions=all`, { headers: authed });
+    await call(handler, `${PACK_SNAPSHOT_PATH}?session=work&sessions=all`, { headers: authed });
+    await call(handler, PACK_SNAPSHOT_PATH, { headers: authed });
+    // A typo is "no", not some third behaviour.
+    await call(handler, `${PACK_SNAPSHOT_PATH}?sessions=ALL`, { headers: authed });
+    expect(views).toEqual([
+      { session: undefined, widen: true },
+      { session: "work", widen: true },
+      { session: undefined, widen: false },
+      { session: undefined, widen: false },
+    ]);
   });
 
   test("an unknown session (source returns undefined) is the peer's OWN 404, not the lead's", async () => {

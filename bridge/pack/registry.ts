@@ -1,4 +1,5 @@
 import type { PeerPreflight } from "../update-action.ts";
+import { TURN_MISSED_SWEEPS } from "./follow.ts";
 import { isMemberId } from "./identity.ts";
 import type { PackLink, PeerFailure, PeerOutcome } from "./peer-client.ts";
 import type { TrustedMember } from "./trust-store.ts";
@@ -82,6 +83,46 @@ export interface PeerObservation {
 export type PeerHealth = "reachable" | PeerFailure["state"];
 
 /**
+ * The operator-facing reading of a link that is not answering — §10.2's **presentation split**, and
+ * NOT a fifth wire state (M22/05).
+ *
+ * One question decides it: can the lead fix this by dialling again?
+ *
+ * - `reconnecting` — yes, and it is still inside its budget. A timeout, a refused connection, a peer
+ *   part way through a restart. The operator does nothing, and it usually clears in one sweep.
+ * - `attention` — no. Auth refused (§8.5), a protocol this build cannot speak (§7), a member that
+ *   belongs to another pack (§18.10), a member that said no (§14.3), or a budget that is spent.
+ *
+ * `health` is unchanged by this: an unreachable member is still `unreachable` everywhere, so a phone
+ * that has never heard of the split renders exactly what it renders today (§7.1).
+ */
+export type PeerLinkState = "reconnecting" | "attention";
+
+/**
+ * How many silent sweeps in a row spend a member's retry budget.
+ *
+ * It is `TURN_MISSED_SWEEPS`, the same number of misses that fails a run's leg (follow.ts), and it is
+ * borrowed rather than invented so this lead holds ONE idea of how much silence is too much. Past it,
+ * "the lead is retrying" has stopped being useful to say: three sweeps is between 4.5 s and 36 s of a
+ * machine not answering, and the operator is better served by being pointed at it.
+ */
+export const LINK_BUDGET_SWEEPS = TURN_MISSED_SWEEPS;
+
+/**
+ * Which reading a failed call earns, given how many failures preceded it. Pure, and the only place
+ * the split is decided — a second site would let the chip and the pack page disagree about one
+ * machine.
+ *
+ * `runs` counts this call, so the first failure is `1`.
+ */
+export function linkStateFor(state: PeerFailure["state"], authRefused: boolean, runs: number): PeerLinkState {
+  // An ANSWER the lead cannot use is never Reconnecting. A wrong secret, a foreign protocol, another
+  // pack's member and a flat "no" are all things a machine said, and re-dialling says it again.
+  if (state !== "unreachable" || authRefused) return "attention";
+  return runs > LINK_BUDGET_SWEEPS ? "attention" : "reconnecting";
+}
+
+/**
  * Who a `conflicted` member says it follows (§18.10) — everything the lead may render about it, and
  * nothing more. The answering peer names a member id and a generation and is not a directory, so
  * there is no address and no certificate here to be tempted by.
@@ -149,6 +190,24 @@ export interface PeerState {
    * here too, and the stamp beside it is what stops an old answer reading as a fresh one.
    */
   readonly preflight: PeerPreflight | null;
+  /**
+   * The presentation split for a member that is not answering (§10.2, M22/05), or **absent when
+   * there is nothing to say** — a reachable member, or a state this registry has not folded a
+   * failure into yet.
+   *
+   * Optional on purpose, and the absence carries the compatibility rule up the whole stack: it is
+   * omitted from the wire too, and a phone reading an omitted field renders today's single word.
+   */
+  readonly linkState?: PeerLinkState;
+  /**
+   * Consecutive failed calls, this one included; absent or `0` once a call lands.
+   *
+   * It is the retry budget {@link linkStateFor} spends, and it lives here because the registry is
+   * already the single owner of "what the lead believes about member X" and already holds the
+   * previous belief on every fold. A second counter beside `PeerMemory.incompatibleRuns` in the lead
+   * would be a second answer to the same question.
+   */
+  readonly failedRuns?: number;
 }
 
 /**
@@ -274,6 +333,9 @@ export class PackRegistry {
     // answer, so a failure keeps the last report (§10.2's stale-never-vanish) and the peer's own
     // `asOf` is what says how old it is.
     const preflight = previous?.preflight ?? null;
+    // This call included. A landed call spends nothing and clears what the silence had run up, which
+    // is the same shape `foldPeerMemory` gives the incompatible ladder one level up.
+    const failedRuns = outcome.ok ? 0 : (previous?.failedRuns ?? 0) + 1;
     const next: PeerState = outcome.ok
       ? {
           memberId,
@@ -283,11 +345,17 @@ export class PackRegistry {
           version,
           conflict: null,
           preflight,
+          failedRuns,
         }
       : {
           memberId,
           version,
           preflight,
+          failedRuns,
+          // §10.2's presentation split, decided here and nowhere else. `authRefused` is the one bit
+          // the transport carries for it: a bare 401 is an ANSWER, so no amount of re-dialling is
+          // going to change it.
+          linkState: linkStateFor(outcome.state, outcome.state === "unreachable" && outcome.authRefused === true, failedRuns),
           // `refused` (§14.3's 403) is a CLI-only outcome — no route the lead's sweep calls answers
           // one — so it reads as unreachable here, which is the honest projection: the phone's answer
           // is the same. `conflicted` (§18.10) does NOT, and that is the 2026-08-20 amendment: the
@@ -336,6 +404,10 @@ export class PackRegistry {
       version,
       conflict: null,
       preflight: previous?.preflight ?? null,
+      // The machine answered, so the budget is not spent and there is no split to present. `hello` is
+      // still the patient probe and still stamps no freshness — this only clears what the silence ran
+      // up, which is the same thing an answered sweep does.
+      failedRuns: 0,
     };
     this.peers.set(memberId, next);
     return next;

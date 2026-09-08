@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue } from "../json.ts";
+import { NARROW_VIEW, type SnapshotView } from "../sessions.ts";
 import { STATUS_RANK } from "../types.ts";
 import type { PaneWire, ServerSummary, SessionSummary, SnapshotResponse, TabView, WorkspaceView } from "../types.ts";
 import type { PeerState } from "./registry.ts";
@@ -140,6 +141,111 @@ export interface PeerContribution {
   readonly body: PeerSnapshotBody | null;
 }
 
+/**
+ * The view the lead's sweep asks EVERY member for: all of its sessions (M22/06).
+ *
+ * **The sweep widens and the merge narrows**, and the direction is the point. The phone polls
+ * `/api/snapshot` every 1500 ms against a 1200 ms per-member budget (§10.1), so a view the lead does
+ * not already hold cannot be fetched inside a request — the lead answers from its cache or it blows
+ * the budget. Asking wide once per sweep is what puts a member's second session in that cache at all;
+ * before this the sweep asked for one session and a pane in a member's second one was invisible to
+ * the phone even with `?h=member&s=<other>`.
+ *
+ * The cost is bounded by the member's own pane count, and it is zero on a member with one session:
+ * {@link narrowPeerBody} strips the widened body back to exactly today's shape for every request
+ * that did not ask for more. A member too old to know the parameter ignores it and answers with its
+ * primary session, which narrows to itself.
+ */
+export const SWEEP_VIEW: SnapshotView = { session: undefined, widen: true };
+
+/**
+ * One request's view of the pack: what the LEAD serves from its own registry, and what each member's
+ * cached body is narrowed to.
+ *
+ * `?h=` says which machine and `?all=1` says how much of that machine, and this is where the two
+ * compose (M22/06). Built by {@link snapshotPlan} and by nobody else, so "how much of which machine"
+ * is answered once per request rather than once per list.
+ */
+export interface SnapshotPlan {
+  /** The lead's own share of the answer, for `localSnapshot`. */
+  readonly local: SnapshotView;
+  /** One member's share, by member id. */
+  readonly peer: (memberId: string) => SnapshotView;
+}
+
+/**
+ * Compose the request's host and its view into a plan.
+ *
+ * `target` is the member id `host=` named, or `null` for the lead — which is the solo case always,
+ * and the case every client that has never heard of `?h=` is in. Then:
+ *
+ *  - **No host.** The lead answers with the view as asked, and every member stays narrow. That is
+ *    today's behaviour and today's bytes, `?all=1` included (`solo-baseline.test.ts`).
+ *  - **A member.** That member's cached body carries the view, and the lead falls back to its own
+ *    primary session — the request is not about the lead, and the session it named lives on the
+ *    member, so resolving it against the LEAD's registry is what used to 404.
+ *
+ * A member id nobody in this pack holds simply matches no contribution: nothing is widened and
+ * nothing is dialled. A host is only ever a registry key (§4).
+ */
+export function snapshotPlan(target: string | null, asked: SnapshotView): SnapshotPlan {
+  if (target === null) return { local: asked, peer: () => NARROW_VIEW };
+  return { local: NARROW_VIEW, peer: (memberId) => (memberId === target ? asked : NARROW_VIEW) };
+}
+
+/** The plan for a request that asks for nothing: the lead's primary session, every member narrow. */
+export const NARROW_PLAN: SnapshotPlan = snapshotPlan(null, NARROW_VIEW);
+
+/**
+ * Narrow ONE member's cached widened body to the view a request asked for — the merge's half of
+ * M22/06, and the only place a peer body is narrowed at all.
+ *
+ * The lead's cache holds every session a member has ({@link SWEEP_VIEW}). A request that did not ask
+ * to widen must not see them, so the pane lists are cut to one session and the `session` tag comes
+ * off with them: `bridge/sessions.ts`'s `widenedPanes` states the invariant this obeys — an
+ * unwidened body carries NO `session` key at all, or an untagged pane would mean two different things
+ * depending on how the body was built. That is what makes a member with one session produce the body
+ * it produced before this spec, byte for byte.
+ *
+ * Which session, when the request named none: the member's own primary, read off the `sessions` list
+ * the member already publishes. An UNTAGGED pane is kept either way — that is what a member too old
+ * to widen answers with, and dropping it would lose a whole machine over a missing field, which is
+ * this file's invariant 1 exactly backwards. A member that published no sessions at all is left
+ * alone for the same reason.
+ */
+export function narrowPeerBody(body: PeerSnapshotBody | null, view: SnapshotView): PeerSnapshotBody | null {
+  if (body === null || view.widen) return body;
+  const named = view.session !== undefined && view.session !== "" ? view.session : primarySessionOf(body);
+  if (named === undefined) return body;
+  return { ...body, agents: onlyFrom(body.agents, named), shellPanes: onlyFrom(body.shellPanes, named) };
+}
+
+/** One session's panes, with the tag removed — see {@link narrowPeerBody}. */
+function onlyFrom(panes: readonly PaneWire[], named: string): PaneWire[] {
+  const kept: PaneWire[] = [];
+  for (const pane of panes) {
+    if (pane.session === undefined) {
+      kept.push(pane);
+      continue;
+    }
+    if (pane.session !== named) continue;
+    const { session: _narrowed, ...rest } = pane;
+    kept.push(rest);
+  }
+  return kept;
+}
+
+/**
+ * A member's primary session name, from the list it publishes: the flagged one, else the first.
+ *
+ * The fallback is the registry's own order (primary first, then alphabetical —
+ * `SessionRegistry.ordered`), so a member whose summaries predate `isPrimary` still narrows to the
+ * session a narrow request would have been served.
+ */
+function primarySessionOf(body: PeerSnapshotBody): string | undefined {
+  return (body.sessions.find((s) => s.isPrimary === true) ?? body.sessions[0])?.name;
+}
+
 export interface MergeContext {
   /** This collie: its member id and label. Always the first entry in `servers` (§9.2). */
   readonly self: { readonly id: string; readonly name: string };
@@ -175,6 +281,9 @@ export function serverSummaryFor(c: PeerContribution): ServerSummary {
   // move is to read it and go fix a version somewhere. Assigned, never conditionally spread: a
   // reachable peer's entry carries no `protocolDetail` key at all.
   if (incompatible && c.state.reason !== null) summary.protocolDetail = c.state.reason;
+  // §10.2's presentation split, carried the same way and for the same reason: the registry owns the
+  // verdict, this copies it, and an absent key is what an older lead sends and an older phone reads.
+  if (c.state.linkState !== undefined) summary.linkState = c.state.linkState;
   return summary;
 }
 

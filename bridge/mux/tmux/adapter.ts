@@ -57,6 +57,7 @@ import {
   muxRefused,
   muxUnsupported,
   muxUnreachable,
+  requestedCwd,
   type MuxAck,
   type MuxAdapter,
   type MuxCreatedPane,
@@ -65,6 +66,7 @@ import {
   type MuxOutcome,
   type MuxPane,
   type MuxRefusalOutcome,
+  type MuxSession,
   type MuxSnapshot,
   type MuxSpace,
   type MuxSpaceRequest,
@@ -204,6 +206,8 @@ const TMUX_CAPABILITIES = declareCapabilities({
       "Control mode pushes window and session changes. A bounded 5-second listing backs it up, which is also what keeps the promise on a tmux with no control mode.",
     pushPaneEvents:
       "Control mode pushes `%output` for the panes of each attached session, up to eight sessions; beyond that the same 5-second listing is the floor.",
+    listSessions:
+      "Every session of this tmux server is already a space in this collie, so the only other instance there could be is another SERVER, and tmux has no command that lists servers. Reading the socket directory instead would miss every server started with `-S`, and tmux leaves the socket file behind when a server dies, so a list built that way would front dead servers. A second tmux server is reached by pointing a second collie at it.",
   },
   // One tmux server holds as many sessions as the operator makes, and each one is a Collie space.
   spaces: "many",
@@ -488,7 +492,11 @@ export class TmuxMux implements MuxAdapter {
    */
   async createTab(request: MuxTabRequest): Promise<MuxOutcome<MuxCreatedPane>> {
     const args = ["new-window", "-d", "-t", request.spaceId, "-P", "-F", CREATED_FORMAT];
-    if (request.cwd !== undefined) args.push("-c", request.cwd);
+    // A blank `cwd` is "none asked for", never a directory called nothing — the contract's rule,
+    // and tmux would take `-c ""` as a real (and failing) chdir. MUX_CONTRACT.md § Contract-owned
+    // rules, *A blank cwd*.
+    const asked = requestedCwd(request.cwd);
+    if (asked !== undefined) args.push("-c", asked);
     if (request.label !== undefined) args.push("-n", request.label);
     return this.created(args);
   }
@@ -514,7 +522,9 @@ export class TmuxMux implements MuxAdapter {
    * the contract's `refused` with tmux's own sentence.
    */
   async createSpace(request: MuxSpaceRequest): Promise<MuxOutcome<MuxCreatedPane>> {
-    const args = ["new-session", "-d", "-P", "-F", CREATED_FORMAT, "-c", request.cwd];
+    const args = ["new-session", "-d", "-P", "-F", CREATED_FORMAT];
+    const asked = requestedCwd(request.cwd);
+    if (asked !== undefined) args.push("-c", asked);
     if (request.label !== undefined) args.push("-s", request.label);
     return this.created(args);
   }
@@ -542,6 +552,31 @@ export class TmuxMux implements MuxAdapter {
 
 
   /** The contract's watch over control mode plus a bounded listing. All of it lives in watch.ts. */
+  /**
+   * Declined, and the reason is tmux's rather than Collie's.
+   *
+   * The mapping puts a tmux SESSION at Collie's space level (the header), so every session of the
+   * server this adapter addresses is already in one snapshot. What is left over is another tmux
+   * SERVER, and tmux 3.6b has no verb that enumerates them: `tmux list-servers` answers "unknown
+   * command", and `list-sessions` needs a server to ask in the first place. The only enumeration
+   * left is a scan of `$TMUX_TMPDIR`/`/tmp/tmux-<uid>`, and it is wrong twice over, a server
+   * started with `-S /some/path` is not in there at all, and a socket file SURVIVES its server:
+   * probed on 2026-09-08, `tmux -L probe kill-server` left the socket on disk. A list built from
+   * that directory would name dead servers, and every one of them would come up as an unreachable
+   * session on the operator's phone.
+   *
+   * So the answer is the contract's refusal rather than an empty list, because the two mean
+   * different things and only one of them is true here: tmux keeps no such list at all.
+   */
+  listSessions(): Promise<MuxOutcome<readonly MuxSession[]>> {
+    return Promise.resolve(
+      muxUnsupported(
+        "listSessions",
+        "tmux has no command that lists servers, and its socket directory outlives the servers in it, and every session of this server is already a space here",
+      ),
+    );
+  }
+
   watch(options: MuxWatchOptions): MuxSubscription {
     const subscription = new TmuxWatch(this.exec, options);
     this.watches.add(subscription);

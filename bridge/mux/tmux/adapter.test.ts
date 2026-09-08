@@ -327,3 +327,37 @@ describe("a tmux whose output does not parse", () => {
     expect(snapshot.spaces).toEqual([]);
   });
 });
+
+// A BLANK cwd IS NOT A DIRECTORY — MUX_CONTRACT.md § Contract-owned rules, *A blank cwd*. Pinned
+// here on the argv because that is where the rule is either kept or lost: tmux takes `-c` with a
+// value, so `-c ""` is a chdir to nothing rather than "no directory asked for".
+describe("a blank cwd never becomes a `-c` flag", () => {
+  /** The argv tmux was actually handed for the one spawn in the test. */
+  function spawnArgs(fake: FakeTmux): readonly string[] {
+    const group = fake.invocations().find((g) => g.at(0) === "new-window" || g.at(0) === "new-session");
+    if (group === undefined) throw new Error("nothing was spawned");
+    return group;
+  }
+
+  test.each([
+    ["empty", ""],
+    ["blank", "   "],
+  ] as const)("createTab with a %s cwd", async (_name, cwd: string) => {
+    const fake = new FakeTmux();
+    await new TmuxMux(fake).createTab({ spaceId: "$1", cwd });
+    expect(spawnArgs(fake)).not.toContain("-c");
+  });
+
+  test("createSpace with an empty cwd", async () => {
+    const fake = new FakeTmux();
+    await new TmuxMux(fake).createSpace({ cwd: "" });
+    expect(spawnArgs(fake)).not.toContain("-c");
+  });
+
+  test("a real cwd still reaches tmux", async () => {
+    const fake = new FakeTmux();
+    await new TmuxMux(fake).createTab({ spaceId: "$1", cwd: "/home/op/repo" });
+    expect(spawnArgs(fake)).toEqual(expect.arrayContaining(["-c", "/home/op/repo"]));
+  });
+});
+

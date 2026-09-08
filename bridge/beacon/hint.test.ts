@@ -9,6 +9,7 @@ import {
   type MuxAdapter,
   type MuxGridRequest,
   type MuxPane,
+  type MuxSession,
   type MuxSnapshot,
   type MuxSpaceRequest,
   type MuxSubscription,
@@ -186,6 +187,11 @@ class StubAdapter implements MuxAdapter {
   createSpace(_request: MuxSpaceRequest) {
     this.calls.push("createSpace");
     return Promise.resolve(muxOk({ paneId: "%9", spaceId: "space", spaceLabel: "space", tabId: "tab", cwd: "/tmp" }));
+  }
+
+  listSessions() {
+    this.calls.push("listSessions");
+    return Promise.resolve(muxOk<readonly MuxSession[]>([]));
   }
 
   listWorktrees(_scope: MuxWorktreeScope) {

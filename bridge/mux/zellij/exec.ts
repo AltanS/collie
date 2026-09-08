@@ -102,6 +102,21 @@ export function resolveZellijBinary(
 /** The message a run reports when there is no zellij binary to run at all. */
 export const NO_ZELLIJ_BINARY = "no zellij binary found — set COLLIE_ZELLIJ_BIN to its absolute path";
 
+/** The exit code a killed run reports. 128 + SIGTERM, the shell's own spelling for a killed child. */
+export const TIMED_OUT_CODE = 143;
+
+/**
+ * What a run that ran out of budget says, and it names the verb.
+ *
+ * A zellij read is a PROCESS, not a socket round trip, so "it did not answer" is a thing a busy
+ * machine causes and a thing the operator can act on. The verb is in the sentence because
+ * `list-panes` timing out and `dump-screen` timing out are different sizes of problem.
+ */
+export function timedOutMessage(args: readonly string[], timeoutMs: number): string {
+  const verb = args.filter((arg) => !arg.startsWith("-")).slice(0, 2).join(" ") || "the call";
+  return `zellij did not answer \`${verb}\` within ${String(timeoutMs)}ms and was killed — the machine may be too busy to spawn it`;
+}
+
 /**
  * The real exec: `Bun.spawn` with an argv array and a resolved binary.
  *
@@ -120,13 +135,27 @@ export class SpawnZellijExec implements ZellijExec {
     const child = Bun.spawn([this.binary, ...args], { stdin: "ignore", stdout: "pipe", stderr: "pipe" });
     // A zellij mid-restart must not hold a request open forever: the budget is the target's, and a
     // kill turns it into the `unreachable` the connected/disconnected banner already knows.
-    const timer = setTimeout(() => child.kill(), this.timeoutMs);
+    //
+    // THE KILL SAYS SO, and it has to. A killed child hands back an EMPTY stdout and an empty
+    // stderr, so a timeout used to reach the operator as *could not read the session's listing: not
+    // JSON* — which sends them looking for a parse bug in zellij's output when what happened is that
+    // this machine was too busy for a 5 s process spawn. Measured on the M22/04 zellij leg: a peer
+    // under a `pack update` push logged that line five times, and one probe run of twelve failed on
+    // it. The contract's *Transport death* rule (MUX_CONTRACT.md § Contract-owned rules) asks for
+    // `unreachable` AND for a detail that names the cause; the flag is what supplies the second.
+    let killed = false;
+    const timer = setTimeout(() => {
+      killed = true;
+      child.kill();
+    }, this.timeoutMs);
     try {
       const [stdout, stderr] = await Promise.all([
         new Response(child.stdout).text(),
         new Response(child.stderr).text(),
       ]);
-      return { code: await child.exited, stdout, stderr };
+      const code = await child.exited;
+      if (killed) return { code: TIMED_OUT_CODE, stdout: "", stderr: timedOutMessage(args, this.timeoutMs) };
+      return { code, stdout, stderr };
     } finally {
       clearTimeout(timer);
     }

@@ -43,6 +43,7 @@ function answered(warrantGeneration: number | null = null): PeerOutcome<HelloRes
       warrantGeneration,
       warrantActiveGeneration: null,
       pairingDigest: null, pairingCollision: null,
+      mux: null,
     },
     status: 200,
     member: "nas",

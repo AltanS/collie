@@ -520,6 +520,21 @@ export const en = {
   "connection.host.ariaSends": "Sends to host: {name}{unreachable}",
   "connection.host.ariaHost": "Host: {name}{unreachable}",
   "connection.host.ariaUnreachableSuffix": " (unreachable)",
+  // The parenthesis form is the LOCALE's, not this file's: a Chinese bundle writes full-width
+  // brackets and no leading space. So the punctuation is one key and the word inside it is the same
+  // word the eye reads, rather than a second translation of it that could drift.
+  "connection.host.ariaSuffix": " ({word})",
+  // ── §10.2's PRESENTATION SPLIT, IN WORDS (M22/05) ─────────────────────────
+  // Two situations used to share the word above. "reconnecting" is the lead still trying, inside its
+  // budget, and it asks nothing of the operator; "needs attention" is the lead unable to fix it by
+  // trying again. The pair only earns its keep if the two never read as the same thing, so the
+  // action sentences say the difference out loud rather than leaving it to a colour.
+  "connection.host.reconnecting": "reconnecting",
+  "connection.host.attention": "needs attention",
+  "connection.host.reconnectingSuffix": "reconnecting · {label}",
+  "connection.host.attentionSuffix": "needs attention · {label}",
+  "connection.host.reconnectingAction": "The lead is still trying. Nothing to do.",
+  "connection.host.attentionAction": "Trying again will not fix this. Check this machine.",
   "connection.stale.incompatible": "{name} is running an incompatible Collie",
   "connection.stale.unreachable": "{name} is unreachable · {label}",
   "connection.stale.nothingCached": "Nothing cached for this machine yet.",

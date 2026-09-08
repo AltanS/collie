@@ -26,7 +26,8 @@ function asMux(fake: Partial<HerdrClient>): MuxAdapter {
   // listTabs, plus readPane for a claude pane's session-name scrape (whose failure the engine
   // already treats as "keep the cached name"). Nothing these tests drive reaches any other member,
   // so the missing ones are unobservable.
-  return new HerdrMux(fake as HerdrClient);
+  // A poll never asks for the session list, so an empty one is unobservable here.
+  return new HerdrMux(fake as HerdrClient, () => []);
 }
 
 // The state engine polls the multiplexer, shapes the snapshot, and fires status transitions (which

@@ -8,6 +8,7 @@ import {
   muxRefused,
   muxUnreachable,
   muxUnsupported,
+  requestedCwd,
   type MuxOutcome,
 } from "./types.ts";
 
@@ -65,3 +66,22 @@ describe("success", () => {
     expect(Object.hasOwn(outcome, "value")).toBe(true);
   });
 });
+
+// A BLANK cwd IS NOT A DIRECTORY — MUX_CONTRACT.md § Contract-owned rules, *A blank cwd*. The rule
+// is here rather than in three adapters because "unknown" reaches a create request spelled `""`:
+// `MuxPane.cwd` is empty when the multiplexer reports none, and the launch route hands a
+// neighbouring pane's cwd straight down.
+describe("requestedCwd", () => {
+  test.each([
+    ["absent", undefined],
+    ["empty", ""],
+    ["blank", "   "],
+  ] as const)("a %s cwd asked for nothing", (_name, cwd: string | undefined) => {
+    expect(requestedCwd(cwd)).toBeUndefined();
+  });
+
+  test("a real path is handed back unchanged, spaces and all", () => {
+    expect(requestedCwd("/home/op/my project")).toBe("/home/op/my project");
+  });
+});
+

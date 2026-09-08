@@ -519,7 +519,12 @@ export const herdrConformanceFixture: MuxConformanceFixture = {
   mux: "herdr",
   create(): Promise<MuxConformanceWorld> {
     const fake = new FakeHerdr();
-    const adapter = new HerdrMux(fake);
+    // Two sessions, because the `listSessions` leg of conformance has to see a real answer: the
+    // primary's own socket plus one named session, exactly the shape `./sessions.ts` reads off disk.
+    const adapter = new HerdrMux(fake, () => [
+      { name: "default", endpoint: "/tmp/collie-conformance/herdr.sock" },
+      { name: "conformance", endpoint: "/tmp/collie-conformance/sessions/conformance/herdr.sock" },
+    ]);
     return Promise.resolve({
       adapter,
       writes: () => fake.writes(),

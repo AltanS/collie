@@ -34,6 +34,7 @@ import type {
   MuxGridRequest,
   MuxOutcome,
   MuxPane,
+  MuxSession,
   MuxSnapshot,
   MuxSpaceRequest,
   MuxWorktree,
@@ -179,6 +180,7 @@ export function withAgentHints(adapter: MuxAdapter, deps: AgentHintDeps): MuxAda
       adapter.createWorktree(request),
     openWorktree: (request: MuxWorktreeOpenRequest): Promise<MuxOutcome<MuxWorktreeOpened>> =>
       adapter.openWorktree(request),
+    listSessions: (): Promise<MuxOutcome<readonly MuxSession[]>> => adapter.listSessions(),
     watch: (options: MuxWatchOptions): MuxSubscription => adapter.watch(options),
   };
 }
