@@ -49,6 +49,10 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 Herdr has no endpoint variable here: its socket is `HERDR_SOCKET_PATH`, not a
 `COLLIE_MUX_ENDPOINT_` name.
 
+That socket is the local one and no other. Herdr 0.9.0 can save SSH machines and show several
+servers in one Herdr client, and Collie reads none of them, so a machine saved in Herdr is not a
+pack member; only a Collie [pack](pack.md) brings another machine's sessions to the phone.
+
 Then restart, install the beacon hooks, and start an agent where the phone can see it:
 
 ```bash

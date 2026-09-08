@@ -31,6 +31,8 @@ export const de: Dictionary = {
   "settings.install.iosHint": "Unter iOS und iPadOS über das Teilen-Menü des Browsers installieren: Teilen antippen, dann „Zum Home-Bildschirm“.",
   "settings.zen.title": "Zen-Modus",
   "settings.zen.description": "Fügt dem Menü einen Eintrag hinzu, der alle Elemente außer dem Terminal ausblendet.",
+  "settings.zen.auto.label": "Bei Querformat aktivieren",
+  "settings.zen.auto.hint": "Beim seitlichen Drehen öffnet sich der Zen-Modus automatisch; beim Zurückdrehen schließt er sich wieder.",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "Freisprechen",
@@ -47,6 +49,8 @@ export const de: Dictionary = {
     "Benachrichtigungen sind blockiert. In den Browsereinstellungen aktivieren.",
   "settings.push.reason.unsupported": "Dieser Browser unterstützt keine Push-Benachrichtigungen.",
   "settings.push.reason.default": "Push-Benachrichtigungen konnten nicht aktiviert werden.",
+  "settings.push.reason.timeout": "Zeitüberschreitung beim Einrichten der Benachrichtigungen. Prüfe, ob dieses Gerät den Push-Dienst erreichen kann, und versuche es erneut.",
+  "settings.push.availability.unavailable": "Die Benachrichtigungseinstellungen konnten nicht geprüft werden. Prüfe deine Verbindung oder melde dich erneut an und versuche es noch einmal.",
   "settings.push.availability.insecure":
     "Über HTTP nicht verfügbar. Collie über HTTPS bereitstellen, um Push zu nutzen.",
   "settings.push.availability.serverOff":
@@ -175,6 +179,9 @@ export const de: Dictionary = {
   "settings.display.tapToType.label": "Tippen zum Schreiben",
   "settings.display.tapToType.hint":
     "Aktiv: Antippen des Spiegels öffnet überall die Tastatur. Deaktiviert: Spiegel bleibt Textanzeige, Tastatur öffnet nur im Eingabefeld.",
+  "settings.display.fullReply.label": "Vollständige letzte Antwort",
+  "settings.display.fullReply.hint":
+    "Das Terminal eines Agenten hat keinen Verlaufspuffer, daher fehlt bei langen Antworten der Anfang. Aktiv: Die Antwort erscheint vollständig aus dem Protokoll des Agenten und ersetzt die abgeschnittenen Zeilen.",
   "settings.display.rawTerminal.label": "Rohes Terminal",
   "settings.display.rawTerminal.hint":
     "Zeigt den reinen Terminal-Puffer ohne Buttons, Rahmen oder Statusleisten. Gedacht für falsch dargestellte TUI-Dialoge zur manuellen Tastensteuerung.",
@@ -277,6 +284,9 @@ export const de: Dictionary = {
   "chat.scrollback.loading": "Wird geladen…",
   "chat.scrollback.noSessionReported":
     "{agent} hat keine Sitzung an Herdr gemeldet. Herdr-Integration installieren oder aktualisieren und den Agenten in diesem Pane neu starten.",
+  "chat.fullReply.title": "Vollständige Antwort",
+  "chat.fullReply.fromTranscript": "aus dem Protokoll",
+  "chat.fullReply.showingTerminal": "Terminal wird gezeigt",
   "chat.output.empty": "(keine neue Ausgabe)",
   "chat.switcher.aria": "Pane wechseln",
   "chat.switcher.title": "Pane wechseln",
@@ -872,5 +882,8 @@ export const de: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} zurückgesetzt: {reason}.",
   "updateRibbon.seeUpdates": "Siehe Updates.",
   "updateRibbon.available": "Collie {version} da. Zum Update tippen.",
+  "updateRibbon.availablePackaged": "Collie {version} über {manager} verfügbar.",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} verfügbar.",
   "updateRibbon.dismiss": "Diese Version ausblenden",
+  "updateRibbon.hideNotice": "Hinweis ausblenden",
 };

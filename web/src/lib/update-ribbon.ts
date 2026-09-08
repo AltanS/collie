@@ -1,5 +1,17 @@
 import { t, tn } from "./i18n";
-import type { UpdateInfo, UpdatePeerLeg, UpdatePeerLegState, UpdateRunState } from "./types";
+import type {
+  DismissScope,
+  UpdateInfo,
+  UpdatePeerLeg,
+  UpdatePeerLegState,
+  UpdateRunState,
+} from "./types";
+
+/** What a close sends: the scope it was closed in, and the version it was keyed to. */
+export interface Dismissal {
+  scope: DismissScope;
+  version: string;
+}
 
 // ── THE UPDATE BAND, AS A PURE READING ──────────────────────────────────────────────────────────
 //
@@ -69,10 +81,11 @@ export type RibbonView =
   | { kind: "updating"; phase: RibbonPhase; version: string }
   | { kind: "updated"; version: string }
   | { kind: "bundle" }
-  | { kind: "peers"; names: string[] }
-  | { kind: "package-managed"; names: string[] }
+  | { kind: "peers"; names: string[]; target: string | null }
+  | { kind: "package-managed"; names: string[]; target: string | null }
   | { kind: "peer-failed"; name: string; reason: string }
-  | { kind: "available"; version: string };
+  | { kind: "available"; version: string }
+  | { kind: "available-packaged"; version: string; manager: string | null };
 
 /** Everything the reading needs. Two of the four are client facts; the other two are the poll. */
 export interface RibbonInput {
@@ -82,8 +95,19 @@ export interface RibbonInput {
   startedAt: number | null;
   /** `useSelfUpdate()`'s banner flag — see the header. Never re-derived here. */
   bundleStale: boolean;
-  /** The version whose offer the operator dismissed. A newer one is a different version. */
+  /**
+   * The version whose OFFER the operator closed. A newer one is a different version, so it raises
+   * the band again.
+   *
+   * It comes off the SNAPSHOT (`update.dismissedVersion`), not off this browser: a dismissal is a
+   * decision about the machine, and one kept per browser leaves the band up wherever it is read
+   * next (M17/08). The component may pass its own optimistic value on top, so the band drops on the
+   * tap rather than on the next poll.
+   */
   dismissedVersion: string | null;
+  /** The version whose quiet PACK notice was closed (`update.dismissedPackVersion`). A separate
+   *  decision, so a separate input — see {@link DismissScope}. */
+  dismissedPackVersion: string | null;
   now: number;
 }
 
@@ -120,6 +144,48 @@ export function truncateWords(text: string, max: number): string {
   const space = cut.lastIndexOf(" ");
   const head = space > 0 ? cut.slice(0, space) : cut;
   return `${head.trimEnd()}…`;
+}
+
+/**
+ * The package manager's NAME, out of the upgrade command the host resolved.
+ *
+ * The first token that is not `sudo`: `sudo pacman -Syu` is pacman, `nix profile upgrade` is nix,
+ * `brew upgrade collie` is brew. Null when there is no command to read — a packaged install under a
+ * prefix nobody recognises, where the band has no manager to name (ADR 0035).
+ */
+export function managerOf(command: string | undefined): string | null {
+  const named = (command ?? "").split(/\s+/).find((token) => token !== "" && token !== "sudo");
+  return named ?? null;
+}
+
+/**
+ * What a close on this state records, or null when the state cannot be closed at all.
+ *
+ * The rule is whether the state describes something that ENDS ON ITS OWN. A run in flight, a
+ * finished run, a failed peer and a peer still moving all do, and "a dismissed run is a run the
+ * operator can no longer see the end of" — so they carry no close. An offer and the two QUIET pack
+ * states describe a standing fact, and a standing fact the operator has read is one they may put
+ * down. Keyed by the version, so a newer one raises the band again — and by the SCOPE, so putting
+ * down a notice about another machine leaves this host's own offer alone.
+ */
+export function dismissTarget(view: RibbonView): Dismissal | null {
+  switch (view.kind) {
+    case "available":
+    case "available-packaged":
+      return { scope: "offer", version: view.version };
+    case "peers":
+    case "package-managed":
+      return view.target === null ? null : { scope: "pack", version: view.target };
+    default:
+      return null;
+  }
+}
+
+/** The version the quiet pack states are keyed by: what the run is heading for when a record names
+ *  it, else the release upstream is offering. Null when neither exists — nothing to key a dismissal
+ *  to, so the band stays. */
+function targetOf(input: RibbonInput, to: string | null): string | null {
+  return to ?? input.update?.latest ?? null;
 }
 
 /** The whole band, decided once. See the precedence in this file's header. */
@@ -159,18 +225,29 @@ export function ribbonView(input: RibbonInput): RibbonView {
       const reason = failed.reason ?? t("settings.updateCard.peer.unknownReason");
       return { kind: "peer-failed", name: failed.name, reason: truncateWords(reason, REASON_BUDGET) };
     }
+    const target = targetOf(input, run.to);
+    const quiet = target !== null && target === input.dismissedPackVersion;
     const moving = legs.filter(isMoving).map((leg) => leg.name);
-    if (moving.length > 0) return { kind: "peers", names: moving };
+    // A moving peer is undismissable, so its target is null however the pack was closed before: the
+    // operator must be able to see the end of a run somebody is still driving.
+    if (moving.length > 0) return { kind: "peers", names: moving, target: null };
     // Below the moving peers, never among them: the band's peers line is about what the run is
     // waiting on, and it is waiting on nothing here. Named anyway, so the operator learns why that
-    // machine did not move without opening the page to find out.
+    // machine did not move without opening the page to find out — and closable, because a machine
+    // a package manager owns can stand behind for weeks and a band nobody can put down is a nag.
     const managed = legs.filter((leg) => leg.state === "package-managed").map((leg) => leg.name);
-    if (managed.length > 0) return { kind: "package-managed", names: managed };
+    if (managed.length > 0 && !quiet) return { kind: "package-managed", names: managed, target };
   }
 
   // (a) — an offer, and only an offer. The tap navigates; nothing here starts anything.
   const latest = input.update?.latest ?? null;
   if (input.update?.releaseAvailable === true && latest !== null && latest !== input.dismissedVersion) {
+    // A PACKAGED host cannot take the tap: `collie update` refuses there and the page shows a
+    // command where the button would be (ADR 0035). So the band says what is true on that machine
+    // and names the manager that owns it, rather than offering an update it cannot perform.
+    if (input.update.installKind === "packaged") {
+      return { kind: "available-packaged", version: latest, manager: managerOf(input.update.packageCommand) };
+    }
     return { kind: "available", version: latest };
   }
 
@@ -200,6 +277,14 @@ export function ribbonText(view: RibbonView): string {
       return `${t("updateRibbon.peerRolledBack", { name: view.name, reason: view.reason })} ${t("updateRibbon.seeUpdates")}`;
     case "available":
       return t("updateRibbon.available", { version: view.version });
+    case "available-packaged":
+      // No manager to name is the packaged install under a prefix Collie does not recognise. The
+      // version is still true and the page still carries the boundary sentence, so the band states
+      // the one and points at the other.
+      if (view.manager === null) {
+        return `${t("updateRibbon.availablePackagedUnnamed", { version: view.version })} ${t("updateRibbon.seeUpdates")}`;
+      }
+      return t("updateRibbon.availablePackaged", { version: view.version, manager: view.manager });
   }
 }
 

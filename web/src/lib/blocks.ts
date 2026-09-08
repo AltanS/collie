@@ -332,3 +332,27 @@ export function trimTrailingBlank(lines: StyledLine[]): StyledLine[] {
   while (end > 0 && isBlank(lineText(lines[end - 1]!))) end--;
   return end === lines.length ? lines : lines.slice(0, end);
 }
+
+/**
+ * Drop the first `count` screen rows from a run of raw blocks, emptied blocks and all.
+ *
+ * A RENDER-ONLY subtraction: detection has already run over the whole screen by the time anyone calls
+ * this, so nothing a grammar decided can change. Its one caller hides the rows a clipped reply
+ * occupies, because the full message is being rendered from the journal directly above them
+ * (components/latest-reply.tsx). Counting in rows works because every pipeline lifts its dialog off
+ * the TAIL — the leading raw block still starts at screen row 0.
+ */
+export function dropLeadingLines(blocks: RawBlock[], count: number): RawBlock[] {
+  if (count <= 0) return blocks;
+  let left = count;
+  const kept: RawBlock[] = [];
+  for (const block of blocks) {
+    if (left >= block.lines.length) {
+      left -= block.lines.length;
+      continue;
+    }
+    kept.push(left > 0 ? { ...block, lines: block.lines.slice(left) } : block);
+    left = 0;
+  }
+  return kept;
+}

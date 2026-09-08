@@ -148,7 +148,6 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v22
 
       - name: Build the payload
-        id: build
         env:
           PLATFORM: ${{ matrix.platform }}
           BUN_TARGET: ${{ matrix.bun-target }}
@@ -175,7 +174,12 @@ jobs:
           # NO LINT STEP, here or anywhere on an operator's path: oxlint's allocator SIGABRTs below
           # roughly 7 GB of RAM and bricked real installs (1.0.0-beta.44). CI lints in its own
           # workflow, over the full tree, which is the only run that defines "passing".
-          bun build --compile --target="$BUN_TARGET" ./cli/main.ts --outfile "$stage/bin/collie"
+          # THE COMPILE RUNS ON THE UPSTREAM BUN, not on the one this shell just used, because
+          # `bun build --compile` copies the RUNNING bun as the base of what it emits and nixpkgs
+          # patches its own copy into the Nix store (#184). scripts/upstream-bun.sh realises the
+          # archive `flake.nix` pins and prints its bun; its header carries the whole argument.
+          upstream_bun="$(FLAKE_ROOT="$GITHUB_WORKSPACE" bash scripts/upstream-bun.sh)"
+          "$upstream_bun" build --compile --target="$BUN_TARGET" ./cli/main.ts --outfile "$stage/bin/collie"
           chmod 0755 "$stage/bin/collie"
 
           # Ad-hoc codesign makes the binary RUNNABLE on Apple Silicon. It makes no claim about who
@@ -203,12 +207,46 @@ jobs:
           cp scripts/collie-ctl.sh "$stage/scripts/collie-ctl.sh"
           chmod 0755 "$stage/scripts/collie-ctl.sh"
 
-          tar -czf "$RUNNER_TEMP/$root.tar.gz" -C "$RUNNER_TEMP" "$root"
-          echo "root=$root" >> "$GITHUB_OUTPUT"
-          echo "tarball=$RUNNER_TEMP/$root.tar.gz" >> "$GITHUB_OUTPUT"
           PAYLOAD
           nix develop --command bash "$RUNNER_TEMP/build-payload.sh"
 
+      # OUTSIDE `nix develop`, and that is the whole point of it being its own step. Everything
+      # above ran inside the flake, and the bun derivation's own install check runs inside Nix too,
+      # so neither can see a link into the build machine's store. Nor can simply STARTING the binary
+      # here: nix-installer-action left a /nix/store on this runner, so a binary that only runs
+      # because that store exists runs perfectly. The loader check is the guard; the version run
+      # after it only proves the binary that passed the check is the binary that works (#184).
+      #
+      # The tarball is sealed HERE rather than in the build, because a tarball is what an operator
+      # downloads: it must not exist before the binary inside it has been checked.
+      - name: Check the binary an operator gets, then seal the tarball
+        # The id must stay `build`: "Describe the artifact" below reads this step's outputs.
+        id: build
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          # Recomputed from the same two facts the build body used, rather than carried across: the
+          # tag and the matrix platform are both already in this step's environment.
+          version="${GITHUB_REF_NAME#v}"
+          root="collie-$version-$PLATFORM"
+          stage="$RUNNER_TEMP/$root"
+
+          bash scripts/check-payload-links.sh "$stage/bin/collie"
+
+          reported="$("$stage/bin/collie" version)"
+          case "$reported" in
+            "$version"*) ;;
+            *) echo "the compiled binary reports '$reported', which does not start with '$version'" >&2; exit 1 ;;
+          esac
+          echo "✓ $root/bin/collie reports $reported"
+
+          tar -czf "$RUNNER_TEMP/$root.tar.gz" -C "$RUNNER_TEMP" "$root"
+          echo "root=$root" >> "$GITHUB_OUTPUT"
+          echo "tarball=$RUNNER_TEMP/$root.tar.gz" >> "$GITHUB_OUTPUT"
+
+      # `steps.build` is the sealing step above, not the build body — the tarball is an output of
+      # the step that made it, so that id may not move.
       - name: Describe the artifact
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -263,6 +301,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The release notes carry a compare link against the PREVIOUS tag, and the step below
+          # asks git for it with `git describe --tags`. A default checkout is one commit deep and
+          # carries no tags at all, so `describe` would answer nothing and the compare line would
+          # silently disappear from every release page. Full depth is the cheap fix: this job is
+          # not the one that builds the payloads.
+          fetch-depth: 0
       # The same flake as the payload job, for the same reason: this job builds the `web/dist`
       # asset the demo runs, and reads the manifest back with Bun.
       - uses: DeterminateSystems/nix-installer-action@v22
@@ -334,69 +379,43 @@ jobs:
           done
           ls -l
 
-      - name: Assemble release notes (update commands + changelog link)
+      - name: Assemble release notes from CHANGELOG.md
         id: notes
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           notes="$RUNNER_TEMP/notes.md"
-          # CHANGELOG.md is the one record of this release's changes; this step no longer copies its
-          # block in here, it links to the version's own heading instead. GitHub turns a Markdown
-          # heading into an anchor by lowercasing it, dropping brackets and dots, and turning each
-          # remaining space into a hyphen, so `## [1.5.0] - 2026-09-04` becomes `#150---2026-09-04`.
-          # Verified against a live rendered page, not assumed:
-          #   curl -sL https://github.com/$GITHUB_REPOSITORY/blob/v1.5.0/CHANGELOG.md \
-          #     | grep -o 'user-content-150---2026-09-04'
-          # Only the date is read out of the heading line; the anchor is built, not scraped, so this
-          # needs no HTML fetch at release time.
-          heading_line="$(grep -E "^## \[$version\] - [0-9]{4}-[0-9]{2}-[0-9]{2}" CHANGELOG.md | head -1 || true)"
-          if [ -n "$heading_line" ]; then
-            date="${heading_line##* }"
-            anchor="$(printf '%s' "$version" | tr -d '.')---$date"
-            changelog_link="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md#$anchor"
-          else
-            # Should never happen — the version gate already required this heading to exist — but a
-            # release must never fail over a link. Fall back to the bare file and say so in the log.
-            echo "::warning::CHANGELOG.md has no '## [$version] - YYYY-MM-DD' heading; linking the file without an anchor"
-            changelog_link="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md"
-          fi
-          {
-            echo "## Update"
-            echo
-            echo "**Already on 1.x?** One command, then the phone updates itself within a minute."
-            echo
-            # Two spellings, because there are two kinds of install and neither command works on the
-            # other: a Herdr-managed checkout has plugin actions, a downloaded binary install has
-            # `collie` on PATH (M14/01 §8). These commands are why this step exists at all: the
-            # phone's update banner (web/src/components/update-banner.tsx) links straight to this
-            # release page, so they must be here, not just in CHANGELOG.md.
-            echo '```'
-            echo "collie update                                              # downloaded install (install.sh or a tarball below)"
-            echo "herdr plugin action invoke update --plugin herdr.collie    # Herdr plugin install"
-            echo '```'
-            echo
-            echo "Check with \`collie version\` or \`herdr plugin action invoke version --plugin herdr.collie\`."
-            echo
-            # The 0.x crossing rides on EVERY release, not only 1.0.0's. A 0.x install's update
-            # banner points at the newest release, so a reader who never opens 1.0.0's notes must
-            # still find this line here (M14/01 §8).
-            echo "**Coming from 0.x?** \`collie update\` will not cross a major. Follow [Upgrading from 0.x to 1.0](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/upgrading.md#upgrading-from-0x-to-10)."
-            echo
-            echo "## What changed"
-            echo
-            echo "Every change in this release, with its commit and who made it: [$version in the changelog]($changelog_link)."
-            echo
-            echo "## Verify a download by hand"
-            echo
-            echo '```'
-            echo "curl -fLO https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/collie-$version-linux-x64.tar.gz"
-            echo "curl -fLO https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/collie-$version-linux-x64.tar.gz.sha256"
-            echo "sha256sum -c collie-$version-linux-x64.tar.gz.sha256   # macOS: shasum -a 256 -c"
-            echo '```'
-            echo
-            echo "A sha256 catches a corrupt or truncated download. It does not prove who built the file,"
-            echo "HTTPS and the pinned github.com host carry that."
-          } > "$notes"
+          # CHANGELOG.md is the one record of this release's changes, and the page is built from it.
+          # The page's order is the reader's: the update commands first and unfolded, because a
+          # phone arrives here from the in-app banner to copy one command; then what changed, the
+          # leads of that version's bullets under their group headings; then the changelog link and
+          # the compare link; then the verify recipe, the one block that is folded. The anchor is
+          # the script's job now, so no shell here builds it.
+          # `scripts/release-notes.test.ts` pins the shape, over fixtures AND over this repo's own
+          # CHANGELOG, so a badly shaped bullet is red in CI long before a tag is pushed.
+          #
+          # The script exits 1 when the section cannot be read: no heading for this version, a
+          # bullet with no bold lead, a bullet above every group heading. There is deliberately no
+          # fallback body: the page's content IS that section, so a release published without it
+          # would list nothing at all, and the version gate has already required the heading to
+          # exist. Fix the CHANGELOG and re-run the workflow.
+          #
+          # The compare link's other end is a REAL TAG, asked of git, never derived from the
+          # CHANGELOG. Betas 33 to 41 were cut in the CHANGELOG and never tagged (CLAUDE.md,
+          # *Versioning*), so a heading-derived link would point at a ref that does not exist and
+          # 404. `describe` starts at the tagged commit's parent, so it names the tag before this
+          # one; an empty answer, which is what the very first release gets, means no compare line.
+          prev="$(git describe --tags --abbrev=0 --match 'v*' "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          previous=()
+          [ -z "$prev" ] || previous=(--previous-tag "$prev")
+          echo "compare base: ${prev:-<none>}"
+          # Same flake as every other bun invocation in this workflow, so the notes are produced by
+          # the Bun the release is built with.
+          nix develop --command bun scripts/release-notes.ts \
+            --version "$version" \
+            --repo "$GITHUB_REPOSITORY" \
+            --tag "$GITHUB_REF_NAME" \
+            "${previous[@]}" > "$notes"
           echo "file=$notes" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub release
@@ -409,16 +428,14 @@ jobs:
           # that badge from the shipped release line, so mark it explicitly.
           flags=()
           case "$GITHUB_REF_NAME" in *-*) flags=(--prerelease) ;; esac
-          # `--generate-notes` appends GitHub's own summary — merged PRs with their authors, new
-          # contributors, and the "Full Changelog" compare link — after the notes file's content
-          # rather than replacing it (`gh release create --help`: "Additional release notes can be
-          # prepended to automatically generated notes"). That compare link matters here more than
-          # on most repos: most of Collie's history lands as direct commits, not PRs, so it is the
-          # one place every commit in the release is listed.
+          # No `--generate-notes`. GitHub's generated summary only knows merged pull requests, and
+          # most of Collie's history lands as direct commits or as cherry-picks that keep the
+          # author, so that list showed a handful of entries under a release that moved twenty
+          # things and read as if almost nothing had happened. The compare link was the one part
+          # worth keeping, and the notes file now writes it itself.
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
             --title "Collie $GITHUB_REF_NAME" \
             --notes-file "${{ steps.notes.outputs.file }}" \
-            --generate-notes \
             "$RUNNER_TEMP"/assets/*
 
   # ── Tell the website ───────────────────────────────────────────────────────
@@ -449,3 +466,146 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY_OWNER}/collie-website/dispatches" \
             -f event_type=collie-released \
             -f "client_payload[tag]=$GITHUB_REF_NAME"
+
+  # ── Refresh the packages ───────────────────────────────────────────────────
+  # `packaging/aur` and `packaging/nix` describe a release: a version and a sha256 per platform.
+  # This job rewrites those fields FROM `collie-<version>.manifest.json`, the integrity manifest the
+  # release job above wrote, and from nothing else. It downloads no payload, hashes no payload and
+  # builds nothing — the release already answered "what is the hash of this tarball", and a second
+  # answer computed here could differ from the first.
+  #
+  # It runs after the tag rather than inside the release commit, because `chore(release): x.y.z`
+  # does the version bump "and nothing else" (CLAUDE.md → Versioning), and the manifest it reads
+  # does not exist until the release is published.
+  #
+  # It publishes two ways, and neither one can fail the release, which is already downloadable:
+  #   * a push to the AUR repository, skipped with a notice when AUR_SSH_KEY is unset;
+  #   * a pull request against this repository carrying the same rewritten files.
+  refresh-packages:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    # A prerelease is skipped. Somebody following `collie-bin` on the AUR did not sign up for a
+    # beta. Same hyphen rule the release job uses to set `--prerelease` and notify-website uses to
+    # stay home, so the three cannot drift apart.
+    if: ${{ !contains(github.ref_name, '-') }}
+    steps:
+      # `main`, not the tag: the pull request this job opens has to branch off the line it targets.
+      # The manifest is fetched from the release, so nothing here depends on the tagged tree.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      # The same flake the payloads were built in, for the same reason: the Bun that runs the
+      # rewrite is the one `flake.lock` names, not whatever a setup action resolved today.
+      - uses: DeterminateSystems/nix-installer-action@v22
+
+      - name: Download this release's integrity manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          gh release download "$GITHUB_REF_NAME" \
+            --pattern "collie-$version.manifest.json" \
+            --dir "$RUNNER_TEMP"
+          echo "MANIFEST=$RUNNER_TEMP/collie-$version.manifest.json" >> "$GITHUB_ENV"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Rewrite packaging/ from the manifest
+        run: nix develop --command bun scripts/refresh-packages.ts --manifest "$MANIFEST"
+
+      # `.SRCINFO` is what the AUR reads, and only `makepkg` knows its format. The runner is Ubuntu,
+      # so the generator runs in an Arch container. It copies the PKGBUILD's own values; it computes
+      # nothing and reaches no network.
+      - name: Regenerate .SRCINFO with makepkg
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD/packaging/aur:/pkg:ro" -w /tmp archlinux:latest bash -c '
+            set -e
+            useradd -m builder
+            cp /pkg/PKGBUILD /pkg/collie-bin.install /tmp/
+            chown builder /tmp/PKGBUILD /tmp/collie-bin.install
+            su builder -c "cd /tmp && makepkg --printsrcinfo"
+          ' > packaging/aur/.SRCINFO
+          head -5 packaging/aur/.SRCINFO
+
+      # The second run is the proof. It re-reads both files from disk and compares every field it
+      # owns against the manifest, so what gets pushed is verified rather than intended.
+      - name: Verify packaging/ against the manifest
+        run: nix develop --command bun scripts/refresh-packages.ts --manifest "$MANIFEST" --check
+
+      - name: Push collie-bin to the AUR
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${AUR_SSH_KEY:-}" ]; then
+            echo "::notice::AUR push skipped because the AUR_SSH_KEY secret is not set. See packaging/aur/README.md for the one-time account and key setup."
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$AUR_SSH_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+          ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/aur -o IdentitiesOnly=yes"
+          git clone ssh://aur@aur.archlinux.org/collie-bin.git "$RUNNER_TEMP/aur"
+          # The `.install` travels with the PKGBUILD: `install=collie-bin.install` names it, and an
+          # AUR clone without it fails `makepkg` on the missing file.
+          cp packaging/aur/PKGBUILD packaging/aur/.SRCINFO packaging/aur/collie-bin.install "$RUNNER_TEMP/aur/"
+          cd "$RUNNER_TEMP/aur"
+          git config user.name "Collie release"
+          git config user.email "altan@sportsight.de"
+          git add PKGBUILD .SRCINFO collie-bin.install
+          if git diff --cached --quiet; then
+            echo "The AUR already carries $VERSION; nothing to push."
+            exit 0
+          fi
+          git commit -m "Update to $VERSION"
+          git push origin HEAD:master
+
+      # The in-repo copy is the source of truth these files are reviewed in, so it gets a pull
+      # request rather than a push to `main`. When the tagged commit already carried the right
+      # version and hashes, `git diff` is empty and no branch is created.
+      - name: Open a pull request with the rewritten package files
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- packaging/; then
+            echo "packaging/ already matches $VERSION on main; no pull request needed."
+            exit 0
+          fi
+          branch="packaging/$VERSION"
+          # An existing branch is somebody's work, or a re-run's. It is never overwritten: a force
+          # push here would silently discard a review comment's fix on the same branch name.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            echo "::notice::Branch $branch already exists on the remote, so nothing was pushed and no pull request was opened. Check it, and delete it if it is stale."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add packaging/
+          git commit -m "chore(packaging): track $VERSION"
+          git push origin "$branch"
+          if ! gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "chore(packaging): track $VERSION" \
+            --body "Version and sha256 fields rewritten from \`collie-$VERSION.manifest.json\` by \`scripts/refresh-packages.ts\`, then verified against it with \`--check\`. No hash was computed here."; then
+            # The branch is pushed either way, so the work is not lost. The usual cause is a
+            # repository setting rather than anything in this file, and it is named here because a
+            # bare "gh pr create failed" sends the next reader looking in the wrong place.
+            echo "::notice::Branch $branch was pushed but no pull request could be opened. Open it by hand."
+            {
+              echo "### Packaging pull request not opened"
+              echo
+              echo "Branch \`$branch\` is pushed and carries the rewritten \`packaging/\` files."
+              echo "\`gh pr create\` failed. The likely cause is the repository setting"
+              echo "**Allow GitHub Actions to create and approve pull requests**"
+              echo "(Settings → Actions → General → Workflow permissions), which is off by default."
+              echo "Turn it on, or open the pull request by hand from that branch."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

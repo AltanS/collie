@@ -3,6 +3,7 @@ import { ArrowUpCircle, Loader2, Package, TriangleAlert, X } from "lucide-react"
 import { useNavigate } from "react-router";
 
 import { useLocale } from "@/hooks/use-locale";
+import { dismissUpdate } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { updatesPath } from "@/lib/nav";
 import { checkForUpdate } from "@/lib/pwa";
@@ -11,12 +12,15 @@ import { useScope } from "@/lib/session";
 import { useSelfUpdate } from "@/lib/self-update";
 import {
   clearUpdateStarted,
+  type Dismissal,
+  dismissTarget,
   getUpdateStarted,
   ribbonText,
   ribbonView,
   subscribeUpdateStarted,
   type RibbonView,
 } from "@/lib/update-ribbon";
+import type { DismissScope } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // ── THE UPDATE BAND ─────────────────────────────────────────────────────────────────────────────
@@ -43,6 +47,12 @@ import { cn } from "@/lib/utils";
 // app's lifetime, and it only runs while something mounts it. So this component mounts always and
 // returns null when it has nothing to say — exactly the invariant the banner it replaces carried.
 //
+// ── A DISMISSAL IS THE MACHINE'S, NOT THE BROWSER'S ──────────────────────────
+// Closing the band posts the version to the bridge, which keeps it beside the digest's own record
+// (M17/08). One tap on the phone therefore drops the band on the laptop at its next poll, and the
+// same request stops tomorrow's digest naming the version that was just declined. The local state
+// below is optimistic only — it drops the band on the tap instead of on the poll.
+//
 // ── THE BAND NEVER STARTS AN UPDATE ──────────────────────────────────────────
 // Four of the five states navigate to `/settings/updates`, where the confirm lives. A band that
 // could start an update from any screen would be the reflex tap the confirm was designed against.
@@ -59,35 +69,6 @@ const TINT = {
   blocked: { row: "border-status-blocked/40 bg-status-blocked/15", icon: "text-status-blocked" },
 } as const;
 
-/** Where the dismissal of an OFFER is remembered. Keyed by the version, so a newer release is a
- *  different fact and brings the band back. Bare string, like every other small pin in this app. */
-const DISMISS_KEY = "collie:update-dismissed:v1";
-
-function readDismissed(): string | null {
-  try {
-    return globalThis.localStorage?.getItem(DISMISS_KEY) ?? null;
-  } catch {
-    return null; // storage disabled (private mode) — the offer simply keeps showing
-  }
-}
-
-function writeDismissed(version: string): void {
-  try {
-    globalThis.localStorage?.setItem(DISMISS_KEY, version);
-  } catch {
-    /* storage disabled — the dismissal holds for this session through the state below */
-  }
-}
-
-/** Test seam: forget the dismissal. */
-export function __resetUpdateRibbon(): void {
-  try {
-    globalThis.localStorage?.removeItem(DISMISS_KEY);
-  } catch {
-    /* nothing stored, nothing to forget */
-  }
-}
-
 export function UpdateRibbon() {
   useLocale();
   const navigate = useNavigate();
@@ -96,7 +77,11 @@ export function UpdateRibbon() {
   // The self-updater's own flag. Reading it here is also what MOUNTS the controller — see the header.
   const bundleStale = useSelfUpdate();
   const startedAt = useSyncExternalStore(subscribeUpdateStarted, getUpdateStarted, getUpdateStarted);
-  const [dismissed, setDismissed] = useState(readDismissed);
+  // OPTIMISTIC ONLY. The dismissal itself lives on the bridge (M17/08) and arrives on the snapshot;
+  // this holds what the operator just closed so the band drops on the tap rather than on the next
+  // poll. Keyed by version AND scope like the stored one, so a newer version still raises the band
+  // and closing a pack notice does not hide this host's own offer.
+  const [justDismissed, setJustDismissed] = useState<Dismissal | null>(null);
 
   const update = data?.update;
   const runState = update?.run?.state;
@@ -111,15 +96,16 @@ export function UpdateRibbon() {
     update,
     startedAt,
     bundleStale,
-    dismissedVersion: dismissed,
+    dismissedVersion: dismissedIn("offer", justDismissed, update?.dismissedVersion),
+    dismissedPackVersion: dismissedIn("pack", justDismissed, update?.dismissedPackVersion),
     now: Date.now(),
   });
   if (view.kind === "silent") return null;
 
   const skin = skinOf(view);
-  // Only the offer is dismissable. The other four describe something that is happening, and a
-  // dismissed run is a run the operator can no longer see the end of.
-  const dismissable = view.kind === "available";
+  // Which states can be put down, and what a dismiss records, is the reading's own decision — see
+  // `lib/update-ribbon.ts`. A state that describes something still happening carries no close.
+  const target = dismissTarget(view);
 
   function onTap() {
     // The two bundle states reload THIS PAGE onto a bundle that already exists. Everything else is a
@@ -143,15 +129,16 @@ export function UpdateRibbon() {
         <skin.Icon className={cn("size-3.5 shrink-0", skin.icon, skin.spin && "animate-spin")} />
         <span className="min-w-0 flex-1 truncate">{ribbonText(view)}</span>
       </button>
-      {dismissable && (
+      {target !== null && (
         <button
           type="button"
-          aria-label={t("updateRibbon.dismiss")}
+          aria-label={t(target.scope === "pack" ? "updateRibbon.hideNotice" : "updateRibbon.dismiss")}
           className="shrink-0 text-muted-foreground"
           onClick={() => {
-            const version = view.kind === "available" ? view.version : "";
-            writeDismissed(version);
-            setDismissed(version);
+            setJustDismissed(target);
+            // Told to the bridge, which is where the decision belongs. A failed call is a courtesy
+            // lost, not an error worth a line: this band is already gone, and the next tap re-sends.
+            void dismissUpdate(target.version, target.scope).catch(() => {});
           }}
         >
           <X className="size-3.5" />
@@ -159,6 +146,17 @@ export function UpdateRibbon() {
       )}
     </div>
   );
+}
+
+/** What the reading should treat as dismissed in one scope: the tap this tab just made, when it was
+ *  in that scope, else what the bridge has recorded. */
+function dismissedIn(
+  scope: DismissScope,
+  local: Dismissal | null,
+  stored: string | null | undefined,
+): string | null {
+  if (local !== null && local.scope === scope) return local.version;
+  return stored ?? null;
 }
 
 /** Icon + tint per state. A failed peer is the only red the band can show; everything else is

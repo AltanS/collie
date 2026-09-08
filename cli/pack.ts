@@ -1204,13 +1204,13 @@ export async function cmdPackStatus(deps: PackDeps, args: readonly string[]): Pr
   const marker = parseMarker(deps.files.read(packRuntimePath(deps.ctx.stateDir)));
   // …but first, whether this machine is still the lead it thinks it is. A machine rejoining a pack
   // by itself must be a thing the operator READS about, not one they discover (RFC §8.2).
-  for (const l of deposedLines(marker)) deps.io.out(l.text);
+  for (const l of deposedLines(marker, deps.ctx.instance)) deps.io.out(l.text);
   const sideLines =
     data.lead === null
       ? [...leadDeputyLines(data, deps.now()), ...pairingCollisionLines(marker, deps.now())]
       : [
           ...leadContactLines(data, marker, deps.ctx.env, deps.now()),
-          ...peerWarrantLines(data, marker, deps.now()),
+          ...peerWarrantLines(data, marker, deps.now(), deps.ctx.instance),
           // Only the named deputy prints anything here, and only about the door THIS machine binds.
           ...standbyDoorLines(data, marker, syncedDevicesOnDisk(deps), deps.ctx.env, deps.now()),
         ];

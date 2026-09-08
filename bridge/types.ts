@@ -448,16 +448,37 @@ export interface UpdateStatus {
    * derivation on the phone would be a second thing to drift.
    */
   packageCommand?: string;
+  /**
+   * The release whose OFFER the operator closed, or null when none was closed.
+   *
+   * It is the BRIDGE's fact, not a browser's: a dismissal is a decision about this machine's
+   * update, so it holds on every screen that polls this snapshot (M17/08). Keyed by version — a
+   * newer release is a different fact and raises the band again.
+   */
+  dismissedVersion: string | null;
+  /**
+   * The version whose quiet PACK notice the operator closed, or null.
+   *
+   * Two decisions, two fields. "A release is available here" and "that machine is standing behind,
+   * and a package manager owns it" are about different machines, so putting one down must not put
+   * the other down with it, even when both name the same version.
+   */
+  dismissedPackVersion: string | null;
   /** The running process is behind the on-disk bridge source — needs `systemctl --user restart collie`. */
   bridgeStale: boolean;
   /**
-   * The VERSION on disk is no longer the version this process is running.
+   * The collie on disk is no longer the collie this process is running.
    *
    * Only a package manager can produce it: every other kind swaps files through Collie's own
    * updater, which restarts the service as its last act. `pacman -Syu` replaces the root under a
    * live process, and `collieVersion()` re-reads from disk on every call — so without this the
    * bridge would answer with the NEW version while running the OLD code, on `/api/health`, on
    * `hello` and therefore on the pack wire, where a lead reads it as "that peer already levelled".
+   *
+   * TWO witnesses, either of which raises it: the version files stopped naming what this process
+   * runs, and — on a single-file install under Linux — the executable behind `/proc/self/exe` was
+   * replaced (`bridge/exe-replaced.ts`). The second is what catches a package REBUILD of the same
+   * version, where no version string moves at all and the first sees nothing.
    *
    * While it is raised, what this process puts ON THE PACK WIRE stays the version captured at boot:
    * stale but true, never new but false.

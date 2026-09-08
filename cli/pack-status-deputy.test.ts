@@ -164,7 +164,7 @@ describe("the peer's own warrant line names what THIS machine's restart activate
   };
 
   test("a WITNESS that restarted reports the anchor it built", () => {
-    const rendered = text(peerWarrantLines(witness(), marker({ anchoredGeneration: 1 }), T0));
+    const rendered = text(peerWarrantLines(witness(), marker({ anchoredGeneration: 1 }), T0, null));
     expect(rendered).toContain('deputy "nas"');
     expect(rendered).toContain("anchored at this boot");
   });
@@ -174,7 +174,7 @@ describe("the peer's own warrant line names what THIS machine's restart activate
   // `transport.ts`'s `deputyAnchor` refuses exactly that case by name. Deriving the marker from that
   // one path reported the DEPUTY, the one machine this whole feature is about, as never activated.
   test("the DEPUTY that restarted reports its ROLE active, not an anchor it could never build", () => {
-    const rendered = text(peerWarrantLines(deputy(), marker({ anchoredGeneration: 1 }), T0));
+    const rendered = text(peerWarrantLines(deputy(), marker({ anchoredGeneration: 1 }), T0, null));
     expect(rendered).toContain("THIS machine is the deputy");
     expect(rendered).toContain("deputy role ACTIVE at this boot");
     expect(rendered).not.toContain("NOT anchored");
@@ -182,12 +182,16 @@ describe("the peer's own warrant line names what THIS machine's restart activate
   });
 
   test("before the restart each says it is stored but not yet live, in its own words", () => {
-    expect(text(peerWarrantLines(witness(), marker(), T0))).toContain("stored, NOT anchored");
-    expect(text(peerWarrantLines(deputy(), marker(), T0))).toContain("stored, NOT active");
+    expect(text(peerWarrantLines(witness(), marker(), T0, null))).toContain("stored, NOT anchored");
+    expect(text(peerWarrantLines(deputy(), marker(), T0, null))).toContain("stored, NOT active");
     // Both name the same remedy, because it is the same remedy.
     for (const data of [witness(), deputy()]) {
-      expect(text(peerWarrantLines(data, marker(), T0))).toContain("Restart here to arm it");
+      expect(text(peerWarrantLines(data, marker(), T0, null))).toContain("Restart here to arm it");
     }
+    // And the remedy names the plugin id of THIS collie. On a named instance the bare `herdr.collie`
+    // is the host's first Collie, so following it would restart a machine that is already armed.
+    expect(text(peerWarrantLines(witness(), marker(), T0, null))).toContain("--plugin herdr.collie`");
+    expect(text(peerWarrantLines(witness(), marker(), T0, "next"))).toContain("--plugin herdr.collie-next`");
   });
 
   test("a generation that landed AFTER this boot is not reported as live", () => {
@@ -196,14 +200,14 @@ describe("the peer's own warrant line names what THIS machine's restart activate
     const later = mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!;
     const second = mintWarrant(later.next, "nas", T0 + 1000)!;
     const held = peerStore({ warrant: { warrant: second.result, deputyCertPem: material("nas").certPem } });
-    expect(text(peerWarrantLines(held, marker({ anchoredGeneration: 1 }), T0 + 2000))).toContain("stored, NOT anchored");
+    expect(text(peerWarrantLines(held, marker({ anchoredGeneration: 1 }), T0 + 2000, null))).toContain("stored, NOT anchored");
   });
 
   test("a peer with no warrant, and a revoked one, are unchanged by any of this", () => {
-    expect(text(peerWarrantLines(peerStore(), marker(), T0))).toContain("warrant none");
+    expect(text(peerWarrantLines(peerStore(), marker(), T0, null))).toContain("warrant none");
     const revoked = mintWarrant(mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.next, null, T0)!;
     const held = peerStore({ warrant: { warrant: revoked.result, deputyCertPem: null } });
-    expect(text(peerWarrantLines(held, marker(), T0))).toContain("REVOKED");
+    expect(text(peerWarrantLines(held, marker(), T0, null))).toContain("REVOKED");
   });
 });
 

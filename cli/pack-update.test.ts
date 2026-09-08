@@ -7,6 +7,7 @@ import { type OpsRecord, parsePackOps } from "../bridge/pack/ops-store.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
 import { UPDATE_RUN_SCHEMA, type UpdateRun } from "../bridge/update-run.ts";
 import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT, type SeededFiles, type SeededOps } from "./fakes.ts";
+import type { InstallKind } from "./install-kind.ts";
 import { EXIT } from "./io.ts";
 import type { PackUpdateRow } from "../bridge/update-action.ts";
 import {
@@ -93,6 +94,8 @@ interface HarnessOptions {
   /** Which members answer `hello`, and with which version. `false` ⇒ it does not answer at all. */
   hello?: Record<string, string | false>;
   bundle?: string | null;
+  /** What this LEAD's own install classifies as. Absent ⇒ an ordinary git checkout. */
+  installKind?: InstallKind;
 }
 
 function opsRecord(sshHost: string): OpsRecord {
@@ -209,6 +212,7 @@ function harness(opts: HarnessOptions = {}) {
     prompt: () => null,
     gitBundle: () => Promise.resolve(opts.bundle === undefined ? "QkFTRTY0LWJ1bmRsZQ==" : opts.bundle),
     reload: () => Promise.resolve(initial),
+    installKind: () => opts.installKind ?? { kind: "linked-clone", alsoLayout: false },
   };
 
   return { deps, io: out, calls, confirms, ops, events };
@@ -327,6 +331,21 @@ describe("pack update is a lead's verb, over named members", () => {
     const self = (await h.deps.store.load())!.self.memberId;
     expect(await cmdPackUpdate(h.deps, [self])).toBe(EXIT.USAGE);
     expect(text(h.io)).toContain("`collie update`");
+    expect(h.calls).toEqual([]);
+  });
+
+  // The lead is packaged: pacman owns /opt/collie, `rev-parse HEAD` there fails, and the old message
+  // said "is not a git checkout" about a perfectly healthy install. The boundary is named instead,
+  // above the git read, so nothing about the run is attempted.
+  test("a packaged lead is told the boundary, not that its root is not a git checkout", async () => {
+    const h = harness({ installKind: { kind: "packaged" } });
+    expect(await cmdPackUpdate(h.deps, ["--all"])).toBe(EXIT.FAIL);
+    const rendered = text(h.io);
+    expect(rendered).toContain("is a packaged install");
+    expect(rendered).toContain("updates come from your package manager");
+    expect(rendered).toContain("packaged install has none");
+    expect(rendered).toContain("phone's Updates page");
+    expect(rendered).not.toContain("is not a git checkout");
     expect(h.calls).toEqual([]);
   });
 

@@ -17,7 +17,10 @@ import { PACKAGED_SENTENCE } from "./install-kind.ts";
  */
 export function packageCommand(root: string): string | null {
   const under = (prefix: string): boolean => root === prefix || root.startsWith(`${prefix}/`);
-  if (under("/usr/lib/collie")) return "sudo pacman -Syu collie-bin";
+  // Two Arch roots, one package. `/opt/collie` is where `collie-bin` installs since the PKGBUILD
+  // took the layout Omarchy's package repository expects; `/usr/lib/collie` is where every copy
+  // installed before that, and it stays here for as long as one of those hosts is still running.
+  if (under("/opt/collie") || under("/usr/lib/collie")) return "sudo pacman -Syu collie-bin";
   if (under("/nix/store")) return "nix profile upgrade collie";
   if (under("/opt/homebrew") || under("/usr/local/Cellar")) return "brew upgrade collie";
   return null;

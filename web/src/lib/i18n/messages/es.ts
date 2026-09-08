@@ -30,6 +30,8 @@ export const es: Dictionary = {
   "settings.install.iosHint": "En iOS o iPadOS, selecciona Compartir y luego «Añadir a pantalla de inicio».",
   "settings.zen.title": "Modo zen",
   "settings.zen.description": "Añade una opción al menú de paneles para ocultar todo excepto el terminal.",
+  "settings.zen.auto.label": "Activar en horizontal",
+  "settings.zen.auto.hint": "Gira el teléfono de lado para abrir el modo zen automáticamente; gíralo de vuelta para cerrarlo.",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "Dictado directo",
@@ -46,6 +48,8 @@ export const es: Dictionary = {
     "Notificaciones bloqueadas en los permisos del navegador.",
   "settings.push.reason.unsupported": "Este navegador no soporta Web Push.",
   "settings.push.reason.default": "No se pudieron activar las notificaciones push.",
+  "settings.push.reason.timeout": "Se agotó el tiempo para configurar las notificaciones. Comprueba que este dispositivo pueda conectarse al servicio push y vuelve a intentarlo.",
+  "settings.push.availability.unavailable": "No se pudo comprobar la configuración de notificaciones. Revisa la conexión o inicia sesión de nuevo y vuelve a intentarlo.",
   "settings.push.availability.insecure":
     "No disponible en HTTP. Sirve Collie sobre HTTPS para habilitar push.",
   "settings.push.availability.serverOff":
@@ -173,6 +177,9 @@ export const es: Dictionary = {
   "settings.display.tapToType.label": "Tocar para escribir",
   "settings.display.tapToType.hint":
     "Si esta activo, pulsar en cualquier parte abre el teclado. Si no, funciona como documento de texto y solo el editor abre el teclado.",
+  "settings.display.fullReply.label": "Respuesta completa",
+  "settings.display.fullReply.hint":
+    "La terminal de un agente no guarda historial, así que una respuesta larga pierde su inicio. Si esta activo, se muestra completa desde el registro del agente, en lugar de las lineas que cubre.",
   "settings.display.rawTerminal.label": "Terminal sin formato",
   "settings.display.rawTerminal.hint":
     "Muestra la sesion directa sin botones de interfaz ni barras. Util si un dialogo falla y requiere control manual mediante Teclas.",
@@ -275,6 +282,9 @@ export const es: Dictionary = {
   "chat.scrollback.loading": "Cargando…",
   "chat.scrollback.noSessionReported":
     "{agent} no ha registrado ninguna sesión en Herdr. Instala o actualiza la integración de Herdr correspondiente y reinicia el agente en este panel.",
+  "chat.fullReply.title": "Respuesta completa",
+  "chat.fullReply.fromTranscript": "desde el registro",
+  "chat.fullReply.showingTerminal": "mostrando la terminal",
   "chat.output.empty": "(sin salida reciente)",
   "chat.switcher.aria": "Cambiar panel",
   "chat.switcher.title": "Cambiar panel",
@@ -868,5 +878,8 @@ export const es: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} revirtió: {reason}.",
   "updateRibbon.seeUpdates": "Ver Actualizaciones.",
   "updateRibbon.available": "Collie {version} disponible. Actualiza.",
+  "updateRibbon.availablePackaged": "Collie {version} disponible vía {manager}.",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} disponible.",
   "updateRibbon.dismiss": "Descartar esta versión",
+  "updateRibbon.hideNotice": "Ocultar este aviso",
 };

@@ -16,7 +16,7 @@ import type { StandbyDevices } from "../bridge/pack/standby-devices.ts";
 import { checkpointStale, type PackRuntimeMarker } from "../bridge/pack/staleness.ts";
 import type { TrustedMember, TrustStoreData, Warrant } from "../bridge/pack/trust-store.ts";
 import { currentWarrant, verifyWarrantSignature, warrantExpired, warrantExpiresAt } from "../bridge/pack/warrant.ts";
-import type { Environment } from "./context.ts";
+import { herdrActionCommand, type Environment } from "./context.ts";
 import type { Tone, TonedLine } from "./render.ts";
 
 // What `collie pack status` says about the deputy — on the lead that named one, on the peer that
@@ -91,7 +91,7 @@ const line = (text: string, tone: Tone = "plain"): TonedLine => ({ text, tone })
  * The outcome paragraph is `deposedOutcomeLines`, verbatim — the same words the one page this
  * machine still serves prints. Two spellings of a terminal state is one spelling too many.
  */
-export function deposedLines(marker: PackRuntimeMarker | null): TonedLine[] {
+export function deposedLines(marker: PackRuntimeMarker | null, instance: string | null): TonedLine[] {
   const state = marker?.deposed ?? null;
   if (state === null) return [];
   const pack = state.packName === null ? "this pack" : `"${state.packName}"`;
@@ -100,7 +100,7 @@ export function deposedLines(marker: PackRuntimeMarker | null): TonedLine[] {
     line("", "plain"),
     line(`⚠ DEPOSED — this machine led pack ${pack} until ${iso(state.at)}.`, "bad"),
     line(`  The pack is now led by ${lead} (warrant generation ${state.generation}).`, "bad"),
-    ...deposedOutcomeLines(state, state.outcome).map((t) => line(`  ${t}`, "warn")),
+    ...deposedOutcomeLines(state, state.outcome, instance).map((t) => line(`  ${t}`, "warn")),
   ];
 }
 
@@ -378,6 +378,7 @@ export function peerWarrantLines(
   data: TrustStoreData,
   marker: PackRuntimeMarker | null,
   now: number,
+  instance: string | null,
 ): TonedLine[] {
   const stored = currentWarrant(data);
   const lead = data.lead;
@@ -428,7 +429,7 @@ export function peerWarrantLines(
       `       verified · stored, NOT ${isDeputy ? "active" : "anchored"} — this collie's listener was built before it landed.`,
       "warn",
     ),
-    line("       Restart here to arm it: `herdr plugin action invoke restart --plugin herdr.collie`.", "dim"),
+    line(`       Restart here to arm it: \`${herdrActionCommand("restart", instance)}\`.`, "dim"),
   ];
 }
 

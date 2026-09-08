@@ -1,8 +1,14 @@
-# Maintainer: Altan Sarisin <partners@sportsight.de>
+# Maintainer: Altan Sarisin <altan@sportsight.de>
 #
-# We publish and maintain this package ourselves. No co-maintainer (M17 principle 5). Niko
-# Lehtovirta's unpublished collie-bin PKGBUILD is prior art for the layout below, and prior art is
-# the whole of that relationship.
+# We author, publish and maintain this package ourselves, and nobody else is named here.
+# Prior art: Niko Lehtovirta's unpublished collie-bin PKGBUILD arrived at the same one-prefix
+# layout, and reading it confirmed the shape below. That is the whole of the relationship.
+#
+# ONE PKGBUILD serves two channels: the AUR, and Omarchy's own package repository
+# (omacom/omarchy-pkgs, which copies this file to pkgbuilds/collie-bin/PKGBUILD). The install root
+# is /opt/collie because that is the layout that repository expects of an application that ships a
+# whole tree — a thin /usr/bin symlink into /opt/<name> — and it is a layout the AUR is equally
+# happy with. See packaging/omarchy/README.md.
 
 # Collie ships a compiled Bun single-file executable in every GitHub release, so this package
 # downloads that tarball and installs it. Nothing is built here: no Bun, no git fetch, no
@@ -10,7 +16,7 @@
 
 pkgname=collie-bin
 _pkgname=collie
-pkgver=1.5.3
+pkgver=1.6.0
 pkgrel=1
 pkgdesc="Phone web UI for the AI agents running in your terminal, served over Tailscale (official binary release)"
 arch=('x86_64' 'aarch64')
@@ -21,9 +27,12 @@ license=('MIT')
 #        dynamic loader all come from it) — everything else Bun statically links.
 # bash:  every action in the shipped herdr-plugin.toml is spelled `bash scripts/collie-ctl.sh …`
 #        and those command strings are frozen byte-for-byte (ADR 0006).
-# systemd: `collie start` writes a `systemd --user` unit and drives it with `systemctl --user`;
-#        without it the CLI drops to its unsupervised tier and the bridge dies with the session.
-depends=('glibc' 'bash' 'systemd')
+#
+# `systemd` is NOT listed. `collie start` writes a `systemd --user` unit and drives it with
+# `systemctl --user`, and without one the CLI drops to its unsupervised tier — but systemd is the
+# init of every Arch and Omarchy host, so naming it buys nothing and Omarchy's repository does not
+# carry bare `systemd` in a depends array.
+depends=('glibc' 'bash')
 
 # A package is NOT a Herdr plugin, so `herdr` is not listed here. It follows the download path:
 # `herdr plugin link` would register an action set whose commands run `scripts/collie-ctl.sh` out of
@@ -31,10 +40,20 @@ depends=('glibc' 'bash' 'systemd')
 # verb on PATH works regardless.
 optdepends=(
   'tailscale: publish the one managed front door with `collie serve` (the supported way to reach Collie from a phone)'
+  'herdr: read Herdr sessions from the phone — the multiplexer Omarchy ships, and one of the three Collie drives'
+  'tmux: mirror tmux sessions instead — one of the three multiplexers Collie drives, and Omarchy ships it too'
 )
 
-provides=("$_pkgname=$pkgver")
-conflicts=("$_pkgname")
+# What pacman prints after installing and upgrading, before a removal and after it. Print-only: it enables no unit,
+# links no plugin and writes no config, because every one of those is the operator's decision and
+# `collie start` is where they are made. omarchy-pkgs carries `.install` files beside the PKGBUILD
+# and its sync keeps them, so one file serves both channels here too.
+install=collie-bin.install
+
+# Spelled as plain strings, not as "$_pkgname=$pkgver": the name a user asks pacman for is
+# `collie`, and this package answers it whichever version it carries.
+provides=('collie')
+conflicts=('collie')
 
 # !strip: the release binary is a Bun single-file executable — the bundle it runs from is embedded
 #         in the image, and stripping it produces a binary that no longer starts.
@@ -46,9 +65,12 @@ _baseurl="$url/releases/download/v$pkgver"
 source_x86_64=("$pkgname-$pkgver-x86_64.tar.gz::$_baseurl/collie-$pkgver-linux-x64.tar.gz")
 source_aarch64=("$pkgname-$pkgver-aarch64.tar.gz::$_baseurl/collie-$pkgver-linux-arm64.tar.gz")
 
-# Taken verbatim from the published `<asset>.sha256` files of release v1.5.3.
-sha256sums_x86_64=('1a520153d13360cbc508e8325ebfdfbf080df64487a66b27f1212fbac893443c')
-sha256sums_aarch64=('04f5343d1060ae70569d6d6ced769e83beeb24b0044a162534f17b177602a239')
+# Taken from `collie-$pkgver.manifest.json`, the integrity manifest the release job writes. These
+# three lines — `pkgver` above and the two arrays below — are the only ones
+# `scripts/refresh-packages.ts` rewrites, and it copies them from that manifest. Nothing here
+# hashes a file itself.
+sha256sums_x86_64=('ec4dfec7d14b22e6ad9393e841249e97299717239caef3b1b7c32fddc062e1a7')
+sha256sums_aarch64=('7b242bbcbb382aa080a345e81c83bda79fea204ac4806bd184ff33c35b2fd070')
 
 # The tarball's own directory name, which carries the upstream platform spelling rather than $CARCH.
 _distdir() {
@@ -65,27 +87,38 @@ package() {
 
   # The binary lives beside the tree it reads, not in /usr/bin. It resolves its own root as
   # dirname(dirname(realpath(argv0))) and accepts that root only if herdr-plugin.toml sits in it
-  # (bridge/root.ts), so /usr/bin/collie is a SYMLINK: it resolves to /usr/lib/collie/bin/collie
-  # and the root comes out as /usr/lib/collie. Installing the file at /usr/bin/collie directly
-  # would make the root /usr, and the bridge would find neither web/dist nor the manifest.
-  install -Dm755 "$_src/bin/collie" "$pkgdir/usr/lib/$_pkgname/bin/collie"
+  # (bridge/root.ts), so /usr/bin/collie is a SYMLINK: it resolves to /opt/collie/bin/collie and
+  # the root comes out as /opt/collie. Installing the file at /usr/bin/collie directly would make
+  # the root /usr, and the bridge would find neither web/dist nor the manifest.
+  install -Dm755 "$_src/bin/collie" "$pkgdir/opt/$_pkgname/bin/collie"
   install -d "$pkgdir/usr/bin"
-  ln -s "/usr/lib/$_pkgname/bin/collie" "$pkgdir/usr/bin/collie"
+  ln -s "/opt/$_pkgname/bin/collie" "$pkgdir/usr/bin/collie"
 
-  # Everything else keeps its path relative to that root: web/dist (the bridge serves it from disk
-  # at request time), herdr-plugin.toml, package.json (the bridge reads currentVersion from it),
-  # docs/, and scripts/ — which must stay beside the manifest, because the frozen action commands
-  # name it relatively.
+  # Everything the RUN TIME reads keeps its path relative to that root: web/dist (the bridge serves
+  # it from disk at request time), herdr-plugin.toml (bridge/root.ts's marker and the canonical
+  # version), package.json (the bridge reads currentVersion from it at boot), .env.example, and
+  # scripts/collie-ctl.sh — which must stay beside the manifest, because the frozen action commands
+  # name it relatively (ADR 0006).
+  #
+  # README.md, CHANGELOG.md and docs/ are read by NOBODY at run time. Nothing under bridge/ or cli/
+  # opens them; every `docs/…` string there is prose printed for the operator to go and read on the
+  # website. So they leave the tree and land in /usr/share/doc, where a distribution package puts
+  # them, and the licence lands in /usr/share/licenses.
   while IFS= read -r -d '' _f; do
     _f="${_f#./}"
     case "$_f" in
-      bin/*|LICENSE) continue ;;
-      scripts/*)     install -Dm755 "$_src/$_f" "$pkgdir/usr/lib/$_pkgname/$_f" ;;
-      *)             install -Dm644 "$_src/$_f" "$pkgdir/usr/lib/$_pkgname/$_f" ;;
+      bin/*|LICENSE|README.md|CHANGELOG.md|docs/*) continue ;;
+      scripts/*) install -Dm755 "$_src/$_f" "$pkgdir/opt/$_pkgname/$_f" ;;
+      *)         install -Dm644 "$_src/$_f" "$pkgdir/opt/$_pkgname/$_f" ;;
     esac
   done < <(find "$_src" -type f -printf '%P\0')
 
   install -Dm644 "$_src/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "$_src/README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 "$_src/CHANGELOG.md" "$pkgdir/usr/share/doc/$pkgname/CHANGELOG.md"
+  while IFS= read -r -d '' _f; do
+    install -Dm644 "$_src/docs/$_f" "$pkgdir/usr/share/doc/$pkgname/docs/$_f"
+  done < <(find "$_src/docs" -type f -printf '%P\0')
 }
 
 # No systemd unit is shipped: Collie writes its own `--user` unit through `collie start`, into the

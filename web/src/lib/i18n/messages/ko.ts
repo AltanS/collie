@@ -31,6 +31,8 @@ export const ko: Dictionary = {
   "settings.install.iosHint": "iPhone 및 iPad에서는 브라우저 공유 메뉴에서 \"홈 화면에 추가\"를 선택하여 설치합니다.",
   "settings.zen.title": "젠 모드",
   "settings.zen.description": "터미널만 남기고 나머지 UI를 숨기는 메뉴 항목을 추가합니다.",
+  "settings.zen.auto.label": "가로 모드에서 자동 실행",
+  "settings.zen.auto.hint": "휴대폰을 옆으로 돌리면 젠 모드가 자동으로 열리고, 다시 돌리면 닫힙니다.",
 
   // --- settings.handsFree ---
   "settings.handsFree.title": "음성 직접 전송",
@@ -46,6 +48,8 @@ export const ko: Dictionary = {
   "settings.push.reason.denied": "알림 권한이 차단되어 있습니다. 브라우저 설정에서 활성화하십시오.",
   "settings.push.reason.unsupported": "이 브라우저는 푸시 알림을 지원하지 않습니다.",
   "settings.push.reason.default": "푸시 알림을 활성화할 수 없습니다.",
+  "settings.push.reason.timeout": "알림 설정 시간이 초과되었습니다. 이 기기에서 푸시 서비스에 연결할 수 있는지 확인한 후 다시 시도하세요.",
+  "settings.push.availability.unavailable": "알림 설정을 확인할 수 없습니다. 연결을 확인하거나 다시 로그인한 후 다시 시도하세요.",
   "settings.push.availability.insecure":
     "HTTP 연결에서는 푸시 알림을 지원하지 않습니다. HTTPS로 Collie를 호스팅하십시오.",
   "settings.push.availability.serverOff":
@@ -170,6 +174,9 @@ export const ko: Dictionary = {
   "settings.display.tapToType.label": "탭하여 입력",
   "settings.display.tapToType.hint":
     "활성화하면 미러 영역 어디를 눌러도 키보드가 열립니다. 끄면 일반 문서처럼 동작하며 입력기를 눌러야 키보드가 표시됩니다.",
+  "settings.display.fullReply.label": "최신 답변 전체 보기",
+  "settings.display.fullReply.hint":
+    "에이전트 터미널은 스크롤백을 남기지 않아 긴 답변은 앞부분이 사라집니다. 켜면 에이전트 로그에서 전체 답변을 가져와 해당 줄을 대신 표시합니다.",
   "settings.display.rawTerminal.label": "원시 터미널",
   "settings.display.rawTerminal.hint":
     "프롬프트 버튼, UI 장식, 상태 바 없이 순수 화면만 표시합니다. 대화상자가 깨져서 직접 키를 입력해야 할 때 유용합니다.",
@@ -270,6 +277,9 @@ export const ko: Dictionary = {
   "chat.scrollback.loading": "불러오는 중…",
   "chat.scrollback.noSessionReported":
     "{agent}가 Herdr에 세션을 보고하지 않았습니다. 에이전트용 Herdr 연동 패키지를 설치하거나 업데이트한 후 이 창에서 에이전트를 재시작하십시오.",
+  "chat.fullReply.title": "답변 전체",
+  "chat.fullReply.fromTranscript": "로그에서",
+  "chat.fullReply.showingTerminal": "터미널 표시 중",
   "chat.output.empty": "(최근 출력 없음)",
   "chat.switcher.aria": "창 전환",
   "chat.switcher.title": "창 전환",
@@ -851,5 +861,8 @@ export const ko: Dictionary = {
   "updateRibbon.peerRolledBack": "{name} 롤백됨: {reason}.",
   "updateRibbon.seeUpdates": "업데이트 화면 보기.",
   "updateRibbon.available": "Collie {version} 사용 가능. 탭하여 업데이트.",
+  "updateRibbon.availablePackaged": "Collie {version} ({manager}) 이용 가능.",
+  "updateRibbon.availablePackagedUnnamed": "Collie {version} 이용 가능.",
   "updateRibbon.dismiss": "이 버전 숨기기",
+  "updateRibbon.hideNotice": "이 알림 숨기기",
 };

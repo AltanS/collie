@@ -1,0 +1,17 @@
+{
+  "version": "1.6.0",
+  "platforms": {
+    "linux-x64": {
+      "url": "https://github.com/AltanS/collie/releases/download/v1.6.0/collie-1.6.0-linux-x64.tar.gz",
+      "sha256": "ec4dfec7d14b22e6ad9393e841249e97299717239caef3b1b7c32fddc062e1a7"
+    },
+    "linux-arm64": {
+      "url": "https://github.com/AltanS/collie/releases/download/v1.6.0/collie-1.6.0-linux-arm64.tar.gz",
+      "sha256": "7b242bbcbb382aa080a345e81c83bda79fea204ac4806bd184ff33c35b2fd070"
+    },
+    "darwin-arm64": {
+      "url": "https://github.com/AltanS/collie/releases/download/v1.6.0/collie-1.6.0-macos-arm64.tar.gz",
+      "sha256": "12a5cd00d04364d3aa958792ff720cc2e62d6601d763f678d1d3996eba3dfb74"
+    }
+  }
+}

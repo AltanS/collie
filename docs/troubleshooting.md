@@ -28,12 +28,17 @@ repairs, so it takes one reinstall to land:
 has the three commands.
 
 **`start` prints `note: tailscale serve failed`.** Collie itself is fine (still up on
-`127.0.0.1`) — only the tailnet ingress didn't come up, and Collie prints tailscale's own error
-right below the note. Usual causes: your user isn't the Tailscale operator
+`127.0.0.1`) — only the tailnet ingress didn't come up, and tailscale's own error is on the
+terminal above the note. Usual causes: your user isn't the Tailscale operator
 (`sudo tailscale set --operator=$USER`), the node is logged out (`tailscale up`), or — on
 Headscale / `.internal` tailnet domains — HTTPS certs aren't available, which is exactly what
 `COLLIE_SERVE_MODE=http` is for: set it in `.env`, then `bin/collie restart`. Verify with
 `tailscale serve status`.
+
+**`serve` says `HTTPS certificates are not enabled on this tailnet`.** Nothing was published, and
+nothing is waiting. Open the [admin console](https://login.tailscale.com/admin/dns), turn on
+"Enable HTTPS", then run `collie serve` again. On Headscale / `.internal` domains there are no
+certificates to enable; use `COLLIE_SERVE_MODE=http` instead.
 
 **Banner shows `⚠ Collie isn't answering on :8787 yet`** (service won't start, connection
 refused)**.** The service was started but the HTTP server isn't answering the probe. Check the unit

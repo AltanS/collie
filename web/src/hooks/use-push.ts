@@ -47,15 +47,16 @@ export function usePushControl() {
       setBusy(true);
       try {
         if (enabled) {
-          const res = await enablePush();
-          await refresh();
-          return res;
+          return await enablePush();
         }
         await disablePush();
-        await refresh();
         return { ok: true };
       } finally {
-        setBusy(false);
+        try {
+          await refresh();
+        } finally {
+          setBusy(false);
+        }
       }
     },
     [refresh],

@@ -1,0 +1,24 @@
+pkgbase = collie-bin
+	pkgdesc = Phone web UI for the AI agents running in your terminal, served over Tailscale (official binary release)
+	pkgver = 1.6.0
+	pkgrel = 1
+	url = https://github.com/AltanS/collie
+	install = collie-bin.install
+	arch = x86_64
+	arch = aarch64
+	license = MIT
+	depends = glibc
+	depends = bash
+	optdepends = tailscale: publish the one managed front door with `collie serve` (the supported way to reach Collie from a phone)
+	optdepends = herdr: read Herdr sessions from the phone — the multiplexer Omarchy ships, and one of the three Collie drives
+	optdepends = tmux: mirror tmux sessions instead — one of the three multiplexers Collie drives, and Omarchy ships it too
+	provides = collie
+	conflicts = collie
+	options = !strip
+	options = !debug
+	source_x86_64 = collie-bin-1.6.0-x86_64.tar.gz::https://github.com/AltanS/collie/releases/download/v1.6.0/collie-1.6.0-linux-x64.tar.gz
+	sha256sums_x86_64 = ec4dfec7d14b22e6ad9393e841249e97299717239caef3b1b7c32fddc062e1a7
+	source_aarch64 = collie-bin-1.6.0-aarch64.tar.gz::https://github.com/AltanS/collie/releases/download/v1.6.0/collie-1.6.0-linux-arm64.tar.gz
+	sha256sums_aarch64 = 7b242bbcbb382aa080a345e81c83bda79fea204ac4806bd184ff33c35b2fd070
+
+pkgname = collie-bin

@@ -8,7 +8,9 @@ import { STALE_AFTER_MS, type UpdateRun } from "../bridge/update-run.ts";
 import { answersThisBuild } from "../bridge/version.ts";
 import { collieVersionBare } from "./context.ts";
 import { updateDeps } from "./deps.ts";
-import { PACKAGED_SENTENCE } from "./install-kind.ts";
+import { detectInstall, PACKAGED_SENTENCE, type InstallKind } from "./install-kind.ts";
+import { realLinkFs } from "./link.ts";
+import { packagedReason } from "./package-command.ts";
 import { EXIT, type Io } from "./io.ts";
 import { parsePackArgs, probeMembers } from "./pack.ts";
 import {
@@ -114,6 +116,15 @@ export interface PackUpdateDeps extends PackAddDeps {
   readonly lead?: LeadUpdate;
   /** How this verb waits between polls. Absent ⇒ a real timer. */
   readonly sleep?: (ms: number) => Promise<void>;
+  /**
+   * THIS lead's own install kind — the same `classifyInstall` answer `collie update` and `doctor`
+   * read, behind a seam so no test probes a real filesystem.
+   *
+   * A seam and not a second probe: one detection, one answer (`cli/install-kind.ts`). It is read
+   * for one question only — may this checkout's commit be pushed to the members — and a packaged
+   * root has no commit to push.
+   */
+  installKind?(): InstallKind;
 }
 
 /** {@link PackUpdateDeps} once the sink and the defaults are resolved — the shape every step takes. */
@@ -123,6 +134,7 @@ type Wired = PackUpdateDeps & {
   peerReported(): Promise<readonly PackUpdateRow[]>;
   readonly lead: LeadUpdate;
   readonly sleep: (ms: number) => Promise<void>;
+  installKind(): InstallKind;
 };
 
 const USAGE = [
@@ -187,6 +199,9 @@ function wire(deps: PackUpdateDeps & { emitUpdate(event: UpdateEvent): void }): 
     peerReported: deps.peerReported ?? (() => bankedPeerVerdicts(deps)),
     lead: deps.lead ?? lazyLead(deps.io),
     sleep: deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
+    // `link` is the one thing `probeInstall` needs that `PackDeps` does not carry, and it is a
+    // pure reader — the same `realLinkFs` `updateDeps` hands `collie update`.
+    installKind: deps.installKind ?? (() => detectInstall({ ...deps, link: realLinkFs })),
   };
 }
 
@@ -240,6 +255,20 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
   }
   const targets = await resolveTargets(deps, data, roster, { positional, flags, bare, port });
   if (!Array.isArray(targets)) return targets;
+
+  // A PACKAGED LEAD HAS NO COMMIT TO PUSH, and it is told that rather than shown a git error.
+  //
+  // Above the git read on purpose: `rev-parse HEAD` in /opt/collie fails, and "is not a git
+  // checkout" reads as a broken install when nothing is broken. The refusal is `collie update`'s
+  // boundary (ADR 0035) in the one spelling every surface shares, and it exits with that verb's
+  // code. It refuses only the TERMINAL route: the phone still levels the members to the version
+  // this lead is running, which is why the second line names the Updates page.
+  if (deps.installKind().kind === "packaged") {
+    deps.io.err(`error: ${deps.ctx.root} is a packaged install — ${packagedReason(deps.ctx.root)}.`);
+    deps.io.err("       The terminal pack update pushes THIS checkout's commit to the members, and a");
+    deps.io.err("       packaged install has none. Level the pack from the phone's Updates page instead.");
+    return EXIT.FAIL;
+  }
 
   // The build every target is being levelled to: this checkout's commit, and the version that commit
   // carries — read out of the commit rather than the working tree, exactly as `pack add` reads it,

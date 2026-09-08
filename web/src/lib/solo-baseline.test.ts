@@ -135,6 +135,11 @@ const UPDATE_INFO_KEYS = {
   // clears it. Both optional — a bridge older than the field sends neither.
   restartNeeded: true,
   restartCommand: true,
+  // The two bands the operator can close (M17/08) — the offer for this host and the quiet notice
+  // about a machine a package manager owns. The bridge's facts, so the decision holds wherever the
+  // band is read next. Optional here: a bridge older than the fields sends neither.
+  dismissedVersion: true,
+  dismissedPackVersion: true,
 } satisfies Record<keyof UpdateInfo, true>;
 
 describe("solo zero-tax — the client's mirror types carry no pack dimension", () => {
@@ -203,6 +208,10 @@ describe("solo zero-tax — the client's mirror types carry no pack dimension", 
       "bridgeStale",
       "checkedAt",
       "current",
+      // The two bands the operator can close (M17/08) — optional here, because a bridge older than
+      // the fields sends neither.
+      "dismissedPackVersion",
+      "dismissedVersion",
       "installKind",
       "latest",
       "latestUrl",
