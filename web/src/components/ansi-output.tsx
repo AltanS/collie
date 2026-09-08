@@ -65,6 +65,8 @@ export interface AnsiOutputProps {
    *  registered adapter contributes its own: claude lifts dialogs and strips chrome, omp strips chrome
    *  only. An absent/unregistered agent renders pure raw output. */
   agent?: string;
+  /** Image URLs referenced in this pane's session, rendered for graphics placeholders. */
+  images?: readonly string[];
   /** Injected handler for a prompt-select tap (the race guard lives in AgentChat). Absent (or with a
    *  disabled block) means the buttons render but don't act — AnsiOutput never touches the network. */
   onPromptAction?: (
@@ -229,6 +231,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   onMenuAction,
   promptDisabled,
   hideLeadingLines = 0,
+  images,
 }: AnsiOutputProps) {
   const segments = useMemo(() => parseAnsi(text), [text]);
   const blocks = useMemo(() => buildBlocks(splitLines(segments), { agent }), [segments, agent]);
@@ -447,13 +450,44 @@ export const AnsiOutput = memo(function AnsiOutput({
       </Fragment>
     );
   };
-
+  let imageClusterIndex = 0;
   const renderBlock = (block: RawBlock, bi: number) => {
     if (bi > 0) offset += 1; // the "\n" separating this block from the previous
     const runs = runsByBlock[bi] ?? NO_RUNS;
     const nodes: ReactNode[] = [];
     let ri = 0;
     for (let li = 0; li < block.lines.length; ) {
+      // Check if line contains Kitty graphics placeholders (U+10EEEE)
+      const isKittyLine = block.lines[li]?.segments.some((s) => s.text.includes("\u{10eeee}"));
+      if (isKittyLine) {
+        const clusterStart = li;
+        while (li < block.lines.length && block.lines[li]?.segments.some((s) => s.text.includes("\u{10eeee}"))) {
+          li++;
+        }
+        const clusterIndex = imageClusterIndex++;
+        const imageUrl = images && images[clusterIndex];
+        if (imageUrl) {
+          nodes.push(
+            <div key={`kitty-img-${clusterStart}`} className="my-2 select-none overflow-hidden rounded-md border border-border/40 bg-black/20 text-center">
+              <a href={imageUrl} target="_blank" rel="noreferrer" className="inline-block cursor-zoom-in">
+                <img
+                  src={imageUrl}
+                  alt="Terminal graphics"
+                  className="max-h-80 w-auto max-w-full rounded object-contain mx-auto"
+                  loading="lazy"
+                />
+              </a>
+            </div>,
+          );
+        } else {
+          nodes.push(
+            <div key={`kitty-ph-${clusterStart}`} className="my-1 inline-flex items-center gap-1.5 rounded border border-border/40 bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
+              <span>[Image]</span>
+            </div>,
+          );
+        }
+        continue;
+      }
       const run: TableRun | undefined = runs[ri];
       if (!run || run.start !== li) {
         nodes.push(renderLine(block.lines[li]!, li, true, false));

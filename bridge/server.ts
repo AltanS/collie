@@ -1945,8 +1945,27 @@ async function readPane(
  * (the client's prompt-select race guard depends on it) is covered by the bridge unit tests without
  * standing up Bun.serve / a socket.
  */
-export function paneReadResponse(paneId: string, read: MuxGrid): PaneReadResponse {
-  return { paneId, text: read.text, truncated: read.truncated, revision: read.revision };
+export function paneReadResponse(
+  paneId: string,
+  read: MuxGrid,
+  extraImages?: readonly string[],
+): PaneReadResponse {
+  const images: string[] = [];
+  if (extraImages) images.push(...extraImages);
+  // Detect any 64-char SHA256 blob hashes mentioned in terminal text if present
+  const hashMatches = read.text.matchAll(/\/api\/blobs\/([0-9a-f]{64})/gi);
+  for (const m of hashMatches) {
+    const url = `/api/blobs/${m[1]}`;
+    if (!images.includes(url)) images.push(url);
+  }
+  const res: PaneReadResponse = {
+    paneId,
+    text: read.text,
+    truncated: read.truncated,
+    revision: read.revision,
+  };
+  if (images.length > 0) res.images = images;
+  return res;
 }
 
 /**

@@ -99,6 +99,8 @@ interface AgentChatProps {
   requestedLines?: number;
   /** The pane's `revision` for `text` — the race guard checks a tapped menu against this. */
   revision?: number;
+  /** Image URLs referenced in this pane. */
+  images?: readonly string[];
   /** Per-device auth from the snapshot; an unauthorised device drops the composer to read-only. */
   device?: DeviceAuth;
   // Global connection state, used HERE to dim the stale status dot while the data on screen is not
@@ -180,6 +182,7 @@ export function AgentChat({
   text,
   requestedLines = 0,
   revision = 0,
+  images,
   device,
   bridge = "connected",
   error = false,
@@ -1749,8 +1752,8 @@ export function AgentChat({
                   <AnsiOutput
                     text={display}
                     wrap={prefs.wrap}
+                    images={images}
                     fontSize={prefs.fontSize}
-                    query={findOpen ? findQuery : ""}
                     currentMatch={findOpen ? currentMatch : -1}
                     onMatchCount={findOpen ? handleMatchCount : undefined}
                     agent={grammarsOn ? agent?.agent : undefined}
