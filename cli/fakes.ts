@@ -29,6 +29,11 @@ export interface FakeExec extends Exec {
   calls: string[];
   killed: number[];
   spawned: { command: string[]; env: Record<string, string>; logPath: string }[];
+  /**
+   * Every {@link Exec.runLogged} call — the command, its log path and the bound it was given. The
+   * bound is recorded because the handoff's whole guarantee is that this call is bounded at all.
+   */
+  ran: { command: string[]; cwd: string; env: Record<string, string>; logPath: string; timeoutMs: number }[];
   /** Every {@link Exec.capture} call that named a timeout — the call line and the bound it passed. */
   timeouts: { call: string; ms: number }[];
 }
@@ -37,9 +42,13 @@ export interface FakeExec extends Exec {
  * An answer that varies with how many times its prefix has matched — `n` is 1 on the first match.
  * Wrapped in an object rather than left as a bare function so the two forms are told apart by the
  * property they carry, not by what `typeof` says about them.
+ *
+ * `env` is that {@link Exec.capture} call's `envAdd`, when it passed one — undefined otherwise. It
+ * lets a scripted answer depend on what a caller like `systemdUserReachable` retried WITH, without
+ * a second, env-matching answer table.
  */
 export interface PerCallAnswer {
-  perCall: (n: number) => Partial<ExecResult>;
+  perCall: (n: number, env?: Readonly<Record<string, string>>) => Partial<ExecResult>;
 }
 
 export interface Scripted {
@@ -51,6 +60,17 @@ export interface Scripted {
   ps?: Record<number, string>;
   /** pid handed back by a detached spawn. */
   spawnPid?: number | null;
+  /**
+   * What a {@link Exec.runLogged} client answers, by `<tool> <args…>` prefix; the first match wins.
+   * `hang: true` is the wedged manager — the call spends the caller's whole bound and comes back as
+   * a timeout, which is the branch no exit code can state.
+   */
+  logged?: [prefix: string, answer: { code?: number; stdout?: string; stderr?: string; hang?: true }][];
+  /**
+   * Where a {@link Exec.runLogged} call's output goes. Wire it to the suite's own {@link fakeFiles}
+   * so a test can read the runner log the operator is told to read; unset, the output is dropped.
+   */
+  logSink?: (path: string, text: string) => void;
 }
 
 export function fakeExec(scripted: Scripted = {}): FakeExec {
@@ -58,6 +78,13 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
   const killed: number[] = [];
   const timeouts: { call: string; ms: number }[] = [];
   const spawned: { command: string[]; env: Record<string, string>; logPath: string }[] = [];
+  const ran: {
+    command: string[];
+    cwd: string;
+    env: Record<string, string>;
+    logPath: string;
+    timeoutMs: number;
+  }[] = [];
   const absent = new Set(scripted.absent ?? []);
   const seen = new Map<string, number>();
   const answer = (
@@ -65,6 +92,7 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
     args: readonly string[],
     cwd?: string,
     pathPrefix?: string,
+    envAdd?: Readonly<Record<string, string>>,
   ): ExecResult => {
     const line =
       (cwd === undefined ? "" : `${cwd}$ `) +
@@ -76,7 +104,7 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
       if (!line.startsWith(prefix)) continue;
       const n = (seen.get(prefix) ?? 0) + 1;
       seen.set(prefix, n);
-      const resolved = "perCall" in a ? a.perCall(n) : a;
+      const resolved = "perCall" in a ? a.perCall(n, envAdd) : a;
       return { code: 0, stdout: "", stderr: "", found: true, ...resolved };
     }
     return { code: 0, stdout: "", stderr: "", found: true };
@@ -85,15 +113,32 @@ export function fakeExec(scripted: Scripted = {}): FakeExec {
     calls,
     killed,
     spawned,
+    ran,
     timeouts,
     which: (tool) => (absent.has(tool) ? null : `/fake/${tool}`),
-    capture: (tool, args, timeoutMs) => {
-      const r = answer(tool, args);
+    capture: (tool, args, timeoutMs, envAdd) => {
+      const r = answer(tool, args, undefined, undefined, envAdd);
       if (timeoutMs !== undefined) timeouts.push({ call: [tool, ...args].join(" "), ms: timeoutMs });
       return r;
     },
     inherit: (tool, args) => answer(tool, args),
     runIn: (tool, args, cwd, pathPrefix) => answer(tool, args, cwd, pathPrefix),
+    runLogged(command, opts) {
+      const line = command.join(" ");
+      calls.push(line);
+      ran.push({
+        command: [...command],
+        cwd: opts.cwd,
+        env: opts.env,
+        logPath: opts.logPath,
+        timeoutMs: opts.timeoutMs,
+      });
+      const scriptedAnswer = (scripted.logged ?? []).find(([prefix]) => line.startsWith(prefix))?.[1] ?? {};
+      const timedOut = scriptedAnswer.hang === true;
+      const text = `${scriptedAnswer.stdout ?? ""}${scriptedAnswer.stderr ?? ""}`;
+      if (text !== "") scripted.logSink?.(opts.logPath, text);
+      return { code: timedOut ? 124 : (scriptedAnswer.code ?? 0), timedOut, stderr: scriptedAnswer.stderr ?? "" };
+    },
     spawnDetached(command, opts) {
       spawned.push({ command: [...command], env: opts.env, logPath: opts.logPath });
       return scripted.spawnPid === undefined ? 4242 : scripted.spawnPid;

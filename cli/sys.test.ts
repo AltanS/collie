@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { fakeFiles, HOME } from "./fakes.ts";
-import { resolveTool, toolCandidates, withPathPrefix } from "./sys.ts";
+import { realExec, resolveTool, toolCandidates, withPathPrefix } from "./sys.ts";
 
 // The one place Collie looks for Bun, and the proof that the two shell copies of it agree.
 //
@@ -179,5 +182,69 @@ describe("bun lookup parity", () => {
   test("both shell sources take `command -v` only when the answer is absolute", async () => {
     expect(await shim).toContain("case \"$candidate\" in");
     expect(await remote).toContain("/*) printf '%s' \"$_p\"; return 0 ;;");
+  });
+});
+
+describe("the bounded, logged client call the handoff waits for", () => {
+  // The only seam in `Exec` whose whole purpose is an ANSWER from a detaching launcher, so it is
+  // proved against a real child rather than a fake: the append and the bound are the contract.
+  const shell = { PATH: process.env.PATH ?? "" };
+
+  test("it appends both streams to the log and answers the child's own exit code", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-runlogged-"));
+    try {
+      // Under a directory that does not exist yet, the way a fresh config dir arrives.
+      const log = join(dir, "state", "collie.log");
+      const exec = realExec(shell, dir);
+      const first = exec.runLogged(["sh", "-c", "echo accepted; echo refused 1>&2; exit 3"], {
+        cwd: dir,
+        env: shell,
+        logPath: log,
+        timeoutMs: 10_000,
+      });
+      expect(first.code).toBe(3);
+      expect(first.timedOut).toBe(false);
+      expect(first.stderr.trim()).toBe("refused");
+      expect(readFileSync(log, "utf8")).toContain("accepted");
+      expect(readFileSync(log, "utf8")).toContain("refused");
+      // Appended, never truncated: the runner opens this same file for append after us.
+      exec.runLogged(["sh", "-c", "echo second"], { cwd: dir, env: shell, logPath: log, timeoutMs: 10_000 });
+      expect(readFileSync(log, "utf8")).toContain("accepted");
+      expect(readFileSync(log, "utf8")).toContain("second");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a child that never answers is a timeout, with the coreutils code", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-runlogged-"));
+    try {
+      const wedged = realExec(shell, dir).runLogged(["sh", "-c", "sleep 30"], {
+        cwd: dir,
+        env: shell,
+        logPath: join(dir, "collie.log"),
+        timeoutMs: 300,
+      });
+      expect(wedged.timedOut).toBe(true);
+      expect(wedged.code).toBe(124);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a tool that is not installed anywhere is 127, never a throw", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-runlogged-"));
+    try {
+      const missing = realExec({ PATH: dir }, dir).runLogged(["definitely-not-a-tool"], {
+        cwd: dir,
+        env: {},
+        logPath: join(dir, "collie.log"),
+        timeoutMs: 1_000,
+      });
+      expect(missing.code).toBe(127);
+      expect(missing.timedOut).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -20,6 +20,7 @@ import type { Net } from "./sys.ts";
 import { packTurnStart, parseUpdateRun, STALE_AFTER_MS, UPDATE_RUN_SCHEMA } from "../bridge/update-run.ts";
 import {
   boundTail,
+  HANDOFF_CONFIRM_MS,
   healthTimeoutMs,
   idleRun,
   launchPlan,
@@ -1124,6 +1125,8 @@ interface BinaryOptions {
   health?: readonly HealthReply[];
   /** Extra scripted answers, appended after the fixture's own — e.g. a failing systemd bus probe. */
   answers?: Scripted["answers"];
+  /** What the handoff's synchronous client answers — the user manager accepting, refusing or wedged. */
+  logged?: Scripted["logged"];
 }
 
 /** One `/api/health` answer for the fake net: down, deposed, or up as some version. */
@@ -1164,7 +1167,6 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
     version("1.0.0"),
     [`${INST}/current/bin/collie hooks status --check`, over.hooksCheck ?? { code: EXIT.OK }],
   ];
-  const exec = fakeExec({ answers: [...answers, ...(over.answers ?? [])] });
   const seed: SeededFiles = {
     [`${BROOT}/herdr-plugin.toml`]: 'id = "herdr.collie"\nversion = "1.0.0"\n',
     [`${BROOT}/bin/collie`]: "OLD BINARY",
@@ -1172,6 +1174,12 @@ function binaryHarness(over: BinaryOptions = {}): Harness {
   };
   for (const v of over.others ?? []) seed[`${INST}/versions/${v}/bin/collie`] = "OLDER BINARY";
   const files = fakeFiles(seed);
+  const exec = fakeExec({
+    answers: [...answers, ...(over.answers ?? [])],
+    logged: over.logged,
+    // The client's own output goes where the runner's would have — the file `--status` points at.
+    logSink: (at, text) => files.write(at, (files.read(at) ?? "") + text),
+  });
   const link = fakeLinkFs({ [`${INST}/current`]: { kind: "symlink", target: BROOT } });
   const health = healthNet(over.health, NEW);
   const net: Net = {
@@ -1264,7 +1272,7 @@ describe("collie update on a binary install", () => {
     expect(h.exec.calls.join("\n")).not.toContain("bun ");
     // The state file says `staging`, so a bridge that comes up now reports a run in flight.
     expect(JSON.parse(h.files.read(`${STATE}/update.json`) ?? "{}").state).toBe("staging");
-    expect(h.exec.spawned[0]?.command[0]).toBe("systemd-run");
+    expect(h.exec.ran[0]?.command[0]).toBe("systemd-run");
   });
 
   test("a systemd-run binary with no reachable user bus falls back to setsid, not a doomed handoff", async () => {
@@ -1969,12 +1977,16 @@ describe("the detached updater's launch seam", () => {
     expect(plan.kind).toBe("systemd-run");
     expect(plan.command.slice(0, 5)).toEqual(["systemd-run", "--user", "--collect", "--unit", "collie-update-abc"]);
     expect(plan.command.slice(5)).toEqual([base.binary, ...base.args]);
+    // This tier has a manager to ask, so the handoff waits for its answer.
+    expect(plan.confirms).toBe("manager");
   });
 
   test("macOS launches a setsid double-forked child instead — there is no systemd-run there", () => {
     const plan = launchPlan({ ...base, platform: "darwin", hasSystemdRun: false, hasSetsid: true });
     expect(plan.kind).toBe("setsid");
     expect(plan.command).toEqual(["setsid", base.binary, ...base.args]);
+    // There is no manager to ask, and the child is the runner itself rather than a client of one.
+    expect(plan.confirms).toBe("none");
   });
 
   test("linux with no systemd-run falls back to the same setsid child and says so", () => {
@@ -1984,18 +1996,102 @@ describe("the detached updater's launch seam", () => {
     expect(bare.kind).toBe("fork");
     expect(bare.command).toEqual([base.binary, ...base.args]);
     expect(bare.note).toContain("neither systemd-run nor setsid");
+    expect(plan.confirms).toBe("none");
+    expect(bare.confirms).toBe("none");
   });
 
   test("the handoff spawns the runner detached and never flips anything itself", async () => {
     const h = binaryHarness();
     await cmdUpdate(h.deps);
-    const spawned = h.exec.spawned.at(-1);
-    expect(spawned?.command[0]).toBe("systemd-run");
-    expect(spawned?.command).toContain("_apply-update");
+    const client = h.exec.ran.at(-1);
+    expect(client?.command[0]).toBe("systemd-run");
+    expect(client?.command).toContain("_apply-update");
     // The binary THIS process is executing, not a path derived from the root.
-    expect(spawned?.command).toContain(BINARY);
+    expect(client?.command).toContain(BINARY);
     // A narrow, named environment: no credential ever reaches a `--setenv` or a `ps` line.
-    expect(Object.keys(spawned?.env ?? {})).not.toContain("COLLIE_VAPID_PRIVATE");
+    expect(Object.keys(client?.env ?? {})).not.toContain("COLLIE_VAPID_PRIVATE");
+  });
+});
+
+describe("the handoff waits for the manager that will own the runner", () => {
+  // The defect this closes (M20/15): `systemd-run` was fired and forgotten from inside a `.service`,
+  // whose cgroup was torn down 4.8 ms later with the client still a member of it. The transient unit
+  // was never created, the record sat at `staging` for the full ten minute staleness window, and the
+  // runner log stayed 0 bytes. The fix is to read the client's exit code, which is the manager's own
+  // answer to "does the runner exist" (ADR 0037).
+  const ACCEPTED = "Running as unit: collie-update-mtsnsbxp.service; invocation ID: 9f2\n";
+  const REFUSED = "Failed to start transient service unit: Unit collie-update-abc.service already exists.\n";
+  /** The second tier, reached the way a container reaches it: the bus probe says no. */
+  const NO_BUS: Scripted["answers"] = [["systemctl --user show-environment", { code: 1 }]];
+
+  test("a manager that accepts the job leaves the record at staging and its own line in the log", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], logged: [["systemd-run", { stdout: ACCEPTED }]] });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    const client = h.exec.ran[0];
+    expect(client?.command[0]).toBe("systemd-run");
+    // Bounded — the difference between a handoff that waits and a staging process that never exits.
+    expect(client?.timeoutMs).toBe(HANDOFF_CONFIRM_MS);
+    // The client's output goes where the runner's would have, so `--status` has something to show.
+    expect(h.files.read(client?.logPath ?? "")).toContain("Running as unit");
+    expect(parseUpdateRun(h.files.read(RUN_FILE))?.state).toBe("staging");
+    // Nothing was fired and forgotten: on this tier the client IS the launch.
+    expect(h.exec.spawned).toEqual([]);
+    expect(h.io.stdout.join("\n")).toContain("Watch it with: collie update --status");
+  });
+
+  test("a refused handoff aborts the run, releases the lock and quotes what the manager said", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], logged: [["systemd-run", { code: 1, stderr: REFUSED }]] });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    // Not `staging`: the phone reads the abort within one poll instead of a live-looking run.
+    expect(run?.state).toBe("idle");
+    expect(run?.reason).toContain("systemd-run");
+    expect(run?.reason).toContain("exit 1");
+    // `exit 1` alone tells an operator nothing; the manager said why.
+    expect(run?.reason).toContain("already exists");
+    // The lock is gone, so the retry is on offer at once rather than in ten minutes.
+    expect(h.files.read(LOCK_FILE)).toBeNull();
+    expect(h.io.stderr.join("\n")).toContain("Apply it by hand");
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("a manager's stderr line past 160 characters is capped, not quoted whole", async () => {
+    const long = "x".repeat(400);
+    const h = binaryHarness({ others: ["0.9.0"], logged: [["systemd-run", { code: 1, stderr: long }]] });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    const complaint = run?.reason?.split(": ").at(-1) ?? "";
+    expect(complaint.length).toBeLessThanOrEqual(161);
+    expect(complaint.endsWith("…")).toBe(true);
+  });
+
+  test("a wedged manager is a timeout, not a wait without end", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], logged: [["systemd-run", { hang: true }]] });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    expect(parseUpdateRun(h.files.read(RUN_FILE))?.reason).toContain("timeout");
+    expect(h.files.read(LOCK_FILE)).toBeNull();
+    expect(h.exec.ran[0]?.timeoutMs).toBe(HANDOFF_CONFIRM_MS);
+  });
+
+  test("a tier that cannot confirm refuses to launch from inside a service", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], answers: NO_BUS });
+    h.files.write("/proc/self/cgroup", "0::/user.slice/user-1000.slice/user@1000.service/app.slice/collie.service\n");
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    expect(run?.reason).toContain("collie.service");
+    expect(run?.reason).toContain("needs the user manager");
+    // The child on this tier is the whole runner, so launching it here would kill it mid-swap.
+    expect(h.exec.spawned).toEqual([]);
+    expect(h.files.read(LOCK_FILE)).toBeNull();
+  });
+
+  test("the same tier in a session scope detaches exactly as before", async () => {
+    const h = binaryHarness({ others: ["0.9.0"], answers: NO_BUS });
+    // An ssh shell. A scope has no main process, so nothing in it exiting tears the cgroup down.
+    h.files.write("/proc/self/cgroup", "0::/user.slice/user-1000.slice/session-3.scope\n");
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.spawned[0]?.command[0]).toBe("setsid");
+    expect(parseUpdateRun(h.files.read(RUN_FILE))?.state).toBe("staging");
   });
 });
 

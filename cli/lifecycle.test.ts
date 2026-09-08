@@ -37,6 +37,7 @@ import {
   stopPidfileProcess,
   resolveTailscaleHosts,
   supervisionTier,
+  systemdUserReachable,
   writeUnit,
 } from "./lifecycle.ts";
 
@@ -184,6 +185,47 @@ describe("supervision tiers", () => {
     // This decides where the bridge runs; a typo must not take the host down.
     expect(pin("runit")).toBe("systemd");
     expect(pin("")).toBe("systemd");
+  });
+});
+
+// A Herdr plugin action injects `HERDR_SOCKET_PATH` / `HERDR_PLUGIN_CONFIG_DIR` and nothing else —
+// no login shell, so no `XDG_RUNTIME_DIR` or `DBUS_SESSION_BUS_ADDRESS` either, and the plain probe
+// fails even on a host where systemd --user is running (#194).
+describe("systemdUserReachable's session-env retry (#194)", () => {
+  const uid = process.getuid?.() ?? 0;
+
+  test("a failed probe retries once with a derived session env when the caller's env has neither var", () => {
+    let retryEnv: Readonly<Record<string, string>> | undefined;
+    const exec = fakeExec({
+      answers: [
+        [
+          "systemctl --user show-environment",
+          {
+            perCall: (n, env) => {
+              if (n === 2) retryEnv = env;
+              return { code: env?.XDG_RUNTIME_DIR === undefined ? 1 : 0 };
+            },
+          },
+        ],
+      ],
+    });
+    expect(systemdUserReachable(exec, {})).toBe(true);
+    expect(exec.calls.filter((c) => c === "systemctl --user show-environment")).toHaveLength(2);
+    expect(retryEnv?.XDG_RUNTIME_DIR).toBe(`/run/user/${uid}`);
+    expect(retryEnv?.DBUS_SESSION_BUS_ADDRESS).toBe(`unix:path=/run/user/${uid}/bus`);
+  });
+
+  test("the caller's own XDG_RUNTIME_DIR wins — a failed probe is never retried over it", () => {
+    const exec = fakeExec({ answers: NO_SYSTEMD });
+    expect(systemdUserReachable(exec, { XDG_RUNTIME_DIR: "/run/user/9999" })).toBe(false);
+    // One call, not two: a name the caller's env already carries is never overridden or retried.
+    expect(exec.calls.filter((c) => c === "systemctl --user show-environment")).toHaveLength(1);
+  });
+
+  test("a probe that still fails with the derived env reports unsupervised — the container case", () => {
+    const exec = fakeExec({ answers: NO_SYSTEMD });
+    expect(systemdUserReachable(exec, {})).toBe(false);
+    expect(supervisionTier(exec, "linux", {})).toBe("unsupervised");
   });
 });
 

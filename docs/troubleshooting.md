@@ -6,7 +6,8 @@ Symptoms below, in order — search the page for yours. **`Os { NotFound }` from
 403)** · **a password prompt won't take your reply** · **no push notifications** · **gone after a
 reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window** ·
 **`tmux list: output did not parse`** · **`herdr plugin list` shows the old version** ·
-**stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it**.
+**stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it** ·
+**an update started from the phone stays at staging**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
 directory" }`** (plugin install fails, action invoke fails)**.** This is *not* a Collie problem — it
@@ -141,6 +142,35 @@ its own client's list, and a pack is Collie's own; neither list feeds the other.
 machine from the phone, enrol it: `collie pack add <ssh-host>` on the lead, then `collie restart` on
 the lead and `collie pack status` to check the link. Adding or removing a machine in Herdr changes
 nothing in the pack ([Herdr machines and the pack](pack.md#herdr-machines-and-the-pack)).
+
+**An update started from the phone stays at staging.** On Collie up to 1.6.0, an update tapped on
+the phone could stage the new version and then stop: the runner that performs the swap was never
+started, the service kept serving the old version, and the run record sat at `staging` with the lock
+held. The tell is three facts together: `collie update --status` reports `staging` (or, past ten
+minutes, `interrupted — the updater is gone`), the version directory for the new release exists under
+`versions/`, and the runner log at `~/.config/collie/collie.log` is 0 bytes. A `collie update` typed
+at a shell on the same machine always worked, which is the same defect seen from the other side. It
+is fixed from the next release on: the handoff now waits for the user manager to confirm the runner,
+and a handoff that was refused is reported as a failure with the manager's own reason.
+
+To clear a machine that is already stuck, do nothing for ten minutes: a run whose updater is gone
+stops blocking a retry ten minutes after its last transition, and the next tap proceeds. To clear it
+now, delete the record, the lock and the staging progress file, then check what `--status` says:
+
+```
+collie update --status            # note the pid it names
+ps -p <pid> -o command=           # empty output: the updater really is gone
+rm -f ~/.local/state/collie/update.json ~/.local/state/collie/update.lock
+rm -f ~/.local/state/collie/update-staging-*.log
+collie update --status            # "no update has run on this install yet"
+```
+
+There is no verb that clears a stale run, and these three files are the whole of the state a stalled
+staging leaves behind. A suffixed instance keeps them in `~/.local/state/collie-<name>/` instead.
+**Never** delete these while an update is actually running, and check the pid first: a live updater
+whose lock you removed will flip `current` with nothing guarding it. Leave `versions/` alone. The
+half-staged version directory is harmless, the retry builds into it again, and the retention sweep
+removes what it no longer needs.
 
 ---
 

@@ -79,6 +79,13 @@ export type Tier = "systemd" | "launchd" | "unsupervised";
 
 const TIERS: readonly Tier[] = ["systemd", "launchd", "unsupervised"];
 
+/** `/run/user/<uid>`, and its bus socket when `withBus`. See {@link systemdUserReachable}. */
+function derivedSessionEnv(uid: number, withBus: boolean): EnvVars {
+  const runtimeDir: EnvVars = { XDG_RUNTIME_DIR: `/run/user/${uid}` };
+  if (!withBus) return runtimeDir;
+  return { ...runtimeDir, DBUS_SESSION_BUS_ADDRESS: `unix:path=/run/user/${uid}/bus` };
+}
+
 /**
  * Whether the systemd user manager is actually reachable — `systemctl --user show-environment`
  * succeeding, not merely `systemctl`/`systemd-run` existing on disk. A container commonly ships
@@ -87,10 +94,28 @@ const TIERS: readonly Tier[] = ["systemd", "launchd", "unsupervised"];
  * ADDRESS` unset. Exported so every caller that needs "can I actually ask systemd to do something"
  * — not just "is a binary present" — asks the same question the same way; `cli/update.ts`'s
  * `handOff` learned the difference the hard way, retrying a doomed `systemd-run` forever.
+ *
+ * `systemctl --user` locates the manager through `XDG_RUNTIME_DIR` (or `DBUS_SESSION_BUS_ADDRESS`)
+ * in `env`. A Herdr plugin action injects neither (`HERDR_SOCKET_PATH` / `HERDR_PLUGIN_CONFIG_DIR`
+ * and nothing else — no login shell), so a healthy host would fail this probe and read as
+ * "unsupervised" on that spawn path alone (#194). When `env` lacks `XDG_RUNTIME_DIR`, a failed
+ * first probe is retried once with a derived default (`/run/user/<uid>`, plus a derived
+ * `DBUS_SESSION_BUS_ADDRESS` when that is ALSO unset) layered under the probe's own env via
+ * {@link Exec.capture}'s `envAdd` — never into `process.env`, and never overriding a name `env`
+ * already carries, so an operator's own value (or the `.env` workaround) still wins. The container
+ * case is preserved: with no user manager at all, the retry fails too, and this still reports false.
  */
-export function systemdUserReachable(exec: Exec): boolean {
+export function systemdUserReachable(exec: Exec, env: Environment = {}): boolean {
   const probe = exec.capture("systemctl", ["--user", "show-environment"]);
-  return probe.found && probe.code === 0;
+  if (probe.found && probe.code === 0) return true;
+  if (env.XDG_RUNTIME_DIR !== undefined) return false;
+  const uid = process.getuid?.() ?? 0;
+  const envAdd =
+    env.DBUS_SESSION_BUS_ADDRESS === undefined
+      ? derivedSessionEnv(uid, true)
+      : derivedSessionEnv(uid, false);
+  const retried = exec.capture("systemctl", ["--user", "show-environment"], undefined, envAdd);
+  return retried.found && retried.code === 0;
 }
 
 /**
@@ -112,7 +137,7 @@ export function supervisionTier(
   const pinned = env.COLLIE_SUPERVISOR?.trim();
   const named = TIERS.find((tier) => tier === pinned);
   if (named !== undefined) return named;
-  if (systemdUserReachable(exec)) return "systemd";
+  if (systemdUserReachable(exec, env)) return "systemd";
   if (platform === "darwin" && exec.which("launchctl") !== null) return "launchd";
   return "unsupervised";
 }

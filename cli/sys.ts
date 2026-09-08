@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import {
   accessSync,
+  closeSync,
   constants,
   existsSync,
   mkdirSync,
@@ -12,6 +13,7 @@ import {
   rmSync,
   statSync,
   writeFileSync,
+  writeSync,
 } from "node:fs";
 import { dirname, isAbsolute, join } from "node:path";
 import { connect } from "node:net";
@@ -38,6 +40,16 @@ export interface ExecResult {
 
 const NOT_FOUND: ExecResult = { code: 127, stdout: "", stderr: "", found: false };
 
+/** What a bounded, logged client call answered. See {@link Exec.runLogged}. */
+export interface LoggedResult {
+  /** Exit code, or 124 on expiry — the coreutils `timeout` convention {@link Exec.capture} keeps. */
+  code: number;
+  /** True when the bound expired and the child was killed: a fact no exit code can carry. */
+  timedOut: boolean;
+  /** stderr as well as logged, because the caller has to say WHY in one line of a run record. */
+  stderr: string;
+}
+
 export interface Exec {
   /** Absolute path of `tool`, or null when it isn't installed. */
   which(tool: string): string | null;
@@ -45,8 +57,19 @@ export interface Exec {
    * Run `tool`, capturing both streams. `timeoutMs` bounds the wall clock: on expiry the child is
    * killed and the result reads as an ordinary failure (code 124, the coreutils `timeout`
    * convention) — a caller probing a binary it does not yet trust must never hang with it.
+   *
+   * `envAdd` layers UNDER this `Exec`'s own environment — a name already set there is never
+   * overridden — and applies to this one call only; the process's real environment is never
+   * touched. It exists for a probe that needs a plausible default for a name the caller's env may
+   * simply lack (`systemdUserReachable` in `cli/lifecycle.ts`, `XDG_RUNTIME_DIR`), not for a caller
+   * that wants to force a value — that belongs in `Exec`'s own env instead.
    */
-  capture(tool: string, args: readonly string[], timeoutMs?: number): ExecResult;
+  capture(
+    tool: string,
+    args: readonly string[],
+    timeoutMs?: number,
+    envAdd?: Readonly<Record<string, string>>,
+  ): ExecResult;
   /** Run `tool` with our own stdio — for `journalctl`, whose output IS the result. */
   inherit(tool: string, args: readonly string[]): ExecResult;
   /**
@@ -62,8 +85,31 @@ export interface Exec {
    */
   runIn(tool: string, args: readonly string[], cwd: string, pathPrefix?: string): ExecResult;
   /**
+   * Run `command` in `cwd` synchronously with a bound, appending both streams to `logPath`.
+   *
+   * For a client that ANSWERS. `systemd-run` without `--wait` returns as soon as the user manager
+   * has accepted the job and started the unit, so its exit code IS the manager's answer to "does
+   * the runner exist yet" — the question {@link Exec.spawnDetached} cannot ask, and the reason the
+   * handoff in `cli/update.ts` waits for this tier instead of firing and hoping.
+   *
+   * Neither existing seam does this job: {@link Exec.capture} takes no `cwd` and no `env` and
+   * writes no log, and {@link Exec.inherit} would put the client's complaint on a terminal nobody
+   * is watching instead of in the file the operator is told to read.
+   */
+  runLogged(
+    command: readonly string[],
+    opts: { cwd: string; env: Record<string, string>; logPath: string; timeoutMs: number },
+  ): LoggedResult;
+  /**
    * Start the unsupervised bridge: detached, both streams appended to `logPath`, and unref'd so
    * this process can exit while it keeps running. Returns its pid, or null if it never started.
+   *
+   * `detached: true` gives the child a new SESSION, not a new cgroup. So a caller that is the main
+   * process of a `.service` takes this child down with it the moment it exits: the default
+   * `KillMode=control-group` kills whatever is left in the unit's cgroup, the child included, and
+   * any client the child was in the middle of running. A caller that needs the child to outlive it
+   * has to escape that cgroup through a manager ({@link Exec.runLogged}), or not be a service's
+   * main process.
    */
   spawnDetached(
     command: readonly string[],
@@ -271,10 +317,13 @@ export function realExec(env: Environment, home: string): Exec {
   const resolve = (tool: string): string | null => findTool(tool, env, home);
   return {
     which: resolve,
-    capture(tool, args, timeoutMs) {
+    capture(tool, args, timeoutMs, envAdd) {
       const bin = resolve(tool);
       if (bin === null) return NOT_FOUND;
-      const r = Bun.spawnSync([bin, ...args], { env, timeout: timeoutMs });
+      // `env` (this Exec's own) is spread LAST so a name it already carries always wins over the
+      // caller-supplied default — see the seam's doc comment.
+      const spawnEnv = envAdd === undefined ? env : { ...envAdd, ...env };
+      const r = Bun.spawnSync([bin, ...args], { env: spawnEnv, timeout: timeoutMs });
       return {
         // A timed-out child has no exit code — it was killed. 124 keeps the seam's "number" contract.
         code: r.exitCode ?? 124,
@@ -303,6 +352,29 @@ export function realExec(env: Environment, home: string): Exec {
         stderr: "inherit",
       });
       return { code: r.exitCode, stdout: "", stderr: "", found: true };
+    },
+    runLogged(command, opts) {
+      const [tool, ...args] = command;
+      const bin = tool === undefined ? null : resolve(tool);
+      if (bin === null) return { code: 127, timedOut: false, stderr: "" };
+      const r = Bun.spawnSync([bin, ...args], {
+        cwd: opts.cwd,
+        env: opts.env,
+        timeout: opts.timeoutMs,
+      });
+      const stderr = r.stderr.toString();
+      // Append, never truncate, and open the same way the detached runner opens it: this is the one
+      // file the operator is pointed at, and on a refused handoff it is the only thing written.
+      mkdirSync(dirname(opts.logPath), { recursive: true });
+      const fd = openSync(opts.logPath, "a");
+      try {
+        writeSync(fd, r.stdout.toString());
+        writeSync(fd, stderr);
+      } finally {
+        closeSync(fd);
+      }
+      const timedOut = r.exitedDueToTimeout === true;
+      return { code: timedOut ? 124 : r.exitCode, timedOut, stderr };
     },
     spawnDetached(command, opts) {
       const [program, ...args] = command;

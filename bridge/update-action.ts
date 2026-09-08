@@ -855,11 +855,15 @@ function peersNeedLevelling(state: UpdateStartState): boolean {
  *
  * **What it does add is one hop out of its own cgroup.** `collie update` stages first and hands off
  * second, and the handoff is what restarts this very service — so a staging child left inside the
- * bridge's unit would be killed by the restart it asked for. `systemd-run --user --collect` moves it
- * into a transient unit of its own; `setsid` at least leaves the process group where there is no
- * user manager; a bare spawn is the last resort on a host with neither. That ladder is deliberately
- * the same three tiers as `cli/update-run.ts`'s `launchPlan`, for the same reasons written there —
- * it is restated rather than imported because nothing in `bridge/` may import from `cli/`.
+ * bridge's unit would be killed by the restart it asked for. `systemd-run --user --collect` asks the
+ * user manager to run the staging in a transient unit of its own, and it is that UNIT which sits
+ * outside this cgroup; the `systemd-run` client stays a member of it until it exits, which is the
+ * distinction the handoff inside `collie update` has to honour in turn
+ * ([ADR 0037](../.adr/0037-a-staged-update-confirms-its-runner-before-it-exits.md)). `setsid` at
+ * least leaves the process group where there is no user manager; a bare spawn is the last resort on
+ * a host with neither. That ladder is deliberately the same three tiers as `cli/update-run.ts`'s
+ * `launchPlan`, for the same reasons written there — it is restated rather than imported because
+ * nothing in `bridge/` may import from `cli/`.
  */
 export function updateStartCommand(a: {
   readonly platform: string;

@@ -266,6 +266,7 @@ const noExec: Exec = {
   capture: (): ExecResult => ({ code: 127, stdout: "", stderr: "", found: false }),
   inherit: (): ExecResult => ({ code: 127, stdout: "", stderr: "", found: false }),
   runIn: (): ExecResult => ({ code: 127, stdout: "", stderr: "", found: false }),
+  runLogged: () => ({ code: 127, timedOut: false, stderr: "" }),
   spawnDetached: () => null,
   processCommand: () => null,
   kill: () => {},

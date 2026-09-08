@@ -45,6 +45,7 @@ import {
   probeConfigOf,
   probeTarget,
   healthTimeoutMs,
+  HANDOFF_CONFIRM_MS,
   idleRun,
   launchPlan,
   lockVerdict,
@@ -2203,6 +2204,22 @@ function beginStaging(deps: UpdateDeps, a: { from: string | null; to: string; ru
 }
 
 /**
+ * The `.service` unit this process is a member of the cgroup of, or null when it is not in one.
+ *
+ * Read through the {@link Files} seam so a test can state either answer. cgroup v2 writes one line,
+ * `0::<path>`; v1 writes one per controller. The path is the last colon-separated field either way,
+ * and only a leaf ending in `.service` is the case that matters: a `session-<n>.scope` (an ssh
+ * shell) has no main process, so nothing in it exiting tears the cgroup down.
+ */
+function serviceCgroup(files: Files): string | null {
+  for (const line of (files.read("/proc/self/cgroup") ?? "").split("\n")) {
+    const path = line.split(":").at(-1)?.trim() ?? "";
+    if (path.endsWith(".service")) return path.split("/").at(-1) ?? path;
+  }
+  return null;
+}
+
+/**
  * Stage is done: write `staging`, launch the runner with its own lifetime, and get out of the way.
  *
  * This function does not flip and does not restart. It exits 0 the moment the child is away, because
@@ -2239,20 +2256,69 @@ function handOff(
     args: applyArgv({ ...a, handoff: deps.pid }),
     unit: unitName(deps.ctx.instance),
     stamp: now.toString(36),
-    hasSystemdRun: deps.exec.which("systemd-run") !== null && systemdUserReachable(deps.exec),
+    hasSystemdRun: deps.exec.which("systemd-run") !== null && systemdUserReachable(deps.exec, deps.ctx.env),
     hasSetsid: deps.exec.which("setsid") !== null,
   });
-  const pid = deps.exec.spawnDetached(plan.command, {
-    cwd: layout.installRoot,
-    env: runnerEnv(deps.ctx.env),
-    logPath: logFilePath(deps.ctx.configDir, deps.ctx.instance),
-  });
-  if (pid === null) {
+  const logPath = logFilePath(deps.ctx.configDir, deps.ctx.instance);
+  // A handoff that did not happen is a FAILURE, printed and recorded. Without this branch the record
+  // sits at `staging` until the staleness rule reads it as `interrupted` ten minutes later, the phone
+  // shows a live-looking run for that whole window, and a retry is refused for it.
+  // The complaint text ends up in the abort reason, which the phone displays, so a manager's own
+  // wall of stderr does not get to blow up that screen. 160 characters is a headline, not a log.
+  const COMPLAINT_MAX = 160;
+  const capComplaint = (line: string | undefined): string | undefined => {
+    if (line === undefined) return undefined;
+    if (line.length <= COMPLAINT_MAX) return line;
+    return `${line.slice(0, COMPLAINT_MAX)}…`;
+  };
+
+  const refused = (reason: string, said: string): number => {
     releaseLock(deps.files, deps.ctx.stateDir);
-    writeRun(deps.files, deps.ctx.stateDir, reduce(staging, { kind: "abort", reason: plan.note }, deps.now()));
-    deps.io.err("error: the update was staged, but the detached updater could not be started.");
+    writeRun(deps.files, deps.ctx.stateDir, reduce(staging, { kind: "abort", reason }, deps.now()));
+    deps.io.err(`error: ${said}`);
     deps.io.err(`       Nothing was swapped. Apply it by hand: ${runnerBinary(deps)} ${applyArgv({ ...a, handoff: 0 }).join(" ")}`);
     return EXIT.FAIL;
+  };
+
+  if (plan.confirms === "manager") {
+    // The client is a client: `systemd-run` without `--wait` returns as soon as the manager has
+    // accepted the job and started the unit, so waiting for it costs tens of milliseconds and buys
+    // the whole guarantee. The runner is then in a unit of its own, and this process may exit —
+    // which, as the main process of a service, is exactly what used to kill the client mid-flight
+    // (`Exec.spawnDetached`, and ADR 0037).
+    const client = deps.exec.runLogged(plan.command, {
+      cwd: layout.installRoot,
+      env: runnerEnv(deps.ctx.env),
+      logPath,
+      timeoutMs: HANDOFF_CONFIRM_MS,
+    });
+    if (client.code !== 0) {
+      // The manager's own complaint, because `exit 1` on its own tells an operator nothing. Capped:
+      // this text lands in the abort reason, which the phone displays, and a manager can be verbose.
+      const complaint = capComplaint(client.stderr.split("\n").map((l) => l.trim()).find((l) => l !== ""));
+      const why = client.timedOut ? `timeout after ${Math.round(HANDOFF_CONFIRM_MS / 1000)}s` : `exit ${client.code}`;
+      const reason = `the ${plan.kind} handoff was refused (${why})${complaint === undefined ? "" : `: ${complaint}`}`;
+      return refused(reason, `the update was staged, but ${reason}.`);
+    }
+  } else {
+    // This tier has no manager to ask, and its child is not a fast client — it IS the runner. So a
+    // launch from inside a service cgroup dies within milliseconds of this function returning: this
+    // process is the unit's main process, and its exit has systemd tear the cgroup down under the
+    // default `KillMode=control-group`, taking the runner with it long before the swap it was
+    // started for. That is worse than the stall this spec removes. Refusing is the honest answer.
+    const unit = serviceCgroup(deps.files);
+    if (unit !== null) {
+      const reason = `the ${plan.kind} handoff cannot run from inside ${unit}: a hand-off from inside a service needs the user manager`;
+      return refused(reason, `the update was staged, but ${reason}.`);
+    }
+    const pid = deps.exec.spawnDetached(plan.command, {
+      cwd: layout.installRoot,
+      env: runnerEnv(deps.ctx.env),
+      logPath,
+    });
+    if (pid === null) {
+      return refused(plan.note, "the update was staged, but the detached updater could not be started.");
+    }
   }
   deps.io.out(`✓ ${a.to} is staged — ${plan.note}.`);
   deps.io.out("  The swap, the restart and the health check run there, so this command is done.");
