@@ -240,6 +240,19 @@ describe("the pidfile guard", () => {
     expect(isOurBridge(`${BINARY} status`, BINARY)).toBe(false);
   });
 
+  test("recognises a binary install's bridge across a version flip, but not a stranger install", () => {
+    const OLD = "/home/pat/.local/share/collie/versions/1.5.6/bin/collie";
+    const NEW = "/home/pat/.local/share/collie/versions/1.6.0/bin/collie";
+    // The post-flip restart runs as NEW (`ctx.root` resolves through `process.execPath`), and must
+    // still recognise the OLD version's bridge as its own to stop it — the one case a self-update
+    // wedges forever in if this predicate cannot see past the version directory.
+    expect(isOurBridge(`${OLD} _exec-bridge`, NEW)).toBe(true);
+    expect(isOurBridge(`${NEW} _exec-bridge`, OLD)).toBe(true);
+    // A different install entirely — same version string, different root — is still refused.
+    const STRANGER = "/home/pat/.local/share/collie-other/versions/1.6.0/bin/collie";
+    expect(isOurBridge(`${STRANGER} _exec-bridge`, NEW)).toBe(false);
+  });
+
   test("kills the pid only when it is still our bridge, and always drops the record", () => {
     const h = harness({
       files: { [`${CONFIG}/collie.pid`]: "4242\n" },

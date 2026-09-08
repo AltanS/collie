@@ -157,6 +157,18 @@ export const logFilePath = (configDir: string, instance: string | null = null): 
 // ── The pidfile guard ────────────────────────────────────────────────────────
 
 /**
+ * A binary install's own path names the version directory it runs from
+ * (`<installRoot>/versions/<version>/bin/collie`), and that segment is exactly what a restart
+ * changes: `pluginRoot()` resolves `ctx.root` from `process.execPath`, so the process carrying out
+ * a post-flip restart names ITS OWN (new) version, never the prior one it needs to recognise as its
+ * own bridge in order to stop it. Collapsing the version segment answers "same install" without
+ * caring which version either side is — a checkout's binary has no such segment and is untouched.
+ */
+function collapseVersionDir(path: string): string {
+  return path.replace(/\/versions\/[^/\s]+\//, "/");
+}
+
+/**
  * Is `commandLine` one of our own bridges? The pidfile outlives its process (SIGKILL, a panic, a
  * reboot) and pids get recycled, so a kill has to be justified by the process table — and this also
  * runs on `start`, where a wrong guess kills a bystander (the pre-shim collie-ctl.sh).
@@ -164,6 +176,13 @@ export const logFilePath = (configDir: string, instance: string | null = null): 
  * The shell matched `bridge/index.ts`, the tail of its `ExecStart`. That string does not appear in
  * the compiled binary's command line, so the predicate moves in lockstep with `ExecStart`: the
  * program we launch, plus the role argument that distinguishes the daemon from a CLI invocation.
+ *
+ * The comparison runs on both sides with their version directory collapsed (see
+ * {@link collapseVersionDir}), so a binary install's post-flip restart recognises the bridge it is
+ * about to replace even though that bridge names a different version than this process does — the
+ * one case `process.execPath`-derived paths never agree on, and a self-update wedges forever if this
+ * predicate cannot see past it. Everything outside that one segment still has to match exactly, so a
+ * bystander under a different install root is refused exactly as before.
  *
  * And, since two instances can run out of ONE checkout, plus the instance marker `bridgeCommand`
  * puts there. It is checked in both directions: a suffixed instance demands its own `--instance
@@ -175,7 +194,12 @@ export function isOurBridge(
   binary: string,
   instance: string | null = null,
 ): boolean {
-  if (!commandLine.includes(binary) || !commandLine.includes("_exec-bridge")) return false;
+  if (
+    !collapseVersionDir(commandLine).includes(collapseVersionDir(binary)) ||
+    !commandLine.includes("_exec-bridge")
+  ) {
+    return false;
+  }
   return instance === null
     ? !/--instance(\s|=)/.test(commandLine)
     : new RegExp(`--instance(\\s+|=)${instance}(\\s|$)`).test(commandLine);
