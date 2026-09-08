@@ -21,12 +21,43 @@ graph TD
   op -.->|"ssh"| deputy
 ```
 
-A machine saved in Herdr is not a pack member. Herdr 0.9.0 lets one Herdr client hold several saved
-SSH machines, and Collie reads none of them: it talks to the local Herdr socket only
-([ADR 0022](../.adr/0022-the-mux-seam-is-a-port-collie-owns.md)), so a pack is the one way another
-machine's sessions reach the phone.
+## Herdr machines and the pack
 
-**Two machines, one pack.** The lead is the instance your phone already reaches. The joining machine
+Herdr's saved machines and a Collie pack are two separate lists, and neither one feeds the other.
+
+Herdr's machine list belongs to your Herdr window. Herdr 0.9.0 keeps saved ssh targets in its
+client and opens each one over ssh every time you use it. You get terminals on those machines, in
+that window, on the machine you are sitting at.
+
+A pack is Collie on every machine. The lead reaches each member over Collie's own encrypted link,
+set up once by an install that rides your ssh. Your phone reaches the lead and nothing else, and it
+never holds an ssh key.
+
+A pack shows terminals too, and it carries more than terminals. It moves uploads. It keeps each
+machine's journal and audit log on the machine that ran the pane. It updates the whole pack from one
+confirm on the phone. It can hand the front door to a deputy when the lead goes quiet. It works the
+same under tmux and zellij, which have no machine list at all.
+
+Three facts keep the two lists apart, and each one is a reason on its own. The phone must never hold
+an ssh key. Uploads, the journal and the audit log live on the machine that runs the pane. The pack
+link needs no ssh once a member has enrolled.
+
+So you do not set the same thing up twice. You set up ssh once, and both tools use it. Herdr keeps
+its list for its own window, and Collie keeps the pack for your phone. Adding a machine to Herdr
+does not add it to the pack. Removing it from Herdr does not remove it from the pack. A pack member
+running tmux or zellij never appears in Herdr's list.
+
+| what | Herdr's machine list | a Collie pack |
+| --- | --- | --- |
+| Who makes the link | your Herdr client | the lead Collie |
+| What carries it | ssh, on every use | Collie's own encrypted link |
+| What you see | terminals | terminals, uploads, journal, audit log, updates, failover |
+| Where you see it | your Herdr window | your phone |
+| Works with tmux and zellij | no | yes |
+
+## Two machines, one pack
+
+The lead is the instance your phone already reaches. The joining machine
 must have Collie installed and running. On the **lead**:
 
 ```bash

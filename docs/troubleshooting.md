@@ -6,7 +6,7 @@ Symptoms below, in order — search the page for yours. **`Os { NotFound }` from
 403)** · **a password prompt won't take your reply** · **no push notifications** · **gone after a
 reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window** ·
 **`tmux list: output did not parse`** · **`herdr plugin list` shows the old version** ·
-**stale UI after a rebuild**.
+**stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
 directory" }`** (plugin install fails, action invoke fails)**.** This is *not* a Collie problem — it
@@ -135,6 +135,12 @@ mismatch, the footer offers **"new build — tap to update."** Otherwise reopen 
 (the SW auto-updates) or clear that origin's site data. Best practice: **pick one HTTPS origin and
 stick to it.** (Over plain HTTP the SW can't register — always fresh, but no PWA features.)
 
+
+**I saved a machine in Herdr and the phone does not show it.** Expected. Herdr's saved machines are
+its own client's list, and a pack is Collie's own; neither list feeds the other. To reach that
+machine from the phone, enrol it: `collie pack add <ssh-host>` on the lead, then `collie restart` on
+the lead and `collie pack status` to check the link. Adding or removing a machine in Herdr changes
+nothing in the pack ([Herdr machines and the pack](pack.md#herdr-machines-and-the-pack)).
 
 ---
 

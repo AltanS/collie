@@ -1639,6 +1639,13 @@ section before running it; its costs are not summarised here.
   discovery or membership sync — ever. An address and a token is the whole contract. This extends
   [ADR 0001](./.adr/0001-one-managed-front-door.md): Collie manages one front door **per pack**, the
   lead's, and peers manage none.
+- **A multiplexer's own machine linking.** Whatever a multiplexer can reach on another box is
+  **not a pack transport**, and its adapter reports only panes whose terminal runs on its own machine.
+  This is the same refusal as the overlay-network one, one layer down: the map of machines is
+  Collie's, a pack member is a full collie, and a pane's journal, uploads and audit log sit on the
+  machine that runs it
+  ([ADR 0036](./.adr/0036-the-map-of-machines-is-collies-a-mux-reports-one-machine.md)). Such a
+  multiplexer may offer the operator a list of candidate hosts for `pack add`, and nothing else.
 - **A second managed front door.** A peer never runs `tailscale serve` and **never `tailscale
   funnel`** — the prohibition generalises to any tunnel offering a public URL.
 - **Transparent failover / leader election.** §14.

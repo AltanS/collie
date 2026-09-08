@@ -178,11 +178,12 @@ it re-runs the session's commands, so it stays the operator's own `attach` to ma
 
 ## Contract-owned rules
 
-Seven things the contract owns outright, because an adapter deciding them independently is how the
+Eight things the contract owns outright, because an adapter deciding them independently is how the
 seam rots.
 
 | Rule | What the contract says | How each adapter meets it |
 | --- | --- | --- |
+| **Host locality** | The port takes no host, and **an adapter reports only panes whose terminal runs on this machine**. A multiplexer that links machines of its own may expose panes that live elsewhere; its adapter drops them, because the journal, the uploads and the audit log for a pane sit on the machine that runs it. A dropped pane is not a refusal and not an error, it is another collie's pane, reached by talking to that collie ([ADR 0036](./.adr/0036-the-map-of-machines-is-collies-a-mux-reports-one-machine.md), [ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md)) | Herdr's daemon knows one machine, and the machine linking its 0.9.0 client added is client-side and off the socket, so nothing to drop today (**API**); tmux and zellij each serve one machine per server socket, and a remote session is somebody's ssh, not the adapter's (**T**, **Z**) |
 | **Identity** ([`identity.ts`](./bridge/mux/identity.ts)) | A pane id is opaque above the adapter, stable across reconnect/restart/rename, unique within one collie, never recycled, and safe as one URL segment | Herdr `w6:p3` (**API**); tmux `%0` (**T**); zellij `terminal_<n>` (**Z**) — three shapes, all carried unchanged |
 | **Keys** ([`keys.ts`](./bridge/mux/keys.ts)) | One neutral spelling: `+`-joined lower-case modifiers in canonical order `ctrl alt shift meta`, then a single character or one CapitalCase name from a **closed, complete** alphabet | Herdr's grammar is nearly it, minus `meta`→`super`/`cmd` (**API**); tmux and zellij each need a real translation table (**T**, **Z**) |
 | **The grid** | Already rendered by the multiplexer, colour only. Collie runs no terminal emulator ([ADR 0008](./.adr/0008-collie-does-not-run-a-terminal-emulator.md)) — an adapter may **decline** the grid; it never gets a VT parser written for it | all three render on demand (**API**, **T**, **Z**) |
