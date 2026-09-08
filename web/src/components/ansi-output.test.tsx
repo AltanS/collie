@@ -450,3 +450,22 @@ describe("clickable links in the mirror", () => {
     expect(a.className).not.toMatch(/\bpy-\[[\d.]+px\]/);
   });
 });
+
+describe("terminal mirror image placeholders", () => {
+  const KITTY_PLACEHOLDER = "\u{10EEEE}\u{10EEEE}\u{10EEEE}";
+
+  it("renders a placeholder badge when images are absent", () => {
+    const { container } = render(<AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} />);
+    expect(container.textContent).toContain("[Image]");
+  });
+
+  it("renders an inline image when images are provided", () => {
+    const imageUrl = "/api/blobs/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const { container } = render(
+      <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[imageUrl]} />,
+    );
+    const img = container.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img?.getAttribute("src")).toBe(imageUrl);
+  });
+});

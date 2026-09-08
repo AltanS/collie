@@ -792,6 +792,23 @@ describe("paneReadResponse — pane read → REST body", () => {
     });
   });
 
+  test("extracts blob references from terminal text", () => {
+    const hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const read: MuxGrid = {
+      paneId: "w1:p1",
+      text: `viewed image /api/blobs/${hash} in terminal`,
+      truncated: false,
+      revision: 1,
+    };
+    expect(paneReadResponse("w1:p1", read)).toEqual({
+      paneId: "w1:p1",
+      text: `viewed image /api/blobs/${hash} in terminal`,
+      truncated: false,
+      revision: 1,
+      images: [`/api/blobs/${hash}`],
+    });
+  });
+
   test("carries a zero revision unchanged (fresh pane) rather than dropping the field", () => {
     const read: MuxGrid = { paneId: "w2:p1", text: "", truncated: false, revision: 0 };
     expect(paneReadResponse("w2:p1", read)).toEqual({
