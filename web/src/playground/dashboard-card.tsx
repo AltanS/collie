@@ -51,6 +51,7 @@ const ROWS: AgentView[] = triage(home.agents).flatMap((s) => s.agents);
 export function DashboardRowsCard() {
   return (
     <Card
+      state="dashboard-rows-live"
       label="Dashboard rows (live snapshot from this machine)"
       reach="the dashboard, on a machine with these eleven panes open. Every row here is the shipped component with the props the home route passes it."
       note="Eleven REAL panes off this machine's bridge (src/playground/fixtures/dashboard-live.ts), in the home route's own triage order, in the real ListGroup the flat sections use. Held dark regardless of the page theme, because that is the dress the row is judged in. Two widths: the reference phone at 390px, and 360px, where a row breaks first."
