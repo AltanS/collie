@@ -15,7 +15,7 @@ import {
 const roots = { claude: ["/c"], codex: ["/x"], pi: ["/p"], opencode: ["/o"], grok: ["/g"], hermes: ["/h"] };
 
 describe("buildJournalRegistry", () => {
-  test("serves the five verified harnesses", () => {
+  test("serves the six verified harnesses", () => {
     expect(journalAgents(buildJournalRegistry(roots))).toEqual([
       "claude",
       "codex",
