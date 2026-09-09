@@ -1384,8 +1384,8 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       return refuse(CREW_PAIRING_PATH, "not-a-crew-member");
     }
     const sync = parsePairingSync(await readJson(req, cached));
-    if (sync === null) return badRequest(self, "a pairing sync needs `packId`, `leadMemberId` and `devices`");
-    if (data.crew === null || sync.packId !== data.crew.crewId || sync.leadMemberId !== from.memberId) {
+    if (sync === null) return badRequest(self, "a pairing sync needs `crewId`, `leadMemberId` and `devices`");
+    if (data.crew === null || sync.crewId !== data.crew.crewId || sync.leadMemberId !== from.memberId) {
       return badRequest(self, "this pairing sync is not from this collie's own lead, or not for this crew");
     }
     // ── THE SYNC ALWAYS LANDS. A COLLISION IS REPORTED, NOT A REFUSAL ─────────

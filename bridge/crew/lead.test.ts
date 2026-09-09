@@ -628,7 +628,7 @@ describe("a sweep that died on its own clock earns a patient re-ask (§10.4)", (
 
 describe("CrewLead — the warrant re-push, on the sweep the lead already runs", () => {
   const WARRANT: Warrant = {
-    packId: "crew-1",
+    crewId: "crew-1",
     generation: 2,
     deputyMemberId: "nas",
     deputyFingerprint: "a".repeat(64),
@@ -761,7 +761,7 @@ describe("CrewLead — the warrant re-push, on the sweep the lead already runs",
 type PeerReportBody = typeof body & { pairingDigest?: string; pairingCollision?: string[] };
 
 describe("CrewLead — a pairing collision is REPORTED every sweep, never swallowed", () => {
-  const sync = { packId: "crew-1", leadMemberId: "desk", devices: [] };
+  const sync = { crewId: "crew-1", leadMemberId: "desk", devices: [] };
 
   /**
    * A lead syncing its registry to `deputy`, with a scripted answer from that deputy — and, since the

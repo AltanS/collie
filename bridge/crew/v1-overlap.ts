@@ -191,7 +191,7 @@ export function version1Url(url: string): string {
 export function canonicalWarrantVersion1(w: Warrant): string {
   return [
     V1_WARRANT_DOMAIN,
-    w.packId,
+    w.crewId,
     String(w.generation),
     w.leadMemberId,
     w.deputyMemberId ?? NONE,

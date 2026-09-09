@@ -51,7 +51,7 @@ function sources(over: Partial<CrewStatusSources> = {}): CrewStatusSources {
 /** A stored warrant naming `deputy`, with only the fields this surface reads filled honestly. */
 function storedWarrant(generation: number, deputyMemberId: string | null): TrustStoreData["warrant"] {
   const warrant: Warrant = {
-    packId: CREW.crewId,
+    crewId: CREW.crewId,
     generation,
     deputyMemberId,
     deputyFingerprint: null,

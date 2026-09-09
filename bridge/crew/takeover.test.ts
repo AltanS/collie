@@ -57,7 +57,7 @@ function witnessStore(over: Partial<TrustStoreData> = {}): TrustStoreData {
 /** A warrant as the JSON document it travels as — field by field, so a test can bend exactly one. */
 function wireOf(w: Warrant): JsonObject {
   return {
-    packId: w.packId,
+    crewId: w.crewId,
     generation: w.generation,
     deputyMemberId: w.deputyMemberId,
     deputyFingerprint: w.deputyFingerprint,

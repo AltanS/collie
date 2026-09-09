@@ -1117,7 +1117,7 @@ describe("operatorReason — one runtime failure, said once, in Collie's words",
 
 describe("warrant — the lead's push (§18)", () => {
   const warrant = {
-    packId: "crew-1",
+    crewId: "crew-1",
     generation: 2,
     deputyMemberId: "nas",
     deputyFingerprint: "a".repeat(64),
@@ -1198,7 +1198,7 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
   });
 
   test("a malformed warrant on an otherwise good conflict reads as no proof, never as a broken link", async () => {
-    const { fetch } = replying(conflictBody({ warrant: { packId: 7 } }), { status: 409, protocol: "1" });
+    const { fetch } = replying(conflictBody({ warrant: { crewId: 7 } }), { status: 409, protocol: "1" });
     const outcome = await client(fetch).snapshot(laptop);
     if (outcome.ok || outcome.state !== "conflicted") throw new Error("expected conflicted");
     expect(outcome.warrant).toBeNull();
@@ -1239,7 +1239,7 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
 });
 
 describe("PeerClient — pairing_label_collision, the other 409 (§18.14)", () => {
-  const sync = { packId: "crew-1", leadMemberId: "desk", devices: [] };
+  const sync = { crewId: "crew-1", leadMemberId: "desk", devices: [] };
   const collisionBody = (over: Record<string, JsonValue | undefined> = {}) => ({
     error: 'this machine already has paired devices called "phone" — rename one, or revoke it here',
     code: "pairing_label_collision",

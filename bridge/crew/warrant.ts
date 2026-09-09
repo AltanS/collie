@@ -59,7 +59,7 @@ const NONE = "-";
  * The string that is signed, exactly (RFC §4.3):
  *
  * ```
- * collie-crew-warrant-v2\n<packId>\n<generation>\n<leadMemberId>\n<deputyMemberId>\n<deputyFingerprint>\n<issuedAt>\n<refreshedAt>
+ * collie-crew-warrant-v2\n<crewId>\n<generation>\n<leadMemberId>\n<deputyMemberId>\n<deputyFingerprint>\n<issuedAt>\n<refreshedAt>
  * ```
  *
  * Eight LF-separated fields. `deputyMemberId` and `deputyFingerprint` are the literal `-` in a
@@ -70,7 +70,7 @@ const NONE = "-";
 export function canonicalWarrant(w: Warrant): string {
   return [
     WARRANT_DOMAIN,
-    w.packId,
+    w.crewId,
     String(w.generation),
     w.leadMemberId,
     w.deputyMemberId ?? NONE,
@@ -157,7 +157,12 @@ function asRecord(value: JsonValue | undefined): JsonObject | null {
 export function parseWarrant(value: JsonValue | undefined): Warrant | null {
   const w = asRecord(value);
   if (w === null) return null;
-  if (typeof w.packId !== "string" || w.packId === "") return null;
+  // REMOVE_IN_1_9_0: `packId` is the 1.7.0 spelling of `crewId` (§0.1). Every 1.8.0 writer emits
+  // `crewId`; this reader prefers it and falls back, which covers both skews without the overlap
+  // having to translate a body — a 1.8.0 lead's version 1 listener and a 1.8.0 member under a 1.7.0
+  // lead both arrive here, at the same parser.
+  const crewId = typeof w.crewId === "string" ? w.crewId : w.packId;
+  if (typeof crewId !== "string" || crewId === "") return null;
   if (typeof w.generation !== "number" || !Number.isSafeInteger(w.generation) || w.generation < 1) return null;
   if (!isMemberId(w.leadMemberId)) return null;
   if (typeof w.issuedAt !== "number" || typeof w.refreshedAt !== "number") return null;
@@ -172,7 +177,7 @@ export function parseWarrant(value: JsonValue | undefined): Warrant | null {
     deputyFingerprint = fingerprint;
   }
   return {
-    packId: w.packId,
+    crewId,
     generation: w.generation,
     deputyMemberId,
     deputyFingerprint,
@@ -218,7 +223,7 @@ export function mintWarrant(
   }
 
   const warrant = sign(data, {
-    packId: crew.crewId,
+    crewId: crew.crewId,
     generation: nextWarrantGeneration(data),
     deputyMemberId: deputy?.memberId ?? null,
     deputyFingerprint: deputy?.fingerprint ?? null,
@@ -264,7 +269,7 @@ export function refreshWarrant(data: TrustStoreData, now: number): CrewChange<Wa
   const stored = currentWarrant(data);
   if (stored === null || data.crew === null || data.lead !== null) return null;
   const held = stored.warrant;
-  if (held.leadMemberId !== data.self.memberId || held.packId !== data.crew.crewId) return null;
+  if (held.leadMemberId !== data.self.memberId || held.crewId !== data.crew.crewId) return null;
   if (warrantExpired(held, now)) return null;
   if (now - held.refreshedAt < WARRANT_REFRESH_INTERVAL_MS) return null;
   // A clock that jumped backwards must not walk the warrant backwards either: the refresh has to
@@ -439,7 +444,7 @@ export function checkWarrantPush(
   if (data === null || data.crew === null || lead === null || lead.status !== "enrolled") {
     return { kind: "refuse", reason: "foreign" };
   }
-  if (warrant.packId !== data.crew.crewId || warrant.leadMemberId !== lead.memberId) {
+  if (warrant.crewId !== data.crew.crewId || warrant.leadMemberId !== lead.memberId) {
     return { kind: "refuse", reason: "foreign" };
   }
   if (!verifyWarrantSignature(warrant, lead.certPem)) return { kind: "refuse", reason: "bad-signature" };
@@ -494,16 +499,16 @@ export function checkWarrantPush(
  */
 export function discardForeignWarrant(
   data: TrustStoreData,
-): CrewChange<{ packId: string; generation: number }> | null {
+): CrewChange<{ crewId: string; generation: number }> | null {
   const stored = currentWarrant(data);
   if (data.crew === null || stored === null) return null;
-  if (stored.warrant.packId === data.crew.crewId) return null;
+  if (stored.warrant.crewId === data.crew.crewId) return null;
   return {
     next: { ...data, warrant: null, standbyRoster: null, deputy: null },
-    result: { packId: stored.warrant.packId, generation: stored.warrant.generation },
+    result: { crewId: stored.warrant.crewId, generation: stored.warrant.generation },
     audit: {
       action: "crew.warrant.foreign",
-      detail: { crew: stored.warrant.packId, generation: stored.warrant.generation },
+      detail: { crew: stored.warrant.crewId, generation: stored.warrant.generation },
     },
   };
 }

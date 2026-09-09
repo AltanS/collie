@@ -184,7 +184,7 @@ export interface PendingHandover {
  * *key* that may take over and not merely the name it answers to (§14.2's lesson).
  */
 export interface Warrant {
-  readonly packId: string;
+  readonly crewId: string;
   /** Monotonic on the lead. Higher supersedes lower, everywhere. Never reset, never reused. */
   readonly generation: number;
   /** The deputy, or `null` — a revocation warrant names nobody (RFC §4.4). */
@@ -394,7 +394,10 @@ function isWarrant(value: JsonValue | undefined): value is JsonValue & Warrant {
   const named = isMemberId(w.deputyMemberId) && isFingerprint(w.deputyFingerprint);
   const revoked = w.deputyMemberId === null && w.deputyFingerprint === null;
   return (
-    typeof w.packId === "string" &&
+    // REMOVE_IN_1_9_0: `packId` is the 1.7.0 spelling of `crewId`. A store written by 1.7.0 holds a
+    // warrant under the old key, and {@link storedWarrantCrewId} is what puts the value under the new
+    // one — this guard only has to accept either, or the whole store reads as malformed.
+    typeof warrantCrewId(w) === "string" &&
     typeof w.generation === "number" &&
     Number.isSafeInteger(w.generation) &&
     (named || revoked) &&
@@ -414,6 +417,52 @@ function isTimestamp(value: JsonValue | undefined): value is JsonValue & number 
 /** {@link isMemberId} at this parser's argument type, so the optional reader below can take it. */
 function isDeputyId(value: JsonValue | undefined): value is JsonValue & string {
   return isMemberId(value);
+}
+
+/**
+ * REMOVE_IN_1_9_0 — the warrant's crew id, under either spelling (§0.1).
+ *
+ * The warrant is one signature that lives on every member's disk and travels the wire, so a machine
+ * that updates from 1.7.0 comes up holding one written under `packId`. Every 1.8.0 WRITER emits
+ * `crewId`; every 1.8.0 READER accepts both, and this is the one place that decides which.
+ *
+ * `undefined` when neither is a string, which is what makes the guard above refuse the store.
+ */
+function warrantCrewId(w: JsonObject): JsonValue | undefined {
+  return typeof w.crewId === "string" ? w.crewId : w.packId;
+}
+
+/**
+ * REMOVE_IN_1_9_0 — a stored warrant with its crew id moved to the crew spelling.
+ *
+ * The guard accepts either key, but the value handed downstream must carry `crewId`, or a 1.7.0 blob
+ * would satisfy the type and read `undefined` at every use. The next write puts the crew spelling on
+ * disk, so a store is converted by being read once.
+ *
+ * `raw` is the same field before narrowing, so the old key is read as JSON rather than asserted
+ * through the type — the guard already proved one of the two is a string.
+ */
+function storedWarrantCrewId(stored: StoredWarrant | null, raw: JsonValue | undefined): StoredWarrant | null {
+  if (stored === null || typeof stored.warrant.crewId === "string") return stored;
+  const legacy = asRecord(asRecord(raw)?.warrant);
+  const crewId = legacy === null ? undefined : legacy.packId;
+  if (typeof crewId !== "string") return stored;
+  // Field by field rather than a spread: a spread would keep the dead `packId` beside the new key,
+  // and the next write would put BOTH on disk — a store that migrates for ever.
+  const w = stored.warrant;
+  return {
+    ...stored,
+    warrant: {
+      crewId,
+      generation: w.generation,
+      deputyMemberId: w.deputyMemberId,
+      deputyFingerprint: w.deputyFingerprint,
+      leadMemberId: w.leadMemberId,
+      issuedAt: w.issuedAt,
+      refreshedAt: w.refreshedAt,
+      signature: w.signature,
+    },
+  };
 }
 
 function isStoredWarrant(value: JsonValue | undefined): value is JsonValue & StoredWarrant {
@@ -478,7 +527,7 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
     return null;
   }
 
-  // REMOVE_IN_1_9_0: `pack`/`packId` are the 1.7.0 spellings of `crew`/`crewId`. Read once here,
+  // REMOVE_IN_1_9_0: `pack`/`crewId` are the 1.7.0 spellings of `crew`/`crewId`. Read once here,
   // written back in the crew spelling by the next `update` — a 1.7.0 store therefore needs no
   // separate rewrite step, and a 1.8.0 store is never read by the old key at all.
   const crewField = d.crew ?? d.pack;
@@ -548,7 +597,8 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
   let out = store;
   if (handover.value !== undefined) out = { ...out, pendingHandover: handover.value };
   if (deputy.value !== undefined) out = { ...out, deputy: deputy.value };
-  if (warrant.value !== undefined) out = { ...out, warrant: warrant.value };
+  // REMOVE_IN_1_9_0: `storedWarrantCrewId` moves a 1.7.0 `packId` onto `crewId`.
+  if (warrant.value !== undefined) out = { ...out, warrant: storedWarrantCrewId(warrant.value, d.warrant) };
   if (standbyRoster.value !== undefined) out = { ...out, standbyRoster: standbyRoster.value };
   if (spentAt.value !== undefined) out = { ...out, deputySpentAt: spentAt.value };
   return out;

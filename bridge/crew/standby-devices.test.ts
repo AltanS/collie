@@ -41,8 +41,8 @@ const device = (label: string, tokenHash: string): SyncedDevice => ({ label, tok
 /** A device row as the JSON document it travels as, so a test can bend exactly one field. */
 const wireDevice = (d: SyncedDevice): JsonObject => ({ ...d });
 /** A sync body as it travels. Written out rather than spread, for `wireDevice`'s reason. */
-const wireSync = (packId: string, leadMemberId: string, rows: readonly JsonValue[]): JsonObject => ({
-  packId,
+const wireSync = (crewId: string, leadMemberId: string, rows: readonly JsonValue[]): JsonObject => ({
+  crewId,
   leadMemberId,
   devices: [...rows],
 });
@@ -93,7 +93,7 @@ describe("parsing refuses rather than repairs", () => {
   test("a well-formed sync body round-trips", () => {
     const row = device("phone", HASH_A);
     expect(parsePairingSync(wireSync("crew-1", "desk", [wireDevice(row)]))).toEqual({
-      packId: "crew-1",
+      crewId: "crew-1",
       leadMemberId: "desk",
       devices: [row],
     });
@@ -122,8 +122,8 @@ describe("parsing refuses rather than repairs", () => {
 
   test("every field of the sync is required — the route is new, so it may require its own", () => {
     expect(parsePairingSync({ leadMemberId: "desk", devices: [] })).toBeNull();
-    expect(parsePairingSync({ packId: "p", devices: [] })).toBeNull();
-    expect(parsePairingSync({ packId: "p", leadMemberId: "desk" })).toBeNull();
+    expect(parsePairingSync({ crewId: "p", devices: [] })).toBeNull();
+    expect(parsePairingSync({ crewId: "p", leadMemberId: "desk" })).toBeNull();
     expect(parsePairingSync(wireSync("", "desk", []))).toBeNull();
     expect(parsePairingSync(null)).toBeNull();
     expect(parsePairingSync([])).toBeNull();
@@ -303,5 +303,47 @@ describe("the file", () => {
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
+  });
+});
+
+// ── The sync's crew id, in both spellings (M27/09, CREW_PROTOCOL.md §0.1) ───
+// REMOVE_IN_1_9_0 — the `packId` half of this describe block.
+//
+// Same rule as the warrant's: every 1.8.0 writer emits `crewId`, every 1.8.0 reader accepts either
+// and prefers `crewId`. It holds on the wire body and on the file the deputy keeps, so a 1.8.0
+// deputy reads a sync a 1.7.0 lead pushed and a file its own 1.7.0 self left behind.
+describe("the crew id's field name", () => {
+  test("the writer emits `crewId` and never `packId`", () => {
+    const document = JSON.stringify(noStandbyDevices("crew-1", "desk"));
+    expect(document).toContain('"crewId"');
+    expect(document).not.toContain('"packId"');
+  });
+
+  test("a 1.7.0 sync body, which names the field `packId`, is read", () => {
+    const row = device("phone", HASH_A);
+    expect(parsePairingSync({ packId: "crew-1", leadMemberId: "desk", devices: [wireDevice(row)] })).toEqual({
+      crewId: "crew-1",
+      leadMemberId: "desk",
+      devices: [row],
+    });
+  });
+
+  test("`crewId` wins when a body carries both", () => {
+    const body = { crewId: "crew-1", packId: "crew-elsewhere", leadMemberId: "desk", devices: [] };
+    expect(parsePairingSync(body)?.crewId).toBe("crew-1");
+  });
+
+  test("an empty or absent id is still a refusal, under either spelling", () => {
+    expect(parsePairingSync({ packId: "", leadMemberId: "desk", devices: [] })).toBeNull();
+    expect(parsePairingSync({ packId: 7, leadMemberId: "desk", devices: [] })).toBeNull();
+  });
+
+  test("a 1.7.0 file on disk is read onto `crewId`", () => {
+    const modern = serializeStandbyDevices(noStandbyDevices("crew-1", "desk"));
+    const old = modern.replace(/"crewId":/g, '"packId":');
+    expect(old).toContain('"packId":');
+    expect(parseStandbyDevices(old)?.crewId).toBe("crew-1");
+    // Read once, written back in the crew spelling.
+    expect(serializeStandbyDevices(parseStandbyDevices(old)!)).not.toContain('"packId":');
   });
 });

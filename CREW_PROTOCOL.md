@@ -87,6 +87,15 @@ named: a warrant a 1.8.0 lead mints is refused by a member that is still on 1.7.
 reporting the generation it holds, so the lead keeps pushing, and the push lands the moment the
 member has levelled.
 
+**A crew id in a body is written `crewId` and read either way.** 1.7.0 spelled it `packId` in the
+warrant, in the standby-device sync and in the enroll answer. Every 1.8.0 writer emits `crewId`; every 1.8.0 reader takes
+`crewId` and falls back to `packId`. That is what covers both skews without the overlap translating a
+body: a 1.8.0 lead's version 1 listener reads a 1.7.0 member's body at the same parser, and so does a
+1.8.0 member under a 1.7.0 lead. The direction 1.8.0 lead to 1.7.0 member needs nothing, because a
+warrant a 1.8.0 lead mints is already refused there on the signing context above, and the push lands
+after that member levels. **The canonical signed string does not move**: it is positional and
+LF-separated, so it hashes the crew id's VALUE at a fixed field and never the key.
+
 Both sides carry a `REMOVE_IN_1_9_0` marker in the code, and `bridge/removal-schedule.test.ts` fails
 at package minor 9 so the removal cannot be forgotten. From 1.9.0 a member older than 1.8.0 does not
 talk to a lead newer than 1.8.0, which is §7's exact window doing its usual job.

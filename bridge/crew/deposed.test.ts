@@ -54,7 +54,7 @@ describe("what counts as learning (§18.12)", () => {
 
   test("a warrant for another crew, or signed by another member, deposes nobody", () => {
     const { data, warrant } = deposedLead();
-    expect(isDepositionProof(data, { ...warrant, packId: "crew-2" })).toBe(false);
+    expect(isDepositionProof(data, { ...warrant, crewId: "crew-2" })).toBe(false);
     expect(isDepositionProof(data, { ...warrant, leadMemberId: "attic" })).toBe(false);
   });
 

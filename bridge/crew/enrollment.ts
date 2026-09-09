@@ -227,7 +227,7 @@ export interface EnrollRequest {
 /** What the lead sends back. Exactly CREW_PROTOCOL.md §8.2's transfer table, in one object. */
 export interface EnrollResponse {
   readonly protocol: number;
-  readonly packId: string;
+  readonly crewId: string;
   readonly crewName: string;
   readonly crewSecret: string;
   readonly secretGeneration: number;
@@ -276,8 +276,12 @@ export function parseEnrollResponse(value: JsonValue | undefined): EnrollRespons
   }
   const v: JsonObject = value;
   const fingerprint = typeof v.leadFingerprint === "string" ? normalizeFingerprint(v.leadFingerprint) : null;
+  // REMOVE_IN_1_9_0: `packId` is the 1.7.0 spelling of `crewId` (§0.1). Same rule as the warrant's
+  // and the standby sync's — every 1.8.0 writer emits `crewId`, every 1.8.0 reader accepts either —
+  // so a 1.8.0 joiner enrols at a lead that is still 1.7.0 without the overlap touching a body.
+  const crewId = typeof v.crewId === "string" ? v.crewId : v.packId;
   if (
-    typeof v.packId !== "string" ||
+    typeof crewId !== "string" ||
     typeof v.crewName !== "string" ||
     typeof v.crewSecret !== "string" ||
     typeof v.secretGeneration !== "number" ||
@@ -291,7 +295,7 @@ export function parseEnrollResponse(value: JsonValue | undefined): EnrollRespons
   }
   return {
     protocol: typeof v.protocol === "number" ? v.protocol : Number.NaN,
-    packId: v.packId,
+    crewId,
     crewName: v.crewName,
     crewSecret: v.crewSecret,
     secretGeneration: v.secretGeneration,
@@ -347,7 +351,7 @@ export function enrollPeer(
     },
     result: {
       protocol: CREW_PROTOCOL_VERSION,
-      packId: data.crew.crewId,
+      crewId: data.crew.crewId,
       crewName: data.crew.name,
       crewSecret: data.crew.secret,
       secretGeneration: data.crew.secretGeneration,
@@ -393,7 +397,7 @@ export function acceptEnrollment(
       ...data,
       self: { ...data.self, memberId: res.memberId },
       crew: {
-        crewId: res.packId,
+        crewId: res.crewId,
         name: res.crewName,
         secret: res.crewSecret,
         secretGeneration: res.secretGeneration,
@@ -406,7 +410,7 @@ export function acceptEnrollment(
     result: { memberId: res.memberId },
     audit: {
       action: "crew.joined",
-      detail: { crew: res.packId, lead: res.leadMemberId, member: res.memberId, fingerprint: res.leadFingerprint },
+      detail: { crew: res.crewId, lead: res.leadMemberId, member: res.memberId, fingerprint: res.leadFingerprint },
     },
   };
 }

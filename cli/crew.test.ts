@@ -226,7 +226,7 @@ function jsonReply<TBody>(body: TBody, status = 200, memberId = "peer"): Respons
 /** The lead's enrollment answer — the §8.2 transfer table, as `join` will parse it. */
 const ENROLLED: EnrollResponse = {
   protocol: 2,
-  packId: CREW.crewId,
+  crewId: CREW.crewId,
   crewName: CREW.name,
   crewSecret: CREW.secret,
   secretGeneration: 1,

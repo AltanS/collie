@@ -139,7 +139,7 @@ export function checkTakeoverClaim(
   if (data === null || data.crew === null || lead === null || lead.status !== "enrolled") {
     return { kind: "refuse", reason: "not-a-peer" };
   }
-  if (warrant.packId !== data.crew.crewId || warrant.leadMemberId !== lead.memberId) {
+  if (warrant.crewId !== data.crew.crewId || warrant.leadMemberId !== lead.memberId) {
     return { kind: "refuse", reason: "foreign" };
   }
   if (!verifyWarrantSignature(warrant, lead.certPem)) return { kind: "refuse", reason: "bad-signature" };
