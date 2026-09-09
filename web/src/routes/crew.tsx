@@ -40,7 +40,7 @@ import { cn } from "@/lib/utils";
 // node on a picture must be free to mean "tell me about this one".
 //
 // ── WHY IT HAS ITS OWN LOADER RATHER THAN RIDING THE SNAPSHOT ────────────────
-// `/api/pack` is a page's worth of detail, and the snapshot is the hot path every phone polls for
+// `/api/crew` is a page's worth of detail, and the snapshot is the hot path every phone polls for
 // every screen. Its own loader keeps that cost on this page — and, because the loader is a route
 // loader, `revalidate()` refreshes it on the ordinary poll while the page is open, which is exactly
 // what a status page wants: a member going quiet appears here without a reload.
@@ -265,9 +265,9 @@ function MemberSheet({
             </Row>
             <Row label={t("crew.summary.secret")}>
               {t("crew.summary.secretValue", {
-                generation: status.pack.secretGeneration,
+                generation: status.crew.secretGeneration,
                 // Aged against the LEAD's clock, like everything else here — see the header.
-                time: timeAgoShort(status.pack.rotatedAt, status.ts),
+                time: timeAgoShort(status.crew.rotatedAt, status.ts),
               })}
             </Row>
           </>

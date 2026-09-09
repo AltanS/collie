@@ -125,7 +125,7 @@ describe("the marker", () => {
   });
 
   test("lives in the state dir beside the store it describes", () => {
-    expect(crewRuntimePath("/state")).toBe("/state/pack-runtime.json");
+    expect(crewRuntimePath("/state")).toBe("/state/crew-runtime.json");
   });
 });
 

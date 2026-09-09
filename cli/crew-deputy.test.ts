@@ -161,7 +161,7 @@ function harness(opts: HarnessOptions = {}) {
   const deps: CrewAddDeps = {
     // The same reason every other crew suite sets it: `PeerClient`'s REAL `setTimeout` must never
     // fire and report a fake member as unreachable.
-    ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000", ...opts.env }),
+    ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", ...opts.env }),
     io: out,
     exec: fakeExec(),
     files: fakeFiles({ ...pairedFiles(opts.paired ?? ["phone"]), ...opts.files }),
@@ -285,7 +285,7 @@ function marker(
     ...facts,
   });
   const live = checkpointMarker(boot, boot, o.checkpointedAt ?? boot.bootedAt);
-  return { [`${STATE}/pack-runtime.json`]: formatMarker(live) } satisfies SeededFiles;
+  return { [`${STATE}/crew-runtime.json`]: formatMarker(live) } satisfies SeededFiles;
 }
 
 // ── Who may run it, and on whom (RFC §3) ─────────────────────────────────────

@@ -145,7 +145,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   const { bare } = parseCrewArgs(args, ["json"]);
   const data = await deps.store.load();
   const { mode } = deriveMode(enrollmentOf(data));
-  const inCrew = data !== null && data.pack !== null;
+  const inCrew = data !== null && data.crew !== null;
 
   // The members this collie talks to: its peers on a lead, its one lead on a peer. Probed ONCE, and
   // read by three checks (reachability, versions, clocks). Two calls per member and no more: the
@@ -272,7 +272,7 @@ async function render(
     await deps.ui.doctor({
       heading,
       local,
-      crewTitle: crew.length === 0 ? "crew:" : `crew: ${data?.pack?.name ?? "?"}`,
+      crewTitle: crew.length === 0 ? "crew:" : `crew: ${data?.crew?.name ?? "?"}`,
       crew,
       crewNote: crew.length === 0 ? crewNote : [],
     });
@@ -289,7 +289,7 @@ async function render(
     for (const n of crewNote) deps.io.out(n);
     return;
   }
-  deps.io.out(`crew: ${data?.pack?.name ?? "?"}`);
+  deps.io.out(`crew: ${data?.crew?.name ?? "?"}`);
   for (const f of crew) deps.io.out(line(f));
 }
 
@@ -914,7 +914,7 @@ const SNAPSHOT_BUDGET_MS = 3000;
  *
  * ── ON A CHECKOUT IT STILL IS NOT ───────────────────────────────────────────
  * There the process may be behind `bridge/*.ts`, and the running bridge leaves exactly one artefact
- * (`pack-runtime.json`, bridge/crew/staleness.ts) recording `bootedAt`, `pid`, the mode and the
+ * (`crew-runtime.json`, bridge/crew/staleness.ts) recording `bootedAt`, `pid`, the mode and the
  * roster — not a version, and not a source stamp. Answering that would take a new field, a new file
  * or a new route, so it ships `skipped` rather than approximating.
  */
@@ -922,7 +922,7 @@ function restartPending(deps: DoctorDeps, install: InstallKind, marker: CrewRunt
   if (install.kind !== "binary" && install.kind !== "packaged") {
     return skipped(
       "restart-pending",
-      "the running bridge records no version — `pack-runtime.json` carries its boot time, pid, mode and" +
+      "the running bridge records no version — `crew-runtime.json` carries its boot time, pid, mode and" +
         " roster, and nothing names the code it is executing",
       "`collie restart` after any build if in doubt; `collie logs` dates the running process",
     );
@@ -956,7 +956,7 @@ function restartPending(deps: DoctorDeps, install: InstallKind, marker: CrewRunt
 
 /**
  * The bridge's pid, from the tier that started it: the systemd unit's `MainPID`, else the pidfile
- * the unsupervised tier writes, else the pid the running bridge recorded in `pack-runtime.json`.
+ * the unsupervised tier writes, else the pid the running bridge recorded in `crew-runtime.json`.
  *
  * Read-only throughout — `systemctl show` prints a property and touches nothing.
  */
@@ -1494,7 +1494,7 @@ function storeDrift(deps: DoctorDeps, data: TrustStoreData): Finding {
 
 /** A member that missed a rotation (§8.4), or one a rotation already dropped. */
 function secretGeneration(data: TrustStoreData, members: readonly TrustedMember[]): Finding {
-  const current = data.pack?.secretGeneration ?? 0;
+  const current = data.crew?.secretGeneration ?? 0;
   const behind = members
     .filter((m) => m.status === "enrolled" && m.secretGeneration !== current)
     .map((m) => `${m.memberId} (generation ${m.secretGeneration})`);
@@ -1569,7 +1569,7 @@ function reach(data: TrustStoreData, members: readonly TrustedMember[], reaches:
       check,
       `${enrolled.length} of ${enrolled.length} answered \`hello\`, but ${starved.length} served no data:` +
         ` ${starved.join("; ")} — the machines are there; their data misses the per-poll budget`,
-      "raise BOTH `COLLIE_PACK_TIMEOUT_MS` and `COLLIE_POLL_MS` here (the first is clamped to 0.8 of the" +
+      "raise BOTH `COLLIE_CREW_TIMEOUT_MS` and `COLLIE_POLL_MS` here (the first is clamped to 0.8 of the" +
         " second), then `collie restart`",
     );
   }

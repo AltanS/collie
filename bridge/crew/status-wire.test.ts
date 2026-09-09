@@ -7,7 +7,7 @@ import type { PeerState } from "./registry.ts";
 import type { TrustStoreData } from "./trust-store.ts";
 import type { Warrant } from "./trust-store.ts";
 
-// `GET /api/pack` is a REPORT: it must say exactly what the lead already believes, and it must be
+// `GET /api/crew` is a REPORT: it must say exactly what the lead already believes, and it must be
 // unable to go and find out. Both halves are testable here because the composer is pure — the
 // signature has no transport in it, so a test that dials nothing is not a test with the network
 // stubbed out, it is the whole function.
@@ -51,7 +51,7 @@ function sources(over: Partial<CrewStatusSources> = {}): CrewStatusSources {
 /** A stored warrant naming `deputy`, with only the fields this surface reads filled honestly. */
 function storedWarrant(generation: number, deputyMemberId: string | null): TrustStoreData["warrant"] {
   const warrant: Warrant = {
-    packId: CREW.packId,
+    packId: CREW.crewId,
     generation,
     deputyMemberId,
     deputyFingerprint: null,
@@ -87,8 +87,8 @@ describe("crewStatusBody — who answers at all", () => {
 describe("crewStatusBody — the crew and the lead's own row", () => {
   test("the crew block is the trust store's CrewIdentity, minus its secret", () => {
     const body = crewStatusBody(sources())!;
-    expect(body.pack).toEqual({
-      id: CREW.packId,
+    expect(body.crew).toEqual({
+      id: CREW.crewId,
       name: CREW.name,
       secretGeneration: CREW.secretGeneration,
       rotatedAt: CREW.rotatedAt,
@@ -200,7 +200,7 @@ describe("crewStatusBody — a peer's row says what the registry believes and no
     const body = crewStatusBody(
       sources({
         store: leadStore({
-          pack: { ...CREW, secretGeneration: 4 },
+          crew: { ...CREW, secretGeneration: 4 },
           peers: [member({ memberId: "laptop", secretGeneration: 2 })],
         }),
       }),

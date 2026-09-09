@@ -61,7 +61,7 @@ describe("parse — refusing beats repairing", () => {
   });
 
   test("a store with no crew yet (invited nobody) is valid", () => {
-    const data = leadStore({ pack: null });
+    const data = leadStore({ crew: null });
     expect(parseTrustStore(serializeTrustStore(data))).toEqual(data);
   });
 
@@ -250,7 +250,7 @@ describe("TrustStore — the write discipline", () => {
 
   test("the path is composed in exactly one place", () => {
     expect(trustStorePath("/state")).toBe(join("/state", TRUST_STORE_FILENAME));
-    expect(TRUST_STORE_FILENAME).toBe("pack-trust.json");
+    expect(TRUST_STORE_FILENAME).toBe("crew-trust.json");
   });
 });
 
@@ -259,8 +259,8 @@ describe("the store holds what §8.2 says it holds", () => {
     const data: TrustStoreData = peerStore();
     expect(data.self.keyPem).toContain("PRIVATE KEY");
     expect(data.self.fingerprint).toBe(fp("laptop"));
-    expect(data.pack!.secret).toBeString();
-    expect(data.pack!.packId).toBeString();
+    expect(data.crew!.secret).toBeString();
+    expect(data.crew!.crewId).toBeString();
     expect(data.lead!.fingerprint).toBe(fp("desk"));
     expect(data.lead!.address).toContain("desk");
     expect(data.self.memberId).toBe("laptop");

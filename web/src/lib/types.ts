@@ -298,7 +298,7 @@ export interface ServerSummary {
 }
 
 /**
- * `GET /api/pack` — the lead's own answer to "how is my whole crew doing?" (CREW_PROTOCOL.md §9.2,
+ * `GET /api/crew` — the lead's own answer to "how is my whole crew doing?" (CREW_PROTOCOL.md §9.2,
  * §10.2). Read-level, and read-ONLY: nothing on this response is an affordance to change the crew.
  * Join / leave / promote / rotate stay CLI verbs (M5 non-goal), so the page it feeds has no button
  * that mutates anything.
@@ -315,7 +315,7 @@ export interface ServerSummary {
  * `ServerSummary` documents, measured on the same clock.
  */
 export interface CrewStatusResponse {
-  pack: {
+  crew: {
     id: string;
     /** Operator-chosen crew name. */
     name: string;
@@ -389,7 +389,7 @@ export interface CrewMemberStatus {
  * and a package manager owns it". Two decisions, two fields on {@link UpdateInfo}: putting one down
  * must not put the other down with it, even when both name the same version.
  */
-export type DismissScope = "offer" | "pack";
+export type DismissScope = "offer" | "crew";
 
 /**
  * What the release ahead changes about the CREW LINK (mirrors `UpdateLinkChange` in

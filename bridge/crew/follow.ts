@@ -313,7 +313,7 @@ export interface CrewFollowerDeps {
   readonly start: (a: { tag: string; runId: string }) => { ok: true } | { ok: false; reason: string };
   readonly now?: () => number;
   /**
-   * Where a `[pack] follow:` line goes — `console.log`, this peer's own journal, unless a caller
+   * Where a `[crew] follow:` line goes — `console.log`, this peer's own journal, unless a caller
    * hands over something else. Injected for the same reason {@link UpdateTurns}'s is: a test reads
    * the lines instead of the process's stdout.
    */
@@ -381,8 +381,8 @@ export class CrewFollower {
     this.logged = key;
     this.log(
       decision.kind === "follow"
-        ? `[pack] follow: self-levelling to ${decision.tag} (run ${shortRunId(decision.runId)})`
-        : `[pack] follow: not self-levelling (${decision.reason}) — ${decision.detail}`,
+        ? `[crew] follow: self-levelling to ${decision.tag} (run ${shortRunId(decision.runId)})`
+        : `[crew] follow: not self-levelling (${decision.reason}) — ${decision.detail}`,
     );
   }
 
@@ -556,7 +556,7 @@ export class UpdateTurns {
   private settled: number | null = null;
 
   /**
-   * `log` is where a `[pack]` line goes — `console.log`, the bridge's journal, unless a caller
+   * `log` is where a `[crew]` line goes — `console.log`, the bridge's journal, unless a caller
    * says otherwise. Injected so a test asserts the sentence and the suite stays silent.
    */
   constructor(private readonly log: (line: string) => void = (line) => console.log(line)) {}
@@ -682,7 +682,7 @@ export class UpdateTurns {
         this.legChangedAt.set(m.memberId, now);
         this.progressAt = now;
         this.log(
-          `[pack] update ${shortRunId(runId)}: ${m.memberId} ${was?.state ?? "new"} -> ${leg.state} (${leg.version ?? "unknown"})`,
+          `[crew] update ${shortRunId(runId)}: ${m.memberId} ${was?.state ?? "new"} -> ${leg.state} (${leg.version ?? "unknown"})`,
         );
       }
       // EVERY LEG CARRIES A CLOCK (M20/12). `legOf` stamps only the legs a MEMBER reported — the
@@ -768,7 +768,7 @@ export class UpdateTurns {
     this.legs.set(memberId, failed);
     this.expired.set(memberId, failed);
     this.legChangedAt.set(memberId, now);
-    this.log(`[pack] update ${shortRunId(runId)}: ${memberId} ${leg.state} -> unreachable (${LEG_WALL_CLOCK_REASON})`);
+    this.log(`[crew] update ${shortRunId(runId)}: ${memberId} ${leg.state} -> unreachable (${LEG_WALL_CLOCK_REASON})`);
     if (this.held !== memberId) return false;
     this.held = null;
     return true;
@@ -808,7 +808,7 @@ export class UpdateTurns {
     for (const state of ["rolled-back", "unreachable", "package-managed"] as const) {
       if (count(state) > 0) parts.push(`${count(state)} ${state}`);
     }
-    this.log(`[pack] update ${shortRunId(runId)}: settled, ${parts.join(", ")}`);
+    this.log(`[crew] update ${shortRunId(runId)}: settled, ${parts.join(", ")}`);
   }
 }
 

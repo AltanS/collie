@@ -37,7 +37,7 @@ import type { Tone, TonedLine } from "./render.ts";
 //     carries the generation it built it from (`bridge/crew/staleness.ts`);
 //   • the LEAD knows storage exactly — every member reports its generation on `hello` — and learns
 //     activation the same way since §18.17: `warrantActiveGeneration`, reported by the machine that
-//     did it. `pack-ops.json`'s "did I restart that machine over ssh" survives as the fallback for a
+//     did it. `crew-ops.json`'s "did I restart that machine over ssh" survives as the fallback for a
 //     member that is not answering, or is too old to say. Preferring the report is the fix for a live
 //     drill in which the lead told the operator to restart a deputy that was already fully armed.
 //
@@ -513,7 +513,7 @@ export function standbyDoorLines(
     witnessCount: data.peers.filter((p) => p.status === "enrolled").length,
     leadMemberId: data.lead?.memberId ?? null,
     selfMemberId: data.self.memberId,
-    crewName: data.pack?.name ?? null,
+    crewName: data.crew?.name ?? null,
   };
   const report = armingReport(facts);
   const rows: TonedLine[] = report.armed

@@ -444,7 +444,7 @@ describe("serve — COLLIE_SERVE_PORT (one tailnet name, a listener port per dev
 });
 
 describe("serve — a peer publishes no front door (ADR 0013, §3)", () => {
-  const PEER_STORE = `${STATE}/pack-trust.json`;
+  const PEER_STORE = `${STATE}/crew-trust.json`;
   const peerOnDisk = () => ({ [PEER_STORE]: serializeTrustStore(peerStore()) });
 
   test("publishes nothing on a machine whose trust store says peer", () => {

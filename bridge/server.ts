@@ -280,7 +280,7 @@ interface RouteCaller {
   gate(level: "read" | "write"): Response | null;
   /** The device a write is attributed to. */
   device(): string | null;
-  /** Where a write's audit line lands — the peer's is pre-stamped `via:"pack"` + originator (§12). */
+  /** Where a write's audit line lands — the peer's is pre-stamped `via:"crew"` + originator (§12). */
   readonly audit: AuditLog;
 }
 
@@ -650,7 +650,7 @@ export function startServer(opts: {
    */
   crewLead?: CrewLead;
   /**
-   * The Crew overview body (`GET /api/pack`), or `null` when this collie is not a lead with a crew.
+   * The Crew overview body (`GET /api/crew`), or `null` when this collie is not a lead with a crew.
    *
    * A CLOSURE, and it is composed in index.ts rather than here, for the reason `crewRouter` is one:
    * this file may name no crew state. What it holds instead is a question it can ask on the request
@@ -857,7 +857,7 @@ export function startServer(opts: {
    * {@link RouteCaller} it takes: how the caller's request resolves to a runtime (a browser's may
    * resolve to another machine and be forwarded), how the caller is authorised (a browser by
    * `guard()`, a lead by the crew link plus the peer's own device policy — §12), and which audit log
-   * the write lands in (the peer's is stamped `via:"pack"`).
+   * the write lands in (the peer's is stamped `via:"crew"`).
    *
    * `null` ⇒ not a session-scoped path; the caller carries on with its own routing.
    */
@@ -1039,7 +1039,7 @@ export function startServer(opts: {
   //
   // The second closure is the per-pane half of the same idea (§5): the lead's request is dispatched
   // into the block above, authorised by the PEER's own gate (bridge/crew/peer-gate.ts) and audited in
-  // the PEER's own log with `via:"pack"` and the originating member (§12). The lead's verdict is not
+  // the PEER's own log with `via:"crew"` and the originating member (§12). The lead's verdict is not
   // an input — it never crosses the wire.
   const crewHandler = opts.crewRouter?.({
     // The view comes off the LEAD's request (`bridge/crew/router.ts` reads it with the same
@@ -1067,7 +1067,7 @@ export function startServer(opts: {
           return verdict.ok ? null : text(verdict.reason, 403);
         },
         device: () => device,
-        audit: audit.scoped({ via: "pack", from }),
+        audit: audit.scoped({ via: "crew", from }),
       });
       // Deliberately UNCODED. This is the crew link's own 404, answered to a LEAD and never to a
       // browser, and `/crew/v1/*` is a separately-versioned surface (CREW_PROTOCOL.md, ADR 0025) —
@@ -1587,9 +1587,16 @@ export function startServer(opts: {
         // WHICH band, because they are two decisions: the offer this host was given, and the quiet
         // notice about a machine a package manager owns. Absent reads as the offer, which is what
         // every client before the crew states could close.
+        //
+        // REMOVE_IN_1_9_0: `"pack"` is 1.7.0's name for the `"crew"` scope, and a phone still
+        // running the 1.7.0 bundle sends it. Accepted here and folded into `"crew"` before anything
+        // is written, so the record on disk only ever carries the new name.
         const asked = record === null ? undefined : record.scope;
-        if (asked !== undefined && asked !== "offer" && asked !== "pack") return text("bad scope", 400);
-        await updateMonitor.dismiss(version, asked ?? "offer");
+        if (asked !== undefined && asked !== "offer" && asked !== "crew" && asked !== "pack") {
+          return text("bad scope", 400);
+        }
+        const scope = asked === "pack" ? "crew" : asked;
+        await updateMonitor.dismiss(version, scope ?? "offer");
         return json(updateMonitor.status(), req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/update/check" && req.method === "GET") {
@@ -1799,7 +1806,14 @@ export function startServer(opts: {
         // The ONLY time this token exists outside the requesting device. Nothing stores it here.
         return json({ token: claimed.token, label: parsed.label }, req.headers.get("accept-encoding"));
       }
+      // REMOVE_IN_1_9_0: `/api/pack` is 1.7.0's name for the route below. A 308 keeps the method,
+      // so a phone still serving the 1.7.0 bundle out of its service worker cache follows it and
+      // reads the same census. The query string rides along rather than being dropped.
       if (pathname === "/api/pack" && req.method === "GET") {
+        const moved = `/api/crew${url.search}`;
+        return new Response(null, { status: 308, headers: { location: moved } });
+      }
+      if (pathname === "/api/crew" && req.method === "GET") {
         // Read-level, exactly like `/api/devices` and `/api/config`: this is a report about machines
         // the operator already owns, and it drives nothing. Every field is a fact this process was
         // already holding — the route reads no disk, dials no member, and cannot start a call.

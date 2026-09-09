@@ -842,7 +842,7 @@ describe("the dismissed version", () => {
     expect(store.dismissedPackVersion()).toBeNull();
 
     await store.setDismissed("offer", "1.6.0", { version: "1.6.0", pushedAt: "2026-09-07T09:00:00.000Z" });
-    await store.setDismissed("pack", "1.5.0");
+    await store.setDismissed("crew", "1.5.0");
 
     const reloaded = new UpdateStateStore(cfg);
     await reloaded.load();
@@ -887,8 +887,8 @@ describe("the dismissed version", () => {
     await monitor.checkRelease();
     const notified = store.lastNotified();
 
-    await monitor.dismiss("0.12.0", "pack");
-    expect(store.closed).toEqual(["pack:0.12.0"]);
+    await monitor.dismiss("0.12.0", "crew");
+    expect(store.closed).toEqual(["crew:0.12.0"]);
     // The push is about THIS machine; the notice was about another one. Hiding it silences nothing.
     expect(store.lastNotified()).toBe(notified);
     expect(monitor.status().dismissedPackVersion).toBe("0.12.0");

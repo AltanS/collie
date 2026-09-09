@@ -82,8 +82,8 @@ export interface DeposedState {
  * on expiry here is fail-closed on the thing that matters.
  */
 export function isDepositionProof(data: TrustStoreData, warrant: Warrant): boolean {
-  if (data.pack === null || !isLeading(data)) return false;
-  if (warrant.packId !== data.pack.packId) return false;
+  if (data.crew === null || !isLeading(data)) return false;
+  if (warrant.packId !== data.crew.crewId) return false;
   if (warrant.leadMemberId !== data.self.memberId) return false;
   if (warrant.deputyMemberId === null || warrant.deputyFingerprint === null) return false;
   if (warrant.generation < (currentWarrant(data)?.warrant.generation ?? 0)) return false;
@@ -115,7 +115,7 @@ export type SelfHeal =
 export function selfHeal(data: TrustStoreData, warrant: Warrant | null): SelfHeal {
   if (warrant === null) return { outcome: "parked", reason: "no-proof" };
   if (!isDepositionProof(data, warrant)) return { outcome: "parked", reason: "signature" };
-  if (data.pack === null) return { outcome: "parked", reason: "signature" };
+  if (data.crew === null) return { outcome: "parked", reason: "signature" };
 
   // Step 1 — the new lead comes out of the roster this machine already pinned, never off the wire.
   const deputy = data.peers.find(
@@ -131,7 +131,7 @@ export function selfHeal(data: TrustStoreData, warrant: Warrant | null): SelfHea
     ...deputy,
     role: "lead",
     status: "enrolled",
-    secretGeneration: data.pack.secretGeneration,
+    secretGeneration: data.crew.secretGeneration,
     // Provisional until this machine is actually dialled by it, exactly as `adoptLead` marks a
     // newly-pinned lead. It is not a claim about contact; it is the absence of one.
     contactedAt: null,
@@ -157,7 +157,7 @@ export function selfHeal(data: TrustStoreData, warrant: Warrant | null): SelfHea
       },
       result: { lead: lead.memberId, generation: warrant.generation },
       audit: {
-        action: "pack.deposed",
+        action: "crew.deposed",
         detail: { lead: lead.memberId, generation: warrant.generation, outcome: "healed" },
       },
     },
@@ -179,7 +179,7 @@ export function deposedStateFrom(
     leadMemberId: heal.outcome === "healed" ? heal.change.result.lead : (warrant?.deputyMemberId ?? null),
     generation: warrant?.generation ?? 0,
     at: now,
-    crewName: data.pack?.name ?? null,
+    crewName: data.crew?.name ?? null,
     reason: heal.outcome === "healed" ? null : heal.reason,
   };
 }

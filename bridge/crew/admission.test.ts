@@ -67,7 +67,7 @@ describe("admitCrewRequest — the failure matrix", () => {
   });
 
   test("a ROTATED secret — the old value — is refused, with no grace window (§8.4)", () => {
-    const rotated = leadStore({ peers: [nas], pack: { ...CREW, secret: "new-secret", secretGeneration: 2 } });
+    const rotated = leadStore({ peers: [nas], crew: { ...CREW, secret: "new-secret", secretGeneration: 2 } });
     expect(admitCrewRequest(rotated, facts()).ok).toBe(false);
     expect(admitCrewRequest(rotated, facts({ authorization: "Bearer new-secret" })).ok).toBe(true);
   });
@@ -99,7 +99,7 @@ describe("admitCrewRequest — the failure matrix", () => {
 
   test("a collie with no trust store, and one with no crew, admit nothing", () => {
     expect(admitCrewRequest(null, facts()).ok).toBe(false);
-    expect(admitCrewRequest(leadStore({ pack: null }), facts()).ok).toBe(false);
+    expect(admitCrewRequest(leadStore({ crew: null }), facts()).ok).toBe(false);
   });
 
   test("a peer admits its LEAD — pinning is pairwise and works in both directions", () => {

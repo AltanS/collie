@@ -188,7 +188,7 @@ function harness(opts: HarnessOptions = {}): Harness {
   const deps: CrewAddDeps = {
     // The same reason `cli/crew.test.ts` sets this: the real `setTimeout` in `PeerClient` must never
     // fire and report a fake peer as unreachable.
-    ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000", ...opts.env }),
+    ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", ...opts.env }),
     io: out,
     exec,
     files: fakeFiles(seeded),
@@ -1129,7 +1129,7 @@ describe("dispatch", () => {
   });
 
   test("the crew it joins is the one this lead already leads", () => {
-    expect(CREW.packId).toBe("crew-1");
+    expect(CREW.crewId).toBe("crew-1");
   });
 });
 

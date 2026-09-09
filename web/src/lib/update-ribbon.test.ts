@@ -335,12 +335,12 @@ describe("dismissing the quiet crew states", () => {
   it("offers a dismiss in the CREW scope, keyed by the version the crew is heading for", () => {
     const view = read({ update: quiet() });
     expect(view).toEqual({ kind: "package-managed", names: ["minibuch"], target: "1.5.0" });
-    expect(dismissTarget(view)).toEqual({ scope: "pack", version: "1.5.0" });
+    expect(dismissTarget(view)).toEqual({ scope: "crew", version: "1.5.0" });
   });
 
   it("keys the dismiss to the release upstream names when the run record names no target", () => {
     const view = read({ update: quiet({ run: run("done", { peers: managed, to: null }) }) });
-    expect(dismissTarget(view)).toEqual({ scope: "pack", version: "1.5.0" }); // `update.latest`
+    expect(dismissTarget(view)).toEqual({ scope: "crew", version: "1.5.0" }); // `update.latest`
   });
 
   it("hides the quiet band once that version was dismissed IN ITS OWN SCOPE", () => {
@@ -377,7 +377,7 @@ describe("dismissing the quiet crew states", () => {
       dismissedPackVersion: "1.5.0",
     });
     expect(view).toMatchObject({ kind: "peer-failed", name: "minibuch" });
-    expect(dismissTarget(view)).toEqual({ scope: "pack", version: "1.5.0" });
+    expect(dismissTarget(view)).toEqual({ scope: "crew", version: "1.5.0" });
   });
 
   it("dismisses nothing while a peer is still moving", () => {
@@ -408,7 +408,7 @@ describe("dismissing the quiet crew states", () => {
     // operator can no longer see the end of. A failed leg has already ended, badly, and the sentence
     // would otherwise stand until some later run replaced it.
     expect(dismissTarget({ kind: "peer-failed", name: "minibuch", reason: "gate", target: "1.5.0" })).toEqual({
-      scope: "pack",
+      scope: "crew",
       version: "1.5.0",
     });
     // With nothing to key it to, it stays: a dismissal no newer version can raise again is a mute.

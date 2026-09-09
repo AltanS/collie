@@ -88,7 +88,7 @@ async function answer(route: Route, path: string): Promise<void> {
 
   // The DEFAULT world is solo, so the census refuses exactly as a non-lead bridge does. A case that
   // wants a crew overrides this route with `fixtureCrewStatus`.
-  if (path === "/api/pack") {
+  if (path === "/api/crew") {
     return fulfillJson(
       route,
       { error: "this collie is not the lead of a pack", code: "crew.not_lead" },
@@ -159,7 +159,7 @@ export async function installCrewWorld(page: Page): Promise<void> {
     (route) => fulfillJson(route, fixtureCrewSnapshot),
   );
   await page.route(
-    (url) => url.pathname === "/api/pack",
+    (url) => url.pathname === "/api/crew",
     (route) => fulfillJson(route, fixtureCrewStatus),
   );
 }

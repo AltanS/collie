@@ -507,7 +507,7 @@ describe("solo zero-tax — the snapshot body is byte-for-byte today's", () => {
   });
 
   test("a solo snapshot names no crew anywhere in its bytes", () => {
-    expect(body).not.toMatch(/"servers"|"peers"|"pack"|"host":|"lead"/);
+    expect(body).not.toMatch(/"servers"|"peers"|"crew"|"host":|"lead"/);
   });
 
   test("solo emits exactly one session, the primary, and never a session ref", () => {
@@ -583,6 +583,12 @@ describe("solo zero-tax — routes", () => {
       "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open))?$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktrees$/",
       "/api/config",
+      // The Crew overview (bridge/crew/status-wire.ts) — a FRONT-DOOR route, and it legitimately
+      // extends this list rather than being exempted, exactly as pairing and STT do. It is not a
+      // crew route: `/pack/v1/*` is the link a peer answers (ADR 0013), and this is the lead's own
+      // browser answering its own operator. A solo instance registers it and 404s
+      // (`pack.not_lead`) — the same shape `/api/stt` has when no provider is configured.
+      "/api/crew",
       // Device pairing (bridge/pairing.ts) — a SOLO feature that legitimately extends this list.
       // It is named here, not exempted: the guard's job is that a route arrives on purpose.
       "/api/devices",
@@ -609,6 +615,8 @@ describe("solo zero-tax — routes", () => {
       // crew route: `/crew/v1/*` is the link a peer answers (ADR 0013), and this is the lead's own
       // browser answering its own operator. A solo instance registers it and 404s
       // (`crew.not_lead`) — the same shape `/api/stt` has when no provider is configured.
+      // REMOVE_IN_1_9_0: 1.7.0's name for the census, answering a 308 to `/api/crew`. Named here
+      // for the same reason every other route is: it arrives on purpose, and it leaves on purpose.
       "/api/pack",
       "/api/pair",
       // "Look now" (ADR 0031) — a SOLO route that legitimately extends this list, named here rather
@@ -643,7 +651,8 @@ describe("solo zero-tax — routes", () => {
   // §11's actual promise, and it is about the PREFIX: `/crew/v1/*` is not routed here on any
   // instance, solo or otherwise — it is declared in `bridge/crew/router.ts` and reached through the
   // `crewRouter` closure, which is what lets this file prove by grep that server.ts names no crew
-  // path. A front-door route whose NAME contains the word (`/api/pack`) is a different thing
+  // path. A front-door route whose NAME contains the word (`/api/pack`, 1.7.0's name for
+  // `/api/crew`) is a different thing
   // entirely and is pinned by the list above; matching on the substring would have conflated the two.
   //
   // BOTH prefixes are asserted. The version 1 overlap (`/pack/v1/*`, REMOVE_IN_1_9_0) is declared in
@@ -852,9 +861,9 @@ const STATE_DIR_ENTRIES = [
  * is the `TrustStore` case in "driving every solo write path".
  */
 const CREW_STATE_DIR_ENTRIES = [
-  "pack-ops.json",
-  "pack-runtime.json",
-  "pack-trust.json",
+  "crew-ops.json",
+  "crew-runtime.json",
+  "crew-trust.json",
   // The lead's paired-device registry, synced to the DEPUTY only (RFC §6.5, CREW_PROTOCOL.md §18.14).
   // **A solo instance can never have one**, and the reason is structural rather than a check anyone
   // has to remember: it is written on exactly one path — a `POST /crew/v1/pairing` that cleared the

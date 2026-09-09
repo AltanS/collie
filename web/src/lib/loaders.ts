@@ -535,7 +535,7 @@ export async function devicesLoader({ request }: { request?: Request } = {}): Pr
 // it never throws, because a page that answers "how is my crew doing?" with an error boundary has
 // answered the question badly.
 //
-// The 404 is not a failure and must not be rendered as one. Only a lead serves `/api/pack`; a solo
+// The 404 is not a failure and must not be rendered as one. Only a lead serves `/api/crew`; a solo
 // collie and a peer refuse, and that refusal is the truthful answer "there is no crew here". So it
 // is folded to `status: null, error: false`, and the route says so in one honest card. Every OTHER
 // refusal — a real outage, a 500 — keeps `status: null` but sets `error`, because "I could not ask"

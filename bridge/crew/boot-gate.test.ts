@@ -70,7 +70,7 @@ function gate(answers: Record<string, PeerOutcome<HelloResult>>, over: Partial<B
   const deps: BootGateDeps = {
     links: LINKS,
     generation: 1,
-    packId: CREW.packId,
+    packId: CREW.crewId,
     // The REAL predicate, over `desk`'s real store — the point of the fix is that this and only this
     // deposes, so a test that stubbed it would be testing the stub.
     verifies: (warrant) => isDepositionProof(DESK, warrant),
@@ -89,7 +89,7 @@ describe("the boot gate (§18.11)", () => {
     const verdict = await runBootGate({
       links: [],
       generation: 0,
-      packId: CREW.packId,
+      packId: CREW.crewId,
       verifies: () => true,
       hello: (link) => {
         asked.push(link.memberId);

@@ -167,8 +167,8 @@ class CrewFacade implements MuxAdapter {
 
   /** The lead's own answer about this member's link. Not a `?host=` route: the lead knows. */
   async reachable(): Promise<boolean> {
-    // SAFETY: `GET /api/pack` answers `CrewStatusResponse` on every build that has this script.
-    const body = JSON.parse(await fetchJson(`${this.lead}/api/pack`)) as CrewStatusResponse;
+    // SAFETY: `GET /api/crew` answers `CrewStatusResponse` on every build that has this script.
+    const body = JSON.parse(await fetchJson(`${this.lead}/api/crew`)) as CrewStatusResponse;
     const row = body.members.find((member) => member.id === this.member);
     return row !== undefined && row.health === "reachable";
   }

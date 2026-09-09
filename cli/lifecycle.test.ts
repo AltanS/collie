@@ -569,7 +569,7 @@ describe("the status banner", () => {
     const h = harness({
       ready: true,
       env: { COLLIE_HOST: "192.168.77.2" },
-      files: { [`${STATE}/pack-trust.json`]: serializeTrustStore(peerStore()) },
+      files: { [`${STATE}/crew-trust.json`]: serializeTrustStore(peerStore()) },
     });
     const lines = (await statusBanner(h.deps)).join("\n");
     expect(lines).toContain("local     http://192.168.77.2:8787");
@@ -580,7 +580,7 @@ describe("the status banner", () => {
   test("a LEAD, and a solo collie, keep the tailnet row exactly as it was", async () => {
     const lead = harness({
       ready: true,
-      files: { [`${STATE}/pack-trust.json`]: serializeTrustStore(leadStore({ peers: [member({ memberId: "nas" })] })) },
+      files: { [`${STATE}/crew-trust.json`]: serializeTrustStore(leadStore({ peers: [member({ memberId: "nas" })] })) },
     });
     expect((await statusBanner(lead.deps)).join("\n")).toContain("tailnet");
     expect((await statusBanner(harness({ ready: true }).deps)).join("\n")).toContain("tailnet");

@@ -1302,7 +1302,7 @@ async function enrollLeg(
   const data = await ensureStore(deps, o.flags.as);
   if (data === null) return EXIT.FAIL;
   if (membership.packId !== null) {
-    if (data.pack !== null && membership.packId === data.pack.packId) {
+    if (data.crew !== null && membership.packId === data.crew.crewId) {
       if (membership.memberId !== null) await remember(membership.memberId);
       // ── THE ALREADY-A-MEMBER PATH RESTARTS THE FAR MACHINE ──────────────────
       // No `collie join` runs here, and a join is the ONLY thing that restarts a peer from this verb
@@ -1477,7 +1477,7 @@ async function verdict(
 ): Promise<number> {
   const fresh = await deps.reload();
   const added: TrustedMember | undefined = fresh?.peers.find((p) => !before.has(p.memberId));
-  if (fresh === null || fresh.pack === null || added === undefined) {
+  if (fresh === null || fresh.crew === null || added === undefined) {
     deps.io.err(`error: ${host} reported a successful join, but this lead's roster does not name a new member.`);
     deps.io.err("       Check `collie crew status` here and `collie doctor` there.");
     return EXIT.FAIL;
@@ -1489,7 +1489,7 @@ async function verdict(
     deps.emit({
       kind: "verdict",
       ok: true,
-      text: `"${added.memberId}" is a member of "${fresh.pack.name}" and answered at ${added.address}`,
+      text: `"${added.memberId}" is a member of "${fresh.crew.name}" and answered at ${added.address}`,
     });
     return EXIT.OK;
   }
@@ -1650,7 +1650,7 @@ export function leadAddressRefusal(
  *
  * **Splitting `host:port` here instead was considered and refused.** `--port` already exists, and it
  * is not only the dial port: leg 1 probes it for a collision, leg 3 writes it as `COLLIE_PORT` and
- * leg 4 banks it in `pack-ops.json`. A second spelling that silently overrode the first is one more
+ * leg 4 banks it in `crew-ops.json`. A second spelling that silently overrode the first is one more
  * way for those to disagree. One value, one flag — and this function is why the refusal can say so.
  *
  * Pure, and the whole check: it runs at parse time on the lead, before a single byte crosses ssh.

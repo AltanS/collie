@@ -203,7 +203,7 @@ export function mintWarrant(
   deputyMemberId: string | null,
   now: number,
 ): CrewChange<Warrant> | null {
-  const crew = data.pack;
+  const crew = data.crew;
   if (crew === null || data.lead !== null || data.peers.length === 0) return null;
 
   let deputy: { memberId: string; fingerprint: string } | null = null;
@@ -218,7 +218,7 @@ export function mintWarrant(
   }
 
   const warrant = sign(data, {
-    packId: crew.packId,
+    packId: crew.crewId,
     generation: nextWarrantGeneration(data),
     deputyMemberId: deputy?.memberId ?? null,
     deputyFingerprint: deputy?.fingerprint ?? null,
@@ -241,7 +241,7 @@ export function mintWarrant(
     },
     result: warrant,
     audit: {
-      action: warrant.deputyMemberId === null ? "pack.deputy.revoke" : "pack.deputy.name",
+      action: warrant.deputyMemberId === null ? "crew.deputy.revoke" : "crew.deputy.name",
       detail: { member: warrant.deputyMemberId, generation: warrant.generation },
     },
   };
@@ -262,9 +262,9 @@ export function mintWarrant(
  */
 export function refreshWarrant(data: TrustStoreData, now: number): CrewChange<Warrant> | null {
   const stored = currentWarrant(data);
-  if (stored === null || data.pack === null || data.lead !== null) return null;
+  if (stored === null || data.crew === null || data.lead !== null) return null;
   const held = stored.warrant;
-  if (held.leadMemberId !== data.self.memberId || held.packId !== data.pack.packId) return null;
+  if (held.leadMemberId !== data.self.memberId || held.packId !== data.crew.crewId) return null;
   if (warrantExpired(held, now)) return null;
   if (now - held.refreshedAt < WARRANT_REFRESH_INTERVAL_MS) return null;
   // A clock that jumped backwards must not walk the warrant backwards either: the refresh has to
@@ -276,7 +276,7 @@ export function refreshWarrant(data: TrustStoreData, now: number): CrewChange<Wa
     next: { ...data, warrant: { ...stored, warrant } },
     result: warrant,
     audit: {
-      action: "pack.deputy.refresh",
+      action: "crew.deputy.refresh",
       detail: { member: warrant.deputyMemberId, generation: warrant.generation },
     },
   };
@@ -327,7 +327,7 @@ export function parseWarrantReport(value: JsonValue | undefined): WarrantReport 
  *
  * `null` for absent, for a value that is not a safe integer, and for a build that predates the
  * amendment. **Absent means "nothing active there, or a build that cannot say" — never "armed"**, and
- * that reading is what makes the lead fall back to the lower bound in its own `pack-ops.json` and
+ * that reading is what makes the lead fall back to the lower bound in its own `crew-ops.json` and
  * keep printing the remedy. Read on its own rather than as part of {@link parseWarrantReport}: what a
  * member STORES and what its listener ACTIVATED are two independent facts, and a build that reports
  * one and not the other must not lose both.
@@ -436,10 +436,10 @@ export function checkWarrantPush(
   if (warrant === null) return { kind: "refuse", reason: "malformed" };
 
   const lead = data?.lead ?? null;
-  if (data === null || data.pack === null || lead === null || lead.status !== "enrolled") {
+  if (data === null || data.crew === null || lead === null || lead.status !== "enrolled") {
     return { kind: "refuse", reason: "foreign" };
   }
-  if (warrant.packId !== data.pack.packId || warrant.leadMemberId !== lead.memberId) {
+  if (warrant.packId !== data.crew.crewId || warrant.leadMemberId !== lead.memberId) {
     return { kind: "refuse", reason: "foreign" };
   }
   if (!verifyWarrantSignature(warrant, lead.certPem)) return { kind: "refuse", reason: "bad-signature" };
@@ -496,14 +496,14 @@ export function discardForeignWarrant(
   data: TrustStoreData,
 ): CrewChange<{ packId: string; generation: number }> | null {
   const stored = currentWarrant(data);
-  if (data.pack === null || stored === null) return null;
-  if (stored.warrant.packId === data.pack.packId) return null;
+  if (data.crew === null || stored === null) return null;
+  if (stored.warrant.packId === data.crew.crewId) return null;
   return {
     next: { ...data, warrant: null, standbyRoster: null, deputy: null },
     result: { packId: stored.warrant.packId, generation: stored.warrant.generation },
     audit: {
-      action: "pack.warrant.foreign",
-      detail: { pack: stored.warrant.packId, generation: stored.warrant.generation },
+      action: "crew.warrant.foreign",
+      detail: { crew: stored.warrant.packId, generation: stored.warrant.generation },
     },
   };
 }
@@ -528,7 +528,7 @@ export function storeWarrant(
     next: roster === null ? { ...data, warrant: stored } : { ...data, warrant: stored, standbyRoster: roster },
     result: stored.warrant,
     audit: {
-      action: "pack.warrant.stored",
+      action: "crew.warrant.stored",
       detail: { member: stored.warrant.deputyMemberId, generation: stored.warrant.generation },
     },
   };

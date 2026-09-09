@@ -153,7 +153,7 @@ export function pinnedMembers(data: TrustStoreData): readonly TrustedMember[] {
  * which one failed first.
  */
 export function admitCrewRequest(data: TrustStoreData | null, facts: CrewRequestFacts): CrewVerdict {
-  if (data === null || data.pack === null) {
+  if (data === null || data.crew === null) {
     // Not in a crew: there is no secret to match and nobody is pinned. Same answer as any refusal.
     return { ok: false, refusal: "unauthorized", factor: "not-a-crew-member" };
   }
@@ -174,7 +174,7 @@ export function admitCrewRequest(data: TrustStoreData | null, facts: CrewRequest
   // Factor 2 — the crew-wide bearer secret. Evaluated regardless of factor 1's outcome so the two
   // are not chained into a timing oracle for "is this certificate known?".
   const presentedSecret = bearerToken(facts.authorization);
-  const secretOk = secretEquals(presentedSecret, data.pack.secret);
+  const secretOk = secretEquals(presentedSecret, data.crew.secret);
 
   if (!identified) return { ok: false, refusal: "unauthorized", factor: "certificate" };
   if (!secretOk) return { ok: false, refusal: "unauthorized", factor: "secret" };

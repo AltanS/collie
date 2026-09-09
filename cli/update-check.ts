@@ -138,7 +138,7 @@ export interface UpdateCheckDeps {
    */
   readonly store: { load(): Promise<TrustStoreData | null> };
   /**
-   * How the operator reached each member (`pack-ops.json`, ADR 0016), narrowed the same way: read
+   * How the operator reached each member (`crew-ops.json`, ADR 0016), narrowed the same way: read
    * here, never written. A `CrewOpsStore` is assignable.
    */
   readonly ops: { get(memberId: string): Promise<OpsRecord | null> };
@@ -833,7 +833,7 @@ export async function crewChecks(
   overrides: Readonly<Record<string, MemberRoute>> = {},
 ): Promise<PreflightMember[] | undefined> {
   const data = await deps.store.load();
-  if (data === null || data.pack === null || data.lead !== null || data.peers.length === 0) return undefined;
+  if (data === null || data.crew === null || data.lead !== null || data.peers.length === 0) return undefined;
   const ours = collieVersionBare(deps.ctx.root, (p) => deps.files.read(p));
   const members: PreflightMember[] = [];
   for (const member of data.peers) {

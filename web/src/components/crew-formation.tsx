@@ -300,7 +300,7 @@ export function CrewFormation({ status, health, counts, servers, onSelect }: Cre
   const reachable = status.members.filter((m) => m.health === "reachable").length;
   // One text node, not three spans: the caption is one sentence and assistive tech (and the tests)
   // should read it as one.
-  const caption = `${status.pack.name || status.pack.id} · ${t("crew.summary.counts", {
+  const caption = `${status.crew.name || status.crew.id} · ${t("crew.summary.counts", {
     machines: tn("crew.summary.machines", status.members.length),
     reachable: t("crew.summary.reachable", { count: reachable }),
   })}`;

@@ -143,7 +143,7 @@ describe("a verified warrant naming THIS machine (RFC §6.3, factor one)", () =>
     expect(warrantNamesSelf("lead", deputyStore(), T0)).toBe(false);
     expect(warrantNamesSelf("solo", deputyStore(), T0)).toBe(false);
     // A store with no crew, and one whose lead is a tombstone.
-    expect(warrantNamesSelf("peer", { ...deputyStore(), pack: null }, T0)).toBe(false);
+    expect(warrantNamesSelf("peer", { ...deputyStore(), crew: null }, T0)).toBe(false);
     expect(
       warrantNamesSelf("peer", deputyStore({ lead: member({ memberId: "desk", role: "lead", status: "unenrolled" }) }), T0),
     ).toBe(false);
@@ -151,7 +151,7 @@ describe("a verified warrant naming THIS machine (RFC §6.3, factor one)", () =>
 
   test("a warrant for ANOTHER crew, or from another lead, names nothing here", () => {
     const foreign = deputyStore();
-    expect(warrantNamesSelf("peer", { ...foreign, pack: { ...foreign.pack!, packId: "crew-2" } }, T0)).toBe(false);
+    expect(warrantNamesSelf("peer", { ...foreign, crew: { ...foreign.crew!, crewId: "crew-2" } }, T0)).toBe(false);
     expect(warrantNamesSelf("peer", deputyStore({ lead: member({ memberId: "attic", role: "lead" }) }), T0)).toBe(false);
   });
 });

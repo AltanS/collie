@@ -60,7 +60,13 @@ import { CrewLead } from "./crew/lead.ts";
 import { leadLabel } from "./crew/merge.ts";
 import { crewStatusBody } from "./crew/status-wire.ts";
 import { herdPushGate, PeerNotifier } from "./crew/notify.ts";
-import { crewHelloBudget, crewTimeoutBudget, crewTimeoutClampWarning, PeerClient } from "./crew/peer-client.ts";
+import {
+  crewEnvFallbackWarning,
+  crewHelloBudget,
+  crewTimeoutBudget,
+  crewTimeoutClampWarning,
+  PeerClient,
+} from "./crew/peer-client.ts";
 import { CrewRegistry } from "./crew/registry.ts";
 import { leadReleaseHeader, LEG_WALL_CLOCK_MS, CrewFollower, UpdateTurns } from "./crew/follow.ts";
 import { createCrewRouter, type CrewRouterDeps } from "./crew/router.ts";
@@ -99,6 +105,7 @@ import {
   syncedDevicesOf,
   type SyncedDevice,
 } from "./crew/standby-devices.ts";
+import { migrateCrewStateOnce } from "./crew/state-migration.ts";
 import {
   adoptLeadership,
   clearRePin,
@@ -172,6 +179,10 @@ try {
 // is generated, no default is written back and no timer is armed. That is the zero-tax contract
 // (§11) holding at its startup seam — and `trustStore.load()` returning `null` is the same `null` a
 // solo instance will hand `resolveCrewRuntime` forever after.
+// REMOVE_IN_1_9_0: the 1.7.0 `pack-*.json` names are moved to their crew names here — before the
+// store is opened, and before the ops store or the runtime marker below is touched.
+migrateCrewStateOnce(cfg.stateDir, (line) => console.warn(line));
+
 const trustStore = new TrustStore(cfg.stateDir);
 const bootTrust = await trustStore.load();
 
@@ -251,16 +262,16 @@ function releaseFrontDoor(mode: CrewMode, isDeposed: boolean, why: string): void
   // unrecorded mapping is by definition not ours and is never touched.
   if (!shouldReleaseFrontDoor({ mode, deposed: isDeposed, hasRecord: existsSync(handlerFile) })) return;
   frontDoorReleased = true;
-  console.warn(`[pack] ${why} — taking this machine's own tailscale serve mapping down.`);
+  console.warn(`[crew] ${why} — taking this machine's own tailscale serve mapping down.`);
   try {
     releaseManagedFrontDoor({
       handlerFile,
-      io: { out: (l) => console.log(`[pack] ${l}`), err: (l) => console.warn(`[pack] ${l}`) },
+      io: { out: (l) => console.log(`[crew] ${l}`), err: (l) => console.warn(`[crew] ${l}`) },
       exec: realFrontDoorExec(process.env, homedir()),
       files: realFrontDoorFiles,
     });
   } catch (err) {
-    console.warn(`[pack] could not take the front door down: ${err instanceof Error ? err.message : err}`);
+    console.warn(`[crew] could not take the front door down: ${err instanceof Error ? err.message : err}`);
   }
 }
 
@@ -280,7 +291,7 @@ function crewPeerClient(data: TrustStoreData): PeerClient {
   return new PeerClient({
     self: data.self.memberId,
     // Read at call time so a rotation is picked up without a restart (§8.3, §8.4).
-    secret: () => trustStore.current()?.pack?.secret ?? null,
+    secret: () => trustStore.current()?.crew?.secret ?? null,
     // Strictly below the lead's own poll interval, so a slow peer can never stall this snapshot
     // (§10.1). The clamp lives in crewTimeoutBudget; nothing here is allowed to widen it.
     timeoutMs: crewTimeoutBudget(cfg.pollMs),
@@ -331,17 +342,17 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
   if (heal.outcome === "healed") {
     await commitCrewChange(trustStore, audit, (current) => (current === null ? null : heal.change));
     console.warn(
-      `[pack] DEPOSED — ${reason}. This machine has demoted itself to a peer of "${state.leadMemberId}" ` +
+      `[crew] DEPOSED — ${reason}. This machine has demoted itself to a peer of "${state.leadMemberId}" ` +
         `(warrant generation ${state.generation}) on materials both machines already held. Its front door ` +
         "is down and its health check now fails.",
     );
   } else {
     audit.record({
-      action: "pack.deposed",
+      action: "crew.deposed",
       detail: { lead: state.leadMemberId, generation: state.generation, outcome: "parked", reason: heal.reason },
     });
     console.warn(
-      `[pack] DEPOSED — ${reason}. This machine could NOT rejoin by itself and has parked: ` +
+      `[crew] DEPOSED — ${reason}. This machine could NOT rejoin by itself and has parked: ` +
         `${heal.reason}. Recover it with \`collie crew add\` from the new lead, or \`collie join\`.`,
     );
   }
@@ -367,7 +378,7 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
     );
     if (dropped !== null) {
       console.warn(
-        `[pack] discarded a stored warrant for crew "${dropped.packId}" (generation ${dropped.generation}): ` +
+        `[crew] discarded a stored warrant for crew "${dropped.packId}" (generation ${dropped.generation}): ` +
           "this collie is in a different crew, so that warrant proves nothing here.",
       );
     }
@@ -388,7 +399,7 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
         .map((p) => ({ memberId: p.memberId, address: p.address })),
       hello: (link) => client.hello(link),
       generation: currentWarrant(data)?.warrant.generation ?? 0,
-      packId: data.pack?.packId ?? "",
+      packId: data.crew?.crewId ?? "",
       // The gate's whole deposition test, and it is this collie's own: a warrant it signed itself,
       // for this crew, at a generation not behind the one it holds. Nothing weaker deposes a lead.
       verifies: (warrant) => isDepositionProof(data, warrant),
@@ -403,7 +414,7 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
       // A claim that could not be proved. It is printed ONCE, here, at the boot that read it — the
       // lead keeps leading, so nothing else in this process will ever mention it, and an operator
       // who never sees the line has a peer quietly refusing this crew for the rest of its uptime.
-      for (const warning of verdict.warnings) console.warn(`[pack] warn: ${warning}`);
+      for (const warning of verdict.warnings) console.warn(`[crew] warn: ${warning}`);
     }
   }
 }
@@ -412,8 +423,8 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
 // boots as a peer, wires a peer's listener and serves no front door, with no second process involved.
 const enrollment = enrollmentOf(trustStore.current());
 const crew = resolveCrewRuntime(enrollment);
-if (crew.conflict) console.warn(`[pack] ${crew.conflict}`);
-if (crew.mode !== "solo") console.log(`[pack] mode: ${crew.mode}`);
+if (crew.conflict) console.warn(`[crew] ${crew.conflict}`);
+if (crew.mode !== "solo") console.log(`[crew] mode: ${crew.mode}`);
 
 // The bind refusal, taken HERE rather than in loadConfig because the mode is what decides it.
 //
@@ -433,7 +444,7 @@ if (crew.mode !== "solo") console.log(`[pack] mode: ${crew.mode}`);
       process.exit(1);
     }
     console.warn(
-      `[pack] this ${crew.mode} binds ${cfg.host.trim() === "" ? "every interface" : cfg.host}, not ` +
+      `[crew] this ${crew.mode} binds ${cfg.host.trim() === "" ? "every interface" : cfg.host}, not ` +
         "loopback. Allowed because a crew member is dialled across a machine boundary and " +
         "/crew/v1/* carries its own two factors — but the browser gates (Tailscale-User-Login, " +
         "COLLIE_DEVICE_HEADER, same-origin) are client-settable here and bound nothing. Whatever " +
@@ -463,7 +474,7 @@ if (bootTrust !== null) {
   try {
     await writeFile(crewRuntimePath(cfg.stateDir), formatMarker(bootMarker), { mode: 0o600 });
   } catch (err) {
-    console.warn(`[pack] could not record the boot roster: ${err instanceof Error ? err.message : err}`);
+    console.warn(`[crew] could not record the boot roster: ${err instanceof Error ? err.message : err}`);
   }
 }
 
@@ -502,14 +513,14 @@ function crewStoreChanged(): void {
   const drift = rosterDrift(bootMarker, trustStore.current());
   if (drift === null) return;
   console.warn(
-    "[pack] the trust store changed under this running process — it still holds the roster it read " +
+    "[crew] the trust store changed under this running process — it still holds the roster it read " +
       "at boot. Run `collie restart` on THIS machine to activate the change.",
   );
-  if (drift.gained.length > 0) console.warn(`[pack]   enrolled but not yet active: ${drift.gained.join(", ")}`);
-  if (drift.lost.length > 0) console.warn(`[pack]   no longer members: ${drift.lost.join(", ")}`);
+  if (drift.gained.length > 0) console.warn(`[crew]   enrolled but not yet active: ${drift.gained.join(", ")}`);
+  if (drift.lost.length > 0) console.warn(`[crew]   no longer members: ${drift.lost.join(", ")}`);
   if (drift.modeChanged !== null) {
     console.warn(
-      `[pack]   this machine is now a ${drift.modeChanged}, but the process is still running as a ` +
+      `[crew]   this machine is now a ${drift.modeChanged}, but the process is still running as a ` +
         `${bootMarker.mode} — its listener and its front door are the ${bootMarker.mode}'s until it restarts.`,
     );
   }
@@ -1184,19 +1195,19 @@ void checkpointRuntime();
 
 if (deputyAnchor !== undefined) {
   console.log(
-    `[pack] this peer anchors its deputy "${deputyAnchor.memberId}" as a second TLS anchor — every ` +
+    `[crew] this peer anchors its deputy "${deputyAnchor.memberId}" as a second TLS anchor — every ` +
       "caller must now attest its dials, and a caller that is not this peer's lead is refused on every route.",
   );
 }
 if (crew.mode === "peer" && !transportPinned) {
   console.warn(
-    "[pack] this peer could not build its pinned listener (no enrolled lead certificate in the trust " +
+    "[crew] this peer could not build its pinned listener (no enrolled lead certificate in the trust " +
       "store) — the crew surface will refuse every request. Re-run `collie join` on this machine.",
   );
 }
 if (transportPinned && crew.peerServesBrowser) {
   console.warn(
-    `[pack] ${PEER_BROWSER_ENV} is set, but this peer's port now requires the lead's client certificate ` +
+    `[crew] ${PEER_BROWSER_ENV} is set, but this peer's port now requires the lead's client certificate ` +
       "at the TLS handshake — a browser cannot present one, so the browser surface is unreachable here. " +
       "Use the lead's front door, or leave the crew on this machine.",
   );
@@ -1210,7 +1221,7 @@ if (transportPinned && crew.peerServesBrowser) {
 if (warnsOnWildcardBind(crew.mode, cfg.host)) {
   const shown = cfg.host.trim() === "" ? "0.0.0.0/:: (COLLIE_HOST empty → all interfaces)" : cfg.host;
   console.warn(
-    `[pack] this peer's crew listener binds ${shown} — reachable on ALL interfaces, not one. It is ` +
+    `[crew] this peer's crew listener binds ${shown} — reachable on ALL interfaces, not one. It is ` +
       "gated only by pinned mutual TLS + the crew secret; the bind bounds nothing further. Set " +
       "COLLIE_HOST to the specific overlay/LAN address the lead dials (CREW_PROTOCOL.md §3).",
   );
@@ -1221,6 +1232,10 @@ if (warnsOnWildcardBind(crew.mode, cfg.host)) {
 {
   const clamped = crewTimeoutClampWarning(cfg.pollMs);
   if (clamped !== null) console.warn(clamped);
+  // REMOVE_IN_1_9_0: the same posture for the 1.7.0 spelling of the two crew budget keys — said
+  // once here, never on the poll path that actually reads them.
+  const legacyEnv = crewEnvFallbackWarning();
+  if (legacyEnv !== null) console.warn(legacyEnv);
 }
 
 /**
@@ -1347,10 +1362,10 @@ const crewLead = (() => {
       deputy: () => trustStore.current()?.deputy ?? null,
       current: () => {
         const held = trustStore.current();
-        if (held === null || held.pack === null) return null;
+        if (held === null || held.crew === null) return null;
         const devices = syncedDevicesOf(pairing.registry());
         return {
-          sync: { packId: held.pack.packId, leadMemberId: held.self.memberId, devices },
+          sync: { packId: held.crew.crewId, leadMemberId: held.self.memberId, devices },
           digest: syncDigest(devices),
         };
       },
@@ -1373,7 +1388,7 @@ const crewLead = (() => {
 })();
 
 /**
- * `GET /api/pack`'s body, asked for per request and answered from memory (bridge/crew/status-wire.ts).
+ * `GET /api/crew`'s body, asked for per request and answered from memory (bridge/crew/status-wire.ts).
  *
  * `undefined` unless this process leads a crew, which is the route's 404 for a solo instance and for
  * a peer alike (ADR 0013: a peer is not a front door). The closure still re-reads
@@ -1431,7 +1446,7 @@ function settleUpdateGate(): void {
   const age = Date.now() - start.at;
   if (start.at > 0 && age >= LEG_WALL_CLOCK_MS) {
     console.log(
-      `[pack] update ${start.runId}: not levelling, that run finished ${Math.round(age / 60_000)} minutes ago`,
+      `[crew] update ${start.runId}: not levelling, that run finished ${Math.round(age / 60_000)} minutes ago`,
     );
     return;
   }
@@ -1439,7 +1454,7 @@ function settleUpdateGate(): void {
   // are already tailing. The update that wrote this record ran under a transient `--collect` unit
   // whose name nobody knows and whose journal outlives it by nothing, so a trace left only there is
   // a trace left nowhere. Once per run id per process, so a poll tick cannot make it a stream.
-  console.log(`[pack] update ${start.runId}: levelling peers to ${start.to}`);
+  console.log(`[crew] update ${start.runId}: levelling peers to ${start.to}`);
   updateTurns.begin(start.runId, start.to);
   crewLead?.resweep();
 }
@@ -1466,7 +1481,7 @@ if (crewLead) {
 function takeoverClient(data: TrustStoreData): PeerClient {
   return new PeerClient({
     self: data.self.memberId,
-    secret: () => trustStore.current()?.pack?.secret ?? null,
+    secret: () => trustStore.current()?.crew?.secret ?? null,
     timeoutMs: crewTimeoutBudget(cfg.pollMs),
     patientTimeoutMs: crewHelloBudget(cfg.pollMs),
     fetch: (url, init) => fetch(url, init),
@@ -1536,7 +1551,7 @@ async function performTakeover(deviceLabel: string): Promise<{ ok: boolean; mess
         // Belt and braces: the read-only check above already passed, so reaching this means the
         // registry changed underneath. The store is already a lead's, which is the state that matters;
         // say so rather than pretending the adoption happened.
-        console.warn(`[pack] takeover: could not adopt ${collisions.join(", ")} — rename or revoke, then re-pair.`);
+        console.warn(`[crew] takeover: could not adopt ${collisions.join(", ")} — rename or revoke, then re-pair.`);
       }
       return { kind: "committed", pending: result.pending };
     },
@@ -1545,13 +1560,13 @@ async function performTakeover(deviceLabel: string): Promise<{ ok: boolean; mess
 
   const message = takeoverMessage(outcome);
   audit.record({
-    action: "pack.takeover",
+    action: "crew.takeover",
     device: deviceLabel,
     detail: { outcome: outcome.kind === "committed" ? "committed" : outcome.reason },
   });
   if (outcome.kind !== "committed") return { ok: false, message };
   console.warn(
-    `[pack] TOOK OVER — this machine is the lead of crew "${data.pack?.name ?? "?"}" now (warrant ` +
+    `[crew] TOOK OVER — this machine is the lead of crew "${data.crew?.name ?? "?"}" now (warrant ` +
       `generation ${currentWarrant(trustStore.current())?.warrant.generation ?? 0}), confirmed by ` +
       `${outcome.repinned.length} peer(s). Exiting ${TAKEOVER_RESTART_EXIT} so the supervisor brings ` +
       "this machine back up in LEAD mode — that status is non-zero on purpose, because `Restart=" +
@@ -1583,7 +1598,7 @@ const standbyDoor = standbyStore === null ? null : createStandbyDoor({
       ).length,
       leadMemberId: held?.lead?.memberId ?? null,
       selfMemberId: held?.self.memberId ?? "this machine",
-      crewName: held?.pack?.name ?? null,
+      crewName: held?.crew?.name ?? null,
     };
   },
   devices: syncedDevices,
@@ -1642,13 +1657,13 @@ const standbyServer =
 
 if (standbyServer !== null && standbyDoor !== null) {
   console.log(
-    `[pack] standby door listening on http://${standbyHostOf(process.env)}:${standbyPort} — it arms ` +
+    `[crew] standby door listening on http://${standbyHostOf(process.env)}:${standbyPort} — it arms ` +
       `after ${Math.round(standbyArmMs / 1000)}s of silence from this peer's lead, and only while a ` +
       "verified warrant names this machine and its lead has synced a paired device here.",
   );
 } else if (standbyServer !== null) {
   console.log(
-    `[pack] standby port ${standbyPort} answers the failover proxy's health check only — this collie ` +
+    `[crew] standby port ${standbyPort} answers the failover proxy's health check only — this collie ` +
       "is not a deputy standing by.",
   );
 }
@@ -1694,7 +1709,7 @@ const server = startServer({
             version: crewVersion,
             // §18.17: what THIS listener activated, reported so the lead stops inferring it from
             // whether its own operator once restarted this machine. A restart done any other way —
-            // an update, a systemd unit, a hand on a keyboard — is invisible to `pack-ops.json` and
+            // an update, a systemd unit, a hand on a keyboard — is invisible to `crew-ops.json` and
             // was therefore rendered as `anchor INACTIVE` on a machine that was fully armed.
             warrantActiveGeneration: activatedGeneration,
             // §19: this machine's own `collie update --check --local` verdict, published beside the

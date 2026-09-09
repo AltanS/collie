@@ -38,7 +38,7 @@ export function fp(label: string): string {
 }
 
 export const CREW: CrewIdentity = {
-  packId: "crew-1",
+  crewId: "crew-1",
   name: "the herd",
   secret: "s3cret-value-aaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   secretGeneration: 1,
@@ -63,7 +63,7 @@ export function member(over: Partial<TrustedMember> & { memberId: string }): Tru
 export function leadStore(over: Partial<TrustStoreData> = {}): TrustStoreData {
   return {
     ...createTrustStore(selfIdentity("desk", material("desk"), T0)),
-    pack: CREW,
+    crew: CREW,
     ...over,
   };
 }
@@ -72,7 +72,7 @@ export function leadStore(over: Partial<TrustStoreData> = {}): TrustStoreData {
 export function peerStore(over: Partial<TrustStoreData> = {}): TrustStoreData {
   return {
     ...createTrustStore(selfIdentity("laptop", material("laptop"), T0)),
-    pack: CREW,
+    crew: CREW,
     lead: member({ memberId: "desk", role: "lead" }),
     ...over,
   };

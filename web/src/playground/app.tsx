@@ -156,7 +156,7 @@ const SECTIONS = [
       "One terminal, mirrored. The breadcrumb header and status chip, the ANSI mirror with whatever dialog the grammar lifted out of it, and the composer beneath.",
   },
   {
-    id: "pack",
+    id: "crew",
     title: "Crew",
     intent:
       "More than one machine. The formation drawing at four sizes, the cards for a crew that isn't one, the host switcher, and the tier-2 banners that name a machine — not a link — as the thing that broke.",
@@ -888,7 +888,7 @@ function CrewSection() {
       <Card
         state="host-stale-unreachable"
         label="host-stale banner — unreachable"
-        reach="on a pack: your link is fine but this pane's MACHINE is not. It appears inside the pane frame, over the last screen that machine did send."
+        reach="on a crew: your link is fine but this pane's MACHINE is not. It appears inside the pane frame, over the last screen that machine did send."
         note="Hand-built HostHealth values — the banner's table is keyed on `state` and `writable` TOGETHER, so a row of it can only be shown by stating both."
       >
         <Stage>

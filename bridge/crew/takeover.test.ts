@@ -162,7 +162,7 @@ describe("the peer's verification matrix (RFC §7.1)", () => {
 
   test("FOREIGN: another crew, or a warrant this peer's lead did not issue", () => {
     const peer = witnessStore();
-    expect(checkTakeoverClaim({ ...peer, pack: { ...peer.pack!, packId: "crew-2" } }, warrant, deputyCaller, T0)).toEqual(
+    expect(checkTakeoverClaim({ ...peer, crew: { ...peer.crew!, crewId: "crew-2" } }, warrant, deputyCaller, T0)).toEqual(
       { kind: "refuse", reason: "foreign" },
     );
     expect(
@@ -228,7 +228,7 @@ describe("the peer's commit: a role change, not a re-enrollment", () => {
       signedAt: 0,
     });
     // The crew identity, the secret and this collie's own key material are untouched (§14.5).
-    expect(after.pack).toEqual(before.pack);
+    expect(after.crew).toEqual(before.crew);
     expect(after.self).toEqual(before.self);
     expect(after.peers).toEqual([]);
     expect(after.pendingHandover).toBeNull();
@@ -261,7 +261,7 @@ describe("the deputy's commit: adopting leadership (RFC §7.1's (c), §7.4)", ()
     // and because it IS the proof handed to every pending member.
     expect(after.deputy).toBeNull();
     expect(after.warrant!.warrant.generation).toBe(1);
-    expect(after.pack).toEqual(data.pack);
+    expect(after.crew).toEqual(data.crew);
   });
 
   test("PARTIAL SUCCESS is representable: everything unconfirmed is pending, and that is not a failure", () => {
@@ -310,7 +310,7 @@ describe("the deputy's commit: adopting leadership (RFC §7.1's (c), §7.4)", ()
 
   test("a store with no lead, or no crew, adopts nothing", () => {
     expect(adoptLeadership(leadStore(), { roster: [], confirmed: new Set(), now: T0 })).toBeNull();
-    const noCrew = { ...deputyStore(), pack: null };
+    const noCrew = { ...deputyStore(), crew: null };
     expect(adoptLeadership(noCrew, { roster: [], confirmed: new Set(), now: T0 })).toBeNull();
   });
 

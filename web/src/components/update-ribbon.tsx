@@ -97,7 +97,7 @@ export function UpdateRibbon() {
     startedAt,
     bundleStale,
     dismissedVersion: dismissedIn("offer", justDismissed, update?.dismissedVersion),
-    dismissedPackVersion: dismissedIn("pack", justDismissed, update?.dismissedPackVersion),
+    dismissedPackVersion: dismissedIn("crew", justDismissed, update?.dismissedPackVersion),
     now: Date.now(),
   });
   if (view.kind === "silent") return null;
@@ -132,7 +132,7 @@ export function UpdateRibbon() {
       {target !== null && (
         <button
           type="button"
-          aria-label={t(target.scope === "pack" ? "updateRibbon.hideNotice" : "updateRibbon.dismiss")}
+          aria-label={t(target.scope === "crew" ? "updateRibbon.hideNotice" : "updateRibbon.dismiss")}
           className="shrink-0 text-muted-foreground"
           onClick={() => {
             setJustDismissed(target);

@@ -58,7 +58,7 @@ describe("probe target", () => {
   });
 
   test("the config is read off this instance's env and its trust store", () => {
-    const files = fakeFiles({ [`${STATE}/pack-trust.json`]: serializeTrustStore(peerStore()) });
+    const files = fakeFiles({ [`${STATE}/crew-trust.json`]: serializeTrustStore(peerStore()) });
     const cfg = probeConfigOf(
       { COLLIE_HOST: "100.64.0.8", COLLIE_STANDBY_PORT: "8799" },
       files,
@@ -71,7 +71,7 @@ describe("probe target", () => {
 
   test("a lead's store names no lead, so its own port is the target", () => {
     const files = fakeFiles({
-      [`${STATE}/pack-trust.json`]: serializeTrustStore(leadStore({ peers: [member({ memberId: "nas" })] })),
+      [`${STATE}/crew-trust.json`]: serializeTrustStore(leadStore({ peers: [member({ memberId: "nas" })] })),
     });
     expect(probeConfigOf({ COLLIE_STANDBY_PORT: "8799" }, files, STATE, 8787).pinsALead).toBe(false);
   });

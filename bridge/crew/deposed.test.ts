@@ -99,7 +99,7 @@ describe("the self-heal — RFC §8.3's three outcomes", () => {
     // Provisional until it is actually dialled, exactly as `adoptLead` marks a newly-pinned lead.
     expect(next.lead?.contactedAt).toBeNull();
     expect(heal.change.audit).toEqual({
-      action: "pack.deposed",
+      action: "crew.deposed",
       detail: { lead: "nas", generation: warrant.generation, outcome: "healed" },
     });
   });
@@ -116,8 +116,8 @@ describe("the self-heal — RFC §8.3's three outcomes", () => {
     expect(deriveMode(enrollmentOf(next)).mode).toBe("peer");
     expect(next.peers).toEqual([]);
     // Nothing was minted and nothing was learned: same crew, same secret, same generation, same key.
-    expect(next.pack).toEqual(CREW);
-    expect(next.pack?.secret).toBe(data.pack!.secret);
+    expect(next.crew).toEqual(CREW);
+    expect(next.crew?.secret).toBe(data.crew!.secret);
     expect(next.self).toEqual(data.self);
     // The operator's designation belonged to this machine AS THE LEAD. It leads nothing now.
     expect(next.deputy).toBeNull();

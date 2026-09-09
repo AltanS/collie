@@ -23,7 +23,7 @@ test("the crew page shows every machine reachable", async ({ page, request }) =>
   await expect(page.getByRole("heading", { name: message("crew.title") })).toBeVisible();
 
   // One caption, one sentence, built from the same numbers the endpoint just gave.
-  const caption = `${crew.pack.name || crew.pack.id} · ${message("crew.summary.counts", {
+  const caption = `${crew.crew.name || crew.crew.id} · ${message("crew.summary.counts", {
     machines: plural("crew.summary.machines", crew.members.length),
     reachable: message("crew.summary.reachable", { count: reachable.length }),
   })}`;
