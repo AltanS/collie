@@ -443,7 +443,7 @@ jobs:
           # things and read as if almost nothing had happened. The compare link was the one part
           # worth keeping, and the notes file now writes it itself.
           gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
-            --title "Collie $GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
             --notes-file "${{ steps.notes.outputs.file }}" \
             "$RUNNER_TEMP"/assets/*
 
