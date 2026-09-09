@@ -28,6 +28,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **A real browser opens the app on every push.** CI gained a second job that builds the web bundle, serves it, answers the API from the same fixtures the unit tests use, and opens the app in Chromium at a phone size and a tablet size. It runs beside the existing typecheck and test job, so a browser failure and a lint failure both report in one run, and it uploads a screenshot and a trace when something fails. Nothing about the shipped app changes; the release path downloads no browser.
+
 ## [1.7.0] - 2026-09-09
 
 ### Added

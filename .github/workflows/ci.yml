@@ -45,3 +45,65 @@ jobs:
         run: cd web && bun run typecheck
       - name: Test (web)
         run: cd web && bun run test
+
+  # The browser tier (M26 spec 01). NO `needs`: a lint failure and a browser failure both have to
+  # report in one run, so this job starts beside `check` rather than behind it. It installs only
+  # `web/`, because Playwright is a devDependency of `web/` and of nothing else — the root tree
+  # never grows a browser.
+  #
+  # `release.yml` deliberately gains none of this. It carries no lint step for the same class of
+  # reason (release.yml:174-176: oxlint's allocator SIGABRTs below roughly 7 GB), and an operator
+  # path must never download a browser.
+  e2e:
+    name: browser (chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install (web)
+        run: cd web && bun install --frozen-lockfile
+
+      # The version is READ OUT OF THE LOCKFILE, never hard-coded: `web/bunfig.toml` holds a 7-day
+      # supply-chain cooldown, so which Playwright resolves is not something this file can know. A
+      # bumped dependency therefore invalidates the cache on its own.
+      - name: Resolve the Playwright version
+        id: pw
+        run: |
+          version="$(grep -m1 -oE '"@playwright/test@[0-9]+\.[0-9]+\.[0-9]+"' web/bun.lock | tr -d '"' | cut -d@ -f3)"
+          test -n "${version}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      # The first cache in this workflow. Chromium plus its headless shell is ~170 MB and the
+      # download is the slowest thing in this job by an order of magnitude.
+      - name: Cache Chromium
+        id: browser-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ms-playwright-chromium-${{ runner.os }}-${{ steps.pw.outputs.version }}
+
+      # Chromium only. `--with-deps` pulls the system libraries the runner image lacks, and it is
+      # needed on a cache HIT too: the cache carries the browser under $HOME, never the apt packages.
+      - name: Install Chromium
+        if: steps.browser-cache.outputs.cache-hit != 'true'
+        run: cd web && bunx playwright install --with-deps chromium
+      - name: Install Chromium system dependencies
+        if: steps.browser-cache.outputs.cache-hit == 'true'
+        run: cd web && bunx playwright install-deps chromium
+
+      # `e2e` runs `vite build` first: the tier serves the SHIPPED bundle off disk, because the
+      # service worker exists only in a real build.
+      - name: E2E (tier 1)
+        run: cd web && bun run e2e
+
+      - name: Upload the failure artefacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artefacts
+          path: |
+            web/test-results
+            web/playwright-report
+          retention-days: 7
+          if-no-files-found: ignore
