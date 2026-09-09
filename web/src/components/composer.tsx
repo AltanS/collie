@@ -5,9 +5,10 @@ import { Check, FileText, Image, Keyboard, Loader2, Mic, Paperclip, Send, Settin
 
 import { applyDraftFontSize, fontStack, inputFocusZoomsPage } from "@/hooks/use-display-prefs";
 import type { DisplayPrefs } from "@/hooks/use-display-prefs";
-import type { AgentStatus } from "@/lib/types";
+import type { AgentStatus, AgentView } from "@/lib/types";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useDirectTyping } from "@/hooks/use-direct-typing";
+import { useSwipeDown } from "@/hooks/use-swipe";
 import { useLocale } from "@/hooks/use-locale";
 import { t as translate, tn as translatePlural } from "@/lib/i18n";
 import { setStatus } from "@/lib/status";
@@ -20,6 +21,11 @@ import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { CommandPalette } from "@/components/command-palette";
 import { QuickActionsContent } from "@/components/quick-actions";
+import { NavTrayDense } from "@/components/nav-tray-dense";
+import { CommandPaletteDense } from "@/components/command-palette-dense";
+import { KeyRail } from "@/components/key-rail";
+import { SpaceAgentsRow } from "@/components/space-agents-row";
+import { useDenseKeysEnabled } from "@/lib/density";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
@@ -29,7 +35,7 @@ import * as api from "@/lib/api";
 import { describeApiError, describeThrownError } from "@/lib/api-error-message";
 import { commandsFor } from "@/lib/agent-commands";
 import { useMuxCapability, useMuxUnsupportedKeys } from "@/lib/mux-capability";
-import { useOperatorCommands, useOperatorKeys, useUploadCapability } from "@/lib/operator-config";
+import { useOperatorCommands, useOperatorKeys, useOperatorQuickReplies, useUploadCapability } from "@/lib/operator-config";
 import { acceptAttribute, limitMb, offersFiles, PHOTO_ACCEPT, rejectAttachment, uploadLimits } from "@/lib/attachments";
 import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { isDestructiveInput } from "@/lib/destructive";
@@ -124,6 +130,24 @@ interface ComposerProps {
   setExpandClippedReply: (expandClippedReply: boolean) => void;
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
+
+  // ── THE DENSE LAYOUT'S SESSIONS ROW ────────────────────────────────────────
+  // Only the dense layout renders this row (lib/density.ts); the roomy layout draws the same
+  // sessions as the tab/pane strips ABOVE the mirror and ignores every field below. They are
+  // passed unconditionally rather than behind an optional bag because the parent already holds
+  // all of them for the strips, and an optional group would let the row mount half-wired.
+  /** This space's agents, in stable order. */
+  spaceAgents: readonly AgentView[];
+  /** Switch straight to a tapped session (the parent navigates; same-pane taps no-op there). */
+  onSelectPane: (paneId: string) => void;
+  /** Open the full switcher sheet (the up-pill and the row's swipe-up). */
+  onOpenSwitcher: () => void;
+  /** Open a held session's options (rename, close). */
+  onHoldPane: (pane: AgentView) => void;
+  /** Connection not live: the row's dots show the last snapshot dimmed. */
+  rowStale?: boolean;
+  /** Whether the space holds anything worth switching to. */
+  rowVisible: boolean;
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -199,35 +223,92 @@ const KEY_REVALIDATE_MS = 300;
 // viewport with a tall tray. One wrapper so Keys and Quick can't drift apart.
 function ComposerDock({
   title,
+  id,
   host,
+  bare,
+  dense,
   onClose,
   children,
 }: {
   title: string;
+  /** Stable DOM id the opening toggle names in `aria-expanded`/`aria-controls` — never derived
+   *  from `title`, which is translated. Optional: only a toggle that lives OUTSIDE this dock
+   *  needs to point at it, which today is the dense layout's rail pad and sessions-row pin. */
+  id?: string;
   /** The machine a key sent from this dock lands on. Renders nothing on a single-host install. */
   host?: string;
+  /**
+   * Skip the header row entirely — no title, no host chip, no ✕.
+   *
+   * The header earns its ~34px in the ROOMY layout, where the only thing that opened this dock was
+   * a labelled button in a row of five and the title is what says which of them you pressed. In the
+   * DENSE layout the toggle is a single pinned control that MORPHS into a close control while open
+   * (key-rail.tsx / space-agents-row.tsx both wear the shared MorphIcon), so the title restates
+   * what the operator just tapped and the ✕ duplicates a control still on screen. A dock whose
+   * whole purpose is to fit more keys on the glass may not spend a row saying its own name.
+   *
+   * Not offered blindly: a dock the caller made bare must leave the host named somewhere, which is
+   * the caller's business and stated at each call site.
+   */
+  bare?: boolean;
+  /**
+   * Which layout this dock is drawing, which decides BOTH the body cap and the top rule — one
+   * argument, so no call site can pair a dense cap with a roomy border.
+   *
+   * ROOMY: 45dvh under a header, and upstream's `border-t` against the mirror.
+   * DENSE: 30dvh for BOTH docks, so switching between Keys and the palette never resizes the
+   * surface under the thumb (two caps that merely agreed would drift the first time one was
+   * tuned), and NO top rule — the chrome block in agent-chat.tsx already draws that boundary, and
+   * two components drawing one boundary is a fault this codebase has fixed twice
+   * (`space-strip.tsx` / `tab-strip.tsx`). In roomy the header row separates the two, so the
+   * doubling does not read; in dense the dock's body butts straight onto it.
+   */
+  dense: boolean;
   onClose: () => void;
   children: ReactNode;
 }) {
+  // Swipe-down to close: the sheets' own gesture, on in-flow chrome. It matters most on a BARE
+  // dock, where the ✕ is gone and the morphed toggle is the only button left — the fling is the
+  // second way out. Only while the body sits at the top, so a fling that also scrolled stays a
+  // scroll (the BottomSheet's atTop rule, same reason). It closes through `onClose`, so the Keys
+  // queue's discard confirm guards the gesture exactly as it guards the toggle (ADR 0005).
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const swipe = useSwipeDown(() => {
+    if ((bodyRef.current?.scrollTop ?? 0) <= 0) onClose();
+  });
   return (
-    <div className="-mx-3 mb-2 flex flex-col border-t border-border bg-background">
-      <div className="flex items-center justify-between px-3 pt-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <SectionLabel>{title}</SectionLabel>
-          {/* A key press from the Keys dock IS a write into a terminal — the dock names which one. */}
-          <HostChip host={host} variant="target" />
+    <div
+      id={id}
+      className={cn(
+        "-mx-3 mb-2 flex flex-col bg-background",
+        !dense && "border-t border-border",
+      )}
+      {...swipe}
+    >
+      {!bare && (
+        <div className="flex items-center justify-between px-3 pt-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <SectionLabel>{title}</SectionLabel>
+            {/* A key press from the Keys dock IS a write into a terminal — the dock names which one. */}
+            <HostChip host={host} variant="target" />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground"
+            onClick={onClose}
+            aria-label={translate("composer.dock.closeAria", { title })}
+          >
+            <X className="size-4" />
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 text-muted-foreground"
-          onClick={onClose}
-          aria-label={translate("composer.dock.closeAria", { title })}
-        >
-          <X className="size-4" />
-        </Button>
+      )}
+      <div
+        ref={bodyRef}
+        className={cn("min-h-0 overflow-y-auto", dense ? "max-h-[30dvh]" : "max-h-[45dvh]")}
+      >
+        {children}
       </div>
-      <div className="max-h-[45dvh] min-h-0 overflow-y-auto">{children}</div>
     </div>
   );
 }
@@ -237,10 +318,14 @@ function ComposerDock({
 const ATTACH_PRESS_MS = 220;
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, status, stale, gone, readOnly, hostBlock, composing, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply, onSent },
+  { paneId, scope, agent, isShell, status, stale, gone, readOnly, hostBlock, composing, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply, onSent, spaceAgents, onSelectPane, onOpenSwitcher, onHoldPane, rowStale, rowVisible },
   ref,
 ) {
   const revalidator = useRevalidator();
+  // Which layout this phone draws (lib/density.ts). Read ONCE here for the whole cluster: the
+  // dock's tray, the palette's home and the row below the dock all have to agree, and three
+  // separate reads could disagree for a frame on the tap that flips the setting.
+  const dense = useDenseKeysEnabled();
   useLocale();
   // The mirror-family stack for the draft field, or undefined when the operator kept the default
   // (the stylesheet's `font-mono` then answers alone). Derived once; the ChatInput below wears it.
@@ -371,6 +456,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   const [previewLatched, setPreviewLatched] = useState(false);
   // Composer sheets are mutually exclusive — at most one open (Keys / Quick / Agent / Display).
   const [drawer, setDrawer] = useState<ComposerDrawer>(null);
+  // Which opening this is — see requestDrawer for what the key on each dock below buys.
+  const [drawerSession, setDrawerSession] = useState(0);
   // Keys staged in the (unmounted-on-close) NavTray, pushed up so leaving the Keys dock can guard a
   // composed sequence. See requestDrawer.
   const [queuedKeys, setQueuedKeys] = useState(0);
@@ -397,6 +484,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       return;
     }
     discardConfirm.reset();
+    // A new opening gets a new session even when the last exit is still gliding. The session key
+    // on each dock turns a reopen into a real remount rather than a reconcile onto the held (still
+    // mounted, mid-exit) dock — which would resurrect the key queue the operator just discarded
+    // and re-arm the guard on chords they threw away. This is ADR 0005's rule surviving the glide:
+    // the queue must die with its dock, and now the dock outlives the close by 240ms.
+    if (next !== null && next !== drawer) setDrawerSession((s) => s + 1);
     setDrawer(next);
   }
   const closeDrawer = () => requestDrawer(null);
@@ -679,6 +772,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // visibility test here and the palette's own list below (same call, same arguments).
   const operatorCommands = useOperatorCommands();
   const commands = commandsFor(agent, operatorCommands);
+  // The operator's own reply groups, resolved the same way. Only the DENSE palette folds the
+  // one-tap replies in beside the commands (the roomy layout keeps them in the Quick dock), so
+  // this feeds the dense palette alone — same replace rule either way (ADR 0018).
+  const operatorReplies = useOperatorQuickReplies();
   // What this collie takes as an attachment, off the same one-shot /api/config read. On a bridge
   // that publishes nothing (older than the field, or the read has not landed) `uploadLimits` answers
   // with the contract that shipped before attachments — images, 10 MB — so the button is never
@@ -1098,32 +1195,80 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         <input ref={photoRef} data-testid="attach-photos" type="file" accept={PHOTO_ACCEPT} hidden onChange={onPickFile} />
         <input ref={fileRef} data-testid="attach-files" type="file" accept={accept} hidden onChange={onPickFile} />
 
-        {/* Keys / Quick / Display dock — a single in-flow site ABOVE the Controls row (so the toggle
-            you tapped stays put and the panel grows over the mirror, not the input). Whichever of the
-            mutually exclusive drawers is active renders here via the shared ComposerDock chrome. Keys
-            mounts the NavTray (unmounts on close, so tab/queue reset each open); Quick mounts the two
-            one-tap reply grids; Display mounts the labelled mirror prefs. Agent stays a covering
-            BottomSheet below (it's a palette, not a pad). */}
+        {/* Keys / Quick / Agent / Display dock — a single in-flow site ABOVE the row below it (so
+            the toggle you tapped stays put and the panel grows over the mirror, not the input).
+            Whichever of the mutually exclusive drawers is active renders here via the shared
+            ComposerDock chrome. Keys mounts the tray (unmounts on close, so tab/queue reset each
+            open); Quick mounts the two one-tap reply grids; Display mounts the labelled mirror
+            prefs.
+
+            TWO LAYOUTS, ONE DOCK SITE (lib/density.ts). The dense tray is a different component,
+            not a variant of the roomy one — the grids, the lanes and the label glyphs only read
+            together — so the toggle picks a component here rather than threading a `dense` flag
+            through the tray's own internals. Everything around the choice (the discard confirm,
+            the host chip, the queue accounting) is shared and stays shared.
+
+            The Agent palette also moves: roomy keeps it a covering BottomSheet below (it is a
+            palette, not a pad), while dense docks it here in flow, because in the dense layout its
+            entry is the agents row's pin sitting right beneath it. */}
+        {/* ── ONE SHARED GLIDE FOR THE WHOLE SITE ─────────────────────────────────────────────
+            The docks are wrapped in a SINGLE `Collapse` rather than each appearing on its own
+            condition, so the site has one animated box and switching drawers is one height change
+            instead of an unmount and a mount racing each other.
+
+            `instant` in ROOMY, on purpose: upstream's dock appears the moment its condition flips
+            and nothing below it moves, so a glide here would be a change to a layout this setting
+            is supposed to leave alone. DENSE glides, because it has a row directly beneath the
+            site and that row is what the motion has to stay in step with (see the row below). */}
+        <Collapse open={drawer !== null} instant={!dense}>
         {drawer === "keys" && (
           <ComposerDock
+            // Session key: a reopen mid-exit remounts instead of reconciling onto the held dock,
+            // which would resurrect the discarded queue (see requestDrawer / ADR 0005).
+            key={`dock-keys-${drawerSession}`}
+            id="dock-keys"
             title={translate("composer.controls.keys")}
             host={writeHost}
+            // Bare in the dense layout, but ONLY where the header has nothing left to say: on a
+            // pack it still names the machine these keys land on, because a key press is a write
+            // into a real terminal and no other always-visible surface in the dense layout names
+            // it (the status band that used to is gone). On a solo install — every install today —
+            // HostChip renders nothing, so the header is a title above a control the operator just
+            // pressed, and it goes.
+            bare={dense && writeHost == null}
+            dense={dense}
             onClose={closeDrawer}
           >
-            <NavTray
-              // The chords THIS multiplexer refuses (M10/06). A key is not a capability: the Keys
-              // door is `sendKeys` (the lock above), and this is the list of holes behind it, so a
-              // refused chord greys its own button instead of being discovered by a failed send.
-              unsupportedKeys={unsupportedKeys}
-              onSend={pressKeys}
-              presets={keyPresets}
-              onQueueChange={setQueuedKeys}
-              disabled={locked}
-            />
+            {dense ? (
+              <NavTrayDense
+                // The chords THIS multiplexer refuses (M10/06). A key is not a capability: the Keys
+                // door is `sendKeys` (the lock above), and this is the list of holes behind it, so a
+                // refused chord greys its own button instead of being discovered by a failed send.
+                unsupportedKeys={unsupportedKeys}
+                onSend={pressKeys}
+                presets={keyPresets}
+                onQueueChange={setQueuedKeys}
+                disabled={locked}
+              />
+            ) : (
+              <NavTray
+                unsupportedKeys={unsupportedKeys}
+                onSend={pressKeys}
+                presets={keyPresets}
+                onQueueChange={setQueuedKeys}
+                disabled={locked}
+              />
+            )}
           </ComposerDock>
         )}
         {drawer === "quick" && (
-          <ComposerDock title={translate("composer.controls.quick")} onClose={closeDrawer}>
+          <ComposerDock
+            key={`dock-quick-${drawerSession}`}
+            title={translate("composer.controls.quick")}
+            // Roomy-only surface: no Controls row, no Quick dock.
+            dense={false}
+            onClose={closeDrawer}
+          >
             <QuickActionsContent
               onSend={(t) => send(t, false)}
               onClose={closeDrawer}
@@ -1134,7 +1279,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </ComposerDock>
         )}
         {drawer === "display" && (
-          <ComposerDock title={translate("composer.controls.display")} onClose={closeDrawer}>
+          <ComposerDock
+            key={`dock-display-${drawerSession}`}
+            title={translate("composer.controls.display")}
+            // Roomy-only surface: the dense layout's mirror prefs live in the pane's own menu.
+            dense={false}
+            onClose={closeDrawer}
+          >
             <DisplayPrefsContent
               prefs={prefs}
               setWrap={setWrap}
@@ -1145,6 +1296,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             />
           </ComposerDock>
         )}
+        {/* The agent palette, docked in flow — DENSE ONLY. Roomy reaches the same catalog through
+            the covering BottomSheet at the end of this file, opened by the Controls row's /Agents
+            button; dense has no Controls row, so the entry is the agents row's pin below and the
+            panel grows above it. Never a header: the pin morphs into the close control, and the
+            rows below already name what they send. */}
+        {dense && drawer === "cmd" && (
+          <ComposerDock
+            key={`dock-cmd-${drawerSession}`}
+            id="dock-cmd"
+            title={translate("commands.title")}
+            // Always bare, on the one layout that mounts it: the pin below morphs into the close
+            // control, and the search field's own placeholder names the machine on a pack, so
+            // unlike Keys there is nothing the header alone would say.
+            bare
+            dense
+            onClose={closeDrawer}
+          >
+            {/* Breathing room under the dock's top rule — no header row to spend it, so the chips
+                would otherwise butt against the border. */}
+            <div className="pt-2">
+              <CommandPaletteDense
+                onClose={closeDrawer}
+                agent={agent}
+                isShell={isShell}
+                mine={operatorCommands}
+                mineReplies={operatorReplies}
+                onInsert={insertCommand}
+                onSubmit={(t) => send(t, false)}
+              />
+            </div>
+          </ComposerDock>
+        )}
+        </Collapse>
         {/* The one action row: Keys · Quick · Agent · ⚙ (Agent only when the pane's agent has
             commands). Display prefs used to sit on a second, permanent icon-only "View" row above
             this one; folding them behind the ⚙ gives the mirror that row back. The gear is icon-only
@@ -1255,13 +1439,83 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             sits between. `px-2.5` then puts the content back at the 10px inset the controls row
             asked for, so nothing on this line moved by a pixel: the band is what absorbs the old
             `-mx-0.5`, a 2px overhang that was invisible on this unpainted strip either way. */}
-        <div
-          data-slot="composer-status"
-          className="-mx-3 flex h-[14px] items-center justify-end gap-1.5 border-y border-border px-2.5 text-[10px]/3"
-        >
-          <HostChip host={writeHost} variant="caption" className="min-w-0" />
-          <StatusWordSlot status={statusWord} stale={stale} />
-        </div>
+        {/* ROOMY ONLY (lib/density.ts). The dense sessions row below badges every session with its
+            own StatusDot, THIS pane's included, so the word here is a second reading of the same
+            fact one row apart — and the row states it about a NAMED session rather than about an
+            unnamed "here". Everything above about this band's geometry still governs, for the one
+            layout that draws it.
+
+            WHAT THE DENSE LAYOUT GIVES UP WITH IT, SAID PLAINLY: on a PACK this band is the only
+            always-visible naming of the machine a send would reach. `HostChip` keeps its hide rule
+            to itself precisely so no caller drops a chip where it mattered (host-chip.tsx §"THE
+            HIDE RULE LIVES HERE"), and this is a caller dropping one — the dense layout names the
+            host only on an OPEN dock's header (`variant="target"` above). It costs nothing on the
+            solo installs the setting exists for, and the dense sessions row is the obvious home for
+            a self-hiding chip if a pack ever wants the density. Not done here: the row is gated on
+            sibling panes, so it would answer for some pack panes and not others, and a naming
+            surface that is sometimes absent is worse than one that is always elsewhere. */}
+        {!dense && (
+          <div
+            data-slot="composer-status"
+            className="-mx-3 flex h-[14px] items-center justify-end gap-1.5 border-y border-border px-2.5 text-[10px]/3"
+          >
+            <HostChip host={writeHost} variant="caption" className="min-w-0" />
+            <StatusWordSlot status={statusWord} stale={stale} />
+          </div>
+        )}
+        {/* ── THE ROW UNDER THE DOCK: ONE LAYOUT OR THE OTHER (lib/density.ts) ─────────────
+            ROOMY keeps the Controls row below — Keys · Type · Quick · Agent · ⚙, five labelled
+            buttons that each open one of the docks above.
+            DENSE replaces it with two thinner rows: this space's sessions (carrying the palette
+            pin) and the fixed key rail. That is the whole density trade, and it is worth stating
+            plainly: the rail spends one permanent row to save a tap on every menu, and the
+            sessions row spends another to save a trip through the switcher sheet. Two rows of
+            chrome buy back the dock openings they replace, which is why this is opt-in and not
+            the default — a phone that never drives a menu pays the rows for nothing.
+
+            Both dense rows sit ABOVE the input and BELOW the dock site, so an opening panel grows
+            over the mirror and neither row moves under the thumb (DESIGN.md §2). */}
+        {dense && (
+          <>
+            {/* Stands down while the keyboard is up or the Keys dock is open: driving keys wants
+                the mirror, not a session switcher, and a keyboard already took the room. */}
+            {/* Snap out while the Keys dock OPENS, glide back alongside it shutting. The opening
+                snap keeps the open to ONE moving box: a row vanishing in glide beside a dock
+                gliding in read as a bounce against the live-wrapping mirror. The close stays
+                simultaneous — the dock's height against the row's 28px, one curve, one commit — so
+                the bottom edge moves one way only instead of reversing, which is what read as
+                overshoot. The keyboard/composing edges still glide both ways. */}
+            <Collapse
+              open={!composing && drawer !== "keys" && rowVisible}
+              instant={drawer === "keys"}
+              className="-mx-3"
+            >
+              <SpaceAgentsRow
+                agents={spaceAgents}
+                currentPaneId={paneId}
+                onSelect={onSelectPane}
+                onOpenSwitcher={onOpenSwitcher}
+                onHoldPane={onHoldPane}
+                stale={rowStale}
+                onOpenCommands={() => requestDrawer(drawer === "cmd" ? null : "cmd")}
+                pinOpen={drawer === "cmd"}
+                commandsAvailable={commands.length > 0}
+                commandsDisabled={locked}
+              />
+            </Collapse>
+            {/* Fires through the same `pressKeys` as the dock, so the dialog refusal and the echo
+                accounting match. The pad is the Keys dock's own toggle, routed through
+                `requestDrawer` so a staged sequence still gets its discard confirm (ADR 0005). */}
+            <KeyRail
+              onSend={pressKeys}
+              unsupportedKeys={unsupportedKeys}
+              directActive={direct.active}
+              onOpenPad={() => requestDrawer(drawer === "keys" ? null : "keys")}
+              padOpen={drawer === "keys"}
+              disabled={locked}
+            />
+          </>
+        )}
         {/* `gap-1.5` rather than `gap-2`: four gaps at 8px is 32px of a 366px row, and 6px reads the
             same. The group still carries `aria-labelledby` to the word "Controls" — the word is now
             `sr-only` rather than deleted, because it was doing TWO jobs and only one of them was
@@ -1272,6 +1526,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             machine, not a run of controls, and it is absent on every solo install — which is also
             why it now stands OUTSIDE this group, in the band above, where it belongs to the line it
             completes rather than to five buttons it does not describe. */}
+        {!dense && (
         <div
           data-slot="composer-controls"
           role="group"
@@ -1367,6 +1622,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             <Settings2 className="size-4" />
           </Button>
         </div>
+        )}
         {/* ── THE FOOTER'S NOTICE STRIPS, SORTED BY KIND (DESIGN.md §1, §2) ─────────────────────
             Every strip below arrives and leaves through `Collapse`, which is the only sanctioned way
             an in-flow surface appears at all. Before this they were bare conditionals, so each one
@@ -1713,15 +1969,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         </div>
       </div>
 
-      {/* Slash-command palette */}
-      <CommandPalette
-        open={drawer === "cmd"}
-        onClose={closeDrawer}
-        agent={agent}
-        mine={operatorCommands}
-        onInsert={insertCommand}
-        onSubmit={(t) => send(t, false)}
-      />
+      {/* Slash-command palette — the ROOMY entry, a covering sheet opened by the Controls row's
+          /Agents button. Dense docks the same catalog in flow above instead (see the dense `cmd`
+          dock), so it must not also mount here: two surfaces answering one `drawer` value would
+          both open on the same tap. */}
+      {!dense && (
+        <CommandPalette
+          open={drawer === "cmd"}
+          onClose={closeDrawer}
+          agent={agent}
+          mine={operatorCommands}
+          onInsert={insertCommand}
+          onSubmit={(t) => send(t, false)}
+        />
+      )}
     </>
   );
 });

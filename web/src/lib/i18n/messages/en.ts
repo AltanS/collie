@@ -38,6 +38,14 @@ export const en = {
   "settings.install.description": "Add Collie to your home screen — full screen, its own icon.",
   "settings.install.button": "Install",
   "settings.install.iosHint": "On an iPhone or iPad, install from the browser's share sheet: tap Share, then \"Add to Home Screen\".",
+  // --- settings.pins ---
+  "settings.pins.title": "Side pins",
+  "settings.pins.description": "Which edge the /Agents and Keys tabs dock to.",
+  "settings.pins.option.left": "Left",
+  "settings.pins.option.right": "Right",
+
+  "settings.density.title": "Dense key surfaces",
+  "settings.density.description": "Compact key grids and an always-on key row, so the keys stay on screen and the terminal keeps more of its rows.",
   "settings.zen.title": "Zen mode",
   "settings.zen.description": "Adds a row to the pane menu that hides everything but the terminal.",
   "settings.zen.auto.label": "Enter on landscape",

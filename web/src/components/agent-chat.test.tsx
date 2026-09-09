@@ -22,6 +22,7 @@ import { server } from "@/test/setup";
 import { clearStatus, setStatus } from "@/lib/status";
 import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
 import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
+import { setDenseKeysEnabled, __resetDenseKeys } from "@/lib/density";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
@@ -2334,6 +2335,69 @@ describe("AgentChat: Launch section in the switcher", () => {
     renderChat();
     await user.click(screen.getByRole("button", { name: "Switch pane" }));
     expect(screen.queryByText("Launch")).toBeNull();
+  });
+});
+
+// ── THE DENSE LAYOUT'S HALF OF THE SWAP ───────────────────────────────────────
+// The composer grows a sessions row when the setting is on (composer.test.tsx pins that half), so
+// THIS file has to prove the other half: the two strips above the mirror stand down, and the phone
+// never carries the same sessions twice. Forgetting the stand-down is the bug that ships a screen
+// with two session lists on it.
+describe("AgentChat — the density swap stands the strips down", () => {
+  beforeEach(() => __resetDenseKeys());
+  afterEach(() => __resetDenseKeys());
+
+  const sibling: AgentView = { ...fixtureAgents[0]!, paneId: "w1:p9", status: "working" };
+  function renderStrips() {
+    return renderChat({ tabs: fixtureTabs, agents: [...fixtureAgents, sibling] });
+  }
+
+  it("keeps both strips above the mirror while the setting is off", () => {
+    renderStrips();
+    expect(screen.queryByRole("navigation", { name: "Tabs" })).not.toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Panes" })).not.toBeNull();
+    // …and the composer draws no row of its own.
+    expect(document.querySelector('[data-slot="space-agents"]')).toBeNull();
+  });
+
+  it("hands the sessions to the composer's row when it is on", () => {
+    setDenseKeysEnabled(true);
+    renderStrips();
+
+    // Both strips gone, and the fold bar with them — there is nothing left above to fold.
+    expect(screen.queryByRole("navigation", { name: "Tabs" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Show tabs/ })).toBeNull();
+    // The sessions moved, they did not vanish: the row below the mirror lists this tab's panes.
+    const row = document.querySelector<HTMLElement>('[data-slot="space-agents"]')!;
+    expect(row).not.toBeNull();
+    expect(within(row).getAllByRole("button").length).toBeGreaterThan(1);
+  });
+
+  // The 30px grab handle above the composer and the row's up-chevron make the SAME
+  // `onOpenSwitcher` call. Keeping both is the two-handles-for-one-errand bug; keeping neither
+  // would strand the sheet, so this pins which one survives in each layout.
+  it("spends one handle on the switcher, not two", () => {
+    // Both carry the same accessible name, so counting is the assertion and a global query would
+    // pass in either layout for the wrong reason.
+    const handles = () => screen.queryAllByRole("button", { name: "Switch pane" });
+    const inRow = () => {
+      const row = document.querySelector<HTMLElement>('[data-slot="space-agents"]');
+      return row ? within(row).queryAllByRole("button", { name: "Switch pane" }).length : 0;
+    };
+
+    renderStrips();
+    // Roomy: exactly one, and it is the standalone grab handle — no row exists to hold it.
+    expect(handles()).toHaveLength(1);
+    expect(inRow()).toBe(0);
+
+    cleanup();
+    setDenseKeysEnabled(true);
+    renderStrips();
+
+    // Dense: still exactly one, and now it is the row's up-chevron.
+    expect(handles()).toHaveLength(1);
+    expect(inRow()).toBe(1);
   });
 });
 

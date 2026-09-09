@@ -27,6 +27,7 @@ import { setFollowing as publishFollowing, stampSend } from "@/lib/poll-intent";
 import { useAutoZenEnabled, useZenEnabled } from "@/lib/zen";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { setStripsCollapsed, useStripsCollapsed } from "@/lib/strips-collapsed";
+import { useDenseKeysEnabled } from "@/lib/density";
 import { ChatMessageList, type ChatMessageListHandle } from "@/components/ui/chat/chat-message-list";
 import { BottomSheet } from "@/components/ui/sheet";
 import { Collapse, CollapseSwap } from "@/components/ui/collapse";
@@ -316,6 +317,15 @@ export function AgentChat({
   // the worse default.
   const [zen, setZen] = useState(false);
   const zenAvailable = useZenEnabled();
+
+  // Which layout this phone draws (lib/density.ts). Read once here: it decides whether the strips
+  // above the mirror stand down in favour of the composer's own sessions row, and both halves of
+  // that swap have to agree in the same commit.
+  const dense = useDenseKeysEnabled();
+  // The pane a dense row-chip hold is pointing at. A second PaneActionsSheet below is bound to it
+  // — alongside the header's own, never instead: the drawer's single value cannot carry WHICH
+  // pane, and both sheets are closed in every resting state, so at most one is ever open.
+  const [heldPane, setHeldPane] = useState<AgentView | null>(null);
 
   // Escape leaves, because every other full-screen surface in this app already binds it (BottomSheet
   // and the sheets it backs) and zen would otherwise be the one that ignores the convention. It
@@ -1491,8 +1501,13 @@ export function AgentChat({
                 back into siblings.
 
                 Rendered at all only when a row would have drawn: `stripsExist`. Nothing to fold is
-                not a folded thing. */}
-            {stripsExist && (
+                not a folded thing.
+
+                AND ONLY IN THE ROOMY LAYOUT. The dense layout draws the same sessions as one row
+                inside the composer instead (lib/density.ts), so both strips and their fold bar
+                stand down here — otherwise the phone would carry the sessions twice, once above
+                the mirror and once below it. */}
+            {stripsExist && !dense && (
               <CollapseSwap
                 open={!folded}
                 // The BAND, not two rows that happen to take turns in it — see CollapseSwap for what
@@ -1916,9 +1931,22 @@ export function AgentChat({
                     the end of the exit so it leaves the tab order with the pixels.
 
                     Also shown whenever launchers are declared, even with a single pane and no
-                    shells: a lone pane with launchers still needs a way to reach them. */}
+                    shells: a lone pane with launchers still needs a way to reach them.
+
+                    GONE IN THE DENSE LAYOUT (lib/density.ts). This handle is 30px whose only job is
+                    to reach the switcher sheet, and the dense sessions row below already carries a
+                    handle of its own: the up-chevron centred on the chrome border, which makes the
+                    same `onOpenSwitcher` call beside the same swipe, and lists the sessions the
+                    sheet would have shown while it does it. Two handles for one errand is the height
+                    the dense layout exists to buy back.
+
+                    The guard is the ROW's own condition, not a layout check, so the handle returns
+                    wherever the row does not draw. `tabPanes` contains the open pane itself, so on a
+                    live pane that is never — it matters for a GONE pane, where the row has nothing
+                    to list and the sheet is the way back to something alive. */}
                 <Collapse
                   open={
+                    !(dense && tabPanes.length > 0) &&
                     !composing &&
                     (agents.length + shellPanes.length > 0 || launchers.length > 0)
                   }
@@ -1965,6 +1993,19 @@ export function AgentChat({
                   setTapToFocus={setTapToFocus}
                   setExpandClippedReply={setExpandClippedReply}
                   onSent={onSent}
+                  // ── THE DENSE LAYOUT'S SESSIONS ROW ─────────────────────────────────────
+                  // Passed always, rendered only when this phone draws dense (lib/density.ts):
+                  // the roomy layout shows the same sessions as the tab/pane strips ABOVE the
+                  // mirror, which stand down in the dense layout so the row can take their job
+                  // inside the composer, where an opening dock grows above it instead of under
+                  // the thumb. `tabPanes` is the SAME list PaneStrip draws, so the two layouts
+                  // can never disagree about how many panes there are or which one is open.
+                  spaceAgents={tabPanes}
+                  onSelectPane={switchTo}
+                  onOpenSwitcher={() => setDrawer("switcher")}
+                  onHoldPane={setHeldPane}
+                  rowStale={connecting}
+                  rowVisible={tabPanes.length > 0}
                 />
               </div>
             </div>
@@ -2060,6 +2101,21 @@ export function AgentChat({
           // flexible element the budget protects. Zen is also the same FAMILY as the two rows it
           // joins — "look at the output differently" — so the menu it belongs in already existed.
           onZen={zenAvailable && display ? enterZen : undefined}
+        />
+
+        {/* The dense row-chip hold's sheet: the same PaneActionsSheet bound to the HELD pane, not
+            the open one. Write rows only (rename, close) — the strip precedent: find searches THIS
+            screen's buffer and history opens THIS screen's transcript, and neither means anything
+            for a pane you are not looking at. `onClosed` already handles both cases (leave if it
+            was the open pane, revalidate otherwise). */}
+        <PaneActionsSheet
+          open={heldPane !== null}
+          onClose={() => setHeldPane(null)}
+          pane={heldPane}
+          scope={scope}
+          readOnly={readOnly}
+          onRenamed={() => revalidator.revalidate()}
+          onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
         />
       </div>
     </CompactStripLabels>

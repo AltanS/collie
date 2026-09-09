@@ -1,12 +1,20 @@
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { useDenseKeysEnabled } from "@/lib/density";
 
 // Auto-growing message composer. It's just a styled textarea, so the phone's native keyboard —
 // including voice dictation via the keyboard mic — works for free. Auto-capitalization is off: this
 // drives a terminal (shell commands, slash-commands, agent replies) where a forced leading capital
 // is usually wrong. (Callers can still override via props.)
 function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea">) {
+  // Read here rather than taken as a prop, for the reason host-chip.tsx gives about its own hide
+  // rule: two callers mount this field (the composer and the pane view's own), and a rule each
+  // caller has to remember is a rule one of them eventually forgets. The dense box draws at
+  // 36px, below DESIGN.md's 44px tap floor; the whole row width does not supply missing height.
+  // The rail and tray keep smaller key faces with extended hit areas, not min-h-11 on every
+  // dense surface. This textarea's 36px height is a separate choice, not evidence of that floor.
+  const dense = useDenseKeysEnabled();
   return (
     <textarea
       ref={ref}
@@ -85,7 +93,12 @@ function ChatInput({ className, ref, ...props }: React.ComponentProps<"textarea"
         // It does NOT touch the placeholder: `::placeholder` above still says `whitespace-nowrap`,
         // and `white-space` beats any `overflow-wrap` there is — nothing may wrap what may not have
         // a line break. The one-line, clipped placeholder contract above stands unchanged.
-        "field-sizing-content wrap-anywhere max-h-[min(10rem,30dvh)] min-h-11 w-full resize-none rounded-md border border-input bg-transparent px-3 py-2.5 text-base shadow-xs transition-[color,box-shadow] placeholder:overflow-hidden placeholder:whitespace-nowrap placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
+        // The height pair is the ONLY thing density moves here — everything argued above (the cap,
+        // the placeholder contract, `wrap-anywhere`) is identical in both layouts. It stands after
+        // the shared run so tailwind-merge resolves it, and before `className` so a caller can
+        // still override either way.
+        "field-sizing-content wrap-anywhere max-h-[min(10rem,30dvh)] w-full resize-none rounded-md border border-input bg-transparent px-3 text-base shadow-xs transition-[color,box-shadow] placeholder:overflow-hidden placeholder:whitespace-nowrap placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-50",
+        dense ? "min-h-9 py-1.5" : "min-h-11 py-2.5",
         className,
       )}
       {...props}

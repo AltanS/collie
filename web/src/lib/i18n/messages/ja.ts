@@ -28,6 +28,14 @@ export const ja: Dictionary = {
   "settings.install.description": "ホーム画面に Collie を追加して、全画面と専用アイコンで起動します。",
   "settings.install.button": "インストール",
   "settings.install.iosHint": "iOS または iPadOS では、ブラウザの共有メニューから「ホーム画面に追加」を選択します。",
+  // --- settings.pins ---
+  "settings.pins.title": "\u30b5\u30a4\u30c9\u30bf\u30d6",
+  "settings.pins.description": "/Agents\u30bf\u30d6\u3068\u30ad\u30fc\u30bf\u30d6\u3092\u3069\u3061\u3089\u306e\u7aef\u306b\u914d\u7f6e\u3059\u308b\u304b\u3002",
+  "settings.pins.option.left": "\u5de6",
+  "settings.pins.option.right": "\u53f3",
+
+  "settings.density.title": "高密度のキー配置",
+  "settings.density.description": "キーのグリッドを詰め、常時表示のキー行を置きます。キーは画面に残り、ターミナルの行数が増えます。",
   "settings.zen.title": "Zen モード",
   "settings.zen.description": "ペインメニューに、ターミナル以外のUI要素を非表示にする項目を追加します。",
   "settings.zen.auto.label": "横向きで自動的に有効化",

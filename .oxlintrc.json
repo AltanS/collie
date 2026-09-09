@@ -156,6 +156,8 @@
         "**/web/src/lib/drafts.ts",
         "**/web/src/lib/haptics.ts",
         "**/web/src/lib/zen.ts",
+        "**/web/src/lib/density.ts",
+        "**/web/src/hooks/use-pin-side.ts",
         "**/web/src/lib/strips-collapsed.ts",
         "**/web/src/lib/follow-terminal.ts"
       ],

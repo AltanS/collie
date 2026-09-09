@@ -104,6 +104,36 @@ describe("Collapse — animated presence for anything in flow", () => {
     expect(screen.queryByText("copy")).toBeNull();
   });
 
+  it("snaps both ways when instant, with no timers and no intermediate paint", () => {
+    // The caller's snap for an edge that fires alongside another Collapse going the other way
+    // (the agents row standing down while the dock site opens). Unlike the reduced-motion path —
+    // which keeps its two ticks with the paint frozen — instant sets everything in the edge's own
+    // commit, so no collapsed frame ever paints on the way in and nothing loiters on the way out.
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <Collapse open instant>
+        <p>copy</p>
+      </Collapse>,
+    );
+    expect(container.firstElementChild).toHaveAttribute("data-state", "open");
+    expect(container.firstElementChild).toHaveClass("transition-none");
+
+    rerender(
+      <Collapse open={false} instant>
+        <p>copy</p>
+      </Collapse>,
+    );
+    // Gone without advancing a single timer: the exit sets rendered false in the edge's commit.
+    expect(screen.queryByText("copy")).toBeNull();
+
+    rerender(
+      <Collapse open instant>
+        <p>copy</p>
+      </Collapse>,
+    );
+    expect(container.firstElementChild).toHaveAttribute("data-state", "open");
+  });
+
   it("is painted CLOSED before it opens, so the transition has a start value", () => {
     // THE BUG THIS PINS, found by measuring the running app and invisible to every test above.
     // The enter used to flip `expanded` on a `setTimeout(0)`, which fires inside the same frame:

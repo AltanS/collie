@@ -9,6 +9,7 @@ import { clearStatus, useStatus } from "@/lib/status";
 import { isReloadHeld, __resetReloadGuard } from "@/lib/reload-guard";
 import { loadDraft } from "@/lib/drafts";
 import { __resetOperatorCommands } from "@/lib/operator-config";
+import { setDenseKeysEnabled, __resetDenseKeys } from "@/lib/density";
 import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
 import { PackProvider } from "./pack-provider";
@@ -75,6 +76,13 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     setTapToFocus: vi.fn(),
     setExpandClippedReply: vi.fn(),
     onSent: vi.fn(),
+    // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+    // composer itself, and the roomy default renders no row at all.
+    spaceAgents: [],
+    onSelectPane: vi.fn(),
+    onOpenSwitcher: vi.fn(),
+    onHoldPane: vi.fn(),
+    rowVisible: false,
     ...overrides,
   };
   const router = createMemoryRouter([{ path: "/", element: <Composer {...props} /> }]);
@@ -127,6 +135,13 @@ function renderComposerWithStatus(
     setTapToFocus: vi.fn(),
     setExpandClippedReply: vi.fn(),
     onSent: vi.fn(),
+    // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+    // composer itself, and the roomy default renders no row at all.
+    spaceAgents: [],
+    onSelectPane: vi.fn(),
+    onOpenSwitcher: vi.fn(),
+    onHoldPane: vi.fn(),
+    rowVisible: false,
     ...overrides,
   };
   const router = createMemoryRouter([
@@ -503,6 +518,11 @@ describe("Composer — send", () => {
               setTapToFocus={vi.fn()}
               setExpandClippedReply={vi.fn()}
               onSent={vi.fn()}
+              spaceAgents={[]}
+              onSelectPane={vi.fn()}
+              onOpenSwitcher={vi.fn()}
+              onHoldPane={vi.fn()}
+              rowVisible={false}
             />
           </>
         );
@@ -597,6 +617,13 @@ describe("Composer — send", () => {
       setTapToFocus: vi.fn(),
       setExpandClippedReply: vi.fn(),
       onSent: vi.fn(),
+      // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+      // composer itself, and the roomy default renders no row at all.
+      spaceAgents: [],
+      onSelectPane: vi.fn(),
+      onOpenSwitcher: vi.fn(),
+      onHoldPane: vi.fn(),
+      rowVisible: false,
     };
     const router = createMemoryRouter([
       {
@@ -694,6 +721,11 @@ describe("Composer — typing into the terminal", () => {
             setTapToFocus={vi.fn()}
             setExpandClippedReply={vi.fn()}
             onSent={vi.fn()}
+            spaceAgents={[]}
+            onSelectPane={vi.fn()}
+            onOpenSwitcher={vi.fn()}
+            onHoldPane={vi.fn()}
+            rowVisible={false}
           />
         </>
       );
@@ -827,6 +859,11 @@ describe("Composer — typing into the terminal", () => {
             setTapToFocus={vi.fn()}
             setExpandClippedReply={vi.fn()}
             onSent={vi.fn()}
+            spaceAgents={[]}
+            onSelectPane={vi.fn()}
+            onOpenSwitcher={vi.fn()}
+            onHoldPane={vi.fn()}
+            rowVisible={false}
           />
         </>
       );
@@ -1019,6 +1056,11 @@ describe("Composer — typing into the terminal", () => {
             setTapToFocus={vi.fn()}
             setExpandClippedReply={vi.fn()}
             onSent={vi.fn()}
+            spaceAgents={[]}
+            onSelectPane={vi.fn()}
+            onOpenSwitcher={vi.fn()}
+            onHoldPane={vi.fn()}
+            rowVisible={false}
           />
         </>
       );
@@ -1739,6 +1781,13 @@ function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> 
       setTapToFocus: vi.fn(),
       setExpandClippedReply: vi.fn(),
       onSent: vi.fn(),
+      // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+      // composer itself, and the roomy default renders no row at all.
+      spaceAgents: [],
+      onSelectPane: vi.fn(),
+      onOpenSwitcher: vi.fn(),
+      onHoldPane: vi.fn(),
+      rowVisible: false,
       ...rest,
       terminalDraft: stable,
       rawTerminalDraft: raw,
@@ -2011,6 +2060,13 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
       setTapToFocus: vi.fn(),
       setExpandClippedReply: vi.fn(),
       onSent: vi.fn(),
+      // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+      // composer itself, and the roomy default renders no row at all.
+      spaceAgents: [],
+      onSelectPane: vi.fn(),
+      onOpenSwitcher: vi.fn(),
+      onHoldPane: vi.fn(),
+      rowVisible: false,
     };
     return (
       <>
@@ -2648,6 +2704,13 @@ describe("Composer — draft persistence", () => {
       setTapToFocus: vi.fn(),
       setExpandClippedReply: vi.fn(),
       onSent: vi.fn(),
+      // The dense layout's sessions row (lib/density.ts). Empty here: these cases drive the
+      // composer itself, and the roomy default renders no row at all.
+      spaceAgents: [],
+      onSelectPane: vi.fn(),
+      onOpenSwitcher: vi.fn(),
+      onHoldPane: vi.fn(),
+      rowVisible: false,
       ...overrides,
     };
   }
@@ -2788,6 +2851,176 @@ describe("Composer — a long upload path cannot widen the field", () => {
 
     await waitFor(() => expect(box).toHaveValue(path));
     expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+  });
+});
+
+// ── THE TWO LAYOUTS ───────────────────────────────────────────────────────────
+// One setting (lib/density.ts) decides which set of key surfaces this phone draws, and the whole
+// point of it being opt-in is that the roomy layout must be untouched while it is off. So these
+// pin the SWAP, in both directions: the entries an operator taps, and the promise that no surface
+// is served twice. Getting the branch backwards, or leaving both palettes mounted on one `drawer`
+// value, is exactly the bug that would otherwise ship silently.
+describe("Composer — the density swap", () => {
+  beforeEach(() => __resetDenseKeys());
+  afterEach(() => __resetDenseKeys());
+
+  const sessions = [
+    {
+      paneId: "w1:p1",
+      workspaceId: "w1",
+      workspaceLabel: "webapp",
+      workspaceNumber: 1,
+      tabId: "w1:t1",
+      agent: "claude",
+      status: "blocked",
+      cwd: "/home/you/webapp",
+      focused: false,
+    },
+  ] as const;
+
+  it("draws the Controls row and no rail while the setting is off", () => {
+    renderComposer();
+
+    // The roomy entries, all five, exactly as they were before the setting existed.
+    expect(screen.getByRole("group", { name: "Controls" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Keys" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Quick" })).toBeInTheDocument();
+    // …and none of the dense surfaces.
+    expect(document.querySelector('[data-slot="key-rail"]')).toBeNull();
+    expect(document.querySelector('[data-slot="space-agents"]')).toBeNull();
+  });
+
+  it("swaps the Controls row for the rail and the sessions row while it is on", () => {
+    setDenseKeysEnabled(true);
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+
+    // The dense trade: two thin rows instead of one row of five labelled buttons.
+    expect(document.querySelector('[data-slot="key-rail"]')).not.toBeNull();
+    expect(document.querySelector('[data-slot="space-agents"]')).not.toBeNull();
+    expect(screen.queryByRole("group", { name: "Controls" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Quick" })).toBeNull();
+    // Esc is one tap away with no dock open — the rail's whole reason to spend a row.
+    expect(screen.getByRole("button", { name: "Esc" })).toBeInTheDocument();
+  });
+
+  it("opens the Keys dock from whichever entry the layout gives it", async () => {
+    const user = userEvent.setup();
+    renderComposer();
+    // Roomy: the Controls row's Keys button.
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    expect(document.getElementById("dock-keys")).not.toBeNull();
+
+    cleanup();
+    setDenseKeysEnabled(true);
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+    // Dense: the rail's pad, which names the same dock through `aria-controls`.
+    const pad = screen.getByRole("button", { name: "Keys" });
+    expect(pad).toHaveAttribute("aria-controls", "dock-keys");
+    await user.click(pad);
+    expect(document.getElementById("dock-keys")).not.toBeNull();
+  });
+
+  it("mounts exactly one agent palette, in the home its layout gives it", async () => {
+    const user = userEvent.setup();
+    setDenseKeysEnabled(true);
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+    // Dense docks the palette IN FLOW, above the row whose pin opened it. Two surfaces answering
+    // one `drawer` value would both open on this single tap.
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    expect(document.getElementById("dock-cmd")).not.toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  // The status band states this pane's status as a word; the dense row badges every session with a
+  // StatusDot, this one included. Drawing both puts the same fact on screen twice, one row apart,
+  // which is the height the dense layout is supposed to be buying back.
+  it("states the status once — the band in roomy, the row's dots in dense", () => {
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+    expect(document.querySelector('[data-slot="composer-status"]')).not.toBeNull();
+    expect(document.querySelector('[data-slot="space-agents"]')).toBeNull();
+
+    cleanup();
+    setDenseKeysEnabled(true);
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+
+    expect(document.querySelector('[data-slot="composer-status"]')).toBeNull();
+    expect(document.querySelector('[data-slot="space-agents"]')).not.toBeNull();
+  });
+
+  // The reply box is the tallest single thing in the cluster, so the dense layout shortens it too:
+  // 36px + `py-1.5` instead of 44px + `py-2.5`. Pinned because it is the one dense surface that
+  // goes under the 44px comfort floor on purpose (chat-input.tsx says why), and a later tidy-up
+  // that "restored" the target would silently take the density back.
+  it("shortens the reply box in dense and leaves everything else about it alone", () => {
+    renderComposer({});
+    const roomy = document.querySelector('[data-slot="chat-input"]')!.className;
+    expect(roomy).toContain("min-h-11");
+    expect(roomy).toContain("py-2.5");
+
+    cleanup();
+    setDenseKeysEnabled(true);
+    renderComposer({});
+    const tight = document.querySelector('[data-slot="chat-input"]')!.className;
+    expect(tight).toContain("min-h-9");
+    expect(tight).toContain("py-1.5");
+    // The cap and the wrap rules are not density's business — both layouts keep them.
+    expect(tight).toContain("max-h-[min(10rem,30dvh)]");
+    expect(tight).toContain("wrap-anywhere");
+  });
+
+  // ── THE DOCK ITSELF, WHICH IS WHERE THE PORT KEPT DRIFTING ──────────────────
+  // Three facts, one test, because they are one decision (`dense` on ComposerDock) and a partial
+  // regression is what shipped twice: a dense dock has NO header row, BOTH dense docks open to the
+  // SAME cap, and neither draws a top rule (the chrome block above already draws that boundary).
+  it("gives the dense docks no header, one shared cap, and no second boundary", async () => {
+    const user = userEvent.setup();
+    setDenseKeysEnabled(true);
+
+    // One dock per render, because the sessions row — which owns the palette's pin — stands down
+    // while the Keys dock is open, so there is no sequence that has both on screen. The caps are
+    // still compared by VALUE, which is the fact that matters.
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    const keys = document.getElementById("dock-keys")!;
+    // No title, no close control — the rail pad just pressed morphed into one.
+    expect(keys.querySelector("[aria-label^='Close']")).toBeNull();
+    expect(keys.className).not.toContain("border-t");
+    const keysCap = keys.lastElementChild!.className;
+    // The whole site glides as ONE box in dense: the docks share a Collapse, so switching drawers
+    // is a single height change rather than an unmount racing a mount. The transition sits on
+    // Collapse's outer grid, two levels up from the dock (the inner box carries the clip).
+    expect(keys.parentElement!.parentElement!.className).toContain("transition-all");
+
+    cleanup();
+    renderComposer({ spaceAgents: sessions, rowVisible: true });
+    await user.click(screen.getByRole("button", { name: "Agent" }));
+    const cmd = document.getElementById("dock-cmd")!;
+    expect(cmd.querySelector("[aria-label^='Close']")).toBeNull();
+    expect(cmd.className).not.toContain("border-t");
+    // ONE cap, not two that agree today: switching docks must not resize the surface under the
+    // thumb, and two literals would drift the first time one was tuned.
+    expect(cmd.lastElementChild!.className).toBe(keysCap);
+    expect(keysCap).toContain("max-h-[30dvh]");
+  });
+
+  // Roomy keeps upstream's dock exactly: a titled header with a working ✕, and the top rule.
+  it("leaves the roomy dock its header and its rule", async () => {
+    const user = userEvent.setup();
+    renderComposer({});
+
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    const keys = document.getElementById("dock-keys")!;
+    expect(keys.className).toContain("border-t");
+    expect(keys.lastElementChild!.className).toContain("max-h-[45dvh]");
+    // ...and roomy keeps upstream's MOTION too: the dock appears the instant its condition flips.
+    // The dense glide exists to stay in step with the row beneath it, which roomy does not have,
+    // so gliding here would be this setting changing a layout it is meant to leave alone.
+    expect(keys.parentElement!.parentElement!.className).toContain("transition-none");
+
+    const close = keys.querySelector<HTMLElement>("[aria-label^='Close']")!;
+    expect(close).not.toBeNull();
+    await user.click(close);
+    expect(document.getElementById("dock-keys")).toBeNull();
   });
 });
 
