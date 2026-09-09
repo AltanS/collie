@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" role="img"
+     aria-label="Code reaches a member over your own ssh, never over the crew link.">
+  <title>Code reaches a member over your own ssh, never over the crew link.</title>
+  <style>
+    .box { fill: #fafafa; stroke: #3f3f46; stroke-width: 1.5; }
+    .link { stroke: #3f3f46; stroke-width: 1.5; fill: none; }
+    .ssh { stroke: #3f3f46; stroke-width: 1.5; fill: none; stroke-dasharray: 6 5; }
+    text { font-family: system-ui, sans-serif; fill: #18181b; text-anchor: middle; }
+    .name { font-size: 16px; font-weight: 600; }
+    .lbl { font-size: 14px; fill: #52525b; }
+    .bundle { fill: #0d9488; transform: translate(275px, 145px); }
+    @media (prefers-color-scheme: dark) {
+      .box { fill: #27272a; stroke: #a1a1aa; }
+      .link, .ssh { stroke: #a1a1aa; }
+      text { fill: #f4f4f5; }
+      .lbl { fill: #a1a1aa; }
+      .bundle { fill: #2dd4bf; }
+    }
+    @keyframes ride {
+      0% { transform: translate(400px, 70px); opacity: 0; }
+      6% { transform: translate(410px, 76px); opacity: 1; }
+      70% { transform: translate(150px, 220px); opacity: 1; }
+      78% { transform: translate(150px, 220px); opacity: 0; }
+      100% { transform: translate(150px, 220px); opacity: 0; }
+    }
+    .bundle { animation: ride 5s linear infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      .bundle { animation: none; }
+    }
+  </style>
+
+  <rect class="box" x="340" y="20" width="120" height="50" rx="6" />
+  <text class="name" x="400" y="52">you</text>
+
+  <line class="ssh" x1="400" y1="70" x2="150" y2="220" />
+  <line class="ssh" x1="400" y1="70" x2="400" y2="220" />
+  <line class="ssh" x1="400" y1="70" x2="650" y2="220" />
+  <text class="lbl" x="205" y="112">ssh, code rides here</text>
+
+  <rect class="box" x="60" y="220" width="180" height="70" rx="8" />
+  <text class="name" x="150" y="261">member</text>
+
+  <rect class="box" x="310" y="220" width="180" height="70" rx="8" />
+  <text class="name" x="400" y="261">lead</text>
+
+  <rect class="box" x="560" y="220" width="180" height="70" rx="8" />
+  <text class="name" x="650" y="261">deputy</text>
+
+  <line class="link" x1="240" y1="255" x2="310" y2="255" />
+  <line class="link" x1="490" y1="255" x2="560" y2="255" />
+  <text class="lbl" x="400" y="330">the crew link carries runtime data, never code</text>
+
+  <rect class="bundle" x="-7" y="-7" width="14" height="14" rx="2" />
+</svg>

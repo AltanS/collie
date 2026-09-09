@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" role="img"
+     aria-label="The deputy's standby door opens only when the lead goes quiet.">
+  <title>The deputy's standby door opens only when the lead goes quiet.</title>
+  <style>
+    .box { fill: #fafafa; stroke: #3f3f46; stroke-width: 1.5; }
+    .link { stroke: #3f3f46; stroke-width: 1.5; fill: none; }
+    .leader { stroke: #a1a1aa; stroke-width: 1; fill: none; }
+    text { font-family: system-ui, sans-serif; fill: #18181b; text-anchor: middle; }
+    .name { font-size: 16px; font-weight: 600; }
+    .lbl { font-size: 14px; fill: #52525b; }
+    .cap { font-size: 13px; fill: #52525b; }
+    .door-lit { fill: none; stroke: #0d9488; stroke-width: 2.5; opacity: 1; }
+    .quiet { opacity: 0.35; }
+    .takeover { stroke: #0d9488; stroke-width: 1.5; fill: none;
+                stroke-dasharray: 700; stroke-dashoffset: 0; opacity: 1; }
+    @media (prefers-color-scheme: dark) {
+      .box { fill: #27272a; stroke: #a1a1aa; }
+      .link { stroke: #a1a1aa; }
+      .leader { stroke: #71717a; }
+      text { fill: #f4f4f5; }
+      .lbl, .cap { fill: #a1a1aa; }
+      .door-lit, .takeover { stroke: #2dd4bf; }
+    }
+    @keyframes go-quiet {
+      0%, 12% { opacity: 1; }
+      25%, 78% { opacity: 0.35; }
+      90%, 100% { opacity: 1; }
+    }
+    @keyframes light-up {
+      0%, 20% { opacity: 0; }
+      30%, 78% { opacity: 1; }
+      88%, 100% { opacity: 0; }
+    }
+    @keyframes draw-in {
+      0%, 28% { stroke-dashoffset: 700; opacity: 0; }
+      32% { stroke-dashoffset: 700; opacity: 1; }
+      52%, 78% { stroke-dashoffset: 0; opacity: 1; }
+      88%, 100% { stroke-dashoffset: 0; opacity: 0; }
+    }
+    .quiet { animation: go-quiet 6s ease-in-out infinite; }
+    .door-lit { animation: light-up 6s ease-in-out infinite; }
+    .takeover { animation: draw-in 6s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      .quiet, .door-lit, .takeover { animation: none; }
+    }
+  </style>
+
+  <rect class="box" x="40" y="120" width="64" height="140" rx="10" />
+  <text class="name" x="72" y="282">phone</text>
+
+  <g class="quiet">
+    <rect class="box" x="300" y="150" width="170" height="70" rx="8" />
+    <text class="name" x="385" y="191">lead</text>
+    <line class="link" x1="104" y1="185" x2="300" y2="185" />
+  </g>
+
+  <rect class="box" x="600" y="150" width="170" height="70" rx="8" />
+  <text class="name" x="685" y="191">deputy</text>
+
+  <rect class="box" x="591" y="176" width="18" height="18" rx="3" />
+  <rect class="door-lit" x="591" y="176" width="18" height="18" rx="3" />
+  <line class="leader" x1="600" y1="140" x2="600" y2="172" />
+  <text class="lbl" x="600" y="128">standby door</text>
+  <text class="cap" x="600" y="106">armed by the lead's silence</text>
+
+  <path class="takeover" d="M 104 210 Q 350 320 591 195" />
+  <text class="cap" x="350" y="300">spent by your pairing credential</text>
+</svg>

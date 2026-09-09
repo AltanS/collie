@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" role="img"
+     aria-label="A crew: the phone talks to the lead, and the lead talks to each member.">
+  <title>A crew: the phone talks to the lead, and the lead talks to each member.</title>
+  <style>
+    .box { fill: #fafafa; stroke: #3f3f46; stroke-width: 1.5; }
+    .link { stroke: #3f3f46; stroke-width: 1.5; fill: none; }
+    text { font-family: system-ui, sans-serif; fill: #18181b; text-anchor: middle; }
+    .name { font-size: 16px; font-weight: 600; }
+    .lbl { font-size: 14px; fill: #52525b; }
+    .cap { font-size: 13px; fill: #52525b; }
+    .dot { fill: #0d9488; }
+    .dot-a { transform: translate(177px, 180px); }
+    .dot-b { transform: translate(505px, 127px); }
+    .dot-c { transform: translate(505px, 232px); }
+    @media (prefers-color-scheme: dark) {
+      .box { fill: #27272a; stroke: #a1a1aa; }
+      .link { stroke: #a1a1aa; }
+      text { fill: #f4f4f5; }
+      .lbl, .cap { fill: #a1a1aa; }
+      .dot { fill: #2dd4bf; }
+    }
+    @keyframes hop-a {
+      0% { transform: translate(94px, 180px); opacity: 0; }
+      3% { transform: translate(99px, 180px); opacity: 1; }
+      25% { transform: translate(260px, 180px); opacity: 1; }
+      29% { transform: translate(260px, 180px); opacity: 0; }
+      100% { transform: translate(260px, 180px); opacity: 0; }
+    }
+    @keyframes hop-b {
+      0% { transform: translate(430px, 160px); opacity: 0; }
+      33% { transform: translate(430px, 160px); opacity: 0; }
+      36% { transform: translate(438px, 156px); opacity: 1; }
+      58% { transform: translate(580px, 95px); opacity: 1; }
+      62% { transform: translate(580px, 95px); opacity: 0; }
+      100% { transform: translate(580px, 95px); opacity: 0; }
+    }
+    @keyframes hop-c {
+      0% { transform: translate(430px, 200px); opacity: 0; }
+      66% { transform: translate(430px, 200px); opacity: 0; }
+      69% { transform: translate(438px, 204px); opacity: 1; }
+      91% { transform: translate(580px, 265px); opacity: 1; }
+      95% { transform: translate(580px, 265px); opacity: 0; }
+      100% { transform: translate(580px, 265px); opacity: 0; }
+    }
+    .dot-a { animation: hop-a 6s linear infinite; }
+    .dot-b { animation: hop-b 6s linear infinite; }
+    .dot-c { animation: hop-c 6s linear infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      .dot-a, .dot-b, .dot-c { animation: none; }
+    }
+  </style>
+
+  <rect class="box" x="30" y="110" width="64" height="140" rx="10" />
+  <text class="name" x="62" y="272">phone</text>
+
+  <rect class="box" x="260" y="145" width="170" height="70" rx="8" />
+  <text class="name" x="345" y="186">lead</text>
+  <text class="cap" x="345" y="245">its own agents, journal, uploads, audit</text>
+
+  <rect class="box" x="580" y="60" width="180" height="70" rx="8" />
+  <text class="name" x="670" y="101">member</text>
+  <text class="cap" x="670" y="150">its own agents, journal, uploads, audit</text>
+
+  <rect class="box" x="580" y="230" width="180" height="70" rx="8" />
+  <text class="name" x="670" y="271">deputy</text>
+  <text class="cap" x="670" y="320">its own agents, journal, uploads, audit</text>
+
+  <line class="link" x1="94" y1="180" x2="260" y2="180" />
+  <text class="lbl" x="177" y="148">HTTPS, the phone talks</text>
+  <text class="lbl" x="177" y="166">to the lead only</text>
+
+  <line class="link" x1="430" y1="160" x2="580" y2="95" />
+  <line class="link" x1="430" y1="200" x2="580" y2="265" />
+  <text class="cap" x="505" y="175">crew link, pinned TLS</text>
+  <text class="cap" x="505" y="191">and the crew secret</text>
+
+  <circle class="dot dot-a" r="6" />
+  <circle class="dot dot-b" r="6" />
+  <circle class="dot dot-c" r="6" />
+</svg>

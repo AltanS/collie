@@ -1,52 +1,139 @@
 # Crew commands
 
-A **crew** links multiple Collie instances under a single **lead**, exposing every herd to
-the phone through one URL. Management runs entirely through the CLI without Herdr UI actions.
-Machine-to-machine traffic uses the protocol documented in
-[`CREW_PROTOCOL.md`](../CREW_PROTOCOL.md).
+A **crew** is several machines running Collie under one **lead**, and your phone reaches every
+machine's herd through the lead's single URL. The lead is the machine your phone reaches, every
+other machine is a member, and the deputy is the one member allowed to take over.
 
-Architecture before running commands: only the lead exposes the front door, while peers expose none.
+| Command | What it does |
+| --- | --- |
+| `collie crew invite` | Mint a single-use, 10-minute enrollment token (**on the lead**) |
+| `collie crew add <ssh-host>` | Install and enroll a peer over **your own SSH** (on the lead) |
+| `collie crew update <member>… \| --all` | Preflight every machine, then the lead, then each peer one at a time over **your own SSH**; the first failure stops the run ([details](upgrading.md#updating-the-rest-of-the-crew)) |
+| `collie crew status` | Mode, members, reachability, secret pickup, and why a link is refused |
+| `collie crew rotate` | Reissue the crew secret and hand it to every reachable peer |
+| `collie crew rename <name>` | Give the crew a new name (**on the lead**) |
+| `collie crew remove <member>` | Unpin and forget a member (on the lead) |
+| `collie crew set-address <member> <host:port>` | Correct where this lead dials a member |
+| `collie crew deputy <member>` | Name the ONE peer that may take over, and arm it; `--revoke` names nobody |
+| `collie crew approve-promote <member>` | Consent, on the lead, for one member to take over, 10 minutes, single-use; `--cancel` clears it |
+| `collie crew join <lead-address> [<token>]` | Join a crew (**on the joining machine**); without a token it prompts for one, or pass `-` for stdin or `@file` |
+| `collie crew leave` | Leave the crew; drops the crew secret and the pinned certificate of every other member on this machine |
+| `collie promote` | Make THIS machine the lead (on the peer taking over; `--force` if the lead is gone) |
+| `collie reconnect` | A member moved: re-point at its new address without re-enrolling anything |
 
-```mermaid
-graph TD
-  phone["phone (PWA)"] -->|"HTTPS /api/* — the phone talks to the lead and to nothing else"| lead
-  lead["lead — the managed front door, serves the PWA"] -->|"/crew/v1/* — pinned mutual TLS + the crew secret"| peer["peer — a full collie, no front door"]
-  lead -->|"/crew/v1/*"| deputy["deputy — a peer the lead named ahead of time"]
-  lead --- leadHerd["its own agents, journal, uploads, audit"]
-  peer --- peerHerd["its own agents, journal, uploads, audit"]
-  deputy --- depHerd["its own agents, journal, uploads, audit"]
-  deputy -.->|"armed only by the lead's silence, spent by you"| standby(["standby door — bound, never published, three routes"])
-  op["you, the operator"] -.->|"ssh — code rides here, never the crew link"| lead
-  op -.->|"ssh"| peer
-  op -.->|"ssh"| deputy
+`collie join` and `collie leave` still work. They are aliases for `collie crew join` and
+`collie crew leave`, using the same arguments and exit codes.
+
+`collie pack` still works too, for every verb in this table. It is an alias of `collie crew` with
+the same arguments and exit codes. `collie docs pack` prints this page, and the web app's `/pack`
+address redirects to `/crew`. All three go away in 2.0.0
+([ADR 0038](../.adr/0038-the-group-is-a-crew-the-wire-keeps-pack.md)).
+
+The `deputy`, `approve-promote`, and `promote` commands manage failover. For setup and recovery
+instructions, see
+[`docs/deployment.md` → the standby door](deployment.md#the-standby-door--a-crews-failover-path) and
+[the bad day](deployment.md#the-bad-day--the-runbook).
+
+## Two machines, one crew
+
+Two commands add a machine, one for Herdr and one for Collie, and a manual path is there for the
+hosts they do not fit.
+
+```bash
+herdr machine add --label <name> <ssh-target>   # prepare the remote host
+collie crew add <ssh-host>                      # install Collie there and enroll it
 ```
+
+`herdr machine add` runs on the machine you sit at. It puts Herdr on the remote host and saves it in
+Herdr's own list, and it does not add the machine to the crew. `collie crew add` runs on the lead.
+`<ssh-target>` and `<ssh-host>` are the same host, written as `user@host` or as a `Host` alias from
+your `~/.ssh/config`, and `<name>` only labels Herdr's list.
+
+`collie crew add <ssh-host>` installs Collie on the remote host over your own ssh and enrolls it. It
+generates the token locally, provisions Collie on the remote machine, and runs `collie crew join`
+there. It requires **Herdr preinstalled on the remote host**, which `herdr machine add` puts there,
+so the two commands go together. A lead that serves plain HTTP needs one more step by hand, because
+`crew add` does not support `--insecure`: run `collie crew join --insecure` on the joining machine.
+Use either `crew add` or the manual path for a given host, never both. `collie crew add` with no
+target lists the hosts your ssh config and Herdr already know, merged on the host each name resolves
+to, so pick from that list rather than typing the host a second way
+([below](#herdr-machines-and-the-crew)).
+
+The manual path is four commands. The lead is the instance your phone already reaches, and the
+joining machine must have Collie installed and running.
+
+1. On the lead, mint the token.
+
+   ```bash
+   collie crew invite        # prints one line: <token>.<lead-fingerprint>
+   ```
+
+2. On the joining machine, join the crew and paste the token when it asks.
+
+   ```bash
+   collie crew join lead
+   ```
+
+3. On the lead, restart it so the running process picks up the new member.
+
+   ```bash
+   collie restart
+   ```
+
+4. On the lead, check that the link answered.
+
+   ```bash
+   collie crew status        # the new member, its address, and whether the link answered
+   ```
+
+Tokens are single-use, valid for ten minutes, and displayed once. The lead stores only the hash.
+Running `invite` restarts the lead process so it can accept the incoming enrollment, and it prints
+the join line with the lead name included.
+
+Step 3 is a second restart, and `join` says so on the way out. `invite` restarted the lead so it
+could accept the enrollment. `join` then wrote the new member to disk, and the running process does
+not proxy traffic to that member until it is restarted again.
+
+In an interactive terminal, `join` prompts for the token. In a script, pass `-` and provide the
+token on stdin:
+
+```bash
+collie crew join lead.tail1234.ts.net -   # paste the token on stdin
+```
+
+Pass `@<file>` instead to read the token from disk. Passing raw tokens directly as arguments
+prints a warning, because process listings expose arguments to all local users
+([`CREW_PROTOCOL.md` §8.3](../CREW_PROTOCOL.md)).
+
+Set the lead address to any hostname or `host:port` reachable from this node. An address without a
+scheme and port resolves to `https://<host>:8787`, the default port Collie binds. The `crew invite`
+output specifies the port if the lead changed it. A default install answers on port 8787 over plain
+HTTP, with TLS on port 443 in front of it, so `join` may find no TLS on 8787. It prompts once before
+sending the token over plain HTTP; `--insecure` confirms this automatically. An explicit `http://`
+address still requires `--insecure` and prompts for nothing.
+
+**Multiplexer selection is local to each node.** Configure `COLLIE_MUX` in that node's own `.env`,
+at `~/.config/collie/.env` on a binary install or in Herdr's plugin config dir on a Herdr install.
+The crew protocol, which is the wire between the machines, contains no multiplexer-specific fields.
+Note that peers have only been tested with Herdr in v1
+([`CREW_PROTOCOL.md` §16](../CREW_PROTOCOL.md)).
 
 ## Herdr machines and the crew
 
 Herdr's saved machines and a Collie crew are two separate lists, and neither feeds the other.
 
+To add a machine, see [Two machines, one crew](#two-machines-one-crew) above.
+
 Herdr's machine list belongs to your Herdr window. Herdr 0.9.0 keeps saved ssh targets in its
 client and opens each one over ssh every time you use it. You get terminals on those machines, in
 that window, on the machine you are sitting at.
 
-A crew is Collie on every machine. The lead reaches each member over Collie's own encrypted link,
-set up once by an install that rides your ssh. Your phone reaches the lead and nothing else, and it
-never holds an ssh key.
-
-A crew shows terminals too, and it carries more than terminals. It moves uploads. It keeps each
-machine's journal and audit log on the machine that ran the pane. It updates the whole crew from one
-confirm on the phone. It can hand the front door to a deputy when the lead goes quiet. It works the
-same under tmux and zellij, which have no machine list at all.
-
-Three facts keep the two lists apart, and each one is a reason on its own. The phone must never hold
-an ssh key. Uploads, the journal and the audit log live on the machine that runs the pane. The crew
-link, which is what Collie calls the encrypted line between two machines, needs no ssh once a member
-has enrolled.
-
-So you do not set the same thing up twice. You set up ssh once, and both tools use it. Herdr keeps
-its list for its own window, and Collie keeps the crew for your phone. Adding a machine to Herdr
-does not add it to the crew. Removing it from Herdr does not remove it from the crew. A crew member
-running tmux or zellij never appears in Herdr's list.
+A crew is Collie on every machine, and the lead reaches each member over Collie's own encrypted
+link, set up once by an install that rides your ssh. A crew shows terminals too, and it carries more
+than terminals. It moves uploads. It keeps each machine's journal and audit log on the machine that
+ran the pane. It updates the whole crew from one confirm on the phone. It can hand the front door to
+a deputy when the lead goes quiet. It works the same under tmux and zellij, which have no machine
+list at all.
 
 | what | Herdr's machine list | a Collie crew |
 | --- | --- | --- |
@@ -56,6 +143,22 @@ running tmux or zellij never appears in Herdr's list.
 | Where you see it | your Herdr window | your phone |
 | Works with tmux and zellij | no | yes |
 
+Three facts keep the two lists apart, and each one is a reason on its own.
+
+The phone never holds an ssh key. An ssh key is a full shell on the machine, and a phone gets lost.
+The phone holds a pairing code the lead issued instead, which opens the app and nothing else, and
+`collie devices revoke <label>` kills that code live, with no restart
+([pair a device](security.md#pair-a-device--the-write-credential)).
+
+Uploads, the journal and the audit log live on the machine that runs the pane. And the crew link,
+which is what Collie calls the encrypted line between two machines, needs no ssh once a member has
+enrolled.
+
+So you do not set the same thing up twice. You set up ssh once, and both tools use it. Herdr keeps
+its list for its own window, and Collie keeps the crew for your phone. Adding a machine to Herdr
+does not add it to the crew. Removing it from Herdr does not remove it from the crew. A crew member
+running tmux or zellij never appears in Herdr's list.
+
 `collie crew add` with no target offers candidates from both lists, so you never type a host twice.
 It reads `Host` entries in your `~/.ssh/config` and runs `herdr machine list --json`. It merges the
 two lists on the ssh target each name resolves to. The command follows an `Include` in that config
@@ -63,60 +166,28 @@ one level deep, and only for paths under `~/.ssh/`. It does not offer an alias i
 from an included file. Each row shows where the name came from: `ssh config`, `herdr`, or both. A
 row for a machine already in this crew carries that member's id instead of a number.
 
-## Two machines, one crew
+## How a crew is wired
 
-The lead is the instance your phone already reaches. The joining machine
-must have Collie installed and running. On the **lead**:
+Only the lead exposes a front door, and every other machine in the crew exposes none.
 
-```bash
-collie crew invite        # prints one line: <token>.<lead-fingerprint>
-```
+![A crew: the phone talks to the lead, and the lead talks to each member.](images/crew/crew-one-lead.svg)
 
-Tokens are single-use, valid for ten minutes, and displayed once. The lead stores only the hash.
-Running `invite` restarts the lead process so it can accept the incoming enrollment. Copy the output
-line to the target machine and run:
+The lead is the managed front door, and it serves the PWA. The phone reaches it over HTTPS on
+`/api/*` and talks to nothing else. The lead reaches each member on `/crew/v1/*`, over pinned mutual
+TLS carrying the crew secret. A member is a full Collie with no front door, and it keeps its own
+agents, journal, uploads and audit log. Management runs entirely through the CLI, with no Herdr UI
+actions. The wire itself is specified in [`CREW_PROTOCOL.md`](../CREW_PROTOCOL.md).
 
-```bash
-collie crew join lead                     # it asks for the token
-```
+![Code reaches a member over your own ssh, never over the crew link.](images/crew/crew-ssh-rides.svg)
 
-`crew invite` prints this exact line with the lead name included. In an interactive terminal,
-`join` prompts for the token; in a script, pass `-` and provide the token on stdin:
+Code rides your own ssh to every machine. `crew add` installs a member that way and `crew update`
+levels it. The crew link carries runtime data, and it never becomes a distribution channel.
 
-```bash
-collie crew join lead.tail1234.ts.net -   # paste the token on stdin
-```
+![The deputy's standby door opens only when the lead goes quiet.](images/crew/crew-deputy-standby.svg)
 
-Set the lead address to any hostname or `host:port` reachable from this node. An address without a
-scheme and port resolves to `https://<host>:8787`, the default port Collie binds. The
-`crew invite` output specifies the port if the lead changed it. A default install answers on port
-8787 over plain HTTP, with TLS on port 443 in front of it, so `join` may find no TLS on 8787. It prompts
-once before sending the token over plain HTTP; `--insecure` confirms this automatically. An
-explicit `http://` address still requires `--insecure` and prompts for nothing. Pass `-` to read the
-token from stdin or `@<file>` to read from disk. Passing raw tokens directly as arguments prints a
-warning, because process listings expose arguments to all local users
-([`CREW_PROTOCOL.md` §8.3](../CREW_PROTOCOL.md)).
-
-`join` outputs the final required step: **`collie restart` on the lead.** The lead wrote the
-enrollment to disk, but the active process cached the roster at startup and will not proxy traffic
-to the new peer until restarted. Restart the lead, then check connectivity:
-
-```bash
-collie crew status        # the new member, its address, and whether the link answered
-```
-
-`collie crew add <ssh-host>` runs this workflow over **SSH**. It generates the token locally,
-provisions Collie on the remote machine, and runs `collie crew join` remotely. Use either
-manual enrollment or `crew add` for a given host, not both. `crew add` requires **Herdr preinstalled
-on the remote host** and does not support `--insecure`. If the lead uses plaintext HTTP, run
-`collie crew join --insecure` manually on the joining machine.
-
-**Multiplexer selection is local to each node.** Configure `COLLIE_MUX` in that node's own `.env`,
-at `~/.config/collie/.env` on a binary install or in Herdr's plugin config dir on a Herdr install.
-The crew protocol, which is the wire between the machines, contains no multiplexer-specific
-fields. Note that peers have only been tested
-with Herdr in v1 ([`CREW_PROTOCOL.md` §16](../CREW_PROTOCOL.md)).
-
+A deputy is one peer the lead named ahead of time. It binds a standby door with three routes, and
+that door is never published. The lead's silence arms it, and your own pairing credential spends it,
+so the phone can reach the deputy while the lead is gone.
 
 ## Members that were not installed by install.sh
 
@@ -145,36 +216,6 @@ the tag, rebuilds and restarts it exactly as it does its own.
 
 So a mixed crew is a normal crew. One tap levels every member the lead can update, names the ones it
 cannot, and the crew is level again once you have run their package managers.
-
-| Command | What it does |
-| --- | --- |
-| `collie crew invite` | Mint a single-use, 10-minute enrollment token (**on the lead**) |
-| `collie crew add <ssh-host>` | Install and enroll a peer over **your own SSH** (on the lead) |
-| `collie crew update <member>… \| --all` | Preflight every machine, then the lead, then each peer one at a time over **your own SSH**; the first failure stops the run ([details](upgrading.md#updating-the-rest-of-the-crew)) |
-| `collie crew status` | Mode, members, reachability, secret pickup — and why a link is refused |
-| `collie crew rotate` | Reissue the crew secret and hand it to every reachable peer |
-| `collie crew rename <name>` | Give the crew a new name (**on the lead**) |
-| `collie crew remove <member>` | Unpin and forget a member (on the lead) |
-| `collie crew set-address <member> <host:port>` | Correct where this lead dials a member |
-| `collie crew deputy <member>` | Name the ONE peer that may take over, and arm it; `--revoke` names nobody |
-| `collie crew approve-promote <member>` | Consent, on the lead, for one member to take over — 10 minutes, single-use; `--cancel` clears it |
-| `collie crew join <lead-address> [<token>]` | Join a crew (**on the joining machine**); without a token it prompts for one, or pass `-` for stdin or `@file` |
-| `collie crew leave` | Leave the crew; drops the crew secret and every pin on this machine |
-| `collie promote` | Make THIS machine the lead (on the peer taking over; `--force` if the lead is gone) |
-| `collie reconnect` | A member moved: re-point at its new address without re-enrolling anything |
-
-`collie join` and `collie leave` still work. They are aliases for `collie crew join` and
-`collie crew leave`, using the same arguments and exit codes.
-
-`collie pack` still works too, for every verb in this table. It is an alias of `collie crew` with
-the same arguments and exit codes. `collie docs pack` prints this page, and the web app's `/pack`
-address redirects to `/crew`. All three go away in 2.0.0
-([ADR 0038](../.adr/0038-the-group-is-a-crew-the-wire-keeps-pack.md)).
-
-The `deputy`, `approve-promote`, and `promote` commands manage failover. For setup and recovery
-instructions, see
-[`docs/deployment.md` → the standby door](deployment.md#the-standby-door--a-crews-failover-path) and
-[the bad day](deployment.md#the-bad-day--the-runbook).
 
 ## The crew's name
 
