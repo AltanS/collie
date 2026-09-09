@@ -242,10 +242,10 @@ jobs:
           echo "✓ $root/bin/collie reports $reported"
 
           # The only step in CI that runs the compiled binary, so it is also the only place the
-          # embedded manual can be proven: `docs pack` prints a page nothing on disk supplied.
-          page="$("$stage/bin/collie" docs pack | head -1)"
-          if [ "$page" != "# Pack commands" ]; then
-            echo "the compiled binary answered 'docs pack' with '$page', not the embedded page" >&2
+          # embedded manual can be proven: `docs crew` prints a page nothing on disk supplied.
+          page="$("$stage/bin/collie" docs crew | head -1)"
+          if [ "$page" != "# Crew commands" ]; then
+            echo "the compiled binary answered 'docs crew' with '$page', not the embedded page" >&2
             exit 1
           fi
           echo "✓ $root/bin/collie carries the embedded operator docs"
