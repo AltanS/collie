@@ -60,12 +60,23 @@ length of the roll. Two mechanisms carry that, and both are removed in **1.9.0**
 `/pack/v1/*` carries `X-Pack-Protocol: 1`. The two vocabularies do not mix: a version 1 header on the
 version 2 prefix is read as no version at all, and is refused.
 
-**A member learns its lead is still 1.7.0 from an answer, never from a guess.** Two shapes say it,
-and both come from a build that has never heard of `/crew/v1`: a `404` or `403` carrying no crew
-protocol header (the collie's own 404, or its refusal of a non-loopback caller on a path it declined),
-or a crew header naming version 1. A header-free `502` or `503` is a proxy and not a version, so it
-takes no second dial. The fallback therefore costs one extra round trip against a lead that has not
-updated, and nothing at all against one that has.
+**A member learns its lead is still 1.7.0 from an answer, never from a guess.** Two things say it. The
+first is a crew header naming version 1. The second is an answer that carries **no crew protocol
+header and is not JSON either** — because a crew answer is always both (§6), so such an answer is a
+build routing the path to something else.
+
+On a real 1.7.0 collie that answer is **`200 OK` with `Content-Type: text/html`** and the PWA's app
+shell: the SPA catch-all owns every unrouted path so a deep link works, and a path the build has never
+heard of is a deep link as far as that fallthrough is concerned. **It is never a `404`.** Verified in
+the VM lab on 2026-09-09 against 1.7.0+35b60df, which also answered `x-collie-build: 1.7.0+35b60df`
+and about 9 KB of `<!doctype html>`. Two narrower shapes count for the same reason and are kept: a
+peer serving no web bundle answers `404`, and a loopback-strict one answers `403`. The `403` never
+fires on a crew machine, because those all set `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`.
+
+A `5xx` is excluded, whatever it serves: that is a proxy or a peer mid-restart, not a version, and a
+second dial there would double what every poll spends on a machine that is not answering. The
+fallback therefore costs one extra round trip against a lead that has not updated, and nothing at all
+against one that has.
 
 **The warrant's context moves on verify only.** A warrant is one signature, minted by the lead and
 stored on every member's disk, so a machine that updates from 1.7.0 comes up holding one signed under
