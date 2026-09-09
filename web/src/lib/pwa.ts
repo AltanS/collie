@@ -1,5 +1,8 @@
 import { registerSW } from "virtual:pwa-register";
 
+import { BUILD, isStaleBuild } from "./build";
+import { getServerBuild, subscribeServerBuild } from "./server-build";
+
 // Service-worker registration + update wiring, in one place so the `virtual:pwa-register` import
 // (a build-time virtual module) stays isolated and easy to stub in tests.
 //
@@ -74,6 +77,77 @@ function leaving(): void {
   }, RELOAD_GAVE_UP_MS);
 }
 
+/**
+ * THE STUCK GUARD'S RELOAD, REMEMBERED ACROSS IT.
+ *
+ * 2026-09-09, release lane, 1.6.0 → 1.7.0, iPhone PWA: the operator tapped "new build — tap to
+ * update" over and over. Each tap showed "updating…", the page reloaded, and the same stale chip
+ * came back. It took about three minutes to land on the new bundle. The bridge was consistent the
+ * whole time — `X-Collie-Build` equalled the id baked into the bundle it was serving.
+ *
+ * What the tap did was the stuck guard's reload (below, {@link STUCK_GUARD_MS}): nothing had
+ * activated in time, so the page reloaded from the ACTIVE worker, which re-served the same old
+ * precache. That reload is right as insurance and wrong as an answer — it lands on the very bundle
+ * the operator is trying to leave, and the next tap starts the identical cycle. Only
+ * {@link forceReload}, which drops the precache before it reloads, gets out of it.
+ *
+ * So the guard leaves a note, and the note survives the reload it is about to cause
+ * (`sessionStorage`, this tab only — a note in `localStorage` would follow the operator into a
+ * second tab that never had the problem). {@link checkForUpdate} reads it once, and if the page
+ * is STILL provably stale on the way in, the operator's next tap takes the unregister path instead
+ * of the same cycle. Provably: the id the bridge is serving, observed off the response header
+ * (`server-build.ts`), differs from the id baked into this bundle (`build.ts`) — the same fact the
+ * chip itself is drawn from, so the branch cannot fire on a page that has nothing to update to. That
+ * header is also how the page knows the bridge is still there ({@link bridgeAnswering}).
+ */
+const GUARD_RELOAD_KEY = "collie:pwa:guardReload:v1";
+
+function rememberGuardReload(): void {
+  try {
+    sessionStorage.setItem(GUARD_RELOAD_KEY, "1");
+  } catch {
+    // No storage (private mode, a locked-down embed) just means the branch never arms. It is an
+    // improvement on the guard, not a dependency of it.
+  }
+}
+
+/** Read the note and spend it. Spent either way, so a page that healed is not left holding one. */
+function takeGuardReload(): boolean {
+  try {
+    const noted = sessionStorage.getItem(GUARD_RELOAD_KEY) !== null;
+    sessionStorage.removeItem(GUARD_RELOAD_KEY);
+    return noted;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Is the bridge answering right now?
+ *
+ * The one question that has to be asked before dropping a precache: unregistering while offline
+ * strands the PWA on an error page with nothing cached. The ordinary paths get that answer from
+ * `reg.update()` — it resolving means the network is up — but the path this serves cannot wait for
+ * it: a wedged update job is what it is escaping, and a second `update()` queued behind a stuck one
+ * does not settle until that one does.
+ *
+ * So the answer comes from the poll that is already running. `server-build.ts` notifies on EVERY
+ * observation of the `X-Collie-Build` header, repeats included, and that header only exists on a
+ * response the bridge actually sent — so a recent one is proof of a working network, on the app's own
+ * mechanism, with no extra request. A fetch was tried first and thrown away: a page in this state is
+ * one whose service worker is holding connections open on a stalled precache download, and the
+ * browser's six-per-host limit starved the probe until it timed out. Measured on 2026-09-09.
+ */
+const BRIDGE_FRESH_MS = 20_000;
+let lastServerBuildAt = 0;
+subscribeServerBuild(() => {
+  lastServerBuildAt = Date.now();
+});
+
+function bridgeAnswering(): boolean {
+  return lastServerBuildAt > 0 && Date.now() - lastServerBuildAt < BRIDGE_FRESH_MS;
+}
+
 // Was a service worker already controlling this page when we loaded? On a first-ever visit it
 // isn't: `immediate` registration + the SW's clientsClaim then fire ONE `controllerchange` that is
 // *initial* control, not an update — reloading on it is the spurious first-load flash. We ignore
@@ -100,9 +174,28 @@ async function forceReload(lane: ReloadLane): Promise<void> {
   if (lane === "manual" && navigating) return;
   if (spent.has(lane)) return;
   spent.add(lane); // set before awaiting so a racing reloadOnce() can't double-fire
+  // THE CACHES GO FIRST, AND NOTHING HERE WAITS ON THE WORKER (2026-09-09).
+  //
+  // `unregister()` is a job on the same per-scope queue as an update, so awaiting it hangs whenever
+  // that queue is stuck — which is precisely the state this function exists for. Measured that day:
+  // the tap reached here, the unregister never settled, and the stuck guard reloaded the page onto
+  // the stale precache a second time.
+  //
+  // Deleting the caches needs no job and cannot be queued behind one. With its precache gone,
+  // workbox's precache handler falls through to the network (`fallbackToNetwork`), so the navigation
+  // below reaches the bridge whether the unregister ever lands or not. Every cache, not the precache
+  // by name: the name is workbox's to change, and the only other one is the font cache
+  // (`src/sw.ts` FONT_CACHE), which re-fills on first use.
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+  } catch {
+    /* no CacheStorage, or it refused — the unregister below and the reload still stand */
+  }
   try {
     const regs = (await navigator.serviceWorker?.getRegistrations?.()) ?? [];
-    await Promise.all(regs.map((r) => r.unregister()));
+    // Started, deliberately not awaited: see above. It is the tidy-up, not the escape.
+    void Promise.all(regs.map((r) => r.unregister()));
   } catch {
     /* ignore — reload regardless */
   }
@@ -160,16 +253,49 @@ registerSW({
 // the wedged-precache trap. Network-failure paths (a thrown update(), or the stuck-guard) fall back to
 // a PLAIN reload instead — unregistering there would strand an offline PWA on an error page with its
 // precache gone. With no SW at all (plain HTTP / insecure context) a plain reload already re-fetches.
+// Since 2026-09-09 there is a SECOND way into forceReload(), at the top rather than the bottom: a tap
+// that follows the stuck guard's own reload on a page that is still stale (see GUARD_RELOAD_KEY).
 export async function checkForUpdate(): Promise<void> {
-  if (!("serviceWorker" in navigator) || !registration) {
+  if (!("serviceWorker" in navigator)) {
+    reloadOnce("manual");
+    return;
+  }
+  // Is this the tap AFTER a stuck-guard reload that landed straight back on the stale bundle
+  // (2026-09-09, see GUARD_RELOAD_KEY)? Read before anything else, so the note is spent whatever this
+  // tap turns into.
+  const afterGuardReload = takeGuardReload();
+  // THE TAP AFTER THE GUARD'S OWN RELOAD. The last tap already spent the guard on this same stale
+  // bundle, so asking the worker again is those three minutes over: whatever is installing now is
+  // what failed to activate last time. Unregister and go to the bridge instead — but only while the
+  // bridge is answering, because dropping the precache offline is worse than a stale bundle.
+  //
+  // FIRST, above every other path here, because each of the others is a place this page can be stuck:
+  //   * `registration` can be UNDEFINED on a perfectly healthy origin. `register()` is a job on the
+  //     same per-scope queue as the wedged update, so on the page the guard just reloaded it may
+  //     still be waiting behind it and `onRegisteredSW` has not run. Measured on 2026-09-09: the tap
+  //     took the no-worker plain reload below and landed on the stale precache again — the same
+  //     cycle, one branch further out.
+  //   * `reg.update()` is on that queue too, so awaiting it waits on the wedged job as well.
+  // `forceReload` needs neither of them: it asks the browser for the registrations itself.
+  if (afterGuardReload && isStaleBuild(BUILD.id, getServerBuild()) && bridgeAnswering()) {
+    await forceReload("manual");
+    return;
+  }
+  if (!registration) {
     reloadOnce("manual");
     return;
   }
   const reg = registration;
-  // Stuck-guard: if no fresh worker has activated in time, reload from the active worker so the button
-  // never hangs. A plain reload (not forceReload) — a hung activation may just be a flaky network, and
+  // Stuck-guard: if no fresh worker has activated in time, reload from the active worker so the
+  // button never hangs. A plain reload (not forceReload) — a hung activation may just be a flaky network, and
   // dropping the precache offline would be worse than staying on the current build.
-  setTimeout(() => reloadOnce("manual"), STUCK_GUARD_MS);
+  setTimeout(() => {
+    // The note for the tap after this one, left only when this timer is really the thing that
+    // reloads the page — the same two conditions `reloadOnce` is about to apply. It has to be
+    // written BEFORE `location.reload()`, which does not return.
+    if (!navigating && !spent.has("manual")) rememberGuardReload();
+    reloadOnce("manual");
+  }, STUCK_GUARD_MS);
   try {
     await reg.update();
   } catch {

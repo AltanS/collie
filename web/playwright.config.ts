@@ -142,5 +142,18 @@ export default defineConfig({
       stderr: "pipe",
       timeout: 60_000,
     },
+    {
+      // M26/04, the SWAPPABLE bundle server on 4174. It builds `e2e/.builds/a` and `e2e/.builds/b`
+      // before it listens (hence the long timeout) and serves whichever of the two
+      // `e2e/.builds/serving` names, so `e2e/service-worker.spec.ts` can deploy a new bundle under a
+      // browser that is already running one. Its own port because a service worker's scope is an
+      // ORIGIN: a swap on 4173 would be a spooky action on every other case.
+      command: "bun e2e/serve-builds.ts",
+      url: "http://127.0.0.1:4174/",
+      reuseExistingServer: !process.env.CI,
+      stdout: "pipe",
+      stderr: "pipe",
+      timeout: 180_000,
+    },
   ],
 });
