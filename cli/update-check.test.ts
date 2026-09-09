@@ -525,7 +525,7 @@ describe("preflight — the service check", () => {
   });
 });
 
-describe("preflight pack — the members of a lead", () => {
+describe("preflight crew — the members of a lead", () => {
   const lead = (peers: string[]): TrustStoreData => leadStore({ peers: peers.map((id) => member({ memberId: id })) });
 
   test("a member with no ops record is red, with a remedy naming host and path", async () => {
@@ -536,7 +536,7 @@ describe("preflight pack — the members of a lead", () => {
     expect(nas.verdict).toBe("red");
     expect(nas.checks[0]!.id).toBe("ops-record");
     expect(nas.checks[0]!.reason).toContain("no ssh record");
-    expect(nas.checks[0]!.remedy).toContain("pack update nas --host");
+    expect(nas.checks[0]!.remedy).toContain("crew update nas --host");
     expect(nas.checks[0]!.remedy).toContain("--path");
     // The member's OWN verdict stays red (the card and the terminal must still show it), but this
     // does not need a route to a peer, so it must not disable the lead's own Update button — see
@@ -656,7 +656,7 @@ describe("preflight pack — the members of a lead", () => {
     expect(skewCheck("", "1.0.0").verdict).toBe("amber");
   });
 
-  test("a peer runs no pack checks — it leads nobody", async () => {
+  test("a peer runs no crew checks — it leads nobody", async () => {
     const report = await preflight(harness({ store: peerStore() }).deps);
     expect(report.pack).toBeUndefined();
   });
@@ -665,7 +665,7 @@ describe("preflight pack — the members of a lead", () => {
 describe("preflight --local — the answer the phone's card reads", () => {
   const lead = (peers: string[]): TrustStoreData => leadStore({ peers: peers.map((id) => member({ memberId: id })) });
 
-  test("the members are not walked at all, and the report carries no pack", async () => {
+  test("the members are not walked at all, and the report carries no crew", async () => {
     const h = harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED });
     const report = await preflight(h.deps, { local: true });
     expect(report.pack).toBeUndefined();
@@ -869,7 +869,7 @@ describe("preflight — a folder a package manager owns", () => {
     expect(check.remedy).toBeUndefined();
   });
 
-  test("the report names the kind, which is what the pack flow branches on", async () => {
+  test("the report names the kind, which is what the crew flow branches on", async () => {
     expect((await preflight(packaged().deps)).installKind).toBe("packaged");
   });
 

@@ -39,8 +39,8 @@ import { firstLine, restartScript, runProbe, transportFailure, type PackAddDeps,
 // legibly; there is deliberately no flag that skips the question.
 
 const USAGE = [
-  "usage: collie pack deputy <member>   # name the one peer that may take over (on the lead)",
-  "       collie pack deputy --revoke   # name NOBODY — supersedes the standing warrant",
+  "usage: collie crew deputy <member>   # name the one peer that may take over (on the lead)",
+  "       collie crew deputy --revoke   # name NOBODY — supersedes the standing warrant",
 ];
 
 /** What one member's arming attempt came to. Rendered as one row each, at the end. */
@@ -96,7 +96,7 @@ export async function cmdPackDeputy(deps: PackAddDeps, args: readonly string[]):
 
   const data = await deps.store.load();
   if (data === null || data.pack === null) {
-    deps.io.err("error: this collie is not in a pack — there is no crown to deputise for.");
+    deps.io.err("error: this collie is not in a crew — there is no crown to deputise for.");
     return EXIT.STATE;
   }
   if (data.lead !== null) {
@@ -175,18 +175,18 @@ function refuseOrName(deps: PackAddDeps, data: TrustStoreData, memberId: string 
   }
   const member = data.peers.find((p) => p.memberId === memberId);
   if (member === undefined) {
-    deps.io.err(`error: no member "${memberId}" in this roster — \`collie pack status\` lists them.`);
+    deps.io.err(`error: no member "${memberId}" in this roster — \`collie crew status\` lists them.`);
     return stop(EXIT.STATE);
   }
   if (member.status !== "enrolled") {
     deps.io.err(`error: "${memberId}" is unenrolled — it was dropped by a rotation it was offline for (§8.4).`);
-    deps.io.err("       Re-join it first: `collie pack invite` here, `collie join` there. A warrant naming a");
+    deps.io.err("       Re-join it first: `collie crew invite` here, `collie join` there. A warrant naming a");
     deps.io.err("       machine that is not a member is a permission nothing would honour.");
     return stop(EXIT.STATE);
   }
   if (member.secretGeneration !== data.pack?.secretGeneration) {
-    deps.io.err(`error: "${memberId}" has not picked up the current pack secret (it holds generation`);
-    deps.io.err(`       ${member.secretGeneration}, this pack is at ${data.pack?.secretGeneration}). Let it catch up, then re-run.`);
+    deps.io.err(`error: "${memberId}" has not picked up the current crew secret (it holds generation`);
+    deps.io.err(`       ${member.secretGeneration}, this crew is at ${data.pack?.secretGeneration}). Let it catch up, then re-run.`);
     return stop(EXIT.STATE);
   }
   return ok(memberId);
@@ -276,7 +276,7 @@ async function mintOrReuse(
     standing.deputyMemberId === named &&
     !warrantExpired(standing, deps.now())
   ) {
-    deps.io.out(`"${named}" is already this pack's deputy at warrant generation ${standing.generation}.`);
+    deps.io.out(`"${named}" is already this crew's deputy at warrant generation ${standing.generation}.`);
     deps.io.out("  Re-syncing rather than minting: a new generation would make every peer already armed");
     deps.io.out("  stale again, which is the opposite of what a re-run is for.");
     return { ok: true, warrant: standing, reused: true };
@@ -290,7 +290,7 @@ async function mintOrReuse(
       // Not an error: the operator asked for "no deputy" and that is the state. A revocation with
       // nothing to revoke writes nothing, because an absence cannot be distinguished from a lost
       // message and there is nothing here to make into a positive statement (RFC §4.4).
-      deps.io.out("nothing was revoked — this pack names no deputy.");
+      deps.io.out("nothing was revoked — this crew names no deputy.");
       return { ok: false, code: EXIT.OK };
     }
     deps.io.err("error: the warrant could not be minted. Nothing was written and nothing was sent.");
@@ -426,7 +426,7 @@ async function armPeers(
       // Reported, never silently skipped (RFC §5): this is the difference between a pack that is
       // armed and one that only looks it, and it is the exact shape §8.2's "enrolled but INACTIVE"
       // note already established for the same class of problem.
-      mark(rows, member.memberId, "inactive", `no ssh record — run \`collie pack add\` once, then re-run`);
+      mark(rows, member.memberId, "inactive", `no ssh record — run \`collie crew add\` once, then re-run`);
       continue;
     }
     if ((record.anchoredGeneration ?? null) !== null && (record.anchoredGeneration ?? 0) >= warrant.generation) {
@@ -596,7 +596,7 @@ async function remember(deps: PackAddDeps, planned: Planned, warrant: Warrant): 
   };
   if (!(await deps.ops.record(planned.target.member.memberId, record))) {
     deps.io.err("warn: the ops file could not be updated, so this arming was not remembered. It happened —");
-    deps.io.err("      `collie pack status` will simply keep reporting the anchor as INACTIVE.");
+    deps.io.err("      `collie crew status` will simply keep reporting the anchor as INACTIVE.");
   }
 }
 
@@ -627,8 +627,8 @@ function report(deps: PackAddDeps, data: TrustStoreData, warrant: Warrant, rows:
   deps.io.out("");
   deps.io.out(
     revoking
-      ? `✓ warrant generation ${warrant.generation} names NOBODY — this pack has no deputy.`
-      : `✓ "${warrant.deputyMemberId}" is this pack's deputy at warrant generation ${warrant.generation}.`,
+      ? `✓ warrant generation ${warrant.generation} names NOBODY — this crew has no deputy.`
+      : `✓ "${warrant.deputyMemberId}" is this crew's deputy at warrant generation ${warrant.generation}.`,
   );
   for (const member of data.peers.filter((p) => p.status === "enrolled")) {
     const row = rows.get(member.memberId);

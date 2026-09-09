@@ -218,7 +218,7 @@ export function UpdateCard() {
 
   // Whether this machine leads anybody. The roster answers it on every snapshot; the check's own
   // `pack` array answers it better, when the bridge is new enough to send one. Either is enough to
-  // make the button say "pack" — a lead with peers it could not reach still leads them.
+  // make the button say "crew" — a lead with peers it could not reach still leads them.
   const servers = data?.servers ?? [];
   const packLead = servers.length > 1 && servers.some((s) => s.isLead);
   const census = check?.pack ?? [];
@@ -401,7 +401,7 @@ export function UpdateCard() {
   // line on the card rather than being read off a Preflight list nobody asked to open.
   // `behind === 0` is part of it now: a lead whose own version is newest but whose peer is a
   // release back has something to do, and "Up to date. Nothing to do." three inches above a
-  // "Retry pack update" button would be the card contradicting itself.
+  // "Retry crew update" button would be the card contradicting itself.
   const upToDate =
     !releaseAvailable && majorAvailable === null && latest !== null && run === undefined && behind === 0;
   const updateAvailable = releaseAvailable || majorAvailable !== null;
@@ -479,7 +479,7 @@ export function UpdateCard() {
                   run the peers again once this machine is already current. */}
               {/* On a packaged install the command REPLACES the button rather than greying it
                   out: a disabled control is a thing to try again, and there is nothing here to
-                  try. "Retry pack update" survives, because levelling the peers is a different
+                  try. "Retry crew update" survives, because levelling the peers is a different
                   act that works fine from a lead that cannot move itself. */}
               {packageCommand !== null && (
                 <code className="select-all rounded bg-muted px-2 py-1 font-mono text-xs">{packageCommand}</code>
@@ -544,7 +544,7 @@ export function UpdateCard() {
                 be legible without leaving the phone.
 
                 Printed even under a peers-only button, which is not disabled: the sentence says
-                why THIS machine is not moving, and that is exactly the question a "Retry pack
+                why THIS machine is not moving, and that is exactly the question a "Retry crew
                 update" offered to a lead with a release waiting raises. Suppressing it there was
                 how a packaged lead ended up with a button and no account of itself. */}
             {/* NOT while the card is inert. The sentence explains why a tap would not

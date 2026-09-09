@@ -450,7 +450,7 @@ export interface UpdateInfo {
   /**
    * The peer legs of a pack-wide run that this machine has NO run record for (M20/09).
    *
-   * "Retry pack update" levels the peers without touching this machine, so nothing is written to
+   * "Retry crew update" levels the peers without touching this machine, so nothing is written to
    * `update.json` and `run` is absent for the whole run. The legs then ride here instead of being
    * dropped. When `run` IS present they ride `run.peers`, exactly as they always have.
    *

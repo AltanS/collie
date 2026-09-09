@@ -759,7 +759,7 @@ export function startUpdate(a: {
   target: string;
   major: boolean;
   /**
-   * "Retry pack update": a new run whose only legs are the peers (M16/04). Sent only when true, so
+   * "Retry crew update": a new run whose only legs are the peers (M16/04). Sent only when true, so
    * the ordinary confirm's body is byte-identical to the one that shipped and a bridge that does
    * not know the field yet is never handed it.
    */

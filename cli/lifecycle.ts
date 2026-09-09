@@ -636,7 +636,7 @@ export async function statusView(deps: LifecycleDeps): Promise<StatusView> {
   // the banner and the refusal can never disagree. The pack's door is named instead, because "where
   // do I point my phone?" still has an answer on a peer: the lead's (F24).
   if (packModeOnDisk(deps) === "peer") {
-    rows.push({ label: "pack", value: "peer — no front door here; the lead's door serves the pack (ADR 0013)" });
+    rows.push({ label: "crew", value: "peer — no front door here; the lead's door serves the crew (ADR 0013)" });
   } else if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {
     const url = configuredPublicUrl(deps.ctx.env);
     rows.push({

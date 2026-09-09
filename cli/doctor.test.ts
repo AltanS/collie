@@ -388,11 +388,11 @@ describe("collie doctor — the contract", () => {
 // ── Sections ─────────────────────────────────────────────────────────────────
 
 describe("collie doctor — the section sets", () => {
-  test("solo prints ONE `no pack` line, never a column of padded skipped pack checks", async () => {
+  test("solo prints ONE `no crew` line, never a column of padded skipped crew checks", async () => {
     const h = harness(null);
     await cmdDoctor(h.deps, []);
     const text = h.io.stdout.join("\n");
-    expect(text).toContain("pack: none — this collie is not in a pack.");
+    expect(text).toContain("crew: none — this collie is not in a crew.");
     expect(text).toContain("mode solo");
     expect(text).not.toContain("member-reach");
     expect(text).not.toContain("store-drift");
@@ -835,7 +835,7 @@ describe("collie doctor — the clock (§8.6's ±5m window)", () => {
 
 // ── The pack checks ──────────────────────────────────────────────────────────
 
-describe("collie doctor — the pack checks", () => {
+describe("collie doctor — the crew checks", () => {
   test("store-drift: a roster the running bridge never wired is an error naming `collie restart`", async () => {
     // The marker was written when this lead had NO peers; the store now has one.
     const stale = markerFor(leadStore(), T0, 42);
@@ -855,13 +855,13 @@ describe("collie doctor — the pack checks", () => {
     expect(byCheck.get("store-drift")?.status).toBe("skipped");
   });
 
-  test("secret-generation: a member behind the pack's generation warns, and does not fail the run", async () => {
+  test("secret-generation: a member behind the crew's generation warns, and does not fail the run", async () => {
     const behind = leadStore({ peers: [member({ memberId: "laptop", secretGeneration: 0 })] });
     const { code, byCheck } = await findings(
       harness(behind, [hello()], { files: { ...healthyFiles(), ...markerFile(behind) } }),
     );
     expect(byCheck.get("secret-generation")?.status).toBe("warn");
-    expect(byCheck.get("secret-generation")?.remedy).toContain("collie pack rotate");
+    expect(byCheck.get("secret-generation")?.remedy).toContain("collie crew rotate");
     expect(code).toBe(EXIT.OK);
     expect(PACK.secretGeneration).toBe(1);
   });
@@ -935,7 +935,7 @@ describe("collie doctor — the pack checks", () => {
     expect(f?.status).toBe("warn");
     expect(f?.detail).toContain("1.0.0-alpha.9");
     expect(f?.detail).toContain("1.0.0-alpha.12");
-    expect(f?.remedy).toContain("collie pack update");
+    expect(f?.remedy).toContain("collie crew update");
     expect(code).toBe(EXIT.OK);
   });
 
@@ -1394,7 +1394,7 @@ describe("the terminal renderer", () => {
     // The same findings, not a re-derived summary of them.
     expect(views[0]!.local.map((f) => f.check)).toEqual((await plainFindings()).map((f) => f.check));
     expect(views[0]!.pack).toEqual([]);
-    expect(views[0]!.packNote[0]).toContain("not in a pack");
+    expect(views[0]!.packNote[0]).toContain("not in a crew");
   });
 
   test("`--json` outranks the renderer — a script's stdout is never a drawing", async () => {

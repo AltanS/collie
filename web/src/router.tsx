@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createBrowserRouter, replace } from "react-router";
 
 import { BootSplash, RootError, RootLayout } from "@/routes/root";
 import { HomeRoute } from "@/routes/home";
@@ -49,15 +49,24 @@ export const router = createBrowserRouter([
       // Settings carries the paired-device registry, so it gets its own loader — a revoke or a pair
       // is then the app's standard mutation shape (api call → revalidate), with no second data path.
       { path: "settings", loader: devicesLoader, element: <SettingsRoute /> },
-      // The Updates page, a sibling of settings and pack. No loader of its own: everything on it is
+      // The Updates page, a sibling of settings and crew. No loader of its own: everything on it is
       // either the snapshot (root loader) or the card's own read of /api/update/check. It is
-      // deliberately ON the poll loop for `pack`'s stated reason — a run in progress and a peer
+      // deliberately ON the poll loop for `crew`'s stated reason — a run in progress and a member
       // going quiet are exactly what this page exists to show without a reload.
       { path: "settings/updates", element: <UpdatesRoute /> },
-      // The pack census, likewise on its own loader — and deliberately ON the poll loop: the payload
+      // The crew census, likewise on its own loader — and deliberately ON the poll loop: the payload
       // is one small object per machine, and the whole point of the page is that a member going
       // quiet shows up here without the operator reloading. (History opts out; this one wants in.)
-      { path: "pack", loader: packLoader, element: <PackRoute /> },
+      { path: "crew", loader: packLoader, element: <PackRoute /> },
+      // The path was `pack` until 1.7.0 (M24 renamed the word a person reads). The service worker
+      // caches the app shell, so a client sitting on /pack when the new bundle arrives, a bookmark
+      // and an installed PWA's start URL all still ask for the old spelling. `replace` rather than
+      // a push, so Back does not bounce the operator between the two names. The query string rides
+      // along, because the scope (`?h=`) is what makes "back" return to the right machine.
+      {
+        path: "pack",
+        loader: ({ request }) => replace(`/crew${new URL(request.url).search}`),
+      },
       // Named, so RootLayout can ask for THIS route's data by id (react-router hands back undefined
       // whenever it isn't the active route) — see the "last seen" note there.
       { id: PANE_ROUTE_ID, path: "pane/:paneId", loader: paneLoader, element: <DetailRoute /> },

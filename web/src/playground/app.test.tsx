@@ -56,7 +56,7 @@ describe("the states playground", () => {
       // `RouteHeader` portals into the shell's hosts, so finding it proves a live
       // `<AppHeaderHost/>` is really above the route — not just that nothing crashed. "Pack"/
       // "Settings" are the override host's take-over title (PackRoute/SettingsRoute).
-      expect(screen.getAllByRole("heading", { name: "Pack" }).length).toBeGreaterThan(0);
+      expect(screen.getAllByRole("heading", { name: "Crew" }).length).toBeGreaterThan(0);
       expect(screen.getAllByRole("heading", { name: "Settings" }).length).toBeGreaterThan(0);
       expect(screen.getAllByRole("button", { name: "Pane actions" }).length).toBeGreaterThan(0);
     },

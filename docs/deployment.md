@@ -10,7 +10,7 @@ lives in the README. Security requirements in [docs/security.md](security.md) ap
 - [Variant E — any other mesh or tunnel (NetBird, ZeroTier, Cloudflare Tunnel)](#variant-e--any-other-mesh-or-tunnel-netbird-zerotier-cloudflare-tunnel)
 - [Several Collies on one host](#several-collies-on-one-host)
 - [Multiple Collie instances on one host](#multiple-collie-instances-on-one-host)
-- [The standby door — a pack's failover path](#the-standby-door--a-packs-failover-path)
+- [The standby door — a crew's failover path](#the-standby-door--a-crews-failover-path)
 
 Individual devices can also be authorized without a proxy via
 [pairing](security.md#pair-a-device--the-write-credential).
@@ -118,7 +118,7 @@ COLLIE_DEVICE_HEADER=X-Device-Id                    # the header your proxy inje
 # …and the ids allowed to drive; others → read-only
 COLLIE_DEVICE_ALLOWLIST=my-phone,my-laptop
 # optional — status banner, `collie qr`, and the address a lead hands
-# joining machines (pack)
+# joining machines (crew)
 # COLLIE_PUBLIC_URL=https://collie.example.com
 ```
 
@@ -341,7 +341,7 @@ instance does not delete the mapping for another.
 
 ### Target a named instance from the CLI
 
-Every CLI verb (`pair`, `devices`, `url`, `qr`, `pack …`, `logs`, `push-test`, …) resolves its
+Every CLI verb (`pair`, `devices`, `url`, `qr`, `crew …`, `logs`, `push-test`, …) resolves its
 target instance from the process environment. Set `COLLIE_INSTANCE` before invoking the verb:
 
 ```bash
@@ -369,9 +369,9 @@ pair a device to any other instance
 
 ---
 
-## The standby door — a pack's failover path
+## The standby door — a crew's failover path
 
-For [pack](../PACK_PROTOCOL.md) deployments. Configures a pre-authorized deputy to take over if the
+For [crew](../PACK_PROTOCOL.md) deployments. Configures a pre-authorized deputy to take over if the
 lead becomes unreachable ([ADR 0027](../.adr/0027-the-deputy-is-named-ahead-of-time.md),
 [ADR 0028](../.adr/0028-the-standby-door-is-a-second-listener.md),
 [`PACK_PROTOCOL.md` §18](../PACK_PROTOCOL.md)).
@@ -389,7 +389,7 @@ Set `COLLIE_STANDBY_PORT` to an identical, unused port on both the lead and depu
 ### The prerequisite: one hostname, two backends
 
 Lead and deputy must be served from the same origin to share the PWA registration and device
-credentials. Standalone packs without unified ingress recover via `bin/collie promote` (or Herdr:
+credentials. A standalone crew without unified ingress recovers via `bin/collie promote` (or Herdr:
 `herdr plugin action invoke promote --plugin herdr.collie`; [`PACK_PROTOCOL §14.4`](../PACK_PROTOCOL.md)).
 
 Example Traefik configuration:
@@ -436,8 +436,8 @@ Standalone setup on the lead:
 
 ```bash
 bin/collie pair
-bin/collie pack deputy nas
-bin/collie pack status
+bin/collie crew deputy nas
+bin/collie crew status
 ```
 
 Herdr setup on the lead:
@@ -470,11 +470,11 @@ Ensure the supervisor restarts on non-zero exit codes (systemd: `Restart=always`
 
 Post-recovery:
 - The previous lead deposes itself upon reconnecting ([`PACK_PROTOCOL.md` §8.4](../PACK_PROTOCOL.md)).
-- Update the deposed node's peer address: Standalone `bin/collie pack set-address <member> <host:port>`
+- Update the deposed node's peer address: Standalone `bin/collie crew set-address <member> <host:port>`
   or Herdr `herdr plugin action invoke pack --plugin herdr.collie set-address <member> <host:port>`.
-- Assign a new deputy: Standalone `bin/collie pack deputy <member>` or Herdr
+- Assign a new deputy: Standalone `bin/collie crew deputy <member>` or Herdr
   `herdr plugin action invoke pack --plugin herdr.collie deputy <member>`.
-- Do not run `pack rotate` until all members have reconnected.
+- Do not run `crew rotate` until all members have reconnected.
 
 ---
 

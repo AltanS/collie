@@ -138,10 +138,10 @@ stick to it.** (Over plain HTTP the SW can't register — always fresh, but no P
 
 
 **I saved a machine in Herdr and the phone does not show it.** Expected. Herdr's saved machines are
-its own client's list, and a pack is Collie's own; neither list feeds the other. To reach that
-machine from the phone, enrol it: `collie pack add <ssh-host>` on the lead, then `collie restart` on
-the lead and `collie pack status` to check the link. Adding or removing a machine in Herdr changes
-nothing in the pack ([Herdr machines and the pack](pack.md#herdr-machines-and-the-pack)).
+its own client's list, and a crew is Collie's own; neither list feeds the other. To reach that
+machine from the phone, enrol it: `collie crew add <ssh-host>` on the lead, then `collie restart` on
+the lead and `collie crew status` to check the link. Adding or removing a machine in Herdr changes
+nothing in the crew ([Herdr machines and the crew](crew.md#herdr-machines-and-the-crew)).
 
 **An update started from the phone stays at staging.** On Collie up to 1.6.0, an update tapped on
 the phone could stage the new version and then stop: the runner that performs the swap was never

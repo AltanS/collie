@@ -236,7 +236,7 @@ export function PackAdd({ store }: { store: AddStore }): React.ReactElement {
 
   return (
     <Box flexDirection="column" paddingLeft={1}>
-      <Text bold>pack add {view.host ?? ""}</Text>
+      <Text bold>crew add {view.host ?? ""}</Text>
       <Notes notes={view.preamble} indent={2} />
       <Facts facts={view.facts} />
       <Legs legs={view.legs} frame={frame} />

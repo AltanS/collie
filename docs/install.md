@@ -222,7 +222,7 @@ AUR helper is not involved, because `pkgs.omarchy.org` is a real pacman reposito
 > is the repository spelling; on an AUR install run your helper instead. Run `collie restart`
 > after the upgrade, for the reason above: pacman restarts nothing.
 
-In a [pack](pack.md), this machine never takes an update from the phone: the pack lists it as
+In a [crew](crew.md), this machine never takes an update from the phone: the crew lists it as
 "waits for the package manager", and it levels only when you run your helper on it.
 
 Remove it with the same three steps as on Arch above.
@@ -251,7 +251,7 @@ list yourself.
 > and names `nix profile upgrade collie` instead, and the phone shows the new version with that
 > command where the update button would be.
 
-In a [pack](pack.md), this machine never takes an update from the phone: the pack lists it as
+In a [crew](crew.md), this machine never takes an update from the phone: the crew lists it as
 "waits for the package manager", and it levels only when you run nix on it.
 
 Remove it with `collie stop` first, then:

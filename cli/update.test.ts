@@ -763,7 +763,7 @@ describe("update", () => {
     );
   });
 
-  test("records the run it just finished, so a restarted lead can find its pack turns", async () => {
+  test("records the run it just finished, so a restarted lead can find its crew turns", async () => {
     // The bug this pins: the in-place path wrote nothing, so `settleUpdateGate` in bridge/index.ts
     // re-read a file that was not there, `updateTurns.begin` never ran, and no peer was ever handed
     // its turn. The lead updated itself and the pack sat still until the operator retried by hand.

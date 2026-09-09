@@ -157,15 +157,15 @@ const SECTIONS = [
   },
   {
     id: "pack",
-    title: "Pack",
+    title: "Crew",
     intent:
-      "More than one machine. The formation drawing at four sizes, the cards for a pack that isn't one, the host switcher, and the tier-2 banners that name a machine — not a link — as the thing that broke.",
+      "More than one machine. The formation drawing at four sizes, the cards for a crew that isn't one, the host switcher, and the tier-2 banners that name a machine — not a link — as the thing that broke.",
   },
   {
     id: "settings",
     title: "Settings",
     intent:
-      "The whole settings route, mounted twice: once on a solo collie with nothing paired, once on a lead with three paired devices and a pack card to show for it. Then the Updates page it links to, which is where the check, the card, the peers and the one button now live.",
+      "The whole settings route, mounted twice: once on a solo collie with nothing paired, once on a lead with three paired devices and a crew card to show for it. Then the Updates page it links to, which is where the check, the card, the peers and the one button now live.",
   },
 ] as const satisfies readonly SectionDef[];
 

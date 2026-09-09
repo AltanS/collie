@@ -720,7 +720,7 @@ async function memberChecks(
       red(
         "ops-record",
         `no ssh record for "${id}" — this machine has never been told how to reach it`,
-        `collie pack update ${id} --host <ssh-host> --path <remote-checkout>`,
+        `collie crew update ${id} --host <ssh-host> --path <remote-checkout>`,
       ),
     ]);
   }
@@ -741,7 +741,7 @@ async function memberChecks(
         red(
           "reachable",
           `${host} did not answer the probe (${probe === null ? "unreadable answer" : `exit ${result.code}`})`,
-          `run \`collie pack update ${id}\` to see the full transcript`,
+          `run \`collie crew update ${id}\` to see the full transcript`,
         ),
       ]);
     }
@@ -752,7 +752,7 @@ async function memberChecks(
         red(
           "collie-present",
           `no Collie checkout at ${host}${record?.path === null || record?.path === undefined ? "" : ` (${record.path})`}`,
-          `collie pack update ${id} --host ${host} --path <remote-checkout>`,
+          `collie crew update ${id} --host ${host} --path <remote-checkout>`,
         ),
       ]);
     }
@@ -788,7 +788,7 @@ async function remoteChecks(
         amber(
           "preflight",
           "peer predates preflight — that Collie has no `update --check`, so its own checks could not be read",
-          "collie pack update <member> to level it to this lead's build",
+          "collie crew update <member> to level it to this lead's build",
         ),
       ],
     };
@@ -876,7 +876,7 @@ function render(deps: UpdateCheckDeps, report: PreflightReport): void {
   for (const c of report.checks) deps.io.out(checkLine(c, colour));
   if (report.pack === undefined) return;
   deps.io.out("");
-  deps.io.out("pack:");
+  deps.io.out("crew:");
   for (const m of report.pack) {
     // The kind closes the row when that member named one. It tells the operator at a glance which
     // machines the phone will move and which a package manager owns — and a member that named none

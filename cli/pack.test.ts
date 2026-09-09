@@ -17,7 +17,7 @@ import {
   type TrustStoreIo,
 } from "../bridge/pack/trust-store.ts";
 import { capture, CONFIG, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
-import { EXIT } from "./io.ts";
+import { EXIT, type Io } from "./io.ts";
 import {
   cmdJoin,
   cmdLeave,
@@ -32,10 +32,22 @@ import {
   cmdReconnect,
   enrollUrl,
   looksLikePlaintextListener,
+  PACK_SUBCOMMANDS,
   parsePackArgs,
   readToken,
   selfAddress,
 } from "./pack.ts";
+import {
+  type AliasRow,
+  type Command,
+  findCommand,
+  OLD_SPELLING_NOTICE,
+  packAliasRow,
+  run,
+  type Subcommand,
+  usageLine,
+  withOldSpellingNotice,
+} from "./program.ts";
 import type { PackAddDeps } from "./remote.ts";
 import { mintWarrant } from "../bridge/pack/warrant.ts";
 import { leadDeputyLines } from "./pack-status-deputy.ts";
@@ -270,7 +282,7 @@ describe("readToken — §8.3, and the warning that makes it real", () => {
 });
 
 describe("selfAddress — the port is explicit exactly where the dial needs it", () => {
-  test("a peer's pack listener carries this instance's port; the lead's front door does not", () => {
+  test("a peer's crew listener carries this instance's port; the lead's front door does not", () => {
     const h = harness(null);
     // The trap this closes: a bare host dials :443 (`enrollUrl`/`packUrl` assume https), and a peer
     // publishes no front door — its listener is COLLIE_HOST:COLLIE_PORT and nothing else (§3).
@@ -340,7 +352,7 @@ describe("selfAddress — the port is explicit exactly where the dial needs it",
     expect(selfAddress(h.deps, "nas.example:8443", "front-door")).toBe("nas.example:8443");
   });
 
-  test("a pack listener NEVER takes a public URL — a peer publishes no front door (§3, ADR 0013)", () => {
+  test("a crew listener NEVER takes a public URL — a peer publishes no front door (§3, ADR 0013)", () => {
     const h = harness(null, [], { ctx: context({ COLLIE_PUBLIC_URL: "https://collie.example.com" }) });
     expect(selfAddress(h.deps, undefined, "pack-listener")).toBe("laptop.tail.ts.net:8787");
     expect(text(h.io)).toBe("");
@@ -352,7 +364,7 @@ describe("selfAddress — the port is explicit exactly where the dial needs it",
     expect(text(h.io)).toContain("is not a URL");
   });
 
-  test("a path on COLLIE_PUBLIC_URL is dropped, loudly — the pack link mounts off the origin", () => {
+  test("a path on COLLIE_PUBLIC_URL is dropped, loudly — the crew link mounts off the origin", () => {
     const h = harness(null, [], { ctx: context({ COLLIE_PUBLIC_URL: "https://collie.example.com/collie/" }) });
     expect(selfAddress(h.deps, undefined, "front-door")).toBe("https://collie.example.com");
     expect(text(h.io)).toContain("is dropped");
@@ -395,7 +407,7 @@ describe("enrollUrl", () => {
 
 // ── pack invite ──────────────────────────────────────────────────────────────
 
-describe("collie pack invite", () => {
+describe("collie crew invite", () => {
   test("mints a token, prints `<token>.<lead-fingerprint>` once, and stores only the token's hash", async () => {
     const h = harness(leadStore());
     expect(await cmdPackInvite(h.deps, [])).toBe(EXIT.OK);
@@ -415,15 +427,15 @@ describe("collie pack invite", () => {
     const h = harness(leadStore());
     await cmdPackInvite(h.deps, []);
     // The SHORT MagicDNS name, and no port: this lead is on 8787, which is what a bare host means.
-    expect(text(h.io)).toContain("collie pack join laptop");
-    expect(text(h.io)).toContain("collie pack join laptop -   # paste the token on stdin");
+    expect(text(h.io)).toContain("collie crew join laptop");
+    expect(text(h.io)).toContain("collie crew join laptop -   # paste the token on stdin");
     expect(text(h.io)).toContain("leaves it in `ps` output");
   });
 
   test("a lead that moved off 8787 says so, and COLLIE_PUBLIC_URL wins with its port made explicit", async () => {
     const moved = harness(leadStore(), [], { ctx: context({}, { port: 9001 }) });
     await cmdPackInvite(moved.deps, []);
-    expect(text(moved.io)).toContain("collie pack join laptop:9001");
+    expect(text(moved.io)).toContain("collie crew join laptop:9001");
 
     // A configured front door is the ingress this machine actually publishes, so it wins — and its
     // port is spelt out, because a bare host would send the joiner to 8787 instead of to that door.
@@ -431,7 +443,7 @@ describe("collie pack invite", () => {
       ctx: context({ COLLIE_PUBLIC_URL: "https://collie.example.com" }),
     });
     await cmdPackInvite(published.deps, []);
-    expect(text(published.io)).toContain("collie pack join collie.example.com:443");
+    expect(text(published.io)).toContain("collie crew join collie.example.com:443");
   });
 
   test("it materialises the store — and identity minting refusing is the whole verb failing", async () => {
@@ -511,11 +523,11 @@ describe("collie join", () => {
     expect(h.restarts).toHaveLength(1);
   });
 
-  test("joining a pack you are already in is its OWN exit code and says what to run", async () => {
+  test("joining a crew you are already in is its OWN exit code and says what to run", async () => {
     const h = harness(peerStore());
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.STATE);
-    expect(text(h.io)).toContain("already in pack");
-    expect(text(h.io)).toContain("collie pack leave");
+    expect(text(h.io)).toContain("already in crew");
+    expect(text(h.io)).toContain("collie crew leave");
     expect(h.requests).toEqual([]);
   });
 
@@ -523,7 +535,7 @@ describe("collie join", () => {
     const h = harness(null, [new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 })]);
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.REFUSED);
     expect(text(h.io)).toContain("spent, expired");
-    expect(text(h.io)).toContain("collie pack invite");
+    expect(text(h.io)).toContain("collie crew invite");
     expect(h.data()!.pack).toBeNull();
   });
 
@@ -621,7 +633,7 @@ describe("collie join", () => {
     const h = harness(null);
     expect(await cmdJoin(h.deps, [])).toBe(EXIT.USAGE);
     expect(h.requests).toEqual([]);
-    expect(text(h.io)).toContain("usage: collie pack join <lead-address> [<token>|-|@file]");
+    expect(text(h.io)).toContain("usage: collie crew join <lead-address> [<token>|-|@file]");
     expect(text(h.io)).not.toContain("needs the invite token as its second argument");
   });
 
@@ -629,10 +641,10 @@ describe("collie join", () => {
     const h = harness(null);
     expect(await cmdJoin(h.deps, ["desk.ts.net"])).toBe(EXIT.USAGE);
     expect(h.requests).toEqual([]);
-    expect(text(h.io)).toContain("usage: collie pack join <lead-address> [<token>|-|@file]");
+    expect(text(h.io)).toContain("usage: collie crew join <lead-address> [<token>|-|@file]");
     expect(text(h.io)).toContain("error: join needs the invite token as its second argument.");
-    expect(text(h.io)).toContain("collie pack join desk.ts.net -");
-    expect(text(h.io)).toContain("collie pack invite");
+    expect(text(h.io)).toContain("collie crew join desk.ts.net -");
+    expect(text(h.io)).toContain("collie crew invite");
   });
 
   // ── The lead's fingerprint on the invite authenticates the lead to the joiner (F1) ──
@@ -830,7 +842,7 @@ describe("collie join", () => {
       },
     });
     expect(await cmdJoin(h.deps, ["desk.ts.net"])).toBe(EXIT.OK);
-    expect(asked).toEqual(["Paste the invite token from `collie pack invite` on the lead:"]);
+    expect(asked).toEqual(["Paste the invite token from `collie crew invite` on the lead:"]);
     // SAFETY: the body is the `EnrollRequest` `cmdJoin` just serialised — the answer, trimmed.
     expect(JSON.parse(h.requests[0]!.body).token).toBe("token-from-stdin");
     // A token typed at a prompt was never in argv, so the `ps` warning must not fire for it.
@@ -856,8 +868,8 @@ describe("collie join", () => {
 // `pack join` and `pack leave` are canonical; `collie join` / `collie leave` are aliases onto the
 // same two functions. Nothing may drift between them, so the dispatch is pinned rather than trusted.
 
-describe("`collie pack join|leave` and their top-level aliases", () => {
-  test("`pack join` runs `cmdJoin` — same requests, same words", async () => {
+describe("`collie crew join|leave` and their top-level aliases", () => {
+  test("`crew join` runs `cmdJoin` — same requests, same words", async () => {
     const viaPack = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
     expect(await cmdPack(viaPack.deps, ["join", "desk.ts.net", "-"])).toBe(EXIT.OK);
     const direct = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
@@ -866,20 +878,154 @@ describe("`collie pack join|leave` and their top-level aliases", () => {
     expect(text(viaPack.io)).toBe(text(direct.io));
   });
 
-  test("`pack leave` runs `cmdLeave` — same exit code, same words", async () => {
+  test("`crew leave` runs `cmdLeave` — same exit code, same words", async () => {
     const viaPack = harness(null);
     expect(await cmdPack(viaPack.deps, ["leave"])).toBe(EXIT.STATE);
     const direct = harness(null);
     expect(await cmdLeave(direct.deps)).toBe(EXIT.STATE);
     expect(text(viaPack.io)).toBe(text(direct.io));
-    expect(text(viaPack.io)).toContain("not in a pack");
+    expect(text(viaPack.io)).toContain("not in a crew");
   });
 
-  test("the `pack` usage block names both of them", async () => {
+  test("the `crew` usage block names both of them", async () => {
     const h = harness(null);
     expect(await cmdPack(h.deps, [])).toBe(EXIT.USAGE);
-    expect(text(h.io)).toContain("  join     join a pack:");
-    expect(text(h.io)).toContain("  leave    leave the pack");
+    expect(text(h.io)).toContain("  join     join a crew:");
+    expect(text(h.io)).toContain("  leave    leave the crew");
+  });
+});
+
+// ── one tree, two spellings: `collie crew` and `collie pack` ─────────────────
+// The verb is `crew`. `pack` is the alias ADR 0038 removes in 2.0.0, declared as a second
+// `COMMANDS` entry, and the only thing that stops the two from drifting is that every `pack` row
+// wraps the crew row's OWN function, adding the deprecation notice and nothing else. So that is
+// what is pinned, by identity through `aliasOf` and per sub-verb over `PACK_SUBCOMMANDS`: a twelfth
+// sub-verb cannot reach one spelling and miss the other.
+
+describe("`collie crew` and its `pack` alias", () => {
+  const crew = findCommand("crew");
+  const pack = findCommand("pack");
+
+  test("both spellings are dispatchable, and only `crew` is named in the usage line", () => {
+    expect(crew).toBeDefined();
+    expect(pack).toBeDefined();
+    expect(crew?.internal).not.toBe(true);
+    expect(pack?.internal).toBe(true);
+    expect(usageLine()).toContain("|crew|");
+    expect(usageLine()).not.toContain("|pack|");
+  });
+
+  /** A `pack` row, narrowed to the alias shape by the field only an alias row carries. */
+  const aliasRow = (name: string): AliasRow | undefined =>
+    (pack?.subcommands ?? []).find((c): c is AliasRow => c.name === name && "aliasOf" in c);
+
+  test("every sub-verb is ONE function under both spellings", () => {
+    expect(crew?.subcommands?.map((c) => c.name)).toEqual([...PACK_SUBCOMMANDS]);
+    expect(pack?.subcommands?.map((c) => c.name)).toEqual([...PACK_SUBCOMMANDS]);
+    for (const name of PACK_SUBCOMMANDS) {
+      const viaCrew = crew?.subcommands?.find((c) => c.name === name);
+      const viaPack = aliasRow(name);
+      expect(viaCrew).toBeDefined();
+      expect(viaPack).toBeDefined();
+      // Identity, not equality: the alias row holds the crew row itself, and calls its function.
+      expect(viaPack?.aliasOf).toBe(viaCrew);
+      expect(viaPack?.aliasOf.run).toBe(viaCrew?.run);
+      expect(viaPack?.summary).toBe(viaCrew?.summary);
+    }
+  });
+
+  test("the bare verb answers with the same block, and that block says crew", async () => {
+    const h = harness(leadStore());
+    expect(await cmdPack(h.deps, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain("usage: collie crew {");
+    expect(text(h.io)).not.toContain("collie pack");
+  });
+
+  test("no summary under the tree says pack as the group", () => {
+    for (const c of crew?.subcommands ?? []) expect(c.summary).not.toMatch(/\bpack\b/i);
+    expect(crew?.summary).not.toMatch(/\bpack\b/i);
+  });
+});
+
+// ── the notice the old spelling prints, and only on a terminal ───────────────
+// ADR 0038: `collie pack` tells the PERSON reading a terminal that the word moved, once, on stderr.
+// A script, a pipe and a Herdr action must see nothing, so the gate is `Io.errIsTty`, and it is
+// driven here through the real dispatcher over a stand-in verb, both ways.
+
+describe("the `collie pack` deprecation notice", () => {
+  /** A `crew`-shaped stand-in and its alias, built by the SAME wrapper the real table uses. */
+  const table = (): readonly Command[] => {
+    const status: Subcommand = {
+      name: "status",
+      summary: "stand-in",
+      run: (_args, s) => {
+        s.io.out("dispatched");
+        return EXIT.OK;
+      },
+    };
+    const bare: Command["run"] = (args, s) => {
+      s.io.out(`bare:${args.join(",")}`);
+      return EXIT.OK;
+    };
+    return [
+      { name: "crew", summary: "stand-in crew", subcommands: [status], run: bare },
+      {
+        name: "pack",
+        summary: "same as `crew`",
+        internal: true,
+        subcommands: [packAliasRow(status)],
+        // The real table's wrapper, not a copy of it.
+        run: withOldSpellingNotice(bare),
+      },
+    ];
+  };
+
+  const io = (errIsTty: boolean) => {
+    const out: string[] = [];
+    const err: string[] = [];
+    return { out, err, io: { out: (l: string) => out.push(l), err: (l: string) => err.push(l), errIsTty } satisfies Io };
+  };
+
+  test("a terminal is told exactly once, on stderr, and stdout is untouched", async () => {
+    const h = io(true);
+    expect(await run(["pack", "status"], h.io, table())).toBe(EXIT.OK);
+    expect(h.err.filter((l) => l === OLD_SPELLING_NOTICE)).toHaveLength(1);
+    expect(h.out).toEqual(["dispatched"]);
+  });
+
+  test("the bare verb tells a terminal once too", async () => {
+    const h = io(true);
+    expect(await run(["pack"], h.io, table())).toBe(EXIT.OK);
+    expect(h.err.filter((l) => l === OLD_SPELLING_NOTICE)).toHaveLength(1);
+  });
+
+  test("a pipe is told nothing at all", async () => {
+    for (const argv of [["pack", "status"], ["pack"]]) {
+      const h = io(false);
+      expect(await run(argv, h.io, table())).toBe(EXIT.OK);
+      expect(h.err).toEqual([]);
+    }
+  });
+
+  test("an io that never heard of a terminal is a pipe", async () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    expect(await run(["pack", "status"], { out: (l) => out.push(l), err: (l) => err.push(l) }, table())).toBe(EXIT.OK);
+    expect(err).toEqual([]);
+  });
+
+  test("`crew` never prints it, on a terminal or off one", async () => {
+    for (const tty of [true, false]) {
+      const h = io(tty);
+      expect(await run(["crew", "status"], h.io, table())).toBe(EXIT.OK);
+      expect(h.err).toEqual([]);
+    }
+  });
+
+  test("the line names both spellings and its removal release", () => {
+    expect(OLD_SPELLING_NOTICE).toBe(
+      "note: `collie pack` is now `collie crew`. The old spelling keeps working until 2.0.0.",
+    );
   });
 });
 
@@ -917,7 +1063,7 @@ describe("an unreachable member is described in Collie's words, not Bun's", () =
   // reads and `collie leave`'s warning — all three read the same `reason` field.
   const BUN_CONNECT = new Error("Unable to connect. Is the computer able to access the url?");
 
-  test("`pack status` says what the far side did", async () => {
+  test("`crew status` says what the far side did", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }), [BUN_CONNECT]);
     expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
     expect(text(h.io)).toContain("unreachable · hello: nothing accepted a connection at this address");
@@ -934,7 +1080,7 @@ describe("an unreachable member is described in Collie's words, not Bun's", () =
 
 // ── the unreachable-lead remedy (F11) ────────────────────────────────────────
 
-describe("collie pack status — what an unreachable LEAD is told to do", () => {
+describe("collie crew status — what an unreachable LEAD is told to do", () => {
   const behindAFrontDoor = (): TrustStoreData =>
     peerStore({ lead: member({ memberId: "desk", role: "lead", address: "https://desk.tailnet.ts.net" }) });
 
@@ -944,7 +1090,7 @@ describe("collie pack status — what an unreachable LEAD is told to do", () => 
     // A lead's address is SUPPOSED to carry a scheme: it is a front door. The old hint told the
     // operator to strip it, and the verb it named refuses on this machine anyway.
     expect(text(h.io)).not.toContain("an address with a scheme is a front door's");
-    expect(text(h.io)).not.toContain("pack set-address desk");
+    expect(text(h.io)).not.toContain("crew set-address desk");
   });
 
   test("the remedy it does offer is the verb that runs HERE", async () => {
@@ -959,7 +1105,7 @@ describe("collie pack status — what an unreachable LEAD is told to do", () => 
       new Error("no route to host"),
     ]);
     expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
-    expect(text(h.io)).toContain("collie pack set-address nas <host:port>");
+    expect(text(h.io)).toContain("collie crew set-address nas <host:port>");
     expect(text(h.io)).not.toContain("collie reconnect <address>");
   });
 });
@@ -1001,7 +1147,7 @@ describe("clientFor — which dials carry a pin (§8.1) and which cannot", () =>
     expect(h.requests[0]!.tls?.cert).toBe(material("desk").certPem);
   });
 
-  test("`pack status` on a peer probes its lead through the front door, unpinned", async () => {
+  test("`crew status` on a peer probes its lead through the front door, unpinned", async () => {
     const h = harness(behindAFrontDoor(), [jsonReply({ protocol: 1, member: "desk" }, 200, "desk")]);
     expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
     expect(h.requests[0]!.url).toBe("https://desk.tailnet.ts.net/pack/v1/hello");
@@ -1041,13 +1187,13 @@ describe("collie leave", () => {
     expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
     expect(h.data()!.pack).toBeNull();
     expect(text(h.io)).toContain("still lists this machine");
-    expect(text(h.io)).toContain("collie pack remove laptop");
+    expect(text(h.io)).toContain("collie crew remove laptop");
   });
 
   // F12: `pack add` writes COLLIE_HOST=<the address the lead dials> — a wide bind. Peer mode
   // tolerates it; solo does not. So the documented tear-down ended with the service failing every
   // five seconds forever, under a banner that said "activating" and "yet".
-  test("the pack's wide bind is retired, so the machine comes back as a plain loopback collie", async () => {
+  test("the crew's wide bind is retired, so the machine comes back as a plain loopback collie", async () => {
     const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")], {
       ctx: context({ COLLIE_HOST: "192.168.77.2", COLLIE_PACK_TIMEOUT_MS: "60000" }),
     });
@@ -1119,12 +1265,12 @@ describe("collie leave", () => {
   test("a lead refuses to leave — that would strand its peers", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     expect(await cmdLeave(h.deps)).toBe(EXIT.STATE);
-    expect(text(h.io)).toContain("collie pack remove");
+    expect(text(h.io)).toContain("collie crew remove");
     expect(text(h.io)).toContain("collie promote");
     expect(h.data()!.pack).not.toBeNull();
   });
 
-  test("not being in a pack is a state error, not a no-op success", async () => {
+  test("not being in a crew is a state error, not a no-op success", async () => {
     const h = harness(null);
     expect(await cmdLeave(h.deps)).toBe(EXIT.STATE);
   });
@@ -1157,8 +1303,8 @@ describe("collie leave", () => {
 
 // ── pack status ──────────────────────────────────────────────────────────────
 
-describe("collie pack status", () => {
-  test("a solo instance says so and names both ways into a pack", async () => {
+describe("collie crew status", () => {
+  test("a solo instance says so and names both ways into a crew", async () => {
     const h = harness(null);
     expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
     expect(text(h.io)).toContain("mode: solo");
@@ -1274,7 +1420,7 @@ describe("collie pack status", () => {
     });
     await cmdPackStatus(h.deps, ["--no-probe"]);
     const rendered = text(h.io);
-    expect(rendered).toContain("bind   0.0.0.0 — ALL interfaces, gated only by pinned mTLS + the pack secret");
+    expect(rendered).toContain("bind   0.0.0.0 — ALL interfaces, gated only by pinned mTLS + the crew secret");
   });
 
   test("an unenrolled tombstone explains WHY it went quiet and what recovery is", async () => {
@@ -1329,14 +1475,14 @@ describe("collie pack status", () => {
     await cmdPackStatus(h.deps, []);
     const rendered = text(h.io);
     expect(rendered).toContain("version 1.0.0-alpha.11 — warn: this machine runs 1.0.0-alpha.12");
-    expect(rendered).toContain("`collie pack update nas`");
+    expect(rendered).toContain("`collie crew update nas`");
     // Skew refuses nothing: the link is reachable and the member is NOT the incompatible state,
     // which §7 reserves for a protocol mismatch.
     expect(rendered).toContain("reachable");
     expect(rendered).not.toContain("INCOMPATIBLE");
   });
 
-  test("a lead that is ITSELF the older machine never offers `pack update` (§7.1 skew direction)", async () => {
+  test("a lead that is ITSELF the older machine never offers `crew update` (§7.1 skew direction)", async () => {
     // The version-skew leg (PACK_PROTOCOL.md §16, 2026-09-08) ran a real 1.6.0 lead over two members
     // built from main, and this line told the operator to `collie pack update` them — which pushes
     // the LEAD's build outwards and would have taken both members backwards. The remedy has to
@@ -1368,7 +1514,7 @@ describe("collie pack status", () => {
     await cmdPackStatus(h.deps, []);
     const rendered = text(h.io);
     expect(rendered).toContain("Neither build is the older one.");
-    expect(rendered).not.toContain("collie pack update nas");
+    expect(rendered).not.toContain("collie crew update nas");
     expect(rendered).not.toContain("collie update` here");
   });
 
@@ -1389,7 +1535,7 @@ describe("collie pack status", () => {
   test("a protocol mismatch is still INCOMPATIBLE, and no version line dresses it up (§7)", async () => {
     const h = withVersion(
       harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
-        jsonReply({ error: "pack protocol mismatch", code: "protocol_mismatch", expected: 1, received: 2 }, 409, "nas"),
+        jsonReply({ error: "crew protocol mismatch", code: "protocol_mismatch", expected: 1, received: 2 }, 409, "nas"),
       ]),
       "1.0.0-alpha.12",
     );
@@ -1489,7 +1635,7 @@ describe("collie pack status", () => {
     await cmdPackStatus(h.deps, []);
     const rendered = text(h.io);
     expect(rendered).toContain("provisional — enrolled but never once reachable");
-    expect(rendered).toContain("collie pack remove nas");
+    expect(rendered).toContain("collie crew remove nas");
   });
 
   test("an ABSENT contactedAt (back-compat) is NEVER provisional", async () => {
@@ -1521,7 +1667,7 @@ describe("collie pack status", () => {
 
 // ── pack rotate ──────────────────────────────────────────────────────────────
 
-describe("collie pack rotate", () => {
+describe("collie crew rotate", () => {
   const roster = [member({ memberId: "nas" }), member({ memberId: "laptop" })];
 
   test("rotates locally FIRST, then distributes with the SUPERSEDED secret", async () => {
@@ -1565,7 +1711,7 @@ describe("collie pack rotate", () => {
 
 // ── pack remove ──────────────────────────────────────────────────────────────
 
-describe("collie pack remove", () => {
+describe("collie crew remove", () => {
   test("unpins, and says the far side keeps its own copy", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     expect(await cmdPackRemove(h.deps, ["nas"])).toBe(EXIT.OK);
@@ -1604,7 +1750,7 @@ describe("collie pack remove", () => {
   test("an unknown member is a state error naming the verb that lists them", async () => {
     const h = harness(leadStore());
     expect(await cmdPackRemove(h.deps, ["ghost"])).toBe(EXIT.STATE);
-    expect(text(h.io)).toContain("collie pack status");
+    expect(text(h.io)).toContain("collie crew status");
   });
 
   // The two surfaces used to disagree out loud: `pack status` printed `deputy nas — warrant
@@ -1614,7 +1760,7 @@ describe("collie pack remove", () => {
     const h = harness(armed);
     expect(await cmdPackRemove(h.deps, ["nas"])).toBe(EXIT.OK);
     expect(h.data()!.deputy).toBeNull();
-    expect(text(h.io)).toContain("was this pack's DEPUTY");
+    expect(text(h.io)).toContain("was this crew's DEPUTY");
     // `pack status` reads the designation, so with it gone the two surfaces agree.
     expect(leadDeputyLines(h.data()!, T0)).toEqual([]);
     // The counter stays, so a later mint cannot re-issue a generation this pack has already used.
@@ -1629,7 +1775,7 @@ describe("collie pack remove", () => {
 
 // ── pack approve-promote ─────────────────────────────────────────────────────
 
-describe("collie pack approve-promote — consent on the lead (§14.1)", () => {
+describe("collie crew approve-promote — consent on the lead (§14.1)", () => {
   const leadWithNas = () => leadStore({ peers: [member({ memberId: "nas" })] });
 
   test("it arms a ten-minute consent, names the next step, and RESTARTS the bridge", async () => {
@@ -1648,7 +1794,7 @@ describe("collie pack approve-promote — consent on the lead (§14.1)", () => {
     expect(h.audit.map((l) => l.action)).toContain("pack.handover.approve");
   });
 
-  test("a peer has nothing to hand over, and a store with no pack has no handover at all", async () => {
+  test("a peer has nothing to hand over, and a store with no crew has no handover at all", async () => {
     const onPeer = harness(peerStore());
     expect(await cmdPackApprovePromote(onPeer.deps, ["desk"])).toBe(EXIT.STATE);
     expect(text(onPeer.io)).toContain("approved on the lead");
@@ -1688,7 +1834,7 @@ describe("collie pack approve-promote — consent on the lead (§14.1)", () => {
     expect(h.restarts).toEqual([]);
   });
 
-  test("`pack status` shows a live approval on the lead, and never on a peer", async () => {
+  test("`crew status` shows a live approval on the lead, and never on a peer", async () => {
     const armed = harness(
       leadStore({
         peers: [member({ memberId: "nas" })],
@@ -1731,7 +1877,7 @@ describe("collie promote", () => {
     // §14.3: the lead is reachable and said no. Aiming the operator at `--force` here would strand
     // every peer to work around a consent they can mint in one verb on the machine they are at.
     const refusal =
-      'this lead has not approved "laptop" to take over — run `collie pack approve-promote laptop` here, ' +
+      'this lead has not approved "laptop" to take over — run `collie crew approve-promote laptop` here, ' +
       "then re-run `collie promote` on that machine within 10 minutes";
     const h = harness(peerStore(), [jsonReply({ error: refusal, code: "handover_not_approved" }, 403, "desk")]);
     expect(await cmdPromote(h.deps, [])).toBe(EXIT.REFUSED);
@@ -1851,7 +1997,7 @@ describe("collie promote", () => {
 
 // ── pack set-address ─────────────────────────────────────────────────────────
 
-describe("collie pack set-address", () => {
+describe("collie crew set-address", () => {
   test("rewrites the row, prints before → after, and restarts this lead", async () => {
     const h = harness(
       leadStore({ peers: [member({ memberId: "nas", address: "https://collie.example.com" })] }),
@@ -1904,13 +2050,13 @@ describe("collie pack set-address", () => {
     expect(h.audit).toEqual([]);
   });
 
-  test("`pack status` points an unreachable scheme'd member at the verb", async () => {
+  test("`crew status` points an unreachable scheme'd member at the verb", async () => {
     const h = harness(
       leadStore({ peers: [member({ memberId: "nas", address: "https://collie.example.com" })] }),
       [new Error("getaddrinfo ENOTFOUND")],
     );
     expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
-    expect(text(h.io)).toContain("collie pack set-address nas <host:port>");
+    expect(text(h.io)).toContain("collie crew set-address nas <host:port>");
   });
 
   test("…and says nothing about an address that is answering", async () => {
@@ -1967,18 +2113,18 @@ describe("collie reconnect", () => {
 
 // ── `collie pack <sub>` ──────────────────────────────────────────────────────
 
-describe("collie pack", () => {
+describe("collie crew", () => {
   test("an unknown subcommand exits 2 and lists the real ones", async () => {
     const h = harness(leadStore());
     expect(await cmdPack(h.deps, ["nonsense"])).toBe(EXIT.USAGE);
-    expect(text(h.io)).toContain("unknown pack subcommand `nonsense`");
+    expect(text(h.io)).toContain("unknown crew subcommand `nonsense`");
     for (const sub of ["invite", "status", "rotate", "remove", "approve-promote"]) expect(text(h.io)).toContain(sub);
   });
 
   test("no subcommand is usage without accusing anyone of typing something", async () => {
     const h = harness(leadStore());
     expect(await cmdPack(h.deps, [])).toBe(EXIT.USAGE);
-    expect(text(h.io)).not.toContain("unknown pack subcommand");
+    expect(text(h.io)).not.toContain("unknown crew subcommand");
   });
 
   // F20: `collie pack --help` answered `error: unknown pack subcommand \`--help\``. It is a spelling
@@ -1989,7 +2135,7 @@ describe("collie pack", () => {
     for (const spelling of ["help", "--help", "-h"]) {
       const h = harness(leadStore());
       expect(await cmdPack(h.deps, [spelling])).toBe(EXIT.USAGE);
-      expect(text(h.io)).not.toContain("unknown pack subcommand");
+      expect(text(h.io)).not.toContain("unknown crew subcommand");
       expect(text(h.io)).toBe(text(bare.io));
     }
   });

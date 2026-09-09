@@ -37,11 +37,11 @@ export function settingsPath(scope?: Scope): string {
 }
 
 /**
- * The pack overview — the read-only census of every machine in the pack. Carries the scope like the
+ * The crew overview — the read-only census of every machine in the crew. Carries the scope like the
  * others so "back" returns you to the machine you were looking at, not to the lead.
  */
-export function packPath(scope?: Scope): string {
-  return `/pack${scopeSearch(scope)}`;
+export function crewPath(scope?: Scope): string {
+  return `/crew${scopeSearch(scope)}`;
 }
 
 /**

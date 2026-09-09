@@ -18,11 +18,11 @@
 // here: the largest of them is 194 KB on its own, and an agent that needs them has the checkout.
 
 import commands from "../docs/commands.md" with { type: "text" };
+import crew from "../docs/crew.md" with { type: "text" };
 import configure from "../docs/configure.md" with { type: "text" };
 import deployment from "../docs/deployment.md" with { type: "text" };
 import install from "../docs/install.md" with { type: "text" };
 import multiplexers from "../docs/multiplexers.md" with { type: "text" };
-import pack from "../docs/pack.md" with { type: "text" };
 import security from "../docs/security.md" with { type: "text" };
 import troubleshooting from "../docs/troubleshooting.md" with { type: "text" };
 import upgrading from "../docs/upgrading.md" with { type: "text" };
@@ -35,7 +35,7 @@ import SKILL_TEMPLATE from "./skill.md" with { type: "text" };
 export { SKILL_TEMPLATE };
 
 export interface DocPage {
-  /** The file stem, which is the name an operator types: `pack` for `docs/pack.md`. */
+  /** The file stem, which is the name an operator types: `crew` for `docs/crew.md`. */
   readonly name: string;
   /** One line, for the table `collie skill` prints. The title comes from the page itself. */
   readonly purpose: string;
@@ -64,13 +64,13 @@ export const DOC_PAGES: readonly DocPage[] = [
     text: commands,
   },
   {
-    name: "pack",
+    name: "crew",
     purpose: "Several machines behind one URL: invite, join, deputy, failover",
-    text: pack,
+    text: crew,
   },
   {
     name: "upgrading",
-    purpose: "Update from the phone or the terminal, roll back, update a pack, cross a major",
+    purpose: "Update from the phone or the terminal, roll back, update a crew, cross a major",
     text: upgrading,
   },
   {
@@ -99,3 +99,23 @@ export const DOC_PAGES: readonly DocPage[] = [
     text: troubleshooting,
   },
 ];
+
+/**
+ * Old names an operator may still type, each pointing at the page that carries the text now.
+ *
+ * `collie docs pack` printed the crew page for every release up to 1.6.0, and ADR 0038 keeps that
+ * name working until 2.0.0. An alias is deliberately NOT a `DOC_PAGES` entry: the registry is one
+ * row per file on disk, `cli/docs-embed.test.ts` asserts exactly that, and the table `collie skill`
+ * prints lists the name to learn, not the name to unlearn.
+ */
+export const DOC_PAGE_ALIASES = { pack: "crew" } as const satisfies Readonly<Record<string, string>>;
+
+function isDocPageAlias(name: string): name is keyof typeof DOC_PAGE_ALIASES {
+  return name in DOC_PAGE_ALIASES;
+}
+
+/** The page an operator asked for, by registry name or by an old name from `DOC_PAGE_ALIASES`. */
+export function findDocPage(name: string): DocPage | undefined {
+  const stem = isDocPageAlias(name) ? DOC_PAGE_ALIASES[name] : name;
+  return DOC_PAGES.find((p) => p.name === stem);
+}

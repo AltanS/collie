@@ -288,11 +288,11 @@ const twoPeers = () =>
 
 // ── Who may run it, and on what ──────────────────────────────────────────────
 
-describe("pack update is a lead's verb, over named members", () => {
+describe("crew update is a lead's verb, over named members", () => {
   test("a solo collie has no peers to level, and is told what its own update is", async () => {
     const h = harness({ store: null });
     expect(await cmdPackUpdate(h.deps, ["--all"])).toBe(EXIT.STATE);
-    expect(text(h.io)).toContain("not in a pack");
+    expect(text(h.io)).toContain("not in a crew");
     expect(text(h.io)).toContain("`collie update`");
     expect(h.calls).toEqual([]);
   });
@@ -304,11 +304,11 @@ describe("pack update is a lead's verb, over named members", () => {
     expect(h.calls).toEqual([]);
   });
 
-  test("a bare `pack update` is a usage error that LISTS the members — never a mass ssh", async () => {
+  test("a bare `crew update` is a usage error that LISTS the members — never a mass ssh", async () => {
     const h = harness({ store: twoPeers(), hello: { nas: "1.2.2", pi: VERSION } });
     expect(await cmdPackUpdate(h.deps, [])).toBe(EXIT.USAGE);
     const rendered = text(h.io);
-    expect(rendered).toContain("usage: collie pack update");
+    expect(rendered).toContain("usage: collie crew update");
     expect(rendered).toContain("nas  1.2.2");
     expect(rendered).toContain(`pi  ${VERSION} — current`);
     expect(h.calls).toEqual([]);
@@ -364,7 +364,7 @@ describe("what the probe decides, before anything is sent", () => {
     const h = harness({ ops: {} });
     expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
     const rendered = text(h.io);
-    expect(rendered).toContain("no ssh record — run `collie pack add <host>` once to teach it");
+    expect(rendered).toContain("no ssh record — run `collie crew add <host>` once to teach it");
     expect(rendered).toContain("nas         skipped");
     expect(h.calls).toEqual([]);
     expect(h.confirms).toEqual([]);
@@ -431,10 +431,10 @@ describe("what the probe decides, before anything is sent", () => {
     expect(h.confirms).toEqual([]);
   });
 
-  test("a machine with no Collie checkout is told to run `pack add`, not `pack update`", async () => {
+  test("a machine with no Collie checkout is told to run `crew add`, not `crew update`", async () => {
     const h = harness({ probes: { "nas.example": { checkout: "" } } });
     expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.FAIL);
-    expect(text(h.io)).toContain("`collie pack add` installs the first");
+    expect(text(h.io)).toContain("`collie crew add` installs the first");
     expect(legs(h)).toEqual(["nas.example:probe"]);
   });
 
@@ -508,7 +508,7 @@ describe("the preflight runs first, and one red aborts the whole run", () => {
       store: twoPeers(),
       ops: { nas: opsRecord("nas.example") },
       hello: { nas: VERSION, pi: VERSION },
-      preflight: redOn("pi", redCheck("ops-record", 'no ssh record for "pi"', "collie pack update pi --host <ssh-host>")),
+      preflight: redOn("pi", redCheck("ops-record", 'no ssh record for "pi"', "collie crew update pi --host <ssh-host>")),
     });
     expect(await cmdPackUpdate(h.deps, ["--all"])).toBe(EXIT.OK);
     expect(legs(h)).toContain("nas.example:install");
@@ -686,7 +686,7 @@ describe("a member's turn: push, restart, verify", () => {
     expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
     expect(legs(h)).toEqual(["nas.example:probe", "nas.example:install", "nas.example:restart"]);
     const rendered = text(h.io);
-    expect(rendered).toContain(`pack update — ${VERSION} (${COMMIT.slice(0, 12)})`);
+    expect(rendered).toContain(`crew update — ${VERSION} (${COMMIT.slice(0, 12)})`);
     expect(rendered).toContain(`✓ push`);
     expect(rendered).toContain("its bridge came back");
     expect(rendered).toContain(`answers at 100.64.0.9:8787 · ${VERSION}`);
@@ -728,7 +728,7 @@ describe("a member's turn: push, restart, verify", () => {
       answers: { "nas.example": { install: { code: 24, stderr: "error: the build failed" } } },
     });
     expect(await cmdPackUpdate(h.deps, ["nas"])).toBe(EXIT.FAIL);
-    expect(text(h.io)).toContain("recover with: collie pack update nas");
+    expect(text(h.io)).toContain("recover with: collie crew update nas");
   });
 
   test("the abort says why stopping is safe: PACK_PROTOCOL §7.1 tolerates skew", async () => {
@@ -927,10 +927,10 @@ describe("the plain transcript", () => {
     });
     await cmdPackUpdate(h.deps, ["--all"]);
     expect(h.io.stdout).toEqual([
-      "pack update — 1.2.3 (abc123def456)",
+      "crew update — 1.2.3 (abc123def456)",
       "preflight: nothing red on this lead or on 1 member.",
       "→ nas         1.2.2 at 0000feed0000 · nas.example:/home/pat/.collie",
-      "· pi          no ssh record — run `collie pack add <host>` once to teach it",
+      "· pi          no ssh record — run `collie crew add <host>` once to teach it",
       "",
       "nas:",
       "  pushing abc123def456 (0 KiB base64) to /home/pat/.collie…",

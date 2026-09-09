@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { usePack } from "@/components/pack-provider";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
-import { packPath } from "@/lib/nav";
+import { crewPath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
 
 /**
@@ -24,7 +24,7 @@ export function PackSettingsCard() {
     <Card className="gap-0 py-0">
       <button
         type="button"
-        onClick={() => navigate(packPath(scope))}
+        onClick={() => navigate(crewPath(scope))}
         className="flex w-full items-center gap-3 p-4 text-left active:bg-muted/60"
       >
         <Network className="size-5 shrink-0 text-muted-foreground" />

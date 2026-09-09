@@ -138,7 +138,7 @@ describe("packAction", () => {
     expect(packAction({ releaseAvailable: true, hasPeers: true, behind: 1, rolledBack: 0 })).toBe(
       "update-pack",
     );
-    expect(packActionLabel("update-pack", "1.5.0")).toBe("Update pack to 1.5.0");
+    expect(packActionLabel("update-pack", "1.5.0")).toBe("Update crew to 1.5.0");
   });
 
   it("names only this machine when there are no peers", () => {
@@ -155,7 +155,7 @@ describe("packAction", () => {
     expect(packAction({ releaseAvailable: false, hasPeers: true, behind: 0, rolledBack: 1 })).toBe(
       "retry-pack",
     );
-    expect(packActionLabel("retry-pack", "1.5.0")).toBe("Retry pack update");
+    expect(packActionLabel("retry-pack", "1.5.0")).toBe("Retry crew update");
   });
 
   it("offers nothing when the whole pack is level", () => {

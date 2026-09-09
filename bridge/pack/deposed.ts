@@ -235,12 +235,12 @@ export const STANDBY_HEALTH_PATH = "/standby/health";
  * names the command.
  */
 export function deposedPage(state: DeposedState, outcome: DeposedOutcome, instance: string | null): string {
-  const pack = state.packName === null ? "this pack" : `"${state.packName}"`;
+  const pack = state.packName === null ? "this crew" : `"${state.packName}"`;
   const lead = state.leadMemberId === null ? "another machine" : `"${state.leadMemberId}"`;
   const when = new Date(state.at).toISOString();
   const lines = [
-    `This machine was the lead of pack ${pack} until ${when}.`,
-    `The pack is now led by ${lead} (warrant generation ${state.generation}).`,
+    `This machine was the lead of crew ${pack} until ${when}.`,
+    `The crew is now led by ${lead} (warrant generation ${state.generation}).`,
     "Nothing here is live.",
     "",
     ...deposedOutcomeLines(state, outcome, instance),
@@ -265,7 +265,7 @@ export function deposedOutcomeLines(
 ): string[] {
   if (outcome === "healed") {
     return [
-      "This machine has rejoined the pack as a peer. It takes effect at its next restart —",
+      "This machine has rejoined the crew as a peer. It takes effect at its next restart —",
       `run \`${herdrActionCommand("restart", instance)}\` here. Nothing else is needed:`,
       "the new lead already dials this machine, and its agents reappear on its first sweep.",
     ];
@@ -278,7 +278,7 @@ export function deposedOutcomeLines(
   }
   return [
     `This machine could not rejoin by itself (${parkText(state.reason)}).`,
-    "Recover it with `collie pack add` from the new lead, or `collie join` with a fresh token.",
+    "Recover it with `collie crew add` from the new lead, or `collie join` with a fresh token.",
   ];
 }
 

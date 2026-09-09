@@ -119,7 +119,7 @@ export function PackedRootRouter({ data, children }: { data: HomeData; children:
 
 /**
  * The pack census on its own router, assembled the way `routes/pack.test.tsx` assembles it: the root
- * route publishes the snapshot AND the `PackProvider`, and `/pack` carries the census. A `pack` of
+ * route publishes the snapshot AND the `PackProvider`, and `/crew` carries the census. A `pack` of
  * `{ status: null }` is the solo/empty card — the real 404 answer, not a stub.
  */
 export function PackRouter({ home, pack }: { home: HomeData; pack: PackData }) {
@@ -144,11 +144,11 @@ export function PackRouter({ home, pack }: { home: HomeData; pack: PackData }) {
           ),
           children: [
             { index: true, element: <div className="p-4 text-sm text-muted-foreground">home</div> },
-            { path: "pack", loader: () => pack, element: <PackRoute /> },
+            { path: "crew", loader: () => pack, element: <PackRoute /> },
           ],
         },
       ],
-      { initialEntries: ["/pack"] },
+      { initialEntries: ["/crew"] },
     ),
   );
   return <RouterProvider router={router} />;

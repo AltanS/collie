@@ -106,8 +106,8 @@ function probeOut(over: Record<string, string> = {}): string {
 }
 
 const SOLO_STATUS = [
-  "mode: solo — this collie is not in a pack (no trust store, or an empty one).",
-  "  `collie pack invite` here makes it a lead; `collie join …` makes it a peer.",
+  "mode: solo — this collie is not in a crew (no trust store, or an empty one).",
+  "  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.",
 ].join("\n");
 
 type LegAnswers = Partial<Record<Leg, Partial<RemoteResult>>>;
@@ -452,7 +452,12 @@ describe("parseMembership", () => {
     expect(parseMembership(SOLO_STATUS)).toEqual({ packId: null, packName: null, memberId: null });
   });
 
-  test("a member of a pack", () => {
+  test("a member of a crew", () => {
+    const status = ["crew   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n");
+    expect(parseMembership(status)).toEqual({ packId: "pack-1", packName: "the herd", memberId: "nas" });
+  });
+
+  test("a 1.6.0 machine still says `pack`, and that reads the same", () => {
     const status = ["pack   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n");
     expect(parseMembership(status)).toEqual({ packId: "pack-1", packName: "the herd", memberId: "nas" });
   });
@@ -464,7 +469,7 @@ describe("parseMembership", () => {
 
 // ── The verb ─────────────────────────────────────────────────────────────────
 
-describe("collie pack add", () => {
+describe("collie crew add", () => {
   test("no host is a usage error", async () => {
     const h = harness();
     expect(await run(h, [])).toBe(EXIT.USAGE);
@@ -479,7 +484,7 @@ describe("collie pack add", () => {
     const h = harness();
     expect(await run(h, [])).toBe(EXIT.USAGE);
     expect(h.io.stdout).toEqual([]);
-    expect(text(h.io)).toContain("usage: collie pack add <ssh-host>");
+    expect(text(h.io)).toContain("usage: collie crew add <ssh-host>");
     expect(text(h.io)).not.toContain("warn:");
     expect(text(h.io)).not.toContain("Candidate hosts");
   });
@@ -524,7 +529,7 @@ describe("collie pack add", () => {
     expect(h.io.stdout).toContain("Nothing was added.");
   });
 
-  test("a candidate already in the pack is marked with its member id rather than dropped", async () => {
+  test("a candidate already in the crew is marked with its member id rather than dropped", async () => {
     const h = harness({
       store: leadStore({ peers: [member({ memberId: "nas", address: "100.64.0.9:8787" })] }),
       ops: { nas: { sshHost: "nas-box", path: REMOTE_CHECKOUT, port: 8787, recordedAt: T0 } },
@@ -552,7 +557,7 @@ describe("collie pack add", () => {
       sshConfig: "Host nas-box",
     });
     expect(await run(h, [])).toBe(EXIT.USAGE);
-    expect(text(h.io)).toContain("every candidate above is already a member of this pack");
+    expect(text(h.io)).toContain("every candidate above is already a member of this crew");
     expect(h.calls).toHaveLength(0);
   });
 
@@ -710,7 +715,7 @@ describe("collie pack add", () => {
       expect(h.restarts).toBe(0);
       const said = text(h.io);
       expect(said).toContain("in the clear");
-      expect(said).toContain("`pack add` has no --insecure and will not get one");
+      expect(said).toContain("`crew add` has no --insecure and will not get one");
       expect(said).toContain("collie join <lead-address> <token> --insecure` THERE");
       expect(said).toContain("Nothing was pushed, built or restarted.");
     }
@@ -988,11 +993,11 @@ describe("re-running against the same host", () => {
     expect(h.calls.map((c) => c.leg)).not.toContain("configure");
   });
 
-  test("already a member of THIS pack is a ✓ and exit OK — nothing is minted", async () => {
+  test("already a member of THIS crew is a ✓ and exit OK — nothing is minted", async () => {
     const h = harness({
       answers: {
         probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT }) },
-        membership: { stdout: ["pack   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
+        membership: { stdout: ["crew   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
       },
     });
     expect(await run(h)).toBe(EXIT.OK);
@@ -1021,7 +1026,7 @@ describe("re-running against the same host", () => {
             dirty: "no",
           }),
         },
-        membership: { stdout: ["pack   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
+        membership: { stdout: ["crew   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
       },
     });
     expect(await run(h)).toBe(EXIT.OK);
@@ -1046,7 +1051,7 @@ describe("re-running against the same host", () => {
             dirty: "no",
           }),
         },
-        membership: { stdout: ["pack   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
+        membership: { stdout: ["crew   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
         restart: { code: 1, stderr: "error: the unit did not come back" },
       },
     });
@@ -1058,7 +1063,7 @@ describe("re-running against the same host", () => {
     const h = harness({
       answers: {
         probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9" }) },
-        membership: { stdout: ["pack   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
+        membership: { stdout: ["crew   the herd  (pack-1)", "mode   peer", "self   nas  abcd…"].join("\n") },
       },
     });
     expect(await run(h)).toBe(EXIT.OK);
@@ -1066,11 +1071,11 @@ describe("re-running against the same host", () => {
     expect(text(h.io)).toContain('✓ already a member of "the herd" as "nas"');
   });
 
-  test("a member of ANOTHER pack is STATE, naming `collie leave` there — never run for you", async () => {
+  test("a member of ANOTHER crew is STATE, naming `collie leave` there — never run for you", async () => {
     const h = harness({
       answers: {
         probe: { stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT }) },
-        membership: { stdout: ["pack   someone else  (pack-99)", "mode   peer", "self   nas  abcd…"].join("\n") },
+        membership: { stdout: ["crew   someone else  (pack-99)", "mode   peer", "self   nas  abcd…"].join("\n") },
       },
     });
     expect(await run(h)).toBe(EXIT.STATE);
@@ -1114,7 +1119,7 @@ describe("the join's outcome", () => {
 // ── Dispatch ─────────────────────────────────────────────────────────────────
 
 describe("dispatch", () => {
-  test("`collie pack add` routes here, and the help lists it", async () => {
+  test("`collie crew add` routes here, and the help lists it", async () => {
     const h = harness();
     expect(await cmdPack(h.deps, ["add", "nas.example"])).toBe(EXIT.OK);
     expect(h.calls.map((c) => c.leg)).toContain("enroll");
@@ -1123,7 +1128,7 @@ describe("dispatch", () => {
     expect(text(usage.io)).toContain("add      install and enroll a peer over SSH");
   });
 
-  test("the pack it joins is the one this lead already leads", () => {
+  test("the crew it joins is the one this lead already leads", () => {
     expect(PACK.packId).toBe("pack-1");
   });
 });

@@ -262,8 +262,8 @@ async function render(
 ): Promise<void> {
   const heading = `collie doctor — ${collieVersionBare(deps.ctx.root, (p) => deps.files.read(p))} · mode ${mode}`;
   const packNote = [
-    "pack: none — this collie is not in a pack.",
-    "  `collie pack invite` here makes it a lead; `collie join …` makes it a peer.",
+    "crew: none — this collie is not in a crew.",
+    "  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.",
   ];
   // One findings list, two renderings. The terminal gets the columns laid out and the statuses
   // coloured; everything else gets exactly the lines below, which are what `--json`'s human twin has
@@ -272,7 +272,7 @@ async function render(
     await deps.ui.doctor({
       heading,
       local,
-      packTitle: pack.length === 0 ? "pack:" : `pack: ${data?.pack?.name ?? "?"}`,
+      packTitle: pack.length === 0 ? "crew:" : `crew: ${data?.pack?.name ?? "?"}`,
       pack,
       packNote: pack.length === 0 ? packNote : [],
     });
@@ -289,7 +289,7 @@ async function render(
     for (const n of packNote) deps.io.out(n);
     return;
   }
-  deps.io.out(`pack: ${data?.pack?.name ?? "?"}`);
+  deps.io.out(`crew: ${data?.pack?.name ?? "?"}`);
   for (const f of pack) deps.io.out(line(f));
 }
 
@@ -663,7 +663,7 @@ function bindCheck(deps: DoctorDeps, mode: string): Finding {
     const suggestion = tailnetName(deps.exec) ?? "<address the lead can dial>";
     return bad(
       "bind",
-      `COLLIE_HOST=${host} on a PEER — only this machine can reach the pack listener, so the lead's` +
+      `COLLIE_HOST=${host} on a PEER — only this machine can reach the crew listener, so the lead's` +
         " probe never lands and the member stays provisional",
       `set COLLIE_HOST=${suggestion} in ${join(deps.ctx.configDir, ".env")}, then \`collie restart\``,
     );
@@ -680,7 +680,7 @@ function bindCheck(deps: DoctorDeps, mode: string): Finding {
   ) {
     return bad(
       "bind",
-      `COLLIE_HOST=${shown} is not loopback and this collie is in no pack — the bridge refuses to start`,
+      `COLLIE_HOST=${shown} is not loopback and this collie is in no crew — the bridge refuses to start`,
       `set COLLIE_HOST=127.0.0.1 in ${join(deps.ctx.configDir, ".env")} and put your ingress in front, or set COLLIE_ALLOW_NON_LOOPBACK_BIND=1 if you meant it`,
     );
   }
@@ -700,7 +700,7 @@ function bindWildcard(deps: DoctorDeps): Finding {
   if (!bindIsWildcard(resolvedBind(deps))) return ok("bind-wildcard", "bound to one address");
   return warn(
     "bind-wildcard",
-    "COLLIE_HOST is a wildcard — ALL interfaces, gated only by pinned mTLS + the pack secret (§3)",
+    "COLLIE_HOST is a wildcard — ALL interfaces, gated only by pinned mTLS + the crew secret (§3)",
     `deliberate? nothing to do. Otherwise set COLLIE_HOST to one address in ${join(deps.ctx.configDir, ".env")} and \`collie restart\``,
   );
 }
@@ -813,7 +813,7 @@ function frontDoor(deps: DoctorDeps, mode: string): Finding {
     return mode === "lead"
       ? bad(
           "front-door",
-          `${detail} — the pack has a lead with no URL for the phone`,
+          `${detail} — the crew has a lead with no URL for the phone`,
           "`collie serve` here (or COLLIE_SKIP_SERVE=1 if you own the ingress)",
         )
       : warn(
@@ -1013,7 +1013,7 @@ function clock(inPack: boolean, probes: Map<string, PeerOutcome<HelloResult>>): 
     return skipped(
       "clock",
       "solo — there is no far side to compare against, and inventing a reference clock is worse than silence",
-      "re-run `collie doctor` once this collie is in a pack",
+      "re-run `collie doctor` once this collie is in a crew",
     );
   }
   const deltas: { member: string; delta: number }[] = [];
@@ -1025,7 +1025,7 @@ function clock(inPack: boolean, probes: Map<string, PeerOutcome<HelloResult>>): 
     return skipped(
       "clock",
       "no member answered with a readable `Date` header — nothing to compare this clock against",
-      "fix the link first (`collie pack status`), then re-run `collie doctor`",
+      "fix the link first (`collie crew status`), then re-run `collie doctor`",
     );
   }
   const worst = deltas.reduce((a, b) => (Math.abs(b.delta) > Math.abs(a.delta) ? b : a));
@@ -1508,7 +1508,7 @@ function secretGeneration(data: TrustStoreData, members: readonly TrustedMember[
   return warn(
     "secret-generation",
     parts.join("; "),
-    "`collie pack rotate` on the lead — or, for one already unenrolled, `collie pack invite` here and" +
+    "`collie crew rotate` on the lead — or, for one already unenrolled, `collie crew invite` here and" +
       " `collie join` there",
   );
 }
@@ -1529,7 +1529,7 @@ function reach(data: TrustStoreData, members: readonly TrustedMember[], reaches:
     return skipped(
       check,
       "no enrolled members to dial",
-      "`collie pack invite` here, then `collie join` on the other machine",
+      "`collie crew invite` here, then `collie join` on the other machine",
     );
   }
   const silent: string[] = [];
@@ -1600,7 +1600,7 @@ function memberVersions(
     return skipped(
       "member-versions",
       "no member answered, so no version can be compared",
-      "fix the link first (`collie pack status`), then re-run `collie doctor`",
+      "fix the link first (`collie crew status`), then re-run `collie doctor`",
     );
   }
   const ours = collieVersionBare(deps.ctx.root, (p) => deps.files.read(p));
@@ -1627,7 +1627,7 @@ function memberVersions(
     "member-versions",
     `this machine runs ${ours}; ${skewed.join(", ")} — build skew refuses nothing (§7.1), the link keeps` +
       ` working${note}`,
-    `\`collie pack update ${behind.map((e) => e.id).join(" ")}\` here, or \`collie update\` on each`,
+    `\`collie crew update ${behind.map((e) => e.id).join(" ")}\` here, or \`collie update\` on each`,
   );
 }
 

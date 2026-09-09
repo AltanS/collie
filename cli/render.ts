@@ -425,7 +425,7 @@ const UPDATE_OUTCOME_WORD = {
 export function plainUpdate(io: Io, event: UpdateEvent): void {
   switch (event.kind) {
     case "title":
-      io.out(`pack update — ${event.version} (${event.commit.slice(0, 12)})`);
+      io.out(`crew update — ${event.version} (${event.commit.slice(0, 12)})`);
       return;
     case "line":
       if (event.stream === "err") io.err(event.text);

@@ -91,7 +91,7 @@ describe("the arming threshold is a formula, not a constant (RFC §6.3)", () => 
   test("the operator's override wins, and one below the idle poll WARNS rather than being refused", () => {
     expect(armThresholdMs({ COLLIE_STANDBY_ARM_MS: "5000", COLLIE_POLL_IDLE_MS: "12000" })).toBe(5000);
     const warning = armThresholdWarning({ COLLIE_STANDBY_ARM_MS: "5000", COLLIE_POLL_IDLE_MS: "12000" });
-    expect(warning).toContain("arm itself on an idle pack");
+    expect(warning).toContain("arm itself on an idle crew");
     // Above the idle poll there is nothing to say, and no override at all is silent.
     expect(armThresholdWarning({ COLLIE_STANDBY_ARM_MS: "30000", COLLIE_POLL_IDLE_MS: "12000" })).toBeNull();
     expect(armThresholdWarning({})).toBeNull();
@@ -221,7 +221,7 @@ describe("the page", () => {
   test("TWO-MACHINE pack: the page says the quiet part above the button (RFC §16, decision 8)", () => {
     const page = standbyPage(facts({ witnessCount: 0 }));
     expect(page).toContain("There are no other machines to ask. If your lead is up and you simply cannot");
-    expect(page).toContain("reach it, taking over will split your pack.");
+    expect(page).toContain("reach it, taking over will split your crew.");
     // Allowed anyway — refusing a two-machine pack would refuse the feature.
     expect(page).toContain(`<button id="go"`);
   });
@@ -236,7 +236,7 @@ describe("the page", () => {
 
   test("COLD names the factor the operator can act on, in their order of usefulness", () => {
     expect(coldReason(facts({ warrantsSelf: false }), armingReport(facts({ warrantsSelf: false })))).toContain(
-      "collie pack deputy",
+      "collie crew deputy",
     );
     expect(coldReason(facts({ deviceCount: 0 }), armingReport(facts({ deviceCount: 0 })))).toContain("collie pair");
   });

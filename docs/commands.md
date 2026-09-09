@@ -31,7 +31,7 @@ If the host runs multiple instances, prepend `COLLIE_INSTANCE=<name>` to every v
 | **Push keys** | `collie push-keys` | Generate the VAPID keypair into your `.env` |
 | **Push test** | `collie push-test` | Send one notification to prove it works |
 
-The CLI also includes `build`, `serve`, `unserve`, `doctor`, and `pack …` for less frequent tasks.
+The CLI also includes `build`, `serve`, `unserve`, `doctor`, and `crew …` for less frequent tasks.
 
 Both `start` and `status` output the **Collie is running** banner: a health mark and the version,
 then a `service`, a `local` and a `tailnet` line.
@@ -39,7 +39,7 @@ then a `service`, a `local` and a `tailnet` line.
 check prints instead. The reported version reads from the served bundle stamp, reflecting the active
 build.
 
-**Ink or plain text.** The `start`, `status`, `doctor`, `pack add`, and `pack status` commands
+**Ink or plain text.** The `start`, `status`, `doctor`, `crew add`, and `crew status` commands
 render an interactive terminal UI when stdout is a TTY. Passing `--plain`, or redirecting output to
 a pipe, file, systemd journal, or CI runner, falls back to raw line output.
 

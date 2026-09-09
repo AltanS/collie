@@ -135,7 +135,7 @@ describe("updates page", () => {
   it("puts the peer rows in the card, with no table beside it", async () => {
     serveCheck(info(), PACK);
     renderUpdates(info(), LEAD_ROSTER);
-    const list = await screen.findByRole("list", { name: "Pack members" });
+    const list = await screen.findByRole("list", { name: "Crew members" });
     // The list is INSIDE the card that carries the button — the thing that blocks the confirm has
     // to be readable without moving your eyes to a second surface.
     const card = screen.getByText("Update Collie").closest("[data-slot='card']");
@@ -153,19 +153,19 @@ describe("updates page", () => {
     const current = info({ current: "1.4.0", releaseAvailable: false, newerVersions: [] });
     serveCheck(current, pack);
     renderUpdates(current, LEAD_ROSTER);
-    const list = await screen.findByRole("list", { name: "Pack members" });
+    const list = await screen.findByRole("list", { name: "Crew members" });
     expect(within(list).getByText(/waits for the package manager/)).toBeInTheDocument();
     // Neutral weight: no red, and no reason line under the row.
     expect(list.querySelector(".text-status-blocked")).toBeNull();
     await waitFor(() => expect(screen.getByText("Up to date. Nothing to do.")).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: "Retry pack update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry crew update" })).not.toBeInTheDocument();
   });
 
   it("offers exactly one action button on the page", async () => {
     serveCheck(info(), PACK);
     renderUpdates(info(), LEAD_ROSTER);
-    expect(await screen.findByRole("button", { name: "Update pack to 1.4.0" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Update crew to 1.4.0" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Update to/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Retry pack update" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry crew update" })).not.toBeInTheDocument();
   });
 });

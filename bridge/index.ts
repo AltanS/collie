@@ -341,7 +341,7 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
     });
     console.warn(
       `[pack] DEPOSED — ${reason}. This machine could NOT rejoin by itself and has parked: ` +
-        `${heal.reason}. Recover it with \`collie pack add\` from the new lead, or \`collie join\`.`,
+        `${heal.reason}. Recover it with \`collie crew add\` from the new lead, or \`collie join\`.`,
     );
   }
   // Either outcome ends this machine's claim on the pack's front door, so the door comes down here
@@ -366,8 +366,8 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
     );
     if (dropped !== null) {
       console.warn(
-        `[pack] discarded a stored warrant for pack "${dropped.packId}" (generation ${dropped.generation}): ` +
-          "this collie is in a different pack, so that warrant proves nothing here.",
+        `[pack] discarded a stored warrant for crew "${dropped.packId}" (generation ${dropped.generation}): ` +
+          "this collie is in a different crew, so that warrant proves nothing here.",
       );
     }
   }
@@ -433,7 +433,7 @@ if (pack.mode !== "solo") console.log(`[pack] mode: ${pack.mode}`);
     }
     console.warn(
       `[pack] this ${pack.mode} binds ${cfg.host.trim() === "" ? "every interface" : cfg.host}, not ` +
-        "loopback. Allowed because a pack member is dialled across a machine boundary and " +
+        "loopback. Allowed because a crew member is dialled across a machine boundary and " +
         "/pack/v1/* carries its own two factors — but the browser gates (Tailscale-User-Login, " +
         "COLLIE_DEVICE_HEADER, same-origin) are client-settable here and bound nothing. Whatever " +
         "fronts this port is the only control on /api/*.",
@@ -1190,7 +1190,7 @@ if (transportPinned && pack.peerServesBrowser) {
   console.warn(
     `[pack] ${PEER_BROWSER_ENV} is set, but this peer's port now requires the lead's client certificate ` +
       "at the TLS handshake — a browser cannot present one, so the browser surface is unreachable here. " +
-      "Use the lead's front door, or leave the pack on this machine.",
+      "Use the lead's front door, or leave the crew on this machine.",
   );
 }
 // The peer's pack listener binds COLLIE_HOST (one address, PACK_PROTOCOL.md §3) — the operator owns
@@ -1543,7 +1543,7 @@ async function performTakeover(deviceLabel: string): Promise<{ ok: boolean; mess
   });
   if (outcome.kind !== "committed") return { ok: false, message };
   console.warn(
-    `[pack] TOOK OVER — this machine is the lead of pack "${data.pack?.name ?? "?"}" now (warrant ` +
+    `[pack] TOOK OVER — this machine is the lead of crew "${data.pack?.name ?? "?"}" now (warrant ` +
       `generation ${currentWarrant(trustStore.current())?.warrant.generation ?? 0}), confirmed by ` +
       `${outcome.repinned.length} peer(s). Exiting ${TAKEOVER_RESTART_EXIT} so the supervisor brings ` +
       "this machine back up in LEAD mode — that status is non-zero on purpose, because `Restart=" +
@@ -1741,7 +1741,7 @@ const server = startServer({
     if (health !== null) return health;
     if (url.pathname === STANDBY_PREFIX || url.pathname.startsWith(`${STANDBY_PREFIX}/`)) {
       return new Response(
-        "This machine is not standing by. The standby door is a separate port on the pack's deputy " +
+        "This machine is not standing by. The standby door is a separate port on the crew's deputy " +
           "(COLLIE_STANDBY_PORT), reachable through your failover proxy — see PACK_PROTOCOL.md \u00a718.15.\n",
         { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } },
       );

@@ -81,7 +81,7 @@ describe("the lead's deputy line reads the DESIGNATION, never the warrant", () =
     const rendered = text(leadDeputyLines(after, T0 + 1000));
     expect(rendered).toContain("deputy none");
     expect(rendered).toContain("spent by the takeover of");
-    expect(rendered).toContain("collie pack deputy <member>");
+    expect(rendered).toContain("collie crew deputy <member>");
     // The absurd reading, gone: the machine does not name itself anywhere on the line.
     expect(rendered).not.toContain(`deputy ${after.self.memberId}`);
     // …and the warrant really is still there, which is what made the old reading possible.
@@ -99,7 +99,7 @@ describe("the lead's deputy line reads the DESIGNATION, never the warrant", () =
     expect(rendered).not.toContain("spent by the takeover");
   });
 
-  test("a revocation is spelled as a revocation, and a pack that never named one as neither", () => {
+  test("a revocation is spelled as a revocation, and a crew that never named one as neither", () => {
     const revoked = mintWarrant(designated(), null, T0 + 10);
     expect(text(leadDeputyLines(revoked!.next, T0 + 20))).toContain("deputy none (revoked at generation 2)");
     const never = leadStore({ peers: [member({ memberId: "nas" })] });

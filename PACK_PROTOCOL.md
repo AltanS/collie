@@ -1,5 +1,11 @@
 # Pack protocol v1 — the lead↔peer contract
 
+> **The word an operator reads is crew.** Since 1.7.0 the group of machines is a crew, the command
+> is `collie crew` and the page is [`docs/crew.md`](./docs/crew.md)
+> ([ADR 0038](./.adr/0038-the-group-is-a-crew-the-wire-keeps-pack.md)). This file keeps "pack",
+> because it names the wire: every path, header, field and error code below is unchanged, and a
+> 1.6.0 member talks to a 1.7.0 lead as it always did.
+
 The wire contract for **pack federation**: several machines each running a full Collie, one of them
 holding the phone-facing front door. Sibling to [`HERDR_API.md`](./HERDR_API.md), which documents the
 contract *below* Collie (the Herdr socket); this documents the contract *between* Collies.

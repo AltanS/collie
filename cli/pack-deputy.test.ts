@@ -290,11 +290,11 @@ function marker(
 
 // ── Who may run it, and on whom (RFC §3) ─────────────────────────────────────
 
-describe("pack deputy refuses before it mints", () => {
+describe("crew deputy refuses before it mints", () => {
   test("a solo collie has no crown to deputise for", async () => {
     const h = harness({ store: null });
     expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.STATE);
-    expect(text(h.io)).toContain("not in a pack");
+    expect(text(h.io)).toContain("not in a crew");
     expect(h.pushed).toEqual([]);
     expect(h.calls).toEqual([]);
   });
@@ -328,18 +328,18 @@ describe("pack deputy refuses before it mints", () => {
     expect(text(h.io)).toContain("collie join");
   });
 
-  test("a member behind on the pack secret is told to catch up rather than deputised", async () => {
+  test("a member behind on the crew secret is told to catch up rather than deputised", async () => {
     const h = harness({
       store: leadStore({ peers: [member({ memberId: "nas", secretGeneration: 0 })] }),
     });
     expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.STATE);
-    expect(text(h.io)).toContain("has not picked up the current pack secret");
+    expect(text(h.io)).toContain("has not picked up the current crew secret");
   });
 
-  test("a bare `pack deputy` prints usage and this lead's peers, and mints nothing", async () => {
+  test("a bare `crew deputy` prints usage and this lead's peers, and mints nothing", async () => {
     const h = harness();
     expect(await cmdPackDeputy(h.deps, [])).toBe(EXIT.USAGE);
-    expect(text(h.io)).toContain("collie pack deputy <member>");
+    expect(text(h.io)).toContain("collie crew deputy <member>");
     expect(text(h.io)).toContain("nas");
     expect(text(h.io)).toContain("attic");
     expect(h.pushed).toEqual([]);
@@ -348,7 +348,7 @@ describe("pack deputy refuses before it mints", () => {
 
 // ── The happy path: mint → push → one consent → restart batch (RFC §5) ───────
 
-describe("pack deputy arms the whole pack under one consent", () => {
+describe("crew deputy arms the whole crew under one consent", () => {
   test("mints, restarts this lead, pushes to every peer, then restarts them all", async () => {
     const h = harness();
     expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.OK);
@@ -366,7 +366,7 @@ describe("pack deputy arms the whole pack under one consent", () => {
     // Every enrolled peer is probed read-only, then restarted — including the deputy itself, which
     // must learn it holds a warrant naming it.
     expect(legs(h)).toEqual(["nas.example:probe", "attic.example:probe", "nas.example:restart", "attic.example:restart"]);
-    expect(text(h.io)).toContain('"nas" is this pack\'s deputy at warrant generation 1');
+    expect(text(h.io)).toContain('"nas" is this crew\'s deputy at warrant generation 1');
   });
 
   test("ONE confirmation covers the batch, and it names every machine", async () => {
@@ -520,7 +520,7 @@ describe("a re-run re-syncs rather than minting", () => {
   test("naming the standing deputy again keeps the generation and re-pushes it", async () => {
     const h = harness({ store: withWarrant(twoPeers(), "nas") });
     expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.OK);
-    expect(text(h.io)).toContain("already this pack's deputy at warrant generation 1");
+    expect(text(h.io)).toContain("already this crew's deputy at warrant generation 1");
     expect(h.pushed.every((p) => p.warrant?.generation === 1)).toBe(true);
   });
 
@@ -542,7 +542,7 @@ describe("a re-run re-syncs rather than minting", () => {
     expect(parsePackOps(second.ops.contents()!)?.members.attic?.anchoredGeneration).toBe(1);
   });
 
-  test("a fully armed pack re-run asks nothing and restarts nothing", async () => {
+  test("a fully armed crew re-run asks nothing and restarts nothing", async () => {
     const h = harness({
       store: withWarrant(twoPeers(), "nas"),
       ops: {
@@ -601,7 +601,7 @@ describe("a re-run re-syncs rather than minting", () => {
 
 // ── Revocation (RFC §4.4) ────────────────────────────────────────────────────
 
-describe("pack deputy --revoke", () => {
+describe("crew deputy --revoke", () => {
   test("mints a generation naming NOBODY and pushes it — an absence would prove nothing", async () => {
     const h = harness({ store: withWarrant(twoPeers(), "nas") });
     expect(await cmdPackDeputy(h.deps, ["--revoke"])).toBe(EXIT.OK);
@@ -632,7 +632,7 @@ describe("pack deputy --revoke", () => {
   // The incident's second half. `pack remove <deputy>` left the designation naming the removed
   // machine, so `pack status` printed a deputy that `--revoke` then refused to find. Both surfaces
   // read the same store, so both must say the same thing.
-  test("after `pack remove <deputy>` the two surfaces agree that nobody is named", async () => {
+  test("after `crew remove <deputy>` the two surfaces agree that nobody is named", async () => {
     const armed = withWarrant(twoPeers(), "nas");
     const afterRemove = removeMember(armed, "nas")!.next;
     // `pack status`' designation line is empty, ...
@@ -657,7 +657,7 @@ describe("pack deputy --revoke", () => {
 
 // ── `pack status`, the lead's view (RFC §10, §5) ─────────────────────────────
 
-describe("pack status on the lead", () => {
+describe("crew status on the lead", () => {
   test("names the deputy, its generation and how long ago it was refreshed", async () => {
     const h = harness({ store: withWarrant(twoPeers(), "nas"), now: T0 + 240_000, hello: { nas: 1, attic: 1 } });
     expect(await cmdPackStatus(h.deps, [])).toBe(EXIT.OK);
@@ -795,7 +795,7 @@ describe("pack status on the lead", () => {
   test("an unreachable deputy is the warning RFC §5 asks for, and names the remedy", async () => {
     const h = harness({ store: withWarrant(twoPeers(), "nas"), hello: { nas: false, attic: 1 } });
     await cmdPackStatus(h.deps, []);
-    expect(text(h.io)).toContain('⚠ deputy "nas" is unreachable — appoint another with `collie pack deputy <member>`');
+    expect(text(h.io)).toContain('⚠ deputy "nas" is unreachable — appoint another with `collie crew deputy <member>`');
   });
 
   test("--no-probe suppresses that warning — nothing answered because nothing was asked", async () => {
@@ -849,7 +849,7 @@ function peerHolding(deputy: string, at = T0): TrustStoreData {
   return peerStore({ warrant: { warrant: lead.warrant!.warrant, deputyCertPem: material(deputy).certPem } });
 }
 
-describe("pack status on a peer", () => {
+describe("crew status on a peer", () => {
   test("prints when its lead last called it, from the running process's own receipt", async () => {
     const data = peerHolding("nas");
     const h = harness({
@@ -895,7 +895,7 @@ describe("pack status on a peer", () => {
       now: T0 + 10_000,
     });
     await cmdPackStatus(h.deps, ["--no-probe"]);
-    expect(text(h.io)).toContain("refused on the pack SECRET 6s ago");
+    expect(text(h.io)).toContain("refused on the crew SECRET 6s ago");
     expect(text(h.io)).toContain("collie join");
   });
 
@@ -937,7 +937,7 @@ describe("pack status on a peer", () => {
     expect(text(h.io)).toContain('NOT VERIFIED against lead "desk"');
   });
 
-  test("a peer holding a revocation says the pack names nobody, and that its anchor lingers", async () => {
+  test("a peer holding a revocation says the crew names nobody, and that its anchor lingers", async () => {
     const lead = withWarrant(withWarrant(twoPeers(), "nas"), null);
     const data = peerStore({ warrant: { warrant: lead.warrant!.warrant, deputyCertPem: null } });
     const h = harness({
@@ -946,7 +946,7 @@ describe("pack status on a peer", () => {
       now: T0 + 1_000,
     });
     await cmdPackStatus(h.deps, ["--no-probe"]);
-    expect(text(h.io)).toContain("REVOKED: this pack names no deputy");
+    expect(text(h.io)).toContain("REVOKED: this crew names no deputy");
     expect(text(h.io)).toContain("still anchors the deputy it was built with");
   });
 
@@ -960,7 +960,7 @@ describe("pack status on a peer", () => {
 
 // ── `pack status` on a machine that was deposed (RFC §8.2, §8.3) ─────────────
 
-describe("pack status on a deposed machine", () => {
+describe("crew status on a deposed machine", () => {
   const deposed = (outcome: "healed" | "parked-unverifiable" | "parked-rotated", reason: null | "unknown-deputy") => ({
     outcome,
     leadMemberId: "nas",
@@ -979,9 +979,9 @@ describe("pack status on a deposed machine", () => {
     });
     await cmdPackStatus(h.deps, ["--no-probe"]);
     const said = text(h.io);
-    expect(said).toContain('⚠ DEPOSED — this machine led pack "the herd" until 2025-07-31T22:13:20.000Z.');
-    expect(said).toContain('The pack is now led by "nas" (warrant generation 3).');
-    expect(said).toContain("rejoined the pack as a peer");
+    expect(said).toContain('⚠ DEPOSED — this machine led crew "the herd" until 2025-07-31T22:13:20.000Z.');
+    expect(said).toContain('The crew is now led by "nas" (warrant generation 3).');
+    expect(said).toContain("rejoined the crew as a peer");
   });
 
   test("a terminal park names WHICH check failed, in the same words the page uses", async () => {
@@ -993,7 +993,7 @@ describe("pack status on a deposed machine", () => {
     });
     await cmdPackStatus(h.deps, ["--no-probe"]);
     expect(text(h.io)).toContain("its roster holds no certificate matching the warrant");
-    expect(text(h.io)).toContain("collie pack add");
+    expect(text(h.io)).toContain("collie crew add");
   });
 
   test("stranded by a rotation is named as that, never as a self-heal that went wrong", async () => {
@@ -1017,7 +1017,7 @@ describe("pack status on a deposed machine", () => {
 
 // ── RFC §6.4 and §16 decision 4: what `pack deputy` will not do, and what it warns about ──
 
-describe("pack deputy and the credential the door would check (RFC §6.4)", () => {
+describe("crew deputy and the credential the door would check (RFC §6.4)", () => {
   test("a lead with nothing paired is REFUSED, and the remedy is `collie pair`", async () => {
     const h = harness({ paired: [] });
     expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.STATE);
@@ -1036,14 +1036,14 @@ describe("pack deputy and the credential the door would check (RFC §6.4)", () =
     expect(h.pushed).toHaveLength(2);
   });
 
-  test("--revoke is never refused by it: the un-doing must work on any pack", async () => {
+  test("--revoke is never refused by it: the un-doing must work on any crew", async () => {
     const h = harness({ paired: [], store: withWarrant(twoPeers(), "nas") });
     expect(await cmdPackDeputy(h.deps, ["--revoke"])).toBe(EXIT.OK);
     expect(text(h.io)).toContain("names NOBODY");
   });
 });
 
-describe("pack deputy says the same-origin prerequisite once (RFC §16, decision 4)", () => {
+describe("crew deputy says the same-origin prerequisite once (RFC §16, decision 4)", () => {
   test("with no shared origin configured it WARNS, names what is lost, and refuses nothing", async () => {
     const h = harness();
     expect(await cmdPackDeputy(h.deps, ["nas"])).toBe(EXIT.OK);
@@ -1091,7 +1091,7 @@ function deputyAt(opts: { silentMs?: number; devices?: readonly string[]; env?: 
   });
 }
 
-describe("pack status prints the deputy's own arming state", () => {
+describe("crew status prints the deputy's own arming state", () => {
   test("cold: the door's own sentence, not a second wording of it", async () => {
     const h = deputyAt({ silentMs: 4_000 });
     await cmdPackStatus(h.deps, ["--no-probe"]);
@@ -1135,7 +1135,7 @@ describe("pack status prints the deputy's own arming state", () => {
   test("an override at or below the idle poll is warned about, in the door's own words", async () => {
     const h = deputyAt({ silentMs: 4_000, env: { COLLIE_STANDBY_ARM_MS: "5000", COLLIE_POLL_IDLE_MS: "12000" } });
     await cmdPackStatus(h.deps, ["--no-probe"]);
-    expect(text(h.io)).toContain("will arm itself on an idle pack");
+    expect(text(h.io)).toContain("will arm itself on an idle crew");
   });
 
   test("a peer that is NOT the deputy has no door, and prints none", async () => {
@@ -1167,7 +1167,7 @@ describe("pack status prints the deputy's own arming state", () => {
 
 // ── `pack status` on the lead: the refused pairing sync (RFC §6.5, §18.14) ───
 
-describe("pack status names a pairing LABEL CLASH at the deputy", () => {
+describe("crew status names a pairing LABEL CLASH at the deputy", () => {
   // ── THE LIVE DRILL, THE REVOCATION ─────────────────────────────────────────
   // This used to read "pairing sync REFUSED", and the sync really was refused — which froze the
   // deputy's copy, so a device revoked on the lead stayed valid at that machine's standby door. The
@@ -1200,7 +1200,7 @@ describe("pack status names a pairing LABEL CLASH at the deputy", () => {
 
 // ── `pack status` on a NEW lead: the members it has not told (RFC §7.1, §9) ──
 
-describe("pack status renders the pending re-pins a takeover left behind", () => {
+describe("crew status renders the pending re-pins a takeover left behind", () => {
   const tookOver = (over: Partial<TrustedMember> = {}): TrustStoreData =>
     leadStore({ peers: [member({ memberId: "desk", rePinPending: true, ...over }), member({ memberId: "attic" })] });
 

@@ -94,12 +94,12 @@ const line = (text: string, tone: Tone = "plain"): TonedLine => ({ text, tone })
 export function deposedLines(marker: PackRuntimeMarker | null, instance: string | null): TonedLine[] {
   const state = marker?.deposed ?? null;
   if (state === null) return [];
-  const pack = state.packName === null ? "this pack" : `"${state.packName}"`;
+  const pack = state.packName === null ? "this crew" : `"${state.packName}"`;
   const lead = state.leadMemberId === null ? "another machine" : `"${state.leadMemberId}"`;
   return [
     line("", "plain"),
-    line(`⚠ DEPOSED — this machine led pack ${pack} until ${iso(state.at)}.`, "bad"),
-    line(`  The pack is now led by ${lead} (warrant generation ${state.generation}).`, "bad"),
+    line(`⚠ DEPOSED — this machine led crew ${pack} until ${iso(state.at)}.`, "bad"),
+    line(`  The crew is now led by ${lead} (warrant generation ${state.generation}).`, "bad"),
     ...deposedOutcomeLines(state, state.outcome, instance).map((t) => line(`  ${t}`, "warn")),
   ];
 }
@@ -140,7 +140,7 @@ export function leadDeputyLines(data: TrustStoreData, now: number): TonedLine[] 
   const designated = data.deputy ?? null;
   if (designated === null || stored === null || stored.warrant.deputyMemberId === null) {
     if (enrolled.length === 0) return [];
-    return [line(`deputy none${undesignatedReason(data, stored)} — no peer may take over; name one with \`collie pack deputy <member>\``, "warn")];
+    return [line(`deputy none${undesignatedReason(data, stored)} — no peer may take over; name one with \`collie crew deputy <member>\``, "warn")];
   }
   const w = stored.warrant;
   if (designated === data.self.memberId) {
@@ -149,7 +149,7 @@ export function leadDeputyLines(data: TrustStoreData, now: number): TonedLine[] 
     return [
       line(`deputy ${designated} — this machine names ITSELF, which cannot be armed`, "bad"),
       line("       A deputy is a peer that takes over from this lead; this lead taking over from", "dim"),
-      line("       itself is not a recovery path. Name a peer: `collie pack deputy <member>`.", "dim"),
+      line("       itself is not a recovery path. Name a peer: `collie crew deputy <member>`.", "dim"),
     ];
   }
   if (designated !== w.deputyMemberId) {
@@ -158,14 +158,14 @@ export function leadDeputyLines(data: TrustStoreData, now: number): TonedLine[] 
     return [
       line(`deputy ${designated} — but the warrant on disk names "${w.deputyMemberId}"`, "bad"),
       line("       The designation and the signed warrant are written in one step, so this store was", "dim"),
-      line("       edited by hand. Re-run `collie pack deputy <member>` to make them agree.", "dim"),
+      line("       edited by hand. Re-run `collie crew deputy <member>` to make them agree.", "dim"),
     ];
   }
   if (warrantExpired(w, now)) {
     return [
       line(`deputy ${w.deputyMemberId} — warrant generation ${w.generation} EXPIRED ${iso(warrantExpiresAt(w))}`, "bad"),
-      line("       A warrant dies 30 days after its last refresh, so a pack that has been dark that", "dim"),
-      line("       long disarms itself. Re-run `collie pack deputy` here to mint a live one.", "dim"),
+      line("       A warrant dies 30 days after its last refresh, so a crew that has been dark that", "dim"),
+      line("       long disarms itself. Re-run `collie crew deputy` here to mint a live one.", "dim"),
     ];
   }
   return [
@@ -209,7 +209,7 @@ export function deputyUnreachableLines(data: TrustStoreData, reachable: (memberI
   if (deputy === null || deputy === data.self.memberId || reachable(deputy)) return [];
   if (!data.peers.some((p) => p.memberId === deputy && p.status === "enrolled")) return [];
   return [
-    line(`⚠ deputy "${deputy}" is unreachable — appoint another with \`collie pack deputy <member>\``, "warn"),
+    line(`⚠ deputy "${deputy}" is unreachable — appoint another with \`collie crew deputy <member>\``, "warn"),
     line("  A deputy that cannot be reached now is a deputy that cannot be armed later: the warrant is", "dim"),
     line("  still valid, but a machine that is not there takes over nothing.", "dim"),
   ];
@@ -309,7 +309,7 @@ function staleAnchorLines(record: OpsRecord | null, reported: number | null | un
   return [
     line(`    anchor  RECORD IS STALE — this machine armed generation ${claimed} there, but it ${holds}`, "bad"),
     line("            A machine cannot anchor a warrant it does not hold, so the recorded arming no", "dim"),
-    line("            longer describes it. Re-run `collie pack deputy` to store and arm it again.", "dim"),
+    line("            longer describes it. Re-run `collie crew deputy` to store and arm it again.", "dim"),
   ];
 }
 
@@ -359,7 +359,7 @@ export function leadContactLines(
   // gone" and "my lead is calling and I am no longer in the pack", and only this collie can tell.
   if (marker.leadRefusedSecretAt !== null) {
     rows.push(
-      line(`       refused on the pack SECRET ${humanAge(now - marker.leadRefusedSecretAt)} ago — the pack`, "bad"),
+      line(`       refused on the crew SECRET ${humanAge(now - marker.leadRefusedSecretAt)} ago — the crew`, "bad"),
     );
     rows.push(line("       rotated while this machine was away (§8.4). Re-join it: `collie join <lead> <token>`.", "dim"));
   }
@@ -384,12 +384,12 @@ export function peerWarrantLines(
   const lead = data.lead;
   if (lead === null) return [];
   if (stored === null) {
-    return [line("warrant none — this collie holds no warrant, so this pack names no deputy it knows of", "dim")];
+    return [line("warrant none — this collie holds no warrant, so this crew names no deputy it knows of", "dim")];
   }
   const w = stored.warrant;
   const anchoredGeneration = marker?.anchoredGeneration ?? null;
   if (w.deputyMemberId === null) {
-    const rows = [line(`warrant generation ${w.generation} — REVOKED: this pack names no deputy`, "plain")];
+    const rows = [line(`warrant generation ${w.generation} — REVOKED: this crew names no deputy`, "plain")];
     if (anchoredGeneration !== null) {
       rows.push(line("       This collie's listener still anchors the deputy it was built with. It stops", "warn"));
       rows.push(line("       doing so at its next restart; until then that certificate is still admitted.", "dim"));
@@ -408,8 +408,8 @@ export function peerWarrantLines(
   if (warrantExpired(w, now)) {
     return [
       line(head, "warn"),
-      line(`       EXPIRED ${iso(warrantExpiresAt(w))} — a pack that has been dark 30 days disarms`, "warn"),
-      line("       itself. Re-run `collie pack deputy` on the lead to mint a live one.", "dim"),
+      line(`       EXPIRED ${iso(warrantExpiresAt(w))} — a crew that has been dark 30 days disarms`, "warn"),
+      line("       itself. Re-run `collie crew deputy` on the lead to mint a live one.", "dim"),
     ];
   }
   // Two roles activate two different things at a restart (`bridge/index.ts`'s `activatedGeneration`),

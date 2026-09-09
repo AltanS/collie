@@ -19,9 +19,16 @@ export const EXIT = { OK: 0, FAIL: 1, USAGE: 2, STATE: 3, REFUSED: 4, UNREACHABL
 export interface Io {
   out(line: string): void;
   err(line: string): void;
+  /**
+   * Whether stderr is a terminal. Read by the one line that is written FOR A HUMAN and for nobody
+   * else: the `collie pack` deprecation notice (ADR 0038). Absent means "not a terminal", so every
+   * fake io in the tests stays a two-method object and a scripted run is the default.
+   */
+  readonly errIsTty?: boolean;
 }
 
 export const realIo: Io = {
   out: (line) => console.log(line),
   err: (line) => console.error(line),
+  errIsTty: process.stderr.isTTY === true,
 };

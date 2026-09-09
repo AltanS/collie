@@ -18,11 +18,11 @@ import { PackRoute } from "./pack";
 // Settings row, no switcher footer — the census is host chrome, and host chrome is gated on there
 // being more than one machine. The multi-host cases below are the same page with real members on it.
 
-function renderPack(data: PackData, entry = "/pack", servers?: ServerSummary[]) {
+function renderPack(data: PackData, entry = "/crew", servers?: ServerSummary[]) {
   const router = createMemoryRouter(
     [
       {
-        path: "/pack",
+        path: "/crew",
         loader: () => data,
         // The roster is OPTIONAL here, and absent by default, because the census is what this page
         // renders: `servers` reaches it only to colour the nodes, and every assertion that is not
@@ -163,7 +163,7 @@ describe("PackRoute", () => {
     await user.click(await screen.findByRole("button", { name: /^workshop/ }));
     expect(await screen.findByText("workshop.tail1234.ts.net:8787")).toBeInTheDocument();
     // The node itself is never a navigation — that is the second tap, inside the sheet.
-    expect(router.state.location.pathname).toBe("/pack");
+    expect(router.state.location.pathname).toBe("/crew");
   });
 
   it("puts the pack-wide facts on the LEAD's sheet, and its own word on each member's", async () => {
@@ -211,14 +211,14 @@ describe("PackRoute", () => {
 
   it("renders one honest card, not a spinner, when this collie leads no pack", async () => {
     renderPack({ status: null, error: false });
-    expect(await screen.findByText("This collie is not leading a pack")).toBeInTheDocument();
-    expect(screen.queryByText("Could not load pack status")).not.toBeInTheDocument();
+    expect(await screen.findByText("This collie is not leading a crew")).toBeInTheDocument();
+    expect(screen.queryByText("Could not load crew status")).not.toBeInTheDocument();
   });
 
   it("keeps 'could not ask' apart from 'nothing to ask about'", async () => {
     renderPack({ status: null, error: true });
-    expect(await screen.findByText("Could not load pack status")).toBeInTheDocument();
-    expect(screen.queryByText("This collie is not leading a pack")).not.toBeInTheDocument();
+    expect(await screen.findByText("Could not load crew status")).toBeInTheDocument();
+    expect(screen.queryByText("This collie is not leading a crew")).not.toBeInTheDocument();
   });
 
   it("opens a peer at its own home — its own machine, never a pane id carried across", async () => {
@@ -251,10 +251,10 @@ describe("the entry points", () => {
         </PackProvider>
       </MemoryRouter>,
     );
-    expect(screen.queryByText("Pack overview")).not.toBeInTheDocument();
+    expect(screen.queryByText("Crew overview")).not.toBeInTheDocument();
   });
 
-  it("renders the Settings row on a pack, pointing at /pack", async () => {
+  it("renders the Settings row on a crew, pointing at /crew", async () => {
     const user = userEvent.setup();
     const router = createMemoryRouter(
       [
@@ -266,13 +266,13 @@ describe("the entry points", () => {
             </PackProvider>
           ),
         },
-        { path: "/pack", element: <div data-testid="pack" /> },
+        { path: "/crew", element: <div data-testid="pack" /> },
       ],
       { initialEntries: ["/settings"] },
     );
     render(<RouterProvider router={router} />);
 
-    await user.click(screen.getByRole("button", { name: /Pack overview/ }));
+    await user.click(screen.getByRole("button", { name: /Crew overview/ }));
     expect(await screen.findByTestId("pack")).toBeInTheDocument();
   });
 
@@ -285,7 +285,7 @@ describe("the entry points", () => {
       { initialEntries: ["/"] },
     );
     render(<RouterProvider router={router} />);
-    expect(screen.queryByText("Pack overview")).not.toBeInTheDocument();
+    expect(screen.queryByText("Crew overview")).not.toBeInTheDocument();
   });
 
   it("offers the census from the switcher sheet on a pack", async () => {
@@ -293,14 +293,14 @@ describe("the entry points", () => {
     const router = createMemoryRouter(
       [
         { path: "/", element: <ServerSwitcher servers={fixtureServers} scope={{}} /> },
-        { path: "/pack", element: <div data-testid="pack" /> },
+        { path: "/crew", element: <div data-testid="pack" /> },
       ],
       { initialEntries: ["/"] },
     );
     render(<RouterProvider router={router} />);
 
     await user.click(screen.getByRole("button", { name: /Switch host/ }));
-    await user.click(await screen.findByRole("button", { name: "Pack overview" }));
+    await user.click(await screen.findByRole("button", { name: "Crew overview" }));
     expect(await screen.findByTestId("pack")).toBeInTheDocument();
   });
 });
@@ -316,7 +316,7 @@ describe("PackRoute — the per-host tint", () => {
   it("tints each node's glyph with the same colour that machine wears on the dashboard", async () => {
     // fixtureServers is bluefin / workshop / attic, which lib/hosts.ts slots 2 / 9 / 8 — the same
     // numbers host-chip.test.tsx asserts, written out for the same reason.
-    renderPack(loaded, "/pack", fixtureServers);
+    renderPack(loaded, "/crew", fixtureServers);
     expect((await node(/^bluefin/)).querySelector("svg")!.getAttribute("class")).toContain("text-host-2");
     expect((await node(/^workshop/)).querySelector("svg")!.getAttribute("class")).toContain("text-host-9");
     expect((await node(/^attic/)).querySelector("svg")!.getAttribute("class")).toContain("text-host-8");

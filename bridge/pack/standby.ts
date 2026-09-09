@@ -128,7 +128,7 @@ export function armThresholdWarning(env: Env = process.env): string | null {
   if (override > idle) return null;
   return (
     `[pack] ${STANDBY_ARM_ENV}=${override} is at or below ${POLL_IDLE_ENV}=${idle}, so this deputy's ` +
-    "standby door will arm itself on an idle pack. Raise it above the idle poll (the default formula " +
+    "standby door will arm itself on an idle crew. Raise it above the idle poll (the default formula " +
     `is max(${ARM_FLOOR_MS}, 2.5 × ${POLL_IDLE_ENV})).`
   );
 }
@@ -335,19 +335,19 @@ export function standbyPage(facts: StandbyFacts): string {
   const report = armingReport(facts);
   const self = escapeHtml(facts.selfMemberId);
   const lead = facts.leadMemberId === null ? "your lead" : `<code>${escapeHtml(facts.leadMemberId)}</code>`;
-  const pack = facts.packName === null ? "this pack" : `&ldquo;${escapeHtml(facts.packName)}&rdquo;`;
+  const pack = facts.packName === null ? "this crew" : `&ldquo;${escapeHtml(facts.packName)}&rdquo;`;
   const body: string[] = [];
 
   if (report.armed) {
     body.push(
       `<h1>Take over</h1>`,
       `<p>Your lead ${lead} has not called this machine for ${humanSilence(facts.silentForMs)}. ` +
-        `This machine (<code>${self}</code>) is the deputy of pack ${pack}.</p>`,
+        `This machine (<code>${self}</code>) is the deputy of crew ${pack}.</p>`,
     );
     if (facts.witnessCount === 0) {
       body.push(
         `<p class="warn">There are no other machines to ask. If your lead is up and you simply cannot ` +
-          `reach it, taking over will split your pack.</p>`,
+          `reach it, taking over will split your crew.</p>`,
       );
     } else {
       body.push(
@@ -360,7 +360,7 @@ export function standbyPage(facts: StandbyFacts): string {
   } else {
     body.push(
       `<h1>Standby</h1>`,
-      `<p>This machine (<code>${self}</code>) is the deputy of pack ${pack}. Nothing here is live.</p>`,
+      `<p>This machine (<code>${self}</code>) is the deputy of crew ${pack}. Nothing here is live.</p>`,
       `<p>${escapeHtml(coldReason(facts, report))}</p>`,
     );
   }
@@ -383,7 +383,7 @@ export function standbyPage(facts: StandbyFacts): string {
  */
 export function coldReason(facts: StandbyFacts, report: ArmingReport): string {
   if (!report.hasWarrant) {
-    return "No warrant here names this machine, so it cannot take over. Run `collie pack deputy` on your lead — and restart this machine afterwards.";
+    return "No warrant here names this machine, so it cannot take over. Run `collie crew deputy` on your lead — and restart this machine afterwards.";
   }
   if (!report.hasDevices) {
     return "Your lead has not synced a paired device to this machine, so there is no credential to check a takeover against. Run `collie pair` on the lead.";

@@ -47,10 +47,11 @@ const SHELL_VERBS = [
   "logs",
 ];
 
-// The pack verbs (M4/07). They have no shell ancestor — `collie-ctl.sh` never knew about federation
-// — so they are listed separately: the assertion above is "the port kept every verb the shell had",
-// and this one is "the binary grew exactly these".
-const PACK_VERBS = ["join", "leave", "pack", "promote", "reconnect"];
+// The crew verbs (M4/07, renamed in M24). They have no shell ancestor — `collie-ctl.sh` never knew
+// about federation — so they are listed separately: the assertion above is "the port kept every verb
+// the shell had", and this one is "the binary grew exactly these". `pack` is the alias of `crew`
+// (ADR 0038); it sits right after it in the table and is internal, so the usage line never names it.
+const PACK_VERBS = ["join", "leave", "crew", "pack", "promote", "reconnect"];
 
 // The diagnostic verbs (M7/02). No shell ancestor either, and they sit between the two groups above
 // because that is where they are declared — the usage line's order is the table's order.
@@ -110,6 +111,8 @@ describe("the verb table", () => {
       "_exec-bridge",
       // The emitter is spelled by a hook, never typed — see cli/beacon.ts.
       "beacon",
+      // The `crew` alias. Dispatchable, but never named in the usage line (ADR 0038).
+      "pack",
     ]);
   });
 
@@ -129,6 +132,17 @@ describe("the verb table", () => {
 
   test("every verb has a summary", () => {
     for (const c of COMMANDS) expect(c.summary.length).toBeGreaterThan(0);
+  });
+
+  // ADR 0038 removes the `collie pack` alias in 2.0.0. Today this passes because the version is
+  // 1.x and the assertion is not reached; the day the major moves to 2, it fails until the entry
+  // is deleted, so the removal is remembered by the test suite and not by anyone's memory.
+  test("the `pack` alias is gone in 2.0.0", () => {
+    const pkg = readFileSync(new URL("../package.json", import.meta.url), "utf8");
+    const major = Number.parseInt(/"version": *"(\d+)\./.exec(pkg)?.[1] ?? "", 10);
+    expect(Number.isNaN(major)).toBe(false);
+    if (major < 2) return;
+    expect(COMMANDS.map((c) => c.name)).not.toContain("pack");
   });
 });
 
@@ -186,8 +200,8 @@ describe("dispatch", () => {
   });
 
   test("a subcommand is matched by name; anything else reaches the parent", async () => {
-    const { command, seen } = spy("pack", ["invite", "status"]);
-    for (const argv of [["pack", "status", "--no-probe"], ["pack"], ["pack", "nonsense"]]) {
+    const { command, seen } = spy("crew", ["invite", "status"]);
+    for (const argv of [["crew", "status", "--no-probe"], ["crew"], ["crew", "nonsense"]]) {
       expect(await go(argv, [command])).toBe(EXIT.OK);
     }
     expect(seen).toEqual([
@@ -206,9 +220,9 @@ describe("dispatch", () => {
   });
 
   test("--plain is accepted anywhere and never reaches the verb", async () => {
-    const { command, seen } = spy("pack", ["status"]);
-    expect(await go(["--plain", "pack", "status"], [command])).toBe(EXIT.OK);
-    expect(await go(["pack", "status", "--plain", "--no-probe"], [command])).toBe(EXIT.OK);
+    const { command, seen } = spy("crew", ["status"]);
+    expect(await go(["--plain", "crew", "status"], [command])).toBe(EXIT.OK);
+    expect(await go(["crew", "status", "--plain", "--no-probe"], [command])).toBe(EXIT.OK);
     expect(seen).toEqual([
       ["status"],
       ["status", "--no-probe"],
@@ -224,8 +238,8 @@ describe("dispatch", () => {
 });
 
 describe("the subcommand trees", () => {
-  test("`pack` declares exactly `cli/pack.ts`'s sub-verbs, in its order", () => {
-    const pack = findCommand("pack");
+  test("`crew` declares exactly `cli/pack.ts`'s sub-verbs, in its order", () => {
+    const pack = findCommand("crew");
     expect(pack?.subcommands?.map((s) => s.name)).toEqual([...PACK_SUBCOMMANDS]);
   });
 
@@ -249,6 +263,8 @@ describe("the subcommand trees", () => {
       "devices",
       "push",
       "stt",
+      "crew",
+      // The alias carries the SAME array — that is what `cli/pack.test.ts` pins.
       "pack",
     ]);
   });

@@ -553,13 +553,13 @@ export const en = {
   "connection.server.title": "Machines",
   "connection.server.aria": "Host: {name}. Switch host",
 
-  // --- pack (the read-only /pack census; role names stay English, ADR 0030) ---
-  "pack.title": "Pack",
+  // --- pack (the read-only /crew census; role names stay English, ADR 0030) ---
+  "pack.title": "Crew",
   "pack.nav.back": "Back",
-  "pack.entry.title": "Pack overview",
-  "pack.entry.description": "How every machine in the pack is doing.",
-  "pack.footer.label": "Pack · {machines} · {reachable}",
-  "pack.footer.aria": "Open the pack overview",
+  "pack.entry.title": "Crew overview",
+  "pack.entry.description": "How every machine in the crew is doing.",
+  "pack.footer.label": "Crew · {machines} · {reachable}",
+  "pack.footer.aria": "Open the crew overview",
   "pack.summary.counts": "{machines} · {reachable}",
   "pack.summary.machines.one": "{count} machine",
   "pack.summary.machines.other": "{count} machines",
@@ -586,12 +586,12 @@ export const en = {
   "pack.health.conflicted": "conflicted",
   "pack.role.deputy": "deputy",
   "pack.sheet.goTo": "Go to this machine",
-  "pack.formation.aria": "Pack formation: {machines}",
+  "pack.formation.aria": "Crew formation: {machines}",
   "pack.node.aria": "{name}, {role}, {health}",
   "pack.node.ariaPlain": "{name}, {health}",
-  "pack.solo.title": "This collie is not leading a pack",
-  "pack.solo.description": "A pack is created and changed from the command line.",
-  "pack.error.title": "Could not load pack status",
+  "pack.solo.title": "This collie is not leading a crew",
+  "pack.solo.description": "A crew is created and changed from the command line.",
+  "pack.error.title": "Could not load crew status",
   "pack.error.description": "The bridge did not answer. Collie tries again on the next poll.",
 
   // --- error (boot splash, route-level error recovery) ---
@@ -781,8 +781,8 @@ export const en = {
   "apiError.pairing.duplicate_label": "A device is already using that name.",
   "apiError.device.unknown": "No paired device has that name.",
   "apiError.session.unknown": "There is no session called {session} on this collie.",
-  "apiError.host.unknown": "There is no collie called {host} in this pack.",
-  "apiError.pack.not_lead": "This collie doesn't lead a pack, so there is no pack to show.",
+  "apiError.host.unknown": "There is no collie called {host} in this crew.",
+  "apiError.pack.not_lead": "This collie doesn't lead a crew, so there is no crew to show.",
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.list_failed": "The worktrees couldn't be listed: {reason}",
   "apiError.worktree.create_failed": "The worktree couldn't be created: {reason}",
@@ -870,16 +870,16 @@ export const en = {
   "settings.updateCard.versionUnknown": "an unknown version",
 
   // --- settings.updateCard, the pack half (M16/01) ---
-  "settings.updateCard.actionPack": "Update pack to {version}",
-  "settings.updateCard.retryPack": "Retry pack update",
+  "settings.updateCard.actionPack": "Update crew to {version}",
+  "settings.updateCard.retryPack": "Retry crew update",
   "settings.updateCard.retryNow": "Retry now",
-  "settings.updateCard.packConfirmTitle": "Update the pack to {version}?",
-  "settings.updateCard.packConfirmBody": "This machine goes first. Each peer then levels itself to the same release, checks its own health and rolls back on its own if it fails.",
-  "settings.updateCard.packConfirmAction": "Yes, update the pack",
-  "settings.updateCard.retryConfirmTitle": "Retry the pack update?",
+  "settings.updateCard.packConfirmTitle": "Update the crew to {version}?",
+  "settings.updateCard.packConfirmBody": "This machine goes first. Each member then levels itself to the same release, checks its own health and rolls back on its own if it fails.",
+  "settings.updateCard.packConfirmAction": "Yes, update the crew",
+  "settings.updateCard.retryConfirmTitle": "Retry the crew update?",
   "settings.updateCard.retryConfirmBody": "This machine is already current, so only the peers run. Each one gets one more attempt.",
   "settings.updateCard.retryConfirmAction": "Yes, retry",
-  "settings.updateCard.peers.label": "Pack members",
+  "settings.updateCard.peers.label": "Crew members",
   "settings.updateCard.packPatience": "No action needed, this finishes on its own.",
   "settings.updateCard.peer.versionUnknown": "version unknown",
   "settings.updateCard.peer.unknownReason": "we could not check this machine",
@@ -907,7 +907,7 @@ export const en = {
   "updates.title": "Updates",
   "updates.nav.back": "Back",
   "updates.entry.title": "Updates",
-  "updates.entry.description": "Update Collie, and the pack with it.",
+  "updates.entry.description": "Update Collie, and the crew with it.",
   "updates.entry.status.updating": "Updating…",
   "updates.entry.status.peersBehind.one": "{count} peer behind",
   "updates.entry.status.peersBehind.other": "{count} peers behind",
@@ -946,7 +946,7 @@ export const en = {
   // states the version and points at the page that carries the boundary sentence.
   "updateRibbon.availablePackagedUnnamed": "Collie {version} available.",
   "updateRibbon.dismiss": "Dismiss this version",
-  // The close on the two QUIET pack states. Not "dismiss this version": what is put down there is a
+  // The close on the two QUIET crew states. Not "dismiss this version": what is put down there is a
   // notice about another machine, and this host's own offer is untouched by it.
   "updateRibbon.hideNotice": "Hide this notice",
 } as const;

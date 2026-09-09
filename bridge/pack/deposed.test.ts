@@ -200,7 +200,7 @@ describe("what a deposed collie serves (§18.12)", () => {
   });
 
   test("the page NAMES which of the three outcomes it is in", () => {
-    expect(deposedPage(healed, "healed", null)).toContain("rejoined the pack as a peer");
+    expect(deposedPage(healed, "healed", null)).toContain("rejoined the crew as a peer");
     expect(deposedPage(healed, "parked-rotated", null)).toContain("collie join");
     const parked = deposedStateFrom(data, warrant, selfHeal(data, null), T0);
     expect(deposedPage(parked, "parked-unverifiable", null)).toContain("no warrant to verify");

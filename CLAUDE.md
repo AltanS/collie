@@ -58,7 +58,7 @@ write it as the sentence an operator reads there. Do not touch the three version
      flag with a safe default. The phone folds a patch-only delta into its weekly update digest
      (`DIGEST_PATCH_WINDOW_MS` in `bridge/update.ts`); the in-app band shows it at once.
    - **MINOR** (`0.2.0 → 0.3.0`): something to learn, or worth hearing about today. A new verb,
-     a new page, a new pack capability, a changed default, anything that earns its own section
+     a new page, a new crew capability, a changed default, anything that earns its own section
      in `docs/`. The phone nudges within a day.
    - **MAJOR** (`0.2.0 → 1.0.0`): the operator must change something. A config key renamed or
      removed, a contract broken, a workflow that used to work and now does not.
@@ -356,7 +356,7 @@ lint guard, the pack-wire guard or the `flake.lock` guard.
   a call site first is one that never gets promoted — the alert family cost six components that way.
 - **Check UI states in the playground** (`web/src/playground/`, `cd web && bun run playground`,
   README → "The states playground") before changing a banner, the mark, the boot splash, the idle
-  lock, or the pack page — it renders every state at once. Never import playground code from app
+  lock, or the crew page — it renders every state at once. Never import playground code from app
   code.
 - Data flows through **React Router** (`createBrowserRouter`, data mode): route **loaders**
   (`web/src/lib/loaders.ts`) fetch the snapshot + pane; **polling is `useRevalidator()` on an
@@ -411,7 +411,7 @@ lint guard, the pack-wire guard or the `flake.lock` guard.
   calls them subscribes via `useLocale()` so it re-renders on a locale (or lazy-dictionary) change.
   `messages/en.ts` is the source of truth; all six dictionary files change together, enforced by
   `tsc`. Not translated: terminal/agent output, quick replies, menu/dialog labels the screen printed,
-  key caps, pack role names, push notifications, service-worker strings, pack-link errors, and the
+  key caps, crew role names, push notifications, service-worker strings, pack-link errors, and the
   slash-command descriptions in `web/src/lib/agent-commands.ts` (another tool's vocabulary — deferred)
   ([ADR 0030](./.adr/0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md)).
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
@@ -522,7 +522,7 @@ collie as remote shell access.
 Host validation is on by default (`COLLIE_ALLOW_ANY_HOST=1` opts out), `COLLIE_TRUSTED_USER` rejects
 an ABSENT `Tailscale-User-Login` as well as a wrong one (`COLLIE_TRUSTED_USER_OPTIONAL=1`), a
 non-loopback bind refuses to start (`COLLIE_ALLOW_NON_LOOPBACK_BIND=1`), and a non-loopback TCP peer
-is refused. **A collie in a pack is exempt from the bind refusal and `/pack/v1/*` from the peer
+is refused. **A collie in a crew is exempt from the bind refusal and `/pack/v1/*` from the peer
 check** — a member is dialled across a machine boundary and that surface carries pinned mutual TLS
 plus the pack secret ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)). The
 exemption is granted by POSITION — the peer check sits after the federated dispatch in
@@ -565,8 +565,8 @@ bump `PACK_PROTOCOL_VERSION` (not expressible that way). `scripts/check-pack-wir
 the pre-commit hook; a pure refactor takes the `SKIP_PACK_WIRE_CHECK=1` hatch
 ([ADR 0025](./.adr/0025-the-wire-guard-forces-a-decision-never-a-bump.md)).
 
-**Code reaches a peer over the operator's own SSH, never over the pack link** — `pack add` installs
-it and `pack update` levels it, both pushing the lead's own commit as a `git bundle`; the link
+**Code reaches a peer over the operator's own SSH, never over the pack link** — `crew add` installs
+it and `crew update` levels it, both pushing the lead's own commit as a `git bundle`; the link
 carries runtime data and never becomes a distribution channel
 ([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md), addendum 2026-09-04: a peer may also
 level ITSELF to the release its lead is running, fetching that public tag from GitHub over anonymous

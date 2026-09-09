@@ -110,7 +110,7 @@ describe("the pre-dispatch", () => {
   });
 
   test("routes nothing else — every other verb is the table's", () => {
-    for (const argv of [[], ["status"], ["--plain"], ["pack", "add", "nas"], ["buildx"], [""]]) {
+    for (const argv of [[], ["status"], ["--plain"], ["crew", "add", "nas"], ["pack", "add", "nas"], ["buildx"], [""]]) {
       expect(bootstrapVerb(argv)).toBeNull();
     }
   });

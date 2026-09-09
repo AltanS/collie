@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { DOC_PAGES, SKILL_TEMPLATE } from "./docs-embed.ts";
+import { DOC_PAGE_ALIASES, DOC_PAGES, findDocPage, SKILL_TEMPLATE } from "./docs-embed.ts";
 import { docsTable, pageTitle } from "./docs.ts";
 
 // The drift guard. `cli/docs-embed.ts` is a hand-written list of ten imports, so a page added to
@@ -56,6 +56,24 @@ describe("the embedded docs registry", () => {
     }
     // Two header rows plus one row per page, so a page cannot go missing from the middle.
     expect(docsTable()).toHaveLength(DOC_PAGES.length + 2);
+  });
+
+  test("an old page name resolves to the page that carries the text now", () => {
+    // ADR 0038 renamed the page an operator reads from `pack` to `crew` and kept the old name
+    // working until 2.0.0, so `collie docs pack` on a 1.7.0 binary must print the crew page.
+    expect(findDocPage("pack")).toBe(findDocPage("crew"));
+    expect(findDocPage("crew")?.name).toBe("crew");
+  });
+
+  test("no alias shadows a page on disk, and every alias has a target", () => {
+    for (const [alias, target] of Object.entries(DOC_PAGE_ALIASES)) {
+      expect(DOC_PAGES.map((p) => p.name)).not.toContain(alias);
+      expect(DOC_PAGES.map((p) => p.name)).toContain(target);
+    }
+  });
+
+  test("an unknown name resolves to nothing", () => {
+    expect(findDocPage("herd")).toBeUndefined();
   });
 
   test("the skill text holds both placeholders the printer resolves", () => {

@@ -82,7 +82,7 @@ describe("service-worker navigation passthrough", () => {
   });
 
   it("does not claim routes that merely start with the pack prefix", () => {
-    expect(isNetworkOnlyNavigation("/pack")).toBe(false);
+    expect(isNetworkOnlyNavigation("/crew")).toBe(false);
     expect(isNetworkOnlyNavigation("/packages")).toBe(false);
     expect(isNetworkOnlyNavigation("/pack/v10/snapshot")).toBe(false);
   });

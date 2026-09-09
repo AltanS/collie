@@ -167,17 +167,22 @@ for spelling in --version -V; do
   case "$STDERR" in *"unknown command"*) fail "\`collie $spelling\` still reads as a typo" ;; esac
 done
 
-# `collie pack --help` prints the subcommand block; `pack`'s own usage exit code (2) is unchanged.
-for spelling in --help -h; do
-  set +e
-  env -i "$BIN" pack "$spelling" >"${TMP_ROOT}/out" 2>"${TMP_ROOT}/err"
-  rc=$?
-  set -e
-  assert_eq "$rc" "2"
-  assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie pack {"
-  case "$(cat "${TMP_ROOT}/err")" in
-    *"unknown pack subcommand"*) fail "\`collie pack $spelling\` still reads as a typo" ;;
-  esac
+# `collie crew --help` prints the subcommand block, and the verb's own usage exit code (2) is
+# unchanged. The `pack` spelling is driven too, because it is the alias ADR 0038 removes in 2.0.0:
+# it must print the SAME crew block and return the SAME code, and this file is the only place the
+# compiled binary's own dispatch table is driven.
+for verb in crew pack; do
+  for spelling in --help -h; do
+    set +e
+    env -i "$BIN" "$verb" "$spelling" >"${TMP_ROOT}/out" 2>"${TMP_ROOT}/err"
+    rc=$?
+    set -e
+    assert_eq "$rc" "2"
+    assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie crew {"
+    case "$(cat "${TMP_ROOT}/err")" in
+      *"unknown crew subcommand"*) fail "\`collie $verb $spelling\` still reads as a typo" ;;
+    esac
+  done
 done
 
 # ── Exit codes ───────────────────────────────────────────────────────────────
@@ -202,7 +207,7 @@ rc=$?
 set -e
 assert_eq "$rc" "0"
 for verb in start stop restart uninstall update build serve unserve status url qr version push-test logs \
-           doctor pair devices push join leave pack promote reconnect; do
+           doctor pair devices push join leave crew promote reconnect; do
   assert_contains "$(cat "${TMP_ROOT}/out")" "$verb"
 done
 
@@ -1520,22 +1525,29 @@ mkdir -p "$PACK_STATE"
 PACK_CALLS="${TMP_ROOT}/calls"
 : > "$PACK_CALLS"
 
-# A machine that never enrolled: `pack status` says solo and — the zero-tax contract at its sharpest —
-# writes NOTHING. No trust store, no key, no directory materialised by asking a question.
+# A machine that never enrolled: `crew status` says solo and — the zero-tax contract at its sharpest —
+# writes NOTHING. No trust store, no key, no directory materialised by asking a question. The `pack`
+# spelling is driven too, and its stdout must be byte-identical: the alias is one code path, and a
+# script that reads the status output must not be able to tell which word it typed.
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+  PATH="$BIN_DIR" "$BIN" crew status \
+  || fail "\`collie crew status\` failed on a solo machine: ${STDERR}"
+assert_contains "$STDOUT" "mode: solo"
+CREW_STATUS_STDOUT="$STDOUT"
 run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
   PATH="$BIN_DIR" "$BIN" pack status \
   || fail "\`collie pack status\` failed on a solo machine: ${STDERR}"
-assert_contains "$STDOUT" "mode: solo"
-[ -z "$(ls -A "$PACK_STATE")" ] || fail "\`pack status\` wrote into the state dir on a solo machine"
+assert_eq "$STDOUT" "$CREW_STATUS_STDOUT"
+[ -z "$(ls -A "$PACK_STATE")" ] || fail "\`crew status\` wrote into the state dir on a solo machine"
 
-# `pack` with no subcommand, and with a wrong one, are usage errors that name the real subcommands.
+# `crew` with no subcommand, and with a wrong one, are usage errors that name the real subcommands.
 set +e
 env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
   PATH="$BIN_DIR" "$BIN" pack nonsense >/dev/null 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
 assert_eq "$rc" "2"
-assert_contains "$(cat "${TMP_ROOT}/err")" "unknown pack subcommand \`nonsense\`"
+assert_contains "$(cat "${TMP_ROOT}/err")" "unknown crew subcommand \`nonsense\`"
 for sub in invite join leave status rotate remove set-address deputy; do
   assert_contains "$(cat "${TMP_ROOT}/err")" "$sub"
 done
@@ -1552,7 +1564,7 @@ for spelling in "join" "pack join"; do
   rc=$?
   set -e
   assert_eq "$rc" "2"
-  assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie pack join"
+  assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie crew join"
   [ -z "$(ls -A "$PACK_STATE")" ] || fail "a usage-failed \`$spelling\` still wrote into the state dir"
 done
 
@@ -1564,7 +1576,7 @@ rc=$?
 set -e
 assert_eq "$rc" "2"
 assert_contains "$(cat "${TMP_ROOT}/err")" "needs the invite token as its second argument"
-assert_contains "$(cat "${TMP_ROOT}/err")" "collie pack join example.invalid -"
+assert_contains "$(cat "${TMP_ROOT}/err")" "collie crew join example.invalid -"
 [ -z "$(ls -A "$PACK_STATE")" ] || fail "a tokenless \`pack join\` still wrote into the state dir"
 
 # `leave` on a machine that is in no pack is a STATE error (3), not a usage error and not a success.
@@ -1577,7 +1589,7 @@ for spelling in "leave" "pack leave"; do
   rc=$?
   set -e
   assert_eq "$rc" "3"
-  assert_contains "$(cat "${TMP_ROOT}/err")" "not in a pack"
+  assert_contains "$(cat "${TMP_ROOT}/err")" "not in a crew"
 done
 
 # No pack verb above shelled out to anything — no systemctl, no tailscale, no herdr.
@@ -1619,7 +1631,7 @@ run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN
 assert_eq "$rc" "1"
 assert_contains "$STDOUT" "error:"
 assert_contains "$STDOUT" "collie build"
-assert_contains "$STDOUT" "pack: none"
+assert_contains "$STDOUT" "crew: none"
 
 # ── Device pairing ───────────────────────────────────────────────────────────
 # `pair` and `devices` are the only verbs that write a CREDENTIAL to disk, and they are the two an
@@ -2244,7 +2256,7 @@ echo "✓ collie CLI two instances: COLLIE_INSTANCE refusals, two units, two rec
 echo "✓ collie CLI build: six ordered steps, rename-not-rewrite, a failed build leaves web/dist untouched"
 echo "✓ collie CLI update: both checkout shapes on real repos, tag targeting + the major gate, the post-pull re-exec, the managed re-link refusal"
 echo "✓ collie CLI qr: tailnet URL, COLLIE_PUBLIC_URL, both refusals, the deny-all warning"
-echo "✓ collie CLI pack: solo status writes nothing, subcommand usage, join/leave exit codes, all under env -i"
+echo "✓ collie CLI crew: solo status writes nothing, subcommand usage, join/leave exit codes, all under env -i"
 echo "✓ collie CLI doctor: --json contract, the exit rule, writes nothing, one line per check"
 echo "✓ collie CLI pairing: 0600 pending file with no code in it, re-mint, list/revoke, exit codes"
 echo "✓ collie CLI stt: 0600 stt.json under env -i, no key on screen, codex consent gate refuses before it runs anything"

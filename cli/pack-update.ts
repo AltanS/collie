@@ -138,8 +138,8 @@ type Wired = PackUpdateDeps & {
 };
 
 const USAGE = [
-  "usage: collie pack update <member>…   # level these peers to this lead's build",
-  "       collie pack update --all       # every enrolled peer",
+  "usage: collie crew update <member>…   # level these peers to this lead's build",
+  "       collie crew update --all       # every enrolled peer",
   "                      [--host <ssh-host>] [--path <remote-checkout>] [--port <n>]",
 ];
 
@@ -233,7 +233,7 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
 
   const data = await deps.store.load();
   if (data === null || data.pack === null) {
-    deps.io.err("error: this collie is not in a pack — there are no peers to level.");
+    deps.io.err("error: this collie is not in a crew — there are no peers to level.");
     deps.io.err("       This machine's own update is `collie update`.");
     return EXIT.STATE;
   }
@@ -265,8 +265,8 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
   // this lead is running, which is why the second line names the Updates page.
   if (deps.installKind().kind === "packaged") {
     deps.io.err(`error: ${deps.ctx.root} is a packaged install — ${packagedReason(deps.ctx.root)}.`);
-    deps.io.err("       The terminal pack update pushes THIS checkout's commit to the members, and a");
-    deps.io.err("       packaged install has none. Level the pack from the phone's Updates page instead.");
+    deps.io.err("       The terminal crew update pushes THIS checkout's commit to the members, and a");
+    deps.io.err("       packaged install has none. Level the crew from the phone's Updates page instead.");
     return EXIT.FAIL;
   }
 
@@ -307,7 +307,7 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
     if (refused !== undefined) {
       return stop(deps, targets, outcomes, version, {
         memberId: refused.memberId,
-        recovery: `collie pack update ${refused.memberId}`,
+        recovery: `collie crew update ${refused.memberId}`,
       });
     }
     if (ready.length === 0) return report(deps, targets, outcomes, version);
@@ -371,7 +371,7 @@ async function resolveTargets(
     }
     const member = roster.find((m) => m.memberId === name);
     if (member === undefined) {
-      deps.io.err(`error: no enrolled member "${name}" in this roster — \`collie pack status\` lists them.`);
+      deps.io.err(`error: no enrolled member "${name}" in this roster — \`collie crew status\` lists them.`);
       return EXIT.STATE;
     }
     if (!named.includes(member)) named.push(member);
@@ -438,7 +438,7 @@ async function planAll(
   for (const target of targets) {
     const id = target.member.memberId;
     if (target.sshHost === "") {
-      plan(deps, id, "skipped", "no ssh record — run `collie pack add <host>` once to teach it");
+      plan(deps, id, "skipped", "no ssh record — run `collie crew add <host>` once to teach it");
       outcomes.set(id, { memberId: id, outcome: "skipped", detail: NO_ROUTE_DETAIL });
       continue;
     }
@@ -468,7 +468,7 @@ async function planAll(
     }
     if (probe.checkout === "") {
       deps.io.err(`error: no Collie checkout at ${target.sshHost}${target.path === null ? "" : ` (${target.path})`}.`);
-      deps.io.err("       `collie pack update` levels an existing one; `collie pack add` installs the first.");
+      deps.io.err("       `collie crew update` levels an existing one; `collie crew add` installs the first.");
       blocked(deps, id, outcomes, "no Collie checkout there");
       continue;
     }
@@ -812,7 +812,7 @@ async function workAll(
         fail(deps, id, o.outcomes, "nothing to push — the bundle failed here");
         // Nothing can be sent to anyone: the rest are untouched for a reason of their own.
         untouched(deps, ready.slice(index + 1), o.outcomes, "not attempted — the bundle failed here");
-        return { memberId: id, recovery: `collie pack update ${id}` };
+        return { memberId: id, recovery: `collie crew update ${id}` };
       }
     }
     const from = planned.probe.version || planned.probe.commit.slice(0, 12) || "unbuilt";
@@ -911,7 +911,7 @@ async function workOne(
     if (record?.reason !== undefined) deps.io.err(`       ${id} says: ${record.reason}`);
     deps.io.err(`       Run \`collie doctor\` on ${host}: it names the bind, the ACL and the clock.`);
     const recovery =
-      record?.recovery === undefined ? `collie pack update ${id}` : `ssh ${host} -- ${record.recovery}`;
+      record?.recovery === undefined ? `collie crew update ${id}` : `ssh ${host} -- ${record.recovery}`;
     return legFailed(deps, id, "verify", o.outcomes, detail, recovery);
   }
   deps.emitUpdate({
@@ -1095,7 +1095,7 @@ function leaveRest(
 
 /** Why a half-updated pack is a place it is safe to stop. Printed on every abort, for that reason. */
 function skewNote(deps: Wired): void {
-  deps.io.err("       A half-updated pack keeps working: PACK_PROTOCOL.md §7.1 tolerates version skew");
+  deps.io.err("       A half-updated crew keeps working: PACK_PROTOCOL.md §7.1 tolerates version skew");
   deps.io.err("       inside a protocol version, which is what makes stopping at the first failure safe.");
 }
 
@@ -1122,7 +1122,7 @@ function legFailed(
   leg: "push" | "restart" | "verify",
   outcomes: Map<string, UpdateRow>,
   detail: string,
-  recovery = `collie pack update ${memberId}`,
+  recovery = `collie crew update ${memberId}`,
 ): Stopped {
   deps.emitUpdate({ kind: "leg-done", memberId, leg, ok: false, detail });
   fail(deps, memberId, outcomes, detail);

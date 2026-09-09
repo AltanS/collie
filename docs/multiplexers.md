@@ -49,9 +49,9 @@ COLLIE_MUX_ENDPOINT_ZELLIJ=collie-zellij
 Herdr has no endpoint variable here: its socket is `HERDR_SOCKET_PATH`, not a
 `COLLIE_MUX_ENDPOINT_` name.
 
-That socket is the local one and no other. A machine saved in Herdr is not a pack member, and only
-a Collie pack brings another machine's sessions to the phone. What each list is, and why one is not
-the other, is in [Herdr machines and the pack](pack.md#herdr-machines-and-the-pack).
+That socket is the local one and no other. A machine saved in Herdr is not a crew member, and only
+a Collie crew brings another machine's sessions to the phone. What each list is, and why one is not
+the other, is in [Herdr machines and the crew](crew.md#herdr-machines-and-the-crew).
 
 Then restart, install the beacon hooks, and start an agent where the phone can see it:
 

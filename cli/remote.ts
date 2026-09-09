@@ -642,7 +642,9 @@ export interface RemoteMembership {
  */
 export function parseMembership(stdout: string): RemoteMembership | null {
   if (/^mode: solo\b/m.test(stdout)) return { packId: null, packName: null, memberId: null };
-  const pack = /^pack {3}(.+?) {2}\((.+?)\)\s*$/m.exec(stdout);
+  // BOTH labels. This build prints `crew   <name>  (<id>)`; a 1.6.0 machine prints `pack   …` and is
+  // exactly the machine this verb meets during a staged rollout (M24). One regex reads either.
+  const pack = /^(?:crew|pack) {3}(.+?) {2}\((.+?)\)\s*$/m.exec(stdout);
   const self = /^self {3}(\S+)/m.exec(stdout);
   if (pack === null) return null;
   return { packId: pack[2]!.trim(), packName: pack[1]!.trim(), memberId: self?.[1] ?? null };
@@ -722,11 +724,11 @@ export interface PackAddDeps extends PackDeps {
 type Wired = PackAddDeps & { emit(event: AddEvent): void };
 
 const USAGE = [
-  "usage: collie pack add <ssh-host> [--path <remote-checkout>] [--port <n>]",
+  "usage: collie crew add <ssh-host> [--path <remote-checkout>] [--port <n>]",
   // `<bare-host>`, not `<addr>`: the value becomes the member's COLLIE_HOST, and the usage line was
   // the first of the five places that said "address" while meaning "host" (F8).
   "                      [--peer-address <bare-host>] [--address <lead-address>]",
-  "                      [--label <name>] [--name <pack>] [--instance <name>]",
+  "                      [--label <name>] [--name <crew>] [--instance <name>]",
 ];
 
 /** Prompt copy shared by the abort path, so the non-interactive message names the real question. */
@@ -773,7 +775,7 @@ export async function cmdPackAdd(deps: PackAddDeps, args: readonly string[]): Pr
     // The last frame, always: a red verdict is the failure's headline, and the `error:` lines that
     // explain it are already on screen under the leg that failed.
     if (code !== EXIT.OK) {
-      wired.emit({ kind: "verdict", ok: false, text: `pack add did not finish (exit ${code})` });
+      wired.emit({ kind: "verdict", ok: false, text: `crew add did not finish (exit ${code})` });
     }
     await surface.close();
   }
@@ -854,14 +856,14 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
   }
   for (const line of renderCandidateList(rows)) deps.io.out(line);
   if (offeredCandidates(rows).length === 0) {
-    deps.io.err("error: every candidate above is already a member of this pack.");
+    deps.io.err("error: every candidate above is already a member of this crew.");
     for (const line of USAGE) deps.io.err(line);
     return { code: EXIT.USAGE };
   }
   const answer = await deps.prompt(CANDIDATE_QUESTION);
   if (answer === null) {
     deps.io.err("error: this run is not interactive, and it would have asked which host to add.");
-    deps.io.err("       Name one instead: `collie pack add <ssh-host>`.");
+    deps.io.err("       Name one instead: `collie crew add <ssh-host>`.");
     return { code: EXIT.USAGE };
   }
   if (answer.trim() === "") {
@@ -871,7 +873,7 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
   const picked = pickCandidate(rows, answer);
   if (picked === null) {
     deps.io.err(`error: "${answer.trim()}" is not one of the candidates above.`);
-    deps.io.err("       Pick a number, or run `collie pack add <ssh-host>` with the name.");
+    deps.io.err("       Pick a number, or run `collie crew add <ssh-host>` with the name.");
     return { code: EXIT.USAGE };
   }
   return { host: picked };
@@ -984,7 +986,7 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
     deps.io.err(`error: Herdr is installed on ${host}, but it did not answer with a config directory.`);
     deps.io.err(`       asked:  ${probe.herdr} plugin config-dir ${PLUGIN_ID}`);
     deps.io.err("       got:    (nothing)");
-    deps.io.err("       Run that by hand there. `pack add` never invents a path it did not observe.");
+    deps.io.err("       Run that by hand there. `crew add` never invents a path it did not observe.");
     return EXIT.FAIL;
   }
   deps.emit({ kind: "fact", name: "config", value: configDir });
@@ -1095,7 +1097,7 @@ async function installLeg(
     if (probe.dirty === "yes") {
       deps.io.err(`error: the Collie checkout at ${probe.checkout} has uncommitted changes:`);
       deps.io.err(`       ${probe.dirtyfiles}`);
-      deps.io.err(`       \`git stash\` or commit them on ${o.host}, then re-run. \`pack add\` will not`);
+      deps.io.err(`       \`git stash\` or commit them on ${o.host}, then re-run. \`crew add\` will not`);
       deps.io.err("       discard work it did not create.");
       return EXIT.STATE;
     }
@@ -1281,19 +1283,19 @@ async function enrollLeg(
     };
     if (!(await deps.ops.record(memberId, record))) {
       deps.io.err(`warn: could not record how ${o.host} was reached — the ops file is not one this build`);
-      deps.io.err("      can read, and was left untouched. `collie pack update` will ask for --host there.");
+      deps.io.err("      can read, and was left untouched. `collie crew update` will ask for --host there.");
     }
   };
   const status = await runner.run(membershipScript(o.root));
   const transport = transportFailure(deps.io, o.host, status);
   if (transport !== null) return transport;
   if (status.code !== 0) {
-    deps.io.err(`error: \`collie pack status\` exited ${status.code} on ${o.host} — ${firstLine(status.stderr)}`);
+    deps.io.err(`error: \`collie crew status\` exited ${status.code} on ${o.host} — ${firstLine(status.stderr)}`);
     return EXIT.FAIL;
   }
   const membership = parseMembership(status.stdout);
   if (membership === null) {
-    deps.io.err(`error: ${o.host} answered \`pack status\` with something this build cannot read.`);
+    deps.io.err(`error: ${o.host} answered \`crew status\` with something this build cannot read.`);
     return EXIT.FAIL;
   }
 
@@ -1322,8 +1324,8 @@ async function enrollLeg(
       });
       return EXIT.OK;
     }
-    deps.io.err(`error: ${o.host} is already a member of pack "${membership.packName}" (${membership.packId}).`);
-    deps.io.err(`       Run \`collie leave\` THERE first — never run for you: leaving a pack is a decision`);
+    deps.io.err(`error: ${o.host} is already a member of crew "${membership.packName}" (${membership.packId}).`);
+    deps.io.err(`       Run \`collie leave\` THERE first — never run for you: leaving a crew is a decision`);
     deps.io.err("       taken on the machine that is leaving (§8.4).");
     return EXIT.STATE;
   }
@@ -1332,7 +1334,7 @@ async function enrollLeg(
   const lead = resolveSelfAddress(deps, o.flags.address, "front-door");
   if (lead === null) {
     deps.io.err("error: cannot work out an address this lead can be dialled at.");
-    deps.io.err("       Pass one: `collie pack add <host> --address <this-lead-address>`.");
+    deps.io.err("       Pass one: `collie crew add <host> --address <this-lead-address>`.");
     return EXIT.FAIL;
   }
   const leadAddress = lead.address;
@@ -1453,7 +1455,7 @@ async function reportedNow(deps: Wired, data: TrustStoreData, memberId: string |
   const outcome = (await probeMembers(deps, data, [member])).get(member.memberId);
   if (outcome?.ok !== true) {
     deps.io.err(`warn: it was restarted, but this lead cannot reach it at ${member.address} to confirm.`);
-    deps.io.err(`      Run \`collie doctor\` there; \`collie pack status\` here shows the same.`);
+    deps.io.err(`      Run \`collie doctor\` there; \`collie crew status\` here shows the same.`);
     return " — replaced its build and restarted it";
   }
   return ` — now running ${outcome.value.version ?? "a version it does not report"}`;
@@ -1477,7 +1479,7 @@ async function verdict(
   const added: TrustedMember | undefined = fresh?.peers.find((p) => !before.has(p.memberId));
   if (fresh === null || fresh.pack === null || added === undefined) {
     deps.io.err(`error: ${host} reported a successful join, but this lead's roster does not name a new member.`);
-    deps.io.err("       Check `collie pack status` here and `collie doctor` there.");
+    deps.io.err("       Check `collie crew status` here and `collie doctor` there.");
     return EXIT.FAIL;
   }
   const probes = await probeMembers(deps, fresh, [added]);
@@ -1507,7 +1509,7 @@ async function verdict(
 export function transportFailure(io: Io, host: string, r: RemoteResult): number | null {
   if (!r.spawned) {
     io.err(`error: could not start ssh — ${r.stderr.trim() || "it did not run"}.`);
-    io.err("       `pack add` rides your own ssh: install it, or run the four steps by hand.");
+    io.err("       `crew add` rides your own ssh: install it, or run the four steps by hand.");
     return EXIT.UNREACHABLE;
   }
   if (r.code !== 255) return null;
@@ -1573,7 +1575,7 @@ async function resolvePeerHost(
   );
   if (answered === null) {
     deps.io.err("error: this host reported no tailnet address, and this run is not interactive.");
-    deps.io.err("       Pass it: `collie pack add <host> --peer-address <bare-host-the-lead-can-dial>`.");
+    deps.io.err("       Pass it: `collie crew add <host> --peer-address <bare-host-the-lead-can-dial>`.");
     return null;
   }
   const trimmed = answered.trim();
@@ -1623,15 +1625,15 @@ export function leadAddressRefusal(
   if (address === "") return null;
   if (!/^http:\/\//i.test(address)) return null;
   return [
-    `error: refusing to enroll a peer over ${source}=${address} — the invite token and the pack`,
+    `error: refusing to enroll a peer over ${source}=${address} — the invite token and the crew`,
     "       secret would cross the wire in the clear. An on-path attacker who reads the token can",
     "       enroll THEIR OWN certificate as a member before your peer does (the lead admits on the",
-    "       token alone), then holds the pack secret and a pinned link.",
+    "       token alone), then holds the crew secret and a pinned link.",
     "       Give an encrypted address: https:// via `tailscale serve`, or your own TLS front door",
     "       (docs/deployment.md Variant C).",
-    "       `pack add` has no --insecure and will not get one — it would ship the token over",
+    "       `crew add` has no --insecure and will not get one — it would ship the token over",
     "       plaintext on behalf of a machine you are not standing at. If this hop really is trusted,",
-    "       own it where the token is spent: install Collie on that machine, run `collie pack invite`",
+    "       own it where the token is spent: install Collie on that machine, run `collie crew invite`",
     "       here, and run `collie join <lead-address> <token> --insecure` THERE.",
     "       Nothing was pushed, built or restarted.",
   ];

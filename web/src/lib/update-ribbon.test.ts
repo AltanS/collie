@@ -442,7 +442,7 @@ describe("the band and the card read one clock", () => {
   });
 
   it("a peers-only run has no local record at all, and the band still sees it (M20/09)", () => {
-    // "Retry pack update" writes nothing to `update.json`, so `run` is absent for the whole run. The
+    // "Retry crew update" writes nothing to `update.json`, so `run` is absent for the whole run. The
     // band used to require a `done` record here and was therefore blind to it.
     const update = info({
       releaseAvailable: false,

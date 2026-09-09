@@ -936,15 +936,15 @@ function recordInPlaceRun(
     writeRun(deps.files, deps.ctx.stateDir, events.reduce((run, event) => reduce(run, event, now), begun));
     // Only when a pack is actually waiting on it. A run with no id was started from a terminal by
     // someone who never asked for one, and a line about peers there would be noise about nothing.
-    if (runId !== null) deps.io.out("  Pack turn recorded — peers level on this lead's next poll.");
+    if (runId !== null) deps.io.out("  Crew turn recorded — peers level on this lead's next poll.");
   } catch (err) {
     // Said out loud, because the silence is the bug. The update itself stands — the new version is
     // built, restarted and serving — but a pack will not level off a record that was not written,
     // and an operator who does not know that is an operator watching a peer sit still for no
     // visible reason. Name the manual way out in the same breath.
     deps.io.err(`warning: the update landed, but its run record could not be written (${String(err)}).`);
-    deps.io.err("         A pack will not level its peers from this run. Level them from the phone's");
-    deps.io.err("         \"Retry pack update\", or run `collie update` on each peer.");
+    deps.io.err("         A crew will not level its peers from this run. Level them from the phone's");
+    deps.io.err("         \"Retry crew update\", or run `collie update` on each peer.");
   }
 }
 

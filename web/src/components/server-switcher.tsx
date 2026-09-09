@@ -5,7 +5,7 @@ import { Check, Crown, Network, Server } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { BottomSheet } from "@/components/ui/sheet";
-import { homePath, packPath } from "@/lib/nav";
+import { crewPath, homePath } from "@/lib/nav";
 import { hostHealth, linkPresentation, type HostHealth } from "@/lib/host-health";
 import { usePack } from "@/components/pack-provider";
 import { HOST_TEXT_CLASSES, countsFor, hostCounts, hostSlot } from "@/lib/hosts";
@@ -211,7 +211,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
             type="button"
             onClick={() => {
               setOpen(false);
-              navigate(packPath(scope));
+              navigate(crewPath(scope));
             }}
             className="mt-1 flex w-full items-center gap-2.5 rounded-lg border-t border-rule px-3 py-2.5 text-left text-sm text-muted-foreground transition-colors hover:bg-accent active:bg-accent"
           >

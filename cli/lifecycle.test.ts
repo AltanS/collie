@@ -565,7 +565,7 @@ describe("the status banner", () => {
   // a `tailnet` row was a row about a door that is not there — and the URL it offered was loopback,
   // which on a peer is not the bind either. The pack row answers the question the tailnet row was
   // asked: where DO I point my phone.
-  test("a peer's banner names the pack, not a tailnet door it does not serve", async () => {
+  test("a peer's banner names the crew, not a tailnet door it does not serve", async () => {
     const h = harness({
       ready: true,
       env: { COLLIE_HOST: "192.168.77.2" },
@@ -573,7 +573,7 @@ describe("the status banner", () => {
     });
     const lines = (await statusBanner(h.deps)).join("\n");
     expect(lines).toContain("local     http://192.168.77.2:8787");
-    expect(lines).toContain("pack      peer — no front door here");
+    expect(lines).toContain("crew      peer — no front door here");
     expect(lines).not.toContain("tailnet");
   });
 

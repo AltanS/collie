@@ -22,7 +22,7 @@ describe("the doctor table", () => {
       { check: "front-door", status: "warn", detail: "nothing published", remedy: "`collie serve`" },
       { check: "restart-pending", status: "skipped", detail: "no version recorded", remedy: "`collie restart`" },
     ],
-    packTitle: "pack: herd",
+    packTitle: "crew: herd",
     pack: [{ check: "reach", status: "error", detail: "1 of 2 unreachable", remedy: "`collie reconnect`" }],
     packNote: [],
   };
@@ -40,12 +40,12 @@ describe("the doctor table", () => {
     expect(frame).toContain(view.packTitle);
   });
 
-  test("a solo collie gets the note instead of an empty pack table — and no bare `pack:` heading", () => {
+  test("a solo collie gets the note instead of an empty crew table — and no bare `crew:` heading", () => {
     const solo: DoctorView = {
       ...view,
-      packTitle: "pack:",
+      packTitle: "crew:",
       pack: [],
-      packNote: ["pack: none — this collie is not in a pack.", "  `collie pack invite` here"],
+      packNote: ["crew: none — this collie is not in a crew.", "  `collie crew invite` here"],
     };
     const frame = plain(render(<Doctor view={solo} />).lastFrame());
     for (const n of solo.packNote) expect(frame).toContain(n);
@@ -76,7 +76,7 @@ describe("the status banner", () => {
   });
 });
 
-describe("the pack members block", () => {
+describe("the crew members block", () => {
   test("prints each line verbatim — the tone is colour, never a rewrite", () => {
     const lines: TonedLine[] = [
       { text: "members:", tone: "dim" },
@@ -88,7 +88,7 @@ describe("the pack members block", () => {
   });
 });
 
-describe("the pack update surface", () => {
+describe("the crew update surface", () => {
   /** The events a one-member run emits, up to and including its table. */
   const RUN: UpdateEvent[] = [
     { kind: "title", version: "1.2.3", commit: "abc123def4567890" },
@@ -115,7 +115,7 @@ describe("the pack update surface", () => {
     // Drawn from a store that has the whole run in it: the surface is a fold, not a stream reader.
     for (const event of RUN) store.emit(event);
     const finished = plain(render(<PackUpdate store={store} />).lastFrame());
-    expect(frame).toContain("pack update");
+    expect(frame).toContain("crew update");
     for (const needle of [
       "1.2.3",
       "nas",

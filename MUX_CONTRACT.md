@@ -290,5 +290,5 @@ means *use the lead's answer*, which is exactly what the phone got before the fi
 name the consequence rather than leave it to be discovered: on a lead older than this milestone a
 tmux peer's panes are offered the lead's worktree verbs and greyed on the lead's `unsupportedKeys`,
 because nothing on that lead knows the peer answers differently. There is no adapter change and no
-peer change to make. The remedy is levelling the lead, which `collie pack status` already prints
+peer change to make. The remedy is levelling the lead, which `collie crew status` already prints
 beside the skew it reports.

@@ -127,7 +127,7 @@ export interface Command {
   readonly internal?: boolean;
   /**
    * A verb that owns a subcommand tree declares it here, and commander builds real child commands
-   * from it. The parent's own `run` stays the fallback — it is what answers a bare `collie pack`
+   * from it. The parent's own `run` stays the fallback — it is what answers a bare `collie crew`
    * and an unknown subcommand, with the usage block those two have always printed.
    */
   readonly subcommands?: readonly Subcommand[];
@@ -265,7 +265,7 @@ function lifecycleCommand(
   };
 }
 
-/** A `pack` sub-verb whose body takes the pack dependency set; `rich` marks a surface in `cli/ui/`. */
+/** A `crew` sub-verb whose body takes the pack dependency set; `rich` marks a surface in `cli/ui/`. */
 function packSubcommand(
   name: (typeof PACK_SUBCOMMANDS)[number],
   summary: string,
@@ -276,6 +276,102 @@ function packSubcommand(
     name,
     summary,
     run: async (args, s) => body(await packVerbDeps(s.io, rich ? await s.ui() : null), args),
+  };
+}
+
+/**
+ * The `crew` subcommand tree, built ONCE and shared by both spellings of the verb.
+ *
+ * Order is `PACK_SUBCOMMANDS`' order, which is the order `cli/pack.ts`'s own usage block prints —
+ * the two are pinned to each other in `cli/main.test.ts`. Every row resolves its seams through
+ * `packVerbDeps`, so the dispatcher stays a table and `cli/pack.ts` owns the behaviour.
+ */
+function crewTree(): readonly Subcommand[] {
+  return [
+    packSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead)", cmdPackInvite),
+    packSubcommand("join", "join a crew: `crew join <lead-address>` (run on the joining machine)", cmdJoin),
+    packSubcommand("leave", "leave the crew — drops the crew secret and every pin on this machine", (deps) =>
+      cmdLeave(deps),
+    ),
+    packSubcommand("add", "install and enroll a peer over SSH: `crew add <ssh-host>` (on the lead)", cmdPackAdd, true),
+    packSubcommand(
+      "update",
+      "level peers to this lead's build over SSH: `crew update <member>… | --all` (on the lead)",
+      cmdPackUpdate,
+      true,
+    ),
+    packSubcommand("status", "mode, members, reachability, secret pickup and why a link is refused", cmdPackStatus, true),
+    packSubcommand("rotate", "reissue the crew secret and hand it to every reachable peer", (deps) =>
+      cmdPackRotate(deps),
+    ),
+    packSubcommand("remove", "unpin and forget a member (on the lead)", cmdPackRemove),
+    packSubcommand(
+      "set-address",
+      "correct where this lead dials a member: `crew set-address <member> <host:port>`",
+      cmdPackSetAddress,
+    ),
+    packSubcommand(
+      "deputy",
+      "name the ONE peer that may take over and arm it over ssh: `crew deputy <member> | --revoke`",
+      (deps, args) => cmdPackDeputy(deps, args),
+    ),
+    packSubcommand(
+      "approve-promote",
+      "consent, on the lead, for one member to take over (10 minutes, single-use)",
+      cmdPackApprovePromote,
+    ),
+  ];
+}
+
+/** The one tree. `crew` and its `pack` alias both point at THIS array, so neither can drift. */
+const CREW_TREE: readonly Subcommand[] = crewTree();
+
+const CREW_SUMMARY = `crew administration: ${PACK_SUBCOMMANDS.join(", ")}`;
+
+/**
+ * Reached only when no subcommand matched — a bare `collie crew` (or `collie pack`), or a misspelt
+ * sub-verb. `cmdPack` owns that message, and has since before commander: it names every sub-verb
+ * with its own one-line summary, which is more than an "unknown command" line would say.
+ */
+const crewRun: Command["run"] = async (args, s) => cmdPack(await packVerbDeps(s.io), args);
+
+/**
+ * The one line the `pack` spelling prints that `crew` does not (ADR 0038).
+ *
+ * It is a note to a PERSON, so it goes to stderr and only when stderr is a terminal: a script, a
+ * pipe and a Herdr action see nothing at all, and stdout is byte-identical under both spellings,
+ * which is what `scripts/collie-cli.test.sh` asserts on `status`.
+ */
+export const OLD_SPELLING_NOTICE =
+  "note: `collie pack` is now `collie crew`. The old spelling keeps working until 2.0.0.";
+
+/**
+ * `run`, with the notice in front of it. The ONE place the gate is spelled, so the bare alias and
+ * every alias row are told the same thing by the same line of code.
+ */
+export function withOldSpellingNotice<T extends Command["run"]>(body: T): Command["run"] {
+  return (args, s) => {
+    if (s.io.errIsTty === true) s.io.err(OLD_SPELLING_NOTICE);
+    return body(args, s);
+  };
+}
+
+/** A `pack` row: the notice, then the crew row's OWN function. `aliasOf` is what pins that. */
+export type AliasRow = Subcommand & { readonly aliasOf: Subcommand };
+
+/**
+ * Wrap one crew row as its `pack` alias.
+ *
+ * The wrapper is the only thing the two spellings do not share, and it holds nothing but the
+ * notice: `aliasOf` carries the crew row itself, so `cli/pack.test.ts` can pin by identity that no
+ * sub-verb reaches one spelling and misses the other.
+ */
+export function packAliasRow(sub: Subcommand): AliasRow {
+  return {
+    name: sub.name,
+    summary: sub.summary,
+    aliasOf: sub,
+    run: withOldSpellingNotice((args, s) => sub.run(args, s)),
   };
 }
 
@@ -295,7 +391,7 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "update",
     summary:
-      "advance to the newest release of this major (--check is a read-only preflight, and --check --local checks this instance only, skipping pack members; --major crosses one; --rollback flips current back to the previous version; --status shows the run)",
+      "advance to the newest release of this major (--check is a read-only preflight, and --check --local checks this instance only, skipping crew members; --major crosses one; --rollback flips current back to the previous version; --status shows the run)",
     // `--check` is a different verb wearing `update`'s name: a read-only preflight that answers
     // "could this update succeed right now?" and touches nothing (`cli/update-check.ts`). It is
     // routed HERE, before `cmdUpdate` is ever constructed, so no part of the real update path can
@@ -512,66 +608,41 @@ export const COMMANDS: readonly Command[] = [
     // Bare or misspelt lands here, and `cmdStt` owns that message — as `cmdDevices` does.
     run: (args, s) => cmdStt(sttDeps(s.io), args),
   },
-  // ── The pack (M4/07) ───────────────────────────────────────────────────────
-  // The only way a machine enters or leaves a pack. Every one of them resolves its seams through
-  // `packVerbDeps`, so the dispatcher stays a table and `cli/pack.ts` owns the behaviour.
-  // The two ALIASES. `pack join` and `pack leave` are the canonical spellings — every other pack
-  // verb is a `pack` sub-verb, and these two were the exception for no reason anyone could state.
+  // ── The crew (M4/07, renamed in M24) ──────────────────────────────────────
+  // The only way a machine enters or leaves a crew. The verb is `crew`; `pack` is an alias onto the
+  // same tree, declared below it, and it prints one note on a terminal (ADR 0038).
+  // The two ALIASES. `crew join` and `crew leave` are the canonical spellings — every other crew
+  // verb is a `crew` sub-verb, and these two were the exception for no reason anyone could state.
   // They stay because 1.0.0 documented them and scripts type them: same function, same seams, same
   // exit codes, one name each. `cli/pack.test.ts` pins that the two spellings are one code path.
   {
     name: "join",
-    summary: "same as `pack join`",
+    summary: "same as `crew join`",
     run: async (args, s) => cmdJoin(await packVerbDeps(s.io), args),
   },
   {
     name: "leave",
-    summary: "same as `pack leave`",
+    summary: "same as `crew leave`",
     run: async (_args, s) => cmdLeave(await packVerbDeps(s.io)),
   },
   {
+    name: "crew",
+    summary: CREW_SUMMARY,
+    subcommands: CREW_TREE,
+    run: crewRun,
+  },
+  // The `pack` ALIAS. Every row is `CREW_TREE`'s own row with one line in front of it, the notice
+  // and nothing else, so the two spellings cannot drift apart, and `cli/pack.test.ts` pins that by
+  // identity for every sub-verb. `internal` keeps the alias out of the usage line while commander
+  // still dispatches it: a 1.6.0 script, a README recipe and muscle memory all type `collie pack`,
+  // and none of them is asked to change. The notice is TTY-gated, so only the person reading a
+  // terminal is told. ADR 0038 removes this entry in 2.0.0.
+  {
     name: "pack",
-    summary: `pack administration: ${PACK_SUBCOMMANDS.join(", ")}`,
-    // The tree commander builds. Order is `PACK_SUBCOMMANDS`' order, which is the order
-    // `cli/pack.ts`'s own usage block prints — the two are pinned to each other in cli/main.test.ts.
-    subcommands: [
-      packSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead)", cmdPackInvite),
-      packSubcommand("join", "join a pack: `pack join <lead-address>` (run on the joining machine)", cmdJoin),
-      packSubcommand("leave", "leave the pack — drops the pack secret and every pin on this machine", (deps) =>
-        cmdLeave(deps),
-      ),
-      packSubcommand("add", "install and enroll a peer over SSH: `pack add <ssh-host>` (on the lead)", cmdPackAdd, true),
-      packSubcommand(
-        "update",
-        "level peers to this lead's build over SSH: `pack update <member>… | --all` (on the lead)",
-        cmdPackUpdate,
-        true,
-      ),
-      packSubcommand("status", "mode, members, reachability, secret pickup and why a link is refused", cmdPackStatus, true),
-      packSubcommand("rotate", "reissue the pack secret and hand it to every reachable peer", (deps) =>
-        cmdPackRotate(deps),
-      ),
-      packSubcommand("remove", "unpin and forget a member (on the lead)", cmdPackRemove),
-      packSubcommand(
-        "set-address",
-        "correct where this lead dials a member: `pack set-address <member> <host:port>`",
-        cmdPackSetAddress,
-      ),
-      packSubcommand(
-        "deputy",
-        "name the ONE peer that may take over and arm it over ssh: `pack deputy <member> | --revoke`",
-        (deps, args) => cmdPackDeputy(deps, args),
-      ),
-      packSubcommand(
-        "approve-promote",
-        "consent, on the lead, for one member to take over (10 minutes, single-use)",
-        cmdPackApprovePromote,
-      ),
-    ],
-    // Reached only when no subcommand matched — a bare `collie pack`, or a misspelt one. `cmdPack`
-    // owns that message, and has since before commander: it names every sub-verb with its own
-    // one-line summary, which is more than an "unknown command" line would say.
-    run: async (args, s) => cmdPack(await packVerbDeps(s.io), args),
+    summary: "same as `crew`",
+    internal: true,
+    subcommands: CREW_TREE.map(packAliasRow),
+    run: withOldSpellingNotice(crewRun),
   },
   {
     name: "promote",

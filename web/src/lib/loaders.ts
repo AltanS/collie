@@ -528,7 +528,7 @@ export async function devicesLoader({ request }: { request?: Request } = {}): Pr
   }
 }
 
-// ── The pack census (the /pack overview) ─────────────────────────────────────
+// ── The crew census (the /crew overview) ─────────────────────────────────────
 //
 // The pack route's own loader, shaped exactly like `devicesLoader`: it rides the poll loop while the
 // page is open (so a member going quiet shows up here without a reload), and a failure DEGRADES —

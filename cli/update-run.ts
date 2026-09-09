@@ -298,7 +298,7 @@ export function healthVerdict(answer: HealthAnswer, version: string, commit: str
 export function aliveVerdict(answer: HealthAnswer): HealthVerdict {
   if (!answer.ok) return { ok: false, reason: answer.reason };
   if (answer.deposed) {
-    return { ok: false, reason: "the service answers, but as a DEPOSED pack member — nothing routes there" };
+    return { ok: false, reason: "the service answers, but as a DEPOSED crew member — nothing routes there" };
   }
   return { ok: true };
 }

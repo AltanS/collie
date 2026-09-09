@@ -52,16 +52,22 @@ The browser never touches the multiplexer directly; the bridge is the only thing
    Herdr / tmux / zellij (owns panes, agents, state)
 ```
 
-Every operator verb is `bin/collie <verb>`, implemented once in `cli/` — pairing, serving, packs,
+Every operator verb is `bin/collie <verb>`, implemented once in `cli/` — pairing, serving, crews,
 speech-to-text, build and update. `scripts/collie-ctl.sh` is a frozen bootstrap shim that compiles
 the binary and `exec`s it; it implements nothing
 ([ADR 0006](./.adr/0006-update-advances-the-checkout-herdr-installed.md)).
 
-### 2.1 One collie is the floor; a **pack** is several of them
+### 2.1 One collie is the floor; a **crew** is several of them
 
-Everything above describes one machine. A pack is several machines each running a **full collie**, one
-of which — the **lead** — holds the front door the phone talks to. A pack of one is today's install
+Everything above describes one machine. A crew is several machines each running a **full collie**, one
+of which — the **lead** — holds the front door the phone talks to. A crew of one is today's install
 exactly, and pays no tax for the feature ([`PACK_PROTOCOL.md` §11](./PACK_PROTOCOL.md#11-the-solo-zero-tax-contract)).
+
+**Glossary, and the one thing that trips a new reader: the code and the wire say *pack*, people say
+*crew*.** `bridge/pack/`, `/pack/v1/*`, `PackRuntime`, `pack-trust.json`, the `[pack]` journal
+prefix and `PACK_PROTOCOL.md` are the same thing this page calls a crew. The words a person reads
+were renamed in 1.7.0 and the words a machine reads were not, so a 1.6.0 member still talks to a
+1.7.0 lead ([ADR 0038](./.adr/0038-the-group-is-a-crew-the-wire-keeps-pack.md)).
 
 ```
    phone / laptop (PWA)
@@ -79,7 +85,7 @@ exactly, and pays no tax for the feature ([`PACK_PROTOCOL.md` §11](./PACK_PROTO
   machine boundary, and no Herdr (or tmux, or zellij) verb ever crosses the link — that is the
   mux-driver seam ([ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md)). What crosses
   is Collie's own domain model: snapshots, pane grids, replies, history, uploads. What never crosses:
-  software. `collie pack add` / `pack update` push a git bundle over the **operator's own ssh**
+  software. `collie crew add` / `crew update` push a git bundle over the **operator's own ssh**
   ([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md)), so the link is never a distribution
   channel. A peer may also level itself to the release its lead is running, taking that public tag
   from GitHub over anonymous HTTPS on its own decision (ADR 0016's addendum,
@@ -89,7 +95,7 @@ exactly, and pays no tax for the feature ([`PACK_PROTOCOL.md` §11](./PACK_PROTO
   Neither browser gate of §6 applies there, and a peer publishes nothing — its listener is a path
   prefix on its own bind, not a front door
   ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
-- **The deputy is named ahead of time, never elected.** The operator names one peer while the pack is
+- **The deputy is named ahead of time, never elected.** The operator names one peer while the crew is
   healthy and the lead signs a **warrant** saying so; a higher generation supersedes it everywhere it
   lands, and revocation is generation *N+1* naming nobody. Nothing infers a dead lead from silence —
   the operator is the quorum ([ADR 0026](./.adr/0026-the-operator-is-the-quorum.md) ·
@@ -343,7 +349,7 @@ graph TD
   (`bridge/operator-launchers.ts`), share the reader but NOT `/api/config`: a launcher row creates
   its own pane rather than addressing an existing one, so it carries no scope, and its rows ride
   their own session-scoped `GET /api/launchers` instead — rows must come from the host that runs
-  them, which a lead-only `/api/config` field cannot say in a pack (PACK_PROTOCOL.md §5).
+  them, which a lead-only `/api/config` field cannot say in a crew (PACK_PROTOCOL.md §5).
 
 - **UI strings are translated by a typed dictionary, not a library** (`web/src/lib/i18n/`, six
   locales, English the compile-time source of truth) — `t()`/`tn()` plus the `useLocale()` hook
@@ -359,7 +365,7 @@ graph TD
 
 Driving a multiplexer equals **arbitrary code execution on the host** — `typeText` / `sendKeys` type
 into live terminals, whichever driver is loaded. The posture is single-user, behind one hardened front
-door (tailnet-only by default; one per **pack** — §2.1). These four are genuine RCE vectors and are
+door (tailnet-only by default; one per **crew** — §2.1). These four are genuine RCE vectors and are
 **load-bearing — do not regress them:**
 
 - **The bridge binds `127.0.0.1` only** and lets its single front door proxy it. Binding `0.0.0.0`
@@ -376,7 +382,7 @@ door (tailnet-only by default; one per **pack** — §2.1). These four are genui
   it needs the port not to be shared in the first place (its own network namespace, or a uid
   owner-match filter such as nftables `meta skuid`); a plain port firewall rule won't stop a
   same-host peer (raised in [#33](https://github.com/AltanS/collie/issues/33)).
-  **Named exception: the pack listener.** When pack federation is enabled, a peer's `/pack/v1/*`
+  **Named exception: the pack listener.** When crew federation is enabled, a peer's `/pack/v1/*`
   prefix shares the bridge's one listener and one bind — `COLLIE_HOST`, the operator's to set, with
   a loud warning on a wildcard bind — and admits a request only past two independent factors, pinned
   mutual TLS plus the pack secret, before any handler runs. See [`PACK_PROTOCOL.md` §3](./PACK_PROTOCOL.md#3-roles-and-modes)
@@ -413,8 +419,8 @@ door (tailnet-only by default; one per **pack** — §2.1). These four are genui
   addresses a peer by its own hostname, and that surface carries its own two factors (ADR 0013).
 - **The bridge refuses a non-loopback bind.** A `COLLIE_HOST` outside loopback does not start unless
   `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`, and a non-loopback TCP peer is rejected — every gate above
-  trusts headers that are only untamperable while the sole client is the local front door. A **pack
-  peer** is the one machine that must listen wide, so a pack-configured instance carries the same
+  trusts headers that are only untamperable while the sole client is the local front door. A **crew
+  member** is the one machine that must listen wide, so a crew-configured instance carries the same
   permission implicitly (`bridge/pack/config.ts`) and `/pack/v1/*` is exempt from the peer check.
 - **Pane-grid output renders safely** — it's attacker-influenceable (filenames, agent output,
   fetched web content). Never `innerHTML`; it renders as React text nodes under a **strict CSP**

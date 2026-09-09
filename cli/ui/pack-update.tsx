@@ -215,7 +215,7 @@ export function PackUpdate({ store }: { store: UpdateStore }): React.ReactElemen
   return (
     <Box flexDirection="column" paddingLeft={1}>
       <Text bold>
-        pack update{view.version === null ? "" : ` → ${view.version} (${view.commit?.slice(0, 12) ?? ""})`}
+        crew update{view.version === null ? "" : ` → ${view.version} (${view.commit?.slice(0, 12) ?? ""})`}
       </Text>
       <Notes notes={view.preamble} />
       {view.members.map((member) => (

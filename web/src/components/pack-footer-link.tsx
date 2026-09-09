@@ -4,12 +4,12 @@ import { useNavigate } from "react-router";
 import { usePack } from "@/components/pack-provider";
 import { useLocale } from "@/hooks/use-locale";
 import { t, tn } from "@/lib/i18n";
-import { packPath } from "@/lib/nav";
+import { crewPath } from "@/lib/nav";
 import type { Scope } from "@/lib/scope";
 import { cn } from "@/lib/utils";
 
 /**
- * The dashboard's way into /pack — the third entry point, beside the switcher sheet's footer and the
+ * The dashboard's way into /crew — the third entry point, beside the switcher sheet's footer and the
  * Settings card.
  *
  * ── WHY IT IS HERE ───────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ export function PackFooterLink({ scope, className }: { scope?: Scope; className?
   return (
     <button
       type="button"
-      onClick={() => navigate(packPath(scope))}
+      onClick={() => navigate(crewPath(scope))}
       aria-label={t("pack.footer.aria")}
       className={cn(
         "flex w-full items-center justify-center gap-1.5 text-[11px] leading-relaxed text-muted-foreground active:text-foreground",

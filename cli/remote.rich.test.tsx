@@ -62,7 +62,7 @@ function probeOut(over: Record<string, string> = {}): string {
   return [...Object.entries(all).map(([k, v]) => `collie-probe:${k}=${v}`), "collie-probe:probe=ok", ""].join("\n");
 }
 
-const SOLO_STATUS = "mode: solo — this collie is not in a pack (no trust store, or an empty one).";
+const SOLO_STATUS = "mode: solo — this collie is not in a crew (no trust store, or an empty one).";
 
 /** An `Io` that must never be reached: on the rich path, the surface is the only writer. */
 function forbiddenIo(): Io {
@@ -234,7 +234,7 @@ async function waitFor(predicate: () => boolean, what: string): Promise<void> {
 
 // ── The flows ────────────────────────────────────────────────────────────────
 
-describe("pack add, drawn", () => {
+describe("crew add, drawn", () => {
   test("a full run: four legs, a confirm answered in the app, one row per restart, a green verdict", async () => {
     const h = harness({
       // An existing checkout at another commit is what raises the replace question.
@@ -254,7 +254,7 @@ describe("pack add, drawn", () => {
 
       const frame = plainText(app.lastFrame());
       // The title, the probe's facts as pairs, and all four legs with their details.
-      expect(frame).toContain("pack add nas.example");
+      expect(frame).toContain("crew add nas.example");
       expect(frame).toContain("/usr/local/bin/herdr");
       expect(frame).toContain("100.64.0.9:8787 (what this lead will dial)");
       for (const leg of ["probe", "install", "configure", "enroll"]) expect(frame).toContain(leg);
@@ -326,7 +326,7 @@ describe("pack add, drawn", () => {
       const frame = plainText(app.lastFrame());
       expect(frame).toContain("✗");
       expect(frame).toContain("error: the install failed on nas.example — error: the build failed on this machine");
-      expect(frame).toContain("pack add did not finish (exit 1)");
+      expect(frame).toContain("crew add did not finish (exit 1)");
       // The legs after the failure never ran, so they never claim to have.
       expect(frame).not.toContain("written to");
       expect(frame).not.toContain("answered the invite");
@@ -356,7 +356,7 @@ describe("pack add, drawn", () => {
 
 // ── The seam itself ──────────────────────────────────────────────────────────
 
-describe("which renderer pack add gets", () => {
+describe("which renderer crew add gets", () => {
   test("no `ui` means the plain lines, through the caller's own Io", async () => {
     const h = harness({});
     const io = capture();

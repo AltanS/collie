@@ -167,7 +167,7 @@ function isMoving(leg: UpdatePeerLeg): boolean {
  * EVERY PEER LEG THIS BRIDGE REPORTED, wherever it rode (M20/09).
  *
  * The legs sit on `run.peers` when this machine has a run record and on `update.peers` when it does
- * not. A peers-only run is the second case: "Retry pack update" begins the turn queue and re-sweeps
+ * not. A peers-only run is the second case: "Retry crew update" begins the turn queue and re-sweeps
  * without ever calling the updater here, so `update.json` is never written and `run` is absent for
  * the whole run.
  *

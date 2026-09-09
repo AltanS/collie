@@ -57,9 +57,9 @@ describe("renderInputs", () => {
 
 describe("takePlainFlag", () => {
   test("takes the flag out wherever it sits, and leaves everything else in order", () => {
-    expect(takePlainFlag(["--plain", "pack", "status"])).toEqual({ plain: true, rest: ["pack", "status"] });
-    expect(takePlainFlag(["pack", "status", "--plain"])).toEqual({ plain: true, rest: ["pack", "status"] });
-    expect(takePlainFlag(["pack", "--plain", "status"])).toEqual({ plain: true, rest: ["pack", "status"] });
+    expect(takePlainFlag(["--plain", "crew", "status"])).toEqual({ plain: true, rest: ["crew", "status"] });
+    expect(takePlainFlag(["crew", "status", "--plain"])).toEqual({ plain: true, rest: ["crew", "status"] });
+    expect(takePlainFlag(["crew", "--plain", "status"])).toEqual({ plain: true, rest: ["crew", "status"] });
   });
 
   test("no flag leaves argv untouched", () => {
@@ -129,7 +129,7 @@ describe("plainAdd", () => {
       { kind: "restart-end", ok: true },
       { kind: "leg-done", leg: "probe", ok: true, detail: "ready" },
       { kind: "leg-done", leg: "install", ok: false, detail: "" },
-      { kind: "verdict", ok: false, text: "pack add did not finish (exit 1)" },
+      { kind: "verdict", ok: false, text: "crew add did not finish (exit 1)" },
       { kind: "verdict", ok: true, text: '"nas" is a member of "home"' },
     );
     // The title, a silent leg-start, both restart brackets, the probe's own done, a failed leg and a
@@ -197,15 +197,15 @@ describe("projectAdd", () => {
       { kind: "leg-done", leg: "probe", ok: true, detail: "" },
       { kind: "leg-start", leg: "install", text: "" },
       { kind: "line", text: "error: the install failed", tone: "error", stream: "err" },
-      { kind: "verdict", ok: false, text: "pack add did not finish (exit 1)" },
+      { kind: "verdict", ok: false, text: "crew add did not finish (exit 1)" },
     ]);
     expect(view.legs[1]!.status).toBe("failed");
-    expect(view.verdict).toEqual({ ok: false, text: "pack add did not finish (exit 1)" });
+    expect(view.verdict).toEqual({ ok: false, text: "crew add did not finish (exit 1)" });
   });
 
   test("anything said before the first leg — a usage error — still has somewhere to land", () => {
-    const view = projectAdd([{ kind: "line", text: "usage: collie pack add <ssh-host>", tone: "error", stream: "err" }]);
-    expect(view.preamble).toEqual([{ text: "usage: collie pack add <ssh-host>", tone: "error" }]);
+    const view = projectAdd([{ kind: "line", text: "usage: collie crew add <ssh-host>", tone: "error", stream: "err" }]);
+    expect(view.preamble).toEqual([{ text: "usage: collie crew add <ssh-host>", tone: "error" }]);
     expect(view.legs.every((l) => l.status === "pending")).toBe(true);
   });
 });
@@ -230,7 +230,7 @@ describe("plainUpdate", () => {
     const err: string[] = [];
     for (const event of RUN) plainUpdate({ out: (l) => out.push(l), err: (l) => err.push(l) }, event);
     expect(out).toEqual([
-      "pack update — 1.2.3 (abc123def456)",
+      "crew update — 1.2.3 (abc123def456)",
       "→ nas         1.2.2 at 0000feed0000",
       "· pi          no ssh record",
       "",

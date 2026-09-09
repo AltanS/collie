@@ -185,8 +185,8 @@ export function cmdServe(deps: ServeDeps): number {
     const torn = stopTailscaleServe(deps);
     if (torn !== EXIT.OK) return torn;
     deps.io.out(
-      "tailscale serve skipped — this collie is a PEER of a pack, and a peer publishes no front" +
-        " door (ADR 0013). The lead's door speaks for the whole pack.",
+      "tailscale serve skipped — this collie is a PEER of a crew, and a peer publishes no front" +
+        " door (ADR 0013). The lead's door speaks for the whole crew.",
     );
     return EXIT.OK;
   }

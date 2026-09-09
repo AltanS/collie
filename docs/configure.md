@@ -179,7 +179,7 @@ Recent, and a **Launch** section in the switcher sheet (swipe up from a pane). A
 its folder, shortened under home; a cwd-less row says "here" in the switcher (the dashboard already
 implies home, so it says nothing there). Declare no rows and neither section appears.
 
-On a pack (several machines, one phone-facing lead), each machine reads its own copy of this file —
+On a crew (several machines, one phone-facing lead), each machine reads its own copy of this file —
 a row launches on whichever machine's dashboard or pane you tapped it from, not on the lead.
 
 To verify, reload the dashboard and look under the herd. If a row fails to load,
@@ -263,7 +263,7 @@ body reach any handler, where that handler's own limit then refuses it. Nothing 
 48 hours are up, so the uploads directory holds at most what was sent in two days. Raise the number
 because you need it, not by default.
 
-In a [pack](pack.md), both settings are per machine, and the machine that stores the file is the one
+In a [crew](crew.md), both settings are per machine, and the machine that stores the file is the one
 that enforces them. The lead refuses an oversize body before forwarding it, to save your uplink, but
 it refuses it against its own number. Set the same values on every member, or a peer will refuse
 what its lead let through.
