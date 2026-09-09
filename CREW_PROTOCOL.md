@@ -88,7 +88,7 @@ reporting the generation it holds, so the lead keeps pushing, and the push lands
 member has levelled.
 
 **A crew id in a body is written `crewId` and read either way.** 1.7.0 spelled it `packId` in the
-warrant and in the standby-device sync. Every 1.8.0 writer emits `crewId`; every 1.8.0 reader takes
+warrant, in the standby-device sync and in the enroll answer. Every 1.8.0 writer emits `crewId`; every 1.8.0 reader takes
 `crewId` and falls back to `packId`. That is what covers both skews without the overlap translating a
 body: a 1.8.0 lead's version 1 listener reads a 1.7.0 member's body at the same parser, and so does a
 1.8.0 member under a 1.7.0 lead. The direction 1.8.0 lead to 1.7.0 member needs nothing, because a

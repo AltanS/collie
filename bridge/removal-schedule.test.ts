@@ -165,6 +165,7 @@ describe("environment, state and the API", () => {
     expect(source("./crew/trust-store.ts")).not.toContain("storedWarrantCrewId");
     expect(source("./crew/standby-devices.ts")).not.toContain("record.packId");
     expect(source("./crew/standby-devices.ts")).not.toContain("eitherCrewId");
+    expect(source("./crew/enrollment.ts")).not.toContain("v.packId");
   });
 
   // The same both-or-neither rule the wire block ends on: while any of this is here, every site
@@ -177,6 +178,7 @@ describe("environment, state and the API", () => {
       "./crew/trust-store.ts",
       "./crew/warrant.ts",
       "./crew/standby-devices.ts",
+      "./crew/enrollment.ts",
       "./server.ts",
       "./update-action.ts",
       "./update.ts",

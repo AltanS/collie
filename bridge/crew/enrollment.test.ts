@@ -190,7 +190,7 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
     ]);
     expect(change.result).toEqual({
       protocol: 2,
-      packId: CREW.crewId,
+      crewId: CREW.crewId,
       crewName: CREW.name,
       crewSecret: CREW.secret,
       secretGeneration: 1,
@@ -316,7 +316,7 @@ describe("the exchange — parsing untrusted payloads", () => {
   test("a response with an out-of-grammar member id or unpinnable fingerprint is refused", () => {
     const res = {
       protocol: 2,
-      packId: "p",
+      crewId: "p",
       crewName: "n",
       crewSecret: "s",
       secretGeneration: 1,
@@ -781,5 +781,61 @@ describe("isLeading", () => {
     expect(isLeading(leadStore({ peers: [member({ memberId: "nas" })] }))).toBe(true);
     expect(isLeading(leadStore())).toBe(false);
     expect(isLeading(peerStore())).toBe(false);
+  });
+});
+
+// ── The enroll answer's crew id (M27/09, CREW_PROTOCOL.md §0.1) ─────────────
+// REMOVE_IN_1_9_0 — the `packId` half of this describe block. Same rule as the warrant's and the
+// standby sync's: every 1.8.0 writer emits `crewId`, every 1.8.0 reader accepts either. It is what
+// lets a 1.8.0 joiner read the answer of a lead that is still 1.7.0, without the overlap having to
+// translate a body.
+describe("the enroll answer's crew id, in both spellings", () => {
+  /** The §8.2 transfer table as it travels, field by field so a case can bend exactly one. */
+  const answer = () => ({
+    protocol: 2,
+    crewId: CREW.crewId,
+    crewName: CREW.name,
+    crewSecret: CREW.secret,
+    secretGeneration: 1,
+    memberId: "nas",
+    leadMemberId: "desk",
+    leadFingerprint: fp("desk"),
+    leadCertPem: material("desk").certPem,
+  });
+
+  test("the writer emits `crewId` and never `packId`", () => {
+    const minted = mintInvite(leadStore({ peers: [] }), { now: T0, label: "nas", random: R() });
+    const change = enrollPeer(
+      minted.next,
+      { fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787", label: "nas" },
+      T0,
+      counterRandom("m"),
+    );
+    if (change === null) throw new Error("fixture: expected an enrollment");
+    const document = JSON.stringify(change.result);
+    expect(document).toContain('"crewId"');
+    expect(document).not.toContain('"packId"');
+    expect(change.result.crewId).toBe(CREW.crewId);
+  });
+
+  test("the reader takes `crewId`", () => {
+    expect(parseEnrollResponse(answer())?.crewId).toBe(CREW.crewId);
+  });
+
+  test("the reader falls back to a 1.7.0 answer's `packId`", () => {
+    const { crewId, ...rest } = answer();
+    expect(crewId).toBe(CREW.crewId);
+    expect(parseEnrollResponse({ ...rest, packId: crewId })?.crewId).toBe(CREW.crewId);
+  });
+
+  test("`crewId` wins when an answer carries both", () => {
+    expect(parseEnrollResponse({ ...answer(), packId: "crew-elsewhere" })?.crewId).toBe(CREW.crewId);
+  });
+
+  test("neither spelling, or a mistyped one, is still a refusal", () => {
+    const { crewId, ...rest } = answer();
+    expect(crewId).toBe(CREW.crewId);
+    expect(parseEnrollResponse(rest)).toBeNull();
+    expect(parseEnrollResponse({ ...rest, packId: 7 })).toBeNull();
   });
 });
