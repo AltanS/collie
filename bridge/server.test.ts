@@ -2046,7 +2046,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     const checkHandler = src.slice(checkAt, checkAt + 4500);
     // `?? []` is the whole of it: a solo instance and a peer build no `crewLead`, so the key is an
     // empty array rather than an absent one — `preflight: null`'s stated reason, one field over.
-    expect(checkHandler).toContain("pack: opts.crewLead?.updateRows() ?? []");
+    expect(checkHandler).toContain("crew: opts.crewLead?.updateRows() ?? []");
     // Composed from the bank, not from a dial: the rows come off `CrewLead`, which reads `PeerState`.
     expect(checkHandler).not.toContain("crewLead.forward");
   });
@@ -2091,7 +2091,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
     // One confirm covers the crew, so one verdict covers the crew — and it is the SAME rows the
     // card showed, from the same bank, decided by the one merge function in `update-action.ts`.
-    expect(handler).toContain("pack: opts.crewLead?.updateRows() ?? []");
+    expect(handler).toContain("crew: opts.crewLead?.updateRows() ?? []");
   });
 
   test("the band's dismiss carries a scope, and the monitor decides what it costs", () => {
@@ -2734,7 +2734,7 @@ describe("update status peers — the legs of a crew-wide run", () => {
       run: null,
       lockHeld: false,
       preflight: { schema: 1, verdict: "green" as const, checks: [] },
-      pack: [behind],
+      crew: [behind],
     };
     const verdict = updateStartVerdict({ confirm: true, target: null, major: false, peersOnly: true }, state);
     expect(verdict).toEqual({ kind: "peers", to: current });
@@ -2742,14 +2742,14 @@ describe("update status peers — the legs of a crew-wide run", () => {
     // Nothing to level ⇒ nothing to start. The button is not offered here, and the route refuses it.
     const levelled: CrewUpdateRow = { ...behind, version: current };
     expect(
-      updateStartVerdict({ confirm: true, target: null, major: false, peersOnly: true }, { ...state, pack: [levelled] }),
+      updateStartVerdict({ confirm: true, target: null, major: false, peersOnly: true }, { ...state, crew: [levelled] }),
     ).toMatchObject({ kind: "refuse", status: 409 });
 
     // A member that rolled back is the other half of the case, read off the legs.
     expect(
       updateStartVerdict(
         { confirm: true, target: null, major: false, peersOnly: true },
-        { ...state, pack: [levelled], peers: [{ name: "minibuch", state: "rolled-back" }] },
+        { ...state, crew: [levelled], peers: [{ name: "minibuch", state: "rolled-back" }] },
       ),
     ).toEqual({ kind: "peers", to: current });
   });
@@ -2771,7 +2771,7 @@ describe("update status peers — the legs of a crew-wide run", () => {
         run: null,
         lockHeld: false,
         preflight: { schema: 1, verdict: "green", checks: [] },
-        pack: [red],
+        crew: [red],
       },
     );
     expect(verdict).toMatchObject({ kind: "refuse", status: 412 });
@@ -2785,7 +2785,7 @@ describe("update status peers — the legs of a crew-wide run", () => {
       run: null,
       lockHeld: true,
       preflight: { schema: 1, verdict: "green" as const, checks: [] },
-      pack: [],
+      crew: [],
     };
     expect(
       updateStartVerdict({ confirm: false, target: null, major: false, peersOnly: true }, state),

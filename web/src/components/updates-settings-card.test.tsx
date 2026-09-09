@@ -119,7 +119,7 @@ describe("updates row status line", () => {
       { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1 },
     ];
     server.use(
-      http.get("/api/update/check", () => HttpResponse.json({ ...info(), preflight: null, pack: crew })),
+      http.get("/api/update/check", () => HttpResponse.json({ ...info(), preflight: null, crew })),
     );
     renderRow(info());
     expect(await screen.findByText("1 peer behind")).toBeInTheDocument();

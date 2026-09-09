@@ -11,6 +11,7 @@ import {
   CREW_PREFLIGHT_TRUNCATED_ID,
   crewPreflightChecks,
   crewUpdateRows,
+  parseCrewRows,
   parsePeerPreflight,
   parsePreflightReport,
   parseUpdateStartRequest,
@@ -21,6 +22,7 @@ import {
   updateCadenceTick,
   updateStartCommand,
   updateStartVerdict,
+  type CrewUpdateRow,
   type PreflightCheck,
   type PreflightReport,
   type UpdateStartRequest,
@@ -115,11 +117,29 @@ describe("the update preflight report, as the bridge reads it", () => {
         { id: "disk", verdict: "green", reason: "4.2 GB free" },
         { id: "bun", verdict: "amber", reason: "Bun 1.1.0 is older than measured" },
       ],
-      pack: [{ memberId: "nas", host: "nas.local", verdict: "red", checks: [] }],
+      crew: [{ memberId: "nas", host: "nas.local", verdict: "red", checks: [] }],
     });
     const report = parsePreflightReport(text);
     expect(report?.verdict).toBe("amber");
     expect(report?.checks.map((c) => c.id)).toEqual(["disk", "bun"]);
+    expect("crew" in (report ?? {})).toBe(false);
+  });
+
+  // REMOVE_IN_1_9_0: the same document as the case above, spelled as a 1.7.0 binary spells it. The
+  // reader is a separate process from the writer, so a mid-swap binary can still print `pack`.
+  test("a report carrying 1.7.0's `pack` is read the same way", () => {
+    const text = JSON.stringify({
+      schema: 1,
+      verdict: "red",
+      checks: [
+        { id: "disk", verdict: "green", reason: "4.2 GB free" },
+        { id: "bun", verdict: "amber", reason: "Bun 1.1.0 is older than measured" },
+      ],
+      pack: [{ memberId: "nas", host: "nas.local", verdict: "red", checks: [] }],
+    });
+    const report = parsePreflightReport(text);
+    expect(report?.verdict).toBe("amber");
+    expect("crew" in (report ?? {})).toBe(false);
     expect("pack" in (report ?? {})).toBe(false);
   });
 
@@ -514,6 +534,35 @@ describe("crew rows — what GET /api/update/check answers with", () => {
 
   test("crew rows are empty for an empty crew — the key is a fact, never an omission", () => {
     expect(crewUpdateRows([])).toEqual([]);
+  });
+
+  /** One row as it crosses the wire, and the same row as `parseCrewRows` answers it. */
+  const WIRE_ROW: JsonObject = {
+    name: "attic",
+    version: "1.4.0",
+    verdict: "amber",
+    reasons: ["no ssh record"],
+    asOf: null,
+  };
+  const PARSED_ROW: CrewUpdateRow = {
+    name: "attic",
+    version: "1.4.0",
+    verdict: "amber",
+    reasons: ["no ssh record"],
+    asOf: null,
+  };
+
+  test("`parseCrewRows` reads the `crew` key off the answer", () => {
+    expect(parseCrewRows({ crew: [WIRE_ROW] })).toEqual([PARSED_ROW]);
+    expect(parseCrewRows({ crew: "not an array" })).toEqual([]);
+    expect(parseCrewRows(null)).toEqual([]);
+  });
+
+  // REMOVE_IN_1_9_0: the reader is `collie crew update` and the writer is its own bridge — two
+  // processes, and mid-swap the bridge can still be the 1.7.0 build, which spells the key `pack`.
+  test("`parseCrewRows` still reads 1.7.0's `pack` key, and prefers `crew` when both are there", () => {
+    expect(parseCrewRows({ pack: [WIRE_ROW] })).toEqual([PARSED_ROW]);
+    expect(parseCrewRows({ crew: [WIRE_ROW], pack: [] })).toEqual([PARSED_ROW]);
   });
 });
 

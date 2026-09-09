@@ -129,7 +129,7 @@ async function rawGet(
   });
 }
 
-/** One end of the pack: a scratch state dir, a fake Herdr, and a child bridge we can respawn. */
+/** One end of the crew: a scratch state dir, a fake Herdr, and a child bridge we can respawn. */
 class Instance {
   readonly stateDir: string;
   readonly configRoot: string;

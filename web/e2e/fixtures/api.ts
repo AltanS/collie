@@ -91,7 +91,7 @@ async function answer(route: Route, path: string): Promise<void> {
   if (path === "/api/crew") {
     return fulfillJson(
       route,
-      { error: "this collie is not the lead of a pack", code: "crew.not_lead" },
+      { error: "this collie is not the lead of a crew", code: "crew.not_lead" },
       404,
     );
   }
@@ -145,12 +145,12 @@ export async function installApiStub(page: Page): Promise<void> {
  * Turn the default solo world into a CREW: three machines in the roster and a census to match.
  *
  * `fixtureCrewSnapshot` and `fixtureCrewStatus` describe the same three machines
- * (`src/test/handlers.ts` § the pack fixtures), so the roster the host chrome reads and the census
+ * (`src/test/handlers.ts` § the crew fixtures), so the roster the host chrome reads and the census
  * the crew page reads never disagree about who is out there. Two routes are replaced and nothing
  * else is: call it AFTER {@link installApiStub}, whose 501 fall-through still covers everything
  * these two do not name.
  *
- * The roster is what the crew chrome is gated on (`components/pack-provider.tsx:118`, `isMultiHost`),
+ * The roster is what the crew chrome is gated on (`components/crew-provider.tsx:118`, `isMultiHost`),
  * so this is also what makes the footer line and the Settings row exist at all.
  */
 export async function installCrewWorld(page: Page): Promise<void> {

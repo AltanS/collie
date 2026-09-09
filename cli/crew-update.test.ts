@@ -251,7 +251,7 @@ function redOn(memberId: string, check: PreflightCheck): PreflightReport {
     schema: PREFLIGHT_SCHEMA,
     verdict: "red",
     checks: [],
-    pack: [{ memberId, host: `${memberId}.example`, verdict: "red", checks: [check] }],
+    crew: [{ memberId, host: `${memberId}.example`, verdict: "red", checks: [check] }],
   };
 }
 
@@ -266,7 +266,7 @@ function ownedOn(...memberIds: readonly string[]): PreflightReport {
     schema: PREFLIGHT_SCHEMA,
     verdict: "green",
     checks: [],
-    pack: memberIds.map((memberId) => ({
+    crew: memberIds.map((memberId) => ({
       memberId,
       host: `${memberId}.example`,
       verdict: "green" as const,
@@ -459,7 +459,7 @@ describe("what the probe decides, before anything is sent", () => {
 
 describe("packagedMembers reads the install KIND, never a check id", () => {
   test("a member whose report names `packaged` is in the set", () => {
-    const owned = packagedMembers(ownedOn("nas", "pi").pack ?? []);
+    const owned = packagedMembers(ownedOn("nas", "pi").crew ?? []);
     expect([...owned]).toEqual(["nas", "pi"]);
   });
 
@@ -556,7 +556,7 @@ describe("the preflight runs first, and one red aborts the whole run", () => {
         schema: PREFLIGHT_SCHEMA,
         verdict: "green",
         checks: [],
-        pack: [{ memberId: "nas", host: "nas.example", verdict: "green", checks: [] }],
+        crew: [{ memberId: "nas", host: "nas.example", verdict: "green", checks: [] }],
       },
     });
     expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);

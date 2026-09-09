@@ -163,7 +163,11 @@ export function parsePreflightReport(stdout: string): PreflightReport | null {
   // SAFETY: `verdict` was checked against `VERDICTS` above, which holds exactly the three members of
   // the union, and the guard there returned for every string that is not one of them.
   const printed = verdict as "green" | "amber" | "red";
-  const topLevel = rec.pack === undefined ? printed : worstVerdict(checks.map((c) => c.verdict));
+  // REMOVE_IN_1_9_0: `pack` is 1.7.0's name for `crew`. The document read here is printed by a
+  // SEPARATE process — `collie update --check --json` — which may be the older binary mid-swap, so
+  // both names are accepted. Only `crew` is ever written.
+  const members = rec.crew ?? rec.pack;
+  const topLevel = members === undefined ? printed : worstVerdict(checks.map((c) => c.verdict));
   const kind = readInstallKind(rec.installKind);
   // Assigned, never conditionally spread: a report that named no kind must carry NO such key.
   const report: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict: topLevel, checks };
@@ -476,7 +480,9 @@ const CREW_VERDICTS: ReadonlySet<string> = new Set(["green", "amber", "red", "un
 export function parseCrewRows(doc: JsonValue): CrewUpdateRow[] {
   const rec = asRecord(doc);
   if (rec === null) return [];
-  const rows = rec.pack;
+  // REMOVE_IN_1_9_0: `pack` is 1.7.0's name for `crew`, and the answer read here comes from a
+  // bridge that may still be the older build. Both names are accepted; only `crew` is written.
+  const rows = rec.crew ?? rec.pack;
   if (!Array.isArray(rows)) return [];
   const out: CrewUpdateRow[] = [];
   for (const raw of rows) {
@@ -523,14 +529,14 @@ export interface MergedUpdateVerdict {
  */
 export function mergedUpdateVerdict(
   lead: PreflightReport | null,
-  pack: readonly CrewUpdateRow[],
+  crew: readonly CrewUpdateRow[],
   selfName = "this collie",
 ): MergedUpdateVerdict {
   const leadRow: CrewUpdateRow =
     lead === null
       ? { name: selfName, version: null, verdict: "unknown", reasons: [unknownReason(selfName)], asOf: null }
       : { name: selfName, version: null, verdict: lead.verdict, reasons: reasonsOf(lead.checks), asOf: null };
-  const rows = [leadRow, ...pack];
+  const rows = [leadRow, ...crew];
   const red = rows.find((r) => r.verdict === "red");
   if (red !== undefined) return { verdict: "red", member: red.name, reason: red.reasons[0] ?? null, blocks: true };
   const unknown = rows.find((r) => r.verdict === "unknown");
@@ -729,7 +735,7 @@ export interface UpdateStartState {
    * could check — refuses the run here, with its own name and its own sentence, exactly as the card
    * showed before the operator tapped.
    */
-  readonly pack?: readonly CrewUpdateRow[];
+  readonly crew?: readonly CrewUpdateRow[];
   /**
    * Every peer's leg of the run this lead last drove (M16/04). Absent ⇒ no run, which is `[]`.
    *
@@ -772,7 +778,7 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   // of the gate — one confirm still covers the crew, so a member that is red or that nobody could
   // check refuses this exactly as it refuses an ordinary start.
   if (req.peersOnly) {
-    const blocked = mergedUpdateVerdict(state.preflight, state.pack ?? []);
+    const blocked = mergedUpdateVerdict(state.preflight, state.crew ?? []);
     if (blocked.blocks) {
       return refuse(412, "update.preflight_red", {
         check: blocked.member ?? "the crew",
@@ -808,7 +814,7 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   // read (M16/03). The lead's own red is refused above and names its CHECK; a member's is named by
   // MACHINE, because that is the only handle the operator holding a phone has on it. An unknown
   // member blocks here too — "we could not check attic" is not "attic is fine".
-  const merged = mergedUpdateVerdict(state.preflight, state.pack ?? []);
+  const merged = mergedUpdateVerdict(state.preflight, state.crew ?? []);
   if (merged.blocks) {
     return refuse(412, "update.preflight_red", {
       check: merged.member ?? "the crew",
@@ -839,7 +845,7 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
  * on its own row, and starting a run over it would send the operator to an action that cannot help.
  */
 function peersNeedLevelling(state: UpdateStartState): boolean {
-  const behind = (state.pack ?? []).some((m) => m.version !== null && compareSemver(m.version, state.current) < 0);
+  const behind = (state.crew ?? []).some((m) => m.version !== null && compareSemver(m.version, state.current) < 0);
   const fellBack = (state.peers ?? []).some((leg) => leg.state === "rolled-back" || leg.state === "unreachable");
   return behind || fellBack;
 }

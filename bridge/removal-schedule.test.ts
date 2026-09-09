@@ -95,8 +95,9 @@ describe("wire", () => {
 
 // ── The environment, the state files and the API (M27/02) ───────────────────
 // The other half of the same one release of overlap: the two 1.7.0 environment keys, the one-time
-// state-file rename, `/api/pack`'s 308, the old dismiss scope, and the trust store's old inner
-// keys. Each is inert on a 1.8.0 install and each is a name 1.9.0 must not still read.
+// state-file rename, `/api/pack`'s 308, the old dismiss scope, the trust store's old inner keys,
+// the `pack` arm on every preflight document read, and the old dismiss key in `update-state.json`.
+// Each is inert on a 1.8.0 install and each is a name 1.9.0 must not still read.
 describe("environment, state and the API", () => {
   test("the old environment keys are no longer read in 1.9.0", () => {
     if (beforeRemoval(9)) return;
@@ -133,6 +134,22 @@ describe("environment, state and the API", () => {
     expect(src).not.toContain("p.packId");
   });
 
+  // The crew's update rows on `/api/update/check` and inside every printed preflight document.
+  // Three readers, three separate processes: the bridge reading its own `collie update --check`
+  // subprocess, `collie crew update` reading its own bridge over loopback, and the lead reading a
+  // MEMBER's document over ssh. Any of the three can face a 1.7.0 writer during the roll.
+  test("no preflight document is read under `pack` in 1.9.0", () => {
+    if (beforeRemoval(9)) return;
+    expect(source("./update-action.ts")).not.toContain("rec.pack");
+    expect(source("../cli/update-check.ts")).not.toContain("doc.pack");
+    expect(source("../cli/update-check.ts")).not.toContain("pack?: readonly PreflightMember[]");
+  });
+
+  test("the old dismiss key is no longer read from `update-state.json` in 1.9.0", () => {
+    if (beforeRemoval(9)) return;
+    expect(source("./update.ts")).not.toContain("dismissedPackVersion");
+  });
+
   // The same both-or-neither rule the wire block ends on: while any of this is here, every site
   // carries the marker a reader greps for.
   test("while the overlap exists, every side of it is marked", () => {
@@ -142,6 +159,9 @@ describe("environment, state and the API", () => {
       "./crew/state-migration.ts",
       "./crew/trust-store.ts",
       "./server.ts",
+      "./update-action.ts",
+      "./update.ts",
+      "../cli/update-check.ts",
     ]) {
       expect(source(file)).toContain("REMOVE_IN_1_9_0");
     }

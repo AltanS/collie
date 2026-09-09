@@ -218,7 +218,7 @@ describe("the page", () => {
     expect(standbyPage(facts({ witnessCount: 1 }))).toContain("ask 1 other machine whether it has called");
   });
 
-  test("TWO-MACHINE pack: the page says the quiet part above the button (RFC §16, decision 8)", () => {
+  test("TWO-MACHINE crew: the page says the quiet part above the button (RFC §16, decision 8)", () => {
     const page = standbyPage(facts({ witnessCount: 0 }));
     expect(page).toContain("There are no other machines to ask. If your lead is up and you simply cannot");
     expect(page).toContain("reach it, taking over will split your crew.");

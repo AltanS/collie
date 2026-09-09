@@ -439,7 +439,7 @@ export interface UpdateInfo {
    * The version whose quiet CREW notice the operator closed, or null. A separate decision from the
    * offer above: they are about different machines. Absent on an older bridge.
    */
-  dismissedPackVersion?: string | null;
+  dismissedCrewVersion?: string | null;
   /**
    * The release ahead changes the crew wire, and by how much — absent when it does not (M27/06).
    *
@@ -644,7 +644,7 @@ export interface UpdateCheckResponse extends UpdateInfo {
    * Every peer's version and preflight (M16/03). Absent on a solo install, and absent on a bridge
    * that predates the crew-wide check. Both read as "no peer rows", which is the same screen.
    */
-  pack?: UpdateCrewMember[];
+  crew?: UpdateCrewMember[];
 }
 
 /** `POST /api/update` — the 202. The run itself is followed on the snapshot from here. */

@@ -207,7 +207,7 @@ describe("preflight — the healthy instance", () => {
     expect(report.checks.map((c) => c.id)).toEqual(["doctor", "disk", "bun", "tree", "upstream", "service"]);
     expect(report.checks.every((c) => c.verdict === "green")).toBe(true);
     expect(report.verdict).toBe("green");
-    expect(report.pack).toBeUndefined();
+    expect(report.crew).toBeUndefined();
   });
 
   test("read-only: it writes no file, moves nothing and starts no service", async () => {
@@ -530,8 +530,8 @@ describe("preflight crew — the members of a lead", () => {
 
   test("a member with no ops record is red, with a remedy naming host and path", async () => {
     const report = await preflight(harness({ store: lead(["nas"]) }).deps);
-    expect(report.pack).toHaveLength(1);
-    const nas = report.pack![0]!;
+    expect(report.crew).toHaveLength(1);
+    const nas = report.crew![0]!;
     expect(nas.memberId).toBe("nas");
     expect(nas.verdict).toBe("red");
     expect(nas.checks[0]!.id).toBe("ops-record");
@@ -547,7 +547,7 @@ describe("preflight crew — the members of a lead", () => {
   test("ops-record: a lead with one peer lacking an ops record is amber at the top and exits 0", async () => {
     const h = harness({ store: lead(["nas"]) });
     const report = await preflight(h.deps);
-    const nas = report.pack![0]!;
+    const nas = report.crew![0]!;
     // The member's own ops-record check stays red with its remedy — the card still shows it.
     expect(nas.checks[0]!.id).toBe("ops-record");
     expect(nas.checks[0]!.verdict).toBe("red");
@@ -560,7 +560,7 @@ describe("preflight crew — the members of a lead", () => {
   test("ops-record: a lead with an unreachable peer still yields red and exits 1", async () => {
     const h = harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED });
     const report = await preflight(h.deps);
-    const nas = report.pack![0]!;
+    const nas = report.crew![0]!;
     expect(nas.checks[0]!.id).toBe("reachable");
     expect(nas.verdict).toBe("red");
     expect(report.verdict).toBe("red");
@@ -571,7 +571,7 @@ describe("preflight crew — the members of a lead", () => {
     const report = await preflight(
       harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED }).deps,
     );
-    const nas = report.pack![0]!;
+    const nas = report.crew![0]!;
     expect(nas.verdict).toBe("red");
     expect(nas.checks[0]!.id).toBe("reachable");
     expect(nas.checks[0]!.reason).toContain("nas.local");
@@ -585,7 +585,7 @@ describe("preflight crew — the members of a lead", () => {
         remote: () => (script) => (script.includes("update --check") ? ok("") : ok(probeOut({ checkout: "" }))),
       }).deps,
     );
-    const nas = report.pack![0]!;
+    const nas = report.crew![0]!;
     expect(nas.verdict).toBe("red");
     expect(nas.checks.map((c) => c.id)).toEqual(["reachable", "collie-present"]);
     expect(nas.checks[1]!.reason).toContain("/home/pat/collie");
@@ -602,7 +602,7 @@ describe("preflight crew — the members of a lead", () => {
         script.includes("/opt/collie") ? ok(probeOut()) : ok(probeOut({ checkout: "" })),
     });
     const report = await preflight(h.deps, { overrides: { nas: { path: "/opt/collie" } } });
-    const nas = report.pack![0]!;
+    const nas = report.crew![0]!;
     expect(nas.checks.map((c) => c.id)).toContain("collie-present");
     expect(nas.verdict).not.toBe("red");
   });
@@ -614,7 +614,7 @@ describe("preflight crew — the members of a lead", () => {
       remote: () => (script) => (script.includes("update --check") ? ok("") : ok(probeOut({ checkout: "" }))),
     });
     const report = await preflight(h.deps, { overrides: { nas: { sshHost: "nas.new", path: "/opt/collie" } } });
-    const nas = report.pack![0]!;
+    const nas = report.crew![0]!;
     expect(nas.host).toBe("nas.new");
     expect(nas.checks[1]!.id).toBe("collie-present");
     expect(nas.checks[1]!.reason).toContain("/opt/collie");
@@ -634,7 +634,7 @@ describe("preflight crew — the members of a lead", () => {
         script.includes("update --check") ? ok(JSON.stringify(remoteReport)) : ok(probeOut()),
     });
     const report = await preflight(h.deps);
-    const nas = report.pack![0]!;
+    const nas = report.crew![0]!;
     expect(nas.host).toBe("nas.local");
     expect(nas.checks.map((c) => c.id)).toEqual(["reachable", "collie-present", "version", "disk"]);
     expect(nas.verdict).toBe("green");
@@ -655,7 +655,7 @@ describe("preflight crew — the members of a lead", () => {
         script.includes("update --check") ? { ...ok(JSON.stringify(remoteReport)), code: 1 } : ok(probeOut()),
     });
     const report = await preflight(h.deps);
-    expect(report.pack![0]!.verdict).toBe("red");
+    expect(report.crew![0]!.verdict).toBe("red");
     expect(report.verdict).toBe("red");
     expect(await cmdUpdateCheck(h.deps, ["--json"])).toBe(EXIT.FAIL);
   });
@@ -670,7 +670,7 @@ describe("preflight crew — the members of a lead", () => {
           : ok(probeOut()),
     });
     const report = await preflight(h.deps);
-    const preflightCheck = report.pack![0]!.checks.find((c) => c.id === "preflight")!;
+    const preflightCheck = report.crew![0]!.checks.find((c) => c.id === "preflight")!;
     expect(preflightCheck.verdict).toBe("amber");
     expect(preflightCheck.reason).toContain("peer predates preflight");
     expect(report.verdict).toBe("amber");
@@ -688,7 +688,7 @@ describe("preflight crew — the members of a lead", () => {
 
   test("a peer runs no crew checks — it leads nobody", async () => {
     const report = await preflight(harness({ store: peerStore() }).deps);
-    expect(report.pack).toBeUndefined();
+    expect(report.crew).toBeUndefined();
   });
 });
 
@@ -698,7 +698,7 @@ describe("preflight --local — the answer the phone's card reads", () => {
   test("the members are not walked at all, and the report carries no crew", async () => {
     const h = harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED });
     const report = await preflight(h.deps, { local: true });
-    expect(report.pack).toBeUndefined();
+    expect(report.crew).toBeUndefined();
     // No ssh was opened: the walk is skipped, never run and discarded.
     expect(h.runners.size).toBe(0);
   });
@@ -717,10 +717,10 @@ describe("preflight --local — the answer the phone's card reads", () => {
     expect(wantsLocal(["--check", "--json"])).toBe(false);
     const h = harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED });
     expect(await cmdUpdateCheck(h.deps, ["--check", "--local", "--json"])).toBe(EXIT.OK);
-    expect(parseReport(h.io.stdout.join("\n"))!.pack).toBeUndefined();
+    expect(parseReport(h.io.stdout.join("\n"))!.crew).toBeUndefined();
     const terminal = harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED });
     expect(await cmdUpdateCheck(terminal.deps, ["--check", "--json"])).toBe(EXIT.FAIL);
-    expect(parseReport(terminal.io.stdout.join("\n"))!.pack).toHaveLength(1);
+    expect(parseReport(terminal.io.stdout.join("\n"))!.crew).toHaveLength(1);
   });
 
   test("a red on this instance is still a red under --local", async () => {
@@ -751,6 +751,23 @@ describe("the JSON contract", () => {
     expect(parseReport("collie: unknown flag --check")).toBeNull();
     expect(parseReport('{"schema":1,"verdict":"puce","checks":[]}')).toBeNull();
     expect(parseReport('{"schema":1,"checks":[]}')).toBeNull();
+  });
+
+  // REMOVE_IN_1_9_0: this document is printed by a MEMBER, over ssh, and during the roll that member
+  // may still be on 1.7.0 — which spells the crew rows `pack`. Read under both names, written under
+  // `crew` alone.
+  test("a member still on 1.7.0 spells the rows `pack`, and they are read as `crew`", () => {
+    const rows = [{ memberId: "nas", host: "nas.local", verdict: "red", checks: [] }];
+    const old = parseReport(JSON.stringify({ schema: 1, verdict: "red", checks: [], pack: rows }))!;
+    expect(old.crew).toHaveLength(1);
+    expect(old.crew![0]!.memberId).toBe("nas");
+    // The new spelling reads the same, and a document carrying both takes `crew`.
+    const fresh = parseReport(JSON.stringify({ schema: 1, verdict: "red", checks: [], crew: rows }))!;
+    expect(fresh.crew).toHaveLength(1);
+    const both = parseReport(
+      JSON.stringify({ schema: 1, verdict: "red", checks: [], crew: rows, pack: [] }),
+    )!;
+    expect(both.crew).toHaveLength(1);
   });
 
   test("exit code — 0 with no red, 1 with one", async () => {

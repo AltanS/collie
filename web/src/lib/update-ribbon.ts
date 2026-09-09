@@ -132,9 +132,9 @@ export interface RibbonInput {
    * tap rather than on the next poll.
    */
   dismissedVersion: string | null;
-  /** The version whose quiet CREW notice was closed (`update.dismissedPackVersion`). A separate
+  /** The version whose quiet CREW notice was closed (`update.dismissedCrewVersion`). A separate
    *  decision, so a separate input — see {@link DismissScope}. */
-  dismissedPackVersion: string | null;
+  dismissedCrewVersion: string | null;
   now: number;
 }
 
@@ -417,7 +417,7 @@ export function ribbonView(input: RibbonInput): RibbonView {
         target,
       };
     }
-    const quiet = target !== null && target === input.dismissedPackVersion;
+    const quiet = target !== null && target === input.dismissedCrewVersion;
     // A moving peer is undismissable, so its target is null however the crew was closed before: the
     // operator must be able to see the end of a run somebody is still driving.
     if (reading.movingLegs.length > 0) {

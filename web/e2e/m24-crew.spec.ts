@@ -17,10 +17,10 @@ import { fill, installApiStub, installCrewWorld, pinLocale } from "./fixtures/ap
 //
 // SELECTORS are roles and accessible names. The crew page carries no data attribute of its own, and
 // none was added: the formation's `role="group"` and its per-node `role="button"` labels
-// (`components/pack-formation.tsx:313-314`, `:406-409`) are the handles, which is why those labels
+// (`components/crew-formation.tsx:313-314`, `:406-409`) are the handles, which is why those labels
 // exist.
 //
-// THE TRAP THIS FILE STEPS AROUND: `pack.title` is "Crew" in English AND in German, so a German
+// THE TRAP THIS FILE STEPS AROUND: `crew.title` is "Crew" in English AND in German, so a German
 // case asserting the page title would pass in English and prove nothing. Japanese does translate it
 // ("クルー"), so the locale case here is the Japanese one.
 
@@ -147,8 +147,8 @@ test("in Japanese the crew page is called クルー", async ({ page }) => {
   await page.goto("/crew");
 
   // Both strings differ from their English originals, so this cannot pass in English. Japanese is
-  // the locale used here for exactly that reason: German translates neither `pack.title` nor
-  // `pack.summary.deputy`, so a German case on this page would be a case about nothing.
+  // the locale used here for exactly that reason: German translates neither `crew.title` nor
+  // `crew.summary.deputy`, so a German case on this page would be a case about nothing.
   await expect(page.getByRole("heading", { name: ja["crew.title"] })).toBeVisible();
   await expect(page.getByRole("button", { name: ja["crew.nav.back"] })).toBeVisible();
   expect(ja["crew.title"]).not.toBe(en["crew.title"]);

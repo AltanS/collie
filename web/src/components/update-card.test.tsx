@@ -162,7 +162,7 @@ function renderCard(update: UpdateInfo | undefined, servers: HomeData["servers"]
 function serveCheck(update: UpdateInfo, preflight: PreflightReport | null, crew?: UpdateCrewMember[]) {
   server.use(
     http.get("/api/update/check", () =>
-      HttpResponse.json(crew === undefined ? { ...update, preflight } : { ...update, preflight, pack: crew }),
+      HttpResponse.json(crew === undefined ? { ...update, preflight } : { ...update, preflight, crew }),
     ),
   );
 }
@@ -1028,7 +1028,7 @@ describe("a peers-only run is still a run", () => {
     server.use(
       http.get("/api/update/check", () => {
         calls += 1;
-        return HttpResponse.json({ ...info(), preflight: GREEN, pack: [] });
+        return HttpResponse.json({ ...info(), preflight: GREEN, crew: [] });
       }),
     );
     return () => calls;

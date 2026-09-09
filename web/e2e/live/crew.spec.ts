@@ -44,7 +44,7 @@ test("the crew page marks the real lead and the real deputy", async ({ page, req
 
   await page.goto("/crew");
 
-  // The node is a `<g role="button">` and its accessible name is `pack.node.aria` — name, role,
+  // The node is a `<g role="button">` and its accessible name is `crew.node.aria` — name, role,
   // health. The role WORD is what carries the crown and the shield; the glyphs themselves are
   // `aria-hidden`, so the name is the only honest handle for them.
   await expect(

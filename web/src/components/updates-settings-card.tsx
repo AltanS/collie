@@ -43,7 +43,7 @@ export function UpdatesSettingsCard() {
     void (async () => {
       try {
         const check = await fetchUpdateState(ac.signal);
-        setCrew(check.pack ?? []);
+        setCrew(check.crew ?? []);
       } catch {
         // No peer count, and no line on screen about it. Every other case still reads true.
       }

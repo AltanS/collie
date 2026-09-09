@@ -582,7 +582,7 @@ export class UpdateStateStore {
   private lastVersion: string | null = null;
   private pushedAt: string | null = null;
   private dismissed: string | null = null;
-  private dismissedPack: string | null = null;
+  private dismissedCrew: string | null = null;
   private readonly file: string;
 
   constructor(private readonly cfg: Config) {
@@ -598,13 +598,17 @@ export class UpdateStateStore {
       const last = rec === null ? undefined : rec.lastNotified;
       const pushed = rec === null ? undefined : rec.lastPushedAt;
       const closed = rec === null ? undefined : rec.dismissedVersion;
-      const closedCrew = rec === null ? undefined : rec.dismissedPackVersion;
+      // REMOVE_IN_1_9_0: `dismissedPackVersion` is 1.7.0's name for `dismissedCrewVersion`. A
+      // record written by that build is read once under the old key here and written back under the
+      // new one by the next dismissal, so no separate rewrite step is needed.
+      const closedCrew =
+        rec === null ? undefined : (rec.dismissedCrewVersion ?? rec.dismissedPackVersion);
       this.lastVersion = typeof last === "string" ? last : null;
       // A record written before M17/08 carries neither dismissal. Both read as "nothing dismissed",
       // which is the band's own default — an operator who closed the band on an older build simply
       // sees it once more.
       this.dismissed = typeof closed === "string" ? closed : null;
-      this.dismissedPack = typeof closedCrew === "string" ? closedCrew : null;
+      this.dismissedCrew = typeof closedCrew === "string" ? closedCrew : null;
       // A LEGACY record carries no timestamp. It reads as "no push yet" — the window opens at once
       // rather than crashing the monitor or pinning it shut for a day.
       this.pushedAt = typeof pushed === "string" ? pushed : null;
@@ -629,8 +633,8 @@ export class UpdateStateStore {
 
   /** The version whose quiet CREW notice the operator closed, or null. A different decision from
    *  the one above, and so a different field — see {@link DismissScope}. */
-  dismissedPackVersion(): string | null {
-    return this.dismissedPack;
+  dismissedCrewVersion(): string | null {
+    return this.dismissedCrew;
   }
 
   async setLastNotified(version: string, pushedAt: string): Promise<void> {
@@ -656,7 +660,7 @@ export class UpdateStateStore {
     notified?: { version: string; pushedAt: string },
   ): Promise<void> {
     if (scope === "offer") this.dismissed = version;
-    else this.dismissedPack = version;
+    else this.dismissedCrew = version;
     if (notified !== undefined) {
       this.lastVersion = notified.version;
       this.pushedAt = notified.pushedAt;
@@ -672,7 +676,7 @@ export class UpdateStateStore {
       lastNotified: this.lastVersion,
       lastPushedAt: this.pushedAt,
       dismissedVersion: this.dismissed,
-      dismissedPackVersion: this.dismissedPack,
+      dismissedCrewVersion: this.dismissedCrew,
     };
     const tmp = `${this.file}.tmp`;
     await writeFile(tmp, JSON.stringify(body, null, 2), { mode: 0o600 });
@@ -725,7 +729,7 @@ export interface UpdateStore {
    *  on every screen rather than in the browser that made it. */
   dismissedVersion(): string | null;
   /** The version whose quiet CREW notice was closed, or null. */
-  dismissedPackVersion(): string | null;
+  dismissedCrewVersion(): string | null;
   /** Record a dismissal, folding the digest snooze into the same write when one is asked for. */
   setDismissed(
     scope: DismissScope,
@@ -993,7 +997,7 @@ export class UpdateMonitor {
           : githubReleaseUrl(this.deps.repo, this.majorAvailable),
       installKind: this.deps.installKind,
       dismissedVersion: this.deps.store.dismissedVersion(),
-      dismissedPackVersion: this.deps.store.dismissedPackVersion(),
+      dismissedCrewVersion: this.deps.store.dismissedCrewVersion(),
       bridgeStale: this.bridgeStale(),
       // Two witnesses to one fact, and either is enough: the version files stopped naming what this
       // process runs, or the executable itself was replaced. The second catches the rebuild of an

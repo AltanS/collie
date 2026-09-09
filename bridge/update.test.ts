@@ -303,7 +303,7 @@ function fakeStore(
   let last = initial;
   let stamp = pushedAt;
   let dismissed: string | null = null;
-  let dismissedPack: string | null = null;
+  let dismissedCrew: string | null = null;
   const saved: string[] = [];
   const pushes: string[] = [];
   const closed: string[] = [];
@@ -325,11 +325,11 @@ function fakeStore(
       pushes.push(at);
     },
     dismissedVersion: () => dismissed,
-    dismissedPackVersion: () => dismissedPack,
+    dismissedCrewVersion: () => dismissedCrew,
     setDismissed: async (scope, v, notified) => {
       counter.writes += 1;
       if (scope === "offer") dismissed = v;
-      else dismissedPack = v;
+      else dismissedCrew = v;
       closed.push(`${scope}:${v}`);
       if (notified !== undefined) {
         last = notified.version;
@@ -605,7 +605,7 @@ describe("UpdateMonitor", () => {
       lastNotified: store.lastNotified,
       lastPushedAt: store.lastPushedAt,
       dismissedVersion: store.dismissedVersion,
-      dismissedPackVersion: store.dismissedPackVersion,
+      dismissedCrewVersion: store.dismissedCrewVersion,
       setDismissed: store.setDismissed,
       setLastNotified: async (v, at) => {
         order.push(`persist:${v}`);
@@ -839,7 +839,7 @@ describe("the dismissed version", () => {
     const store = new UpdateStateStore(cfg);
     await store.load();
     expect(store.dismissedVersion()).toBeNull(); // nothing saved yet reads as nothing dismissed
-    expect(store.dismissedPackVersion()).toBeNull();
+    expect(store.dismissedCrewVersion()).toBeNull();
 
     await store.setDismissed("offer", "1.6.0", { version: "1.6.0", pushedAt: "2026-09-07T09:00:00.000Z" });
     await store.setDismissed("crew", "1.5.0");
@@ -849,7 +849,7 @@ describe("the dismissed version", () => {
     expect(reloaded.dismissedVersion()).toBe("1.6.0");
     // Two decisions, two fields: the crew notice was put down at a DIFFERENT version and neither
     // overwrote the other.
-    expect(reloaded.dismissedPackVersion()).toBe("1.5.0");
+    expect(reloaded.dismissedCrewVersion()).toBe("1.5.0");
     // The offer's dismissal folded the snooze into the same write — a crash between two writes
     // cannot leave a band closed with the push still armed for it.
     expect(reloaded.lastNotified()).toBe("1.6.0");
@@ -865,8 +865,47 @@ describe("the dismissed version", () => {
     const store = new UpdateStateStore(cfg);
     await store.load();
     expect(store.dismissedVersion()).toBeNull();
-    expect(store.dismissedPackVersion()).toBeNull();
+    expect(store.dismissedCrewVersion()).toBeNull();
     expect(store.lastNotified()).toBe("1.5.0"); // and the record beside them is still believed
+  });
+
+  // REMOVE_IN_1_9_0: `dismissedPackVersion` is 1.7.0's name for `dismissedCrewVersion`, so a record
+  // written by that build has to be read once under the old key. Three records, one per shape a
+  // real state dir can hold during the roll: the old key alone, the new key alone, and both.
+  it("reads 1.7.0's `dismissedPackVersion` when the crew key is absent", async () => {
+    const cfg = await tempCfg();
+    await Bun.write(
+      join(cfg.stateDir, "update-state.json"),
+      JSON.stringify({ dismissedVersion: "1.6.0", dismissedPackVersion: "1.5.0" }),
+    );
+    const store = new UpdateStateStore(cfg);
+    await store.load();
+    expect(store.dismissedCrewVersion()).toBe("1.5.0");
+    expect(store.dismissedVersion()).toBe("1.6.0");
+    // And the next dismissal writes the record back under the NEW key alone.
+    await store.setDismissed("crew", "1.7.0");
+    const back = await Bun.file(join(cfg.stateDir, "update-state.json")).text();
+    expect(back).toContain('"dismissedCrewVersion": "1.7.0"');
+    expect(back).not.toContain("dismissedPackVersion");
+  });
+
+  it("reads the crew key on its own", async () => {
+    const cfg = await tempCfg();
+    await Bun.write(join(cfg.stateDir, "update-state.json"), JSON.stringify({ dismissedCrewVersion: "1.5.0" }));
+    const store = new UpdateStateStore(cfg);
+    await store.load();
+    expect(store.dismissedCrewVersion()).toBe("1.5.0");
+  });
+
+  it("prefers the crew key when a record carries both", async () => {
+    const cfg = await tempCfg();
+    await Bun.write(
+      join(cfg.stateDir, "update-state.json"),
+      JSON.stringify({ dismissedCrewVersion: "1.5.0", dismissedPackVersion: "1.4.0" }),
+    );
+    const store = new UpdateStateStore(cfg);
+    await store.load();
+    expect(store.dismissedCrewVersion()).toBe("1.5.0");
   });
 
   it("a dismissed offer for the release upstream names also snoozes the digest, in one write", async () => {
@@ -891,7 +930,7 @@ describe("the dismissed version", () => {
     expect(store.closed).toEqual(["crew:0.12.0"]);
     // The push is about THIS machine; the notice was about another one. Hiding it silences nothing.
     expect(store.lastNotified()).toBe(notified);
-    expect(monitor.status().dismissedPackVersion).toBe("0.12.0");
+    expect(monitor.status().dismissedCrewVersion).toBe("0.12.0");
     expect(monitor.status().dismissedVersion).toBeNull(); // and the offer is untouched
   });
 

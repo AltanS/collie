@@ -90,7 +90,7 @@
     "majorUrl": null,
     "installKind": "detached-checkout",
     "dismissedVersion": null,
-    "dismissedPackVersion": null,
+    "dismissedCrewVersion": null,
     "bridgeStale": false,
     "restartNeeded": false,
     "checkedAt": null

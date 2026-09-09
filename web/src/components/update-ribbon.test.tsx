@@ -424,7 +424,7 @@ describe("hiding the quiet crew notice", () => {
   });
 
   it("stays down for the next screen, off the snapshot's own field", async () => {
-    const { container } = await renderBand(info({ ...quiet(), dismissedPackVersion: "1.5.0" }));
+    const { container } = await renderBand(info({ ...quiet(), dismissedCrewVersion: "1.5.0" }));
     expect(band(container)).toBeNull();
   });
 });

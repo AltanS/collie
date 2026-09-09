@@ -115,7 +115,7 @@ export interface PreflightReport {
   /** How THIS machine is installed. Optional and absent-means-unknown, so the schema does not move. */
   readonly installKind?: InstallKind["kind"];
   readonly checks: readonly PreflightCheck[];
-  readonly pack?: readonly PreflightMember[];
+  readonly crew?: readonly PreflightMember[];
 }
 
 /**
@@ -666,12 +666,16 @@ export function parseReport(stdout: string): PreflightReport | null {
   const start = stdout.indexOf("{");
   const end = stdout.lastIndexOf("}");
   if (start < 0 || end <= start) return null;
-  let doc: Partial<PreflightReport> | null;
+  // REMOVE_IN_1_9_0: the `pack` arm. A member still on 1.7.0 spells the members `pack`, so the
+  // shape this document is READ as carries both names; see the read below.
+  let doc: (Partial<PreflightReport> & { pack?: readonly PreflightMember[] }) | null;
   try {
     // SAFETY: the assertion asserts NOTHING about the document — every field it names is checked
     // below before it is used, and a value that is not an object at all reads every one of them as
     // `undefined` and fails the first check. It exists only to give `JSON.parse`'s `any` a name.
-    doc = JSON.parse(stdout.slice(start, end + 1)) as Partial<PreflightReport> | null;
+    doc = JSON.parse(stdout.slice(start, end + 1)) as
+      | (Partial<PreflightReport> & { pack?: readonly PreflightMember[] })
+      | null;
   } catch {
     return null;
   }
@@ -686,7 +690,11 @@ export function parseReport(stdout: string): PreflightReport | null {
     kind === undefined
       ? { schema: PREFLIGHT_SCHEMA, verdict, checks: doc.checks }
       : { schema: PREFLIGHT_SCHEMA, verdict, installKind: kind, checks: doc.checks };
-  return doc.pack === undefined ? report : { ...report, pack: doc.pack };
+  // REMOVE_IN_1_9_0: `pack` is 1.7.0's name for `crew`. This document was printed by ANOTHER
+  // machine — a member the lead walked over ssh — which may still be on 1.7.0 during the roll, so
+  // both names are accepted on read. Only `crew` is ever written.
+  const members = doc.crew ?? doc.pack;
+  return members === undefined ? report : { ...report, crew: members };
 }
 
 /** The kinds this build understands. A member naming anything else reads as unknown, never as a kind. */
@@ -897,7 +905,7 @@ export async function preflight(deps: UpdateCheckDeps, opts: PreflightOptions = 
     ...(crew ?? []).map(topLevelMemberVerdict),
   ]);
   const report: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict, installKind: install.kind, checks };
-  return crew === undefined ? report : { ...report, pack: crew };
+  return crew === undefined ? report : { ...report, crew };
 }
 
 const COLOURS = { green: "[32m", amber: "[33m", red: "[31m" } satisfies Record<Verdict, string>;
@@ -919,10 +927,10 @@ function render(deps: UpdateCheckDeps, report: PreflightReport): void {
   deps.io.out("");
   deps.io.out("instance:");
   for (const c of report.checks) deps.io.out(checkLine(c, colour));
-  if (report.pack === undefined) return;
+  if (report.crew === undefined) return;
   deps.io.out("");
   deps.io.out("crew:");
-  for (const m of report.pack) {
+  for (const m of report.crew) {
     // The kind closes the row when that member named one. It tells the operator at a glance which
     // machines the phone will move and which a package manager owns — and a member that named none
     // (one older than the field, or one this run never reached) reads exactly as it always did.
