@@ -677,7 +677,7 @@ describe("preflight crew — the members of a lead", () => {
     expect(await cmdUpdateCheck(h.deps, ["--json"])).toBe(EXIT.OK);
   });
 
-  test("skew is amber, never red (PACK_PROTOCOL §7.1)", () => {
+  test("skew is amber, never red (CREW_PROTOCOL §7.1)", () => {
     expect(skewCheck("1.0.0", "1.0.0").verdict).toBe("green");
     const skewed = skewCheck("0.32.0", "1.0.0");
     expect(skewed.verdict).toBe("amber");

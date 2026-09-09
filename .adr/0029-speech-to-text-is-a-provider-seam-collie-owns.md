@@ -69,7 +69,7 @@ it says out loud what identity it puts on the wire.**
 - **Lead-only, and the pack wire does not move.** The phone talks to the lead and to nothing else
   (ADR 0011, ADR 0013), and transcription is pane-agnostic — audio is not terminal state. So
   `/api/stt` on the lead serves a reply destined for *any* member's pane.
-  [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) is untouched, `PACK_PROTOCOL_VERSION` does not move, and
+  [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) is untouched, `PACK_PROTOCOL_VERSION` does not move, and
   `scripts/check-pack-wire.sh` (ADR 0025) has nothing to fire on. A peer needs no STT config to
   benefit from the lead's.
 - **Hands-free is a toggle *through* the guarded reply path, never around it.** With it off, the

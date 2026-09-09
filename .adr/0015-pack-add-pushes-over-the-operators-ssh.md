@@ -5,7 +5,7 @@ Status: **Accepted** (2026-08-12)
 Related: [ADR 0014](./0014-promote-is-a-confirm-on-the-lead.md) (the two-machine consent this ADR must
 not weaken) · [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (a peer publishes
 nothing) · [ADR 0006](./0006-update-advances-the-checkout-herdr-installed.md) (the checkout shapes an
-install lands in) · contract: [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §8.2, §8.3
+install lands in) · contract: [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §8.2, §8.3
 
 ## Context
 

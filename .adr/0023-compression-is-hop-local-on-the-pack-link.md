@@ -2,8 +2,8 @@
 
 Status: **Accepted** (2026-08-20)
 
-Protocol: [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §9.1 · Code:
-[`bridge/pack/forward.ts`](../bridge/pack/forward.ts), [`bridge/http-cache.ts`](../bridge/http-cache.ts) ·
+Protocol: [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §9.1 · Code:
+[`bridge/pack/forward.ts`](../bridge/crew/forward.ts), [`bridge/http-cache.ts`](../bridge/http-cache.ts) ·
 Related: [ADR 0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) (the lead consumes a peer's
 Collie API, so a forward is a proxy over two independent HTTP hops)
 

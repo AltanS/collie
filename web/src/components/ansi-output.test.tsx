@@ -549,7 +549,7 @@ describe("terminal mirror image placeholders", () => {
   });
 
   it("falls back to the badge when the image fails to load", () => {
-    // A peer on an older build has no `blobs/<hash>` route and answers 404 (PACK_PROTOCOL §9.1),
+    // A peer on an older build has no `blobs/<hash>` route and answers 404 (CREW_PROTOCOL §9.1),
     // and a blob can also be gone. Either way: the badge, never a broken-image glyph.
     const { container } = render(
       <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,

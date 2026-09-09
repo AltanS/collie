@@ -779,7 +779,7 @@ async function memberChecks(
   }
 }
 
-/** PACK_PROTOCOL §7.1: skew inside a protocol version is tolerated by design, so it is never red. */
+/** CREW_PROTOCOL §7.1: skew inside a protocol version is tolerated by design, so it is never red. */
 export function skewCheck(theirs: string, ours: string): PreflightCheck {
   if (theirs === "") return amber("version", "that member did not report a version");
   if (theirs === ours) return green("version", `runs ${theirs}, the same build as this lead`);

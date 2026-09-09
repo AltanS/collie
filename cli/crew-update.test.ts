@@ -740,7 +740,7 @@ describe("a member's turn: push, restart, verify", () => {
     expect(text(h.io)).toContain("recover with: collie crew update nas");
   });
 
-  test("the abort says why stopping is safe: PACK_PROTOCOL §7.1 tolerates skew", async () => {
+  test("the abort says why stopping is safe: CREW_PROTOCOL §7.1 tolerates skew", async () => {
     const h = harness({
       answers: { "nas.example": { install: { code: 24, stderr: "error: the build failed" } } },
     });
