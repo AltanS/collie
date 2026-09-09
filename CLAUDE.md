@@ -261,11 +261,12 @@ page to be skimmed.
   check green while `bun run build` — and therefore `make deploy` — fails on stale test fixtures.
   Run **both**, every time: `bun run typecheck` at the root *and* `cd web && bun run typecheck`.
   This has shipped a broken tip to `origin/v1` once; it is not theoretical.
-- **Tests:** frontend `cd web && bun run test` (Vitest + jsdom + Testing Library + MSW; no headless
-  browser); backend `bun run test` at the root — Bun's own runner over every pure-logic module in
+- **Tests:** frontend `cd web && bun run test` (Vitest + jsdom + Testing Library + MSW); backend
+  `bun run test` at the root, Bun's own runner over every pure-logic module in
   `bridge/` (access checks, state engine, config, journal adapters, notifications, uploads, …) plus
   `scripts/collie-cli.test.sh`, which drives every verb of the compiled binary in a sandboxed HOME,
-  and `scripts/collie-ctl.test.sh`, which pins the shim's delegation and bootstrap.
+  and `scripts/collie-ctl.test.sh`, which pins the shim's delegation and bootstrap. Neither of these
+  opens a browser, the browser tier is separate, see "Browser tests" below.
   A **pre-push hook** (`scripts/git-hooks/pre-push`) runs **both** before
   every push — override once with `SKIP_TESTS=1 git push` (see *Linting* → escape hatches). The bits that genuinely need `Bun.serve` /
   `Bun.connect` (HTTP handlers, the socket client) stay unit-untested — Vitest-on-Node can't run them,
@@ -298,6 +299,64 @@ page to be skimmed.
   enforces `verbatimModuleSyntax` + `erasableSyntaxOnly` (use `import type`, no parameter-property
   shorthand there). The **bridge** tsconfig does not enable those two — bridge code uses
   parameter-property shorthand by convention; keep each side consistent with itself.
+
+## Browser tests (Tiers 1-3)
+
+A real Chromium opens the app. Vitest still covers every unit test; this layer sits above it and
+tests nothing Vitest already covers.
+
+- **Tier 1** runs in CI, on every push. `cd web && bun run e2e` builds the web bundle, serves it,
+  and drives Chromium at `phone` (390x844) and `tablet` (820x1180), declared as four projects in
+  `web/playwright.config.ts`: `app-phone`, `app-tablet`, `states-phone`, `states-tablet`. The `app`
+  target serves `web/dist` and answers every `/api/*` request from `web/e2e/fixtures/api.ts`; it
+  never touches a live bridge. The `states` target runs the playground on port 5199, the way `make
+  playground` runs it, and answers no API at all. Cases live under `web/e2e/`: today
+  `smoke.spec.ts` and `handles.spec.ts`, plus the named cases proving a hand check,
+  `web/e2e/issue-180.spec.ts` and `web/e2e/m24-crew.spec.ts`, and `web/e2e/service-worker.spec.ts`,
+  which builds two bundles under `web/e2e/.builds/` to prove an old shell picks up a new one.
+- **Tier 2** runs by hand, from the workspace root: `make e2e`. It drives the dev lane's lead,
+  instance `next` on port 8788, reads only, and never restarts or rebuilds anything. Its cases live
+  under `web/e2e/live/`, sharing the harness in `web/e2e/live/live.ts`. It never runs in CI:
+  `web/e2e/live/playwright.config.ts` throws when `CI` is set, so a copied command cannot point a
+  runner at somebody's machine.
+- **Tier 3** is the VM lab: a real three-machine crew and a real update run. It is named here as the
+  end state and is not built.
+
+**Fixtures.** Tier 1 imports the same fixture modules the vitest suite already uses,
+`web/src/test/handlers.ts` and `web/src/playground/fixtures.ts`, and feeds them to `page.route`. A
+case never invents its own payload.
+
+**The selector rule.** A case addresses a role and an accessible name, `getByRole` or `getByText`,
+never a CSS class. No case adds a `data-testid` anywhere in `web/src`. The one exception is the
+playground: every card carries an explicit `data-state` handle, set by a `state` prop on `Card`
+(`web/src/playground/harness.tsx`), never derived from its label.
+
+**The locale rule.** A case that checks translated text pins the locale before the first
+navigation, by writing the bare locale code into `collie:locale:v1` in `localStorage`
+(`web/src/lib/i18n/index.ts`). There is no URL parameter and no `Accept-Language` path. Assert
+against the string in `web/src/lib/i18n/messages/<code>.ts`, never against English's absence.
+
+**Adding a case.**
+- Tier 1, `app` target: add a `.spec.ts` under `web/e2e/`, call `installApiStub(page)` from
+  `web/e2e/fixtures/api.ts` in a `beforeEach`, then `page.goto("/")`.
+- Tier 1, `states` target: add a case to `web/e2e/handles.spec.ts` or a sibling `.spec.ts` matched
+  by `STATES_TEST_MATCH` in `web/playwright.config.ts`, `page.goto("/playground.html")`, and address
+  a card by `[data-state="…"]`.
+- Tier 2: add a `.spec.ts` under `web/e2e/live/`, import `test`/`expect`/`message` from
+  `web/e2e/live/live.ts`. Read only, no pairing, no "Take over", no update, no device revoke, no
+  pane close or rename.
+
+**Reading a failure.** A failed case leaves a screenshot and, on a retry, a trace
+(`screenshot: "only-on-failure"`, `trace: "on-first-retry"` in `web/playwright.config.ts`); CI
+uploads both under `if: failure()`. Open the HTML report (`playwright-report/`, `["html", { open:
+"never" }]`) to see them together with the run log.
+
+**Two prohibitions.** Never assert a pixel, no `toHaveScreenshot`, no baseline images, a screenshot
+is evidence for a person, not a comparison. And never point Tier 2 at anything but the dev lane.
+
+The pre-push hook (`scripts/git-hooks/pre-push`) runs the backend suite and `cd web && bun run
+test`. It does not run the browser suite, a browser download does not belong in a hook that fires
+on every push. `cd web && bun run typecheck` covers `e2e/`; the root `bun run typecheck` does not.
 
 ## Linting — one linter, one config
 

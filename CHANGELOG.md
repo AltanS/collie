@@ -39,6 +39,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - **Every state card in the playground carries a stable handle.** The dev-only states page now renders a `data-state` id on each card, flat kebab-case and unique across the page, so a browser test can address "the update band with a run in flight" without matching the card's prose label. The handle is a required prop, so a new card cannot be added without one, and a unit test refuses a repeat. The controls that switch a card between two states gained accessible names for the same reason. Nothing changes in the shipped bundle: the playground stays out of `web/dist`.
 
+### Docs
+
+- **The new browser suite has a place in the docs.** `CLAUDE.md` says how to run each tier and how to add a case, `CONTRIBUTING.md` tells a contributor CI runs it and they need not, and the workspace README documents `make e2e`.
+
 ## [1.7.0] - 2026-09-09
 
 ### Added
