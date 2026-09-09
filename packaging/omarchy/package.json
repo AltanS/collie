@@ -1,4 +1,5 @@
 {
+  "source": "local",
   "upstream": {
     "github": "AltanS/collie",
     "digests": true,
