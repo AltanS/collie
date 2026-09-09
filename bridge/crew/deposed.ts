@@ -83,7 +83,7 @@ export interface DeposedState {
  */
 export function isDepositionProof(data: TrustStoreData, warrant: Warrant): boolean {
   if (data.crew === null || !isLeading(data)) return false;
-  if (warrant.packId !== data.crew.crewId) return false;
+  if (warrant.crewId !== data.crew.crewId) return false;
   if (warrant.leadMemberId !== data.self.memberId) return false;
   if (warrant.deputyMemberId === null || warrant.deputyFingerprint === null) return false;
   if (warrant.generation < (currentWarrant(data)?.warrant.generation ?? 0)) return false;

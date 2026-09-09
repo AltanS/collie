@@ -155,6 +155,18 @@ describe("environment, state and the API", () => {
     expect(source("./update.ts")).not.toContain("dismissedPackVersion");
   });
 
+  // The warrant's crew id and the standby sync's, both spelled `packId` by 1.7.0 (M27/09). Neither
+  // is translated by the overlap: every 1.8.0 writer emits `crewId` and every 1.8.0 reader accepts
+  // either, which is what covers both skews without a body translation. The fallbacks go in 1.9.0.
+  test("no crew id is read under `packId` in 1.9.0", () => {
+    if (beforeRemoval(9)) return;
+    expect(source("./crew/warrant.ts")).not.toContain("w.packId");
+    expect(source("./crew/trust-store.ts")).not.toContain("legacy.packId");
+    expect(source("./crew/trust-store.ts")).not.toContain("storedWarrantCrewId");
+    expect(source("./crew/standby-devices.ts")).not.toContain("record.packId");
+    expect(source("./crew/standby-devices.ts")).not.toContain("eitherCrewId");
+  });
+
   // The same both-or-neither rule the wire block ends on: while any of this is here, every site
   // carries the marker a reader greps for.
   test("while the overlap exists, every side of it is marked", () => {
@@ -163,6 +175,8 @@ describe("environment, state and the API", () => {
       "./crew/peer-client.ts",
       "./crew/state-migration.ts",
       "./crew/trust-store.ts",
+      "./crew/warrant.ts",
+      "./crew/standby-devices.ts",
       "./server.ts",
       "./update-action.ts",
       "./update.ts",

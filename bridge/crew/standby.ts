@@ -226,7 +226,7 @@ export function warrantNamesSelf(mode: CrewMode, data: TrustStoreData | null, no
   const stored = data.warrant ?? null;
   if (stored === null) return false;
   const w = stored.warrant;
-  if (w.packId !== data.crew.crewId || w.leadMemberId !== lead.memberId) return false;
+  if (w.crewId !== data.crew.crewId || w.leadMemberId !== lead.memberId) return false;
   if (w.deputyMemberId === null || w.deputyMemberId !== data.self.memberId) return false;
   if (warrantExpired(w, now)) return false;
   return verifyWarrantSignature(w, lead.certPem);

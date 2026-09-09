@@ -49,7 +49,7 @@ function named(now = T0) {
  */
 function wireOf(w: Warrant): JsonObject {
   return {
-    packId: w.packId,
+    crewId: w.crewId,
     generation: w.generation,
     deputyMemberId: w.deputyMemberId,
     deputyFingerprint: w.deputyFingerprint,
@@ -344,7 +344,7 @@ describe("checkWarrantPush — the receiving decision", () => {
   });
 
   test("refuses a warrant for another crew", () => {
-    const other = { ...warrant, packId: "crew-2" };
+    const other = { ...warrant, crewId: "crew-2" };
     expect(checkWarrantPush(peer(), push(other), T0)).toEqual({ kind: "refuse", reason: "foreign" });
   });
 
@@ -410,7 +410,7 @@ describe("a warrant from a crew this collie is not in (the incident)", () => {
   test("a FOREIGN warrant is discarded, with the deputy fields that rode with it", () => {
     const { warrant } = named();
     const held = peerStore({
-      warrant: { warrant: { ...warrant, packId: "crew-elsewhere" }, deputyCertPem: null },
+      warrant: { warrant: { ...warrant, crewId: "crew-elsewhere" }, deputyCertPem: null },
       deputy: "nas",
       standbyRoster: [{ memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787" }],
     });
@@ -418,7 +418,7 @@ describe("a warrant from a crew this collie is not in (the incident)", () => {
     expect(change.next.warrant).toBeNull();
     expect(change.next.standbyRoster).toBeNull();
     expect(change.next.deputy).toBeNull();
-    expect(change.result).toEqual({ packId: "crew-elsewhere", generation: warrant.generation });
+    expect(change.result).toEqual({ crewId: "crew-elsewhere", generation: warrant.generation });
     expect(change.audit.action).toBe("crew.warrant.foreign");
   });
 
@@ -556,4 +556,78 @@ test("a follow-driven restart writes no warrant field — the update path never 
   expect(follow).not.toContain("StoredWarrant");
   expect(follow).not.toContain("mintWarrant");
   expect(follow).not.toContain("storeWarrant");
+});
+
+// ── The crew id's field name (M27/09, CREW_PROTOCOL.md §0.1) ────────────────
+// REMOVE_IN_1_9_0 — the `packId` half of this describe block.
+//
+// The warrant's crew id is spelled `crewId` on the version 2 wire and `packId` on 1.7.0's. The rule
+// is one sentence: every 1.8.0 writer emits `crewId`, every 1.8.0 reader accepts either and prefers
+// `crewId`. That covers both skews without the overlap translating a body, because both skews arrive
+// at this same parser.
+//
+// The CANONICAL SIGNED STRING is unaffected. It is positional — domain, crew id, generation, and so
+// on, LF-separated — so it hashes the VALUE and never the key. A warrant a 1.7.0 lead signed
+// therefore still verifies here byte for byte, which the last case proves against a real signature.
+describe("the warrant's crew id, in both spellings", () => {
+  test("the writer emits `crewId` and never `packId`", () => {
+    const { warrant } = named();
+    const document = JSON.stringify(warrant);
+    expect(document).toContain('"crewId"');
+    expect(document).not.toContain('"packId"');
+    expect(warrant.crewId).toBe(CREW.crewId);
+  });
+
+  test("the parser reads a version 2 body", () => {
+    const { warrant } = named();
+    expect(parseWarrant(wireOf(warrant))?.crewId).toBe(CREW.crewId);
+  });
+
+  test("the parser reads a 1.7.0 body, which names the field `packId`", () => {
+    const { warrant } = named();
+    const { crewId, ...rest } = wireOf(warrant);
+    expect(parseWarrant({ ...rest, packId: crewId })?.crewId).toBe(CREW.crewId);
+  });
+
+  test("`crewId` wins when a body carries both — a writer that says crew means crew", () => {
+    const { warrant } = named();
+    expect(parseWarrant({ ...wireOf(warrant), packId: "crew-elsewhere" })?.crewId).toBe(CREW.crewId);
+  });
+
+  test("neither spelling, or an empty one, is still a refusal", () => {
+    const { warrant } = named();
+    const { crewId, ...rest } = wireOf(warrant);
+    expect(crewId).toBe(CREW.crewId);
+    expect(parseWarrant(rest)).toBeNull();
+    expect(parseWarrant({ ...rest, packId: "" })).toBeNull();
+    expect(parseWarrant({ ...rest, packId: 7 })).toBeNull();
+  });
+
+  // The one that matters most: the signature covers the field's VALUE at a fixed position, so a
+  // warrant written under the old key verifies unchanged. If the canonical string had ever keyed off
+  // the field name, this is the case that would go red.
+  test("a warrant stored by 1.7.0 under `packId` still verifies, signature untouched", () => {
+    const { data, warrant } = named();
+    const { crewId, ...rest } = wireOf(warrant);
+    const parsed = parseWarrant({ ...rest, packId: crewId });
+    if (parsed === null) throw new Error("expected the 1.7.0 body to parse");
+    expect(verifyWarrantSignature(parsed, data.self.certPem)).toBe(true);
+    expect(canonicalWarrant(parsed)).toBe(canonicalWarrant(warrant));
+  });
+
+  // And off disk: a 1.7.0 trust store holds the warrant under the old key, and the value has to
+  // arrive on `crewId` or every reader downstream would see `undefined`.
+  test("a 1.7.0 trust store's warrant is read onto `crewId`, and written back that way", () => {
+    const { data, warrant } = named();
+    const stored: StoredWarrant = { warrant, deputyCertPem: material("nas").certPem };
+    const modern = serializeTrustStore({ ...data, warrant: stored });
+    const old = modern.replace(/"crewId":/g, '"packId":').replace(/"pack":/g, '"crew":');
+    expect(old).toContain('"packId":');
+
+    const parsed = parseTrustStore(old);
+    expect(parsed?.warrant?.warrant.crewId).toBe(CREW.crewId);
+    expect(verifyWarrantSignature(parsed!.warrant!.warrant, data.self.certPem)).toBe(true);
+    // The fallback is spent by being read once: the next write carries the crew spelling only.
+    expect(serializeTrustStore(parsed!)).not.toContain('"packId":');
+  });
 });

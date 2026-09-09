@@ -1072,7 +1072,7 @@ describe("crew deputy says the same-origin prerequisite once (RFC §16, decision
 /** The registry the lead has synced here (RFC §6.5), as `standby-devices.json` holds it. */
 function syncedFiles(labels: readonly string[]): SeededFiles {
   const devices = labels.map((label, i) => ({ label, tokenHash: String(i).repeat(64), createdAt: T0 }));
-  const file = { version: 1, packId: "crew-1", leadMemberId: "desk", syncedAt: T0, devices };
+  const file = { version: 1, crewId: "crew-1", leadMemberId: "desk", syncedAt: T0, devices };
   return { [`${STATE}/standby-devices.json`]: `${JSON.stringify(file, null, 2)}\n` };
 }
 

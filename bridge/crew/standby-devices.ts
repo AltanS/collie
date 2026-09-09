@@ -56,7 +56,7 @@ export interface SyncedDevice {
  */
 export interface StandbyDevices {
   readonly version: number;
-  readonly packId: string;
+  readonly crewId: string;
   /** The lead that pushed it. Checked on every read against the lead this collie actually pins. */
   readonly leadMemberId: string;
   readonly syncedAt: number;
@@ -64,8 +64,8 @@ export interface StandbyDevices {
 }
 
 /** An empty synced registry — the state a deputy is in until its lead has pushed one. */
-export function noStandbyDevices(packId: string, leadMemberId: string): StandbyDevices {
-  return { version: STANDBY_DEVICES_VERSION, packId, leadMemberId, syncedAt: 0, devices: [] };
+export function noStandbyDevices(crewId: string, leadMemberId: string): StandbyDevices {
+  return { version: STANDBY_DEVICES_VERSION, crewId, leadMemberId, syncedAt: 0, devices: [] };
 }
 
 // ── Parsing ──────────────────────────────────────────────────────────────────
@@ -114,20 +114,32 @@ export function parseDevices(value: JsonValue | undefined): SyncedDevice[] | nul
 
 /** The body of `POST /pack/v1/pairing` (PACK_PROTOCOL.md §18.14). */
 export interface PairingSync {
-  readonly packId: string;
+  readonly crewId: string;
   readonly leadMemberId: string;
   readonly devices: readonly SyncedDevice[];
+}
+
+/**
+ * REMOVE_IN_1_9_0 — a sync's crew id, under either spelling (§0.1).
+ *
+ * Every 1.8.0 writer emits `crewId`; every 1.8.0 reader accepts both. That covers a 1.8.0 lead's
+ * version 1 listener reading a body a 1.7.0 lead wrote, and it is why the overlap never has to
+ * translate a body.
+ */
+function eitherCrewId(record: JsonObject): JsonValue | undefined {
+  return typeof record.crewId === "string" ? record.crewId : record.packId;
 }
 
 /** Read a pairing-sync body, or `null`. Every field is required — the route is new (§7.1). */
 export function parsePairingSync(value: JsonValue | undefined): PairingSync | null {
   const body = asRecord(value);
   if (body === null) return null;
-  if (typeof body.packId !== "string" || body.packId === "") return null;
+  const crewId = eitherCrewId(body);
+  if (typeof crewId !== "string" || crewId === "") return null;
   if (!isMemberId(body.leadMemberId)) return null;
   const devices = parseDevices(body.devices);
   if (devices === null) return null;
-  return { packId: body.packId, leadMemberId: body.leadMemberId, devices };
+  return { crewId, leadMemberId: body.leadMemberId, devices };
 }
 
 /** Parse the file. `null` for anything this reader does not understand — see {@link parseDevice}. */
@@ -142,13 +154,15 @@ export function parseStandbyDevices(raw: string): StandbyDevices | null {
   }
   const d = asRecord(value);
   if (d === null || d.version !== STANDBY_DEVICES_VERSION) return null;
-  if (typeof d.packId !== "string" || d.packId === "") return null;
+  // REMOVE_IN_1_9_0: the same either-spelling read, on the file a 1.7.0 deputy left on disk.
+  const crewId = eitherCrewId(d);
+  if (typeof crewId !== "string" || crewId === "") return null;
   if (!isMemberId(d.leadMemberId)) return null;
   const devices = parseDevices(d.devices);
   if (devices === null) return null;
   return {
     version: STANDBY_DEVICES_VERSION,
-    packId: d.packId,
+    crewId,
     leadMemberId: d.leadMemberId,
     syncedAt: typeof d.syncedAt === "number" ? d.syncedAt : 0,
     devices,

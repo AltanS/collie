@@ -2313,8 +2313,8 @@ describe("a two-anchored peer requires an attested dial, and gives the deputy ZE
 
 describe("POST /crew/v1/pairing — the lead syncs its registry to the DEPUTY only (RFC §6.5)", () => {
   const DEVICE = { label: "phone", tokenHash: "b".repeat(64), createdAt: T0 };
-  const body = (over: { packId?: string; leadMemberId?: string } = {}) => ({
-    packId: CREW.crewId,
+  const body = (over: { crewId?: string; leadMemberId?: string } = {}) => ({
+    crewId: CREW.crewId,
     leadMemberId: "desk",
     devices: [DEVICE],
     ...over,
@@ -2354,7 +2354,7 @@ describe("POST /crew/v1/pairing — the lead syncs its registry to the DEPUTY on
     const res = (await call(r.handler, CREW_PAIRING_PATH, post(body())))!;
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ devices: 1, applied: true });
-    expect(r.synced).toEqual([{ packId: CREW.crewId, leadMemberId: "desk", devices: [DEVICE] }]);
+    expect(r.synced).toEqual([{ crewId: CREW.crewId, leadMemberId: "desk", devices: [DEVICE] }]);
   });
 
   test("a peer that is NOT the deputy refuses the route outright", async () => {
@@ -2381,7 +2381,7 @@ describe("POST /crew/v1/pairing — the lead syncs its registry to the DEPUTY on
     const res = (await call(r.handler, CREW_PAIRING_PATH, post(body())))!;
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ devices: 1, applied: true });
-    expect(r.synced).toEqual([{ packId: CREW.crewId, leadMemberId: "desk", devices: [DEVICE] }]);
+    expect(r.synced).toEqual([{ crewId: CREW.crewId, leadMemberId: "desk", devices: [DEVICE] }]);
   });
 
   test("the collision is REPORTED on the exchange, so the lead sees it while it is true", async () => {
@@ -2400,7 +2400,7 @@ describe("POST /crew/v1/pairing — the lead syncs its registry to the DEPUTY on
   });
 
   test("a sync for another crew, or claiming another lead, is a 400 and lands nothing", async () => {
-    for (const bent of [body({ packId: "crew-2" }), body({ leadMemberId: "attic" })]) {
+    for (const bent of [body({ crewId: "crew-2" }), body({ leadMemberId: "attic" })]) {
       const r = router(harness(deputy()));
       expect((await call(r.handler, CREW_PAIRING_PATH, post(bent)))!.status).toBe(400);
       expect(r.synced).toEqual([]);

@@ -378,7 +378,7 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
     );
     if (dropped !== null) {
       console.warn(
-        `[crew] discarded a stored warrant for crew "${dropped.packId}" (generation ${dropped.generation}): ` +
+        `[crew] discarded a stored warrant for crew "${dropped.crewId}" (generation ${dropped.generation}): ` +
           "this collie is in a different crew, so that warrant proves nothing here.",
       );
     }
@@ -399,7 +399,7 @@ async function applyDeposition(proof: Warrant | null, reason: string): Promise<D
         .map((p) => ({ memberId: p.memberId, address: p.address })),
       hello: (link) => client.hello(link),
       generation: currentWarrant(data)?.warrant.generation ?? 0,
-      packId: data.crew?.crewId ?? "",
+      crewId: data.crew?.crewId ?? "",
       // The gate's whole deposition test, and it is this collie's own: a warrant it signed itself,
       // for this crew, at a generation not behind the one it holds. Nothing weaker deposes a lead.
       verifies: (warrant) => isDepositionProof(data, warrant),
@@ -1148,7 +1148,7 @@ const standbySurface: CrewRouterDeps["standby"] =
           // has to be able to REMOVE a device here.
           await standbyStore.replace({
             version: STANDBY_DEVICES_VERSION,
-            packId: sync.packId,
+            crewId: sync.crewId,
             leadMemberId: sync.leadMemberId,
             syncedAt: Date.now(),
             devices: sync.devices,
@@ -1365,7 +1365,7 @@ const crewLead = (() => {
         if (held === null || held.crew === null) return null;
         const devices = syncedDevicesOf(pairing.registry());
         return {
-          sync: { packId: held.crew.crewId, leadMemberId: held.self.memberId, devices },
+          sync: { crewId: held.crew.crewId, leadMemberId: held.self.memberId, devices },
           digest: syncDigest(devices),
         };
       },

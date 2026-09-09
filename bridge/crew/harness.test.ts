@@ -941,7 +941,7 @@ describe("a two-anchored peer resolves its caller by signature (§8.1, 2026-08-2
     const leadData = lead.store()!;
     const peerData = peer.store()!;
     const unsigned = {
-      packId: peerData.crew!.crewId,
+      crewId: peerData.crew!.crewId,
       generation: 1,
       deputyMemberId: "deputy",
       deputyFingerprint: deputy.fingerprint,

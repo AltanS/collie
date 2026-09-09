@@ -56,9 +56,9 @@ export interface BootGateDeps {
   /** The warrant generation this machine holds, or `0`. A member reporting a HIGHER one is a claim. */
   readonly generation: number;
   /** This crew's id, so a warrant stamped with another crew's is named as foreign rather than obeyed. */
-  readonly packId: string;
+  readonly crewId: string;
   /**
-   * Does this warrant depose THIS machine? `deposed.ts`'s `isDepositionProof`, injected — packId
+   * Does this warrant depose THIS machine? `deposed.ts`'s `isDepositionProof`, injected — crewId
    * match, `leadMemberId` is this machine, a deputy is named, the generation is not behind, and the
    * signature verifies against this collie's own certificate. Injected rather than imported because
    * the answer is a question about the trust store, and this module is a function of its arguments.
@@ -112,7 +112,7 @@ export async function runBootGate(deps: BootGateDeps): Promise<BootGateVerdict> 
         deposed ??= { kind: "deposed", proof: outcome.warrant, from: link.memberId, reason };
         continue;
       }
-      warnings.push(conflictWarning(link.memberId, outcome.leadMemberId, outcome.warrant, deps.packId));
+      warnings.push(conflictWarning(link.memberId, outcome.leadMemberId, outcome.warrant, deps.crewId));
       continue;
     }
 
@@ -141,17 +141,17 @@ function conflictWarning(
   memberId: string,
   leadMemberId: string,
   warrant: Warrant | null,
-  packId: string,
+  crewId: string,
 ): string {
   const tail =
     "ignoring it and continuing to lead. Only a warrant this lead itself signed can depose it.";
   if (warrant === null) {
     return `"${memberId}" says it follows lead "${leadMemberId}", but sent no warrant to prove it; ${tail}`;
   }
-  if (warrant.packId !== packId) {
+  if (warrant.crewId !== crewId) {
     return (
       `"${memberId}" says it follows lead "${leadMemberId}" under a warrant for crew ` +
-      `"${warrant.packId}", which is not this crew; ignoring it. That machine belongs to another ` +
+      `"${warrant.crewId}", which is not this crew; ignoring it. That machine belongs to another ` +
       "crew. Run `collie crew leave` there, then re-join it."
     );
   }

@@ -126,7 +126,7 @@ function deputyAnchor(data: TrustStoreData, lead: TrustedMember, now: number): s
   const stored = data.warrant ?? null;
   if (stored === null || data.crew === null) return null;
   const w = stored.warrant;
-  if (w.packId !== data.crew.crewId || w.leadMemberId !== lead.memberId) return null;
+  if (w.crewId !== data.crew.crewId || w.leadMemberId !== lead.memberId) return null;
   if (w.deputyMemberId === null || w.deputyFingerprint === null) return null;
   if (w.deputyMemberId === data.self.memberId || w.deputyMemberId === lead.memberId) return null;
   if (stored.deputyCertPem === null || stored.deputyCertPem === "") return null;
