@@ -362,7 +362,7 @@ export function CrewFormation({ status, health, counts, servers, onSelect }: Cre
 function spine(from: FormationNode, to: FormationNode): string {
   const y1 = to.y - NODE_R;
   // The centre-line segment starts BELOW the lead's caption, not at its rim: a vertical line through
-  // the middle of the word "bluefin" muddies both. A peer's line leaves on a bearing and misses the
+  // the middle of a name like "lodge" muddies both. A peer's line leaves on a bearing and misses the
   // caption on its own.
   if (to.x === from.x) return `M ${from.x} ${from.y + NODE_R + CAPTION_CLEAR} L ${to.x} ${y1}`;
   const dx = to.x - from.x;

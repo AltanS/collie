@@ -30,6 +30,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+
+- **The playground's crew fixtures named real machines, not fictional ones.** The lead and
+  deputy are now `lodge` and `workshop`, matching the fixture set's own outbuilding theme
+  (attic, cellar, garage, loft, shed, barn, kennel). These fixtures mount into colliepwa.dev's
+  feature screens, so this stops the real names from reaching new builds of the public site; a
+  dead re-export of the unit-test fixtures was also dropped from this file's public surface,
+  since it carried the same two names and nothing read it.
+
 ## [1.8.0] - 2026-09-09
 
 ### Added

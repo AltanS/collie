@@ -40,7 +40,7 @@ import { FACE_OPTIONS, FACES, setFace, useFace, type FaceId } from "./prefs";
 /** The dashboard's own shape: a name, a state, and two counts that have to line up down the column. */
 const ROWS = [
   {
-    name: "bluefin",
+    name: "lodge",
     tone: "blocked",
     state: "Needs you",
     age: "14m",
@@ -117,7 +117,7 @@ function Specimen({ face }: { face: FaceId }) {
           <span className="truncate text-base">on the mux</span>
         </div>
         <span className="ml-auto rounded-sm bg-muted px-2 py-1 text-[11px] font-medium">
-          bluefin
+          lodge
         </span>
       </div>
 
