@@ -2,6 +2,8 @@ import type { Page, Route } from "@playwright/test";
 
 import type { Locale } from "@/lib/i18n/locale";
 import {
+  fixturePackSnapshot,
+  fixturePackStatus,
   fixtureSnapshot,
   fixtureTranscript,
   paneTextWithDraft,
@@ -137,6 +139,46 @@ export async function installApiStub(page: Page): Promise<void> {
   await page.route("**/api/**", async (route) => {
     await answer(route, new URL(route.request().url()).pathname);
   });
+}
+
+/**
+ * Turn the default solo world into a CREW: three machines in the roster and a census to match.
+ *
+ * `fixturePackSnapshot` and `fixturePackStatus` describe the same three machines
+ * (`src/test/handlers.ts` § the pack fixtures), so the roster the host chrome reads and the census
+ * the crew page reads never disagree about who is out there. Two routes are replaced and nothing
+ * else is: call it AFTER {@link installApiStub}, whose 501 fall-through still covers everything
+ * these two do not name.
+ *
+ * The roster is what the crew chrome is gated on (`components/pack-provider.tsx:118`, `isMultiHost`),
+ * so this is also what makes the footer line and the Settings row exist at all.
+ */
+export async function installCrewWorld(page: Page): Promise<void> {
+  await page.route(
+    (url) => url.pathname === "/api/snapshot",
+    (route) => fulfillJson(route, fixturePackSnapshot),
+  );
+  await page.route(
+    (url) => url.pathname === "/api/pack",
+    (route) => fulfillJson(route, fixturePackStatus),
+  );
+}
+
+/**
+ * Fill a message's `{slot}`s, the way the app's own `t()` does.
+ *
+ * The runtime's `interpolate` (`lib/i18n/index.ts`) is module-private and reads the locale out of
+ * `localStorage`, which does not exist in the runner's Node process — so a case that needs an
+ * expected string with a slot in it imports the TEMPLATE from the dictionary and fills it here.
+ * split/join for the same reason the app uses it: a value carrying `$&` must not become a capture
+ * reference.
+ */
+export function fill(template: string, vars: Readonly<Record<string, string | number>>): string {
+  let out = template;
+  for (const [slot, value] of Object.entries(vars)) {
+    out = out.split(`{${slot}}`).join(String(value));
+  }
+  return out;
 }
 
 /**
