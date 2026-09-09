@@ -2,6 +2,7 @@ import { t, tn } from "./i18n";
 import type {
   DismissScope,
   UpdateInfo,
+  UpdateLinkChange,
   UpdatePeerLeg,
   UpdatePeerLegState,
   UpdateRun,
@@ -454,8 +455,46 @@ export function ribbonView(input: RibbonInput): RibbonView {
   return { kind: "silent" };
 }
 
-/** The band's one line. Separate from the component so the phrasing is testable without a DOM. */
-export function ribbonText(view: RibbonView): string {
+/**
+ * THE SENTENCE ABOUT THE CREW LINK, or null when there is none (M27/06).
+ *
+ * The bridge has already decided whether there is one: `linkChange` is set only when this install
+ * is in a crew and the release ahead speaks a different wire version. Nothing is re-derived here —
+ * a client comparing numbers would be a second opinion about a question the host has answered.
+ *
+ * This is the CARD's cut, whole. The band takes {@link linkChangeBandNote}.
+ */
+export function linkChangeNote(linkChange: UpdateLinkChange | null | undefined): string | null {
+  return linkChange === null || linkChange === undefined ? null : t("settings.updateCard.linkChange");
+}
+
+/**
+ * THE BAND'S CUT OF THE SAME FACT, or null when there is none.
+ *
+ * The band is one truncating row held to forty characters in all seven locales
+ * (`i18n/update-ribbon-budget.test.ts`), and the whole sentence does not fit one. So the row states
+ * what changes and the tap lands on the Updates card, which carries the rest of it above the
+ * confirm. Two keys, one fact, and neither surface truncates the other's words.
+ */
+export function linkChangeBandNote(linkChange: UpdateLinkChange | null | undefined): string | null {
+  return linkChange === null || linkChange === undefined ? null : t("updateRibbon.linkChangeShort");
+}
+
+/**
+ * The band's one line. Separate from the component so the phrasing is testable without a DOM.
+ *
+ * `linkChange` adds ONE sentence, and only to the offer states: those are the two the operator
+ * reads before they confirm, which is the only moment the sentence can change what they do. A run
+ * already in flight is past being told.
+ */
+export function ribbonText(view: RibbonView, linkChange: UpdateLinkChange | null = null): string {
+  const line = ribbonLine(view);
+  if (view.kind !== "available" && view.kind !== "available-packaged") return line;
+  const note = linkChangeBandNote(linkChange);
+  return note === null ? line : `${line} ${note}`;
+}
+
+function ribbonLine(view: RibbonView): string {
   switch (view.kind) {
     case "silent":
       return "";

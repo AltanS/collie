@@ -1235,3 +1235,35 @@ describe("a running update proves it is running", () => {
     expect(await screen.findByText("Restarting. This is not an outage.")).toBeInTheDocument();
   });
 });
+
+// ── THE SENTENCE ABOUT THE CREW LINK (M27/06) ───────────────────────────────────────────────────
+//
+// A release that moves the crew wire is one the operator must take in an order: the lead first, the
+// members after. The card says so before the confirm, and says nothing at all when the reading
+// carries no link change.
+
+describe("update card — the crew link sentence", () => {
+  const LINE = "Changes the crew link. Update the lead first, members follow.";
+
+  it("stands above the action, and stays above the confirm once it is open", async () => {
+    const user = userEvent.setup();
+    const changed = info({ linkChange: { from: 1, to: 2 } });
+    serveCheck(changed, GREEN);
+    renderCard(changed);
+    expect(await screen.findByText(LINE)).toBeInTheDocument();
+    // The button's wording is untouched: what the tap does has not changed.
+    const button = await screen.findByRole("button", { name: "Update to 1.4.0" });
+    await user.click(button);
+    expect(screen.getByText("Update to 1.4.0?")).toBeInTheDocument();
+    expect(screen.getByText(LINE)).toBeInTheDocument();
+    // The confirm's own button keeps its wording too — the sentence sits above it, not in it.
+    expect(screen.getByRole("button", { name: "Yes, update" })).toBeInTheDocument();
+  });
+
+  it("says nothing when the reading carries no link change", async () => {
+    renderCard(info());
+    expect(await screen.findByRole("button", { name: "Update to 1.4.0" })).toBeInTheDocument();
+    expect(screen.queryByText(LINE)).not.toBeInTheDocument();
+    expect(screen.queryByText(/crew link/)).not.toBeInTheDocument();
+  });
+});

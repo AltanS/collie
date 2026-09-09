@@ -433,6 +433,18 @@ export interface CrewMemberStatus {
 }
 
 /**
+ * The crew wire version this release moves to, and the one this install speaks (M27/06).
+ *
+ * `from` is this install's own `CREW_PROTOCOL_VERSION`; `to` is the number the newest release
+ * published in its `collie-release.json` asset. Both are present or the whole field is null: the
+ * notice is about a DIFFERENCE, and half of one says nothing.
+ */
+export interface UpdateLinkChange {
+  from: number;
+  to: number;
+}
+
+/**
  * GET /api/snapshot `update` — whether the running plugin is behind (see bridge/update.ts). Both a
  * newer upstream RELEASE (`releaseAvailable` + `latest`) and a rebuilt-but-not-restarted bridge
  * PROCESS (`bridgeStale`) surface here; the client shows one banner, `bridgeStale` taking precedence.
@@ -526,6 +538,22 @@ export interface UpdateStatus {
    * `interrupted`, never as still in flight.
    */
   run?: UpdateRun;
+  /**
+   * The newest release changes the CREW LINK, and by how much — or null when it does not (M27/06).
+   *
+   * Null on a solo install (there is no link to change), null when the release speaks the wire this
+   * install already speaks, and null when the release says nothing about it: every release before
+   * 1.8.0 published no `collie-release.json`, and a release that cannot be read reads as no change
+   * rather than as a warning nobody can act on.
+   *
+   * It is a generic reading of a NUMBER, never a hard-coded release name, so the release after the
+   * next one says it too without a line of code moving.
+   *
+   * OPTIONAL, and absent rather than null when there is nothing to say — the reason `run` and
+   * `packageCommand` are: a solo instance's snapshot must stay byte-identical to what it always was
+   * (`bridge/solo-baseline.test.ts`), and a solo instance never has a link change.
+   */
+  linkChange?: UpdateLinkChange | null;
 }
 
 /** GET /api/pane/:id — recent terminal output for one agent (ANSI/SGR, rendered colored). */

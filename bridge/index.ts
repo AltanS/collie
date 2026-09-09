@@ -55,7 +55,7 @@ import {
 } from "./crew/deposed.ts";
 import { LeadContact } from "./crew/lead-contact.ts";
 import { deputyAnchorOf, dialTls, peerListenerTls } from "./crew/transport.ts";
-import { commitCrewChange } from "./crew/enrollment.ts";
+import { commitCrewChange, CREW_PROTOCOL_VERSION } from "./crew/enrollment.ts";
 import { CrewLead } from "./crew/lead.ts";
 import { leadLabel } from "./crew/merge.ts";
 import { crewStatusBody } from "./crew/status-wire.ts";
@@ -125,6 +125,7 @@ import { StateEngine } from "./state-engine.ts";
 import {
   bridgeStampSync,
   githubTagsFetcher,
+  releaseReadingFetcher,
   UpdateMonitor,
   UpdateStateStore,
   updateDigestBody,
@@ -656,6 +657,13 @@ const updateMonitor = new UpdateMonitor({
   exeReplaced: selfExeReplaced,
   startupStamp: bridgeStampSync(bridgeDir, rootDir),
   fetchTags: githubTagsFetcher(updateRepo),
+  // The newest release's own reading (M27/06) — one small GET beside the tag list, from the same
+  // repo the release links point at. It answers null for every release that published none.
+  fetchReleaseReading: releaseReadingFetcher(updateRepo),
+  // Both ends of a link change: what this build speaks, and whether this machine is in a crew at
+  // all. The mode was resolved above, at boot, from what the enrolment gate left on disk.
+  crewProtocol: CREW_PROTOCOL_VERSION,
+  crewMode: () => crew.mode,
   bridgeStamp: () => bridgeStampSync(bridgeDir, rootDir),
   store: updateStore,
   now: Date.now,
@@ -667,14 +675,14 @@ const updateMonitor = new UpdateMonitor({
   // saying nothing happened.
   runState: () => readUpdateRun(cfg.stateDir),
   // One push a DAY, naming every release folded into it — the digest decides that; this only renders it.
-  notify: (versions) =>
+  notify: (versions, linkChange) =>
     void push.send({
       type: "update",
       tag: "collie:update",
       // No command in the body — the tap opens Settings (target below), and the update banner / linked
       // release page carry the location-independent Herdr actions. Keeps this off the cwd-dependent path.
       title: "Collie update available",
-      body: updateDigestBody(currentVersion, versions),
+      body: updateDigestBody(currentVersion, versions, linkChange),
       target: "settings",
     }),
 });

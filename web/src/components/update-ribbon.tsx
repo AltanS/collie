@@ -127,7 +127,7 @@ export function UpdateRibbon() {
         className="flex min-w-0 flex-1 items-center gap-2 text-left"
       >
         <skin.Icon className={cn("size-3.5 shrink-0", skin.icon, skin.spin && "animate-spin")} />
-        <span className="min-w-0 flex-1 truncate">{ribbonText(view)}</span>
+        <span className="min-w-0 flex-1 truncate">{ribbonText(view, update?.linkChange ?? null)}</span>
       </button>
       {target !== null && (
         <button

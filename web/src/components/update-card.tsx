@@ -23,6 +23,7 @@ import {
 } from "@/lib/update-crew";
 import {
   clearUpdateStarted,
+  linkChangeNote,
   minutesWord,
   noteUpdateStarted,
   crewMoving,
@@ -207,6 +208,9 @@ export function UpdateCard() {
   const releaseAvailable = snapshot?.releaseAvailable ?? check?.releaseAvailable ?? false;
   const majorAvailable = snapshot?.majorAvailable ?? check?.majorAvailable ?? null;
   const newerVersions = snapshot?.newerVersions ?? check?.newerVersions ?? [];
+  // The one sentence about the crew wire (M27/06), or null. Off the SNAPSHOT first and the card's
+  // own check second, the way every other field on this card is read — never re-derived here.
+  const linkChange = linkChangeNote(snapshot?.linkChange ?? check?.linkChange ?? null);
   const preflight = check?.preflight ?? null;
   const run = freshest(standbyRun, snapshot?.run, check?.run);
   const runState = run?.state;
@@ -460,6 +464,11 @@ export function UpdateCard() {
         <div className="border-t border-border p-4">
           <div className="text-sm font-medium">{confirmTitle(confirming)}</div>
           <p className="mt-1 text-sm text-muted-foreground">{confirmBody(confirming, packageManaged)}</p>
+          {/* ABOVE THE CONFIRM, never beside it (M27/06). The button's wording does not change: what
+              the tap does is the same act, and the sentence is the fact the operator needs in order
+              to decide the ORDER they do it in. A label that carried it would be a label nobody
+              reads twice. */}
+          {linkChange !== null && <p className="mt-2 text-sm text-muted-foreground">{linkChange}</p>}
           <div className="mt-3 flex items-center gap-2">
             <Button size="sm" disabled={moving} onClick={() => void begin(confirming)}>
               {busy && <Loader2 className="size-4 animate-spin" />}
@@ -473,6 +482,9 @@ export function UpdateCard() {
       ) : (
         (action !== "none" || majorAvailable !== null) && (
           <div className="flex flex-col gap-2 border-t border-border p-3">
+            {/* The same sentence, in the state before the confirm is open — so it is on screen when
+                the operator decides to tap at all, not only once they are being asked. */}
+            {linkChange !== null && <p className="text-sm text-muted-foreground">{linkChange}</p>}
             <div className="flex flex-wrap items-center gap-2">
               {/* THE action button. One of the three labels, never two of them, and the label
                   states what the tap will actually do: level this machine, level the crew, or

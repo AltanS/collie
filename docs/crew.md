@@ -195,6 +195,10 @@ no crew, the verb refuses and says where to run it.
 **Update the lead first.** The phone and `collie crew update` already take that order, and 1.8.0
 adds a second reason for it.
 
+You do not have to remember which releases those are. From 1.8.0 the update notice tells you when
+the release ahead changes the crew link, on the band, on the Updates card and in the daily push, and
+it says the same thing there: update the lead first, the members follow.
+
 1.8.0 renames the names a machine reads. The wire paths, the two environment keys, the three state
 files and the journal prefix all say crew now
 ([ADR 0039](../.adr/0039-the-machine-says-crew-too.md)). The link behaves exactly as before, and

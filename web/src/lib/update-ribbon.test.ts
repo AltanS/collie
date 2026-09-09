@@ -7,6 +7,8 @@ import {
   getUpdateStarted,
   noteUpdateStarted,
   REASON_BUDGET,
+  linkChangeBandNote,
+  linkChangeNote,
   managerOf,
   ribbonText,
   CREW_PATIENCE_MS,
@@ -524,5 +526,52 @@ describe("legs come from the live status, not from a record the caller was holdi
     const bare = info({ run: undefined, peers: undefined });
     expect(peerLegsOf(bare, settled).map((l) => l.state)).toEqual(["rolled-back"]);
     expect(crewSettledAt(bare, settled)).toBe(NOW - 60_000);
+  });
+});
+
+// ── THE SENTENCE ABOUT THE CREW LINK (M27/06) ───────────────────────────────────────────────────
+//
+// The bridge decides whether there is one. The band's job is to print it after the offer, and to
+// print nothing at all when the field is absent — which is a solo install, an ordinary release and
+// every release published before the asset existed.
+
+describe("the crew link sentence", () => {
+  /** What the CARD and the push say. */
+  const LINE = "Changes the crew link. Update the lead first, members follow.";
+  /** What the BAND says — the row is held to forty characters, so it states what changes and the
+   *  tap lands on the card for the rest. */
+  const SHORT = "Changes the crew link.";
+
+  it("appends the SHORT form to the offer — the band is one budgeted row", () => {
+    const view = read({ update: info({ linkChange: { from: 1, to: 2 } }) });
+    expect(view).toEqual({ kind: "available", version: "1.5.0" });
+    expect(ribbonText(view, { from: 1, to: 2 })).toBe(`Collie 1.5.0 available. Tap to update. ${SHORT}`);
+    // Never the whole sentence: that one belongs above the confirm, where there is room for it.
+    expect(ribbonText(view, { from: 1, to: 2 })).not.toContain("members follow");
+  });
+
+  it("is absent when the reading carries no link change", () => {
+    const view = read();
+    expect(ribbonText(view)).toBe("Collie 1.5.0 available. Tap to update.");
+    expect(ribbonText(view, null)).not.toContain("crew link");
+    expect(linkChangeBandNote(null)).toBeNull();
+    expect(linkChangeBandNote(undefined)).toBeNull();
+    expect(linkChangeNote(null)).toBeNull();
+    expect(linkChangeNote(undefined)).toBeNull();
+  });
+
+  it("keeps two cuts of one fact — the row's and the card's", () => {
+    expect(linkChangeBandNote({ from: 1, to: 2 })).toBe(SHORT);
+    expect(linkChangeNote({ from: 1, to: 2 })).toBe(LINE);
+  });
+
+  it("rides the packaged offer too — that host still has a crew to level", () => {
+    const view = read({ update: info({ installKind: "packaged", packageCommand: "sudo pacman -Syu" }) });
+    expect(ribbonText(view, { from: 1, to: 2 })).toBe(`Collie 1.5.0 available via pacman. ${SHORT}`);
+  });
+
+  it("says nothing on a state that is past being told — a run already in flight", () => {
+    const view = read({ update: info({ run: run("staging") }) });
+    expect(ribbonText(view, { from: 1, to: 2 })).toBe("Updating to 1.5.0. Building");
   });
 });
