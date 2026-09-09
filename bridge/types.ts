@@ -535,8 +535,6 @@ export interface PaneReadResponse {
   truncated: boolean;
   /** Herdr's monotonic pane revision — passed through for the client's prompt-select race guard. */
   revision: number;
-  /** Image URLs referenced or displayed in this pane's recent terminal scrollback / journal. */
-  images?: readonly string[];
 }
 
 /**

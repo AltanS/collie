@@ -179,6 +179,28 @@ function withScope(path: string, scope?: Scope): string {
   return out;
 }
 
+/**
+ * A journal image reference as a URL this phone may load, or `null` when it is not one.
+ *
+ * ── TWO SHAPES, AND NOTHING ELSE ─────────────────────────────────────────────
+ * A blob path served by the owning collie (`/api/blobs/<64 hex>`) and an inline `data:image/*`
+ * payload. The bridge already refuses everything else (`bridge/journal/pi.ts` § resolveImageUrl),
+ * and this is the second, independent check on the side that would do the fetching: a journal is an
+ * AGENT's output, so a remote URL in it would have the phone call an arbitrary host on the agent's
+ * word. Anything unrecognised answers null and renders as no image.
+ *
+ * ── AND THE BLOB CARRIES ITS HOST ────────────────────────────────────────────
+ * The bytes sit on the machine whose journal named them, so the path takes the scope every other
+ * per-pane request takes and the lead forwards it (PACK_PROTOCOL.md §9.1). A `data:` URL is already
+ * the bytes and is scoped to nothing.
+ */
+const BLOB_REF = /^\/api\/blobs\/[0-9a-f]{64}$/i;
+
+export function imageSrc(ref: string, scope?: Scope): string | null {
+  if (BLOB_REF.test(ref)) return withScope(ref, scope);
+  return ref.startsWith("data:image/") ? ref : null;
+}
+
 // Best-effort human-readable failure detail: the response body if present, else the status text.
 async function errorDetail(res: Response): Promise<string> {
   try {

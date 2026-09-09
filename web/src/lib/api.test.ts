@@ -11,6 +11,7 @@ import {
   fetchPane,
   fetchSnapshot,
   getNotifyPrefs,
+  imageSrc,
   refreshNow,
   sendKeys,
   sendReply,
@@ -375,6 +376,43 @@ describe("api client — scope on the wire", () => {
 // The fetch layer is where liveness is stamped onto the shared lib/connection-health anchor (the same
 // interception point that captures X-Collie-Build). A live snapshot/pane stamps; a 200 that reports
 // the herd link down must NOT — otherwise the "Herdr is down" escalation could never fire.
+// A journal is an AGENT's own output, so an image reference in it is untrusted content. Two shapes
+// are loadable and nothing else — the bridge refuses the rest too, and this is the check on the side
+// that would do the fetching.
+describe("api client — which image references this phone will load", () => {
+  const hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+  it("takes a blob path, and carries the host the pane belongs to", () => {
+    expect(imageSrc(`/api/blobs/${hash}`)).toBe(`/api/blobs/${hash}`);
+    expect(imageSrc(`/api/blobs/${hash}`, { host: "badger" })).toBe(
+      `/api/blobs/${hash}?host=badger`,
+    );
+    expect(imageSrc(`/api/blobs/${hash}`, { host: "badger", session: "demo" })).toBe(
+      `/api/blobs/${hash}?host=badger&session=demo`,
+    );
+  });
+
+  it("takes an inline data image, unscoped — it IS the bytes", () => {
+    expect(imageSrc("data:image/png;base64,AAAA", { host: "badger" })).toBe(
+      "data:image/png;base64,AAAA",
+    );
+  });
+
+  it("refuses a remote URL, a non-image data URL, and a path that is not a blob", () => {
+    for (const ref of [
+      "https://evil.example/x.png",
+      "http://evil.example/x.png",
+      "//evil.example/x.png",
+      "data:text/html;base64,PHNjcmlwdD4=",
+      "/api/blobs/../snapshot",
+      `/api/blobs/${hash}x`,
+      "/api/blobs/1234",
+    ]) {
+      expect(imageSrc(ref)).toBeNull();
+    }
+  });
+});
+
 describe("api client — connection-health stamping", () => {
   it("stamps a live moment on a healthy snapshot (bridge connected)", async () => {
     __resetConnectionHealth(1); // pin the anchor far in the past

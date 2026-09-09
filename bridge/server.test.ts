@@ -3,7 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { updateStartVerdict, type PackUpdateRow } from "./update-action.ts";
 
 import {
-  blobResponse,
+  blobRoute,
+  BLOB_MAX_BYTES,
+  sniffBlobType,
   bridgeConfigBody,
   muxConfigBody,
   muxLogoResponse,
@@ -36,7 +38,8 @@ import {
   type ReplySender,
 } from "./server.ts";
 import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdir, mkdtemp, rm, truncate, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { AuditLog, type AuditEntry } from "./audit.ts";
@@ -793,23 +796,6 @@ describe("paneReadResponse — pane read → REST body", () => {
       text: "hello",
       truncated: true,
       revision: 42,
-    });
-  });
-
-  test("extracts blob references from terminal text", () => {
-    const hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-    const read: MuxGrid = {
-      paneId: "w1:p1",
-      text: `viewed image /api/blobs/${hash} in terminal`,
-      truncated: false,
-      revision: 1,
-    };
-    expect(paneReadResponse("w1:p1", read)).toEqual({
-      paneId: "w1:p1",
-      text: `viewed image /api/blobs/${hash} in terminal`,
-      truncated: false,
-      revision: 1,
-      images: [`/api/blobs/${hash}`],
     });
   });
 
@@ -1854,10 +1840,10 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // The load-bearing claim: `?h=laptop` + `w1:p1` must never be served the DESK's `w1:p1`, and
     // pane ids collide across machines, so a fall-through here is a cross-host write.
     //
-    // All NINE session-scoped routes (tab create, workspace create, launch, this host's launcher
-    // rows, tab action, the pane family, "look now", the worktree listing and the worktree actions)
-    // reach their runtime through the caller's resolver and nothing else.
-    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(9);
+    // All TEN session-scoped routes (tab create, workspace create, launch, this host's launcher
+    // rows, one journal blob, tab action, the pane family, "look now", the worktree listing and the
+    // worktree actions) reach their runtime through the caller's resolver and nothing else.
+    expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(10);
     // Exactly six `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
@@ -2586,27 +2572,111 @@ describe("GET /api/launchers — this host's own rows, home included", () => {
   });
 });
 
-describe("GET /api/blobs/<hash> — content-addressed media response", () => {
-  test("answers 200 with content-type, immutable cache header, and etag", async () => {
-    const bytes = new Uint8Array([1, 2, 3, 4]);
-    const res = blobResponse(bytes, "image/png", null);
+// ── GET /api/blobs/<hash> ────────────────────────────────────────────────────
+// The route in full, against a real blob store on disk: every branch a phone can reach. It takes
+// its roots as an argument for exactly this reason — `Bun.serve` cannot be stood up under
+// `bun test` (CLAUDE.md), so the handler is what is exercised rather than a re-implementation.
+
+const PNG_HEAD = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const JPEG_HEAD = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+
+/** A pi-shaped `sessions/` root with a sibling `blobs/`, which is where a blob is looked for. */
+async function blobStore(): Promise<{ sessions: string; blobs: string; base: string }> {
+  const base = await mkdtemp(join(tmpdir(), "collie-blob-route-"));
+  const sessions = join(base, "sessions");
+  const blobs = join(base, "blobs");
+  await mkdir(sessions, { recursive: true });
+  await mkdir(blobs, { recursive: true });
+  return { sessions, blobs, base };
+}
+
+describe("GET /api/blobs/<hash> — one content-addressed image, off the disk that holds it", () => {
+  const hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+  test("a name that is not a 64-hex digest is refused before any path exists", async () => {
+    const { sessions, base } = await blobStore();
+    for (const bad of ["not-a-hash", "1234", "../../etc/passwd", `${hash}x`]) {
+      const res = await blobRoute(bad, [sessions], null);
+      expect(res.status).toBe(400);
+    }
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("a well-formed hash nothing holds is a 404 — the same answer containment failure gives", async () => {
+    const { sessions, base } = await blobStore();
+    const res = await blobRoute(hash, [sessions], null);
+    expect(res.status).toBe(404);
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("a blob over BLOB_MAX_BYTES is a 413, not a stalled download", async () => {
+    const { sessions, blobs, base } = await blobStore();
+    const path = join(blobs, hash);
+    await writeFile(path, "");
+    // Sparse, so the test costs no 16 MiB of bytes to prove the cap is on the SIZE.
+    await truncate(path, BLOB_MAX_BYTES + 1);
+    const res = await blobRoute(hash, [sessions], null);
+    expect(res.status).toBe(413);
+    expect(await res.text()).toContain("too large");
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("a png answers 200 with its sniffed type, an immutable cache header, and the hash as ETag", async () => {
+    const { sessions, blobs, base } = await blobStore();
+    await Bun.write(join(blobs, hash), PNG_HEAD);
+    const res = await blobRoute(hash, [sessions], null);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("image/png");
     expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
-    const etag = res.headers.get("etag");
-    expect(etag).toBeTruthy();
-    expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+    // The ETag IS the hash: the store is content-addressed, so nothing is re-hashed to learn it.
+    expect(res.headers.get("etag")).toBe(`"${hash}"`);
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(PNG_HEAD);
+    await rm(base, { recursive: true, force: true });
   });
 
-  test("answers 304 with no body when if-none-match matches etag", async () => {
-    const bytes = new Uint8Array([1, 2, 3, 4]);
-    const initial = blobResponse(bytes, "image/png", null);
-    const etag = initial.headers.get("etag")!;
-    const res = blobResponse(bytes, "image/png", etag);
+  test("a jpeg is sniffed from its own bytes — the file has no extension to guess from", async () => {
+    const { sessions, blobs, base } = await blobStore();
+    await Bun.write(join(blobs, hash), JPEG_HEAD);
+    const res = await blobRoute(hash, [sessions], null);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("if-none-match on the hash is a 304 with no body", async () => {
+    const { sessions, blobs, base } = await blobStore();
+    await Bun.write(join(blobs, hash), PNG_HEAD);
+    const res = await blobRoute(hash, [sessions], `"${hash}"`);
     expect(res.status).toBe(304);
-    expect(res.headers.get("etag")).toBe(etag);
-    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("etag")).toBe(`"${hash}"`);
     expect(await res.text()).toBe("");
+    await rm(base, { recursive: true, force: true });
+  });
+
+  test("the magic table names what it knows and guesses at nothing else", () => {
+    expect(sniffBlobType(PNG_HEAD)).toBe("image/png");
+    expect(sniffBlobType(JPEG_HEAD)).toBe("image/jpeg");
+    expect(sniffBlobType(new Uint8Array([0x47, 0x49, 0x46, 0x38]))).toBe("image/gif");
+    const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+    expect(sniffBlobType(webp)).toBe("image/webp");
+    // RIFF without WEBP at offset 8 is some other RIFF container, not a picture.
+    const riff = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x41, 0x56, 0x49, 0x20]);
+    expect(sniffBlobType(riff)).toBe("application/octet-stream");
+    expect(sniffBlobType(new Uint8Array([1, 2, 3, 4]))).toBe("application/octet-stream");
+  });
+
+  // THE GATE, pinned at the registration site. A blob is a picture the pane text already refers to,
+  // so it is a READ: a read-only device and a paired one both pass, exactly as they do for the pane
+  // read and for `history`. `guard`'s own read/write behaviour is asserted above; what this pins is
+  // that the route asks for the read tier and resolves through the host gate, so a `?host=` blob is
+  // fetched from the member whose journal named it rather than off the lead's own disk.
+  test("the route is gated as a READ and resolves through the host gate", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    const start = src.indexOf("const blobMatch = pathname.match(BLOB_ROUTE);");
+    expect(start).toBeGreaterThan(0);
+    const block = src.slice(start, src.indexOf("\n    }", start));
+    expect(block).toContain('caller.gate("read")');
+    expect(block).not.toContain('caller.gate("write")');
+    expect(block).toContain("await caller.resolve()");
   });
 });
 

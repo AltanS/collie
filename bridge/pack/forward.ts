@@ -61,6 +61,11 @@ const FORWARDABLE: readonly RegExp[] = [
   // lead's. Both ride the pack link exactly like `workspace` does.
   /^launch$/,
   /^launchers$/,
+  // A blob is bytes on ONE machine's disk: the journal that named it is that member's journal, and
+  // the lead holds no copy. So a `?host=` blob read is proxied byte for byte exactly like
+  // `history` (PACK_PROTOCOL.md §9.1). The hash is matched as an opaque segment, mirroring
+  // `BLOB_ROUTE` in bridge/server.ts one-for-one — `forward.test.ts` pins that correspondence.
+  /^blobs\/[^/]+$/,
 ];
 
 /** The inverse of {@link packRouteFor}, for the peer dispatching a pack route into its own routes. */
@@ -81,6 +86,9 @@ export function forwardKind(route: string): ForwardKind {
   // this lead has not heard from in a while, never refused before it is tried (§10.3's "a READ to a
   // dead member is still attempted").
   if (route === "launchers") return "read";
+  // A blob read serves a file off the owning member's disk and changes nothing there — the same
+  // shape as `pane/:id/history`, and attempted against a stale member for the same reason (§10.3).
+  if (route.startsWith("blobs/")) return "read";
   if (!route.startsWith("pane/")) return "write";
   const action = route.split("/")[2];
   return action === undefined || action === "history" ? "read" : "write";
@@ -109,6 +117,7 @@ export function forwardAuditAction(route: string): string | null {
   // target host"), and the peer's own audit line is the accurate record of which one ran.
   if (route === "launch") return "launch";
   if (route === "launchers") return null;
+  if (route.startsWith("blobs/")) return null; // a read
   if (route.startsWith("tab/")) return route.endsWith("/close") ? "tab.close" : "tab.rename";
   const action = route.split("/")[2];
   if (action === undefined || action === "history") return null;

@@ -1015,6 +1015,21 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     expect(document.activeElement).toBe(field);
   });
 
+  // FIND HIGHLIGHTS THE MIRROR, and that only works because the query reaches AnsiOutput. The bar
+  // owns the field, the match count and prev/next, so every one of those can look right while the
+  // one thing find is for — seeing the hit in the output — is off. That is exactly what happened
+  // when the `query` prop was dropped from the mirror: the bar counted matches it never marked.
+  it("passes the find query down to the mirror, so a hit is highlighted", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat({ text: "alpha needle omega" });
+    expect(container.querySelector("[data-find-match]")).toBeNull();
+    await openFind(user);
+    await user.type(screen.getByRole("textbox", { name: /find in output/i }), "needle");
+    const hit = container.querySelector("[data-find-match]");
+    expect(hit).not.toBeNull();
+    expect(hit!.textContent).toBe("needle");
+  });
+
   // The takeover happens INSIDE the one hoisted shell (app-header.tsx): the header element itself is
   // mounted above the outlet and is not the route's to replace. Opening and closing find therefore
   // swaps the row's CONTENTS and nothing else — the same <header>, the same prerelease strip, the

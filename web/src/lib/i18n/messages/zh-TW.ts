@@ -592,6 +592,12 @@ export const zhTW: Dictionary = {
   "transcript.agentFallback": "Agent",
   "transcript.outputTruncated": "… 輸出已截斷",
   "transcript.truncated": "… 已截斷",
+  "transcript.toolImageAlt": "工具輸出",
+  "transcript.attachmentAlt": "附件",
+
+  // --- mirror (terminal graphics in the pane mirror) ---
+  "mirror.imageAlt": "終端機圖形",
+  "mirror.imageBadge": "[圖片]",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "剛剛",

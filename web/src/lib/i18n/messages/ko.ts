@@ -607,6 +607,12 @@ export const ko: Dictionary = {
   "transcript.agentFallback": "에이전트",
   "transcript.outputTruncated": "… 출력 일부 생략",
   "transcript.truncated": "… 생략됨",
+  "transcript.toolImageAlt": "도구 출력",
+  "transcript.attachmentAlt": "첨부 파일",
+
+  // --- mirror (terminal graphics in the pane mirror) ---
+  "mirror.imageAlt": "터미널 그래픽",
+  "mirror.imageBadge": "[이미지]",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "방금 전",

@@ -93,7 +93,6 @@ export function DetailRoute() {
       text={pane.text}
       requestedLines={pane.requestedLines}
       revision={pane.revision}
-      images={pane.images}
       device={root.device}
       bridge={root.bridge}
       error={root.error}

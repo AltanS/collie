@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 import type { ComponentProps } from "react";
 
@@ -451,8 +451,16 @@ describe("clickable links in the mirror", () => {
   });
 });
 
+// ── Terminal graphics (Kitty placeholders) ───────────────────────────────────
+// The terminal painted the pixels itself and left a rectangle of U+10EEEE cells behind, so what
+// reaches the mirror is placeholder characters (lib/mirror-images.ts's header). These pin the four
+// things that make the card stand in for them honestly: one card per image however many cells it
+// covers, a badge rather than a wrong picture, a row's own text survives, and — the one that bit —
+// every character the card replaced still counts in the find/link coordinate space.
+
 describe("terminal mirror image placeholders", () => {
   const KITTY_PLACEHOLDER = "\u{10EEEE}\u{10EEEE}\u{10EEEE}";
+  const BLOB = "/api/blobs/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
   it("renders a placeholder badge when images are absent", () => {
     const { container } = render(<AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} />);
@@ -460,12 +468,65 @@ describe("terminal mirror image placeholders", () => {
   });
 
   it("renders an inline image when images are provided", () => {
-    const imageUrl = "/api/blobs/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     const { container } = render(
-      <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[imageUrl]} />,
+      <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,
     );
     const img = container.querySelector("img");
     expect(img).not.toBeNull();
-    expect(img?.getAttribute("src")).toBe(imageUrl);
+    expect(img?.getAttribute("src")).toBe(BLOB);
+  });
+
+  it("is ONE card for one image, however many cells it covers", () => {
+    const rows = `${KITTY_PLACEHOLDER}\n${KITTY_PLACEHOLDER}\n${KITTY_PLACEHOLDER}`;
+    const { container } = render(<AnsiOutput text={`header\n${rows}\nfooter`} images={[BLOB]} />);
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+  });
+
+  it("reports the cluster count, which is what makes the caller's fetch on-demand", () => {
+    const onImageClusterCount = vi.fn();
+    const two = `${KITTY_PLACEHOLDER}\n${KITTY_PLACEHOLDER}\nbetween\n${KITTY_PLACEHOLDER}`;
+    render(<AnsiOutput text={two} onImageClusterCount={onImageClusterCount} />);
+    expect(onImageClusterCount).toHaveBeenLastCalledWith(2);
+    onImageClusterCount.mockClear();
+    render(<AnsiOutput text="no images here" onImageClusterCount={onImageClusterCount} />);
+    expect(onImageClusterCount).toHaveBeenLastCalledWith(0);
+  });
+
+  it("shows a badge for the cluster the ordering could not match, never a repeated image", () => {
+    // Aligned from the END: the one image belongs to the LAST cluster, and the first gets the badge.
+    const two = `${KITTY_PLACEHOLDER}\nbetween\n${KITTY_PLACEHOLDER}`;
+    const { container } = render(<AnsiOutput text={two} images={[BLOB]} />);
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+    expect(container.textContent).toContain("[Image]");
+  });
+
+  it("keeps the text on a row that holds both a placeholder and real text", () => {
+    const { container } = render(
+      <AnsiOutput text={`Screenshot: ${KITTY_PLACEHOLDER}\nafter`} images={[BLOB]} />,
+    );
+    // The sentence survives, the card renders beside it, and the placeholder glyphs are gone.
+    expect(container.textContent).toContain("Screenshot:");
+    expect(container.querySelectorAll("img")).toHaveLength(1);
+    expect(container.textContent).not.toContain("\u{10EEEE}");
+  });
+
+  it("advances the find offset over the rows the card replaced", () => {
+    // The bug this pins: the cluster loop used to skip the placeholder lines WITHOUT advancing the
+    // shared offset, so every find match and every autolink below an image was addressed a
+    // screenful early and highlighted the wrong characters.
+    const text = `aaa\n${KITTY_PLACEHOLDER}\nbbbbbbb needle ccc`;
+    const { container } = render(<AnsiOutput text={text} query="needle" currentMatch={0} />);
+    const hit = container.querySelector("[data-find-match]")!;
+    expect(hit.textContent).toBe("needle");
+  });
+
+  it("advances the autolink offset over them too", () => {
+    const url = "https://herdr.dev/x";
+    const text = `aaa\n${KITTY_PLACEHOLDER}\nsee ${url} now`;
+    const { container } = render(<AnsiOutput text={text} />);
+    // Two anchors: the image card's own, and the autolink. The autolink's text must be the URL.
+    const link = [...container.querySelectorAll("a")].find((a) => a.querySelector("img") === null)!;
+    expect(link.textContent).toBe(url);
+    expect(link.getAttribute("href")).toBe(url);
   });
 });

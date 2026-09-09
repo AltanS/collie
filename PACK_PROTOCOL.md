@@ -195,6 +195,7 @@ the same handlers. There is no second handler set, no second semantic, and no He
 | `POST` | `/pack/v1/workspace` | `POST /api/workspace` (`:225`) | forwarded |
 | `POST` | `/pack/v1/launch` | `POST /api/launch` | forwarded — additive-optional (§7.1). Runs an allowlisted `launchers.toml` row **on the peer**, from that peer's own rows; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `GET` | `/pack/v1/launchers` | `GET /api/launchers` | forwarded — additive-optional (§7.1), same pairing as above. Rows must come from the host that runs them, so this is a READ crossing the link rather than a second copy of `config`'s `launchers` field, which is why that field was retired from `/api/config` in the same change |
+| `GET` | `/pack/v1/blobs/:hash` | `GET /api/blobs/:hash` | proxied byte-for-byte — additive-optional (§7.1). The image an agent's own journal named, off the disk that holds it; a lead that predates it never calls it, and a peer that predates it answers 404 to a lead that does |
 | `GET` | `/pack/v1/config` | `GET /api/config` (`:288`) | consumed by the lead, not proxied |
 | `GET` | `/pack/v1/hello` | — (new) | consumed by the lead: liveness + version + member id |
 
@@ -1010,6 +1011,17 @@ status, body bytes, `content-type`, and — critically — **`etag`**.
   silently-different value across a version skew at worst.
 - The 304-skips-the-transfer win (`bridge/server.ts:460-462`) is preserved end to end, which is the
   entire reason proxying is byte-for-byte rather than parse-and-re-emit.
+
+**A blob read is proxied byte for byte, exactly like `history`** *(added 2026-09-09)*. `GET
+/api/blobs/<hash>` serves one content-addressed image out of a pi/omp journal's blob store, and that
+file sits on the machine whose journal named it — the lead holds no copy and must not fetch one, for
+the same reason it does not read a peer's session log. So `?host=` forwards the read and the peer's
+answer is re-emitted unchanged, ETag included; the ETag here IS the hash, because the store is
+content-addressed, which makes a proxied `304` as strong as a local one. The addition is
+additive-optional (§7.1): **a lead without the route never calls it, and a peer without the route
+answers `404` to a lead that does** — the same shape a phone gets from a solo collie that holds no
+such blob, so the client's rendering of "no image here" covers both without a version check.
+`PACK_PROTOCOL_VERSION` does not move.
 
 The phone's per-pane ETag/body cache is keyed by `(host, session, paneId)` (§4) so a `w1:p1` on one
 host can never 304 into another host's mirror — the same failure the session component already

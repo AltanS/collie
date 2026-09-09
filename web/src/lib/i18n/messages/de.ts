@@ -617,6 +617,12 @@ export const de: Dictionary = {
   "transcript.agentFallback": "Agent",
   "transcript.outputTruncated": "… Ausgabe gekürzt",
   "transcript.truncated": "… gekürzt",
+  "transcript.toolImageAlt": "Werkzeugausgabe",
+  "transcript.attachmentAlt": "Anhang",
+
+  // --- mirror (terminal graphics in the pane mirror) ---
+  "mirror.imageAlt": "Terminal-Grafik",
+  "mirror.imageBadge": "[Bild]",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "gerade eben",

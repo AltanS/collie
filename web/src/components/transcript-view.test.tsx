@@ -293,3 +293,55 @@ describe("TranscriptView — system notes", () => {
     expect(screen.getByText(/System/)).toBeInTheDocument();
   });
 });
+
+// An image in a turn is a picture of something, and on a phone the only way to see it properly is
+// to open it — so it is an ANCHOR, not a bare <img>, which also makes it keyboard reachable. The
+// alt text comes from the dictionary, and the reference is one `imageSrc` will load or nothing.
+describe("TranscriptView — images", () => {
+  const BLOB = `/api/blobs/${"a".repeat(64)}`;
+
+  it("renders an attachment as a link to the blob, with alt text from the dictionary", () => {
+    render(<TranscriptView entries={[turn({ parts: [{ kind: "image", url: BLOB }] })]} />);
+    const img = screen.getByAltText("Attachment");
+    expect(img.closest("a")?.getAttribute("href")).toBe(BLOB);
+  });
+
+  it("carries the host the pane belongs to into the blob URL", () => {
+    render(
+      <TranscriptView
+        entries={[turn({ parts: [{ kind: "image", url: BLOB }] })]}
+        scope={{ host: "badger" }}
+      />,
+    );
+    expect(screen.getByAltText("Attachment").closest("a")?.getAttribute("href")).toBe(
+      `${BLOB}?host=badger`,
+    );
+  });
+
+  it("renders a tool result's image under its own alt text, once the call is expanded", async () => {
+    const user = userEvent.setup();
+    render(
+      <TranscriptView
+        entries={[
+          turn({
+            role: "assistant",
+            parts: [
+              { kind: "tool", name: "screenshot", summary: "", result: { text: "", imageUrl: BLOB } },
+            ],
+          }),
+        ]}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: /screenshot/ }));
+    expect(screen.getByAltText("Tool output")).toBeInTheDocument();
+  });
+
+  it("renders nothing for a reference this phone will not load", () => {
+    render(
+      <TranscriptView
+        entries={[turn({ parts: [{ kind: "image", url: "https://evil.example/x.png" }] })]}
+      />,
+    );
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+});

@@ -9,6 +9,7 @@ import {
   forwardAuditAction,
   forwardHeaders,
   forwardKind,
+  forwardPaneId,
   forwardParams,
   forwardToPeer,
   packRouteFor,
@@ -142,6 +143,17 @@ describe("which routes cross a link", () => {
     expect(forwardAuditAction("launchers")).toBeNull();
   });
 
+  test("a blob crosses the link as a READ — the bytes live on the member that named them", () => {
+    const hash = "a".repeat(64);
+    expect(packRouteFor(`/api/blobs/${hash}`)).toBe(`blobs/${hash}`);
+    expect(apiPathFor(`blobs/${hash}`)).toBe(`/api/blobs/${hash}`);
+    // A GET that changes nothing, so a stale member is still asked (§10.3) and nothing is audited.
+    expect(forwardKind(`blobs/${hash}`)).toBe("read");
+    expect(forwardAuditAction(`blobs/${hash}`)).toBeNull();
+    // No pane id to name: a blob is addressed by content, not by terminal.
+    expect(forwardPaneId(`blobs/${hash}`)).toBeUndefined();
+  });
+
   test("the routes §5 excludes are excluded — and stay that way by construction", () => {
     // Push subscriptions live on the lead, notification policy is one pack-wide setting the lead
     // owns, update checking is per-machine, `config` is consumed not proxied, `snapshot` is merged.
@@ -182,6 +194,13 @@ describe("which routes cross a link", () => {
     const tabActions = tab.match(alternation)![1]!.split("|").toSorted();
     expect(tabActions).toEqual(["close", "rename"]);
     for (const action of tabActions) expect(packRouteFor(`/api/tab/x/${action}`)).toBe(`tab/x/${action}`);
+    // The blob route is the same pairing: server.ts matches the hash as one opaque segment, so this
+    // grammar must too — a tighter one here would make a hash the phone can fetch locally
+    // unfetchable across a link, and a looser one would forward a shape no peer route answers.
+    const blob = server.match(/^const BLOB_ROUTE = (.+);$/m)![1]!;
+    expect(blob).toBe("/^\\/api\\/blobs\\/([^/]+)$/");
+    expect(packRouteFor("/api/blobs/x")).toBe("blobs/x");
+    expect(packRouteFor("/api/blobs/x/y")).toBeNull();
   });
 
   test("read vs write is decided exactly as server.ts decides it — history is a READ", () => {
@@ -786,6 +805,29 @@ describe("journal, uploads and state stay host-local", () => {
     expect(await res.text()).toBe(transcript);
     expect(res.headers.get("etag")).toBe('"peer-history"');
   });
+  test("a peer-scoped blob read is one HTTP call, and the peer's bytes and ETag ride through", async () => {
+    const hash = "b".repeat(64);
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const { transport, calls } = transportOf(() =>
+      ok(
+        new Response(png, {
+          status: 200,
+          headers: { "content-type": "image/png", etag: `"${hash}"` },
+        }),
+      ),
+    );
+    const [req, url] = get(`/api/blobs/${hash}?host=laptop`);
+    const res = await forward(req, url, { transport });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.route).toBe(`blobs/${hash}`);
+    expect(calls[0]!.params).toEqual({});
+    expect(res.headers.get("content-type")).toBe("image/png");
+    // The ETag IS the hash, and the lead re-emits it rather than recomputing anything (§9.1).
+    expect(res.headers.get("etag")).toBe(`"${hash}"`);
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(png);
+  });
+
   // ── What §5 does NOT carry, pinned (M22/04) ───────────────────────────────
   //
   // Measured on 2026-09-08 with a tmux peer under a herdr lead: the read-only mux conformance set,

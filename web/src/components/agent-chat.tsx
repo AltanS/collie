@@ -18,6 +18,7 @@ import { useLaunchers } from "@/lib/launchers";
 import { buzz } from "@/lib/haptics";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useLatestReply } from "@/hooks/use-latest-reply";
+import { useMirrorImages } from "@/hooks/use-mirror-images";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
 import { isConnecting } from "@/lib/connection";
@@ -99,8 +100,6 @@ interface AgentChatProps {
   requestedLines?: number;
   /** The pane's `revision` for `text` — the race guard checks a tapped menu against this. */
   revision?: number;
-  /** Image URLs referenced in this pane. */
-  images?: readonly string[];
   /** Per-device auth from the snapshot; an unauthorised device drops the composer to read-only. */
   device?: DeviceAuth;
   // Global connection state, used HERE to dim the stale status dot while the data on screen is not
@@ -182,7 +181,6 @@ export function AgentChat({
   text,
   requestedLines = 0,
   revision = 0,
-  images,
   device,
   bridge = "connected",
   error = false,
@@ -721,6 +719,17 @@ export function AgentChat({
     () => (latestReply ? locateReply(display, latestReply) : null),
     [latestReply, display],
   );
+
+  // Terminal graphics: the mirror tells us how many image placeholders it is showing, and only a
+  // count that GREW costs a journal read. The pane read carries no image field and the bridge does
+  // no journal work on the poll path — see hooks/use-mirror-images.ts for the whole cadence.
+  const [imageClusterCount, setImageClusterCount] = useState(0);
+  const mirrorImages = useMirrorImages({
+    paneId,
+    scope,
+    enabled: historyAvailable && imageClusterCount > 0,
+    clusterCount: imageClusterCount,
+  });
   // Find searches the mirror, so while it is open the mirror is WHOLE and the card stands down —
   // otherwise a hit inside the reply would be unfindable in the one surface find can highlight.
   const clippedReply = placement?.fit === "clipped" && !findOpen ? latestReply : null;
@@ -1747,13 +1756,14 @@ export function AgentChat({
                       agent={agent?.agent}
                       open={replyOpen}
                       onToggle={() => setCollapsedReply(replyOpen ? clippedReply.uuid : null)}
+                      scope={scope}
                     />
                   )}
                   <AnsiOutput
                     text={display}
                     wrap={prefs.wrap}
-                    images={images}
                     fontSize={prefs.fontSize}
+                    query={findOpen ? findQuery : ""}
                     currentMatch={findOpen ? currentMatch : -1}
                     onMatchCount={findOpen ? handleMatchCount : undefined}
                     agent={grammarsOn ? agent?.agent : undefined}
@@ -1764,6 +1774,8 @@ export function AgentChat({
                     onMenuAction={handleMenuAction}
                     promptDisabled={readOnly || gone}
                     hideLeadingLines={hiddenMirrorLines}
+                    images={mirrorImages}
+                    onImageClusterCount={setImageClusterCount}
                   />
                 </>
               ) : (

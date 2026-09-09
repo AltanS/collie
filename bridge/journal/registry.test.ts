@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { adapterFor, buildJournalRegistry, journalAgents, KNOWN_HARNESS_NAMES } from "./registry.ts";
+import {
+  adapterFor,
+  AGENT_ALIASES,
+  buildJournalRegistry,
+  journalAgents,
+  KNOWN_HARNESS_NAMES,
+} from "./registry.ts";
 
 // The registry is the SINGLE decision site for "which agents have a journal". These tests pin the
 // two properties that keep it from rotting: keys come from the adapters themselves, and a hostile
@@ -32,8 +38,10 @@ describe("adapterFor", () => {
     expect(adapterFor(registry, agent)?.agent).toBe(agent);
   });
 
-  test("resolves pi for omp agent alias", () => {
-    expect(adapterFor(registry, "omp")?.agent).toBe("pi");
+  // An alias is a second NAME for one adapter, never a sixth adapter — derived from the map so a
+  // new pair is covered the day it is added.
+  test.each(Object.entries(AGENT_ALIASES))("resolves the %s alias to %s", (alias, canonical) => {
+    expect(adapterFor(registry, alias)?.agent).toBe(canonical);
   });
 
   test("an agent with no journal is undefined, not a throw", () => {
@@ -63,6 +71,9 @@ describe("the frontend mirror", () => {
     // The `new Set([…])` literal alone — the prose around it names agents too ("claude-code").
     const literal = /new Set\(\[([^\]]*)\]\)/.exec(source)?.[1] ?? "";
     const listed = [...literal.matchAll(/"([a-z][a-z0-9-]*)"/g)].map((m) => m[1]);
-    expect(listed.toSorted()).toEqual([...KNOWN_HARNESS_NAMES, "omp"].toSorted());
+    // DERIVED, never patched by hand: the browser's set is the adapters plus every alias name, so
+    // adding either on this side fails here until the frontend follows.
+    const expected = [...KNOWN_HARNESS_NAMES, ...Object.keys(AGENT_ALIASES)];
+    expect(listed.toSorted()).toEqual(expected.toSorted());
   });
 });

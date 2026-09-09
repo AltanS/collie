@@ -567,11 +567,15 @@ describe("solo zero-tax — routes", () => {
       "/",
       // `focus` is the pane action that moves the OPERATOR's own terminal, and it is named here for
       // the reason every other one is: a route arrives on purpose or it does not arrive.
+      // One content-addressed image out of a pi/omp journal's blob store — a SOLO route that
+      // legitimately extends this list, named here rather than exempted. Session-scoped and
+      // read-gated like the pane read beside it, so a `?host=` call forwards to the member whose
+      // journal named the file (PACK_PROTOCOL.md §9.1).
+      "/^\\/api\\/blobs\\/([^/]+)$/",
       "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|focus))?$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open))?$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktrees$/",
-      "/api/blobs/*",
       "/api/config",
       // Device pairing (bridge/pairing.ts) — a SOLO feature that legitimately extends this list.
       // It is named here, not exempted: the guard's job is that a route arrives on purpose.

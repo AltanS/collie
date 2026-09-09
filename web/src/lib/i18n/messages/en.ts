@@ -638,6 +638,12 @@ export const en = {
   "transcript.agentFallback": "agent",
   "transcript.outputTruncated": "… output truncated",
   "transcript.truncated": "… truncated",
+  "transcript.toolImageAlt": "Tool output",
+  "transcript.attachmentAlt": "Attachment",
+
+  // --- mirror (terminal graphics in the pane mirror) ---
+  "mirror.imageAlt": "Terminal graphics",
+  "mirror.imageBadge": "[Image]",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "just now",

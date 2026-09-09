@@ -459,6 +459,9 @@ export function resolveJournalRoots(
       join(env.CODEX_HOME ?? join(home, ".codex"), "sessions"),
       env,
     ),
+    // TWO defaults, one adapter: Oh My Pi ships as `omp` and writes pi's own format into
+    // `~/.omp/agent/sessions`, so a host that runs it has a second home for the same log format.
+    // `PI_CODING_AGENT_DIR`, when the operator set it, is the one answer and neither is added.
     pi: envRoots(
       "COLLIE_PI_ROOT",
       env.PI_CODING_AGENT_DIR

@@ -9,6 +9,7 @@ import {
   parsePiTranscript,
   PiTranscriptSource,
   resolveBlobPath,
+  resolveImageUrl,
 } from "./pi.ts";
 
 /**
@@ -95,6 +96,17 @@ describe("parsePiTranscript", () => {
     expect(entries[0]!.parts).toEqual([
       { kind: "image", url: "data:image/png;base64,abcd1234", mimeType: "image/png" },
     ]);
+  });
+
+  // A journal is an AGENT's own output, so a URL in it is untrusted content. A remote one would
+  // make the phone fetch an arbitrary host on the agent's word, from a page inside the tailnet.
+  test("a remote image URL contributes no part at all", () => {
+    for (const data of ["http://evil.example/x.png", "https://evil.example/x.png"]) {
+      const entries = parsePiTranscript(
+        row("a", { role: "assistant", content: [{ type: "image", data, mimeType: "image/png" }] }),
+      );
+      expect(entries).toEqual([]);
+    }
   });
 
   test("a toolResult with image content maps to imageUrl on the tool part", () => {
@@ -337,6 +349,38 @@ describe("PiTranscriptSource — several sessions roots", () => {
     const { base, first, second, logB } = await fixture();
     expect(await new PiTranscriptSource([first, second]).resolve({ kind: "id", value: B })).toBe(logB);
     await rm(base, { recursive: true, force: true });
+  });
+});
+
+describe("resolveImageUrl — only this collie's own blobs and inline images", () => {
+  const hash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+  test("a blob reference becomes this collie's own route", () => {
+    expect(resolveImageUrl(`blob:sha256:${hash}`)).toBe(`/api/blobs/${hash}`);
+  });
+
+  test("a blob reference whose hash is not 64 hex is dropped", () => {
+    expect(resolveImageUrl("blob:sha256:../../etc/passwd")).toBeNull();
+    expect(resolveImageUrl("blob:sha256:1234")).toBeNull();
+  });
+
+  test("an inline data image rides through, and a non-image data URL does not", () => {
+    expect(resolveImageUrl("data:image/webp;base64,AAAA")).toBe("data:image/webp;base64,AAAA");
+    expect(resolveImageUrl("data:text/html;base64,PHNjcmlwdD4=")).toBeNull();
+  });
+
+  test("http and https are dropped — a remote URL would make the phone call an arbitrary host", () => {
+    expect(resolveImageUrl("http://evil.example/x.png", "image/png")).toBeNull();
+    expect(resolveImageUrl("https://evil.example/x.png", "image/png")).toBeNull();
+  });
+
+  test("anything else is dropped, and a bare payload needs its own image mime type", () => {
+    expect(resolveImageUrl("file:///etc/passwd")).toBeNull();
+    expect(resolveImageUrl("//evil.example/x.png")).toBeNull();
+    // No mime type is NOT guessed at as png: a guess here is a data URL nobody declared.
+    expect(resolveImageUrl("AAAA")).toBeNull();
+    expect(resolveImageUrl("AAAA", "text/plain")).toBeNull();
+    expect(resolveImageUrl("AAAA", "image/gif")).toBe("data:image/gif;base64,AAAA");
   });
 });
 

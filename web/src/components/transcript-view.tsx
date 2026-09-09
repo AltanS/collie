@@ -4,7 +4,9 @@ import { ChevronRight, Info, TriangleAlert, User, Wrench } from "lucide-react";
 import { AgentIcon } from "@/components/agent-icon";
 import { MarkdownText } from "@/components/markdown-text";
 import { cn } from "@/lib/utils";
+import { imageSrc } from "@/lib/api";
 import { splitHighlight } from "@/lib/transcript-search";
+import type { Scope } from "@/lib/scope";
 import type { TranscriptEntry, TranscriptPart } from "@/lib/types";
 import { getLocaleSnapshot, t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -59,11 +61,53 @@ function Highlight({ text, query }: { text: string; query: string }) {
 }
 
 /**
+ * One image out of the journal: a picture an agent attached, spoke, or a tool returned.
+ *
+ * It is an ANCHOR to the bytes, not a bare `<img>`. That is what makes it keyboard reachable and
+ * long-pressable — the same affordance the mirror's image card has — and it is the only way to see
+ * a screenshot at full size on a phone.
+ *
+ * `imageSrc` decides whether the reference is loadable AT ALL (`lib/api.ts`): a blob path on the
+ * host the pane belongs to, or inline bytes, and nothing else. A journal is an agent's own output,
+ * so a reference it refuses renders nothing rather than a broken image.
+ */
+function JournalImage({
+  ref_,
+  alt,
+  scope,
+}: {
+  ref_: string;
+  alt: string;
+  scope?: Scope;
+}) {
+  const src = imageSrc(ref_, scope);
+  if (src === null) return null;
+  return (
+    <a href={src} target="_blank" rel="noopener noreferrer" className="inline-block cursor-zoom-in">
+      <img
+        src={src}
+        alt={alt}
+        className="max-h-96 w-auto max-w-full rounded border object-contain shadow-xs"
+        loading="lazy"
+      />
+    </a>
+  );
+}
+
+/**
  * A tool call: its one-line summary always, its output behind a tap. Collapsed by default because a
  * thread is mostly tool traffic (705 of 914 turns in a real session) and expanding it all would bury
  * the prose you opened the history to read.
  */
-function ToolPart({ part, query }: { part: Extract<TranscriptPart, { kind: "tool" }>; query: string }) {
+function ToolPart({
+  part,
+  query,
+  scope,
+}: {
+  part: Extract<TranscriptPart, { kind: "tool" }>;
+  query: string;
+  scope?: Scope;
+}) {
   const [open, setOpen] = useState(false);
   const result = part.result;
   const isError = result?.isError === true;
@@ -98,13 +142,8 @@ function ToolPart({ part, query }: { part: Extract<TranscriptPart, { kind: "tool
       {open && result && (
         <div className="border-t">
           {result.imageUrl && (
-            <div className="p-2 border-b bg-background/50">
-              <img
-                src={result.imageUrl}
-                alt="Tool output"
-                className="max-h-96 w-auto max-w-full rounded border object-contain"
-                loading="lazy"
-              />
+            <div className="border-b bg-background/50 p-2">
+              <JournalImage ref_={result.imageUrl} alt={t("transcript.toolImageAlt")} scope={scope} />
             </div>
           )}
           {result.text && (
@@ -121,18 +160,13 @@ function ToolPart({ part, query }: { part: Extract<TranscriptPart, { kind: "tool
   );
 }
 
-function Part({ part, query }: { part: TranscriptPart; query: string }) {
+function Part({ part, query, scope }: { part: TranscriptPart; query: string; scope?: Scope }) {
   // Tool output is COMMAND output, not prose — it stays verbatim in a monospace block (see ToolPart).
-  if (part.kind === "tool") return <ToolPart part={part} query={query} />;
+  if (part.kind === "tool") return <ToolPart part={part} query={query} scope={scope} />;
   if (part.kind === "image") {
     return (
       <div className="my-1.5">
-        <img
-          src={part.url}
-          alt="Attachment"
-          className="max-h-96 w-auto max-w-full rounded border object-contain shadow-xs"
-          loading="lazy"
-        />
+        <JournalImage ref_={part.url} alt={t("transcript.attachmentAlt")} scope={scope} />
       </div>
     );
   }
@@ -157,12 +191,15 @@ function Turn({
   agent,
   showHeader,
   query,
+  scope,
 }: {
   entry: TranscriptEntry;
   agent?: string;
   /** False for a turn continuing the same speaker's run — see the grouping note in TranscriptView. */
   showHeader: boolean;
   query: string;
+  /** Which machine + session this pane lives on — an image's bytes live there, not on the lead. */
+  scope?: Scope;
 }) {
   const time = clockTime(entry.ts);
 
@@ -177,7 +214,7 @@ function Turn({
           {time && ` · ${time}`}
         </div>
         {entry.parts.map((part, i) => (
-          <Part key={i} part={part} query={query} />
+          <Part key={i} part={part} query={query} scope={scope} />
         ))}
       </div>
     );
@@ -201,7 +238,7 @@ function Turn({
       )}
       <div className="space-y-1.5">
         {entry.parts.map((part, i) => (
-          <Part key={i} part={part} query={query} />
+          <Part key={i} part={part} query={query} scope={scope} />
         ))}
       </div>
     </div>
@@ -213,6 +250,7 @@ export function TranscriptView({
   agent,
   query = "",
   focusedUuid,
+  scope,
 }: {
   entries: TranscriptEntry[];
   /** The pane's agent name, for the per-turn brand icon. */
@@ -221,6 +259,9 @@ export function TranscriptView({
   query?: string;
   /** The turn a find/jump landed on; ringed so you can see where you were sent. */
   focusedUuid?: string;
+  /** Which machine + session this pane lives on. An image's bytes sit on the host whose journal
+   *  named them, so a blob URL takes the same scope every other per-pane request takes. */
+  scope?: Scope;
 }) {
   useLocale();
   // Consecutive turns from the same speaker are GROUPED — only the first of a run carries the
@@ -260,7 +301,7 @@ export function TranscriptView({
                 <div className="h-px flex-1 bg-border" />
               </div>
             )}
-            <Turn entry={entry} agent={agent} showHeader={showHeader} query={query} />
+            <Turn entry={entry} agent={agent} showHeader={showHeader} query={query} scope={scope} />
           </div>
         );
       })}

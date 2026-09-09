@@ -53,6 +53,16 @@ const BLOB_HASH_RE = /^[0-9a-f]{64}$/i;
 export function isBlobHash(value: string): boolean {
   return BLOB_HASH_RE.test(value);
 }
+
+/** How pi names a blob inside its own log — `blob:sha256:<64 hex>`. Spelled once. */
+const BLOB_REF_PREFIX = "blob:sha256:";
+
+/** The route that serves those bytes back (`bridge/server.ts` § BLOB_ROUTE). Spelled once. */
+const BLOB_ROUTE_PREFIX = "/api/blobs/";
+
+/** Base64, with the whitespace a wrapped payload carries. A closed charset, never an escaper. */
+const BASE64_PAYLOAD_RE = /^[A-Za-z0-9+/=\s]+$/;
+
 /** Flatten a pi content list into text, keeping only `text` blocks. */
 function textBlocks(content: JsonValue | undefined): string {
   if (typeof content === "string") return content;
@@ -68,27 +78,43 @@ function textBlocks(content: JsonValue | undefined): string {
     .join("\n");
 }
 
-/** Convert a pi image block or url into a client-renderable URL. */
-function resolveImageUrl(data: string, mimeType?: string): string {
-  if (data.startsWith("blob:sha256:")) {
-    const hash = data.slice("blob:sha256:".length);
-    return `/api/blobs/${hash}`;
+/**
+ * An image block's `data` as a URL the phone may load, or `null` when it is not one.
+ *
+ * TWO SHAPES ARE ALLOWED AND NOTHING ELSE: this collie's own `/api/blobs/<64 hex>` route, and a
+ * `data:image/*` payload the log carried inline. A journal is an AGENT's output, so `data` is
+ * untrusted content: an `http://`/`https://` value would make the phone fetch an arbitrary host on
+ * the agent's word — a request the operator never made, from a page inside the tailnet — so it is
+ * DROPPED rather than passed through. `resolveImageUrl` returning null is how a block with nothing
+ * renderable simply produces no part.
+ */
+export function resolveImageUrl(data: string, mimeType?: string): string | null {
+  if (data.startsWith(BLOB_REF_PREFIX)) {
+    const hash = data.slice(BLOB_REF_PREFIX.length);
+    return isBlobHash(hash) ? `${BLOB_ROUTE_PREFIX}${hash}` : null;
   }
-  if (data.startsWith("data:") || data.startsWith("http://") || data.startsWith("https://")) {
-    return data;
-  }
-  const mime = mimeType || "image/png";
-  return `data:${mime};base64,${data}`;
+  // A `data:` value is taken as written, so only an image one is taken at all — `data:text/html`
+  // would be a document, not a picture.
+  if (data.startsWith("data:")) return data.startsWith("data:image/") ? data : null;
+  // Anything left is bare base64, which the block's own `mimeType` names. An absent or non-image
+  // mime type is not guessed at: png was a guess, and a guess here is a data URL nobody declared.
+  if (mimeType === undefined || !mimeType.startsWith("image/")) return null;
+  // And it must actually BE base64. Without this a `mimeType: "image/png"` beside a `data` of
+  // `http://evil.example/x.png` came back out as a data URL wrapping a remote address, which is the
+  // http case sneaking through the branch that was meant to have dropped it.
+  if (!BASE64_PAYLOAD_RE.test(data)) return null;
+  return `data:${mimeType};base64,${data}`;
 }
 
-/** Extract first image URL from a content block list. */
-function extractImageUrl(content: JsonValue | undefined): { url: string; mimeType?: string } | undefined {
+/** The first renderable image URL in a content block list, or undefined when there is none. */
+function extractImageUrl(content: JsonValue | undefined): string | undefined {
   if (!Array.isArray(content)) return undefined;
   for (const b of content) {
-    if (b !== null && typeof b === "object" && !Array.isArray(b) && b.type === "image" && typeof b.data === "string") {
-      const mimeType = typeof b.mimeType === "string" ? b.mimeType : undefined;
-      return { url: resolveImageUrl(b.data, mimeType), mimeType };
-    }
+    if (b === null || typeof b !== "object" || Array.isArray(b)) continue;
+    if (b.type !== "image" || typeof b.data !== "string") continue;
+    const mimeType = typeof b.mimeType === "string" ? b.mimeType : undefined;
+    const url = resolveImageUrl(b.data, mimeType);
+    if (url !== null) return url;
   }
   return undefined;
 }
@@ -146,8 +172,7 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
       const target = pendingTools.get(id);
       const resultText = stripAnsi(textBlocks(m.content));
       const isError = m.isError === true;
-      const img = extractImageUrl(m.content);
-      const imageUrl = img?.url;
+      const imageUrl = extractImageUrl(m.content);
       if (target) {
         // Mutated in place — the part already sits in an emitted entry, which is why results attach
         // without reordering anything.
@@ -186,7 +211,14 @@ export function parsePiTranscript(text: string): TranscriptEntry[] {
           parts.push({ kind: "thinking", ...clamp(stripAnsi(b.thinking), MAX_TEXT_CHARS) });
       } else if (b.type === "image" && typeof b.data === "string") {
         const mimeType = typeof b.mimeType === "string" ? b.mimeType : undefined;
-        parts.push({ kind: "image", url: resolveImageUrl(b.data, mimeType), mimeType });
+        const url = resolveImageUrl(b.data, mimeType);
+        // A reference this build refuses to load contributes NO part, rather than a broken <img>.
+        // Assigned, never conditionally spread: an unnamed mime type leaves the key OFF.
+        if (url !== null) {
+          const part: Extract<TranscriptPart, { kind: "image" }> = { kind: "image", url };
+          if (mimeType !== undefined) part.mimeType = mimeType;
+          parts.push(part);
+        }
       } else if (b.type === "toolCall") {
         const part: Extract<TranscriptPart, { kind: "tool" }> = {
           kind: "tool",

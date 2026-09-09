@@ -38,6 +38,7 @@ import { adapterFor, buildJournalRegistry } from "./journal/registry.ts";
 import { TranscriptStore } from "./journal/store.ts";
 import type { JournalAdapter } from "./journal/types.ts";
 import { isBlobHash, resolveBlobPath } from "./journal/pi.ts";
+import { statFile } from "./journal/files.ts";
 import {
   bearerToken,
   normalizeLabel,
@@ -200,6 +201,17 @@ const MAX_HISTORY_LIMIT = 5000;
 // A tab supports rename + close — an action group like the pane route. The `/api/tab` POST above
 // (create) is an exact match on `/api/tab`, so it never collides with this `/api/tab/<id>/<action>`.
 const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
+
+/**
+ * `GET /api/blobs/<hash>` — one content-addressed image out of a pi/omp journal's blob store.
+ *
+ * The hash is matched as an opaque segment here and validated by {@link isBlobHash} in the handler,
+ * exactly as `PANE_ROUTE` matches a pane id and `decodeURIComponent` interprets it: a route grammar
+ * says where a request goes, never whether its argument is well formed. `bridge/pack/forward.ts`
+ * mirrors this shape one-for-one (`forward.test.ts` pins the correspondence), because a blob lives
+ * on the machine whose journal named it and is therefore a forwarded READ.
+ */
+const BLOB_ROUTE = /^\/api\/blobs\/([^/]+)$/;
 
 /**
  * Worktree routes, all hung off the SPACE that asked (ADR 0032).
@@ -389,26 +401,84 @@ export function operatorFontResponse(
 }
 
 /**
- * `GET /api/blobs/<hash>` response constructor.
+ * The ceiling on one blob the bridge will serve: 16 MiB.
  *
- * Pure and exported so status, caching, and content-type headers can be tested without standing up
- * Bun.serve.
+ * A blob is a screenshot an agent took, and a phone on a cellular link is the reader — so the number
+ * is the point at which sending it costs more than it is worth, not a disk limit. It is also a bound
+ * on what a single request can pull off this machine: the store is content-addressed, so a caller
+ * who has a hash can ask for those bytes, and nothing else caps the size of a file an agent wrote
+ * there. Above it the answer is a 413, which says "too big" rather than timing out mid-stream.
  */
-export function blobResponse(
-  bytes: Uint8Array<ArrayBuffer>,
-  contentType: string,
+export const BLOB_MAX_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Magic bytes → content type, as a table.
+ *
+ * **`Bun.file(path).type` is useless here and that is not a Bun fault:** a blob's name IS its
+ * sha-256 digest, so the file has no extension, and every extension-driven guess lands on
+ * `application/octet-stream`. The bytes are the only evidence there is, so they are what is read.
+ *
+ * `offset` exists for the one format whose marker is not at the start: WebP writes `RIFF` at 0 and
+ * `WEBP` at 8. An unmatched header stays `application/octet-stream` — the browser then declines to
+ * render it, which is the right answer for a file that is not a picture.
+ */
+const BLOB_MAGIC: readonly { readonly type: string; readonly offset: number; readonly bytes: readonly number[] }[] = [
+  { type: "image/png", offset: 0, bytes: [0x89, 0x50, 0x4e, 0x47] },
+  { type: "image/jpeg", offset: 0, bytes: [0xff, 0xd8, 0xff] },
+  { type: "image/gif", offset: 0, bytes: [0x47, 0x49, 0x46] },
+  { type: "image/webp", offset: 0, bytes: [0x52, 0x49, 0x46, 0x46] },
+  { type: "image/webp", offset: 8, bytes: [0x57, 0x45, 0x42, 0x50] },
+];
+
+/** How many leading bytes {@link sniffBlobType} needs — the longest marker's end. */
+const BLOB_SNIFF_BYTES = 12;
+
+/** The content type of a blob, read off its leading bytes. Pure + exported so the table is tested. */
+export function sniffBlobType(head: Uint8Array): string {
+  const matches = (m: { offset: number; bytes: readonly number[] }): boolean =>
+    m.bytes.every((b, i) => head[m.offset + i] === b);
+  // WebP needs BOTH of its rows, so it is asked for as a pair rather than by the first row alone.
+  if (BLOB_MAGIC.filter((m) => m.type === "image/webp").every(matches)) return "image/webp";
+  const hit = BLOB_MAGIC.find((m) => m.type !== "image/webp" && matches(m));
+  return hit?.type ?? "application/octet-stream";
+}
+
+/**
+ * `GET /api/blobs/<hash>` — the bytes a pi/omp journal named, served back to the phone.
+ *
+ * Exported and taking its roots as an argument so every branch below is exercised under `bun test`
+ * without standing up Bun.serve (CLAUDE.md): a refused hash, a hash nothing holds, a file over the
+ * cap, and the content type of a png and a jpeg.
+ *
+ * **The ETag IS the hash.** The store is content-addressed, so the name of the file already is a
+ * strong validator of its bytes; re-hashing them with `computeEtag` would read the whole file to
+ * learn something the URL said. That is also why the body is `Bun.file(real)` rather than
+ * `await file.bytes()` — the runtime streams it, and a 16 MiB screenshot is never held whole in this
+ * process.
+ */
+export async function blobRoute(
+  hash: string,
+  sessionRoots: readonly string[],
   ifNoneMatch: string | null,
-): Response {
-  const etag = computeEtag(bytes);
+): Promise<Response> {
+  if (!isBlobHash(hash)) return text("invalid blob hash", 400);
+  const real = await resolveBlobPath(hash, sessionRoots);
+  if (real === null) return text("blob not found", 404);
+  const meta = await statFile(real);
+  if (meta === null) return text("blob not found", 404); // vanished between resolve and stat
+  if (meta.size > BLOB_MAX_BYTES) {
+    return text(`blob too large (max ${String(Math.round(BLOB_MAX_BYTES / (1024 * 1024)))} MB)`, 413);
+  }
+  const etag = `"${hash}"`;
   const headers = {
-    "content-type": contentType,
+    "content-type": "application/octet-stream",
     "cache-control": "public, max-age=31536000, immutable",
     etag,
   };
-  if (notModified(ifNoneMatch, etag)) {
-    return secure(new Response(null, { status: 304, headers }));
-  }
-  return secure(new Response(bytes, { headers }));
+  if (notModified(ifNoneMatch, etag)) return secure(new Response(null, { status: 304, headers }));
+  const file = Bun.file(real);
+  headers["content-type"] = sniffBlobType(new Uint8Array(await file.slice(0, BLOB_SNIFF_BYTES).arrayBuffer()));
+  return secure(new Response(file, { headers }));
 }
 
 export function bridgeConfigBody(opts: {
@@ -851,50 +921,26 @@ export function startServer(opts: {
       if (rt instanceof Response) return rt;
       return launchersRoute(operatorLaunchers, req.headers.get("accept-encoding"));
     }
-    // ── Blobs: content-addressed image and media store (pi / omp journal blobs) ──
-    if (pathname.startsWith("/api/blobs/") && req.method === "GET") {
+    // ── Blobs: the bytes a pi/omp journal named (`resolveImageUrl` in journal/pi.ts) ──
+    //
+    // A READ, and gated as one: it hands back a picture an agent already put in its own log, so a
+    // read-only or unpaired-but-permitted device may see it exactly as it may see the pane text
+    // that mentions it. It is session-scoped so `caller.resolve()` forwards a `?host=` call to the
+    // member whose disk holds the file — the lead has no copy of a peer's blob (§9.1).
+    const blobMatch = pathname.match(BLOB_ROUTE);
+    if (blobMatch && req.method === "GET") {
       const denied = caller.gate("read");
       if (denied) return denied;
-      const raw = pathname.slice("/api/blobs/".length);
+      const rt = await caller.resolve();
+      if (rt instanceof Response) return rt;
       let hash: string;
       try {
-        hash = decodeURIComponent(raw);
+        hash = decodeURIComponent(blobMatch[1]!);
       } catch {
         return text("malformed URL", 400);
       }
-      if (!isBlobHash(hash)) return text("invalid blob hash", 400);
-      const real = await resolveBlobPath(hash, cfg.journalRoots.pi);
-      if (real === null) return text("blob not found", 404);
-      const file = Bun.file(real);
-      const buf = await file.slice(0, 16).arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let contentType = file.type;
-      if (!contentType || contentType === "application/octet-stream") {
-        if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
-          contentType = "image/png";
-        } else if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
-          contentType = "image/jpeg";
-        } else if (
-          bytes[0] === 0x52 &&
-          bytes[1] === 0x49 &&
-          bytes[2] === 0x46 &&
-          bytes[3] === 0x46 &&
-          bytes[8] === 0x57 &&
-          bytes[9] === 0x45 &&
-          bytes[10] === 0x42 &&
-          bytes[11] === 0x50
-        ) {
-          contentType = "image/webp";
-        } else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
-          contentType = "image/gif";
-        } else {
-          contentType = "application/octet-stream";
-        }
-      }
-      const content = await file.bytes();
-      return blobResponse(content, contentType, req.headers.get("if-none-match"));
+      return blobRoute(hash, cfg.journalRoots.pi, req.headers.get("if-none-match"));
     }
-
 
     // ── Worktrees: list / create / open / remove, all scoped to a space (ADR 0032) ──
     const worktreeListMatch = pathname.match(WORKTREE_LIST_ROUTE);
@@ -973,7 +1019,7 @@ export function startServer(opts: {
       const device = isRead ? null : caller.device();
       const audit_ = caller.audit;
 
-      if (!action && req.method === "GET") return readPane(herdr, cfg, journals, transcripts, rt.engine, paneId, url, req);
+      if (!action && req.method === "GET") return readPane(herdr, cfg, paneId, url, req);
       if (action === "history" && req.method === "GET")
         return paneHistory(cfg, journals, transcripts, rt.engine, paneId, url, req);
       if (action === "reply" && req.method === "POST") return replyPane(herdr, cfg, paneId, req, audit_, device, session);
@@ -1893,9 +1939,6 @@ export function startupWarnings(cfg: Config): string[] {
 async function readPane(
   herdr: MuxAdapter,
   cfg: Config,
-  journals: Record<string, JournalAdapter> | null,
-  transcripts: TranscriptStore | null,
-  engine: StateEngine,
   paneId: string,
   url: URL,
   req: Request,
@@ -1914,18 +1957,9 @@ async function readPane(
     // to `strip` would move someone's screen on every revalidate — see the adapter's `readGrid`.
     const read = await herdr.readGrid(paneId, { scope: "recent", lines, styling: "preserve" });
     if (!read.ok) return text(`${herdr.mux} read failed: ${read.detail}`, 502);
-    let extraImages: string[] | undefined;
-    if (cfg.transcript && transcripts && journals) {
-      const { agents, shellPanes } = engine.current();
-      const pane = [...agents, ...shellPanes].find((a) => a.paneId === paneId);
-      if (pane?.agentSession) {
-        const adapter = adapterFor(journals, journalAgentOf(pane));
-        if (adapter) {
-          extraImages = await transcripts.getLatestImages(adapter, pane.agentSession, 20);
-        }
-      }
-    }
-    const data = paneReadResponse(paneId, read.value, extraImages);
+    const data = paneReadResponse(paneId, read.value);
+    // ETag is derived from the serialised body — if content hasn't changed the client gets a 304
+    // and skips the whole transfer (the big win on a cellular link).
     const bodyStr = JSON.stringify(data);
     const etag = computeEtag(bodyStr);
     // Tag pane polls too (both the 304 and the full body), so a client that only has a pane open —
@@ -1957,27 +1991,8 @@ async function readPane(
  * (the client's prompt-select race guard depends on it) is covered by the bridge unit tests without
  * standing up Bun.serve / a socket.
  */
-export function paneReadResponse(
-  paneId: string,
-  read: MuxGrid,
-  extraImages?: readonly string[],
-): PaneReadResponse {
-  const images: string[] = [];
-  if (extraImages) images.push(...extraImages);
-  // Detect any 64-char SHA256 blob hashes mentioned in terminal text if present
-  const hashMatches = read.text.matchAll(/\/api\/blobs\/([0-9a-f]{64})/gi);
-  for (const m of hashMatches) {
-    const url = `/api/blobs/${m[1]}`;
-    if (!images.includes(url)) images.push(url);
-  }
-  const res: PaneReadResponse = {
-    paneId,
-    text: read.text,
-    truncated: read.truncated,
-    revision: read.revision,
-  };
-  if (images.length > 0) res.images = images;
-  return res;
+export function paneReadResponse(paneId: string, read: MuxGrid): PaneReadResponse {
+  return { paneId, text: read.text, truncated: read.truncated, revision: read.revision };
 }
 
 /**

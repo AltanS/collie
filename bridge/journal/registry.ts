@@ -31,7 +31,8 @@ export interface JournalRoots {
   claude: readonly string[];
   /** Codex's `$CODEX_HOME/sessions`. */
   codex: readonly string[];
-  /** pi's `$PI_CODING_AGENT_DIR/sessions`. */
+  /** pi's `$PI_CODING_AGENT_DIR/sessions`, or both of `~/.omp/agent/sessions` (Oh My Pi, which
+   *  writes pi's format under its own name) and `~/.pi/agent/sessions` when that is unset. */
   pi: readonly string[];
   /** OpenCode's data dir — the SQLite `opencode.db` lives at its top level. */
   opencode: readonly string[];
@@ -57,18 +58,42 @@ export function buildJournalRegistry(roots: JournalRoots): Record<string, Journa
 }
 
 /**
+ * Agent names that are a SECOND NAME for a registered adapter, not an adapter of their own.
+ *
+ * Oh My Pi ships as `omp` and reports itself that way, and its session log is pi's log in pi's
+ * format — one adapter, two names an agent may answer to. It is a map rather than a branch in
+ * {@link adapterFor} because both sides need to read it: the registry resolves a name through it,
+ * and `web/src/lib/journal-agents.ts` mirrors the same pairs so the browser knows an `omp` pane
+ * COULD have a transcript (registry.test.ts fails when the two drift).
+ *
+ * An alias never adds an adapter, so it is absent from {@link KNOWN_HARNESS_NAMES}: that list
+ * answers "which adapters does this build have", and the answer is still five.
+ */
+export const AGENT_ALIASES = { omp: "pi" } as const;
+
+/**
+ * The same pairs as a Map, which is how {@link adapterFor} asks.
+ *
+ * A Map rather than a property read because the key is an agent name that ORIGINATES in an agent's
+ * own report: `Map.get` cannot be answered by `Object.prototype`, so there is no inherited key to
+ * guard against and no assertion to write.
+ */
+const ALIAS_LOOKUP: ReadonlyMap<string, string> = new Map(Object.entries(AGENT_ALIASES));
+
+/**
  * The adapter for `agent`, or undefined when the agent has no journal.
  *
  * `Object.hasOwn` rather than a truthy lookup, so an inherited Object.prototype key ("toString",
  * "constructor", "__proto__", …) arriving as an agent name can't resolve to a non-adapter and crash
- * the read path. The agent string comes from Herdr, but it originates in an agent's own report.
+ * the read path. The agent string comes from Herdr, but it originates in an agent's own report — and
+ * the alias lookup is asked the same way, for the same reason.
  */
 export function adapterFor(
   registry: Record<string, JournalAdapter>,
   agent: string | undefined,
 ): JournalAdapter | undefined {
   if (agent === undefined) return undefined;
-  const canonical = agent === "omp" ? "pi" : agent;
+  const canonical = ALIAS_LOOKUP.get(agent) ?? agent;
   return Object.hasOwn(registry, canonical) ? registry[canonical] : undefined;
 }
 

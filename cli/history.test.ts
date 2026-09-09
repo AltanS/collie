@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { context, fakeExec, fakeFiles, HOME, type Scripted, type SeededFiles } from "./fakes.ts";
 import type { Finding } from "./finding.ts";
@@ -116,7 +117,12 @@ describe("readJournalRoots", () => {
   test("resolves every harness's root from the given env and home, exactly as the bridge does", () => {
     const files = fakeFiles({ [`${CLAUDE_ROOT}/-home-pat-repo/9f3c.jsonl`]: "{}" });
     const readings = readJournalRoots({}, HOME, files);
-    expect(readings.map((r) => r.agent).toSorted()).toEqual([...JOURNAL_AGENTS].toSorted());
+    // One row per ROOT, grouped under the agent that owns it — so an agent with several homes
+    // appears once per home and not once in total. pi has two by default (`~/.omp/agent/sessions`
+    // is Oh My Pi's, `~/.pi/agent/sessions` is pi's own), and both are that one agent's.
+    expect([...new Set(readings.map((r) => r.agent))].toSorted()).toEqual([...JOURNAL_AGENTS].toSorted());
+    const piRoots = readings.filter((r) => r.agent === "pi").map((r) => r.path);
+    expect(piRoots).toEqual([join(HOME, ".omp", "agent", "sessions"), join(HOME, ".pi", "agent", "sessions")]);
     const claude = readings.find((r) => r.agent === "claude");
     expect(claude?.path).toBe(CLAUDE_ROOT);
     expect(claude?.exists).toBe(true);
@@ -245,7 +251,8 @@ describe("the history section", () => {
   test("no journal root on disk warns, and a present-but-unlistable one says which", async () => {
     const none = await run({ files: {} });
     expect(none.get("journal-roots")?.status).toBe("warn");
-    expect(none.get("journal-roots")?.detail).toContain("none of the 5 journal roots is there");
+    // SIX, not five: five agents, and pi has two roots (the omp home and pi's own).
+    expect(none.get("journal-roots")?.detail).toContain("none of the 6 journal roots is there");
 
     // `list` answers `[]` for a directory this user cannot read AND for an empty one; the finding
     // says both, because the seam cannot tell them apart and a doctor may not guess.

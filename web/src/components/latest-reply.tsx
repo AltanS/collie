@@ -4,6 +4,7 @@ import { TranscriptView } from "@/components/transcript-view";
 import { useLocale } from "@/hooks/use-locale";
 import { t } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import type { Scope } from "@/lib/scope";
 import type { TranscriptEntry } from "@/lib/types";
 
 // The agent's newest reply, standing IN PLACE OF the mirror rows that could only hold its end.
@@ -25,12 +26,15 @@ export function LatestReply({
   agent,
   open,
   onToggle,
+  scope,
 }: {
   entry: TranscriptEntry;
   agent?: string;
   /** Expanded shows the message and the mirror rows below it stay hidden; collapsed does the reverse. */
   open: boolean;
   onToggle: () => void;
+  /** The pane's address — an image in this turn is bytes on the host whose journal named them. */
+  scope?: Scope;
 }) {
   useLocale();
   return (
@@ -58,7 +62,7 @@ export function LatestReply({
       </button>
       {open && (
         <div className="border-t px-2.5 py-2">
-          <TranscriptView entries={[entry]} agent={agent} />
+          <TranscriptView entries={[entry]} agent={agent} scope={scope} />
         </div>
       )}
     </div>

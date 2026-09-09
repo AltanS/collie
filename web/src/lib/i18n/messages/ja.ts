@@ -609,6 +609,12 @@ export const ja: Dictionary = {
   "transcript.agentFallback": "エージェント",
   "transcript.outputTruncated": "… 出力を省略",
   "transcript.truncated": "… 省略",
+  "transcript.toolImageAlt": "ツールの出力",
+  "transcript.attachmentAlt": "添付ファイル",
+
+  // --- mirror (terminal graphics in the pane mirror) ---
+  "mirror.imageAlt": "ターミナルグラフィックス",
+  "mirror.imageBadge": "[画像]",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "たった今",

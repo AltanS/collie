@@ -162,8 +162,6 @@ export interface PaneData {
   /** Herdr's monotonic revision for `text` — the prompt-select race guard checks against it. 0 on
    * the degraded (stale-text) path, where the guard's fresh fetch will reject a mismatch anyway. */
   revision: number;
-  /** Image URLs referenced in this pane. */
-  images?: readonly string[];
   error: boolean;
   /** True when the failed refresh was rejected with HTTP 401 or 403. */
   authError: boolean;
@@ -485,7 +483,6 @@ export async function paneLoader({
       truncated: read.truncated,
       requestedLines: lines,
       revision: read.revision,
-      images: read.images,
       error: false,
       authError: false,
     };
