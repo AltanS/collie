@@ -217,6 +217,12 @@ export function canonicalWarrantVersion1(w: Warrant): string {
  *
  * **A 5xx is excluded and must stay excluded.** That is a proxy or a peer mid-restart, not a version,
  * and a second dial there would double what every poll spends on a machine that is not answering.
+ *
+ * **This is a heuristic, on purpose.** It reads what a 1.7.0 bridge ANSWERS an unrouted path with —
+ * its SPA catch-all, a `200 text/html` carrying no crew protocol header — because a build already in
+ * the field cannot be patched after the fact to name its version on a path it does not route. Hence
+ * `REMOVE_IN_1_9_0` for the whole of it: the guess is cheaper than the alternative for one release,
+ * and after that release nothing needs it.
  */
 export function routesNoCrewV1(res: Response): boolean {
   if (res.status >= 500) return false;

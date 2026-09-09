@@ -570,6 +570,17 @@ export interface PeerClientDeps {
    * which is the journal on every production wiring.
    */
   readonly log?: (line: string) => void;
+  /**
+   * REMOVE_IN_1_9_0 — the members this PROCESS has already said speak version 1, shared by every
+   * client in it (§0.1).
+   *
+   * Injected because a lead holds more than one client per peer — the sweep's and the takeover's are
+   * built by two separate factories in `bridge/index.ts` — and a set per client made the line print
+   * once per client instead of once per member. The set is the process's, so the journal gets one
+   * sentence per member. Absent ⇒ a fresh set, which is what a test wants and what a one-shot verb
+   * can live with.
+   */
+  readonly toldVersion1?: Set<string>;
 }
 
 /**
@@ -657,11 +668,16 @@ export class PeerClient {
    * The FALLBACK is per dial and never cached; only the LOG LINE is remembered, so a journal gets one
    * sentence per lead rather than one per sweep. Bounded by the roster, cleared by
    * {@link PeerClient.forget}, and never persisted: a restart costs one more line.
+   *
+   * SHARED across the clients of one process when {@link PeerClientDeps.toldVersion1} is supplied,
+   * because a lead builds more than one client for the same peer.
    */
-  private readonly toldVersion1 = new Set<string>();
+  private readonly toldVersion1: Set<string>;
 
   constructor(private readonly deps: PeerClientDeps) {
     this.now = deps.now ?? Date.now;
+    // REMOVE_IN_1_9_0: shared with every other client in this process when the wiring hands one over.
+    this.toldVersion1 = deps.toldVersion1 ?? new Set<string>();
   }
 
   /** REMOVE_IN_1_9_0 — the fallback's one line. Injected so the test reads it without a journal. */
@@ -911,7 +927,12 @@ export class PeerClient {
    * header that is not JSON either ({@link routesNoCrewV1} — on a real 1.7.0 bridge that is a
    * `200 text/html` app shell, because the SPA catch-all owns every unrouted path), or §7's refusal
    * naming version 1. On either it re-dials `/pack/v1/*` ONCE, with version 1 headers and the
-   * version 1 dial domain, and writes one journal line per lead.
+   * version 1 dial domain, and writes one journal line per lead per process.
+   *
+   * The first of those two is a HEURISTIC about a build already in the field, not a contract: a
+   * 1.7.0 bridge cannot be patched after the fact to announce its version on a path it does not
+   * route. It is measured rather than assumed (VM lab, 2026-09-09) and it goes in 1.9.0 with the
+   * rest of the overlap.
    *
    * **Per dial, never cached.** The moment that lead updates, its answer on `/crew/v1` is a crew
    * answer and no fallback is taken — so the overlap costs one extra round trip against a lead that
@@ -1086,6 +1107,10 @@ export class PeerClient {
     // always JSON and always stamped (`crewResponseHeaders`), so this cannot claim one. A 5xx is
     // excluded and stays excluded: that is a proxy or a peer mid-restart, not a version, and a second
     // dial there would double what every poll spends on a machine that is not answering.
+    //
+    // **It is a HEURISTIC, and it has to be.** What it reads is what a 1.7.0 bridge happens to answer
+    // an unknown path with, and a 1.7.0 bridge cannot be patched after the fact to say so plainly.
+    // That is why the whole trigger goes in 1.9.0 rather than being tightened.
     if (wire === CREW_PROTOCOL_VERSION && received === null && routesNoCrewV1(res)) {
       return { ...this.fail({ state: "unreachable", reason: `${route}: HTTP ${res.status}` }), speaksVersion1: true };
     }
