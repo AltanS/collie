@@ -337,6 +337,9 @@ const UPDATE_STATUS_KEYS = {
   // is the whole point: a dismissal kept per browser is a dismissal that holds in one browser.
   dismissedVersion: true,
   dismissedPackVersion: true,
+  // The release ahead changes the crew wire (M27/06). Optional, and ABSENT on a solo instance by
+  // construction: there is no link to change, so the golden bodies below carry no such key.
+  linkChange: true,
 } satisfies Record<keyof UpdateStatus, true>;
 
 const WORKSPACE_KEYS = {
@@ -441,6 +444,9 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "installKind",
       "latest",
       "latestUrl",
+      // Whether the release ahead changes the CREW WIRE (M27/06) — optional, and absent on a solo
+      // install, which has no link to change.
+      "linkChange",
       "majorAvailable",
       "majorUrl",
       "newerVersions",

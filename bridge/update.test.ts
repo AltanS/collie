@@ -18,8 +18,10 @@ import {
   majorOf,
   parsePrereleaseTag,
   parseReleaseManifest,
+  parseReleaseReading,
   parseSemverTag,
   parseTagsResponse,
+  releaseReadingUrl,
   restartCommandFor,
   shouldNotify,
   stampOf,
@@ -454,6 +456,8 @@ const apiTags = (...names: string[]): ApiTag[] => names.map((name) => ({ name, s
 
 function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
   const notified: string[] = [];
+  /** Every push, with the link change it carried — the digest body is built from the pair. */
+  const pushes: { versions: string[]; linkChange: { from: number; to: number } | null }[] = [];
   const store = fakeStore();
   // 10:00 on a fixed LOCAL day: past the digest's earliest hour, so these tests exercise the monitor
   // rather than the clock. `tick` moves it forward within the same morning unless a test says otherwise.
@@ -470,16 +474,24 @@ function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
     exeReplaced: () => false,
     startupStamp: "STAMP@boot",
     fetchTags: async () => apiTags("v0.12.0"),
+    // A CREW, and a release that says nothing about the wire — the shape of every release before
+    // 1.8.0, and the default every case that is not about the link inherits (M27/06).
+    crewProtocol: 2,
+    crewMode: () => "lead",
+    fetchReleaseReading: async () => null,
     bridgeStamp: () => "STAMP@boot",
     store,
     // No run on disk unless a case says so — the shape every install that has never updated has.
     runState: () => null,
     now: () => clock,
     updatesEnabled: () => true,
-    notify: (versions) => notified.push(...versions),
+    notify: (versions, linkChange) => {
+      notified.push(...versions);
+      pushes.push({ versions, linkChange });
+    },
     ...over,
   });
-  return { monitor, notified, store, tick: (ms: number) => (clock += ms) };
+  return { monitor, notified, pushes, store, tick: (ms: number) => (clock += ms) };
 }
 
 describe("UpdateMonitor", () => {
@@ -903,5 +915,110 @@ describe("the dismissed version", () => {
     // The snapshot keeps saying a release is available; only the BAND reads the two together, and it
     // reads them as different facts the moment upstream moves on.
     expect(monitor.status().releaseAvailable).toBe(true);
+  });
+});
+
+// ── The release reading and the link change (M27/06) ─────────────────────────
+
+describe("the release reading", () => {
+  it("names the asset under the release's own tag, constructed from repo and version", () => {
+    expect(releaseReadingUrl("AltanS/collie", "1.8.0")).toBe(
+      "https://github.com/AltanS/collie/releases/download/v1.8.0/collie-release.json",
+    );
+  });
+
+  it("parses the document, and refuses anything that is not one", () => {
+    expect(parseReleaseReading({ version: "1.8.0", crewProtocol: 2 })).toEqual({
+      version: "1.8.0",
+      crewProtocol: 2,
+    });
+    // Unknown fields are ignored — a later release may add to it.
+    expect(parseReleaseReading({ version: "1.8.0", crewProtocol: 2, extra: "x" })).toEqual({
+      version: "1.8.0",
+      crewProtocol: 2,
+    });
+    // MALFORMED, every way it can be: not an object, no version, no number, a fractional number.
+    expect(parseReleaseReading(null)).toBeNull();
+    expect(parseReleaseReading([1, 2])).toBeNull();
+    expect(parseReleaseReading({ crewProtocol: 2 })).toBeNull();
+    expect(parseReleaseReading({ version: "1.8.0" })).toBeNull();
+    expect(parseReleaseReading({ version: "1.8.0", crewProtocol: "2" })).toBeNull();
+    expect(parseReleaseReading({ version: "1.8.0", crewProtocol: 2.5 })).toBeNull();
+  });
+});
+
+describe("UpdateMonitor — the link change", () => {
+  const asset = (crewProtocol: number) => async (version: string) => ({ version, crewProtocol });
+
+  it("is set when the release speaks a DIFFERENT wire, and rides the push", async () => {
+    const { monitor, pushes } = makeMonitor({
+      current: "1.7.0",
+      crewProtocol: 1,
+      crewMode: () => "lead",
+      fetchTags: async () => apiTags("v1.8.0"),
+      fetchReleaseReading: asset(2),
+    });
+    await monitor.checkRelease();
+    expect(monitor.status().linkChange).toEqual({ from: 1, to: 2 });
+    // The push says it too, appended to a body that is otherwise what it always was.
+    expect(pushes).toEqual([{ versions: ["1.8.0"], linkChange: { from: 1, to: 2 } }]);
+    expect(updateDigestBody("1.7.0", ["1.8.0"], { from: 1, to: 2 })).toBe(
+      "Collie 1.8.0 is available. Changes the crew link. Update the lead first, members follow.",
+    );
+  });
+
+  it("is absent when the release speaks the wire this install already speaks", async () => {
+    const { monitor, pushes } = makeMonitor({
+      current: "1.8.0",
+      crewProtocol: 2,
+      crewMode: () => "peer",
+      fetchTags: async () => apiTags("v1.8.1"),
+      fetchReleaseReading: asset(2),
+    });
+    await monitor.checkRelease();
+    expect(monitor.status().linkChange).toBeUndefined();
+    expect(pushes[0]?.linkChange).toBeNull();
+    // And the body is byte-identical to the one every release before this always produced.
+    expect(updateDigestBody("1.8.0", ["1.8.1"], null)).toBe("Collie 1.8.1 is available");
+  });
+
+  it("is absent when the release published no asset at all — every release before 1.8.0", async () => {
+    // A 404 is what the fetcher answers with null, and null is "the release says nothing".
+    const { monitor } = makeMonitor({
+      current: "1.6.0",
+      crewProtocol: 2,
+      crewMode: () => "lead",
+      fetchTags: async () => apiTags("v1.7.0"),
+      fetchReleaseReading: async () => null,
+    });
+    await monitor.checkRelease();
+    expect(monitor.status().linkChange).toBeUndefined();
+  });
+
+  it("is absent when the asset is MALFORMED, and the check still answers", async () => {
+    // The fetcher parses before it returns, so a truncated or foreign document reaches the monitor
+    // as null. What matters here is that the rest of the check is untouched by it.
+    const { monitor } = makeMonitor({
+      current: "1.7.0",
+      crewProtocol: 1,
+      crewMode: () => "lead",
+      fetchTags: async () => apiTags("v1.8.0"),
+      fetchReleaseReading: async () => parseReleaseReading({ version: "1.8.0", crewProtocol: "two" }),
+    });
+    await monitor.checkRelease();
+    expect(monitor.status()).toMatchObject({ latest: "1.8.0", releaseAvailable: true });
+    expect(monitor.status().linkChange).toBeUndefined();
+  });
+
+  it("is absent on a SOLO install — there is no link to change", async () => {
+    const { monitor } = makeMonitor({
+      current: "1.7.0",
+      crewProtocol: 1,
+      crewMode: () => "solo",
+      fetchTags: async () => apiTags("v1.8.0"),
+      fetchReleaseReading: asset(2),
+    });
+    await monitor.checkRelease();
+    expect(monitor.status().linkChange).toBeUndefined();
   });
 });

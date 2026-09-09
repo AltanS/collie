@@ -391,6 +391,16 @@ export interface CrewMemberStatus {
  */
 export type DismissScope = "offer" | "pack";
 
+/**
+ * What the release ahead changes about the CREW LINK (mirrors `UpdateLinkChange` in
+ * `bridge/types.ts`, M27/06). `from` is this install's own wire version, `to` is the one the
+ * release speaks.
+ */
+export interface UpdateLinkChange {
+  from: number;
+  to: number;
+}
+
 export interface UpdateInfo {
   /** The version this bridge is running, e.g. "0.11.0". */
   current: string;
@@ -430,6 +440,14 @@ export interface UpdateInfo {
    * offer above: they are about different machines. Absent on an older bridge.
    */
   dismissedPackVersion?: string | null;
+  /**
+   * The release ahead changes the crew wire, and by how much — absent when it does not (M27/06).
+   *
+   * Absent on a solo install, absent when the release speaks the wire this install already speaks,
+   * and absent when the release says nothing about it (every release before 1.8.0, and every read
+   * that failed). The three read the same way on screen: no sentence.
+   */
+  linkChange?: UpdateLinkChange | null;
   /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
   bridgeStale: boolean;
   /**

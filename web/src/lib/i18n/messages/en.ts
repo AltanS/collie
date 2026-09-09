@@ -848,6 +848,15 @@ export const en = {
   "settings.updateCard.remedy": "Fix: {command}",
   "settings.updateCard.confirmTitle": "Update to {version}?",
   "settings.updateCard.confirmBody": "Your terminal session stays alive. The phone view drops for up to 30 seconds.",
+  // THE SENTENCE ABOUT THE CREW LINK (M27/06), whole. It lives in the CARD's namespace because the
+  // card is where it is read: above the confirm, with room for both halves of it — what changes,
+  // and what to do about it. The band prints `updateRibbon.linkChangeShort` instead, held to the
+  // row's forty characters like every other band string. The digest push carries this same English
+  // from `LINK_CHANGE_SENTENCE` in `bridge/update.ts`, which has no locale to read.
+  //
+  // Generic on purpose: it is printed off a wire-version DIFFERENCE, never off a release name, so
+  // the release after the next one carries it with no string edited.
+  "settings.updateCard.linkChange": "Changes the crew link. Update the lead first, members follow.",
   "settings.updateCard.confirmAction": "Yes, update",
   "settings.updateCard.majorConfirmTitle": "Cross the major to {version}?",
   "settings.updateCard.majorConfirmBody": "{version} is a new major, so it is consented to on its own and never folded into a routine update. Read its release notes first. Your terminal session stays alive. The phone view drops for up to 30 seconds.",
@@ -938,6 +947,10 @@ export const en = {
   "updateRibbon.packageManaged.other": "{names} wait for their package manager",
   "updateRibbon.peerFailed": "Could not update {name}: {reason}.",
   "updateRibbon.seeUpdates": "See Updates.",
+  // THE BAND'S OWN CUT OF IT. One truncating row is about forty characters wide, which the whole
+  // sentence is not, so the band states WHAT changes and the tap lands on the card, where the rest
+  // of it sits above the confirm. Held to the budget like every other band string.
+  "updateRibbon.linkChangeShort": "Changes the crew link.",
   "updateRibbon.available": "Collie {version} available. Tap to update.",
   // A packaged host cannot take the tap — its updates come from its package manager (ADR 0035) — so
   // the band STATES the fact and names the manager. It does not instruct: the phone cannot run

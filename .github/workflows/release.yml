@@ -388,6 +388,35 @@ jobs:
           done
           ls -l
 
+      # ── What this release says about itself (M27/06) ──────────────────────
+      # One tiny asset, `collie-release.json`, carrying the version and the CREW WIRE VERSION this
+      # release speaks. The update check on an installed Collie reads it and can then tell an
+      # operator, BEFORE they confirm, that the update changes the link their crew talks over.
+      # Generic by construction: the notice is about a NUMBER, so the release after the next one
+      # says it too with no code change.
+      #
+      # THE NUMBER IS EVALUATED, NEVER TRANSCRIBED. `bun` imports the same module the binary
+      # compiles, so the asset cannot drift from the build: there is no second copy of the constant
+      # anywhere. A missing or non-integer value fails the release here, before anything is
+      # published, rather than shipping a document an install would silently discard.
+      - name: Write the release reading
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          protocol="$(nix develop --command bun -e 'import { CREW_PROTOCOL_VERSION } from "./bridge/crew/enrollment.ts"; process.stdout.write(String(CREW_PROTOCOL_VERSION))')"
+          case "$protocol" in
+            ''|*[!0-9]*)
+              echo "error: CREW_PROTOCOL_VERSION did not read as an integer: '$protocol'" >&2
+              exit 1
+              ;;
+          esac
+          printf '{\n  "version": "%s",\n  "crewProtocol": %s\n}\n' "$version" "$protocol" \
+            > "$RUNNER_TEMP/assets/collie-release.json"
+          # Proof it parses before anyone downloads it, exactly as the manifest is proved above.
+          nix develop --command bun -e 'JSON.parse(await Bun.file(process.argv[1]).text())' \
+            "$RUNNER_TEMP/assets/collie-release.json"
+          cat "$RUNNER_TEMP/assets/collie-release.json"
+
       - name: Assemble release notes from CHANGELOG.md
         id: notes
         run: |

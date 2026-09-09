@@ -145,6 +145,9 @@ const UPDATE_INFO_KEYS = {
   // so the solo payload is byte-identical to what it was.
   peers: true,
   settledAt: true,
+  // Whether the release ahead changes the crew wire (M27/06). Optional and ABSENT on a solo
+  // install, for the same reason: a machine with no crew has no link to change.
+  linkChange: true,
 } satisfies Record<keyof UpdateInfo, true>;
 
 describe("solo zero-tax — the client's mirror types carry no crew dimension", () => {
@@ -220,6 +223,9 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "installKind",
       "latest",
       "latestUrl",
+      // Whether the release ahead changes the crew wire (M27/06) — optional, and absent on a solo
+      // install.
+      "linkChange",
       "majorAvailable",
       "majorUrl",
       "newerVersions",
