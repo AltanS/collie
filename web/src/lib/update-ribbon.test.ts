@@ -57,7 +57,7 @@ const read = (over: Partial<RibbonInput> = {}) =>
     startedAt: null,
     bundleStale: false,
     dismissedVersion: null,
-    dismissedPackVersion: null,
+    dismissedCrewVersion: null,
     now: NOW,
     ...over,
   });
@@ -309,7 +309,7 @@ describe("a packaged host reads its own line", () => {
     expect(read({ update: packaged(), dismissedVersion: "1.5.0" })).toEqual({ kind: "silent" });
     // And a crew notice put down at the same version leaves this host's own offer standing: two
     // decisions, two keys.
-    expect(read({ update: packaged(), dismissedPackVersion: "1.5.0" })).toMatchObject({
+    expect(read({ update: packaged(), dismissedCrewVersion: "1.5.0" })).toMatchObject({
       kind: "available-packaged",
     });
   });
@@ -344,7 +344,7 @@ describe("dismissing the quiet crew states", () => {
   });
 
   it("hides the quiet band once that version was dismissed IN ITS OWN SCOPE", () => {
-    expect(read({ update: quiet(), dismissedPackVersion: "1.5.0" })).toEqual({ kind: "silent" });
+    expect(read({ update: quiet(), dismissedCrewVersion: "1.5.0" })).toEqual({ kind: "silent" });
   });
 
   it("is untouched by a dismissed offer at the same version — two decisions, two keys", () => {
@@ -358,7 +358,7 @@ describe("dismissing the quiet crew states", () => {
   it("raises the band again for a newer target — a dismiss is a version, not a mute", () => {
     const view = read({
       update: quiet({ latest: "1.6.0", run: run("done", { peers: managed, to: "1.6.0" }) }),
-      dismissedPackVersion: "1.5.0",
+      dismissedCrewVersion: "1.5.0",
     });
     expect(view).toMatchObject({ kind: "package-managed", target: "1.6.0" });
   });
@@ -374,7 +374,7 @@ describe("dismissing the quiet crew states", () => {
     const view = read({
       update: quiet({ run: run("done", { peers }) }),
       dismissedVersion: "1.5.0",
-      dismissedPackVersion: "1.5.0",
+      dismissedCrewVersion: "1.5.0",
     });
     expect(view).toMatchObject({ kind: "peer-failed", name: "minibuch" });
     expect(dismissTarget(view)).toEqual({ scope: "crew", version: "1.5.0" });
@@ -387,7 +387,7 @@ describe("dismissing the quiet crew states", () => {
     ];
     const view = read({
       update: quiet({ run: run("done", { peers }) }),
-      dismissedPackVersion: "1.5.0",
+      dismissedCrewVersion: "1.5.0",
     });
     // Still on screen despite the dismissal, and carrying no close: the operator has to be able to
     // see the end of a run somebody is driving.

@@ -1650,7 +1650,7 @@ export function startServer(opts: {
         // from what the sweep BANKED (`CrewLead.updateRows`) and dials nobody — `status-wire.ts`'s
         // purity argument, one route over.
         return json(
-          { ...updateStatusWithPeers(), preflight: report, pack: opts.crewLead?.updateRows() ?? [] },
+          { ...updateStatusWithPeers(), preflight: report, crew: opts.crewLead?.updateRows() ?? [] },
           req.headers.get("accept-encoding"),
         );
       }
@@ -1693,7 +1693,7 @@ export function startServer(opts: {
           // One confirm covers the crew (M16/03): the members' banked verdicts gate this start the
           // same way the lead's own does. Read, never fetched — the sweep is the only thing that
           // talks to a member.
-          pack: opts.crewLead?.updateRows() ?? [],
+          crew: opts.crewLead?.updateRows() ?? [],
           // And the legs of the last run, which is what "Retry crew update" is about (M16/04).
           peers: opts.crewLead?.updatePeers() ?? [],
         });

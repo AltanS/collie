@@ -496,7 +496,7 @@ export interface UpdateStatus {
    * and a package manager owns it" are about different machines, so putting one down must not put
    * the other down with it, even when both name the same version.
    */
-  dismissedPackVersion: string | null;
+  dismissedCrewVersion: string | null;
   /** The running process is behind the on-disk bridge source — needs `systemctl --user restart collie`. */
   bridgeStale: boolean;
   /**

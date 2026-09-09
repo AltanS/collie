@@ -225,7 +225,7 @@ export function UpdateCard() {
   // make the button say "crew" — a lead with peers it could not reach still leads them.
   const servers = data?.servers ?? [];
   const crewLead = servers.length > 1 && servers.some((s) => s.isLead);
-  const census = check?.pack ?? [];
+  const census = check?.crew ?? [];
   // Read through the SHARED reader, never off `run.peers` directly (M20/09). A peers-only run has no
   // record on this machine at all, so its legs ride the status rather than the run, and a component
   // that reached for one field would be blind to exactly the run it was opened to watch.

@@ -74,7 +74,7 @@ describe("crewStatusBody — who answers at all", () => {
 
   test("a lead that has enrolled nobody is still solo by mode, and answers nothing", () => {
     // The mode table's own row (mode.ts): a trust store with no lead and no peers is `solo`. This is
-    // the case a local `store.pack !== null` check would have got wrong — a crew exists the moment an
+    // the case a local `store.crew !== null` check would have got wrong — a crew exists the moment an
     // invite is minted, well before anyone has joined.
     expect(crewStatusBody(sources({ store: leadStore({ peers: [] }), peers: [] }))).toBeNull();
   });

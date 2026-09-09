@@ -161,7 +161,7 @@ const updateStatus: UpdateStatus = {
   majorUrl: null,
   installKind: "detached-checkout",
   dismissedVersion: null,
-  dismissedPackVersion: null,
+  dismissedCrewVersion: null,
   bridgeStale: false,
   restartNeeded: false,
   checkedAt: null,
@@ -336,7 +336,7 @@ const UPDATE_STATUS_KEYS = {
   // nothing was closed, so the golden below carries two more. They are facts about the HOST, which
   // is the whole point: a dismissal kept per browser is a dismissal that holds in one browser.
   dismissedVersion: true,
-  dismissedPackVersion: true,
+  dismissedCrewVersion: true,
   // The release ahead changes the crew wire (M27/06). Optional, and ABSENT on a solo instance by
   // construction: there is no link to change, so the golden bodies below carry no such key.
   linkChange: true,
@@ -439,7 +439,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       "current",
       // The two bands the operator can close (M17/08): this host's offer, and the quiet notice about
       // a machine a package manager owns. Required and null when nothing was closed.
-      "dismissedPackVersion",
+      "dismissedCrewVersion",
       "dismissedVersion",
       "installKind",
       "latest",
@@ -587,7 +587,7 @@ describe("solo zero-tax — routes", () => {
       // extends this list rather than being exempted, exactly as pairing and STT do. It is not a
       // crew route: `/pack/v1/*` is the link a peer answers (ADR 0013), and this is the lead's own
       // browser answering its own operator. A solo instance registers it and 404s
-      // (`pack.not_lead`) — the same shape `/api/stt` has when no provider is configured.
+      // (`crew.not_lead`) — the same shape `/api/stt` has when no provider is configured.
       "/api/crew",
       // Device pairing (bridge/pairing.ts) — a SOLO feature that legitimately extends this list.
       // It is named here, not exempted: the guard's job is that a route arrives on purpose.

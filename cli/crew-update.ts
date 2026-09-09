@@ -545,16 +545,16 @@ async function preflightGate(deps: Wired, targets: readonly Target[]): Promise<G
   const checked = await deps.preflight({ overrides: routeOverrides(targets) });
   // What each member said about ITSELF over the crew link (§19, M16/03), beside what this walk found
   // over ssh. Printed, never preferred: see {@link peerReportLines}.
-  for (const said of peerReportLines(checked.pack ?? [], await deps.peerReported(), named, deps.now())) {
+  for (const said of peerReportLines(checked.crew ?? [], await deps.peerReported(), named, deps.now())) {
     line(deps, said);
   }
   const reds: { readonly who: string; readonly check: PreflightCheck }[] = [
     ...checked.checks.filter(blocks).map((check) => ({ who: "this lead", check })),
-    ...(checked.pack ?? [])
+    ...(checked.crew ?? [])
       .filter((m) => named.has(m.memberId))
       .flatMap((m) => m.checks.filter(blocks).map((check) => ({ who: m.memberId, check }))),
   ];
-  const packaged = packagedMembers(checked.pack ?? []);
+  const packaged = packagedMembers(checked.crew ?? []);
   if (reds.length === 0) {
     line(deps, `preflight: nothing red on this lead${routed.length === 0 ? "" : ` or on ${nMembers(routed.length)}`}.`);
     return { exit: null, packaged };

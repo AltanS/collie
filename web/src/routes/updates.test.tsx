@@ -96,7 +96,7 @@ function serveCheck(update: UpdateInfo, crew?: UpdateCrewMember[]) {
   server.use(
     http.get("/api/update/check", () =>
       HttpResponse.json(
-        crew === undefined ? { ...update, preflight: GREEN } : { ...update, preflight: GREEN, pack: crew },
+        crew === undefined ? { ...update, preflight: GREEN } : { ...update, preflight: GREEN, crew },
       ),
     ),
   );

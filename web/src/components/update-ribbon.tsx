@@ -97,7 +97,7 @@ export function UpdateRibbon() {
     startedAt,
     bundleStale,
     dismissedVersion: dismissedIn("offer", justDismissed, update?.dismissedVersion),
-    dismissedPackVersion: dismissedIn("crew", justDismissed, update?.dismissedPackVersion),
+    dismissedCrewVersion: dismissedIn("crew", justDismissed, update?.dismissedCrewVersion),
     now: Date.now(),
   });
   if (view.kind === "silent") return null;
