@@ -510,13 +510,13 @@ export class UpdateStateStore {
       const last = rec === null ? undefined : rec.lastNotified;
       const pushed = rec === null ? undefined : rec.lastPushedAt;
       const closed = rec === null ? undefined : rec.dismissedVersion;
-      const closedPack = rec === null ? undefined : rec.dismissedPackVersion;
+      const closedCrew = rec === null ? undefined : rec.dismissedPackVersion;
       this.lastVersion = typeof last === "string" ? last : null;
       // A record written before M17/08 carries neither dismissal. Both read as "nothing dismissed",
       // which is the band's own default — an operator who closed the band on an older build simply
       // sees it once more.
       this.dismissed = typeof closed === "string" ? closed : null;
-      this.dismissedPack = typeof closedPack === "string" ? closedPack : null;
+      this.dismissedPack = typeof closedCrew === "string" ? closedCrew : null;
       // A LEGACY record carries no timestamp. It reads as "no push yet" — the window opens at once
       // rather than crashing the monitor or pinning it shut for a day.
       this.pushedAt = typeof pushed === "string" ? pushed : null;
@@ -539,7 +539,7 @@ export class UpdateStateStore {
     return this.dismissed;
   }
 
-  /** The version whose quiet PACK notice the operator closed, or null. A different decision from
+  /** The version whose quiet CREW notice the operator closed, or null. A different decision from
    *  the one above, and so a different field — see {@link DismissScope}. */
   dismissedPackVersion(): string | null {
     return this.dismissedPack;
@@ -620,7 +620,7 @@ export function restartCommandFor(kind: UpdateStatus["installKind"], instance: s
 /**
  * WHICH band was closed. Two decisions, never one key.
  *
- * `offer` is "a release is available on this machine". `pack` is "another machine is standing
+ * `offer` is "a release is available on this machine". `crew` is "another machine is standing
  * behind, and a package manager owns it". They are about different machines and they are put down
  * separately: hiding a peer's quiet notice must not also hide this host's own offer, even when the
  * two name the same version.
@@ -636,7 +636,7 @@ export interface UpdateStore {
   /** The release whose OFFER was closed, or null. Reported on the snapshot, so the decision holds
    *  on every screen rather than in the browser that made it. */
   dismissedVersion(): string | null;
-  /** The version whose quiet PACK notice was closed, or null. */
+  /** The version whose quiet CREW notice was closed, or null. */
   dismissedPackVersion(): string | null;
   /** Record a dismissal, folding the digest snooze into the same write when one is asked for. */
   setDismissed(
@@ -804,7 +804,7 @@ export class UpdateMonitor {
    * in the SAME write: being pushed tomorrow morning about a version just declined is the app
    * arguing with a decision the operator already made. Two conditions gate that, and both matter:
    *
-   *   • Scope. A quiet PACK notice is about another machine and the push is about this one, so
+   *   • Scope. A quiet CREW notice is about another machine and the push is about this one, so
    *     hiding it must never silence a release this host was never told about.
    *   • The version. An offer for anything other than the release upstream currently names is not
    *     the release the digest would push, and moving `lastNotified` there would either swallow the

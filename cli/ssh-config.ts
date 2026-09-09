@@ -1,21 +1,21 @@
-// `~/.ssh/config` AS A LIST OF CANDIDATE HOSTS — the first of `pack add`'s two providers (M22/07).
+// `~/.ssh/config` AS A LIST OF CANDIDATE HOSTS — the first of `crew add`'s two providers (M22/07).
 //
 // ── IT READS, AND THAT IS THE WHOLE OF IT ────────────────────────────────────
 // Collie never touches your ssh configuration (`cli/remote.ts` says it to the operator, ADR 0015).
 // Nothing here writes, renames, chmods or creates a file, and nothing here re-implements ssh's
 // resolution: a candidate is offered as the ALIAS THE OPERATOR WROTE, which is exactly what
-// `bridge/pack/ops-store.ts` already stores as a destination. Resolution is a separate step, done by
+// `bridge/crew/ops-store.ts` already stores as a destination. Resolution is a separate step, done by
 // asking ssh itself (`cli/candidates.ts`), and it never happens here.
 //
 // ── NOT AN ADAPTER PROVIDER ──────────────────────────────────────────────────
 // This needs no multiplexer at all, so it is not on `MuxAdapterFactory` — it belongs with the CLI's
-// own file seam (`cli/pack.ts`'s `Files`), which is why no test in this suite reads a real
+// own file seam (`cli/crew.ts`'s `Files`), which is why no test in this suite reads a real
 // `~/.ssh/config`. It is listed FIRST, ahead of any adapter provider, because it is the list the
 // operator maintains by hand and therefore the spelling they recognise.
 //
 // ── WHAT IS DROPPED, AND WHY ─────────────────────────────────────────────────
 // A pattern is not a machine. `Host *`, `Host *.internal` and `Host !gateway` describe SETS of hosts
-// that ssh matches a name against; none of them is a name that can be handed to `pack add`. So a
+// that ssh matches a name against; none of them is a name that can be handed to `crew add`. So a
 // token carrying a wildcard, and a negation, are dropped rather than offered — offering `*` would
 // put a candidate on the list that cannot be enrolled.
 
@@ -103,7 +103,7 @@ function readDirective(line: string): readonly [string, readonly string[]] | nul
   return [match[1]!.toLowerCase(), values];
 }
 
-/** Is this `Host` token a name that could be handed to `pack add`? Patterns and negations are not. */
+/** Is this `Host` token a name that could be handed to `crew add`? Patterns and negations are not. */
 function offerable(token: string): boolean {
   if (token.startsWith("!")) return false;
   return !token.includes("*") && !token.includes("?");

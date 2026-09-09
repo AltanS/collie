@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { leadStore, member, peerStore } from "../bridge/pack/fixtures.ts";
-import { serializeTrustStore } from "../bridge/pack/trust-store.ts";
+import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
+import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import {
   capture,
   CONFIG,

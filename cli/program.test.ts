@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
-import { PACK_SUBCOMMANDS } from "./pack.ts";
+import { CREW_SUBCOMMANDS } from "./crew.ts";
 import { DEVICES_SUBCOMMANDS } from "./pairing.ts";
 import { PUSH_SUBCOMMANDS } from "./push.ts";
 import { STT_SUBCOMMANDS } from "./stt.ts";
@@ -49,9 +49,9 @@ const SHELL_VERBS = [
 
 // The crew verbs (M4/07, renamed in M24). They have no shell ancestor — `collie-ctl.sh` never knew
 // about federation — so they are listed separately: the assertion above is "the port kept every verb
-// the shell had", and this one is "the binary grew exactly these". `pack` is the alias of `crew`
+// the shell had", and this one is "the binary grew exactly these". `crew` is the alias of `crew`
 // (ADR 0038); it sits right after it in the table and is internal, so the usage line never names it.
-const PACK_VERBS = ["join", "leave", "crew", "pack", "promote", "reconnect"];
+const CREW_VERBS = ["join", "leave", "crew", "pack", "promote", "reconnect"];
 
 // The diagnostic verbs (M7/02). No shell ancestor either, and they sit between the two groups above
 // because that is where they are declared — the usage line's order is the table's order.
@@ -66,7 +66,7 @@ const LINK_VERBS = ["link", "unlink"];
 // internal emitter the entry it writes calls.
 const BEACON_VERBS = ["hooks", "beacon"];
 
-// The device-pairing verbs. Declared between the diagnostics and the pack, because that is where
+// The device-pairing verbs. Declared between the diagnostics and the crew, because that is where
 // they sit in the table, and grouped separately for the same reason as the two above.
 const PAIRING_VERBS = ["pair", "devices"];
 
@@ -99,7 +99,7 @@ describe("the verb table", () => {
       ...PAIRING_VERBS,
       ...PUSH_VERBS,
       ...STT_VERBS,
-      ...PACK_VERBS,
+      ...CREW_VERBS,
       ...MANUAL_VERBS,
       "help",
     ]);
@@ -137,7 +137,7 @@ describe("the verb table", () => {
   // ADR 0038 removes the `collie pack` alias in 2.0.0. Today this passes because the version is
   // 1.x and the assertion is not reached; the day the major moves to 2, it fails until the entry
   // is deleted, so the removal is remembered by the test suite and not by anyone's memory.
-  test("the `pack` alias is gone in 2.0.0", () => {
+  test("the `crew` alias is gone in 2.0.0", () => {
     const pkg = readFileSync(new URL("../package.json", import.meta.url), "utf8");
     const major = Number.parseInt(/"version": *"(\d+)\./.exec(pkg)?.[1] ?? "", 10);
     expect(Number.isNaN(major)).toBe(false);
@@ -238,9 +238,9 @@ describe("dispatch", () => {
 });
 
 describe("the subcommand trees", () => {
-  test("`crew` declares exactly `cli/pack.ts`'s sub-verbs, in its order", () => {
-    const pack = findCommand("crew");
-    expect(pack?.subcommands?.map((s) => s.name)).toEqual([...PACK_SUBCOMMANDS]);
+  test("`crew` declares exactly `cli/crew.ts`'s sub-verbs, in its order", () => {
+    const crew = findCommand("crew");
+    expect(crew?.subcommands?.map((s) => s.name)).toEqual([...CREW_SUBCOMMANDS]);
   });
 
   test("`devices` declares exactly `cli/pairing.ts`'s sub-verbs, in its order", () => {
@@ -264,7 +264,7 @@ describe("the subcommand trees", () => {
       "push",
       "stt",
       "crew",
-      // The alias carries the SAME array — that is what `cli/pack.test.ts` pins.
+      // The alias carries the SAME array — that is what `cli/crew.test.ts` pins.
       "pack",
     ]);
   });
@@ -346,12 +346,12 @@ describe("exit codes", () => {
       "url",
       // `qr` shells out to `tailscale` to decide which URL is worth encoding.
       "qr",
-      // Every pack verb writes the trust store, dials another machine, or restarts the service —
-      // and `pack` with no subcommand would still resolve a real context and a real audit path. All
-      // of them are covered in cli/pack.test.ts against fakes.
-      ...PACK_VERBS,
+      // Every crew verb writes the trust store, dials another machine, or restarts the service —
+      // and `crew` with no subcommand would still resolve a real context and a real audit path. All
+      // of them are covered in cli/crew.test.ts against fakes.
+      ...CREW_VERBS,
       // `doctor` writes nothing, but it is not runnable here either: it shells out to `tailscale`
-      // and would dial this host's real pack members. cli/doctor.test.ts drives it against fakes.
+      // and would dial this host's real crew members. cli/doctor.test.ts drives it against fakes.
       ...DIAGNOSTIC_VERBS,
       // `link`/`unlink` write into the developer's own `~/.local/bin` — the one place a test must
       // not publish a name. cli/link.test.ts drives both against a fake symlink seam.

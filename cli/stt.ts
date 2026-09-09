@@ -21,7 +21,7 @@ import { createSttProvider } from "../bridge/stt/index.ts";
 import { SttError, type SttProvider } from "../bridge/stt/provider.ts";
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
-import { parsePackArgs } from "./pack.ts";
+import { parseCrewArgs } from "./crew.ts";
 import type { Exec, Files } from "./sys.ts";
 
 // `stt setup | test | status | off` — the operator's half of speech-to-text (ADR 0029).
@@ -122,7 +122,7 @@ const SETUP_USAGE = [
  * A run that is neither — no flag, no terminal — REFUSES and writes nothing rather than guessing.
  */
 export async function cmdSttSetup(deps: SttDeps, args: readonly string[]): Promise<number> {
-  const { flags, bare } = parsePackArgs(args, BARE_FLAGS);
+  const { flags, bare } = parseCrewArgs(args, BARE_FLAGS);
 
   const provider = await chooseProvider(deps, flags.provider);
   if (provider === null) return EXIT.FAIL;
@@ -704,7 +704,7 @@ export function sttUsage(): string {
 
 /**
  * Reached only when no sub-verb matched — a bare `collie stt`, or a misspelt one — and it names each
- * sub-verb with its summary, as `cmdDevices` and `cmdPack` do.
+ * sub-verb with its summary, as `cmdDevices` and `cmdCrew` do.
  */
 export async function cmdStt(deps: SttDeps, args: readonly string[]): Promise<number> {
   const [sub, ...rest] = args;

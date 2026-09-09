@@ -53,7 +53,7 @@ const SAMPLE = {
   names: "minibuch",
   reason: "",
   // The longest duration the band prints in practice: a run past this is a run the wall clock has
-  // already failed (`bridge/pack/follow.ts`, LEG_WALL_CLOCK_MS = 20 minutes).
+  // already failed (`bridge/crew/follow.ts`, LEG_WALL_CLOCK_MS = 20 minutes).
   elapsed: "20 min",
 } as const;
 

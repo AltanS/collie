@@ -159,7 +159,7 @@ run_stripped COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" "$BIN" version || fail "version fa
 assert_eq "$STDOUT" "unknown"
 
 # F20: the two reflexes every operator has. Both used to answer `error: unknown command` / `error:
-# unknown pack subcommand` and exit 2 — a table that knows the verb refusing the flag spelling of it.
+# unknown crew subcommand` and exit 2 — a table that knows the verb refusing the flag spelling of it.
 for spelling in --version -V; do
   run_stripped COLLIE_PLUGIN_ROOT="$FAKE_ROOT" "$BIN" "$spelling" \
     || fail "\`collie $spelling\` failed (rc=$?)"
@@ -168,10 +168,10 @@ for spelling in --version -V; do
 done
 
 # `collie crew --help` prints the subcommand block, and the verb's own usage exit code (2) is
-# unchanged. The `pack` spelling is driven too, because it is the alias ADR 0038 removes in 2.0.0:
+# unchanged. The `crew` spelling is driven too, because it is the alias ADR 0038 removes in 2.0.0:
 # it must print the SAME crew block and return the SAME code, and this file is the only place the
 # compiled binary's own dispatch table is driven.
-for verb in crew pack; do
+for verb in crew crew; do
   for spelling in --help -h; do
     set +e
     env -i "$BIN" "$verb" "$spelling" >"${TMP_ROOT}/out" 2>"${TMP_ROOT}/err"
@@ -816,7 +816,7 @@ run_stripped HOME="$L_HOME" HERDR_PLUGIN_CONFIG_DIR="$L_CONFIG" PATH="$L_BIN" \
   COLLIE_INSTANCE="V 1" COLLIE_PORT=9999 "$BIN" status && fail "an unusable instance name was accepted"
 assert_contains "$STDERR" "not a usable instance name"
 # …and the third: a named instance with no config dir of its own. It refuses legibly rather than
-# resolving the DEFAULT instance's config (and therefore its state dir and its pack trust store) —
+# resolving the DEFAULT instance's config (and therefore its state dir and its crew trust store) —
 # the 2026-08-12 incident. `HERDR_PLUGIN_CONFIG_DIR` is deliberately absent here.
 run_stripped HOME="$L_HOME" PATH="$L_BIN" \
   COLLIE_INSTANCE=v1 COLLIE_PORT=9999 "$BIN" status && fail "an instance with no config dir was accepted"
@@ -1513,37 +1513,37 @@ upd "$CLONE" "$BIN" _apply-update || fail "\`collie _apply-update\` failed on a 
 assert_contains "$STDOUT" "herdr registry refreshed (re-linked)"
 assert_contains "$(cat "$U_HERDR")" "plugin link ${CLONE}"
 
-# ── The pack verbs ───────────────────────────────────────────────────────────
+# ── The crew verbs ───────────────────────────────────────────────────────────
 # Under `env -i`, and READ-ONLY: nothing here may enroll, dial, restart or write a trust store. The
-# behaviour of every verb is covered in cli/pack.test.ts against fakes; what only this file can prove
-# is that they survive Herdr's empty environment like every other verb — a pack verb that needed a
+# behaviour of every verb is covered in cli/crew.test.ts against fakes; what only this file can prove
+# is that they survive Herdr's empty environment like every other verb — a crew verb that needed a
 # login shell would fail exactly where `update` once did.
-PACK_STATE="${TMP_ROOT}/pack-state"
-mkdir -p "$PACK_STATE"
+CREW_STATE="${TMP_ROOT}/crew-state"
+mkdir -p "$CREW_STATE"
 # `CALLS` is re-used as a plain string by the sections above, so the fake tools log is named by its
 # path here — the same one baked into the fakes at the top of this file.
-PACK_CALLS="${TMP_ROOT}/calls"
-: > "$PACK_CALLS"
+CREW_CALLS="${TMP_ROOT}/calls"
+: > "$CREW_CALLS"
 
 # A machine that never enrolled: `crew status` says solo and — the zero-tax contract at its sharpest —
-# writes NOTHING. No trust store, no key, no directory materialised by asking a question. The `pack`
+# writes NOTHING. No trust store, no key, no directory materialised by asking a question. The `crew`
 # spelling is driven too, and its stdout must be byte-identical: the alias is one code path, and a
 # script that reads the status output must not be able to tell which word it typed.
-run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
   PATH="$BIN_DIR" "$BIN" crew status \
   || fail "\`collie crew status\` failed on a solo machine: ${STDERR}"
 assert_contains "$STDOUT" "mode: solo"
 CREW_STATUS_STDOUT="$STDOUT"
-run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
-  PATH="$BIN_DIR" "$BIN" pack status \
-  || fail "\`collie pack status\` failed on a solo machine: ${STDERR}"
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
+  PATH="$BIN_DIR" "$BIN" crew status \
+  || fail "\`collie crew status\` failed on a solo machine: ${STDERR}"
 assert_eq "$STDOUT" "$CREW_STATUS_STDOUT"
-[ -z "$(ls -A "$PACK_STATE")" ] || fail "\`crew status\` wrote into the state dir on a solo machine"
+[ -z "$(ls -A "$CREW_STATE")" ] || fail "\`crew status\` wrote into the state dir on a solo machine"
 
 # `crew` with no subcommand, and with a wrong one, are usage errors that name the real subcommands.
 set +e
-env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
-  PATH="$BIN_DIR" "$BIN" pack nonsense >/dev/null 2>"${TMP_ROOT}/err"
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
+  PATH="$BIN_DIR" "$BIN" crew nonsense >/dev/null 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
 assert_eq "$rc" "2"
@@ -1553,50 +1553,50 @@ for sub in invite join leave status rotate rename remove set-address deputy; do
 done
 
 # `join` without its arguments is a usage error — and must not dial, enroll or write on the way.
-# Both spellings, because `pack join` is now the canonical one and `join` is its alias: they are one
+# Both spellings, because `crew join` is now the canonical one and `join` is its alias: they are one
 # function, and this is where that stops being a claim. stdin comes from /dev/null so the run is not
 # a terminal — the token question must never be asked of a script.
-for spelling in "join" "pack join"; do
+for spelling in "join" "crew join"; do
   set +e
   # shellcheck disable=SC2086
-  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
     PATH="$BIN_DIR" "$BIN" $spelling </dev/null >/dev/null 2>"${TMP_ROOT}/err"
   rc=$?
   set -e
   assert_eq "$rc" "2"
   assert_contains "$(cat "${TMP_ROOT}/err")" "usage: collie crew join"
-  [ -z "$(ls -A "$PACK_STATE")" ] || fail "a usage-failed \`$spelling\` still wrote into the state dir"
+  [ -z "$(ls -A "$CREW_STATE")" ] || fail "a usage-failed \`$spelling\` still wrote into the state dir"
 done
 
 # An address with no token, with no terminal to ask at, is the same usage error — and still no dial.
 set +e
-env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
-  PATH="$BIN_DIR" "$BIN" pack join example.invalid </dev/null >/dev/null 2>"${TMP_ROOT}/err"
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
+  PATH="$BIN_DIR" "$BIN" crew join example.invalid </dev/null >/dev/null 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
 assert_eq "$rc" "2"
 assert_contains "$(cat "${TMP_ROOT}/err")" "needs the invite token as its second argument"
 assert_contains "$(cat "${TMP_ROOT}/err")" "collie crew join example.invalid -"
-[ -z "$(ls -A "$PACK_STATE")" ] || fail "a tokenless \`pack join\` still wrote into the state dir"
+[ -z "$(ls -A "$CREW_STATE")" ] || fail "a tokenless \`crew join\` still wrote into the state dir"
 
 # `crew rename` on a machine in no crew is a STATE error (3). The verb is lead-only and writes only
 # this lead's own trust store, so a solo root must get the refusal and keep an empty state dir —
 # nothing to rename means nothing to materialise.
 set +e
-env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
   PATH="$BIN_DIR" "$BIN" crew rename "the shed" </dev/null >/dev/null 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
 assert_eq "$rc" "3"
 assert_contains "$(cat "${TMP_ROOT}/err")" "no crew to rename"
-[ -z "$(ls -A "$PACK_STATE")" ] || fail "a refused \`crew rename\` still wrote into the state dir"
+[ -z "$(ls -A "$CREW_STATE")" ] || fail "a refused \`crew rename\` still wrote into the state dir"
 
-# `leave` on a machine that is in no pack is a STATE error (3), not a usage error and not a success.
+# `leave` on a machine that is in no crew is a STATE error (3), not a usage error and not a success.
 # Both spellings again, for the same reason.
-for spelling in "leave" "pack leave"; do
+for spelling in "leave" "crew leave"; do
   set +e
   # shellcheck disable=SC2086
-  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
     PATH="$BIN_DIR" "$BIN" $spelling </dev/null >/dev/null 2>"${TMP_ROOT}/err"
   rc=$?
   set -e
@@ -1604,14 +1604,14 @@ for spelling in "leave" "pack leave"; do
   assert_contains "$(cat "${TMP_ROOT}/err")" "not in a crew"
 done
 
-# No pack verb above shelled out to anything — no systemctl, no tailscale, no herdr.
-assert_eq "$(cat "$PACK_CALLS")" ""
+# No crew verb above shelled out to anything — no systemctl, no tailscale, no herdr.
+assert_eq "$(cat "$CREW_CALLS")" ""
 
 # ── doctor ───────────────────────────────────────────────────────────────────
 # Read-only by contract, so it is the one diagnostic this file may actually RUN. Pointed at an empty
 # checkout so the verdict is deterministic (no `web/dist` ⇒ one error ⇒ exit 1), and asserted to have
 # written nothing: not the state dir, not the config dir. It DOES shell out to `tailscale`, which is
-# why it runs after the "no pack verb shelled out" assertion above.
+# why it runs after the "no crew verb shelled out" assertion above.
 DOCTOR_STATE="${TMP_ROOT}/doctor-state"
 mkdir -p "$DOCTOR_STATE"
 set +e
@@ -1654,7 +1654,7 @@ assert_contains "$STDOUT" "crew: none"
 # so it cannot quietly grow.
 PAIR_STATE="${TMP_ROOT}/pair-state"
 mkdir -p "$PAIR_STATE"
-# `CALLS` has been re-used as a plain string by the sections above, so — as in the pack section — the
+# `CALLS` has been re-used as a plain string by the sections above, so — as in the crew section — the
 # fake tools log is named by its path here: the one baked into the fakes at the top of this file.
 PAIR_CALLS="${TMP_ROOT}/calls"
 : > "$PAIR_CALLS"

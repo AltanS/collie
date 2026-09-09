@@ -326,7 +326,7 @@ export function wantsToTag(args: readonly string[]): string | null {
 /**
  * `--run-id <opaque>` — the other plumbing flag: the id of the run this update belongs to (M16/04).
  *
- * It is written into `<state dir>/update.json` and read back by the pack and by nobody else: a peer's
+ * It is written into `<state dir>/update.json` and read back by the crew and by nobody else: a peer's
  * memory of "I already rolled back from this tag" is keyed by (tag, run id), so a fresh confirm on
  * the phone mints a new id and permits exactly one further attempt. It never becomes a path, a URL
  * or a comparison against a clock — it is compared for equality with itself and printed nowhere.
@@ -712,8 +712,8 @@ function detachOnto(deps: UpdateDeps, git: (args: readonly string[]) => number, 
   //     older commit. Now `isReleaseBuild` compares it against HEAD, they differ, and a genuine
   //     release is stamped `<version>-dev`. Measured in the VM lab on a guest whose clone carried an
   //     older `v1.0.0`: `collie version` → `1.0.0-dev+8d57cc8`. The PWA footer and the
-  //     `X-Collie-Build` header then call a release a development build, and `cli/pack-update.ts`'s
-  //     `answersThisBuild` reads the `-dev` tail as "not that commit" — so a pack member updated
+  //     `X-Collie-Build` header then call a release a development build, and `cli/crew-update.ts`'s
+  //     `answersThisBuild` reads the `-dev` tail as "not that commit" — so a crew member updated
   //     this way looks like it never took the push it did take.
   //
   // Storing the ref replaces absent-or-stale with true, in both shapes.
@@ -888,7 +888,7 @@ export async function cmdApplyUpdate(deps: UpdateDeps, args: readonly string[] =
 }
 
 /**
- * Record an IN-PLACE update that has already succeeded, so a restarted lead can find its pack turns.
+ * Record an IN-PLACE update that has already succeeded, so a restarted lead can find its crew turns.
  *
  * The other two update paths reach the record through {@link handOff}, which writes it before it
  * launches the detached runner and then leaves the runner to drive it. This path has no runner: the
@@ -897,10 +897,10 @@ export async function cmdApplyUpdate(deps: UpdateDeps, args: readonly string[] =
  * `wantsRunId` was read at the two `handOff` calls and nowhere else.
  *
  * The cost was not the missing `--status` line. `settleUpdateGate` in `bridge/index.ts` re-derives
- * the pack's turn queue from this file, because the update restarts the very bridge that held the
+ * the crew's turn queue from this file, because the update restarts the very bridge that held the
  * queue in memory and the record is the only thing that survives it. No record, so the gate returned
  * early on every tick forever, so no peer was ever handed its turn — the lead updated itself and the
- * pack sat still until the operator tapped "Retry pack update" by hand. Every install from an
+ * crew sat still until the operator tapped "Retry crew update" by hand. Every install from an
  * ordinary git checkout had this, which is the documented default.
  *
  * ONE WRITE, AFTER THE FACT, and that is the honest shape here. The child has already returned 0,
@@ -934,12 +934,12 @@ function recordInPlaceRun(
   try {
     const begun = reduce(idleRun(startedAt), { kind: "begin", from, to, pid: deps.pid, runId }, startedAt);
     writeRun(deps.files, deps.ctx.stateDir, events.reduce((run, event) => reduce(run, event, now), begun));
-    // Only when a pack is actually waiting on it. A run with no id was started from a terminal by
+    // Only when a crew is actually waiting on it. A run with no id was started from a terminal by
     // someone who never asked for one, and a line about peers there would be noise about nothing.
     if (runId !== null) deps.io.out("  Crew turn recorded — peers level on this lead's next poll.");
   } catch (err) {
     // Said out loud, because the silence is the bug. The update itself stands — the new version is
-    // built, restarted and serving — but a pack will not level off a record that was not written,
+    // built, restarted and serving — but a crew will not level off a record that was not written,
     // and an operator who does not know that is an operator watching a peer sit still for no
     // visible reason. Name the manual way out in the same breath.
     deps.io.err(`warning: the update landed, but its run record could not be written (${String(err)}).`);

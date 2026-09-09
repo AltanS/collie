@@ -84,8 +84,8 @@ export function worstVerdict(verdicts: readonly ("green" | "amber" | "red")[]): 
 /**
  * The argv of the preflight the PHONE runs.
  *
- * `--local` is the load-bearing word: this is the LEAD's own machine's answer. The pack's half of
- * the preflight comes from the peers themselves over the pack link (§19, M16/03) and is merged
+ * `--local` is the load-bearing word: this is the LEAD's own machine's answer. The crew's half of
+ * the preflight comes from the peers themselves over the crew link (§19, M16/03) and is merged
  * below, never walked from here — the CLI's member walk runs over the operator's SSH, which a
  * bridge running as a service does not have.
  */
@@ -156,7 +156,7 @@ export function parsePreflightReport(stdout: string): PreflightReport | null {
     if (typeof remedy === "string") parsed.remedy = remedy;
     checks.push(parsed);
   }
-  // The phone's payload carries no `pack` — the card is the LEAD's own answer. A report that still
+  // The phone's payload carries no `crew` — the card is the LEAD's own answer. A report that still
   // has one (an older CLI, or a terminal run read here) folded its members into the top verdict, so
   // dropping the members while keeping that verdict would show a red card with no red row. The
   // verdict is re-derived from the checks that remain. `--local` makes this a belt-and-braces path.
@@ -178,7 +178,7 @@ export function firstRed(report: PreflightReport): PreflightCheck | null {
 /** How long a cached preflight stays fresh. The card polls; the CLI shells out to git and doctor. */
 export const PREFLIGHT_TTL_MS = 60_000;
 
-// ── The pack's half of the preflight (M16/03) ────────────────────────────────
+// ── The crew's half of the preflight (M16/03) ────────────────────────────────
 //
 // Every collie builds a `PreflightCache`, lead or peer, so a peer can answer for ITSELF without an
 // SSH session anybody has to hold. It publishes that answer as one additive-optional object beside
@@ -195,9 +195,9 @@ export const PREFLIGHT_TTL_MS = 60_000;
  * survived — a truncated list can therefore never turn a red member green — and the list is ordered
  * worst-first BEFORE it is cut, so a red member always keeps the reason that made it red.
  */
-export const PACK_PREFLIGHT_MAX_CHECKS = 16;
+export const CREW_PREFLIGHT_MAX_CHECKS = 16;
 /** The synthetic trailing check. GREEN on purpose: stating a truncation must not invent a finding. */
-export const PACK_PREFLIGHT_TRUNCATED_ID = "checks-truncated";
+export const CREW_PREFLIGHT_TRUNCATED_ID = "checks-truncated";
 
 /** One member's own preflight, as it crosses the link and as the lead banks it. */
 export interface PeerPreflight {
@@ -221,29 +221,29 @@ export function worstFirst(checks: readonly PreflightCheck[]): readonly Prefligh
 }
 
 /**
- * The check list one member publishes: worst first, capped at {@link PACK_PREFLIGHT_MAX_CHECKS},
+ * The check list one member publishes: worst first, capped at {@link CREW_PREFLIGHT_MAX_CHECKS},
  * and **truncation stated rather than silent**.
  *
  * Applied on both ends — the peer caps what it emits, the lead caps what it reads — because a bound
  * that only one side enforces is a bound the other side can be talked out of.
  */
-export function packPreflightChecks(checks: readonly PreflightCheck[]): readonly PreflightCheck[] {
+export function crewPreflightChecks(checks: readonly PreflightCheck[]): readonly PreflightCheck[] {
   const ordered = worstFirst(checks);
-  if (ordered.length <= PACK_PREFLIGHT_MAX_CHECKS) return ordered;
-  const kept = ordered.slice(0, PACK_PREFLIGHT_MAX_CHECKS - 1);
+  if (ordered.length <= CREW_PREFLIGHT_MAX_CHECKS) return ordered;
+  const kept = ordered.slice(0, CREW_PREFLIGHT_MAX_CHECKS - 1);
   const dropped = ordered.length - kept.length;
   return [
     ...kept,
     {
-      id: PACK_PREFLIGHT_TRUNCATED_ID,
+      id: CREW_PREFLIGHT_TRUNCATED_ID,
       verdict: "green",
-      reason: `${dropped} further check${dropped === 1 ? "" : "s"} were not carried over the pack link`,
+      reason: `${dropped} further check${dropped === 1 ? "" : "s"} were not carried over the crew link`,
     },
   ];
 }
 
 /** The wire name of the field, and of the header that asks for a fresh one (PACK_PROTOCOL.md §19). */
-export const PACK_PREFLIGHT_FIELD = "updatePreflight";
+export const CREW_PREFLIGHT_FIELD = "updatePreflight";
 
 /** What one member publishes beside its snapshot body. `null` ⇒ it has nothing to say, which is unknown. */
 export function peerPreflightWire(report: PreflightReport | null, asOf: number | null): PeerPreflight | null {
@@ -253,7 +253,7 @@ export function peerPreflightWire(report: PreflightReport | null, asOf: number |
     asOf,
     // The remedy is deliberately dropped: it is a command for the operator of THAT machine, and the
     // lead's card names a member and a reason, never a shell line to run somewhere else.
-    checks: packPreflightChecks(report.checks).map((c) => ({ id: c.id, verdict: c.verdict, reason: c.reason })),
+    checks: crewPreflightChecks(report.checks).map((c) => ({ id: c.id, verdict: c.verdict, reason: c.reason })),
   };
   // Assigned, never conditionally spread: a member that knows no kind sends NO key rather than one
   // whose value is `undefined`, which is what "absent" has to look like on the wire.
@@ -270,7 +270,7 @@ export function peerPreflightWire(report: PreflightReport | null, asOf: number |
 export function parsePeerPreflight(value: JsonValue): PeerPreflight | null {
   const rec = asRecord(value);
   if (rec === null) return null;
-  const field = asRecord(rec[PACK_PREFLIGHT_FIELD] ?? null);
+  const field = asRecord(rec[CREW_PREFLIGHT_FIELD] ?? null);
   if (field === null) return null;
   const verdict = field.verdict;
   const asOf = field.asOf;
@@ -294,13 +294,13 @@ export function parsePeerPreflight(value: JsonValue): PeerPreflight | null {
     // SAFETY: checked against `VERDICTS` above, which holds exactly the three members of the union.
     verdict: verdict as "green" | "amber" | "red",
     asOf,
-    checks: packPreflightChecks(checks),
+    checks: crewPreflightChecks(checks),
   };
   const kind = readInstallKind(field.installKind);
   return kind === undefined ? parsed : { ...parsed, installKind: kind };
 }
 
-// ── The pack's half of the RUN (M16/04) ──────────────────────────────────────
+// ── The crew's half of the RUN (M16/04) ──────────────────────────────────────
 
 /**
  * The trimmed run record a member publishes beside its snapshot body (PACK_PROTOCOL.md §20).
@@ -308,7 +308,7 @@ export function parsePeerPreflight(value: JsonValue): PeerPreflight | null {
  * The lead cannot otherwise know a peer is moving or has fallen back: the version alone says only
  * "still behind", and a peer that tried and rolled back looks exactly like a peer that has not
  * started. It rides ALONGSIDE the body for the reason `updatePreflight` does — `body` is the object
- * that machine serves its own browser, and a pack-only fact has no business in the browser's
+ * that machine serves its own browser, and a crew-only fact has no business in the browser's
  * snapshot type — and it carries no pid, no log tail and no recovery command: those are for the
  * operator of THAT machine, and the lead's page names a member, a state and a reason.
  */
@@ -323,20 +323,20 @@ export interface PeerRunReport {
   readonly updatedAt: number | null;
 }
 
-/** The wire name of {@link PeerRunReport}'s field, beside {@link PACK_PREFLIGHT_FIELD} (§20). */
-export const PACK_RUN_FIELD = "updateRun";
+/** The wire name of {@link PeerRunReport}'s field, beside {@link CREW_PREFLIGHT_FIELD} (§20). */
+export const CREW_RUN_FIELD = "updateRun";
 
 /**
  * The wire name of the member's own running version on `snapshot`'s answer, in the same seat as
- * {@link PACK_PREFLIGHT_FIELD} and {@link PACK_RUN_FIELD} (§5, §19 — the 2026-09-04 amendment).
+ * {@link CREW_PREFLIGHT_FIELD} and {@link CREW_RUN_FIELD} (§5, §19 — the 2026-09-04 amendment).
  *
  * Spelled exactly as `hello` spells it, because it is the same fact: `hello` and `snapshot` are two
  * places one version crosses one link, and a second spelling would invite a second reading.
  */
-export const PACK_VERSION_FIELD = "version";
+export const CREW_VERSION_FIELD = "version";
 
-/** How much of a reason crosses the link. A log tail is that machine's own business, not the pack's. */
-export const PACK_RUN_REASON_MAX = 240;
+/** How much of a reason crosses the link. A log tail is that machine's own business, not the crew's. */
+export const CREW_RUN_REASON_MAX = 240;
 
 /** What one member publishes. `null` ⇒ it has never run an update, which is nothing to report. */
 export function peerRunWire(run: UpdateRun | null): PeerRunReport | null {
@@ -345,7 +345,7 @@ export function peerRunWire(run: UpdateRun | null): PeerRunReport | null {
     state: run.state,
     to: run.to,
     runId: run.runId ?? null,
-    reason: run.reason === undefined ? null : run.reason.slice(0, PACK_RUN_REASON_MAX),
+    reason: run.reason === undefined ? null : run.reason.slice(0, CREW_RUN_REASON_MAX),
     updatedAt: run.updatedAt,
   };
 }
@@ -360,7 +360,7 @@ export function peerRunWire(run: UpdateRun | null): PeerRunReport | null {
 export function parsePeerRun(value: JsonValue): PeerRunReport | null {
   const rec = asRecord(value);
   if (rec === null) return null;
-  const field = asRecord(rec[PACK_RUN_FIELD] ?? null);
+  const field = asRecord(rec[CREW_RUN_FIELD] ?? null);
   if (field === null) return null;
   const state = field.state;
   if (typeof state !== "string" || !RUN_STATES.has(state)) return null;
@@ -371,7 +371,7 @@ export function parsePeerRun(value: JsonValue): PeerRunReport | null {
     state: state as UpdateRunState,
     to: typeof to === "string" && to !== "" ? to : null,
     runId: typeof runId === "string" && runId !== "" ? runId : null,
-    reason: typeof reason === "string" && reason !== "" ? reason.slice(0, PACK_RUN_REASON_MAX) : null,
+    reason: typeof reason === "string" && reason !== "" ? reason.slice(0, CREW_RUN_REASON_MAX) : null,
     updatedAt: typeof updatedAt === "number" && Number.isSafeInteger(updatedAt) ? updatedAt : null,
   };
 }
@@ -393,14 +393,14 @@ const RUN_STATES: ReadonlySet<string> = new Set<UpdateRunState>([
  * A member's verdict as the card reads it. `unknown` is the fourth, and it is not a shade of green:
  * it is "we could not check this machine", which blocks the confirm exactly as a red does.
  */
-export type PackVerdict = "green" | "amber" | "red" | "unknown";
+export type CrewVerdict = "green" | "amber" | "red" | "unknown";
 
-/** One row of `GET /api/update/check`'s `pack` array. */
-export interface PackUpdateRow {
+/** One row of `GET /api/update/check`'s `crew` array. */
+export interface CrewUpdateRow {
   readonly name: string;
   /** What that member last reported over the link, or `null` when it has reported none. */
   readonly version: string | null;
-  readonly verdict: PackVerdict;
+  readonly verdict: CrewVerdict;
   /** The reason strings of its non-green checks, worst first. A red row always has at least one. */
   readonly reasons: readonly string[];
   /** That member's own stamp for the report, or `null` when there is no report to date. */
@@ -417,7 +417,7 @@ export interface PackUpdateRow {
 }
 
 /** What the lead knows about one member when it composes a row. All of it banked by the sweep. */
-export interface PackMemberFacts {
+export interface CrewMemberFacts {
   readonly name: string;
   readonly version: string | null;
   readonly preflight: PeerPreflight | null;
@@ -442,13 +442,13 @@ export function unknownReason(name: string): string {
  * never green. `asOf` is that member's own stamp, passed through untouched: a green from six hours
  * ago and a green from four seconds ago are different claims.
  */
-export function packUpdateRows(members: readonly PackMemberFacts[]): PackUpdateRow[] {
+export function crewUpdateRows(members: readonly CrewMemberFacts[]): CrewUpdateRow[] {
   return members.map((m) => {
     if (m.preflight === null) {
       return { name: m.name, version: m.version, verdict: "unknown", reasons: [unknownReason(m.name)], asOf: null };
     }
     const reasons = reasonsOf(m.preflight.checks);
-    const row: PackUpdateRow = {
+    const row: CrewUpdateRow = {
       name: m.name,
       version: m.version,
       verdict: m.preflight.verdict,
@@ -463,33 +463,33 @@ export function packUpdateRows(members: readonly PackMemberFacts[]): PackUpdateR
   });
 }
 
-const PACK_VERDICTS: ReadonlySet<string> = new Set(["green", "amber", "red", "unknown"]);
+const CREW_VERDICTS: ReadonlySet<string> = new Set(["green", "amber", "red", "unknown"]);
 
 /**
- * The `pack` rows inside a `GET /api/update/check` answer, read defensively.
+ * The `crew` rows inside a `GET /api/update/check` answer, read defensively.
  *
- * The reader is `collie pack update`, over loopback against this collie's own bridge — a different
+ * The reader is `collie crew update`, over loopback against this collie's own bridge — a different
  * process, possibly a different build, so the body is parsed like any other foreign document. A row
  * this build cannot read whole is DROPPED rather than half-believed; the transcript is then quieter
  * and nothing else changes, because that transcript is a nicety and never a gate.
  */
-export function parsePackRows(doc: JsonValue): PackUpdateRow[] {
+export function parseCrewRows(doc: JsonValue): CrewUpdateRow[] {
   const rec = asRecord(doc);
   if (rec === null) return [];
   const rows = rec.pack;
   if (!Array.isArray(rows)) return [];
-  const out: PackUpdateRow[] = [];
+  const out: CrewUpdateRow[] = [];
   for (const raw of rows) {
     const row = asRecord(raw);
     if (row === null) continue;
     const { name, verdict, version, reasons, asOf } = row;
-    if (typeof name !== "string" || typeof verdict !== "string" || !PACK_VERDICTS.has(verdict)) continue;
-    const parsed: PackUpdateRow = {
+    if (typeof name !== "string" || typeof verdict !== "string" || !CREW_VERDICTS.has(verdict)) continue;
+    const parsed: CrewUpdateRow = {
       name,
       version: typeof version === "string" ? version : null,
-      // SAFETY: checked against `PACK_VERDICTS` on the line above, which holds exactly the four
+      // SAFETY: checked against `CREW_VERDICTS` on the line above, which holds exactly the four
       // members of the union, and the guard there skipped every string that is not one of them.
-      verdict: verdict as PackVerdict,
+      verdict: verdict as CrewVerdict,
       reasons: Array.isArray(reasons) ? reasons.filter((r): r is string => typeof r === "string") : [],
       asOf: typeof asOf === "number" && Number.isSafeInteger(asOf) ? asOf : null,
     };
@@ -499,9 +499,9 @@ export function parsePackRows(doc: JsonValue): PackUpdateRow[] {
   return out;
 }
 
-/** The merged answer: the worst verdict in the pack, and the machine that produced it. */
+/** The merged answer: the worst verdict in the crew, and the machine that produced it. */
 export interface MergedUpdateVerdict {
-  readonly verdict: PackVerdict;
+  readonly verdict: CrewVerdict;
   /** The member the verdict came from, or `null` when everything is green. */
   readonly member: string | null;
   /** That member's own sentence for it, or `null`. */
@@ -514,7 +514,7 @@ export interface MergedUpdateVerdict {
  * The ONE function the card, the ribbon and `POST /api/update`'s refusal all read (M16/03).
  *
  * The lead's own `preflight.verdict` stays what it is — its own machine's answer, from `--local`.
- * This is the pack-wide gate on top of it, computed with {@link worstVerdict} so a second summary
+ * This is the crew-wide gate on top of it, computed with {@link worstVerdict} so a second summary
  * rule cannot come to disagree with the first, and it always names the machine: "red" rendered
  * without a member beside it is a dead end for the operator holding the phone.
  *
@@ -523,10 +523,10 @@ export interface MergedUpdateVerdict {
  */
 export function mergedUpdateVerdict(
   lead: PreflightReport | null,
-  pack: readonly PackUpdateRow[],
+  pack: readonly CrewUpdateRow[],
   selfName = "this collie",
 ): MergedUpdateVerdict {
-  const leadRow: PackUpdateRow =
+  const leadRow: CrewUpdateRow =
     lead === null
       ? { name: selfName, version: null, verdict: "unknown", reasons: [unknownReason(selfName)], asOf: null }
       : { name: selfName, version: null, verdict: lead.verdict, reasons: reasonsOf(lead.checks), asOf: null };
@@ -618,7 +618,7 @@ export class PreflightCache {
   /**
    * What the cache holds **right now**, without running anything. `null` until a run has landed.
    *
-   * The pack's read (`GET /pack/v1/snapshot`) takes this path and not {@link PreflightCache.get}:
+   * The crew's read (`GET /pack/v1/snapshot`) takes this path and not {@link PreflightCache.get}:
    * the lead's sweep runs on a strict per-poll budget (PACK_PROTOCOL.md §10.1), and a stale entry
    * that shelled out to git mid-sweep would turn a healthy member unreachable. The peer's own 6 h
    * refresh is what keeps this warm; `asOf` is what says how warm.
@@ -680,7 +680,7 @@ export interface UpdateStartRequest {
   /** The second consent, and only a major crossing needs it (ADR 0020). */
   readonly major: boolean;
   /**
-   * "Retry pack update" (M16/04): start a run whose only legs are the PEERS.
+   * "Retry crew update" (M16/04): start a run whose only legs are the PEERS.
    *
    * The page offers it as its single action exactly when this lead is current and a member is
    * behind or has rolled back — there is nothing to move the lead to, and a per-peer button would be
@@ -725,11 +725,11 @@ export interface UpdateStartState {
   /**
    * Every member's row, as the sweep banked it (M16/03). Absent ⇒ solo, which is `[]` and green.
    *
-   * One confirm covers the pack, so the gate covers the pack: a member that is red — or that nobody
+   * One confirm covers the crew, so the gate covers the crew: a member that is red — or that nobody
    * could check — refuses the run here, with its own name and its own sentence, exactly as the card
    * showed before the operator tapped.
    */
-  readonly pack?: readonly PackUpdateRow[];
+  readonly pack?: readonly CrewUpdateRow[];
   /**
    * Every peer's leg of the run this lead last drove (M16/04). Absent ⇒ no run, which is `[]`.
    *
@@ -768,15 +768,15 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   // ── THE PEERS-ONLY RUN (M16/04) ─────────────────────────────────────────────
   // Decided here, above the preflight, because the gates below are about THIS machine's own move and
   // this request asks for none: the lead is current, so there is no target for it and its own
-  // `latest` says nothing about whether a member is behind. What is NOT skipped is the pack's half
-  // of the gate — one confirm still covers the pack, so a member that is red or that nobody could
+  // `latest` says nothing about whether a member is behind. What is NOT skipped is the crew's half
+  // of the gate — one confirm still covers the crew, so a member that is red or that nobody could
   // check refuses this exactly as it refuses an ordinary start.
   if (req.peersOnly) {
     const blocked = mergedUpdateVerdict(state.preflight, state.pack ?? []);
     if (blocked.blocks) {
       return refuse(412, "update.preflight_red", {
-        check: blocked.member ?? "the pack",
-        reason: blocked.reason ?? "the pack preflight could not be read",
+        check: blocked.member ?? "the crew",
+        reason: blocked.reason ?? "the crew preflight could not be read",
       });
     }
     return peersNeedLevelling(state) ? { kind: "peers", to: state.current } : refuse(409, "update.none_available");
@@ -804,15 +804,15 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
     return refuse(412, "update.preflight_red", { check: red.id, reason: red.reason });
   }
 
-  // The pack's half of the same gate, decided by the ONE merge function the card and the ribbon
+  // The crew's half of the same gate, decided by the ONE merge function the card and the ribbon
   // read (M16/03). The lead's own red is refused above and names its CHECK; a member's is named by
   // MACHINE, because that is the only handle the operator holding a phone has on it. An unknown
   // member blocks here too — "we could not check attic" is not "attic is fine".
   const merged = mergedUpdateVerdict(state.preflight, state.pack ?? []);
   if (merged.blocks) {
     return refuse(412, "update.preflight_red", {
-      check: merged.member ?? "the pack",
-      reason: merged.reason ?? "the pack preflight could not be read",
+      check: merged.member ?? "the crew",
+      reason: merged.reason ?? "the crew preflight could not be read",
     });
   }
 

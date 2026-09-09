@@ -13,9 +13,9 @@
 # copies its script: both derive their ROOT from BASH_SOURCE and cd there, so a symlink would point
 # them back at the real checkout and they would answer about THIS repository's versions.
 #
-# Guard (B), lint, guard (C), pack wire, and guard (D), flake.lock, are out of scope here and are
+# Guard (B), lint, guard (C), crew wire, and guard (D), flake.lock, are out of scope here and are
 # held off with their own SKIP_* switches: they own their file lists and their messages, and
-# check-pack-wire.sh and check-flake-lock.sh are covered against their own fixtures. What is
+# check-crew-wire.sh and check-flake-lock.sh are covered against their own fixtures. What is
 # asserted below is only which commits guard (A) lets through.
 set -euo pipefail
 
@@ -92,7 +92,7 @@ write_changelog_raw() {
 mkdir -p "${REPO}/scripts/git-hooks" "${REPO}/web/src/hooks" "${REPO}/cli" "${REPO}/bridge" "${REPO}/docs"
 cp "$HOOK" "${REPO}/scripts/git-hooks/pre-commit"
 cp "${ROOT}/scripts/check-version.sh" "${REPO}/scripts/check-version.sh"
-cp "${ROOT}/scripts/check-pack-wire.sh" "${REPO}/scripts/check-pack-wire.sh"
+cp "${ROOT}/scripts/check-crew-wire.sh" "${REPO}/scripts/check-crew-wire.sh"
 cp "${ROOT}/scripts/check-flake-lock.sh" "${REPO}/scripts/check-flake-lock.sh"
 chmod +x "${REPO}/scripts/git-hooks/pre-commit" "${REPO}/scripts"/check-*.sh
 
@@ -120,7 +120,7 @@ OUT=""
 run_guard() {
   git add -A
   set +e
-  OUT="$(SKIP_LINT_CHECK=1 SKIP_PACK_WIRE_CHECK=1 SKIP_FLAKE_LOCK_CHECK=1 \
+  OUT="$(SKIP_LINT_CHECK=1 SKIP_CREW_WIRE_CHECK=1 SKIP_FLAKE_LOCK_CHECK=1 \
     bash "${REPO}/scripts/git-hooks/pre-commit" 2>&1)"
   RC=$?
   set -e
@@ -293,7 +293,7 @@ assert_blocked "a version that went backwards" "version went backwards"
 touch_file cli/pairing.ts
 git add -A
 set +e
-OUT="$(SKIP_VERSION_CHECK=1 SKIP_LINT_CHECK=1 SKIP_PACK_WIRE_CHECK=1 SKIP_FLAKE_LOCK_CHECK=1 \
+OUT="$(SKIP_VERSION_CHECK=1 SKIP_LINT_CHECK=1 SKIP_CREW_WIRE_CHECK=1 SKIP_FLAKE_LOCK_CHECK=1 \
   bash "${REPO}/scripts/git-hooks/pre-commit" 2>&1)"
 RC=$?
 set -e

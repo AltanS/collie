@@ -46,14 +46,14 @@ import {
   type ClaimFailure,
   type PairingStore,
 } from "./pairing.ts";
-import { modeForWire } from "./pack/mode.ts";
-import type { PackRuntime } from "./pack/config.ts";
-import type { PackLead } from "./pack/lead.ts";
-import { packDeviceOf, packGate } from "./pack/peer-gate.ts";
-import { snapshotPlan } from "./pack/merge.ts";
-import { selectHostFrom, type HostSelector } from "./pack/registry.ts";
-import type { PackHandler, PackSurface } from "./pack/router.ts";
-import type { PackTlsOptions } from "./pack/transport.ts";
+import { modeForWire } from "./crew/mode.ts";
+import type { CrewRuntime } from "./crew/config.ts";
+import type { CrewLead } from "./crew/lead.ts";
+import { crewDeviceOf, crewGate } from "./crew/peer-gate.ts";
+import { snapshotPlan } from "./crew/merge.ts";
+import { selectHostFrom, type HostSelector } from "./crew/registry.ts";
+import type { CrewHandler, CrewSurface } from "./crew/router.ts";
+import type { CrewTlsOptions } from "./crew/transport.ts";
 import { createSttAdmission, MAX_STT_AUDIO_BYTES, sttCapability, transcribeRequest } from "./stt/http.ts";
 import type { SttProvider } from "./stt/provider.ts";
 import { uploadTooLarge } from "./uploads.ts";
@@ -71,7 +71,7 @@ import type {
   OperatorKeyRow,
   OperatorFontRow,
   OperatorQuickReplyRow,
-  PackStatusResponse,
+  CrewStatusResponse,
   Launcher,
   LaunchersResponse,
   PaneHistoryResponse,
@@ -207,7 +207,7 @@ const TAB_ACTION_ROUTE = /^\/api\/tab\/([^/]+)\/(rename|close)$/;
  *
  * The hash is matched as an opaque segment here and validated by {@link isBlobHash} in the handler,
  * exactly as `PANE_ROUTE` matches a pane id and `decodeURIComponent` interprets it: a route grammar
- * says where a request goes, never whether its argument is well formed. `bridge/pack/forward.ts`
+ * says where a request goes, never whether its argument is well formed. `bridge/crew/forward.ts`
  * mirrors this shape one-for-one (`forward.test.ts` pins the correspondence), because a blob lives
  * on the machine whose journal named it and is therefore a forwarded READ.
  */
@@ -257,7 +257,7 @@ export function marksPaneSeen(req: Request, action: string | undefined): boolean
  * The `/api/config` body. Pure, and exported for that reason: the handler lives inside `Bun.serve`,
  * which `bun test` cannot stand up (CLAUDE.md), so the shape is asserted here instead.
  *
- * `mode` is present only when this collie is in a pack — see {@link modeForWire}. A solo instance's
+ * `mode` is present only when this collie is in a crew — see {@link modeForWire}. A solo instance's
  * body is byte-identical to the pre-federation one, which is the whole zero-tax point; a client
  * reads the mode as `mode ?? "solo"`.
  */
@@ -265,7 +265,7 @@ export function marksPaneSeen(req: Request, action: string | undefined): boolean
  * Who is asking for a session-scoped route, and everything that differs between them.
  *
  * There are exactly two implementations and there must never be a third: the browser at this
- * collie's front door, and a lead over an admitted pack link (PACK_PROTOCOL.md §5). Each route
+ * collie's front door, and a lead over an admitted crew link (PACK_PROTOCOL.md §5). Each route
  * handler below is written once and consumes this — so the answer to "does a peer run the same code
  * my phone does?" is structural rather than a promise.
  */
@@ -273,7 +273,7 @@ interface RouteCaller {
   /**
    * `(host, session)` → the runtime to act on, or the Response refusing/answering it. For a browser
    * this may resolve to *another machine*, in which case the request is forwarded and the peer's own
-   * response comes back here (§9.1). For a pack caller it is always local.
+   * response comes back here (§9.1). For a crew caller it is always local.
    */
   resolve(): Promise<SessionRuntime | Response>;
   /** The caller's own authorisation at this level, or `null` to proceed. */
@@ -485,10 +485,10 @@ export function bridgeConfigBody(opts: {
   push: boolean;
   vapidPublicKey: string;
   build: string;
-  mode: PackRuntime["mode"];
+  mode: CrewRuntime["mode"];
   /**
-   * The active adapter, when there is one. Optional so the pack-mode assertions below (and any
-   * caller that has no session registry) stay about the pack and nothing else; the real handler
+   * The active adapter, when there is one. Optional so the crew-mode assertions below (and any
+   * caller that has no session registry) stay about the crew and nothing else; the real handler
    * always passes it.
    */
   mux?: MuxPublication;
@@ -521,8 +521,8 @@ export function bridgeConfigBody(opts: {
    */
   stt?: SttCapability;
   /**
-   * What this host accepts as an attachment. Optional here for the reason `mux` is — the pack-mode
-   * assertions build this body by hand and are about the pack — and always passed by the real
+   * What this host accepts as an attachment. Optional here for the reason `mux` is — the crew-mode
+   * assertions build this body by hand and are about the crew — and always passed by the real
    * handler, so an absent key on the wire means an older bridge and nothing else.
    */
   upload?: UploadCapability;
@@ -538,7 +538,7 @@ export function bridgeConfigBody(opts: {
     build: opts.build,
   };
   // Assigned, never conditionally spread: a solo instance's body must carry NEITHER key, byte for
-  // byte as before the pack existed (PACK_PROTOCOL.md §11).
+  // byte as before the crew existed (PACK_PROTOCOL.md §11).
   if (mode !== undefined) wire.mode = mode;
   if (mine.length > 0) wire.operatorCommands = [...mine];
   if (myKeys.length > 0) wire.operatorKeys = [...myKeys];
@@ -579,10 +579,10 @@ export interface UpdateActionDeps {
    */
   newRunId: () => string;
   /**
-   * Tell the pack a run has begun, so the lead starts granting turns and fires the first of §20's
+   * Tell the crew a run has begun, so the lead starts granting turns and fires the first of §20's
    * three immediate sweeps. A no-op on a solo install and on a peer.
    */
-  beginPackRun?: (a: { runId: string; to: string }) => void;
+  beginCrewRun?: (a: { runId: string; to: string }) => void;
 }
 
 export function startServer(opts: {
@@ -612,49 +612,49 @@ export function startServer(opts: {
   audit: AuditLog;
   activity: ActivityLedger;
   /** Resolved once at startup in index.ts, before anything is wired. Solo is `SOLO_RUNTIME`. */
-  pack: PackRuntime;
+  crew: CrewRuntime;
   /**
    * The federated surface, supplied by index.ts **only** when a trust store exists. Undefined on
-   * every solo instance, and the paths it owns are declared in `bridge/pack/router.ts` rather than
-   * here — deliberately, so this file names no pack route and `solo-baseline.test.ts` can prove by
+   * every solo instance, and the paths it owns are declared in `bridge/crew/router.ts` rather than
+   * here — deliberately, so this file names no crew route and `solo-baseline.test.ts` can prove by
    * grep that solo registers nothing (PACK_PROTOCOL.md §11, "`/pack/v1/*`: not routed at all").
    *
    * A **factory**, not a handler, for one reason: a peer's `/pack/v1/*` must answer exactly what its
-   * own `/api/*` would, and the only way to guarantee that is to hand the pack router the very
+   * own `/api/*` would, and the only way to guarantee that is to hand the crew router the very
    * closures this file serves browsers from — the snapshot body, and the session-scoped route block.
    * Two assemblies that "agree" would be two assemblies that drift.
    */
-  packRouter?: (surface: PackSurface) => PackHandler;
+  crewRouter?: (surface: CrewSurface) => CrewHandler;
   /**
    * The **deposed** answer, when this collie has learned the crown has moved (PACK_PROTOCOL.md
    * §18.12). Returns a `Response` for every request it should swallow and `null` otherwise — so an
    * instance that has not been deposed passes `undefined` and this file's dispatch is byte-identical
    * to today's.
    *
-   * A closure rather than a route, for the reason `packRouter` is one: the paths it owns are declared
-   * in `bridge/pack/deposed.ts`, so this file names none of them and `solo-baseline.test.ts` can keep
+   * A closure rather than a route, for the reason `crewRouter` is one: the paths it owns are declared
+   * in `bridge/crew/deposed.ts`, so this file names none of them and `solo-baseline.test.ts` can keep
    * proving by grep that the route table here is exactly today's.
    */
   deposed?: (req: Request, url: URL) => Response | null;
   /**
    * The peer listener's pinned-mTLS options, supplied **only** by a peer that could build them
-   * (`bridge/pack/transport.ts`). Absent on solo and on a lead, so this file's `Bun.serve` call is
+   * (`bridge/crew/transport.ts`). Absent on solo and on a lead, so this file's `Bun.serve` call is
    * byte-identical to today's for every instance that is not a peer (§11).
    */
-  tls?: PackTlsOptions;
+  tls?: CrewTlsOptions;
   /**
-   * The lead runtime, supplied **only** when this collie leads a pack with at least one enrolled
+   * The lead runtime, supplied **only** when this collie leads a crew with at least one enrolled
    * member. Its presence is exactly the condition under which `servers` goes on the wire and every
    * session and pane gains a `host` (PACK_PROTOCOL.md §9.2, §11) — undefined here means the snapshot
    * body that leaves this file is the object literal it has always been.
    */
-  packLead?: PackLead;
+  crewLead?: CrewLead;
   /**
-   * The Pack overview body (`GET /api/pack`), or `null` when this collie is not a lead with a pack.
+   * The Crew overview body (`GET /api/pack`), or `null` when this collie is not a lead with a crew.
    *
-   * A CLOSURE, and it is composed in index.ts rather than here, for the reason `packRouter` is one:
-   * this file may name no pack state. What it holds instead is a question it can ask on the request
-   * path — the answer is assembled by `bridge/pack/status-wire.ts` from the trust store this process
+   * A CLOSURE, and it is composed in index.ts rather than here, for the reason `crewRouter` is one:
+   * this file may name no crew state. What it holds instead is a question it can ask on the request
+   * path — the answer is assembled by `bridge/crew/status-wire.ts` from the trust store this process
    * already read and the per-peer beliefs the sweep already maintains, so asking it dials nobody and
    * opens no file (PACK_PROTOCOL.md §10.1, §11).
    *
@@ -662,11 +662,11 @@ export function startServer(opts: {
    * says the same thing at request time — both are the route's 404, and a lead that has just lost its
    * last member stops answering without this file learning why.
    */
-  packStatus?: () => PackStatusResponse | null;
+  crewStatus?: () => CrewStatusResponse | null;
   /**
    * The lead's per-peer notification coordinators, supplied under the same condition as
-   * {@link startServer} `packLead`. The two notification-policy routes below fan across it exactly as
-   * they fan across `registry.all()` — snooze and prefs are one pack-wide setting the lead owns
+   * {@link startServer} `crewLead`. The two notification-policy routes below fan across it exactly as
+   * they fan across `registry.all()` — snooze and prefs are one crew-wide setting the lead owns
    * (PACK_PROTOCOL.md §5), and the lead being the only sender is what makes that fan complete.
    * Structurally typed, not the class: this file needs "fan a pref change, list the live slots".
    */
@@ -676,20 +676,20 @@ export function startServer(opts: {
    * flag: the store reads its own registry off disk, and an empty registry means "nothing paired",
    * which enforces nothing. Optional here only so the existing tests can build a server without it.
    *
-   * It is deliberately NOT threaded into the pack surface. `/pack/v1/*` is admitted by pinned mutual
-   * TLS plus the pack secret and shares nothing with a browser credential (PACK_PROTOCOL.md §6,
+   * It is deliberately NOT threaded into the crew surface. `/pack/v1/*` is admitted by pinned mutual
+   * TLS plus the crew secret and shares nothing with a browser credential (PACK_PROTOCOL.md §6,
    * ADR 0013) — a lead does not hold one of this collie's pairing tokens and must never need one.
    *
    * **ONE EXCEPTION, added 2026-08-20, and the rule above survives verbatim** (RFC §16, decision 5;
    * PACK_PROTOCOL.md §18.14). `POST /pack/v1/pairing` carries a lead's registry — **hashes only** — to
    * the one member it has named DEPUTY, so that member's standby door can check a phone's bearer
-   * credential when the lead is gone. What is unchanged: **no pack request is ever admitted by a
-   * pairing token**, and that route is admitted by the pack's own two factors plus a role check like
-   * every other one. What is new: a browser credential's hash rides a pack route and lands on a
+   * credential when the lead is gone. What is unchanged: **no crew request is ever admitted by a
+   * pairing token**, and that route is admitted by the crew's own two factors plus a role check like
+   * every other one. What is new: a browser credential's hash rides a crew route and lands on a
    * peer's disk — in `standby-devices.json`, its own file, **never** merged into
    * `paired-devices.json`, because `PairingStore.enforced()` is "the registry is non-empty" and a
    * merge would arm the deputy's own write gate for its own operator. The reasoning, at length, is in
-   * `bridge/pack/standby-devices.ts`.
+   * `bridge/crew/standby-devices.ts`.
    */
   pairing?: PairingStore;
   /**
@@ -703,7 +703,7 @@ export function startServer(opts: {
    */
   stt?: () => Promise<SttProvider | null>;
 }) {
-  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, pack } = opts;
+  const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, crew } = opts;
   const pairing = opts.pairing;
   const stt = opts.stt ?? (async () => null);
   // One gate per Bun server, not per request: two slow uploads and their two provider calls share
@@ -711,8 +711,8 @@ export function startServer(opts: {
   const sttAdmission = createSttAdmission();
   /** Who the requester is, across both device gates — see {@link requestDevice}. */
   const whois = (req: Request): DeviceAuth => requestDevice(req, cfg, pairing);
-  const packLead = opts.packLead;
-  const packStatus = opts.packStatus;
+  const crewLead = opts.crewLead;
+  const crewStatus = opts.crewStatus;
   const peerNotifier = opts.peerNotifier;
   // One journal registry + store for the process. The store's cache is keyed by absolute path, so
   // sharing it across herdr sessions AND across harnesses is correct — two sessions can front panes
@@ -757,7 +757,7 @@ export function startServer(opts: {
   };
 
   /**
-   * This collie's own snapshot body — the whole of what `/api/snapshot` answered before packs
+   * This collie's own snapshot body — the whole of what `/api/snapshot` answered before crews
    * existed, and (with `device` omitted) exactly what a peer serves its lead on `/pack/v1/snapshot`.
    *
    * `undefined` means the session name is unknown, which every caller turns into the same 404 it
@@ -795,12 +795,12 @@ export function startServer(opts: {
     // came from so the phone can address it (types.ts states why ALL of them are tagged, never just
     // the non-primary ones).
     //
-    // NOTHING ELSE IN THE BODY WIDENS, and that is the same shape the pack merge already has rather
+    // NOTHING ELSE IN THE BODY WIDENS, and that is the same shape the crew merge already has rather
     // than a shortcut: a peer contributes its `agents` and `shellPanes` and nothing more
-    // (pack/merge.ts `PeerSnapshotBody`), because `workspaces`, `tabs` and `bridge` are statements
+    // (crew/merge.ts `PeerSnapshotBody`), because `workspaces`, `tabs` and `bridge` are statements
     // about one link the phone reads one at a time. `bridge`, `workspaces` and `tabs` here stay the
     // AMBIENT session's — the one `?s=` named — exactly as they are today. So the triage lists
-    // widen and the navigation tree does not, one dimension down from a pack, where the same is
+    // widen and the navigation tree does not, one dimension down from a crew, where the same is
     // already true of every peer.
     //
     // The ORDER is the registry's own — primary first, then alphabetical — so it matches the
@@ -834,8 +834,8 @@ export function startServer(opts: {
 
   /**
    * This collie's own `(session)` resolution: the identical `registry.get` call the bridge made
-   * before packs existed, plus the 404 it always answered. Named once so that BOTH the browser's host
-   * gate and the peer's pack dispatch reach a local runtime through the same expression — two
+   * before crews existed, plus the 404 it always answered. Named once so that BOTH the browser's host
+   * gate and the peer's crew dispatch reach a local runtime through the same expression — two
    * spellings of "the primary session, or 404" would be two chances to disagree about what `?session=`
    * means, and §5 says a peer resolves it with today's exact semantics.
    */
@@ -850,13 +850,13 @@ export function startServer(opts: {
    * A browser reaches it through `Bun.serve`'s dispatch below; a LEAD reaches it through this
    * collie's `/pack/v1/*` surface, which hands over this very closure (PACK_PROTOCOL.md §5: "a 1:1
    * re-exposure of the routes the phone already calls, dispatched into the same handlers"). Not a
-   * copy that agrees — the same code, so `reply` cannot acquire a pack-only behaviour and `history`
+   * copy that agrees — the same code, so `reply` cannot acquire a crew-only behaviour and `history`
    * cannot acquire a host parameter.
    *
    * What differs between the two callers is *only* who is asking, which is exactly the
    * {@link RouteCaller} it takes: how the caller's request resolves to a runtime (a browser's may
    * resolve to another machine and be forwarded), how the caller is authorised (a browser by
-   * `guard()`, a lead by the pack link plus the peer's own device policy — §12), and which audit log
+   * `guard()`, a lead by the crew link plus the peer's own device policy — §12), and which audit log
    * the write lands in (the peer's is stamped `via:"pack"`).
    *
    * `null` ⇒ not a session-scoped path; the caller carries on with its own routing.
@@ -901,7 +901,7 @@ export function startServer(opts: {
     }
     // A launch is a `/api/workspace` create the operator pre-declared: the client names a row in
     // `launchers.toml` and the bridge, never the client, supplies the command line. It sits here
-    // rather than beside it in the browser dispatch so a pack lead reaches the same handler (§5).
+    // rather than beside it in the browser dispatch so a crew lead reaches the same handler (§5).
     if (pathname === "/api/launch" && req.method === "POST") {
       const denied = caller.gate("write");
       if (denied) return denied;
@@ -1004,7 +1004,7 @@ export function startServer(opts: {
       //
       // ── AND IT IS RECORDED EXACTLY ONCE, ON THE OWNING HOST ────────────────
       // A pane on a peer never reaches this line on the LEAD: `caller.resolve()` returned the peer's
-      // forwarded response above. It reaches it on the PEER, through the pack dispatch, against the
+      // forwarded response above. It reaches it on the PEER, through the crew dispatch, against the
       // peer's own ledger — which is what makes "seen" one shared fact (.adr/0003) rather than two
       // machines' guesses, and why the `x-collie-seen` header is forwarded verbatim.
       const routed = isRead ? req.method === "GET" : req.method === "POST";
@@ -1034,19 +1034,19 @@ export function startServer(opts: {
     return null;
   };
 
-  // A peer answers its lead with its OWN view and never a merged one — a pack link never forwards a
+  // A peer answers its lead with its OWN view and never a merged one — a crew link never forwards a
   // `host=` because a peer has no peers (§4). Hence `localSnapshot`, not the merged body below.
   //
   // The second closure is the per-pane half of the same idea (§5): the lead's request is dispatched
-  // into the block above, authorised by the PEER's own gate (bridge/pack/peer-gate.ts) and audited in
+  // into the block above, authorised by the PEER's own gate (bridge/crew/peer-gate.ts) and audited in
   // the PEER's own log with `via:"pack"` and the originating member (§12). The lead's verdict is not
   // an input — it never crosses the wire.
-  const packHandler = opts.packRouter?.({
-    // The view comes off the LEAD's request (`bridge/pack/router.ts` reads it with the same
+  const crewHandler = opts.crewRouter?.({
+    // The view comes off the LEAD's request (`bridge/crew/router.ts` reads it with the same
     // `selectView` the browser route uses), never from a literal here: this line used to hard-code a
     // narrow answer, which made a member's second session unreachable no matter what the phone asked
     // (M22/06). `?sessions=all` is additive and optional under §7.1, so PACK_PROTOCOL_VERSION does
-    // not move, and a lead that does not send it still gets the primary session. A pack request may
+    // not move, and a lead that does not send it still gets the primary session. A crew request may
     // still not name a host — widening is a second dimension of ONE machine, and a peer has no
     // peers (§4).
     snapshot: (view) => localSnapshot(view.session, null, view.widen),
@@ -1059,20 +1059,20 @@ export function startServer(opts: {
     },
     dispatch: async (req, url, from) => {
       const session = url.searchParams.get("session") ?? undefined;
-      const device = packDeviceOf(req);
+      const device = crewDeviceOf(req);
       const routed = await serveSessionRoute(req, url, {
         resolve: async () => localRuntime(session, null),
         gate: (level) => {
-          const verdict = packGate(level, cfg, device);
+          const verdict = crewGate(level, cfg, device);
           return verdict.ok ? null : text(verdict.reason, 403);
         },
         device: () => device,
         audit: audit.scoped({ via: "pack", from }),
       });
-      // Deliberately UNCODED. This is the pack link's own 404, answered to a LEAD and never to a
+      // Deliberately UNCODED. This is the crew link's own 404, answered to a LEAD and never to a
       // browser, and `/pack/v1/*` is a separately-versioned surface (PACK_PROTOCOL.md, ADR 0025) —
       // it keeps today's body in this release. Error codes are the phone's vocabulary, not the
-      // pack's.
+      // crew's.
       return routed ?? jsonError({ error: "not found" }, 404, null);
     },
   });
@@ -1099,13 +1099,13 @@ export function startServer(opts: {
    */
   function updateStatusWithPeers() {
     const status = withStagingTail(updateMonitor.status());
-    const legs = opts.packLead?.updatePeers() ?? [];
+    const legs = opts.crewLead?.updatePeers() ?? [];
     if (legs.length === 0) return status;
     // §20's one clock (M20/01). Omitted while the run is still moving, so "absent" keeps meaning
     // "not settled" on a phone talking to a bridge that predates the field.
-    const settledAt = opts.packLead?.updateSettledAt() ?? null;
-    const packState = settledAt === null ? { peers: legs } : { peers: legs, settledAt };
-    // A PEERS-ONLY RUN IS STILL A RUN (M20/09). "Retry pack update" never calls the updater on this
+    const settledAt = opts.crewLead?.updateSettledAt() ?? null;
+    const crewState = settledAt === null ? { peers: legs } : { peers: legs, settledAt };
+    // A PEERS-ONLY RUN IS STILL A RUN (M20/09). "Retry crew update" never calls the updater on this
     // machine — it begins the turn queue and re-sweeps — so nothing is written to `update.json` and
     // `status.run` is null for the whole run. The old guard dropped the live legs on exactly that
     // path, and the phone then had no way to learn the run had started, let alone finished.
@@ -1114,7 +1114,7 @@ export function startServer(opts: {
     // reader: `peerLegsOf` in `web/src/lib/update-ribbon.ts` is where both surfaces ask. Sending
     // them at the top level unconditionally would be a second copy of a field already shipped on
     // `run`, and a phone older than this change would then have two places to disagree about.
-    if (status.run === undefined || status.run === null) return { ...status, ...packState };
+    if (status.run === undefined || status.run === null) return { ...status, ...crewState };
     // AND THEY RIDE THEIR OWN RUN, NEVER THE NEXT ONE. The legs outlive the run that made them, so
     // the outcome stays on the screen the operator confirmed on — which means a later run would
     // otherwise carry the previous run's peer rows, and its failures, as if they were its own.
@@ -1122,11 +1122,11 @@ export function startServer(opts: {
     // They are not DROPPED when they belong to a different run, they fall to the top level, which is
     // the position for legs this machine's record does not own. Dropping them was the first shape of
     // this guard and it re-opened spec 09 on the commonest path there is: a local update leaves a
-    // `done` record behind, the operator then taps "Retry pack update", and that peers-only run has
+    // `done` record behind, the operator then taps "Retry crew update", and that peers-only run has
     // a different run id and no record of its own. The legs would be discarded for the whole run and
     // the phone would learn nothing, which is the very bug this composer exists to fix.
-    if (opts.packLead?.updateLegsRun() !== status.run.runId) return { ...status, ...packState };
-    return { ...status, run: { ...status.run, ...packState } };
+    if (opts.crewLead?.updateLegsRun() !== status.run.runId) return { ...status, ...crewState };
+    return { ...status, run: { ...status.run, ...crewState } };
   }
 
   /**
@@ -1165,11 +1165,11 @@ export function startServer(opts: {
 
       // The federated surface, before anything else. It answers only the prefix it owns and returns
       // null otherwise, so this is not a branch a browser request can take. Its admission is two
-      // independent factors and shares nothing with `checkAccess()` below — a pack credential never
-      // admits an `/api/*` request and a browser credential never admits a pack one
+      // independent factors and shares nothing with `checkAccess()` below — a crew credential never
+      // admits an `/api/*` request and a browser credential never admits a crew one
       // (PACK_PROTOCOL.md §6, ADR 0013).
-      if (packHandler) {
-        const packed = await packHandler(req, url);
+      if (crewHandler) {
+        const packed = await crewHandler(req, url);
         if (packed) return secure(packed);
       }
 
@@ -1179,9 +1179,9 @@ export function startServer(opts: {
       //
       // Everything below trusts headers a client writes (`Tailscale-User-Login`,
       // COLLIE_DEVICE_HEADER, Origin/Host), which are only untamperable while the sole client is the
-      // local front door. A pack request is not that, and does not need to be: it was already
-      // admitted by pinned mutual TLS plus the pack secret and answered above (PACK_PROTOCOL.md §6,
-      // ADR 0013). A pack path the handler DECLINED falls through to here and is refused like any
+      // local front door. A crew request is not that, and does not need to be: it was already
+      // admitted by pinned mutual TLS plus the crew secret and answered above (PACK_PROTOCOL.md §6,
+      // ADR 0013). A crew path the handler DECLINED falls through to here and is refused like any
       // other remote caller. `COLLIE_ALLOW_NON_LOOPBACK_BIND=1` turns the check off wholesale, which
       // is what that flag has always meant.
       if (!cfg.allowNonLoopbackBind && !isLoopbackPeer(server.requestIP(req)?.address)) {
@@ -1210,11 +1210,11 @@ export function startServer(opts: {
       // reads no session.
       //
       // It sits AFTER the deposed answer on purpose: a DEPOSED collie must FAIL this check
-      // (`bridge/pack/deposed.ts`), and it does so by answering its one page here instead. That is
+      // (`bridge/crew/deposed.ts`), and it does so by answering its one page here instead. That is
       // why a deposed peer can never be mistaken for a successful update.
       if (pathname === "/api/health") {
         if (req.method !== "GET" && req.method !== "HEAD") return text("method not allowed", 405);
-        return json(healthBody(opts.version, pack.mode), req.headers.get("accept-encoding"));
+        return json(healthBody(opts.version, crew.mode), req.headers.get("accept-encoding"));
       }
 
       // Session-scoped routes accept an optional `?session=<name>`; absent → the primary session
@@ -1230,10 +1230,10 @@ export function startServer(opts: {
 
       // The host dimension of the `(host, session, paneId)` address (§4), read exactly where the
       // session name is and by the same rule: a client-supplied value that is ONLY ever a registry
-      // key. Parsed only when this collie has a trust store — the same predicate the pack surface
+      // key. Parsed only when this collie has a trust store — the same predicate the crew surface
       // mounts on — so a solo instance never applies the grammar to a URL and `?h=` stays a
       // parameter that provably does not exist there (§11).
-      const host = packHandler ? selectHostFrom(url) : LOCAL_HOST;
+      const host = crewHandler ? selectHostFrom(url) : LOCAL_HOST;
 
       /**
        * The `(host, session)` target of a session-scoped route, or the Response refusing it.
@@ -1249,7 +1249,7 @@ export function startServer(opts: {
        */
       const target = async (): Promise<SessionRuntime | Response> => {
         if (host.kind !== "local") {
-          const resolved = packLead?.resolve(host, sessionName);
+          const resolved = crewLead?.resolve(host, sessionName);
           if (resolved === undefined) {
             return jsonError(
               apiError("host.unknown", { host: host.kind === "member" ? host.id : host.raw }),
@@ -1262,7 +1262,7 @@ export function startServer(opts: {
             // write, plus the target host — two independent logs of one event, neither depending on
             // the other machine's disk.
             return secure(
-              await packLead!.forward(req, url, resolved, {
+              await crewLead!.forward(req, url, resolved, {
                 device: whois(req).device,
                 audit: (entry) => {
                   // Assigned, never conditionally spread: an entry without a pane or session must
@@ -1293,7 +1293,7 @@ export function startServer(opts: {
         // A BROWSER poll is a phone looking; the lead's own sweep of a peer is not, which is why
         // this stamp sits here rather than inside `localSnapshot` (that closure also serves
         // `/pack/v1/snapshot`, and a lead sweeps on its own clock whether or not anybody is reading
-        // it — stamping there would pin every peer at `watched` for the life of the pack).
+        // it — stamping there would pin every peer at `watched` for the life of the crew).
         registry.get(sessionName)?.engine.noteAttention();
         // `?sessions=all` WIDENS the pane lists to every session on ONE machine (see localSnapshot).
         // One exact spelling and nothing else is accepted: the parameter is a switch, not a list, and
@@ -1311,22 +1311,22 @@ export function startServer(opts: {
         const plan = snapshotPlan(host.kind === "member" ? host.id : null, selectView(url));
         const body = localSnapshot(plan.local.session, device.enforced ? device : null, plan.local.widen);
         if (!body) return unknownSession();
-        // The ONE place the lead re-serialises (§9.2). With no pack this is the identity function's
+        // The ONE place the lead re-serialises (§9.2). With no crew this is the identity function's
         // absence: `body` goes out as assembled, same keys, same order, same bytes, same ETag.
         // The merged body's ETag is then the lead's own assertion about its own merged view — a
         // peer's ETag is never recomputed here, because no peer body is re-hashed on this path.
         // Tag every snapshot poll with the on-disk build id so an open client notices a live rebuild
         // between polls — the no-service-worker self-update path (web/src/lib/self-update.ts).
         return withBuildHeader(
-          json(packLead ? packLead.merge(body, plan) : body, req.headers.get("accept-encoding")),
+          json(crewLead ? crewLead.merge(body, plan) : body, req.headers.get("accept-encoding")),
           await buildId(),
         );
       }
 
       // ── Session-scoped routes: the pane family, tabs, workspaces ─────────
-      // The block itself lives above, shared with the pack surface (§5). What a browser supplies is
+      // The block itself lives above, shared with the crew surface (§5). What a browser supplies is
       // its own gate (`guard`), its own device attribution, this collie's audit log, and the host
-      // gate — which is the one thing a pack caller never has, because a peer has no peers (§4).
+      // gate — which is the one thing a crew caller never has, because a peer has no peers (§4).
       //
       // ── ONE GATE EXPRESSION, SHARED BY NAME ──────────────────────────────
       // `browserGate` is the browser's whole authorisation story: `checkAccess` (host allowlist,
@@ -1372,7 +1372,7 @@ export function startServer(opts: {
         // ── `?host=<member>`: THIS MEMBER's capability declaration (M22/03) ──────────────────
         //
         // Answered from what the lead already holds, and never forwarded: `config` is on
-        // `bridge/pack/forward.ts`'s not-forwarded list and must stay there, because a config read
+        // `bridge/crew/forward.ts`'s not-forwarded list and must stay there, because a config read
         // is the request every page load makes and it must not be able to make the lead dial a
         // machine. The lead learned the block from that member's last `hello`.
         //
@@ -1380,7 +1380,7 @@ export function startServer(opts: {
         // ill-formed member id gets the same 404 every host-scoped route gives it. It is never
         // silently rewritten to the lead: quietly answering for a different machine is the exact
         // failure the host dimension exists to prevent.
-        const scoped = host.kind === "local" ? undefined : packLead?.resolve(host);
+        const scoped = host.kind === "local" ? undefined : crewLead?.resolve(host);
         if (host.kind !== "local" && scoped === undefined) {
           return jsonError(
             apiError("host.unknown", { host: host.kind === "member" ? host.id : host.raw }),
@@ -1391,7 +1391,7 @@ export function startServer(opts: {
         // A member that has published nothing answers with the LEAD's block, because absent means
         // "use the lead's" — which is byte for byte the reading the phone gives every pane today.
         // The lead's own entry resolves `local`, so it takes its own branch and its own adapter.
-        const memberMux = scoped?.kind === "peer" ? packLead?.muxFor(scoped.link.memberId) : null;
+        const memberMux = scoped?.kind === "peer" ? crewLead?.muxFor(scoped.link.memberId) : null;
         // Re-resolved per request for the same reason `commands.toml` is: `collie stt setup` is
         // live, and this is where the phone learns whether to draw a microphone at all. `?? undefined`
         // because "no provider" must OMIT the key, never send a null one (PACK_PROTOCOL.md §11).
@@ -1401,7 +1401,7 @@ export function startServer(opts: {
             push: push.enabled,
             vapidPublicKey: push.publicKey,
             build: await buildId(),
-            mode: pack.mode,
+            mode: crew.mode,
             operatorCommands: mine,
             operatorKeys: myKeys,
             operatorQuickReplies: myReplies,
@@ -1412,7 +1412,7 @@ export function startServer(opts: {
             muxWire: memberMux ?? undefined,
             stt: sttWire,
             // This host's own limits, read from cfg on every request like everything else here.
-            // A pack member answers with ITS number, which is the number that will judge the bytes.
+            // A crew member answers with ITS number, which is the number that will judge the bytes.
             upload: {
               maxBytes: cfg.maxUploadBytes,
               imageTypes: [...IMAGE_EXTS],
@@ -1586,7 +1586,7 @@ export function startServer(opts: {
         if (typeof version !== "string" || version.trim() === "") return text("bad version", 400);
         // WHICH band, because they are two decisions: the offer this host was given, and the quiet
         // notice about a machine a package manager owns. Absent reads as the offer, which is what
-        // every client before the pack states could close.
+        // every client before the crew states could close.
         const asked = record === null ? undefined : record.scope;
         if (asked !== undefined && asked !== "offer" && asked !== "pack") return text("bad scope", 400);
         await updateMonitor.dismiss(version, asked ?? "offer");
@@ -1619,7 +1619,7 @@ export function startServer(opts: {
             new Promise<void>((resolve) => setTimeout(resolve, UPDATE_ON_DEMAND_POLL_TIMEOUT_MS)),
           ]);
         }
-        // ── THE PACK'S HALF (M16/03) ────────────────────────────────────────
+        // ── THE CREW'S HALF (M16/03) ────────────────────────────────────────
         // The same on-demand shape, one line lower: six hours is the right cadence for a background
         // fact and the wrong one for a page the operator is looking at, so this read fires ONE
         // immediate sweep carrying `X-Pack-Preflight: fresh` and waits the same bounded moment for
@@ -1629,7 +1629,7 @@ export function startServer(opts: {
         // The peer's own `PREFLIGHT_TTL_MS` is what keeps this cheap: the header is honoured at most
         // once a minute per member, so a phone sitting on the page cannot make a peer shell out to
         // git and `doctor` on every poll.
-        const freshSweep = opts.packLead?.sweep({ freshPreflight: true });
+        const freshSweep = opts.crewLead?.sweep({ freshPreflight: true });
         if (freshSweep !== undefined) {
           await Promise.race([
             freshSweep,
@@ -1638,12 +1638,12 @@ export function startServer(opts: {
         }
         const report = opts.updateAction ? await opts.updateAction.preflight() : null;
         // `preflight: null` is a fact the card renders ("could not be checked"), not an omission —
-        // the key is always present so the phone can tell "not checked" from "old bridge". `pack`
+        // the key is always present so the phone can tell "not checked" from "old bridge". `crew`
         // follows the same rule: `[]` on a solo instance and on a peer, never absent. It is composed
-        // from what the sweep BANKED (`PackLead.updateRows`) and dials nobody — `status-wire.ts`'s
+        // from what the sweep BANKED (`CrewLead.updateRows`) and dials nobody — `status-wire.ts`'s
         // purity argument, one route over.
         return json(
-          { ...updateStatusWithPeers(), preflight: report, pack: opts.packLead?.updateRows() ?? [] },
+          { ...updateStatusWithPeers(), preflight: report, pack: opts.crewLead?.updateRows() ?? [] },
           req.headers.get("accept-encoding"),
         );
       }
@@ -1683,12 +1683,12 @@ export function startServer(opts: {
           // The one gate a green preflight cannot express: a package manager owns this folder, so there is
           // nothing here Collie may replace (ADR 0035).
           installKind: status.installKind,
-          // One confirm covers the pack (M16/03): the members' banked verdicts gate this start the
+          // One confirm covers the crew (M16/03): the members' banked verdicts gate this start the
           // same way the lead's own does. Read, never fetched — the sweep is the only thing that
           // talks to a member.
-          pack: opts.packLead?.updateRows() ?? [],
-          // And the legs of the last run, which is what "Retry pack update" is about (M16/04).
-          peers: opts.packLead?.updatePeers() ?? [],
+          pack: opts.crewLead?.updateRows() ?? [],
+          // And the legs of the last run, which is what "Retry crew update" is about (M16/04).
+          peers: opts.crewLead?.updatePeers() ?? [],
         });
         if (verdict.kind === "refuse") {
           return jsonError(verdict.body, verdict.status, req.headers.get("accept-encoding"));
@@ -1702,7 +1702,7 @@ export function startServer(opts: {
         // it opens a run whose only legs are the peers, and the first of §20's three immediate
         // sweeps carries the first turn out.
         if (verdict.kind === "peers") {
-          action.beginPackRun?.({ runId, to: verdict.to });
+          action.beginCrewRun?.({ runId, to: verdict.to });
           audit.record({
             action: "update",
             device: whois(req).device,
@@ -1720,8 +1720,8 @@ export function startServer(opts: {
         }
         // The peers ride the SAME confirm and the same id. Their turns are granted once this lead's
         // own health gate settles — a lead that announced a version it has not finished taking would
-        // send its whole pack after a release it may itself roll back from (§20).
-        action.beginPackRun?.({ runId, to: verdict.to });
+        // send its whole crew after a release it may itself roll back from (§20).
+        action.beginCrewRun?.({ runId, to: verdict.to });
         audit.record({
           action: "update",
           device: whois(req).device,
@@ -1806,9 +1806,9 @@ export function startServer(opts: {
         const denied = guard(req, cfg, "read", pairing);
         if (denied) return denied;
         // 404 for a solo instance AND for a peer, from one closure. A peer is not a front door
-        // (ADR 0013), and a solo instance has no pack to describe — the phone's move is the same in
+        // (ADR 0013), and a solo instance has no crew to describe — the phone's move is the same in
         // both cases, so the refusal is too. Not a 403: nothing was withheld, there is nothing here.
-        const body = packStatus?.() ?? null;
+        const body = crewStatus?.() ?? null;
         if (body === null) {
           return jsonError(apiError("pack.not_lead"), 404, req.headers.get("accept-encoding"));
         }
@@ -3164,7 +3164,7 @@ export async function launch(
 /**
  * The two numbers an oversize refusal carries: the exact byte cap for a client that computes, and
  * the whole megabytes the sentence itself is written in. Both come off THIS host's config, so a
- * phone talking to a pack reads each member's own limit rather than the lead's.
+ * phone talking to a crew reads each member's own limit rather than the lead's.
  */
 function uploadLimitDetail(cfg: Config) {
   return {
@@ -3453,7 +3453,7 @@ function json<TBody>(data: TBody, acceptEncoding: string | null, status = 200): 
  *
  * It takes a BODY rather than a message so a caller must have gone through {@link apiError} to get
  * one — which is what keeps a refusal's English and its code in the catalogue together. The bare
- * `{ error }` shape stays legal for the one caller that must not carry a code: the pack link's 404.
+ * `{ error }` shape stays legal for the one caller that must not carry a code: the crew link's 404.
  */
 function jsonError(
   body: ApiErrorBody | { error: string },
@@ -3587,7 +3587,7 @@ function supersededEndpoint(body: JsonValue | undefined): string | undefined {
 // Surfaced via the X-Collie-Build header and /api/config so a stale, service-worker-cached client
 // can tell it's behind. Cached by file mtime so a frontend rebuild (live, no restart) is picked up.
 // Exported since M15/05 for the STANDBY listener, which reports the same fact on its own port
-// (`bridge/pack/standby.ts`) — one answer to "which bundle is on disk", never a second reader that
+// (`bridge/crew/standby.ts`) — one answer to "which bundle is on disk", never a second reader that
 // caches it differently.
 let buildCache: { id: string; mtime: number } | null = null;
 export async function buildId(): Promise<string> {
@@ -3630,10 +3630,10 @@ export interface HealthBody {
   readonly version: string;
   /** Always false here — see {@link healthBody}. */
   readonly deposed: false;
-  readonly mode: PackRuntime["mode"];
+  readonly mode: CrewRuntime["mode"];
 }
 
-export function healthBody(version: string, mode: PackRuntime["mode"]): HealthBody {
+export function healthBody(version: string, mode: CrewRuntime["mode"]): HealthBody {
   return { ok: true, version, deposed: false, mode };
 }
 

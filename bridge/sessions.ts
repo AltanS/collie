@@ -133,7 +133,7 @@ export const NARROW_VIEW: SnapshotView = { session: undefined, widen: false };
 
 /**
  * Read the view off a request URL. The ONE place the two params become one value, so the browser
- * route and the pack surface cannot disagree about what `?sessions=all` means (§5).
+ * route and the crew surface cannot disagree about what `?sessions=all` means (§5).
  */
 export function selectView(url: URL): SnapshotView {
   return {
@@ -152,7 +152,7 @@ export function selectView(url: URL): SnapshotView {
  *     depending on whether the body was widened, and the client deliberately lets an untagged pane
  *     match any scope so that solo lookups stay exactly today's (web/src/lib/hosts.ts `findPane`).
  *     Those two rules together would let a primary pane answer a lookup for a named session's
- *     identically-numbered pane, which is the pack bug one dimension down. All, or none.
+ *     identically-numbered pane, which is the crew bug one dimension down. All, or none.
  *  2. The CALLER decides the order and this preserves it, because the order is observable: it is the
  *     order rows appear in on a phone, and a list that re-sorts itself under the reader is DESIGN.md
  *     §2. {@link SessionRegistry.ordered} is the order to pass.

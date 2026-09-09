@@ -7,7 +7,7 @@
 // ── The rules this file keeps ────────────────────────────────────────────────────────────────────
 //
 //  1. **Every shape is the app's own type.** Nothing here is a loose object literal cast into place:
-//     `AgentView`, `ServerSummary`, `PackStatusResponse`, `SessionSummary`, `UpdateInfo`,
+//     `AgentView`, `ServerSummary`, `CrewStatusResponse`, `SessionSummary`, `UpdateInfo`,
 //     `HostHealth`, `DevicesData` and `HomeData` are all imported and annotated, so a wire change
 //     breaks this file at `tsc` rather than at a confusing render.
 //
@@ -17,7 +17,7 @@
 //     a nine-machine formation, or a "needs you" count that means anything.
 //
 //  3. **ONE clock anchor, {@link TS}, and every timestamp is expressed as an offset from it.** No
-//     fixture calls `Date.now()` for itself. That matters twice over: the pack surfaces date their
+//     fixture calls `Date.now()` for itself. That matters twice over: the crew surfaces date their
 //     `lastSeenAt` values against the snapshot's own `ts` (PACK_PROTOCOL.md §10.2), so a roster and
 //     a census built off different anchors would disagree about the same machine; and the herd rows
 //     render "how long ago" through `timeAgo`, so a scattered set of anchors would make two agents
@@ -31,8 +31,8 @@ import type { DevicesData, HomeData } from "@/lib/loaders";
 import type {
   AgentView,
   DeviceAuth,
-  PackMemberStatus,
-  PackStatusResponse,
+  CrewMemberStatus,
+  CrewStatusResponse,
   ServerSummary,
   SessionSummary,
   TabView,
@@ -50,7 +50,7 @@ import claudeWorking from "@/fixtures/panes/claude--working.txt?raw";
 
 export {
   fixtureAgents,
-  fixturePackStatus,
+  fixtureCrewStatus,
   fixtureServers,
   fixtureSessions,
   fixtureShellPanes,
@@ -71,7 +71,7 @@ export {
  *    and a re-render moves a stamp that is meant to be still. One frozen constant has neither
  *    problem: `TS - 4 * MIN` is four minutes before `TS` on every render, forever.
  *
- *  • The pack surfaces date against the snapshot's own `ts` and would be happy with any fixed
+ *  • The crew surfaces date against the snapshot's own `ts` and would be happy with any fixed
  *    number. The HERD rows are not: `components/agent-card.tsx` renders its "since" through
  *    `timeAgo`, whose default `now` is the wall clock. Anchored to a hard-coded epoch, all fourteen
  *    agents would read "8 months ago" and the whole point of "varied since ages" would be lost.
@@ -85,14 +85,14 @@ const MIN = 60 * SEC;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 
-/** Kept under its old name: the pack cards that mount the TEST suite's census need its `ts`. */
+/** Kept under its old name: the crew cards that mount the TEST suite's census need its `ts`. */
 export const FIXTURE_TS = 400_000;
 
 // ── The spaces and tabs the herd lives in ────────────────────────────────────────────────────────
 //
 // Four projects, because triage only starts to look like triage when a "Needs you" list spans more
 // than one of them. Herdr numbers spaces per machine, which is why the ids repeat across hosts in
-// the pack snapshot below — that collision is the reason a pane row carries its own host.
+// the crew snapshot below — that collision is the reason a pane row carries its own host.
 
 /**
  * Spaces as a repo and its worktrees, for the nesting card.
@@ -146,7 +146,7 @@ export const spaces: WorkspaceView[] = [
 ];
 
 export const tabs: TabView[] = [
-  { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "feat/pack-overview", focused: true, paneCount: 2 },
+  { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "feat/crew-overview", focused: true, paneCount: 2 },
   { tabId: "w1:t2", workspaceId: "w1", number: 2, label: "docs", focused: false, paneCount: 1 },
   { tabId: "w1:t3", workspaceId: "w1", number: 3, label: "shell", focused: false, paneCount: 1 },
   { tabId: "w2:t1", workspaceId: "w2", number: 1, label: "fix-deploy", focused: false, paneCount: 1 },
@@ -180,14 +180,14 @@ const needsYou: AgentView[] = [
     workspaceLabel: "collie",
     workspaceNumber: 1,
     tabId: "w1:t1",
-    tabLabel: "feat/pack-overview",
+    tabLabel: "feat/crew-overview",
     agent: "claude",
     status: "blocked",
     cwd: "/home/you/src/collie",
     focused: true,
     hasSession: true,
-    sessionName: "pack overview",
-    terminalTitle: "claude — pack overview",
+    sessionName: "crew overview",
+    terminalTitle: "claude — crew overview",
     hint: "waiting on a permission prompt: run `bun run build` in /home/you/src/collie",
     lastActiveAt: TS - 90 * SEC,
     lastSeenAt: TS - 26 * MIN,
@@ -373,7 +373,7 @@ const resting: AgentView[] = [
     workspaceLabel: "collie",
     workspaceNumber: 1,
     tabId: "w1:t1",
-    tabLabel: "feat/pack-overview",
+    tabLabel: "feat/crew-overview",
     agent: "codex",
     status: "idle",
     cwd: "/home/you/src/collie",
@@ -440,7 +440,7 @@ export const sessionsSolo: SessionSummary[] = [
 ];
 
 /** The same three on the lead, plus one per peer. Every machine calls its primary "default". */
-export const sessionsPack: SessionSummary[] = [
+export const sessionsCrew: SessionSummary[] = [
   ...sessionsSolo.map((s) => ({ ...s, host: "bluefin" })),
   { name: "default", isPrimary: true, reachable: true, agents: 3, working: 1, blocked: 1, host: "workshop" },
   { name: "default", isPrimary: true, reachable: true, agents: 1, working: 0, blocked: 0, host: "attic" },
@@ -461,10 +461,10 @@ const lead: ServerSummary = {
   lastSeenAt: TS - 2 * SEC,
 };
 
-/** Solo: no pack at all. A snapshot from a solo bridge emits no `servers` key (§11). */
+/** Solo: no crew at all. A snapshot from a solo bridge emits no `servers` key (§11). */
 export const rosterSolo: ServerSummary[] = [];
 
-/** Lead + deputy + one more, all healthy — the smallest pack that draws a full formation. */
+/** Lead + deputy + one more, all healthy — the smallest crew that draws a full formation. */
 export const rosterTrio: ServerSummary[] = [
   lead,
   { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 3 * SEC },
@@ -486,7 +486,7 @@ export const rosterFive: ServerSummary[] = [
     reachable: true,
     protocol: "incompatible",
     // Verbatim, from the peer's own refusal — rendered as text, never paraphrased.
-    protocolDetail: "pack protocol 2 (this collie speaks 1)",
+    protocolDetail: "crew protocol 2 (this collie speaks 1)",
     lastSeenAt: TS - 6 * SEC,
   },
 ];
@@ -510,7 +510,7 @@ export const rosterNine: ServerSummary[] = [
  * Ten machines, one per host colour — the palette card's roster and nothing else.
  *
  * The ids are CHOSEN, not arbitrary: `hostSlot` hands this exact set slots 0 through 9 with no two
- * colliding, which is the only way to see all ten tints at once. A real pack's colours are whatever
+ * colliding, which is the only way to see all ten tints at once. A real crew's colours are whatever
  * its names hash to ({@link rosterFive} lands on 0, 2, 4, 8 and 9), and that is the honest picture —
  * this roster exists to show the palette, not to promise an even spread.
  */
@@ -538,9 +538,9 @@ const LEAD_VERSION = "0.31.0";
 
 function member(
   id: string,
-  health: PackMemberStatus["health"],
-  extra: Partial<PackMemberStatus> = {},
-): PackMemberStatus {
+  health: CrewMemberStatus["health"],
+  extra: Partial<CrewMemberStatus> = {},
+): CrewMemberStatus {
   return {
     id,
     name: id,
@@ -556,7 +556,7 @@ function member(
   };
 }
 
-const selfMember: PackMemberStatus = {
+const selfMember: CrewMemberStatus = {
   id: "bluefin",
   name: "bluefin",
   isLead: true,
@@ -567,22 +567,22 @@ const selfMember: PackMemberStatus = {
   provisional: false,
 };
 
-const packMeta = { id: "pk1", name: "kennel", secretGeneration: 4, rotatedAt: TS - 9 * DAY };
-const packSelf = { id: "bluefin", name: "bluefin", version: LEAD_VERSION };
+const crewMeta = { id: "pk1", name: "kennel", secretGeneration: 4, rotatedAt: TS - 9 * DAY };
+const crewSelf = { id: "bluefin", name: "bluefin", version: LEAD_VERSION };
 
 /** One machine, leading nobody but itself — the smallest census a lead can serve. */
-export const censusSolo: PackStatusResponse = {
-  pack: { ...packMeta, name: "bluefin" },
-  self: packSelf,
+export const censusSolo: CrewStatusResponse = {
+  pack: { ...crewMeta, name: "bluefin" },
+  self: crewSelf,
   deputy: null,
   members: [selfMember],
   ts: TS,
 };
 
 /** Lead + a named deputy + one ordinary peer. Everything healthy. */
-export const censusTrio: PackStatusResponse = {
-  pack: packMeta,
-  self: packSelf,
+export const censusTrio: CrewStatusResponse = {
+  pack: crewMeta,
+  self: crewSelf,
   deputy: { id: "workshop", warrantGeneration: 3 },
   members: [
     selfMember,
@@ -597,9 +597,9 @@ export const censusTrio: PackStatusResponse = {
  * a peer that has gone quiet, a peer that was enrolled and never once answered, and a peer running a
  * protocol this lead cannot speak — with its refusal quoted word for word.
  */
-export const censusFive: PackStatusResponse = {
-  pack: packMeta,
-  self: packSelf,
+export const censusFive: CrewStatusResponse = {
+  pack: crewMeta,
+  self: crewSelf,
   deputy: { id: "workshop", warrantGeneration: 3 },
   members: [
     selfMember,
@@ -617,7 +617,7 @@ export const censusFive: PackStatusResponse = {
       provisional: true,
     }),
     member("garage", "incompatible", {
-      reason: "pack protocol 2 (this collie speaks 1)",
+      reason: "crew protocol 2 (this collie speaks 1)",
       version: "0.34.0",
       secretBehind: true,
     }),
@@ -626,9 +626,9 @@ export const censusFive: PackStatusResponse = {
 };
 
 /** Nine machines. The formation wraps its V; the list below it stays one column. */
-export const censusNine: PackStatusResponse = {
-  pack: packMeta,
-  self: packSelf,
+export const censusNine: CrewStatusResponse = {
+  pack: crewMeta,
+  self: crewSelf,
   deputy: { id: "workshop", warrantGeneration: 3 },
   members: [
     selfMember,
@@ -643,19 +643,19 @@ export const censusNine: PackStatusResponse = {
 };
 
 /**
- * The loud one: `attic` believes ANOTHER collie leads this pack, under a warrant generation higher
+ * The loud one: `attic` believes ANOTHER collie leads this crew, under a warrant generation higher
  * than the deputy's. Two collies both convinced they are the lead is not a transient the next poll
  * clears, so the page names it rather than folding it into "unreachable".
  */
-export const censusConflicted: PackStatusResponse = {
-  pack: packMeta,
-  self: packSelf,
+export const censusConflicted: CrewStatusResponse = {
+  pack: crewMeta,
+  self: crewSelf,
   deputy: { id: "workshop", warrantGeneration: 3 },
   members: [
     selfMember,
     member("workshop", "reachable"),
     member("attic", "conflicted", {
-      reason: "this member is enrolled in a pack led by cellar",
+      reason: "this member is enrolled in a crew led by cellar",
       lastSeenAt: TS - 40 * SEC,
       secretBehind: true,
       conflict: { leadMemberId: "cellar", warrantGeneration: 7 },
@@ -689,7 +689,7 @@ export const homeSolo: HomeData = {
  * The same pane, tagged with the machine it lives on.
  *
  * Cloned and assigned rather than spread inside the `map` body — the shape `@/test/handlers` uses
- * for `fixturePackShellPanes`, and for its reason: one clone per row instead of an object literal
+ * for `fixtureCrewShellPanes`, and for its reason: one clone per row instead of an object literal
  * plus a spread, and it says plainly that `host` is the ONLY difference from the solo pane.
  */
 export function onHost(pane: AgentView, host: string): AgentView {
@@ -705,7 +705,7 @@ export function onHost(pane: AgentView, host: string): AgentView {
  * CHOSEN: rows 0 and 1 are the first two blocked panes and land on `bluefin` and `workshop`, which
  * is what gives exactly two machines a non-zero "needs you" number in the server switcher.
  */
-const PACK_HOST_BY_INDEX: readonly string[] = [
+const CREW_HOST_BY_INDEX: readonly string[] = [
   "bluefin", // needs-you #1
   "workshop", // needs-you #2
   "bluefin", // needs-you #3
@@ -719,23 +719,23 @@ const PACK_HOST_BY_INDEX: readonly string[] = [
 ];
 
 /**
- * The same herd spread over a five-machine pack. Host-tagging is what makes the per-host counts in
+ * The same herd spread over a five-machine crew. Host-tagging is what makes the per-host counts in
  * the server switcher (and the "needs you" numbers on two of the machines) mean anything: the
  * switcher derives them client-side from the merged `agents` array, never from the roster.
  */
-export const homePack: HomeData = {
+export const homeCrew: HomeData = {
   ...homeSolo,
-  agents: herd.map((a, i) => onHost(a, PACK_HOST_BY_INDEX[i % PACK_HOST_BY_INDEX.length]!)),
+  agents: herd.map((a, i) => onHost(a, CREW_HOST_BY_INDEX[i % CREW_HOST_BY_INDEX.length]!)),
   shellPanes: shells.map((p) => onHost(p, "bluefin")),
-  sessions: sessionsPack,
+  sessions: sessionsCrew,
   servers: rosterFive,
 };
 
-/** A three-machine pack, on the trio roster — pairs with {@link censusTrio}. */
-export const homeTrio: HomeData = { ...homePack, servers: rosterTrio };
+/** A three-machine crew, on the trio roster — pairs with {@link censusTrio}. */
+export const homeTrio: HomeData = { ...homeCrew, servers: rosterTrio };
 
-/** A nine-machine pack — pairs with {@link censusNine}. */
-export const homeNine: HomeData = { ...homePack, servers: rosterNine };
+/** A nine-machine crew — pairs with {@link censusNine}. */
+export const homeNine: HomeData = { ...homeCrew, servers: rosterNine };
 
 // ── Update info ──────────────────────────────────────────────────────────────────────────────────
 //
@@ -827,8 +827,8 @@ export const updatePeerRolledBack: UpdateInfo = {
   },
 };
 
-/** The lead is done, and so is the pack. The band has nothing left to say. */
-export const updatePackLevel: UpdateInfo = {
+/** The lead is done, and so is the crew. The band has nothing left to say. */
+export const updateCrewLevel: UpdateInfo = {
   ...updatePeersFollowing,
   run: {
     ...RUN_BASE,
@@ -899,7 +899,7 @@ export const hostIncompatible: HostHealth = {
   state: "stale",
   writable: false,
   incompatible: true,
-  protocolDetail: "pack protocol 2 (this collie speaks 1)",
+  protocolDetail: "crew protocol 2 (this collie speaks 1)",
   lastSeenAt: TS - 6 * SEC,
   lastSeenLabel: "last seen just now",
   isLead: false,
@@ -919,7 +919,7 @@ const shellPaneText = [
   `${ESC}[32m✓${ESC}[0m web/src/lib/triage.test.ts (14 tests) 41ms`,
   `${ESC}[32m✓${ESC}[0m web/src/lib/host-health.test.ts (22 tests) 63ms`,
   `${ESC}[32m✓${ESC}[0m web/src/components/agent-list.test.tsx (9 tests) 118ms`,
-  `${ESC}[31m✗${ESC}[0m web/src/components/pack-formation.test.tsx (11 tests | 1 failed) 92ms`,
+  `${ESC}[31m✗${ESC}[0m web/src/components/crew-formation.test.tsx (11 tests | 1 failed) 92ms`,
   `  ${ESC}[31m→ expected 9 nodes, received 8${ESC}[0m`,
   "",
   ` Test Files  ${ESC}[31m1 failed${ESC}[0m | ${ESC}[32m3 passed${ESC}[0m (4)`,
@@ -983,8 +983,8 @@ export const paneShell: PaneFixture = {
 // ── Host-tagged panes (HostStaleBanner inside a real pane) ─────────────────────────────────────────
 //
 // `HostStaleBanner` renders inside `AgentChat` off `useHostHealth(agent.host)`, which is derived from
-// `PackProvider`'s roster — so a pane can only show it mounted on a NON-empty roster, with `host` set
-// to one of that roster's own unhappy members. `rosterFive` (via {@link homePack}) already carries
+// `CrewProvider`'s roster — so a pane can only show it mounted on a NON-empty roster, with `host` set
+// to one of that roster's own unhappy members. `rosterFive` (via {@link homeCrew}) already carries
 // three: `attic` unreachable, `cellar` never seen, `garage` incompatible — see the roster's own
 // comments. Re-hosting the SAME real `AgentChat` mount is more honest than hand-building a fourth
 // `HostHealth` value, because it runs the pane through `hostHealth()` itself rather than assuming it.
@@ -1003,7 +1003,7 @@ export const paneHostNeverSeen: PaneFixture = {
   revision: 4_517,
 };
 
-/** Mid-tool-run, on `garage` — speaking a pack protocol this lead cannot. */
+/** Mid-tool-run, on `garage` — speaking a crew protocol this lead cannot. */
 export const paneHostIncompatible: PaneFixture = {
   pane: onHost(working[0]!, "garage"),
   text: claudeWorking,
@@ -1016,7 +1016,7 @@ export const paneHostIncompatible: PaneFixture = {
 export const paneStack: PaneFixture = paneHostUnreachable;
 
 /** A device the fronting proxy names and the bridge does not allowlist — the OTHER composer lock,
- *  independent of the pack host gate above, both driven at once for the stack card. */
+ *  independent of the crew host gate above, both driven at once for the stack card. */
 export const deviceStack: DeviceAuth = deviceRefused;
 
 // ── NoEchoNotice (gap 2) ─────────────────────────────────────────────────────────────────────────

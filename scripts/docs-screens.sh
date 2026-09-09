@@ -9,7 +9,7 @@
 # page screenshot, then crop by the element's own bounding box.
 #
 # Two cards on the playground carry every state this script captures:
-#   - "settings — lead of a pack, three devices paired" → the Updates row in Settings.
+#   - "settings — lead of a crew, three devices paired" → the Updates row in Settings.
 #   - "updates — the page the Settings row opens" → the Updates page itself. It reads
 #     GET/POST /api/update/check, so the up-to-date / pack-available / peer-rolled-back
 #     states are reached by stubbing that route with `agent-browser network route`
@@ -102,7 +102,7 @@ EOF
 }
 
 echo "== settings-updates-row.png"
-tag_phone_frame "settings — lead of a pack, three devices paired" settings-row
+tag_phone_frame "settings — lead of a crew, three devices paired" settings-row
 AB scrollintoview "[data-shot=settings-row]"
 # Scroll the phone's own inner scroller down to the Updates row.
 cat <<'EOF' | AB eval --stdin
@@ -142,6 +142,7 @@ capture_updates_page "$(cat <<EOF
 EOF
 )" updates-page-up-to-date.png
 
+# M27: stays until spec 04 (docs) — docs/images/updates/ still holds the old file name.
 echo "== updates-page-pack-available.png"
 ASOF1=$((NOW - 5000))
 ASOF2=$((NOW - 600000))

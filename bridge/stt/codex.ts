@@ -367,7 +367,7 @@ export function silentWavBytes(milliseconds = 200, sampleRate = 8_000): Uint8Arr
  * This checkout's own version, for the honest `User-Agent`.
  *
  * Resolved once and remembered: it reads two files and it cannot change without a restart, exactly
- * as `bridge/index.ts` treats the same answer for the pack wire.
+ * as `bridge/index.ts` treats the same answer for the crew wire.
  */
 let cachedVersion: string | null = null;
 function collieVersionOnce(): string {

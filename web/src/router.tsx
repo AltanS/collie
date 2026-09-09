@@ -6,12 +6,12 @@ import { SpaceRoute } from "@/routes/space";
 import { DetailRoute } from "@/routes/detail";
 import { HistoryRoute } from "@/routes/history";
 import { SettingsRoute } from "@/routes/settings";
-import { PackRoute } from "@/routes/pack";
+import { CrewRoute } from "@/routes/crew";
 import { UpdatesRoute } from "@/routes/updates";
 import {
   devicesLoader,
   historyLoader,
-  packLoader,
+  crewLoader,
   rootLoader,
   paneLoader,
   PANE_ROUTE_ID,
@@ -57,9 +57,9 @@ export const router = createBrowserRouter([
       // The crew census, likewise on its own loader — and deliberately ON the poll loop: the payload
       // is one small object per machine, and the whole point of the page is that a member going
       // quiet shows up here without the operator reloading. (History opts out; this one wants in.)
-      { path: "crew", loader: packLoader, element: <PackRoute /> },
-      // The path was `pack` until 1.7.0 (M24 renamed the word a person reads). The service worker
-      // caches the app shell, so a client sitting on /pack when the new bundle arrives, a bookmark
+      { path: "crew", loader: crewLoader, element: <CrewRoute /> },
+      // The path was `crew` until 1.7.0 (M24 renamed the word a person reads). The service worker
+      // caches the app shell, so a client sitting on /crew when the new bundle arrives, a bookmark
       // and an installed PWA's start URL all still ask for the old spelling. `replace` rather than
       // a push, so Back does not bounce the operator between the two names. The query string rides
       // along, because the scope (`?h=`) is what makes "back" return to the right machine.

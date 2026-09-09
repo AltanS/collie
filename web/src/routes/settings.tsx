@@ -9,7 +9,7 @@ import { ConnectionInfo } from "@/components/connection-info";
 import { Card } from "@/components/ui/card";
 import { NotifyPrefsControl } from "@/components/notify-prefs-control";
 import { PairedDevices } from "@/components/paired-devices";
-import { PackSettingsCard } from "@/components/pack-settings-card";
+import { CrewSettingsCard } from "@/components/crew-settings-card";
 import { SnoozeControl } from "@/components/snooze-control";
 import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
@@ -212,7 +212,7 @@ export function SettingsRoute() {
         {/* ONE row for the whole subject, where three cards used to stand. Updating is a flow with
             a lead, N peers, progress and a rollback state, so it lives on `/settings/updates` and
             this page keeps the row that opens it — a status line and a chevron, in the same idiom
-            as the pack row below. */}
+            as the crew row below. */}
         <UpdatesSettingsCard />
 
         {/* Access sits with the connection diagnostics — both answer "what is this device allowed
@@ -220,10 +220,10 @@ export function SettingsRoute() {
             reports the header-based one. */}
         <PairedDevices data={devices} />
 
-        {/* The pack census, immediately above the connection diagnostics: both answer "what is this
+        {/* The crew census, immediately above the connection diagnostics: both answer "what is this
             thing talking to, and is it well". Renders NOTHING on a solo install — the card owns that
-            gate itself (usePack().multi), so this page needs no pack-shaped conditional. */}
-        <PackSettingsCard />
+            gate itself (useCrew().multi), so this page needs no crew-shaped conditional. */}
+        <CrewSettingsCard />
 
         <ConnectionInfo bridge={root?.bridge} device={root?.device} build={serverBuild} />
 

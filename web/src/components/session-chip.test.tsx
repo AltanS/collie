@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 
-import { PackProvider } from "@/components/pack-provider";
+import { CrewProvider } from "@/components/crew-provider";
 import { SessionChip } from "@/components/session-chip";
 import type { SessionSummary } from "@/lib/types";
 
@@ -11,9 +11,9 @@ const registry: SessionSummary[] = [
 
 const mount = (session: string | undefined, sessions: SessionSummary[] = registry) =>
   render(
-    <PackProvider servers={undefined} sessions={sessions}>
+    <CrewProvider servers={undefined} sessions={sessions}>
       <SessionChip session={session} />
-    </PackProvider>,
+    </CrewProvider>,
   );
 
 // THE HIDE RULE IS THE COMPONENT'S OWN, which is what lets callers mount it unconditionally. If each

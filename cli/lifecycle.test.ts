@@ -14,8 +14,8 @@ import {
   STATE,
   type Scripted,
 } from "./fakes.ts";
-import { leadStore, member, peerStore } from "../bridge/pack/fixtures.ts";
-import { serializeTrustStore } from "../bridge/pack/trust-store.ts";
+import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
+import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
 
 /** The `Io` a nested `serve` was handed — `null` until it has been called. */
@@ -563,7 +563,7 @@ describe("the status banner", () => {
 
   // F24: the banner's other half of the same finding. A peer publishes no front door (ADR 0013), so
   // a `tailnet` row was a row about a door that is not there — and the URL it offered was loopback,
-  // which on a peer is not the bind either. The pack row answers the question the tailnet row was
+  // which on a peer is not the bind either. The crew row answers the question the tailnet row was
   // asked: where DO I point my phone.
   test("a peer's banner names the crew, not a tailnet door it does not serve", async () => {
     const h = harness({

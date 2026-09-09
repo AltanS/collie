@@ -57,7 +57,7 @@ export interface AuditEntry {
   /** The action performed, e.g. "reply" / "keys" / "upload" / "tab.create" / "pane.close". */
   action: string;
   /** The outermost component of the `(host, session, paneId)` address triple (PACK_PROTOCOL.md §4):
-   *  the pack member the action targeted. Absent (not null) when the action targeted this collie
+   *  the crew member the action targeted. Absent (not null) when the action targeted this collie
    *  itself, exactly as `session` is absent on pre-multi-session lines (PACK_PROTOCOL.md §11). */
   host?: string;
   /** Target pane, when the action is pane-scoped. */
@@ -67,13 +67,13 @@ export interface AuditEntry {
   /** Attributed device (from the per-device auth header), or null/absent when the feature is off. */
   device?: string | null;
   /**
-   * How the action arrived. Absent ⇒ the phone talked to THIS collie directly (every pre-pack line,
-   * and every line on a solo instance). `"pack"` ⇒ it arrived over a pack link, i.e. a lead forwarded
+   * How the action arrived. Absent ⇒ the phone talked to THIS collie directly (every pre-crew line,
+   * and every line on a solo instance). `"pack"` ⇒ it arrived over a crew link, i.e. a lead forwarded
    * it (PACK_PROTOCOL.md §12) — written on the PEER, whose terminals actually moved.
    */
   via?: "pack";
   /**
-   * Who forwarded it: the originating pack member id, as proven by the link's two factors (§8.1).
+   * Who forwarded it: the originating crew member id, as proven by the link's two factors (§8.1).
    * Peer-side counterpart of {@link AuditEntry.host}, which is what the LEAD writes on the same event
    * — the two logs are independent records, so neither machine needs the other's disk (§12).
    */
@@ -175,8 +175,8 @@ export function formatAuditLine(
 /**
  * Cap on the live `audit.log` before it rotates.
  *
- * The trail records lines that no factor has authenticated yet — a refused pack call is written
- * before the link's factors pass (`bridge/pack/router.ts`), which is the point: a refusal nobody can
+ * The trail records lines that no factor has authenticated yet — a refused crew call is written
+ * before the link's factors pass (`bridge/crew/router.ts`), which is the point: a refusal nobody can
  * see is not an audit trail. But it also means anyone who can reach the listener can make this file
  * grow, so its growth must be bounded here rather than by who is calling. Not an env var and not a
  * config key: a knob whose only wrong setting is "unbounded" is not a choice worth offering.
@@ -282,7 +282,7 @@ export class AuditLog {
       content?: AuditContent;
       /**
        * Fields stamped on every entry this instance records. Empty for the process-wide log, which
-       * is why a solo line is byte-identical to a pre-pack one — see {@link AuditLog.scoped}.
+       * is why a solo line is byte-identical to a pre-crew one — see {@link AuditLog.scoped}.
        */
       defaults?: Readonly<Partial<AuditEntry>>;
     } = {},
@@ -295,8 +295,8 @@ export class AuditLog {
   /**
    * A view of this log that stamps `defaults` onto every entry.
    *
-   * Exists for exactly one caller: the peer's pack dispatch, which hands the *unmodified* handler
-   * closures an audit log that already knows the action arrived over a pack link (§12). The handlers
+   * Exists for exactly one caller: the peer's crew dispatch, which hands the *unmodified* handler
+   * closures an audit log that already knows the action arrived over a crew link (§12). The handlers
    * therefore need no `via` parameter and cannot forget to pass one — a route reachable from both a
    * browser and a lead audits correctly in both directions with one code path.
    */

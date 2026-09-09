@@ -81,7 +81,7 @@ export interface MuxAdapterFactory {
   describeTarget?(endpoint: string): string;
   /**
    * The ssh targets this multiplexer already knows about, offered to the operator as candidates for
-   * `collie pack add` (ADR 0036 (c)) — or absent when this multiplexer links no machines.
+   * `collie crew add` (ADR 0036 (c)) — or absent when this multiplexer links no machines.
    *
    * **ABSENT IS A REAL ANSWER and it is the tmux and zellij case**, exactly as with
    * {@link beaconMatcher}: neither one has a machine list at all, so neither one offers candidates,

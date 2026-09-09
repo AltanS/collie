@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { STANDBY_VERSION_HEADER } from "../bridge/pack/standby.ts";
-import { leadStore, member, peerStore } from "../bridge/pack/fixtures.ts";
-import { serializeTrustStore } from "../bridge/pack/trust-store.ts";
+import { STANDBY_VERSION_HEADER } from "../bridge/crew/standby.ts";
+import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
+import { serializeTrustStore } from "../bridge/crew/trust-store.ts";
 import { UPDATE_RUN_SCHEMA, type UpdateRun } from "../bridge/update-run.ts";
 import { fakeFiles } from "./fakes.ts";
 import {

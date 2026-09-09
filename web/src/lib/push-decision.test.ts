@@ -88,7 +88,7 @@ describe("decidePush", () => {
     ).toMatchObject({ kind: "show", tag: "collie:herd@box2", paneId: "w1:p1", host: "box2", session: "demo" });
   });
 
-  test("a lead push carries no host — the pre-pack decision, unchanged", () => {
+  test("a lead push carries no host — the pre-crew decision, unchanged", () => {
     const decision = decidePush({ title: "claude needs you", data: { paneId: "w1:p1" } }, false);
     // SAFETY: the case asserts a field the union's "show" arm does not declare — that ABSENCE is
     // the invariant (a lead push carries no host), so it has to be read off the value to be pinned.
@@ -136,17 +136,17 @@ describe("tagFor", () => {
   });
 });
 
-// The frontend half of bridge/pack/tags.ts. The bridge writes the tag on a render and this file
+// The frontend half of bridge/crew/tags.ts. The bridge writes the tag on a render and this file
 // re-derives it on a fallback and on a retraction, so the two derivations must agree by
 // construction, not by two string templates that happen to match today.
 describe("hostSlot", () => {
-  test("reproduces the bridge's pack herd slots exactly", () => {
+  test("reproduces the bridge's crew herd slots exactly", () => {
     expect(hostSlot("collie:herd")).toBe("collie:herd"); // the lead's own — must never move
     expect(hostSlot("collie:herd", "laptop")).toBe("collie:herd@laptop");
     expect(`${hostSlot("collie:herd", "laptop")}:demo`).toBe("collie:herd@laptop:demo");
   });
 
-  // The injectivity argument from bridge/pack/tags.ts, as a test: a member id can hold neither `@`
+  // The injectivity argument from bridge/crew/tags.ts, as a test: a member id can hold neither `@`
   // nor `:`, so the character after the base discriminates a peer's slot from a local session's.
   test("a local session cleverly named like a host cannot collide with that host's slot", () => {
     expect(`${hostSlot("collie:herd")}:@laptop`).not.toBe(hostSlot("collie:herd", "laptop"));
@@ -161,7 +161,7 @@ describe("notificationPath — where a tap lands", () => {
     expect(notificationPath({ paneId: "w1:p1", host: "box2" })).toBe("/pane/w1%3Ap1?h=box2");
   });
 
-  // The whole backward-compatibility story in one assertion: nothing about a lead-only pack changed.
+  // The whole backward-compatibility story in one assertion: nothing about a lead-only crew changed.
   test("the lead emits today's bytes — no host param anywhere", () => {
     expect(notificationPath({ paneId: "w1:p1" })).toBe("/pane/w1%3Ap1");
     expect(notificationPath({ paneId: "w1:p1", session: "demo" })).toBe("/pane/w1%3Ap1?s=demo");

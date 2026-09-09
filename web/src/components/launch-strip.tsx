@@ -1,6 +1,6 @@
 import { Loader2 } from "lucide-react";
 
-import { usePack } from "@/components/pack-provider";
+import { useCrew } from "@/components/crew-provider";
 import { Button } from "@/components/ui/button";
 import { SectionHeader } from "@/components/section-header";
 import { openForCount } from "@/hooks/use-dash-prefs";
@@ -19,7 +19,7 @@ interface LaunchStripProps {
    */
   open: boolean | null;
   onOpenChange: (open: boolean) => void;
-  /** The ambient scope — which host's rows this strip reads and, in a pack, which one may refuse. */
+  /** The ambient scope — which host's rows this strip reads and, in a crew, which one may refuse. */
   scope?: Scope;
 }
 
@@ -36,10 +36,10 @@ interface LaunchStripProps {
 export function LaunchStrip({ open, onOpenChange, scope }: LaunchStripProps) {
   const { launchers, home } = useLaunchers(scope);
   const { launch, launching } = useSpaceActions();
-  // TIER 2 (§10.3): a pack row still shows when its host refuses writes — a departed/incompatible
+  // TIER 2 (§10.3): a crew row still shows when its host refuses writes — a departed/incompatible
   // member's rows are exactly as informative as its panes are — but the row itself is disabled with
   // the reason, same as any other write to that host.
-  const { health } = usePack();
+  const { health } = useCrew();
   const refusal = scope?.host === undefined ? undefined : writeRefusal(health.get(scope.host));
 
   // Nothing declared → no affordance at all, not an empty section. Worth a comment because an early

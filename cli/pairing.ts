@@ -61,7 +61,7 @@ const registryPath = (ctx: CliContext): string => join(ctx.stateDir, DEVICES_FIL
 /**
  * The registry as it is on disk. Absent, unreadable or malformed all read as "nothing paired".
  *
- * Exported because `pack deputy` asks the same question for a different reason (RFC §6.4: a lead with
+ * Exported because `crew deputy` asks the same question for a different reason (RFC §6.4: a lead with
  * nothing paired could never arm a standby door), and two readers of one credential file is two
  * places for "is anything paired?" to answer differently.
  */
@@ -218,7 +218,7 @@ export function devicesUsage(): string {
 
 /**
  * The parent verb. Reached only when no sub-verb matched — a bare `collie devices`, or a misspelt
- * one — and it names each sub-verb with its summary, as `cmdPack` does.
+ * one — and it names each sub-verb with its summary, as `cmdCrew` does.
  */
 export function cmdDevices(deps: PairingDeps, args: readonly string[]): number {
   const [sub, ...rest] = args;

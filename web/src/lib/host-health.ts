@@ -7,7 +7,7 @@
 // variables, five mutators, one latch. Its header comment records why (escalation used to live in a
 // per-component ref/timer, two instances diverged, and the banner went red while the header pill sat
 // amber). Giving it a host dimension — a map of anchors, a `markLive(host)`, N latches — would
-// re-create that exact divergence by construction, once per pack member. So the seam is structural,
+// re-create that exact divergence by construction, once per crew member. So the seam is structural,
 // not a matter of discipline: tier 2 lives HERE, gains no clock, and tier 1 gains no host argument.
 // `grep -n "reachable\|host" lib/connection-health.ts` is empty and host-health.test.ts keeps it so.
 //
@@ -23,7 +23,7 @@
 // clock is never trusted"), so the only sound thing to measure it against is the lead's clock too:
 // the snapshot's own `ts`. Subtracting a phone's `Date.now()` from a lead's timestamp measures the
 // skew between two machines as much as it measures staleness — on a phone a few minutes fast, every
-// peer in the pack would read stale forever; a few minutes slow, none ever would.
+// peer in the crew would read stale forever; a few minutes slow, none ever would.
 //
 // The freshness of the SNAPSHOT itself is a different question with a different clock (the browser's)
 // and it already has an owner: tier 1. That is the whole orthogonality — tier 1 asks "how old is
@@ -32,14 +32,14 @@
 // ── AND WHY THE PHONE DOES NOT COUNT ITS OWN SUCCESSFUL FETCH AS A RECEIPT ───
 // Considered and declined. "This pane's fetch just came back, so its host answered" is the strongest
 // freshness fact the phone has — but consuming it here would mean a per-host anchor that survives
-// between calls, i.e. exactly the map-of-clocks this module's header opens by refusing, once per pack
+// between calls, i.e. exactly the map-of-clocks this module's header opens by refusing, once per crew
 // member. It would also be measured on the BROWSER's clock and then compared against `lastSeenAt`,
 // which is the lead's — the cross-machine subtraction two paragraphs up rules out.
 //
 // It is also redundant now: the same fetch already refreshes the receipt at its source. The lead folds
-// every landed forward into `lastSeenAt` (`bridge/pack/registry.ts` → `recordExchange`), so a pane the
+// every landed forward into `lastSeenAt` (`bridge/crew/registry.ts` → `recordExchange`), so a pane the
 // phone is watching produces one receipt per poll, on the lead's own clock, and arrives here through
-// the snapshot like every other pack fact. Two implementations of the same idea, one of which needs a
+// the snapshot like every other crew fact. Two implementations of the same idea, one of which needs a
 // clock — so this side keeps none.
 //
 // Consequence worth naming: with polling paused (the idle lock, ADR 0007) `ts` freezes along with
@@ -136,7 +136,7 @@ export const PRESENTED_STALE_MAX_MS = 15_000;
  * so a perfectly healthy peer's receipt aged 0 → 12 s and read stale for most of every sweep — the
  * banner flapped on a machine that was answering every single request.
  *
- * What fixed it is on the lead, not here: `PackRegistry.recordExchange` folds every **landed
+ * What fixed it is on the lead, not here: `CrewRegistry.recordExchange` folds every **landed
  * proxied forward** into `lastSeenAt`, so a peer the phone is actually watching gets a receipt per
  * pane read — i.e. at `pollMs` — and the sweep stays the floor for a peer nobody is looking at. The
  * tolerance is therefore measured against a receipt clock that tracks this cadence, which is what
@@ -237,7 +237,7 @@ export function hostHealthMap(
  * snapshot doesn't list.
  *
  * Distinguishing "solo" from "listed but sick" is the caller's job because only the caller knows
- * whether there is a pack at all — see `useHostHealth` in components/pack-provider.tsx, which pairs
+ * whether there is a crew at all — see `useHostHealth` in components/crew-provider.tsx, which pairs
  * this with {@link departedHealth} for the one case the map can't answer.
  */
 export function healthFor(
@@ -248,7 +248,7 @@ export function healthFor(
 }
 
 /**
- * The health of a host the snapshot does NOT list, on a pack that does list others — a member that
+ * The health of a host the snapshot does NOT list, on a crew that does list others — a member that
  * departed (or was demoted) while you were looking at one of its panes.
  *
  * It is not assumed healthy. There is no reachability fact attached to it at all, and on a surface
@@ -297,12 +297,12 @@ export function writeRefusal(h: HostHealth | undefined): string | undefined {
  *   condition that fixes itself in one poll must not shout, or the operator learns to distrust every
  *   red thing on the screen.
  * - `attention` — the operator must act. Auth refused, a protocol this build cannot speak, a member
- *   in somebody else's pack, or a retry budget the lead has spent.
+ *   in somebody else's crew, or a retry budget the lead has spent.
  * - `unreachable` — today's undifferentiated word, and the ONLY reading of an absent `linkState` on a
  *   degraded member: that lead does not make the distinction, so this phone may not invent one.
  *
  * **One value, so a chip's styling and its label cannot drift** — the rule host-chip.tsx keeps for
- * `writable`, one axis over. Both the chip and the pack page call this, so the two screens can never
+ * `writable`, one axis over. Both the chip and the crew page call this, so the two screens can never
  * describe one machine two ways.
  */
 export type LinkPresentation = "ok" | "reconnecting" | "attention" | "unreachable";

@@ -11,8 +11,8 @@ import {
   type UpdateRun,
   type UpdateRunState,
 } from "../bridge/update-run.ts";
-import { STANDBY_HEALTH_PATH, STANDBY_VERSION_HEADER, standbyPortOf } from "../bridge/pack/standby.ts";
-import { parseTrustStore, trustStorePath } from "../bridge/pack/trust-store.ts";
+import { STANDBY_HEALTH_PATH, STANDBY_VERSION_HEADER, standbyPortOf } from "../bridge/crew/standby.ts";
+import { parseTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import type { Environment } from "./context.ts";
 import type { Exec, Files, Net } from "./sys.ts";
 
@@ -272,8 +272,8 @@ export type HealthVerdict = { readonly ok: true } | { readonly ok: false; readon
 /**
  * Did the service come up as the version we flipped to?
  *
- * Three ways to fail, and the third is the one that gets missed: a DEPOSED pack member answers, and
- * answering is not the same as being live (`bridge/pack/deposed.ts` — a deposed collie serves one
+ * Three ways to fail, and the third is the one that gets missed: a DEPOSED crew member answers, and
+ * answering is not the same as being live (`bridge/crew/deposed.ts` — a deposed collie serves one
  * page and fails its health check). Counting that as a successful update would leave the operator on
  * a machine that routes nothing.
  */
@@ -305,7 +305,7 @@ export function aliveVerdict(answer: HealthAnswer): HealthVerdict {
 
 // ── Waiting on somebody else's run ───────────────────────────────────────────
 // The runner is detached, so a caller that wants to know how it ended cannot await a promise — it
-// reads the record. `collie pack update` does exactly that when it updates the lead before any peer
+// reads the record. `collie crew update` does exactly that when it updates the lead before any peer
 // (M15/06): it hands off through the same path `collie update` uses and then waits here.
 
 /** How a run somebody else was driving ended, as a waiting caller reads it. */
@@ -447,7 +447,7 @@ export function healthProbe(net: Net, target: ProbeTarget): () => Promise<Health
  * The standby door's answer, read for the one thing the gate wants: what is running there.
  *
  * The header first, the body second. They carry the same string by construction
- * (`bridge/pack/standby.ts`), and reading both is what keeps this working against a peer whose door
+ * (`bridge/crew/standby.ts`), and reading both is what keeps this working against a peer whose door
  * predates the header — which, on the day of an update, is every peer being updated.
  */
 function standbyAnswer(net: Net, url: string): () => Promise<HealthAnswer> {

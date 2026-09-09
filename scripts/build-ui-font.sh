@@ -107,7 +107,7 @@ work = os.environ["WORK"]
 SAMPLE = (
     "Needs you Working Idle Unknown Terminal font size Applies to the mirror and the transcript "
     "Reload Not now A newer build is on the server bluefin collie-website sportsight "
-    "14m 3m 1h 08m 18h 6d (6) (11) (2) (1) (0) p1 p4 p2 p10 p7 Settings Display Pack Devices "
+    "14m 3m 1h 08m 18h 6d (6) (11) (2) (1) (0) p1 p4 p2 p10 p7 Settings Display Crew Devices "
     "Paired Connection"
 )
 

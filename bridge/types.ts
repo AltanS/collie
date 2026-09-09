@@ -130,7 +130,7 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
    *  file is missing still answers `available:false` with reason `no-log`. */
   hasSession?: boolean;
   /**
-   * Which member of the pack this pane lives on — the `?h=` value completing the `(host, session,
+   * Which member of the crew this pane lives on — the `?h=` value completing the `(host, session,
    * paneId)` address (PACK_PROTOCOL.md §4). Present exactly when {@link SnapshotResponse.servers}
    * is; absent on every solo snapshot (§11). Pane ids are only unique per machine, which is why a
    * merged list must carry this and why the phone's per-pane cache keys on it.
@@ -206,12 +206,12 @@ export interface WorkspaceView {
    */
   isWorktree?: boolean;
   /**
-   * Which member of the pack this space lives on — the same tag panes and sessions carry.
+   * Which member of the crew this space lives on — the same tag panes and sessions carry.
    *
    * **Present exactly when {@link SnapshotResponse.servers} is**, and absent otherwise (§11), so a
    * solo body is unchanged to the byte. It is not decoration: Herdr numbers spaces PER MACHINE, so
    * two default installs both call theirs `w1` and a merged list keyed on `workspaceId` alone
-   * collapses them into one row carrying one machine's counts. The identity of a space in a pack is
+   * collapses them into one row carrying one machine's counts. The identity of a space in a crew is
    * `(host, workspaceId)`, and every join against a pane must use both halves.
    */
   host?: string;
@@ -226,7 +226,7 @@ export interface TabView {
   focused: boolean;
   paneCount: number;
   /**
-   * Which member of the pack this tab lives on — see {@link WorkspaceView.host}, which this mirrors
+   * Which member of the crew this tab lives on — see {@link WorkspaceView.host}, which this mirrors
    * exactly. A tab id is `w1:t1` on every default install, so `(host, tabId)` is the identity, and
    * `(host, workspaceId)` is the parent it belongs to.
    */
@@ -252,7 +252,7 @@ export interface SessionSummary {
   working: number;
   blocked: number;
   /**
-   * Which member of the pack fronts this session — the `?h=` value (PACK_PROTOCOL.md §4).
+   * Which member of the crew fronts this session — the `?h=` value (PACK_PROTOCOL.md §4).
    *
    * **Present exactly when {@link SnapshotResponse.servers} is**, and absent otherwise. A solo
    * instance emits neither (§11: "no `host` field is added to sessions or panes"), so a session name
@@ -296,12 +296,12 @@ export interface SnapshotResponse {
    */
   sessions: SessionSummary[];
   /**
-   * Every member of the pack, the lead's own entry included (PACK_PROTOCOL.md §9.2).
+   * Every member of the crew, the lead's own entry included (PACK_PROTOCOL.md §9.2).
    *
    * **Optional-and-absent, following `update?` rather than the always-present `sessions`** — and the
    * choice is forced, not stylistic (§11). An always-present field, even an empty array, changes
    * every solo snapshot body and therefore every solo snapshot ETag exactly once: one forced refetch
-   * for every solo user, bought for a uniformity nothing needs. Absent means "no pack", which is
+   * for every solo user, bought for a uniformity nothing needs. Absent means "no crew", which is
    * precisely true. Present ⇒ `host` is stamped on every session and every pane; absent ⇒ on none.
    */
   servers?: ServerSummary[];
@@ -314,7 +314,7 @@ export interface SnapshotResponse {
 }
 
 /**
- * One member of the pack in the merged snapshot (PACK_PROTOCOL.md §9.2) — the row `pack status` and
+ * One member of the crew in the merged snapshot (PACK_PROTOCOL.md §9.2) — the row `crew status` and
  * the phone's host list render.
  *
  * `reachable` is not an invention: {@link SessionSummary.reachable} already models an unreachable
@@ -335,7 +335,7 @@ export interface ServerSummary {
   protocolDetail?: string;
   /**
    * §10.2's presentation split for a member that is not answering, exactly as
-   * {@link PackMemberStatus.linkState} carries it: `reconnecting` needs nothing of the operator,
+   * {@link CrewMemberStatus.linkState} carries it: `reconnecting` needs nothing of the operator,
    * `attention` does.
    *
    * Additive and optional (§7.1): omitted for a reachable member, and omitted by a lead that predates
@@ -352,23 +352,23 @@ export interface ServerSummary {
 }
 
 /**
- * GET /api/pack — what the RUNNING lead already knows about its own pack, for the phone's Pack
- * overview page. The read-only browser spelling of `collie pack status` (cli/pack.ts).
+ * GET /api/pack — what the RUNNING lead already knows about its own crew, for the phone's Crew
+ * overview page. The read-only browser spelling of `collie crew status` (cli/crew.ts).
  *
  * **It is a report, never a probe.** Every field below is answered from state this process already
  * holds: the trust store it read at startup (`TrustStore.current()`, no disk touched per request)
- * and the {@link PeerState} the lead's existing sweep maintains (bridge/pack/registry.ts). Nothing
+ * and the {@link PeerState} the lead's existing sweep maintains (bridge/crew/registry.ts). Nothing
  * in this shape can make the lead dial a member — which is what lets a phone poll it beside the
  * snapshot without adding a second call rate to every peer (PACK_PROTOCOL.md §10.1, §11).
  *
  * **Only a lead answers it.** A solo instance and a peer 404 (`pack.not_lead`): a peer is not a
- * front door (ADR 0013), and a solo instance has no pack to describe.
+ * front door (ADR 0013), and a solo instance has no crew to describe.
  *
- * Nothing here is a secret. Fingerprints, certificates, the pack secret and pairing credentials are
+ * Nothing here is a secret. Fingerprints, certificates, the crew secret and pairing credentials are
  * absent by construction, exactly as {@link ServerSummary} keeps them off the snapshot.
  */
-export interface PackStatusResponse {
-  /** The pack itself, as the trust store records it (`PackIdentity`). */
+export interface CrewStatusResponse {
+  /** The crew itself, as the trust store records it (`CrewIdentity`). */
   pack: { id: string; name: string; secretGeneration: number; rotatedAt: number };
   /** This lead. `version` per bridge/version.ts, the same string `hello` answers with. */
   self: { id: string; name: string; version: string };
@@ -377,26 +377,26 @@ export interface PackStatusResponse {
    *
    * The DESIGNATION is the source, never the warrant: after a takeover the new lead keeps a warrant
    * naming itself, so reading the deputy off it reports a lead as its own deputy (cli/
-   * pack-status-deputy.ts says so at length). `warrantGeneration` is the generation of the warrant
+   * crew-status-deputy.ts says so at length). `warrantGeneration` is the generation of the warrant
    * this lead currently holds, and it is **nullable rather than omitted**: a designation with no
    * warrant behind it is a state the operator has to see, not a key to go missing.
    */
   deputy: { id: string; warrantGeneration: number | null } | null;
   /** The lead's own entry FIRST, then peers by member id — the exact order of `servers[]` (§9.2). */
-  members: PackMemberStatus[];
+  members: CrewMemberStatus[];
   /** The LEAD's clock, like every other timestamp the lead publishes (§10.2). */
   ts: number;
 }
 
 /**
- * One member's row on the Pack overview page.
+ * One member's row on the Crew overview page.
  *
  * Mostly {@link PeerState} re-spelled for the browser, plus the three roster facts the registry does
  * not carry (`address`, `enrolledAt`, `secretBehind`). Optional keys are OMITTED when absent and
  * never sent as null (PACK_PROTOCOL.md §11) — the lead's own entry therefore carries no `address`
  * and no `enrolledAt`, because a lead is not in its own roster.
  */
-export interface PackMemberStatus {
+export interface CrewMemberStatus {
   /** Member id — the same value `?h=` takes and `servers[].id` reports. */
   id: string;
   name: string;
@@ -413,7 +413,7 @@ export interface PackMemberStatus {
   lastSeenAt: number;
   /** What this member last reported, over the sweep or over `hello` (§7.1, §19), when it has. */
   version?: string;
-  /** This member has not picked up the current pack secret (§8.4). False for the lead. */
+  /** This member has not picked up the current crew secret (§8.4). False for the lead. */
   secretBehind: boolean;
   /** Enrolled but never once reachable — the shape a half-finished join takes (§8.2). */
   provisional: boolean;
@@ -478,7 +478,7 @@ export interface UpdateStatus {
    */
   dismissedVersion: string | null;
   /**
-   * The version whose quiet PACK notice the operator closed, or null.
+   * The version whose quiet CREW notice the operator closed, or null.
    *
    * Two decisions, two fields. "A release is available here" and "that machine is standing behind,
    * and a package manager owns it" are about different machines, so putting one down must not put
@@ -494,14 +494,14 @@ export interface UpdateStatus {
    * updater, which restarts the service as its last act. `pacman -Syu` replaces the root under a
    * live process, and `collieVersion()` re-reads from disk on every call — so without this the
    * bridge would answer with the NEW version while running the OLD code, on `/api/health`, on
-   * `hello` and therefore on the pack wire, where a lead reads it as "that peer already levelled".
+   * `hello` and therefore on the crew wire, where a lead reads it as "that peer already levelled".
    *
    * TWO witnesses, either of which raises it: the version files stopped naming what this process
    * runs, and — on a single-file install under Linux — the executable behind `/proc/self/exe` was
    * replaced (`bridge/exe-replaced.ts`). The second is what catches a package REBUILD of the same
    * version, where no version string moves at all and the first sees nothing.
    *
-   * While it is raised, what this process puts ON THE PACK WIRE stays the version captured at boot:
+   * While it is raised, what this process puts ON THE CREW WIRE stays the version captured at boot:
    * stale but true, never new but false.
    */
   restartNeeded: boolean;
@@ -638,10 +638,10 @@ export type WorktreeOpenResponse =
 
 
 /**
- * Which role this collie plays in a pack (PACK_PROTOCOL.md §3). `solo` is a lead with zero peers —
+ * Which role this collie plays in a crew (PACK_PROTOCOL.md §3). `solo` is a lead with zero peers —
  * today's Collie, exactly — and is the only mode that needs no configuration whatsoever.
  */
-export type PackMode = "solo" | "lead" | "peer";
+export type CrewMode = "solo" | "lead" | "peer";
 
 /**
  * One operator-declared slash command (a `[[commands]]` row in their `commands.toml`). A pane any of
@@ -851,12 +851,12 @@ export interface BridgeConfig {
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
   /**
-   * This collie's pack mode, so `pack status` and the UI can render it without probing behaviour.
-   * **Omitted when the mode is `solo`** — absent means "no pack", which is precisely true, and keeps
+   * This collie's crew mode, so `crew status` and the UI can render it without probing behaviour.
+   * **Omitted when the mode is `solo`** — absent means "no crew", which is precisely true, and keeps
    * a solo `/api/config` body byte-identical to today's (the `servers` reasoning, PACK_PROTOCOL.md
    * §11). Read it as `mode ?? "solo"`.
    */
-  mode?: PackMode;
+  mode?: CrewMode;
   /** The operator's own palette rows. Absent/empty when there is no `commands.toml`. */
   operatorCommands?: OperatorCommand[];
   /** The operator's own Keys-tray presets. Absent/empty when there is no `keys.toml`. */
@@ -889,7 +889,7 @@ export interface BridgeConfig {
    * whole answer — the phone builds its file picker's `accept` list from it and refuses an oversize
    * file before spending an uplink on a refusal it can already predict.
    *
-   * Per HOST, not per pack: `?h=peer` reads the LEAD's config body, so a member with a different
+   * Per HOST, not per crew: `?h=peer` reads the LEAD's config body, so a member with a different
    * `COLLIE_MAX_UPLOAD_MB` still answers for itself when the bytes arrive. See docs/configure.md.
    */
   upload?: UploadCapability;

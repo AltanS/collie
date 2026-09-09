@@ -106,9 +106,9 @@ export interface UpdateRun {
    * timestamp and never a version: two confirms inside one millisecond would collide, and an id that
    * reads as a clock claim on the wire is an id somebody will compare.
    *
-   * Absent on a schema-1 record and on every run this machine started for itself before the pack
+   * Absent on a schema-1 record and on every run this machine started for itself before the crew
    * learned to follow. Absent means "no run to key on", which is what makes a peer's rollback memory
-   * refuse rather than match (`bridge/pack/follow.ts`).
+   * refuse rather than match (`bridge/crew/follow.ts`).
    */
   readonly runId?: string;
   /** Why the run is where it is, when that needs a sentence. */
@@ -312,22 +312,22 @@ export function updateLockHeld(
 }
 
 /**
- * The `(runId, to)` a finished run hands the pack's turn queue, or null when this record starts no
+ * The `(runId, to)` a finished run hands the crew's turn queue, or null when this record starts no
  * turns. The lead's own health gate settling is what calls it (`settleUpdateGate` in
  * `bridge/index.ts`), on every poll tick, because the queue is in memory and the update restarted
  * the process that held it — this record is the only thing that crossed the restart.
  *
  * A function rather than four conditions inline at the one call site, because the WRITER is in
  * another tree: `cli/update.ts` decides what a finished run looks like on disk, and the two halves
- * agreeing is the whole of the pack levelling. A test can hold a real written record against this
+ * agreeing is the whole of the crew levelling. A test can hold a real written record against this
  * and fail when either side moves; four conditions in `index.ts` could only be read, never run,
  * because importing that module boots a bridge.
  *
  * All four are load-bearing. `done` because a run still in flight has nothing to level to yet.
  * `runId` because the queue is keyed on it, and a run with none was started from a terminal by
- * someone who never asked for a pack. `to` because that is the version the peers are levelling to.
+ * someone who never asked for a crew. `to` because that is the version the peers are levelling to.
  */
-export function packTurnStart(
+export function crewTurnStart(
   run: UpdateRun | null,
 ): { readonly runId: string; readonly to: string; readonly at: number } | null {
   if (run === null || run.state !== "done") return null;

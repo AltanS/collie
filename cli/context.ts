@@ -55,7 +55,7 @@ export interface CliContext {
   handlerFile: string;
   /**
    * Runtime state — the same directory the bridge resolves (`bridge/config.ts`'s `resolveStateDir`),
-   * so the pack trust store a verb writes is the one the running service reads.
+   * so the crew trust store a verb writes is the one the running service reads.
    */
   stateDir: string;
 }
@@ -391,8 +391,8 @@ export function effectiveServePort(env: Environment): number {
 // instance, `resolveConfigDir` looks for `<conventional>/herdr.collie-<instance>/.env` — a directory
 // the operator created — and, finding none, refuses the run instead of resolving anywhere else. It
 // never asks herdr (herdr only knows the unsuffixed plugin's dir) and never falls back to the
-// unsuffixed or legacy dir. The incident: `COLLIE_INSTANCE=v1 collie pack add` without an injected
-// HERDR_PLUGIN_CONFIG_DIR resolved the DEFAULT instance's config and state dirs, so a pack verb read
+// unsuffixed or legacy dir. The incident: `COLLIE_INSTANCE=v1 collie crew add` without an injected
+// HERDR_PLUGIN_CONFIG_DIR resolved the DEFAULT instance's config and state dirs, so a crew verb read
 // the wrong trust store and then minted a fresh self identity into the live stable instance's.
 
 /** The accepted shape of `COLLIE_INSTANCE`: it becomes a unit name, a filename and a launchd label. */

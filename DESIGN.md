@@ -312,7 +312,7 @@ therefore sans**; a **semver carrying a git hash is a machine build id and there
 
 | | |
 | --- | --- |
-| sans | `alpha-bar.tsx:62` (prerelease version) · `routes/pack.tsx:227-233` (a pack member's version) |
+| sans | `alpha-bar.tsx:62` (prerelease version) · `routes/crew.tsx:227-233` (a crew member's version) |
 | mono | `build-stamp.tsx:60` (the footer stamp) · `connection-info.tsx:55-57` (the Server build row) |
 
 ### Counters

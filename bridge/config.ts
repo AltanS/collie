@@ -100,7 +100,7 @@ function envEnum<T extends string>(name: string, allowed: readonly T[], fallback
  * Read a boolean env var. Empty/unset → `fallback`. `off`/`0`/`false`/`no` → false; `on`/`1`/`true`/
  * `yes` → true (case-insensitive); anything else falls back with a warning.
  *
- * Exported so mode-scoped config (`bridge/pack/config.ts`) parses its env in exactly this style
+ * Exported so mode-scoped config (`bridge/crew/config.ts`) parses its env in exactly this style
  * rather than growing a second, subtly different reader. The env source is a parameter so a caller
  * can drive it purely; it defaults to `process.env`, which is how everything in this file reads.
  */
@@ -194,7 +194,7 @@ export interface Config {
    * `COLLIE_MAX_UPLOAD_MB` (default {@link DEFAULT_MAX_UPLOAD_MB}); resolved to bytes here so the
    * two enforcement points in `bridge/uploads.ts` never each do the arithmetic.
    *
-   * In a pack this is per MEMBER, and the member that will WRITE the file is the one whose number
+   * In a crew this is per MEMBER, and the member that will WRITE the file is the one whose number
    * decides. The lead's pre-check only saves a phone's uplink — see docs/configure.md.
    */
   maxUploadBytes: number;
@@ -373,9 +373,9 @@ export function isLoopbackBindHost(host: string): boolean {
  * **The decision is not config's to take alone, which is why this is a predicate and not a throw.**
  * Loopback is the trust basis for every browser-side write gate — the `Tailscale-User-Login` header,
  * `COLLIE_DEVICE_HEADER` and the same-origin check are all client-settable, so on a wide bind they
- * mean nothing. That is why a solo instance and a lead refuse to start. But a pack **peer** binds off
+ * mean nothing. That is why a solo instance and a lead refuse to start. But a crew **peer** binds off
  * loopback BY CONSTRUCTION: its lead dials it across a machine boundary, and the surface it exposes
- * there is gated by pinned mutual TLS plus the pack secret rather than by any of those headers
+ * there is gated by pinned mutual TLS plus the crew secret rather than by any of those headers
  * (PACK_PROTOCOL.md §3, [ADR 0013](../.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
  * The mode that decides is not known until the trust store has been read, which happens after this
  * function runs — so `bridge/index.ts` calls it once the mode is in hand.
@@ -416,10 +416,10 @@ export function defaultSocketPath(
 
 /**
  * Where runtime state lives: uploads, `audit.log`, `push-subscriptions.json`, `snooze.json` — and the
- * pack trust store. Herdr's injected dir wins, then the explicit override, then the user state dir.
+ * crew trust store. Herdr's injected dir wins, then the explicit override, then the user state dir.
  *
  * Pure and exported because the CLI resolves the same directory from its own `.env`-merged
- * environment (`cli/context.ts`): the pack verbs write the trust store the bridge reads, so the two
+ * environment (`cli/context.ts`): the crew verbs write the trust store the bridge reads, so the two
  * must land on the same path or an enrollment would be invisible to the running service. It names no
  * key `loadConfig` did not already name — the solo baseline's env-key list is unchanged by it.
  */

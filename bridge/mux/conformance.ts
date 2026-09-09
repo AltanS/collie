@@ -698,11 +698,11 @@ const spaceCapacityMatchesTheWorld: MuxReadCheck = {
  * exists: nothing here types, renames, closes or kills. Calls to undeclared verbs are in it because
  * an undeclared verb refuses before it touches anything — that is the property being tested.
  *
- * THERE IS A THIRD PLACE THIS LIST RUNS, and it grades less than the other two: scripts/pack-mux-probe.ts
+ * THERE IS A THIRD PLACE THIS LIST RUNS, and it grades less than the other two: scripts/crew-mux-probe.ts
  * points it at a PEER's multiplexer through the lead's HTTP surface with `?host=` (M22/04). The
  * transport there is §5's route table, not the mux port, so four of these checks cannot be graded
  * across a link at all. Which four, and why each one, is a table in MUX_CONTRACT.md
- * § "Conformance across a pack link" — read it before reading a pack run as covering the port.
+ * § "Conformance across a pack link" — read it before reading a crew run as covering the port.
  */
 export const MUX_READ_ONLY_CHECKS: readonly MuxReadCheck[] = [
   declarationIsWellFormed,

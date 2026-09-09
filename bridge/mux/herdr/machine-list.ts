@@ -7,10 +7,10 @@
 // so it does not touch `client.ts` or the socket — a machine list is client-side configuration in
 // Herdr 0.9.0, with no socket API behind it, which is exactly why it is a shell-out.
 //
-// ── A MACHINE LIST IS NOT A PACK ─────────────────────────────────────────────
-// Every target here is a suggestion for `collie pack add` and nothing else. This module never
+// ── A MACHINE LIST IS NOT A CREW ─────────────────────────────────────────────
+// Every target here is a suggestion for `collie crew add` and nothing else. This module never
 // enrols, never dials, never writes and never reads Herdr's file directly. Adding a machine to
-// Herdr does not add it to the pack, and this list existing does not change that (`docs/pack.md`).
+// Herdr does not add it to the crew, and this list existing does not change that (`docs/crew.md`).
 //
 // ── THREE OUTCOMES, NEVER A THROW AND NEVER A GUESS ──────────────────────────
 //   • ABSENT   — no `herdr` on PATH, or this Herdr has no `machine` subcommand. No candidates, and
@@ -21,7 +21,7 @@
 //                exactly ONE stderr line naming the cause, so a broken herdr is visible without
 //                being fatal.
 // The two "no candidates" outcomes are deliberately distinguishable by their noise and by nothing
-// else: neither one may ever fail `pack add`.
+// else: neither one may ever fail `crew add`.
 
 import type { JsonObject, JsonValue } from "../../json.ts";
 import type { HostCandidate, HostProbe, HostProbeResult } from "../host-candidates.ts";
@@ -65,7 +65,7 @@ function subcommandMissing(r: HostProbeResult): boolean {
  */
 export function herdrMachineCandidates(probe: HostProbe): readonly HostCandidate[] {
   const asked = probe.run(HERDR, HERDR_MACHINE_LIST_ARGS, CANDIDATE_TIMEOUT_MS);
-  // ABSENT: nothing to say. Collie is a Herdr plugin, so `herdr` is normally there — but `pack add`
+  // ABSENT: nothing to say. Collie is a Herdr plugin, so `herdr` is normally there — but `crew add`
   // runs from a checkout that a tmux or zellij operator also has, and this must cost them nothing.
   if (!asked.found) return [];
   if (asked.code !== 0) {

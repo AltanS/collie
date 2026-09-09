@@ -22,17 +22,17 @@ function disk(version: string): (p: string) => string | null {
 
 describe("the wire version stays the one it is running", () => {
   test("a manifest swapped under a running bridge does not change the captured string", () => {
-    // Boot. This is `bridge/index.ts`'s `packVersion` and `bootVersion`, both resolved once.
+    // Boot. This is `bridge/index.ts`'s `crewVersion` and `bootVersion`, both resolved once.
     const files = { read: disk("1.5.0") };
-    const packVersion = collieVersionBare(ROOT, files.read);
+    const crewVersion = collieVersionBare(ROOT, files.read);
     const bootVersion = collieVersion(ROOT, files.read);
-    expect(packVersion).toBe("1.5.0");
+    expect(crewVersion).toBe("1.5.0");
 
     // `pacman -Syu` lands. The files say 1.6.0; this process is still 1.5.0.
     files.read = disk("1.6.0");
 
     // What `hello` and `/api/health` answer is the captured string, and it has not moved.
-    expect(packVersion).toBe("1.5.0");
+    expect(crewVersion).toBe("1.5.0");
     // And a LIVE read disagrees with the boot capture — which is the restart-needed signal itself.
     expect(collieVersion(ROOT, files.read)).not.toBe(bootVersion);
   });
@@ -42,7 +42,7 @@ describe("the wire version stays the one it is running", () => {
     // One resolution, and it is the bare spelling — a parenthetical would make a machine with no
     // built bundle read as skewed against itself (PACK_PROTOCOL.md §7.1).
     expect(source.split("collieVersionBare(").length - 1).toBe(1);
-    expect(source).toContain("const packVersion = collieVersionBare(rootDir);");
+    expect(source).toContain("const crewVersion = collieVersionBare(rootDir);");
     // The live read exists too, and it is a THUNK the monitor throttles — never an inline call that
     // some handler could end up making on the request path.
     expect(source).toContain("liveVersion: () => collieVersion(rootDir)");

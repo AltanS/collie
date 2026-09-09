@@ -28,6 +28,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Changed
+
+- **The crew's own files and identifiers say crew.** `bridge/pack/` is now `bridge/crew/`, `cli/pack.ts` is `cli/crew.ts`, the phone's crew route and its four components follow, and every `Pack…` type, function and constant is spelled `Crew…`, as are the `pack.*` translation keys. Nothing moves on the wire, on disk or in the environment: the `/pack/v1/*` paths, the `X-Pack-*` headers, `PACK_PROTOCOL_VERSION`, `COLLIE_PACK_*`, the three `pack-*.json` state files, the `[pack]` journal prefix, `/api/pack` and the `collie pack` alias all keep their names in this change. The commit-hook hatch is now `SKIP_CREW_WIRE_CHECK=1`.
+
 ## [1.7.0] - 2026-09-09
 
 ### Added

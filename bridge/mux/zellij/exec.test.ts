@@ -10,7 +10,7 @@ describe("timedOutMessage", () => {
   // The line this replaced: a killed child hands back empty pipes, and an empty listing used to
   // arrive as *could not read the session's listing: not JSON*. That sends the reader after a parse
   // bug in zellij when the real cause is a machine too busy to spawn a process inside 5 s
-  // (measured five times on one peer during a `pack update` push, M22/04 zellij leg).
+  // (measured five times on one peer during a `crew update` push, M22/04 zellij leg).
   test("names the verb, the budget, and the cause", () => {
     const message = timedOutMessage(["action", "list-panes", "--all", "--json"], 5000);
     expect(message).toContain("action list-panes");

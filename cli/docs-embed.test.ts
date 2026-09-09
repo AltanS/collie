@@ -59,7 +59,7 @@ describe("the embedded docs registry", () => {
   });
 
   test("an old page name resolves to the page that carries the text now", () => {
-    // ADR 0038 renamed the page an operator reads from `pack` to `crew` and kept the old name
+    // ADR 0038 renamed the page an operator reads from `crew` to `crew` and kept the old name
     // working until 2.0.0, so `collie docs pack` on a 1.7.0 binary must print the crew page.
     expect(findDocPage("pack")).toBe(findDocPage("crew"));
     expect(findDocPage("crew")?.name).toBe("crew");

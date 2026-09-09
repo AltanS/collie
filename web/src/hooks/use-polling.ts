@@ -14,7 +14,7 @@ import {
   useTopologyBursting,
 } from "@/lib/poll-intent";
 import type { HomeData } from "@/lib/loaders";
-import { packMoving, runInFlight } from "@/lib/update-ribbon";
+import { crewMoving, runInFlight } from "@/lib/update-ribbon";
 import type { Scope } from "@/lib/scope";
 
 // Adaptive polling, the React Router way: a timer that calls `revalidator.revalidate()`, which
@@ -89,7 +89,7 @@ export const SUPERSEDE_MS = 12_000;
  *   1. a burst is running on the open pane → BURST_MS;
  *   2. the open pane is followed and its own agent is working/blocked → HOT_MS;
  *   3. the open pane is followed and the last poll brought new content → HOT_MS;
- *   3b. an update run on this machine, or a pack run on its peers, is still moving → HOT_MS;
+ *   3b. an update run on this machine, or a crew run on its peers, is still moving → HOT_MS;
  *   4. no pane is open and some agent in the herd is working/blocked → HOME_BUSY_MS;
  *   5. otherwise → IDLE_MS.
  * Being hidden is not a rule here: the tick already refuses to fetch behind a hidden tab.
@@ -125,7 +125,7 @@ export function intervalFor(
   // Above the herd rule, because a herd that happens to be busy is not the reason to be fast here,
   // and below the pane rules, because a pane the operator is looking at still outranks a page they
   // may have left open. The state set comes from `lib/update-ribbon.ts`, never a copy.
-  if (runInFlight(data?.update?.run) || packMoving(data?.update)) return HOT_MS;
+  if (runInFlight(data?.update?.run) || crewMoving(data?.update)) return HOT_MS;
 
   // 4. Nobody is on a mirror, but the herd is not resting. The dashboard row is the thing being
   // watched now, and a status that flips there should not sit a full IDLE_MS behind.

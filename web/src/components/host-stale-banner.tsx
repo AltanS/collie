@@ -48,7 +48,7 @@ import { useLocale } from "@/hooks/use-locale";
 //   state "stale",   writable       → NOTHING. The lead believes this machine is up, writes are
 //                                     accepted, and the screen below arrived through that very link
 //                                     (every landed forward now refreshes the receipt on the lead —
-//                                     `PackRegistry.recordExchange`). A banner here would be
+//                                     `CrewRegistry.recordExchange`). A banner here would be
 //                                     describing the sweep's cadence, not this pane's freshness.
 export function HostStaleBanner({
   health,

@@ -117,7 +117,7 @@ function useMuxConfig(): MuxConfig | null {
  * The declaration that governs ONE SCOPE's panes: the member's own when the scope names one, the
  * lead's otherwise (M22/03).
  *
- * A pack member runs its own multiplexer, so "can you do this?" has a different answer per machine.
+ * A crew member runs its own multiplexer, so "can you do this?" has a different answer per machine.
  * The host comes off the scope exactly as every other scoped read takes it (`HOST_PARAM`, lib/scope
  * — absent and blank both mean the lead), and the LEAD's read is untouched: no host, no second
  * request, and a solo install reaches the branch below not once.
@@ -163,7 +163,7 @@ export function scopedMuxConfig(lead: MuxConfig | null, member: MuxConfig | null
 /**
  * Ask one capability, of the machine the scope names. The hook every gated control uses.
  *
- * `scope` is how a control on a pack member's pane asks THAT member (M22/03). Absent means the lead,
+ * `scope` is how a control on a crew member's pane asks THAT member (M22/03). Absent means the lead,
  * which is every solo install and every dashboard surface that has no host in hand, and that answer
  * is byte for byte the one this hook has always given.
  *

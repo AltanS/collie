@@ -58,7 +58,7 @@ describe("readEnvVar", () => {
   });
 });
 
-// F12: `collie leave` uses this to retire the wide COLLIE_HOST `pack add` wrote, so a machine
+// F12: `collie leave` uses this to retire the wide COLLIE_HOST `crew add` wrote, so a machine
 // returning to solo does not crash-loop on a bind solo mode refuses.
 describe("dropEnvAssignments", () => {
   test("strikes every live assignment, and says when there was none", () => {

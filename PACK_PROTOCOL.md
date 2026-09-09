@@ -1824,7 +1824,7 @@ record is the reservation and the run that closed it, side by side:
   the peer's tmux capability block distinct from the lead's herdr one, the deputy warrant armed on it
   in two phases, and `pack update` levelled it over the operator's ssh. The read-only mux conformance
   set was run against its panes through the lead
-  ([`scripts/pack-mux-probe.ts`](./scripts/pack-mux-probe.ts)): **10 of 12 checks pass, and the two
+  ([`scripts/crew-mux-probe.ts`](./scripts/crew-mux-probe.ts)): **10 of 12 checks pass, and the two
   that do not are properties of §5's route table rather than of the peer** — four port verbs have no
   forwardable route, and the pane-read route fixes the grid request shape. Run adapter-locally on the
   peer itself, the same twelve pass. **A zellij peer was then run the same way, on the same day**, on

@@ -13,8 +13,8 @@ import {
   type ServeHandlers,
   type ServeStatus,
 } from "../bridge/front-door.ts";
-import { deriveMode, type PackMode } from "../bridge/pack/mode.ts";
-import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/pack/trust-store.ts";
+import { deriveMode, type CrewMode } from "../bridge/crew/mode.ts";
+import { enrollmentOf, parseTrustStore, trustStorePath } from "../bridge/crew/trust-store.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { Exec, Files } from "./sys.ts";
 import {
@@ -163,7 +163,7 @@ export function cmdServe(deps: ServeDeps): number {
   }
 
   // ADR 0013 / §3: A PEER PUBLISHES NO FRONT DOOR. The one managed front door is the lead's — it is
-  // what the phone opens and what the pack's peer→lead direction rides — and a peer that published
+  // what the phone opens and what the crew's peer→lead direction rides — and a peer that published
   // its own would be a second door onto a machine that answers no phone.
   //
   // The gate lives here, in the one function that publishes, rather than in each verb that might
@@ -181,7 +181,7 @@ export function cmdServe(deps: ServeDeps): number {
   // Teardown still runs, exactly as it does under `COLLIE_SKIP_SERVE=1` and for the same reason: a
   // machine that has just become a peer must drop the door it published as a lead, and skipping the
   // teardown would leave it reachable by a path the operator believes is closed.
-  if (packModeOnDisk(deps) === "peer") {
+  if (crewModeOnDisk(deps) === "peer") {
     const torn = stopTailscaleServe(deps);
     if (torn !== EXIT.OK) return torn;
     deps.io.out(
@@ -285,14 +285,14 @@ export function cmdServe(deps: ServeDeps): number {
 export function cmdServeVerb(deps: ServeDeps): number {
   const code = cmdServe(deps);
   if (code !== EXIT.OK) return code;
-  if (packModeOnDisk(deps) === "peer") return EXIT.OK;
+  if (crewModeOnDisk(deps) === "peer") return EXIT.OK;
   deps.io.out(`open: ${bridgeUrl(deps.exec, deps.ctx)}`);
   return EXIT.OK;
 }
 
 /**
  * This collie's mode as the trust store on disk decides it (§3) — `solo` when there is no store, no
- * readable store, or no enrollment, which is every instance that never joined a pack.
+ * readable store, or no enrollment, which is every instance that never joined a crew.
  *
  * Exported for the ONE other surface that must agree with the publish decision: the status banner,
  * whose `tailnet` row is a row about the front door this function decides never to publish
@@ -301,7 +301,7 @@ export function cmdServeVerb(deps: ServeDeps): number {
  * Sync and file-shaped because `cmdServe` is: it runs inside `start`, which has no `await` to spare
  * for a `TrustStore` handle it would otherwise have to thread through four call sites.
  */
-export function packModeOnDisk(deps: ServeDeps): PackMode {
+export function crewModeOnDisk(deps: ServeDeps): CrewMode {
   const raw = deps.files.read(trustStorePath(deps.ctx.stateDir));
   return deriveMode(enrollmentOf(raw === null ? null : parseTrustStore(raw))).mode;
 }

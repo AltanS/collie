@@ -67,7 +67,7 @@ describe("formatAuditLine", () => {
     );
   });
 
-  test("omits host when absent — byte-identical to a pre-pack line (solo zero-tax, §11)", () => {
+  test("omits host when absent — byte-identical to a pre-crew line (solo zero-tax, §11)", () => {
     const line = formatAuditLine({ action: "reply", paneId: "w1:p1", detail: { text: "ship it" } }, 0);
     expect(line).toBe(
       '{"ts":"1970-01-01T00:00:00.000Z","action":"reply","paneId":"w1:p1","detail":{"text":"ship it"}}',
@@ -240,9 +240,9 @@ describe("fileAuditAppender rotation", () => {
   });
 });
 
-// ── §12: a pack-originated write is identifiable in the PEER's own log ───────
+// ── §12: a crew-originated write is identifiable in the PEER's own log ───────
 
-describe("pack attribution", () => {
+describe("crew attribution", () => {
   test("via + from ride next to device, and only when present", () => {
     // SAFETY: `formatAuditLine` is the sole writer of this line, and it emits the entry it was
     // handed plus its own `ts` — the key-order assertion right below re-checks that field for field.
@@ -257,7 +257,7 @@ describe("pack attribution", () => {
     expect(line.from).toBe("desk");
   });
 
-  test("a line with no pack attribution is byte-identical to a pre-pack one", () => {
+  test("a line with no crew attribution is byte-identical to a pre-crew one", () => {
     // The solo zero-tax contract (PACK_PROTOCOL.md §11): optional fields are OMITTED, never nulled.
     const line = formatAuditLine({ action: "reply", paneId: "w1:p1", session: "work", detail: {} }, 0);
     expect(line).not.toContain("via");
@@ -269,11 +269,11 @@ describe("pack attribution", () => {
 
   test("`scoped()` stamps every entry, so a handler cannot forget the attribution", async () => {
     // This is how the peer hands the UNMODIFIED browser handlers a log that already knows the action
-    // arrived over a pack link — the handlers take no `via` parameter and there is nothing to forget.
+    // arrived over a crew link — the handlers take no `via` parameter and there is nothing to forget.
     const lines: string[] = [];
     const log = new AuditLog((l) => void lines.push(l), { now: () => 0 });
-    const packLog = log.scoped({ via: "pack", from: "desk" });
-    packLog.record({ action: "keys", paneId: "w1:p1", device: "phone-7", detail: { keys: ["Enter"] } });
+    const crewLog = log.scoped({ via: "pack", from: "desk" });
+    crewLog.record({ action: "keys", paneId: "w1:p1", device: "phone-7", detail: { keys: ["Enter"] } });
     // The unscoped log is untouched — one process, two views, no leakage between them.
     log.record({ action: "keys", paneId: "w1:p1", detail: {} });
     await Bun.sleep(5);

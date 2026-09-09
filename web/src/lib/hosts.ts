@@ -1,15 +1,15 @@
 // The host dimension, as data. lib/scope.ts owns ADDRESSING (what goes in the URL and on the wire);
-// this module owns everything derived from the snapshot's `servers` array: is this even a pack, who
+// this module owns everything derived from the snapshot's `servers` array: is this even a crew, who
 // leads it, what is a host called, and how do you key something per host.
 //
-// **The whole module answers "no pack" for a solo snapshot.** `servers` is optional-and-absent
+// **The whole module answers "no crew" for a solo snapshot.** `servers` is optional-and-absent
 // (PACK_PROTOCOL.md §11), so `isMultiHost(undefined)` is false, `hostKey({})` is `""`, and every
 // host-qualified key degrades to a pure prefix of what shipped. That is what lets a solo install
-// render byte-identically without a single `if (pack)` in a component — the hide rule is data, not a
+// render byte-identically without a single `if (crew)` in a component — the hide rule is data, not a
 // mode flag.
 //
 // React-free on purpose (same reason as lib/scope.ts): the pieces that need React live in
-// components/pack-provider.tsx.
+// components/crew-provider.tsx.
 
 import type { Scope } from "./scope";
 import type { AgentView, ServerSummary, SessionSummary } from "./types";
@@ -27,7 +27,7 @@ export function hostKey(v: { host?: string } | undefined): string {
 /**
  * The key for anything scoped to one space on one machine. Herdr workspace ids (`w1`) are only
  * unique WITHIN one host, so two machines that both expose `w1` would otherwise merge their triage
- * dots and their last-seen times into one space row — silently, and only on a pack.
+ * dots and their last-seen times into one space row — silently, and only on a crew.
  */
 export function spaceKey(host: string | undefined, workspaceId: string): string {
   return `${host ?? ""}${KEY_SEP}${workspaceId}`;
@@ -64,7 +64,7 @@ export function isMultiHost(servers: readonly ServerSummary[] | undefined): bool
   return (servers?.length ?? 0) > 1;
 }
 
-/** The pack's lead — the machine the phone is actually connected to. Undefined when solo. */
+/** The crew's lead — the machine the phone is actually connected to. Undefined when solo. */
 export function leadHost(servers: readonly ServerSummary[] | undefined): string | undefined {
   return servers?.find((s) => s.isLead)?.id;
 }
@@ -97,9 +97,9 @@ export function hostName(
 
 /**
  * The host a surface addressed by the AMBIENT scope is actually writing to: the scope's host, or —
- * on a pack — the lead, which is what an absent `?h=` means. Used by the write surfaces whose
+ * on a crew — the lead, which is what an absent `?h=` means. Used by the write surfaces whose
  * subject carries no host of its own (a tab, a new space): they act on the machine you are pointed
- * at, and on a pack that machine has to be named.
+ * at, and on a crew that machine has to be named.
  */
 export function ambientHost(
   servers: readonly ServerSummary[] | undefined,
@@ -141,7 +141,7 @@ export function paneScope<S extends { host?: string; session?: string }>(
   const session =
     pane?.session === undefined
       ? scope.session
-      : // Resolved WITHIN the row's own machine. `sessions` is a merged registry on a pack and holds
+      : // Resolved WITHIN the row's own machine. `sessions` is a merged registry on a crew and holds
         // one primary PER HOST, so asking it flatly would compare this row's session name against
         // whichever machine's primary happened to sort first — and normalise away a name that is
         // only primary somewhere else.
@@ -180,18 +180,18 @@ export function scopeHostKey(
 /**
  * Find a pane by id WITHIN the scope's host AND session.
  *
- * A NOTE ON MIXED BODIES, because one exists today. On a pack the lead merges peers' panes in after
- * assembling its own, and a peer is never asked to widen yet — so a widened body on a pack holds
+ * A NOTE ON MIXED BODIES, because one exists today. On a crew the lead merges peers' panes in after
+ * assembling its own, and a peer is never asked to widen yet — so a widened body on a crew holds
  * TAGGED local panes and UNTAGGED peer ones. That is safe rather than lucky: a peer's panes carry a
  * `host`, the host predicate separates them first, and only one session per peer is represented, so
  * the untagged-matches-anything rule cannot reach across a machine. When the sweep learns to widen,
- * peer panes gain their tags and the mixed case goes away. `w1:p1` exists on every machine in the pack
+ * peer panes gain their tags and the mixed case goes away. `w1:p1` exists on every machine in the crew
  * and again in every named Herdr session on each of them, so a lookup by id alone over a merged or
  * widened list can return a different pane entirely — and the pane view would then render that
  * pane's space, tab and cwd while typing into this one's terminal.
  *
  * BOTH dimensions use the same rule, and it is the rule that keeps today's lookup exactly today's:
- * an UNTAGGED pane matches any scope. A pane carries a host only on a merged pack body and a session
+ * an UNTAGGED pane matches any scope. A pane carries a host only on a merged crew body and a session
  * only on a widened one, so on every un-widened solo read this is the id comparison it has always
  * been. It is also why the bridge tags ALL panes or none when it widens (bridge/sessions.ts
  * `widenedPanes`): a body where only the non-primary panes were tagged would let an untagged primary
@@ -349,7 +349,7 @@ export function countsFor(counts: Map<string, HostCounts>, host: string): HostCo
 
 // ── Per-host colour ──────────────────────────────────────────────────────────────────────────────
 //
-// On a pack the dashboard's rows come from several machines at once, and the host NAME is the only
+// On a crew the dashboard's rows come from several machines at once, and the host NAME is the only
 // thing that tells them apart — a word the eye has to stop and read on every row. A tint reaches the
 // operator before the word does. It never replaces the word (WCAG 1.4.1): every surface that tints
 // still spells the machine out, and the tint carries no meaning of its own beyond "same machine".
@@ -381,7 +381,7 @@ export const HOST_TEXT_CLASSES: readonly string[] = [
 /**
  * FNV-1a, 32-bit, over the id's UTF-16 code units. A hash and not `indexOf` in the roster, because
  * position is not stable: enrolling a machine whose name sorts first would otherwise re-colour every
- * other machine in the pack, and the operator's memory of "the orange one" is the whole feature.
+ * other machine in the crew, and the operator's memory of "the orange one" is the whole feature.
  *
  * `Math.imul` because the multiply overflows 2^53 otherwise and JS would silently lose the low bits
  * the hash is made of.
@@ -426,7 +426,7 @@ function slotMap(servers: readonly { id: string }[]): Map<string, number> {
 }
 
 // Keyed on the roster ARRAY, so the map is built once per snapshot rather than once per chip — a
-// dashboard on a pack mounts one HostChip per row. Weak, so a stale snapshot's map is collected with
+// dashboard on a crew mounts one HostChip per row. Weak, so a stale snapshot's map is collected with
 // it. Correct by construction: a new roster array is a new key, and `servers` is only ever replaced,
 // never mutated in place (lib/snapshot.ts).
 const SLOT_CACHE = new WeakMap<readonly { id: string }[], Map<string, number>>();
@@ -435,7 +435,7 @@ const SLOT_CACHE = new WeakMap<readonly { id: string }[], Map<string, number>>()
  * Which of the ten host tints this machine wears, or `null` for "none, and none is correct".
  *
  * `null` in three cases, and all three are the same statement — there is nothing to tell apart:
- *   · the snapshot describes fewer than two machines (every install that is not a pack), so the
+ *   · the snapshot describes fewer than two machines (every install that is not a crew), so the
  *     whole dimension is invisible exactly as {@link isMultiHost} makes the rest of it invisible;
  *   · there is no machine to name at all;
  *   · the id is not in the roster — a member that departed while you were looking at it. It keeps

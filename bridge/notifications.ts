@@ -61,7 +61,7 @@ export interface MuteGate {
 export interface NotifyIdentity {
   /** Herdr session (registry name). Absent for the primary — §11's push-payload row. */
   readonly session?: string;
-  /** Pack member owning the session. Absent for this collie, so a solo payload gains nothing (§11). */
+  /** Crew member owning the session. Absent for this collie, so a solo payload gains nothing (§11). */
   readonly host?: string;
 }
 
@@ -76,7 +76,7 @@ export interface NotifyIdentity {
  *
  * A peer's summary also NAMES its host in the body. Per-host slots mean two machines' alerts never
  * overwrite each other, but they also mean the text is the only thing that says *which machine* —
- * and "claude needs you" is identical on every host in the pack.
+ * and "claude needs you" is identical on every host in the crew.
  */
 export function makeNotifySink(
   push: PushSender,

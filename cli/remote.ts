@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { DEFAULT_PORT } from "../bridge/config.ts";
 import type { HostProbe } from "../bridge/mux/host-candidates.ts";
 import { muxHostCandidates } from "../bridge/mux/registry.ts";
-import { commitPackChange, mintInvite } from "../bridge/pack/enrollment.ts";
-import type { OpsRecord } from "../bridge/pack/ops-store.ts";
-import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
+import { commitCrewChange, mintInvite } from "../bridge/crew/enrollment.ts";
+import type { OpsRecord } from "../bridge/crew/ops-store.ts";
+import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { parseUpdateRun, type UpdateRun } from "../bridge/update-run.ts";
 import {
   CANDIDATE_QUESTION,
@@ -23,24 +23,24 @@ import {
 } from "./candidates.ts";
 import { collieVersion, INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
-import { ensureStore, parsePackArgs, probeMembers, resolveSelfAddress, type PackDeps } from "./pack.ts";
+import { ensureStore, parseCrewArgs, probeMembers, resolveSelfAddress, type CrewDeps } from "./crew.ts";
 import { plainAdd, type AddEvent } from "./render.ts";
 import { sshConfigCandidates } from "./ssh-config.ts";
 import { findTool } from "./tools.ts";
 import { unitName } from "./unit.ts";
 
-// `collie pack add <ssh-host>` — probe, install, configure, enroll a peer over ONE multiplexed SSH
+// `collie crew add <ssh-host>` — probe, install, configure, enroll a peer over ONE multiplexed SSH
 // connection (M7/01, ADR 0015).
 //
 // ── COURIER AND INSTALLER, NOTHING ELSE ──────────────────────────────────────
 // Every step here is a step the operator could have typed, in the same order, with the same verbs:
-// the invite comes from the same `mintInvite` path `pack invite` uses, and the far machine runs the
-// same `collie join <lead-address> -`. `pack add` adds NO route, no header and no protocol
+// the invite comes from the same `mintInvite` path `crew invite` uses, and the far machine runs the
+// same `collie join <lead-address> -`. `crew add` adds NO route, no header and no protocol
 // vocabulary (ADR 0015 (d)) — an installer that needed the protocol's help would be a second
-// admission path into the pack, and the pack has exactly one (PACK_PROTOCOL.md §8.2).
+// admission path into the crew, and the crew has exactly one (PACK_PROTOCOL.md §8.2).
 //
 // ── THIS IS THE ONLY MODULE THAT SPAWNS `ssh` ────────────────────────────────
-// {@link RemoteRunner} is the seam, injected exactly as `PackDeps` injects `fetch`, `exec` and
+// {@link RemoteRunner} is the seam, injected exactly as `CrewDeps` injects `fetch`, `exec` and
 // `files`, so no test in this suite ever reaches a real host. The ssh options are **add-only**: the
 // operator's `~/.ssh/config` and `known_hosts` are ridden rather than reimplemented, and no
 // host-key-checking option is ever set, in either direction (ADR 0015's consequences).
@@ -87,7 +87,7 @@ export const STDIN_MARKER = "#__COLLIE_STDIN__";
 const PAYLOAD_EOF = "__COLLIE_PAYLOAD__";
 
 /**
- * The ssh options `pack add` adds, and the complete list of them.
+ * The ssh options `crew add` adds, and the complete list of them.
  *
  * One control socket for the whole run, so the operator authenticates once; `BatchMode=yes` so a
  * host that would prompt fails legibly instead of hanging behind a captured stdin; `ServerAlive*` so
@@ -298,7 +298,7 @@ export function parseProbe(stdout: string): Probe | null {
  * Leg 1 as a **step**: run the probe and parse it, wording nothing.
  *
  * The step functions in this module (this, {@link runInstall}, {@link restartScript}) are the seam
- * `collie pack update` reuses — it drives the same scripts against the same transport, but it is a
+ * `collie crew update` reuses — it drives the same scripts against the same transport, but it is a
  * different verb with a different voice, so every sentence stays with its caller. What is shared is
  * what runs on the far machine; what is not shared is what an operator reads.
  */
@@ -315,7 +315,7 @@ export async function runProbe(
  * decision — skip, prompt, refuse — is made from what this one reports.
  *
  * The remote's config root is READ here (`herdr plugin config-dir`, the same question
- * `cli/context.ts` asks locally) rather than computed from a path we guessed: `pack add` must not
+ * `cli/context.ts` asks locally) rather than computed from a path we guessed: `crew add` must not
  * assume a path it did not observe.
  */
 export function probeScript(opts: { readonly path: string | null; readonly port: number }): string {
@@ -393,7 +393,7 @@ export function probeScript(opts: { readonly path: string | null; readonly port:
     //
     // **Collie cannot close that gap from here, and does not pretend to.** "Refused now but a unit
     // is active" is not a remote observation: it needs the far machine's supervisor, and which
-    // supervisor that is (systemd user, launchd, unsupervised) is exactly what `pack add` has not
+    // supervisor that is (systemd user, launchd, unsupervised) is exactly what `crew add` has not
     // yet decided at probe time — it is decided by the install leg, after this. Sampling the port
     // repeatedly would only lengthen the coin flip. So the limitation is stated, not papered over;
     // a genuine collision still surfaces at first start, which is where the supervisor is known.
@@ -504,7 +504,7 @@ export async function runInstall(
 }
 
 /**
- * `collie restart` on the far machine — the step `pack update` needs and `pack add` does not.
+ * `collie restart` on the far machine — the step `crew update` needs and `crew add` does not.
  *
  * A fresh peer is restarted by its own `collie join` (every membership verb restarts on the machine
  * it ran on); an ALREADY-enrolled peer that was just rebuilt has a running bridge holding the old
@@ -524,7 +524,7 @@ export function restartScript(root: string): string {
 // ── The far side's own update record ─────────────────────────────────────────
 
 /**
- * `collie update --status --json` on the far machine — how the health gate of a pack update finds
+ * `collie update --status --json` on the far machine — how the health gate of a crew update finds
  * out WHY a member did not come back (M15/06).
  *
  * **No `curl`, and no port dialled from here.** The member's `/api/health` is answered by the member
@@ -617,37 +617,37 @@ export function configureScript(opts: {
 
 // ── Leg 4 — enroll ───────────────────────────────────────────────────────────
 
-/** Read the remote's own pack view, so an already-enrolled machine is never re-enrolled. */
+/** Read the remote's own crew view, so an already-enrolled machine is never re-enrolled. */
 export function membershipScript(root: string): string {
   return [
     "set -eu",
     `ROOT=${shqPath(root)}`,
-    '"$ROOT/bin/collie" pack status --no-probe',
+    '"$ROOT/bin/collie" crew status --no-probe',
     "",
   ].join("\n");
 }
 
-/** What `pack status --no-probe` says about the far machine, as this build reads it. */
+/** What `crew status --no-probe` says about the far machine, as this build reads it. */
 export interface RemoteMembership {
-  /** The pack id it belongs to, or null when it is solo. */
+  /** The crew id it belongs to, or null when it is solo. */
   readonly packId: string | null;
-  readonly packName: string | null;
+  readonly crewName: string | null;
   readonly memberId: string | null;
 }
 
 /**
- * Parse the far side's `pack status`. It is the SAME build — leg 2 just installed this very commit
+ * Parse the far side's `crew status`. It is the SAME build — leg 2 just installed this very commit
  * there — so the format is known rather than guessed; a shape this build cannot read is still the
  * third error family and fails rather than assuming solo.
  */
 export function parseMembership(stdout: string): RemoteMembership | null {
-  if (/^mode: solo\b/m.test(stdout)) return { packId: null, packName: null, memberId: null };
-  // BOTH labels. This build prints `crew   <name>  (<id>)`; a 1.6.0 machine prints `pack   …` and is
+  if (/^mode: solo\b/m.test(stdout)) return { packId: null, crewName: null, memberId: null };
+  // BOTH labels. This build prints `crew   <name>  (<id>)`; a 1.6.0 machine prints `crew   …` and is
   // exactly the machine this verb meets during a staged rollout (M24). One regex reads either.
-  const pack = /^(?:crew|pack) {3}(.+?) {2}\((.+?)\)\s*$/m.exec(stdout);
+  const crew = /^(?:crew|crew) {3}(.+?) {2}\((.+?)\)\s*$/m.exec(stdout);
   const self = /^self {3}(\S+)/m.exec(stdout);
-  if (pack === null) return null;
-  return { packId: pack[2]!.trim(), packName: pack[1]!.trim(), memberId: self?.[1] ?? null };
+  if (crew === null) return null;
+  return { packId: crew[2]!.trim(), crewName: crew[1]!.trim(), memberId: self?.[1] ?? null };
 }
 
 /**
@@ -686,8 +686,8 @@ export function enrollScript(opts: {
 
 // ── The verb ─────────────────────────────────────────────────────────────────
 
-/** `pack add`'s seams: the pack verbs' set, plus a transport, two prompts and the bundle. */
-export interface PackAddDeps extends PackDeps {
+/** `crew add`'s seams: the crew verbs' set, plus a transport, two prompts and the bundle. */
+export interface CrewAddDeps extends CrewDeps {
   /** The ONE thing in `cli/` that spawns ssh, injected so no test ever does. */
   remote(host: string): RemoteRunner;
   /**
@@ -720,8 +720,8 @@ export interface PackAddDeps extends PackDeps {
   emit?(event: AddEvent): void;
 }
 
-/** `PackAddDeps` after {@link cmdPackAdd} has resolved the sink — the shape every step below takes. */
-type Wired = PackAddDeps & { emit(event: AddEvent): void };
+/** `CrewAddDeps` after {@link cmdCrewAdd} has resolved the sink — the shape every step below takes. */
+type Wired = CrewAddDeps & { emit(event: AddEvent): void };
 
 const USAGE = [
   "usage: collie crew add <ssh-host> [--path <remote-checkout>] [--port <n>]",
@@ -743,19 +743,19 @@ async function ask(deps: Wired, question: string): Promise<boolean | "aborted"> 
 }
 
 /**
- * `collie pack add <ssh-host>` — four legs over one connection (M7/01).
+ * `collie crew add <ssh-host>` — four legs over one connection (M7/01).
  *
  * Exit codes reuse `EXIT`'s existing meanings rather than adding a seventh: `UNREACHABLE` when ssh
  * never started or could not authenticate, `STATE` when the operator said no or remote state blocks,
  * `REFUSED` when the lead refused the token, `FAIL` for a missing prerequisite, a failed build, an
  * unreadable answer, or a member that is still provisional at the final check.
  */
-export async function cmdPackAdd(deps: PackAddDeps, args: readonly string[]): Promise<number> {
-  const surface = deps.ui?.packAdd?.() ?? null;
+export async function cmdCrewAdd(deps: CrewAddDeps, args: readonly string[]): Promise<number> {
+  const surface = deps.ui?.crewAdd?.() ?? null;
   if (surface === null) {
     // The plain path is unchanged in every byte: the events are replayed as the lines they always
     // were, in the order they were emitted, through the same `Io`.
-    return await packAddRun({ ...deps, emit: deps.emit ?? ((event) => plainAdd(deps.io, event)) }, args);
+    return await crewAddRun({ ...deps, emit: deps.emit ?? ((event) => plainAdd(deps.io, event)) }, args);
   }
   // The rich path. `io`, `confirm` and `prompt` are ALL replaced for the length of the run — that is
   // the whole of the "one writer" rule (`cli/render.ts`), and it is why nothing below needs to know
@@ -769,7 +769,7 @@ export async function cmdPackAdd(deps: PackAddDeps, args: readonly string[]): Pr
   };
   let code: number = EXIT.FAIL;
   try {
-    code = await packAddRun(wired, args);
+    code = await crewAddRun(wired, args);
     return code;
   } finally {
     // The last frame, always: a red verdict is the failure's headline, and the `error:` lines that
@@ -782,7 +782,7 @@ export async function cmdPackAdd(deps: PackAddDeps, args: readonly string[]): Pr
 }
 
 // ── The candidate picker ─────────────────────────────────────────────────────
-// `collie pack add` with no target used to be a usage error. It now offers the machines this box
+// `collie crew add` with no target used to be a usage error. It now offers the machines this box
 // already knows about and lets the operator pick one (M22/07). With a target NOTHING below runs, and
 // the verb takes the same path it always did, byte for byte.
 //
@@ -812,7 +812,7 @@ function candidateProbe(deps: Wired): HostProbe {
  * This lead's own roster, as a join the candidate list can mark against.
  *
  * The enrolled peers come from the trust store and how each was reached comes from the ops store
- * (`bridge/pack/ops-store.ts`, ADR 0016) — `pack add` has WRITTEN `sshHost` since M7/01 and this is
+ * (`bridge/crew/ops-store.ts`, ADR 0016) — `crew add` has WRITTEN `sshHost` since M7/01 and this is
  * the first read of it here. Empty on a peer and on a solo collie: neither has members to mark.
  */
 async function leadRoster(deps: Wired, probe: HostProbe): Promise<readonly RosterEntry[]> {
@@ -879,8 +879,8 @@ async function chooseCandidateHost(deps: Wired): Promise<Chosen> {
   return { host: picked };
 }
 
-async function packAddRun(deps: Wired, args: readonly string[]): Promise<number> {
-  const { positional, flags } = parsePackArgs(args);
+async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number> {
+  const { positional, flags } = parseCrewArgs(args);
   const named = positional[0];
   // No target is no longer a refusal — it is the candidate list ({@link chooseCandidateHost}).
   const chosen: Chosen = named === undefined || named === "" ? await chooseCandidateHost(deps) : { host: named };
@@ -924,7 +924,7 @@ async function packAddRun(deps: Wired, args: readonly string[]): Promise<number>
   }
 
   const runner = deps.remote(host);
-  // `pack add` prints its progress as plain lines and nothing else — it streams for the length of a
+  // `crew add` prints its progress as plain lines and nothing else — it streams for the length of a
   // four-leg SSH pipeline and asks two questions on stdin in the middle of it, which is the shape
   // ink cannot share a terminal with (`cli/render.ts`).
   try {
@@ -1000,7 +1000,7 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
   // The install target: the checkout leg 1 FOUND, else `.collie` under the `$HOME` it reported. Even
   // the green-field path is anchored to an observed value rather than a guessed one.
   const root = probe.checkout === "" ? `${probe.home}/.collie` : probe.checkout;
-  // A busy port is a collision ONLY when it is not this collie's own listener. Re-running `pack add`
+  // A busy port is a collision ONLY when it is not this collie's own listener. Re-running `crew add`
   // against a host it already installed must find that port taken and say so as a `✓`.
   const alreadyOnPort = probe.checkout !== "" && configuredPort(probe) === port;
   if (probe.port === "busy" && !alreadyOnPort) {
@@ -1175,9 +1175,9 @@ function bindIsCurrent(probe: Probe, peerHost: string, port: number): boolean {
  * a re-run without a yes.
  *
  * **An UNSET COLLIE_HOST is not that case.** It is the state a solo collie is in by default, and the
- * state `collie leave` deliberately restores (F12: the pack's wide bind is admitted by the pack's two
+ * state `collie leave` deliberately restores (F12: the crew's wide bind is admitted by the crew's two
  * factors and lapses with them). There is nothing there to preserve, so there is nothing to confirm —
- * and asking anyway made `pack add` non-idempotent in the one direction that matters: the first add
+ * and asking anyway made `crew add` non-idempotent in the one direction that matters: the first add
  * of a fresh machine asked nothing, while the re-add of a machine torn down properly always asked,
  * and hard-stopped every non-interactive run on `configured to bind (unset):8787` (F23). `ssh -tt`
  * did not get past it, because a piped `y` is not a terminal either.
@@ -1271,7 +1271,7 @@ async function enrollLeg(
     changed: boolean;
   },
 ): Promise<number> {
-  // How this run reached the far machine, banked for `pack update` the moment the run proves it
+  // How this run reached the far machine, banked for `crew update` the moment the run proves it
   // works. Operator-local convenience, never a wire field (ADR 0016) — and written only on a leg
   // that SUCCEEDED, so a host that never answered is never remembered as one that does.
   const remember = async (memberId: string): Promise<void> => {
@@ -1306,10 +1306,10 @@ async function enrollLeg(
       if (membership.memberId !== null) await remember(membership.memberId);
       // ── THE ALREADY-A-MEMBER PATH RESTARTS THE FAR MACHINE ──────────────────
       // No `collie join` runs here, and a join is the ONLY thing that restarts a peer from this verb
-      // (every membership verb restarts on the machine it ran on, `cli/pack.ts`). So a re-run against
+      // (every membership verb restarts on the machine it ran on, `cli/crew.ts`). So a re-run against
       // an enrolled peer used to leave the new build on disk with the OLD process still answering —
       // the operator had just consented to "replace it with <version>", and this line then said the
-      // replacement had happened while `pack status` kept reporting the old version. Restart only
+      // replacement had happened while `crew status` kept reporting the old version. Restart only
       // when something actually changed there: an unchanged re-run must stay the no-op it is.
       if (o.changed) {
         const failed = await restartRemote(deps, runner, o.host, o.root);
@@ -1319,18 +1319,18 @@ async function enrollLeg(
         kind: "verdict",
         ok: true,
         text:
-          `already a member of "${membership.packName}" as "${membership.memberId}"` +
+          `already a member of "${membership.crewName}" as "${membership.memberId}"` +
           (o.changed ? await reportedNow(deps, data, membership.memberId) : ""),
       });
       return EXIT.OK;
     }
-    deps.io.err(`error: ${o.host} is already a member of crew "${membership.packName}" (${membership.packId}).`);
+    deps.io.err(`error: ${o.host} is already a member of crew "${membership.crewName}" (${membership.packId}).`);
     deps.io.err(`       Run \`collie leave\` THERE first — never run for you: leaving a crew is a decision`);
     deps.io.err("       taken on the machine that is leaving (§8.4).");
     return EXIT.STATE;
   }
 
-  // What the far side will `collie join` — this lead's front door, the same string `pack invite` prints.
+  // What the far side will `collie join` — this lead's front door, the same string `crew invite` prints.
   const lead = resolveSelfAddress(deps, o.flags.address, "front-door");
   if (lead === null) {
     deps.io.err("error: cannot work out an address this lead can be dialled at.");
@@ -1351,13 +1351,13 @@ async function enrollLeg(
   }
 
   const before = new Set(data.peers.map((p) => p.memberId));
-  const minted = await commitPackChange(deps.store, deps.audit, (current) =>
+  const minted = await commitCrewChange(deps.store, deps.audit, (current) =>
     current === null
       ? null
       : mintInvite(current, {
           now: deps.now(),
           label: o.flags.label ?? null,
-          packName: o.flags.name,
+          crewName: o.flags.name,
           random: deps.random,
         }),
   );
@@ -1373,7 +1373,7 @@ async function enrollLeg(
     deps.io.err("      previous store and will refuse it. Run `collie restart` here, then re-run.");
   }
 
-  // `<token>.<lead-fingerprint>` (§8.2), exactly the string `pack invite` prints — and it goes only
+  // `<token>.<lead-fingerprint>` (§8.2), exactly the string `crew invite` prints — and it goes only
   // onto the ssh stream. It is never echoed, never an argument and never in an environment variable.
   const enrolled = await runner.run(
     enrollScript({
@@ -1445,9 +1445,9 @@ async function restartRemote(
 }
 
 /**
- * What the member reports over the pack link NOW — the lead's own view, which is the only thing that
+ * What the member reports over the crew link NOW — the lead's own view, which is the only thing that
  * proves the restart took. Never fails the verb: an already-enrolled member this lead cannot reach is
- * a pre-existing condition `pack status` reports, not something this run broke.
+ * a pre-existing condition `crew status` reports, not something this run broke.
  */
 async function reportedNow(deps: Wired, data: TrustStoreData, memberId: string | null): Promise<string> {
   const member = data.peers.find((p) => p.memberId === memberId);
@@ -1463,9 +1463,9 @@ async function reportedNow(deps: Wired, data: TrustStoreData, memberId: string |
 
 /**
  * The last line, and the one a script should branch on: **is the member non-provisional after first
- * contact?** — the lead's own `pack status` view, not the join's exit code, decides it.
+ * contact?** — the lead's own `crew status` view, not the join's exit code, decides it.
  *
- * A `hello` that lands is exactly what `pack status` treats as clearing the provisional marker: the
+ * A `hello` that lands is exactly what `crew status` treats as clearing the provisional marker: the
  * member was enrolled AND has been reached at the address it named. A join that returned 0 into a
  * peer the lead cannot dial is the trap this whole verb exists to close, so it fails here.
  */
@@ -1525,7 +1525,7 @@ export function transportFailure(io: Io, host: string, r: RemoteResult): number 
  * A nested `collie restart`, bracketed.
  *
  * The restart is a whole verb with its own output — two lifecycle lines, the serve config, and the
- * boxed "Collie is running" banner, printed TWICE in one `pack add`. It writes through `deps.io`,
+ * boxed "Collie is running" banner, printed TWICE in one `crew add`. It writes through `deps.io`,
  * which on the rich path is the surface, so the bytes are already contained; the brackets are what
  * let the view collapse the block to one row, and keep it when the restart FAILED.
  */
@@ -1548,7 +1548,7 @@ export const firstLine = (text: string): string =>
  * line is the diagnosis — and it is the LAST such line, because a step that fails may print one on
  * the way out of a nested command too. Taking the first non-empty line instead quotes whatever the
  * remote's tools said first, which is not the same thing and in the field was actively misleading:
- * a `pack add` install died with git's harmless `warning: option "updateshallow" is ignored…` in
+ * a `crew add` install died with git's harmless `warning: option "updateshallow" is ignored…` in
  * front of it, hiding the build failure the script had already named.
  *
  * Falls back to {@link firstLine} when nothing on stderr is one of ours — a script that died before
@@ -1566,7 +1566,7 @@ async function resolvePeerHost(
   probe: Probe,
   override: string | undefined,
 ): Promise<string | null> {
-  // The flag was already refused at parse time, before any ssh ran (`packAddRun`). Anything reaching
+  // The flag was already refused at parse time, before any ssh ran (`crewAddRun`). Anything reaching
   // here is either the address the far machine reported for itself or a value typed at the prompt.
   if (override !== undefined && override !== "") return override;
   if (probe.address !== "") return probe.address;
@@ -1600,14 +1600,14 @@ const PEER_HOST_PORT_HINT = "--port";
  * **Two things were wrong, and they compounded (F9).** The `http://` refusal is `collie join`'s, on
  * the far machine — so it ran at the END of leg 4, after the bundle push, the remote build, the
  * `.env` write and two full lead restarts, and it ended by naming `--insecure`: a flag `join` has and
- * `pack add` does not. Re-running with it produced the identical refusal. A closed loop with no exit,
+ * `crew add` does not. Re-running with it produced the identical refusal. A closed loop with no exit,
  * paid for with a rebuilt member.
  *
  * So the check moves here, to parse time on the lead, and the remedy it names is one that exists.
- * **`pack add` will not grow `--insecure`**: this verb mints the token and pushes it down an ssh pipe
+ * **`crew add` will not grow `--insecure`**: this verb mints the token and pushes it down an ssh pipe
  * on the operator's behalf, and a flag that made it ship that token over plaintext would be Collie
  * accepting the risk for a machine it is not standing at. The consent belongs where the token is
- * spent — `collie join … --insecure`, typed on the peer, which is exactly what `cli/pack.ts` already
+ * spent — `collie join … --insecure`, typed on the peer, which is exactly what `cli/crew.ts` already
  * implements and what `cli/remote.ts`'s enroll leg says it never passes on the operator's behalf.
  *
  * Both sources of the address are checked, and neither costs anything: the flag, and
@@ -1703,10 +1703,10 @@ function parsePort(raw: string | undefined): number | null {
 /**
  * `git -C <root> …`, trimmed. `null` when git is absent or said no.
  *
- * Narrowed to the two seams it uses (rather than the whole `Wired` set) so `pack update` can read
+ * Narrowed to the two seams it uses (rather than the whole `Wired` set) so `crew update` can read
  * this checkout's commit through the very same function — the commit both verbs push is one fact.
  */
-export function gitOut(deps: Pick<PackDeps, "ctx" | "exec">, args: readonly string[]): string | null {
+export function gitOut(deps: Pick<CrewDeps, "ctx" | "exec">, args: readonly string[]): string | null {
   const r = deps.exec.capture("git", ["-C", deps.ctx.root, ...args]);
   return r.found && r.code === 0 ? r.stdout.trim() : null;
 }
@@ -1716,7 +1716,7 @@ export function gitOut(deps: Pick<PackDeps, "ctx" | "exec">, args: readonly stri
  * bundle ships the commit, so a dirty manifest would have the install verify against a version the
  * far machine was never given.
  */
-export function manifestVersionAt(deps: Pick<PackDeps, "ctx" | "exec">, commit: string): string | null {
+export function manifestVersionAt(deps: Pick<CrewDeps, "ctx" | "exec">, commit: string): string | null {
   const manifest = gitOut(deps, ["show", `${commit}:herdr-plugin.toml`]);
   if (manifest === null) return null;
   return /^version[ \t]*=[ \t]*"([^"]*)"/m.exec(manifest)?.[1] ?? null;
@@ -1724,8 +1724,8 @@ export function manifestVersionAt(deps: Pick<PackDeps, "ctx" | "exec">, commit: 
 
 // ── Production wiring ────────────────────────────────────────────────────────
 
-/** The real seams for `pack add`, layered onto the pack verbs' own set. */
-export function packAddDeps(base: PackDeps): PackAddDeps {
+/** The real seams for `crew add`, layered onto the crew verbs' own set. */
+export function crewAddDeps(base: CrewDeps): CrewAddDeps {
   return {
     ...base,
     remote: (host) => sshRunner(host, base.ctx.env, base.ctx.home),

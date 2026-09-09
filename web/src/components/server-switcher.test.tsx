@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router";
 
-import { PackProvider } from "./pack-provider";
+import { CrewProvider } from "./crew-provider";
 
 import type { AgentView, ServerSummary } from "@/lib/types";
 import { ServerSwitcher } from "./server-switcher";
@@ -50,7 +50,7 @@ const skewed: ServerSummary = {
   isLead: false,
   reachable: false,
   protocol: "incompatible",
-  protocolDetail: "pack protocol 2 (this collie speaks 1)",
+  protocolDetail: "crew protocol 2 (this collie speaks 1)",
   lastSeenAt: 0,
 };
 
@@ -193,10 +193,10 @@ describe("ServerSwitcher — a down or skewed machine is listed, never hidden", 
     await userEvent.click(trigger()!);
     const el = row(/garage/i);
     expect(within(el).getByText("incompatible")).toBeInTheDocument();
-    expect(within(el).getByText("pack protocol 2 (this collie speaks 1)")).toBeInTheDocument();
+    expect(within(el).getByText("crew protocol 2 (this collie speaks 1)")).toBeInTheDocument();
   });
 
-  it("offers no pack administration — no reconnect, promote, leave or rotate", async () => {
+  it("offers no crew administration — no reconnect, promote, leave or rotate", async () => {
     renderSwitcher([lead, peer, down], undefined);
     await userEvent.click(trigger()!);
     for (const verb of [/reconnect/i, /promote/i, /leave/i, /rotate/i, /retry/i]) {
@@ -236,9 +236,9 @@ describe("ServerSwitcher — staleness on the rows", () => {
   function renderAt(ts: number) {
     render(
       <MemoryRouter>
-        <PackProvider servers={quiet} ts={ts} pollMs={1500}>
+        <CrewProvider servers={quiet} ts={ts} pollMs={1500}>
           <ServerSwitcher servers={quiet} scope={{ host: "workshop" }} />
-        </PackProvider>
+        </CrewProvider>
       </MemoryRouter>,
     );
   }

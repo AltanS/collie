@@ -835,7 +835,7 @@ describe("the dismissed version", () => {
     const reloaded = new UpdateStateStore(cfg);
     await reloaded.load();
     expect(reloaded.dismissedVersion()).toBe("1.6.0");
-    // Two decisions, two fields: the pack notice was put down at a DIFFERENT version and neither
+    // Two decisions, two fields: the crew notice was put down at a DIFFERENT version and neither
     // overwrote the other.
     expect(reloaded.dismissedPackVersion()).toBe("1.5.0");
     // The offer's dismissal folded the snooze into the same write — a crash between two writes
@@ -870,7 +870,7 @@ describe("the dismissed version", () => {
     expect(monitor.status().dismissedVersion).toBe("0.12.0");
   });
 
-  it("a dismiss with scope pack hides a notice and leaves lastNotified alone", async () => {
+  it("a dismiss with scope crew hides a notice and leaves lastNotified alone", async () => {
     const { monitor, store } = makeMonitor();
     await monitor.checkRelease();
     const notified = store.lastNotified();

@@ -16,7 +16,7 @@
 import {
   fetchDevices,
   fetchHistory,
-  fetchPack,
+  fetchCrew,
   fetchPane,
   fetchSnapshot,
   isApiErrorStatus,
@@ -49,7 +49,7 @@ import type {
   AgentView,
   BridgeStatus,
   DeviceAuth,
-  PackStatusResponse,
+  CrewStatusResponse,
   PairedDeviceWire,
   PaneHistoryResponse,
   PaneReadResponse,
@@ -107,7 +107,7 @@ export interface HomeData {
   /** The bridge's session registry (primary-first); empty on a single-session / older bridge. */
   sessions: SessionSummary[];
   /**
-   * The pack roster (lead first); EMPTY on a solo bridge, which emits no `servers` at all. Kept as
+   * The crew roster (lead first); EMPTY on a solo bridge, which emits no `servers` at all. Kept as
    * an array rather than `ServerSummary[] | undefined` for the same reason `sessions` is: consumers
    * ask "more than one?" (lib/hosts.ts `isMultiHost`), never "was the key present?".
    */
@@ -227,7 +227,7 @@ function toHomeData(
     agents: snap.agents,
     shellPanes: snap.shellPanes ?? [],
     // Narrowed to the address the URL is on, for the reason `ambientPanes` narrows the panes drawn
-    // beside them: the navigator is a tree of ONE machine, and on a pack the lead's merged body now
+    // beside them: the navigator is a tree of ONE machine, and on a crew the lead's merged body now
     // carries every machine's spaces. A solo body carries no host on any row, so both calls pass
     // everything through by identity and nothing about a solo dashboard changes.
     workspaces: ambientSpaces(snap.workspaces ?? [], scope, snap.servers),
@@ -530,30 +530,30 @@ export async function devicesLoader({ request }: { request?: Request } = {}): Pr
 
 // ── The crew census (the /crew overview) ─────────────────────────────────────
 //
-// The pack route's own loader, shaped exactly like `devicesLoader`: it rides the poll loop while the
+// The crew route's own loader, shaped exactly like `devicesLoader`: it rides the poll loop while the
 // page is open (so a member going quiet shows up here without a reload), and a failure DEGRADES —
-// it never throws, because a page that answers "how is my pack doing?" with an error boundary has
+// it never throws, because a page that answers "how is my crew doing?" with an error boundary has
 // answered the question badly.
 //
 // The 404 is not a failure and must not be rendered as one. Only a lead serves `/api/pack`; a solo
-// collie and a peer refuse, and that refusal is the truthful answer "there is no pack here". So it
+// collie and a peer refuse, and that refusal is the truthful answer "there is no crew here". So it
 // is folded to `status: null, error: false`, and the route says so in one honest card. Every OTHER
 // refusal — a real outage, a 500 — keeps `status: null` but sets `error`, because "I could not ask"
 // and "there is nothing to ask about" are different sentences and the operator's next move differs.
 
-export interface PackData {
-  /** The census, or `null` when this collie leads no pack (404) or the fetch failed. */
-  status: PackStatusResponse | null;
+export interface CrewData {
+  /** The census, or `null` when this collie leads no crew (404) or the fetch failed. */
+  status: CrewStatusResponse | null;
   /** True only for a fetch that FAILED — a 404 is an answer, not an error. */
   error: boolean;
 }
 
-export async function packLoader({ request }: { request?: Request } = {}): Promise<PackData> {
+export async function crewLoader({ request }: { request?: Request } = {}): Promise<CrewData> {
   try {
-    return { status: await fetchPack(request?.signal), error: false };
+    return { status: await fetchCrew(request?.signal), error: false };
   } catch (e) {
     if (isAbortError(e)) throw e; // superseded revalidation — let React Router drop it
-    // Solo or peer: there is no pack to report, and that is a complete answer.
+    // Solo or peer: there is no crew to report, and that is a complete answer.
     if (isApiErrorStatus(e, 404)) return { status: null, error: false };
     return { status: null, error: true };
   }

@@ -449,28 +449,28 @@ describe("PairingStore", () => {
   });
 });
 
-// ── The pack surface is not a pairing surface ────────────────────────────────────────────────
-// A lead is admitted by pinned mutual TLS plus the pack secret (PACK_PROTOCOL.md §6, ADR 0013) and
+// ── The crew surface is not a pairing surface ────────────────────────────────────────────────
+// A lead is admitted by pinned mutual TLS plus the crew secret (PACK_PROTOCOL.md §6, ADR 0013) and
 // holds none of this collie's pairing tokens. If pairing ever leaked into the peer's dispatch, every
-// pack link would break the moment its peer paired a phone — and the fix someone would reach for is
+// crew link would break the moment its peer paired a phone — and the fix someone would reach for is
 // handing a lead a browser credential, which is precisely the thing §6 forbids. The wiring lives
 // inside `Bun.serve`, which `bun test` cannot stand up (CLAUDE.md), so it is pinned at the source —
 // the same technique bridge/solo-baseline.test.ts uses on the route table.
-describe("pairing never crosses the pack seam", () => {
+describe("pairing never crosses the crew seam", () => {
   const source = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
 
-  /** The `opts.packRouter?.({ … })` call: everything a pack caller is dispatched through. */
-  function packDispatchBlock(): string {
-    const start = source.indexOf("const packHandler = opts.packRouter?.({");
+  /** The `opts.crewRouter?.({ … })` call: everything a crew caller is dispatched through. */
+  function crewDispatchBlock(): string {
+    const start = source.indexOf("const crewHandler = opts.crewRouter?.({");
     expect(start).toBeGreaterThan(-1);
     const end = source.indexOf("\n  });", start);
     expect(end).toBeGreaterThan(start);
     return source.slice(start, end);
   }
 
-  test("the peer's dispatch is gated by packGate and names no pairing at all", () => {
-    const block = packDispatchBlock();
-    expect(block).toContain("packGate(level, cfg, device)");
+  test("the peer's dispatch is gated by crewGate and names no pairing at all", () => {
+    const block = crewDispatchBlock();
+    expect(block).toContain("crewGate(level, cfg, device)");
     expect(block).not.toContain("pairing");
     expect(block).not.toContain("whois(");
     expect(block).not.toContain("bearerToken");
@@ -485,7 +485,7 @@ describe("pairing never crosses the pack seam", () => {
   // pairing gate. TypeScript cannot catch it and no runtime test would either: the route would work
   // perfectly, just unguarded.
   //
-  // So the arity is pinned here, at the source, exactly as the pack seam above is. If you are
+  // So the arity is pinned here, at the source, exactly as the crew seam above is. If you are
   // reading this because the test failed: you added a `guard(` call without `pairing`, and unless
   // your route is genuinely not a write path, that is the bug.
   test("every guard() call in server.ts passes the pairing gate", () => {
@@ -517,27 +517,27 @@ describe("pairing never crosses the pack seam", () => {
     expect(callArgs.length).toBeGreaterThanOrEqual(8);
     const unguarded = callArgs.filter((args) => !/\bpairing\b/.test(args));
     expect(unguarded).toEqual([]);
-    // Every call is the browser gate, and the browser gate is the only caller — a pack caller
+    // Every call is the browser gate, and the browser gate is the only caller — a crew caller
     // reaches its own gate (the block above), never this one.
     expect(callArgs.every((args) => args.includes("req, cfg"))).toBe(true);
   });
 
   // ── AMENDED 2026-08-20 (RFC §16, decision 5; PACK_PROTOCOL.md §18.14) ────────────────────────
-  // This used to be "no pack module names pairing.ts at all", and the standby door made that reading
+  // This used to be "no crew module names pairing.ts at all", and the standby door made that reading
   // impossible to keep: a deputy has to verify a bearer credential its lead minted, so `standby.ts`
   // parses an `Authorization` header and `standby-devices.ts` hashes a token to compare against a
-  // stored digest. Both are PURE helpers, and re-implementing either inside `pack/` would have meant
+  // stored digest. Both are PURE helpers, and re-implementing either inside `crew/` would have meant
   // a second `sha256Hex` and a second `Bearer` parser to keep in step with the first — a worse
   // outcome than the coupling it avoided.
   //
   // **What the rule actually protects is unchanged, and it is pinned below instead of inferred:**
-  // no pack module may touch `PairingStore` — the class that decides `enforced()`, resolves a token
+  // no crew module may touch `PairingStore` — the class that decides `enforced()`, resolves a token
   // into a device, and writes `paired-devices.json`. That is the object whose reach would make a
-  // pairing token admit a pack request, and no pack module has it. The pack surface's two factors
+  // pairing token admit a crew request, and no crew module has it. The crew surface's two factors
   // (PACK_PROTOCOL.md §8.1) are untouched, and the standby door is a SEPARATE listener that is not on
-  // the pack surface at all.
-  test("no pack module touches PairingStore, and only the standby pair names pairing.ts", () => {
-    /** Pack modules allowed to import pairing's PURE helpers, and what each of them may take. */
+  // the crew surface at all.
+  test("no crew module touches PairingStore, and only the standby pair names pairing.ts", () => {
+    /** Crew modules allowed to import pairing's PURE helpers, and what each of them may take. */
     const ALLOWED = new Map<string, readonly string[]>([
       // Hashes and compares a synced token digest; carries pairing's registry TYPES so the projection
       // and the collision check cannot drift from the shape they project.
@@ -547,11 +547,11 @@ describe("pairing never crosses the pack seam", () => {
     ]);
 
     let named = 0;
-    for (const file of readdirSync(join(import.meta.dir, "pack"))) {
+    for (const file of readdirSync(join(import.meta.dir, "crew"))) {
       // Production modules only. A test that exercises the sync obviously builds a registry to sync,
       // and a rule that forbade it would forbid testing the thing it protects.
       if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
-      const src = readFileSync(join(import.meta.dir, "pack", file), "utf8");
+      const src = readFileSync(join(import.meta.dir, "crew", file), "utf8");
       // Comments are dropped first, exactly as the `guard()` scan above drops them: several of these
       // modules EXPLAIN why they must not merge into `PairingStore`'s registry, and a rule that
       // forbade naming the class in prose would forbid documenting the rule.

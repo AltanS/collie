@@ -10,7 +10,7 @@ import { __resetReloadGuard, isReloadHeld } from "@/lib/reload-guard";
 import type {
   PreflightReport,
   UpdateInfo,
-  UpdatePackMember,
+  UpdateCrewMember,
   UpdateRun,
   UpdateRunState,
 } from "@/lib/types";
@@ -157,12 +157,12 @@ function renderCard(update: UpdateInfo | undefined, servers: HomeData["servers"]
 }
 
 /** The card's own read, answered with `update` plus whatever preflight the case is about — and,
- *  for the pack cases, the census spec 03 puts on the same response. Absent by default, which is
+ *  for the crew cases, the census spec 03 puts on the same response. Absent by default, which is
  *  the solo answer and the older-bridge answer both. */
-function serveCheck(update: UpdateInfo, preflight: PreflightReport | null, pack?: UpdatePackMember[]) {
+function serveCheck(update: UpdateInfo, preflight: PreflightReport | null, crew?: UpdateCrewMember[]) {
   server.use(
     http.get("/api/update/check", () =>
-      HttpResponse.json(pack === undefined ? { ...update, preflight } : { ...update, preflight, pack }),
+      HttpResponse.json(crew === undefined ? { ...update, preflight } : { ...update, preflight, pack: crew }),
     ),
   );
 }
@@ -462,13 +462,13 @@ describe("rolled back card — the machine is named, the log is there, and there
   });
 });
 
-// ── THE PACK, INSIDE THE CARD (M16/01) ──────────────────────────────────────────────────────────
+// ── THE CREW, INSIDE THE CARD (M16/01) ──────────────────────────────────────────────────────────
 //
-// The line this card used to carry — "Peers are updated from the terminal: collie pack update" —
-// is gone, because it is no longer true. The pack is lines in this card now, and the button above
+// The line this card used to carry — "Peers are updated from the terminal: collie crew update" —
+// is gone, because it is no longer true. The crew is lines in this card now, and the button above
 // them covers it.
 
-const PACK: UpdatePackMember[] = [
+const CREW: UpdateCrewMember[] = [
   { name: "attic", version: "1.3.0", verdict: "red", reasons: ["working tree has tracked changes: bridge/server.ts"], asOf: 1_700_000_000_000 },
   { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
   { name: "shed", version: null, verdict: "unknown", reasons: [], asOf: 1_700_000_000_000 },
@@ -481,7 +481,7 @@ const LEAD_ROSTER: HomeData["servers"] = [
 
 describe("peer rows in the card", () => {
   it("grows one line per peer, worst first, with no table beside the card", async () => {
-    serveCheck(info(), GREEN, PACK);
+    serveCheck(info(), GREEN, CREW);
     renderCard(info(), LEAD_ROSTER);
     const list = await screen.findByRole("list", { name: "Crew members" });
     const names = within(list)
@@ -496,7 +496,7 @@ describe("peer rows in the card", () => {
   });
 
   it("peer rows are read-only and carry the reason when red", async () => {
-    serveCheck(info(), GREEN, PACK);
+    serveCheck(info(), GREEN, CREW);
     renderCard(info(), LEAD_ROSTER);
     const list = await screen.findByRole("list", { name: "Crew members" });
     // No per-peer update, no per-peer retry — the operator's decision was taken once, above.
@@ -508,7 +508,7 @@ describe("peer rows in the card", () => {
 
   it("peer row asOf dates every line, so an old green and a fresh green differ", async () => {
     vi.setSystemTime(1_700_000_000_000 + 6 * 60 * 60 * 1000);
-    const mixed: UpdatePackMember[] = [
+    const mixed: UpdateCrewMember[] = [
       { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
       { name: "shed", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 + 6 * 60 * 60 * 1000 - 4000 },
     ];
@@ -521,7 +521,7 @@ describe("peer rows in the card", () => {
   });
 
   it("unknown is not green — it says unknown and says why", async () => {
-    serveCheck(info(), GREEN, PACK);
+    serveCheck(info(), GREEN, CREW);
     renderCard(info(), LEAD_ROSTER);
     const list = await screen.findByRole("list", { name: "Crew members" });
     const shed = within(list)
@@ -540,8 +540,8 @@ describe("peer rows in the card", () => {
 });
 
 describe("single action button", () => {
-  it("says 'Update crew to X' when this pack has peers", async () => {
-    serveCheck(info(), GREEN, PACK);
+  it("says 'Update crew to X' when this crew has peers", async () => {
+    serveCheck(info(), GREEN, CREW);
     renderCard(info(), LEAD_ROSTER);
     expect(await screen.findByRole("button", { name: "Update crew to 1.4.0" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Update to 1.4.0" })).not.toBeInTheDocument();
@@ -555,7 +555,7 @@ describe("single action button", () => {
 
   it("says 'Retry crew update' once the lead is current and a peer is behind", async () => {
     const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
-    const behind: UpdatePackMember[] = [
+    const behind: UpdateCrewMember[] = [
       { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(current, GREEN, behind);
@@ -586,7 +586,7 @@ describe("retry crew update", () => {
   it("starts a new run whose only legs are the peers", async () => {
     const user = userEvent.setup();
     const current = info({ latest: "1.3.0", releaseAvailable: false, newerVersions: [] });
-    const behind: UpdatePackMember[] = [
+    const behind: UpdateCrewMember[] = [
       { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(current, GREEN, behind);
@@ -608,9 +608,9 @@ describe("retry crew update", () => {
     expect(sent).toMatchObject({ confirm: true, peersOnly: true, target: "1.3.0", major: false });
   });
 
-  it("an ordinary pack update is NOT peers-only", async () => {
+  it("an ordinary crew update is NOT peers-only", async () => {
     const user = userEvent.setup();
-    serveCheck(info(), GREEN, PACK);
+    serveCheck(info(), GREEN, CREW);
     let sent: StartBody | undefined;
     server.use(
       http.post("/api/update", async ({ request }) => {
@@ -767,7 +767,7 @@ describe("UpdateCard — an install a package manager owns", () => {
   it("offers the peers-only run to a packaged lead whose peer is a version behind", async () => {
     const user = userEvent.setup();
     const update = info({ installKind: "packaged" });
-    const behind: UpdatePackMember[] = [
+    const behind: UpdateCrewMember[] = [
       { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(update, PACKAGED, behind);
@@ -806,7 +806,7 @@ describe("UpdateCard — an install a package manager owns", () => {
   // stays as the card's only way to say a release exists and this machine is not taking it.
   it("names the command and no button at all when no peer needs levelling", async () => {
     const update = info({ installKind: "packaged" });
-    const level: UpdatePackMember[] = [
+    const level: UpdateCrewMember[] = [
       { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(update, PACKAGED, level);
@@ -817,23 +817,23 @@ describe("UpdateCard — an install a package manager owns", () => {
     expect(screen.getByText(/package manager updates this install/i)).toBeInTheDocument();
   });
 
-  // The second control: an ORDINARY lead in the identical pack shape still leads with its own
+  // The second control: an ORDINARY lead in the identical crew shape still leads with its own
   // update. Revert `leadCanTake` and this keeps passing while the two above stop — which is what
   // makes them a statement about the install kind rather than about being behind.
-  // An ORDINARY lead can land in `retry-pack` too — already current on releases, itself blocked by
+  // An ORDINARY lead can land in `retry-crew` too — already current on releases, itself blocked by
   // a genuinely red check, with a peer behind. The reason line is shown here on purpose: it answers
   // exactly the question a "Retry crew update" button raises while this machine is not moving, and
   // suppressing it (the pre-fix shape) is what let a packaged lead's OWN reason go unsaid. This is
   // the case the review asked to see covered, not a boundary the card is trying to avoid.
-  it("an ordinary lead's own red reason shows under retry-pack too, not only a packaged lead's", async () => {
+  it("an ordinary lead's own red reason shows under retry-crew too, not only a packaged lead's", async () => {
     const update = info({ installKind: "detached-checkout", releaseAvailable: false });
-    const behind: UpdatePackMember[] = [
+    const behind: UpdateCrewMember[] = [
       { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(update, RED, behind);
     renderCard(update, LEAD_ROSTER);
     const button = await screen.findByRole("button", { name: "Retry crew update" });
-    // NOT disabled: retry-pack is exempt from `blocked` (a peers-only run works even while this
+    // NOT disabled: retry-crew is exempt from `blocked` (a peers-only run works even while this
     // machine's own preflight is red — the two are unrelated moves). The point of this test is the
     // REASON line, which is now shown alongside it rather than swallowed.
     await waitFor(() => expect(button).toBeEnabled());
@@ -843,7 +843,7 @@ describe("UpdateCard — an install a package manager owns", () => {
 
   it("control: an ordinary lead with a peer behind still takes the release itself", async () => {
     const update = info({ installKind: "detached-checkout" });
-    const behind: UpdatePackMember[] = [
+    const behind: UpdateCrewMember[] = [
       { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(update, GREEN_SIX, behind);
@@ -955,7 +955,7 @@ describe("the action button never moves", () => {
   }
 
   it("the action row precedes the peer list and the preflight list", async () => {
-    const one: UpdatePackMember[] = [
+    const one: UpdateCrewMember[] = [
       { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(info(), GREEN_SIX, one);
@@ -993,7 +993,7 @@ describe("the action button never moves", () => {
   });
 
   it("the row carries the deciding fact beside the button, so the detail can live below it", async () => {
-    const one: UpdatePackMember[] = [
+    const one: UpdateCrewMember[] = [
       { name: "minibuch", version: "1.3.0", verdict: "green", reasons: [], asOf: 1_700_000_000_000 },
     ];
     serveCheck(info(), GREEN_WITH_ONE_AMBER, one);
@@ -1004,7 +1004,7 @@ describe("the action button never moves", () => {
 
 // ── A peers-only run is still a run (M20/09) ─────────────────────────────────
 //
-// Reported symptom: after the pack is levelled, the version on this page does not change until the
+// Reported symptom: after the crew is levelled, the version on this page does not change until the
 // app is pulled to refresh. The census is fresh on the server on every ask; the client stopped
 // asking. The refetch keyed on THIS machine's run record, and a peers-only run never writes one.
 
@@ -1115,7 +1115,7 @@ describe("the card reads the same clock the band does", () => {
   });
 
   it("a peers-only run's legs beat the previous run this card is still holding", async () => {
-    // M20/14, measured on the VM pack. A peers-only retry writes no record on the lead, so the status
+    // M20/14, measured on the VM crew. A peers-only retry writes no record on the lead, so the status
     // carries the PREVIOUS run with its legs stripped off it (M20/09) and this run's legs at the top
     // level. This card was ALSO holding its own copy of that previous run, fetched from
     // `GET /api/update/check` a moment before the retry, still carrying that run's failed legs — a
@@ -1148,7 +1148,7 @@ describe("the card reads the same clock the band does", () => {
     serveCheck(value, GREEN, []);
     renderCard(value, LEAD_ROSTER);
     await user.click(await screen.findByRole("button", { name: "Retry now" }));
-    // The SAME confirm the pack-wide retry opens. It begins a run, and spec 01's urgency rule is
+    // The SAME confirm the crew-wide retry opens. It begins a run, and spec 01's urgency rule is
     // what marks the member due — this browser clears no backoff and reaches no machine.
     expect(screen.getByText("Retry the crew update?")).toBeInTheDocument();
   });

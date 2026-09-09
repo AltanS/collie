@@ -142,7 +142,7 @@ describe("intervalFor", () => {
     expect(intervalFor(elsewhere, null, on())).toBe(HOME_BUSY_MS);
     expect(intervalFor(elsewhere, undefined, on())).toBe(HOME_BUSY_MS);
     expect(intervalFor(blockedPane, null, on())).toBe(HOME_BUSY_MS);
-    // An absent intent is a legitimate caller (PackProvider asks for the gap alone).
+    // An absent intent is a legitimate caller (CrewProvider asks for the gap alone).
     expect(intervalFor(elsewhere, null)).toBe(HOME_BUSY_MS);
   });
 

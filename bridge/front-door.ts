@@ -2,7 +2,7 @@ import { existsSync, readFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 
-import type { PackMode } from "./types.ts";
+import type { CrewMode } from "./types.ts";
 import { findTool } from "./tools.ts";
 
 // The ONE managed front door's ownership record, and the only code that takes it down. ADR 0001 is
@@ -358,15 +358,15 @@ function readFingerprint(deps: FrontDoorDeps, record: OwnershipRecord): string |
  * | any    | –       | no               | keep    |
  *
  * `deposed` covers the machine whose demotion did NOT complete — a parked ex-lead still holds a
- * front door for a pack that has moved on, and its own health check now fails behind it, so the
- * mapping is doing nothing but black-holing the pack's hostname.
+ * front door for a crew that has moved on, and its own health check now fails behind it, so the
+ * mapping is doing nothing but black-holing the crew's hostname.
  *
  * **A missing record is `keep`, not "look around".** An unrecorded mapping is by definition not
  * ours (ADR 0001), and a boot that went hunting for one would be exactly the behaviour this file
  * exists to make impossible.
  */
 export function shouldReleaseFrontDoor(input: {
-  mode: PackMode;
+  mode: CrewMode;
   deposed: boolean;
   hasRecord: boolean;
 }): boolean {

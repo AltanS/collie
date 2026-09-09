@@ -335,7 +335,7 @@ a single command; never export one.
 | --- | --- | --- |
 | `SKIP_VERSION_CHECK=1` | `git commit` (pre-commit hook) | the version-consistency + bump-on-change guard |
 | `SKIP_LINT_CHECK=1` | `git commit` (pre-commit hook) | oxlint over the staged files |
-| `SKIP_PACK_WIRE_CHECK=1` | `git commit` (pre-commit hook) | the pack-wire decision guard |
+| `SKIP_CREW_WIRE_CHECK=1` | `git commit` (pre-commit hook) | the pack-wire decision guard |
 | `SKIP_FLAKE_LOCK_CHECK=1` | `git commit` (pre-commit hook) | the `flake.lock`-only-in-a-release guard |
 | `SKIP_TYPECHECK=1` | `bun run build` / `collie build` | both typecheck steps |
 | `SKIP_TESTS=1` | `git push` (pre-push hook) | both test suites |
@@ -560,9 +560,9 @@ pairing credential ([ADR 0027](./.adr/0027-the-deputy-is-named-ahead-of-time.md)
 [ADR 0028](./.adr/0028-the-standby-door-is-a-second-listener.md)).
 
 **Touching the pack wire surface forces a protocol decision** — a commit staging one of the
-wire-shape files in `bridge/pack/` must also stage `PACK_PROTOCOL.md` (additive-optional, §7.1) or
-bump `PACK_PROTOCOL_VERSION` (not expressible that way). `scripts/check-pack-wire.sh` is guard C of
-the pre-commit hook; a pure refactor takes the `SKIP_PACK_WIRE_CHECK=1` hatch
+wire-shape files in `bridge/crew/` must also stage `PACK_PROTOCOL.md` (additive-optional, §7.1) or
+bump `PACK_PROTOCOL_VERSION` (not expressible that way). `scripts/check-crew-wire.sh` is guard C of
+the pre-commit hook; a pure refactor takes the `SKIP_CREW_WIRE_CHECK=1` hatch
 ([ADR 0025](./.adr/0025-the-wire-guard-forces-a-decision-never-a-bump.md)).
 
 **Code reaches a peer over the operator's own SSH, never over the pack link** — `crew add` installs

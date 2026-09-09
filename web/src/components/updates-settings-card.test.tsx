@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { server } from "@/test/setup";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
-import type { UpdateInfo, UpdatePackMember, UpdateRun } from "@/lib/types";
+import type { UpdateInfo, UpdateCrewMember, UpdateRun } from "@/lib/types";
 import { UpdatesSettingsCard, updatesStatusLine } from "./updates-settings-card";
 
 // The one row Settings keeps for the whole update subject. Three cards used to stand here.
@@ -78,7 +78,7 @@ describe("updates settings row", () => {
     const router = renderRow(info());
     const row = await screen.findByRole("button", { name: /Updates/ });
     expect(screen.getByText("Updates")).toBeInTheDocument();
-    // The chevron is the affordance the pack row does not have — this row hides a whole page.
+    // The chevron is the affordance the crew row does not have — this row hides a whole page.
     expect(row.querySelector("svg.lucide-chevron-right")).not.toBeNull();
     await user.click(row);
     await waitFor(() => expect(router.state.location.pathname).toBe("/settings/updates"));
@@ -115,11 +115,11 @@ describe("updates row status line", () => {
   });
 
   it("counts a peer behind off the check's census", async () => {
-    const pack: UpdatePackMember[] = [
+    const crew: UpdateCrewMember[] = [
       { name: "minibuch", version: "1.2.0", verdict: "green", reasons: [], asOf: 1 },
     ];
     server.use(
-      http.get("/api/update/check", () => HttpResponse.json({ ...info(), preflight: null, pack })),
+      http.get("/api/update/check", () => HttpResponse.json({ ...info(), preflight: null, pack: crew })),
     );
     renderRow(info());
     expect(await screen.findByText("1 peer behind")).toBeInTheDocument();

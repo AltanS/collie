@@ -21,8 +21,8 @@
 #    full-tree runs (CI and `collie build`) define "passing". Both shell out to the same
 #    `.oxlintrc.json` at the repo root — no surface passes its own rule flags.
 #
-# C) Pack-wire guard — override with: SKIP_PACK_WIRE_CHECK=1 git commit …
-#    A staged change to the pack wire surface must record a protocol decision (check-pack-wire.sh).
+# C) Crew-wire guard — override with: SKIP_CREW_WIRE_CHECK=1 git commit …
+#    A staged change to the crew wire surface must record a protocol decision (check-crew-wire.sh).
 #
 # D) flake.lock guard — override with: SKIP_FLAKE_LOCK_CHECK=1 git commit …
 #    `flake.lock` pins the toolchain a published binary was built with, so it moves only in a
@@ -171,9 +171,9 @@ EOF
   fi
 fi
 
-# ---- (C) pack wire ----------------------------------------------------------------------------
+# ---- (C) crew wire ----------------------------------------------------------------------------
 # The script owns the file list and the message; it reads the staged list we already computed.
-STAGED_FILES="$staged" "$ROOT/scripts/check-pack-wire.sh" >/dev/null
+STAGED_FILES="$staged" "$ROOT/scripts/check-crew-wire.sh" >/dev/null
 
 # ---- (D) flake.lock ---------------------------------------------------------------------------
 # Same shape as (C): the script owns the file list and the message, and reads the staged list we

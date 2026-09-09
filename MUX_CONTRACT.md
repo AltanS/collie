@@ -224,7 +224,7 @@ Three traps worth naming, the first two found while writing this table:
 **Measured on 2026-09-08, in the VM lab: a tmux peer and then a zellij peer, both under a herdr
 lead.** The read-only set was
 run against each peer's panes through the lead's HTTP surface with `?host=<member>`
-([`scripts/pack-mux-probe.ts`](./scripts/pack-mux-probe.ts)), and against that peer's own multiplexer
+([`scripts/crew-mux-probe.ts`](./scripts/crew-mux-probe.ts)), and against that peer's own multiplexer
 adapter-locally on the peer itself ([`scripts/mux-probe.ts`](./scripts/mux-probe.ts)). Both peers
 scored **10 of 12 through the lead and 12 of 12 adapter-locally**, and the same two checks failed on
 both — which is what makes the gap readable as a property of the pack surface rather than of either
@@ -234,7 +234,7 @@ multiplexer. The two runs do not grade the same thing, and this section says whi
 `MuxTarget` takes no host and never will ([ADR 0036](./.adr/0036-the-map-of-machines-is-collies-a-mux-reports-one-machine.md)),
 so a suite cannot be pointed at another machine's multiplexer. It is pointed at the LEAD instead.
 That works because the host axis is the pack's, but it means the transport under the suite is the
-**phone's route table** (PACK_PROTOCOL.md §5, [`bridge/pack/forward.ts`](./bridge/pack/forward.ts)),
+**phone's route table** (PACK_PROTOCOL.md §5, [`bridge/crew/forward.ts`](./bridge/crew/forward.ts)),
 which is narrower than the mux port in five measured ways.
 
 | What the pack surface cannot carry | Which check goes ungraded | Grade it here instead |
@@ -276,7 +276,7 @@ decision this paragraph asked for, and no adapter changed**: a forwarded write n
 
 **A peer's multiplexer logo never crosses the link, and that is settled rather than open.** `logoUrl`
 is a path, and a path only answers on the machine that serves it, so
-[`bridge/pack/router.ts`](./bridge/pack/router.ts) drops it from a peer's block. zellij is the case
+[`bridge/crew/router.ts`](./bridge/crew/router.ts) drops it from a peer's block. zellij is the case
 that makes the consequence visible: it ships a logo, the peer's own browser would render it, and on
 the lead the peer's mux is named in text only.
 

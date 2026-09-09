@@ -4,8 +4,8 @@ import { paneScopeKey, scopeKey } from "@/lib/scope";
 import { server } from "@/test/setup";
 import {
   fixtureAgents,
-  fixturePackSnapshot,
-  fixturePackStatus,
+  fixtureCrewSnapshot,
+  fixtureCrewStatus,
   fixtureSnapshot,
   paneTextWithDraft,
 } from "@/test/handlers";
@@ -700,7 +700,7 @@ describe("historyLoader", () => {
 
 // The lead's own clock has to reach the components, because it is what per-host staleness is measured
 // against (lib/host-health.ts). It rides on HomeData rather than being read from `Date.now()` at the
-// point of use — a phone whose clock is minutes off would otherwise report every peer in the pack
+// point of use — a phone whose clock is minutes off would otherwise report every peer in the crew
 // permanently stale, or permanently fresh, depending on which way it is wrong.
 describe("rootLoader — the snapshot's own timestamp", () => {
   it("carries `ts` through to the route data", async () => {
@@ -853,25 +853,25 @@ describe("cold boot with no network", () => {
   });
 });
 
-describe("packLoader", () => {
+describe("crewLoader", () => {
   it("returns the census a lead serves", async () => {
-    server.use(http.get("/api/pack", () => HttpResponse.json(fixturePackStatus)));
-    const { packLoader } = await import("./loaders");
-    const data = await packLoader();
+    server.use(http.get("/api/pack", () => HttpResponse.json(fixtureCrewStatus)));
+    const { crewLoader } = await import("./loaders");
+    const data = await crewLoader();
     expect(data.error).toBe(false);
     expect(data.status?.members.map((m) => m.id)).toEqual(["bluefin", "workshop", "attic"]);
   });
 
   // The default handler already refuses with 404, which is what a solo collie and a peer both do.
-  it("reads a 404 as 'there is no pack here', not as a failure", async () => {
-    const { packLoader } = await import("./loaders");
-    expect(await packLoader()).toEqual({ status: null, error: false });
+  it("reads a 404 as 'there is no crew here', not as a failure", async () => {
+    const { crewLoader } = await import("./loaders");
+    expect(await crewLoader()).toEqual({ status: null, error: false });
   });
 
   it("keeps a real refusal apart from that answer", async () => {
     server.use(http.get("/api/pack", () => new HttpResponse(null, { status: 500 })));
-    const { packLoader } = await import("./loaders");
-    expect(await packLoader()).toEqual({ status: null, error: true });
+    const { crewLoader } = await import("./loaders");
+    expect(await crewLoader()).toEqual({ status: null, error: true });
   });
 });
 
@@ -882,11 +882,11 @@ describe("packLoader", () => {
 // lead's. The loader narrows them back to the address the url is on, exactly as it already narrows
 // the panes they are drawn beside.
 describe("rootLoader — spaces and tabs follow the host the url names", () => {
-  const packSnapshot = () =>
-    server.use(http.get("/api/snapshot", () => HttpResponse.json(fixturePackSnapshot)));
+  const crewSnapshot = () =>
+    server.use(http.get("/api/snapshot", () => HttpResponse.json(fixtureCrewSnapshot)));
 
   it("gives the lead's spaces when no host is named", async () => {
-    packSnapshot();
+    crewSnapshot();
     const { rootLoader } = await import("./loaders");
     const data = await rootLoader();
     expect(data.workspaces.map((w) => w.host)).toEqual(["bluefin", "bluefin"]);
@@ -894,7 +894,7 @@ describe("rootLoader — spaces and tabs follow the host the url names", () => {
   });
 
   it("gives the peer's when the url names it — including its own `w1`", async () => {
-    packSnapshot();
+    crewSnapshot();
     const { rootLoader } = await import("./loaders");
     const data = await rootLoader({ request: new Request("http://localhost/?h=workshop") });
     expect(data.workspaces.map((w) => [w.host, w.workspaceId])).toEqual([["workshop", "w1"]]);

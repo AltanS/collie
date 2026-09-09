@@ -4,7 +4,7 @@ import { Maximize2, Monitor, Pencil, ScrollText, Search, XCircle } from "lucide-
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { HostChip } from "@/components/host-chip";
-import { useHostWriteBlock, usePack } from "@/components/pack-provider";
+import { useHostWriteBlock, useCrew } from "@/components/crew-provider";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { useLocale } from "@/hooks/use-locale";
@@ -98,7 +98,7 @@ export function PaneActionsSheet({
   // Rename and close are writes, and both are §10.3 writes to a specific machine — the PANE's, read
   // off the row rather than from the ambient scope, because a pane's host is the only thing that
   // says where closing it kills a terminal. Undefined on a solo install and on a reachable host, so
-  // this sheet is byte-identical to today everywhere except a pack with a quiet member.
+  // this sheet is byte-identical to today everywhere except a crew with a quiet member.
   const hostBlock = useHostWriteBlock(pane?.host);
   // What the multiplexer underneath can actually do to a pane (M10/06) — asked per row, below.
   // Asked of the PANE's own machine, for `hostBlock`'s reason one step on (M22/03): a member runs
@@ -112,10 +112,10 @@ export function PaneActionsSheet({
   // The mux name for the "Focus in <mux>" row and its toast — see `focusMux` below for why this
   // is gated to panes on the LOCAL machine before it's trusted.
   const localMuxName = useMuxName();
-  const { lead } = usePack();
+  const { lead } = useCrew();
   // `useMuxName()` always answers for the collie THIS PAGE IS RUNNING ON (its own `/api/config`,
   // never a peer's — see that hook's own comment). A pane's `host` is undefined on a solo install
-  // and, on a pack, is the LEAD's own id for a lead-hosted pane (lib/types.ts's doc on `host`) — so
+  // and, on a crew, is the LEAD's own id for a lead-hosted pane (lib/types.ts's doc on `host`) — so
   // either of those means "focus" runs on the mux this page already knows the name of. A pane whose
   // `host` names some OTHER member may be driven by a different multiplexer entirely, and naming the
   // local one would be a guess dressed as a fact. `focusMux` is `""` in that case, which is also the
@@ -228,7 +228,7 @@ export function PaneActionsSheet({
           // Every row below acts on THIS pane on THIS machine — rename, close, focus — so the
           // machine belongs beside the name in the one place every one of those rows sits under:
           // the title. `HostChip` self-hides on a solo install (its own `multi` gate), so this
-          // row is byte-identical to the old plain-string title everywhere except a pack.
+          // row is byte-identical to the old plain-string title everywhere except a crew.
           //
           // The pane name truncates; the host does not. `min-w-0 truncate` on the name plus
           // `HostChip`'s own `shrink-0` is what makes that trade: the host is short, bounded, and
@@ -309,7 +309,7 @@ export function PaneActionsSheet({
         </p>
       ) : mode === "actions" ? (
         <div className="flex flex-col gap-1">
-          {/* Close kills a real terminal, and on a pack the sheet says which machine's — but that
+          {/* Close kills a real terminal, and on a crew the sheet says which machine's — but that
               chip now lives in the TITLE row above (beside the pane name), since every row here,
               not just Close, acts on this pane's machine. Nothing to render here on its own. */}
           {/* Each row asks its OWN capability, not one "can this sheet do things" flag: a

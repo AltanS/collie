@@ -3,7 +3,7 @@ import { render } from "ink-testing-library";
 
 import type { DoctorView, StatusView, TonedLine, UpdateEvent } from "../render.ts";
 import { Doctor, Members, Status } from "./index.tsx";
-import { createUpdateStore, PackUpdate } from "./pack-update.tsx";
+import { createUpdateStore, CrewUpdate } from "./crew-update.tsx";
 
 // The components, drawn into a string. These do NOT pin the layout — a box-drawing character or a
 // column width is not a contract, and asserting one would make every visual tweak a test edit. What
@@ -22,33 +22,33 @@ describe("the doctor table", () => {
       { check: "front-door", status: "warn", detail: "nothing published", remedy: "`collie serve`" },
       { check: "restart-pending", status: "skipped", detail: "no version recorded", remedy: "`collie restart`" },
     ],
-    packTitle: "crew: herd",
-    pack: [{ check: "reach", status: "error", detail: "1 of 2 unreachable", remedy: "`collie reconnect`" }],
-    packNote: [],
+    crewTitle: "crew: herd",
+    crew: [{ check: "reach", status: "error", detail: "1 of 2 unreachable", remedy: "`collie reconnect`" }],
+    crewNote: [],
   };
 
   test("every finding keeps its status word, identifier, detail and remedy", () => {
     const frame = plain(render(<Doctor view={view} />).lastFrame());
     expect(frame).toContain(view.heading);
-    for (const f of [...view.local, ...view.pack]) {
+    for (const f of [...view.local, ...view.crew]) {
       expect(frame).toContain(f.check);
       expect(frame).toContain(f.detail);
       if (f.remedy !== null) expect(frame).toContain(f.remedy);
       if (f.status !== "ok") expect(frame).toContain(`${f.status}:`);
     }
     expect(frame).toContain("✓");
-    expect(frame).toContain(view.packTitle);
+    expect(frame).toContain(view.crewTitle);
   });
 
   test("a solo collie gets the note instead of an empty crew table — and no bare `crew:` heading", () => {
     const solo: DoctorView = {
       ...view,
-      packTitle: "crew:",
-      pack: [],
-      packNote: ["crew: none — this collie is not in a crew.", "  `collie crew invite` here"],
+      crewTitle: "crew:",
+      crew: [],
+      crewNote: ["crew: none — this collie is not in a crew.", "  `collie crew invite` here"],
     };
     const frame = plain(render(<Doctor view={solo} />).lastFrame());
-    for (const n of solo.packNote) expect(frame).toContain(n);
+    for (const n of solo.crewNote) expect(frame).toContain(n);
     expect(frame).not.toMatch(/^\s*pack:\s*$/m);
   });
 });
@@ -111,10 +111,10 @@ describe("the crew update surface", () => {
 
   test("every member, every leg and every line the plain replay prints is on screen", () => {
     const store = createUpdateStore();
-    const frame = plain(render(<PackUpdate store={store} />).lastFrame());
+    const frame = plain(render(<CrewUpdate store={store} />).lastFrame());
     // Drawn from a store that has the whole run in it: the surface is a fold, not a stream reader.
     for (const event of RUN) store.emit(event);
-    const finished = plain(render(<PackUpdate store={store} />).lastFrame());
+    const finished = plain(render(<CrewUpdate store={store} />).lastFrame());
     expect(frame).toContain("crew update");
     for (const needle of [
       "1.2.3",
@@ -146,7 +146,7 @@ describe("the crew update surface", () => {
     ] satisfies UpdateEvent[]) {
       store.emit(event);
     }
-    const frame = plain(render(<PackUpdate store={store} />).lastFrame());
+    const frame = plain(render(<CrewUpdate store={store} />).lastFrame());
     expect(frame).toContain("pushing abc123def456");
     // The field bug, as an ordering assertion: it belongs above `restart`, not below `verify`.
     expect(frame.indexOf("pushing abc123def456")).toBeLessThan(frame.indexOf("restart"));
@@ -156,7 +156,7 @@ describe("the crew update surface", () => {
   test("the one question is drawn IN the app — nothing is written to ask it", () => {
     const store = createUpdateStore();
     const answered = store.confirm("update 1 member to 1.2.3?");
-    const frame = plain(render(<PackUpdate store={store} />).lastFrame());
+    const frame = plain(render(<CrewUpdate store={store} />).lastFrame());
     expect(frame).toContain("update 1 member to 1.2.3?");
     expect(frame).toContain("y / N");
     store.answer(true);

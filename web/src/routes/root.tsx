@@ -16,7 +16,7 @@ import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { UpdateRibbon } from "@/components/update-ribbon";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { AppHeaderHost } from "@/components/app-header";
-import { PackProvider } from "@/components/pack-provider";
+import { CrewProvider } from "@/components/crew-provider";
 import { CollieMark } from "@/components/collie-mark";
 import { describeThrownError } from "@/lib/api-error-message";
 import { homePath } from "@/lib/nav";
@@ -85,8 +85,8 @@ export function RootLayout() {
   // active route fills the rest (each route root is `min-h-0 flex-1`). This is what keeps a banner
   // from covering the route's sticky header — it reserves real space instead of overlaying.
   return (
-    // The pack roster is published here, at the data root, so every surface below — including sheets
-    // portalled out to document.body — can answer "which machine?" without a prop chain. With no pack
+    // The crew roster is published here, at the data root, so every surface below — including sheets
+    // portalled out to document.body — can answer "which machine?" without a prop chain. With no crew
     // the provider publishes the solo value and nothing downstream renders any host chrome.
     //
     // `ts` and the poll cadence ride along for tier-2 (lead↔peer) health: §10.2 presents a member
@@ -94,7 +94,7 @@ export function RootLayout() {
     // the number is the one `usePolling` above RETURNS — the gap it is actually running on, not a
     // second derivation of it, so the tolerance can never be computed against a cadence we aren't
     // using. That mattered more once the cadence gained inputs beyond the snapshot (#156).
-    <PackProvider servers={data.servers} sessions={data.sessions} ts={data.ts} pollMs={pollMs}>
+    <CrewProvider servers={data.servers} sessions={data.sessions} ts={data.ts} pollMs={pollMs}>
       <div className="flex h-[100dvh] flex-col overflow-hidden">
         {/* THE update band, and the only one: a release on offer, a confirm just tapped, a run in
             flight, a new bridge this bundle is behind, and peers following — one fixed-height row
@@ -130,7 +130,7 @@ export function RootLayout() {
           <Outlet />
         </AppHeaderHost>
       </div>
-    </PackProvider>
+    </CrewProvider>
   );
 }
 

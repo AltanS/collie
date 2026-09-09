@@ -11,7 +11,7 @@ import { loadDraft } from "@/lib/drafts";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
-import { PackProvider } from "./pack-provider";
+import { CrewProvider } from "./crew-provider";
 import { Composer, TUI_SETTLE_MS } from "./composer";
 import { statusLabel, type ServerSummary } from "@/lib/types";
 
@@ -105,7 +105,7 @@ function StatusSentinel() {
 }
 
 /** renderComposer + the status sentinel, for cases that assert on the status line. `servers` opts
- *  the render into a pack (default: solo, i.e. no host chrome and no host in any copy). */
+ *  the render into a crew (default: solo, i.e. no host chrome and no host in any copy). */
 function renderComposerWithStatus(
   overrides: Partial<ComponentProps<typeof Composer>> = {},
   servers?: ServerSummary[],
@@ -133,10 +133,10 @@ function renderComposerWithStatus(
     {
       path: "/",
       element: (
-        <PackProvider servers={servers}>
+        <CrewProvider servers={servers}>
           <StatusSentinel />
           <Composer {...props} />
-        </PackProvider>
+        </CrewProvider>
       ),
     },
   ]);
@@ -1349,7 +1349,7 @@ describe("Composer — destructive-input confirm", () => {
     expect(props.onSent).toHaveBeenCalled();
   });
 
-  it("names the machine in the confirm — and only on a pack", async () => {
+  it("names the machine in the confirm — and only on a crew", async () => {
     const user = userEvent.setup();
     // Solo: the copy is exactly what it has always been, host clause and all absent.
     renderComposerWithStatus({ scope: { host: "workshop" } });
@@ -1360,7 +1360,7 @@ describe("Composer — destructive-input confirm", () => {
     );
     cleanup();
 
-    // On a pack, "rm -r" is a different sentence depending on whose disk it runs on.
+    // On a crew, "rm -r" is a different sentence depending on whose disk it runs on.
     clearStatus();
     renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
     await user.type(screen.getByPlaceholderText(/type a reply/i), "sudo reboot");
@@ -1421,7 +1421,7 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     expect(band().querySelector('[aria-label*="host" i]')).toBeNull();
     cleanup();
 
-    // Pack — the chip appears, INSIDE the band and nowhere else. Not inside the controls group: it
+    // Crew — the chip appears, INSIDE the band and nowhere else. Not inside the controls group: it
     // names a machine, not a run of five buttons, and `role="group"` is named "Controls".
     renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
     const chip = screen.getByLabelText("Sends to host: workshop");
@@ -1431,8 +1431,8 @@ describe("Composer — the machine and the state, on a band of their own", () =>
 
   it("is NOT in the composer field: no chip in the box, and the typing width is the attach strip alone", async () => {
     // The revision this round is. `pr-11` and only `pr-11` — MEASURED at 254px of typing width at a
-    // true 390px content width and 184px at 320px, on a pack exactly as on a solo install; docked,
-    // the pack figures were 194px and 124px. A second conditional `pr-*` would not stack
+    // true 390px content width and 184px at 320px, on a crew exactly as on a solo install; docked,
+    // the crew figures were 194px and 124px. A second conditional `pr-*` would not stack
     // (tailwind-merge keeps the last padding-right), which is why the number is read off the class.
     const user = userEvent.setup();
     renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
@@ -1462,7 +1462,7 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     expect(label.className).toMatch(/(?:^|\s)sr-only(?=\s|$)/);
   });
 
-  it("holds host + word on a pack, the word ALONE on a solo install, in that order", () => {
+  it("holds host + word on a crew, the word ALONE on a solo install, in that order", () => {
     // THE MOVE THIS ROUND MADE. The pane header's caption line carried the status word by itself, so
     // the top of a 60px row was spent on one word; it came down here, beside the machine, where
     // "which machine, and what is it doing" reads as one sentence at the surface being typed into.
@@ -1488,7 +1488,7 @@ describe("Composer — the machine and the state, on a band of their own", () =>
   it("reserves the WORD's slot, so no status can change its width", () => {
     // THE BUG THE OPERATOR FOUND. The band is right-aligned and the word is variable-width, so every
     // status change slid the host sideways — DESIGN.md §2, verbatim: a state may repaint, it may not
-    // re-lay-out. MEASURED in the playground at a true 390px content width, pack pane, host chip's
+    // re-lay-out. MEASURED in the playground at a true 390px content width, crew pane, host chip's
     // left edge: it was 262.92 / 271.89 / 290.86 / 296.28 / 267.33px for the five statuses (a 33.4px
     // swing) and is 262.92px for all five now. In German the swing was 41.3px and is zero.
     //
@@ -1567,9 +1567,9 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // beside the colour, and this pin fails if either is dropped.
   });
 
-  it("stands at ONE height — solo, pack, shell, gone, and across every status", () => {
+  it("stands at ONE height — solo, crew, shell, gone, and across every status", () => {
     // MEASURED in the browser on the pane screen at a true 390px viewport, both themes: the band is
-    // 14.00px — 1 + 12 + 1 — with the word alone (solo), with host + word (pack), on a shell, with
+    // 14.00px — 1 + 12 + 1 — with the word alone (solo), with host + word (crew), on a shell, with
     // no word at all (a gone pane) and on every one of the five statuses. The five buttons below
     // still measure 44.00px, DESIGN.md §6's floor.
     //
@@ -1577,9 +1577,9 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // band's new top rule cost 1px back.
     //
     // The height is STATED (`h-[14px]`) rather than summed from whatever stands in the band. It used
-    // to be 12px of line box plus the rules, i.e. equal solo and on a pack only because the occupants
+    // to be 12px of line box plus the rules, i.e. equal solo and on a crew only because the occupants
     // happened to agree; an occupant that ever measured 13 would have grown the band and nothing
-    // would have said so. Pinning the border box makes solo and pack identical by construction.
+    // would have said so. Pinning the border box makes solo and crew identical by construction.
     //
     // jsdom has no layout, so what is pinned are the facts that make that true and that a refactor
     // could quietly undo.
@@ -1611,7 +1611,7 @@ describe("Composer — the machine and the state, on a band of their own", () =>
       { scope: { host: "workshop" }, status: undefined },
     ]) {
       renderComposerWithStatus(overrides, fixtureServers);
-      expect(band().className).toBe(soloBand); // the pack pays nothing for the chip
+      expect(band().className).toBe(soloBand); // the crew pays nothing for the chip
       expect(row().className).toBe(soloRow);
       // Both runs state the same 12px line box, as ONE utility.
       for (const run of [band().firstElementChild!, slot().firstElementChild!.firstElementChild!]) {
@@ -1677,7 +1677,7 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     cleanup();
 
     // A SOLO install renders no host at all, so the band's only occupant is the word — and the
-    // centring must not be a fact about the pack. Same utilities, same class string.
+    // centring must not be a fact about the crew. Same utilities, same class string.
     renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" });
     expect(band().querySelector("svg")).toBeNull();
     expect(band().className).toMatch(/(?:^|\s)items-center(?=\s|$)/);

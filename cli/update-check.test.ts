@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { leadStore, member, peerStore } from "../bridge/pack/fixtures.ts";
-import type { OpsRecord } from "../bridge/pack/ops-store.ts";
-import type { TrustStoreData } from "../bridge/pack/trust-store.ts";
+import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
+import type { OpsRecord } from "../bridge/crew/ops-store.ts";
+import type { TrustStoreData } from "../bridge/crew/trust-store.ts";
 import {
   capture,
   context,
@@ -675,7 +675,7 @@ describe("preflight --local — the answer the phone's card reads", () => {
 
   test("a peer this lead cannot reach never refuses the lead's own update (ADR 0016)", async () => {
     const h = harness({ store: lead(["nas"]), ops: { nas: record() }, remote: () => () => NOT_SPAWNED });
-    // Without --local the same pack turns the whole report red.
+    // Without --local the same crew turns the whole report red.
     expect((await preflight(h.deps)).verdict).toBe("red");
     const local = await preflight(h.deps, { local: true });
     expect(local.verdict).toBe("green");

@@ -13,7 +13,7 @@ interface StripsSummaryProps {
   workspaceId: string;
   tabs: TabView[];
   agents: AgentView[];
-  /** The machine this space is on — tab ids collide across a pack, so status is counted per host. */
+  /** The machine this space is on — tab ids collide across a crew, so status is counted per host. */
   host?: string;
   /** The open pane's tab, so its bead can be the emphasised one. */
   selectedTabId: string;
@@ -54,7 +54,7 @@ export function StripsSummary({
   useLocale();
   // The SAME two derivations `tab-strip.tsx` runs, and they may not drift: the tabs of this space,
   // and each tab's worst triage counted over THIS machine's panes only (tab ids collide across a
-  // pack, so an unfiltered list paints a peer's blocked agent onto the lead's bead).
+  // crew, so an unfiltered list paints a peer's blocked agent onto the lead's bead).
   const here = agents.filter((a) => hostKey(a) === (host ?? ""));
   const wsTabs = tabs.filter((tab) => tab.workspaceId === workspaceId);
   // The pane row itself renders nothing below two panes, so neither does its bead group — the bar

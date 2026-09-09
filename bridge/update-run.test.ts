@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { standbyUpdateAnswer, STANDBY_UPDATE_PATH } from "./pack/standby.ts";
+import { standbyUpdateAnswer, STANDBY_UPDATE_PATH } from "./crew/standby.ts";
 import {
   inFlight,
   parseUpdateLock,

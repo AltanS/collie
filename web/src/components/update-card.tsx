@@ -14,18 +14,18 @@ import { timeAgoShort } from "@/lib/format";
 import { useOptionalRootData } from "@/lib/route-data";
 import { noteUpdateRun } from "@/lib/self-update";
 import {
-  packAction,
-  packActionLabel,
+  crewAction,
+  crewActionLabel,
   peerRows,
   peersBehind,
   peersRolledBack,
   type PeerRow,
-} from "@/lib/update-pack";
+} from "@/lib/update-crew";
 import {
   clearUpdateStarted,
   minutesWord,
   noteUpdateStarted,
-  packMoving,
+  crewMoving,
   readRun,
   runInFlight,
 } from "@/lib/update-ribbon";
@@ -46,11 +46,11 @@ import type {
 // peer, and the button that starts it. The route behind it is `POST /api/update`
 // (bridge/update-action.ts), gated exactly like a send.
 //
-// ── ONE CONFIRM COVERS THE PACK, AND PEERS ARE LINES IN THIS CARD ────────────
+// ── ONE CONFIRM COVERS THE CREW, AND PEERS ARE LINES IN THIS CARD ────────────
 // The peer lines sit inside the card rather than in a table beside it, because the card is what the
 // confirm button belongs to and the thing that blocks the confirm has to be readable without moving
 // your eyes to a second surface. No peer line carries a button of any kind: the operator's decision
-// is "level this pack", made once, and a per-peer button would be a second one.
+// is "level this crew", made once, and a per-peer button would be a second one.
 //
 // ── THIS IS NOT THE OTHER UPDATE ─────────────────────────────────────────────
 // The top band's bundle states say "New version — tap to update" and reload the BUNDLE. This card
@@ -217,10 +217,10 @@ export function UpdateCard() {
   const moving = busy || started || running;
 
   // Whether this machine leads anybody. The roster answers it on every snapshot; the check's own
-  // `pack` array answers it better, when the bridge is new enough to send one. Either is enough to
+  // `crew` array answers it better, when the bridge is new enough to send one. Either is enough to
   // make the button say "crew" — a lead with peers it could not reach still leads them.
   const servers = data?.servers ?? [];
-  const packLead = servers.length > 1 && servers.some((s) => s.isLead);
+  const crewLead = servers.length > 1 && servers.some((s) => s.isLead);
   const census = check?.pack ?? [];
   // Read through the SHARED reader, never off `run.peers` directly (M20/09). A peers-only run has no
   // record on this machine at all, so its legs ride the status rather than the run, and a component
@@ -232,7 +232,7 @@ export function UpdateCard() {
   const reading = readRun({ update: snapshot ?? check, run, now: Date.now() });
   const legs = [...reading.legs];
   const rows = peerRows(census, legs);
-  const hasPeers = rows.length > 0 || packLead;
+  const hasPeers = rows.length > 0 || crewLead;
   const behind = peersBehind(census, current);
   const rolledBack = peersRolledBack(legs);
   // A packaged install never takes an update from here (ADR 0035): the root is not writable, the CLI
@@ -250,9 +250,9 @@ export function UpdateCard() {
     ? (snapshot?.packageCommand ?? check?.preflight?.checks.find((c) => c.id === PACKAGE_CHECK_ID)?.remedy ?? null)
     : null;
   // `leadCanTake: false` is what keeps the peers reachable from the phone. Without it the release
-  // short-circuit answered `update-pack`, the card disabled it, and a packaged lead with a peer a
+  // short-circuit answered `update-crew`, the card disabled it, and a packaged lead with a peer a
   // version behind was left with a disabled button and an explanation about its own install.
-  const action = packAction({ releaseAvailable, hasPeers, behind, rolledBack, leadCanTake: !packageManaged });
+  const action = crewAction({ releaseAvailable, hasPeers, behind, rolledBack, leadCanTake: !packageManaged });
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -268,14 +268,14 @@ export function UpdateCard() {
   // Read once on mount, and again whenever a run reaches a terminal state — the preflight's answer
   // is a different answer after an update than it was before one.
   //
-  // "A RUN" IS THE PACK'S RUN AND NOT ONLY THIS MACHINE'S (M20/09). `running` reads the local record,
+  // "A RUN" IS THE CREW'S RUN AND NOT ONLY THIS MACHINE'S (M20/09). `running` reads the local record,
   // and a peers-only run never writes one, so this flag never toggled and the effect never re-fired:
   // `fetchUpdateState` was called once at mount and the census on screen then aged without bound.
   // That is the reported symptom, a peer's version that only a pull-to-refresh could correct.
   //
-  // `packMoving` is the same function the band reads, so the card cannot keep asking after the band
+  // `crewMoving` is the same function the band reads, so the card cannot keep asking after the band
   // has gone quiet, or stop asking before it does.
-  const settled = !running && !packMoving(snapshot ?? check, run);
+  const settled = !running && !crewMoving(snapshot ?? check, run);
   useEffect(() => {
     const ac = new AbortController();
     void load(ac.signal);
@@ -475,7 +475,7 @@ export function UpdateCard() {
           <div className="flex flex-col gap-2 border-t border-border p-3">
             <div className="flex flex-wrap items-center gap-2">
               {/* THE action button. One of the three labels, never two of them, and the label
-                  states what the tap will actually do: level this machine, level the pack, or
+                  states what the tap will actually do: level this machine, level the crew, or
                   run the peers again once this machine is already current. */}
               {/* On a packaged install the command REPLACES the button rather than greying it
                   out: a disabled control is a thing to try again, and there is nothing here to
@@ -484,16 +484,16 @@ export function UpdateCard() {
               {packageCommand !== null && (
                 <code className="select-all rounded bg-muted px-2 py-1 font-mono text-xs">{packageCommand}</code>
               )}
-              {action !== "none" && !(packageManaged && action !== "retry-pack") && (
+              {action !== "none" && !(packageManaged && action !== "retry-crew") && (
                 <Button
                   size="sm"
-                  disabled={moving || pending || (blocked && action !== "retry-pack")}
+                  disabled={moving || pending || (blocked && action !== "retry-crew")}
                   onClick={() =>
                     setConfirming(
-                      action === "retry-pack"
+                      action === "retry-crew"
                         ? { kind: "retry", version: current, major: false, peersOnly: true }
                         : {
-                            kind: action === "update-pack" ? "pack" : "single",
+                            kind: action === "update-crew" ? "pack" : "single",
                             version: latest ?? current,
                             major: false,
                             peersOnly: false,
@@ -502,7 +502,7 @@ export function UpdateCard() {
                   }
                 >
                   {pending && <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin" />}
-                  {pending ? t("settings.updateCard.checking") : packActionLabel(action, latest ?? current)}
+                  {pending ? t("settings.updateCard.checking") : crewActionLabel(action, latest ?? current)}
                 </Button>
               )}
               {/* NOT a second update action: crossing a major is its own consent (ADR 0020),
@@ -601,7 +601,7 @@ export function UpdateCard() {
         ) : null}
       </Collapse>
 
-      {/* The pack, as lines in this card. Drawn whether or not a run is in flight — a peer going
+      {/* The crew, as lines in this card. Drawn whether or not a run is in flight — a peer going
           quiet is exactly what the operator opened this page to see. On a solo install there is
           nothing here and the card grows no height at all. */}
       <Collapse open={rows.length > 0}>
@@ -615,10 +615,10 @@ export function UpdateCard() {
             // belongs where a tap on that band lands (M20/04).
             slow={reading.slow}
             // RETRY NOW IS NOT A SECOND DIALLER (M20/04). It opens the same peers-only confirm the
-            // pack-wide retry opens, which begins a run and re-sweeps. Spec 01's urgency rule then
+            // crew-wide retry opens, which begins a run and re-sweeps. Spec 01's urgency rule then
             // dials every member with an open leg on every sweep, whatever backoff it was on, so the
             // member is due without this browser clearing anything. Spec 02's reset is reserved for
-            // the pack link's own two-factor admission, and a browser is not that.
+            // the crew link's own two-factor admission, and a browser is not that.
             onRetry={() => setConfirming({ kind: "retry", version: current, major: false, peersOnly: true })}
           />
         ) : null}
@@ -644,11 +644,11 @@ export function UpdateCard() {
  */
 const PACKAGE_CHECK_ID = "package";
 
-/** The confirm's heading. Four asks, four sentences — a pack-wide run must not be consented to
+/** The confirm's heading. Four asks, four sentences — a crew-wide run must not be consented to
  *  through the words written for one machine. */
 function confirmTitle(ask: Confirm): string {
   if (ask.kind === "major") return t("settings.updateCard.majorConfirmTitle", { version: ask.version });
-  if (ask.kind === "pack") return t("settings.updateCard.packConfirmTitle", { version: ask.version });
+  if (ask.kind === "pack") return t("settings.updateCard.crewConfirmTitle", { version: ask.version });
   if (ask.kind === "retry") return t("settings.updateCard.retryConfirmTitle");
   return t("settings.updateCard.confirmTitle", { version: ask.version });
 }
@@ -664,7 +664,7 @@ function confirmTitle(ask: Confirm): string {
  */
 function confirmBody(ask: Confirm, packageManaged = false): string {
   if (ask.kind === "major") return t("settings.updateCard.majorConfirmBody", { version: ask.version });
-  if (ask.kind === "pack") return t("settings.updateCard.packConfirmBody");
+  if (ask.kind === "pack") return t("settings.updateCard.crewConfirmBody");
   if (ask.kind === "retry") {
     return packageManaged ? t("settings.updateCard.packageManaged") : t("settings.updateCard.retryConfirmBody");
   }
@@ -673,7 +673,7 @@ function confirmBody(ask: Confirm, packageManaged = false): string {
 
 function confirmAction(ask: Confirm): string {
   if (ask.kind === "major") return t("settings.updateCard.majorConfirmAction", { version: ask.version });
-  if (ask.kind === "pack") return t("settings.updateCard.packConfirmAction");
+  if (ask.kind === "pack") return t("settings.updateCard.crewConfirmAction");
   if (ask.kind === "retry") return t("settings.updateCard.retryConfirmAction");
   return t("settings.updateCard.confirmAction");
 }
@@ -681,7 +681,7 @@ function confirmAction(ask: Confirm): string {
 /**
  * The peer lines. Read-only by construction: this function renders no interactive element at all,
  * which is the milestone's rule rather than an omission — the operator's decision is "level this
- * pack", taken once on the button above, and a per-peer button would be a second one.
+ * crew", taken once on the button above, and a per-peer button would be a second one.
  *
  * Worst first, so the row that blocks the confirm is the row nearest the button. Each line is
  * `name · version · verdict-or-state`, plus the reason on its own line whenever the row is red,
@@ -738,7 +738,7 @@ function PeerSection({
         ))}
       </ul>
       {slow && failed === null && (
-        <p className="mt-2 text-xs text-muted-foreground">{t("settings.updateCard.packPatience")}</p>
+        <p className="mt-2 text-xs text-muted-foreground">{t("settings.updateCard.crewPatience")}</p>
       )}
       {/* THE SAME SENTENCE THE BAND SHOWS, in the same words (M20/04). The row above already carries
           the state and the reason, but an operator who arrived from the band must find what the band

@@ -1,10 +1,10 @@
-// THE CANDIDATE LIST `collie pack add` OFFERS WHEN IT IS GIVEN NO TARGET (M22/07).
+// THE CANDIDATE LIST `collie crew add` OFFERS WHEN IT IS GIVEN NO TARGET (M22/07).
 //
 // Two lists already exist on the operator's machine and neither is a multiplexer's business: the
 // `Host` entries in `~/.ssh/config` (`./ssh-config.ts`) and a machine-linking multiplexer's own
 // saved targets (`bridge/mux/host-candidates.ts`, ADR 0036 (c)). This module merges them, marks the
 // ones this lead already leads, and renders the rows. It decides nothing else: the operator picks,
-// and `pack add` then runs unchanged from that point, confirm included.
+// and `crew add` then runs unchanged from that point, confirm included.
 //
 // ── ONE MACHINE IS ONE ROW, AND THE KEY IS THE RESOLVED TARGET ───────────────
 // The two sources will name the same machine twice. `~/.ssh/config` calls it `attic`; the
@@ -16,7 +16,7 @@
 //
 // **`ssh -G` NEVER CONNECTS.** It prints the configuration that WOULD be used and exits; no socket
 // is opened, no `ProxyCommand` runs, no key is offered, no host key is checked. That is what makes
-// it safe to run over every alias in a config file the moment the operator types `collie pack add`.
+// it safe to run over every alias in a config file the moment the operator types `collie crew add`.
 // It runs behind the injected `HostProbe` seam under one shared budget
 // ({@link CANDIDATE_TIMEOUT_MS}), so a hung resolution cannot hang the picker and no test spawns it.
 //
@@ -26,9 +26,9 @@
 //
 // ── THE MARK IS A HINT, NEVER A VERDICT ──────────────────────────────────────
 // A row carrying a member id says "this lead already has it". It does NOT decide anything: the
-// refusals in `cli/remote.ts` ask the FAR machine what pack it is in, and `cli/pack.ts` refuses a
+// refusals in `cli/remote.ts` ask the FAR machine what crew it is in, and `cli/crew.ts` refuses a
 // second join on the joining machine. The lead's own roster cannot know that a machine joined some
-// other pack behind its back. So the mark saves the operator a refused run and replaces neither
+// other crew behind its back. So the mark saves the operator a refused run and replaces neither
 // refusal.
 
 import type { HostCandidate, HostProbe } from "../bridge/mux/host-candidates.ts";
@@ -45,7 +45,7 @@ export interface SourcedCandidates {
   readonly candidates: readonly HostCandidate[];
 }
 
-/** One member of this lead's own pack, as the roster join sees it (`bridge/pack/ops-store.ts`). */
+/** One member of this lead's own crew, as the roster join sees it (`bridge/crew/ops-store.ts`). */
 export interface RosterEntry {
   readonly memberId: string;
   /** The ssh destination the lead recorded for it, as the operator typed it. */
@@ -56,7 +56,7 @@ export interface RosterEntry {
 
 /** One machine, after the merge. */
 export interface CandidateRow {
-  /** What `pack add` is handed when this row is picked — the first source's spelling. */
+  /** What `crew add` is handed when this row is picked — the first source's spelling. */
   readonly target: string;
   /** Every spelling a source gave this machine, in source order, deduplicated. */
   readonly names: readonly string[];
@@ -168,7 +168,7 @@ export function mergeCandidates(
         continue;
       }
       // The FIRST source's spelling stays the target — `ssh config` is listed first, so the name the
-      // operator maintains by hand is the one `pack add` is handed and the one the row leads with.
+      // operator maintains by hand is the one `crew add` is handed and the one the row leads with.
       rows.set(key, {
         ...existing,
         names: existing.names.includes(target) ? existing.names : [...existing.names, target],
@@ -211,8 +211,8 @@ export function offeredCandidates(rows: readonly CandidateRow[]): readonly Candi
  *
  * The source tag and the member-id mark are SEPARATE columns, deliberately. "Where this name came
  * from" and "this lead already has it" are different facts, and a row that ran them together would
- * read as though a multiplexer's machine list and the pack were linked. They are not
- * (`docs/pack.md`).
+ * read as though a multiplexer's machine list and the crew were linked. They are not
+ * (`docs/crew.md`).
  */
 export function renderCandidateList(rows: readonly CandidateRow[]): readonly string[] {
   const offered = offeredCandidates(rows);
