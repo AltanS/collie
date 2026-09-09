@@ -602,6 +602,7 @@ export const zh: Dictionary = {
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "终端图像",
   "mirror.imageBadge": "[图片]",
+  "mirror.imageMatchedByOrder": "按顺序匹配，打开历史记录核对",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "刚刚",

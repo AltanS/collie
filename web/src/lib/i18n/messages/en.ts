@@ -644,6 +644,7 @@ export const en = {
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "Terminal graphics",
   "mirror.imageBadge": "[Image]",
+  "mirror.imageMatchedByOrder": "matched by order, open History to check",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "just now",

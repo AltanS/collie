@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import type { ComponentProps } from "react";
 
 import { AnsiOutput } from "./ansi-output";
@@ -528,5 +528,34 @@ describe("terminal mirror image placeholders", () => {
     const link = [...container.querySelectorAll("a")].find((a) => a.querySelector("img") === null)!;
     expect(link.textContent).toBe(url);
     expect(link.getAttribute("href")).toBe(url);
+  });
+
+  it("says on the card that the picture was matched by order", () => {
+    // The match is an approximation, so a matched card must read as a guess and point at History.
+    const { container } = render(
+      <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,
+    );
+    expect(container.textContent).toContain("matched by order, open History to check");
+    expect(container.querySelector("a[title]")?.getAttribute("title")).toBe(
+      "matched by order, open History to check",
+    );
+  });
+
+  it("does not put the matched-by-order line on the badge", () => {
+    // The badge claims nothing about a picture, so there is nothing for it to hedge.
+    const { container } = render(<AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} />);
+    expect(container.textContent).toContain("[Image]");
+    expect(container.textContent).not.toContain("matched by order");
+  });
+
+  it("falls back to the badge when the image fails to load", () => {
+    // A peer on an older build has no `blobs/<hash>` route and answers 404 (PACK_PROTOCOL §9.1),
+    // and a blob can also be gone. Either way: the badge, never a broken-image glyph.
+    const { container } = render(
+      <AnsiOutput text={`header\n${KITTY_PLACEHOLDER}\nfooter`} images={[BLOB]} />,
+    );
+    fireEvent.error(container.querySelector("img")!);
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.textContent).toContain("[Image]");
   });
 });

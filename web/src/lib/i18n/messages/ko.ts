@@ -613,6 +613,7 @@ export const ko: Dictionary = {
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "터미널 그래픽",
   "mirror.imageBadge": "[이미지]",
+  "mirror.imageMatchedByOrder": "순서로 맞춤, 확인은 기록에서",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "방금 전",

@@ -615,6 +615,7 @@ export const ja: Dictionary = {
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "ターミナルグラフィックス",
   "mirror.imageBadge": "[画像]",
+  "mirror.imageMatchedByOrder": "順序で対応付け。確認は履歴から",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "たった今",

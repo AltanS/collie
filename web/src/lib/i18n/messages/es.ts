@@ -622,6 +622,7 @@ export const es: Dictionary = {
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "Gráfico de terminal",
   "mirror.imageBadge": "[Imagen]",
+  "mirror.imageMatchedByOrder": "emparejada por orden, abre el Historial para comprobarlo",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "ahora mismo",

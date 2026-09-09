@@ -623,6 +623,7 @@ export const de: Dictionary = {
   // --- mirror (terminal graphics in the pane mirror) ---
   "mirror.imageAlt": "Terminal-Grafik",
   "mirror.imageBadge": "[Bild]",
+  "mirror.imageMatchedByOrder": "nach Reihenfolge zugeordnet, zum Prüfen den Verlauf öffnen",
 
   // --- time (relative/clock formatting) ---
   "time.justNow": "gerade eben",

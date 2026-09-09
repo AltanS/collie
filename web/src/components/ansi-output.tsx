@@ -1,4 +1,4 @@
-import { Fragment, memo, useEffect, useMemo, useRef } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
@@ -128,6 +128,9 @@ const NO_MATCHES: FindMatch[] = [];
  *  `NO_BLOCK_RUNS` is the wrap-off answer for EVERY block at once: that path computes nothing, and
  *  the lookup below falls through to NO_RUNS for each block it asks about. */
 const NO_RUNS = tableRuns([]);
+/** Stable empty set of failed image URLs, so "nothing has failed" is one identity. */
+const NO_FAILED: ReadonlySet<string> = new Set();
+
 /** Stable empty image list, so "this pane has no journal images" is one identity across polls. */
 const NO_IMAGES: readonly string[] = Object.freeze([]);
 /** The frozen empty cluster list, for a block the grammar produced no clusters for. */
@@ -250,7 +253,11 @@ const TABLE_RUN_CLASS =
 // The card is an ANCHOR to the blob, so it is keyboard reachable and long-pressable, and the href
 // is a URL `imageSrc` already vetted (`lib/api.ts`) — a blob path on the owning host, or inline
 // bytes. Never a URL the agent's log supplied.
-const renderImageCluster = (url: string | null, key: string): ReactNode =>
+const renderImageCluster = (
+  url: string | null,
+  key: string,
+  onImageError: (url: string) => void,
+): ReactNode =>
   url === null ? (
     <span
       key={key}
@@ -263,14 +270,32 @@ const renderImageCluster = (url: string | null, key: string): ReactNode =>
       key={key}
       className="my-2 block select-none overflow-hidden rounded-md border border-border/40 bg-black/20 text-center"
     >
-      <a href={url} target="_blank" rel="noopener noreferrer" className="inline-block cursor-zoom-in">
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        // The same sentence as the caption, as the anchor's tooltip: a pointer that hovers the
+        // picture asks about the picture, and the caption may be scrolled out of the tap target.
+        title={t("mirror.imageMatchedByOrder")}
+        className="inline-block cursor-zoom-in"
+      >
         <img
           src={url}
           alt={t("mirror.imageAlt")}
           className="mx-auto max-h-80 w-auto max-w-full rounded object-contain"
           loading="lazy"
+          // A load that fails falls back to the badge (see FAILED IMAGES in the component). The
+          // handler reports the URL, not the cluster: the same blob can sit under two clusters.
+          onError={() => onImageError(url)}
         />
       </a>
+      {/* THE CARD SAYS IT IS A GUESS. The placeholder carries a Kitty image id no journal maps to a
+          blob, so the picture is matched by ORDER (`lib/mirror-images.ts` § "why the match is by
+          order"). The operator is told that here, on the card itself, and pointed at History, which
+          reads the journal turn by turn and is exact. */}
+      <span className="block px-2 pb-1 text-xs text-muted-foreground">
+        {t("mirror.imageMatchedByOrder")}
+      </span>
     </span>
   );
 
@@ -348,10 +373,25 @@ export const AnsiOutput = memo(function AnsiOutput({
     () => clustersByBlock.reduce((sum, c) => sum + c.length, 0),
     [clustersByBlock],
   );
+  // ── FAILED IMAGES ARE BADGES ────────────────────────────────────────────────
+  // A blob read can answer 404: the machine that owns the bytes may be a peer running a build that
+  // has no `blobs/<hash>` route, and that route is additive-optional by design (PACK_PROTOCOL.md
+  // §9.1 — a lead or a peer without it answers 404). A file can also be gone. Either way the
+  // operator must not be shown a broken-image glyph, so the URL that failed is remembered and the
+  // cluster falls back to the "[Image]" badge it would have had with no image at all.
+  const [failedImages, setFailedImages] = useState<ReadonlySet<string>>(NO_FAILED);
+  const onImageError = useCallback((url: string) => {
+    setFailedImages((prev) => (prev.has(url) ? prev : new Set(prev).add(url)));
+  }, []);
+
   // Which image each cluster gets, aligned from the END — see the prop's doc and mirror-images.ts.
+  // A URL whose load already failed counts as no image, so the badge takes its place.
   const clusterImages = useMemo(
-    () => alignImagesFromEnd(clusterCount, images ?? NO_IMAGES),
-    [clusterCount, images],
+    () =>
+      alignImagesFromEnd(clusterCount, images ?? NO_IMAGES).map((url) =>
+        url !== null && failedImages.has(url) ? null : url,
+      ),
+    [clusterCount, images, failedImages],
   );
 
   // Find offsets live over the *raw* mirror text (raw blocks joined by "\n", lines joined by "\n").
@@ -561,7 +601,7 @@ export const AnsiOutput = memo(function AnsiOutput({
           // spaces of the same character count, so the row reads as written and no offset moves.
           nodes.push(renderLine(blankPlaceholders(line), k, true, false));
         }
-        nodes.push(renderImageCluster(url, `image:${bi}:${cluster.start}`));
+        nodes.push(renderImageCluster(url, `image:${bi}:${cluster.start}`, onImageError));
         li = cluster.end + 1;
         continue;
       }
