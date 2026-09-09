@@ -836,7 +836,7 @@ describe("journal, uploads and state stay host-local", () => {
   //
   // This test pins that as a FACT rather than leaving it a surprise. It is not an assertion that the
   // gap is right. If a route is added, this test goes red, and the table in MUX_CONTRACT.md
-  // § "Conformance across a pack link" is what has to be corrected in the same change.
+  // § "Conformance across a crew link" is what has to be corrected in the same change.
   test("four mux-port verbs have no forwardable crew route, and the contract says which", () => {
     // The shapes a route for each would take, in this surface's own grammar.
     const unreachable = [
@@ -852,7 +852,7 @@ describe("journal, uploads and state stay host-local", () => {
     // And the contract names the gap, so the two cannot drift apart silently.
     const contract = readFileSync(join(import.meta.dir, "..", "..", "MUX_CONTRACT.md"), "utf8");
     // M27: stays until spec 04 (docs) — the literal is MUX_CONTRACT.md's own heading.
-    expect(contract).toContain("## Conformance across a pack link");
+    expect(contract).toContain("## Conformance across a crew link");
     expect(contract).toContain("listSessions` and the three worktree verbs have no forwardable route");
   });
 });

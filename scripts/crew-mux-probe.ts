@@ -30,7 +30,7 @@
 // A facade that answered `unsupported` for a missing route would turn each of those into a green
 // tick, which is worse than no run at all. So the facade records a GAP and answers `refused` with
 // the gap in its detail, the affected check fails loudly, and the gap list is printed beside the
-// results. MUX_CONTRACT.md § "Conformance across a pack link" states which side each check is
+// results. MUX_CONTRACT.md § "Conformance across a crew link" states which side each check is
 // gradable on.
 //
 // WHY IT DOES NOT PARSE THE BODIES FIELD BY FIELD. This talks to a Collie of the SAME BUILD, over
@@ -364,7 +364,7 @@ async function main(): Promise<void> {
   }
 
   if (facade.gaps.length > 0) {
-    console.log('\nWhat the crew surface could not express (MUX_CONTRACT.md § "Conformance across a pack link"):');
+    console.log('\nWhat the crew surface could not express (MUX_CONTRACT.md § "Conformance across a crew link"):');
     for (const gap of facade.gaps) console.log(`   · ${gap.what} — ${gap.why}`);
   }
   console.log(

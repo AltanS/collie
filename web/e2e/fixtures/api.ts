@@ -2,8 +2,8 @@ import type { Page, Route } from "@playwright/test";
 
 import type { Locale } from "@/lib/i18n/locale";
 import {
-  fixturePackSnapshot,
-  fixturePackStatus,
+  fixtureCrewSnapshot,
+  fixtureCrewStatus,
   fixtureSnapshot,
   fixtureTranscript,
   paneTextWithDraft,
@@ -87,7 +87,7 @@ async function answer(route: Route, path: string): Promise<void> {
   }
 
   // The DEFAULT world is solo, so the census refuses exactly as a non-lead bridge does. A case that
-  // wants a crew overrides this route with `fixturePackStatus`.
+  // wants a crew overrides this route with `fixtureCrewStatus`.
   if (path === "/api/pack") {
     return fulfillJson(
       route,
@@ -144,7 +144,7 @@ export async function installApiStub(page: Page): Promise<void> {
 /**
  * Turn the default solo world into a CREW: three machines in the roster and a census to match.
  *
- * `fixturePackSnapshot` and `fixturePackStatus` describe the same three machines
+ * `fixtureCrewSnapshot` and `fixtureCrewStatus` describe the same three machines
  * (`src/test/handlers.ts` § the pack fixtures), so the roster the host chrome reads and the census
  * the crew page reads never disagree about who is out there. Two routes are replaced and nothing
  * else is: call it AFTER {@link installApiStub}, whose 501 fall-through still covers everything
@@ -156,11 +156,11 @@ export async function installApiStub(page: Page): Promise<void> {
 export async function installCrewWorld(page: Page): Promise<void> {
   await page.route(
     (url) => url.pathname === "/api/snapshot",
-    (route) => fulfillJson(route, fixturePackSnapshot),
+    (route) => fulfillJson(route, fixtureCrewSnapshot),
   );
   await page.route(
     (url) => url.pathname === "/api/pack",
-    (route) => fulfillJson(route, fixturePackStatus),
+    (route) => fulfillJson(route, fixtureCrewStatus),
   );
 }
 

@@ -54,6 +54,10 @@ const STATES_BASE_URL = `http://127.0.0.1:${STATES_PORT}`;
  *  handle roll call (spec 02). An `app-*` project must never collect either. */
 const STATES_TEST_MATCH = [/states\.spec\.ts$/, /handles\.spec\.ts$/];
 
+/** Tier 2 lives under `e2e/live/**` and has its own config (`e2e/live/playwright.config.ts`).
+ *  It needs the live dev lane, so tier 1 never collects it; `make e2e` runs tier 2. */
+const LIVE_TEST_IGNORE = "**/live/**";
+
 export default defineConfig({
   // Outside `src/`, so `vitest.config.ts:30` (`include: ["src/**/*.{test,spec}.{ts,tsx}"]`) collects
   // none of these and neither runner ever sees the other's files.
@@ -82,12 +86,12 @@ export default defineConfig({
       use: { browserName: "chromium", viewport: PHONE, hasTouch: true, deviceScaleFactor: 2 },
       // The `app` target owns every spec EXCEPT the states target's two: the shipped bundle has
       // no playground and cannot answer them.
-      testIgnore: STATES_TEST_MATCH,
+      testIgnore: [...STATES_TEST_MATCH, LIVE_TEST_IGNORE],
     },
     {
       name: "app-tablet",
       use: { browserName: "chromium", viewport: TABLET, hasTouch: true, deviceScaleFactor: 2 },
-      testIgnore: STATES_TEST_MATCH,
+      testIgnore: [...STATES_TEST_MATCH, LIVE_TEST_IGNORE],
     },
     {
       name: "states-phone",
@@ -99,6 +103,7 @@ export default defineConfig({
         baseURL: STATES_BASE_URL,
       },
       testMatch: STATES_TEST_MATCH,
+      testIgnore: LIVE_TEST_IGNORE,
     },
     {
       name: "states-tablet",
@@ -110,6 +115,7 @@ export default defineConfig({
         baseURL: STATES_BASE_URL,
       },
       testMatch: STATES_TEST_MATCH,
+      testIgnore: LIVE_TEST_IGNORE,
     },
   ],
   webServer: [

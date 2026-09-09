@@ -20,12 +20,12 @@ test("the crew page shows every machine reachable", async ({ page, request }) =>
   );
 
   await page.goto("/crew");
-  await expect(page.getByRole("heading", { name: message("pack.title") })).toBeVisible();
+  await expect(page.getByRole("heading", { name: message("crew.title") })).toBeVisible();
 
   // One caption, one sentence, built from the same numbers the endpoint just gave.
-  const caption = `${crew.pack.name || crew.pack.id} · ${message("pack.summary.counts", {
-    machines: plural("pack.summary.machines", crew.members.length),
-    reachable: message("pack.summary.reachable", { count: reachable.length }),
+  const caption = `${crew.pack.name || crew.pack.id} · ${message("crew.summary.counts", {
+    machines: plural("crew.summary.machines", crew.members.length),
+    reachable: message("crew.summary.reachable", { count: reachable.length }),
   })}`;
   await expect(page.getByText(caption, { exact: true })).toBeVisible();
 });
@@ -49,10 +49,10 @@ test("the crew page marks the real lead and the real deputy", async ({ page, req
   // `aria-hidden`, so the name is the only honest handle for them.
   await expect(
     page.getByRole("button", {
-      name: message("pack.node.aria", {
+      name: message("crew.node.aria", {
         name: lead.name || lead.id,
         role: message("connection.host.lead"),
-        health: message("pack.health.reachable"),
+        health: message("crew.health.reachable"),
       }),
       exact: true,
     }),
@@ -60,10 +60,10 @@ test("the crew page marks the real lead and the real deputy", async ({ page, req
 
   await expect(
     page.getByRole("button", {
-      name: message("pack.node.aria", {
+      name: message("crew.node.aria", {
         name: deputy.name || deputy.id,
-        role: message("pack.role.deputy"),
-        health: message("pack.health.reachable"),
+        role: message("crew.role.deputy"),
+        health: message("crew.health.reachable"),
       }),
       exact: true,
     }),
@@ -89,7 +89,7 @@ test("the scope switcher lists every machine in the crew", async ({ page, reques
   // switcher is rendered from snapshot data that arrives after it — a tap in that window lands on a
   // button React is about to replace, and the sheet never opens. The crew footer is the cheapest
   // proof that the snapshot is in.
-  await expect(page.getByRole("button", { name: message("pack.footer.aria") })).toBeVisible();
+  await expect(page.getByRole("button", { name: message("crew.footer.aria") })).toBeVisible();
 
   // The trigger names the machine currently in scope. No `?h=`, so that is the lead.
   const trigger = page.getByRole("button", {
