@@ -272,6 +272,38 @@ export const fixtureTranscript: TranscriptEntry[] = [
   },
 ];
 
+/**
+ * A journal image reference in the ONE shape `imageSrc` accepts: a blob path on the owning collie,
+ * `/api/blobs/<64 hex>` (`lib/api.ts` § BLOB_REF). Anything else is refused there and renders as no
+ * image, so a fixture that used a plausible-looking `https://` URL would be testing the refusal.
+ */
+export const fixtureImageRef = "/api/blobs/" + "3f".repeat(32);
+
+/**
+ * {@link fixtureTranscript} plus ONE turn that carries a picture.
+ *
+ * A separate export rather than an image part spliced into `fixtureTranscript`: that array is the
+ * newest-turn fixture `use-latest-reply.test.ts` reads, and a third turn — or a second part on the
+ * newest one — moves what "the newest spoken turn" is. So the two-turn body stays exactly what it
+ * was, and the image case takes this one, which is that body with a turn appended.
+ *
+ * ONE image, deliberately. The mirror aligns pictures to placeholder clusters FROM THE END
+ * (`lib/mirror-images.ts` § alignImagesFromEnd), so a screen showing two clusters and holding one
+ * image renders a badge above a picture — both states at once, in one fixture.
+ */
+export const fixtureTranscriptWithImage: TranscriptEntry[] = [
+  ...fixtureTranscript,
+  {
+    uuid: "t3",
+    ts: "2026-07-25T06:22:31.771Z",
+    role: "assistant",
+    parts: [
+      { kind: "text", text: "Here is the screen." },
+      { kind: "image", url: fixtureImageRef },
+    ],
+  },
+];
+
 // ── The fake pane's input box ────────────────────────────────────────────────────────────────────
 // A guarded reply (lib/reply-action.ts) types with submit:false and then polls pane reads until the
 // adapter can see that text on the "❯" line — only then does it send the submit key. So the fake
