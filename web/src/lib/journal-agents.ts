@@ -24,8 +24,16 @@
 
 /** The Herdr `agent` strings this build can read a session log for. Mirrors `journalAgents()` plus
  *  every alias in the bridge's `AGENT_ALIASES` — `omp` is Oh My Pi, which writes pi's log in pi's
- *  format, so it is a second NAME for the pi adapter and not a sixth adapter. */
-const JOURNAL_AGENTS: ReadonlySet<string> = new Set(["claude", "codex", "grok", "omp", "opencode", "pi"]);
+ *  format, so it is a second NAME for the pi adapter and not a seventh adapter. */
+const JOURNAL_AGENTS: ReadonlySet<string> = new Set([
+  "claude",
+  "codex",
+  "grok",
+  "hermes",
+  "omp",
+  "opencode",
+  "pi",
+]);
 
 /**
  * Whether `agent` is one whose sessions Collie could read a transcript from.

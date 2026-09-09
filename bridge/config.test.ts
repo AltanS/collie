@@ -28,6 +28,7 @@ const KEYS = [
   "COLLIE_PI_ROOT",
   "COLLIE_OPENCODE_ROOT",
   "COLLIE_GROK_ROOT",
+  "COLLIE_HERMES_ROOT",
   // Each harness's own home var participates in journal-root resolution, so the suite must own them
   // too — otherwise a developer with CODEX_HOME set gets different results than CI.
   "CODEX_HOME",
@@ -92,6 +93,7 @@ describe("loadConfig", () => {
     // OpenCode keeps ONE sqlite database at the top of its XDG data dir — no per-session files.
     expect(cfg.journalRoots.opencode).toEqual([join(homedir(), ".local", "share", "opencode")]);
     expect(cfg.journalRoots.grok).toEqual([join(homedir(), ".grok", "sessions")]);
+    expect(cfg.journalRoots.hermes).toEqual([join(homedir(), ".hermes")]);
     expect(cfg.submitKeys).toEqual(["Enter"]);
     expect(cfg.trustedUser).toBe("");
     expect(cfg.trustedUserOptional).toBe(false);
@@ -218,6 +220,11 @@ describe("loadConfig", () => {
     process.env.CODEX_HOME = "/srv/codex";
     process.env.COLLIE_CODEX_ROOT = "/elsewhere/rollouts";
     expect(loadConfig().journalRoots.codex).toEqual(["/elsewhere/rollouts"]);
+  });
+
+  test("COLLIE_HERMES_ROOT relocates Hermes state.db", () => {
+    process.env.COLLIE_HERMES_ROOT = "/srv/hermes";
+    expect(loadConfig().journalRoots.hermes).toEqual(["/srv/hermes"]);
   });
 
   // The operator's rows sit beside their .env, and the launcher hands us that dir precisely so the

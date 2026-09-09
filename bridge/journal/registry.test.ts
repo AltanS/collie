@@ -12,7 +12,7 @@ import {
 // two properties that keep it from rotting: keys come from the adapters themselves, and a hostile
 // agent name can't resolve to something that isn't an adapter.
 
-const roots = { claude: ["/c"], codex: ["/x"], pi: ["/p"], opencode: ["/o"], grok: ["/g"] };
+const roots = { claude: ["/c"], codex: ["/x"], pi: ["/p"], opencode: ["/o"], grok: ["/g"], hermes: ["/h"] };
 
 describe("buildJournalRegistry", () => {
   test("serves the five verified harnesses", () => {
@@ -20,6 +20,7 @@ describe("buildJournalRegistry", () => {
       "claude",
       "codex",
       "grok",
+      "hermes",
       "opencode",
       "pi",
     ]);
@@ -34,7 +35,7 @@ describe("buildJournalRegistry", () => {
 describe("adapterFor", () => {
   const registry = buildJournalRegistry(roots);
 
-  test.each(["claude", "codex", "pi", "opencode", "grok"])("resolves %s", (agent) => {
+  test.each(["claude", "codex", "pi", "opencode", "grok", "hermes"])("resolves %s", (agent) => {
     expect(adapterFor(registry, agent)?.agent).toBe(agent);
   });
 

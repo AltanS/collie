@@ -765,6 +765,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_DEVICE_HEADER",
       "COLLIE_GROK_ROOT",
       "COLLIE_HERDR_DIAL",
+      "COLLIE_HERMES_ROOT",
       "COLLIE_HOST",
       "COLLIE_MAX_UPLOAD_MB",
       "COLLIE_MULTI_SESSION",

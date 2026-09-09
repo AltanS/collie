@@ -128,6 +128,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
       pi: ["/nope/pi"],
       opencode: ["/nope/opencode"],
       grok: ["/nope/grok"],
+      hermes: ["/nope/hermes"],
     },
     submitKeys: ["Enter"],
     commandsFile: "/nope/commands.toml",

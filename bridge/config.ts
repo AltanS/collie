@@ -480,6 +480,7 @@ export function resolveJournalRoots(
       join(env.GROK_HOME ?? join(home, ".grok"), "sessions"),
       env,
     ),
+    hermes: envRoots("COLLIE_HERMES_ROOT", join(home, ".hermes"), env),
   };
 }
 
