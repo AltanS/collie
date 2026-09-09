@@ -24,6 +24,9 @@
   },
   // src/sw.ts runs in a service-worker (not DOM) context — type-checked separately via
   // tsconfig.worker.json (both run under `bun run typecheck`).
-  "include": ["src", "vite.config.ts"],
+  // `e2e` and `playwright.config.ts` are in the app project on purpose: the browser cases import the
+  // unit layer's fixtures out of `src/test/`, so a fixture that changes shape has to break
+  // `bun run typecheck` rather than a browser run five minutes later.
+  "include": ["src", "vite.config.ts", "playwright.config.ts", "e2e"],
   "exclude": ["src/sw.ts"]
 }

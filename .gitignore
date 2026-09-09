@@ -58,3 +58,9 @@ docs/bugs/
 
 # Local tooling scratch (browser-automation captures)
 .playwright-mcp/
+
+# The browser tier's output: a screenshot and a trace kept only when a case fails, plus the HTML
+# report over them. Evidence for whoever reads the failure, never a baseline — the CI job uploads
+# these as an artefact and nothing compares them run to run.
+web/test-results/
+web/playwright-report/
