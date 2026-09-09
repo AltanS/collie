@@ -1,7 +1,9 @@
 # Collie
 
 <p align="center">
-  <img src="assets/collie-hero.webp" alt="A collie herding a flock of sheep" width="640">
+  <!-- Baked by collie-brand's logo-ship.ts (collie-social-card-dark.png) and copied in whole, the
+       same file colliepwa.dev serves as its social card. Do not retouch it here: regenerate it there. -->
+  <img src="assets/social-card.png" alt="The Collie mark beside the ColliePWA wordmark and the line: your agent herd, from your phone." width="640">
 </p>
 
 <p align="center">
