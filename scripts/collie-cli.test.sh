@@ -1548,7 +1548,7 @@ rc=$?
 set -e
 assert_eq "$rc" "2"
 assert_contains "$(cat "${TMP_ROOT}/err")" "unknown crew subcommand \`nonsense\`"
-for sub in invite join leave status rotate remove set-address deputy; do
+for sub in invite join leave status rotate rename remove set-address deputy; do
   assert_contains "$(cat "${TMP_ROOT}/err")" "$sub"
 done
 
@@ -1578,6 +1578,18 @@ assert_eq "$rc" "2"
 assert_contains "$(cat "${TMP_ROOT}/err")" "needs the invite token as its second argument"
 assert_contains "$(cat "${TMP_ROOT}/err")" "collie crew join example.invalid -"
 [ -z "$(ls -A "$PACK_STATE")" ] || fail "a tokenless \`pack join\` still wrote into the state dir"
+
+# `crew rename` on a machine in no crew is a STATE error (3). The verb is lead-only and writes only
+# this lead's own trust store, so a solo root must get the refusal and keep an empty state dir —
+# nothing to rename means nothing to materialise.
+set +e
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PACK_STATE" \
+  PATH="$BIN_DIR" "$BIN" crew rename "the shed" </dev/null >/dev/null 2>"${TMP_ROOT}/err"
+rc=$?
+set -e
+assert_eq "$rc" "3"
+assert_contains "$(cat "${TMP_ROOT}/err")" "no crew to rename"
+[ -z "$(ls -A "$PACK_STATE")" ] || fail "a refused \`crew rename\` still wrote into the state dir"
 
 # `leave` on a machine that is in no pack is a STATE error (3), not a usage error and not a success.
 # Both spellings again, for the same reason.

@@ -25,6 +25,7 @@ import {
   cmdPackApprovePromote,
   cmdPackInvite,
   cmdPackRemove,
+  cmdPackRename,
   cmdPackRotate,
   cmdPackSetAddress,
   cmdPackStatus,
@@ -1706,6 +1707,103 @@ describe("collie crew rotate", () => {
     await cmdPackRotate(h.deps);
     expect(text(h.io)).not.toContain(h.data()!.pack!.secret);
     expect(JSON.stringify(h.audit)).not.toContain(h.data()!.pack!.secret);
+  });
+});
+
+// ── pack rename ──────────────────────────────────────────────────────────────
+// The name is display data keyed by the pack id, so the whole verb is one write to this lead's own
+// trust store. What is pinned here is that it stays that way: no request leaves the machine, and
+// the refusals are the same off-lead shape every other lead-only verb has.
+
+describe("collie crew rename", () => {
+  test("rewrites the name in the lead's store, prints it, and dials nobody", async () => {
+    const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
+    expect(await cmdPackRename(h.deps, ["the shed"])).toBe(EXIT.OK);
+    expect(h.data()!.pack!.name).toBe("the shed");
+    const said = text(h.io);
+    expect(said).toContain('this crew is now called "the shed"');
+    expect(said).toContain(`from  ${PACK.name}`);
+    // Nothing crosses the wire: a member's copy of the name is a leaf nobody reads.
+    expect(h.requests).toEqual([]);
+    expect(h.data()!.peers[0]!.memberId).toBe("nas");
+    // The running bridge reads its trust store once per process, so the verb restarts it — the same
+    // way `rotate`, `remove` and `set-address` make their write visible on /api/pack.
+    expect(h.restarts).toHaveLength(1);
+    expect(said).toContain("restarting the bridge so the new name takes effect");
+    expect(h.audit.map((a) => a.action)).toContain("pack.rename");
+  });
+
+  test("the pack id, the secret and its generation are untouched", async () => {
+    const h = harness(leadStore());
+    await cmdPackRename(h.deps, ["the shed"]);
+    const pack = h.data()!.pack!;
+    expect(pack.packId).toBe(PACK.packId);
+    expect(pack.secret).toBe(PACK.secret);
+    expect(pack.secretGeneration).toBe(PACK.secretGeneration);
+    expect(text(h.io)).not.toContain(PACK.secret);
+  });
+
+  test("a name is trimmed, and the name it already has is a no-op", async () => {
+    const h = harness(leadStore());
+    expect(await cmdPackRename(h.deps, ["  the shed  "])).toBe(EXIT.OK);
+    expect(h.data()!.pack!.name).toBe("the shed");
+    expect(await cmdPackRename(h.deps, ["the shed"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain('already called "the shed"');
+    // One write, one restart: the second run wrote nothing and restarted nothing.
+    expect(h.restarts).toHaveLength(1);
+    expect(h.audit.filter((a) => a.action === "pack.rename")).toHaveLength(1);
+  });
+
+  test("renaming runs on the lead — a peer is told where to run it", async () => {
+    const h = harness(peerStore());
+    expect(await cmdPackRename(h.deps, ["the shed"])).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain("a crew is renamed on the lead");
+    expect(h.data()!.pack!.name).toBe(PACK.name);
+    expect(h.restarts).toEqual([]);
+  });
+
+  test("a solo machine has no crew to rename, and no store is materialised", async () => {
+    const h = harness(null);
+    expect(await cmdPackRename(h.deps, ["the shed"])).toBe(EXIT.STATE);
+    expect(text(h.io)).toContain("not in a crew");
+    expect(h.data()).toBeNull();
+    expect(h.restarts).toEqual([]);
+  });
+
+  test("an empty name, a too-long one and no name at all are usage errors that write nothing", async () => {
+    const empty = harness(leadStore());
+    expect(await cmdPackRename(empty.deps, ["   "])).toBe(EXIT.USAGE);
+    expect(text(empty.io)).toContain("cannot be empty");
+
+    const long = harness(leadStore());
+    expect(await cmdPackRename(long.deps, ["n".repeat(65)])).toBe(EXIT.USAGE);
+    expect(text(long.io)).toContain("at most 64 characters");
+    // 64 is accepted, so the boundary is pinned from both sides.
+    expect(await cmdPackRename(long.deps, ["n".repeat(64)])).toBe(EXIT.OK);
+    expect(long.data()!.pack!.name).toBe("n".repeat(64));
+
+    const control = harness(leadStore());
+    expect(await cmdPackRename(control.deps, ["the\u0007shed"])).toBe(EXIT.USAGE);
+    expect(text(control.io)).toContain("control characters");
+
+    const none = harness(leadStore());
+    expect(await cmdPackRename(none.deps, [])).toBe(EXIT.USAGE);
+    expect(text(none.io)).toContain("usage: collie crew rename <name>");
+    expect(await cmdPackRename(none.deps, ["the", "shed"])).toBe(EXIT.USAGE);
+    expect(text(none.io)).toContain("needs quotes");
+
+    for (const h of [empty, control]) expect(h.data()!.pack!.name).toBe(PACK.name);
+    // No name at all is answered from argv alone: the store was not even read.
+    expect(none.data()).toBeNull();
+    for (const h of [empty, long, control, none]) expect(h.requests).toEqual([]);
+    for (const h of [empty, control, none]) expect(h.restarts).toEqual([]);
+  });
+
+  test("the usage block names it, and it is dispatchable under both spellings", async () => {
+    const h = harness(leadStore());
+    expect(await cmdPack(h.deps, [])).toBe(EXIT.USAGE);
+    expect(text(h.io)).toContain("  rename   give the crew a new name");
+    expect(PACK_SUBCOMMANDS).toContain("rename");
   });
 });
 

@@ -153,6 +153,7 @@ cannot, and the crew is level again once you have run their package managers.
 | `collie crew update <member>… \| --all` | Preflight every machine, then the lead, then each peer one at a time over **your own SSH**; the first failure stops the run ([details](upgrading.md#updating-the-rest-of-the-crew)) |
 | `collie crew status` | Mode, members, reachability, secret pickup — and why a link is refused |
 | `collie crew rotate` | Reissue the pack secret and hand it to every reachable peer |
+| `collie crew rename <name>` | Give the crew a new name (**on the lead**) |
 | `collie crew remove <member>` | Unpin and forget a member (on the lead) |
 | `collie crew set-address <member> <host:port>` | Correct where this lead dials a member |
 | `collie crew deputy <member>` | Name the ONE peer that may take over, and arm it; `--revoke` names nobody |
@@ -172,6 +173,20 @@ The `deputy`, `approve-promote`, and `promote` commands manage failover. For set
 instructions, see
 [`docs/deployment.md` → the standby door](deployment.md#the-standby-door--a-crews-failover-path) and
 [the bad day](deployment.md#the-bad-day--the-runbook).
+
+## The crew's name
+
+A crew's name is display data, and only the lead shows it. `collie crew invite --name "the shed"`
+names a crew when it is created, and a crew created without `--name` is called "collie crew". To
+change it later, run `collie crew rename <name>` on the lead. The verb rewrites the name in the
+lead's own `pack-trust.json` and restarts the bridge, so `collie crew status` and the phone's crew
+page show the new name right away.
+
+Nothing is sent to a member. The name travels once, in the lead's answer to an enrollment, and a
+member stores it without ever showing it. A machine that joins after the rename receives the new
+name, and the members already in the crew keep the old string in a field nobody reads. A name is
+trimmed, is at most 64 characters, and carries no control characters. On a peer, or on a machine in
+no crew, the verb refuses and says where to run it.
 
 ## Names that keep the old word
 

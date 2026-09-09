@@ -34,6 +34,7 @@ import {
   cmdPackApprovePromote,
   cmdPackInvite,
   cmdPackRemove,
+  cmdPackRename,
   cmdPackRotate,
   cmdPackSetAddress,
   cmdPackStatus,
@@ -304,6 +305,7 @@ function crewTree(): readonly Subcommand[] {
     packSubcommand("rotate", "reissue the crew secret and hand it to every reachable peer", (deps) =>
       cmdPackRotate(deps),
     ),
+    packSubcommand("rename", "give the crew a new name: `crew rename <name>` (on the lead)", cmdPackRename),
     packSubcommand("remove", "unpin and forget a member (on the lead)", cmdPackRemove),
     packSubcommand(
       "set-address",

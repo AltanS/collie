@@ -34,6 +34,9 @@ The operator adds a machine with `collie crew add <ssh-host>` on the lead, then 
 `collie crew status` to see it arrive. Run `collie docs crew` for the full flow, and for the section
 "Herdr machines and the crew".
 
+The crew's own name is display data the lead shows. `collie crew rename <name>` on the lead changes
+it; it writes only that machine's trust store and sends nothing to a member.
+
 A machine saved in Herdr is not a crew member. Herdr's saved machines are ssh targets in the
 operator's own Herdr window. A crew is Collie on every machine, reached over Collie's own link. The
 operator sets ssh up once, and both tools use it.

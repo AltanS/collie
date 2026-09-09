@@ -1655,6 +1655,104 @@ export async function cmdPackRotate(deps: PackDeps): Promise<number> {
   return EXIT.OK;
 }
 
+// ── pack rename (on the lead) ────────────────────────────────────────────────
+
+/** The longest crew name this verb accepts, in code points. Long enough for a sentence, short
+ * enough to sit on one line of the phone's crew page beside the pack id. */
+const CREW_NAME_MAX = 64;
+
+/**
+ * Why this string cannot be a crew name, or `null` when it can be.
+ *
+ * The name is the one field in the trust store a person chooses the words of, and it is rendered
+ * on the phone, in `crew status` and in the standby page. So the rules are about rendering and
+ * nothing else: something is there, it fits, and it carries no control character that could move a
+ * cursor or split a line in any of those three surfaces.
+ */
+function crewNameRefusal(name: string): string | null {
+  if (name === "") return "a crew name cannot be empty";
+  const length = [...name].length;
+  if (length > CREW_NAME_MAX) return `a crew name is at most ${CREW_NAME_MAX} characters, and this one is ${length}`;
+  // Matched on the code point, not the byte: a control character inside a multi-byte sequence is
+  // not a thing, and a regex class over the string would be the same test written less plainly.
+  for (const ch of name) {
+    const code = ch.codePointAt(0)!;
+    if (code < 0x20 || code === 0x7f) return "a crew name cannot contain control characters";
+  }
+  return null;
+}
+
+/**
+ * `collie crew rename <name>` — give the crew a new name (on the lead).
+ *
+ * **Nothing crosses the wire, and nothing needs to.** A crew's name is display data keyed by the
+ * pack id: it travels once, in the lead's enrollment answer (bridge/pack/enrollment.ts §8.2), and a
+ * member stores it and never shows it. Admission, signing and every gate read the pack id and the
+ * secret, never the name — so there is no member to tell, no generation to bump and no version to
+ * negotiate. A machine that enrols after this run receives the new name; one that enrolled before it
+ * keeps the old string in a field nobody reads.
+ *
+ * Lead-only for the same reason: the lead is the machine that hands the name out. A peer's copy is
+ * a leaf, and renaming it there would change one machine's opinion of a name it never displays.
+ */
+export async function cmdPackRename(deps: PackDeps, args: readonly string[]): Promise<number> {
+  const { positional } = parsePackArgs(args);
+  if (positional.length !== 1) {
+    deps.io.err("usage: collie crew rename <name>");
+    if (positional.length > 1) {
+      deps.io.err('       A name with a space needs quotes: collie crew rename "the shed".');
+    }
+    return EXIT.USAGE;
+  }
+  const name = positional[0]!.trim();
+  const data = await deps.store.load();
+  if (data === null || data.pack === null) {
+    deps.io.err("error: this collie is not in a crew — there is no crew to rename.");
+    return EXIT.STATE;
+  }
+  if (data.lead !== null) {
+    deps.io.err(`error: this collie is a peer of "${data.lead.memberId}" — a crew is renamed on the lead,`);
+    deps.io.err("       which is the machine that hands the name out at enrollment. Run it there.");
+    return EXIT.STATE;
+  }
+  const refusal = crewNameRefusal(name);
+  if (refusal !== null) {
+    deps.io.err(`error: ${refusal}.`);
+    deps.io.err("       usage: collie crew rename <name>");
+    return EXIT.USAGE;
+  }
+  if (data.pack.name === name) {
+    deps.io.out(`this crew is already called "${name}" — nothing to change.`);
+    return EXIT.OK;
+  }
+
+  // The transition is written here rather than in `bridge/pack/enrollment.ts` on purpose: that file
+  // is on the wire-shape guard's list (scripts/check-pack-wire.sh) because a change there can move
+  // bytes between machines, and this change moves none. The shape is the same `PackChange` every
+  // other verb commits, so the store's one write path is unchanged.
+  const renamed = await commitPackChange(deps.store, deps.audit, (current) => {
+    if (current === null || current.pack === null || current.lead !== null) return null;
+    if (current.pack.name === name) return null;
+    return {
+      next: { ...current, pack: { ...current.pack, name } },
+      result: { from: current.pack.name },
+      audit: { action: "pack.rename", detail: { from: current.pack.name, to: name } },
+    };
+  });
+  if (renamed === null) {
+    deps.io.err("error: the trust store changed under this verb — nothing was renamed. Re-run it.");
+    return EXIT.STATE;
+  }
+  deps.io.out(`✓ this crew is now called "${name}".`);
+  deps.io.out(`    from  ${renamed.from}`);
+  deps.io.out(`    to    ${name}`);
+  deps.io.out("  Nothing was sent to a member: the name travels once, in this lead's enrollment answer,");
+  deps.io.out("  and a member stores it without ever showing it. A machine that joins from now on gets");
+  deps.io.out("  this name; the ones already here keep the old string in a field nobody reads.");
+  await applyLocally(deps, "the new name");
+  return EXIT.OK;
+}
+
 // ── pack remove (on the lead) ────────────────────────────────────────────────
 
 /** `collie pack remove <member>` — unpin and forget (§8.4). Local, and deliberately not a request. */
@@ -2160,6 +2258,7 @@ export const PACK_SUBCOMMANDS = [
   "update",
   "status",
   "rotate",
+  "rename",
   "remove",
   "set-address",
   "deputy",
@@ -2214,6 +2313,8 @@ export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promi
       return cmdPackStatus(deps, rest);
     case "rotate":
       return cmdPackRotate(deps);
+    case "rename":
+      return cmdPackRename(deps, rest);
     case "remove":
       return cmdPackRemove(deps, rest);
     case "set-address":
@@ -2232,6 +2333,7 @@ export async function cmdPack(deps: PackAddDeps, args: readonly string[]): Promi
       deps.io.err("  update   level peers to this lead's build over SSH: `crew update <member>… | --all`");
       deps.io.err("  status   mode, members, reachability, secret pickup and why a link is refused");
       deps.io.err("  rotate   reissue the crew secret and hand it to every reachable peer");
+      deps.io.err("  rename   give the crew a new name: `crew rename <name>` (on the lead)");
       deps.io.err("  remove   unpin and forget a member (on the lead)");
       deps.io.err("  set-address  correct where this lead dials a member: `crew set-address <member> <host:port>`");
       deps.io.err("  deputy   name the ONE peer that may take over, and arm it: `crew deputy <member>`");
