@@ -23,6 +23,12 @@ cd web && bun run test       # vitest — never `bun test` in web/, Bun's runner
 The web typecheck runs separately by design. Changing a shared type can pass the root check while
 breaking stale test fixtures. Run both commands every time.
 
+CI also runs a browser suite in Playwright, a second job that opens the app in Chromium at a phone
+size and a tablet size. You do not need to run it locally to open a PR. If you want to run it
+yourself, `cd web && bun run e2e`. It is not part of the pre-commit or pre-push hooks, so a green
+push does not guarantee it passed; check the CI run. See `CLAUDE.md` → "Browser tests" for the
+tiers, the fixtures, and how to add a case.
+
 You can automate this by running `scripts/install-hooks.sh` once. It sets `core.hooksPath` to the
 repo hooks. The pre-commit hook checks the version, linting, and package wire. The pre-push hook
 runs typechecks, executes tests, and warns if you push an untagged release.
@@ -47,6 +53,11 @@ Read [`DESIGN.md`](./DESIGN.md) before writing code. Check `web/src/components/u
 primitive before you build a new one, and extract a component as soon as two places share the same
 visual pattern. `DESIGN.md` also documents the layout stability constraints, radius and border
 tokens, and the Tailwind v4 issues that cause regressions.
+
+Check UI states in the playground (`web/src/playground/`, `cd web && bun run playground`) before
+changing a banner, the mark, the boot splash, the idle lock, or the crew page. Every card there
+carries a `data-state` handle, so a browser case can address it directly instead of matching its
+prose label.
 
 ## Decisions that are already settled
 
