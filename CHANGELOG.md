@@ -46,6 +46,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Fixed
 
+- **A stale member record made `collie crew update <member>` impossible to fix.** The preflight walked every member over ssh using the route the ops file remembered, and it ran before `--host`, `--path` and `--port` were used against a machine. A record pointing at a checkout that had moved therefore went red with a remedy naming those exact flags, and passing them changed nothing. The overrides now reach the walk, so the printed remedy clears the red on the next run.
+
 - **A reply on OMP's Pi composer could be sent before Enter had actually confirmed it, or with a completion the user never accepted.** The guard now reads the draft back and verifies it before sending, so an unconfirmed line is not silently dropped or included as if it had been typed. A ghost completion Pi offered but the user did not accept is stripped before send. A multiline reply now goes out in verified parts, not as one unchecked block. The paste chip is treated as opaque, since it never showed what would actually be pasted, so it can no longer count as evidence that Enter worked. Thanks SeongQ kim (#192), closes #34.
 
 ### Docs

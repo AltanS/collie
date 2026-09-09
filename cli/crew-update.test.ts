@@ -18,7 +18,12 @@ import {
   type CrewUpdateDeps,
 } from "./crew-update.ts";
 import type { RemoteResult } from "./remote.ts";
-import { PREFLIGHT_SCHEMA, type PreflightCheck, type PreflightReport } from "./update-check.ts";
+import {
+  PREFLIGHT_SCHEMA,
+  type PreflightCheck,
+  type PreflightOptions,
+  type PreflightReport,
+} from "./update-check.ts";
 
 // `collie crew update` against fakes for every seam. NOTHING here spawns `ssh`, dials a network or
 // touches a disk: the transport records `(host, script)` pairs and answers from a table, the one
@@ -122,6 +127,8 @@ function harness(opts: HarnessOptions = {}) {
   const audit: AuditEntry[] = [];
   const confirms: string[] = [];
   const ops = fakeOps(opts.ops ?? { nas: opsRecord("nas.example") });
+  // What the preflight seam was ASKED, in order — the route overrides a run hands the member walk.
+  const preflights: PreflightOptions[] = [];
   let reads = 0;
 
   // The build stamp is what `collieVersionBare` answers with, so it is what decides whether this
@@ -175,8 +182,10 @@ function harness(opts: HarnessOptions = {}) {
     serve: () => Promise.resolve(EXIT.OK),
     unserve: () => EXIT.OK,
     clearNotifications: () => Promise.resolve(),
-    preflight: () =>
-      Promise.resolve(opts.preflight ?? { schema: PREFLIGHT_SCHEMA, verdict: "green", checks: [] }),
+    preflight: (o) => {
+      preflights.push(o ?? {});
+      return Promise.resolve(opts.preflight ?? { schema: PREFLIGHT_SCHEMA, verdict: "green", checks: [] });
+    },
     peerReported: () => Promise.resolve(opts.peerReported ?? []),
     lead: {
       start: () => {
@@ -215,7 +224,7 @@ function harness(opts: HarnessOptions = {}) {
     installKind: () => opts.installKind ?? { kind: "linked-clone", alsoLayout: false },
   };
 
-  return { deps, io: out, calls, confirms, ops, events };
+  return { deps, io: out, calls, confirms, ops, events, preflights };
 }
 
 /** One update record, as the lead's runner would have written it. */
@@ -863,6 +872,28 @@ describe("the ops record", () => {
     const before = h.ops.contents();
     expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
     expect(h.ops.contents()).toBe(before);
+  });
+
+  test("the preflight walk is given the overridden route, not the stale record", async () => {
+    // The bug this asserts against: the gate ran before the flags were used against a machine, so
+    // a record pointing at a checkout that no longer exists went red — and the red's own remedy was
+    // to pass the very flags the gate had ignored.
+    const h = harness({ ops: { nas: opsRecord("old.example") } });
+    expect(
+      await cmdCrewUpdate(h.deps, ["nas", "--host", "nas.new", "--path", "/opt/collie", "--port", "9000"]),
+    ).toBe(EXIT.OK);
+    expect(h.preflights).toHaveLength(1);
+    expect(h.preflights[0]!.overrides).toEqual({
+      nas: { sshHost: "nas.new", path: "/opt/collie", port: 9000 },
+    });
+  });
+
+  test("a run with no flags hands the walk the recorded route, so nothing changes for it", async () => {
+    const h = harness();
+    expect(await cmdCrewUpdate(h.deps, ["nas"])).toBe(EXIT.OK);
+    expect(h.preflights[0]!.overrides).toEqual({
+      nas: { sshHost: "nas.example", path: CHECKOUT, port: 8787 },
+    });
   });
 
   test("an override is remembered once the probe proves it, even when a later leg fails", async () => {

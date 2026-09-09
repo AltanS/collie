@@ -33,7 +33,9 @@ import {
   preflight,
   updateCheckDeps,
   type PreflightCheck,
+  type MemberRoute,
   type PreflightMember,
+  type PreflightOptions,
   type PreflightReport,
 } from "./update-check.ts";
 import { awaitRunRecord, healthTimeoutMs, HEALTH_POLL_MS, readRun } from "./update-run.ts";
@@ -102,7 +104,7 @@ export interface CrewUpdateDeps extends CrewAddDeps {
    * A seam rather than a call for the reason every other one here is: this verb's tests must never
    * spawn ssh, and the preflight reaches every member over it.
    */
-  preflight?(): Promise<PreflightReport>;
+  preflight?(opts?: PreflightOptions): Promise<PreflightReport>;
   /**
    * What this lead's RUNNING BRIDGE already heard from each member over the crew link (§19, M16/03).
    *
@@ -130,7 +132,7 @@ export interface CrewUpdateDeps extends CrewAddDeps {
 /** {@link CrewUpdateDeps} once the sink and the defaults are resolved — the shape every step takes. */
 type Wired = CrewUpdateDeps & {
   emitUpdate(event: UpdateEvent): void;
-  preflight(): Promise<PreflightReport>;
+  preflight(opts?: PreflightOptions): Promise<PreflightReport>;
   peerReported(): Promise<readonly CrewUpdateRow[]>;
   readonly lead: LeadUpdate;
   readonly sleep: (ms: number) => Promise<void>;
@@ -195,7 +197,7 @@ export async function cmdCrewUpdate(deps: CrewUpdateDeps, args: readonly string[
 function wire(deps: CrewUpdateDeps & { emitUpdate(event: UpdateEvent): void }): Wired {
   return {
     ...deps,
-    preflight: deps.preflight ?? (() => preflight(updateCheckDeps(deps.io))),
+    preflight: deps.preflight ?? ((opts) => preflight(updateCheckDeps(deps.io), opts)),
     peerReported: deps.peerReported ?? (() => bankedPeerVerdicts(deps)),
     lead: deps.lead ?? lazyLead(deps.io),
     sleep: deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms))),
@@ -525,10 +527,22 @@ async function planAll(
  * is returned rather than acted on, because the place that acts on it is the member walk
  * ({@link planAll}), which is where every other "leave this one alone" decision is already made.
  */
+/** Each target's route as THIS command line resolved it, keyed for the member walk to read. */
+function routeOverrides(targets: readonly Target[]) {
+  const entries: readonly (readonly [string, MemberRoute])[] = targets.map((t) => [
+    t.member.memberId,
+    { sshHost: t.sshHost, path: t.path, port: t.port },
+  ]);
+  return Object.fromEntries(entries);
+}
+
 async function preflightGate(deps: Wired, targets: readonly Target[]): Promise<Gate> {
   const routed = targets.filter((t) => t.sshHost !== "");
   const named = new Set(routed.map((t) => t.member.memberId));
-  const checked = await deps.preflight();
+  // The walk gets THIS run's route for every target, not the one the ops file remembers. Without
+  // this a stale record fails the gate before the `--host/--path/--port` that corrects it is ever
+  // read, and the red's own remedy is to pass those flags — a loop no operator can leave.
+  const checked = await deps.preflight({ overrides: routeOverrides(targets) });
   // What each member said about ITSELF over the crew link (§19, M16/03), beside what this walk found
   // over ssh. Printed, never preferred: see {@link peerReportLines}.
   for (const said of peerReportLines(checked.pack ?? [], await deps.peerReported(), named, deps.now())) {
