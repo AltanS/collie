@@ -140,7 +140,7 @@ export class SpawnZellijExec implements ZellijExec {
     // stderr, so a timeout used to reach the operator as *could not read the session's listing: not
     // JSON* — which sends them looking for a parse bug in zellij's output when what happened is that
     // this machine was too busy for a 5 s process spawn. Measured on the M22/04 zellij leg: a peer
-    // under a `pack update` push logged that line five times, and one probe run of twelve failed on
+    // under a `crew update` push logged that line five times, and one probe run of twelve failed on
     // it. The contract's *Transport death* rule (MUX_CONTRACT.md § Contract-owned rules) asks for
     // `unreachable` AND for a detail that names the cause; the flag is what supplies the second.
     let killed = false;

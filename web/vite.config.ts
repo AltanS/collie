@@ -168,7 +168,7 @@ export default defineConfig({
         display: "standalone",
         // Not locked to portrait: the manifest was the only thing stopping an installed Collie from
         // rotating on a tablet. Every route lays out as a centred column rather than a fluid sheet —
-        // 640px on the dashboard, space, Settings, Pack and Updates, 768px on the pane and history
+        // 640px on the dashboard, space, Settings, Crew and Updates, 768px on the pane and history
         // screens above that breakpoint — so a wide viewport gets a real layout and not a stretched
         // phone. `"any"` defers to the device instead of overriding it, so a tablet held in
         // landscape with rotation lock on still stays portrait.

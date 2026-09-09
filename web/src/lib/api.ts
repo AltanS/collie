@@ -18,7 +18,7 @@ import type {
   LaunchersResponse,
   NotifyPrefs,
   PaneHistoryResponse,
-  PackStatusResponse,
+  CrewStatusResponse,
   PaneReadResponse,
   PairFailure,
   SnapshotResponse,
@@ -382,7 +382,7 @@ export async function fetchPane(
   const q = lines ? `?lines=${lines}` : "";
   const url = withScope(`/api/pane/${encodeURIComponent(paneId)}${q}`, scope);
   // Pane ids are unique only within one session on one machine (each session is its own Herdr
-  // server; each pack member is its own machine again), so the ETag/body cache is keyed by the full
+  // server; each crew member is its own machine again), so the ETag/body cache is keyed by the full
   // (host, session, paneId) triple — otherwise a "w1:p1" in one session, or on one host, would 304
   // into another's mirror. Shared with the loaders' caches via lib/scope, so the two can't drift.
   const cacheKey = paneScopeKey(scope, paneId);
@@ -512,7 +512,7 @@ export function sendKeys(
  * ceremony around the first half.
  *
  * **A scope naming a PEER is a no-op, and that is the honest answer rather than a shortcut.** The
- * route is not on the pack link's forwarding table (`bridge/pack/forward.ts`), because what is stale
+ * route is not on the crew link's forwarding table (`bridge/crew/forward.ts`), because what is stale
  * about a peer on the lead's screen is the LEAD's swept copy of it, which the lead refreshes on its
  * own sweep — not the peer's census, which the peer tightens itself the moment the lead forwards a
  * pane read to it. Sending it anyway would spend one legible 501 per foreground to change nothing.
@@ -672,7 +672,7 @@ export function openWorktree(
  * every field here is startup-resolved on the bridge, so a second channel would be a second answer
  * to the same question.
  *
- * `scope` names ONE MEMBER of the pack, and then the only field that differs is `mux`: the lead
+ * `scope` names ONE MEMBER of the crew, and then the only field that differs is `mux`: the lead
  * answers that member's own capability declaration, from what its last `hello` taught it, and every
  * other field stays the lead's own (M22/03). It is NOT forwarded to the member, so this read cannot
  * make the lead dial a machine. Absent, which is every solo install and every lead-scoped read, puts
@@ -780,7 +780,7 @@ export function snoozeUpdate(): Promise<UpdateInfo> {
  *
  * The version goes to the BRIDGE rather than to this browser's storage, so the decision holds
  * wherever the band is read next. `scope` says WHICH band: `offer` is a release available on this
- * machine, and closing it snoozes the digest for that version too; `pack` is the quiet notice about
+ * machine, and closing it snoozes the digest for that version too; `crew` is the quiet notice about
  * a machine a package manager owns, and closing it touches no push. Not a mute either way — a newer
  * version is a different fact and raises the band again.
  */
@@ -860,16 +860,16 @@ export function fetchDevices(signal?: AbortSignal): Promise<DevicesResponse> {
 }
 
 /**
- * The pack census (`GET /api/pack`). Read-level, like the snapshot — looking at who is in the pack
+ * The crew census (`GET /api/pack`). Read-level, like the snapshot — looking at who is in the crew
  * needs no token; changing it is a CLI verb and has no endpoint here at all.
  *
  * Carries NO scope: the question is "what does this collie lead", and only a lead can answer it. A
- * solo collie and a peer both refuse with 404, which the loader reads as "no pack" rather than as a
+ * solo collie and a peer both refuse with 404, which the loader reads as "no crew" rather than as a
  * failure — so this throws for that case exactly as it does for any other refusal, and the branch
- * lives at the one call site that knows what a 404 means here (lib/loaders.ts `packLoader`).
+ * lives at the one call site that knows what a 404 means here (lib/loaders.ts `crewLoader`).
  */
-export function fetchPack(signal?: AbortSignal): Promise<PackStatusResponse> {
-  return req<PackStatusResponse>("/api/pack", { signal });
+export function fetchCrew(signal?: AbortSignal): Promise<CrewStatusResponse> {
+  return req<CrewStatusResponse>("/api/pack", { signal });
 }
 
 /**

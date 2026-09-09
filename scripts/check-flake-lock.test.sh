@@ -103,7 +103,7 @@ assert_contains "$out" "release commit"
 
 # ── 4. Passes: the lock is not staged at all ───────────────────────────────
 # The ordinary functional commit. The guard must be silent about it and must not demand a bump.
-out="$(run_guard none 'bridge/pack/router.ts
+out="$(run_guard none 'bridge/crew/router.ts
 CHANGELOG.md')" || fail "a commit without flake.lock must pass: $out"
 assert_contains "$out" "flake.lock not staged"
 
@@ -125,7 +125,7 @@ assert_contains "$out" "SKIP_FLAKE_LOCK_CHECK=1"
 # ── 8. The hatch disarms THIS guard only ───────────────────────────────────
 # Each guard owns its own name (CLAUDE.md → escape hatches). The other three names must do nothing
 # here, or a developer skipping one would silently skip this one too.
-for other in SKIP_VERSION_CHECK SKIP_LINT_CHECK SKIP_PACK_WIRE_CHECK; do
+for other in SKIP_VERSION_CHECK SKIP_LINT_CHECK SKIP_CREW_WIRE_CHECK; do
   if out="$( (export "$other=1"; run_guard M 'flake.lock') 2>&1 )"; then
     fail "$other=1 must not disarm the flake.lock guard: $out"
   fi

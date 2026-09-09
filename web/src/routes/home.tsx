@@ -12,7 +12,7 @@ import { NewSpaceSheet, type WorktreeRepo } from "@/components/new-space-sheet";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
 import { BuildStamp } from "@/components/build-stamp";
-import { PackFooterLink } from "@/components/pack-footer-link";
+import { CrewFooterLink } from "@/components/crew-footer-link";
 import { UpdateBanner } from "@/components/update-banner";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useSpaceActions } from "@/hooks/use-spaces";
@@ -72,7 +72,7 @@ export function HomeRoute() {
   // navigator keys by `(host, workspaceId)` with no session in it — so on a widened body another
   // session's `w1` panes would paint their blocked dot and their recency onto the AMBIENT `w1` row,
   // and drilling in would show a space with nothing blocked in it. The list widens; the navigation
-  // tree does not (that is the whole shape of this feature, and the shape the pack merge already
+  // tree does not (that is the whole shape of this feature, and the shape the crew merge already
   // has), so the tree is fed ambient panes only. Untagged panes are ambient by definition, which
   // makes this the identity filter on every un-widened body.
   const navPanes = useMemo(
@@ -138,10 +138,10 @@ export function HomeRoute() {
           />
         </main>
 
-        {/* The footer is the dashboard's meta zone, in widening order: the pack you're part of, an
+        {/* The footer is the dashboard's meta zone, in widening order: the crew you're part of, an
             available update / needed restart, then the build stamp (which bundle you're running,
-            with a stale-cache nudge). The pack line self-hides on a solo install. */}
-        <PackFooterLink scope={data.scope} className="px-4 pt-3" />
+            with a stale-cache nudge). The crew line self-hides on a solo install. */}
+        <CrewFooterLink scope={data.scope} className="px-4 pt-3" />
         <UpdateBanner className="px-4 pt-3" />
         <BuildStamp className="px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)_+_0.5rem)]" />
       </div>

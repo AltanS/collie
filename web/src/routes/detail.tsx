@@ -50,7 +50,7 @@ export function DetailRoute() {
   if (inSnapshot) seenPaneId.current = paneId;
   const seen = seenPaneId.current === paneId;
 
-  // Looked up WITHIN the scope's host: `w1:p1` exists on every machine in a pack, so a match by id
+  // Looked up WITHIN the scope's host: `w1:p1` exists on every machine in a crew, so a match by id
   // alone could hand this view another machine's pane — rendering its space, tab and cwd around a
   // mirror of, and a composer typing into, the one the URL actually addresses. Solo panes carry no
   // host and match unconditionally, so this is the same lookup it has always been.

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { updateStartVerdict, type PackUpdateRow } from "./update-action.ts";
+import { updateStartVerdict, type CrewUpdateRow } from "./update-action.ts";
 
 import {
   blobRoute,
@@ -63,10 +63,10 @@ import {
   type MuxSpaceRequest,
   type MuxTabRequest,
 } from "./mux/types.ts";
-import { muxCaps, neverProxy } from "./pack/fixtures.ts";
-import { PackLead } from "./pack/lead.ts";
-import { NARROW_PLAN, snapshotPlan } from "./pack/merge.ts";
-import { PackRegistry, selectHostFrom } from "./pack/registry.ts";
+import { muxCaps, neverProxy } from "./crew/fixtures.ts";
+import { CrewLead } from "./crew/lead.ts";
+import { NARROW_PLAN, snapshotPlan } from "./crew/merge.ts";
+import { CrewRegistry, selectHostFrom } from "./crew/registry.ts";
 import { selectView } from "./sessions.ts";
 import { DEFAULT_MAX_UPLOAD_BYTES } from "./uploads.ts";
 import { MAX_STT_AUDIO_BYTES } from "./stt/http.ts";
@@ -1237,13 +1237,13 @@ describe("isLoopbackPeer", () => {
   // `bun test` cannot stand up `Bun.serve` (CLAUDE.md), so the ordering is pinned by reading the one
   // source that registers it — the same idiom solo-baseline.test.ts uses for the route table.
   //
-  // Why it matters: a pack peer binds off loopback by construction and its lead dials it from
+  // Why it matters: a crew peer binds off loopback by construction and its lead dials it from
   // another machine (PACK_PROTOCOL.md §3, ADR 0013). Were this check first, every `/pack/v1/*` call
-  // would be refused before the surface that actually admits it — pinned mutual TLS plus the pack
-  // secret — ever ran, and the pack link would be dead on a peer.
+  // would be refused before the surface that actually admits it — pinned mutual TLS plus the crew
+  // secret — ever ran, and the crew link would be dead on a peer.
   test("the peer check runs AFTER the federated surface, so /pack/v1/* is never refused by it", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
-    const dispatch = src.indexOf("const packed = await packHandler(req, url);");
+    const dispatch = src.indexOf("const packed = await crewHandler(req, url);");
     const peerCheck = src.indexOf("isLoopbackPeer(server.requestIP(req)?.address)");
     expect(dispatch).toBeGreaterThan(-1);
     expect(peerCheck).toBeGreaterThan(-1);
@@ -1389,10 +1389,10 @@ describe("marksPaneSeen — CSRF guard on marking a pane seen", () => {
   });
 });
 
-// GET /api/config is where a client learns the pack mode without probing behaviour (M4/01). The
+// GET /api/config is where a client learns the crew mode without probing behaviour (M4/01). The
 // handler lives inside Bun.serve, which bun test cannot stand up (CLAUDE.md), so the body it emits
 // is asserted through the pure builder the handler calls.
-describe("bridgeConfigBody — /api/config reports the pack mode", () => {
+describe("bridgeConfigBody — /api/config reports the crew mode", () => {
   const base = { push: true, vapidPublicKey: "BKey", build: "abc123" } as const;
 
   test("a solo instance emits today's exact body — no `mode` key at all", () => {
@@ -1599,7 +1599,7 @@ describe("bridgeConfigBody — the mux block is appended, never reordering what 
 
   // ── M22/03: `?host=<member>` answers that member's block, in the same position ──────────────
   //
-  // The lead holds one block per member, learned from that member's `hello` (bridge/pack/lead.ts).
+  // The lead holds one block per member, learned from that member's `hello` (bridge/crew/lead.ts).
   // The route hands it here, and this is the whole difference between the two answers: the block's
   // contents change and nothing else does.
 
@@ -1627,9 +1627,9 @@ describe("bridgeConfigBody — the mux block is appended, never reordering what 
 });
 
 // ── The merged snapshot route (M4/04) ────────────────────────────────────────
-// `/api/snapshot` is `packLead ? packLead.merge(body) : body`, inside Bun.serve — which bun test
+// `/api/snapshot` is `crewLead ? crewLead.merge(body) : body`, inside Bun.serve — which bun test
 // cannot stand up (CLAUDE.md). So the two halves are asserted where they actually live: the
-// composition through the real PackLead, and the routing invariants by reading the source that
+// composition through the real CrewLead, and the routing invariants by reading the source that
 // registers them. PACK_PROTOCOL.md §9.2, §10.2.
 
 const snapshotSource = (): SnapshotResponse => ({
@@ -1655,8 +1655,8 @@ const snapshotSource = (): SnapshotResponse => ({
   ts: 1_754_000_000_000,
 });
 
-function leadOverDeadPeer(): PackLead {
-  const registry = new PackRegistry({
+function leadOverDeadPeer(): CrewLead {
+  const registry = new CrewRegistry({
     sessions: { get: () => undefined },
     self: "desk",
     members: () => [
@@ -1673,7 +1673,7 @@ function leadOverDeadPeer(): PackLead {
       },
     ],
   });
-  return new PackLead({
+  return new CrewLead({
     log: () => {},
     registry,
     // Every dial fails, exactly as `PeerClient` reports a peer that is off: a value, not a throw.
@@ -1713,8 +1713,8 @@ describe("the merged snapshot — an unreachable peer degrades its entry, never 
   test("with no lead runtime the body is passed through by identity — solo's zero tax at the seam", () => {
     const body = snapshotSource();
     // Character-for-character the route's own expression, with the route's own optional dep.
-    const route = (packLead: PackLead | undefined, b: SnapshotResponse) =>
-      packLead ? packLead.merge(b, NARROW_PLAN) : b;
+    const route = (crewLead: CrewLead | undefined, b: SnapshotResponse) =>
+      crewLead ? crewLead.merge(b, NARROW_PLAN) : b;
     const out = route(undefined, body);
     expect(out).toBe(body);
     expect(JSON.stringify(out)).not.toMatch(/"servers"|"host"/);
@@ -1722,7 +1722,7 @@ describe("the merged snapshot — an unreachable peer degrades its entry, never 
 });
 
 // ── M22/06: `?all=1` composes with `?host=` ──────────────────────────────────
-// The route is `packLead ? packLead.merge(body, plan) : body` inside `Bun.serve`, so the two halves
+// The route is `crewLead ? crewLead.merge(body, plan) : body` inside `Bun.serve`, so the two halves
 // are asserted where they live: the PLAN is built here by the route's own expression, character for
 // character, and the source assertions below pin that the route builds it the same way.
 
@@ -1749,8 +1749,8 @@ describe("the widened snapshot composes with the host scope (M22/06)", () => {
     shellPanes: [],
   };
 
-  async function leadOverTwoSessionPeer(): Promise<PackLead> {
-    const registry = new PackRegistry({
+  async function leadOverTwoSessionPeer(): Promise<CrewLead> {
+    const registry = new CrewRegistry({
       sessions: { get: () => undefined },
       self: "desk",
       members: () => [
@@ -1767,7 +1767,7 @@ describe("the widened snapshot composes with the host scope (M22/06)", () => {
         },
       ],
     });
-    const lead = new PackLead({
+    const lead = new CrewLead({
       log: () => {},
       registry,
       snapshot: async () => ({ ok: true, value: widenedPeerBody, status: 200, member: null, receivedAt: 1, date: null }),
@@ -1814,7 +1814,7 @@ describe("the widened snapshot composes with the host scope (M22/06)", () => {
     // The two params compose in ONE expression, from the host the request already resolved.
     expect(route).toContain('const plan = snapshotPlan(host.kind === "member" ? host.id : null, selectView(url));');
     expect(route).toContain("localSnapshot(plan.local.session, device.enforced ? device : null, plan.local.widen)");
-    expect(route).toContain("packLead ? packLead.merge(body, plan) : body");
+    expect(route).toContain("crewLead ? crewLead.merge(body, plan) : body");
     // No literal view survives on this route: the switch is read once, by name.
     expect(route).not.toContain('url.searchParams.get("sessions")');
   });
@@ -1830,10 +1830,10 @@ describe("the widened snapshot composes with the host scope (M22/06)", () => {
 describe("the host gate — `?host=` selects among enrolled members and nothing else", () => {
   const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
 
-  test("the selector is parsed only when a pack surface is mounted", () => {
-    // The same trust-store-existence predicate the pack router mounts on: a solo instance never
+  test("the selector is parsed only when a crew surface is mounted", () => {
+    // The same trust-store-existence predicate the crew router mounts on: a solo instance never
     // applies the `?host=` grammar to a URL at all (§11).
-    expect(src).toContain("const host = packHandler ? selectHostFrom(url) : LOCAL_HOST;");
+    expect(src).toContain("const host = crewHandler ? selectHostFrom(url) : LOCAL_HOST;");
   });
 
   test("every session-scoped route resolves through the gate, never past it", () => {
@@ -1851,12 +1851,12 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // which serves that same local multiplexer's mark and is session-scoped no more than the config
     // that publishes its URL; the attention stamp on `/api/snapshot`, which is a fact about
     // THIS collie's own engine on a route that is already local-body-then-merge and has no `?h=`
-    // branch to fall through; and the pack surface's own `mux` source, which answers an admitted
+    // branch to fall through; and the crew surface's own `mux` source, which answers an admitted
     // LEAD with this machine's block on `hello` and is the same local read `/api/config` makes
     // (M22/03). A seventh would be a route reaching past the gate.
     expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(6);
     // The mux read is a read of the LOCAL primary — never `?host=`, because a peer's capabilities
-    // are its own business and reach the lead over the pack API, never out of this registry.
+    // are its own business and reach the lead over the crew API, never out of this registry.
     expect(src).toContain("const activeMux = registry.get();");
     // An unknown or ill-formed host is a 404, mirroring unknownSession() (§4)… The words now come
     // from the error catalogue (bridge/error-codes.ts), so what this pins is the SELECTION — that
@@ -1866,7 +1866,7 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     );
     // …and a KNOWN peer is forwarded, with the peer's own response handed back (§5, §9.1). The
     // forward is the gate's own branch — no route may grow a second one.
-    expect([...src.matchAll(/packLead!\.forward\(/g)]).toHaveLength(1);
+    expect([...src.matchAll(/crewLead!\.forward\(/g)]).toHaveLength(1);
     expect(src).not.toContain("per-pane proxying is not implemented in this build");
   });
 
@@ -1876,8 +1876,8 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     expect([...src.matchAll(/const serveSessionRoute = async/g)]).toHaveLength(1);
     expect([...src.matchAll(/serveSessionRoute\(\s*req/g)]).toHaveLength(2);
     // The peer's caller supplies its OWN gate and its OWN audit attribution — the lead's verdict is
-    // never an input, and the write lands in the peer's log marked pack-originated (§12).
-    expect(src).toContain("packGate(level, cfg, device)");
+    // never an input, and the write lands in the peer's log marked crew-originated (§12).
+    expect(src).toContain("crewGate(level, cfg, device)");
     expect(src).toContain('audit.scoped({ via: "pack", from })');
   });
 
@@ -2034,20 +2034,20 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(checkHandler).toContain("UPDATE_ON_DEMAND_POLL_TIMEOUT_MS");
   });
 
-  // ── THE PACK'S HALF (M16/03) ───────────────────────────────────────────────
+  // ── THE CREW'S HALF (M16/03) ───────────────────────────────────────────────
   // The card's read answers for every member, from what the sweep banked. The route itself lives
   // inside `Bun.serve` and cannot be stood up here (CLAUDE.md), so what is pinned is its SHAPE —
   // the same way every other assertion in this block is — and the decisions it delegates to are
   // exercised for real in `update-action.test.ts` and `lead.test.ts`.
-  test("update check pack array: the key is always present, [] on a solo instance and on a peer", () => {
+  test("update check crew array: the key is always present, [] on a solo instance and on a peer", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
     const checkHandler = src.slice(checkAt, checkAt + 4500);
-    // `?? []` is the whole of it: a solo instance and a peer build no `packLead`, so the key is an
+    // `?? []` is the whole of it: a solo instance and a peer build no `crewLead`, so the key is an
     // empty array rather than an absent one — `preflight: null`'s stated reason, one field over.
-    expect(checkHandler).toContain("pack: opts.packLead?.updateRows() ?? []");
-    // Composed from the bank, not from a dial: the rows come off `PackLead`, which reads `PeerState`.
-    expect(checkHandler).not.toContain("packLead.forward");
+    expect(checkHandler).toContain("pack: opts.crewLead?.updateRows() ?? []");
+    // Composed from the bank, not from a dial: the rows come off `CrewLead`, which reads `PeerState`.
+    expect(checkHandler).not.toContain("crewLead.forward");
   });
 
   test("update check dials nobody: the rows are read from the sweep's bank, never fetched", () => {
@@ -2060,14 +2060,14 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     for (const forbidden of ["client.snapshot", "peerClient", "proxy(", "fetch("]) {
       expect(checkHandler).not.toContain(forbidden);
     }
-    expect(checkHandler).toContain("opts.packLead?.updateRows()");
+    expect(checkHandler).toContain("opts.crewLead?.updateRows()");
   });
 
   test("update check preflight fresh: the on-demand read fires ONE sweep asking for a fresh check", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const checkAt = src.indexOf('if (pathname === "/api/update/check" && req.method === "GET")');
     const checkHandler = src.slice(checkAt, checkAt + 4500);
-    expect(checkHandler).toContain("opts.packLead?.sweep({ freshPreflight: true })");
+    expect(checkHandler).toContain("opts.crewLead?.sweep({ freshPreflight: true })");
     expect([...checkHandler.matchAll(/sweep\(/g)]).toHaveLength(1);
   });
 
@@ -2084,13 +2084,13 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(checkHandler).not.toContain('"green"');
   });
 
-  test("the pack gates the confirm too: POST api/update reads the same banked rows", () => {
+  test("the crew gates the confirm too: POST api/update reads the same banked rows", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
     const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
-    // One confirm covers the pack, so one verdict covers the pack — and it is the SAME rows the
+    // One confirm covers the crew, so one verdict covers the crew — and it is the SAME rows the
     // card showed, from the same bank, decided by the one merge function in `update-action.ts`.
-    expect(handler).toContain("pack: opts.packLead?.updateRows() ?? []");
+    expect(handler).toContain("pack: opts.crewLead?.updateRows() ?? []");
   });
 
   test("the band's dismiss carries a scope, and the monitor decides what it costs", () => {
@@ -2106,7 +2106,7 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     expect(handler).toContain('await updateMonitor.dismiss(version, asked ?? "offer")');
     expect(handler).not.toContain("snoozeDigest");
     // WHICH band, because they are two decisions. An absent scope reads as the offer, which is what
-    // every client before the pack states could close.
+    // every client before the crew states could close.
     expect(handler).toContain('asked !== "offer" && asked !== "pack"');
     expect(handler).toContain('text("bad scope", 400)');
     // A version, checked before anything is written: the band is keyed by version, so an empty one
@@ -2680,11 +2680,11 @@ describe("GET /api/blobs/<hash> — one content-addressed image, off the disk th
   });
 });
 
-// ── THE PACK'S RUN (M16/04) ─────────────────────────────────────────────────
+// ── THE CREW'S RUN (M16/04) ─────────────────────────────────────────────────
 // The peer legs and the peers-only retry, both decided by the pure verdict and both read off what
 // the sweep banked. This route dials nobody, and a peers-only start spawns nothing here.
 
-describe("update status peers — the legs of a pack-wide run", () => {
+describe("update status peers — the legs of a crew-wide run", () => {
   test("update status peers ride the run record BOTH surfaces already poll, from one composer", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     // ONE composer, and both readers take it. The band reads the snapshot's `update`; the Updates
@@ -2696,34 +2696,34 @@ describe("update status peers — the legs of a pack-wide run", () => {
     // exactly as `updateRows()` is.
     const at = src.indexOf("function updateStatusWithPeers()");
     const composer = src.slice(at, at + 3400);
-    expect(composer).toContain("opts.packLead?.updatePeers() ?? []");
-    expect(composer).toContain("return { ...status, run: { ...status.run, ...packState } };");
+    expect(composer).toContain("opts.crewLead?.updatePeers() ?? []");
+    expect(composer).toContain("return { ...status, run: { ...status.run, ...crewState } };");
     // §20's one clock (M20/01), on the same composer and never a second one.
-    expect(composer).toContain("opts.packLead?.updateSettledAt() ?? null");
+    expect(composer).toContain("opts.crewLead?.updateSettledAt() ?? null");
     // M20/09: a peers-only run has no local record, so the legs ride the STATUS instead of being
     // dropped. The guard that dropped them is gone, and nothing has taken its place.
-    expect(composer).toContain("return { ...status, ...packState };");
+    expect(composer).toContain("return { ...status, ...crewState };");
     expect(composer).not.toContain("status.run === null || legs.length === 0");
     expect(composer).not.toContain("sweep(");
     // M20/01, after review: the legs outlive their run, so the composer names the run they describe
     // before it attaches them to the run on screen.
-    expect(composer).toContain("opts.packLead?.updateLegsRun() !== status.run.runId");
+    expect(composer).toContain("opts.crewLead?.updateLegsRun() !== status.run.runId");
     // And after counsel: legs from another run FALL to the top level, they are not discarded. A local
-    // update leaves a `done` record behind, so the commonest peers-only run there is — "Retry pack
+    // update leaves a `done` record behind, so the commonest peers-only run there is — "Retry crew
     // update" after an update — has a different run id and would otherwise be invisible for its whole
     // life, which is spec 09's bug wearing spec 01's guard.
-    expect(composer).toContain("!== status.run.runId) return { ...status, ...packState };");
+    expect(composer).toContain("!== status.run.runId) return { ...status, ...crewState };");
     expect(composer).not.toContain("!== status.run.runId) return status;");
     // And there is still no fourth endpoint with a fifth shape.
     expect(src).not.toContain('"/api/update/status"');
   });
 
-  test("retry pack update: a peers-only run has peer legs only and never touches a current lead", () => {
+  test("retry crew update: a peers-only run has peer legs only and never touches a current lead", () => {
     const current = "1.5.0";
-    const behind: PackUpdateRow = { name: "minibuch", version: "1.4.1", verdict: "green", reasons: [], asOf: 1 };
+    const behind: CrewUpdateRow = { name: "minibuch", version: "1.4.1", verdict: "green", reasons: [], asOf: 1 };
     const state = {
       current,
-      // A current lead has nothing above it to take. That is exactly when "Retry pack update" is the
+      // A current lead has nothing above it to take. That is exactly when "Retry crew update" is the
       // page's one action, and exactly when an ordinary start would refuse with `none_available`.
       latest: current,
       majorAvailable: null,
@@ -2736,7 +2736,7 @@ describe("update status peers — the legs of a pack-wide run", () => {
     expect(verdict).toEqual({ kind: "peers", to: current });
 
     // Nothing to level ⇒ nothing to start. The button is not offered here, and the route refuses it.
-    const levelled: PackUpdateRow = { ...behind, version: current };
+    const levelled: CrewUpdateRow = { ...behind, version: current };
     expect(
       updateStartVerdict({ confirm: true, target: null, major: false, peersOnly: true }, { ...state, pack: [levelled] }),
     ).toMatchObject({ kind: "refuse", status: 409 });
@@ -2750,8 +2750,8 @@ describe("update status peers — the legs of a pack-wide run", () => {
     ).toEqual({ kind: "peers", to: current });
   });
 
-  test("retry pack update: one confirm still covers the pack, so a red member refuses it", () => {
-    const red: PackUpdateRow = {
+  test("retry crew update: one confirm still covers the crew, so a red member refuses it", () => {
+    const red: CrewUpdateRow = {
       name: "minibuch",
       version: "1.4.1",
       verdict: "red",
@@ -2773,7 +2773,7 @@ describe("update status peers — the legs of a pack-wide run", () => {
     expect(verdict).toMatchObject({ kind: "refuse", status: 412 });
   });
 
-  test("retry pack update: a confirm is still required, and a run in flight still refuses", () => {
+  test("retry crew update: a confirm is still required, and a run in flight still refuses", () => {
     const state = {
       current: "1.5.0",
       latest: "1.5.0",
@@ -2796,7 +2796,7 @@ describe("update status peers — the legs of a pack-wide run", () => {
     const updateAt = src.indexOf('if (pathname === "/api/update" && req.method === "POST")');
     const handler = src.slice(updateAt, src.indexOf("\n      }\n", updateAt));
     expect(handler).toContain("const runId = action.newRunId();");
-    expect(handler).toContain("action.beginPackRun?.({ runId, to: verdict.to })");
+    expect(handler).toContain("action.beginCrewRun?.({ runId, to: verdict.to })");
     // A peers-only run starts no updater on this machine.
     const peersBranch = handler.slice(handler.indexOf('if (verdict.kind === "peers")'));
     expect(peersBranch.slice(0, peersBranch.indexOf("return json"))).not.toContain("action.start");

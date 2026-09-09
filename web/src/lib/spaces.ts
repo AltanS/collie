@@ -2,7 +2,7 @@
 // the per-space, per-tab tree the home space view renders.
 //
 // ── EVERY SPACE KEY IS (host, workspaceId) ───────────────────────────────────
-// A Herdr workspace id is unique only WITHIN one machine, and a merged pack snapshot carries panes
+// A Herdr workspace id is unique only WITHIN one machine, and a merged crew snapshot carries panes
 // from several. Keying on the bare id would silently fold two machines' `w1` into one space row:
 // one triage dot for two projects, one last-seen time, one tab group. The fix is the key, not a
 // filter — see lib/hosts.ts `spaceKey`, which degrades to a pure prefix (`"\0w1"`) on a solo
@@ -22,7 +22,7 @@ export interface TabGroup {
  * tab list yet (a brief poll race after a create) fall into a trailing group so they're never lost.
  *
  * `host` is the machine the workspace belongs to (undefined on a solo snapshot, and on the lead-local
- * navigator before the pack tags anything). Panes from any OTHER machine are not in this space, even
+ * navigator before the crew tags anything). Panes from any OTHER machine are not in this space, even
  * when they report the same workspace id.
  */
 export function groupPanesByTab(

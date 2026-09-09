@@ -324,7 +324,7 @@ describe("loadConfig", () => {
 
   test("carries a non-loopback bind and its escape hatch without deciding either", () => {
     process.env.COLLIE_HOST = "0.0.0.0";
-    // loadConfig REPORTS the bind; it does not refuse it. The refusal needs the pack mode, which is
+    // loadConfig REPORTS the bind; it does not refuse it. The refusal needs the crew mode, which is
     // resolved after this runs (bridge/index.ts) — see nonLoopbackBindRefusal below.
     expect(loadConfig().host).toBe("0.0.0.0");
     expect(loadConfig().allowNonLoopbackBind).toBe(false);
@@ -430,7 +430,7 @@ describe("resolveBridgeHost", () => {
   });
 });
 
-// Exported so mode-scoped config (bridge/pack/config.ts) parses its env in this exact style instead
+// Exported so mode-scoped config (bridge/crew/config.ts) parses its env in this exact style instead
 // of growing a second reader. The env source is injectable, which is the only new thing here — the
 // truth table below is the one loadConfig has always used.
 describe("envBool", () => {

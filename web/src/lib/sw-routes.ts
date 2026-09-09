@@ -51,14 +51,14 @@ export const NAVIGATION_NETWORK_ONLY = [
   // Proxies whose prefix IS movable (oauth2-proxy's `--proxy-prefix`, Authelia) are documented in
   // the README instead of listed here — this list stays for paths nobody can move.
   /^\/cdn-cgi\//,
-  // The pack surface (PACK_PROTOCOL.md §5). A browser NEVER issues a `/pack/v1/*` request — it is
-  // collie-to-collie, admitted only by the two pack factors — so a browser must never be able to
+  // The crew surface (PACK_PROTOCOL.md §5). A browser NEVER issues a `/pack/v1/*` request — it is
+  // collie-to-collie, admitted only by the two crew factors — so a browser must never be able to
   // cache one either. Denylisted for the same reason `/api/` is, and then some: these responses
   // carry another machine's panes, and the precached app shell is not a plausible answer to any of
   // them. Query-tolerant (`[/?]`) like `/auth` because workbox matches pathname+search.
   //
-  // Scoped to `v1` rather than all of `/pack/`: the protocol reserves the versioned prefix, and a
-  // future `/pack/v2/` arrives with a bridge that can add its own line here.
+  // Scoped to `v1` rather than all of `/crew/`: the protocol reserves the versioned prefix, and a
+  // future `/crew/v2/` arrives with a bridge that can add its own line here.
   /^\/pack\/v1(?:[/?]|$)/,
   // The standby door (PACK_PROTOCOL.md §18.15, RFC §6.2). In the same-origin failover deployment the
   // phone's FIRST hit on the bad day is an installed service worker minted from the LEAD's origin —

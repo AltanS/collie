@@ -10,8 +10,8 @@ import { t, tn } from "@/lib/i18n";
 import { updatesPath } from "@/lib/nav";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
-import { peersBehind } from "@/lib/update-pack";
-import type { UpdateInfo, UpdatePackMember } from "@/lib/types";
+import { peersBehind } from "@/lib/update-crew";
+import type { UpdateInfo, UpdateCrewMember } from "@/lib/types";
 
 /**
  * The ONE update row Settings keeps (M16/01).
@@ -19,10 +19,10 @@ import type { UpdateInfo, UpdatePackMember } from "@/lib/types";
  * Updating used to be three cards on this page — the check control, the card, and a footer chip —
  * for one subject, on the screen an operator opens to change a theme. It is a flow now, with a
  * lead, N peers, progress and a rollback state, so it lives on `/settings/updates` and Settings
- * carries this: `PackSettingsCard`'s idiom plus the two things a row that hides a flow needs, a
+ * carries this: `CrewSettingsCard`'s idiom plus the two things a row that hides a flow needs, a
  * status line and a chevron.
  *
- * Unlike the pack row this one is NOT gated on `multi`. A solo install still updates, and this row
+ * Unlike the crew row this one is NOT gated on `multi`. A solo install still updates, and this row
  * is now the only way to that page from Settings.
  *
  * ── WHY IT READS THE CHECK AT ALL ────────────────────────────────────────────
@@ -36,14 +36,14 @@ export function UpdatesSettingsCard() {
   const scope = useScope();
   useLocale();
   const data = useOptionalRootData();
-  const [pack, setPack] = useState<UpdatePackMember[]>([]);
+  const [crew, setCrew] = useState<UpdateCrewMember[]>([]);
 
   useEffect(() => {
     const ac = new AbortController();
     void (async () => {
       try {
         const check = await fetchUpdateState(ac.signal);
-        setPack(check.pack ?? []);
+        setCrew(check.pack ?? []);
       } catch {
         // No peer count, and no line on screen about it. Every other case still reads true.
       }
@@ -58,7 +58,7 @@ export function UpdatesSettingsCard() {
     runState === "staging" ||
     runState === "restarting" ||
     runState === "verifying";
-  const behind = peersBehind(pack, update?.current ?? "");
+  const behind = peersBehind(crew, update?.current ?? "");
 
   return (
     <Card className="gap-0 py-0">

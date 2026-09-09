@@ -155,7 +155,7 @@ export function classifyInstall(p: InstallProbe): InstallKind {
 
 /**
  * What a packaged install is told, in ONE place — the preflight's `package` check, `collie update`'s
- * refusal, `doctor`'s install line and the pack skip all print this sentence.
+ * refusal, `doctor`'s install line and the crew skip all print this sentence.
  *
  * It asserts a boundary and no more. Which manager owns the folder is a separate question, answered
  * by `packageCommand` in `package-command.ts` where the prefix answers it, and left unanswered

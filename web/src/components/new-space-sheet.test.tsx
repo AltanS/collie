@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { NewSpaceSheet } from "./new-space-sheet";
-import { PackProvider } from "./pack-provider";
+import { CrewProvider } from "./crew-provider";
 import { fixtureServers } from "@/test/handlers";
 import type { Scope } from "@/lib/scope";
 import type { ServerSummary } from "@/lib/types";
@@ -10,8 +10,8 @@ import type { ServerSummary } from "@/lib/types";
 // The host picker in the new-space sheet. Two claims, and the first is the important one:
 //
 //   1. A SOLO install renders nothing new. The predicate is `isMultiHost`, so a one-machine roster
-//      (and no provider at all) is byte-identical to the sheet that shipped before packs existed.
-//   2. On a pack the operator can never be unsure which machine the new shell is about to open on:
+//      (and no provider at all) is byte-identical to the sheet that shipped before crews existed.
+//   2. On a crew the operator can never be unsure which machine the new shell is about to open on:
 //      every member is listed, the one that will be used is marked, a member that is refusing
 //      writes says so instead of vanishing, and what `onCreate` receives is what was picked.
 
@@ -19,14 +19,14 @@ const solo: ServerSummary[] = [fixtureServers[0]!];
 
 function mount(servers: ServerSummary[] | undefined, props: { onCreate?: (opts: { label?: string; cwd?: string }, at?: Scope) => void; scope?: Scope } = {}) {
   return render(
-    <PackProvider servers={servers} ts={1_000} pollMs={3_000}>
+    <CrewProvider servers={servers} ts={1_000} pollMs={3_000}>
       <NewSpaceSheet
         open
         onClose={() => {}}
         onCreate={props.onCreate ?? (() => {})}
         scope={props.scope}
       />
-    </PackProvider>,
+    </CrewProvider>,
   );
 }
 
@@ -50,7 +50,7 @@ describe("NewSpaceSheet — the host picker's hide rule", () => {
   });
 });
 
-describe("NewSpaceSheet — choosing the host on a pack", () => {
+describe("NewSpaceSheet — choosing the host on a crew", () => {
   it("lists every member, including the one that cannot take writes", () => {
     mount(fixtureServers);
     expect(hostRow()).not.toBeNull();

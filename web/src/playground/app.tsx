@@ -20,7 +20,7 @@ import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-heade
 import { BuildStamp } from "@/components/build-stamp";
 import { CollieHome } from "@/components/collie-home";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
-import { PackProvider } from "@/components/pack-provider";
+import { CrewProvider } from "@/components/crew-provider";
 import { SpaceOverview } from "@/components/space-overview";
 import { CollieMark } from "@/components/collie-mark";
 import { ConnectionBanner } from "@/components/connection-banner";
@@ -28,7 +28,7 @@ import { HostStaleBanner } from "@/components/host-stale-banner";
 import { IdleLock } from "@/components/idle-lock";
 import { NoEchoNotice } from "@/components/no-echo-notice";
 import { Collapse } from "@/components/ui/collapse";
-import { PackFooterLink } from "@/components/pack-footer-link";
+import { CrewFooterLink } from "@/components/crew-footer-link";
 import { PaneStrip } from "@/components/pane-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { ServerSwitcher } from "@/components/server-switcher";
@@ -61,7 +61,7 @@ import {
   devicesUnpaired,
   herd,
   homeNine,
-  homePack,
+  homeCrew,
   homeSolo,
   homeTrio,
   hostIncompatible,
@@ -83,7 +83,7 @@ import {
   tabs,
   updateInFlight,
   updateMajor,
-  updatePackLevel,
+  updateCrewLevel,
   updatePeerRolledBack,
   updatePeersFollowing,
   updateRelease,
@@ -95,7 +95,7 @@ import {
   ChipNav,
   CLOCK_OPTIONS,
   PackedRootRouter,
-  PackRouter,
+  CrewRouter,
   PaneRouter,
   PaneStackRouter,
   PhoneFrame,
@@ -229,7 +229,7 @@ export function PlaygroundApp() {
           <IdleSection />
           <DashboardSection />
           <PaneSection />
-          <PackSection />
+          <CrewSection />
           <SettingsSection />
         </main>
       </div>
@@ -583,8 +583,8 @@ function DashboardSection() {
       <Card
         state="update-band-peers-following"
         label="update band (d) — peers following, and one that did not"
-        reach="update a pack from the lead. The lead finishes first and the band keeps naming whoever is still moving."
-        note="Three rows: one peer still restarting, one rolled back, and a pack that is level — the third draws NOTHING, which is the point (the band is gone as soon as every peer reports done). The rolled-back row carries the peer's own reason, cut on a word boundary at 40 characters, with the full sentence on /settings/updates. No retry on the band: the retry is that page's single action."
+        reach="update a crew from the lead. The lead finishes first and the band keeps naming whoever is still moving."
+        note="Three rows: one peer still restarting, one rolled back, and a crew that is level — the third draws NOTHING, which is the point (the band is gone as soon as every peer reports done). The rolled-back row carries the peer's own reason, cut on a word boundary at 40 characters, with the full sentence on /settings/updates. No retry on the band: the retry is that page's single action."
         span={2}
       >
         <Stage>
@@ -594,7 +594,7 @@ function DashboardSection() {
           <RootRouter data={{ ...homeSolo, update: updatePeerRolledBack }}>
             <UpdateRibbon />
           </RootRouter>
-          <RootRouter data={{ ...homeSolo, update: updatePackLevel }}>
+          <RootRouter data={{ ...homeSolo, update: updateCrewLevel }}>
             <UpdateRibbon />
           </RootRouter>
         </Stage>
@@ -639,14 +639,14 @@ function DashboardSection() {
 
       <Card
         state="footer-crew-link-build-stamp"
-        label="footer — pack link + build stamp"
-        reach="scroll to the bottom of the dashboard. The pack line renders only on a multi-machine roster; on a solo collie the footer is the build stamp alone."
+        label="footer — crew link + build stamp"
+        reach="scroll to the bottom of the dashboard. The crew line renders only on a multi-machine roster; on a solo collie the footer is the build stamp alone."
         note="BuildStamp asks /api/config once for the bridge's own build, so the second line fills in only against a live bridge."
       >
         <Stage>
-          <PackedRootRouter data={homePack}>
+          <PackedRootRouter data={homeCrew}>
             <div className="pb-3">
-              <PackFooterLink scope={{}} className="px-3 pt-3" />
+              <CrewFooterLink scope={{}} className="px-3 pt-3" />
               <BuildStamp className="px-3 pt-3" />
             </div>
           </PackedRootRouter>
@@ -772,31 +772,31 @@ function PaneSection() {
   );
 }
 
-// ── 6. Pack ──────────────────────────────────────────────────────────────────
+// ── 6. Crew ──────────────────────────────────────────────────────────────────
 
-function PackSection() {
+function CrewSection() {
   return (
     <Section def={SECTIONS[5]}>
       <Card
         state="formation-trio"
         label="formation — solo (lead + deputy + one)"
-        reach="Settings → Pack on a collie that leads a small pack. Lead at the apex, deputy beneath it on the thick connector, everyone else fanned into a V."
+        reach="Settings → Crew on a collie that leads a small crew. Lead at the apex, deputy beneath it on the thick connector, everyone else fanned into a V."
         span={2}
       >
         <PhoneFrameCard height={640}>
-          <PackRouter home={homeTrio} pack={{ status: censusTrio, error: false }} />
+          <CrewRouter home={homeTrio} crew={{ status: censusTrio, error: false }} />
         </PhoneFrameCard>
       </Card>
 
       <Card
         state="formation-five-three-problems"
         label="formation — five machines, three problems"
-        reach="a real pack that has been running a while: one peer gone quiet, one enrolled and never once reached, one speaking a protocol this lead cannot. Tap a machine for its paperwork."
+        reach="a real crew that has been running a while: one peer gone quiet, one enrolled and never once reached, one speaking a protocol this lead cannot. Tap a machine for its paperwork."
         note="The incompatible member's reason is the peer's own words, printed verbatim — the fix follows from the wording, so it is never paraphrased."
         span={2}
       >
         <PhoneFrameCard height={640}>
-          <PackRouter home={homePack} pack={{ status: censusFive, error: false }} />
+          <CrewRouter home={homeCrew} crew={{ status: censusFive, error: false }} />
         </PhoneFrameCard>
       </Card>
 
@@ -807,63 +807,63 @@ function PackSection() {
         span={2}
       >
         <PhoneFrameCard height={640}>
-          <PackRouter home={homeNine} pack={{ status: censusNine, error: false }} />
+          <CrewRouter home={homeNine} crew={{ status: censusNine, error: false }} />
         </PhoneFrameCard>
       </Card>
 
       <Card
         state="formation-conflicted-member"
         label="formation — a conflicted member"
-        reach="two collies both believe they lead this pack. Not a transient the next poll clears, so the page names it rather than folding it into “unreachable”."
+        reach="two collies both believe they lead this crew. Not a transient the next poll clears, so the page names it rather than folding it into “unreachable”."
         span={2}
       >
         <PhoneFrameCard height={640}>
-          <PackRouter home={homeTrio} pack={{ status: censusConflicted, error: false }} />
+          <CrewRouter home={homeTrio} crew={{ status: censusConflicted, error: false }} />
         </PhoneFrameCard>
       </Card>
 
       <Card
         state="crew-solo-no-census"
-        label="pack — solo (a 404 is an answer)"
-        reach="open Settings → Pack on a collie that leads no pack. The bridge answers 404, which the loader turns into `null` — “there is no pack here” is an answer, not a failure."
+        label="crew — solo (a 404 is an answer)"
+        reach="open Settings → Crew on a collie that leads no crew. The bridge answers 404, which the loader turns into `null` — “there is no crew here” is an answer, not a failure."
       >
         <Stage height={300}>
-          <PackRouter home={homeSolo} pack={{ status: null, error: false }} />
+          <CrewRouter home={homeSolo} crew={{ status: null, error: false }} />
         </Stage>
       </Card>
 
       <Card
         state="crew-census-failed"
-        label="pack — the census could not be fetched"
+        label="crew — the census could not be fetched"
         reach="open the same page with the bridge down. This one IS a failure, and it says so differently from the solo card above."
       >
         <Stage height={300}>
-          <PackRouter home={homeSolo} pack={{ status: null, error: true }} />
+          <CrewRouter home={homeSolo} crew={{ status: null, error: true }} />
         </Stage>
       </Card>
 
       <Card
         state="host-colours-palette"
-        label="host colours — the whole palette, and a real pack"
-        reach="be on a pack. Every surface that names a machine tints it, so the dashboard reads as several machines before the eye reads a name."
-        note="Ten hues, assigned by lib/hosts.ts `hostSlot` and defined in index.css, chosen to avoid every status hue. The top row is a made-up ten-machine roster whose ids land one per slot; below it is the five-machine pack, whose names hash to 0, 2, 4, 8 and 9 — which is the honest spread, not an even one. A solo collie gets NO host colour at all."
+        label="host colours — the whole palette, and a real crew"
+        reach="be on a crew. Every surface that names a machine tints it, so the dashboard reads as several machines before the eye reads a name."
+        note="Ten hues, assigned by lib/hosts.ts `hostSlot` and defined in index.css, chosen to avoid every status hue. The top row is a made-up ten-machine roster whose ids land one per slot; below it is the five-machine crew, whose names hash to 0, 2, 4, 8 and 9 — which is the honest spread, not an even one. A solo collie gets NO host colour at all."
         span={2}
       >
         <Stage>
           <div className="flex flex-col gap-3 p-3">
-            <PackedRootRouter data={{ ...homePack, servers: rosterPalette }}>
+            <PackedRootRouter data={{ ...homeCrew, servers: rosterPalette }}>
               <div className="flex flex-wrap items-center gap-1.5">
                 {rosterPalette.map((s) => (
                   <HostChip key={s.id} host={s.id} />
                 ))}
               </div>
             </PackedRootRouter>
-            <PackedRootRouter data={homePack}>
+            <PackedRootRouter data={homeCrew}>
               <div className="flex flex-wrap items-center gap-3">
                 {rosterFive.map((s) => (
                   <HostChip key={s.id} host={s.id} />
                 ))}
-                <ServerSwitcher servers={rosterFive} scope={{}} agents={homePack.agents} />
+                <ServerSwitcher servers={rosterFive} scope={{}} agents={homeCrew.agents} />
               </div>
             </PackedRootRouter>
           </div>
@@ -873,13 +873,13 @@ function PackSection() {
       <Card
         state="host-switcher"
         label="host switcher"
-        reach="be on a pack with more than one reachable machine. The chip names where you are; tap it for the sheet."
+        reach="be on a crew with more than one reachable machine. The chip names where you are; tap it for the sheet."
         note="The sheet's open/closed state is the component's OWN — there is no `open` prop to force, and inventing one would be a fork. Tap the chip; the sheet is portalled to <body>, so it takes the whole window."
       >
         <Stage height={120}>
-          <PackedRootRouter data={homePack}>
+          <PackedRootRouter data={homeCrew}>
             <div className="flex items-center gap-2 p-3">
-              <ServerSwitcher servers={rosterFive} scope={{}} agents={homePack.agents} />
+              <ServerSwitcher servers={rosterFive} scope={{}} agents={homeCrew.agents} />
             </div>
           </PackedRootRouter>
         </Stage>
@@ -899,7 +899,7 @@ function PackSection() {
       <Card
         state="host-stale-never-seen"
         label="host-stale banner — never seen"
-        reach="`collie pack add` a machine that has not come up yet. There is no cached screen behind this one, which is what makes it a different sentence."
+        reach="`collie crew add` a machine that has not come up yet. There is no cached screen behind this one, which is what makes it a different sentence."
       >
         <Stage>
           <HostStaleBanner health={hostNeverSeen} />
@@ -909,7 +909,7 @@ function PackSection() {
       <Card
         state="host-stale-incompatible"
         label="host-stale banner — protocol incompatible"
-        reach="run a peer on a Collie whose pack protocol this lead cannot speak. `collie pack update` levels it to the lead's own commit."
+        reach="run a peer on a Collie whose crew protocol this lead cannot speak. `collie crew update` levels it to the lead's own commit."
       >
         <Stage>
           <HostStaleBanner health={hostIncompatible} />
@@ -920,36 +920,36 @@ function PackSection() {
         state="host-stale-in-pane-unreachable"
         label="host-stale banner — inside a real pane (unreachable)"
         reach="open a pane on a peer that has gone quiet. It sits above the tab strip and the mirror, inside the pane frame — never the standalone box the three cards above show it in."
-        note="Real <PaneRouter/> on homePack (rosterFive), the pane re-hosted onto `attic` — the SAME
+        note="Real <PaneRouter/> on homeCrew (rosterFive), the pane re-hosted onto `attic` — the SAME
           real AgentChat mount the Pane section uses, run through the real hostHealth() derivation
           instead of a hand-built HostHealth. Every homeSolo pane fixture in the Pane section above
           uses rosterSolo (empty), which is why this banner could never appear there."
         span={2}
       >
         <PhoneFrameCard height={760}>
-          <PaneRouter home={homePack} fixture={paneHostUnreachable} />
+          <PaneRouter home={homeCrew} fixture={paneHostUnreachable} />
         </PhoneFrameCard>
       </Card>
 
       <Card
         state="host-stale-in-pane-never-seen"
         label="host-stale banner — inside a real pane (never seen)"
-        reach="`collie pack add` a machine, open a pane tagged to it before it has ever come up."
+        reach="`collie crew add` a machine, open a pane tagged to it before it has ever come up."
         span={2}
       >
         <PhoneFrameCard height={760}>
-          <PaneRouter home={homePack} fixture={paneHostNeverSeen} />
+          <PaneRouter home={homeCrew} fixture={paneHostNeverSeen} />
         </PhoneFrameCard>
       </Card>
 
       <Card
         state="host-stale-in-pane-incompatible"
         label="host-stale banner — inside a real pane (incompatible)"
-        reach="open a pane on a peer running a pack protocol this lead cannot speak."
+        reach="open a pane on a peer running a crew protocol this lead cannot speak."
         span={2}
       >
         <PhoneFrameCard height={760}>
-          <PaneRouter home={homePack} fixture={paneHostIncompatible} />
+          <PaneRouter home={homeCrew} fixture={paneHostIncompatible} />
         </PhoneFrameCard>
       </Card>
     </Section>
@@ -975,13 +975,13 @@ function SettingsSection() {
 
       <Card
         state="settings-lead-paired"
-        label="settings — lead of a pack, three devices paired"
-        reach="pair a phone with `collie pair`, then open Settings on the lead. The Pack card appears only on a multi-machine roster; the device list names which row is the phone you are holding."
+        label="settings — lead of a crew, three devices paired"
+        reach="pair a phone with `collie pair`, then open Settings on the lead. The Crew card appears only on a multi-machine roster; the device list names which row is the phone you are holding."
         note="One Updates row, where three update cards used to stand. Its status line follows the footer chip's old precedence and its chevron says it opens a page."
         span={2}
       >
         <PhoneFrameCard height={760}>
-          <SettingsRouter home={homePack} devices={devicesPaired} />
+          <SettingsRouter home={homeCrew} devices={devicesPaired} />
         </PhoneFrameCard>
       </Card>
 
@@ -993,7 +993,7 @@ function SettingsSection() {
         span={2}
       >
         <PhoneFrameCard height={760}>
-          <SettingsRouter home={homePack} devices={devicesPaired} start="/settings/updates" />
+          <SettingsRouter home={homeCrew} devices={devicesPaired} start="/settings/updates" />
         </PhoneFrameCard>
       </Card>
       <Card
@@ -1041,15 +1041,15 @@ function SettingsSection() {
 
       <Card
         state="new-space-pick-host"
-        label="new space — pack, pick a host"
+        label="new space — crew, pick a host"
         reach="tap + on the spaces list of a lead with peers. On a solo collie this row is not rendered at all and the sheet is the one above."
         note="The chip that is marked is where the create lands: the machine the list was already showing, or the lead. `attic`, `cellar` and `garage` keep their chips and their names — a machine that cannot take writes is dimmed and says why, never dropped, because a missing row reads as a machine you do not have."
         span={2}
       >
         <PhoneFrameCard height={560}>
-          <PackProvider servers={rosterFive} ts={homePack.ts} pollMs={3_000}>
+          <CrewProvider servers={rosterFive} ts={homeCrew.ts} pollMs={3_000}>
             <NewSpaceSheet open onClose={() => {}} onCreate={() => {}} scope={{ host: "workshop" }} />
-          </PackProvider>
+          </CrewProvider>
         </PhoneFrameCard>
       </Card>
 
@@ -1437,7 +1437,7 @@ function StaleBuildHarness() {
         offLabel="stale bundle: off — tap to confirm one (it takes over every other band card)"
       />
       <Stage>
-        <RootRouter data={{ ...homeSolo, update: updatePackLevel }}>
+        <RootRouter data={{ ...homeSolo, update: updateCrewLevel }}>
           <UpdateRibbon />
         </RootRouter>
         <RootRouter data={homeSolo}>
@@ -1597,7 +1597,7 @@ function StackHarness() {
       </button>
       <div className="min-h-0 flex-1">
         <PaneStackRouter
-          home={{ ...homePack, update: updateRelease }}
+          home={{ ...homeCrew, update: updateRelease }}
           fixture={paneStack}
           device={readOnly ? deviceStack : deviceStackAllowed}
         />

@@ -198,7 +198,7 @@ describe("spaceLastSeenMap", () => {
 });
 
 // ── Two machines, one workspace id ───────────────────────────────────────────
-// Herdr numbers workspaces per machine, so a pack routinely holds two `w1`s. Before the keys were
+// Herdr numbers workspaces per machine, so a crew routinely holds two `w1`s. Before the keys were
 // host-qualified these fixtures produced ONE bucket, ONE last-seen time and ONE tab group — the two
 // projects silently merged, and the only visible symptom was a space row reporting someone else's
 // blocked agent.

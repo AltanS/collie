@@ -51,7 +51,7 @@ interface AddressTagProps {
 // they look different, and they say so.
 //
 // The HIDE RULE lives in the CALLER, not here: whether a dimension is worth naming at all is a fact
-// about the snapshot (is this a pack? is this row's session the primary one?), and each caller owns
+// about the snapshot (is this a crew? is this row's session the primary one?), and each caller owns
 // its own answer. This component renders what it is given.
 export function AddressTag({
   "aria-label": ariaLabel,

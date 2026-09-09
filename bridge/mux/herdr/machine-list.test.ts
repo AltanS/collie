@@ -126,7 +126,7 @@ describe("herdrMachineCandidates", () => {
     expect(warnings[0]).toContain("something this build cannot read");
   });
 
-  test("neither absent nor unhealthy ever throws — a broken herdr never fails pack add", () => {
+  test("neither absent nor unhealthy ever throws — a broken herdr never fails crew add", () => {
     for (const answer of [{ found: false }, { code: 1 }, { code: 124 }, { stdout: "}" }] as const) {
       const { probe } = probeFor(answer);
       expect(() => herdrMachineCandidates(probe)).not.toThrow();

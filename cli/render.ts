@@ -52,7 +52,7 @@ export interface PlainFlag {
  * The global `--plain` escape hatch, taken out of argv before the parser ever sees it.
  *
  * It is stripped rather than declared as a commander option so it works in every position — after
- * the verb, after a subcommand, in the middle of a pack invite's flags — without every leaf command
+ * the verb, after a subcommand, in the middle of a crew invite's flags — without every leaf command
  * having to redeclare it. Nothing else in the CLI's grammar spells a bare `--plain`, so there is no
  * value it could be shadowing.
  */
@@ -87,13 +87,13 @@ export interface UiFinding {
   readonly remedy: string | null;
 }
 
-/** `collie doctor`, as a table. `pack` empty means `packNote` is the whole pack section. */
+/** `collie doctor`, as a table. `crew` empty means `crewNote` is the whole crew section. */
 export interface DoctorView {
   readonly heading: string;
   readonly local: readonly UiFinding[];
-  readonly packTitle: string;
-  readonly pack: readonly UiFinding[];
-  readonly packNote: readonly string[];
+  readonly crewTitle: string;
+  readonly crew: readonly UiFinding[];
+  readonly crewNote: readonly string[];
 }
 
 /** The `status` / `start` banner: one verdict and a label-value block. */
@@ -108,33 +108,33 @@ export interface StatusView {
 // surface owns EVERY byte of the verb's output — prompts included — for as long as it is mounted.**
 // Nothing else may write to stdout or stderr between mount and unmount: not a `console.log`, not a
 // nested lifecycle verb's own lines, not Bun's `confirm()`/`prompt()`. A verb that cannot promise
-// that gets no surface, and the one-shot verbs (`doctor`, `status`/`start`, `pack status`) satisfy
+// that gets no surface, and the one-shot verbs (`doctor`, `status`/`start`, `crew status`) satisfy
 // it trivially — they compute an answer and then draw it once.
 //
-// The rule is written that way because of how `pack add` failed in the field the first time. It had
+// The rule is written that way because of how `crew add` failed in the field the first time. It had
 // a live leg spinner MIXED with plain `io` writes and Bun's own prompts on the same tty, and the
 // report was every way that can go wrong at once — leg lines out of order, the `[y/N]` prompt
 // clobbered mid-render, and ✓/spinner statuses landing AFTER the error verdict they were supposed to
 // precede. `console` patching moves the tearing around; it does not fix it, because the prompts do
 // not go through `console` at all. The fix is not "no surface" — it is **one writer**.
 //
-// So `pack add` now has a surface, and it holds the whole run: every line it would have printed is
+// So `crew add` now has a surface, and it holds the whole run: every line it would have printed is
 // an {@link AddEvent} instead ({@link plainAdd} replays those as the plain lines, byte for byte),
 // every nested write goes through the `Io` the surface hands out, and both questions are answered
 // inside the ink app. `cli/remote.ts` swaps `deps.io`, `deps.confirm` and `deps.prompt` for the
 // surface's own for the length of the run, which is what makes "nothing else writes" structural.
 
-/** The four legs of `pack add`, in the order they run. */
+/** The four legs of `crew add`, in the order they run. */
 export type AddLeg = "probe" | "install" | "configure" | "enroll";
 
-/** How a `pack add` line reads. Not a stream — {@link AddEvent}'s `line` carries that separately. */
+/** How a `crew add` line reads. Not a stream — {@link AddEvent}'s `line` carries that separately. */
 export type AddTone = "info" | "warn" | "error";
 
 /**
- * Everything `pack add` says, as structure rather than text.
+ * Everything `crew add` says, as structure rather than text.
  *
  * Two readers: {@link plainAdd}, which writes the lines the verb has always written, and
- * {@link projectAdd}, which folds the stream into the model `cli/ui/pack-add.tsx` draws. The rich
+ * {@link projectAdd}, which folds the stream into the model `cli/ui/crew-add.tsx` draws. The rich
  * view never parses a line — the leg it belongs to, whether it passed and what the detail is are all
  * carried here.
  */
@@ -161,7 +161,7 @@ export type AddEvent =
   | { readonly kind: "verdict"; readonly ok: boolean; readonly text: string };
 
 /**
- * The value column of `pack add`'s `✓` rows.
+ * The value column of `crew add`'s `✓` rows.
  *
  * 11 characters, except for the two rows that have always been 10 — `git` and `bun` were written a
  * column short and every golden in the suite records it. The rich view lays the same pairs out with
@@ -170,7 +170,7 @@ export type AddEvent =
 const ADD_LABEL_WIDTH = 11;
 const ADD_NARROW_LABELS: ReadonlySet<string> = new Set(["git", "bun"]);
 
-/** The `✓ <label><pad><value>` row, as `pack add` has always spelled it. */
+/** The `✓ <label><pad><value>` row, as `crew add` has always spelled it. */
 function addRow(label: string, value: string): string {
   const width = ADD_NARROW_LABELS.has(label) ? ADD_LABEL_WIDTH - 1 : ADD_LABEL_WIDTH;
   return `✓ ${label}${" ".repeat(Math.max(1, width - label.length))}${value}`;
@@ -185,7 +185,7 @@ const ADD_LEG_LABEL = {
 } satisfies Record<AddLeg, string | null>;
 
 /**
- * The plain reader: replay one event as the exact line(s) `pack add` printed before it had a
+ * The plain reader: replay one event as the exact line(s) `crew add` printed before it had a
  * surface. This is the only formatter — the rich view derives its own text from the same events, so
  * neither can drift into describing a different run.
  */
@@ -332,15 +332,15 @@ export function projectAdd(events: readonly AddEvent[]): AddView {
   };
 }
 
-// ── `pack update`, on the same terms ─────────────────────────────────────────
-// `collie pack update` streams and prompts exactly as `pack add` does, so it gets a surface on
+// ── `crew update`, on the same terms ─────────────────────────────────────────
+// `collie crew update` streams and prompts exactly as `crew add` does, so it gets a surface on
 // exactly the same condition: it owns every byte while it is mounted. What it does NOT get is
-// `pack add`'s model — that one is a single host walking four fixed legs, and an update is N members
+// `crew add`'s model — that one is a single host walking four fixed legs, and an update is N members
 // each walking three. So the events are its own, and only the shape of the seam is shared: one
 // structured stream, one plain replay ({@link plainUpdate}) that is the verb's byte-for-byte output,
 // one pure fold ({@link projectUpdate}) for the terminal. Neither reader can describe a different run.
 
-/** The three legs `pack update` runs per member. `probe` is not one — it happens before consent. */
+/** The three legs `crew update` runs per member. `probe` is not one — it happens before consent. */
 export type UpdateLeg = "push" | "restart" | "verify";
 
 /** How a member ended the run. Every target lands on exactly one of these. */
@@ -352,7 +352,7 @@ export type UpdatePlanState =
   | "ready"
   /** Already at the lead's commit — listed, then left alone. */
   | "current"
-  /** No ops record: never `pack add`-ed from here, so there is no host to dial. */
+  /** No ops record: never `crew add`-ed from here, so there is no host to dial. */
   | "skipped"
   /** Probed and refused — a dirty remote checkout, an unreachable host. */
   | "blocked";
@@ -364,7 +364,7 @@ export interface UpdateRow {
   readonly detail: string;
 }
 
-/** Everything `pack update` says, as structure rather than text. */
+/** Everything `crew update` says, as structure rather than text. */
 export type UpdateEvent =
   /** The build every target is being levelled to, once, up front. */
   | { readonly kind: "title"; readonly version: string; readonly commit: string }
@@ -419,7 +419,7 @@ const UPDATE_OUTCOME_WORD = {
 } satisfies Record<UpdateOutcome, string>;
 
 /**
- * The plain reader: one event, as the line(s) `pack update` prints without a terminal. This is the
+ * The plain reader: one event, as the line(s) `crew update` prints without a terminal. This is the
  * only formatter — the rich view folds the same events, so the two cannot drift.
  */
 export function plainUpdate(io: Io, event: UpdateEvent): void {
@@ -469,7 +469,7 @@ export interface UpdateLegView {
    * Everything said while this leg was the one running — the push's `pushing …` progress line, a
    * failing leg's `error:` block, the verify's version warning.
    *
-   * It hangs off the LEG and not off the member for the reason `pack add` hangs its notes off a leg
+   * It hangs off the LEG and not off the member for the reason `crew add` hangs its notes off a leg
    * (`AddLegView.notes`): the member's notes are drawn after all three leg rows, so a progress line
    * banked there renders *below* the ✓ of the leg it was describing — which is how a field run
    * printed `pushing …` underneath a finished `verify`.
@@ -626,7 +626,7 @@ export function projectUpdate(events: readonly UpdateEvent[]): UpdateView {
 }
 
 /**
- * A mounted `pack add` surface. **While this exists, it is the only writer**: `io` is what every
+ * A mounted `crew add` surface. **While this exists, it is the only writer**: `io` is what every
  * nested write must go through, and the two questions are answered inside the app rather than on
  * Bun's `confirm()`/`prompt()`.
  */
@@ -642,7 +642,7 @@ export interface AddSurface {
 }
 
 /**
- * A mounted `pack update` surface, on the same contract as {@link AddSurface}: while it exists it is
+ * A mounted `crew update` surface, on the same contract as {@link AddSurface}: while it exists it is
  * the only writer. It has no `prompt` — the whole verb asks exactly one question, and it is a `[y/N]`.
  */
 export interface UpdateSurface {
@@ -656,16 +656,16 @@ export interface UpdateSurface {
 export interface Ui {
   doctor(view: DoctorView): Promise<void>;
   status(view: StatusView): Promise<void>;
-  packMembers(lines: readonly TonedLine[]): Promise<void>;
+  crewMembers(lines: readonly TonedLine[]): Promise<void>;
   /**
    * Mounts the streaming surface. The caller MUST `close()` it, on every exit path.
    *
    * Optional so a test's stand-in `Ui` can be the three one-shot surfaces and nothing else — a fake
-   * without it simply leaves `pack add` on its plain branch, which is the default anyway.
+   * without it simply leaves `crew add` on its plain branch, which is the default anyway.
    */
-  packAdd?(): AddSurface;
-  /** The same, for `pack update`. Optional for the same reason. */
-  packUpdate?(): UpdateSurface;
+  crewAdd?(): AddSurface;
+  /** The same, for `crew update`. Optional for the same reason. */
+  crewUpdate?(): UpdateSurface;
 }
 
 /**

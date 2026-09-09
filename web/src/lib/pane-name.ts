@@ -58,7 +58,7 @@ function informativeCwd(cwd: string, project: string): string | null {
  * `informativeCwd` is a herd-list rule and it stays one: there, line 1 IS the project, so comparing
  * the directory's own name to the project is comparing the path to the line above it. The pane
  * header's line 1 is not the project — it is `paneLabel ?? sessionName ?? "space › tab"`, so a
- * hand-set name ("logs", "pack overview") never puts the project on screen and the project-gate
+ * hand-set name ("logs", "crew overview") never puts the project on screen and the project-gate
  * would suppress the path that is the only thing left naming the work. Measured over the fixture
  * herd, the project gate hid the path on 14 panes of 14.
  *

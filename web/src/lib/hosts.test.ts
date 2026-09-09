@@ -37,7 +37,7 @@ const peer: ServerSummary = {
   protocol: "ok",
   lastSeenAt: 5,
 };
-const pack = [lead, peer];
+const crew = [lead, peer];
 
 const pane = (paneId: string, host?: string, status: AgentView["status"] = "idle"): AgentView => ({
   paneId,
@@ -53,7 +53,7 @@ const pane = (paneId: string, host?: string, status: AgentView["status"] = "idle
 });
 
 describe("the solo answer is the default answer", () => {
-  it("reads an absent roster as 'no pack' everywhere", () => {
+  it("reads an absent roster as 'no crew' everywhere", () => {
     expect(isMultiHost(undefined)).toBe(false);
     expect(isMultiHost([])).toBe(false);
     // A lead with zero enrolled peers is still one machine — nothing to choose, nothing to label.
@@ -73,28 +73,28 @@ describe("the solo answer is the default answer", () => {
 
 describe("resolving a host", () => {
   it("treats an absent host as the lead, the same way `?h=` does", () => {
-    expect(serverFor(pack, undefined)).toBe(lead);
-    expect(ambientHost(pack, undefined)).toBe("bluefin");
-    expect(ambientHost(pack, "workshop")).toBe("workshop");
+    expect(serverFor(crew, undefined)).toBe(lead);
+    expect(ambientHost(crew, undefined)).toBe("bluefin");
+    expect(ambientHost(crew, "workshop")).toBe("workshop");
   });
 
   it("renders an unlisted host as itself rather than relabelling or dropping it", () => {
     // A member that departed while you were looking at it must not be silently rewritten to the lead.
-    expect(hostName(pack, "gone")).toBe("gone");
-    expect(serverFor(pack, "gone")).toBeUndefined();
+    expect(hostName(crew, "gone")).toBe("gone");
+    expect(serverFor(crew, "gone")).toBeUndefined();
   });
 });
 
 describe("paneScope — a row is opened with its OWN host", () => {
   it("carries a peer's host onto the navigation, keeping the session", () => {
-    expect(paneScope({ session: "demo" }, pane("w1:p1", "workshop"), pack)).toEqual({
+    expect(paneScope({ session: "demo" }, pane("w1:p1", "workshop"), crew)).toEqual({
       host: "workshop",
       session: "demo",
     });
   });
 
   it("normalises the lead's own id back to an absent host — today's bare URL", () => {
-    expect(paneScope({}, pane("w1:p1", "bluefin"), pack)).toEqual({ host: undefined, session: undefined });
+    expect(paneScope({}, pane("w1:p1", "bluefin"), crew)).toEqual({ host: undefined, session: undefined });
   });
 
   it("leaves an untagged (solo) pane's scope untouched, by identity", () => {
@@ -108,8 +108,8 @@ describe("findPane — the same id on two machines is two terminals", () => {
   const panes = [pane("w1:p1", "bluefin"), pane("w1:p1", "workshop", "blocked")];
 
   it("finds the pane on the scope's host, not the first id match", () => {
-    expect(findPane(panes, "w1:p1", { host: "workshop" }, pack)!.status).toBe("blocked");
-    expect(findPane(panes, "w1:p1", {}, pack)!.status).toBe("idle");
+    expect(findPane(panes, "w1:p1", { host: "workshop" }, crew)!.status).toBe("blocked");
+    expect(findPane(panes, "w1:p1", {}, crew)!.status).toBe("idle");
   });
 
   it("matches untagged panes under any scope (the solo lookup, unchanged)", () => {
@@ -117,7 +117,7 @@ describe("findPane — the same id on two machines is two terminals", () => {
   });
 
   it("returns undefined for a host that holds no such pane", () => {
-    expect(findPane(panes, "w9:p9", { host: "workshop" }, pack)).toBeUndefined();
+    expect(findPane(panes, "w9:p9", { host: "workshop" }, crew)).toBeUndefined();
   });
 });
 
@@ -125,7 +125,7 @@ describe("findPane — the same id on two machines is two terminals", () => {
 //
 // A pane id is unique only within one session on one machine: every named Herdr session is its own
 // server. So `w1:p1` in `work` and `w1:p1` in the primary session are two different terminals, on one
-// machine, with byte-identical ids — the pack bug one dimension down. A pane names its session only
+// machine, with byte-identical ids — the crew bug one dimension down. A pane names its session only
 // on a WIDENED body (`?all=1`), which is the only list that ever holds both at once.
 const inSession = (p: AgentView, session: string): AgentView => ({ ...p, session });
 
@@ -179,10 +179,10 @@ describe("findPane — the same id in two sessions is two terminals too", () => 
       inSession(pane("w1:p1", "bluefin", "blocked"), "work"),
       inSession(pane("w1:p1", "workshop", "working"), "work"),
     ];
-    expect(findPane(both, "w1:p1", { host: "workshop", session: "work" }, pack, registry)!.status).toBe(
+    expect(findPane(both, "w1:p1", { host: "workshop", session: "work" }, crew, registry)!.status).toBe(
       "working",
     );
-    expect(findPane(both, "w1:p1", { session: "work" }, pack, registry)!.status).toBe("blocked");
+    expect(findPane(both, "w1:p1", { session: "work" }, crew, registry)!.status).toBe("blocked");
   });
 });
 
@@ -217,7 +217,7 @@ describe("paneScope — a row is opened with its OWN session", () => {
 
   it("resolves both halves from the pane at once", () => {
     expect(
-      paneScope({ session: "other" }, inSession(pane("w1:p1", "workshop"), "work"), pack, registry),
+      paneScope({ session: "other" }, inSession(pane("w1:p1", "workshop"), "work"), crew, registry),
     ).toEqual({ host: "workshop", session: "work" });
   });
 });
@@ -236,14 +236,14 @@ describe("the primary is resolved per machine, never flatly", () => {
     // `main` is primary on workshop, so a workshop row in it produces today's bare url. Asking the
     // merged registry flatly would have compared it against `default` and spelled it out instead.
     const peerPane = { ...inSession(pane("w1:p1", "workshop"), "main") };
-    expect(paneScope({}, peerPane, pack, merged)).toEqual({ host: "workshop", session: undefined });
+    expect(paneScope({}, peerPane, crew, merged)).toEqual({ host: "workshop", session: undefined });
   });
 
   it("does NOT normalise a name that is only primary on the OTHER machine", () => {
     // The dangerous direction: dropping `?s=default` from a workshop row would address workshop's
     // `main` instead — a different machine's different terminal, through a url that looks ordinary.
     const peerPane = { ...inSession(pane("w1:p1", "workshop"), "default") };
-    expect(paneScope({}, peerPane, pack, merged)).toEqual({ host: "workshop", session: "default" });
+    expect(paneScope({}, peerPane, crew, merged)).toEqual({ host: "workshop", session: "default" });
   });
 
   it("resolves the lookup's own primary per host too", () => {
@@ -252,8 +252,8 @@ describe("the primary is resolved per machine, never flatly", () => {
       inSession(pane("w1:p1", "workshop"), "main"),
     ];
     // An absent `?s=` on workshop means `main`, not `default`.
-    expect(findPane(panes, "w1:p1", { host: "workshop" }, pack, merged)).toBeDefined();
-    expect(findPane(panes, "w1:p1", {}, pack, merged)!.host).toBe("bluefin");
+    expect(findPane(panes, "w1:p1", { host: "workshop" }, crew, merged)).toBeDefined();
+    expect(findPane(panes, "w1:p1", {}, crew, merged)!.host).toBe("bluefin");
   });
 });
 
@@ -264,8 +264,8 @@ describe("sessionsOnHost", () => {
       { name: "demo", host: "bluefin" },
       { name: "default", host: "workshop" },
     ];
-    expect(sessionsOnHost(sessions, {}, pack).map((s) => s.name)).toEqual(["default", "demo"]);
-    expect(sessionsOnHost(sessions, { host: "workshop" }, pack)).toHaveLength(1);
+    expect(sessionsOnHost(sessions, {}, crew).map((s) => s.name)).toEqual(["default", "demo"]);
+    expect(sessionsOnHost(sessions, { host: "workshop" }, crew)).toHaveLength(1);
   });
 
   it("passes untagged sessions through untouched (solo)", () => {
@@ -352,7 +352,7 @@ describe("ambientPanes", () => {
 
   it("narrows by host as well, so a peer's spaces never reach the lead's tree", () => {
     const mixed = [pane("w1:p1", "bluefin"), pane("w1:p1", "workshop")];
-    const out = ambientPanes(mixed, [], {}, pack, registry);
+    const out = ambientPanes(mixed, [], {}, crew, registry);
     expect(out.agents.map((p) => p.host)).toEqual(["bluefin"]);
   });
 });
@@ -368,8 +368,8 @@ describe("ambientSpaces", () => {
   ];
 
   it("keeps only the rows on the host the url is pointed at", () => {
-    expect(ambientSpaces(spaces, {}, pack).map((w) => w.host)).toEqual(["bluefin"]);
-    expect(ambientSpaces(spaces, { host: "workshop" }, pack).map((w) => w.workspaceId)).toEqual(["w1", "w2"]);
+    expect(ambientSpaces(spaces, {}, crew).map((w) => w.host)).toEqual(["bluefin"]);
+    expect(ambientSpaces(spaces, { host: "workshop" }, crew).map((w) => w.workspaceId)).toEqual(["w1", "w2"]);
   });
 
   it("returns a solo body BY IDENTITY, not as a copy", () => {
@@ -384,14 +384,14 @@ describe("ambientSpaces", () => {
       { workspaceId: "w1" },
       { workspaceId: "w1", host: "workshop" },
     ];
-    expect(ambientSpaces(mixed, {}, pack)).toEqual([{ workspaceId: "w1" }]);
+    expect(ambientSpaces(mixed, {}, crew)).toEqual([{ workspaceId: "w1" }]);
   });
 });
 
 // ── The per-host colour ──────────────────────────────────────────────────────────────────────────
 //
 // The claim under test is not "it returns a number". It is that the number is the SAME number
-// tomorrow, that no two machines in a normal pack share one, and that a solo collie gets none at
+// tomorrow, that no two machines in a normal crew share one, and that a solo collie gets none at
 // all — a colour that moves is worse than no colour, because the operator has already learned it.
 describe("hostSlot", () => {
   const server = (id: string, isLead = false): ServerSummary => ({
@@ -411,8 +411,8 @@ describe("hostSlot", () => {
   });
 
   it("resolves an absent host to the lead, exactly as the rest of the module does", () => {
-    const pack5 = roster("bluefin", "workshop", "attic");
-    expect(hostSlot(pack5, undefined)).toBe(hostSlot(pack5, "bluefin"));
+    const crew5 = roster("bluefin", "workshop", "attic");
+    expect(hostSlot(crew5, undefined)).toBe(hostSlot(crew5, "bluefin"));
   });
 
   it("gives no colour when there is no lead to resolve an absent host to", () => {
@@ -434,7 +434,7 @@ describe("hostSlot", () => {
 
   it("holds a machine's colour when an UNRELATED machine joins or leaves", () => {
     // The whole point of hashing rather than indexing: enrolling a machine whose id sorts first
-    // would re-colour the pack under an operator who has already learned it.
+    // would re-colour the crew under an operator who has already learned it.
     const before = roster("bluefin", "workshop", "attic");
     const after = roster("bluefin", "workshop", "attic", "zebra");
     expect(hostSlot(after, "bluefin")).toBe(hostSlot(before, "bluefin"));

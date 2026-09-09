@@ -13,7 +13,7 @@ beforeAll(() => {
 // above the router outlet (`RootLayout` in routes/root.tsx), so `<RouteHeader/>` now throws when
 // mounted without an `<AppHeaderHost/>` above it — loud by design (app-header.tsx's `RouteHeader`).
 // The unit suite got a wrapper for this (`test/header-host.tsx`), but the playground's OWN route
-// fixtures (`PaneRouter`, `PaneStackRouter`, `PackRouter`, `SettingsRouter` in `playground/harness.tsx`)
+// fixtures (`PaneRouter`, `PaneStackRouter`, `CrewRouter`, `SettingsRouter` in `playground/harness.tsx`)
 // were never given the same treatment, so every card built on them rendered React Router's default
 // "Unexpected Application Error!" boundary instead of the state it claimed to show — silently,
 // because nothing here was tested.
@@ -54,8 +54,8 @@ describe("the states playground", () => {
 
       // Positive checks on the exact router kinds this regression broke: each is content
       // `RouteHeader` portals into the shell's hosts, so finding it proves a live
-      // `<AppHeaderHost/>` is really above the route — not just that nothing crashed. "Pack"/
-      // "Settings" are the override host's take-over title (PackRoute/SettingsRoute).
+      // `<AppHeaderHost/>` is really above the route — not just that nothing crashed. "Crew"/
+      // "Settings" are the override host's take-over title (CrewRoute/SettingsRoute).
       expect(screen.getAllByRole("heading", { name: "Crew" }).length).toBeGreaterThan(0);
       expect(screen.getAllByRole("heading", { name: "Settings" }).length).toBeGreaterThan(0);
       expect(screen.getAllByRole("button", { name: "Pane actions" }).length).toBeGreaterThan(0);

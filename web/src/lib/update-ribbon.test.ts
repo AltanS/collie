@@ -9,11 +9,11 @@ import {
   REASON_BUDGET,
   managerOf,
   ribbonText,
-  PACK_PATIENCE_MS,
+  CREW_PATIENCE_MS,
   readRun,
   ribbonView,
   peerLegsOf,
-  packSettledAt,
+  crewSettledAt,
   subscribeUpdateStarted,
   truncateWords,
   type RibbonInput,
@@ -305,7 +305,7 @@ describe("a packaged host reads its own line", () => {
   it("is dismissable in the OFFER scope, keyed by the version it names", () => {
     expect(dismissTarget(read({ update: packaged() }))).toEqual({ scope: "offer", version: "1.5.0" });
     expect(read({ update: packaged(), dismissedVersion: "1.5.0" })).toEqual({ kind: "silent" });
-    // And a pack notice put down at the same version leaves this host's own offer standing: two
+    // And a crew notice put down at the same version leaves this host's own offer standing: two
     // decisions, two keys.
     expect(read({ update: packaged(), dismissedPackVersion: "1.5.0" })).toMatchObject({
       kind: "available-packaged",
@@ -322,15 +322,15 @@ describe("a packaged host reads its own line", () => {
 // ── WHAT A DISMISS CAN CLOSE (M17/08) ───────────────────────────────────────────────────────────
 //
 // The rule is whether the state ends on its own. A run, a finished run and a failed peer do, and a
-// band the operator closed there is an ending they can no longer see. The offer and the QUIET pack
+// band the operator closed there is an ending they can no longer see. The offer and the QUIET crew
 // states do not: a machine a package manager owns can stand behind for weeks.
 
-describe("dismissing the quiet pack states", () => {
+describe("dismissing the quiet crew states", () => {
   const managed: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
   const quiet = (over: Partial<UpdateInfo> = {}) =>
     info({ releaseAvailable: false, run: run("done", { peers: managed }), ...over });
 
-  it("offers a dismiss in the PACK scope, keyed by the version the pack is heading for", () => {
+  it("offers a dismiss in the CREW scope, keyed by the version the crew is heading for", () => {
     const view = read({ update: quiet() });
     expect(view).toEqual({ kind: "package-managed", names: ["minibuch"], target: "1.5.0" });
     expect(dismissTarget(view)).toEqual({ scope: "pack", version: "1.5.0" });
@@ -362,7 +362,7 @@ describe("dismissing the quiet pack states", () => {
   });
 
   it("lets a failed leg win over the quiet states, and carries its own close (M20/04)", () => {
-    // A rolled-back peer outranks the quiet pack notice beside it: the operator asked for that run
+    // A rolled-back peer outranks the quiet crew notice beside it: the operator asked for that run
     // and this is how it ended. It is CLOSABLE, unlike a run in progress, because it has ended and
     // nothing will replace the sentence until some later run does.
     const peers: UpdatePeerLeg[] = [
@@ -401,7 +401,7 @@ describe("dismissing the quiet pack states", () => {
     expect(dismissTarget({ kind: "silent" })).toBeNull();
   });
 
-  it("a FAILED peer can be put down, because it is the one pack state that does not end (M20/04)", () => {
+  it("a FAILED peer can be put down, because it is the one crew state that does not end (M20/04)", () => {
     // Every other state here describes something in progress, and a dismissed run is a run the
     // operator can no longer see the end of. A failed leg has already ended, badly, and the sentence
     // would otherwise stand until some later run replaced it.
@@ -459,11 +459,11 @@ describe("the band and the card read one clock", () => {
           run: run("done", { peers: [{ name: "minibuch", state: "restarting", updatedAt: NOW - ago }] }),
         }),
       });
-    expect(at(PACK_PATIENCE_MS - 1)).toMatchObject({ elapsedMs: null });
-    expect(ribbonText(at(PACK_PATIENCE_MS - 1))).toBe("Updating 1 peer: minibuch");
+    expect(at(CREW_PATIENCE_MS - 1)).toMatchObject({ elapsedMs: null });
+    expect(ribbonText(at(CREW_PATIENCE_MS - 1))).toBe("Updating 1 peer: minibuch");
 
-    const slow = at(PACK_PATIENCE_MS);
-    expect(slow).toMatchObject({ kind: "peers", elapsedMs: PACK_PATIENCE_MS });
+    const slow = at(CREW_PATIENCE_MS);
+    expect(slow).toMatchObject({ kind: "peers", elapsedMs: CREW_PATIENCE_MS });
     expect(ribbonText(slow)).toBe("Updating 1 peer: minibuch, 2 min");
   });
 
@@ -499,7 +499,7 @@ describe("the band and the card read one clock", () => {
 });
 
 describe("legs come from the live status, not from a record the caller was holding", () => {
-  // M20/14, measured on the VM pack. A peers-only retry leaves the PREVIOUS run in the status with
+  // M20/14, measured on the VM crew. A peers-only retry leaves the PREVIOUS run in the status with
   // its legs stripped off it (M20/09) and this run's legs at the top level. The Updates card was also
   // holding its own copy of that previous run, fetched a moment earlier, still carrying that run's
   // failed legs — a copy no timestamp could call stale. Read from it, the card showed last run's
@@ -515,14 +515,14 @@ describe("legs come from the live status, not from a record the caller was holdi
 
   it("the settle stamp comes from the document the legs came from", () => {
     // This run is still moving, so it has no settle stamp. Last run's, off the held record, would
-    // read as "the pack is done" over a band that is still counting.
+    // read as "the crew is done" over a band that is still counting.
     const live = info({ run: run("done", { updatedAt: NOW - 60_000 }), peers: [{ name: "minibuch", state: "restarting", updatedAt: NOW - 2_000 }] });
-    expect(packSettledAt(live, settled)).toBeNull();
+    expect(crewSettledAt(live, settled)).toBeNull();
   });
 
   it("a status with no legs anywhere still falls back to the held record", () => {
     const bare = info({ run: undefined, peers: undefined });
     expect(peerLegsOf(bare, settled).map((l) => l.state)).toEqual(["rolled-back"]);
-    expect(packSettledAt(bare, settled)).toBe(NOW - 60_000);
+    expect(crewSettledAt(bare, settled)).toBe(NOW - 60_000);
   });
 });

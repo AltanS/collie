@@ -64,10 +64,10 @@ describe("service-worker navigation passthrough", () => {
     expect(isNetworkOnlyNavigation("/?h=box2&s=demo")).toBe(false);
   });
 
-  // PACK_PROTOCOL.md §5: a browser never issues a pack request, so a browser must never be able to
+  // PACK_PROTOCOL.md §5: a browser never issues a crew request, so a browser must never be able to
   // cache one. Answering any of these from the precached app shell would hand a collie-to-collie
   // caller an HTML page.
-  it("never answers the pack surface from the precache", () => {
+  it("never answers the crew surface from the precache", () => {
     for (const path of [
       "/pack/v1/snapshot",
       "/pack/v1/snapshot?session=demo",
@@ -81,7 +81,7 @@ describe("service-worker navigation passthrough", () => {
     }
   });
 
-  it("does not claim routes that merely start with the pack prefix", () => {
+  it("does not claim routes that merely start with the crew prefix", () => {
     expect(isNetworkOnlyNavigation("/crew")).toBe(false);
     expect(isNetworkOnlyNavigation("/packages")).toBe(false);
     expect(isNetworkOnlyNavigation("/pack/v10/snapshot")).toBe(false);

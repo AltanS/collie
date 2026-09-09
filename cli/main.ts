@@ -14,7 +14,7 @@ import { cmdApplyUpdate } from "./update.ts";
 //
 //   * `scripts/collie-ctl.sh` builds the binary from source when the checkout has none — the shape
 //     a fresh `herdr plugin install` leaves: no `bin/collie`, no `node_modules` (M6/01).
-//   * `pack add` installs a peer by pushing a commit and running that same from-source build there
+//   * `crew add` installs a peer by pushing a commit and running that same from-source build there
 //     (`cli/remote.ts`'s install leg), on a checkout `git fetch` has JUST advanced — so its
 //     `node_modules`, if it has one at all, predates the commit being built.
 //     `cli/update.ts` re-execs `bun cli/main.ts _apply-update` for the same reason, on a checkout

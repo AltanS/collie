@@ -190,7 +190,7 @@ export interface PushMessage {
    */
   session?: string;
   /**
-   * The pack member the alerting session lives on (`?h=`, PACK_PROTOCOL.md §4). Threaded into the
+   * The crew member the alerting session lives on (`?h=`, PACK_PROTOCOL.md §4). Threaded into the
    * payload `data` alongside `session` so a tap deep-links to the right machine. Absent for the
    * collie that is sending — i.e. always absent on a solo instance, and always absent for the lead's
    * own sessions — which is the same omitted-not-null discipline `session` follows and what keeps
@@ -316,7 +316,7 @@ export class Push {
   async send(msg: PushMessage): Promise<void> {
     // The SW reads deep-link fields from `data`. `session` is omitted for the primary and `host` for
     // this collie's own sessions (both absent on the message), keeping that payload identical to the
-    // pre-multi-session, pre-pack shape.
+    // pre-multi-session, pre-crew shape.
     const data: PushPayloadData = { paneId: msg.paneId };
     if (msg.session !== undefined) data.session = msg.session;
     if (msg.host !== undefined) data.host = msg.host;

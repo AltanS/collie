@@ -1,3 +1,3 @@
 set -eu
 ROOT='/home/pat/.collie'
-"$ROOT/bin/collie" pack status --no-probe
+"$ROOT/bin/collie" crew status --no-probe

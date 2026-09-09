@@ -226,7 +226,7 @@ export function AgentCard({
             install this column collapses to the age alone, or to nothing. */}
         <div className="flex shrink-0 items-center gap-2">
           {/* The row's ADDRESS, both halves, in the order the address itself reads: which machine,
-              then which session on it. Each self-hides — the host when there is no pack, the session
+              then which session on it. Each self-hides — the host when there is no crew, the session
               when the row is in the primary one or the list was never widened — so on every install
               that exists today this column is still the age alone, or nothing. */}
           <HostChip host={agent.host} />

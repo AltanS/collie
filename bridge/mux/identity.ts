@@ -2,7 +2,7 @@
 //
 // It is here because it is the one thing that is expensive to get wrong later: an id that changes
 // under the operator invalidates a per-pane draft, an open pane view, a notification, an audit line
-// and (in a pack) a `(host, session, paneId)` address. Nothing above the adapter can repair that, so
+// and (in a crew) a `(host, session, paneId)` address. Nothing above the adapter can repair that, so
 // the rules are stated once and every adapter is held to them by conformance (M10/03).
 //
 // THE RULES
@@ -14,7 +14,7 @@
 //     a restart of the multiplexer process, a rename, and a move between tabs or spaces. An id
 //     derived from anything the operator can change (a label, a title, a position) breaks this.
 //  3. **Unique within one collie.** Across every space and tab of the configured target. NOT across
-//     machines — a pack address is `(host, session, paneId)` and the host half is the lead's job
+//     machines — a crew address is `(host, session, paneId)` and the host half is the lead's job
 //     (PACK_PROTOCOL.md §4), so an adapter must not try to make its ids globally unique.
 //  4. **Never recycled onto a different pane** for the lifetime of the bridge process. A
 //     multiplexer that reuses a slot number must salt it; answering for the wrong pane is worse

@@ -1,4 +1,4 @@
-import { type OpsRecord, PackOpsStore } from "../bridge/pack/ops-store.ts";
+import { type OpsRecord, CrewOpsStore } from "../bridge/crew/ops-store.ts";
 import type { CliContext, Environment } from "./context.ts";
 import { effectiveServePort, instanceSuffix } from "./context.ts";
 import type { Io } from "./io.ts";
@@ -280,10 +280,10 @@ export type SeededOps = Readonly<Record<string, OpsRecord>>;
  * The ops store over an in-memory file — how the operator reached each member, with no disk. Kept
  * here rather than in one suite because three of them need it and none of them may write a real one.
  */
-export function fakeOps(seed: SeededOps = {}): PackOpsStore & { contents: () => string | null } {
+export function fakeOps(seed: SeededOps = {}): CrewOpsStore & { contents: () => string | null } {
   let contents: string | null =
     Object.keys(seed).length === 0 ? null : `${JSON.stringify({ version: 1, members: seed }, null, 2)}\n`;
-  const store = new PackOpsStore("/state", {
+  const store = new CrewOpsStore("/state", {
     read: async () => contents,
     write: async (_p, data) => {
       contents = data;

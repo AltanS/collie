@@ -5,7 +5,7 @@ import { collieVersion, type CliContext, type Environment, type EnvVars } from "
 import { EXIT, type Io } from "./io.ts";
 import { ensureMuxChosen } from "./mux.ts";
 import type { StatusView, Ui } from "./render.ts";
-import { cmdUnserve, packModeOnDisk, type ServeDeps } from "./serve.ts";
+import { cmdUnserve, crewModeOnDisk, type ServeDeps } from "./serve.ts";
 import type { Exec, Files } from "./sys.ts";
 import {
   bridgeUrl,
@@ -55,7 +55,7 @@ export interface LifecycleDeps extends ServeDeps {
    * (the pre-shim collie-ctl.sh), which has nothing to say about serve-status fixtures.
    * `uninstall`, whose relationship to `unserve` is the opposite — it aborts — calls it directly.
    *
-   * The optional `io` mirrors `restart`'s: on the rich `pack add` path this whole call happens
+   * The optional `io` mirrors `restart`'s: on the rich `crew add` path this whole call happens
    * INSIDE the restart bracket (`cmdRestart` → `cmdStart` → here), so the teardown/republish lines
    * `cmdServe` prints must land on the same held-chatter `Io` as the rest of that restart, not on
    * whatever `Io` this seam was originally built with. `start` passes its own `deps.io` — a no-op
@@ -633,9 +633,9 @@ export async function statusView(deps: LifecycleDeps): Promise<StatusView> {
   // none (ADR 0013) — `cmdServe` refuses the publish and says so — so a `tailnet` row here was a row
   // about a door that is not there, offering a loopback URL that is not even a peer's bind (the
   // `local` row above says what is). Asked of the same function that takes the publish decision, so
-  // the banner and the refusal can never disagree. The pack's door is named instead, because "where
+  // the banner and the refusal can never disagree. The crew's door is named instead, because "where
   // do I point my phone?" still has an answer on a peer: the lead's (F24).
-  if (packModeOnDisk(deps) === "peer") {
+  if (crewModeOnDisk(deps) === "peer") {
     rows.push({ label: "crew", value: "peer — no front door here; the lead's door serves the crew (ADR 0013)" });
   } else if (deps.ctx.env.COLLIE_SKIP_SERVE === "1") {
     const url = configuredPublicUrl(deps.ctx.env);

@@ -56,7 +56,7 @@ const target: MuxTarget = { endpoint: "/tmp/probe.sock", timeoutMs: 5000, option
 // a test could read it, the field exists and every route can already reach across a machine.
 //
 // `bun run typecheck` is what fails. Named `AssertNoHostOnMuxTarget` so the guard is greppable from
-// the ADR and from the pack code that leans on it (PACK_PROTOCOL.md §9.2: a pack link never forwards
+// the ADR and from the crew code that leans on it (PACK_PROTOCOL.md §9.2: a crew link never forwards
 // a `host=`, because there is nowhere for it to go).
 
 /** `true` only while `K` is not a key of `T`. */

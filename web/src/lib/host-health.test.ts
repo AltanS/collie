@@ -148,11 +148,11 @@ describe("writable vs state — refusal is not smoothed", () => {
 
   it("refuses an incompatible member with the peer's reason verbatim", () => {
     const h = hostHealth(
-      member({ protocol: "incompatible", protocolDetail: "pack protocol 2 (this collie speaks 1)" }),
+      member({ protocol: "incompatible", protocolDetail: "crew protocol 2 (this collie speaks 1)" }),
       HOT,
     );
     expect(writeRefusal(h)).toBe(
-      "workshop is running an incompatible Collie — pack protocol 2 (this collie speaks 1)",
+      "workshop is running an incompatible Collie — crew protocol 2 (this collie speaks 1)",
     );
   });
 
@@ -250,7 +250,7 @@ describe("tier 1 stays single — connection-health.ts gains no host dimension",
   });
 
   it("mentions neither `host` nor `reachable` anywhere in its source", () => {
-    // The invariant the spec pins by grep: tier 1 knows nothing about pack members.
+    // The invariant the spec pins by grep: tier 1 knows nothing about crew members.
     const src = stripComments(readFileSync(join(__dirname, "connection-health.ts"), "utf8"));
     expect(src).not.toMatch(/\breachable\b/);
     expect(src).not.toMatch(/\bhosts?\b/i);

@@ -12,7 +12,7 @@ import { AppHeaderHost, RouteHeader, SettingsGear } from "./app-header";
 import { StatusBadge } from "./status-badge";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth, isLostLatched } from "@/lib/connection-health";
-import { PackProvider } from "./pack-provider";
+import { CrewProvider } from "./crew-provider";
 import type { BridgeStatus, ServerSummary } from "@/lib/types";
 
 // The header shell mounts CollieHome (a button) and, via SettingsGear, useNavigate — so it needs a router.
@@ -218,9 +218,9 @@ describe("the header — the dog keys on trouble/lost, not the first not-live fr
 });
 
 // The header dog and the ConnectionBanner read ONE anchor (lib/connection-health.ts), which is why
-// they can never disagree — and why a pack member going quiet must not reach it. The dog is asserted
+// they can never disagree — and why a crew member going quiet must not reach it. The dog is asserted
 // alongside the banner deliberately: they escalate together, so a mistake here would be wrong twice.
-describe("the header — a quiet pack member is not the phone's connection", () => {
+describe("the header — a quiet crew member is not the phone's connection", () => {
   beforeEach(() => __resetConnectionHealth());
 
   it("stays at rest with an unreachable peer in the roster and a healthy lead", () => {
@@ -229,9 +229,9 @@ describe("the header — a quiet pack member is not the phone's connection", () 
       { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 1_000 },
     ];
     const { container } = renderHeader(
-      <PackProvider servers={roster} ts={100_000} pollMs={1500}>
+      <CrewProvider servers={roster} ts={100_000} pollMs={1500}>
         <Header bridge="connected" error={false} wordmark />
-      </PackProvider>,
+      </CrewProvider>,
     );
     // Nothing about a peer feeds `isConnecting`, so: no gallop, no pill, no escalation.
     expect(container.querySelector(".dog-gallop")).toBeNull();
@@ -530,7 +530,7 @@ describe("the ONE header — hoisted above the outlet", () => {
   });
 
   // THE ONE PLACE THE PHASE STILL RESETS, stated rather than left to be discovered. A full-row
-  // takeover is defined as "the route supplies the row INSTEAD of the mark" — Settings and Pack lead
+  // takeover is defined as "the route supplies the row INSTEAD of the mark" — Settings and Crew lead
   // with a back button where the mark stands, and the find bar hands the row to a search field. The
   // mark is not on screen at all there, so it is unmounted, and coming back out mounts a new one at
   // phase zero. That is a smaller thing than the bug this change fixes (the mark WAS on screen on
@@ -615,7 +615,7 @@ describe("the ONE header — hoisted above the outlet", () => {
 
   it("carries the route's own width claim, so a hoisted header is not silently full-bleed", async () => {
     // The header used to live INSIDE each route's content column and inherited its width for free:
-    // 640px on the dashboard, Settings and Pack, edge-to-edge in a pane and in history. Measured in
+    // 640px on the dashboard, Settings and Crew, edge-to-edge in a pane and in history. Measured in
     // a 1280px viewport before this change: `/` gave x=320 w=640, `/pane/…` gave x=0 w=1280. Hoisted,
     // that width has to be STATED or the dashboard's rule silently becomes the viewport's.
     const { container, go } = renderHoisted();

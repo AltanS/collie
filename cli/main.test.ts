@@ -8,7 +8,7 @@ import { COMMANDS } from "./program.ts";
 // ── THE REGRESSION PIN ───────────────────────────────────────────────────────
 // `collie build` is what runs `bun install`, so everything that reaches it has to run with no
 // dependencies installed at all: `scripts/collie-ctl.sh` builds the binary from source on a fresh
-// `herdr plugin install` checkout, and `pack add`'s install leg runs the same from-source build on a
+// `herdr plugin install` checkout, and `crew add`'s install leg runs the same from-source build on a
 // checkout `git fetch` has just advanced past its `node_modules`. That invariant was live but
 // unpinned, and a top-level `import { Command } from "commander"` in this module's ancestor broke it
 // in the field: every such install died with `Cannot find package 'commander'` before a line of

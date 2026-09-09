@@ -130,7 +130,7 @@ export function getMuxConfig(): MuxConfig | null {
 
 // ── ONE MEMBER's OWN BLOCK (M22/03) ─────────────────────────────────────────────────────────────
 //
-// The store above is the LEAD's answer, read once and held for the page. A pack member runs its own
+// The store above is the LEAD's answer, read once and held for the page. A crew member runs its own
 // multiplexer, so a control on that member's pane has to ask that member's declaration, and the lead
 // answers it on `/api/config?host=<member>` from what the member's last `hello` taught it.
 //

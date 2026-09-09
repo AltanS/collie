@@ -4,11 +4,11 @@
 // Two dimensions, same shape, one level apart:
 //   - session — Herdr can run several named sessions on one machine (each its own server/socket).
 //     Travels as `?s=<name>` in the browser URL, `session=<name>` on the wire.
-//   - host    — a pack can span several machines; the phone talks only to the lead, which merges its
+//   - host    — a crew can span several machines; the phone talks only to the lead, which merges its
 //     peers. Travels as `?h=<member-id>` in the browser URL, `host=<member-id>` on the wire.
 //
 // **Absent means "today".** A blank/absent `s` is the primary session; a blank/absent `h` is the lead
-// — the collie the phone is actually connected to. So a pack of one machine (solo, i.e. every install
+// — the collie the phone is actually connected to. So a crew of one machine (solo, i.e. every install
 // that exists today) emits NO `?h=` anywhere: every bookmark, deep link, notification payload and
 // service-worker-cached navigation keeps resolving byte-identically. That is the whole
 // backward-compatibility story, and it is achieved by normalisation, not by branching.
@@ -37,10 +37,10 @@ export const HOST_PARAM = "h";
  * `?h=` says which machine and this says how much of that machine. `/api/snapshot` reads the
  * resolved host together with `sessions=all`: no host widens the lead's own registry, and a member
  * widens that member's rows out of the lead's cache, which the lead's sweep keeps widened for
- * exactly this (`bridge/pack/merge.ts` narrows it back for every request that did not ask).
+ * exactly this (`bridge/crew/merge.ts` narrows it back for every request that did not ask).
  *
- * A machine that is not in the pack widens nothing. A widened view is a statement about panes only:
- * the space and tab navigators stay the addressed session's, one dimension down from a pack, where
+ * A machine that is not in the crew widens nothing. A widened view is a statement about panes only:
+ * the space and tab navigators stay the addressed session's, one dimension down from a crew, where
  * the same is already true of every peer.
  *
  * IT IS DELIBERATELY NOT PART OF {@link Scope}, and that is the load-bearing decision in this
@@ -60,7 +60,7 @@ export const ALL_PARAM = "all";
  * today's behaviour and today's bytes.
  */
 export interface Scope {
-  /** The pack member id, or undefined for the lead (the collie the phone is connected to). */
+  /** The crew member id, or undefined for the lead (the collie the phone is connected to). */
   host?: string;
   /** The named Herdr session, or undefined for that host's primary session. */
   session?: string;
@@ -73,7 +73,7 @@ export function normalizeSession(raw: string | null | undefined): string | undef
 }
 
 /**
- * Normalise a raw `h` value to a host (pack member) id, or `undefined` for the lead. Blank and
+ * Normalise a raw `h` value to a host (crew member) id, or `undefined` for the lead. Blank and
  * whitespace-only normalise to the lead, mirroring {@link normalizeSession}.
  *
  * Deliberately NOT grammar-validated here. The lead is the authority on which member ids exist — an
@@ -169,7 +169,7 @@ export function scopeFromUrl(url: string | undefined): Scope {
 // ── Cache keys ───────────────────────────────────────────────────────────────
 //
 // A pane id (`w1:p1`) is unique only within one session on one machine: every session is a separate
-// Herdr server, and every pack member is a separate machine again. So every composite client-side
+// Herdr server, and every crew member is a separate machine again. So every composite client-side
 // cache key carries the full (host, session, paneId) triple, NUL-joined so the fields stay
 // unambiguous. Without the host component, the same `w1:p1` on two machines would 304 one host's
 // mirror into the other's — the identical bug the session component was added to prevent, one

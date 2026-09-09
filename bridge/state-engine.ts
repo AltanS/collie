@@ -238,7 +238,7 @@ export class StateEngine {
   /**
    * Fires after every poll ATTEMPT — success or failure, no snapshot handed over.
    *
-   * This is the hook the pack's peer sweep rides (PACK_PROTOCOL.md §10.1: "the peer sweep is a part
+   * This is the hook the crew's peer sweep rides (PACK_PROTOCOL.md §10.1: "the peer sweep is a part
    * of the existing poll, not a second timer"), and it is deliberately not `onUpdate`: that one only
    * fires on success, so a lead whose own Herdr socket is down would freeze every peer's freshness
    * at the moment its local herd went away. A peer's reachability has nothing to do with the lead's
@@ -378,7 +378,7 @@ export class StateEngine {
           };
           // Assigned only when there is one, so a space outside a repo carries no key at all: adding
           // `repoRoot` to every space would move every snapshot ETag once for nothing (the argument
-          // bridge/types.ts makes about `pack`, applied here).
+          // bridge/types.ts makes about `crew`, applied here).
           if (s.repoRoot !== undefined) {
             view.repoRoot = s.repoRoot;
             view.isWorktree = s.isWorktree === true;

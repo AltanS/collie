@@ -143,7 +143,7 @@ describe("shouldReleaseFrontDoor — mode + record, and nothing else", () => {
 
   test("a deposed machine takes it down whatever mode its store still resolves to", () => {
     // The parked ex-lead: it never reaches `peer`, and its live mapping is what black-holes the
-    // pack's hostname while its own health check fails behind it.
+    // crew's hostname while its own health check fails behind it.
     expect(shouldReleaseFrontDoor({ mode: "lead", deposed: true, hasRecord: true })).toBe(true);
   });
 

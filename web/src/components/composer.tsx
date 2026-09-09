@@ -35,7 +35,7 @@ import { ctrlPresetsFor } from "@/lib/operator-keys";
 import { isDestructiveInput } from "@/lib/destructive";
 import { HostChip } from "@/components/host-chip";
 import { StatusWordSlot } from "@/components/status-badge";
-import { useAmbientHost, useHostLabel } from "@/components/pack-provider";
+import { useAmbientHost, useHostLabel } from "@/components/crew-provider";
 import { clearDraft, fitsDraftStore, loadDraft, saveDraft } from "@/lib/drafts";
 import { useHoldReload } from "@/lib/reload-guard";
 import { isSelfEcho, normalizeDraft } from "@/hooks/use-terminal-draft";
@@ -281,7 +281,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // still owes the strip a word or a solo install's strip would be empty; a GONE pane has nothing
   // left to describe, and the strip stands empty rather than reporting a stale state as current.
   const statusWord: AgentStatus | "shell" | undefined = isShell ? "shell" : status;
-  // Its display name, or undefined when there is no pack — the copy-level half of the hide rule.
+  // Its display name, or undefined when there is no crew — the copy-level half of the hide rule.
   const writeHostLabel = useHostLabel(scope?.host);
   // …and a ref alongside it, for the ONE caller that reads it after an await. `send()` checks
   // `locked` once, up front, but its pre-clear sweep goes out on the far side of the pre-flight's
@@ -918,7 +918,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     }
     const reason = isDestructiveInput(input);
     if (reason && !sendConfirm.confirm("send")) {
-      // On a pack the confirm names the machine as well as the pattern: "rm -r" is a different
+      // On a crew the confirm names the machine as well as the pattern: "rm -r" is a different
       // sentence depending on whose disk it runs on, and this line is the last thing read before the
       // second tap. Solo copy is unchanged, byte for byte.
       setStatus(
@@ -1180,7 +1180,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             one utility — tailwind-merge deletes an earlier `leading-*` when a later `text-<size>`
             follows it in the same cn()). `h-[14px]` then STATES the band's height rather than
             letting it be the sum of whatever stands in it, so a solo install (where HostChip renders
-            null, its hide rule unchanged, leaving the word alone), a pack, and a gone pane (no word
+            null, its hide rule unchanged, leaving the word alone), a crew, and a gone pane (no word
             at all) are identical BY CONSTRUCTION and not by three occupants happening to agree.
             `text-[10px]/3` is stated on the BAND as
             well as on both runs, and that is load-bearing rather than decorative: a block layer
@@ -1248,7 +1248,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             clears both rules instead of touching one.
 
             Nothing about the reserve changes: the slot still stacks every word (§2), and the height
-            is the same 14px solo, on a pack, and on a gone pane.
+            is the same 14px solo, on a crew, and on a gone pane.
 
             FULL-BLEED, and the content still at 10px. `-mx-3` cancels the dock's `px-3` so both
             rules run edge to edge — one that stopped short would not separate the regions it
@@ -1472,7 +1472,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               long line can never run underneath the icon.
 
               The machine this write lands on is NOT in here. It was, for one round, docked at the
-              field's right edge — and it cost 60px of typing width on a pack, out of the widest part
+              field's right edge — and it cost 60px of typing width on a crew, out of the widest part
               of the composer. It answers the same question from the controls row above (the status
               strip there), which is equally at the write surface and costs the draft nothing. */}
           <div className="relative min-w-0 flex-1">
@@ -1498,7 +1498,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? translate("composer.placeholder.gone")
                 : readOnly
                   ? translate("composer.placeholder.readOnly")
-                  : // Names the machine, because on a pack "why can't I type?" has two possible
+                  : // Names the machine, because on a crew "why can't I type?" has two possible
                     // answers and only one of them is about this device.
                     hostBlock
                     ? hostBlock
@@ -1522,8 +1522,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               //
               // ONE `pr-*` here, unconditionally, and it is the attach button's alone. MEASURED in
               // the playground at a true 390px content width: the field is 310px, so the typing area
-              // is 254px — on a pack and on a solo install alike. At 320px it is 184px, again both.
-              // For one round a pack paid 60px of that to a chip docked at the field's right edge
+              // is 254px — on a crew and on a solo install alike. At 320px it is 184px, again both.
+              // For one round a crew paid 60px of that to a chip docked at the field's right edge
               // (194px and 124px); the host answers the same question from the status strip above
               // now, and the width came back. A second, conditional `pr-*` in this same cn() would
               // not stack — tailwind-merge keeps only the last padding-right (DESIGN.md §7) — which

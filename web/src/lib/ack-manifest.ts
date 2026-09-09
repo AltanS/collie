@@ -28,7 +28,7 @@
 // acknowledgement for `closePane` is a spinner in a bottom sheet three components away, and
 // asserting on it from a manifest would be asserting on a mock of itself.
 //
-// What it does is exactly what the pack-wire guard does for a protocol change (ADR 0025 — "the guard
+// What it does is exactly what the crew-wire guard does for a protocol change (ADR 0025 — "the guard
 // checks that a decision was recorded; it never says which one is right"). Add a mutating export to
 // lib/api.ts next month and ack-manifest.test.ts FAILS until you write one classified line here. The
 // line is then in the diff, and it gets reviewed. The guard cannot do the work for you; it can

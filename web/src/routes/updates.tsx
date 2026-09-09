@@ -25,13 +25,13 @@ import { useScope } from "@/lib/session";
 // readable without moving your eyes to a second surface.
 //
 // ── IT IS ON THE POLL LOOP, AND THAT IS THE POINT ────────────────────────────
-// Same reason the pack census is: a run in progress and a peer going quiet are exactly what this
+// Same reason the crew census is: a run in progress and a peer going quiet are exactly what this
 // page exists to show without the operator reloading. It has no loader of its own — the snapshot
 // arrives on the root loader, and the card does its own read of the preflight, which is one route
 // nobody else pays for.
 //
 // ── THE HEADER IS THE SHELL'S, FILLED ────────────────────────────────────────
-// `RouteHeader` with an `override`, exactly as Settings and Pack do it, so this page carries the
+// `RouteHeader` with an `override`, exactly as Settings and Crew do it, so this page carries the
 // prerelease strip and the shell's padding rather than a copy of them. Back returns to Settings
 // with the scope intact — this is a child of that page, not a sibling of home.
 export function UpdatesRoute() {

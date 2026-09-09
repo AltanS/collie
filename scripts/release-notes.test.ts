@@ -31,7 +31,7 @@ const FULL = `# Changelog
 
 ### Added
 
-- **The pack levels itself.** Every member follows the lead's tag. Thanks @someone (#12). ([abc1234](https://github.com/AltanS/collie/commit/abc1234))
+- **The crew levels itself.** Every member follows the lead's tag. Thanks @someone (#12). ([abc1234](https://github.com/AltanS/collie/commit/abc1234))
 
 ### Changed
 
@@ -92,19 +92,19 @@ describe("parseSection", () => {
 	});
 
 	test("a bullet with no bold lead fails", () => {
-		const bad = FULL.replace("- **The pack levels itself.**", "- The pack levels itself.");
+		const bad = FULL.replace("- **The crew levels itself.**", "- The crew levels itself.");
 		expect(() => parseSection(bad, "2.1.0")).toThrow(/no bold lead sentence/);
 	});
 
 	test("a bold lead that is never closed fails", () => {
-		const bad = FULL.replace("- **The pack levels itself.**", "- **The pack levels itself.");
+		const bad = FULL.replace("- **The crew levels itself.**", "- **The crew levels itself.");
 		expect(() => parseSection(bad, "2.1.0")).toThrow(/never closed/);
 	});
 
 	test("a bullet above every group heading fails", () => {
 		const bad = FULL.replace(
-			"### Added\n\n- **The pack levels itself.**",
-			"- **A stray bullet.** No group owns it.\n\n### Added\n\n- **The pack levels itself.**",
+			"### Added\n\n- **The crew levels itself.**",
+			"- **A stray bullet.** No group owns it.\n\n### Added\n\n- **The crew levels itself.**",
 		);
 		expect(() => parseSection(bad, "2.1.0")).toThrow(/above every '### ' group heading/);
 	});
@@ -195,7 +195,7 @@ Check with \`collie version\` or \`herdr plugin action invoke version --plugin h
 
 **Added**
 
-- The pack levels itself.
+- The crew levels itself.
 
 **Changed**
 

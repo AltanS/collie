@@ -53,7 +53,7 @@ import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CompactStripLabels, STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
-import { useHostHealth } from "@/components/pack-provider";
+import { useHostHealth } from "@/components/crew-provider";
 import { writeRefusal } from "@/lib/host-health";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";

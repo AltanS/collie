@@ -131,7 +131,7 @@ export interface RibbonInput {
    * tap rather than on the next poll.
    */
   dismissedVersion: string | null;
-  /** The version whose quiet PACK notice was closed (`update.dismissedPackVersion`). A separate
+  /** The version whose quiet CREW notice was closed (`update.dismissedPackVersion`). A separate
    *  decision, so a separate input — see {@link DismissScope}. */
   dismissedPackVersion: string | null;
   now: number;
@@ -183,7 +183,7 @@ export function peerLegsOf(update: UpdateInfo | undefined, run?: UpdateRun): Upd
   // together, and mixing a cached record's legs into a live status is how the card came to render
   // last run's failures over this run.
   //
-  // Measured on the VM pack, on a peers-only retry: the band read "Updating 1 peer: member2" while
+  // Measured on the VM crew, on a peers-only retry: the band read "Updating 1 peer: member2" while
   // the card showed both members unreachable from the run before, for the whole run. The card's
   // cached copy of the PREVIOUS run still carried that run's legs, because the legs only move to the
   // top level once a newer run owns them (M20/09) — so the cached copy was not stale in any way a
@@ -196,7 +196,7 @@ export function peerLegsOf(update: UpdateInfo | undefined, run?: UpdateRun): Upd
  *
  * Read from the same two positions as {@link peerLegsOf}, and for the same reason.
  */
-export function packSettledAt(update: UpdateInfo | undefined, run?: UpdateRun): number | null {
+export function crewSettledAt(update: UpdateInfo | undefined, run?: UpdateRun): number | null {
   // FROM THE SAME DOCUMENT THE LEGS CAME FROM (M20/14). A settle stamp read out of one answer and
   // legs read out of another is two accounts of one run, which is the whole disease. So if the live
   // status carries legs at all, its settle stamp is the answer — including when it has none, which is
@@ -208,7 +208,7 @@ export function packSettledAt(update: UpdateInfo | undefined, run?: UpdateRun): 
 }
 
 /**
- * IS THE PACK STILL MOVING? The one clock the band and the card both read (M20/04).
+ * IS THE CREW STILL MOVING? The one clock the band and the card both read (M20/04).
  *
  * Keyed on `settledAt` from spec 01, which is the lead's own answer rather than a second fold of the
  * rows: the moment every leg went terminal, stamped once. A client that folded the rows itself would
@@ -219,22 +219,22 @@ export function packSettledAt(update: UpdateInfo | undefined, run?: UpdateRun): 
  * and both of those must keep a page polling. So the fold below is the fallback, and it errs the
  * same way `isMoving` does: a leg state this client has never heard of counts as moving.
  */
-export function packMoving(update: UpdateInfo | undefined, run?: UpdateRun): boolean {
+export function crewMoving(update: UpdateInfo | undefined, run?: UpdateRun): boolean {
   const legs = peerLegsOf(update, run);
   if (legs.length === 0) return false;
-  if (packSettledAt(update, run) !== null) return false;
+  if (crewSettledAt(update, run) !== null) return false;
   return legs.some(isMoving);
 }
 
 /**
- * How long a pack run runs before the band stops assuming the operator will simply wait (M20/04).
+ * How long a crew run runs before the band stops assuming the operator will simply wait (M20/04).
  *
  * On 2026-09-07 an operator watched "Updating 1 peer: minibuch" for twelve minutes with no elapsed
  * time, no reassurance and nothing a tap could change, and did the only thing left: tapped again,
  * many times. Two minutes is longer than every healthy leg the drill has produced and short enough
  * that a stuck one is named while the operator is still looking.
  */
-export const PACK_PATIENCE_MS = 2 * 60_000;
+export const CREW_PATIENCE_MS = 2 * 60_000;
 
 /**
  * EVERYTHING THE UI KNOWS ABOUT ONE RUN, read once (M20/04).
@@ -252,7 +252,7 @@ export interface RunReading {
   readonly legs: readonly UpdatePeerLeg[];
   /** When the lead stamped the run settled, or null while a leg is open. THE key. */
   readonly settledAt: number | null;
-  /** Is the pack still moving? Never a time comparison. */
+  /** Is the crew still moving? Never a time comparison. */
   readonly moving: boolean;
   /** The legs still moving, in the order the lead reported them. */
   readonly movingLegs: readonly UpdatePeerLeg[];
@@ -267,7 +267,7 @@ export interface RunReading {
    * it is that machine's account of itself and not this browser's guess.
    */
   readonly elapsedMs: number | null;
-  /** Has the run run longer than {@link PACK_PATIENCE_MS}? What changes the band's words. */
+  /** Has the run run longer than {@link CREW_PATIENCE_MS}? What changes the band's words. */
   readonly slow: boolean;
 }
 
@@ -281,8 +281,8 @@ export function legElapsedMs(leg: UpdatePeerLeg, now: number): number | null {
 /** Read one run, once. The ONLY place a run record is interpreted for the UI (M20/04). */
 export function readRun(input: { update: UpdateInfo | undefined; run?: UpdateRun; now: number }): RunReading {
   const legs = peerLegsOf(input.update, input.run);
-  const settledAt = packSettledAt(input.update, input.run);
-  const moving = packMoving(input.update, input.run);
+  const settledAt = crewSettledAt(input.update, input.run);
+  const moving = crewMoving(input.update, input.run);
   const movingLegs = moving ? legs.filter(isMoving) : [];
   const stamps = movingLegs.map((leg) => legElapsedMs(leg, input.now)).filter((ms): ms is number => ms !== null);
   const elapsedMs = stamps.length === 0 ? null : Math.max(...stamps);
@@ -295,7 +295,7 @@ export function readRun(input: { update: UpdateInfo | undefined; run?: UpdateRun
     failed: legs.find((leg) => PEER_FAILED.has(leg.state)) ?? null,
     managed: legs.filter((leg) => leg.state === "package-managed"),
     elapsedMs,
-    slow: elapsedMs !== null && elapsedMs >= PACK_PATIENCE_MS,
+    slow: elapsedMs !== null && elapsedMs >= CREW_PATIENCE_MS,
   };
 }
 
@@ -337,7 +337,7 @@ export function managerOf(command: string | undefined): string | null {
  *
  * The rule is whether the state describes something that ENDS ON ITS OWN. A run in flight, a
  * finished run, a failed peer and a peer still moving all do, and "a dismissed run is a run the
- * operator can no longer see the end of" — so they carry no close. An offer and the two QUIET pack
+ * operator can no longer see the end of" — so they carry no close. An offer and the two QUIET crew
  * states describe a standing fact, and a standing fact the operator has read is one they may put
  * down. Keyed by the version, so a newer one raises the band again — and by the SCOPE, so putting
  * down a notice about another machine leaves this host's own offer alone.
@@ -351,7 +351,7 @@ export function dismissTarget(view: RibbonView): Dismissal | null {
     case "package-managed":
       return view.target === null ? null : { scope: "pack", version: view.target };
     // A FAILED LEG IS CLOSABLE, and by this rule's own logic (M20/04). The rule is whether the state
-    // describes something that ends on its own. A failed leg is the one pack state that does not:
+    // describes something that ends on its own. A failed leg is the one crew state that does not:
     // it is terminal, the run is over, and the sentence would otherwise stand until another run
     // replaces it. An operator who has read it may put it down.
     case "peer-failed":
@@ -361,7 +361,7 @@ export function dismissTarget(view: RibbonView): Dismissal | null {
   }
 }
 
-/** The version the quiet pack states are keyed by: what the run is heading for when a record names
+/** The version the quiet crew states are keyed by: what the run is heading for when a record names
  *  it, else the release upstream is offering. Null when neither exists — nothing to key a dismissal
  *  to, so the band stays. */
 function targetOf(input: RibbonInput, to: string | null): string | null {
@@ -397,7 +397,7 @@ export function ribbonView(input: RibbonInput): RibbonView {
   // has always been, with its own words. Above (d) and (a) because it is the same slot.
   if (input.bundleStale) return { kind: "bundle" };
 
-  // (d) — the pack is not done. NO TIME WINDOW, and no `finished` gate (M20/04).
+  // (d) — the crew is not done. NO TIME WINDOW, and no `finished` gate (M20/04).
   //
   // It used to hang off `finished`, so a moving peer inherited (c)'s ten-minute window and the band
   // fell silent at ten minutes over a card that was still counting. It also required a `done` record
@@ -417,7 +417,7 @@ export function ribbonView(input: RibbonInput): RibbonView {
       };
     }
     const quiet = target !== null && target === input.dismissedPackVersion;
-    // A moving peer is undismissable, so its target is null however the pack was closed before: the
+    // A moving peer is undismissable, so its target is null however the crew was closed before: the
     // operator must be able to see the end of a run somebody is still driving.
     if (reading.movingLegs.length > 0) {
       return {

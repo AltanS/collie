@@ -41,7 +41,7 @@ your terminal, served over Tailscale. It is a mobile-first PWA (Vite + React + T
 Tailwind + shadcn) plus a Bun/TypeScript bridge that mirrors ONE terminal multiplexer per install \
 — Herdr, tmux or zellij — so you can monitor and reply to agents from a phone. Harness adapters \
 turn one agent's terminal dialogs (permission prompts, plan approvals) into native phone buttons. \
-A pack federates several Collie installs behind one lead.`;
+A crew federates several Collie installs behind one lead.`;
 
 class TriageError extends Error {}
 

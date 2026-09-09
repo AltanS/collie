@@ -33,7 +33,7 @@
 //   • Plain-text refusals (`text("bad body", 400)`, a 403 gate reason, a 405). They are not JSON, so
 //     there is no field to add one to — coding them would mean changing the response shape, which is
 //     exactly what this change promised not to do.
-//   • Pack-link errors (`bridge/pack/`). That surface is versioned separately (PACK_PROTOCOL.md) and
+//   • Crew-link errors (`bridge/crew/`). That surface is versioned separately (PACK_PROTOCOL.md) and
 //     is guarded at commit time (ADR 0025); it keeps today's bodies in this release.
 //   • Push/OS notification text (`bridge/notifications.ts`). Different surface, different follow-up.
 
@@ -113,7 +113,7 @@ export const ERROR_CODES = {
   /**
    * Refused on the declared Content-Length (413) or on the decoded size (200 + ok:false). The
    * number is the HOST's own `COLLIE_MAX_UPLOAD_MB`, so it is interpolated rather than written:
-   * two members of one pack may answer this with two different sentences, both true.
+   * two members of one crew may answer this with two different sentences, both true.
    */
   "upload.too_large": "file too large (max {maxMb} MB)",
   /** The multipart body carried no `file` part. */
@@ -152,13 +152,13 @@ export const ERROR_CODES = {
   "session.unknown": "unknown session: {session}",
   "host.unknown": "unknown host: {host}",
 
-  // ── The pack overview: GET /api/pack ───────────────────────────────────────────────
+  // ── The crew overview: GET /api/pack ───────────────────────────────────────────────
   /**
-   * This collie is not a lead with a pack, so it has no pack to report. Both refusals are this one
+   * This collie is not a lead with a crew, so it has no crew to report. Both refusals are this one
    * code on purpose: a solo instance and a peer differ in what they ARE, not in what the phone can
    * do about it — a peer is not a front door (ADR 0013), so neither has an overview to show.
    */
-  "pack.not_lead": "this collie is not the lead of a pack",
+  "pack.not_lead": "this collie is not the lead of a crew",
 
   // ── Starting an update from the phone: POST /api/update (M15/05) ───────────────────
   /** The body carried no confirm. One tap plus one confirm is the contract; nothing moved. */

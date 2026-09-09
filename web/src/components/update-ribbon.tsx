@@ -80,7 +80,7 @@ export function UpdateRibbon() {
   // OPTIMISTIC ONLY. The dismissal itself lives on the bridge (M17/08) and arrives on the snapshot;
   // this holds what the operator just closed so the band drops on the tap rather than on the next
   // poll. Keyed by version AND scope like the stored one, so a newer version still raises the band
-  // and closing a pack notice does not hide this host's own offer.
+  // and closing a crew notice does not hide this host's own offer.
   const [justDismissed, setJustDismissed] = useState<Dismissal | null>(null);
 
   const update = data?.update;

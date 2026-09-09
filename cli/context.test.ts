@@ -129,8 +129,8 @@ describe("the legacy .env note", () => {
 });
 
 // A named instance may only ever land on a dir the operator made for it. The alternative is the
-// 2026-08-12 incident: `COLLIE_INSTANCE=v1 collie pack add` resolved the DEFAULT instance's config
-// dir, and a pack verb read and then MUTATED the live stable instance's trust store.
+// 2026-08-12 incident: `COLLIE_INSTANCE=v1 collie crew add` resolved the DEFAULT instance's config
+// dir, and a crew verb read and then MUTATED the live stable instance's trust store.
 describe("config dir for a named instance", () => {
   const V1 = join(HOME, ".config", "herdr", "plugins", "config", `${PLUGIN_ID}-v1`);
 

@@ -19,9 +19,9 @@ export interface PushPayload {
   renotify?: boolean;
   /**
    * `session` is the registry name the pane lives in — carried so the click deep-links into it.
-   * `host` is the pack member the pane lives ON, stamped by the bridge for a peer's pane only
+   * `host` is the crew member the pane lives ON, stamped by the bridge for a peer's pane only
    * (`bridge/push.ts` adds it to `data` exactly the way it adds `session`, so a solo/lead payload is
-   * byte-identical to the pre-pack one). `target` names a non-pane destination for the tap (e.g.
+   * byte-identical to the pre-crew one). `target` names a non-pane destination for the tap (e.g.
    * "settings" for an update notification); absent = the default agent deep-link path.
    */
   data?: NotifData;
@@ -36,7 +36,7 @@ export interface NotifData {
   paneId?: string;
   /** Registry name of the pane's session (undefined = primary) — the deep-link scopes to it. */
   session?: string;
-  /** Pack member the pane lives on (undefined = the lead) — the deep-link scopes to it. */
+  /** Crew member the pane lives on (undefined = the lead) — the deep-link scopes to it. */
   host?: string;
   /** Non-pane tap destination (e.g. "settings"); absent = the default agent deep-link. */
   target?: string;
@@ -56,7 +56,7 @@ export type PushDecision =
       paneId?: string;
       /** Registry name of the pane's session (undefined = primary) — for the click deep-link. */
       session?: string;
-      /** Pack member the pane lives on (undefined = the lead) — for the click deep-link. */
+      /** Crew member the pane lives on (undefined = the lead) — for the click deep-link. */
       host?: string;
       /** Non-pane tap destination (e.g. "settings"); undefined = the default agent deep-link. */
       target?: string;
@@ -65,7 +65,7 @@ export type PushDecision =
 
 /**
  * Separates a notification slot's base from the host that owns it — the frontend half of
- * `bridge/pack/tags.ts`'s `HOST_TAG_SEP`, which the bridge documents at length and this side must
+ * `bridge/crew/tags.ts`'s `HOST_TAG_SEP`, which the bridge documents at length and this side must
  * reproduce exactly (the bridge writes the tag on a render, this file re-derives it on a fallback,
  * and a retraction has to close the slot the render opened).
  *
@@ -78,7 +78,7 @@ export const HOST_TAG_SEP = "@";
 /**
  * Qualify a notification slot with the host that owns it. `host === undefined` (solo, or the lead's
  * own pane) returns the base UNTOUCHED — the lead's `collie:herd` must not move when it grows a
- * pack, or every alert outstanding on the phone at `collie join` time orphans into a slot nothing
+ * crew, or every alert outstanding on the phone at `collie join` time orphans into a slot nothing
  * will ever clear (`bridge/sessions.ts`'s reasoning, one dimension out).
  */
 export const hostSlot = (base: string, host?: string): string =>

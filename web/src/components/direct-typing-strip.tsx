@@ -11,7 +11,7 @@ import { t } from "@/lib/i18n";
 // into a running agent. This strip sits where the eye already goes for composer state, cannot scroll
 // away, and says what is happening in words.
 //
-// WHEN THIS REACHES THE PACK BRANCH IT MUST NAME THE HOST. On v1 every write surface carries a
+// WHEN THIS REACHES THE CREW BRANCH IT MUST NAME THE HOST. On v1 every write surface carries a
 // HostChip, because a write names its target; a mode that streams keystrokes into a terminal without
 // saying WHICH machine would be the one write path that doesn't. That component does not exist on
 // main, so the chip goes in at the merge, next to the label below.

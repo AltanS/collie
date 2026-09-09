@@ -7,10 +7,10 @@ import {
   firstRed,
   FreshPreflightGate,
   mergedUpdateVerdict,
-  PACK_PREFLIGHT_MAX_CHECKS,
-  PACK_PREFLIGHT_TRUNCATED_ID,
-  packPreflightChecks,
-  packUpdateRows,
+  CREW_PREFLIGHT_MAX_CHECKS,
+  CREW_PREFLIGHT_TRUNCATED_ID,
+  crewPreflightChecks,
+  crewUpdateRows,
   parsePeerPreflight,
   parsePreflightReport,
   parseUpdateStartRequest,
@@ -105,7 +105,7 @@ describe("the update preflight report, as the bridge reads it", () => {
     expect(parsePreflightReport("[]")).toBeNull();
   });
 
-  test("a report carrying `pack` loses the members AND their contribution to the verdict", () => {
+  test("a report carrying `crew` loses the members AND their contribution to the verdict", () => {
     const text = JSON.stringify({
       schema: 1,
       // Red because of a peer this lead cannot ssh to, which is not a reason to refuse the lead's
@@ -123,7 +123,7 @@ describe("the update preflight report, as the bridge reads it", () => {
     expect("pack" in (report ?? {})).toBe(false);
   });
 
-  test("without `pack` the top-level verdict is taken as printed", () => {
+  test("without `crew` the top-level verdict is taken as printed", () => {
     const text = JSON.stringify({
       schema: 1,
       verdict: "red",
@@ -372,7 +372,7 @@ describe("the preflight the phone runs", () => {
   });
 });
 
-// ── The pack's half (M16/03) ─────────────────────────────────────────────────
+// ── The crew's half (M16/03) ─────────────────────────────────────────────────
 // Every peer answers for ITSELF over the link the lead already polls, the lead banks the answer, and
 // the card reads the bank. Nothing below dials anything; that is the point of it being here.
 
@@ -420,7 +420,7 @@ describe("a member's own preflight, as it crosses the link", () => {
     ];
     for (const value of closed) expect(parsePeerPreflight(value)).toBeNull();
     // And the row it produces blocks by name rather than passing as green.
-    const rows = packUpdateRows([{ name: "attic", version: "1.4.0", preflight: null }]);
+    const rows = crewUpdateRows([{ name: "attic", version: "1.4.0", preflight: null }]);
     expect(rows).toEqual([
       { name: "attic", version: "1.4.0", verdict: "unknown", reasons: ["we could not check attic"], asOf: null },
     ]);
@@ -461,26 +461,26 @@ describe("a member's own preflight, as it crosses the link", () => {
       CHECK("tree", "red", "working tree has tracked changes"),
       ...Array.from({ length: 30 }, (_, i) => CHECK(`c${i}`, "green", `check ${i} passed`)),
     ];
-    const capped = packPreflightChecks(many);
-    expect(capped).toHaveLength(PACK_PREFLIGHT_MAX_CHECKS);
+    const capped = crewPreflightChecks(many);
+    expect(capped).toHaveLength(CREW_PREFLIGHT_MAX_CHECKS);
     // Worst first, so the red that DECIDED the verdict is the last thing truncation would drop.
     expect(capped[0]!.id).toBe("tree");
     const last = capped.at(-1)!;
-    expect(last.id).toBe(PACK_PREFLIGHT_TRUNCATED_ID);
+    expect(last.id).toBe(CREW_PREFLIGHT_TRUNCATED_ID);
     expect(last.verdict).toBe("green");
     expect(last.reason).toContain("16 further checks");
     // The trailing check states a fact; it does not invent a finding.
     expect(worstVerdict(capped.map((c) => c.verdict))).toBe("red");
     // The lead caps what it READS too — a bound one side enforces is one the other can dodge.
     const long = wire({ verdict: "red", asOf: 5, checks: asJson(many) });
-    expect(parsePeerPreflight(long)!.checks).toHaveLength(PACK_PREFLIGHT_MAX_CHECKS);
+    expect(parsePeerPreflight(long)!.checks).toHaveLength(CREW_PREFLIGHT_MAX_CHECKS);
     expect(parsePeerPreflight(long)!.verdict).toBe("red");
   });
 });
 
-describe("pack rows — what GET /api/update/check answers with", () => {
-  test("pack rows carry name, version, verdict, non-green reasons worst first, and asOf", () => {
-    const rows = packUpdateRows([
+describe("crew rows — what GET /api/update/check answers with", () => {
+  test("crew rows carry name, version, verdict, non-green reasons worst first, and asOf", () => {
+    const rows = crewUpdateRows([
       {
         name: "minibuch",
         version: "1.4.1",
@@ -512,14 +512,14 @@ describe("pack rows — what GET /api/update/check answers with", () => {
     ]);
   });
 
-  test("pack rows are empty for an empty pack — the key is a fact, never an omission", () => {
-    expect(packUpdateRows([])).toEqual([]);
+  test("crew rows are empty for an empty crew — the key is a fact, never an omission", () => {
+    expect(crewUpdateRows([])).toEqual([]);
   });
 });
 
 describe("the merged verdict — one function, three surfaces", () => {
   test("merged verdict names the member that produced it, and the reason it gave", () => {
-    const pack = packUpdateRows([
+    const crew = crewUpdateRows([
       {
         name: "attic",
         version: "1.4.0",
@@ -530,7 +530,7 @@ describe("the merged verdict — one function, three surfaces", () => {
         },
       },
     ]);
-    expect(mergedUpdateVerdict(GREEN, pack)).toEqual({
+    expect(mergedUpdateVerdict(GREEN, crew)).toEqual({
       verdict: "red",
       member: "attic",
       reason: "working tree has tracked changes: bridge/server.ts",
@@ -538,7 +538,7 @@ describe("the merged verdict — one function, three surfaces", () => {
     });
     // The lead's own red is named the same way, and it is read first.
     const leadRed = REPORT("red", [CHECK("lock", "red", "an update is already running here")]);
-    expect(mergedUpdateVerdict(leadRed, pack)).toEqual({
+    expect(mergedUpdateVerdict(leadRed, crew)).toEqual({
       verdict: "red",
       member: "this collie",
       reason: "an update is already running here",
@@ -547,14 +547,14 @@ describe("the merged verdict — one function, three surfaces", () => {
   });
 
   test("unknown beats amber and blocks; amber never blocks; all green names nobody", () => {
-    const amber = packUpdateRows([
+    const amber = crewUpdateRows([
       {
         name: "nas",
         version: "1.4.1",
         preflight: { verdict: "amber", asOf: 5, checks: [CHECK("ops", "amber", "no ssh record")] },
       },
     ]);
-    const unknown = packUpdateRows([{ name: "attic", version: null, preflight: null }]);
+    const unknown = crewUpdateRows([{ name: "attic", version: null, preflight: null }]);
     expect(mergedUpdateVerdict(GREEN, amber)).toEqual({
       verdict: "amber",
       member: "nas",
@@ -616,7 +616,7 @@ describe("the fresh-preflight request, across the link", () => {
     expect([...src.matchAll(/updateCadenceTick\(/g)]).toHaveLength(1);
   });
 
-  test("the pack read peeks; it never shells out mid-sweep", async () => {
+  test("the crew read peeks; it never shells out mid-sweep", async () => {
     let runs = 0;
     let now = 1_000;
     const cache = new PreflightCache({
@@ -632,7 +632,7 @@ describe("the fresh-preflight request, across the link", () => {
     await cache.get();
     expect(cache.peek()).toEqual({ report: GREEN, at: 1_000 });
     now = 99_000;
-    // A stale entry stays readable and stays HONEST about its age — never re-run on the pack path.
+    // A stale entry stays readable and stays HONEST about its age — never re-run on the crew path.
     expect(cache.peek()).toEqual({ report: GREEN, at: 1_000 });
     expect(runs).toBe(1);
   });
@@ -672,7 +672,7 @@ describe("updateStartVerdict — a packaged install", () => {
         installKind: "packaged",
         latest: "1.3.0",
         // `rolled-back` is one of the two states peersNeedLevelling recognises; "behind" is not a
-        // leg state, it is a pack row's version comparison.
+        // leg state, it is a crew row's version comparison.
         peers: [{ name: "attic", state: "rolled-back" }],
       }),
     );

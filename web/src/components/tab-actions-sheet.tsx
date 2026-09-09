@@ -4,7 +4,7 @@ import { Pencil, XCircle } from "lucide-react";
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
 import { HostChip } from "@/components/host-chip";
-import { useAmbientHost, useHostWriteBlock } from "@/components/pack-provider";
+import { useAmbientHost, useHostWriteBlock } from "@/components/crew-provider";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import * as api from "@/lib/api";

@@ -121,7 +121,7 @@ have", never a faked level.
 Herdr's is [`bridge/mux/herdr/fixture.ts`](./bridge/mux/herdr/fixture.ts) — an in-memory `HerdrRpc`
 that answers exactly what the documented server answers, including its `pane_not_found` codes and its
 always-false `truncated`. **A fake that is kinder than the real server proves nothing.** (The other
-in-repo fake, [`bridge/pack/fake-herdr.ts`](./bridge/pack/fake-herdr.ts), is a real unix-socket
+in-repo fake, [`bridge/crew/fake-herdr.ts`](./bridge/crew/fake-herdr.ts), is a real unix-socket
 daemon; it exists because *its* subject is the pack transport. Conformance's subject is the adapter,
 so its fake is state transitions rather than bytes — deterministic, and runnable anywhere.)
 

@@ -2,7 +2,7 @@ import { Layers } from "lucide-react";
 
 import { AddressTag } from "@/components/ui/address-tag";
 import { primarySession } from "@/lib/hosts";
-import { usePack } from "@/components/pack-provider";
+import { useCrew } from "@/components/crew-provider";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
@@ -31,13 +31,13 @@ interface SessionChipProps {
 // the SHAPE says which is which (a pill is a fact, the switcher is a button).
 //
 // The registry comes from CONTEXT, not from a prop — the same seam, and for the same reason, that
-// HostChip takes the pack roster from. Half the surfaces that render one of these are unit-tested
-// without a router, so reading the root loader is not available (pack-provider.tsx states that
+// HostChip takes the crew roster from. Half the surfaces that render one of these are unit-tested
+// without a router, so reading the root loader is not available (crew-provider.tsx states that
 // argument at length); a prop chain reaching every list, sheet and row is a prop chain someone will
 // break. With no provider the registry is empty, which reads as "nothing to say".
 export function SessionChip({ session, className }: SessionChipProps) {
   useLocale();
-  const { sessions } = usePack();
+  const { sessions } = useCrew();
   if (session === undefined || session === primarySession(sessions)) return null;
   return (
     <AddressTag

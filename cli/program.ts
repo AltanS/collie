@@ -30,20 +30,20 @@ import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
 import {
   cmdJoin,
   cmdLeave,
-  cmdPack,
-  cmdPackApprovePromote,
-  cmdPackInvite,
-  cmdPackRemove,
-  cmdPackRename,
-  cmdPackRotate,
-  cmdPackSetAddress,
-  cmdPackStatus,
+  cmdCrew,
+  cmdCrewApprovePromote,
+  cmdCrewInvite,
+  cmdCrewRemove,
+  cmdCrewRename,
+  cmdCrewRotate,
+  cmdCrewSetAddress,
+  cmdCrewStatus,
   cmdPromote,
   cmdReconnect,
-  packAudit,
-  packDeps,
-  PACK_SUBCOMMANDS,
-} from "./pack.ts";
+  crewAudit,
+  crewDeps,
+  CREW_SUBCOMMANDS,
+} from "./crew.ts";
 import {
   cmdDevices,
   cmdDevicesList,
@@ -63,9 +63,9 @@ import {
 import { cmdPushKeys } from "./push-keys.ts";
 import { cmdQr } from "./qr.ts";
 import { loadUi, renderInputs, takePlainFlag, type Ui, wantsRich } from "./render.ts";
-import { cmdPackDeputy } from "./pack-deputy.ts";
-import { cmdPackUpdate } from "./pack-update.ts";
-import { cmdPackAdd, packAddDeps, type PackAddDeps } from "./remote.ts";
+import { cmdCrewDeputy } from "./crew-deputy.ts";
+import { cmdCrewUpdate } from "./crew-update.ts";
+import { cmdCrewAdd, crewAddDeps, type CrewAddDeps } from "./remote.ts";
 import { cmdServe, cmdServeVerb, cmdUnserve } from "./serve.ts";
 import {
   cmdStt,
@@ -142,19 +142,19 @@ export interface Subcommand {
 }
 
 /**
- * A pack verb's dependencies: the lifecycle set's seams, plus the trust store, the transport, the
- * clock and the audit log (`cli/pack.ts`'s `packDeps`).
+ * A crew verb's dependencies: the lifecycle set's seams, plus the trust store, the transport, the
+ * clock and the audit log (`cli/crew.ts`'s `crewDeps`).
  *
  * `restart`, `serve` and `unserve` are passed as the real lifecycle verbs because a membership change
  * is not complete until the running bridge has it: the trust store is read once per process, and mode,
  * push gate and roster are resolved at construction.
  */
-async function packVerbDeps(io: Io, ui: Ui | null = null): Promise<PackAddDeps> {
+async function crewVerbDeps(io: Io, ui: Ui | null = null): Promise<CrewAddDeps> {
   const deps = lifecycleDeps(io);
-  // `packAddDeps` layers the SSH transport, the two prompts and the bundle on top — `pack add` is
+  // `crewAddDeps` layers the SSH transport, the two prompts and the bundle on top — `crew add` is
   // the one verb that reaches another machine, and every one of those is a seam its tests replace.
-  return packAddDeps(
-    packDeps(
+  return crewAddDeps(
+    crewDeps(
       {
         ctx: deps.ctx,
         io,
@@ -162,14 +162,14 @@ async function packVerbDeps(io: Io, ui: Ui | null = null): Promise<PackAddDeps> 
         exec: deps.exec,
         files: deps.files,
         restart: (into?: Io) => cmdRestart(into === undefined ? deps : { ...deps, io: into }),
-        // Threaded exactly like `restart`: `cmdStart` (reached through `restart` on the rich `pack
+        // Threaded exactly like `restart`: `cmdStart` (reached through `restart` on the rich `crew
         // add` path) calls this with the SAME swapped `io` it was given, so a serve republish that
         // happens mid-restart lands on the surface's held-chatter `Io` instead of escaping to the
         // real terminal (the bug this comment used to have no fix for — see cli/lifecycle.ts).
         serve: (into?: Io) => Promise.resolve(cmdServe(into === undefined ? deps : { ...deps, io: into })),
         unserve: () => cmdUnserve(deps),
       },
-      await packAudit(deps.ctx),
+      await crewAudit(deps.ctx),
     ),
   );
 }
@@ -216,7 +216,7 @@ function hooksDeps(io: Io): HooksDeps {
  * state dir the bridge resolves), plus `exec` to locate the operator's `codex` binary and the two
  * prompts `setup` asks its questions through.
  *
- * The prompts are Bun's built-ins behind a tty check, exactly as `pack add` guards them: a question
+ * The prompts are Bun's built-ins behind a tty check, exactly as `crew add` guards them: a question
  * nobody can answer must abort legibly rather than read EOF as consent — and on the codex path that
  * question IS the consent (ADR 0029).
  */
@@ -266,79 +266,79 @@ function lifecycleCommand(
   };
 }
 
-/** A `crew` sub-verb whose body takes the pack dependency set; `rich` marks a surface in `cli/ui/`. */
-function packSubcommand(
-  name: (typeof PACK_SUBCOMMANDS)[number],
+/** A `crew` sub-verb whose body takes the crew dependency set; `rich` marks a surface in `cli/ui/`. */
+function crewSubcommand(
+  name: (typeof CREW_SUBCOMMANDS)[number],
   summary: string,
-  body: (deps: PackAddDeps, args: readonly string[]) => number | Promise<number>,
+  body: (deps: CrewAddDeps, args: readonly string[]) => number | Promise<number>,
   rich = false,
 ): Subcommand {
   return {
     name,
     summary,
-    run: async (args, s) => body(await packVerbDeps(s.io, rich ? await s.ui() : null), args),
+    run: async (args, s) => body(await crewVerbDeps(s.io, rich ? await s.ui() : null), args),
   };
 }
 
 /**
  * The `crew` subcommand tree, built ONCE and shared by both spellings of the verb.
  *
- * Order is `PACK_SUBCOMMANDS`' order, which is the order `cli/pack.ts`'s own usage block prints —
+ * Order is `CREW_SUBCOMMANDS`' order, which is the order `cli/crew.ts`'s own usage block prints —
  * the two are pinned to each other in `cli/main.test.ts`. Every row resolves its seams through
- * `packVerbDeps`, so the dispatcher stays a table and `cli/pack.ts` owns the behaviour.
+ * `crewVerbDeps`, so the dispatcher stays a table and `cli/crew.ts` owns the behaviour.
  */
 function crewTree(): readonly Subcommand[] {
   return [
-    packSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead)", cmdPackInvite),
-    packSubcommand("join", "join a crew: `crew join <lead-address>` (run on the joining machine)", cmdJoin),
-    packSubcommand("leave", "leave the crew — drops the crew secret and every pin on this machine", (deps) =>
+    crewSubcommand("invite", "mint a single-use, 10-minute enrollment token (on the lead)", cmdCrewInvite),
+    crewSubcommand("join", "join a crew: `crew join <lead-address>` (run on the joining machine)", cmdJoin),
+    crewSubcommand("leave", "leave the crew — drops the crew secret and every pin on this machine", (deps) =>
       cmdLeave(deps),
     ),
-    packSubcommand("add", "install and enroll a peer over SSH: `crew add <ssh-host>` (on the lead)", cmdPackAdd, true),
-    packSubcommand(
+    crewSubcommand("add", "install and enroll a peer over SSH: `crew add <ssh-host>` (on the lead)", cmdCrewAdd, true),
+    crewSubcommand(
       "update",
       "level peers to this lead's build over SSH: `crew update <member>… | --all` (on the lead)",
-      cmdPackUpdate,
+      cmdCrewUpdate,
       true,
     ),
-    packSubcommand("status", "mode, members, reachability, secret pickup and why a link is refused", cmdPackStatus, true),
-    packSubcommand("rotate", "reissue the crew secret and hand it to every reachable peer", (deps) =>
-      cmdPackRotate(deps),
+    crewSubcommand("status", "mode, members, reachability, secret pickup and why a link is refused", cmdCrewStatus, true),
+    crewSubcommand("rotate", "reissue the crew secret and hand it to every reachable peer", (deps) =>
+      cmdCrewRotate(deps),
     ),
-    packSubcommand("rename", "give the crew a new name: `crew rename <name>` (on the lead)", cmdPackRename),
-    packSubcommand("remove", "unpin and forget a member (on the lead)", cmdPackRemove),
-    packSubcommand(
+    crewSubcommand("rename", "give the crew a new name: `crew rename <name>` (on the lead)", cmdCrewRename),
+    crewSubcommand("remove", "unpin and forget a member (on the lead)", cmdCrewRemove),
+    crewSubcommand(
       "set-address",
       "correct where this lead dials a member: `crew set-address <member> <host:port>`",
-      cmdPackSetAddress,
+      cmdCrewSetAddress,
     ),
-    packSubcommand(
+    crewSubcommand(
       "deputy",
       "name the ONE peer that may take over and arm it over ssh: `crew deputy <member> | --revoke`",
-      (deps, args) => cmdPackDeputy(deps, args),
+      (deps, args) => cmdCrewDeputy(deps, args),
     ),
-    packSubcommand(
+    crewSubcommand(
       "approve-promote",
       "consent, on the lead, for one member to take over (10 minutes, single-use)",
-      cmdPackApprovePromote,
+      cmdCrewApprovePromote,
     ),
   ];
 }
 
-/** The one tree. `crew` and its `pack` alias both point at THIS array, so neither can drift. */
+/** The one tree. `crew` and its `crew` alias both point at THIS array, so neither can drift. */
 const CREW_TREE: readonly Subcommand[] = crewTree();
 
-const CREW_SUMMARY = `crew administration: ${PACK_SUBCOMMANDS.join(", ")}`;
+const CREW_SUMMARY = `crew administration: ${CREW_SUBCOMMANDS.join(", ")}`;
 
 /**
  * Reached only when no subcommand matched — a bare `collie crew` (or `collie pack`), or a misspelt
- * sub-verb. `cmdPack` owns that message, and has since before commander: it names every sub-verb
+ * sub-verb. `cmdCrew` owns that message, and has since before commander: it names every sub-verb
  * with its own one-line summary, which is more than an "unknown command" line would say.
  */
-const crewRun: Command["run"] = async (args, s) => cmdPack(await packVerbDeps(s.io), args);
+const crewRun: Command["run"] = async (args, s) => cmdCrew(await crewVerbDeps(s.io), args);
 
 /**
- * The one line the `pack` spelling prints that `crew` does not (ADR 0038).
+ * The one line the `crew` spelling prints that `crew` does not (ADR 0038).
  *
  * It is a note to a PERSON, so it goes to stderr and only when stderr is a terminal: a script, a
  * pipe and a Herdr action see nothing at all, and stdout is byte-identical under both spellings,
@@ -358,17 +358,17 @@ export function withOldSpellingNotice<T extends Command["run"]>(body: T): Comman
   };
 }
 
-/** A `pack` row: the notice, then the crew row's OWN function. `aliasOf` is what pins that. */
+/** A `crew` row: the notice, then the crew row's OWN function. `aliasOf` is what pins that. */
 export type AliasRow = Subcommand & { readonly aliasOf: Subcommand };
 
 /**
- * Wrap one crew row as its `pack` alias.
+ * Wrap one crew row as its `crew` alias.
  *
  * The wrapper is the only thing the two spellings do not share, and it holds nothing but the
- * notice: `aliasOf` carries the crew row itself, so `cli/pack.test.ts` can pin by identity that no
+ * notice: `aliasOf` carries the crew row itself, so `cli/crew.test.ts` can pin by identity that no
  * sub-verb reaches one spelling and misses the other.
  */
-export function packAliasRow(sub: Subcommand): AliasRow {
+export function crewAliasRow(sub: Subcommand): AliasRow {
   return {
     name: sub.name,
     summary: sub.summary,
@@ -545,7 +545,7 @@ export const COMMANDS: readonly Command[] = [
         run: (args, s) => cmdDevicesRevoke(pairingDeps(s.io), args),
       },
     ],
-    // Bare or misspelt lands here, and `cmdDevices` owns that message — as `cmdPack` does.
+    // Bare or misspelt lands here, and `cmdDevices` owns that message — as `cmdCrew` does.
     run: (args, s) => cmdDevices(pairingDeps(s.io), args),
   },
   // ── Push subscriptions ─────────────────────────────────────────────────────
@@ -611,21 +611,21 @@ export const COMMANDS: readonly Command[] = [
     run: (args, s) => cmdStt(sttDeps(s.io), args),
   },
   // ── The crew (M4/07, renamed in M24) ──────────────────────────────────────
-  // The only way a machine enters or leaves a crew. The verb is `crew`; `pack` is an alias onto the
+  // The only way a machine enters or leaves a crew. The verb is `crew`; `crew` is an alias onto the
   // same tree, declared below it, and it prints one note on a terminal (ADR 0038).
   // The two ALIASES. `crew join` and `crew leave` are the canonical spellings — every other crew
   // verb is a `crew` sub-verb, and these two were the exception for no reason anyone could state.
   // They stay because 1.0.0 documented them and scripts type them: same function, same seams, same
-  // exit codes, one name each. `cli/pack.test.ts` pins that the two spellings are one code path.
+  // exit codes, one name each. `cli/crew.test.ts` pins that the two spellings are one code path.
   {
     name: "join",
     summary: "same as `crew join`",
-    run: async (args, s) => cmdJoin(await packVerbDeps(s.io), args),
+    run: async (args, s) => cmdJoin(await crewVerbDeps(s.io), args),
   },
   {
     name: "leave",
     summary: "same as `crew leave`",
-    run: async (_args, s) => cmdLeave(await packVerbDeps(s.io)),
+    run: async (_args, s) => cmdLeave(await crewVerbDeps(s.io)),
   },
   {
     name: "crew",
@@ -633,8 +633,8 @@ export const COMMANDS: readonly Command[] = [
     subcommands: CREW_TREE,
     run: crewRun,
   },
-  // The `pack` ALIAS. Every row is `CREW_TREE`'s own row with one line in front of it, the notice
-  // and nothing else, so the two spellings cannot drift apart, and `cli/pack.test.ts` pins that by
+  // The `crew` ALIAS. Every row is `CREW_TREE`'s own row with one line in front of it, the notice
+  // and nothing else, so the two spellings cannot drift apart, and `cli/crew.test.ts` pins that by
   // identity for every sub-verb. `internal` keeps the alias out of the usage line while commander
   // still dispatches it: a 1.6.0 script, a README recipe and muscle memory all type `collie pack`,
   // and none of them is asked to change. The notice is TTY-gated, so only the person reading a
@@ -643,18 +643,18 @@ export const COMMANDS: readonly Command[] = [
     name: "pack",
     summary: "same as `crew`",
     internal: true,
-    subcommands: CREW_TREE.map(packAliasRow),
+    subcommands: CREW_TREE.map(crewAliasRow),
     run: withOldSpellingNotice(crewRun),
   },
   {
     name: "promote",
     summary: "make THIS machine the lead (run on the peer taking over; --force if the lead is gone)",
-    run: async (args, s) => cmdPromote(await packVerbDeps(s.io), args),
+    run: async (args, s) => cmdPromote(await crewVerbDeps(s.io), args),
   },
   {
     name: "reconnect",
     summary: "a member moved: re-point at its new address without re-enrolling anything",
-    run: async (args, s) => cmdReconnect(await packVerbDeps(s.io), args),
+    run: async (args, s) => cmdReconnect(await crewVerbDeps(s.io), args),
   },
   // The manual, printed out of the binary rather than fetched or read off disk (`cli/docs-embed.ts`
   // says why). Both verbs are read-only and neither draws a terminal view, so `--plain` is moot.
@@ -754,7 +754,7 @@ function buildProgram(
   program
     .name("collie")
     // Nothing in this process may `process.exit()` — the binary's exit code is `run`'s return value,
-    // and a library that exits behind our back would take the 3/4/5 pack codes with it.
+    // and a library that exits behind our back would take the 3/4/5 crew codes with it.
     .exitOverride()
     .configureOutput({
       writeOut: (chunk) => emit(session.io.out, chunk),

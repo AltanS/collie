@@ -3,13 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { vi } from "vitest";
 
-import { PackProvider } from "@/components/pack-provider";
+import { CrewProvider } from "@/components/crew-provider";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import {
   fixtureAgents,
-  fixturePackAgents,
-  fixturePackSessions,
-  fixturePackShellPanes,
+  fixtureCrewAgents,
+  fixtureCrewSessions,
+  fixtureCrewShellPanes,
   fixtureServers,
   fixtureSessions,
   fixtureShellPanes,
@@ -52,14 +52,14 @@ function renderHome(data: HomeData, initialPath?: string) {
         path: "/",
         loader: () => data,
         element: withHeaderHost(
-          <PackProvider
+          <CrewProvider
             servers={data.servers}
             sessions={data.sessions}
             ts={data.ts}
             pollMs={1500}
           >
             <HomeRoute />
-          </PackProvider>,
+          </CrewProvider>,
         ),
       },
       { path: "/pane/:paneId", element: <div data-testid="pane" /> },
@@ -92,9 +92,9 @@ const solo = () =>
 
 const packed = () =>
   homeData({
-    agents: fixturePackAgents,
-    shellPanes: fixturePackShellPanes,
-    sessions: fixturePackSessions,
+    agents: fixtureCrewAgents,
+    shellPanes: fixtureCrewShellPanes,
+    sessions: fixtureCrewSessions,
     servers: fixtureServers,
   });
 
@@ -164,12 +164,12 @@ describe("the dashboard across machines", () => {
 // to unblock is exactly the one on the machine that just went quiet. It stays where it is.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** The same pack, with the machine holding the blocked peer agent gone quiet. */
+/** The same crew, with the machine holding the blocked peer agent gone quiet. */
 const packedWithQuietPeer = () =>
   homeData({
-    agents: fixturePackAgents,
-    shellPanes: fixturePackShellPanes,
-    sessions: fixturePackSessions,
+    agents: fixtureCrewAgents,
+    shellPanes: fixtureCrewShellPanes,
+    sessions: fixtureCrewSessions,
     servers: fixtureServers.map((s) => {
       if (s.id !== "workshop") return s;
       // Mutate a clone rather than spread in the map body — one copy, and the two fields being
@@ -204,10 +204,10 @@ describe("a machine going quiet does not hide what is on it", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 // The dashboard footer's crew line — the third way into /crew. Same hide rule as every other piece
 // of host chrome, and the solo half of the pair is the one that matters: the footer must look
-// exactly as it did before the pack existed.
+// exactly as it did before the crew existed.
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("the pack line in the dashboard footer", () => {
+describe("the crew line in the dashboard footer", () => {
   it("is absent on a solo install — the footer keeps its shipped shape", async () => {
     renderHome(solo());
     await settled();
@@ -222,7 +222,7 @@ describe("the pack line in the dashboard footer", () => {
   });
 
   it("navigates to the census, carrying the scope's host so back lands where you were", async () => {
-    const router = renderHome(homeData({ agents: fixturePackAgents, servers: fixtureServers }, { host: "workshop" }));
+    const router = renderHome(homeData({ agents: fixtureCrewAgents, servers: fixtureServers }, { host: "workshop" }));
     await userEvent.click(await screen.findByLabelText(/open the crew overview/i));
     await waitFor(() => expect(url(router)).toBe("/crew?h=workshop"));
   });
@@ -236,7 +236,7 @@ describe("the pack line in the dashboard footer", () => {
 
 // ── THE WIDENED DASHBOARD ────────────────────────────────────────────────────
 //
-// One list across every Herdr session on this machine. The hazard it brings is the pack's hazard one
+// One list across every Herdr session on this machine. The hazard it brings is the crew's hazard one
 // dimension down: `w1:p1` is a different terminal in every session, and here BOTH of them are on
 // screen at once, in the same section, under the same name.
 describe("the dashboard across sessions", () => {

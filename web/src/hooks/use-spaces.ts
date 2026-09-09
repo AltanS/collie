@@ -47,7 +47,7 @@ export function useSpaceActions() {
 
   const open = useCallback(
     // `at` is the scope the create was ADDRESSED to, which is not always the ambient one: the
-    // new-space sheet can aim a create at another machine in the pack. The navigation has to use
+    // new-space sheet can aim a create at another machine in the crew. The navigation has to use
     // the SAME scope, or the phone would open the new pane's id on the machine it was looking at —
     // where that id is a different terminal, which is the one mistake the host dimension exists to
     // prevent. Absent means the ambient scope, which is every caller that cannot re-address.

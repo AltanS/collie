@@ -1,9 +1,9 @@
 import { join } from "node:path";
 
 import type { JsonValue } from "../bridge/json.ts";
-import type { OpsRecord } from "../bridge/pack/ops-store.ts";
-import { PackOpsStore } from "../bridge/pack/ops-store.ts";
-import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/pack/trust-store.ts";
+import type { OpsRecord } from "../bridge/crew/ops-store.ts";
+import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
+import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { compareSemver, githubTagsUrl, parseTagsResponse } from "../bridge/update.ts";
 import { collieVersionBare, manifestVersionFrom } from "../bridge/version.ts";
 import { loadContext, type CliContext } from "./context.ts";
@@ -49,7 +49,7 @@ import {
 // ── IT ANSWERS ONE QUESTION AND CHANGES NOTHING ──────────────────────────────
 // "Can an update succeed here right now?" Nothing in this module writes a file, restarts a unit,
 // flips `current`, fetches into a checkout or touches config. Every probe is a read, which is what
-// makes it safe to poll from the phone (spec 05) and safe to ask before a pack flow acts (spec 06).
+// makes it safe to poll from the phone (spec 05) and safe to ask before a crew flow acts (spec 06).
 // The rule is structural, the same way `cli/doctor.ts` enforces it: the deps below name no
 // lifecycle verb, no writer and no mutating store method, so there is nothing here to call.
 //
@@ -71,7 +71,7 @@ export const PREFLIGHT_SCHEMA = 1;
 export type Verdict = "green" | "amber" | "red";
 
 /**
- * One check's answer. `id` is a **stable identifier** — it is what the PWA card and the pack flow
+ * One check's answer. `id` is a **stable identifier** — it is what the PWA card and the crew flow
  * branch on, so it does not move when the prose does — and `remedy` is the one command that clears
  * it, present wherever one exists.
  */
@@ -92,7 +92,7 @@ export interface PreflightCheck {
   readonly selfUpdateRemedy?: boolean;
 }
 
-/** One pack member's answer: how it was reached, and the checks that ran there. */
+/** One crew member's answer: how it was reached, and the checks that ran there. */
 export interface PreflightMember {
   readonly memberId: string;
   readonly host: string;
@@ -102,7 +102,7 @@ export interface PreflightMember {
    * How that member is installed, straight off its own report. Absent ⇒ unknown, which is what a
    * member older than this field answers and what a member we never reached answers.
    *
-   * The KIND is the wire fact the pack flow branches on — never a check id, which is prose's
+   * The KIND is the wire fact the crew flow branches on — never a check id, which is prose's
    * neighbour and would make a rename of a check silently un-skip a packaged peer.
    */
   readonly installKind?: InstallKind["kind"];
@@ -139,7 +139,7 @@ export interface UpdateCheckDeps {
   readonly store: { load(): Promise<TrustStoreData | null> };
   /**
    * How the operator reached each member (`pack-ops.json`, ADR 0016), narrowed the same way: read
-   * here, never written. A `PackOpsStore` is assignable.
+   * here, never written. A `CrewOpsStore` is assignable.
    */
   readonly ops: { get(memberId: string): Promise<OpsRecord | null> };
   /** The ONE thing that spawns ssh, injected so no test ever does. */
@@ -148,7 +148,7 @@ export interface UpdateCheckDeps {
    * `collie doctor`'s findings, behind a seam.
    *
    * A seam rather than a call so a test can state a diagnosis in one line, and so this module never
-   * has to know how doctor reaches the world (a trust store, a pack fetch, a beacon sweep).
+   * has to know how doctor reaches the world (a trust store, a crew fetch, a beacon sweep).
    */
   doctor(): Promise<readonly Finding[]>;
   /** Whether the lines below may carry colour. False everywhere but a real terminal. */
@@ -165,8 +165,8 @@ const DISK_RED_KB = 500 * 1024;
 const DISK_AMBER_KB = 1024 * 1024;
 
 /**
- * The oldest Bun this tree's own code is known to run on — the version its pack transport was
- * measured against (`bridge/pack/transport.ts`). Below it is AMBER rather than red: nothing here has
+ * The oldest Bun this tree's own code is known to run on — the version its crew transport was
+ * measured against (`bridge/crew/transport.ts`). Below it is AMBER rather than red: nothing here has
  * observed a failure at an older Bun, and a preflight that refuses on a guess is one the operator
  * learns to override.
  */
@@ -223,11 +223,11 @@ export function worst(verdicts: readonly Verdict[]): Verdict {
  *
  * `ops-record` red means "this lead has never been told how to reach that peer" — a fact about the
  * lead's own records, not about whether the LEAD's own update can succeed. Updating the lead needs
- * no route to its peers (`cli/pack-update.ts` already treats an `ops-record` red the same way: it
+ * no route to its peers (`cli/crew-update.ts` already treats an `ops-record` red the same way: it
  * skips that member with its remedy, it does not abort the run). So when a member's ONLY red is
  * `ops-record`, it counts as amber here — a peer needing a route is a fact to show, not a reason to
  * refuse the lead's own update. Any OTHER red (unreachable, no Collie at the path, a red remote
- * preflight) still makes this member count red at the top, same as `cli/pack-update.ts`'s `blocks`.
+ * preflight) still makes this member count red at the top, same as `cli/crew-update.ts`'s `blocks`.
  */
 export function topLevelMemberVerdict(member: PreflightMember): Verdict {
   const reds = member.checks.filter((c) => c.verdict === "red");
@@ -248,7 +248,7 @@ const red = (id: string, reason: string, remedy?: string): PreflightCheck =>
 
 /**
  * The `PreflightCheck.id` of the packaged install's one line. LOCAL, and deliberately not exported:
- * the pack flow reads {@link PreflightMember.installKind}, the kind itself, never this id. A check
+ * the crew flow reads {@link PreflightMember.installKind}, the kind itself, never this id. A check
  * id is a label on a sentence; the kind is the fact.
  */
 const PACKAGE_CHECK_ID = "package";
@@ -375,7 +375,7 @@ export function bunCheck(deps: UpdateCheckDeps): PreflightCheck {
  * notes or editor droppings beside their checkout must not get a red for it: a preflight that
  * false-positives on a normal working install is one the operator learns to override, which is the
  * failure mode `cli/doctor.ts` already warns about twice. A tracked modification is still a red, and
- * it names the files — the same refusal `cli/pack-update.ts` makes on a member's dirty checkout.
+ * it names the files — the same refusal `cli/crew-update.ts` makes on a member's dirty checkout.
  */
 export function treeCheck(deps: UpdateCheckDeps): PreflightCheck {
   const root = deps.ctx.root;
@@ -643,7 +643,7 @@ export async function instanceChecks(
   return checks;
 }
 
-// ── Pack checks ──────────────────────────────────────────────────────────────
+// ── Crew checks ──────────────────────────────────────────────────────────────
 
 /** The script that asks a member's own Collie for its preflight. Exit 66 = no binary at that path. */
 export function remoteCheckScript(root: string): string {
@@ -801,7 +801,7 @@ async function remoteChecks(
 const firstLine = (text: string): string => text.split("\n").find((l) => l.trim() !== "")?.trim() ?? "";
 
 /** Every member's answer, or `undefined` when this collie is not a lead with peers. */
-export async function packChecks(deps: UpdateCheckDeps): Promise<PreflightMember[] | undefined> {
+export async function crewChecks(deps: UpdateCheckDeps): Promise<PreflightMember[] | undefined> {
   const data = await deps.store.load();
   if (data === null || data.pack === null || data.lead !== null || data.peers.length === 0) return undefined;
   const ours = collieVersionBare(deps.ctx.root, (p) => deps.files.read(p));
@@ -837,22 +837,22 @@ export interface PreflightOptions {
 
 /** The whole document, assembled. Pure of output — {@link cmdUpdateCheck} decides how to print it. */
 export async function preflight(deps: UpdateCheckDeps, opts: PreflightOptions = {}): Promise<PreflightReport> {
-  // Probed ONCE and threaded through: the report names the kind (it is what the pack flow branches
+  // Probed ONCE and threaded through: the report names the kind (it is what the crew flow branches
   // on) and the checks are chosen by it, and two probes could answer differently under a package
   // swap mid-run.
   const install = classifyInstall(probeInstall(deps, deps.ctx.root));
   const checks = await instanceChecks(deps, opts.toTag ?? null, install);
-  // Skipped ENTIRELY under `--local`: no trust store read, no ssh, and no `pack` key in the report.
-  const pack = opts.local === true ? undefined : await packChecks(deps);
+  // Skipped ENTIRELY under `--local`: no trust store read, no ssh, and no `crew` key in the report.
+  const crew = opts.local === true ? undefined : await crewChecks(deps);
   // A member's contribution to the TOP verdict is `topLevelMemberVerdict`, not its own `.verdict` —
   // see that function's comment: an `ops-record`-only red on a peer must not disable the lead's own
   // update button.
   const verdict = worst([
     ...checks.map((c) => c.verdict),
-    ...(pack ?? []).map(topLevelMemberVerdict),
+    ...(crew ?? []).map(topLevelMemberVerdict),
   ]);
   const report: PreflightReport = { schema: PREFLIGHT_SCHEMA, verdict, installKind: install.kind, checks };
-  return pack === undefined ? report : { ...report, pack };
+  return crew === undefined ? report : { ...report, pack: crew };
 }
 
 const COLOURS = { green: "[32m", amber: "[33m", red: "[31m" } satisfies Record<Verdict, string>;
@@ -918,7 +918,7 @@ export function updateCheckDeps(io: Io): UpdateCheckDeps {
     net: realNet,
     platform: process.platform,
     store: new TrustStore(ctx.stateDir),
-    ops: new PackOpsStore(ctx.stateDir),
+    ops: new CrewOpsStore(ctx.stateDir),
     remote: (host) => sshRunner(host, ctx.env, ctx.home),
     // Doctor, asked through its OWN `--json` contract rather than through a second entry point:
     // this module never edits `cli/doctor.ts`, and the JSON is the shape that file already
@@ -942,7 +942,7 @@ export function wantsCheck(args: readonly string[]): boolean {
   return args.includes("--check");
 }
 
-/** `--local`: check this instance only, and skip the pack members. What the phone's card asks for. */
+/** `--local`: check this instance only, and skip the crew members. What the phone's card asks for. */
 export function wantsLocal(args: readonly string[]): boolean {
   return args.includes("--local");
 }

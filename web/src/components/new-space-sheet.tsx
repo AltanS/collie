@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { listWorktrees } from "@/lib/api";
 import { hostHealth, writeRefusal } from "@/lib/host-health";
 import { HOST_TEXT_CLASSES, hostSlot, isMultiHost, leadHost } from "@/lib/hosts";
-import { usePack } from "@/components/pack-provider";
+import { useCrew } from "@/components/crew-provider";
 import type { Scope } from "@/lib/scope";
 import type { HostHealth } from "@/lib/host-health";
 import type { ServerSummary, WorktreeView } from "@/lib/types";
@@ -30,7 +30,7 @@ const NO_REPOS: readonly WorktreeRepo[] = [];
 
 /**
  * A member's tier-2 health, with the same fallback `server-switcher.tsx` uses: mounted outside a
- * `PackProvider` there is no derived map, so re-derive with no clock at all — which skips the
+ * `CrewProvider` there is no derived map, so re-derive with no clock at all — which skips the
  * presented-stale tolerance and hands back the lead's plain boolean, the answer this sheet would
  * have given before the threshold existed.
  */
@@ -112,7 +112,7 @@ export function NewSpaceSheet({
   // WHICH MACHINE this space is created on. The roster and its tier-2 health come from the provider
   // rather than a prop, for the same reason `HostChip` reads them there: this sheet is mounted from
   // a list, not from a route, and the hide rule below has to hold wherever it is mounted.
-  const { servers, health } = usePack();
+  const { servers, health } = useCrew();
   const multiHost = isMultiHost(servers);
   // The member id, never `?h=`'s spelling: the lead has a real id here and only becomes an absent
   // `host` on the way out (see `create`), which is what keeps a solo/lead URL bare.
@@ -189,7 +189,7 @@ export function NewSpaceSheet({
   return (
     <BottomSheet open={open} onClose={onClose} title={t("space.new.title")}>
       <div className="flex flex-col gap-3">
-        {/* WHERE this lands, above WHAT it is. A pack's "+" used to create silently on whichever
+        {/* WHERE this lands, above WHAT it is. A crew's "+" used to create silently on whichever
             machine the list happened to be pointed at; the one thing an operator must not have to
             guess is which terminal a new shell just opened on. Solo renders none of this — the
             predicate is `isMultiHost`, the same data-not-mode rule every host surface keeps. */}
@@ -202,7 +202,7 @@ export function NewSpaceSheet({
               role="radiogroup"
               aria-labelledby="new-space-host"
               // Same ground and same selected mark as the tab strip below, because it is the same
-              // question shape; scrolls sideways rather than wrapping, so a nine-machine pack keeps
+              // question shape; scrolls sideways rather than wrapping, so a nine-machine crew keeps
               // one row. `min-h-11` per DESIGN.md §6, and a floor rather than a height.
               className="flex gap-1 overflow-x-auto rounded-lg bg-muted p-1"
             >

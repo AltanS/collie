@@ -22,7 +22,7 @@ import { dashboardLive } from "./fixtures/dashboard-live";
 import { Card, PackedRootRouter, PhoneFrame } from "./harness";
 
 /** The captured snapshot as the root loader's own shape, so `PackedRootRouter` and the real
- *  `PackProvider` inside it derive host health from it exactly as the app would. */
+ *  `CrewProvider` inside it derive host health from it exactly as the app would. */
 const home: HomeData = {
   bridge: dashboardLive.bridge,
   device: undefined,
@@ -57,8 +57,8 @@ export function DashboardRowsCard() {
       note="Eleven REAL panes off this machine's bridge (src/playground/fixtures/dashboard-live.ts), in the home route's own triage order, in the real ListGroup the flat sections use. Held dark regardless of the page theme, because that is the dress the row is judged in. Two widths: the reference phone at 390px, and 360px, where a row breaks first."
       span={2}
     >
-      {/* ONE router for both frames, not one each. `PackedRootRouter` mounts the real `PackProvider`,
-          which is what `HostChip` reads for the pack census and the per-host tint — and that is a
+      {/* ONE router for both frames, not one each. `PackedRootRouter` mounts the real `CrewProvider`,
+          which is what `HostChip` reads for the crew census and the per-host tint — and that is a
           fact about the SNAPSHOT, identical in both. */}
       <PackedRootRouter data={home}>
         {/* `color-scheme` is what index.css's light-dark() tokens actually read, and it INHERITS —

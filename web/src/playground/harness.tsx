@@ -12,15 +12,15 @@ import { createMemoryRouter, Outlet, RouterProvider } from "react-router";
 import { AgentChat } from "@/components/agent-chat";
 import { AppHeaderHost } from "@/components/app-header";
 import { ConnectionBanner } from "@/components/connection-banner";
-import { PackProvider } from "@/components/pack-provider";
+import { CrewProvider } from "@/components/crew-provider";
 import { UpdateRibbon } from "@/components/update-ribbon";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth, markLive } from "@/lib/connection-health";
 import { saveDraft } from "@/lib/drafts";
-import { ROOT_ROUTE_ID, type DevicesData, type HomeData, type PackData } from "@/lib/loaders";
+import { ROOT_ROUTE_ID, type DevicesData, type HomeData, type CrewData } from "@/lib/loaders";
 import type { DeviceAuth } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { PackRoute } from "@/routes/pack";
+import { CrewRoute } from "@/routes/crew";
 import { SettingsRoute } from "@/routes/settings";
 import { UpdatesRoute } from "@/routes/updates";
 import type { PaneFixture } from "./fixtures";
@@ -72,7 +72,7 @@ export function useConnectionClock(mode: ClockMode): void {
 
 /**
  * A data router carrying the root snapshot under the real `ROOT_ROUTE_ID`, which is what
- * `useOptionalRootData()` reads — the update chip, the header's freshness stamp and the pack census
+ * `useOptionalRootData()` reads — the update chip, the header's freshness stamp and the crew census
  * all need it. Built once (`useState`'s lazy initialiser) so the route element is stable; the
  * components inside subscribe to their own module stores and re-render without it.
  */
@@ -87,7 +87,7 @@ export function RootRouter({ data, children }: { data: HomeData; children: React
 }
 
 /**
- * The same root, plus the `PackProvider` the host-aware surfaces read. Tier-2 health is derived
+ * The same root, plus the `CrewProvider` the host-aware surfaces read. Tier-2 health is derived
  * there, against the LEAD's clock (`home.ts`) — never the phone's — so anything mounted inside gets
  * the same host health the real app would have derived for the same snapshot.
  */
@@ -100,14 +100,14 @@ export function PackedRootRouter({ data, children }: { data: HomeData; children:
           path: "/",
           loader: () => data,
           element: (
-            <PackProvider
+            <CrewProvider
               servers={data.servers}
               sessions={data.sessions}
               ts={data.ts}
               pollMs={3_000}
             >
               {children}
-            </PackProvider>
+            </CrewProvider>
           ),
         },
       ],
@@ -118,11 +118,11 @@ export function PackedRootRouter({ data, children }: { data: HomeData; children:
 }
 
 /**
- * The pack census on its own router, assembled the way `routes/pack.test.tsx` assembles it: the root
- * route publishes the snapshot AND the `PackProvider`, and `/crew` carries the census. A `pack` of
+ * The crew census on its own router, assembled the way `routes/crew.test.tsx` assembles it: the root
+ * route publishes the snapshot AND the `CrewProvider`, and `/crew` carries the census. A `crew` of
  * `{ status: null }` is the solo/empty card — the real 404 answer, not a stub.
  */
-export function PackRouter({ home, pack }: { home: HomeData; pack: PackData }) {
+export function CrewRouter({ home, crew }: { home: HomeData; crew: CrewData }) {
   const [router] = useState(() =>
     createMemoryRouter(
       [
@@ -131,7 +131,7 @@ export function PackRouter({ home, pack }: { home: HomeData; pack: PackData }) {
           path: "/",
           loader: () => home,
           element: (
-            <PackProvider
+            <CrewProvider
               servers={home.servers}
               sessions={home.sessions}
               ts={home.ts}
@@ -140,11 +140,11 @@ export function PackRouter({ home, pack }: { home: HomeData; pack: PackData }) {
               <AppHeaderHost bridge={home.bridge} error={false}>
                 <Outlet />
               </AppHeaderHost>
-            </PackProvider>
+            </CrewProvider>
           ),
           children: [
             { index: true, element: <div className="p-4 text-sm text-muted-foreground">home</div> },
-            { path: "crew", loader: () => pack, element: <PackRoute /> },
+            { path: "crew", loader: () => crew, element: <CrewRoute /> },
           ],
         },
       ],
@@ -183,7 +183,7 @@ export function SettingsRouter({
           path: "/",
           loader: () => home,
           element: (
-            <PackProvider
+            <CrewProvider
               servers={home.servers}
               sessions={home.sessions}
               ts={home.ts}
@@ -192,7 +192,7 @@ export function SettingsRouter({
               <AppHeaderHost bridge={home.bridge} error={false}>
                 <Outlet />
               </AppHeaderHost>
-            </PackProvider>
+            </CrewProvider>
           ),
           children: [
             { index: true, element: <div className="p-4 text-sm text-muted-foreground">home</div> },
@@ -255,7 +255,7 @@ export function PaneRouter({
           path: "/",
           loader: () => data,
           element: (
-            <PackProvider
+            <CrewProvider
               servers={data.servers}
               sessions={data.sessions}
               ts={data.ts}
@@ -279,7 +279,7 @@ export function PaneRouter({
                   onSelect={() => {}}
                 />
               </AppHeaderHost>
-            </PackProvider>
+            </CrewProvider>
           ),
         },
       ],
@@ -324,7 +324,7 @@ export function PaneStackRouter({
 }: {
   home: HomeData;
   fixture: PaneFixture;
-  /** The OTHER composer lock — the device gate, independent of the pack host gate the pane derives
+  /** The OTHER composer lock — the device gate, independent of the crew host gate the pane derives
    *  from `home.servers`. Both are driven at once so the stack shows every lock at the same time. */
   device: DeviceAuth;
 }) {
@@ -337,7 +337,7 @@ export function PaneStackRouter({
           path: "/",
           loader: () => data,
           element: (
-            <PackProvider
+            <CrewProvider
               servers={data.servers}
               sessions={data.sessions}
               ts={data.ts}
@@ -350,7 +350,7 @@ export function PaneStackRouter({
                   <StackPane data={data} fixture={fixture} />
                 </AppHeaderHost>
               </div>
-            </PackProvider>
+            </CrewProvider>
           ),
         },
       ],

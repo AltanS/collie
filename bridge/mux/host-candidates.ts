@@ -4,22 +4,22 @@
 // There are two axes and they must never be mixed (ADR 0036). A `MuxAdapter` answers "which panes
 // are on THIS machine", and nothing in `bridge/mux/` ever sees a host — not in a parameter, not in
 // a config key, not in a return shape (`./registry.ts`, ADR 0022). "Which ssh targets exist" is the
-// HOST axis, which is the pack's question. So the seam is a module-level provider on
+// HOST axis, which is the crew's question. So the seam is a module-level provider on
 // {@link MuxAdapterFactory}, beside `beaconMatcher?` and `describeTarget?`: the factory is a value
 // the registry can read without building an adapter, and the runtime interface gains nothing.
 //
 // ── A CANDIDATE IS A SUGGESTION, NEVER AN ACTION ─────────────────────────────
 // Nothing here enrols anything, and nothing here writes. A provider reads a list the operator
-// already keeps somewhere else and hands it up so `collie pack add` can offer it. The operator
-// still picks, and `pack add`'s own confirm still runs. A multiplexer's machine list is NOT a pack
+// already keeps somewhere else and hands it up so `collie crew add` can offer it. The operator
+// still picks, and `crew add`'s own confirm still runs. A multiplexer's machine list is NOT a crew
 // (ADR 0036's consequences): the two lists will differ, and neither is derived from the other.
 
 /**
  * One machine a provider knows about, in the SOURCE's own spelling.
  *
- * `target` is what would be handed to `collie pack add`, so it is whatever that source calls the
+ * `target` is what would be handed to `collie crew add`, so it is whatever that source calls the
  * machine — a bare host, a `user@host`, a `user@host:port`, an `~/.ssh/config` alias. It is never
- * rewritten here: `bridge/pack/ops-store.ts` already stores the destination as the operator typed
+ * rewritten here: `bridge/crew/ops-store.ts` already stores the destination as the operator typed
  * it, and a provider that normalised names would hand the operator a string they do not recognise.
  */
 export interface HostCandidate {
@@ -68,6 +68,6 @@ export interface HostProbe {
  * One constant rather than a value per call site, because the failure this bounds is "the picker
  * hangs", and a picker is only as bounded as its slowest call. Three seconds: every one of these
  * calls reads local configuration or a local socket, so a slower one is a hung one, and the picker
- * is a convenience that must never be the reason `pack add` stops responding.
+ * is a convenience that must never be the reason `crew add` stops responding.
  */
 export const CANDIDATE_TIMEOUT_MS = 3_000;

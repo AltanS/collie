@@ -177,7 +177,7 @@ export function pushUsage(): string {
 
 /**
  * Reached only when no sub-verb matched — a bare `collie push`, or a misspelt one — and it names
- * each sub-verb with its summary, as `cmdDevices` and `cmdPack` do.
+ * each sub-verb with its summary, as `cmdDevices` and `cmdCrew` do.
  */
 export async function cmdPush(deps: PushDeps, args: readonly string[]): Promise<number> {
   const [sub, ...rest] = args;

@@ -3,11 +3,11 @@ import userEvent from "@testing-library/user-event";
 
 import { AgentList } from "./agent-list";
 import { HostChip } from "./host-chip";
-import { PackProvider } from "./pack-provider";
+import { CrewProvider } from "./crew-provider";
 import { PaneActionsSheet } from "./pane-actions-sheet";
 import { TabActionsSheet } from "./tab-actions-sheet";
 import { triage } from "@/lib/triage";
-import { fixtureAgents, fixturePackAgents, fixtureServers } from "@/test/handlers";
+import { fixtureAgents, fixtureCrewAgents, fixtureServers } from "@/test/handlers";
 import type { AgentView, ServerSummary, TabView } from "@/lib/types";
 
 // The host label — and, far more importantly, its ABSENCE. Every case here is really one of two
@@ -16,11 +16,11 @@ import type { AgentView, ServerSummary, TabView } from "@/lib/types";
 
 const solo: ServerSummary[] = [fixtureServers[0]!];
 
-const pack = ({ children }: { children: React.ReactNode }) => (
-  <PackProvider servers={fixtureServers}>{children}</PackProvider>
+const crew = ({ children }: { children: React.ReactNode }) => (
+  <CrewProvider servers={fixtureServers}>{children}</CrewProvider>
 );
 const one = ({ children }: { children: React.ReactNode }) => (
-  <PackProvider servers={solo}>{children}</PackProvider>
+  <CrewProvider servers={solo}>{children}</CrewProvider>
 );
 
 const chips = () => screen.queryAllByLabelText(/host:|sends to host:/i);
@@ -31,38 +31,38 @@ describe("HostChip — the hide rule lives here", () => {
     expect(chips()).toHaveLength(0);
   });
 
-  it("renders nothing on a one-machine pack, even when handed a host", () => {
+  it("renders nothing on a one-machine crew, even when handed a host", () => {
     render(<HostChip host="bluefin" />, { wrapper: one });
     expect(chips()).toHaveLength(0);
   });
 
   it("renders nothing when there is no host to name", () => {
-    render(<HostChip host={undefined} />, { wrapper: pack });
+    render(<HostChip host={undefined} />, { wrapper: crew });
     expect(chips()).toHaveLength(0);
   });
 
-  it("names the machine on a multi-machine pack", () => {
-    render(<HostChip host="workshop" />, { wrapper: pack });
+  it("names the machine on a multi-machine crew", () => {
+    render(<HostChip host="workshop" />, { wrapper: crew });
     expect(screen.getByLabelText("Host: workshop")).toBeInTheDocument();
   });
 
   it("says so when the machine is unreachable, instead of dropping the label", () => {
-    render(<HostChip host="attic" />, { wrapper: pack });
+    render(<HostChip host="attic" />, { wrapper: crew });
     expect(screen.getByLabelText(/attic \(unreachable\)/i)).toBeInTheDocument();
   });
 
   it("renders a host the roster no longer lists as itself, not as the lead", () => {
-    render(<HostChip host="departed" />, { wrapper: pack });
+    render(<HostChip host="departed" />, { wrapper: crew });
     expect(screen.getByLabelText(/departed \(unreachable\)/i)).toBeInTheDocument();
   });
 
   it("the write-surface variant says where the write GOES", () => {
-    render(<HostChip host="workshop" variant="target" />, { wrapper: pack });
+    render(<HostChip host="workshop" variant="target" />, { wrapper: crew });
     expect(screen.getByLabelText("Sends to host: workshop")).toBeInTheDocument();
   });
 
   it("is not a control — it can never be mistaken for the switcher", () => {
-    render(<HostChip host="workshop" />, { wrapper: pack });
+    render(<HostChip host="workshop" />, { wrapper: crew });
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 });
@@ -77,7 +77,7 @@ describe("HostChip — Reconnecting says nothing is owed, Attention says somethi
       { id: "shed", name: "shed", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 400, linkState },
     ];
     return ({ children }: { children: React.ReactNode }) => (
-      <PackProvider servers={servers}>{children}</PackProvider>
+      <CrewProvider servers={servers}>{children}</CrewProvider>
     );
   };
 
@@ -134,7 +134,7 @@ describe("the herd list — one cross-host 'Needs you', labelled not split", () 
   });
 
   it("keeps blocked agents from BOTH machines in the same 'Needs you' section", () => {
-    render(<AgentList agents={fixturePackAgents} onOpen={vi.fn()} />, { wrapper: pack });
+    render(<AgentList agents={fixtureCrewAgents} onOpen={vi.fn()} />, { wrapper: crew });
     // One section, two machines. A per-host split would let a blocked agent hide under a collapsed
     // heading — the failure triage.ts already refuses for its own sections.
     const needs = screen.getAllByRole("heading").filter((h) => /needs you/i.test(h.textContent ?? ""));
@@ -148,8 +148,8 @@ describe("the herd list — one cross-host 'Needs you', labelled not split", () 
   it("triage itself stays host-blind — the same rows bucket the same way, host or no host", () => {
     // SAFETY: `host` is optional on AgentView, so a row with it destructured away IS one — TS just
     // types the rest object as the exact remainder rather than relating it back to the interface.
-    const stripped = fixturePackAgents.map(({ host: _host, ...rest }) => rest as AgentView);
-    const withHosts = triage(fixturePackAgents).map((s) => [s.key, s.agents.map((a) => a.paneId)]);
+    const stripped = fixtureCrewAgents.map(({ host: _host, ...rest }) => rest as AgentView);
+    const withHosts = triage(fixtureCrewAgents).map((s) => [s.key, s.agents.map((a) => a.paneId)]);
     const without = triage(stripped).map((s) => [s.key, s.agents.map((a) => a.paneId)]);
     expect(withHosts).toEqual(without);
   });
@@ -172,12 +172,12 @@ describe("HostChip — the caption glyph is sized by the band it stands in", () 
     //
     // Fails in both directions: 12px in the caption run puts the glyph back on the seam, and 10px
     // in a pill shrinks a glyph whose box was never the constraint.
-    render(<HostChip host="workshop" variant="caption" />, { wrapper: pack });
+    render(<HostChip host="workshop" variant="caption" />, { wrapper: crew });
     expect(glyph().getAttribute("class")).toMatch(/(?:^|\s)size-2\.5(?=\s|$)/);
     cleanup();
 
     for (const variant of ["tag", "target"] as const) {
-      render(<HostChip host="workshop" variant={variant} />, { wrapper: pack });
+      render(<HostChip host="workshop" variant={variant} />, { wrapper: crew });
       expect(glyph().getAttribute("class")).toMatch(/(?:^|\s)size-3(?=\s|$)/);
       cleanup();
     }
@@ -193,9 +193,9 @@ describe("HostChip — the caption glyph is sized by the band it stands in", () 
       { id: "workshop", name: "workshop", isLead: false, reachable: false, protocol: "ok", lastSeenAt: 98_000 },
     ];
     const unreachable = ({ children }: { children: React.ReactNode }) => (
-      <PackProvider servers={down} ts={100_000} pollMs={1500}>
+      <CrewProvider servers={down} ts={100_000} pollMs={1500}>
         {children}
-      </PackProvider>
+      </CrewProvider>
     );
     render(<HostChip host="workshop" variant="caption" />, { wrapper: unreachable });
     expect(screen.getByLabelText(/workshop \(unreachable\)/i)).toBeInTheDocument();
@@ -204,7 +204,7 @@ describe("HostChip — the caption glyph is sized by the band it stands in", () 
 });
 
 describe("write surfaces name the machine", () => {
-  const pane: AgentView = { ...fixturePackAgents[2]! }; // the peer's blocked agent
+  const pane: AgentView = { ...fixtureCrewAgents[2]! }; // the peer's blocked agent
   const tab: TabView = {
     tabId: "w1:t1",
     workspaceId: "w1",
@@ -217,7 +217,7 @@ describe("write surfaces name the machine", () => {
   it("the pane actions sheet (rename / close) says which machine's pane", () => {
     render(
       <PaneActionsSheet open pane={pane} onClose={vi.fn()} onRenamed={vi.fn()} onClosed={vi.fn()} />,
-      { wrapper: pack },
+      { wrapper: crew },
     );
     expect(screen.getByLabelText("Sends to host: workshop")).toBeInTheDocument();
   });
@@ -240,7 +240,7 @@ describe("write surfaces name the machine", () => {
         onRenamed={vi.fn()}
         onClosed={vi.fn()}
       />,
-      { wrapper: pack },
+      { wrapper: crew },
     );
     expect(screen.getByLabelText("Sends to host: workshop")).toBeInTheDocument();
   });
@@ -248,7 +248,7 @@ describe("write surfaces name the machine", () => {
   it("a tab sheet with no `?h=` names the LEAD — absent is not unknown", () => {
     render(
       <TabActionsSheet open tab={tab} onClose={vi.fn()} onRenamed={vi.fn()} onClosed={vi.fn()} />,
-      { wrapper: pack },
+      { wrapper: crew },
     );
     expect(screen.getByLabelText("Sends to host: bluefin")).toBeInTheDocument();
   });
@@ -256,7 +256,7 @@ describe("write surfaces name the machine", () => {
   it("the close confirm is still a two-tap, with the host visible the whole way", async () => {
     render(
       <PaneActionsSheet open pane={pane} onClose={vi.fn()} onRenamed={vi.fn()} onClosed={vi.fn()} />,
-      { wrapper: pack },
+      { wrapper: crew },
     );
     await userEvent.click(screen.getByRole("button", { name: /close pane/i }));
     expect(screen.getByRole("button", { name: /tap again to close/i })).toBeInTheDocument();
@@ -283,9 +283,9 @@ describe("HostChip — 'unreachable' is the write gate's word, never the receipt
   ];
   const at = (ts: number, servers: ServerSummary[] = quiet({})) =>
     ({ children }: { children: React.ReactNode }) => (
-      <PackProvider servers={servers} ts={ts} pollMs={1500}>
+      <CrewProvider servers={servers} ts={ts} pollMs={1500}>
         {children}
-      </PackProvider>
+      </CrewProvider>
     );
 
   it("an old receipt on a machine the lead still believes up leaves the chip untouched", () => {
@@ -345,7 +345,7 @@ describe("HostChip — the per-host tint (glyph only)", () => {
   };
 
   it("tints the row tag's glyph only — the tag root carries no host class", () => {
-    render(<HostChip host="workshop" />, { wrapper: pack });
+    render(<HostChip host="workshop" />, { wrapper: crew });
     const root = tag("Host: workshop").className;
     expect(root).not.toMatch(/bg-host-/);
     expect(root).not.toMatch(/text-host-/);
@@ -358,14 +358,14 @@ describe("HostChip — the per-host tint (glyph only)", () => {
         <HostChip host="bluefin" />
         <HostChip host="workshop" />
       </>,
-      { wrapper: pack },
+      { wrapper: crew },
     );
     expect(glyphOf("Host: bluefin").getAttribute("class")).toMatch(/text-host-2/);
     expect(glyphOf("Host: workshop").getAttribute("class")).toMatch(/text-host-9/);
   });
 
   it("lets the unreachable reading win outright — a state outranks an identity", () => {
-    render(<HostChip host="attic" />, { wrapper: pack });
+    render(<HostChip host="attic" />, { wrapper: crew });
     const chip = screen.getByLabelText(/attic \(unreachable\)/i);
     expect(chip.className).toContain("text-status-blocked");
     expect(chip.className).not.toMatch(/host-\d/);
@@ -375,21 +375,21 @@ describe("HostChip — the per-host tint (glyph only)", () => {
   });
 
   it("tints only the caption run's glyph — the name stays the muted ink", () => {
-    render(<HostChip host="workshop" variant="caption" />, { wrapper: pack });
+    render(<HostChip host="workshop" variant="caption" />, { wrapper: crew });
     const root = tag("Sends to host: workshop");
     expect(root.className).not.toMatch(/host-\d/);
     expect(glyphOf("Sends to host: workshop").getAttribute("class")).toMatch(/text-host-9/);
   });
 
   it("tints only the write surface header's glyph — its pill is already emphasis", () => {
-    render(<HostChip host="workshop" variant="target" />, { wrapper: pack });
+    render(<HostChip host="workshop" variant="target" />, { wrapper: crew });
     const root = tag("Sends to host: workshop");
     expect(root.className).not.toMatch(/bg-host-/);
     expect(root.className).not.toMatch(/text-host-/);
     expect(glyphOf("Sends to host: workshop").getAttribute("class")).toMatch(/text-host-9/);
   });
 
-  it("carries no host class ANYWHERE on a one-machine pack", () => {
+  it("carries no host class ANYWHERE on a one-machine crew", () => {
     // The hide rule, restated in colour: a solo collie renders the dashboard it always rendered.
     render(<AgentList agents={fixtureAgents} onOpen={vi.fn()} />, { wrapper: one });
     expect(document.body.innerHTML).not.toMatch(/host-\d/);

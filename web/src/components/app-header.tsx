@@ -37,7 +37,7 @@ interface HeaderClaim {
   /** Show the stacked identity beside the mark: the "Collie" brand line over the "on <mux>" line. */
   wordmark: boolean;
   /** `column` = the header is as wide as the route's own `max-w-screen-sm` content column (640px),
-   *  which is what the dashboard, space, Settings, Pack and Updates screens have always been;
+   *  which is what the dashboard, space, Settings, Crew and Updates screens have always been;
    *  `wide` = a LADDER rather than one number: 768px from `md`, then 1024, 1280 and 1400px at `lg`,
    *  `xl` and `2xl`, which is what the pane and history screens claim — they were `full` until
    *  landscape on a tablet showed what that costs, then flat at 768px until a desktop showed what
@@ -52,7 +52,7 @@ interface HeaderClaim {
    *  number. AgentChat's wrapper carries the measurement and the same four classes; the two must
    *  not drift, or the header and the mirror stop sharing a right edge. */
   width: "column" | "wide" | "full";
-  /** The route has taken the whole row (Settings, Pack, and either find bar). The shell then draws
+  /** The route has taken the whole row (Settings, Crew, and either find bar). The shell then draws
    *  no mark, no caption and no slots — see `RouteHeader`. */
   override: boolean;
   /** The route wants the row GONE, not merely empty — the pane's zen mode, and nothing else today.
@@ -146,7 +146,7 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
   const lost = useConnectionLost(connecting);
   // What this collie drives, printed beside the wordmark. It ALWAYS describes the LOCAL collie and
   // never changes with the viewed scope: `/api/config`'s mux block is this bridge's own, and a peer's
-  // is not fetched (the pack link carries runtime data, not a second config channel). So on `?h=peer`
+  // is not fetched (the crew link carries runtime data, not a second config channel). So on `?h=peer`
   // the line still reads "on <the lead's mux>" — the name of the thing the page you are running is
   // built on, which is what a support question needs.
   const mux = useMuxName();
@@ -409,7 +409,7 @@ interface RouteHeaderProps {
   /** Full-width takeover of the header row: the caller supplies the row's whole content instead of
    *  the mark + breadcrumb + right cluster. Two users, and they are deliberately the same mechanism.
    *  The pane's FIND BAR sets it while searching, so the find bar owns the row one-handed. Settings
-   *  and Pack set it permanently, because they lead with a back button where the mark stands rather
+   *  and Crew set it permanently, because they lead with a back button where the mark stands rather
    *  than with the mark. Either way the row still lives inside this one shell, so the
    *  sticky/safe-area/prerelease-strip/rule/height recipe is never copy-pasted — which is what a
    *  hand-rolled `<header>` on those two routes had been doing, 20px shorter and with no AlphaBar. */

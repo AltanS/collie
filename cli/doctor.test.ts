@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
-import { leadStore, member, PACK, peerStore, T0 } from "../bridge/pack/fixtures.ts";
-import { markerFor } from "../bridge/pack/staleness.ts";
-import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
+import { PACK_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
+import { leadStore, member, CREW, peerStore, T0 } from "../bridge/crew/fixtures.ts";
+import { markerFor } from "../bridge/crew/staleness.ts";
+import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/beacon/fake.ts";
 import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
@@ -27,7 +27,7 @@ import {
 } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 
-// `collie doctor`, against fakes for every seam. Like cli/pack.test.ts, NOTHING here reaches a
+// `collie doctor`, against fakes for every seam. Like cli/crew.test.ts, NOTHING here reaches a
 // service manager, a tailnet, a real trust store or a network — and unlike it, there is nothing to
 // reach even in principle: `DoctorDeps` names no verb that could change something, so a test that
 // wanted to assert "doctor wrote nothing" is asserting a type, not a behaviour. It is asserted
@@ -145,7 +145,7 @@ function fakeUi(): FakeUi {
     ui: {
       doctor: async (view) => void views.push(view),
       status: async () => {},
-      packMembers: async () => {},
+      crewMembers: async () => {},
     },
   };
 }
@@ -180,7 +180,7 @@ function harness(
   let n = 0;
   return {
     deps: {
-      // As in cli/pack.test.ts: the peer client races the fake fetch against a REAL timer, so the
+      // As in cli/crew.test.ts: the peer client races the fake fetch against a REAL timer, so the
       // budget is set far above anything this process could stall for.
       ctx: context(
         { COLLIE_PACK_TIMEOUT_MS: "60000", ...over.env },
@@ -520,7 +520,7 @@ describe("collie doctor — the local checks", () => {
     expect(code).toBe(EXIT.OK);
   });
 
-  // The gate main brought (#129) and the pack carve-out that keeps it honest: a wide bind stops a
+  // The gate main brought (#129) and the crew carve-out that keeps it honest: a wide bind stops a
   // SOLO collie from starting at all, so doctor says the same thing the bridge would — while a peer
   // binds wide by construction and hears only the wildcard warning (ADR 0013).
   test("bind: a wide bind is an ERROR on solo, cleared by the hatch, and never one on a peer", async () => {
@@ -833,7 +833,7 @@ describe("collie doctor — the clock (§8.6's ±5m window)", () => {
   });
 });
 
-// ── The pack checks ──────────────────────────────────────────────────────────
+// ── The crew checks ──────────────────────────────────────────────────────────
 
 describe("collie doctor — the crew checks", () => {
   test("store-drift: a roster the running bridge never wired is an error naming `collie restart`", async () => {
@@ -863,7 +863,7 @@ describe("collie doctor — the crew checks", () => {
     expect(byCheck.get("secret-generation")?.status).toBe("warn");
     expect(byCheck.get("secret-generation")?.remedy).toContain("collie crew rotate");
     expect(code).toBe(EXIT.OK);
-    expect(PACK.secretGeneration).toBe(1);
+    expect(CREW.secretGeneration).toBe(1);
   });
 
   test("member-reach: an unreachable member is an error naming `collie reconnect`", async () => {
@@ -897,7 +897,7 @@ describe("collie doctor — the crew checks", () => {
 
   // F21: the peer's side of the same check. `/pack/v1/snapshot` is not on the closed peer → lead
   // route set (§8.6), so the only answer the second question can get is §8.1's bare 401 — which this
-  // check reported as "answered but served no data", with the budget remedy, on a healthy pack.
+  // check reported as "answered but served no data", with the budget remedy, on a healthy crew.
   test("lead-reach: a peer asks its lead `hello` and nothing else", async () => {
     const peer = peerStore();
     const h = harness(peer, [hello({ memberId: "desk" })], {
@@ -1393,8 +1393,8 @@ describe("the terminal renderer", () => {
     expect(views).toHaveLength(1);
     // The same findings, not a re-derived summary of them.
     expect(views[0]!.local.map((f) => f.check)).toEqual((await plainFindings()).map((f) => f.check));
-    expect(views[0]!.pack).toEqual([]);
-    expect(views[0]!.packNote[0]).toContain("not in a crew");
+    expect(views[0]!.crew).toEqual([]);
+    expect(views[0]!.crewNote[0]).toContain("not in a crew");
   });
 
   test("`--json` outranks the renderer — a script's stdout is never a drawing", async () => {

@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { AddressTag } from "@/components/ui/address-tag";
 import { HOST_TEXT_CLASSES, hostName, hostSlot } from "@/lib/hosts";
 import { linkPresentation, type HostState } from "@/lib/host-health";
-import { useHostHealth, usePack } from "@/components/pack-provider";
+import { useHostHealth, useCrew } from "@/components/crew-provider";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
@@ -33,9 +33,9 @@ interface HostChipProps {
 // question is even worth asking.
 //
 // ── THE HIDE RULE LIVES HERE, NOT IN THE CALLERS ─────────────────────────────
-// Renders `null` when the pack is a single machine — i.e. for every install that exists today —
-// which is why callers may mount it unconditionally. If each caller had to ask "am I on a pack?"
-// first, a solo install would eventually grow a stray chip and, far worse, a pack install would
+// Renders `null` when the crew is a single machine — i.e. for every install that exists today —
+// which is why callers may mount it unconditionally. If each caller had to ask "am I on a crew?"
+// first, a solo install would eventually grow a stray chip and, far worse, a crew install would
 // eventually drop one at the surface that mattered.
 //
 // ── AND WHY IT IS NEVER THE SESSION SWITCHER'S TWIN ──────────────────────────
@@ -46,9 +46,9 @@ interface HostChipProps {
 // user-supplied string that reaches this UI.
 export function HostChip({ host, state, variant = "tag", className }: HostChipProps) {
   useLocale();
-  const { servers, multi } = usePack();
+  const { servers, multi } = useCrew();
   const health = useHostHealth(host);
-  // No pack, or nothing to name: the whole dimension is invisible. (Hooks run first — the hide rule
+  // No crew, or nothing to name: the whole dimension is invisible. (Hooks run first — the hide rule
   // is a render decision, not a reason to call a hook conditionally.)
   if (!multi || host === undefined) return null;
 
@@ -69,7 +69,7 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
   // "(unreachable)" with it, so a peer answering every request — its receipt merely older than the
   // sweep's cadence — was announced down to a screen reader, beside a composer that was accepting
   // sends. The dashed border and the word are the same fact as the refusal: the lead's plain
-  // boolean, unsmoothed, exactly what `writeRefusal` gates on. Absent health on a pack is a departed
+  // boolean, unsmoothed, exactly what `writeRefusal` gates on. Absent health on a crew is a departed
   // member, which is not writable either.
   const unreachable = !health?.writable;
   // ONE condition drives BOTH the styling and the label, so the two can never drift into a chip that
@@ -78,7 +78,7 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
   const degraded =
     unreachable || health?.incompatible === true || (state ?? health?.state ?? "unknown") === "unknown";
   // WHICH degraded reading this is (§10.2's presentation split), from the lead's own answer and never
-  // re-derived here — the pack page reads the same function, so the two screens cannot describe one
+  // re-derived here — the crew page reads the same function, so the two screens cannot describe one
   // machine two ways. It takes `unreachable` and not `degraded` for the reason above: only
   // `!writable` may put a WORD on this chip, and an absent `linkState` keeps that word as it is.
   const link = linkPresentation(unreachable, health?.linkState);

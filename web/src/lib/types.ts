@@ -92,7 +92,7 @@ export interface AgentView {
    */
   lastSeenAt?: number;
   /**
-   * Which member of the pack this pane lives on — the `?h=` value (PACK_PROTOCOL.md §4). Mirrors
+   * Which member of the crew this pane lives on — the `?h=` value (PACK_PROTOCOL.md §4). Mirrors
    * `PaneWire.host` in bridge/types.ts.
    *
    * **Present exactly when {@link SnapshotResponse.servers} is**, and absent otherwise: a solo
@@ -157,10 +157,10 @@ export interface WorkspaceView {
   /** Whether this space is a linked worktree of `repoRoot`, not the repo's own checkout. */
   isWorktree?: boolean;
   /**
-   * Which member of the pack this space lives on — the same tag a pane and a session carry.
+   * Which member of the crew this space lives on — the same tag a pane and a session carry.
    *
    * Present exactly when `servers` is, absent otherwise, so a solo body is unchanged. Herdr numbers
-   * spaces PER MACHINE, so `(host, workspaceId)` is a space's identity in a pack — see `spaceKey`
+   * spaces PER MACHINE, so `(host, workspaceId)` is a space's identity in a crew — see `spaceKey`
    * in lib/hosts.ts, and `ambientSpaces`, which narrows these rows to the address the URL is on.
    */
   host?: string;
@@ -174,7 +174,7 @@ export interface TabView {
   label: string;
   focused: boolean;
   paneCount: number;
-  /** Which member of the pack this tab lives on — same rule as {@link WorkspaceView.host}. */
+  /** Which member of the crew this tab lives on — same rule as {@link WorkspaceView.host}. */
   host?: string;
 }
 
@@ -252,7 +252,7 @@ export interface SessionSummary {
   working: number;
   blocked: number;
   /**
-   * Which member of the pack fronts this session — the `?h=` value. Present exactly when
+   * Which member of the crew fronts this session — the `?h=` value. Present exactly when
    * {@link SnapshotResponse.servers} is (PACK_PROTOCOL.md §9.2/§11); absent on every solo snapshot.
    * Sessions are a PER-HOST registry, which is why the switcher lists one host's sessions at a time:
    * a flat merged list would offer "default" twice with no way to tell them apart.
@@ -261,7 +261,7 @@ export interface SessionSummary {
 }
 
 /**
- * One member of the pack (PACK_PROTOCOL.md §9.2) — mirrors `ServerSummary` in bridge/types.ts field
+ * One member of the crew (PACK_PROTOCOL.md §9.2) — mirrors `ServerSummary` in bridge/types.ts field
  * for field. The lead's own entry is included, so the phone renders one uniform host list instead of
  * special-casing "here".
  *
@@ -298,14 +298,14 @@ export interface ServerSummary {
 }
 
 /**
- * `GET /api/pack` — the lead's own answer to "how is my whole pack doing?" (PACK_PROTOCOL.md §9.2,
- * §10.2). Read-level, and read-ONLY: nothing on this response is an affordance to change the pack.
+ * `GET /api/pack` — the lead's own answer to "how is my whole crew doing?" (PACK_PROTOCOL.md §9.2,
+ * §10.2). Read-level, and read-ONLY: nothing on this response is an affordance to change the crew.
  * Join / leave / promote / rotate stay CLI verbs (M5 non-goal), so the page it feeds has no button
  * that mutates anything.
  *
  * **Only a LEAD serves it.** A solo collie and a peer both answer 404 with the app's ordinary JSON
- * error shape, which `packLoader` (lib/loaders.ts) turns into `null` rather than a thrown error —
- * "there is no pack here" is an answer, not a failure.
+ * error shape, which `crewLoader` (lib/loaders.ts) turns into `null` rather than a thrown error —
+ * "there is no crew here" is an answer, not a failure.
  *
  * Deliberately NOT folded into `SnapshotResponse.servers`: that roster is what every host-aware
  * surface polls on the hot path, and it carries exactly the fields those surfaces need. The census
@@ -314,10 +314,10 @@ export interface ServerSummary {
  * poll. Where the two overlap — `health`, `lastSeenAt` — the meanings are the same ones
  * `ServerSummary` documents, measured on the same clock.
  */
-export interface PackStatusResponse {
+export interface CrewStatusResponse {
   pack: {
     id: string;
-    /** Operator-chosen pack name. */
+    /** Operator-chosen crew name. */
     name: string;
     /** Which rotation of the shared secret is current; a member below it has not caught up yet. */
     secretGeneration: number;
@@ -332,7 +332,7 @@ export interface PackStatusResponse {
    */
   deputy: { id: string; warrantGeneration: number | null } | null;
   /** Lead first, then peers by id — the same order the roster uses, so the two pages agree. */
-  members: PackMemberStatus[];
+  members: CrewMemberStatus[];
   /**
    * The LEAD's clock when it assembled this body. Every timestamp above and below is stamped on
    * that same clock, so it is the only sound thing to age them against — never `Date.now()`
@@ -342,7 +342,7 @@ export interface PackStatusResponse {
 }
 
 /** One machine's row in the census. */
-export interface PackMemberStatus {
+export interface CrewMemberStatus {
   /** Member id — the `?h=` value, so a row can navigate straight to that machine's home. */
   id: string;
   name: string;
@@ -353,7 +353,7 @@ export interface PackMemberStatus {
   enrolledAt?: number;
   /**
    * Four states, and the last two are the loud ones: `incompatible` is a version that must be
-   * fixed, `conflicted` is two collies both believing they lead this pack. Neither is a transient
+   * fixed, `conflicted` is two collies both believing they lead this crew. Neither is a transient
    * the next poll clears, so the page names them rather than folding them into "unreachable".
    */
   health: "reachable" | "unreachable" | "incompatible" | "conflicted";
@@ -385,7 +385,7 @@ export interface PackMemberStatus {
 /**
  * WHICH update band a dismissal is about (mirrors `DismissScope` in `bridge/update.ts`).
  *
- * `offer` is "a release is available on this machine"; `pack` is "that machine is standing behind,
+ * `offer` is "a release is available on this machine"; `crew` is "that machine is standing behind,
  * and a package manager owns it". Two decisions, two fields on {@link UpdateInfo}: putting one down
  * must not put the other down with it, even when both name the same version.
  */
@@ -426,7 +426,7 @@ export interface UpdateInfo {
    */
   dismissedVersion?: string | null;
   /**
-   * The version whose quiet PACK notice the operator closed, or null. A separate decision from the
+   * The version whose quiet CREW notice the operator closed, or null. A separate decision from the
    * offer above: they are about different machines. Absent on an older bridge.
    */
   dismissedPackVersion?: string | null;
@@ -448,7 +448,7 @@ export interface UpdateInfo {
   /** The detached updater's run record. Absent when this install has never run one. */
   run?: UpdateRun;
   /**
-   * The peer legs of a pack-wide run that this machine has NO run record for (M20/09).
+   * The peer legs of a crew-wide run that this machine has NO run record for (M20/09).
    *
    * "Retry crew update" levels the peers without touching this machine, so nothing is written to
    * `update.json` and `run` is absent for the whole run. The legs then ride here instead of being
@@ -461,7 +461,7 @@ export interface UpdateInfo {
   /**
    * When every leg of that peers-only run reached a terminal state (M20/01), or absent while one is
    * still open. `run.settledAt` carries it when there is a run record. Same two positions, same one
-   * reader, {@link packSettledAt}.
+   * reader, {@link crewSettledAt}.
    */
   settledAt?: number;
 }
@@ -507,12 +507,12 @@ export interface UpdateRun {
   /** The command the operator runs by hand — carried only by `stuck`. */
   recovery?: string;
   /**
-   * The run's own opaque id (M16/04). Absent on a run started before the pack learned to follow, and
+   * The run's own opaque id (M16/04). Absent on a run started before the crew learned to follow, and
    * on a bridge that predates it — both read as "no run to key on", which is the closed case.
    */
   runId?: string;
   /**
-   * The peer legs of a pack-wide run (M16/04). Absent on a solo run, and absent on a bridge that
+   * The peer legs of a crew-wide run (M16/04). Absent on a solo run, and absent on a bridge that
    * predates it — the page then falls back to the census rows, which is the same screen with older
    * facts on it rather than a broken one.
    */
@@ -520,27 +520,27 @@ export interface UpdateRun {
   /**
    * When every peer leg of this run reached a terminal state (M20/01). Absent while one leg is still
    * open, and absent on a bridge that predates the field — both read as "not settled", which is the
-   * reading that keeps a page polling rather than one that declares a moving pack finished.
+   * reading that keeps a page polling rather than one that declares a moving crew finished.
    */
   settledAt?: number;
 }
 
 /**
- * A peer's own answer about itself, gathered over the pack link (M16/03). The verdict and the
+ * A peer's own answer about itself, gathered over the crew link (M16/03). The verdict and the
  * reasons are that machine's own preflight, so a red here is a real red on that machine.
  *
  * `unknown` is a first-class verdict: the lead asked and got nothing back. It renders as unknown
  * with a reason, never as green.
  */
-export type UpdatePackVerdict = "green" | "amber" | "red" | "unknown";
+export type UpdateCrewVerdict = "green" | "amber" | "red" | "unknown";
 
-/** One member of the pack, as `GET /api/update/check` reports it (M16/03). */
-export interface UpdatePackMember {
-  /** The member's name, spelled the way the pack census spells it. */
+/** One member of the crew, as `GET /api/update/check` reports it (M16/03). */
+export interface UpdateCrewMember {
+  /** The member's name, spelled the way the crew census spells it. */
   name: string;
   /** The version that member runs, or null when the lead could not learn it. */
   version: string | null;
-  verdict: UpdatePackVerdict;
+  verdict: UpdateCrewVerdict;
   /** Why the verdict is what it is. A red or an unknown with no reason is a defect. */
   reasons: string[];
   /** When that member's answer was taken (epoch ms), or null when it never reported. A
@@ -557,11 +557,11 @@ export interface UpdatePackMember {
   installKind?: UpdateInstallKind;
 }
 
-/** The bridge and the CLI (`bridge/pack/lead.ts`, `bridge/update-action.ts`, `cli/pack-update.ts`) know this row by this name. */
-export type PackUpdateRow = UpdatePackMember;
+/** The bridge and the CLI (`bridge/crew/lead.ts`, `bridge/update-action.ts`, `cli/crew-update.ts`) know this row by this name. */
+export type CrewUpdateRow = UpdateCrewMember;
 
 /**
- * One peer's leg of a pack-wide run (M16/04). Every field past the name is optional, because this
+ * One peer's leg of a crew-wide run (M16/04). Every field past the name is optional, because this
  * arrives from a spec that lands beside this one and a reader must degrade rather than throw.
  */
 export interface UpdatePeerLeg {
@@ -617,16 +617,16 @@ export interface PreflightReport {
  * `GET /api/update/check` — the update snapshot plus the preflight the button is gated on.
  *
  * `preflight: null` is a fact, not an omission: it means the check could not be run here, which
- * REFUSES an update rather than allowing one. `pack` is optional because a bridge older than the
- * pack-wide check omits it; that reads the same as "no peer rows" on the phone.
+ * REFUSES an update rather than allowing one. `crew` is optional because a bridge older than the
+ * crew-wide check omits it; that reads the same as "no peer rows" on the phone.
  */
 export interface UpdateCheckResponse extends UpdateInfo {
   preflight: PreflightReport | null;
   /**
    * Every peer's version and preflight (M16/03). Absent on a solo install, and absent on a bridge
-   * that predates the pack-wide check. Both read as "no peer rows", which is the same screen.
+   * that predates the crew-wide check. Both read as "no peer rows", which is the same screen.
    */
-  pack?: UpdatePackMember[];
+  pack?: UpdateCrewMember[];
 }
 
 /** `POST /api/update` — the 202. The run itself is followed on the snapshot from here. */
@@ -651,7 +651,7 @@ export interface SnapshotResponse {
   /** The bridge's session registry (primary-first). Absent on a single-session / older bridge. */
   sessions?: SessionSummary[];
   /**
-   * Every member of the pack, the lead's own entry first (PACK_PROTOCOL.md §9.2).
+   * Every member of the crew, the lead's own entry first (PACK_PROTOCOL.md §9.2).
    *
    * **Optional-and-absent, like `update?` and unlike the always-present `sessions`** — a solo bridge
    * emits no such key at all (§11), so absent (or fewer than two entries) is the one condition under
@@ -757,10 +757,10 @@ export type CreateResponse =
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
 /**
- * Which role the bridge plays in a pack (PACK_PROTOCOL.md §3). Mirrors PackMode in bridge/types.ts.
+ * Which role the bridge plays in a crew (PACK_PROTOCOL.md §3). Mirrors CrewMode in bridge/types.ts.
  * `solo` is a lead with zero peers — today's Collie, exactly.
  */
-export type PackMode = "solo" | "lead" | "peer";
+export type CrewMode = "solo" | "lead" | "peer";
 
 /**
  * One operator-declared palette row (a `[[commands]]` table in their `commands.toml`). Mirrors
@@ -940,7 +940,7 @@ export interface Launcher {
 }
 
 /**
- * GET /api/launchers — the rows for ONE host (a pack has one file per member), read live off its
+ * GET /api/launchers — the rows for ONE host (a crew has one file per member), read live off its
  * `launchers.toml`. `home` is that host's own home dir, for shortening a pinned `cwd` without the
  * client knowing which machine answered (a peer's home is not this browser's, and is not even
  * necessarily the same string as the lead's).
@@ -956,11 +956,11 @@ export interface BridgeConfig {
   /** Build id of the bundle the bridge is currently serving (for stale-cache detection). */
   build?: string;
   /**
-   * The bridge's pack mode. **Absent means `solo`** — a solo bridge emits no such key, so its
+   * The bridge's crew mode. **Absent means `solo`** — a solo bridge emits no such key, so its
    * `/api/config` body stays byte-identical to the pre-federation one. Always read it as
    * `mode ?? "solo"`; never infer the mode from behaviour.
    */
-  mode?: PackMode;
+  mode?: CrewMode;
   /** The operator's own palette rows. Absent when there is no `commands.toml`. */
   operatorCommands?: OperatorCommand[];
   /** The operator's own Keys-tray presets. Absent when there is no `keys.toml`. */
@@ -996,7 +996,7 @@ export interface BridgeConfig {
 
 /**
  * What `/api/config` says about attachments — the two facts the picker needs before it opens.
- * Both are the HOST's own settings, so a pack member with a different cap answers for itself.
+ * Both are the HOST's own settings, so a crew member with a different cap answers for itself.
  */
 export interface UploadCapability {
   /** Largest attachment accepted, decoded, in bytes. */

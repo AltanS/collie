@@ -315,7 +315,7 @@ export function CollieHome({ onHome, trouble, lost = false, className }: CollieH
           40px circle with `overflow-hidden` would clip the beads that pass widest.
 
           The DRAWING is 40px; the BOX around it is `size-11` (44px), the same tap floor every other
-          icon control in the header carries (SettingsGear, the Settings/Pack back button). This is a
+          icon control in the header carries (SettingsGear, the Settings/Crew back button). This is a
           real button — it navigates home — so 40px was simply under the target, and it was also what
           made the header row 4px shorter inside a pane, where no 44px gear was there to set the
           height. The row now states its own floor (`min-h-15` in app-header.tsx), so this box no longer

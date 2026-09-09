@@ -5,7 +5,7 @@ import type { Scope } from "@/lib/scope";
 import type { Launcher } from "@/lib/types";
 
 // THIS scope's own launcher rows — deliberately NOT part of lib/operator-config.ts's one-shot
-// `/api/config` cache. Rows must come from the host that RUNS them: a pack peer keeps its own
+// `/api/config` cache. Rows must come from the host that RUNS them: a crew peer keeps its own
 // `launchers.toml`, and the lead's single startup fetch can only ever answer for itself. So this
 // reads `GET /api/launchers` (session-scoped, forwarded on `?host=` — server.ts) fresh on every
 // mount and whenever `scope` changes, rather than once per page load — the file is read live on the

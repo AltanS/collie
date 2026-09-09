@@ -1,6 +1,6 @@
 import { resolveBridgeHost } from "../bridge/config.ts";
 import type { JsonValue } from "../bridge/json.ts";
-import { bindIsWildcard } from "../bridge/pack/config.ts";
+import { bindIsWildcard } from "../bridge/crew/config.ts";
 import type { CliContext, Environment, ServeMode } from "./context.ts";
 import { DEFAULT_SERVE_PORT } from "./context.ts";
 import type { Exec } from "./sys.ts";

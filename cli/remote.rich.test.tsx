@@ -2,20 +2,20 @@ import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
-import { PACK_PROTOCOL_VERSION } from "../bridge/pack/enrollment.ts";
-import { leadStore, material, member, T0 } from "../bridge/pack/fixtures.ts";
-import { serializeTrustStore, TrustStore, type TrustStoreIo } from "../bridge/pack/trust-store.ts";
+import { PACK_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
+import { leadStore, material, member, T0 } from "../bridge/crew/fixtures.ts";
+import { serializeTrustStore, TrustStore, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
 import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
 import { EXIT, type Io } from "./io.ts";
 import type { AddSurface, Ui } from "./render.ts";
-import { cmdPackAdd, type PackAddDeps, type RemoteResult } from "./remote.ts";
-import { createAddStore, PackAdd, type AddStore } from "./ui/pack-add.tsx";
+import { cmdCrewAdd, type CrewAddDeps, type RemoteResult } from "./remote.ts";
+import { createAddStore, CrewAdd, type AddStore } from "./ui/crew-add.tsx";
 
-// `pack add` on the RICH path: the same fake transport the plain suite uses, driven through a real
+// `crew add` on the RICH path: the same fake transport the plain suite uses, driven through a real
 // ink render.
 //
 // What these tests are for is the rule in `cli/render.ts` — the surface owns every byte while it is
-// mounted. So the `Io` handed to `cmdPackAdd` here is one that THROWS if anything writes through it,
+// mounted. So the `Io` handed to `cmdCrewAdd` here is one that THROWS if anything writes through it,
 // and the run is expected to finish anyway: every line has to have gone through the surface. The
 // frames are then asserted for the leg progression, the condensed restart row and the prompt, which
 // is the part a golden file cannot pin.
@@ -29,7 +29,7 @@ function legOf(script: string): Leg {
   if (script.includes("collie-probe:")) return "probe";
   if (script.includes("collie-install:")) return "install";
   if (script.includes("collie-configure:")) return "configure";
-  if (script.includes("pack status --no-probe")) return "membership";
+  if (script.includes("crew status --no-probe")) return "membership";
   if (script.includes("'join'")) return "enroll";
   throw new Error(`unrecognised leg script:\n${script}`);
 }
@@ -73,7 +73,7 @@ function forbiddenIo(): Io {
 }
 
 interface RichHarness {
-  deps: PackAddDeps;
+  deps: CrewAddDeps;
   store: AddStore;
   restarts: number;
   closes: number;
@@ -99,7 +99,7 @@ function harness(opts: {
   answers?: Partial<Record<Leg, Partial<RemoteResult>>>;
   reachable?: boolean;
   io?: Io;
-  /** Which of the two `pack add` restarts (both inside the `enroll` leg) fails, if any. */
+  /** Which of the two `crew add` restarts (both inside the `enroll` leg) fails, if any. */
   restartFails?: "first" | "second";
 }): RichHarness {
   const store = createAddStore();
@@ -116,8 +116,8 @@ function harness(opts: {
   const ui: Ui = {
     doctor: () => Promise.resolve(),
     status: () => Promise.resolve(),
-    packMembers: () => Promise.resolve(),
-    packAdd: () => surface,
+    crewMembers: () => Promise.resolve(),
+    crewAdd: () => surface,
   };
   const state = { restarts: 0, closes: 0 };
 
@@ -130,7 +130,7 @@ function harness(opts: {
   };
   const audit: AuditEntry[] = [];
 
-  const deps: PackAddDeps = {
+  const deps: CrewAddDeps = {
     ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000" }),
     io: opts.io ?? forbiddenIo(),
     ui,
@@ -240,9 +240,9 @@ describe("crew add, drawn", () => {
       // An existing checkout at another commit is what raises the replace question.
       probe: { checkout: REMOTE_CHECKOUT, commit: "0".repeat(40), version: "1.0.0", dirty: "no" },
     });
-    const app = render(<PackAdd store={h.store} />);
+    const app = render(<CrewAdd store={h.store} />);
     try {
-      const run = cmdPackAdd(h.deps, ["nas.example"]);
+      const run = cmdCrewAdd(h.deps, ["nas.example"]);
       await waitFor(() => h.store.state().question !== null, "the replace question");
       expect(plainText(app.lastFrame())).toContain("replace it with 1.2.3");
       expect(plainText(app.lastFrame())).toContain("y / N");
@@ -289,9 +289,9 @@ describe("crew add, drawn", () => {
       probe: { checkout: REMOTE_CHECKOUT, commit: "0".repeat(40), version: "1.0.0", dirty: "no" },
       restartFails: "first",
     });
-    const app = render(<PackAdd store={h.store} />);
+    const app = render(<CrewAdd store={h.store} />);
     try {
-      const run = cmdPackAdd(h.deps, ["nas.example"]);
+      const run = cmdCrewAdd(h.deps, ["nas.example"]);
       await waitFor(() => h.store.state().question !== null, "the replace question");
       app.stdin.write("y");
       expect(await run).toBe(EXIT.OK);
@@ -318,9 +318,9 @@ describe("crew add, drawn", () => {
     const h = harness({
       answers: { install: { code: 24, stderr: "error: the build failed on this machine\n" } },
     });
-    const app = render(<PackAdd store={h.store} />);
+    const app = render(<CrewAdd store={h.store} />);
     try {
-      expect(await cmdPackAdd(h.deps, ["nas.example"])).toBe(EXIT.FAIL);
+      expect(await cmdCrewAdd(h.deps, ["nas.example"])).toBe(EXIT.FAIL);
       await waitFor(() => plainText(app.lastFrame()).includes("did not finish"), "the failure verdict");
 
       const frame = plainText(app.lastFrame());
@@ -340,9 +340,9 @@ describe("crew add, drawn", () => {
     const h = harness({
       probe: { checkout: REMOTE_CHECKOUT, commit: "0".repeat(40), version: "1.0.0", dirty: "no" },
     });
-    const app = render(<PackAdd store={h.store} />);
+    const app = render(<CrewAdd store={h.store} />);
     try {
-      const run = cmdPackAdd(h.deps, ["nas.example"]);
+      const run = cmdCrewAdd(h.deps, ["nas.example"]);
       await waitFor(() => h.store.state().question !== null, "the replace question");
       app.stdin.write("\r");
       expect(await run).toBe(EXIT.STATE);
@@ -360,7 +360,7 @@ describe("which renderer crew add gets", () => {
   test("no `ui` means the plain lines, through the caller's own Io", async () => {
     const h = harness({});
     const io = capture();
-    const code = await cmdPackAdd({ ...h.deps, ui: null, io }, ["nas.example"]);
+    const code = await cmdCrewAdd({ ...h.deps, ui: null, io }, ["nas.example"]);
     expect(code).toBe(EXIT.OK);
     expect(io.stdout).toContain("probing nas.example…");
     expect(io.stdout.some((l) => l.startsWith("✓ install"))).toBe(true);
@@ -372,9 +372,9 @@ describe("which renderer crew add gets", () => {
     const oneShot = {
       doctor: () => Promise.resolve(),
       status: () => Promise.resolve(),
-      packMembers: () => Promise.resolve(),
+      crewMembers: () => Promise.resolve(),
     };
-    const code = await cmdPackAdd({ ...h.deps, ui: oneShot, io }, ["nas.example"]);
+    const code = await cmdCrewAdd({ ...h.deps, ui: oneShot, io }, ["nas.example"]);
     expect(code).toBe(EXIT.OK);
     expect(io.stdout).toContain("probing nas.example…");
   });
@@ -382,9 +382,9 @@ describe("which renderer crew add gets", () => {
   test("with the surface, NOTHING reaches the caller's Io — not even a nested restart", async () => {
     // `forbiddenIo` throws on any write, so the run finishing at all is the assertion.
     const h = harness({});
-    const app = render(<PackAdd store={h.store} />);
+    const app = render(<CrewAdd store={h.store} />);
     try {
-      expect(await cmdPackAdd(h.deps, ["nas.example"])).toBe(EXIT.OK);
+      expect(await cmdCrewAdd(h.deps, ["nas.example"])).toBe(EXIT.OK);
     } finally {
       app.unmount();
     }

@@ -120,7 +120,7 @@ describe("muxTopologyLatency — absent means push, and only an explicit bound i
   });
 });
 
-// ── PER-HOST: a pack member runs its own multiplexer (M22/03) ────────────────────────────────────
+// ── PER-HOST: a crew member runs its own multiplexer (M22/03) ────────────────────────────────────
 //
 // The lead answers `/api/config?host=<member>` with that member's own declaration, from what its
 // last `hello` taught it, and the web asks with the scope's host. Two absent rules meet here, one

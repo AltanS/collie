@@ -1,8 +1,8 @@
 import { Box, render, Text } from "ink";
 import React from "react";
 
-import { createAddSurface } from "./pack-add.tsx";
-import { createUpdateSurface } from "./pack-update.tsx";
+import { createAddSurface } from "./crew-add.tsx";
+import { createUpdateSurface } from "./crew-update.tsx";
 import type { DoctorView, StatusView, TonedLine, Ui, UiFinding } from "../render.ts";
 
 // The terminal view. NOTHING outside this directory imports ink — `cli/render.ts`'s `loadUi()` is
@@ -12,9 +12,9 @@ import type { DoctorView, StatusView, TonedLine, Ui, UiFinding } from "../render
 //
 // ── ONE-SHOT, NOT AN APP ─────────────────────────────────────────────────────
 // Every surface in THIS file draws once and unmounts immediately: they are `console.log` with a
-// layout engine, not a TUI. The one exception lives in `./pack-add.tsx`, which stays mounted for a
+// layout engine, not a TUI. The one exception lives in `./crew-add.tsx`, which stays mounted for a
 // whole verb — and may, because it owns every byte written while it is up (`cli/render.ts`). The
-// same goes for `./pack-update.tsx`, on the same terms.
+// same goes for `./crew-update.tsx`, on the same terms.
 
 /** Draw a component once, wait for ink to flush it, and let go of the terminal. */
 async function once(node: React.ReactElement): Promise<void> {
@@ -83,11 +83,11 @@ export function Doctor({ view }: { view: DoctorView }): React.ReactElement {
         <Findings findings={view.local} />
       </Box>
       <Box marginTop={1} flexDirection="column">
-        {view.pack.length > 0 ? <Text dimColor>{view.packTitle}</Text> : null}
-        {view.pack.length > 0 ? (
-          <Findings findings={view.pack} />
+        {view.crew.length > 0 ? <Text dimColor>{view.crewTitle}</Text> : null}
+        {view.crew.length > 0 ? (
+          <Findings findings={view.crew} />
         ) : (
-          view.packNote.map((n) => (
+          view.crewNote.map((n) => (
             <Text key={n} dimColor>
               {n}
             </Text>
@@ -127,8 +127,8 @@ export function Status({ view }: { view: StatusView }): React.ReactElement {
   );
 }
 
-// ── pack status: the members block ───────────────────────────────────────────
-// Pre-formatted lines with a tone each, rather than a model of a member. `pack status`'s roster is a
+// ── crew status: the members block ───────────────────────────────────────────
+// Pre-formatted lines with a tone each, rather than a model of a member. `crew status`'s roster is a
 // deliberately wordy surface — a provisional member gets three lines of explanation, a bare 401 gets
 // four — and re-deriving that prose from a model would be a second place for it to drift. What the
 // terminal adds is the colour: reachable, refused, unreachable, behind on the secret.
@@ -151,10 +151,10 @@ export function createUi(): Ui {
   return {
     doctor: (view) => once(<Doctor view={view} />),
     status: (view) => once(<Status view={view} />),
-    packMembers: (lines) => once(<Members lines={lines} />),
+    crewMembers: (lines) => once(<Members lines={lines} />),
     // The one surface that is NOT one-shot. It keeps the terminal for the length of the verb and is
     // allowed to, because it owns every byte written while it is up (`cli/render.ts`).
-    packAdd: () => createAddSurface(),
-    packUpdate: () => createUpdateSurface(),
+    crewAdd: () => createAddSurface(),
+    crewUpdate: () => createUpdateSurface(),
   };
 }

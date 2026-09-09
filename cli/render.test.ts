@@ -76,10 +76,10 @@ describe("takePlainFlag", () => {
   });
 });
 
-// ── `pack add`'s two readers ─────────────────────────────────────────────────
+// ── `crew add`'s two readers ─────────────────────────────────────────────────
 // One event stream, two renderings. The plain one is pinned to the byte, because `cli/remote.test.ts`
 // and `scripts/collie-cli.test.sh` are goldens of it and an operator's scripts read it; the
-// projection is pinned to its structure, because that is what `cli/ui/pack-add.tsx` draws.
+// projection is pinned to its structure, because that is what `cli/ui/crew-add.tsx` draws.
 
 describe("plainAdd", () => {
   /** What a plain replay printed, split by stream. */
@@ -210,8 +210,8 @@ describe("projectAdd", () => {
   });
 });
 
-// ── `pack update`'s seam ─────────────────────────────────────────────────────
-// The same contract as `pack add`'s, one verb later: one event stream, two readers, and neither may
+// ── `crew update`'s seam ─────────────────────────────────────────────────────
+// The same contract as `crew add`'s, one verb later: one event stream, two readers, and neither may
 // describe a run the other doesn't.
 
 const RUN: UpdateEvent[] = [

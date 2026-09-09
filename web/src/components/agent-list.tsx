@@ -16,7 +16,7 @@ interface AgentListProps {
   bridge?: BridgeStatus | undefined;
   /**
    * Open a row. Takes the PANE, not its id: `w1:p1` names a different terminal on every machine in a
-   * pack, and this list is one herd across all of them — an id alone cannot say which row was tapped.
+   * crew, and this list is one herd across all of them — an id alone cannot say which row was tapped.
    */
   onOpen: (pane: AgentView) => void;
   /** Which way Recent runs, and how to flip it. Omit to render Recent newest-first with no toggle. */

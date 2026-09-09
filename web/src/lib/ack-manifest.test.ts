@@ -35,7 +35,7 @@ import { ACK_MANIFEST } from "./ack-manifest";
 // export (not only functions) is what keeps that window one declaration wide.
 //
 // None of that is a hole to be plugged with a cleverer regex — a regex cannot know a bridge route's
-// semantics any more than scripts/check-pack-wire.sh can know a protocol change's (ADR 0025). It is
+// semantics any more than scripts/check-crew-wire.sh can know a protocol change's (ADR 0025). It is
 // the reason the manifest's `why` lines are written by a person and read in review. What the guard
 // buys is that the ORDINARY way of adding a mutation to this file cannot be done without answering
 // the question, and that is the way every one of the seventeen present today was added.
@@ -91,7 +91,7 @@ describe("ack-manifest covers every mutating export of lib/api.ts", () => {
     // The other half of the control: the GET wrappers must stay out, or "set equality" would be
     // satisfied by a manifest that classified the whole file.
     const found = mutatingExportsOf(source);
-    for (const read of ["fetchSnapshot", "fetchPane", "fetchHistory", "fetchConfig", "fetchDevices", "fetchPack", "getNotifyPrefs"]) {
+    for (const read of ["fetchSnapshot", "fetchPane", "fetchHistory", "fetchConfig", "fetchDevices", "fetchCrew", "getNotifyPrefs"]) {
       expect(found).not.toContain(read);
     }
   });
