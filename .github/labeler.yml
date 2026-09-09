@@ -55,7 +55,7 @@
           - web/src/routes/crew.test.tsx
           - web/src/components/crew-*
           - scripts/check-crew-wire.sh
-          - PACK_PROTOCOL.md
+          - CREW_PROTOCOL.md
           - PACK_DEPUTY_RFC.md
           - docs/crew.md
 
@@ -103,7 +103,7 @@
           - contrib/windows/**
 
 # Narrow on purpose. `**/*.md` would tag every PR that grazes CHANGELOG.md, and the top-level
-# design docs (ARCHITECTURE, DESIGN, PACK_PROTOCOL, …) already carry their own `area:` label.
+# design docs (ARCHITECTURE, DESIGN, CREW_PROTOCOL, …) already carry their own `area:` label.
 documentation:
   - changed-files:
       - any-glob-to-any-file:

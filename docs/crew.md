@@ -3,20 +3,20 @@
 A **crew** links multiple Collie instances under a single **lead**, exposing every herd to
 the phone through one URL. Management runs entirely through the CLI without Herdr UI actions.
 Machine-to-machine traffic uses the protocol documented in
-[`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md).
+[`CREW_PROTOCOL.md`](../CREW_PROTOCOL.md).
 
 Architecture before running commands: only the lead exposes the front door, while peers expose none.
 
 ```mermaid
 graph TD
   phone["phone (PWA)"] -->|"HTTPS /api/* — the phone talks to the lead and to nothing else"| lead
-  lead["lead — the managed front door, serves the PWA"] -->|"/pack/v1/* — pinned mutual TLS + the pack secret"| peer["peer — a full collie, no front door"]
-  lead -->|"/pack/v1/*"| deputy["deputy — a peer the lead named ahead of time"]
+  lead["lead — the managed front door, serves the PWA"] -->|"/crew/v1/* — pinned mutual TLS + the crew secret"| peer["peer — a full collie, no front door"]
+  lead -->|"/crew/v1/*"| deputy["deputy — a peer the lead named ahead of time"]
   lead --- leadHerd["its own agents, journal, uploads, audit"]
   peer --- peerHerd["its own agents, journal, uploads, audit"]
   deputy --- depHerd["its own agents, journal, uploads, audit"]
   deputy -.->|"armed only by the lead's silence, spent by you"| standby(["standby door — bound, never published, three routes"])
-  op["you, the operator"] -.->|"ssh — code rides here, never the pack link"| lead
+  op["you, the operator"] -.->|"ssh — code rides here, never the crew link"| lead
   op -.->|"ssh"| peer
   op -.->|"ssh"| deputy
 ```
@@ -39,7 +39,7 @@ confirm on the phone. It can hand the front door to a deputy when the lead goes 
 same under tmux and zellij, which have no machine list at all.
 
 Three facts keep the two lists apart, and each one is a reason on its own. The phone must never hold
-an ssh key. Uploads, the journal and the audit log live on the machine that runs the pane. The pack
+an ssh key. Uploads, the journal and the audit log live on the machine that runs the pane. The crew
 link, which is what Collie calls the encrypted line between two machines, needs no ssh once a member
 has enrolled.
 
@@ -95,7 +95,7 @@ once before sending the token over plain HTTP; `--insecure` confirms this automa
 explicit `http://` address still requires `--insecure` and prompts for nothing. Pass `-` to read the
 token from stdin or `@<file>` to read from disk. Passing raw tokens directly as arguments prints a
 warning, because process listings expose arguments to all local users
-([`PACK_PROTOCOL.md` §8.3](../PACK_PROTOCOL.md)).
+([`CREW_PROTOCOL.md` §8.3](../CREW_PROTOCOL.md)).
 
 `join` outputs the final required step: **`collie restart` on the lead.** The lead wrote the
 enrollment to disk, but the active process cached the roster at startup and will not proxy traffic
@@ -113,9 +113,9 @@ on the remote host** and does not support `--insecure`. If the lead uses plainte
 
 **Multiplexer selection is local to each node.** Configure `COLLIE_MUX` in that node's own `.env`,
 at `~/.config/collie/.env` on a binary install or in Herdr's plugin config dir on a Herdr install.
-The pack protocol, which is the wire between the machines, contains no multiplexer-specific
+The crew protocol, which is the wire between the machines, contains no multiplexer-specific
 fields. Note that peers have only been tested
-with Herdr in v1 ([`PACK_PROTOCOL.md` §16](../PACK_PROTOCOL.md)).
+with Herdr in v1 ([`CREW_PROTOCOL.md` §16](../CREW_PROTOCOL.md)).
 
 
 ## Members that were not installed by install.sh
@@ -152,14 +152,14 @@ cannot, and the crew is level again once you have run their package managers.
 | `collie crew add <ssh-host>` | Install and enroll a peer over **your own SSH** (on the lead) |
 | `collie crew update <member>… \| --all` | Preflight every machine, then the lead, then each peer one at a time over **your own SSH**; the first failure stops the run ([details](upgrading.md#updating-the-rest-of-the-crew)) |
 | `collie crew status` | Mode, members, reachability, secret pickup — and why a link is refused |
-| `collie crew rotate` | Reissue the pack secret and hand it to every reachable peer |
+| `collie crew rotate` | Reissue the crew secret and hand it to every reachable peer |
 | `collie crew rename <name>` | Give the crew a new name (**on the lead**) |
 | `collie crew remove <member>` | Unpin and forget a member (on the lead) |
 | `collie crew set-address <member> <host:port>` | Correct where this lead dials a member |
 | `collie crew deputy <member>` | Name the ONE peer that may take over, and arm it; `--revoke` names nobody |
 | `collie crew approve-promote <member>` | Consent, on the lead, for one member to take over — 10 minutes, single-use; `--cancel` clears it |
 | `collie crew join <lead-address> [<token>]` | Join a crew (**on the joining machine**); without a token it prompts for one, or pass `-` for stdin or `@file` |
-| `collie crew leave` | Leave the crew; drops the pack secret and every pin on this machine |
+| `collie crew leave` | Leave the crew; drops the crew secret and every pin on this machine |
 | `collie promote` | Make THIS machine the lead (on the peer taking over; `--force` if the lead is gone) |
 | `collie reconnect` | A member moved: re-point at its new address without re-enrolling anything |
 
@@ -167,7 +167,9 @@ cannot, and the crew is level again once you have run their package managers.
 `collie crew leave`, using the same arguments and exit codes.
 
 `collie pack` still works too, for every verb in this table. It is an alias of `collie crew` with
-the same arguments and exit codes, and it goes away in 2.0.0 ([ADR 0038](../.adr/0038-the-group-is-a-crew-the-wire-keeps-pack.md)).
+the same arguments and exit codes. `collie docs pack` prints this page, and the web app's `/pack`
+address redirects to `/crew`. All three go away in 2.0.0
+([ADR 0038](../.adr/0038-the-group-is-a-crew-the-wire-keeps-pack.md)).
 
 The `deputy`, `approve-promote`, and `promote` commands manage failover. For setup and recovery
 instructions, see
@@ -179,7 +181,7 @@ instructions, see
 A crew's name is display data, and only the lead shows it. `collie crew invite --name "the shed"`
 names a crew when it is created, and a crew created without `--name` is called "collie crew". To
 change it later, run `collie crew rename <name>` on the lead. The verb rewrites the name in the
-lead's own `pack-trust.json` and restarts the bridge, so `collie crew status` and the phone's crew
+lead's own `crew-trust.json` and restarts the bridge, so `collie crew status` and the phone's crew
 page show the new name right away.
 
 Nothing is sent to a member. The name travels once, in the lead's answer to an enrollment, and a
@@ -188,25 +190,47 @@ name, and the members already in the crew keep the old string in a field nobody 
 trimmed, is at most 64 characters, and carries no control characters. On a peer, or on a machine in
 no crew, the verb refuses and says where to run it.
 
-## Names that keep the old word
+## Updating from 1.7.0
 
-The word a person reads is *crew*; the names a machine reads still say *pack*, on purpose. A 1.6.0
-member has to keep talking to a 1.7.0 lead while you update, so nothing on the wire, in the state
-directory, in an environment key or in the journal was renamed.
-[`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) opens with the same sentence, because it names the wire.
+**Update the lead first.** The phone and `collie crew update` already take that order, and 1.8.0
+adds a second reason for it.
 
-| Name | Where you meet it |
-| --- | --- |
-| `[pack]` | The prefix on the crew's own journal lines. **When you grep the journal, grep for `[pack]`** |
-| `COLLIE_PACK_TIMEOUT_MS`, `COLLIE_PACK_HELLO_TIMEOUT_MS` | The two crew timeouts in the environment |
-| `pack-trust.json`, `pack-ops.json`, `pack-runtime.json` | The state files in `~/.local/state/collie/` |
-| `/pack/v1/…` | Every path on the lead-to-member link |
-| `PACK_PROTOCOL.md` | The wire contract itself |
+1.8.0 renames the names a machine reads. The wire paths, the two environment keys, the three state
+files and the journal prefix all say crew now
+([ADR 0039](../.adr/0039-the-machine-says-crew-too.md)). The link behaves exactly as before, and
+nothing you scripted has to move on the same day.
 
-**Update the lead first.** That is already the order the phone and `collie crew update` take, and
-this is why it matters: a lead older than 1.7.0 reads a member's status by its first printed line,
-and that line now says `crew   …`, which such a lead cannot read. A 1.7.0 lead reads both spellings,
-so a lead that has been updated handles a 1.6.0 member fine.
+**A 1.8.0 lead keeps a 1.7.0 member following it.** The lead answers the old `/pack/v1/*` paths for
+one release, so a member still on 1.7.0 enrols, answers hello and levels itself over the link it
+already has. A lead still on 1.7.0 cannot read a 1.8.0 member's status line, which is the reason
+lead first was already the order.
+
+A member you update first is not stuck. A 1.8.0 member dials `/crew/v1/*`, falls back to
+`/pack/v1/*` once against a 1.7.0 lead, and writes one journal line saying it did. The old paths and
+that fallback both go away in 1.9.0, so bring the whole crew to 1.8.0 before that release.
+
+### The new names
+
+| 1.7.0 | 1.8.0 | What happens on your machine |
+| --- | --- | --- |
+| `COLLIE_PACK_TIMEOUT_MS` | `COLLIE_CREW_TIMEOUT_MS` | The old key is still read while the new one is absent, and Collie logs one warning line at start. Both old keys go away in 1.9.0 |
+| `COLLIE_PACK_HELLO_TIMEOUT_MS` | `COLLIE_CREW_HELLO_TIMEOUT_MS` | The same |
+| `pack-trust.json`, `pack-ops.json`, `pack-runtime.json` | `crew-trust.json`, `crew-ops.json`, `crew-runtime.json` | Renamed once, on the first start, in `~/.local/state/collie/`. No copy of the old file is kept |
+| `[pack]` | `[crew]` | The prefix on the crew's own journal lines |
+| `/pack/v1/…` | `/crew/v1/…` | Every path on the lead-to-member link |
+| `PACK_PROTOCOL.md` | [`CREW_PROTOCOL.md`](../CREW_PROTOCOL.md) | The wire contract itself |
+
+Rename the two environment keys in your own `.env` when it suits you. Until you do, Collie reads the
+old key and prints that warning at every start.
+
+**On a journal that spans the update, grep for both prefixes:**
+
+```bash
+journalctl --user -u collie | grep -E '\[(crew|pack)\]'
+```
+
+A line written before the update says `[pack]`, and a line written after it says `[crew]`. Once the
+whole crew is on 1.8.0, filter for `[crew]` alone.
 
 ---
 

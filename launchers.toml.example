@@ -21,7 +21,7 @@
 # pane closed, and a tab whose last pane closed — while something like `htop` sits there until
 # you close it.
 #
-# On a pack (several machines, one phone-facing lead — PACK_PROTOCOL.md), each machine reads
+# On a crew (several machines, one phone-facing lead — CREW_PROTOCOL.md), each machine reads
 # its OWN copy of this file. A row you declared only on your laptop only launches on your
 # laptop, whichever machine's dashboard or pane you tapped it from.
 #

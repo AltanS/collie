@@ -188,7 +188,7 @@ bin/collie update                                            # Standalone
 version, the working tree, the upstream release list and the service unit, and on a lead it asks
 every crew member the same question over your own SSH. It exits 0 unless something is red, and
 `--json` prints a versioned report. Add `--local` to check this instance only and skip the crew
-members. The phone runs that local check on its own host and reads each peer's line over the pack
+members. The phone runs that local check on its own host and reads each peer's line over the crew
 link, so its preflight needs no SSH.
 
 `collie update` fetches the newest release of your current major and stages it. The command then
@@ -300,6 +300,12 @@ exact tag from GitHub, and runs its own preflight, its own health gate and its o
 move one at a time. The Updates page keeps a line per member: `waiting`, `checking`, `staging`,
 `restarting`, `verifying`, `updated`, `rolled back` or `unreachable`.
 
+**1.7.0 to 1.8.0.** Lead first again, for a second reason: 1.8.0 renames the wire paths, the two
+environment keys, the three state files and the journal prefix to crew. A 1.8.0 lead answers the old
+`/pack/v1/*` paths for one release, so a member still on 1.7.0 follows the roll over the link it
+already has. Both old spellings go away in 1.9.0. The names and what each one does on your machine
+are in [Updating from 1.7.0](crew.md#updating-from-170).
+
 Two requirements decide whether a peer can follow at all:
 
 - **A peer needs outbound HTTPS to `github.com`.** That is where its code comes from. Without that
@@ -333,7 +339,7 @@ budget.
 The first failure stops the run. Every member after it is left untouched and reported as
 "not attempted", and the summary names the one command that clears the failure. A lead that cannot
 take its own update touches no peer at all. Stopping there is safe, because a crew tolerates version
-skew ([PACK_PROTOCOL.md §7.1](../PACK_PROTOCOL.md#71-version-skew-inside-a-protocol-version)), so a
+skew ([CREW_PROTOCOL.md §7.1](../CREW_PROTOCOL.md#71-version-skew-inside-a-protocol-version)), so a
 half-updated crew is a supported state and pressing on is not.
 
 **One case the phone cannot fix.** If you roll the lead back by hand after its peers have levelled,
@@ -341,7 +347,7 @@ the peers are left ahead of their lead. Nothing steps a peer down: a lead that c
 backwards is a lead that could move it anywhere. The skew is harmless, and the remedy is
 `collie crew update <member>` on the lead.
 
-Code reaches a peer over your SSH and never over the pack link
+Code reaches a peer over your SSH and never over the crew link
 ([ADR 0016](../.adr/0016-updates-ride-the-operators-ssh.md), addendum 2026-09-04). When a peer
 levels itself, its code comes from GitHub over anonymous HTTPS and the peer decides for itself. The
 lead states only the version it is running and which peer may proceed.
@@ -366,8 +372,8 @@ journalctl --user -u 'collie-api-update-*' --since '30 min ago'
 That is where to look when the phone reported success and something downstream did not happen — a
 warning that the run record could not be written, for instance, which is a lead that updated itself
 and will not level its crew. The bridge's own journal carries the other half: one
-`[pack] update <run id>: levelling peers to <version>` line per run, when the lead picks the record
-up. The journal prefix keeps the old word. No such line, and the turns never started.
+`[crew] update <run id>: levelling peers to <version>` line per run, when the lead picks the record
+up. Before 1.8.0 that prefix was `[pack]`. No such line, and the turns never started.
 
 ### A pre-1.5.4 update stuck at bunx
 
@@ -475,7 +481,7 @@ Verify with `bin/collie version` or `herdr plugin action invoke version --plugin
 - Pre-1.0 invite tokens must be regenerated with `crew invite`.
 - Older member records require `reconnect`.
 - Unupgraded peers display as `warn:` in `crew status`
-  ([PACK_PROTOCOL §7.1](../PACK_PROTOCOL.md#71-version-skew-inside-a-protocol-version)).
+  ([CREW_PROTOCOL §7.1](../CREW_PROTOCOL.md#71-version-skew-inside-a-protocol-version)).
 
 ### What 1.0 changes for you
 
@@ -517,7 +523,7 @@ rm -f bin/collie    # 1.0's binary otherwise survives the rollback
 ```
 
 Rebuild with `bash scripts/collie-ctl.sh build` and invoke Herdr's `restart` action. State files
-(`pack-trust.json`, `pack-runtime.json`, `paired-devices.json`, `pairing-pending.json`) can remain.
+(`crew-trust.json`, `crew-runtime.json`, `paired-devices.json`, `pairing-pending.json`) can remain.
 Rollback removes device pairing enforcement; configure `COLLIE_DEVICE_HEADER` if write protection
 is required.
 

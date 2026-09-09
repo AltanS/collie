@@ -110,7 +110,7 @@
       }
     },
     {
-      // Crew protocol handling (/pack/v1/*): payloads arrive from another Collie instance across a machine boundary and are untrusted until parsed. See PACK_PROTOCOL.md.
+      // Crew protocol handling (/crew/v1/*): payloads arrive from another Collie instance across a machine boundary and are untrusted until parsed. See CREW_PROTOCOL.md.
       "files": [
         "**/bridge/crew/**/*.ts"
       ],

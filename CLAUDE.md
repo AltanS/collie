@@ -335,14 +335,14 @@ a single command; never export one.
 | --- | --- | --- |
 | `SKIP_VERSION_CHECK=1` | `git commit` (pre-commit hook) | the version-consistency + bump-on-change guard |
 | `SKIP_LINT_CHECK=1` | `git commit` (pre-commit hook) | oxlint over the staged files |
-| `SKIP_CREW_WIRE_CHECK=1` | `git commit` (pre-commit hook) | the pack-wire decision guard |
+| `SKIP_CREW_WIRE_CHECK=1` | `git commit` (pre-commit hook) | the crew-wire decision guard |
 | `SKIP_FLAKE_LOCK_CHECK=1` | `git commit` (pre-commit hook) | the `flake.lock`-only-in-a-release guard |
 | `SKIP_TYPECHECK=1` | `bun run build` / `collie build` | both typecheck steps |
 | `SKIP_TESTS=1` | `git push` (pre-push hook) | both test suites |
 | `SKIP_TAG_CHECK=1` | `git push` (pre-push hook) | the untagged-release warning |
 
 The pre-commit hook's four guards are **independent** — `SKIP_VERSION_CHECK=1` does not disarm the
-lint guard, the pack-wire guard or the `flake.lock` guard.
+lint guard, the crew-wire guard or the `flake.lock` guard.
 
 ## Frontend data layer (React Router, not TanStack)
 
@@ -411,7 +411,7 @@ lint guard, the pack-wire guard or the `flake.lock` guard.
   calls them subscribes via `useLocale()` so it re-renders on a locale (or lazy-dictionary) change.
   `messages/en.ts` is the source of truth; all six dictionary files change together, enforced by
   `tsc`. Not translated: terminal/agent output, quick replies, menu/dialog labels the screen printed,
-  key caps, crew role names, push notifications, service-worker strings, pack-link errors, and the
+  key caps, crew role names, push notifications, service-worker strings, crew-link errors, and the
   slash-command descriptions in `web/src/lib/agent-commands.ts` (another tool's vocabulary — deferred)
   ([ADR 0030](./.adr/0030-the-ui-is-translated-by-a-typed-dictionary-not-a-library.md)).
 - **PWA** via `vite-plugin-pwa` (`web/vite.config.ts`): manifest + `sw.js`, registered manually
@@ -484,7 +484,7 @@ lint guard, the pack-wire guard or the `flake.lock` guard.
   it with protection it doesn't provide
   ([ADR 0004](./.adr/0004-the-statusline-run-is-bounded.md)). `chrome.test.ts` pins both halves.
 - **The Herdr socket is never dialled across a machine boundary, and no Herdr vocabulary crosses a
-  pack link** — the lead consumes a peer's Collie API, never its Herdr socket
+  crew link** — the lead consumes a peer's Collie API, never its Herdr socket
   ([ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md)).
 - **How soon Collie sees an out-of-band change is DECLARED (`topologyLatency`), never measured**, and
   `refresh()` is on the floor of the port so the phone can ask for a look now
@@ -518,15 +518,15 @@ conforming reverse proxy per docs/deployment.md Variant C (`COLLIE_SKIP_SERVE=1`
 optional identity/device gates · strict CSP. A socket call can type into a real terminal — treat a
 collie as remote shell access.
 
-**The loopback gates fail closed, and the pack link is exempt by construction, never by relaxation.**
+**The loopback gates fail closed, and the crew link is exempt by construction, never by relaxation.**
 Host validation is on by default (`COLLIE_ALLOW_ANY_HOST=1` opts out), `COLLIE_TRUSTED_USER` rejects
 an ABSENT `Tailscale-User-Login` as well as a wrong one (`COLLIE_TRUSTED_USER_OPTIONAL=1`), a
 non-loopback bind refuses to start (`COLLIE_ALLOW_NON_LOOPBACK_BIND=1`), and a non-loopback TCP peer
-is refused. **A collie in a crew is exempt from the bind refusal and `/pack/v1/*` from the peer
+is refused. **A collie in a crew is exempt from the bind refusal and `/crew/v1/*` from the peer
 check** — a member is dialled across a machine boundary and that surface carries pinned mutual TLS
-plus the pack secret ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)). The
+plus the crew secret ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)). The
 exemption is granted by POSITION — the peer check sits after the federated dispatch in
-`bridge/server.ts` — so no pack path is ever spelled there. The standby door is its own listener on
+`bridge/server.ts` — so no crew path is ever spelled there. The standby door is its own listener on
 its own `COLLIE_STANDBY_HOST` and neither gate reaches it; don't route it through the front door's
 `fetch` to share them.
 
@@ -542,7 +542,7 @@ a web form, for the reason pairing is.
 **Two device gates guard writes, independently, and compose by AND.** `COLLIE_DEVICE_HEADER` trusts
 a name a proxy injects; **pairing** (`bridge/pairing.ts`, `collie pair` / `collie devices`) requires a
 bearer credential the device holds, and is on exactly when the registry is non-empty. Reads stay
-ungated by both. Neither applies to `/pack/v1/*`, which has its own two factors. The reasoning sits in
+ungated by both. Neither applies to `/crew/v1/*`, which has its own two factors. The reasoning sits in
 `bridge/pairing.ts`'s header; don't collapse the two gates into one.
 
 **Collie manages exactly one front door: `tailscale serve`** — the CLI (`cli/serve.ts`) publishes it,
@@ -552,24 +552,24 @@ Every other tunnel (NetBird, ZeroTier, Cloudflare Tunnel) is `COLLIE_SKIP_SERVE=
 Variant E: the operator owns the ingress, Collie publishes nothing. **Don't add a second managed front
 door** — [ADR 0001](./.adr/0001-one-managed-front-door.md).
 
-**The pack link (lead↔peer, `/pack/v1/*`) is specified in [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md)**
-— two factors gate it (pinned mutual TLS + pack secret), and a peer publishes no front door
+**The crew link (lead↔peer, `/crew/v1/*`) is specified in [`CREW_PROTOCOL.md`](./CREW_PROTOCOL.md)**
+— two factors gate it (pinned mutual TLS + crew secret), and a peer publishes no front door
 ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)); the one exception is the
 **deputy's standby door** — bound, never published, armed by silence and spent by the operator's
 pairing credential ([ADR 0027](./.adr/0027-the-deputy-is-named-ahead-of-time.md) ·
 [ADR 0028](./.adr/0028-the-standby-door-is-a-second-listener.md)).
 
-**Touching the pack wire surface forces a protocol decision** — a commit staging one of the
-wire-shape files in `bridge/crew/` must also stage `PACK_PROTOCOL.md` (additive-optional, §7.1) or
-bump `PACK_PROTOCOL_VERSION` (not expressible that way). `scripts/check-crew-wire.sh` is guard C of
+**Touching the crew wire surface forces a protocol decision** — a commit staging one of the
+wire-shape files in `bridge/crew/` must also stage `CREW_PROTOCOL.md` (additive-optional, §7.1) or
+bump `CREW_PROTOCOL_VERSION` (not expressible that way). `scripts/check-crew-wire.sh` is guard C of
 the pre-commit hook; a pure refactor takes the `SKIP_CREW_WIRE_CHECK=1` hatch
 ([ADR 0025](./.adr/0025-the-wire-guard-forces-a-decision-never-a-bump.md)).
 
-**Code reaches a peer over the operator's own SSH, never over the pack link** — `crew add` installs
+**Code reaches a peer over the operator's own SSH, never over the crew link** — `crew add` installs
 it and `crew update` levels it, both pushing the lead's own commit as a `git bundle`; the link
 carries runtime data and never becomes a distribution channel
 ([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md), addendum 2026-09-04: a peer may also
 level ITSELF to the release its lead is running, fetching that public tag from GitHub over anonymous
 HTTPS on its own decision, which adds no code, route or verb to the link). How the operator
-reached a member is remembered locally in `pack-ops.json`, which is never a wire field and never merged into the trust
+reached a member is remembered locally in `crew-ops.json`, which is never a wire field and never merged into the trust
 store.

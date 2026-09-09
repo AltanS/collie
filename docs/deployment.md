@@ -371,10 +371,10 @@ pair a device to any other instance
 
 ## The standby door — a crew's failover path
 
-For [crew](../PACK_PROTOCOL.md) deployments. Configures a pre-authorized deputy to take over if the
+For [crew](../CREW_PROTOCOL.md) deployments. Configures a pre-authorized deputy to take over if the
 lead becomes unreachable ([ADR 0027](../.adr/0027-the-deputy-is-named-ahead-of-time.md),
 [ADR 0028](../.adr/0028-the-standby-door-is-a-second-listener.md),
-[`PACK_PROTOCOL.md` §18](../PACK_PROTOCOL.md)).
+[`CREW_PROTOCOL.md` §18](../CREW_PROTOCOL.md)).
 
 Deputy and lead settings:
 
@@ -390,7 +390,7 @@ Set `COLLIE_STANDBY_PORT` to an identical, unused port on both the lead and depu
 
 Lead and deputy must be served from the same origin to share the PWA registration and device
 credentials. A standalone crew without unified ingress recovers via `bin/collie promote` (or Herdr:
-`herdr plugin action invoke promote --plugin herdr.collie`; [`PACK_PROTOCOL §14.4`](../PACK_PROTOCOL.md)).
+`herdr plugin action invoke promote --plugin herdr.collie`; [`CREW_PROTOCOL §14.4`](../CREW_PROTOCOL.md)).
 
 Example Traefik configuration:
 
@@ -399,11 +399,11 @@ http:
   routers:
     collie:
       rule: "Host(`collie.example.com`)"
-      service: collie-pack
+      service: collie-crew
       tls: {}
 
   services:
-    collie-pack:
+    collie-crew:
       failover:
         service: collie-lead
         fallback: collie-deputy
@@ -444,8 +444,8 @@ Herdr setup on the lead:
 
 ```bash
 herdr plugin action invoke pair --plugin herdr.collie
-herdr plugin action invoke pack --plugin herdr.collie deputy nas
-herdr plugin action invoke pack --plugin herdr.collie status
+herdr plugin action invoke crew --plugin herdr.collie deputy nas
+herdr plugin action invoke crew --plugin herdr.collie status
 ```
 
 On the deputy, configure `COLLIE_STANDBY_PORT=8788` and restart. Ensure all peers restart to load
@@ -469,11 +469,11 @@ Ensure the supervisor restarts on non-zero exit codes (systemd: `Restart=always`
 6. Supervisor restarts the process; PWA reloads as the new lead.
 
 Post-recovery:
-- The previous lead deposes itself upon reconnecting ([`PACK_PROTOCOL.md` §8.4](../PACK_PROTOCOL.md)).
+- The previous lead deposes itself upon reconnecting ([`CREW_PROTOCOL.md` §8.4](../CREW_PROTOCOL.md)).
 - Update the deposed node's peer address: Standalone `bin/collie crew set-address <member> <host:port>`
-  or Herdr `herdr plugin action invoke pack --plugin herdr.collie set-address <member> <host:port>`.
+  or Herdr `herdr plugin action invoke crew --plugin herdr.collie set-address <member> <host:port>`.
 - Assign a new deputy: Standalone `bin/collie crew deputy <member>` or Herdr
-  `herdr plugin action invoke pack --plugin herdr.collie deputy <member>`.
+  `herdr plugin action invoke crew --plugin herdr.collie deputy <member>`.
 - Do not run `crew rotate` until all members have reconnected.
 
 ---
