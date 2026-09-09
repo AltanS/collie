@@ -2,10 +2,10 @@
 
 Status: **Accepted** (2026-08-20)
 
-Protocol: [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §7, §7.1 · Code:
+Protocol: [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §7, §7.1 · Code:
 [`scripts/check-pack-wire.sh`](../scripts/check-pack-wire.sh),
 [`scripts/git-hooks/pre-commit`](../scripts/git-hooks/pre-commit),
-[`bridge/pack/enrollment.ts`](../bridge/pack/enrollment.ts) (`PACK_PROTOCOL_VERSION`) ·
+[`bridge/pack/enrollment.ts`](../bridge/crew/enrollment.ts) (`PACK_PROTOCOL_VERSION`) ·
 Related: [ADR 0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md)
 
 ## Context

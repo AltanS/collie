@@ -8,7 +8,7 @@ Narrows: [ADR 0014](./0014-promote-is-a-confirm-on-the-lead.md), which stays the
 (`promote` / `promote --force`) and is unchanged.
 Related: [ADR 0016](./0016-updates-ride-the-operators-ssh.md) ·
 [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) · door: [ADR 0028](./0028-the-standby-door-is-a-second-listener.md)
-Contract: [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.1–18.6 (the warrant), §18.12 (the deposed state
+Contract: [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.1–18.6 (the warrant), §18.12 (the deposed state
 and its self-heal), §18.13 (`collie pack deputy`), §18.16 (the takeover exchange).
 Design history: [`PACK_DEPUTY_RFC.md`](../PACK_DEPUTY_RFC.md).
 
@@ -43,32 +43,32 @@ asked what they saw.**
 - **One standing warrant, and naming a second deputy replaces the first.** Generation *N+1* naming
   the new member supersedes the old warrant everywhere it lands; `--revoke` mints *N+1* naming nobody.
   Revocation is a **positive, verifiable statement** rather than an absence, because an absence cannot
-  be distinguished from a lost message ([`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.1, §18.3).
+  be distinguished from a lost message ([`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.1, §18.3).
 - **The lead signs; the deputy never attests.** The same key, algorithm and pinned certificate §8.6's
   request signatures already use — no new key, no CA, no new trust anchor. What deposes the old lead
-  is *its own past consent handed back to it* ([`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.2,
+  is *its own past consent handed back to it* ([`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.2,
   §18.12).
 - **The warrant binds the deputy's certificate fingerprint, never just its id, and carries no
   address and no roster.** An address is a hint the operator may re-point; a roster would be a second
-  source of truth about membership ([`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.2).
+  source of truth about membership ([`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.2).
 - **The generation stands; the signature is refreshed.** The lead re-signs the current generation on
   every healthy sweep, and the warrant is dead 30 days after its last refresh — so it is only ever as
   old as the last time the pack was healthy. Expiry and revocation are different mechanisms and
-  neither substitutes for the other ([`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.4).
+  neither substitutes for the other ([`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.4).
 - **Arming is two-phase, and the second phase is a restart.** *Stored* — the warrant lands on a peer's
   disk over the pack link and is inert at the transport. *Anchored* — that peer's next restart builds
   its listener with `ca: [leadCert, deputyCert]`. Until then a takeover from that peer's side is
   **impossible**, not merely refused, and `pack status` names the un-anchored state as a finding
-  *before* the outage ([`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.5, §18.13).
+  *before* the outage ([`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.5, §18.13).
 - **`collie pack deputy` therefore restarts the peers, over the operator's own SSH.** One consent for
   the whole batch, listed before it runs; ADR 0015/0016's channel, never a wire message. A machine
   with no SSH route is **reported**, never silently skipped
-  ([`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.13).
+  ([`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.13).
 - **The takeover asks before it acts, in a fixed order: the lead, then the peers, then itself.** One
   patient `hello` at the lead — *if it answers, the takeover is refused and nothing has changed*. Then
   a `probe` round that changes nothing anywhere; any peer answering `lead_is_alive` aborts the whole
   thing. That is evidence about one machine's own inbox, not a vote. Only then does the deputy commit
-  locally ([`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.16).
+  locally ([`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.16).
 - **The commit spends the warrant.** The pack has no deputy afterwards, the old lead is carried as an
   ordinary member, members that missed the commit round are `rePinPending` and reconcile with no
   operator step.
@@ -76,7 +76,7 @@ asked what they saw.**
   requires `sha256(certPem) === deputyFingerprint`, keeps its member id and the pack secret, and heals
   to `peer` in one committed transition. Every certificate involved was pinned before the event; the
   transition is strictly privilege-decreasing, which is ADR 0026's corollary and the only reason an
-  automatic membership change is tolerable here ([`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.12).
+  automatic membership change is tolerable here ([`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.12).
 
 ## Consequences
 

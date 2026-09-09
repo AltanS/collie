@@ -10,7 +10,7 @@ peer publishes nothing.** What changes is that a peer may *bind* an unpublished,
 listener while a lead-signed warrant names it. 0013's own "what would justify revisiting" anticipates
 this class of change; nothing in its body is retracted.
 Related: [ADR 0027](./0027-the-deputy-is-named-ahead-of-time.md) (the warrant this door reads)
-Contract: [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.15 (the door), §18.14 (the pairing sync),
+Contract: [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.15 (the door), §18.14 (the pairing sync),
 §18.16 (what the button runs), §18.12 (the deposed lead's answer on the same path).
 Operator setup: [`docs/deployment.md`](../docs/deployment.md#the-standby-door--a-crews-failover-path).
 Design history: [`PACK_DEPUTY_RFC.md`](../PACK_DEPUTY_RFC.md) §6.
@@ -46,7 +46,7 @@ action only while three independent facts are true.**
 - **Three routes and no more:** `GET /standby/health`, `GET /standby`, `POST /standby/takeover`.
   Every other path on that port is a bare `404`. No PWA, no `/api/*`, no SPA fallback, no `/auth`
   placeholder — *a route that does not exist cannot be mis-gated*, which is 0013's own sentence
-  applied to its own exception ([`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.15).
+  applied to its own exception ([`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.15).
 - **Armed is three facts, all of them, and none of them a soft signal:** a **verified warrant on this
   machine's own disk names this machine**; the lead has been silent for `COLLIE_STANDBY_ARM_MS`,
   measured from the later of the last landed call and this process's start; and the **synced pairing
@@ -61,12 +61,12 @@ action only while three independent facts are true.**
   unpublished port is a takeover button for anyone who reaches the port.
 - **`COLLIE_DEVICE_HEADER` is deliberately *not* applied here.** The two gates compose by AND on
   `/api/*` and that stays true everywhere else; this is the one exception, and it is written at the
-  code as well as here or it reads as a bug ([`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.15).
+  code as well as here or it reads as a bug ([`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.15).
 - **The synced registry is quarantined in `standby-devices.json` and is never merged into the
   deputy's own `paired-devices.json`.** `PairingStore.enforced()` is *the registry is non-empty*, so a
   merge would silently switch on the deputy's **own** write gate, for its own operator, on a machine
   where nobody ran `collie pair`. Only hashes cross, and the entries are adopted into the deputy's own
-  registry at takeover commit and only then ([`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18.14).
+  registry at takeover commit and only then ([`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18.14).
 - **A same-origin failover proxy is an accepted prerequisite of the phone-first half.** A pack without
   one keeps the warrant, the deposition and the self-heal, and recovers by §14's keyboard promotion.
   `/standby/health` is the one question — *should anything route here?* — answered by three kinds of

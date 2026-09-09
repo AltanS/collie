@@ -4,7 +4,7 @@ Status: **Accepted** (2026-08-11)
 
 Related: [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (the pack listener and its
 two factors) · [ADR 0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) (the
-vocabulary this ADR's verb has to fit) · contract: [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §8.5,
+vocabulary this ADR's verb has to fit) · contract: [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §8.5,
 §8.6, §14, §16
 
 ## Context

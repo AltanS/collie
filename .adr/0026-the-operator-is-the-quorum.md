@@ -6,7 +6,7 @@ Generalises: [ADR 0014](./0014-promote-is-a-confirm-on-the-lead.md) — promotio
 the no-deputy instance of a broader rule. 0014 is not superseded and its gate is unchanged.
 Related: [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) ·
 [ADR 0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) · contract:
-[`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §18 (the deputy, the warrant, the deposed state, the standby
+[`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §18 (the deputy, the warrant, the deposed state, the standby
 door and the takeover) · design history: [`PACK_DEPUTY_RFC.md`](../PACK_DEPUTY_RFC.md).
 
 Subordinate: [ADR 0027](./0027-the-deputy-is-named-ahead-of-time.md) (the deputy and its warrant) and

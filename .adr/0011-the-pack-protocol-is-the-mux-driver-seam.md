@@ -2,7 +2,7 @@
 
 Status: **Accepted** (2026-08-06)
 
-Contract: [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) · Related: [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md)
+Contract: [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) · Related: [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md)
 (how a peer listens) · [ADR 0012](./0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) (the words used here)
 
 ## Context
@@ -84,7 +84,7 @@ lead consumes a peer's *Collie* HTTP API, and never a peer's Herdr socket.**
 - **No Herdr method name, type, status value or error code crosses a pack link.** The wire vocabulary
   is Collie's own domain model (`bridge/types.ts`), which is what makes a non-Herdr peer invisible to
   the lead, to the phone, and to the protocol. The contract is
-  [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md); this ADR is the reason it may not mention Herdr.
+  [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md); this ADR is the reason it may not mention Herdr.
 - **The Herdr socket is never dialled across a machine boundary.** `COLLIE_HERDR_DIAL` stays a
   *dialer selector* for a local endpoint and never grows a `host:port` form. If someone needs the
   Windows branch exercised, that is what `net` is for; if someone needs a remote pane, that is what a

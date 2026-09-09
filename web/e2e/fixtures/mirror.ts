@@ -124,7 +124,7 @@ export async function installMirrorWorld(page: Page): Promise<void> {
  *
  *  * `bytes` — the PNG, so the picture renders.
  *  * `notFound` — 404, which a member running a build without the additive-optional `blobs/<hash>`
- *    route really does answer (PACK_PROTOCOL.md §9.1).
+ *    route really does answer (CREW_PROTOCOL.md §9.1).
  *  * `truncated` — a PNG header with the image data cut off, so the request succeeds and the DECODE
  *    fails. That is the other path into the badge, and it is the `onError` one.
  */

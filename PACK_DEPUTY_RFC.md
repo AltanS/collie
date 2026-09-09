@@ -1,10 +1,10 @@
 # Pack deputy & takeover — design spec (accepted 2026-08-20)
 
 **Status: draft for operator review. Nothing here is implemented, and nothing here amends
-[`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md) until it is folded in (§15).** This file is uncommitted on
+[`PACK_PROTOCOL.md`](./CREW_PROTOCOL.md) until it is folded in (§15).** This file is uncommitted on
 purpose: it is a proposal, not a contract.
 
-Sibling to [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md), whose section numbers this document cites bare
+Sibling to [`PACK_PROTOCOL.md`](./CREW_PROTOCOL.md), whose section numbers this document cites bare
 (`§14` means that document's §14; sections of *this* document are cited as `RFC §n`).
 
 **Provenance convention**, mirroring `PACK_PROTOCOL.md`:
@@ -1532,7 +1532,7 @@ the no-deputy instance of a broader rule. 0014 is not superseded and its gate is
 Subordinate: ADR 0027 (deputy and warrant), ADR 0028 (the standby door).
 Related: [ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md) ·
 [ADR 0012](./.adr/0012-every-machine-runs-a-collie-and-the-pack-has-a-lead.md) ·
-contract: [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md) §14, §15, §18
+contract: [`PACK_PROTOCOL.md`](./CREW_PROTOCOL.md) §14, §15, §18
 
 #### Context
 

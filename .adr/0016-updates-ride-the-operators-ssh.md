@@ -5,7 +5,7 @@ Status: **Accepted** (2026-08-15)
 Related: [ADR 0015](./0015-pack-add-pushes-over-the-operators-ssh.md) (the same channel, for the same
 reasons, one verb earlier) · [ADR 0013](./0013-a-peer-listens-without-becoming-a-front-door.md) (a
 peer listens for its lead and admits nobody else) · contract:
-[`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md) §7.1, §8.5, §11 · narrowed in scope, not reversed, by
+[`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md) §7.1, §8.5, §11 · narrowed in scope, not reversed, by
 [Addendum — 2026-09-04](#addendum--2026-09-04-peers-follow-and-the-link-still-carries-nothing)
 below (`PACK_PROTOCOL.md` §19, §20)
 

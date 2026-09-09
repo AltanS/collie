@@ -8,7 +8,7 @@ Amends: [ADR 0001](./0001-one-managed-front-door.md) — *one managed front door
 holds a lead-signed warrant may **bind** an unpublished, three-route standby listener. Nothing below
 is retracted: *a peer publishes nothing* is unchanged, and the standby door is bound, not published.
 Related: [ADR 0011](./0011-the-pack-protocol-is-the-mux-driver-seam.md) · contract:
-[`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md)
+[`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md)
 
 ## Context
 
@@ -76,7 +76,7 @@ the lead.** 0001's criterion is untouched — *we manage only what we run and ca
   (transport) plus the pack secret (application header). Pinning survives a leaked secret; the secret
   survives an unexpected certificate chain. `checkAccess()` is **not** widened and not reused: a pack
   request never satisfies it, and a browser request is never admitted by pack credentials. Details in
-  [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md).
+  [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md).
 - **The bind is as narrow as the deployment allows: loopback plus exactly the address the operator
   supplied at `join` time. Nothing wildcard; `0.0.0.0` is never the documented value.** Concretely,
   per deployment:
@@ -88,7 +88,7 @@ the lead.** 0001's criterion is untouched — *we manage only what we run and ca
   > still only widens who may *attempt* the two-factor gate, never who passes — but the *mechanism* is
   > one address, not two. Collie now **warns** (never refuses, per the last Decision bullet) when a
   > peer's bind is wildcard (`0.0.0.0`/`::`/empty) and shows the resolved bind in `collie pack status`.
-  > The corrected contract is [`PACK_PROTOCOL.md` §3](../PACK_PROTOCOL.md); the exposure table below
+  > The corrected contract is [`PACK_PROTOCOL.md` §3](../CREW_PROTOCOL.md); the exposure table below
   > still holds row-for-row once "Bind" is read as *the value the operator sets `COLLIE_HOST` to* for
   > that deployment rather than an automatic dual-bind.
 
@@ -132,7 +132,7 @@ the lead.** 0001's criterion is untouched — *we manage only what we run and ca
   `/pack/v1` prefix mounted. Federation is not a tax on the single-machine install.
 - **The pack's blast radius is stated, not implied.** A compromised lead reaches every peer's
   terminals; the lead is a lateral-movement hub by construction. The threat model lives in
-  [`PACK_PROTOCOL.md`](../PACK_PROTOCOL.md), and this ADR is the reason it is not optional.
+  [`PACK_PROTOCOL.md`](../CREW_PROTOCOL.md), and this ADR is the reason it is not optional.
 - **Every non-tailnet deployment stays the operator's, exactly as ADR 0001 promised.** Collie
   publishes nothing new; a pack listener is a listener, not an ingress Collie supervises.
 - **(Added 2026-08-07, implementation) The certificate factor is enforced at the *handshake*, and the

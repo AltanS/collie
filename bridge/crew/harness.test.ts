@@ -483,7 +483,7 @@ describe("invite → join, end to end", () => {
     // enrollment is empty, so the running lead writes the new peer to disk and goes on merging
     // nothing until something else restarts it.
     //
-    // v1 does not re-wire a live process (PACK_PROTOCOL §8.2's note says why); what it does is refuse
+    // v1 does not re-wire a live process (CREW_PROTOCOL §8.2's note says why); what it does is refuse
     // to be silent — the bridge logs it, `collie crew status` reports "enrolled but INACTIVE", and
     // `collie join` names the lead's restart as the last step. The restart itself is still the
     // operator's, so it is still the harness's: this line IS that restart, not a workaround for a
@@ -1307,7 +1307,7 @@ describe("Bun-capability canaries (the pin can be enforced but not read; a reloa
       // (transport.ts's boolean `transportPinned` / signing.ts's §8.6 signatures / §8.6 itself), because
       // the receiver could then read the peer identity directly instead of re-deriving it from a signature.
       for (const [name, value] of surfaces) {
-        expect(value, `${name} must stay absent — see transport.ts / signing.ts / PACK_PROTOCOL §8.6`).toBeUndefined();
+        expect(value, `${name} must stay absent — see transport.ts / signing.ts / CREW_PROTOCOL §8.6`).toBeUndefined();
       }
     } finally {
       server.stop(true);
@@ -1350,7 +1350,7 @@ describe("Bun-capability canaries (the pin can be enforced but not read; a reloa
       // restart to re-pin" workaround (transport.ts, and the membership-verb restart in cli/crew.ts).
       await expect(
         dial(added),
-        "reload re-pinned live — revisit transport.ts's no-live-re-pin and PACK_PROTOCOL §8.6",
+        "reload re-pinned live — revisit transport.ts's no-live-re-pin and CREW_PROTOCOL §8.6",
       ).rejects.toThrow();
     } finally {
       server.stop(true);
