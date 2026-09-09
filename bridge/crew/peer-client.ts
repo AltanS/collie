@@ -13,6 +13,7 @@ import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 // REMOVE_IN_1_9_0 — the member's one fallback to `/pack/v1/*` (§0.1).
 import {
+  routesNoCrewV1,
   toVersion1Headers,
   toVersion2Response,
   V1_DIAL_DOMAIN,
@@ -906,10 +907,11 @@ export class PeerClient {
    * The one dial, and the version order on it: `/crew/v1/*` first, always (§0.1).
    *
    * REMOVE_IN_1_9_0 — the fallback. A member that is answered by a lead still on 1.7.0 learns it in
-   * exactly two ways, and both are answers rather than guesses: a `404` carrying no crew protocol
-   * header (a 1.7.0 router does not know the prefix, so the request falls through to the ordinary
-   * 404), or §7's refusal naming version 1. On either it re-dials `/pack/v1/*` ONCE, with version 1
-   * headers and the version 1 dial domain, and writes one journal line per lead.
+   * exactly two ways, and both are answers rather than guesses: an answer carrying NO crew protocol
+   * header that is not JSON either ({@link routesNoCrewV1} — on a real 1.7.0 bridge that is a
+   * `200 text/html` app shell, because the SPA catch-all owns every unrouted path), or §7's refusal
+   * naming version 1. On either it re-dials `/pack/v1/*` ONCE, with version 1 headers and the
+   * version 1 dial domain, and writes one journal line per lead.
    *
    * **Per dial, never cached.** The moment that lead updates, its answer on `/crew/v1` is a crew
    * answer and no fallback is taken — so the overlap costs one extra round trip against a lead that
@@ -1068,12 +1070,23 @@ export class PeerClient {
 
     // REMOVE_IN_1_9_0 — the fallback's trigger, and it is only ever read on a version 2 dial (§0.1).
     //
-    // A build that has never heard of `/crew/v1` produces exactly two shapes, both header-free: its
-    // own `404` for the unknown path, and the `403 non-loopback peer rejected` a declined crew path
-    // falls through to when the dial crossed a machine boundary (`bridge/server.ts`). Neither is a
-    // guess: a peer that is merely restarting answers neither, and a peer that IS speaking version 2
-    // stamps the header, which is checked first.
-    if (wire === CREW_PROTOCOL_VERSION && received === null && (res.status === 404 || res.status === 403)) {
+    // What a 1.7.0 collie ACTUALLY answers `/crew/v1/hello` with, measured in the VM lab on
+    // 2026-09-09: `200 OK`, `content-type: text/html`, `x-collie-build: 1.7.0+35b60df`, and ~9 KB of
+    // the PWA's app shell. It is the SPA catch-all: `bridge/server.ts` hands every unrouted path the
+    // built `index.html` so a deep link works, and a path it has never heard of is a deep link as far
+    // as that fallthrough is concerned. It is never a 404.
+    //
+    // The first draft of this guard read 404 or 403 and fired on neither. The 403 arm cannot help
+    // either: the non-loopback peer check that produces it is off whenever
+    // `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`, which every machine in a real crew sets. Both arms stay,
+    // because a peer serving no web bundle does 404 and a loopback-strict one does 403, but the shape
+    // that decides it in practice is the third.
+    //
+    // So the rule is: NO crew protocol header, and an answer that is not JSON. A crew answer is
+    // always JSON and always stamped (`crewResponseHeaders`), so this cannot claim one. A 5xx is
+    // excluded and stays excluded: that is a proxy or a peer mid-restart, not a version, and a second
+    // dial there would double what every poll spends on a machine that is not answering.
+    if (wire === CREW_PROTOCOL_VERSION && received === null && routesNoCrewV1(res)) {
       return { ...this.fail({ state: "unreachable", reason: `${route}: HTTP ${res.status}` }), speaksVersion1: true };
     }
     // An answer that NAMES a version tells us the peer is speaking, whatever it said. That ends any

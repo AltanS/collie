@@ -5,6 +5,8 @@ import { NARROW_VIEW } from "../sessions.ts";
 
 import { PROTOCOL_HEADER, MEMBER_HEADER, DEVICE_HEADER } from "./admission.ts";
 import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
+// REMOVE_IN_1_9_0 — the overlap's shape rule, asserted as a table below.
+import { routesNoCrewV1 } from "./v1-overlap.ts";
 import { leadStore, material, member, muxCaps, CREW, T0 } from "./fixtures.ts";
 import { signDial, verifyDial, DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import { SWEEP_VIEW } from "./merge.ts";
@@ -1568,5 +1570,139 @@ describe("the version 1 fallback", () => {
     // The domain is chosen from the prefix, and the PATH signed is the one actually dialled.
     expect(seen.map((p) => p.domain ?? null)).toEqual([null, "collie-pack-dial-v1"]);
     expect(seen.map((p) => p.path)).toEqual(["/crew/v1/hello", "/pack/v1/hello"]);
+  });
+});
+
+// ── The shape a REAL 1.7.0 collie answers with (M27/03b) ────────────────────
+// REMOVE_IN_1_9_0 — this whole describe block.
+//
+// Ground truth, measured in the VM lab on 2026-09-09: a 1.7.0 bridge answers `/crew/v1/hello` with
+// `200 OK`, `content-type: text/html`, `x-collie-build: 1.7.0+35b60df`, and ~9 KB of the PWA's app
+// shell. `bridge/server.ts` hands every unrouted path the built `index.html` so a deep link works,
+// and a path it has never heard of is a deep link to that fallthrough. It is NEVER a 404.
+//
+// The first draft of the trigger read 404-or-403 and therefore fired on neither skew: members read
+// `unreachable · hello: peer answered 200 with no crew protocol header` and no fallback line was ever
+// written. These cases are that failure, pinned from both directions.
+describe("the version 1 fallback, against the shape a real 1.7.0 collie answers with", () => {
+  /** The app shell a 1.7.0 bridge hands an unrouted path. Short, but the same headers. */
+  const APP_SHELL = '<!doctype html><html lang="en"><head><title>Collie</title></head><body></body></html>';
+
+  /**
+   * A 1.7.0 collie: the SPA catch-all on `/crew/v1/*`, a real crew answer on `/pack/v1/*`.
+   *
+   * `answer` is what the version 1 surface replies with, so one fake serves both skews — a member
+   * dialling its lead's `hello`, and a lead dialling a peer's `snapshot`.
+   */
+  function collie17(answer: JsonValue) {
+    const calls: string[] = [];
+    const fetch: CrewFetch = async (url) => {
+      const { pathname } = new URL(url);
+      calls.push(pathname);
+      if (pathname.startsWith("/crew/v1/")) {
+        return new Response(APP_SHELL, {
+          status: 200,
+          headers: { "content-type": "text/html;charset=utf-8", "x-collie-build": "1.7.0+35b60df" },
+        });
+      }
+      return new Response(JSON.stringify(answer), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-pack-protocol": "1", "x-pack-member": "laptop" },
+      });
+    };
+    return { fetch, calls };
+  }
+
+  // Skew one: a 1.8.0 MEMBER under a lead that has not been updated yet. `hello` is the call that
+  // runs in the peer → lead direction (§8.6), and it is what `crew status` and `reconnect` probe with.
+  test("a 1.8.0 member reaches its 1.7.0 lead, and says so once", async () => {
+    const { fetch, calls } = collie17({ protocol: 1, member: "laptop" });
+    const lines: string[] = [];
+    const outcome = await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
+    expect(outcome.ok).toBe(true);
+    expect(calls).toEqual(["/crew/v1/hello", "/pack/v1/hello"]);
+    expect(lines).toEqual(["[crew] laptop: speaks version 1, dialling /pack/v1 until it updates"]);
+  });
+
+  // Skew two: a 1.8.0 LEAD sweeping a member that has not been updated yet — the skew the roll
+  // actually produces, because a crew is updated lead first (§20). One dial serves both directions,
+  // so the fix lands on both, and this case is what proves it rather than assuming it.
+  test("a 1.8.0 lead reaches its 1.7.0 peer's snapshot, and says so once", async () => {
+    const { fetch, calls } = collie17({ bridge: "connected", agents: [], shellPanes: [] });
+    const lines: string[] = [];
+    const outcome = await client(fetch, { log: (l) => lines.push(l) }).snapshot(laptop);
+    expect(outcome.ok).toBe(true);
+    expect(calls).toEqual(["/crew/v1/snapshot", "/pack/v1/snapshot"]);
+    expect(lines).toEqual(["[crew] laptop: speaks version 1, dialling /pack/v1 until it updates"]);
+  });
+
+  // The regression, stated as the sentence the operator was reading before this fix.
+  test("the member no longer reports the app shell as an unreachable peer", async () => {
+    const { fetch } = collie17({ protocol: 1, member: "laptop" });
+    const outcome = await client(fetch).hello(laptop);
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) return;
+    expect(outcome.reason).not.toContain("with no crew protocol header");
+  });
+
+  // And the exclusions the shape rule must not swallow. A 5xx is a proxy or a peer mid-restart, and
+  // a JSON 200 with no header is the case §7 already had an answer for.
+  test("a 5xx app shell is still not a version — no second dial", async () => {
+    const calls: string[] = [];
+    const fetch: CrewFetch = async (url) => {
+      calls.push(new URL(url).pathname);
+      return new Response(APP_SHELL, { status: 502, headers: { "content-type": "text/html" } });
+    };
+    const lines: string[] = [];
+    await client(fetch, { log: (l) => lines.push(l) }).snapshot(laptop);
+    expect(calls).toEqual(["/crew/v1/snapshot"]);
+    expect(lines).toEqual([]);
+  });
+
+  test("a headerless JSON 200 is not a version either — no second dial", async () => {
+    const { fetch, calls } = replying({ ok: true }, { protocol: null, status: 200 });
+    const lines: string[] = [];
+    await client(fetch, { log: (l) => lines.push(l) }).snapshot(laptop);
+    expect(calls).toHaveLength(1);
+    expect(lines).toEqual([]);
+  });
+});
+
+// The shape rule on its own, as a table — pure, so it reads as the decision rather than a harness.
+// REMOVE_IN_1_9_0.
+describe("routesNoCrewV1", () => {
+  const answer = (status: number, contentType: string | null): Response =>
+    new Response(status === 204 ? null : "x", {
+      status,
+      headers: contentType === null ? {} : { "content-type": contentType },
+    });
+
+  test("a 200 that is not JSON is a build answering a path it does not route", () => {
+    expect(routesNoCrewV1(answer(200, "text/html;charset=utf-8"))).toBe(true);
+    expect(routesNoCrewV1(answer(200, "text/plain"))).toBe(true);
+    expect(routesNoCrewV1(answer(200, null))).toBe(true);
+  });
+
+  test("a 200 that IS JSON is not — a crew answer is always JSON", () => {
+    expect(routesNoCrewV1(answer(200, "application/json"))).toBe(false);
+    expect(routesNoCrewV1(answer(200, "application/json; charset=utf-8"))).toBe(false);
+    expect(routesNoCrewV1(answer(200, "APPLICATION/JSON"))).toBe(false);
+  });
+
+  test("the two narrower shapes still count: no bundle 404s, loopback-strict 403s", () => {
+    expect(routesNoCrewV1(answer(404, "text/plain"))).toBe(true);
+    expect(routesNoCrewV1(answer(403, "text/plain"))).toBe(true);
+  });
+
+  test("a 5xx never counts, whatever it serves", () => {
+    for (const status of [500, 502, 503, 504]) {
+      expect(routesNoCrewV1(answer(status, "text/html"))).toBe(false);
+    }
+  });
+
+  test("no other status counts — a 304 or a 401 is not a version", () => {
+    for (const status of [204, 301, 401, 409, 429]) {
+      expect(routesNoCrewV1(answer(status, "text/html"))).toBe(false);
+    }
   });
 });

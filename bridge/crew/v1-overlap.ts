@@ -202,6 +202,33 @@ export function canonicalWarrantVersion1(w: Warrant): string {
 }
 
 /**
+ * Does this answer look like a collie that has never heard of `/crew/v1`? (§0.1)
+ *
+ * Read only when the answer carried NO crew protocol header, which the caller has already checked —
+ * a crew answer is always stamped, so this can never claim one.
+ *
+ * Three shapes, and the third is the one that decides it on a real machine. Measured in the VM lab
+ * on 2026-09-09: a 1.7.0 bridge answers `/crew/v1/hello` with `200 OK`, `content-type: text/html`
+ * and the PWA's app shell, because `bridge/server.ts` hands every unrouted path the built
+ * `index.html` so a deep link works offline. A path it has never heard of is a deep link to that
+ * fallthrough. The other two are real but narrower: a peer serving no web bundle answers `404`, and
+ * a loopback-strict one answers `403 non-loopback peer rejected` — which never fires on a crew
+ * machine, because those all set `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`.
+ *
+ * **A 5xx is excluded and must stay excluded.** That is a proxy or a peer mid-restart, not a version,
+ * and a second dial there would double what every poll spends on a machine that is not answering.
+ */
+export function routesNoCrewV1(res: Response): boolean {
+  if (res.status >= 500) return false;
+  if (res.status === 404 || res.status === 403) return true;
+  if (res.status !== 200) return false;
+  // A crew answer is `application/json`. Anything else on a 200 — `text/html` above all — is a
+  // build answering a path it does not route.
+  const type = res.headers.get("content-type") ?? "";
+  return !type.toLowerCase().includes("json");
+}
+
+/**
  * The one line a member writes when it falls back, once per lead (`peer-client.ts`).
  *
  * `[crew]` because that is the journal prefix from 1.8.0 on, and an operator grepping a journal that

@@ -90,6 +90,11 @@ describe("wire", () => {
     }
     expect(source("./crew/v1-overlap.ts")).toContain('"/pack/v1/"');
     expect(source("../web/src/lib/sw-routes.ts")).toContain("/pack");
+    // The shape rule the fallback triggers on, and the one line that reads it. Named because the
+    // rule is what the VM lab corrected on 2026-09-09, and a removal that took the reader and left
+    // the rule would leave dead code nobody could explain.
+    expect(source("./crew/v1-overlap.ts")).toContain("routesNoCrewV1");
+    expect(source("./crew/peer-client.ts")).toContain("routesNoCrewV1");
   });
 });
 
