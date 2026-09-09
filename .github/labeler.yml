@@ -1,7 +1,7 @@
 # Path-based labels for pull requests. Consumed by actions/labeler in .github/workflows/triage.yml.
 #
 # Rules:
-#   - Areas overlap on purpose. A PR that touches bridge/pack/ gets BOTH `area: bridge` and
+#   - Areas overlap on purpose. A PR that touches bridge/crew/ gets BOTH `area: bridge` and
 #     `area: pack`; the narrow label is added, not substituted.
 #   - `sync-labels` is off in the workflow, so nothing here ever REMOVES a label a human added.
 #   - Labels not listed here (`area: security`, `bug`, `regression`, triage verdicts like
@@ -47,15 +47,15 @@
 "area: pack":
   - changed-files:
       - any-glob-to-any-file:
-          - bridge/pack/**
-          - cli/pack*.ts
-          - web/src/routes/pack.tsx
-          - web/src/routes/pack.test.tsx
-          - web/src/components/pack-*
-          - scripts/check-pack-wire.sh
-          - PACK_PROTOCOL.md
+          - bridge/crew/**
+          - cli/crew*.ts
+          - web/src/routes/crew.tsx
+          - web/src/routes/crew.test.tsx
+          - web/src/components/crew-*
+          - scripts/check-crew-wire.sh
+          - CREW_PROTOCOL.md
           - PACK_DEPUTY_RFC.md
-          - docs/pack.md
+          - docs/crew.md
 
 "area: notifications":
   - changed-files:
@@ -68,8 +68,8 @@
           - bridge/notify-prefs.test.ts
           - bridge/snooze.ts
           - bridge/snooze.test.ts
-          - bridge/pack/notify.ts
-          - bridge/pack/notify.test.ts
+          - bridge/crew/notify.ts
+          - bridge/crew/notify.test.ts
           - cli/push*.ts
           - scripts/push-test.ts
           - web/src/lib/push*.ts
@@ -101,7 +101,7 @@
           - contrib/windows/**
 
 # Narrow on purpose. `**/*.md` would tag every PR that grazes CHANGELOG.md, and the top-level
-# design docs (ARCHITECTURE, DESIGN, PACK_PROTOCOL, …) already carry their own `area:` label.
+# design docs (ARCHITECTURE, DESIGN, CREW_PROTOCOL, …) already carry their own `area:` label.
 documentation:
   - changed-files:
       - any-glob-to-any-file:

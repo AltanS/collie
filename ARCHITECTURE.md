@@ -6,7 +6,7 @@
 > purpose. For how to run it see [`README.md`](./README.md); for repo conventions
 > [`CLAUDE.md`](./CLAUDE.md); for the verified socket contract [`HERDR_API.md`](./HERDR_API.md); for
 > the multiplexer seam [`MUX_CONTRACT.md`](./MUX_CONTRACT.md); for the lead↔peer wire
-> [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md).
+> [`CREW_PROTOCOL.md`](./CREW_PROTOCOL.md).
 
 ## 1. The problem (real workflow, real pain)
 
@@ -61,24 +61,18 @@ the binary and `exec`s it; it implements nothing
 
 Everything above describes one machine. A crew is several machines each running a **full collie**, one
 of which — the **lead** — holds the front door the phone talks to. A crew of one is today's install
-exactly, and pays no tax for the feature ([`PACK_PROTOCOL.md` §11](./PACK_PROTOCOL.md#11-the-solo-zero-tax-contract)).
-
-**Glossary, and the one thing that trips a new reader: the code and the wire say *pack*, people say
-*crew*.** `bridge/pack/`, `/pack/v1/*`, `PackRuntime`, `pack-trust.json`, the `[pack]` journal
-prefix and `PACK_PROTOCOL.md` are the same thing this page calls a crew. The words a person reads
-were renamed in 1.7.0 and the words a machine reads were not, so a 1.6.0 member still talks to a
-1.7.0 lead ([ADR 0038](./.adr/0038-the-group-is-a-crew-the-wire-keeps-pack.md)).
+exactly, and pays no tax for the feature ([`CREW_PROTOCOL.md` §11](./CREW_PROTOCOL.md#11-the-solo-zero-tax-contract)).
 
 ```
    phone / laptop (PWA)
         │  HTTPS  /api/*   (the phone talks to the lead and to NOTHING else)
         ▼
    lead collie  ── managed front door, serves the PWA
-        │  /pack/v1/*  ── pinned mutual TLS + pack secret, lead dials outbound
+        │  /crew/v1/*  ── pinned mutual TLS + crew secret, lead dials outbound
         ├──────────────▶ peer collie      (no front door; its own mux, journal, uploads, audit)
         └──────────────▶ deputy collie    (a peer, plus a warrant naming it)
                               ╎  standby door: bound, never published, three routes
-   operator ─ ssh ─▶ every member          ← code rides HERE, never the pack link
+   operator ─ ssh ─▶ every member          ← code rides HERE, never the crew link
 ```
 
 - **The lead consumes a peer's *Collie* HTTP API.** It never dials a peer's multiplexer across a
@@ -89,9 +83,9 @@ were renamed in 1.7.0 and the words a machine reads were not, so a 1.6.0 member 
   ([ADR 0016](./.adr/0016-updates-ride-the-operators-ssh.md)), so the link is never a distribution
   channel. A peer may also level itself to the release its lead is running, taking that public tag
   from GitHub over anonymous HTTPS on its own decision (ADR 0016's addendum,
-  [`PACK_PROTOCOL.md` §20](./PACK_PROTOCOL.md)); still no code, route or verb on the link.
-- **Two independent factors gate `/pack/v1/*`,** before any handler runs: **pinned mutual TLS** and
-  the **pack secret** ([`PACK_PROTOCOL.md` §8](./PACK_PROTOCOL.md#8-trust-enrollment-factors-rotation)).
+  [`CREW_PROTOCOL.md` §20](./CREW_PROTOCOL.md)); still no code, route or verb on the link.
+- **Two independent factors gate `/crew/v1/*`,** before any handler runs: **pinned mutual TLS** and
+  the **crew secret** ([`CREW_PROTOCOL.md` §8](./CREW_PROTOCOL.md#8-trust-enrollment-factors-rotation)).
   Neither browser gate of §6 applies there, and a peer publishes nothing — its listener is a path
   prefix on its own bind, not a front door
   ([ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
@@ -100,13 +94,13 @@ were renamed in 1.7.0 and the words a machine reads were not, so a 1.6.0 member 
   lands, and revocation is generation *N+1* naming nobody. Nothing infers a dead lead from silence —
   the operator is the quorum ([ADR 0026](./.adr/0026-the-operator-is-the-quorum.md) ·
   [ADR 0027](./.adr/0027-the-deputy-is-named-ahead-of-time.md) ·
-  [`PACK_PROTOCOL.md` §18](./PACK_PROTOCOL.md#18-the-deputy-and-the-warrant-added-2026-08-20)).
+  [`CREW_PROTOCOL.md` §18](./CREW_PROTOCOL.md#18-the-deputy-and-the-warrant-added-2026-08-20)).
 - **The standby door is a second listener that arms on silence and is spent by the operator.** It
   binds `COLLIE_STANDBY_PORT` (absent ⇒ no door), serves three routes and `404`s everything else, and
   arms only while a verified warrant names this machine, the lead has been silent past a threshold,
   and a synced pairing registry is non-empty. Arming grants nothing: the takeover is confirmed with
   the phone's own pairing credential ([ADR 0028](./.adr/0028-the-standby-door-is-a-second-listener.md) ·
-  [`PACK_PROTOCOL.md` §18.15](./PACK_PROTOCOL.md#18-the-deputy-and-the-warrant-added-2026-08-20)).
+  [`CREW_PROTOCOL.md` §18.15](./CREW_PROTOCOL.md#18-the-deputy-and-the-warrant-added-2026-08-20)).
 
 ## 3. Deployment model — **systemd user service, not a plugin pane**
 
@@ -349,7 +343,7 @@ graph TD
   (`bridge/operator-launchers.ts`), share the reader but NOT `/api/config`: a launcher row creates
   its own pane rather than addressing an existing one, so it carries no scope, and its rows ride
   their own session-scoped `GET /api/launchers` instead — rows must come from the host that runs
-  them, which a lead-only `/api/config` field cannot say in a crew (PACK_PROTOCOL.md §5).
+  them, which a lead-only `/api/config` field cannot say in a crew (CREW_PROTOCOL.md §5).
 
 - **UI strings are translated by a typed dictionary, not a library** (`web/src/lib/i18n/`, six
   locales, English the compile-time source of truth) — `t()`/`tn()` plus the `useLocale()` hook
@@ -382,10 +376,10 @@ door (tailnet-only by default; one per **crew** — §2.1). These four are genui
   it needs the port not to be shared in the first place (its own network namespace, or a uid
   owner-match filter such as nftables `meta skuid`); a plain port firewall rule won't stop a
   same-host peer (raised in [#33](https://github.com/AltanS/collie/issues/33)).
-  **Named exception: the pack listener.** When crew federation is enabled, a peer's `/pack/v1/*`
+  **Named exception: the crew listener.** When crew federation is enabled, a peer's `/crew/v1/*`
   prefix shares the bridge's one listener and one bind — `COLLIE_HOST`, the operator's to set, with
   a loud warning on a wildcard bind — and admits a request only past two independent factors, pinned
-  mutual TLS plus the pack secret, before any handler runs. See [`PACK_PROTOCOL.md` §3](./PACK_PROTOCOL.md#3-roles-and-modes)
+  mutual TLS plus the crew secret, before any handler runs. See [`CREW_PROTOCOL.md` §3](./CREW_PROTOCOL.md#3-roles-and-modes)
   (amended 2026-08-08, F3) and
   [ADR 0013](./.adr/0013-a-peer-listens-without-becoming-a-front-door.md).
   Under `tailscale serve`, the `Tailscale-User-Login` header is the person gate — trusted **only**
@@ -407,7 +401,7 @@ door (tailnet-only by default; one per **crew** — §2.1). These four are genui
   only its SHA-256. It is enforced exactly when the registry is non-empty, so an install that never
   pairs anything is unchanged, and revocation (`collie devices revoke`) lands on the running service
   without a restart because the registry is re-read per request. The two gates compose by AND —
-  neither weakens or replaces the other — and neither touches `/pack/v1/*`, whose two factors are its
+  neither weakens or replaces the other — and neither touches `/crew/v1/*`, whose two factors are its
   own. Where the header gate answers *is this device on the operator's list*, pairing answers *does
   this device hold a credential I issued*: a claim no proxy, DNS name or tailnet identity can forge.
 - **The `Host` header is validated, on by default, and fails closed.** A request whose `Host` is not
@@ -415,13 +409,13 @@ door (tailnet-only by default; one per **crew** — §2.1). These four are genui
   DNS-rebound `Host: evil.example` cannot reach the API. `collie start` discovers the node's MagicDNS
   name and Tailscale IPs into `COLLIE_TAILSCALE_HOSTS` and bakes them into the service unit, so a normal tailnet install configures
   nothing; behind your own front door `COLLIE_PUBLIC_HOSTS` is **required**.
-  `COLLIE_ALLOW_ANY_HOST=1` is the opt-out, and re-opens rebinding. `/pack/v1/*` is exempt: a lead
+  `COLLIE_ALLOW_ANY_HOST=1` is the opt-out, and re-opens rebinding. `/crew/v1/*` is exempt: a lead
   addresses a peer by its own hostname, and that surface carries its own two factors (ADR 0013).
 - **The bridge refuses a non-loopback bind.** A `COLLIE_HOST` outside loopback does not start unless
   `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`, and a non-loopback TCP peer is rejected — every gate above
   trusts headers that are only untamperable while the sole client is the local front door. A **crew
   member** is the one machine that must listen wide, so a crew-configured instance carries the same
-  permission implicitly (`bridge/pack/config.ts`) and `/pack/v1/*` is exempt from the peer check.
+  permission implicitly (`bridge/crew/config.ts`) and `/crew/v1/*` is exempt from the peer check.
 - **Pane-grid output renders safely** — it's attacker-influenceable (filenames, agent output,
   fetched web content). Never `innerHTML`; it renders as React text nodes under a **strict CSP**
   (`default-src 'self'`), so an escaping miss can't run injected script that calls back into the

@@ -200,9 +200,9 @@ seam rots.
 | **Refusal** | One shape, four reasons, and `unsupported` is not a failure — the UI explains it (M10/06) instead of reporting an error | every adapter returns it rather than throwing; conformance checks both directions (M10/03) |
 | **Pane naming** | `paneLabel` is ONLY a name an operator gave the pane THROUGH COLLIE (`renamePane`). A title the pane's own program wrote is `terminalTitle`, never `paneLabel`. A multiplexer with one title slot cannot tell the two apart from its listing, so its adapter remembers the labels it set itself — in memory, keyed by pane id, cleared by `renamePane(null)` and when the pane leaves the listing — and reports everything else in that slot as `terminalTitle`. After a bridge restart an operator's earlier label therefore degrades to `terminalTitle`: still visible, less prominent, never a lie | Herdr has two slots and needs no memory — `label` is the operator's, `terminal_title` is the program's (**API** § Object shapes); tmux (`pane_title`, **T**) and zellij (the listing's `title`, **Z**) have one each and keep the memory described here |
 | **Focus** | `MuxPane.focused` is **the pane the operator's own terminal is showing** — a fact the snapshot reports, never a pane Collie chose. Every adapter answers it on the floor; only CHANGING it is a capability (`setFocus`), and the phone changes it on one named tap and never as a side effect of navigation ([ADR 0031](./.adr/0031-freshness-is-a-declared-promise.md)). Focus is per-client everywhere, so "no client attached" is a real answer: `false` on every pane. **It is also per SPACE, and a reader must resolve the space first**: every space has an active tab with an active pane, so a server with three spaces reports three focused panes at once and only the one in the focused space (`MuxSpace.focused`) is on the operator's screen. Changing it is the same two levels — a `setFocus` that moves a pane inside a space nobody is attached to has kept the promise only for the next attach, so an adapter whose clients can sit on another space must carry them (tmux's `switch-client`, above) | Herdr reports `focused` per pane, and `session.snapshot` carries `focused_pane_id`/`focused_tab_id`/`focused_workspace_id` beside it (**API** § Object shapes) — read straight through. tmux: the active pane of the active window, which is a property of the SESSION, so every client on it sees the same pane; WHICH session is in front comes from `list-clients`, filtered by `client_control_mode` so this adapter's own watch never counts as a person (**T**, probed 2026-08-25: Collie's watcher `1`, two real terminals `0`; with none attached the old last-activity ordering still answers). zellij: `is_focused` is per-TAB (probed: two panes of one tab both report it after a split) AND'd with the tab's `active`, so a detached session — which marks no tab active — honestly reports no focused pane (**Z**, probed 2026-08-25) |
-| **Counts** | `MuxSpace.paneCount`, `MuxSpace.tabCount` and `MuxTab.paneCount` count **what the same snapshot carries**, never what the multiplexer's own listing counts. The two differ whenever an adapter drops a pane the contract has no place for, and the phone renders the count beside the panes it contradicts | Herdr's `pane_count`/`tab_count` come off the daemon's own workspace record and nothing is dropped (**API**); tmux counts the panes of each session and window it publishes (**T**); zellij counts the panes it publishes, because zellij's tab listing adds `selectable_floating_panes_count` and its plugin panes — a tab bar, a status bar, a floating release-notes pane — are in that number and are correctly dropped, so its tab said "3 panes" over 2 reachable ones (**Z**, measured 2026-09-08 on the pack leg, M22/04) |
+| **Counts** | `MuxSpace.paneCount`, `MuxSpace.tabCount` and `MuxTab.paneCount` count **what the same snapshot carries**, never what the multiplexer's own listing counts. The two differ whenever an adapter drops a pane the contract has no place for, and the phone renders the count beside the panes it contradicts | Herdr's `pane_count`/`tab_count` come off the daemon's own workspace record and nothing is dropped (**API**); tmux counts the panes of each session and window it publishes (**T**); zellij counts the panes it publishes, because zellij's tab listing adds `selectable_floating_panes_count` and its plugin panes — a tab bar, a status bar, a floating release-notes pane — are in that number and are correctly dropped, so its tab said "3 panes" over 2 reachable ones (**Z**, measured 2026-09-08 on the crew leg, M22/04) |
 | **A blank `cwd`** ([`requestedCwd`](./bridge/mux/types.ts)) | An empty or whitespace `cwd` on a create request means **no directory asked for**, identical to omitting it. It is never turned into a flag, an argument or a path. The reason it arrives at all: `MuxPane.cwd` is empty when the multiplexer reports none, and the launch route hands a neighbouring pane's `cwd` straight down, so "unknown" reaches the port spelled `""` | all three route it through `requestedCwd` first — herdr leaves the option off (**API**), tmux omits `-c` (**T**), zellij omits `--cwd` (**Z**). Before the rule, a launcher row beside ANY zellij pane failed outright: zellij reports no pane cwd, so `--cwd` arrived with no value and zellij refused the whole call (measured 2026-09-08, M22/04) |
-| **Transport death** | An adapter whose transport died *during* a call answers `unreachable`, never `refused`. `refused` means the multiplexer understood and said no, so retrying is pointless — a transport that went away mid-call is the opposite, and mis-reporting it puts a red per-tap error where the disconnected banner and its retry belong | a dropped socket / closed stream (**API**); tmux's `server exited unexpectedly` and `lost server` classify with "no server running" (**T**, `tmux/protocol.ts`); a dead session's verb, and a read that RAN OUT OF BUDGET — a zellij read is a process spawn, not a socket round trip, so a busy machine can miss the 5 s budget, and the kill now names itself instead of arriving as an unparseable listing (**Z**, measured 2026-09-08 on a peer under a `pack update` push, `zellij/exec.ts`). Pinned per adapter — the conformance world has no perturbation for it, because killing a live transport mid-call is shaped differently in each transport and a shared knob would only model one of them |
+| **Transport death** | An adapter whose transport died *during* a call answers `unreachable`, never `refused`. `refused` means the multiplexer understood and said no, so retrying is pointless — a transport that went away mid-call is the opposite, and mis-reporting it puts a red per-tap error where the disconnected banner and its retry belong | a dropped socket / closed stream (**API**); tmux's `server exited unexpectedly` and `lost server` classify with "no server running" (**T**, `tmux/protocol.ts`); a dead session's verb, and a read that RAN OUT OF BUDGET — a zellij read is a process spawn, not a socket round trip, so a busy machine can miss the 5 s budget, and the kill now names itself instead of arriving as an unparseable listing (**Z**, measured 2026-09-08 on a peer under a `crew update` push, `zellij/exec.ts`). Pinned per adapter — the conformance world has no perturbation for it, because killing a live transport mid-call is shaped differently in each transport and a shared knob would only model one of them |
 
 Three traps worth naming, the first two found while writing this table:
 
@@ -219,25 +219,25 @@ Three traps worth naming, the first two found while writing this table:
   (`bridge/state-engine.ts`), which the phone renders quietly instead of as the pane's name. Nothing
   is dropped: a title is never deleted on a guess about who wrote it.
 
-## Conformance across a pack link
+## Conformance across a crew link
 
 **Measured on 2026-09-08, in the VM lab: a tmux peer and then a zellij peer, both under a herdr
 lead.** The read-only set was
 run against each peer's panes through the lead's HTTP surface with `?host=<member>`
-([`scripts/pack-mux-probe.ts`](./scripts/pack-mux-probe.ts)), and against that peer's own multiplexer
+([`scripts/crew-mux-probe.ts`](./scripts/crew-mux-probe.ts)), and against that peer's own multiplexer
 adapter-locally on the peer itself ([`scripts/mux-probe.ts`](./scripts/mux-probe.ts)). Both peers
 scored **10 of 12 through the lead and 12 of 12 adapter-locally**, and the same two checks failed on
-both — which is what makes the gap readable as a property of the pack surface rather than of either
+both — which is what makes the gap readable as a property of the crew surface rather than of either
 multiplexer. The two runs do not grade the same thing, and this section says which side grades what
-— so nobody reads a pack run as covering the port, or an adapter run as covering the link.
+— so nobody reads a crew run as covering the port, or an adapter run as covering the link.
 
 `MuxTarget` takes no host and never will ([ADR 0036](./.adr/0036-the-map-of-machines-is-collies-a-mux-reports-one-machine.md)),
 so a suite cannot be pointed at another machine's multiplexer. It is pointed at the LEAD instead.
-That works because the host axis is the pack's, but it means the transport under the suite is the
-**phone's route table** (PACK_PROTOCOL.md §5, [`bridge/pack/forward.ts`](./bridge/pack/forward.ts)),
+That works because the host axis is the crew's, but it means the transport under the suite is the
+**phone's route table** (CREW_PROTOCOL.md §5, [`bridge/crew/forward.ts`](./bridge/crew/forward.ts)),
 which is narrower than the mux port in five measured ways.
 
-| What the pack surface cannot carry | Which check goes ungraded | Grade it here instead |
+| What the crew surface cannot carry | Which check goes ungraded | Grade it here instead |
 | --- | --- | --- |
 | `listSessions` and the three worktree verbs have no forwardable route | *an undeclared capability answers `unsupported`* — a refusal for those four cannot be observed across a link at all | adapter-locally, on the peer |
 | the pane-read route fixes `MuxGridRequest` at `{scope:"recent", styling:"preserve"}` (`readPane`, `bridge/server.ts`) | *a declared grid read answers the contract's shape* — a `viewport` or `strip` read is not askable across a link | adapter-locally, on the peer |
@@ -258,7 +258,7 @@ panes with its host row reading `reachable: true, protocol: "ok"`. A pane read t
 with the true reason. `SnapshotResponse.bridge` carries this fact for the collie the phone is
 talking to; `ServerSummary` has no per-host equivalent, so an operator reads a healthy chip over
 panes that no longer exist until they tap one. **This is a gap, not a rule that holds today.** The
-fix is one additive-optional per-host field under PACK_PROTOCOL.md §7.1 — never an adapter change,
+fix is one additive-optional per-host field under CREW_PROTOCOL.md §7.1 — never an adapter change,
 because the adapter already answers correctly and already says so on its own machine. The zellij leg
 repeated it by deleting the peer's zellij session: the peer's own bridge went unreachable in one
 sweep and the lead's host row still read healthy over five stale panes.
@@ -267,22 +267,22 @@ sweep and the lead's host row still read healthy over five stale panes.
 always fit in it. Closed on 2026-09-08.** Measured on the zellij peer: `POST /api/launch?host=<member>` answered
 `write_outcome_unknown … launch: timed out after 1200ms` on two of three tries, and each of those had
 in fact created the tab — so the operator's screen gained a pane the phone never confirmed. 1200 ms is
-`DEFAULT_PACK_TIMEOUT_MS`, which PACK_PROTOCOL.md §10.1 sizes at 0.8 of the lead's poll interval so a
+`DEFAULT_CREW_TIMEOUT_MS`, which CREW_PROTOCOL.md §10.1 sizes at 0.8 of the lead's poll interval so a
 slow peer cannot stall the lead's own sweep. A one-off write from the phone stalls no sweep, and the
 route it drives waits for the new pane's shell to draw a prompt before it answers, which on zellij is
-several process spawns plus that wait. herdr and tmux fit; zellij straddled it. **The fix was the pack
+several process spawns plus that wait. herdr and tmux fit; zellij straddled it. **The fix was the crew
 decision this paragraph asked for, and no adapter changed**: a forwarded write now dials on its own
-`WRITE_BUDGET_MS` (5000 ms) and a forwarded read keeps the poll budget, PACK_PROTOCOL.md §10.1.
+`WRITE_BUDGET_MS` (5000 ms) and a forwarded read keeps the poll budget, CREW_PROTOCOL.md §10.1.
 
 **A peer's multiplexer logo never crosses the link, and that is settled rather than open.** `logoUrl`
 is a path, and a path only answers on the machine that serves it, so
-[`bridge/pack/router.ts`](./bridge/pack/router.ts) drops it from a peer's block. zellij is the case
+[`bridge/crew/router.ts`](./bridge/crew/router.ts) drops it from a peer's block. zellij is the case
 that makes the consequence visible: it ships a logo, the peer's own browser would render it, and on
 the lead the peer's mux is named in text only.
 
 **The per-host capability answer is the LEAD's feature, so an older lead dresses every peer's panes
 in its own block.** Measured on 2026-09-08 with a real released **1.6.0** lead over the same two
-peers (PACK_PROTOCOL.md §16, the version-skew leg): `GET /api/config?host=member` answered `200`
+peers (CREW_PROTOCOL.md §16, the version-skew leg): `GET /api/config?host=member` answered `200`
 with the **lead's herdr block**, and `?host=nope` answered `200` with the same block rather than the
 `404 host.unknown` this build sends. The peer's `hello` carried its own block the whole time; a
 1.6.0 lead simply has no reader for it. That is the closed reading and it is the right one — absent

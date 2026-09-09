@@ -131,7 +131,7 @@ requirements table, and what the initial run writes to the host.
 
 Repository-level specifications live at the root: [`ARCHITECTURE.md`](./ARCHITECTURE.md) ·
 [`docs/deployment.md`](./docs/deployment.md) · [`MUX_CONTRACT.md`](./MUX_CONTRACT.md) ·
-[`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md) · [`HERDR_API.md`](./HERDR_API.md) ·
+[`CREW_PROTOCOL.md`](./CREW_PROTOCOL.md) · [`HERDR_API.md`](./HERDR_API.md) ·
 [`DESIGN.md`](./DESIGN.md) · [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ## Deployment variants
@@ -222,7 +222,7 @@ reverse proxy replaces the `tailscale serve` box; everything below the front doo
 - **Polling is still the model** — the bridge takes one snapshot per tick from the adapter and the browser polls `/api/snapshot`; where the multiplexer offers an event stream (Herdr does) it only pokes the bridge's poll to go faster, it never replaces it. No resync logic.
 - **Actions are plain HTTP** — a reply or key `POST`s to `/api/pane/:id/{reply,keys}`, and the adapter types it into a real terminal (hence the security posture).
 - **The UI is a static PWA** — Vite builds `web/dist`, served from disk, so a rebuild is live with no restart.
-- **A second Collie is a peer, not a second bridge** — one machine's bridge mirrors one multiplexer, and a lead reads its peers over the pack link ([`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md)).
+- **A second Collie is a peer, not a second bridge** — one machine's bridge mirrors one multiplexer, and a lead reads its peers over the crew link ([`CREW_PROTOCOL.md`](./CREW_PROTOCOL.md)).
 
 Full design rationale in [`ARCHITECTURE.md`](./ARCHITECTURE.md).
 
@@ -252,7 +252,7 @@ in place.
 
 ### The states playground
 
-A development page that renders the web components across mock states (boot, idle, dashboard, pack,
+A development page that renders the web components across mock states (boot, idle, dashboard, crew,
 settings) without a running agent. This lets you inspect visual elements like banners, marks, boot
 screens, and lock states without manually reproducing each condition.
 
@@ -280,8 +280,8 @@ integration is documented in [`HERDR_API.md`](./HERDR_API.md).
 - Deployment variants B through E: [`docs/deployment.md`](./docs/deployment.md)
 - Architecture and design rationale: [`ARCHITECTURE.md`](./ARCHITECTURE.md)
 - Multiplexer query interface and capabilities: [`MUX_CONTRACT.md`](./MUX_CONTRACT.md)
-- Lead-to-peer pack protocol: [`PACK_PROTOCOL.md`](./PACK_PROTOCOL.md) (topology diagram in
-  [§2](./PACK_PROTOCOL.md#2-shape-of-the-thing))
+- Lead-to-peer crew protocol: [`CREW_PROTOCOL.md`](./CREW_PROTOCOL.md) (topology diagram in
+  [§2](./CREW_PROTOCOL.md#2-shape-of-the-thing))
 - Crew recovery from a phone after lead failure:
   [`docs/deployment.md` → the standby door](./docs/deployment.md#the-standby-door--a-crews-failover-path)
 - Verified Herdr socket API: [`HERDR_API.md`](./HERDR_API.md)
