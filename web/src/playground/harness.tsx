@@ -412,12 +412,21 @@ export function Section({ def, children }: { def: SectionDef; children: ReactNod
  * arrives at this state on a real collie, so a card is never just a pretty picture of a component.
  */
 export function Card({
+  state,
   label,
   reach,
   note,
   span = 1,
   children,
 }: {
+  /**
+   * The card's stable handle, rendered as `data-state`. Flat kebab-case, naming what the card
+   * SHOWS and not where it sits: `update-band-in-flight`, `host-stale-unreachable`. It is required
+   * so the compiler finds a card without one, and `app.test.tsx` refuses a repeat. A browser case
+   * addresses `[data-state="…"]` and reads roles and text inside it — the label is prose that gets
+   * reworded, so it is not a key (two of them are identical already).
+   */
+  state: string;
   label: string;
   /** How you reach this state for real. Rendered after "reach it for real:". */
   reach: string;
@@ -428,7 +437,7 @@ export function Card({
   children: ReactNode;
 }) {
   return (
-    <div className={cn("min-w-0", span === 2 && "pg-span-2")}>
+    <div data-state={state} className={cn("min-w-0", span === 2 && "pg-span-2")}>
       <p className="font-mono text-[11px] uppercase tracking-wide text-foreground">{label}</p>
       <p className="mb-2 mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
         <span className="text-status-idle">reach it for real:</span> {reach}
@@ -488,18 +497,31 @@ export function PhoneFrame({ height = 720, children }: { height?: number; childr
   );
 }
 
-/** A segmented control. Plain buttons — the playground borrows no app chrome it isn't showing. */
+/**
+ * A segmented control. Plain buttons — the playground borrows no app chrome it isn't showing.
+ *
+ * `name` is what a browser case asks for when a card shows two states through this control rather
+ * than through two cards: it makes the group itself addressable by an accessible name
+ * (`getByRole("group", { name })`), so a case can pick the option it wants without matching the
+ * card's prose label. Only the controls that switch a card's state need one.
+ */
 export function Segmented<T extends string>({
+  name,
   value,
   options,
   onChange,
 }: {
+  name?: string;
   value: T;
   options: readonly { value: T; label: string }[];
   onChange: (next: T) => void;
 }) {
   return (
-    <div className="inline-flex overflow-hidden rounded-lg border border-border">
+    <div
+      role={name === undefined ? undefined : "group"}
+      aria-label={name}
+      className="inline-flex overflow-hidden rounded-lg border border-border"
+    >
       {options.map((option) => (
         <button
           key={option.value}

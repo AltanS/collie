@@ -63,3 +63,40 @@ describe("the states playground", () => {
     30_000,
   );
 });
+
+// The handles a browser case addresses. `state` on `Card` (playground/harness.tsx) renders as
+// `data-state` on the card's wrapper, so a Playwright case says
+// `[data-state="update-band-in-flight"]` instead of matching the card's label — the labels are
+// prose, they carry em dashes and curly quotes, they get reworded, and two of them are identical
+// already.
+//
+// The compiler already catches a card with NO handle, because the prop is required. It cannot catch
+// two cards with the SAME handle, and that is what this test is for. It also refuses a handle that
+// is not flat kebab-case, because a case in another file has to be able to type it from memory.
+//
+// The selector is `.pg-grid > *`: `Section` renders that grid and every card is a direct child of
+// one, while `ui/collapse.tsx` renders its OWN `data-state` ("open" / "closed") deep inside several
+// cards. Scoping to the grid's children tells the two apart without giving the app a second
+// attribute.
+describe("the playground's card handles", () => {
+  it("gives every card a unique flat-kebab handle", () => {
+    const { container } = render(<PlaygroundApp />);
+
+    const cards = [...container.querySelectorAll(".pg-grid > *")];
+    // A floor, not the count: adding a card must not mean editing this test. It is here only to
+    // stop the three assertions below passing over an empty page.
+    expect(cards.length).toBeGreaterThanOrEqual(54);
+
+    const handles = cards.map((card) => card.getAttribute("data-state") ?? "");
+    expect(handles.filter((handle) => handle === "")).toEqual([]);
+    expect(handles.filter((handle) => !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(handle))).toEqual([]);
+
+    const seen = new Set<string>();
+    const repeated: string[] = [];
+    for (const handle of handles) {
+      if (seen.has(handle)) repeated.push(handle);
+      seen.add(handle);
+    }
+    expect(repeated).toEqual([]);
+  });
+});

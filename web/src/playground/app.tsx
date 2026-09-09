@@ -244,6 +244,7 @@ function BrandSection() {
     <Section def={SECTIONS[0]}>
       <TypefaceCard />
       <Card
+        state="mark-header-weight"
         label="the mark — header weight"
         reach="every screen. 40px in the header bar, 64px on the boot splash and the idle cover."
         note="`paper` is the ground the mark sits on: it is --background here, --muted in the header, --card on the idle cover."
@@ -259,6 +260,7 @@ function BrandSection() {
       </Card>
 
       <Card
+        state="mark-full-weight"
         label="the mark — full weight"
         reach="the drawing anywhere above about 80px. Below that the full weight's detail closes up and the header weight is used instead."
       >
@@ -272,6 +274,7 @@ function BrandSection() {
       </Card>
 
       <Card
+        state="mark-muted-rest"
         label="the mark — muted rest"
         reach="let the connection stay lost for 15s. The splash and the header both drop the mark to this rest to say “not connected”."
       >
@@ -285,6 +288,7 @@ function BrandSection() {
       </Card>
 
       <Card
+        state="header-stacked-identity"
         label="“Collie” over “on <mux>” — the header's stacked identity"
         reach="open the dashboard or a space view. The block rides WITH the wordmark claim and never appears inside a pane, where the breadcrumb owns the middle of the bar."
         note="Real <AppHeaderHost>+<RouteHeader wordmark/>. Two lines beside the mark: the 11px uppercase brand tier over the multiplexer at 16px, which is the line the width is for — stacked, the brand costs the name nothing. The name and the logo come from this bridge's own /api/config, so with no bridge behind the dev proxy the second line renders NOTHING, deliberately: “on unknown” would be a worse header than no line at all. The slot is reserved either way, so the brand line does not move when the read lands."
@@ -300,6 +304,7 @@ function BrandSection() {
       </Card>
 
       <Card
+        state="prerelease-strip"
         label="the prerelease strip — AlphaBar"
         reach="run a v1 alpha build beside the stable install. It never appears at all on a stable
           build — `prereleaseLabel` reads THIS bundle's own baked-in version (lib/build.ts, a vite
@@ -320,6 +325,7 @@ function BrandSection() {
       </Card>
 
       <Card
+        state="app-icons-real-sizes"
         label="favicon & installed-app tiles, at their real sizes"
         reach="install the PWA, or look at the browser tab. Each tile below is at its native pixel size — no upscaling — so the ones that get downsampled by a launcher can be judged as drawn."
         span={2}
@@ -337,6 +343,7 @@ function BrandSection() {
       </Card>
 
       <Card
+        state="app-icon-512"
         label="the 512 tile"
         reach="the manifest's largest icon — what a launcher downsamples from, and what a splash screen uses whole."
         span={2}
@@ -357,6 +364,7 @@ function BootSection({ clock }: { clock: ClockMode }) {
   return (
     <Section def={SECTIONS[1]}>
       <Card
+        state="boot-splash-connecting"
         label={`boot splash — connecting → not connected (clock: ${clock})`}
         reach="the very first load, before the snapshot resolves. It escalates to “Not connected” once that first fetch has been stuck for 15s — e.g. reopening the PWA with the tailnet down."
         note="Real <BootSplash/> from routes/root.tsx, reading the shared clock. Move the sidebar's CONNECTION CLOCK to pick which half you see."
@@ -369,6 +377,7 @@ function BootSection({ clock }: { clock: ClockMode }) {
       </Card>
 
       <Card
+        state="connection-banner-lost"
         label={`connection banner — trouble → lost (clock: ${clock})`}
         reach="pull the tailnet out from under a running Collie. Amber “reconnecting…” after 4s; red with a named cause plus Retry/Reload after 15s; a green flash on recovery."
         note="Red runs the genuine /api/config probe through the dev proxy, so the cause sentence names whatever the bridge on COLLIE_DEV_TARGET actually answers."
@@ -386,6 +395,7 @@ function BootSection({ clock }: { clock: ClockMode }) {
       </Card>
 
       <Card
+        state="connection-banner-refused"
         label="connection banner — refused (401/403)"
         reach="let the fronting proxy's identity session expire. A refusal is not an outage, and the banner says so rather than blaming the link."
       >
@@ -397,6 +407,7 @@ function BootSection({ clock }: { clock: ClockMode }) {
       </Card>
 
       <Card
+        state="header-dog-full-bar"
         label={`header dog — the full bar (clock: ${clock})`}
         reach="same two thresholds as the banner: the mark blooms on sustained trouble and rests muted once the outage is lost."
         note="Follows the shared clock, so this card and the banner above always agree — that is the property the single module-scoped clock exists to guarantee."
@@ -411,6 +422,7 @@ function BootSection({ clock }: { clock: ClockMode }) {
       </Card>
 
       <Card
+        state="header-dog-three-states"
         label="header dog — live · troubled · lost, side by side"
         reach="you cannot reach all three at once for real; there is one clock. <CollieHome/> takes them as ordinary props, which is the one way to line them up."
       >
@@ -432,6 +444,7 @@ function IdleSection() {
   return (
     <Section def={SECTIONS[2]}>
       <Card
+        state="idle-lock-paused"
         label="idle lock — paused"
         reach="leave Collie open, visible and untouched. A hidden page never locks; polling stops and the app stays mounted underneath, so an in-progress composer draft survives."
       >
@@ -441,6 +454,7 @@ function IdleSection() {
       </Card>
 
       <Card
+        state="idle-lock-catching-up"
         label="idle lock — catching up"
         reach="touch the paused screen, or bring the tab back to the foreground. The cover stays up for exactly as long as the resume refetch is in flight."
         note="Both states sit on the page at once because `catchingUp` is a prop, not a clock."
@@ -463,6 +477,7 @@ function DashboardSection() {
       <DashboardRowsCard />
 
       <Card
+        state="agent-list-working-herd"
         label="agent list — a working herd, all four sections"
         reach="the dashboard on a busy day. The order is the one the whole app agrees on: Needs you → Ready · unseen → Working → Recent."
         note="Fourteen panes across four spaces and five harnesses. `gemini` has no bundled logo, so it lands on the neutral initials tile — the honest rendering, not a placeholder."
@@ -474,6 +489,7 @@ function DashboardSection() {
       </Card>
 
       <Card
+        state="agent-list-empty"
         label="agent list — empty"
         reach="a Herdr session with no agent panes in it. Nothing is wrong; there is simply nothing running."
       >
@@ -483,6 +499,7 @@ function DashboardSection() {
       </Card>
 
       <Card
+        state="agent-list-empty-stale"
         label="agent list — empty AND stale"
         reach="the bridge stops answering while the herd list is empty. “Nothing is running” and “we do not know what is running” are different sentences, and this is the second one."
       >
@@ -500,6 +517,7 @@ function DashboardSection() {
       <WriteGateCard />
 
       <Card
+        state="nav-strips-three-rows"
         label="the three strips — spaces › tabs › panes"
         reach="open a space. The three navigation rows stack under the header, one level apart, and every one of them overflows on a phone. Scroll each row sideways: the name stays put, because it sits above the scroller rather than inside it."
         note="Real <SpaceStrip>, <TabStrip> and <PaneStrip> with the fixture herd, in a 390px frame — the width the row was measured at. The chips are live: tapping one moves the selection. Every pill is drawn 34px tall and answers a 46px touch: the extra 12px is a transparent hit area inside the row's own padding, so the tap floor costs no height. Try tapping just above or just below a pill."
@@ -511,6 +529,7 @@ function DashboardSection() {
       </Card>
 
       <Card
+        state="nav-strip-drill-in"
         label="space strip — the drill-in (leads with Back)"
         reach="tap into a single space. The row leads with an explicit way back instead of the “All” chip."
         note="Same height as the card above, deliberately: the label is drawn in both states, so navigating in and out does not jump the page."
@@ -522,6 +541,7 @@ function DashboardSection() {
       </Card>
 
       <Card
+        state="update-band-release-offered"
         label="update band (a) — a release is on offer"
         reach="the bridge's poll reports a newer release upstream. It shows on EVERY screen, because it is a fact about the machine and not about the page you are on."
         note="The tap NAVIGATES to /settings/updates and never starts anything: the confirm lives on that page, and a band that could start an update from any screen would be the reflex tap the confirm was designed against. The ✕ dismisses this VERSION — the band stays gone until a newer one appears, and the pin outlives a reload (localStorage)."
@@ -535,6 +555,7 @@ function DashboardSection() {
       </Card>
 
       <Card
+        state="update-band-confirm-posted"
         label="update band (s) — the confirm was just tapped"
         reach="tap Update on /settings/updates and watch the top of the screen for the beat before the run appears."
         note="POST /api/update returns immediately and hands off to a detached process, so the status object says nothing at all for a moment. This state is the client's OWN knowledge that it just posted, and the run record replaces it the instant it speaks. The store behind it (lib/update-ribbon.ts) is page-wide, so this card drives it behind a toggle — see the (c) card for the same reasoning at more length."
@@ -544,6 +565,7 @@ function DashboardSection() {
       </Card>
 
       <Card
+        state="update-band-in-flight"
         label="update band (b) — a run in flight, all three words"
         reach="confirm an update and leave the app on any screen. The band counts through the run without you opening the Updates page."
         note="Three snapshots, three routers — a run is in exactly one state at a time. A poll that FAILS while restarting is the update working, not an outage: the last record stays on screen and the band keeps saying Restarting."
@@ -559,6 +581,7 @@ function DashboardSection() {
       </Card>
 
       <Card
+        state="update-band-peers-following"
         label="update band (d) — peers following, and one that did not"
         reach="update a pack from the lead. The lead finishes first and the band keeps naming whoever is still moving."
         note="Three rows: one peer still restarting, one rolled back, and a pack that is level — the third draws NOTHING, which is the point (the band is gone as soon as every peer reports done). The rolled-back row carries the peer's own reason, cut on a word boundary at 40 characters, with the full sentence on /settings/updates. No retry on the band: the retry is that page's single action."
@@ -578,6 +601,7 @@ function DashboardSection() {
       </Card>
 
       <Card
+        state="update-band-bundle-behind"
         label="update band (c) — this bundle is behind the bridge"
         reach="a fresh build is confirmed on the server but the app cannot auto-update right now: unsent work, an open sheet, an upload — or it already auto-updated once for this build. With no hold at all the app reloads ITSELF and this row never appears, which is the normal path."
         note="Driven through the actual controller: a reload hold is taken and a newer build id is observed twice, which is the hysteresis the real poll performs. `lib/self-update.ts` is a PAGE-WIDE singleton, exactly like lib/status.ts and lib/connection-health.ts, and every band on this page reads it — so driving it here puts every OTHER band card into this same state. Hence the toggle, and hence it is off by default. Two rows: with a Collie run behind the new build the band names the version, and with none it is the PWA row exactly as it has always been."
@@ -587,6 +611,7 @@ function DashboardSection() {
       </Card>
 
       <Card
+        state="update-footer-chip"
         label="update — the footer chip, all three states"
         reach="the dashboard footer. It left Settings in M16/01, where one Updates row took its place — but its precedence function still decides that row's status line, which is why all three states are still drawn here."
         note="Precedence: a stale running PROCESS outranks an available release, which outranks a major that needs explicit consent (ADR 0020). Three snapshots, three routers — the three cannot be true at once on one bridge."
@@ -613,6 +638,7 @@ function DashboardSection() {
       </Card>
 
       <Card
+        state="footer-crew-link-build-stamp"
         label="footer — pack link + build stamp"
         reach="scroll to the bottom of the dashboard. The pack line renders only on a multi-machine roster; on a solo collie the footer is the build stamp alone."
         note="BuildStamp asks /api/config once for the bridge's own build, so the second line fills in only against a live bridge."
@@ -628,6 +654,7 @@ function DashboardSection() {
       </Card>
 
       <Card
+        state="session-switcher"
         label="session switcher"
         reach="run more than one named Herdr session. The chip names the current one; the sheet lists the rest with their per-session counts, and an unreachable session is greyed out."
       >
@@ -649,6 +676,7 @@ function PaneSection() {
   return (
     <Section def={SECTIONS[4]}>
       <Card
+        state="pane-permission-prompt"
         label="pane — blocked on a permission prompt"
         reach="an agent asks to run something. Everything here is the real pane view — breadcrumb header, StatusBadge, mirror, composer — over a byte-faithful capture from web/src/fixtures/panes/."
         note="Reads are real; WRITES are not. Tapping an option posts to /api/pane/… and the screen never advances, because nothing on this page is a live terminal. Read it as a photograph."
@@ -660,6 +688,7 @@ function PaneSection() {
       </Card>
 
       <Card
+        state="pane-mid-tool-run"
         label="pane — mid tool-run"
         reach="watch an agent while it works. This is what the ANSI mirror has to colour: a live screen, no dialog, the composer free."
         span={2}
@@ -670,6 +699,7 @@ function PaneSection() {
       </Card>
 
       <Card
+        state="pane-upload-draft-path"
         label="pane — a just-uploaded image path in the draft"
         reach="attach a picture. `uploadFile()` appends the HOST path the bridge returns, which is one
           unbroken 70-odd-character token with no break opportunity in it — the widest thing that can
@@ -687,6 +717,7 @@ function PaneSection() {
       </Card>
 
       <Card
+        state="pane-shell-read-only"
         label="pane — a bare shell, composer locked read-only"
         reach="open a shell pane from a device the bridge will not let write. No agent means no grammar and a ShellBadge in place of the status chip; the write gate locks the composer and raises its banner above it."
         note="The shell screen is hand-written ANSI, not a capture — the fixture corpus is a corpus of AGENT screens, and a bare shell has no grammar to pin."
@@ -698,6 +729,7 @@ function PaneSection() {
       </Card>
 
       <Card
+        state="no-echo-notice"
         label="no-echo notice — the composer refused a password prompt"
         reach="tap Send at a pane sitting on `sudo`/`ssh`/`gpg`'s password prompt. Echo is off, so the
           reply guard's usual evidence can never arrive, and Send is refused every time — this notice
@@ -711,6 +743,7 @@ function PaneSection() {
       </Card>
 
       <Card
+        state="pane-every-notice-at-once"
         label="the worst case — every notice live at once"
         reach="never all six at once by accident, but never impossible either: a stale proxy session
           (401), a release on offer, a status toast, a device this proxy doesn't allowlist,
@@ -745,6 +778,7 @@ function PackSection() {
   return (
     <Section def={SECTIONS[5]}>
       <Card
+        state="formation-trio"
         label="formation — solo (lead + deputy + one)"
         reach="Settings → Pack on a collie that leads a small pack. Lead at the apex, deputy beneath it on the thick connector, everyone else fanned into a V."
         span={2}
@@ -755,6 +789,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="formation-five-three-problems"
         label="formation — five machines, three problems"
         reach="a real pack that has been running a while: one peer gone quiet, one enrolled and never once reached, one speaking a protocol this lead cannot. Tap a machine for its paperwork."
         note="The incompatible member's reason is the peer's own words, printed verbatim — the fix follows from the wording, so it is never paraphrased."
@@ -766,6 +801,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="formation-nine"
         label="formation — nine machines (the V wraps)"
         reach="keep adding peers. Past about six the fan cannot stay on one row and the layout wraps it — this is the card that says whether it still reads as a formation."
         span={2}
@@ -776,6 +812,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="formation-conflicted-member"
         label="formation — a conflicted member"
         reach="two collies both believe they lead this pack. Not a transient the next poll clears, so the page names it rather than folding it into “unreachable”."
         span={2}
@@ -786,6 +823,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="crew-solo-no-census"
         label="pack — solo (a 404 is an answer)"
         reach="open Settings → Pack on a collie that leads no pack. The bridge answers 404, which the loader turns into `null` — “there is no pack here” is an answer, not a failure."
       >
@@ -795,6 +833,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="crew-census-failed"
         label="pack — the census could not be fetched"
         reach="open the same page with the bridge down. This one IS a failure, and it says so differently from the solo card above."
       >
@@ -804,6 +843,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="host-colours-palette"
         label="host colours — the whole palette, and a real pack"
         reach="be on a pack. Every surface that names a machine tints it, so the dashboard reads as several machines before the eye reads a name."
         note="Ten hues, assigned by lib/hosts.ts `hostSlot` and defined in index.css, chosen to avoid every status hue. The top row is a made-up ten-machine roster whose ids land one per slot; below it is the five-machine pack, whose names hash to 0, 2, 4, 8 and 9 — which is the honest spread, not an even one. A solo collie gets NO host colour at all."
@@ -831,6 +871,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="host-switcher"
         label="host switcher"
         reach="be on a pack with more than one reachable machine. The chip names where you are; tap it for the sheet."
         note="The sheet's open/closed state is the component's OWN — there is no `open` prop to force, and inventing one would be a fork. Tap the chip; the sheet is portalled to <body>, so it takes the whole window."
@@ -845,6 +886,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="host-stale-unreachable"
         label="host-stale banner — unreachable"
         reach="on a pack: your link is fine but this pane's MACHINE is not. It appears inside the pane frame, over the last screen that machine did send."
         note="Hand-built HostHealth values — the banner's table is keyed on `state` and `writable` TOGETHER, so a row of it can only be shown by stating both."
@@ -855,6 +897,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="host-stale-never-seen"
         label="host-stale banner — never seen"
         reach="`collie pack add` a machine that has not come up yet. There is no cached screen behind this one, which is what makes it a different sentence."
       >
@@ -864,6 +907,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="host-stale-incompatible"
         label="host-stale banner — protocol incompatible"
         reach="run a peer on a Collie whose pack protocol this lead cannot speak. `collie pack update` levels it to the lead's own commit."
       >
@@ -873,6 +917,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="host-stale-in-pane-unreachable"
         label="host-stale banner — inside a real pane (unreachable)"
         reach="open a pane on a peer that has gone quiet. It sits above the tab strip and the mirror, inside the pane frame — never the standalone box the three cards above show it in."
         note="Real <PaneRouter/> on homePack (rosterFive), the pane re-hosted onto `attic` — the SAME
@@ -887,6 +932,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="host-stale-in-pane-never-seen"
         label="host-stale banner — inside a real pane (never seen)"
         reach="`collie pack add` a machine, open a pane tagged to it before it has ever come up."
         span={2}
@@ -897,6 +943,7 @@ function PackSection() {
       </Card>
 
       <Card
+        state="host-stale-in-pane-incompatible"
         label="host-stale banner — inside a real pane (incompatible)"
         reach="open a pane on a peer running a pack protocol this lead cannot speak."
         span={2}
@@ -915,6 +962,7 @@ function SettingsSection() {
   return (
     <Section def={SECTIONS[6]}>
       <Card
+        state="settings-solo-unpaired"
         label="settings — solo collie, nothing paired"
         reach="tap the gear from the dashboard. With no device paired, writes are ungated and the Paired devices card offers the pairing verb instead of a list."
         note="The whole real route. Two things on it still reach the network on purpose — /api/config for the diagnostics build, and the browser's own push subscription — and both fail soft, so the page renders whole with no bridge."
@@ -926,6 +974,7 @@ function SettingsSection() {
       </Card>
 
       <Card
+        state="settings-lead-paired"
         label="settings — lead of a pack, three devices paired"
         reach="pair a phone with `collie pair`, then open Settings on the lead. The Pack card appears only on a multi-machine roster; the device list names which row is the phone you are holding."
         note="One Updates row, where three update cards used to stand. Its status line follows the footer chip's old precedence and its chevron says it opens a page."
@@ -937,6 +986,7 @@ function SettingsSection() {
       </Card>
 
       <Card
+        state="updates-page"
         label="updates — the page the Settings row opens"
         reach="tap the Updates row in Settings. The check control on top, then one card carrying the version, the preflight, the run progress, a read-only line per peer, and the single action button."
         note="No bridge here, so the card's own read of /api/update/check never lands: the versions come from the snapshot and the peer lines stay empty. Against a live lead the same card grows one line per member, worst first."
@@ -947,6 +997,7 @@ function SettingsSection() {
         </PhoneFrameCard>
       </Card>
       <Card
+        state="spaces-repo-worktrees"
         label="spaces — a repo and its worktrees"
         reach="open a worktree of a repo you already have open as a space. Herdr reports the repo on both, so the list nests the worktree under the checkout showing that repo — no extra call, and nothing to switch on."
         note="`blog` sits outside any repo and stays flat, which is the same row it always was. A worktree whose repo is NOT open would also stay flat: there would be nothing to indent under."
@@ -967,6 +1018,7 @@ function SettingsSection() {
       </Card>
 
       <Card
+        state="new-space-worktree-tab"
         label="new space — the worktree tab"
         reach="tap + on the spaces list where at least one open space sits in a repo. With no repo open (or a multiplexer that cannot make one) the tab strip is not rendered at all and this is the plain new-space sheet."
         note="The repo picker is here because the sheet is opened from the LIST, where there is no current space to take a repo from. `Or open one that already exists` reads the worktrees of the chosen repo once — it is the only route to a checkout that is not a space."
@@ -988,6 +1040,7 @@ function SettingsSection() {
       </Card>
 
       <Card
+        state="new-space-pick-host"
         label="new space — pack, pick a host"
         reach="tap + on the spaces list of a lead with peers. On a solo collie this row is not rendered at all and the sheet is the one above."
         note="The chip that is marked is where the create lands: the machine the list was already showing, or the lead. `attic`, `cellar` and `garage` keep their chips and their names — a machine that cannot take writes is dimmed and says why, never dropped, because a missing row reads as a machine you do not have."
@@ -1283,6 +1336,7 @@ function WriteGateCard() {
 
   return (
     <Card
+      state="read-only-write-gate"
       label={gate === "pairing" ? "read-only — not paired" : "read-only — device not allowlisted"}
       reach={
         gate === "pairing"
@@ -1292,7 +1346,7 @@ function WriteGateCard() {
       note="The pairing latch is set through lib/pairing's own markNotPaired/clearNotPaired, and it OUTRANKS the device gate — the two can never both show, so pick one."
     >
       <div className="mb-2">
-        <Segmented value={gate} options={GATE_OPTIONS} onChange={setGate} />
+        <Segmented name="write gate" value={gate} options={GATE_OPTIONS} onChange={setGate} />
       </div>
       {/* 390px and the routes' own `mx-4 mt-3`: this box WRAPS in five of six locales, so its
           height is a function of the width it is read at, and a card-wide stage measures a box
@@ -1333,6 +1387,7 @@ function StartingRibbonHarness() {
   return (
     <>
       <PlaygroundToggle
+        name="confirm posted"
         on={posted}
         onToggle={() => setPosted((v) => !v)}
         onLabel="confirm posted: ON — tap to clear (it also silences the offer cards while on)"
@@ -1375,6 +1430,7 @@ function StaleBuildHarness() {
   return (
     <>
       <PlaygroundToggle
+        name="stale bundle"
         on={stale}
         onToggle={() => setStale((v) => !v)}
         onLabel="stale bundle: ON — tap to clear (every other band card reads it while on)"
@@ -1395,11 +1451,18 @@ function StaleBuildHarness() {
 /** The strip a card grows when the state it shows lives in a page-wide store and must be opt-in.
  *  Same shape as the two buttons inside {@link StackHarness}, promoted the moment a third appeared. */
 function PlaygroundToggle({
+  name,
   on,
   onToggle,
   onLabel,
   offLabel,
 }: {
+  /**
+   * The button's accessible name, stable across both halves of the toggle. The visible text is a
+   * whole instruction and it changes with the state, so it is no handle for a browser case; the
+   * pressed state travels on `aria-pressed` instead.
+   */
+  name: string;
   on: boolean;
   onToggle: () => void;
   onLabel: string;
@@ -1408,6 +1471,8 @@ function PlaygroundToggle({
   return (
     <button
       type="button"
+      aria-label={name}
+      aria-pressed={on}
       onClick={onToggle}
       className="mb-2 w-full rounded-md border border-border bg-muted px-3 py-1 text-left text-[11px] font-medium text-muted-foreground"
     >
@@ -1440,7 +1505,7 @@ function NoEchoNoticeHarness() {
   return (
     <>
       <div className="mb-2">
-        <Segmented value={typed} options={NO_ECHO_OPTIONS} onChange={setTyped} />
+        <Segmented name="no-echo prompt" value={typed} options={NO_ECHO_OPTIONS} onChange={setTyped} />
       </div>
       <Stage>
         <div className="p-3">
@@ -1510,6 +1575,8 @@ function StackHarness() {
     <div className="flex h-full flex-col">
       <button
         type="button"
+        aria-label="status toast"
+        aria-pressed={showStatus}
         onClick={() => setShowStatus((v) => !v)}
         className="shrink-0 border-b border-border bg-muted px-3 py-1 text-left text-[11px] font-medium text-muted-foreground"
       >
@@ -1519,6 +1586,8 @@ function StackHarness() {
       </button>
       <button
         type="button"
+        aria-label="read-only box"
+        aria-pressed={readOnly}
         onClick={() => setReadOnly((v) => !v)}
         className="shrink-0 border-b border-border bg-muted px-3 py-1 text-left text-[11px] font-medium text-muted-foreground"
       >

@@ -32,6 +32,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - **A real browser opens the app on every push.** CI gained a second job that builds the web bundle, serves it, answers the API from the same fixtures the unit tests use, and opens the app in Chromium at a phone size and a tablet size. It runs beside the existing typecheck and test job, so a browser failure and a lint failure both report in one run, and it uploads a screenshot and a trace when something fails. Nothing about the shipped app changes; the release path downloads no browser.
 
+### Changed
+
+- **Every state card in the playground carries a stable handle.** The dev-only states page now renders a `data-state` id on each card, flat kebab-case and unique across the page, so a browser test can address "the update band with a run in flight" without matching the card's prose label. The handle is a required prop, so a new card cannot be added without one, and a unit test refuses a repeat. The controls that switch a card between two states gained accessible names for the same reason. Nothing changes in the shipped bundle: the playground stays out of `web/dist`.
+
 ## [1.7.0] - 2026-09-09
 
 ### Added
