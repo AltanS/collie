@@ -64,3 +64,8 @@ docs/bugs/
 # these as an artefact and nothing compares them run to run.
 web/test-results/
 web/playwright-report/
+
+# The service-worker tier's two bundles (M26/04). `web/e2e/.builds/a` and `.builds/b` are two real
+# `vite build` runs, produced fresh whenever the swappable server starts, plus the one-line pointer
+# that says which of them is being served. Build output, like `dist/` — never committed.
+web/e2e/.builds/

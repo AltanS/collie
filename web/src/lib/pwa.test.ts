@@ -68,6 +68,9 @@ afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.doUnmock("virtual:pwa-register");
+  // The stuck guard's note lives here (`GUARD_RELOAD_KEY`), and it is meant to survive a reload —
+  // so it also survives a test unless a test clears it.
+  sessionStorage.clear();
 });
 
 describe("the reload latch is split into two lanes", () => {
@@ -140,5 +143,86 @@ describe("the reload latch is split into two lanes", () => {
     // And a second activation on the same page adds nothing.
     on.statechange?.();
     expect(h.reload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the tap after the stuck guard's own reload", () => {
+  // 2026-09-09, release lane, 1.6.0 → 1.7.0, iPhone PWA: every tap showed "updating…", reloaded, and
+  // came back on the same stale bundle, for about three minutes. The stuck guard's reload is served by
+  // the ACTIVE worker, so it lands on the bundle the operator is trying to leave, and the next tap
+  // starts the identical cycle. The note the guard leaves behind is what breaks it.
+
+  /**
+   * A poll answers, carrying a build id that is not this bundle's.
+   *
+   * One call is both of the branch's conditions: the page is provably STALE (the served id differs
+   * from the baked one) and the bridge is provably ANSWERING (a header only arrives on a response
+   * it sent). That is the shape on the phone too — the chip is on screen because the poll keeps
+   * saying so.
+   */
+  async function aPollSaysWeAreStale(): Promise<void> {
+    const { observeServerBuild } = await import("./server-build");
+    observeServerBuild("a-build-this-bundle-is-not");
+  }
+
+  it("THE CYCLE: the second tap unregisters instead of repeating the guard", async () => {
+    const on: Handlers = {};
+    const installing = worker("installing", on);
+    const h = await load({ controlled: true, installing });
+    await aPollSaysWeAreStale();
+
+    // Tap one. A worker is installing, so nothing is forced: the tap waits, and the stuck guard is
+    // what eventually reloads the page — on the stale bundle, precache intact.
+    await h.mod.checkForUpdate();
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(h.reload).toHaveBeenCalledTimes(1);
+    expect(h.registration.unregister).not.toHaveBeenCalled();
+
+    // The page came back on the same bundle, still stale, and the manual lane gives itself back. The
+    // poll is still answering, which is what the chip on screen means.
+    await vi.advanceTimersByTimeAsync(3_000);
+    await aPollSaysWeAreStale();
+
+    // Tap two, the one that was worth nothing for three minutes. It takes the unregister-then-reload
+    // path, so the navigation is answered by the bridge instead of by the wedged precache.
+    await h.mod.checkForUpdate();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.registration.unregister).toHaveBeenCalledTimes(1);
+    expect(h.reload).toHaveBeenCalledTimes(2);
+  });
+
+  it("a page the guard reloaded onto a bundle that is level does NOT unregister", async () => {
+    // The note alone must not arm it. Nothing was observed off the header here, so the page is not
+    // provably stale, and dropping a precache on that evidence buys a reload loop and no update.
+    const on: Handlers = {};
+    const installing = worker("installing", on);
+    const h = await load({ controlled: true, installing });
+
+    await h.mod.checkForUpdate();
+    await vi.advanceTimersByTimeAsync(8_000);
+    await vi.advanceTimersByTimeAsync(3_000);
+    await h.mod.checkForUpdate();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.registration.unregister).not.toHaveBeenCalled();
+  });
+
+  it("OFFLINE SAFETY: a bridge that stopped answering keeps the precache", async () => {
+    // Dropping a precache offline strands the PWA on an error page with nothing cached, which is
+    // worse than any stale bundle. So the branch also asks whether the bridge is still there, and
+    // the answer is the poll: no header for twenty seconds is no network. The tap then takes the old
+    // path — a thrown update(), a plain reload, precache intact.
+    const on: Handlers = {};
+    const installing = worker("installing", on);
+    const h = await load({ controlled: true, installing });
+    await aPollSaysWeAreStale();
+    sessionStorage.setItem("collie:pwa:guardReload:v1", "1");
+    h.registration.update.mockRejectedValueOnce(new Error("offline"));
+
+    // The last thing the bridge said was a while ago now, which is what going offline looks like.
+    await vi.advanceTimersByTimeAsync(21_000);
+    await h.mod.checkForUpdate();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.reload).toHaveBeenCalledTimes(1);
+    expect(h.registration.unregister).not.toHaveBeenCalled();
   });
 });
