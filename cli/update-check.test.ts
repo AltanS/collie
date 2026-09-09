@@ -591,6 +591,36 @@ describe("preflight crew — the members of a lead", () => {
     expect(nas.checks[1]!.reason).toContain("/home/pat/collie");
   });
 
+  test("an override beats the record: the walk probes the path this run was given", async () => {
+    // A stale record used to fail the gate before `collie crew update <member> --path …` was read,
+    // so the red's remedy could never clear it. The walk takes the override, and the record's path
+    // is not even mentioned.
+    const h = harness({
+      store: lead(["nas"]),
+      ops: { nas: record({ path: "/home/pat/apps/collie-v1" }) },
+      remote: () => (script) =>
+        script.includes("/opt/collie") ? ok(probeOut()) : ok(probeOut({ checkout: "" })),
+    });
+    const report = await preflight(h.deps, { overrides: { nas: { path: "/opt/collie" } } });
+    const nas = report.pack![0]!;
+    expect(nas.checks.map((c) => c.id)).toContain("collie-present");
+    expect(nas.verdict).not.toBe("red");
+  });
+
+  test("an override names its own path in the red, not the stale record's", async () => {
+    const h = harness({
+      store: lead(["nas"]),
+      ops: { nas: record({ path: "/home/pat/apps/collie-v1" }) },
+      remote: () => (script) => (script.includes("update --check") ? ok("") : ok(probeOut({ checkout: "" }))),
+    });
+    const report = await preflight(h.deps, { overrides: { nas: { sshHost: "nas.new", path: "/opt/collie" } } });
+    const nas = report.pack![0]!;
+    expect(nas.host).toBe("nas.new");
+    expect(nas.checks[1]!.id).toBe("collie-present");
+    expect(nas.checks[1]!.reason).toContain("/opt/collie");
+    expect(nas.checks[1]!.reason).not.toContain("collie-v1");
+  });
+
   test("a healthy member merges its own remote checks in, and its runner is closed", async () => {
     const remoteReport: PreflightReport = {
       schema: PREFLIGHT_SCHEMA,

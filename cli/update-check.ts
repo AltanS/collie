@@ -701,16 +701,22 @@ const KNOWN_KINDS: ReadonlySet<string> = new Set<InstallKind["kind"]>([
 /** ssh never started, or could not connect — the transport family, distinct from a remote failure. */
 const transportFailed = (r: RemoteResult): boolean => !r.spawned || r.code === 255;
 
-/** One member's turn: reach it, prove there is a Collie there, then ask it the same question. */
+/**
+ * One member's turn: reach it, prove there is a Collie there, then ask it the same question.
+ *
+ * The route is RESOLVED before this point ({@link memberRoute}), so this function never reads the
+ * ops record itself. That is what lets `collie crew update <member> --host/--path/--port` reach a
+ * machine whose remembered route is stale: the walk asks the route this run was given, and the
+ * remedy this function prints for a missing checkout is therefore one the operator can act on.
+ */
 async function memberChecks(
   deps: UpdateCheckDeps,
   member: TrustedMember,
-  record: OpsRecord | null,
+  route: ResolvedRoute,
   ourVersion: string,
-  port: number,
 ): Promise<PreflightMember> {
   const id = member.memberId;
-  const host = record?.sshHost ?? "";
+  const host = route.sshHost;
   const done = (checks: readonly PreflightCheck[], installKind?: InstallKind["kind"]): PreflightMember =>
     installKind === undefined
       ? { memberId: id, host, verdict: worst(checks.map((c) => c.verdict)), checks }
@@ -726,7 +732,7 @@ async function memberChecks(
   }
   const runner = deps.remote(host);
   try {
-    const { result, probe } = await runProbe(runner, { path: record?.path ?? null, port });
+    const { result, probe } = await runProbe(runner, { path: route.path, port: route.port });
     if (transportFailed(result)) {
       return done([
         red(
@@ -751,7 +757,7 @@ async function memberChecks(
         reached,
         red(
           "collie-present",
-          `no Collie checkout at ${host}${record?.path === null || record?.path === undefined ? "" : ` (${record.path})`}`,
+          `no Collie checkout at ${host}${route.path === null ? "" : ` (${route.path})`}`,
           `collie crew update ${id} --host ${host} --path <remote-checkout>`,
         ),
       ]);
@@ -800,15 +806,39 @@ async function remoteChecks(
 
 const firstLine = (text: string): string => text.split("\n").find((l) => l.trim() !== "")?.trim() ?? "";
 
+/** A route the walk will use: every field decided, nothing left to fall back on. */
+interface ResolvedRoute {
+  readonly sshHost: string;
+  readonly path: string | null;
+  readonly port: number;
+}
+
+/**
+ * One member's route: what THIS run says about it first, what the ops file remembers second.
+ *
+ * Pure, and the only place the two sources meet. An override field that is absent leaves the
+ * remembered value in place, so a caller may correct the host alone and keep the recorded path.
+ */
+function memberRoute(deps: UpdateCheckDeps, record: OpsRecord | null, over: MemberRoute | undefined): ResolvedRoute {
+  return {
+    sshHost: over?.sshHost ?? record?.sshHost ?? "",
+    path: over?.path ?? record?.path ?? null,
+    port: over?.port ?? record?.port ?? deps.ctx.port,
+  };
+}
+
 /** Every member's answer, or `undefined` when this collie is not a lead with peers. */
-export async function crewChecks(deps: UpdateCheckDeps): Promise<PreflightMember[] | undefined> {
+export async function crewChecks(
+  deps: UpdateCheckDeps,
+  overrides: Readonly<Record<string, MemberRoute>> = {},
+): Promise<PreflightMember[] | undefined> {
   const data = await deps.store.load();
   if (data === null || data.pack === null || data.lead !== null || data.peers.length === 0) return undefined;
   const ours = collieVersionBare(deps.ctx.root, (p) => deps.files.read(p));
   const members: PreflightMember[] = [];
   for (const member of data.peers) {
     const record = await deps.ops.get(member.memberId);
-    members.push(await memberChecks(deps, member, record, ours, record?.port ?? deps.ctx.port));
+    members.push(await memberChecks(deps, member, memberRoute(deps, record, overrides[member.memberId]), ours));
   }
   return members;
 }
@@ -833,6 +863,21 @@ export interface PreflightOptions {
    * resolution and the health gate cost one subprocess between them rather than two.
    */
   readonly toTag?: string | null;
+  /**
+   * Route corrections for the member walk, keyed by member id.
+   *
+   * `collie crew update <member> --host/--path/--port` describes a machine the ops file may
+   * remember wrongly. Without this the walk would probe the stale route, go red, and print a
+   * remedy the operator had ALREADY followed. Absent fields fall back to the record.
+   */
+  readonly overrides?: Readonly<Record<string, MemberRoute>>;
+}
+
+/** One machine's route as a command line gave it. Every field optional: absent means "keep the record". */
+export interface MemberRoute {
+  readonly sshHost?: string;
+  readonly path?: string | null;
+  readonly port?: number;
 }
 
 /** The whole document, assembled. Pure of output — {@link cmdUpdateCheck} decides how to print it. */
@@ -843,7 +888,7 @@ export async function preflight(deps: UpdateCheckDeps, opts: PreflightOptions = 
   const install = classifyInstall(probeInstall(deps, deps.ctx.root));
   const checks = await instanceChecks(deps, opts.toTag ?? null, install);
   // Skipped ENTIRELY under `--local`: no trust store read, no ssh, and no `crew` key in the report.
-  const crew = opts.local === true ? undefined : await crewChecks(deps);
+  const crew = opts.local === true ? undefined : await crewChecks(deps, opts.overrides ?? {});
   // A member's contribution to the TOP verdict is `topLevelMemberVerdict`, not its own `.verdict` —
   // see that function's comment: an `ops-record`-only red on a peer must not disable the lead's own
   // update button.
