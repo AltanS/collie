@@ -79,6 +79,7 @@ function client(
     dialSign?: PeerClientDeps["dialSign"];
     now?: () => number;
     log?: (line: string) => void;
+    toldVersion1?: Set<string>;
   } = {},
 ) {
   return new PeerClient({
@@ -86,6 +87,9 @@ function client(
     // REMOVE_IN_1_9_0: silenced by default so the overlap's line does not litter every run. A case
     // that asserts the line passes its own sink.
     log: over.log ?? (() => undefined),
+    // REMOVE_IN_1_9_0: absent ⇒ a fresh set per client, which is what every case but the shared one
+    // wants. The shared case hands the same set to two clients.
+    toldVersion1: over.toldVersion1,
     secret: () => (over.secret === undefined ? CREW.secret : over.secret),
     timeoutMs: over.timeoutMs ?? 50,
     patientTimeoutMs: over.patientTimeoutMs,
@@ -1514,6 +1518,25 @@ describe("the version 1 fallback", () => {
     expect(lines).toEqual(["[crew] laptop: speaks version 1, dialling /pack/v1 until it updates"]);
     // Three dials, six requests: the fallback is taken every time, and only the LINE is remembered.
     expect(calls).toHaveLength(6);
+  });
+
+  // A LEAD holds more than one client per peer (`bridge/index.ts` builds the sweep's and the
+  // takeover's), so a set per client wrote the line twice per member. The set is the process's.
+  test("two clients sharing one set write the line once for the same lead", async () => {
+    const { fetch } = oldLead(404);
+    const lines: string[] = [];
+    const shared = new Set<string>();
+    await client(fetch, { log: (l) => lines.push(l), toldVersion1: shared }).hello(laptop);
+    await client(fetch, { log: (l) => lines.push(l), toldVersion1: shared }).snapshot(laptop);
+    expect(lines).toEqual(["[crew] laptop: speaks version 1, dialling /pack/v1 until it updates"]);
+  });
+
+  test("two clients with their own sets each write it — the default is per client", async () => {
+    const { fetch } = oldLead(404);
+    const lines: string[] = [];
+    await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
+    await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
+    expect(lines).toHaveLength(2);
   });
 
   test("a member enrolled again under the same id is told about again", async () => {

@@ -233,6 +233,27 @@ beside it, nothing to hand off, and nothing to flip back to. `--rollback` is ref
 recovery path is a reinstall of a named tag
 (`herdr plugin install AltanS/collie --ref vX.Y.Z --yes`).
 
+**Rolling back from 1.8.0 to 1.7.0 needs two hand edits in the state directory.** 1.8.0 renames the
+three state files on its first start, so `~/.local/state/collie/` now holds `crew-trust.json`,
+`crew-ops.json` and `crew-runtime.json`, and a 1.7.0 build reads only the old names. Rename all
+three back before you start the 1.7.0 build:
+
+```bash
+cd ~/.local/state/collie
+mv crew-trust.json pack-trust.json
+mv crew-ops.json pack-ops.json
+mv crew-runtime.json pack-runtime.json
+```
+
+Then edit two key names inside `pack-trust.json`. 1.8.0 reads the crew block under either spelling
+and writes it back as `"crew"`, with `"crewId"` inside it, where 1.7.0 wrote `"pack"` and
+`"packId"`. A 1.7.0 build reads only its own spelling, so once 1.8.0 has written the store — which
+it does on any join, rotation, warrant refresh or removal — rename that block back to `"pack"` and
+its id field back to `"packId"`. Nothing else inside the three files changed, and `crew-ops.json`
+and `crew-runtime.json` need no edit at all. If you would rather not touch the file, put back a copy
+of `pack-trust.json` taken before the update, or stay on 1.8.0: a 1.7.0 build that cannot read the
+trust store starts solo and enforces no roster.
+
 #### Verify
 
 ```bash
@@ -304,7 +325,9 @@ move one at a time. The Updates page keeps a line per member: `waiting`, `checki
 environment keys, the three state files and the journal prefix to crew. A 1.8.0 lead answers the old
 `/pack/v1/*` paths for one release, so a member still on 1.7.0 follows the roll over the link it
 already has. Both old spellings go away in 1.9.0. The names and what each one does on your machine
-are in [Updating from 1.7.0](crew.md#updating-from-170).
+are in [Updating from 1.7.0](crew.md#updating-from-170). The `collie-release.json` asset the
+release publishes only feeds the wording of that notice on the band, on the Updates card and in the
+daily push; it never gates an update and never changes what one does.
 
 Two requirements decide whether a peer can follow at all:
 

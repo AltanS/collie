@@ -209,6 +209,12 @@ function patientTimeoutFor(ctx: CliContext): number {
 }
 
 /**
+ * REMOVE_IN_1_9_0 — which members this VERB has already said speak version 1 (§0.1). Shared by every
+ * client {@link clientFor} builds, because a verb can build more than one for the same member.
+ */
+const toldVersion1 = new Set<string>();
+
+/**
  * A client for talking to other members, authenticated by `secret`.
  *
  * `secret` is passed in rather than read from the store because rotation needs the *superseded* value:
@@ -219,6 +225,9 @@ function patientTimeoutFor(ctx: CliContext): number {
 export function clientFor(deps: ProbeDeps, data: TrustStoreData, secret: string): PeerClient {
   return new PeerClient({
     self: data.self.memberId,
+    // REMOVE_IN_1_9_0: the process-wide set, so a verb that builds two clients — rotation builds one
+    // per secret — says the fallback line once per member rather than once per client.
+    toldVersion1,
     secret: () => secret,
     timeoutMs: timeoutFor(deps.ctx),
     patientTimeoutMs: patientTimeoutFor(deps.ctx),

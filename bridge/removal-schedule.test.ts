@@ -63,6 +63,14 @@ describe("wire", () => {
     expect(source("./crew/peer-client.ts")).not.toContain("REMOVE_IN_1_9_0");
   });
 
+  // The fallback's one journal line is written once per member per PROCESS, which takes a set shared
+  // by every client the wiring builds. Two wirings hold one, and both go with the fallback.
+  test("nothing wires a shared told-version-1 set in 1.9.0", () => {
+    if (beforeRemoval(9)) return;
+    expect(source("./index.ts")).not.toContain("toldVersion1");
+    expect(source("../cli/crew.ts")).not.toContain("toldVersion1");
+  });
+
   test("the version 1 signing contexts are gone in 1.9.0", () => {
     if (beforeRemoval(9)) return;
     expect(source("./crew/signing.ts")).not.toContain("REMOVE_IN_1_9_0");
@@ -85,6 +93,9 @@ describe("wire", () => {
       "./crew/signing.ts",
       "./crew/warrant.ts",
       "../web/src/lib/sw-routes.ts",
+      // The two wirings that hand the fallback's per-process "already said" set to their clients.
+      "./index.ts",
+      "../cli/crew.ts",
     ]) {
       expect(source(file)).toContain("REMOVE_IN_1_9_0");
     }
