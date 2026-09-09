@@ -190,7 +190,7 @@ export interface PushMessage {
    */
   session?: string;
   /**
-   * The crew member the alerting session lives on (`?h=`, PACK_PROTOCOL.md §4). Threaded into the
+   * The crew member the alerting session lives on (`?h=`, CREW_PROTOCOL.md §4). Threaded into the
    * payload `data` alongside `session` so a tap deep-links to the right machine. Absent for the
    * collie that is sending — i.e. always absent on a solo instance, and always absent for the lead's
    * own sessions — which is the same omitted-not-null discipline `session` follows and what keeps

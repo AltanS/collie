@@ -57,7 +57,7 @@ describe("formatAuditLine", () => {
     expect(parsed.detail.keys).toEqual(["Enter", "a b"]);
   });
 
-  test("renders host right after action, before paneId (PACK_PROTOCOL.md §4)", () => {
+  test("renders host right after action, before paneId (CREW_PROTOCOL.md §4)", () => {
     const line = formatAuditLine(
       { action: "reply", host: "peer-a", paneId: "w1:p1", detail: { text: "ship it" } },
       0,
@@ -212,7 +212,7 @@ describe("fileAuditAppender rotation", () => {
   });
 
   test("a flood of refusals stays bounded — the whole trail never exceeds two generations", async () => {
-    // The threat the cap answers: `/pack/v1/enroll` audits a refusal before any factor
+    // The threat the cap answers: `/crew/v1/enroll` audits a refusal before any factor
     // authenticates, so anyone who can reach the listener can add lines for free. Rotation is only
     // a bound if the TOTAL on disk stops growing — one live file plus one `.1`, and nothing else.
     const io = fakeIo();
@@ -258,7 +258,7 @@ describe("crew attribution", () => {
   });
 
   test("a line with no crew attribution is byte-identical to a pre-crew one", () => {
-    // The solo zero-tax contract (PACK_PROTOCOL.md §11): optional fields are OMITTED, never nulled.
+    // The solo zero-tax contract (CREW_PROTOCOL.md §11): optional fields are OMITTED, never nulled.
     const line = formatAuditLine({ action: "reply", paneId: "w1:p1", session: "work", detail: {} }, 0);
     expect(line).not.toContain("via");
     expect(line).not.toContain("from");

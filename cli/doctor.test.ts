@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { PACK_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
+import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, CREW, peerStore, T0 } from "../bridge/crew/fixtures.ts";
 import { markerFor } from "../bridge/crew/staleness.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
@@ -223,12 +223,12 @@ function hello(
 ): Response {
   const headers = new Headers({
     "content-type": "application/json",
-    "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
-    "x-pack-member": over.memberId ?? "laptop",
+    "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
+    "x-crew-member": over.memberId ?? "laptop",
   });
   if (over.date !== null) headers.set("date", new Date(over.date ?? T0).toUTCString());
   const version = over.version === undefined ? "1.0.0-alpha.12" : over.version;
-  const body: HelloBody = { protocol: PACK_PROTOCOL_VERSION, member: over.memberId ?? "laptop" };
+  const body: HelloBody = { protocol: CREW_PROTOCOL_VERSION, member: over.memberId ?? "laptop" };
   if (version !== null) body.version = version;
   return new Response(JSON.stringify(body), { status: 200, headers });
 }
@@ -896,7 +896,7 @@ describe("collie doctor — the crew checks", () => {
     expect(code).toBe(EXIT.FAIL);
   });
 
-  // F21: the peer's side of the same check. `/pack/v1/snapshot` is not on the closed peer → lead
+  // F21: the peer's side of the same check. `/crew/v1/snapshot` is not on the closed peer → lead
   // route set (§8.6), so the only answer the second question can get is §8.1's bare 401 — which this
   // check reported as "answered but served no data", with the budget remedy, on a healthy crew.
   test("lead-reach: a peer asks its lead `hello` and nothing else", async () => {
@@ -906,7 +906,7 @@ describe("collie doctor — the crew checks", () => {
       files: without({ ...healthyFiles(), ...markerFile(peer) }, HANDLER),
     });
     const { byCheck } = await findings(h);
-    expect(h.requests).not.toContain("https://desk.example:8787/pack/v1/snapshot");
+    expect(h.requests).not.toContain("https://desk.example:8787/crew/v1/snapshot");
     const f = byCheck.get("lead-reach");
     expect(f?.status).toBe("ok");
     expect(f?.detail).toContain("answered `hello`");
@@ -919,8 +919,8 @@ describe("collie doctor — the crew checks", () => {
     expect(byCheck.get("member-reach")?.status).toBe("ok");
     expect(byCheck.get("member-reach")?.detail).toContain("served a snapshot");
     expect(h.requests).toEqual([
-      "https://laptop.example:8787/pack/v1/hello",
-      "https://laptop.example:8787/pack/v1/snapshot",
+      "https://laptop.example:8787/crew/v1/hello",
+      "https://laptop.example:8787/crew/v1/snapshot",
       // The history section's one GET of THIS bridge's own snapshot (issue #137), on the same seam.
       "http://127.0.0.1:8787/api/snapshot",
     ]);

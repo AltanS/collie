@@ -4,7 +4,7 @@ import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import {
   createTrustStore,
   HANDOVER_TTL_MS,
-  PACK_PROTOCOL_VERSION,
+  CREW_PROTOCOL_VERSION,
   selfIdentity,
   type EnrollResponse,
 } from "../bridge/crew/enrollment.ts";
@@ -217,15 +217,15 @@ function jsonReply<TBody>(body: TBody, status = 200, memberId = "peer"): Respons
     status,
     headers: {
       "content-type": "application/json",
-      "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
-      "x-pack-member": memberId,
+      "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
+      "x-crew-member": memberId,
     },
   });
 }
 
 /** The lead's enrollment answer — the §8.2 transfer table, as `join` will parse it. */
 const ENROLLED: EnrollResponse = {
-  protocol: 1,
+  protocol: 2,
   packId: CREW.packId,
   crewName: CREW.name,
   crewSecret: CREW.secret,
@@ -307,7 +307,7 @@ describe("selfAddress — the port is explicit exactly where the dial needs it",
   test("the derived peer address composes into a dialable URL rather than being mangled", () => {
     const h = harness(null);
     expect(enrollUrl(selfAddress(h.deps, undefined, "crew-listener")!)).toBe(
-      "https://laptop.tail.ts.net:8787/pack/v1/enroll",
+      "https://laptop.tail.ts.net:8787/crew/v1/enroll",
     );
   });
 
@@ -385,18 +385,18 @@ describe("selfAddress — the port is explicit exactly where the dial needs it",
 
 describe("enrollUrl", () => {
   test("a bare host becomes an https enrollment URL on the default bridge port", () => {
-    expect(enrollUrl("desk.ts.net")).toBe("https://desk.ts.net:8787/pack/v1/enroll");
-    expect(enrollUrl("http://desk:8787")).toBe("http://desk:8787/pack/v1/enroll");
+    expect(enrollUrl("desk.ts.net")).toBe("https://desk.ts.net:8787/crew/v1/enroll");
+    expect(enrollUrl("http://desk:8787")).toBe("http://desk:8787/crew/v1/enroll");
   });
 
   // The port default is what makes `collie crew join bluefin` a whole command. It applies ONLY to an
   // address that named neither a scheme nor a port — anything the operator spelled is taken as spelt,
   // so a script written against 1.0.0 keeps dialling exactly where it always did.
   test("a typed port and a typed scheme both win over the defaults", () => {
-    expect(enrollUrl("desk.ts.net:9000")).toBe("https://desk.ts.net:9000/pack/v1/enroll");
-    expect(enrollUrl("https://desk.ts.net")).toBe("https://desk.ts.net/pack/v1/enroll");
-    expect(enrollUrl("https://desk.ts.net:9000")).toBe("https://desk.ts.net:9000/pack/v1/enroll");
-    expect(enrollUrl("http://desk.ts.net")).toBe("http://desk.ts.net/pack/v1/enroll");
+    expect(enrollUrl("desk.ts.net:9000")).toBe("https://desk.ts.net:9000/crew/v1/enroll");
+    expect(enrollUrl("https://desk.ts.net")).toBe("https://desk.ts.net/crew/v1/enroll");
+    expect(enrollUrl("https://desk.ts.net:9000")).toBe("https://desk.ts.net:9000/crew/v1/enroll");
+    expect(enrollUrl("http://desk.ts.net")).toBe("http://desk.ts.net/crew/v1/enroll");
   });
 
   test("an address carrying a path, a query or credentials is refused", () => {
@@ -482,11 +482,11 @@ describe("collie join", () => {
     const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
     const req = h.requests[0]!;
-    expect(req.url).toBe("https://desk.ts.net:8787/pack/v1/enroll");
+    expect(req.url).toBe("https://desk.ts.net:8787/crew/v1/enroll");
     expect(req.method).toBe("POST");
     expect(req.url).not.toContain("token-from-stdin");
     expect(JSON.parse(req.body)).toEqual({
-      protocol: 1,
+      protocol: 2,
       token: "token-from-stdin",
       fingerprint: fp("fresh"),
       certPem: material("fresh").certPem,
@@ -729,20 +729,20 @@ describe("collie join", () => {
     const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
     expect(await cmdJoin(h.deps, ["http://desk.ts.net", "-", "--insecure"])).toBe(EXIT.OK);
     expect(h.requests).toHaveLength(1);
-    expect(h.requests[0]!.url).toBe("http://desk.ts.net/pack/v1/enroll");
+    expect(h.requests[0]!.url).toBe("http://desk.ts.net/crew/v1/enroll");
   });
 
   test("an explicit https:// address is unaffected — it dials without --insecure", async () => {
     const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
     expect(await cmdJoin(h.deps, ["https://desk.ts.net", "-"])).toBe(EXIT.OK);
-    expect(h.requests[0]!.url).toBe("https://desk.ts.net/pack/v1/enroll");
+    expect(h.requests[0]!.url).toBe("https://desk.ts.net/crew/v1/enroll");
     expect(text(h.io)).not.toContain("refusing to enroll over http://");
   });
 
   test("a bare host is unaffected — assumed https://, dials without --insecure", async () => {
     const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
-    expect(h.requests[0]!.url).toBe("https://desk.ts.net:8787/pack/v1/enroll");
+    expect(h.requests[0]!.url).toBe("https://desk.ts.net:8787/crew/v1/enroll");
     expect(text(h.io)).not.toContain("refusing to enroll over http://");
   });
 
@@ -754,7 +754,7 @@ describe("collie join", () => {
   });
 
   // ── the plain-HTTP lead: one question, asked before anything is sent ────────
-  // A default install answers `/pack/v1/*` over plain HTTP on 8787 and publishes TLS on 443 through
+  // A default install answers `/crew/v1/*` over plain HTTP on 8787 and publishes TLS on 443 through
   // `tailscale serve`. So the bare host an operator types resolves to https://host:8787, which is a
   // TLS client meeting a plaintext listener — and the refusal that shipped told them to add
   // `--insecure` to a scheme they never typed. The question below replaces that dead end.
@@ -782,8 +782,8 @@ describe("collie join", () => {
     // The https attempt carried the token and reached nothing; the http one is the first that any
     // listener could have read. Same host, same port, one scheme apart.
     expect(h.requests.map((r) => r.url)).toEqual([
-      "https://desk.ts.net:8787/pack/v1/enroll",
-      "http://desk.ts.net:8787/pack/v1/enroll",
+      "https://desk.ts.net:8787/crew/v1/enroll",
+      "http://desk.ts.net:8787/crew/v1/enroll",
     ]);
     // …and what this machine remembers is the origin that answered, not the one that did not.
     expect(h.data()!.lead).toMatchObject({ address: "http://desk.ts.net:8787" });
@@ -796,7 +796,7 @@ describe("collie join", () => {
       expect(text(h.io)).toContain("refusing to enroll over http://");
       expect(text(h.io)).toContain("--insecure");
       // One attempt, and it was the https one: nothing crossed a plaintext wire.
-      expect(h.requests.map((r) => r.url)).toEqual(["https://desk.ts.net:8787/pack/v1/enroll"]);
+      expect(h.requests.map((r) => r.url)).toEqual(["https://desk.ts.net:8787/crew/v1/enroll"]);
       expect(h.data()!.pack).toBeNull();
     }
   });
@@ -813,8 +813,8 @@ describe("collie join", () => {
     const h = harness(null, [plaintextListener(), jsonReply(ENROLLED, 200, "desk")], { interactive: true });
     expect(await cmdJoin(h.deps, [...joinArgs, "--insecure"])).toBe(EXIT.OK);
     expect(h.requests.map((r) => r.url)).toEqual([
-      "https://desk.ts.net:8787/pack/v1/enroll",
-      "http://desk.ts.net:8787/pack/v1/enroll",
+      "https://desk.ts.net:8787/crew/v1/enroll",
+      "http://desk.ts.net:8787/crew/v1/enroll",
     ]);
   });
 
@@ -1124,20 +1124,20 @@ describe("clientFor — which dials carry a pin (§8.1) and which cannot", () =>
   test("a dial to this store's LEAD carries no TLS material at all", async () => {
     const h = harness(behindAFrontDoor(), [jsonReply({ removed: "laptop" }, 200, "desk")]);
     expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
-    expect(h.requests[0]!.url).toBe("https://desk.tailnet.ts.net/pack/v1/leave");
+    expect(h.requests[0]!.url).toBe("https://desk.tailnet.ts.net/crew/v1/leave");
     // Pinning `ca: [desk.certPem]` here is the one thing that can never work: the certificate on the
     // wire belongs to the front door. Unpinned means the platform verifies it the ordinary way.
     expect(h.requests[0]!.tls).toBeUndefined();
     // …and §8.6's second factor is on the request instead, so the link is still two-factor.
     expect(h.requests[0]!.headers.authorization).toBe(`Bearer ${CREW.secret}`);
-    expect(h.requests[0]!.headers["x-pack-signature"]).toBeDefined();
+    expect(h.requests[0]!.headers["x-crew-signature"]).toBeDefined();
   });
 
   test("…and that is a fact about its ROLE, not about its address carrying a scheme", async () => {
     const bare = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")]);
     expect(await cmdLeave(bare.deps)).toBe(EXIT.OK);
     // `desk.example:8787` has no scheme, and it is still the lead — whose listener pins nothing.
-    expect(bare.requests[0]!.url).toBe("https://desk.example:8787/pack/v1/leave");
+    expect(bare.requests[0]!.url).toBe("https://desk.example:8787/crew/v1/leave");
     expect(bare.requests[0]!.tls).toBeUndefined();
   });
 
@@ -1153,7 +1153,7 @@ describe("clientFor — which dials carry a pin (§8.1) and which cannot", () =>
   test("`crew status` on a peer probes its lead through the front door, unpinned", async () => {
     const h = harness(behindAFrontDoor(), [jsonReply({ protocol: 1, member: "desk" }, 200, "desk")]);
     expect(await cmdCrewStatus(h.deps, [])).toBe(EXIT.OK);
-    expect(h.requests[0]!.url).toBe("https://desk.tailnet.ts.net/pack/v1/hello");
+    expect(h.requests[0]!.url).toBe("https://desk.tailnet.ts.net/crew/v1/hello");
     expect(h.requests[0]!.tls).toBeUndefined();
     expect(text(h.io)).toContain("reachable");
   });
@@ -1164,7 +1164,7 @@ describe("clientFor — which dials carry a pin (§8.1) and which cannot", () =>
       jsonReply({}, 200, "desk"),
     ]);
     expect(await cmdReconnect(h.deps, ["https://desk.other.ts.net"])).toBe(EXIT.OK);
-    expect(h.requests[0]!.url).toBe("https://desk.other.ts.net/pack/v1/hello");
+    expect(h.requests[0]!.url).toBe("https://desk.other.ts.net/crew/v1/hello");
     expect(h.requests.every((r) => r.tls === undefined)).toBe(true);
     expect(text(h.io)).toContain("it answered there.");
   });
@@ -1176,7 +1176,7 @@ describe("collie leave", () => {
   test("revokes on both sides when the lead answers", async () => {
     const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")]);
     expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
-    expect(h.requests[0]!.url).toBe("https://desk.example:8787/pack/v1/leave");
+    expect(h.requests[0]!.url).toBe("https://desk.example:8787/crew/v1/leave");
     expect(h.requests[0]!.headers.authorization).toBe(`Bearer ${CREW.secret}`);
     expect(text(h.io)).toContain("The lead removed this machine");
     const data = h.data()!;
@@ -1342,8 +1342,8 @@ describe("collie crew status", () => {
     ]);
     expect(await cmdCrewStatus(h.deps, [])).toBe(EXIT.OK);
     expect(h.requests.map((r) => r.url)).toEqual([
-      "https://nas.example:8787/pack/v1/hello",
-      "https://nas.example:8787/pack/v1/snapshot",
+      "https://nas.example:8787/crew/v1/hello",
+      "https://nas.example:8787/crew/v1/snapshot",
     ]);
     expect(text(h.io)).toContain("served a snapshot");
   });
@@ -1362,14 +1362,14 @@ describe("collie crew status", () => {
     expect(rendered).toContain("COLLIE_POLL_MS");
   });
 
-  // F21: on a PEER the roster's one entry is the LEAD, and `/pack/v1/snapshot` is deliberately not on
+  // F21: on a PEER the roster's one entry is the LEAD, and `/crew/v1/snapshot` is deliberately not on
   // the closed peer → lead route set (`bridge/crew/router.ts`, RFC §8.6). Asking anyway got §8.1's
   // bare 401 back and rendered a healthy crew as `data STARVED`, under a two-budget remedy that
   // cannot move an authorization refusal.
   test("a peer asks its LEAD one question, and rests the row on it", async () => {
     const h = harness(peerStore(), [jsonReply({ protocol: 1, member: "desk" }, 200, "desk")]);
     expect(await cmdCrewStatus(h.deps, [])).toBe(EXIT.OK);
-    expect(h.requests.map((r) => r.url)).toEqual(["https://desk.example:8787/pack/v1/hello"]);
+    expect(h.requests.map((r) => r.url)).toEqual(["https://desk.example:8787/crew/v1/hello"]);
     const rendered = text(h.io);
     expect(rendered).toContain("link    reachable");
     expect(rendered).not.toContain("data    ");
@@ -1486,7 +1486,7 @@ describe("collie crew status", () => {
   });
 
   test("a lead that is ITSELF the older machine never offers `crew update` (§7.1 skew direction)", async () => {
-    // The version-skew leg (PACK_PROTOCOL.md §16, 2026-09-08) ran a real 1.6.0 lead over two members
+    // The version-skew leg (CREW_PROTOCOL.md §16, 2026-09-08) ran a real 1.6.0 lead over two members
     // built from main, and this line told the operator to `collie crew update` them — which pushes
     // the LEAD's build outwards and would have taken both members backwards. The remedy has to
     // follow the direction, and the wrong one must not be printed at all.
@@ -1524,7 +1524,7 @@ describe("collie crew status", () => {
   test("a member answering without the field renders as pre-amendment, never as `unknown`", async () => {
     const h = withVersion(
       harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
-        jsonReply({ protocol: 1, member: "nas" }, 200, "nas"),
+        jsonReply({ protocol: 2, member: "nas" }, 200, "nas"),
       ]),
       "1.0.0-alpha.12",
     );
@@ -1538,7 +1538,7 @@ describe("collie crew status", () => {
   test("a protocol mismatch is still INCOMPATIBLE, and no version line dresses it up (§7)", async () => {
     const h = withVersion(
       harness(leadStore({ peers: [member({ memberId: "nas" })] }), [
-        jsonReply({ error: "crew protocol mismatch", code: "protocol_mismatch", expected: 1, received: 2 }, 409, "nas"),
+        jsonReply({ error: "crew protocol mismatch", code: "protocol_mismatch", expected: 2, received: 3 }, 409, "nas"),
       ]),
       "1.0.0-alpha.12",
     );
@@ -2043,7 +2043,7 @@ describe("collie promote", () => {
     // §14.4/§14.5 (2026-08-12): the old lead is the ONLY machine this verb talks to. "nas" pins the
     // old lead's certificate at its own handshake, so a dial there is refused at TLS — the sweep that
     // used to run here could never land, and its absence is the contract.
-    expect(h.requests.map((r) => r.url)).toEqual(["https://desk.example:8787/pack/v1/lead"]);
+    expect(h.requests.map((r) => r.url)).toEqual(["https://desk.example:8787/crew/v1/lead"]);
     expect(JSON.parse(h.requests[0]!.body)).toEqual({
       lead: { memberId: "laptop", fingerprint: fp("laptop"), certPem: material("laptop").certPem, address: "laptop.tail.ts.net" },
     });
@@ -2085,7 +2085,7 @@ describe("collie promote", () => {
     // The forced path never got a roster, so the rule is stated for "every other member" by name of
     // the rule rather than by list — the sweep is absent on both paths for the same §14.4 reason.
     expect(text(h.io)).toContain("Every other member must re-join this machine with a fresh token");
-    expect(h.requests.map((r) => r.url)).toEqual(["https://desk.example:8787/pack/v1/lead"]);
+    expect(h.requests.map((r) => r.url)).toEqual(["https://desk.example:8787/crew/v1/lead"]);
   });
 
   test("a lead has no crown to take", async () => {
@@ -2176,7 +2176,7 @@ describe("collie reconnect", () => {
     const h = harness(peerStore(), [jsonReply({ protocol: 1, member: "desk" }, 200, "desk")]);
     expect(await cmdReconnect(h.deps, ["desk.other:8787"])).toBe(EXIT.OK);
     expect(h.data()!.lead).toMatchObject({ address: "desk.other:8787", fingerprint: fp("desk") });
-    expect(h.requests[0]!.url).toBe("https://desk.other:8787/pack/v1/hello");
+    expect(h.requests[0]!.url).toBe("https://desk.other:8787/crew/v1/hello");
     expect(text(h.io)).toContain("pinned certificate is unchanged");
   });
 

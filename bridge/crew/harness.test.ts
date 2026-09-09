@@ -22,7 +22,7 @@ import { DEFAULT_SERVE_PORT, type CliContext } from "../../cli/context.ts";
 import type { Exec, ExecResult } from "../../cli/sys.ts";
 import { realFiles } from "../../cli/sys.ts";
 import { CrewOpsStore } from "./ops-store.ts";
-import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
+import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import { startFakeHerdr, type FakeHerdr } from "./fake-herdr.ts";
 import { mintIdentity, randomToken } from "./identity.ts";
 import { CREW_HELLO_PATH, CREW_LEAVE_PATH, CREW_PREFIX, CREW_SNAPSHOT_PATH } from "./router.ts";
@@ -403,14 +403,14 @@ describe("solo zero-tax, measured rather than inferred", () => {
 
   test("a solo instance's status codes are today's, per route", async () => {
     const base = lead.origin();
-    // `/pack/v1/*` is NOT ROUTED on an instance that never enrolled, and the observable form of that
+    // `/crew/v1/*` is NOT ROUTED on an instance that never enrolled, and the observable form of that
     // is INDISTINGUISHABILITY, not a particular code: whatever an arbitrary unknown path gets — an
     // SPA fallback on a build with `web/dist`, a 404 without one — the crew prefix gets the same.
     // Asserting a literal 404 here would have been asserting the presence of a frontend build.
     const unknown = await fetch(`${base}/definitely/not/a/route`);
     const packed = await fetch(`${base}${CREW_HELLO_PATH}`);
     expect(packed.status).toBe(unknown.status);
-    expect(packed.headers.get("x-pack-protocol")).toBeNull();
+    expect(packed.headers.get("x-crew-protocol")).toBeNull();
     expect((await fetch(`${base}/api/snapshot`)).status).toBe(200);
     expect((await fetch(`${base}/api/config`)).status).toBe(200);
     expect((await fetch(`${base}/api/pane/${encodeURIComponent(lead.paneId)}`)).status).toBe(200);
@@ -418,7 +418,7 @@ describe("solo zero-tax, measured rather than inferred", () => {
 
   test("the peer sweep rides the herd poll — there is no second timer", async () => {
     // §11's row, measured rather than inferred. The lead's own Herdr is polled by the state engine;
-    // the peer's Herdr is polled by the PEER's state engine, and the peer's `/pack/v1/snapshot` is
+    // the peer's Herdr is polled by the PEER's state engine, and the peer's `/crew/v1/snapshot` is
     // served from that. What the row is really about is that adding a peer arms NO new clock on the
     // lead, so the lead's call rate to its own Herdr must be the same before and after a crew forms.
     // Recorded here while both instances are still solo; asserted after enrollment.
@@ -427,11 +427,11 @@ describe("solo zero-tax, measured rather than inferred", () => {
   }, 60_000);
 
   test("`/api/pack` is registered on a solo instance and answers 404 — there is no crew", async () => {
-    // The Crew overview is a FRONT-DOOR route, so unlike `/pack/v1/*` it exists here: what a solo
+    // The Crew overview is a FRONT-DOOR route, so unlike `/crew/v1/*` it exists here: what a solo
     // instance owes is a refusal, not an absence, and it is the same refusal a peer gives (ADR 0013).
     const res = await fetch(`${lead.origin()}/api/pack`);
     expect(res.status).toBe(404);
-    expect(await res.text()).toContain('"code":"pack.not_lead"');
+    expect(await res.text()).toContain('"code":"crew.not_lead"');
   });
 
   test("a solo snapshot carries no crew fields", async () => {
@@ -539,7 +539,7 @@ describe("the TLS factor is enforced at the handshake", () => {
     // router at boot from THIS checkout, so a real child bridge reports exactly what `collie version`
     // would print here — one machine, one string.
     expect(await ok.json()).toMatchObject({
-      protocol: PACK_PROTOCOL_VERSION,
+      protocol: CREW_PROTOCOL_VERSION,
       version: collieVersionBare(join(import.meta.dir, "..", "..")),
     });
 
@@ -547,7 +547,7 @@ describe("the TLS factor is enforced at the handshake", () => {
     expect(refused.status).toBe(401);
     expect(await refused.json()).toEqual({ error: "unauthorized" });
     // §8.5: a refusal carries no version banner. Its bytes are any other bare 401's.
-    expect(refused.headers.get("x-pack-protocol")).toBeNull();
+    expect(refused.headers.get("x-crew-protocol")).toBeNull();
   });
 });
 
@@ -964,8 +964,8 @@ describe("a two-anchored peer resolves its caller by signature (§8.1, 2026-08-2
     const timestamp = Date.now();
     const sent = new Headers({
       authorization: `Bearer ${from.pack!.secret}`,
-      "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
-      "x-pack-member": from.self.memberId,
+      "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
+      "x-crew-member": from.self.memberId,
     });
     // The unattested case is provably the SAME request minus two headers — which is exactly the
     // difference the gate is supposed to turn on.
@@ -1010,7 +1010,7 @@ describe("a two-anchored peer resolves its caller by signature (§8.1, 2026-08-2
   test("the LEAD's own dial is admitted, because the shipped client attests every one", async () => {
     const res = await dialAs(lead.store()!.self, true);
     expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({ protocol: PACK_PROTOCOL_VERSION, member: peer.store()!.self.memberId });
+    expect(await res.json()).toMatchObject({ protocol: CREW_PROTOCOL_VERSION, member: peer.store()!.self.memberId });
   });
 
   test("an UNATTESTED dial is refused, even from the lead's own certificate", async () => {
@@ -1038,6 +1038,39 @@ describe("a two-anchored peer resolves its caller by signature (§8.1, 2026-08-2
 });
 
 // ── Rotation, promotion, leave ───────────────────────────────────────────────
+
+// ── §0.1: both wire versions, against the same real listener ────────────────
+// REMOVE_IN_1_9_0 — the version 1 half of this describe, and `dialAsLeadV1`.
+//
+// The unit tests translate a `Request` in memory; this one goes over the real pinned handshake to a
+// real child bridge, on both prefixes, with each version's own header names. It is the only place
+// both ends are real, so it is the only place that can catch the overlap being answered by a
+// listener that was never mounted.
+describe("the wire speaks version 2, and version 1 for one release (§0, §0.1)", () => {
+  test("a version 2 dial is answered in version 2's shapes", async () => {
+    const res = await dialAsLead(CREW_HELLO_PATH, {});
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-crew-protocol")).toBe(String(CREW_PROTOCOL_VERSION));
+    expect(res.headers.get("x-pack-protocol")).toBeNull();
+    expect(await res.json()).toMatchObject({ protocol: CREW_PROTOCOL_VERSION });
+  });
+
+  test("a version 1 dial is answered in version 1's shapes, on the version 1 prefix", async () => {
+    const res = await dialAsLeadV1("/pack/v1/hello", {});
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(res.headers.get("x-pack-member")).not.toBeNull();
+    expect(res.headers.get("x-crew-protocol")).toBeNull();
+    expect(await res.json()).toMatchObject({ protocol: 1 });
+  });
+
+  test("a version 1 dial with the wrong secret is the same bare 401 — no version banner (§8.5)", async () => {
+    const res = await dialAsLeadV1("/pack/v1/hello", {}, "not-the-secret");
+    expect(res.status).toBe(401);
+    expect(res.headers.get("x-pack-protocol")).toBeNull();
+    expect(res.headers.get("x-crew-protocol")).toBeNull();
+  });
+});
 
 describe("rotation", () => {
   test("the lead rotates, dials with the superseded secret, and records the pickup", async () => {
@@ -1338,7 +1371,32 @@ async function dialAsLead(path: string, init: RequestInit, secret?: string): Pro
     headers: {
       ...init.headers,
       authorization: `Bearer ${secret ?? from.pack!.secret}`,
-      "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
+      "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
+      "x-crew-member": from.self.memberId,
+    },
+    tls: {
+      cert: from.self.certPem,
+      key: from.self.keyPem,
+      ca: [target.certPem],
+      checkServerIdentity: () => undefined,
+    },
+  });
+}
+
+/**
+ * REMOVE_IN_1_9_0 — {@link dialAsLead}'s version 1 twin (§0.1). Same pinned handshake, same secret,
+ * version 1's header names and version 1's integer: exactly what a 1.7.0 lead sends.
+ */
+async function dialAsLeadV1(path: string, init: RequestInit, secret?: string): Promise<Response> {
+  const from = lead.store()!;
+  const to = peer.store()!;
+  const target = from.peers.find((p) => p.memberId === to.self.memberId) ?? to.lead!;
+  return crewFetch(`https://127.0.0.1:${peer.port}${path}`, {
+    ...init,
+    headers: {
+      ...init.headers,
+      authorization: `Bearer ${secret ?? from.pack!.secret}`,
+      "x-pack-protocol": "1",
       "x-pack-member": from.self.memberId,
     },
     tls: {
@@ -1373,8 +1431,8 @@ async function signedLeaveProbe(opts: {
   return fetch(`http://127.0.0.1:${lead.port}${CREW_HELLO_PATH}`, {
     headers: {
       authorization: `Bearer ${from.pack!.secret}`,
-      "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
-      "x-pack-member": from.self.memberId,
+      "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
+      "x-crew-member": from.self.memberId,
       [TIMESTAMP_HEADER]: String(timestamp),
       [SIGNATURE_HEADER]: signature,
     },
@@ -1506,7 +1564,7 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
   const standby = (path: string, init: RequestInit = {}) =>
     fetch(`http://127.0.0.1:${standbyPort}${path}`, init);
   /**
-   * `GET /pack/v1/hello` at a peer, dialled as the LEAD does it — the exact bytes the lead's own
+   * `GET /crew/v1/hello` at a peer, dialled as the LEAD does it — the exact bytes the lead's own
    * `crew status` reads its answers off. Two factors: the lead's certificate at the handshake and the
    * crew secret in the header.
    */
@@ -1518,8 +1576,8 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
     const res = await crewFetch(`https://127.0.0.1:${target.port}${CREW_HELLO_PATH}`, {
       headers: {
         authorization: `Bearer ${from.pack!.secret}`,
-        "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
-        "x-pack-member": from.self.memberId,
+        "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
+        "x-crew-member": from.self.memberId,
       },
       tls: {
         cert: from.self.certPem,

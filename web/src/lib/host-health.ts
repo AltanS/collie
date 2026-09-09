@@ -19,7 +19,7 @@
 //     the lead served while a peer was down is a LIVE poll, and `api.ts` stamps it as one.
 //
 // ── AND WHY THE CLOCK HERE IS THE LEAD'S, NOT THE BROWSER'S ──────────────────
-// `ServerSummary.lastSeenAt` is stamped by the LEAD on receipt (PACK_PROTOCOL.md §10.2 — "a peer's
+// `ServerSummary.lastSeenAt` is stamped by the LEAD on receipt (CREW_PROTOCOL.md §10.2 — "a peer's
 // clock is never trusted"), so the only sound thing to measure it against is the lead's clock too:
 // the snapshot's own `ts`. Subtracting a phone's `Date.now()` from a lead's timestamp measures the
 // skew between two machines as much as it measures staleness — on a phone a few minutes fast, every
@@ -52,7 +52,7 @@ import type { ServerSummary } from "./types";
 import { t } from "./i18n";
 
 /**
- * Three states and no more (PACK_PROTOCOL.md §10.2's table, read as presentation):
+ * Three states and no more (CREW_PROTOCOL.md §10.2's table, read as presentation):
  *
  * - `live` — the lead's last poll of this member landed inside the tolerance below.
  * - `stale` — the lead has not heard from it recently enough, and we still hold its last-good
@@ -115,7 +115,7 @@ export interface HostHealth {
 }
 
 /**
- * The ceiling on the presented-stale tolerance (PACK_PROTOCOL.md §10.2): "older than `3 × pollMs`
+ * The ceiling on the presented-stale tolerance (CREW_PROTOCOL.md §10.2): "older than `3 × pollMs`
  * **or** 15 s, whichever comes first". 15 s is also `CONNECTION_LOST_MS` — deliberately the same
  * number, because §10.2 sets the peer's tolerance to "the same tolerance the herd link already gets".
  * Not imported from connection-health.ts: an equal value is not a shared dependency, and importing it
@@ -271,7 +271,7 @@ export function departedHealth(host: string): HostHealth {
 
 /**
  * The reason a write to this host must be refused before it is attempted, or `undefined` when it may
- * proceed. PACK_PROTOCOL.md §10.3: refusal names the member and its `lastSeenAt`; an incompatible
+ * proceed. CREW_PROTOCOL.md §10.3: refusal names the member and its `lastSeenAt`; an incompatible
  * member is refused with the protocol reason verbatim.
  *
  * The lead refuses these anyway (503 `host_unreachable` / `host_incompatible`), so this is not the
@@ -290,7 +290,7 @@ export function writeRefusal(h: HostHealth | undefined): string | undefined {
 }
 
 /**
- * What a surface SAYS about a link, in one word: the presentation split of PACK_PROTOCOL.md §10.2.
+ * What a surface SAYS about a link, in one word: the presentation split of CREW_PROTOCOL.md §10.2.
  *
  * - `ok` — nothing to say.
  * - `reconnecting` — the lead is retrying and is inside its budget. Quiet, and never red: a

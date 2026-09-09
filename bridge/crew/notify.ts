@@ -9,7 +9,7 @@ import type { AgentStatus, AgentView, CrewMode, PaneWire } from "../types.ts";
 import type { PeerSnapshotBody } from "./merge.ts";
 import { crewHerdTagFor } from "./tags.ts";
 
-// Push convergence: ONE phone registration, on the lead (PACK_PROTOCOL.md §5, §10.1).
+// Push convergence: ONE phone registration, on the lead (CREW_PROTOCOL.md §5, §10.1).
 //
 // ── THE SHAPE, AND WHY IT IS THIS ONE ────────────────────────────────────────
 // Notifications for a peer's panes are derived ON THE LEAD, from the snapshots the lead already
@@ -155,7 +155,7 @@ export class PeerNotifier<H = unknown> {
   }
 
   private create(host: string): HostEntry<H> {
-    // A peer's sweep reads its `/pack/v1/snapshot` with no `?session=`, i.e. its PRIMARY session
+    // A peer's sweep reads its `/crew/v1/snapshot` with no `?session=`, i.e. its PRIMARY session
     // (§5's "absent → primary"), and a merged pane carries no session of its own — so a host has
     // exactly one slot today. When per-session sweeping lands, this is where the key grows.
     const sink = makeNotifySink(this.deps.push, this.deps.mute, crewHerdTagFor(host, true, ""), { host });

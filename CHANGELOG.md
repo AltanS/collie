@@ -42,6 +42,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Changed
 
 - **Every state card in the playground carries a stable handle.** The dev-only states page now renders a `data-state` id on each card, flat kebab-case and unique across the page, so a browser test can address "the update band with a run in flight" without matching the card's prose label. The handle is a required prop, so a new card cannot be added without one, and a unit test refuses a repeat. The controls that switch a card between two states gained accessible names for the same reason. Nothing changes in the shipped bundle: the playground stays out of `web/dist`.
+- **Update the lead first: the crew wire moves to protocol version 2.** The paths become `/crew/v1/*`, the headers `X-Crew-*`, the signing contexts `collie-crew-warrant-v2` and `collie-crew-dial-v2`, and `CREW_PROTOCOL_VERSION` is 2. A 1.8.0 lead keeps answering `/pack/v1/*` in the version 1 shapes for one release, and a 1.8.0 member falls back to that prefix once against a lead still on 1.7.0 and writes one journal line per lead saying it did, so a crew can be rolled lead first with no member cut off. Both halves of that overlap are removed in 1.9.0, from when a 1.7.0 member no longer talks to a newer lead.
 
 ### Fixed
 

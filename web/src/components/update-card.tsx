@@ -64,7 +64,7 @@ import type {
 // ── THE RESTART GAP IS NOT AN OUTAGE ─────────────────────────────────────────
 // The bridge goes away during `restarting`. A poll that fails in that window is the update working,
 // and this card must never render it the way it would render a genuine outage — so a failed poll
-// there falls through to the standby door (`GET /standby/update`, PACK_PROTOCOL.md §18.15) and, if
+// there falls through to the standby door (`GET /standby/update`, CREW_PROTOCOL.md §18.15) and, if
 // that is unreachable too, changes nothing on screen and tries again.
 
 
@@ -76,7 +76,7 @@ import type {
  * runs at `HOT_MS` while a run is in flight (`hooks/use-polling.ts`) and carries the same run
  * record, so the front-door half is gone and this timer answers only the question nothing else can.
  *
- * That question is the restart gap. `GET /standby/update` (PACK_PROTOCOL.md §18.15) is the one
+ * That question is the restart gap. `GET /standby/update` (CREW_PROTOCOL.md §18.15) is the one
  * reader that works while the bridge this page is served from is down, which is exactly the minute
  * the operator called the most confusing. Nothing else on this screen can reach it.
  */

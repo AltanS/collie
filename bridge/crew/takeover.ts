@@ -7,7 +7,7 @@ import { dialTls, type CrewTlsOptions } from "./transport.ts";
 import type { RosterRow, TrustedMember, TrustStoreData, Warrant } from "./trust-store.ts";
 import { currentWarrant, parseWarrant, verifyWarrantSignature, warrantExpired } from "./warrant.ts";
 
-// The takeover exchange (RFC §7, PACK_PROTOCOL.md §18.16): the one thing that SPENDS a warrant.
+// The takeover exchange (RFC §7, CREW_PROTOCOL.md §18.16): the one thing that SPENDS a warrant.
 //
 // ── THREE STEPS, AND THE ORDER IS THE SAFETY ─────────────────────────────────
 //   (a) **Ask the lead first.** One patient `hello`. If it answers, the takeover is REFUSED and
@@ -32,7 +32,7 @@ import { currentWarrant, parseWarrant, verifyWarrantSignature, warrantExpired } 
 // PURE except for the injected dials and the injected commit — every decision below is a function of
 // data, which is what makes the refusal matrix a table test rather than a test of a socket.
 
-/** `POST /pack/v1/takeover`'s phase. **Absent means `probe`** — the reading that changes nothing. */
+/** `POST /crew/v1/takeover`'s phase. **Absent means `probe`** — the reading that changes nothing. */
 export type TakeoverPhase = "probe" | "commit";
 
 /** The machine-readable `code` on a peer's "my lead called me recently" refusal (RFC §7.1). */
@@ -59,7 +59,7 @@ export const LEAD_IS_ALIVE = "lead_is_alive";
  */
 export const TAKEOVER_RESTART_EXIT = 75;
 
-/** The body of `POST /pack/v1/takeover`. */
+/** The body of `POST /crew/v1/takeover`. */
 export interface TakeoverRequest {
   readonly phase: TakeoverPhase;
   readonly warrant: Warrant;
@@ -360,7 +360,7 @@ export interface TakeoverDeps {
   readonly address: () => string;
   /** Step (a): one patient `hello` at the lead. */
   readonly hello: (link: CrewLink) => Promise<PeerOutcome<unknown>>;
-  /** Steps (b): `POST /pack/v1/takeover`, probe then commit. */
+  /** Steps (b): `POST /crew/v1/takeover`, probe then commit. */
   readonly ask: (link: CrewLink, body: TakeoverBody) => Promise<PeerOutcome<JsonValue>>;
   /** Step (c): rewrite this store, adopt the pairing registry, audit. Returns what it managed. */
   readonly commit: (confirmed: ReadonlySet<string>) => Promise<CommitOutcome>;

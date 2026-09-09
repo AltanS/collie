@@ -6,7 +6,7 @@ import { join } from "node:path";
 //
 // It lives in `bridge/` rather than in `cli/` because the dependency direction is one-way — `cli/`
 // imports from `bridge/` (context.ts already does, for `config.ts` and `root.ts`) and nothing in
-// `bridge/` may import from `cli/`. `hello` has to answer with a version (PACK_PROTOCOL.md §7.1,
+// `bridge/` may import from `cli/`. `hello` has to answer with a version (CREW_PROTOCOL.md §7.1,
 // "Where the responder gets the string"), and the spec's requirement is that the bridge and the CLI
 // "never print different strings for one machine" — which is only guaranteed by one implementation,
 // not by two that agree today. `cli/context.ts` re-exports {@link collieVersion} from here.

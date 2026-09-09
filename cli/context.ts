@@ -281,7 +281,7 @@ export function resolveConfigDir(deps: ConfigDirDeps): ConfigDirResult {
 // ── Version ──────────────────────────────────────────────────────────────────
 
 // Re-exported, not defined here. The resolver moved to `bridge/version.ts` when `hello` had to
-// answer with this machine's version (PACK_PROTOCOL.md §7.1): the bridge cannot import from `cli/`,
+// answer with this machine's version (CREW_PROTOCOL.md §7.1): the bridge cannot import from `cli/`,
 // and two implementations that agree today are not the guarantee the spec asks for. Every existing
 // caller keeps importing it from here.
 export { collieVersion, collieVersionBare, collieVersionFrom } from "../bridge/version.ts";

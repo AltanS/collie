@@ -384,7 +384,7 @@ export const handlers = [
   // world, and a test that wants a crew overrides this with `fixtureCrewStatus`.
   http.get("/api/pack", () =>
     HttpResponse.json(
-      { error: "this collie is not the lead of a crew", code: "pack.not_lead" },
+      { error: "this collie is not the lead of a crew", code: "crew.not_lead" },
       { status: 404 },
     ),
   ),

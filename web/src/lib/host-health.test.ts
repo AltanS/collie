@@ -40,7 +40,7 @@ function member(over: Partial<ServerSummary> = {}): ServerSummary {
 
 const HOT = { at: LEAD_NOW, pollMs: 1500 };
 
-describe("staleThresholdMs — PACK_PROTOCOL.md §10.2", () => {
+describe("staleThresholdMs — CREW_PROTOCOL.md §10.2", () => {
   it("is 3 × pollMs at the hot cadence", () => {
     expect(staleThresholdMs(1500)).toBe(4500);
   });

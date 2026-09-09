@@ -1,6 +1,6 @@
 import { createHash, sign as cryptoSign, verify as cryptoVerify, X509Certificate } from "node:crypto";
 
-// Signed membership requests (PACK_PROTOCOL.md §8.6).
+// Signed membership requests (CREW_PROTOCOL.md §8.6).
 //
 // ── WHY THIS EXISTS ──────────────────────────────────────────────────────────
 // §8.1's first factor is a pinned certificate, and on the PEER's listener that pin is enforced by
@@ -23,9 +23,9 @@ import { createHash, sign as cryptoSign, verify as cryptoVerify, X509Certificate
 // no store — so `signing.test.ts` tests the shipping rule rather than a harness.
 
 /** Base64 ECDSA-P256-SHA256 over {@link canonicalRequest}. */
-export const SIGNATURE_HEADER = "x-pack-signature";
+export const SIGNATURE_HEADER = "x-crew-signature";
 /** Epoch milliseconds, as a decimal integer. Part of the signed string, so it cannot be re-stamped. */
-export const TIMESTAMP_HEADER = "x-pack-timestamp";
+export const TIMESTAMP_HEADER = "x-crew-timestamp";
 
 /**
  * How far apart two members' clocks may be before a signature is refused.
@@ -44,7 +44,7 @@ export const MAX_SKEW_MS = 5 * 60 * 1000;
  * ```
  *
  * Four fields and no more, each of which closes a specific substitution:
- *   • **method** — a signed `POST /pack/v1/leave` must not be replayable as anything else;
+ *   • **method** — a signed `POST /crew/v1/leave` must not be replayable as anything else;
  *   • **path** — the same body must not be movable from `leave` to `lead`;
  *   • **body digest** — the claim inside the body (which member, which fingerprint) is what §14
  *     authenticates, so it has to be under the signature rather than beside it;
@@ -176,12 +176,11 @@ export function verifyRequestSignature(certPem: string, signatureB64: string, pa
 // sweep. What bounds a captured dial instead is the receiver binding — the only party positioned to
 // capture one is the receiver itself, and it is the only collie it verifies at.
 
-/** Base64 ECDSA-P256-SHA256 over {@link canonicalDial}. Rides beside `X-Pack-Timestamp`. */
-export const DIAL_HEADER = "x-pack-dial";
+/** Base64 ECDSA-P256-SHA256 over {@link canonicalDial}. Rides beside `X-Crew-Timestamp`. */
+export const DIAL_HEADER = "x-crew-dial";
 
 /** The fixed domain tag, and the first field of every canonical dial string. */
-// M27: stays until spec 03 (wire) — the signing domain is bytes both ends hash.
-export const DIAL_DOMAIN = "collie-pack-dial-v1";
+export const DIAL_DOMAIN = "collie-crew-dial-v2";
 
 export interface DialParts {
   readonly method: string;
@@ -189,17 +188,28 @@ export interface DialParts {
   readonly timestamp: number;
   /** The member id this dial is aimed at. The field that makes a captured dial unusable elsewhere. */
   readonly to: string;
+  /**
+   * REMOVE_IN_1_9_0 — the domain tag to sign under, for the version 1 overlap alone (§0.1).
+   *
+   * Absent means {@link DIAL_DOMAIN}, which is every dial on `/crew/v1/*`. A dial on `/pack/v1/*`
+   * passes `V1_DIAL_DOMAIN` (`v1-overlap.ts`), because the domain is bytes both ends hash and a
+   * 1.7.0 member hashes the old one. It rides here rather than in a second function so the two ends
+   * cannot drift: `signDial` and `verifyDial` read the same field.
+   */
+  readonly domain?: string | undefined;
 }
 
 /**
  * The string a dial attestation signs, exactly:
  *
  * ```
- * collie-pack-dial-v1\n<METHOD>\n<path>\n<timestamp>\n<to>
+ * collie-crew-dial-v2\n<METHOD>\n<path>\n<timestamp>\n<to>
  * ```
  */
 export function canonicalDial(parts: DialParts): string {
-  return [DIAL_DOMAIN, parts.method.toUpperCase(), parts.path, String(parts.timestamp), parts.to].join("\n");
+  // REMOVE_IN_1_9_0: `parts.domain ??` — the overlap's only reach into this string.
+  const domain = parts.domain ?? DIAL_DOMAIN;
+  return [domain, parts.method.toUpperCase(), parts.path, String(parts.timestamp), parts.to].join("\n");
 }
 
 /** Sign one dial with this collie's own identity key. */
@@ -212,7 +222,7 @@ export function verifyDial(certPem: string, signatureB64: string, parts: DialPar
   return verifyCanonical(certPem, signatureB64, canonicalDial(parts));
 }
 
-/** Parse `X-Pack-Timestamp`. A non-integer, negative or absent value is `null`, which is a refusal. */
+/** Parse `X-Crew-Timestamp`. A non-integer, negative or absent value is `null`, which is a refusal. */
 export function parseTimestamp(raw: string | null | undefined): number | null {
   if (raw === null || raw === undefined) return null;
   const trimmed = raw.trim();

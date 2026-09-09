@@ -2251,7 +2251,7 @@ describe("AgentChat — folding the tab and pane rows", () => {
 // The pane header's rocket is gone; the switcher sheet is one of its two remaining homes (the other
 // is the dashboard's own LaunchStrip, covered by launch-strip.test.tsx). Same launchers.toml rows,
 // declared here through GET /api/launchers — a session-scoped route (server.ts), never a field on
-// /api/config, so rows come from the host that runs them (PACK_PROTOCOL.md §5).
+// /api/config, so rows come from the host that runs them (CREW_PROTOCOL.md §5).
 /** What `api.launch`'s POST body carries — mirrors lib/api.ts's `LaunchRequestBody`. */
 interface LaunchPostedBody {
   command?: string;

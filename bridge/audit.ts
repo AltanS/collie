@@ -56,9 +56,9 @@ const METADATA_KEYS: ReadonlySet<string> = new Set([
 export interface AuditEntry {
   /** The action performed, e.g. "reply" / "keys" / "upload" / "tab.create" / "pane.close". */
   action: string;
-  /** The outermost component of the `(host, session, paneId)` address triple (PACK_PROTOCOL.md §4):
+  /** The outermost component of the `(host, session, paneId)` address triple (CREW_PROTOCOL.md §4):
    *  the crew member the action targeted. Absent (not null) when the action targeted this collie
-   *  itself, exactly as `session` is absent on pre-multi-session lines (PACK_PROTOCOL.md §11). */
+   *  itself, exactly as `session` is absent on pre-multi-session lines (CREW_PROTOCOL.md §11). */
   host?: string;
   /** Target pane, when the action is pane-scoped. */
   paneId?: string;
@@ -69,7 +69,7 @@ export interface AuditEntry {
   /**
    * How the action arrived. Absent ⇒ the phone talked to THIS collie directly (every pre-crew line,
    * and every line on a solo instance). `"pack"` ⇒ it arrived over a crew link, i.e. a lead forwarded
-   * it (PACK_PROTOCOL.md §12) — written on the PEER, whose terminals actually moved.
+   * it (CREW_PROTOCOL.md §12) — written on the PEER, whose terminals actually moved.
    */
   via?: "pack";
   /**
@@ -151,9 +151,9 @@ function sanitize(
  * Render one entry to a single JSONL line (no trailing newline). Stable field order
  * (ts, action, host?, paneId?, session?, device?, via?, from?, detail) — `host` sits right after
  * `action` since it is the outermost component of the `(host, session, paneId)` triple
- * (PACK_PROTOCOL.md §4), and `via`/`from` sit next to `device` because all three answer "who did
+ * (CREW_PROTOCOL.md §4), and `via`/`from` sit next to `device` because all three answer "who did
  * this" — so lines are grep/diff-friendly; optional attribution is omitted (not null) when absent,
- * keeping a zero-peer line byte-identical to today's (PACK_PROTOCOL.md §11). Pure — `now` (epoch ms)
+ * keeping a zero-peer line byte-identical to today's (CREW_PROTOCOL.md §11). Pure — `now` (epoch ms)
  * is injected so tests are deterministic.
  */
 export function formatAuditLine(

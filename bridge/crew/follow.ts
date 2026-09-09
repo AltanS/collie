@@ -14,9 +14,9 @@ import { inFlight } from "../update-run.ts";
 // HTTPS, so no lead is ever a distribution point; and the lead sends no ref, no URL and no command —
 // only the version it is itself running, and a member name with an opaque run id.
 //
-// There is therefore no new `/pack/v1/*` route, no inbound update surface on a peer, and no verb.
-// Two additive-optional REQUEST headers ride the sweep the lead already makes (PACK_PROTOCOL.md §6,
-// §20), `X-Pack-Protocol` stays `1`, and **a peer that ignores both headers is a correct peer**.
+// There is therefore no new `/crew/v1/*` route, no inbound update surface on a peer, and no verb.
+// Two additive-optional REQUEST headers ride the sweep the lead already makes (CREW_PROTOCOL.md §6,
+// §20), `X-Crew-Protocol` stays `1`, and **a peer that ignores both headers is a correct peer**.
 //
 // ── EVERY GUARD IS ON THE PEER ───────────────────────────────────────────────
 // Neither header is an order. The lead states a fact and hands out a turn; the peer decides, and it
@@ -25,7 +25,7 @@ import { inFlight } from "../update-run.ts";
 // try at most once an hour.
 
 /**
- * `X-Pack-Lead-Release: <bare version>` — the release the LEAD is itself running, sent only when
+ * `X-Crew-Lead-Release: <bare version>` — the release the LEAD is itself running, sent only when
  * that version is a strict release and the lead's own health gate has settled it (§20).
  *
  * It cannot express any other version: it is read from the same `collieVersionBare` the lead answers
@@ -35,16 +35,16 @@ import { inFlight } from "../update-run.ts";
  * Absent means the lead is on a dev or prerelease build, or is mid-run — and absent means the peer
  * does nothing at all.
  */
-export const LEAD_RELEASE_HEADER = "X-Pack-Lead-Release";
+export const LEAD_RELEASE_HEADER = "X-Crew-Lead-Release";
 
 /**
- * `X-Pack-Update-Turn: <member-name>;<run-id>` — whose turn it is, and which run it belongs to (§20).
+ * `X-Crew-Update-Turn: <member-name>;<run-id>` — whose turn it is, and which run it belongs to (§20).
  *
  * It carries **no version, no ref, no URL and no command**: a member name and an opaque run id,
  * nothing else. It is a mutex token with a receipt, sent to at most one member at a time, and a peer
  * ignores a turn that does not name itself — the lead cannot address one peer and have another act.
  */
-export const UPDATE_TURN_HEADER = "X-Pack-Update-Turn";
+export const UPDATE_TURN_HEADER = "X-Crew-Update-Turn";
 
 /** The separator inside {@link UPDATE_TURN_HEADER}'s value. A member id never contains one. */
 const TURN_SEPARATOR = ";";
@@ -443,7 +443,7 @@ export class CrewFollower {
  *
  * `package-managed` is TERMINAL in the same sense `done` is: the queue never waits on it and a run
  * completes with one present. It says the member's files belong to a package manager (ADR 0035), so
- * nothing the lead can do moves that machine. It is additive-optional on the wire (PACK_PROTOCOL.md
+ * nothing the lead can do moves that machine. It is additive-optional on the wire (CREW_PROTOCOL.md
  * §7.1): a reader that does not know the value renders it as it renders any unknown state, and
  * nothing ever branches on it to take an action.
  */
@@ -826,7 +826,7 @@ export interface TurnSweep {
 /** Whether a member may be handed the turn: behind, reachable, and preflight-clean. */
 function eligible(m: TurnMember, leg: PeerLeg | undefined): boolean {
   // Every terminal state excludes, and `package-managed` is one of them — which is why a packaged
-  // member never receives `X-Pack-Update-Turn` without a second rule stated here.
+  // member never receives `X-Crew-Update-Turn` without a second rule stated here.
   if (leg === undefined || leg.state !== "waiting") return false;
   // `null` is UNKNOWN and it blocks, exactly as it does on the card (§19): "we could not check this
   // machine" is not "this machine is fine".

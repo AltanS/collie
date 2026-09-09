@@ -57,11 +57,11 @@ describe("the peer applies its OWN write-level checks (§12)", () => {
 describe("the device identity comes off the LINK, not off the peer's own header", () => {
   const req = (headers: Record<string, string>) => new Request("https://peer.example/api/pane/x", { headers });
 
-  test("X-Pack-Device is read, and read even when the peer's device feature is off", () => {
+  test("X-Crew-Device is read, and read even when the peer's device feature is off", () => {
     // Attribution and authorisation are different questions: a peer with no device gate still wants
     // the operator's identity in its audit line (§12).
-    expect(crewDeviceOf(req({ "x-pack-device": "phone-7" }))).toBe("phone-7");
-    expect(crewDeviceOf(req({ "x-pack-device": "  phone-7  " }))).toBe("phone-7");
+    expect(crewDeviceOf(req({ "x-crew-device": "phone-7" }))).toBe("phone-7");
+    expect(crewDeviceOf(req({ "x-crew-device": "  phone-7  " }))).toBe("phone-7");
   });
 
   test("a peer's own COLLIE_DEVICE_HEADER value is NOT an input — only the crew header is", () => {
@@ -72,6 +72,6 @@ describe("the device identity comes off the LINK, not off the peer's own header"
 
   test("absent and blank are the same thing", () => {
     expect(crewDeviceOf(req({}))).toBeNull();
-    expect(crewDeviceOf(req({ "x-pack-device": "   " }))).toBeNull();
+    expect(crewDeviceOf(req({ "x-crew-device": "   " }))).toBeNull();
   });
 });

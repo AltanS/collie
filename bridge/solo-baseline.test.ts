@@ -35,7 +35,7 @@ import type {
 // ─────────────────────────────────────────────────────────────────────────────
 // SOLO ZERO-TAX BASELINE — you are not allowed to tax a solo user.
 //
-// Crew federation (M3/M4) is being built on top of this code. The contract in PACK_PROTOCOL.md §11
+// Crew federation (M3/M4) is being built on top of this code. The contract in CREW_PROTOCOL.md §11
 // says that with ZERO peers enrolled, Collie's observable behaviour stays byte-for-byte what it is
 // TODAY: no added snapshot field, no shifted ETag, no new route, no new state file, no new env key,
 // no changed notification tag or audit line.
@@ -539,7 +539,7 @@ describe("solo zero-tax — ETag", () => {
   });
 
   // NEGATIVE CONTROL — this is the tax, measured. It is why `servers` is optional-and-absent rather
-  // than an always-present empty array (PACK_PROTOCOL.md §11).
+  // than an always-present empty array (CREW_PROTOCOL.md §11).
   test("adding an empty `servers: []` would move every solo ETag", () => {
     const today = JSON.stringify(soloSnapshot(soloRegistry()));
     const taxed = JSON.stringify({ ...soloSnapshot(soloRegistry()), servers: [] });
@@ -550,7 +550,7 @@ describe("solo zero-tax — ETag", () => {
 // ── 4. Routes ────────────────────────────────────────────────────────────────
 // §11: zero routes added, no `/crew` prefix registered. The dispatch lives inside `Bun.serve`, which
 // `bun test` cannot stand up (CLAUDE.md), so the route table is pinned by reading the source's route
-// literals. Crude, but it is the actual registration site — a new `if (pathname === "/pack/…")` in
+// literals. Crude, but it is the actual registration site — a new `if (pathname === "/crew/…")` in
 // server.ts fails here even though no server was started.
 
 function declaredRoutes(): string[] {
@@ -570,7 +570,7 @@ describe("solo zero-tax — routes", () => {
       // One content-addressed image out of a pi/omp journal's blob store — a SOLO route that
       // legitimately extends this list, named here rather than exempted. Session-scoped and
       // read-gated like the pane read beside it, so a `?host=` call forwards to the member whose
-      // journal named the file (PACK_PROTOCOL.md §9.1).
+      // journal named the file (CREW_PROTOCOL.md §9.1).
       "/^\\/api\\/blobs\\/([^/]+)$/",
       "/^\\/api\\/pane\\/([^/]+)(?:\\/(reply|keys|upload|close|rename|history|focus))?$/",
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
@@ -600,14 +600,14 @@ describe("solo zero-tax — routes", () => {
       "/api/notifications/snooze",
       // The Crew overview (bridge/crew/status-wire.ts) — a FRONT-DOOR route, and it legitimately
       // extends this list rather than being exempted, exactly as pairing and STT do. It is not a
-      // crew route: `/pack/v1/*` is the link a peer answers (ADR 0013), and this is the lead's own
+      // crew route: `/crew/v1/*` is the link a peer answers (ADR 0013), and this is the lead's own
       // browser answering its own operator. A solo instance registers it and 404s
-      // (`pack.not_lead`) — the same shape `/api/stt` has when no provider is configured.
+      // (`crew.not_lead`) — the same shape `/api/stt` has when no provider is configured.
       "/api/pack",
       "/api/pair",
       // "Look now" (ADR 0031) — a SOLO route that legitimately extends this list, named here rather
       // than exempted. It is session-scoped and read-gated, and it registers no crew route of its
-      // own: a lead reaches a peer's through the peer's existing `/pack/v1/*` dispatch.
+      // own: a lead reaches a peer's through the peer's existing `/crew/v1/*` dispatch.
       "/api/refresh",
       "/api/snapshot",
       // Speech-to-text (bridge/stt/) — a SOLO feature that legitimately extends this list, named
@@ -634,14 +634,20 @@ describe("solo zero-tax — routes", () => {
     ]);
   });
 
-  // §11's actual promise, and it is about the PREFIX: `/pack/v1/*` is not routed here on any
+  // §11's actual promise, and it is about the PREFIX: `/crew/v1/*` is not routed here on any
   // instance, solo or otherwise — it is declared in `bridge/crew/router.ts` and reached through the
   // `crewRouter` closure, which is what lets this file prove by grep that server.ts names no crew
-  // path. A front-door route whose NAME contains "pack" (`/api/pack`) is a different thing entirely
-  // and is pinned by the list above; matching on the substring would have conflated the two.
-  test("no /crew prefix is routed at all", () => {
-    expect(declaredRoutes().filter((r) => r.startsWith("/pack"))).toEqual([]);
-    expect(readFileSync(join(import.meta.dir, "server.ts"), "utf8")).not.toMatch(/"\/pack/);
+  // path. A front-door route whose NAME contains the word (`/api/pack`) is a different thing
+  // entirely and is pinned by the list above; matching on the substring would have conflated the two.
+  //
+  // BOTH prefixes are asserted. The version 1 overlap (`/pack/v1/*`, REMOVE_IN_1_9_0) is declared in
+  // `bridge/crew/v1-overlap.ts` and dispatched by `bridge/crew/router.ts`, for the same reason
+  // version 2 is, so server.ts names neither and solo still registers nothing.
+  test("no crew prefix is routed at all, version 2 or the version 1 overlap", () => {
+    const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
+    expect(declaredRoutes().filter((r) => r.startsWith("/crew") || r.startsWith("/pack"))).toEqual([]);
+    expect(src).not.toMatch(/"\/crew/);
+    expect(src).not.toMatch(/"\/pack/);
   });
 });
 
@@ -843,9 +849,9 @@ const CREW_STATE_DIR_ENTRIES = [
   "pack-ops.json",
   "pack-runtime.json",
   "pack-trust.json",
-  // The lead's paired-device registry, synced to the DEPUTY only (RFC §6.5, PACK_PROTOCOL.md §18.14).
+  // The lead's paired-device registry, synced to the DEPUTY only (RFC §6.5, CREW_PROTOCOL.md §18.14).
   // **A solo instance can never have one**, and the reason is structural rather than a check anyone
-  // has to remember: it is written on exactly one path — a `POST /pack/v1/pairing` that cleared the
+  // has to remember: it is written on exactly one path — a `POST /crew/v1/pairing` that cleared the
   // crew's two factors, came from this collie's own pinned LEAD, and found a verified warrant naming
   // THIS machine as deputy. A solo instance has no trust store, so it registers no crew routes at all,
   // so none of those three can ever be true of it.

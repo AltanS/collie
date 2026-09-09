@@ -5,7 +5,7 @@ import { type CrewLink, type PeerFailure, type PeerOutcome, WRITE_BUDGET_MS } fr
 import { HOST_PARAM, type PeerState } from "./registry.ts";
 
 // The LEAD side of a per-pane request: `?host=laptop` came in, the pane lives on the laptop, so the
-// request is forwarded over the crew link and the laptop's answer is handed back (PACK_PROTOCOL.md
+// request is forwarded over the crew link and the laptop's answer is handed back (CREW_PROTOCOL.md
 // §5, §9.1, §10.3, §12, §13).
 //
 // ── ONE PATH, NOT SEVEN ──────────────────────────────────────────────────────
@@ -63,7 +63,7 @@ const FORWARDABLE: readonly RegExp[] = [
   /^launchers$/,
   // A blob is bytes on ONE machine's disk: the journal that named it is that member's journal, and
   // the lead holds no copy. So a `?host=` blob read is proxied byte for byte exactly like
-  // `history` (PACK_PROTOCOL.md §9.1). The hash is matched as an opaque segment, mirroring
+  // `history` (CREW_PROTOCOL.md §9.1). The hash is matched as an opaque segment, mirroring
   // `BLOB_ROUTE` in bridge/server.ts one-for-one — `forward.test.ts` pins that correspondence.
   /^blobs\/[^/]+$/,
 ];
@@ -177,7 +177,7 @@ export type ForwardAuditEntry = {
  * the pre-gzip body (`bridge/http-cache.ts`) — so what this costs is one tailnet hop's compression,
  * and what it buys is a header that describes the bytes.
  *
- * `X-Pack-Device` is added here rather than on the client because it is a property of the PHONE's
+ * `X-Crew-Device` is added here rather than on the client because it is a property of the PHONE's
  * request — the operator's device as the lead's own `deviceAuth()` resolved it (§12) — and the sweep
  * that polls a peer's snapshot has no phone behind it. Absent when the lead's device gate is off,
  * matching how the audit field is omitted rather than nulled today.
@@ -246,7 +246,7 @@ function varyWithAcceptEncoding(existing: string | null): string {
  *
  * A `304`/`204` carries no body at all, which the platform enforces, so neither can be compressed.
  *
- * `x-pack-*` headers are stripped. They are link-internal (§6) and a browser must never see them.
+ * `x-crew-*` headers are stripped. They are link-internal (§6) and a browser must never see them.
  */
 export function proxiedResponse(res: Response, acceptEncoding: string | null): Response {
   const headers = new Headers();
@@ -399,7 +399,7 @@ export interface ForwardDeps {
    * business (§10.2, §10.4), and this path runs on a different budget. See `recordExchange`'s doc.
    */
   readonly onExchange?: (receivedAt: number) => void;
-  /** The operator's device, as the LEAD resolved it — forwarded as `X-Pack-Device` (§12). */
+  /** The operator's device, as the LEAD resolved it — forwarded as `X-Crew-Device` (§12). */
   readonly device?: string | null;
   /**
    * The LEAD's own upload cap in bytes (`cfg.maxUploadBytes`), for the §13 pre-check below. Passed

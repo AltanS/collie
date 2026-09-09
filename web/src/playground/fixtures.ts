@@ -18,7 +18,7 @@
 //
 //  3. **ONE clock anchor, {@link TS}, and every timestamp is expressed as an offset from it.** No
 //     fixture calls `Date.now()` for itself. That matters twice over: the crew surfaces date their
-//     `lastSeenAt` values against the snapshot's own `ts` (PACK_PROTOCOL.md §10.2), so a roster and
+//     `lastSeenAt` values against the snapshot's own `ts` (CREW_PROTOCOL.md §10.2), so a roster and
 //     a census built off different anchors would disagree about the same machine; and the herd rows
 //     render "how long ago" through `timeAgo`, so a scattered set of anchors would make two agents
 //     that are meant to be four minutes apart read as four months apart.
@@ -450,7 +450,7 @@ export const sessionsCrew: SessionSummary[] = [
 // ── Rosters (`SnapshotResponse.servers`) ─────────────────────────────────────────────────────────
 //
 // The hot-path roster: what every host-aware surface polls. Lead first. `lastSeenAt` is stamped by
-// the LEAD on receipt, so it is comparable to `ts` and to nothing else (PACK_PROTOCOL.md §10.2).
+// the LEAD on receipt, so it is comparable to `ts` and to nothing else (CREW_PROTOCOL.md §10.2).
 
 const lead: ServerSummary = {
   id: "bluefin",

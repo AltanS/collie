@@ -450,7 +450,7 @@ describe("PairingStore", () => {
 });
 
 // ── The crew surface is not a pairing surface ────────────────────────────────────────────────
-// A lead is admitted by pinned mutual TLS plus the crew secret (PACK_PROTOCOL.md §6, ADR 0013) and
+// A lead is admitted by pinned mutual TLS plus the crew secret (CREW_PROTOCOL.md §6, ADR 0013) and
 // holds none of this collie's pairing tokens. If pairing ever leaked into the peer's dispatch, every
 // crew link would break the moment its peer paired a phone — and the fix someone would reach for is
 // handing a lead a browser credential, which is precisely the thing §6 forbids. The wiring lives
@@ -522,7 +522,7 @@ describe("pairing never crosses the crew seam", () => {
     expect(callArgs.every((args) => args.includes("req, cfg"))).toBe(true);
   });
 
-  // ── AMENDED 2026-08-20 (RFC §16, decision 5; PACK_PROTOCOL.md §18.14) ────────────────────────
+  // ── AMENDED 2026-08-20 (RFC §16, decision 5; CREW_PROTOCOL.md §18.14) ────────────────────────
   // This used to be "no crew module names pairing.ts at all", and the standby door made that reading
   // impossible to keep: a deputy has to verify a bearer credential its lead minted, so `standby.ts`
   // parses an `Authorization` header and `standby-devices.ts` hashes a token to compare against a
@@ -534,7 +534,7 @@ describe("pairing never crosses the crew seam", () => {
   // no crew module may touch `PairingStore` — the class that decides `enforced()`, resolves a token
   // into a device, and writes `paired-devices.json`. That is the object whose reach would make a
   // pairing token admit a crew request, and no crew module has it. The crew surface's two factors
-  // (PACK_PROTOCOL.md §8.1) are untouched, and the standby door is a SEPARATE listener that is not on
+  // (CREW_PROTOCOL.md §8.1) are untouched, and the standby door is a SEPARATE listener that is not on
   // the crew surface at all.
   test("no crew module touches PairingStore, and only the standby pair names pairing.ts", () => {
     /** Crew modules allowed to import pairing's PURE helpers, and what each of them may take. */

@@ -367,7 +367,7 @@ describe("the door's three routes", () => {
 
   test("nothing else is served — three routes, and every other path is not this door's", async () => {
     const d = door();
-    for (const path of ["/", "/api/snapshot", "/pack/v1/hello", "/standby/", "/standbyx", "/index.html"]) {
+    for (const path of ["/", "/api/snapshot", "/crew/v1/hello", "/standby/", "/standbyx", "/index.html"]) {
       expect(await d.handler(req(path), new URL(`http://x${path}`))).toBeNull();
     }
   });

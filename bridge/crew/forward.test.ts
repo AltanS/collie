@@ -21,7 +21,7 @@ import {
 import { crewTimeoutBudget, WRITE_BUDGET_MS, type CrewLink, type PeerOutcome } from "./peer-client.ts";
 import type { PeerState } from "./registry.ts";
 
-// The lead's forwarding path (PACK_PROTOCOL.md §5, §9.1, §10.3, §12, §13).
+// The lead's forwarding path (CREW_PROTOCOL.md §5, §9.1, §10.3, §12, §13).
 //
 // All of it is exercised for real — no `Bun.serve`, no socket — because the transport is injected and
 // everything else is request-shaping in, response-classification out. That is not an accident of the
@@ -167,7 +167,7 @@ describe("which routes cross a link", () => {
       "/api/pane/w1:p1/nonsense",
       "/api/pane/w1:p1/upload/read", // §5: "no upload-read route exists on either surface"
       "/api/tab/w1:t1/delete",
-      "/pack/v1/hello",
+      "/crew/v1/hello",
       "/",
     ]) {
       expect(crewRouteFor(path)).toBeNull();
@@ -243,7 +243,7 @@ describe("a proxied read is the peer's response, unmodified (§9.1)", () => {
         "cache-control": "no-store",
         vary: "accept-encoding",
         // Link-internal, and a browser must never see it (§6).
-        "x-pack-member": "laptop",
+        "x-crew-member": "laptop",
       },
     });
     const { transport } = transportOf(() => ok(peer));
@@ -260,7 +260,7 @@ describe("a proxied read is the peer's response, unmodified (§9.1)", () => {
     expect(res.headers.get("etag")).toBe('"deadbeef"');
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(res.headers.get("vary")).toBe("accept-encoding");
-    expect(res.headers.get("x-pack-member")).toBeNull();
+    expect(res.headers.get("x-crew-member")).toBeNull();
   });
 
   test("the lead never recomputes an ETag — the peer's is the peer's assertion about its own body", async () => {
@@ -461,7 +461,7 @@ describe("request shaping", () => {
     expect(headers.get("x-collie-seen")).toBe("1");
     expect(headers.get("content-type")).toBe("multipart/form-data; boundary=xyz");
     // §12: the device is forwarded as the crew header, resolved by the LEAD's own deviceAuth.
-    expect(headers.get("x-pack-device")).toBe("phone-7");
+    expect(headers.get("x-crew-device")).toBe("phone-7");
     // A browser credential must never become a second, unaudited basis for a decision on the peer.
     for (const banned of ["cookie", "origin", "authorization", "x-tailnet-device"]) {
       expect(headers.get(banned)).toBeNull();
@@ -473,8 +473,8 @@ describe("request shaping", () => {
 
   test("no device header at all when the lead's device gate is off", () => {
     const req = new Request("https://lead.example/api/pane/w1:p1");
-    expect(forwardHeaders(req, null).get("x-pack-device")).toBeNull();
-    expect(forwardHeaders(req).get("x-pack-device")).toBeNull();
+    expect(forwardHeaders(req, null).get("x-crew-device")).toBeNull();
+    expect(forwardHeaders(req).get("x-crew-device")).toBeNull();
   });
 });
 
@@ -851,7 +851,6 @@ describe("journal, uploads and state stay host-local", () => {
     }
     // And the contract names the gap, so the two cannot drift apart silently.
     const contract = readFileSync(join(import.meta.dir, "..", "..", "MUX_CONTRACT.md"), "utf8");
-    // M27: stays until spec 04 (docs) — the literal is MUX_CONTRACT.md's own heading.
     expect(contract).toContain("## Conformance across a crew link");
     expect(contract).toContain("listSessions` and the three worktree verbs have no forwardable route");
   });

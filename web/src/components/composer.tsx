@@ -82,7 +82,7 @@ interface ComposerProps {
   readOnly: boolean;
   /**
    * The pane's MACHINE is not reachable from the lead, so a write would be refused before it left
-   * the lead (PACK_PROTOCOL.md §10.3) — the refusal text, naming the host, or undefined when writes
+   * the lead (CREW_PROTOCOL.md §10.3) — the refusal text, naming the host, or undefined when writes
    * may proceed. Always undefined on a solo install, so nothing here changes for one machine.
    *
    * Locks the composer exactly as `readOnly` does. It is NOT folded into `readOnly` by the caller

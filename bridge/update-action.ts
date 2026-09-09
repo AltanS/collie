@@ -182,7 +182,7 @@ export const PREFLIGHT_TTL_MS = 60_000;
 //
 // Every collie builds a `PreflightCache`, lead or peer, so a peer can answer for ITSELF without an
 // SSH session anybody has to hold. It publishes that answer as one additive-optional object beside
-// `GET /pack/v1/snapshot`'s body (PACK_PROTOCOL.md §19), the lead's sweep banks it, and the card
+// `GET /crew/v1/snapshot`'s body (CREW_PROTOCOL.md §19), the lead's sweep banks it, and the card
 // reads the bank. Nothing here dials, spawns or walks members: `--local` is untouched, and the lead
 // never asks a peer to check a third machine.
 
@@ -206,7 +206,7 @@ export interface PeerPreflight {
   /** When that member produced the report, on **its own** clock, epoch ms. Passed through untouched. */
   readonly asOf: number;
   /**
-   * How that member is installed, when it named a kind (PACK_PROTOCOL.md §19, added 2026-09-06).
+   * How that member is installed, when it named a kind (CREW_PROTOCOL.md §19, added 2026-09-06).
    *
    * Additive-optional with the closed reading §7.1 requires: **absent means unknown, and unknown is
    * not packaged**, so a member older than this field is driven exactly as it was before it existed.
@@ -242,7 +242,7 @@ export function crewPreflightChecks(checks: readonly PreflightCheck[]): readonly
   ];
 }
 
-/** The wire name of the field, and of the header that asks for a fresh one (PACK_PROTOCOL.md §19). */
+/** The wire name of the field, and of the header that asks for a fresh one (CREW_PROTOCOL.md §19). */
 export const CREW_PREFLIGHT_FIELD = "updatePreflight";
 
 /** What one member publishes beside its snapshot body. `null` ⇒ it has nothing to say, which is unknown. */
@@ -303,7 +303,7 @@ export function parsePeerPreflight(value: JsonValue): PeerPreflight | null {
 // ── The crew's half of the RUN (M16/04) ──────────────────────────────────────
 
 /**
- * The trimmed run record a member publishes beside its snapshot body (PACK_PROTOCOL.md §20).
+ * The trimmed run record a member publishes beside its snapshot body (CREW_PROTOCOL.md §20).
  *
  * The lead cannot otherwise know a peer is moving or has fallen back: the version alone says only
  * "still behind", and a peer that tried and rolled back looks exactly like a peer that has not
@@ -545,7 +545,7 @@ export function mergedUpdateVerdict(
 }
 
 /**
- * The peer's allowance for `X-Pack-Preflight: fresh` (PACK_PROTOCOL.md §19).
+ * The peer's allowance for `X-Crew-Preflight: fresh` (CREW_PROTOCOL.md §19).
  *
  * The header is a **request** for a re-read, not an order, and it is honoured at most once per
  * {@link PREFLIGHT_TTL_MS} — so a phone sitting on the update page cannot make a peer shell out to
@@ -618,8 +618,8 @@ export class PreflightCache {
   /**
    * What the cache holds **right now**, without running anything. `null` until a run has landed.
    *
-   * The crew's read (`GET /pack/v1/snapshot`) takes this path and not {@link PreflightCache.get}:
-   * the lead's sweep runs on a strict per-poll budget (PACK_PROTOCOL.md §10.1), and a stale entry
+   * The crew's read (`GET /crew/v1/snapshot`) takes this path and not {@link PreflightCache.get}:
+   * the lead's sweep runs on a strict per-poll budget (CREW_PROTOCOL.md §10.1), and a stale entry
    * that shelled out to git mid-sweep would turn a healthy member unreachable. The peer's own 6 h
    * refresh is what keeps this warm; `asOf` is what says how warm.
    */

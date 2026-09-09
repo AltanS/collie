@@ -14,7 +14,7 @@
 // M22/01's rule under test.
 //
 // WHAT IT CAN AND CANNOT GRADE, and why that is the point rather than a caveat. The crew surface is
-// the phone's route table re-exposed one-for-one (PACK_PROTOCOL.md §5, `bridge/crew/forward.ts`),
+// the phone's route table re-exposed one-for-one (CREW_PROTOCOL.md §5, `bridge/crew/forward.ts`),
 // not the mux port. It is NARROWER than the port in four ways this script REPORTS rather than
 // papers over:
 //

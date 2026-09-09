@@ -33,7 +33,7 @@ import { UpdateTurns, type PeerLeg, type TurnMember } from "./follow.ts";
 // The lead's side of the crew, assembled: sweep the peers, remember the last-good body, merge.
 //
 // ── NO SECOND TIMER. NOT ONE. ────────────────────────────────────────────────
-// PACK_PROTOCOL.md §10.1: "the peer sweep is a *part of* the existing poll, not a second timer", and
+// CREW_PROTOCOL.md §10.1: "the peer sweep is a *part of* the existing poll, not a second timer", and
 // §11 lists "no second timer, no peer sweep" as a row of the solo contract. So this class arms
 // nothing: it exposes {@link CrewLead.sweep}, and `bridge/index.ts` calls it from the primary
 // session's poll tick (`StateEngine.onTick`). Search this file for `setInterval`/`setTimeout` — the
@@ -166,7 +166,7 @@ export interface CrewLeadDeps {
    */
   readonly maxUploadBytes: number;
   /**
-   * `(link, view) => the peer's /pack/v1/snapshot outcome`. Injected so the sweep is testable
+   * `(link, view) => the peer's /crew/v1/snapshot outcome`. Injected so the sweep is testable
    * without TLS.
    *
    * `view` is how much of that machine to ask for (M22/06). {@link CrewLead.sweep} always passes

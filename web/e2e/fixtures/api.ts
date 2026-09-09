@@ -91,7 +91,7 @@ async function answer(route: Route, path: string): Promise<void> {
   if (path === "/api/pack") {
     return fulfillJson(
       route,
-      { error: "this collie is not the lead of a pack", code: "pack.not_lead" },
+      { error: "this collie is not the lead of a pack", code: "crew.not_lead" },
       404,
     );
   }

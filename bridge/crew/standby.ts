@@ -10,7 +10,7 @@ import type { CrewMode } from "../types.ts";
 import type { UpdateRun } from "../update-run.ts";
 
 // The standby door: a SECOND HTTP listener a deputy binds, and the one narrow exception to ADR 0013's
-// "a peer publishes nothing" (RFC §6, PACK_PROTOCOL.md §18.15).
+// "a peer publishes nothing" (RFC §6, CREW_PROTOCOL.md §18.15).
 //
 // ── WHY IT CANNOT RIDE THE CREW LISTENER ─────────────────────────────────────
 // §8.1's amendment states it plainly: `COLLIE_PEER_BROWSER=1` and a pinned listener are mutually

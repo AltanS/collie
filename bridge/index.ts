@@ -163,7 +163,7 @@ try {
 }
 
 // The crew mode, resolved BEFORE anything is wired, because a peer wires fewer things than a lead
-// (PACK_PROTOCOL.md §3) and a mode discovered halfway through startup would already have opened
+// (CREW_PROTOCOL.md §3) and a mode discovered halfway through startup would already have opened
 // what it was supposed to keep shut.
 //
 // Enrollment comes from the trust store and from nothing else — no env var, no flag (§3). On a solo
@@ -192,7 +192,7 @@ const audit = new AuditLog(fileAuditAppender(join(cfg.stateDir, "audit.log")), {
 });
 
 /**
- * Gap A (PACK_PROTOCOL.md §18.9): when this collie's lead last called it.
+ * Gap A (CREW_PROTOCOL.md §18.9): when this collie's lead last called it.
  *
  * Constructed unconditionally and armed by nothing — it holds two `null`s and this process's start
  * time until the router hands it a receipt, so a solo instance carries an object and no behaviour.
@@ -419,8 +419,8 @@ if (crew.mode !== "solo") console.log(`[pack] mode: ${crew.mode}`);
 // A solo instance and a lead are browser front doors: every write gate they own is a header a client
 // can set, so a wide bind hands write access to anything that can reach the port and the bridge
 // refuses to start. A collie IN A CREW is exempt, and by construction rather than by indulgence — its
-// lead dials it across a machine boundary, and `/pack/v1/*` is admitted by pinned mutual TLS plus the
-// crew secret, neither of which the bind bounds (PACK_PROTOCOL.md §3, ADR 0013). A peer already gets
+// lead dials it across a machine boundary, and `/crew/v1/*` is admitted by pinned mutual TLS plus the
+// crew secret, neither of which the bind bounds (CREW_PROTOCOL.md §3, ADR 0013). A peer already gets
 // the wildcard warning below; a LEAD is exempt too, because the machine that took over from a deputy
 // keeps the peer's wide COLLIE_HOST and would otherwise refuse to boot into the crown it just won
 // (ADR 0027/0028) — the worst possible moment to discover a config gate.
@@ -434,7 +434,7 @@ if (crew.mode !== "solo") console.log(`[pack] mode: ${crew.mode}`);
     console.warn(
       `[pack] this ${crew.mode} binds ${cfg.host.trim() === "" ? "every interface" : cfg.host}, not ` +
         "loopback. Allowed because a crew member is dialled across a machine boundary and " +
-        "/pack/v1/* carries its own two factors — but the browser gates (Tailscale-User-Login, " +
+        "/crew/v1/* carries its own two factors — but the browser gates (Tailscale-User-Login, " +
         "COLLIE_DEVICE_HEADER, same-origin) are client-settable here and bound nothing. Whatever " +
         "fronts this port is the only control on /api/*.",
     );
@@ -474,7 +474,7 @@ let runtimeFacts: () => CrewRuntimeFacts = () => NO_RUNTIME_FACTS;
 
 /**
  * Re-stamp the runtime marker with those facts, so `collie crew status` — a different process — can
- * print them (`bridge/crew/staleness.ts`, PACK_PROTOCOL.md §18.9's 2026-08-20 amendment).
+ * print them (`bridge/crew/staleness.ts`, CREW_PROTOCOL.md §18.9's 2026-08-20 amendment).
  *
  * **It rides the session-refresh tick and adds no timer of its own.** The crew's rule is that a
  * sweep costs one budget no matter what else it decided to do, and the same reasoning applies to a
@@ -558,7 +558,7 @@ const currentVersion = (
   JSON.parse(readFileSync(join(rootDir, "package.json"), "utf8")) as { version: string }
 ).version;
 
-// What this process answers `GET /pack/v1/hello` with (PACK_PROTOCOL.md §5, §7.1). Resolved ONCE,
+// What this process answers `GET /crew/v1/hello` with (CREW_PROTOCOL.md §5, §7.1). Resolved ONCE,
 // here, by the same rule `collie version` uses (`bridge/version.ts`, shared with `cli/context.ts`)
 // so one machine never reports two different versions — and never per request, since the answer
 // cannot change without a restart. Bare: no `(manifest; web not built)` parenthetical on the wire,
@@ -809,9 +809,9 @@ const updateAction = canRunUpdate
 
 // ── The peer's own preflight, on the monitor's cadence (M16/03) ──────────────
 // A peer answers the crew's update question for ITSELF, over the link its lead already polls
-// (PACK_PROTOCOL.md §19). The answer is this very cache, refreshed on the two timers below and read
+// (CREW_PROTOCOL.md §19). The answer is this very cache, refreshed on the two timers below and read
 // — never run — by the crew route. So there is no third timer, no second subprocess shape and no
-// SSH: the six hours a background fact deserves, plus the lead's `X-Pack-Preflight: fresh` for the
+// SSH: the six hours a background fact deserves, plus the lead's `X-Crew-Preflight: fresh` for the
 // moment an operator is actually looking at the page.
 const freshPreflightGate = new FreshPreflightGate({ now: Date.now });
 const updateTick = () =>
@@ -964,7 +964,7 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
     cancel: (h) => clearTimeout(h),
   };
   // In peer mode this machine's own herd alerts are muted at the sink: the lead derives them from the
-  // swept snapshot and owns the one phone registration (PACK_PROTOCOL.md §5). Nothing is deleted —
+  // swept snapshot and owns the one phone registration (CREW_PROTOCOL.md §5). Nothing is deleted —
   // see herdPushGate. Solo and lead get `snooze` back by identity, so there is no crew tax here.
   const sink = makeNotifySink(push, herdPushGate(crew.mode, snooze), herdTagFor(isPrimary, name), {
     session: isPrimary ? undefined : name,
@@ -1029,7 +1029,7 @@ sweepTimer.unref();
 // own". So the condition under which `servers` goes on the wire is exactly "a crew with peers
 // exists": an instance that has a trust store but has enrolled nobody keeps emitting a solo body,
 // and a peer builds none at all (it has no peers to sweep, and a crew link never forwards a
-// `host=` — PACK_PROTOCOL.md §4, §9.2, §11).
+// `host=` — CREW_PROTOCOL.md §4, §9.2, §11).
 // The lead's notification coordinators for its peers — one phone registration, on the lead (§5).
 // Built only in `lead` mode, so a solo instance holds no map and adds no tag (§11); it arms nothing
 // on its own, being driven entirely by bodies the sweep hands it below. The lead's OWN snooze and
@@ -1072,7 +1072,7 @@ const deputyAnchor =
     : { memberId: deputyAnchorId, certPem: deputyAnchorPem };
 const transportPinned = listenerTls !== null;
 
-// ── The standby half (RFC §6, §7; PACK_PROTOCOL.md §18.14–§18.16) ────────────
+// ── The standby half (RFC §6, §7; CREW_PROTOCOL.md §18.14–§18.16) ────────────
 // A deputy is a peer that holds its lead's standing, signed permission to take the crown. Three
 // things follow from that and nothing else does: it keeps a SYNCED copy of the lead's paired-device
 // registry (in its own file, never merged — `standby-devices.ts` says why at length), it may bind a
@@ -1106,7 +1106,7 @@ const syncedDevices = (): readonly SyncedDevice[] => standbyStore?.current()?.de
  * What the two standby-shaped crew routes need from this process (`router.ts` → `StandbySurface`).
  *
  * `undefined` on a lead and on solo — a lead has no lead to be silent, no warrant naming itself and
- * nothing to sync. That absence is what makes `/pack/v1/pairing` refuse and a takeover probe read as
+ * nothing to sync. That absence is what makes `/crew/v1/pairing` refuse and a takeover probe read as
  * maximally silent, both of which are the closed readings.
  */
 const standbySurface: CrewRouterDeps["standby"] =
@@ -1193,7 +1193,7 @@ if (transportPinned && crew.peerServesBrowser) {
       "Use the lead's front door, or leave the crew on this machine.",
   );
 }
-// The peer's crew listener binds COLLIE_HOST (one address, PACK_PROTOCOL.md §3) — the operator owns
+// The peer's crew listener binds COLLIE_HOST (one address, CREW_PROTOCOL.md §3) — the operator owns
 // that bind, exactly as they own reachability everywhere else. A wildcard bind is not a hole: pinned
 // mutual TLS + the crew secret still gate every request. But it widens WHICH networks can attempt the
 // gate to all of them, so say so, loudly, once — and do NOT refuse to start (ADR 0013: a peer warns
@@ -1204,7 +1204,7 @@ if (warnsOnWildcardBind(crew.mode, cfg.host)) {
   console.warn(
     `[pack] this peer's crew listener binds ${shown} — reachable on ALL interfaces, not one. It is ` +
       "gated only by pinned mutual TLS + the crew secret; the bind bounds nothing further. Set " +
-      "COLLIE_HOST to the specific overlay/LAN address the lead dials (PACK_PROTOCOL.md §3).",
+      "COLLIE_HOST to the specific overlay/LAN address the lead dials (CREW_PROTOCOL.md §3).",
   );
 }
 
@@ -1655,7 +1655,7 @@ const server = startServer({
   // The preflight and the handoff, or undefined on an install with no compiled binary to run —
   // where the route answers 503 and the phone says so (M15/05).
   updateAction,
-  // The bare `<semver>+<sha>` this process answers `/api/health` and `/pack/v1/hello` with — one
+  // The bare `<semver>+<sha>` this process answers `/api/health` and `/crew/v1/hello` with — one
   // string, resolved once, so the detached updater's health gate and a peer can never be told two
   // different things about this machine (M15/04).
   version: crewVersion,
@@ -1742,7 +1742,7 @@ const server = startServer({
     if (url.pathname === STANDBY_PREFIX || url.pathname.startsWith(`${STANDBY_PREFIX}/`)) {
       return new Response(
         "This machine is not standing by. The standby door is a separate port on the crew's deputy " +
-          "(COLLIE_STANDBY_PORT), reachable through your failover proxy — see PACK_PROTOCOL.md \u00a718.15.\n",
+          "(COLLIE_STANDBY_PORT), reachable through your failover proxy — see CREW_PROTOCOL.md \u00a718.15.\n",
         { status: 404, headers: { "content-type": "text/plain; charset=utf-8" } },
       );
     }

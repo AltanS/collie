@@ -1,6 +1,6 @@
 import type { CrewMode } from "../types.ts";
 
-// The mode seam. PACK_PROTOCOL.md §3: "A collie runs in exactly one mode, decided by its enrollment
+// The mode seam. CREW_PROTOCOL.md §3: "A collie runs in exactly one mode, decided by its enrollment
 // state, not by a flag the operator maintains by hand." Everything federation-shaped hangs off the
 // value this file computes, so "does a solo user pay for this?" is answerable by reading one file
 // instead of auditing a feature.
@@ -8,14 +8,14 @@ import type { CrewMode } from "../types.ts";
 // This module is PURE. It reads no filesystem, no environment and no clock — the trust store
 // (M4/02) is the sole source of enrollment, and it is handed in. That is not stylistic: it is what
 // makes the zero-tax gate checkable, because a solo instance's mode is computed from `null` and
-// therefore cannot touch a byte of disk (PACK_PROTOCOL.md §11, "Files written": no key, no
+// therefore cannot touch a byte of disk (CREW_PROTOCOL.md §11, "Files written": no key, no
 // certificate, no trust store, no roster).
 
 export type { CrewMode };
 
 /** One enrolled member as the trust store records it. Widened by M4/02; only the id matters here. */
 export interface EnrolledMember {
-  /** The member id minted by the lead — `[a-z0-9][a-z0-9-]{0,62}` (PACK_PROTOCOL.md §4). */
+  /** The member id minted by the lead — `[a-z0-9][a-z0-9-]{0,62}` (CREW_PROTOCOL.md §4). */
   readonly memberId: string;
 }
 
@@ -91,7 +91,7 @@ export function deriveMode(enrollment: Enrollment | null): ModeResolution {
 /**
  * The mode as `/api/config` reports it: `undefined` for solo, the literal otherwise.
  *
- * Optional-and-absent, for the reason PACK_PROTOCOL.md §11 gives for `servers`: an always-present
+ * Optional-and-absent, for the reason CREW_PROTOCOL.md §11 gives for `servers`: an always-present
  * field changes every solo response body exactly once, for a uniformity nothing needs. Absent means
  * "no crew", which is precisely true. A client reads `mode ?? "solo"` — that is a declared contract,
  * not the behaviour-probing the spec rules out.

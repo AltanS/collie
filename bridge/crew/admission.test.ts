@@ -11,7 +11,7 @@ import {
 } from "./admission.ts";
 import { leadStore, material, member, CREW, peerStore } from "./fixtures.ts";
 
-// The two-factor gate (PACK_PROTOCOL.md §8.1) is the whole of federation's security posture, so it
+// The two-factor gate (CREW_PROTOCOL.md §8.1) is the whole of federation's security posture, so it
 // is tested as a MATRIX rather than as a set of happy paths: every combination of "which factor did
 // the caller get right" has a row, and the refusals are compared against each other for
 // indistinguishability rather than merely asserted to be 401.
@@ -40,7 +40,7 @@ function facts(over: Partial<CrewRequestFacts> = {}): CrewRequestFacts {
     deputy: null,
     dial: null,
     authorization: `Bearer ${CREW.secret}`,
-    protocol: "1",
+    protocol: "2",
     ...over,
   };
 }
@@ -118,10 +118,10 @@ describe("admitCrewRequest — the failure matrix", () => {
 
 describe("admitCrewRequest — version negotiation is LAST", () => {
   test("an admitted caller on a wrong version gets the legible mismatch (§7)", () => {
-    expect(admitCrewRequest(store, facts({ protocol: "2" }))).toEqual({
+    expect(admitCrewRequest(store, facts({ protocol: "3" }))).toEqual({
       ok: false,
       refusal: "protocol_mismatch",
-      received: 2,
+      received: 3,
     });
   });
 
@@ -180,7 +180,7 @@ describe("the refusal is indistinguishable — the RESPONSE, not just the decisi
   test("the 401 carries NO crew headers — nothing tells a prober what is listening (§8.5)", () => {
     const res = unauthorizedResponse();
     expect(res.status).toBe(401);
-    expect(headerList(res).filter((h) => h.startsWith("x-pack"))).toEqual([]);
+    expect(headerList(res).filter((h) => h.startsWith("x-crew"))).toEqual([]);
   });
 
   test("the body has no `code` and no cause — one shape, no hint at which factor failed", async () => {
@@ -190,15 +190,15 @@ describe("the refusal is indistinguishable — the RESPONSE, not just the decisi
 
 describe("the 409 body names both sides", () => {
   test("it matches §7's shape exactly, and does state the version", async () => {
-    const res = protocolMismatchResponse(2);
+    const res = protocolMismatchResponse(3);
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
       error: "crew protocol mismatch",
       code: "protocol_mismatch",
-      expected: 1,
-      received: 2,
+      expected: 2,
+      received: 3,
     });
-    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
   });
 
   test("an unreadable version is reported as null rather than guessed", async () => {
@@ -211,18 +211,18 @@ describe("the 409 body names both sides", () => {
 
 describe("the transport seam", () => {
   test("no identity offered refuses everything — no config can make it single-factor", () => {
-    const req = new Request("https://peer.example/pack/v1/hello");
+    const req = new Request("https://peer.example/crew/v1/hello");
     expect(admitCrewRequest(store, factsFrom(req, { transportPinned: false, signedMember: null })).ok).toBe(false);
   });
 
   test("factsFrom reads only crew headers — never Origin, Host or a device header", () => {
-    const req = new Request("https://peer.example/pack/v1/hello", {
+    const req = new Request("https://peer.example/crew/v1/hello", {
       headers: {
         origin: "https://peer.example",
         host: "peer.example",
         "x-tailnet-device": "phone",
         authorization: `Bearer ${CREW.secret}`,
-        "x-pack-protocol": "1",
+        "x-crew-protocol": "2",
       },
     });
     const f = factsFrom(req, { transportPinned: false, signedMember: "nas" });
@@ -247,8 +247,8 @@ describe("admitted responses state their version and who answered (§6)", () => 
   test("crewResponseHeaders carries the protocol and the member id", () => {
     expect(crewResponseHeaders("desk")).toEqual({
       "content-type": "application/json; charset=utf-8",
-      "x-pack-protocol": "1",
-      "x-pack-member": "desk",
+      "x-crew-protocol": "2",
+      "x-crew-member": "desk",
     });
   });
 });

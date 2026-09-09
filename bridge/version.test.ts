@@ -40,7 +40,7 @@ describe("the wire version stays the one it is running", () => {
   test("the bridge resolves its wire version once, at module scope, and never per request", async () => {
     const source = await Bun.file(new URL("./index.ts", import.meta.url)).text();
     // One resolution, and it is the bare spelling — a parenthetical would make a machine with no
-    // built bundle read as skewed against itself (PACK_PROTOCOL.md §7.1).
+    // built bundle read as skewed against itself (CREW_PROTOCOL.md §7.1).
     expect(source.split("collieVersionBare(").length - 1).toBe(1);
     expect(source).toContain("const crewVersion = collieVersionBare(rootDir);");
     // The live read exists too, and it is a THUNK the monitor throttles — never an inline call that

@@ -18,7 +18,7 @@ import type {
 // ─────────────────────────────────────────────────────────────────────────────
 // SOLO ZERO-TAX BASELINE — the client half.
 //
-// The bridge half lives in `bridge/solo-baseline.test.ts` and owns the contract (PACK_PROTOCOL.md
+// The bridge half lives in `bridge/solo-baseline.test.ts` and owns the contract (CREW_PROTOCOL.md
 // §11). This file pins the two things only the frontend can answer: that the hand-mirrored wire
 // types here gained no crew dimension either (they would otherwise drift into accepting a `servers`
 // the bridge must then emit), and that a solo client puts NO host param on the wire — §11's `?h=`

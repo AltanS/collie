@@ -3,7 +3,7 @@
 // leads it, what is a host called, and how do you key something per host.
 //
 // **The whole module answers "no crew" for a solo snapshot.** `servers` is optional-and-absent
-// (PACK_PROTOCOL.md §11), so `isMultiHost(undefined)` is false, `hostKey({})` is `""`, and every
+// (CREW_PROTOCOL.md §11), so `isMultiHost(undefined)` is false, `hostKey({})` is `""`, and every
 // host-qualified key degrades to a pure prefix of what shipped. That is what lets a solo install
 // render byte-identically without a single `if (crew)` in a component — the hide rule is data, not a
 // mode flag.

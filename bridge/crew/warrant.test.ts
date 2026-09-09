@@ -440,7 +440,7 @@ describe("the report a member makes, and what the lead does with it", () => {
   });
 
   test("an ABSENT pair reads as unknown, never as up to date", () => {
-    expect(parseWarrantReport({ member: "nas", protocol: 1 })).toBeNull();
+    expect(parseWarrantReport({ member: "nas", protocol: 2 })).toBeNull();
     expect(warrantPushNeeded(warrant, null)).toBe(true);
   });
 

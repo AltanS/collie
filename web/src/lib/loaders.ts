@@ -115,7 +115,7 @@ export interface HomeData {
   /**
    * The snapshot's own timestamp — the LEAD's clock when it assembled this body. Carried because it
    * is the only sound thing to measure `ServerSummary.lastSeenAt` against, which the lead also stamps
-   * (lib/host-health.ts; PACK_PROTOCOL.md §10.2). Measuring a peer's freshness with the phone's clock
+   * (lib/host-health.ts; CREW_PROTOCOL.md §10.2). Measuring a peer's freshness with the phone's clock
    * would measure the skew between two machines instead. `0` on the empty stale shape below, where
    * there are no servers to date anyway.
    */

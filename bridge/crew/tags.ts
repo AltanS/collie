@@ -1,6 +1,6 @@
 import { herdTagFor } from "../sessions.ts";
 
-// The notification slot, extended by the host dimension (PACK_PROTOCOL.md §4, §11).
+// The notification slot, extended by the host dimension (CREW_PROTOCOL.md §4, §11).
 //
 // ── WHY A SEPARATE FILE, AND WHY IT ONLY EVER *ADDS* ─────────────────────────
 // `herdTagFor()` is a live contract with notifications currently sitting on somebody's lock screen:

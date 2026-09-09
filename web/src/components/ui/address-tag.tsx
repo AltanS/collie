@@ -21,7 +21,7 @@ interface AddressTagProps {
   /**
    * `alert` is the loud degraded reading — dashed, in the blocked colour. `waiting` is the quiet one:
    * dashed the same way, in the amber that means "look at this" rather than "this is broken", for a
-   * fault the far side is already fixing by itself (PACK_PROTOCOL.md §10.2's Reconnecting). The
+   * fault the far side is already fixing by itself (CREW_PROTOCOL.md §10.2's Reconnecting). The
    * caller owns the condition.
    */
   tone?: "quiet" | "waiting" | "alert";
@@ -76,7 +76,7 @@ export function AddressTag({
         "inline-flex max-w-[8rem] shrink-0 items-center gap-1 rounded-md border px-1.5 py-0.5 font-medium",
         size === "md" ? "text-[11px]" : "text-[10px]",
         tone === "alert"
-          ? // Unreachable is a STATE, not a disappearance (PACK_PROTOCOL.md §10.2) — it stays
+          ? // Unreachable is a STATE, not a disappearance (CREW_PROTOCOL.md §10.2) — it stays
             // legible, dashed rather than dimmed, so a blocked agent on a down machine is never
             // greyed away.
             "border-dashed border-status-blocked/50 bg-status-blocked/10 text-status-blocked"

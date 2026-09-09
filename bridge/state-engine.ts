@@ -238,7 +238,7 @@ export class StateEngine {
   /**
    * Fires after every poll ATTEMPT — success or failure, no snapshot handed over.
    *
-   * This is the hook the crew's peer sweep rides (PACK_PROTOCOL.md §10.1: "the peer sweep is a part
+   * This is the hook the crew's peer sweep rides (CREW_PROTOCOL.md §10.1: "the peer sweep is a part
    * of the existing poll, not a second timer"), and it is deliberately not `onUpdate`: that one only
    * fires on success, so a lead whose own Herdr socket is down would freeze every peer's freshness
    * at the moment its local herd went away. A peer's reachability has nothing to do with the lead's

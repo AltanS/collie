@@ -9,7 +9,7 @@ import { pairedRegistryOf } from "./pairing.ts";
 import { firstLine, restartScript, runProbe, transportFailure, type CrewAddDeps, type RemoteRunner } from "./remote.ts";
 
 // `collie crew deputy <member>` / `--revoke` — the operator names the ONE peer that may take the
-// crown, and arms it (RFC §3, §4.4, §5; PACK_PROTOCOL.md §18).
+// crown, and arms it (RFC §3, §4.4, §5; CREW_PROTOCOL.md §18).
 //
 // ── IT IS A MEMBERSHIP VERB, SO IT WRITES AND RESTARTS ───────────────────────
 // The warrant is minted by `mintWarrant` (`bridge/crew/warrant.ts`) and committed through
@@ -226,7 +226,7 @@ function refuseUnpaired(deps: CrewAddDeps): boolean {
  * verb that refused on a heuristic about somebody else's proxy would be refusing on a guess.
  *
  * `COLLIE_PUBLIC_URL` is the signal because it is already the one place this deployment names its
- * real front-door origin (PACK_PROTOCOL.md §5's address ladder). Unset means nothing here knows of a
+ * real front-door origin (CREW_PROTOCOL.md §5's address ladder). Unset means nothing here knows of a
  * shared origin — not that none exists.
  */
 function sameOriginNotice(deps: CrewAddDeps): void {
@@ -305,7 +305,7 @@ async function mintOrReuse(
  * Push the warrant to every enrolled peer, and **confirm** that it landed (RFC §5, phase 1).
  *
  * ── WHY A PUSH IS RETRIED ONCE, AND WHY THAT IS NOT PAPERING OVER ANYTHING ───
- * `POST /pack/v1/warrant` is in `MEMBERSHIP_PATHS` (`bridge/crew/router.ts`), so **every accepted
+ * `POST /crew/v1/warrant` is in `MEMBERSHIP_PATHS` (`bridge/crew/router.ts`), so **every accepted
  * push advances this lead's persisted replay floor on that peer** (`recordSignedRequest`), and
  * §8.6's rule refuses any later signature stamped at or before it. Two processes on this machine
  * sign warrant pushes with the same key — the running bridge's sweep (`lead.ts` → `distributeWarrant`)
@@ -379,7 +379,7 @@ async function confirmStored(
 }
 
 /**
- * The body of `POST /pack/v1/warrant` (§18.5).
+ * The body of `POST /crew/v1/warrant` (§18.5).
  *
  * The deputy's certificate rides along because **a peer has no roster beyond its lead** and so
  * cannot look it up; it is accepted there only when `sha256(certPem)` equals the fingerprint the

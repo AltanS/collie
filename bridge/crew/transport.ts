@@ -151,7 +151,7 @@ function deputyAnchor(data: TrustStoreData, lead: TrustedMember, now: number): s
  *
  * The name check used to be switched OFF with `checkServerIdentity: () => undefined`, and that is now a
  * fallback only. Bun ≥1.4 refuses to POOL a `fetch` whose `tls` options carry a `checkServerIdentity`
- * callback, and pooling is exactly what §10.4 of PACK_PROTOCOL.md rides: without it every strict-budget
+ * callback, and pooling is exactly what §10.4 of CREW_PROTOCOL.md rides: without it every strict-budget
  * dial handshakes cold and a DERP-relayed peer never bootstraps. A certificate that names nothing keeps
  * the callback and simply does not pool — correct, just slower. The SNI itself is a tailnet name and it
  * travels inside the tailnet's own encryption, so naming it on the wire is no public-wire disclosure.

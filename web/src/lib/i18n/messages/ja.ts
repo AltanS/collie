@@ -748,7 +748,7 @@ export const ja: Dictionary = {
   "apiError.device.unknown": "該当する名前のペアリング済みデバイスが見つかりません。",
   "apiError.session.unknown": "この collie にセッション {session} は存在しません。",
   "apiError.host.unknown": "このクルーに collie {host} は存在しません。",
-  "apiError.pack.not_lead": "この collie はクルーを統括していないため、表示可能なクルーがありません。",
+  "apiError.crew.not_lead": "この collie はクルーを統括していないため、表示可能なクルーがありません。",
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.list_failed": "worktree の一覧取得に失敗しました: {reason}",
   "apiError.worktree.create_failed": "worktree の作成に失敗しました: {reason}",

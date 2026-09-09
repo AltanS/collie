@@ -27,7 +27,7 @@ import {
   identityMinter,
   type IdentityMinter,
   type RosterEntry,
-  PACK_PROTOCOL_VERSION,
+  CREW_PROTOCOL_VERSION,
 } from "../bridge/crew/enrollment.ts";
 import { bindIsWildcard } from "../bridge/crew/config.ts";
 import { mintMemberId, normalizeFingerprint, randomToken, type RandomSource } from "../bridge/crew/identity.ts";
@@ -90,7 +90,7 @@ import { tailnetName } from "./tailnet.ts";
 // exhaustive failure matrix tests the production path and this module is left holding argument
 // parsing, ordering, and the words an operator reads. Where a verb needs the far side, it goes
 // through `PeerClient` over an injected `fetch` — never a bare one, and never a second dial path that
-// could forget the `Authorization` header (PACK_PROTOCOL.md §6).
+// could forget the `Authorization` header (CREW_PROTOCOL.md §6).
 //
 // ── SECRETS NEVER TOUCH ARGV (§8.3) ──────────────────────────────────────────
 // `/proc/<pid>/cmdline` is mode 444 and `ps -eo args` is world-readable — the concrete leak ADR 0001
@@ -297,7 +297,7 @@ export function failureLine(outcome: PeerOutcome<unknown>): string {
  * Which surface the address being derived actually names — the two answer on different ports, so the
  * caller has to say which one it is advertising rather than let one default be wrong half the time.
  *
- * - `"crew-listener"`: the `/pack/v1/*` prefix on this collie's OWN listener, `COLLIE_HOST:COLLIE_PORT`.
+ * - `"crew-listener"`: the `/crew/v1/*` prefix on this collie's OWN listener, `COLLIE_HOST:COLLIE_PORT`.
  *   A peer publishes no front door (§3, ADR 0013), so this is the only thing that answers on it.
  * - `"front-door"`: the one managed ingress a lead holds — `tailscale serve` on :443 in https mode
  *   (ADR 0001), which is also the URL a phone opens.
@@ -321,14 +321,14 @@ export type SelfAddressKind = "crew-listener" | "front-door";
  * remedy was a flag the operator had to remember on every `crew invite`/`crew add`, and forgot four
  * times in five. Which ingress a machine actually publishes is per-INSTALLATION truth, so it belongs
  * in config, next to the URL the phone already opens. Only the ORIGIN is used (scheme + host + port):
- * the crew link mounts at `/pack/v1/*` off the origin, so a path is dropped with a warning, and a
+ * the crew link mounts at `/crew/v1/*` off the origin, so a path is dropped with a warning, and a
  * value that does not parse as a URL warns and falls through to the derivation rather than aborting
  * the verb — a malformed banner variable must not be able to break enrollment.
  *
  * **The `crew-listener` kind never consults it**, and that is not an oversight: a peer is dialled on
  * its own listener (`COLLIE_HOST:COLLIE_PORT`) and publishes no front door at all (§3, ADR 0013). A
  * public URL is a front door by definition, so pointing a lead at one for the listener kind would
- * aim it at whatever answers that proxy — never this peer's `/pack/v1/*`. The QR and the status
+ * aim it at whatever answers that proxy — never this peer's `/crew/v1/*`. The QR and the status
  * banner are unchanged; this adds a reader, it moves nothing.
  *
  * **A derived `crew-listener` address always carries an explicit port, and that is the whole reason
@@ -407,7 +407,7 @@ function publicFrontDoor(deps: CrewDeps): string | null {
   }
   if (url.pathname !== "" && url.pathname !== "/") {
     deps.io.err(`warn: COLLIE_PUBLIC_URL's path ("${url.pathname}") is dropped — the crew link mounts at`);
-    deps.io.err(`      /pack/v1/* off the origin, so ${url.origin} is what members are given.`);
+    deps.io.err(`      /crew/v1/* off the origin, so ${url.origin} is what members are given.`);
   }
   return url.origin;
 }
@@ -522,7 +522,7 @@ export async function readToken(
  *
  * Materialisation happens **here and on no other path**: minting an invite or answering one are the
  * operator's first crew actions, and until one of them happens a solo instance has no file, no key
- * and no roster (PACK_PROTOCOL.md §11). This is the ONLY call site of the minter in the codebase,
+ * and no roster (CREW_PROTOCOL.md §11). This is the ONLY call site of the minter in the codebase,
  * which is what makes "solo mints nothing" a structural fact rather than a promise: there is no other
  * path on which a key could come into existence.
  *
@@ -697,7 +697,7 @@ async function postEnrollment(deps: CrewDeps, origin: URL, body: string): Promis
   try {
     const res = await deps.fetch(new URL(CREW_ENROLL_PATH, origin).toString(), {
       method: "POST",
-      headers: { ...CONTENT_TYPE, "x-pack-protocol": String(PACK_PROTOCOL_VERSION) },
+      headers: { ...CONTENT_TYPE, "x-crew-protocol": String(CREW_PROTOCOL_VERSION) },
       // The token rides the BODY, never the URL: a query string lands in access logs on every hop
       // that ever fronts a lead, and §8.3's rule is about where a credential comes to rest.
       body,
@@ -855,7 +855,7 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
   }
 
   const body = JSON.stringify({
-    protocol: PACK_PROTOCOL_VERSION,
+    protocol: CREW_PROTOCOL_VERSION,
     token,
     fingerprint: data.self.fingerprint,
     // The certificate itself, not only its hash: the lead pins by fingerprint but ENFORCES by
@@ -906,7 +906,7 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
     return EXIT.REFUSED;
   }
   if (res.status === 409) {
-    deps.io.err(`error: protocol mismatch — this build speaks ${PACK_PROTOCOL_VERSION}; update the older machine.`);
+    deps.io.err(`error: protocol mismatch — this build speaks ${CREW_PROTOCOL_VERSION}; update the older machine.`);
     return EXIT.REFUSED;
   }
   if (!res.ok) {
@@ -1400,7 +1400,7 @@ export function reportDrift(deps: DriftDeps, data: TrustStoreData): void {
 }
 
 /**
- * The first Collie version that reports its own version over `hello` (PACK_PROTOCOL.md §5, amended
+ * The first Collie version that reports its own version over `hello` (CREW_PROTOCOL.md §5, amended
  * 2026-08-12). A member that answers without the field is older than this and is rendered as such —
  * honestly, and never as `unknown`-shaped noise (§7.1).
  *
@@ -1431,7 +1431,7 @@ function versionLines(reported: string | null, ours: string, memberId: string): 
   // none: `crew update` pushes THIS lead's build onto that member, so on a lead that is itself the
   // older machine the old unconditional line told the operator to level a newer member DOWN.
   // Measured on 2026-09-08 with a real 1.6.0 lead over two members built from main
-  // (PACK_PROTOCOL.md §16, the version-skew leg). §7.1 names both remedies; this picks the one that
+  // (CREW_PROTOCOL.md §16, the version-skew leg). §7.1 names both remedies; this picks the one that
   // matches the direction. A comparison that comes back equal has no direction to state — two
   // different strings for one semver (a build stamp, `unknown`) is not a skew anybody levels — so
   // it keeps the neutral sentence and names no command.
@@ -1532,7 +1532,7 @@ export interface MemberReach {
   /** The verdict probe, on the patient budget. Exactly what {@link probeMembers} returns. */
   readonly hello: PeerOutcome<HelloResult>;
   /**
-   * One real data request — `GET /pack/v1/snapshot`, a read — under the budget rules the bridge's own
+   * One real data request — `GET /crew/v1/snapshot`, a read — under the budget rules the bridge's own
    * poll uses. `null` when the question was not asked, which is two cases and only two.
    *
    * **`hello` never answered.** A member that is not there has already failed, and asking it a second

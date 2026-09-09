@@ -375,7 +375,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   );
   // ── FAILED IMAGES ARE BADGES ────────────────────────────────────────────────
   // A blob read can answer 404: the machine that owns the bytes may be a peer running a build that
-  // has no `blobs/<hash>` route, and that route is additive-optional by design (PACK_PROTOCOL.md
+  // has no `blobs/<hash>` route, and that route is additive-optional by design (CREW_PROTOCOL.md
   // §9.1 — a lead or a peer without it answers 404). A file can also be gone. Either way the
   // operator must not be shown a broken-image glyph, so the URL that failed is remembered and the
   // cluster falls back to the "[Image]" badge it would have had with no image at all.

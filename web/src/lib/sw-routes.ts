@@ -24,8 +24,8 @@ export const PROXY_AUTH_PATH = "/auth/";
 /**
  * Navigation paths the SW passes straight to the network. `/api/` was always here (the API must
  * never be answered from a cache); `/auth` joins it, with or without the trailing slash, so a proxy
- * can serve its page at either; `/pack/v1/` joins it because a browser must never be able to cache
- * a collie-to-collie response (PACK_PROTOCOL.md §5).
+ * can serve its page at either; `/crew/v1/` joins it because a browser must never be able to cache
+ * a collie-to-collie response (CREW_PROTOCOL.md §5).
  *
  * This list is the SW's *only* caching decision that isn't the precache: sw.ts registers no runtime
  * caching route, so denying a path here is denying it from the SW entirely.
@@ -51,7 +51,7 @@ export const NAVIGATION_NETWORK_ONLY = [
   // Proxies whose prefix IS movable (oauth2-proxy's `--proxy-prefix`, Authelia) are documented in
   // the README instead of listed here — this list stays for paths nobody can move.
   /^\/cdn-cgi\//,
-  // The crew surface (PACK_PROTOCOL.md §5). A browser NEVER issues a `/pack/v1/*` request — it is
+  // The crew surface (CREW_PROTOCOL.md §5). A browser NEVER issues a `/crew/v1/*` request — it is
   // collie-to-collie, admitted only by the two crew factors — so a browser must never be able to
   // cache one either. Denylisted for the same reason `/api/` is, and then some: these responses
   // carry another machine's panes, and the precached app shell is not a plausible answer to any of
@@ -59,8 +59,13 @@ export const NAVIGATION_NETWORK_ONLY = [
   //
   // Scoped to `v1` rather than all of `/crew/`: the protocol reserves the versioned prefix, and a
   // future `/crew/v2/` arrives with a bridge that can add its own line here.
+  /^\/crew\/v1(?:[/?]|$)/,
+  // REMOVE_IN_1_9_0 — the version 1 prefix (CREW_PROTOCOL.md §0.1). A 1.8.0 lead still answers
+  // `/pack/v1/*` so a 1.7.0 member can follow the update roll, and a service worker minted from that
+  // lead's origin must deny it for the reason it denies the line above. It goes when the listener
+  // does; the two are asserted together in `bridge/removal-schedule.test.ts`.
   /^\/pack\/v1(?:[/?]|$)/,
-  // The standby door (PACK_PROTOCOL.md §18.15, RFC §6.2). In the same-origin failover deployment the
+  // The standby door (CREW_PROTOCOL.md §18.15, RFC §6.2). In the same-origin failover deployment the
   // phone's FIRST hit on the bad day is an installed service worker minted from the LEAD's origin —
   // so without this line the takeover page is answered from the precache with the app shell of the
   // very collie that just died, and the door is unreachable by the one device that needs it. This is

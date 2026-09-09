@@ -740,7 +740,7 @@ export const ko: Dictionary = {
   "apiError.device.unknown": "해당 이름을 가진 페어링된 기기가 없습니다.",
   "apiError.session.unknown": "해당 collie에 {session} 세션이 없습니다.",
   "apiError.host.unknown": "해당 크루에 {host} collie가 없습니다.",
-  "apiError.pack.not_lead": "해당 collie가 크루를 lead하지 않으므로 표시할 크루가 없습니다.",
+  "apiError.crew.not_lead": "해당 collie가 크루를 lead하지 않으므로 표시할 크루가 없습니다.",
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.list_failed": "worktree 목록을 가져오지 못했습니다: {reason}",
   "apiError.worktree.create_failed": "worktree를 생성하지 못했습니다: {reason}",

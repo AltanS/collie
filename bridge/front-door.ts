@@ -347,7 +347,7 @@ function readFingerprint(deps: FrontDoorDeps, record: OwnershipRecord): string |
 // ── Should this process take its own front door down? ────────────────────────
 
 /**
- * The whole decision, as data (PACK_PROTOCOL.md §3: a peer publishes nothing; ADR 0013).
+ * The whole decision, as data (CREW_PROTOCOL.md §3: a peer publishes nothing; ADR 0013).
  *
  * | mode   | deposed | a record of ours | verdict |
  * |--------|---------|------------------|---------|

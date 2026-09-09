@@ -11,7 +11,7 @@ import { fsTrustStoreIo, type TrustStoreIo } from "./trust-store.ts";
 // trust store's fields are whitelisted by `TRUST_STORE_VERSION` and every one of them is material a
 // pin or a secret depends on, so an ssh hostname in there would be a routing hint with a trust file's
 // authority. Nothing in this file ever crosses the crew link, in either direction — a peer neither
-// sends nor learns how its operator dials it (PACK_PROTOCOL.md §11's spirit, ADR 0016's rule).
+// sends nor learns how its operator dials it (CREW_PROTOCOL.md §11's spirit, ADR 0016's rule).
 //
 // It is written by `crew add` (on a run that finished) and refreshed by `crew update` when the
 // operator overrides one of its fields. A member with no record here is not broken — it is a member

@@ -538,7 +538,7 @@ describe("takeoverDialTls — the deputy pins its witnesses and cannot pin its l
     const calls: { url: string; init: CrewRequestInit }[] = [];
     const fetch: CrewFetch = async (url, init) => {
       calls.push({ url, init });
-      return new Response(JSON.stringify({ protocol: 1, member: "desk" }), {
+      return new Response(JSON.stringify({ protocol: 2, member: "desk" }), {
         status: 200,
         headers: { "content-type": "application/json", [PROTOCOL_HEADER]: "1", [MEMBER_HEADER]: "desk" },
       });
@@ -567,7 +567,7 @@ describe("takeoverDialTls — the deputy pins its witnesses and cannot pin its l
     expect(attestation).not.toBeNull();
     // And it really verifies against this deputy's certificate, bound to the member being dialled —
     // so a captured lead dial cannot be replayed at a witness.
-    const parts = { method: "GET", path: "/pack/v1/hello", timestamp: T0, to: "desk" };
+    const parts = { method: "GET", path: "/crew/v1/hello", timestamp: T0, to: "desk" };
     expect(verifyDial(material("laptop").certPem, attestation!, parts)).toBe(true);
     expect(verifyDial(material("laptop").certPem, attestation!, { ...parts, to: "nas" })).toBe(false);
   });

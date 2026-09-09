@@ -265,7 +265,7 @@ export function marksPaneSeen(req: Request, action: string | undefined): boolean
  * Who is asking for a session-scoped route, and everything that differs between them.
  *
  * There are exactly two implementations and there must never be a third: the browser at this
- * collie's front door, and a lead over an admitted crew link (PACK_PROTOCOL.md §5). Each route
+ * collie's front door, and a lead over an admitted crew link (CREW_PROTOCOL.md §5). Each route
  * handler below is written once and consumes this — so the answer to "does a peer run the same code
  * my phone does?" is structural rather than a promise.
  */
@@ -538,7 +538,7 @@ export function bridgeConfigBody(opts: {
     build: opts.build,
   };
   // Assigned, never conditionally spread: a solo instance's body must carry NEITHER key, byte for
-  // byte as before the crew existed (PACK_PROTOCOL.md §11).
+  // byte as before the crew existed (CREW_PROTOCOL.md §11).
   if (mode !== undefined) wire.mode = mode;
   if (mine.length > 0) wire.operatorCommands = [...mine];
   if (myKeys.length > 0) wire.operatorKeys = [...myKeys];
@@ -606,7 +606,7 @@ export function startServer(opts: {
   /**
    * The BARE version string this process answers with (`bridge/version.ts`'s `collieVersionBare`) —
    * `<semver>` or `<semver>+<short sha>`. Resolved once in index.ts, never re-read here: it is the
-   * same string `/pack/v1/hello` carries, so one machine can never report two different versions.
+   * same string `/crew/v1/hello` carries, so one machine can never report two different versions.
    */
   version: string;
   audit: AuditLog;
@@ -617,16 +617,16 @@ export function startServer(opts: {
    * The federated surface, supplied by index.ts **only** when a trust store exists. Undefined on
    * every solo instance, and the paths it owns are declared in `bridge/crew/router.ts` rather than
    * here — deliberately, so this file names no crew route and `solo-baseline.test.ts` can prove by
-   * grep that solo registers nothing (PACK_PROTOCOL.md §11, "`/pack/v1/*`: not routed at all").
+   * grep that solo registers nothing (CREW_PROTOCOL.md §11, "`/crew/v1/*`: not routed at all").
    *
-   * A **factory**, not a handler, for one reason: a peer's `/pack/v1/*` must answer exactly what its
+   * A **factory**, not a handler, for one reason: a peer's `/crew/v1/*` must answer exactly what its
    * own `/api/*` would, and the only way to guarantee that is to hand the crew router the very
    * closures this file serves browsers from — the snapshot body, and the session-scoped route block.
    * Two assemblies that "agree" would be two assemblies that drift.
    */
   crewRouter?: (surface: CrewSurface) => CrewHandler;
   /**
-   * The **deposed** answer, when this collie has learned the crown has moved (PACK_PROTOCOL.md
+   * The **deposed** answer, when this collie has learned the crown has moved (CREW_PROTOCOL.md
    * §18.12). Returns a `Response` for every request it should swallow and `null` otherwise — so an
    * instance that has not been deposed passes `undefined` and this file's dispatch is byte-identical
    * to today's.
@@ -645,7 +645,7 @@ export function startServer(opts: {
   /**
    * The lead runtime, supplied **only** when this collie leads a crew with at least one enrolled
    * member. Its presence is exactly the condition under which `servers` goes on the wire and every
-   * session and pane gains a `host` (PACK_PROTOCOL.md §9.2, §11) — undefined here means the snapshot
+   * session and pane gains a `host` (CREW_PROTOCOL.md §9.2, §11) — undefined here means the snapshot
    * body that leaves this file is the object literal it has always been.
    */
   crewLead?: CrewLead;
@@ -656,7 +656,7 @@ export function startServer(opts: {
    * this file may name no crew state. What it holds instead is a question it can ask on the request
    * path — the answer is assembled by `bridge/crew/status-wire.ts` from the trust store this process
    * already read and the per-peer beliefs the sweep already maintains, so asking it dials nobody and
-   * opens no file (PACK_PROTOCOL.md §10.1, §11).
+   * opens no file (CREW_PROTOCOL.md §10.1, §11).
    *
    * `undefined` on every solo instance and on every peer, `null` from the closure whenever the mode
    * says the same thing at request time — both are the route's 404, and a lead that has just lost its
@@ -667,7 +667,7 @@ export function startServer(opts: {
    * The lead's per-peer notification coordinators, supplied under the same condition as
    * {@link startServer} `crewLead`. The two notification-policy routes below fan across it exactly as
    * they fan across `registry.all()` — snooze and prefs are one crew-wide setting the lead owns
-   * (PACK_PROTOCOL.md §5), and the lead being the only sender is what makes that fan complete.
+   * (CREW_PROTOCOL.md §5), and the lead being the only sender is what makes that fan complete.
    * Structurally typed, not the class: this file needs "fan a pref change, list the live slots".
    */
   peerNotifier?: { applyPrefs(): void; tags(): string[] };
@@ -676,12 +676,12 @@ export function startServer(opts: {
    * flag: the store reads its own registry off disk, and an empty registry means "nothing paired",
    * which enforces nothing. Optional here only so the existing tests can build a server without it.
    *
-   * It is deliberately NOT threaded into the crew surface. `/pack/v1/*` is admitted by pinned mutual
-   * TLS plus the crew secret and shares nothing with a browser credential (PACK_PROTOCOL.md §6,
+   * It is deliberately NOT threaded into the crew surface. `/crew/v1/*` is admitted by pinned mutual
+   * TLS plus the crew secret and shares nothing with a browser credential (CREW_PROTOCOL.md §6,
    * ADR 0013) — a lead does not hold one of this collie's pairing tokens and must never need one.
    *
    * **ONE EXCEPTION, added 2026-08-20, and the rule above survives verbatim** (RFC §16, decision 5;
-   * PACK_PROTOCOL.md §18.14). `POST /pack/v1/pairing` carries a lead's registry — **hashes only** — to
+   * CREW_PROTOCOL.md §18.14). `POST /crew/v1/pairing` carries a lead's registry — **hashes only** — to
    * the one member it has named DEPUTY, so that member's standby door can check a phone's bearer
    * credential when the lead is gone. What is unchanged: **no crew request is ever admitted by a
    * pairing token**, and that route is admitted by the crew's own two factors plus a role check like
@@ -758,7 +758,7 @@ export function startServer(opts: {
 
   /**
    * This collie's own snapshot body — the whole of what `/api/snapshot` answered before crews
-   * existed, and (with `device` omitted) exactly what a peer serves its lead on `/pack/v1/snapshot`.
+   * existed, and (with `device` omitted) exactly what a peer serves its lead on `/crew/v1/snapshot`.
    *
    * `undefined` means the session name is unknown, which every caller turns into the same 404 it
    * always did. Nothing federated happens in here: the host tag and the `servers` array are added
@@ -848,7 +848,7 @@ export function startServer(opts: {
    *
    * ── ONE BLOCK, TWO CALLERS, NO SECOND HANDLER SET ────────────────────────────
    * A browser reaches it through `Bun.serve`'s dispatch below; a LEAD reaches it through this
-   * collie's `/pack/v1/*` surface, which hands over this very closure (PACK_PROTOCOL.md §5: "a 1:1
+   * collie's `/crew/v1/*` surface, which hands over this very closure (CREW_PROTOCOL.md §5: "a 1:1
    * re-exposure of the routes the phone already calls, dispatched into the same handlers"). Not a
    * copy that agrees — the same code, so `reply` cannot acquire a crew-only behaviour and `history`
    * cannot acquire a host parameter.
@@ -1045,7 +1045,7 @@ export function startServer(opts: {
     // The view comes off the LEAD's request (`bridge/crew/router.ts` reads it with the same
     // `selectView` the browser route uses), never from a literal here: this line used to hard-code a
     // narrow answer, which made a member's second session unreachable no matter what the phone asked
-    // (M22/06). `?sessions=all` is additive and optional under §7.1, so PACK_PROTOCOL_VERSION does
+    // (M22/06). `?sessions=all` is additive and optional under §7.1, so CREW_PROTOCOL_VERSION does
     // not move, and a lead that does not send it still gets the primary session. A crew request may
     // still not name a host — widening is a second dimension of ONE machine, and a peer has no
     // peers (§4).
@@ -1070,7 +1070,7 @@ export function startServer(opts: {
         audit: audit.scoped({ via: "pack", from }),
       });
       // Deliberately UNCODED. This is the crew link's own 404, answered to a LEAD and never to a
-      // browser, and `/pack/v1/*` is a separately-versioned surface (PACK_PROTOCOL.md, ADR 0025) —
+      // browser, and `/crew/v1/*` is a separately-versioned surface (CREW_PROTOCOL.md, ADR 0025) —
       // it keeps today's body in this release. Error codes are the phone's vocabulary, not the
       // crew's.
       return routed ?? jsonError({ error: "not found" }, 404, null);
@@ -1167,7 +1167,7 @@ export function startServer(opts: {
       // null otherwise, so this is not a branch a browser request can take. Its admission is two
       // independent factors and shares nothing with `checkAccess()` below — a crew credential never
       // admits an `/api/*` request and a browser credential never admits a crew one
-      // (PACK_PROTOCOL.md §6, ADR 0013).
+      // (CREW_PROTOCOL.md §6, ADR 0013).
       if (crewHandler) {
         const packed = await crewHandler(req, url);
         if (packed) return secure(packed);
@@ -1180,7 +1180,7 @@ export function startServer(opts: {
       // Everything below trusts headers a client writes (`Tailscale-User-Login`,
       // COLLIE_DEVICE_HEADER, Origin/Host), which are only untamperable while the sole client is the
       // local front door. A crew request is not that, and does not need to be: it was already
-      // admitted by pinned mutual TLS plus the crew secret and answered above (PACK_PROTOCOL.md §6,
+      // admitted by pinned mutual TLS plus the crew secret and answered above (CREW_PROTOCOL.md §6,
       // ADR 0013). A crew path the handler DECLINED falls through to here and is refused like any
       // other remote caller. `COLLIE_ALLOW_NON_LOOPBACK_BIND=1` turns the check off wholesale, which
       // is what that flag has always meant.
@@ -1190,7 +1190,7 @@ export function startServer(opts: {
 
       // A DEPOSED collie serves one page and fails its health check (§18.12). It sits AFTER the
       // federated surface on purpose: the machine that just deposed this one must still be able to
-      // reach `/pack/v1/*` here — that is how it was told, and how it will be told again — while the
+      // reach `/crew/v1/*` here — that is how it was told, and how it will be told again — while the
       // app, the PWA and `/api/*` are gone. Everything below this line is the front door, and a
       // deposed collie has none.
       const deposedAnswer = opts.deposed?.(req, url);
@@ -1292,7 +1292,7 @@ export function startServer(opts: {
         const device = whois(req);
         // A BROWSER poll is a phone looking; the lead's own sweep of a peer is not, which is why
         // this stamp sits here rather than inside `localSnapshot` (that closure also serves
-        // `/pack/v1/snapshot`, and a lead sweeps on its own clock whether or not anybody is reading
+        // `/crew/v1/snapshot`, and a lead sweeps on its own clock whether or not anybody is reading
         // it — stamping there would pin every peer at `watched` for the life of the crew).
         registry.get(sessionName)?.engine.noteAttention();
         // `?sessions=all` WIDENS the pane lists to every session on ONE machine (see localSnapshot).
@@ -1394,7 +1394,7 @@ export function startServer(opts: {
         const memberMux = scoped?.kind === "peer" ? crewLead?.muxFor(scoped.link.memberId) : null;
         // Re-resolved per request for the same reason `commands.toml` is: `collie stt setup` is
         // live, and this is where the phone learns whether to draw a microphone at all. `?? undefined`
-        // because "no provider" must OMIT the key, never send a null one (PACK_PROTOCOL.md §11).
+        // because "no provider" must OMIT the key, never send a null one (CREW_PROTOCOL.md §11).
         const sttWire = (await sttCapability(await stt())) ?? undefined;
         return json(
           bridgeConfigBody({
@@ -1408,7 +1408,7 @@ export function startServer(opts: {
             operatorFonts: myFonts,
             mux: activeMux?.herdr,
             // Assigned through `?? undefined` rather than conditionally, so the no-`host=` request
-            // builds the byte-identical body it always did (PACK_PROTOCOL.md §11).
+            // builds the byte-identical body it always did (CREW_PROTOCOL.md §11).
             muxWire: memberMux ?? undefined,
             stt: sttWire,
             // This host's own limits, read from cfg on every request like everything else here.
@@ -1622,7 +1622,7 @@ export function startServer(opts: {
         // ── THE CREW'S HALF (M16/03) ────────────────────────────────────────
         // The same on-demand shape, one line lower: six hours is the right cadence for a background
         // fact and the wrong one for a page the operator is looking at, so this read fires ONE
-        // immediate sweep carrying `X-Pack-Preflight: fresh` and waits the same bounded moment for
+        // immediate sweep carrying `X-Crew-Preflight: fresh` and waits the same bounded moment for
         // it. Past the bound the answer is what the lead already has — a stale `asOf`, never a
         // fabricated green — and a peer that ignores the header is a correct peer.
         //
@@ -1810,7 +1810,7 @@ export function startServer(opts: {
         // both cases, so the refusal is too. Not a 403: nothing was withheld, there is nothing here.
         const body = crewStatus?.() ?? null;
         if (body === null) {
-          return jsonError(apiError("pack.not_lead"), 404, req.headers.get("accept-encoding"));
+          return jsonError(apiError("crew.not_lead"), 404, req.headers.get("accept-encoding"));
         }
         return json(body, req.headers.get("accept-encoding"));
       }

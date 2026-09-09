@@ -14,11 +14,11 @@ import {
 const desk = mintIdentity({ commonName: "collie-desk" });
 const laptop = mintIdentity({ commonName: "collie-laptop" });
 
-const parts = { method: "POST", path: "/pack/v1/leave", body: "{}", timestamp: 1_786_000_000_000 };
+const parts = { method: "POST", path: "/crew/v1/leave", body: "{}", timestamp: 1_786_000_000_000 };
 
 describe("the canonical string", () => {
   test("is the four fields §8.6 names, in order, newline-separated", () => {
-    expect(canonicalRequest("POST", "/pack/v1/leave", "abc", 17)).toBe("POST\n/pack/v1/leave\nabc\n17");
+    expect(canonicalRequest("POST", "/crew/v1/leave", "abc", 17)).toBe("POST\n/crew/v1/leave\nabc\n17");
   });
 
   test("upper-cases the method, so a lower-case verb is not a second signature space", () => {
@@ -45,7 +45,7 @@ describe("signing and verifying", () => {
     const signature = signRequest(desk.keyPem, parts);
     for (const mutated of [
       { ...parts, method: "GET" },
-      { ...parts, path: "/pack/v1/lead" },
+      { ...parts, path: "/crew/v1/lead" },
       { ...parts, body: '{"lead":"me"}' },
       { ...parts, timestamp: parts.timestamp + 1 },
     ]) {
