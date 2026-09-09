@@ -4,12 +4,17 @@ import { defineConfig } from "@playwright/test";
 // the app in a real Chromium. Nothing here asserts a pixel: see `web/e2e/README` in the milestone
 // docs and the rules in `CLAUDE.md`.
 //
-// Two axes:
+// Two axes, crossed into four projects: `app-phone`, `app-tablet`, `states-phone`, `states-tablet`.
 //   * A TARGET is a base URL plus a fixture story. `app` is the shipped bundle from `web/dist`,
-//     served statically, with every `/api/*` answered in-process by `e2e/fixtures/api.ts`.
-//     The `states` target — the playground on 5199 — lands in spec 02; its slot is marked below.
+//     served statically, with every `/api/*` answered in-process by `e2e/fixtures/api.ts`. `states`
+//     is the playground on 5199, reached the way `make playground` reaches it, with no API stub at
+//     all — `vite.config.ts`'s `playgroundOnlyPlugin` answers every `/api/*` with a 404 itself.
 //   * A VIEWPORT is a size. `phone` and `tablet` are the two, and every case runs at both unless it
 //     names one.
+//
+// `states-*` collects only `states.spec.ts` and `handles.spec.ts` (`STATES_TEST_MATCH`); `app-*`
+// collects everything else. Neither set of specs can run under the other target: the shipped bundle
+// has no playground, and the playground has no `/api/*`.
 //
 // Only Chromium. One engine, one download, one cache key.
 
@@ -35,6 +40,20 @@ const TABLET = { width: 820, height: 1180 } as const;
 const APP_PORT = 4173;
 const APP_BASE_URL = `http://127.0.0.1:${APP_PORT}`;
 
+/**
+ * The `states` target's playground. 5199 is `make playground`'s own port
+ * (`web/package.json`'s `playground` script), and it never collides with an instance for the
+ * same reason `make playground-up` already checks for it. `COLLIE_PLAYGROUND=1` makes
+ * `vite.config.ts`'s `playgroundOnlyPlugin` answer every `/api/*` with a 404 in-process, so this
+ * target carries no API stub at all.
+ */
+const STATES_PORT = 5199;
+const STATES_BASE_URL = `http://127.0.0.1:${STATES_PORT}`;
+
+/** The `states` target owns exactly two spec files: the named playground cases (spec 03) and the
+ *  handle roll call (spec 02). An `app-*` project must never collect either. */
+const STATES_TEST_MATCH = [/states\.spec\.ts$/, /handles\.spec\.ts$/];
+
 export default defineConfig({
   // Outside `src/`, so `vitest.config.ts:30` (`include: ["src/**/*.{test,spec}.{ts,tsx}"]`) collects
   // none of these and neither runner ever sees the other's files.
@@ -59,16 +78,39 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "phone",
+      name: "app-phone",
       use: { browserName: "chromium", viewport: PHONE, hasTouch: true, deviceScaleFactor: 2 },
+      // The `app` target owns every spec EXCEPT the states target's two: the shipped bundle has
+      // no playground and cannot answer them.
+      testIgnore: STATES_TEST_MATCH,
     },
     {
-      name: "tablet",
+      name: "app-tablet",
       use: { browserName: "chromium", viewport: TABLET, hasTouch: true, deviceScaleFactor: 2 },
+      testIgnore: STATES_TEST_MATCH,
     },
-    // SLOT: `states-phone` and `states-tablet` — the playground target — land in spec 02. They take
-    // the same two viewports with `baseURL: "http://127.0.0.1:5199"` and no API stub at all
-    // (`vite.config.ts:41-61` answers every `/api/*` with a 404 under `COLLIE_PLAYGROUND=1`).
+    {
+      name: "states-phone",
+      use: {
+        browserName: "chromium",
+        viewport: PHONE,
+        hasTouch: true,
+        deviceScaleFactor: 2,
+        baseURL: STATES_BASE_URL,
+      },
+      testMatch: STATES_TEST_MATCH,
+    },
+    {
+      name: "states-tablet",
+      use: {
+        browserName: "chromium",
+        viewport: TABLET,
+        hasTouch: true,
+        deviceScaleFactor: 2,
+        baseURL: STATES_BASE_URL,
+      },
+      testMatch: STATES_TEST_MATCH,
+    },
   ],
   webServer: [
     {
@@ -82,6 +124,17 @@ export default defineConfig({
       stderr: "pipe",
       timeout: 60_000,
     },
-    // SLOT: the playground on 5199, started the way `make playground` starts it, lands in spec 02.
+    {
+      // The playground, started exactly the way `make playground` starts it
+      // (`web/package.json`'s `playground` script). Reused locally so a developer's own `bun run
+      // playground` on 5199 is picked up instead of fighting it for the port; NEVER reused in CI,
+      // where no such server exists and a stale one must not be trusted.
+      command: "bun run playground",
+      url: STATES_BASE_URL,
+      reuseExistingServer: !process.env.CI,
+      stdout: "ignore",
+      stderr: "pipe",
+      timeout: 60_000,
+    },
   ],
 });
