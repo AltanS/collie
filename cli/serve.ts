@@ -172,7 +172,7 @@ export function cmdServe(deps: ServeDeps): number {
   // with `tailscale not found` on a machine that was never supposed to ask. `join` had the same
   // shape and only got away with it because it calls `unserve` afterwards — publish, then undo.
   //
-  // The mode is read from the trust store ON DISK, not from `pack-runtime.json`: the marker records
+  // The mode is read from the trust store ON DISK, not from `crew-runtime.json`: the marker records
   // what the RUNNING bridge wired at ITS boot, and every membership verb restarts precisely because
   // the two differ for a moment. Disk is the decision the operator just made. A store that is
   // absent, unreadable or malformed derives `solo`, which publishes — the untaxed path is unchanged

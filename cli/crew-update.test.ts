@@ -143,7 +143,7 @@ function harness(opts: HarnessOptions = {}) {
   const deps: CrewUpdateDeps = {
     // The same reason the other crew suites set it: `PeerClient`'s REAL `setTimeout` must never fire
     // and report a fake member as unreachable.
-    ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000" }),
+    ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }),
     io: out,
     exec,
     files: fakeFiles(seeded),

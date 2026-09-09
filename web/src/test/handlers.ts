@@ -200,7 +200,7 @@ export const fixtureCrewSnapshot: SnapshotResponse = {
 };
 
 /**
- * The `/api/pack` census the LEAD serves, matching `fixtureServers` machine for machine — the two
+ * The `/api/crew` census the LEAD serves, matching `fixtureServers` machine for machine — the two
  * describe the same crew, so a test can mount the roster and the page together without them
  * disagreeing. `attic` carries the loud pair: an incompatible protocol AND a second lead claiming
  * the crew, which is what the page has to shout about.
@@ -210,7 +210,7 @@ export const fixtureCrewSnapshot: SnapshotResponse = {
  * as "now" — the page must never date anything against `Date.now()`.
  */
 export const fixtureCrewStatus: CrewStatusResponse = {
-  pack: { id: "pk1", name: "home", secretGeneration: 3, rotatedAt: 100_000 },
+  crew: { id: "pk1", name: "home", secretGeneration: 3, rotatedAt: 100_000 },
   self: { id: "bluefin", name: "bluefin", version: "0.30.0" },
   deputy: { id: "workshop", warrantGeneration: 2 },
   members: [
@@ -382,7 +382,7 @@ export const handlers = [
   // The DEFAULT world is solo, so the census refuses exactly as a non-lead bridge does: 404 with the
   // app's ordinary JSON error shape. Every pre-existing test therefore keeps asserting the one-host
   // world, and a test that wants a crew overrides this with `fixtureCrewStatus`.
-  http.get("/api/pack", () =>
+  http.get("/api/crew", () =>
     HttpResponse.json(
       { error: "this collie is not the lead of a crew", code: "crew.not_lead" },
       { status: 404 },

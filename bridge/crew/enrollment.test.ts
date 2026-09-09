@@ -53,7 +53,7 @@ describe("this collie's own identity", () => {
     expect(data).toEqual({
       version: 1,
       self: { memberId: "desk", certPem: expect.any(String), keyPem: expect.any(String), fingerprint: fp("desk"), createdAt: T0 },
-      pack: null,
+      crew: null,
       lead: null,
       peers: [],
       invites: [],
@@ -65,17 +65,17 @@ describe("invites", () => {
   const fresh = createTrustStore(selfIdentity("desk", material("desk"), T0));
 
   test("the first invite is what brings the crew (and its secret) into existence", () => {
-    expect(fresh.pack).toBeNull();
+    expect(fresh.crew).toBeNull();
     const change = mintInvite(fresh, { now: T0, random: R() });
-    expect(change.next.pack).not.toBeNull();
-    expect(change.next.pack!.secret).toBe("r3");
-    expect(change.next.pack!.secretGeneration).toBe(1);
+    expect(change.next.crew).not.toBeNull();
+    expect(change.next.crew!.secret).toBe("r3");
+    expect(change.next.crew!.secretGeneration).toBe(1);
   });
 
   test("a later invite reuses the existing crew — a second invite is not a second crew", () => {
     const first = mintInvite(fresh, { now: T0, random: R() }).next;
     const second = mintInvite(first, { now: T0 + 1, random: R() }).next;
-    expect(second.pack).toEqual(first.pack!);
+    expect(second.crew).toEqual(first.crew!);
     expect(second.invites).toHaveLength(2);
   });
 
@@ -95,7 +95,7 @@ describe("invites", () => {
 
   test("the audit line names the invite but never the token", () => {
     const { audit, result } = mintInvite(fresh, { now: T0, label: "laptop" });
-    expect(audit.action).toBe("pack.invite");
+    expect(audit.action).toBe("crew.invite");
     expect(JSON.stringify(audit)).not.toContain(result.token);
     expect(audit.detail!.label).toBe("laptop");
   });
@@ -157,7 +157,7 @@ describe("spending an invite", () => {
 
   test("the audit line records only whether it was accepted", () => {
     expect(consumeInvite(data, token, T0 + 1)!.audit).toEqual({
-      action: "pack.invite.spend",
+      action: "crew.invite.spend",
       detail: { accepted: true },
     });
   });
@@ -190,7 +190,7 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
     ]);
     expect(change.result).toEqual({
       protocol: 2,
-      packId: CREW.packId,
+      packId: CREW.crewId,
       crewName: CREW.name,
       crewSecret: CREW.secret,
       secretGeneration: 1,
@@ -203,7 +203,7 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
 
   test("a collie with no crew cannot enroll anybody", () => {
     expect(
-      enrollPeer(leadStore({ pack: null }), { fingerprint: fp("x"), certPem: material("x").certPem, address: "a", label: null }, T0),
+      enrollPeer(leadStore({ crew: null }), { fingerprint: fp("x"), certPem: material("x").certPem, address: "a", label: null }, T0),
     ).toBeNull();
   });
 
@@ -252,8 +252,8 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
     const change = acceptEnrollment(joining, res, "desk.ts.net:8787", T0 + 1);
     expect(change.next.self.memberId).toBe("laptop");
     expect(change.next.self.keyPem).toBe(joining.self.keyPem);
-    expect(change.next.pack).toEqual({
-      packId: CREW.packId,
+    expect(change.next.crew).toEqual({
+      crewId: CREW.crewId,
       name: CREW.name,
       secret: CREW.secret,
       secretGeneration: 1,
@@ -339,10 +339,10 @@ describe("rotation (§8.4)", () => {
 
   test("rotating replaces the secret and bumps the generation — no grace, no rollback value", () => {
     const change = rotateCrewSecret(withPeers, T0 + 10, R())!;
-    expect(change.next.pack!.secret).toBe("r1");
-    expect(change.next.pack!.secret).not.toBe(CREW.secret);
-    expect(change.next.pack!.secretGeneration).toBe(2);
-    expect(change.next.pack!.rotatedAt).toBe(T0 + 10);
+    expect(change.next.crew!.secret).toBe("r1");
+    expect(change.next.crew!.secret).not.toBe(CREW.secret);
+    expect(change.next.crew!.secretGeneration).toBe(2);
+    expect(change.next.crew!.rotatedAt).toBe(T0 + 10);
     // The store keeps no copy of the old secret anywhere.
     expect(JSON.stringify(change.next)).not.toContain(CREW.secret);
   });
@@ -364,7 +364,7 @@ describe("rotation (§8.4)", () => {
       ["nas", "enrolled"],
       ["laptop", "unenrolled"],
     ]);
-    expect(change.audit.action).toBe("pack.unenroll");
+    expect(change.audit.action).toBe("crew.unenroll");
     // Marked, not deleted: `crew status` must be able to say WHY the machine went quiet.
     expect(change.next.peers).toHaveLength(2);
   });
@@ -374,9 +374,9 @@ describe("rotation (§8.4)", () => {
   });
 
   test("a collie with no crew cannot rotate", () => {
-    expect(rotateCrewSecret(leadStore({ pack: null }), T0)).toBeNull();
-    expect(markSecretDelivered(leadStore({ pack: null }), "nas")).toBeNull();
-    expect(dropMembersBehind(leadStore({ pack: null }))).toBeNull();
+    expect(rotateCrewSecret(leadStore({ crew: null }), T0)).toBeNull();
+    expect(markSecretDelivered(leadStore({ crew: null }), "nas")).toBeNull();
+    expect(dropMembersBehind(leadStore({ crew: null }))).toBeNull();
   });
 });
 
@@ -386,20 +386,20 @@ describe("revocation (§8.4)", () => {
     const change = removeMember(data, "nas")!;
     expect(change.next.peers.map((p) => p.memberId)).toEqual(["laptop"]);
     expect(JSON.stringify(change.next)).not.toContain(fp("nas"));
-    expect(change.audit).toEqual({ action: "pack.remove", detail: { member: "nas", deputy: false } });
+    expect(change.audit).toEqual({ action: "crew.remove", detail: { member: "nas", deputy: false } });
     expect(removeMember(change.next, "nas")).toBeNull();
   });
 
   test("`leave` drops the crew, the roster and the pins — but keeps this collie's own identity", () => {
     const peer = peerStore();
     const change = leaveCrew(peer)!;
-    expect(change.next.pack).toBeNull();
+    expect(change.next.crew).toBeNull();
     expect(change.next.lead).toBeNull();
     expect(change.next.peers).toEqual([]);
     expect(change.next.invites).toEqual([]);
     expect(change.next.self).toEqual(peer.self);
     expect(JSON.stringify(change.next)).not.toContain(CREW.secret);
-    expect(change.audit.action).toBe("pack.leave");
+    expect(change.audit.action).toBe("crew.leave");
   });
 
   // The incident: `crew remove <deputy>` left `deputy` naming the removed machine, so `crew status`
@@ -446,12 +446,12 @@ describe("revocation (§8.4)", () => {
     // `crew` is already gone, so the old guard answered "nothing to leave" and left the fields that
     // do the damage sitting on disk. The verb has to be able to finish the job.
     const stored = mintWarrant(leadStore({ peers: [member({ memberId: "laptop" })] }), "laptop", T0)!.result;
-    const stranded = leadStore({ pack: null, warrant: { warrant: stored, deputyCertPem: null } });
+    const stranded = leadStore({ crew: null, warrant: { warrant: stored, deputyCertPem: null } });
     expect(leaveCrew(stranded)!.next.warrant).toBeNull();
   });
 
   test("leaving a crew you are not in changes nothing", () => {
-    expect(leaveCrew(leadStore({ pack: null }))).toBeNull();
+    expect(leaveCrew(leadStore({ crew: null }))).toBeNull();
   });
 
   test("after `leave` the mode falls back to solo without deleting the file", () => {
@@ -487,7 +487,7 @@ describe("commitCrewChange — write first, audit second", () => {
     });
     expect(store.current()!.peers).toEqual([]);
     await Bun.sleep(5);
-    expect(h.lines.map((l) => l.action)).toEqual(["pack.remove"]);
+    expect(h.lines.map((l) => l.action)).toEqual(["crew.remove"]);
   });
 
   test("a no-op change writes nothing and audits nothing", async () => {
@@ -518,7 +518,7 @@ describe("commitCrewChange — write first, audit second", () => {
     await commitCrewChange(store, h.audit, (d) => dropMembersBehind(d!));
     await commitCrewChange(store, h.audit, (d) => leaveCrew(d!));
     await Bun.sleep(5);
-    expect(h.lines.map((l) => l.action)).toEqual(["pack.rotate", "pack.unenroll", "pack.leave"]);
+    expect(h.lines.map((l) => l.action)).toEqual(["crew.rotate", "crew.unenroll", "crew.leave"]);
     // Audit lines must never carry credential material.
     expect(JSON.stringify(h.lines)).not.toContain(CREW.secret);
   });
@@ -533,10 +533,10 @@ describe("adoptSecret", () => {
 
   test("takes the lead's rotated secret and moves this member's generation with it", () => {
     const change = adoptSecret(peerStore(), handover, T0 + 5)!;
-    expect(change.next.pack!.secret).toBe(handover.secret);
-    expect(change.next.pack!.secretGeneration).toBe(2);
+    expect(change.next.crew!.secret).toBe(handover.secret);
+    expect(change.next.crew!.secretGeneration).toBe(2);
     expect(change.next.lead!.secretGeneration).toBe(2);
-    expect(change.audit.action).toBe("pack.secret.adopted");
+    expect(change.audit.action).toBe("crew.secret.adopted");
     // The secret itself never reaches the log.
     expect(JSON.stringify(change.audit)).not.toContain(handover.secret);
   });
@@ -566,7 +566,7 @@ describe("adoptLead / demoteSelf / promoteSelf", () => {
     const change = adoptLead(before, claim, T0 + 9)!;
     expect(change.next.lead).toMatchObject({ memberId: "nas", fingerprint: fp("nas"), role: "lead" });
     expect(change.next.self.memberId).toBe(before.self.memberId);
-    expect(change.next.pack).toEqual(before.pack);
+    expect(change.next.crew).toEqual(before.crew);
     expect(change.next.peers).toEqual([]);
   });
 
@@ -608,7 +608,7 @@ describe("adoptLead / demoteSelf / promoteSelf", () => {
     // One `next`: the role flip and the consumption land in one write, or neither does.
     expect(change.next.pendingHandover).toBeNull();
     expect(liveHandover(change.next, T0 + 1)).toBeNull();
-    expect(change.audit.action).toBe("pack.demote");
+    expect(change.audit.action).toBe("crew.demote");
     expect(change.audit.detail).toMatchObject({ lead: "nas", approvedAt: new Date(T0).toISOString() });
   });
 
@@ -663,7 +663,7 @@ describe("adoptLead / demoteSelf / promoteSelf", () => {
     expect(full.next.lead).toBeNull();
     expect(full.next.peers.map((p) => p.memberId)).toEqual(["desk", "nas"]);
     expect(full.next.peers.every((p) => p.role === "peer" && p.secretGeneration === CREW.secretGeneration)).toBe(true);
-    expect(full.next.pack).toEqual(store.pack);
+    expect(full.next.crew).toEqual(store.crew);
 
     const forced = promoteSelf(store, [], T0)!;
     expect(forced.next.lead).toBeNull();
@@ -687,7 +687,7 @@ describe("the handover approval (§14.1) — consent minted on the lead", () => 
     const change = approvePromotion(roster(), "nas", T0)!;
     expect(change.result).toEqual({ memberId: "nas", createdAt: T0, expiresAt: T0 + HANDOVER_TTL_MS });
     expect(change.next.pendingHandover).toEqual(change.result);
-    expect(change.audit.action).toBe("pack.handover.approve");
+    expect(change.audit.action).toBe("crew.handover.approve");
     // The window is the invite's, for the invite's reason (§14.1).
     expect(HANDOVER_TTL_MS).toBe(10 * 60 * 1000);
   });
@@ -713,7 +713,7 @@ describe("the handover approval (§14.1) — consent minted on the lead", () => 
     const cancelled = cancelPromotion(armed, T0 + 1)!;
     expect(cancelled.next.pendingHandover).toBeNull();
     expect(cancelled.result.memberId).toBe("nas");
-    expect(cancelled.audit.action).toBe("pack.handover.cancel");
+    expect(cancelled.audit.action).toBe("crew.handover.cancel");
     expect(cancelPromotion(roster(), T0)).toBeNull();
     // An expired approval is already absent, so cancelling one is not a state change.
     expect(cancelPromotion(armed, T0 + HANDOVER_TTL_MS)).toBeNull();

@@ -183,7 +183,7 @@ function harness(
       // As in cli/crew.test.ts: the peer client races the fake fetch against a REAL timer, so the
       // budget is set far above anything this process could stall for.
       ctx: context(
-        { COLLIE_PACK_TIMEOUT_MS: "60000", ...over.env },
+        { COLLIE_CREW_TIMEOUT_MS: "60000", ...over.env },
         over.root === undefined ? { socket: SOCKET } : { socket: SOCKET, root: over.root },
       ),
       io: out,
@@ -254,7 +254,7 @@ const LEAD = leadStore({ peers: [member({ memberId: "laptop" })] });
 
 /** A boot marker that matches a store exactly — the "the running bridge holds this roster" case. */
 const markerFile = (data: TrustStoreData): SeededFiles => ({
-  [`${STATE}/pack-runtime.json`]: JSON.stringify(markerFor(data, T0, 42)),
+  [`${STATE}/crew-runtime.json`]: JSON.stringify(markerFor(data, T0, 42)),
 });
 
 /** A seed with one path taken out of it — the "that file is simply not there" cases. */
@@ -842,7 +842,7 @@ describe("collie doctor — the crew checks", () => {
     const stale = markerFor(leadStore(), T0, 42);
     const { code, byCheck } = await findings(
       harness(LEAD, [hello()], {
-        files: { ...healthyFiles(), [`${STATE}/pack-runtime.json`]: JSON.stringify(stale) },
+        files: { ...healthyFiles(), [`${STATE}/crew-runtime.json`]: JSON.stringify(stale) },
       }),
     );
     expect(byCheck.get("store-drift")?.status).toBe("error");
@@ -890,7 +890,7 @@ describe("collie doctor — the crew checks", () => {
     const f = byCheck.get("member-reach");
     expect(f?.status).toBe("error");
     expect(f?.detail).toContain("served no data");
-    expect(f?.remedy).toContain("COLLIE_PACK_TIMEOUT_MS");
+    expect(f?.remedy).toContain("COLLIE_CREW_TIMEOUT_MS");
     expect(f?.remedy).toContain("COLLIE_POLL_MS");
     expect(f?.remedy).not.toContain("collie reconnect");
     expect(code).toBe(EXIT.FAIL);

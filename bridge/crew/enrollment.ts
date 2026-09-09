@@ -102,7 +102,7 @@ export function selfIdentity(memberId: string, material: IdentityMaterial, now: 
 
 /** A brand-new trust store: an identity, no crew, no roster. The file's first contents. */
 export function createTrustStore(self: SelfIdentity): TrustStoreData {
-  return { version: TRUST_STORE_VERSION, self, pack: null, lead: null, peers: [], invites: [] };
+  return { version: TRUST_STORE_VERSION, self, crew: null, lead: null, peers: [], invites: [] };
 }
 
 // ── Invites (on the lead) ────────────────────────────────────────────────────
@@ -143,8 +143,8 @@ export function mintInvite(
     expiresAt: opts.now + ttl,
     label: opts.label ?? null,
   };
-  const crew: CrewIdentity = data.pack ?? {
-    packId: random(16),
+  const crew: CrewIdentity = data.crew ?? {
+    crewId: random(16),
     name: opts.crewName ?? "collie crew",
     secret: random(32),
     secretGeneration: 1,
@@ -153,12 +153,12 @@ export function mintInvite(
   return {
     next: {
       ...data,
-      pack: crew,
+      crew: crew,
       invites: [...data.invites.filter((i) => i.expiresAt > opts.now), invite],
     },
     result: { token, expiresAt: invite.expiresAt },
     audit: {
-      action: "pack.invite",
+      action: "crew.invite",
       // The token never reaches the log — a 0600 audit file is still a file, and this one is
       // deliberately readable by the operator's own tooling.
       detail: { label: invite.label ?? undefined, expiresAt: new Date(invite.expiresAt).toISOString() },
@@ -198,7 +198,7 @@ export function consumeInvite(
     next: { ...data, invites: remaining },
     result: matched,
     audit: {
-      action: "pack.invite.spend",
+      action: "crew.invite.spend",
       detail: { accepted: matched !== null },
     },
   };
@@ -320,7 +320,7 @@ export function enrollPeer(
   now: number,
   random: RandomSource = randomToken,
 ): CrewChange<EnrollResponse> | null {
-  if (data.pack === null) return null;
+  if (data.crew === null) return null;
   const existing = data.peers.find((p) => p.fingerprint === req.fingerprint);
   const taken = new Set(data.peers.map((p) => p.memberId).concat(data.self.memberId));
   const memberId = existing?.memberId ?? mintMemberId(req.label, taken, random);
@@ -332,7 +332,7 @@ export function enrollPeer(
     role: "peer",
     status: "enrolled",
     enrolledAt: now,
-    secretGeneration: data.pack.secretGeneration,
+    secretGeneration: data.crew.secretGeneration,
     // A re-join resets the replay floor with the pin: the member is presenting a fresh certificate
     // and a fresh invite, so a timestamp from before it is not a request this link ever admitted.
     signedAt: 0,
@@ -347,17 +347,17 @@ export function enrollPeer(
     },
     result: {
       protocol: CREW_PROTOCOL_VERSION,
-      packId: data.pack.packId,
-      crewName: data.pack.name,
-      crewSecret: data.pack.secret,
-      secretGeneration: data.pack.secretGeneration,
+      packId: data.crew.crewId,
+      crewName: data.crew.name,
+      crewSecret: data.crew.secret,
+      secretGeneration: data.crew.secretGeneration,
       memberId,
       leadMemberId: data.self.memberId,
       leadFingerprint: data.self.fingerprint,
       leadCertPem: data.self.certPem,
     },
     audit: {
-      action: "pack.enroll",
+      action: "crew.enroll",
       detail: { member: memberId, fingerprint: req.fingerprint, address: req.address, rejoin: existing !== undefined },
     },
   };
@@ -392,8 +392,8 @@ export function acceptEnrollment(
     next: {
       ...data,
       self: { ...data.self, memberId: res.memberId },
-      pack: {
-        packId: res.packId,
+      crew: {
+        crewId: res.packId,
         name: res.crewName,
         secret: res.crewSecret,
         secretGeneration: res.secretGeneration,
@@ -405,8 +405,8 @@ export function acceptEnrollment(
     },
     result: { memberId: res.memberId },
     audit: {
-      action: "pack.joined",
-      detail: { pack: res.packId, lead: res.leadMemberId, member: res.memberId, fingerprint: res.leadFingerprint },
+      action: "crew.joined",
+      detail: { crew: res.packId, lead: res.leadMemberId, member: res.memberId, fingerprint: res.leadFingerprint },
     },
   };
 }
@@ -427,22 +427,22 @@ export function rotateCrewSecret(
   now: number,
   random: RandomSource = randomToken,
 ): CrewChange<{ secretGeneration: number }> | null {
-  if (data.pack === null) return null;
-  const generation = data.pack.secretGeneration + 1;
+  if (data.crew === null) return null;
+  const generation = data.crew.secretGeneration + 1;
   return {
     next: {
       ...data,
-      pack: { ...data.pack, secret: random(32), secretGeneration: generation, rotatedAt: now },
+      crew: { ...data.crew, secret: random(32), secretGeneration: generation, rotatedAt: now },
     },
     result: { secretGeneration: generation },
-    audit: { action: "pack.rotate", detail: { generation, members: data.peers.length } },
+    audit: { action: "crew.rotate", detail: { generation, members: data.peers.length } },
   };
 }
 
 /** Record that a member has taken the current secret — the per-member column `crew status` renders. */
 export function markSecretDelivered(data: TrustStoreData, memberId: string): CrewChange<null> | null {
-  if (data.pack === null) return null;
-  const generation = data.pack.secretGeneration;
+  if (data.crew === null) return null;
+  const generation = data.crew.secretGeneration;
   const found = data.peers.some((p) => p.memberId === memberId && p.secretGeneration !== generation);
   if (!found) return null;
   return {
@@ -451,7 +451,7 @@ export function markSecretDelivered(data: TrustStoreData, memberId: string): Cre
       peers: data.peers.map((p) => (p.memberId === memberId ? { ...p, secretGeneration: generation } : p)),
     },
     result: null,
-    audit: { action: "pack.secret.delivered", detail: { member: memberId, generation } },
+    audit: { action: "crew.secret.delivered", detail: { member: memberId, generation } },
   };
 }
 
@@ -462,8 +462,8 @@ export function markSecretDelivered(data: TrustStoreData, memberId: string): Cre
  * knows the recovery step is a fresh `collie join` rather than a network hunt (§8.4).
  */
 export function dropMembersBehind(data: TrustStoreData): CrewChange<{ dropped: string[] }> | null {
-  if (data.pack === null) return null;
-  const generation = data.pack.secretGeneration;
+  if (data.crew === null) return null;
+  const generation = data.crew.secretGeneration;
   const behind = data.peers.filter((p) => p.status === "enrolled" && p.secretGeneration !== generation);
   if (behind.length === 0) return null;
   return {
@@ -474,7 +474,7 @@ export function dropMembersBehind(data: TrustStoreData): CrewChange<{ dropped: s
       ),
     },
     result: { dropped: behind.map((p) => p.memberId) },
-    audit: { action: "pack.unenroll", detail: { members: behind.map((p) => p.memberId), generation } },
+    audit: { action: "crew.unenroll", detail: { members: behind.map((p) => p.memberId), generation } },
   };
 }
 
@@ -507,7 +507,7 @@ export function removeMember(
   return {
     next,
     result: { member: memberId, deputy: designated },
-    audit: { action: "pack.remove", detail: { member: memberId, deputy: designated } },
+    audit: { action: "crew.remove", detail: { member: memberId, deputy: designated } },
   };
 }
 
@@ -533,7 +533,7 @@ export function removeMember(
  * the damage. `pendingHandover` and `deputySpentAt` go for the same reason: both describe a crown
  * that is not this crew's.
  */
-export function leaveCrew(data: TrustStoreData): CrewChange<{ pack: string | null }> | null {
+export function leaveCrew(data: TrustStoreData): CrewChange<{ crew: string | null }> | null {
   const armed =
     (data.deputy ?? null) !== null ||
     (data.warrant ?? null) !== null ||
@@ -541,7 +541,7 @@ export function leaveCrew(data: TrustStoreData): CrewChange<{ pack: string | nul
     (data.deputySpentAt ?? null) !== null ||
     (data.pendingHandover ?? null) !== null;
   if (
-    data.pack === null &&
+    data.crew === null &&
     data.lead === null &&
     data.peers.length === 0 &&
     data.invites.length === 0 &&
@@ -552,7 +552,7 @@ export function leaveCrew(data: TrustStoreData): CrewChange<{ pack: string | nul
   return {
     next: {
       ...data,
-      pack: null,
+      crew: null,
       lead: null,
       peers: [],
       invites: [],
@@ -562,8 +562,8 @@ export function leaveCrew(data: TrustStoreData): CrewChange<{ pack: string | nul
       deputySpentAt: null,
       pendingHandover: null,
     },
-    result: { pack: data.pack?.packId ?? null },
-    audit: { action: "pack.leave", detail: { pack: data.pack?.packId, lead: data.lead?.memberId } },
+    result: { crew: data.crew?.crewId ?? null },
+    audit: { action: "crew.leave", detail: { crew: data.crew?.crewId, lead: data.lead?.memberId } },
   };
 }
 
@@ -661,16 +661,16 @@ export function adoptSecret(
   handover: { secret: string; generation: number },
   now: number,
 ): CrewChange<{ secretGeneration: number }> | null {
-  if (data.pack === null || data.lead === null) return null;
-  if (handover.secret === "" || handover.generation <= data.pack.secretGeneration) return null;
+  if (data.crew === null || data.lead === null) return null;
+  if (handover.secret === "" || handover.generation <= data.crew.secretGeneration) return null;
   return {
     next: {
       ...data,
-      pack: { ...data.pack, secret: handover.secret, secretGeneration: handover.generation, rotatedAt: now },
+      crew: { ...data.crew, secret: handover.secret, secretGeneration: handover.generation, rotatedAt: now },
       lead: { ...data.lead, secretGeneration: handover.generation },
     },
     result: { secretGeneration: handover.generation },
-    audit: { action: "pack.secret.adopted", detail: { generation: handover.generation, from: data.lead.memberId } },
+    audit: { action: "crew.secret.adopted", detail: { generation: handover.generation, from: data.lead.memberId } },
   };
 }
 
@@ -683,7 +683,7 @@ export function adoptSecret(
  * it — a peer has no peers, and a store holding both resolves to the conflict mode.
  */
 export function adoptLead(data: TrustStoreData, lead: RosterEntry, now: number): CrewChange<{ lead: string }> | null {
-  if (data.pack === null) return null;
+  if (data.crew === null) return null;
   if (lead.memberId === data.self.memberId) return null;
   const already =
     data.lead !== null &&
@@ -695,14 +695,14 @@ export function adoptLead(data: TrustStoreData, lead: RosterEntry, now: number):
   return {
     next: {
       ...data,
-      lead: memberFrom(lead, "lead", data.pack.secretGeneration, now),
+      lead: memberFrom(lead, "lead", data.crew.secretGeneration, now),
       peers: [],
     },
     // A meaningful result, not `null`: `commitCrewChange` collapses "no change" and "changed, with
     // nothing to report" into the same `null` at the call site, and the verbs branch on it.
     result: { lead: lead.memberId },
     audit: {
-      action: "pack.lead.changed",
+      action: "crew.lead.changed",
       detail: { lead: lead.memberId, fingerprint: lead.fingerprint, address: lead.address, from: data.lead?.memberId },
     },
   };
@@ -742,14 +742,14 @@ export function approvePromotion(
   memberId: string,
   now: number,
 ): CrewChange<PendingHandover> | null {
-  if (data.pack === null || !isLeading(data)) return null;
+  if (data.crew === null || !isLeading(data)) return null;
   if (!data.peers.some((p) => p.memberId === memberId && p.status === "enrolled")) return null;
   const approval: PendingHandover = { memberId, createdAt: now, expiresAt: now + HANDOVER_TTL_MS };
   return {
     next: { ...data, pendingHandover: approval },
     result: approval,
     audit: {
-      action: "pack.handover.approve",
+      action: "crew.handover.approve",
       detail: { member: memberId, expiresAt: new Date(approval.expiresAt).toISOString() },
     },
   };
@@ -767,7 +767,7 @@ export function cancelPromotion(data: TrustStoreData, now: number): CrewChange<P
   return {
     next: { ...data, pendingHandover: null },
     result: approval,
-    audit: { action: "pack.handover.cancel", detail: { member: approval.memberId } },
+    audit: { action: "crew.handover.cancel", detail: { member: approval.memberId } },
   };
 }
 
@@ -825,7 +825,7 @@ export function demoteSelf(
   from: Pick<TrustedMember, "memberId" | "fingerprint">,
   now: number,
 ): CrewChange<{ roster: RosterEntry[] }> | DemotionRefused | null {
-  if (data.pack === null || !isLeading(data)) return null;
+  if (data.crew === null || !isLeading(data)) return null;
   if (newLead.memberId === data.self.memberId) return null;
   const approval = liveHandover(data, now);
   if (approval === null) return { refused: "not-approved", clause: "no-approval" };
@@ -837,14 +837,14 @@ export function demoteSelf(
   return {
     next: {
       ...data,
-      lead: memberFrom(newLead, "lead", data.pack.secretGeneration, now),
+      lead: memberFrom(newLead, "lead", data.crew.secretGeneration, now),
       peers: [],
       // Spent. The consent and the role flip land in one write, or neither does.
       pendingHandover: null,
     },
     result: { roster },
     audit: {
-      action: "pack.demote",
+      action: "crew.demote",
       detail: {
         lead: newLead.memberId,
         handed: roster.map((r) => r.memberId),
@@ -870,8 +870,8 @@ export function promoteSelf(
   roster: readonly RosterEntry[],
   now: number,
 ): CrewChange<{ peers: string[] }> | null {
-  if (data.pack === null) return null;
-  const generation = data.pack.secretGeneration;
+  if (data.crew === null) return null;
+  const generation = data.crew.secretGeneration;
   const adopted = roster.filter((r) => r.memberId !== data.self.memberId);
   return {
     next: {
@@ -882,8 +882,8 @@ export function promoteSelf(
     },
     result: { peers: adopted.map((r) => r.memberId) },
     audit: {
-      action: "pack.promote",
-      detail: { pack: data.pack.packId, peers: adopted.map((r) => r.memberId), demoted: data.lead?.memberId },
+      action: "crew.promote",
+      detail: { crew: data.crew.crewId, peers: adopted.map((r) => r.memberId), demoted: data.lead?.memberId },
     },
   };
 }
@@ -906,7 +906,7 @@ export function recordSignedRequest(
     return {
       next: { ...data, lead: bump(data.lead) },
       result: { signedAt: timestamp },
-      audit: { action: "pack.signed", detail: { member: memberId, at: timestamp } },
+      audit: { action: "crew.signed", detail: { member: memberId, at: timestamp } },
     };
   }
   const peer = data.peers.find((p) => p.memberId === memberId);
@@ -914,7 +914,7 @@ export function recordSignedRequest(
   return {
     next: { ...data, peers: data.peers.map((p) => (p.memberId === memberId ? bump(p) : p)) },
     result: { signedAt: timestamp },
-    audit: { action: "pack.signed", detail: { member: memberId, at: timestamp } },
+    audit: { action: "crew.signed", detail: { member: memberId, at: timestamp } },
   };
 }
 
@@ -936,7 +936,7 @@ export function updateMemberAddress(
     return {
       next: { ...data, lead: { ...data.lead, address } },
       result: { from: data.lead.address },
-      audit: { action: "pack.address", detail: { member: memberId, from: data.lead.address, to: address } },
+      audit: { action: "crew.address", detail: { member: memberId, from: data.lead.address, to: address } },
     };
   }
   const peer = data.peers.find((p) => p.memberId === memberId);
@@ -947,7 +947,7 @@ export function updateMemberAddress(
       peers: data.peers.map((p) => (p.memberId === memberId ? { ...p, address } : p)),
     },
     result: { from: peer.address },
-    audit: { action: "pack.address", detail: { member: memberId, from: peer.address, to: address } },
+    audit: { action: "crew.address", detail: { member: memberId, from: peer.address, to: address } },
   };
 }
 

@@ -170,7 +170,7 @@ const VERDICT_COLOUR = {
  * bridge does with it.
  */
 interface Confirm {
-  kind: "single" | "pack" | "retry" | "major";
+  kind: "single" | "crew" | "retry" | "major";
   version: string;
   major: boolean;
   peersOnly: boolean;
@@ -493,7 +493,7 @@ export function UpdateCard() {
                       action === "retry-crew"
                         ? { kind: "retry", version: current, major: false, peersOnly: true }
                         : {
-                            kind: action === "update-crew" ? "pack" : "single",
+                            kind: action === "update-crew" ? "crew" : "single",
                             version: latest ?? current,
                             major: false,
                             peersOnly: false,
@@ -648,7 +648,7 @@ const PACKAGE_CHECK_ID = "package";
  *  through the words written for one machine. */
 function confirmTitle(ask: Confirm): string {
   if (ask.kind === "major") return t("settings.updateCard.majorConfirmTitle", { version: ask.version });
-  if (ask.kind === "pack") return t("settings.updateCard.crewConfirmTitle", { version: ask.version });
+  if (ask.kind === "crew") return t("settings.updateCard.crewConfirmTitle", { version: ask.version });
   if (ask.kind === "retry") return t("settings.updateCard.retryConfirmTitle");
   return t("settings.updateCard.confirmTitle", { version: ask.version });
 }
@@ -664,7 +664,7 @@ function confirmTitle(ask: Confirm): string {
  */
 function confirmBody(ask: Confirm, packageManaged = false): string {
   if (ask.kind === "major") return t("settings.updateCard.majorConfirmBody", { version: ask.version });
-  if (ask.kind === "pack") return t("settings.updateCard.crewConfirmBody");
+  if (ask.kind === "crew") return t("settings.updateCard.crewConfirmBody");
   if (ask.kind === "retry") {
     return packageManaged ? t("settings.updateCard.packageManaged") : t("settings.updateCard.retryConfirmBody");
   }
@@ -673,7 +673,7 @@ function confirmBody(ask: Confirm, packageManaged = false): string {
 
 function confirmAction(ask: Confirm): string {
   if (ask.kind === "major") return t("settings.updateCard.majorConfirmAction", { version: ask.version });
-  if (ask.kind === "pack") return t("settings.updateCard.crewConfirmAction");
+  if (ask.kind === "crew") return t("settings.updateCard.crewConfirmAction");
   if (ask.kind === "retry") return t("settings.updateCard.retryConfirmAction");
   return t("settings.updateCard.confirmAction");
 }

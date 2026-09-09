@@ -352,7 +352,7 @@ export interface ServerSummary {
 }
 
 /**
- * GET /api/pack — what the RUNNING lead already knows about its own crew, for the phone's Crew
+ * GET /api/crew — what the RUNNING lead already knows about its own crew, for the phone's Crew
  * overview page. The read-only browser spelling of `collie crew status` (cli/crew.ts).
  *
  * **It is a report, never a probe.** Every field below is answered from state this process already
@@ -369,7 +369,7 @@ export interface ServerSummary {
  */
 export interface CrewStatusResponse {
   /** The crew itself, as the trust store records it (`CrewIdentity`). */
-  pack: { id: string; name: string; secretGeneration: number; rotatedAt: number };
+  crew: { id: string; name: string; secretGeneration: number; rotatedAt: number };
   /** This lead. `version` per bridge/version.ts, the same string `hello` answers with. */
   self: { id: string; name: string; version: string };
   /**

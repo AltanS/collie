@@ -136,10 +136,10 @@ export function checkTakeoverClaim(
   now: number,
 ): TakeoverVerdict {
   const lead = data?.lead ?? null;
-  if (data === null || data.pack === null || lead === null || lead.status !== "enrolled") {
+  if (data === null || data.crew === null || lead === null || lead.status !== "enrolled") {
     return { kind: "refuse", reason: "not-a-peer" };
   }
-  if (warrant.packId !== data.pack.packId || warrant.leadMemberId !== lead.memberId) {
+  if (warrant.packId !== data.crew.crewId || warrant.leadMemberId !== lead.memberId) {
     return { kind: "refuse", reason: "foreign" };
   }
   if (!verifyWarrantSignature(warrant, lead.certPem)) return { kind: "refuse", reason: "bad-signature" };
@@ -204,7 +204,7 @@ export function commitTakeover(
   address: string,
   now: number,
 ): CrewChange<{ readonly lead: string; readonly generation: number }> | null {
-  if (data.pack === null || data.lead === null) return null;
+  if (data.crew === null || data.lead === null) return null;
   const lead: TrustedMember = {
     memberId: accepted.deputy.memberId,
     // The ANCHORED certificate's own fingerprint, carried out of the verdict that proved it equal to
@@ -215,7 +215,7 @@ export function commitTakeover(
     role: "lead",
     status: "enrolled",
     enrolledAt: now,
-    secretGeneration: data.pack.secretGeneration,
+    secretGeneration: data.crew.secretGeneration,
     // §8.6's replay floor is per member and must never walk backwards on a role change. This member
     // has never signed anything at this collie, so it starts where a newly pinned member starts.
     signedAt: 0,
@@ -235,7 +235,7 @@ export function commitTakeover(
     },
     result: { lead: lead.memberId, generation: accepted.warrant.generation },
     audit: {
-      action: "pack.takeover.adopted",
+      action: "crew.takeover.adopted",
       detail: { lead: lead.memberId, generation: accepted.warrant.generation, from: data.lead.memberId },
     },
   };
@@ -269,8 +269,8 @@ export function adoptLeadership(
     readonly now: number;
   },
 ): CrewChange<{ readonly members: number; readonly pending: readonly string[] }> | null {
-  if (data.pack === null || data.lead === null) return null;
-  const generation = data.pack.secretGeneration;
+  if (data.crew === null || data.lead === null) return null;
+  const generation = data.crew.secretGeneration;
   const rows: RosterRow[] = [
     // The old lead first: it is the member most likely to be reachable and the one that must be told.
     { memberId: data.lead.memberId, fingerprint: data.lead.fingerprint, certPem: data.lead.certPem, address: data.lead.address },
@@ -308,7 +308,7 @@ export function adoptLeadership(
     },
     result: { members: peers.length, pending },
     audit: {
-      action: "pack.takeover.committed",
+      action: "crew.takeover.committed",
       detail: {
         from: data.lead.memberId,
         members: peers.length,
@@ -328,7 +328,7 @@ export function clearRePin(data: TrustStoreData, memberId: string): CrewChange<{
       peers: data.peers.map((p) => (p.memberId === memberId ? { ...p, rePinPending: false } : p)),
     },
     result: { member: memberId },
-    audit: { action: "pack.takeover.repinned", detail: { member: memberId } },
+    audit: { action: "crew.takeover.repinned", detail: { member: memberId } },
   };
 }
 

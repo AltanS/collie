@@ -131,7 +131,7 @@ function harness(opts: {
   const audit: AuditEntry[] = [];
 
   const deps: CrewAddDeps = {
-    ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000" }),
+    ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }),
     io: opts.io ?? forbiddenIo(),
     ui,
     exec: fakeExec({

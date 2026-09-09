@@ -349,13 +349,13 @@ export function dismissTarget(view: RibbonView): Dismissal | null {
       return { scope: "offer", version: view.version };
     case "peers":
     case "package-managed":
-      return view.target === null ? null : { scope: "pack", version: view.target };
+      return view.target === null ? null : { scope: "crew", version: view.target };
     // A FAILED LEG IS CLOSABLE, and by this rule's own logic (M20/04). The rule is whether the state
     // describes something that ends on its own. A failed leg is the one crew state that does not:
     // it is terminal, the run is over, and the sentence would otherwise stand until another run
     // replaces it. An operator who has read it may put it down.
     case "peer-failed":
-      return view.target === null ? null : { scope: "pack", version: view.target };
+      return view.target === null ? null : { scope: "crew", version: view.target };
     default:
       return null;
   }

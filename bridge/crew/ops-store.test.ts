@@ -47,7 +47,7 @@ function fakeIo(initial: string | null = null): TrustStoreIo & { contents: strin
 
 describe("the ops store's path and shape", () => {
   test("lives beside the trust store, under the state dir", () => {
-    expect(crewOpsPath("/state")).toBe("/state/pack-ops.json");
+    expect(crewOpsPath("/state")).toBe("/state/crew-ops.json");
   });
 
   test("round-trips through its own serialiser", () => {

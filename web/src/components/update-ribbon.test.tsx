@@ -420,7 +420,7 @@ describe("hiding the quiet crew notice", () => {
     const { container } = await renderBand(quiet());
     await user.click(screen.getByRole("button", { name: "Hide this notice" }));
     expect(band(container)).toBeNull();
-    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "pack");
+    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "crew");
   });
 
   it("stays down for the next screen, off the snapshot's own field", async () => {

@@ -92,3 +92,58 @@ describe("wire", () => {
     expect(source("../web/src/lib/sw-routes.ts")).toContain("/pack");
   });
 });
+
+// ── The environment, the state files and the API (M27/02) ───────────────────
+// The other half of the same one release of overlap: the two 1.7.0 environment keys, the one-time
+// state-file rename, `/api/pack`'s 308, the old dismiss scope, and the trust store's old inner
+// keys. Each is inert on a 1.8.0 install and each is a name 1.9.0 must not still read.
+describe("environment, state and the API", () => {
+  test("the old environment keys are no longer read in 1.9.0", () => {
+    if (beforeRemoval(9)) return;
+    const src = source("./crew/peer-client.ts");
+    expect(src).not.toContain("COLLIE_PACK_TIMEOUT_MS");
+    expect(src).not.toContain("COLLIE_PACK_HELLO_TIMEOUT_MS");
+  });
+
+  test("the state file rename is gone in 1.9.0", () => {
+    if (beforeRemoval(9)) return;
+    let present = true;
+    try {
+      source("./crew/state-migration.ts");
+    } catch {
+      present = false;
+    }
+    expect(present).toBe(false);
+  });
+
+  test("`/api/pack` no longer answers a 308 in 1.9.0", () => {
+    if (beforeRemoval(9)) return;
+    expect(source("./server.ts")).not.toContain("/api/pack");
+  });
+
+  test("the old dismiss scope is no longer accepted in 1.9.0", () => {
+    if (beforeRemoval(9)) return;
+    expect(source("./server.ts")).not.toContain('asked === "pack"');
+  });
+
+  test("the trust store no longer reads the old inner keys in 1.9.0", () => {
+    if (beforeRemoval(9)) return;
+    const src = source("./crew/trust-store.ts");
+    expect(src).not.toContain("d.pack");
+    expect(src).not.toContain("p.packId");
+  });
+
+  // The same both-or-neither rule the wire block ends on: while any of this is here, every site
+  // carries the marker a reader greps for.
+  test("while the overlap exists, every side of it is marked", () => {
+    if (!beforeRemoval(9)) return;
+    for (const file of [
+      "./crew/peer-client.ts",
+      "./crew/state-migration.ts",
+      "./crew/trust-store.ts",
+      "./server.ts",
+    ]) {
+      expect(source(file)).toContain("REMOVE_IN_1_9_0");
+    }
+  });
+});

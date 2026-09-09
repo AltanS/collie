@@ -38,6 +38,7 @@ import { crewOpsPath, CrewOpsStore, type OpsRecord } from "../bridge/crew/ops-st
 import {
   crewHelloBudget,
   crewTimeoutBudget,
+  crewEnvFallbackWarning,
   crewTimeoutClampWarning,
   PeerClient,
   sweepPeers,
@@ -794,9 +795,9 @@ export async function cmdJoin(deps: CrewDeps, args: readonly string[]): Promise<
   }
 
   const existing = await deps.store.load();
-  if (existing !== null && existing.pack !== null) {
+  if (existing !== null && existing.crew !== null) {
     const role = existing.lead === null ? `lead of ${existing.peers.length} peer(s)` : `peer of "${existing.lead.memberId}"`;
-    deps.io.err(`error: already in crew "${existing.pack.name}" as ${role} (member "${existing.self.memberId}").`);
+    deps.io.err(`error: already in crew "${existing.crew.name}" as ${role} (member "${existing.self.memberId}").`);
     deps.io.err("       Run `collie crew leave` here first — joining a second crew is not a thing (§3).");
     return EXIT.STATE;
   }
@@ -1013,7 +1014,7 @@ export function enrollUrl(address: string): string | null {
  */
 export async function cmdLeave(deps: CrewDeps): Promise<number> {
   const data = await deps.store.load();
-  if (data === null || data.pack === null) {
+  if (data === null || data.crew === null) {
     deps.io.err("error: this collie is not in a crew — nothing to leave.");
     return EXIT.STATE;
   }
@@ -1026,7 +1027,7 @@ export async function cmdLeave(deps: CrewDeps): Promise<number> {
 
   let revoked = false;
   if (data.lead !== null) {
-    const client = clientFor(deps, data, data.pack.secret);
+    const client = clientFor(deps, data, data.crew.secret);
     const outcome = await client.json(linkOf(data.lead), "leave", undefined, {
       method: "POST",
       headers: CONTENT_TYPE,
@@ -1050,7 +1051,7 @@ export async function cmdLeave(deps: CrewDeps): Promise<number> {
   // a credential store on disk that nothing in the new crew ever wrote or can revoke.
   deps.files.remove(standbyDevicesPath(deps.ctx.stateDir));
 
-  deps.io.out(`✓ left crew "${data.pack.name}" — the crew secret and every pin are gone from this machine.`);
+  deps.io.out(`✓ left crew "${data.crew.name}" — the crew secret and every pin are gone from this machine.`);
   deps.io.out("  This collie's own identity survives, so re-joining needs no new certificate anywhere.");
   if (deputyState !== null) {
     deps.io.out(`  Its deputy state went too (${deputyState}). A warrant belongs to the crew that`);
@@ -1170,7 +1171,7 @@ function retireCrewBind(deps: CrewDeps): string[] {
 export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Promise<number> {
   const { bare } = parseCrewArgs(args, ["force", "no-probe"]);
   const data = await deps.store.load();
-  if (data === null || data.pack === null) {
+  if (data === null || data.crew === null) {
     deps.io.out("mode: solo — this collie is not in a crew (no trust store, or an empty one).");
     deps.io.out("  `collie crew invite` here makes it a lead; `collie join …` makes it a peer.");
     return EXIT.OK;
@@ -1180,7 +1181,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
     peers: data.peers.filter((p) => p.status === "enrolled"),
     lead: data.lead !== null && data.lead.status === "enrolled" ? data.lead : null,
   });
-  deps.io.out(`crew   ${data.pack.name}  (${data.pack.packId})`);
+  deps.io.out(`crew   ${data.crew.name}  (${data.crew.crewId})`);
   deps.io.out(`mode   ${mode}`);
   deps.io.out(`self   ${data.self.memberId}  ${data.self.fingerprint.slice(0, 16)}…`);
   // What interface this collie's own crew listener answers on — COLLIE_HOST, resolved the same way
@@ -1190,7 +1191,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   const bindShown = bind.trim() === "" ? "0.0.0.0/:: (COLLIE_HOST empty)" : bind;
   const bindNote = bindIsWildcard(bind) ? " — ALL interfaces, gated only by pinned mTLS + the crew secret" : "";
   deps.io.out(`bind   ${bindShown}${bindNote}`);
-  deps.io.out(`secret generation ${data.pack.secretGeneration}, rotated ${new Date(data.pack.rotatedAt).toISOString()}`);
+  deps.io.out(`secret generation ${data.crew.secretGeneration}, rotated ${new Date(data.crew.rotatedAt).toISOString()}`);
   if (conflict !== null) deps.io.out(`⚠ ${conflict}`);
   // A live handover approval is state an operator must be able to see they left armed (§14.1) — in
   // the same spirit as §8.4's per-member secret column. Expired reads as absent, and a peer shows
@@ -1230,6 +1231,9 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   const reaches = bare.has("no-probe") ? new Map<string, MemberReach>() : await probeMemberReach(deps, data, members);
   const clamped = crewTimeoutClampWarning(pollFor(deps.ctx), deps.ctx.env);
   if (clamped !== null) deps.io.out(clamped);
+  // REMOVE_IN_1_9_0: one line when a 1.7.0 `COLLIE_PACK_*` budget key is still the one being read.
+  const legacyEnv = crewEnvFallbackWarning(deps.ctx.env);
+  if (legacyEnv !== null) deps.io.out(legacyEnv);
   // This build's own version, resolved once for the whole roster by the same rule `collie version`
   // uses (`bridge/version.ts`) — the bridge answers `hello` with that exact string, so the two sides
   // of every comparison below are the same kind of thing.
@@ -1263,7 +1267,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   emit("");
   emit("members:", "dim");
   for (const m of members) {
-    const behind = m.status === "enrolled" && m.secretGeneration !== data.pack.secretGeneration;
+    const behind = m.status === "enrolled" && m.secretGeneration !== data.crew.secretGeneration;
     emit(`  ${m.memberId}  (${m.role})  ${m.address}`, "plain");
     emit(`    pinned  ${m.fingerprint.slice(0, 16)}…  enrolled ${new Date(m.enrolledAt).toISOString()}`, "dim");
     emit(
@@ -1325,7 +1329,7 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
                   peers: current.peers.map(stamp),
                 },
                 result: null,
-                audit: { action: "pack.contacted", detail: { member: m.memberId, at } },
+                audit: { action: "crew.contacted", detail: { member: m.memberId, at } },
               },
         );
       }
@@ -1375,7 +1379,7 @@ function syncedDevicesOnDisk(deps: CrewDeps): StandbyDevices | null {
  * A membership change can land on a bridge nobody restarted — the first `join` writes into the LEAD's
  * store through the lead's own enrollment endpoint, and a promotion demotes the old lead the same way
  * — and the trust store is read once per process, at boot, on purpose (§8.3, §3). The bridge leaves
- * the roster it wired in `pack-runtime.json`; this compares the two and names the restart.
+ * the roster it wired in `crew-runtime.json`; this compares the two and names the restart.
  *
  * Silent when there is no marker: no bridge has booted since this store existed, so there is no
  * running process for the store to be ahead of, and a `crew status` run before the first `start`
@@ -1451,7 +1455,7 @@ function versionLines(reported: string | null, ours: string, memberId: string): 
 }
 
 /**
- * Bring `pack-ops.json`'s anchor record up to what the member itself just reported (§18.17).
+ * Bring `crew-ops.json`'s anchor record up to what the member itself just reported (§18.17).
  *
  * The record is this operator's own lower bound — it moves only when `crew deputy`'s restart leg
  * completes here — so a machine restarted any other way stays recorded as un-armed forever, and the
@@ -1501,7 +1505,7 @@ function dataLines(reach: MemberReach | undefined): TonedLine[] {
       tone: "dim",
     },
     {
-      text: `            Raise BOTH: \`COLLIE_PACK_TIMEOUT_MS\` and \`COLLIE_POLL_MS\` (the first is clamped to 0.8 of the second).`,
+      text: `            Raise BOTH: \`COLLIE_CREW_TIMEOUT_MS\` and \`COLLIE_POLL_MS\` (the first is clamped to 0.8 of the second).`,
       tone: "dim",
     },
   ];
@@ -1519,7 +1523,7 @@ export function probeMembers(
   data: TrustStoreData,
   members: readonly TrustedMember[],
 ): Promise<Map<string, PeerOutcome<HelloResult>>> {
-  const secret = data.pack?.secret ?? "";
+  const secret = data.crew?.secret ?? "";
   const client = clientFor(deps, data, secret);
   return sweepPeers<PeerOutcome<HelloResult>>(
     members.filter((m) => m.status === "enrolled").map(linkOf),
@@ -1569,7 +1573,7 @@ export async function probeMemberReach(
   data: TrustStoreData,
   members: readonly TrustedMember[],
 ): Promise<Map<string, MemberReach>> {
-  const client = clientFor(deps, data, data.pack?.secret ?? "");
+  const client = clientFor(deps, data, data.crew?.secret ?? "");
   const enrolled = members.filter((m) => m.status === "enrolled");
   // The role travels beside the link because a `CrewLink` is address material only (§4) — and the
   // role is what decides whether the second question exists to be asked. See {@link MemberReach.data}.
@@ -1600,7 +1604,7 @@ export async function probeMemberReach(
  */
 export async function cmdCrewRotate(deps: CrewDeps): Promise<number> {
   const data = await deps.store.load();
-  if (data === null || data.pack === null) {
+  if (data === null || data.crew === null) {
     deps.io.err("error: this collie is not in a crew.");
     return EXIT.STATE;
   }
@@ -1608,13 +1612,13 @@ export async function cmdCrewRotate(deps: CrewDeps): Promise<number> {
     deps.io.err(`error: rotation runs on the lead; this collie is a peer of "${data.lead.memberId}".`);
     return EXIT.STATE;
   }
-  const previous = data.pack.secret;
+  const previous = data.crew.secret;
 
   const rotated = await commitCrewChange(deps.store, deps.audit, (current) =>
     current === null ? null : rotateCrewSecret(current, deps.now(), deps.random),
   );
   if (rotated === null) return EXIT.FAIL;
-  const next = (await deps.store.load())?.pack;
+  const next = (await deps.store.load())?.crew;
   if (next === null || next === undefined) return EXIT.FAIL;
   deps.io.out(`rotating to generation ${rotated.secretGeneration} — the previous secret is already dead here.`);
   deps.io.out("  No grace window: any peer offline right now misses this pickup and is dropped to an `unenrolled` tombstone that must re-join.");
@@ -1706,7 +1710,7 @@ export async function cmdCrewRename(deps: CrewDeps, args: readonly string[]): Pr
   }
   const name = positional[0]!.trim();
   const data = await deps.store.load();
-  if (data === null || data.pack === null) {
+  if (data === null || data.crew === null) {
     deps.io.err("error: this collie is not in a crew — there is no crew to rename.");
     return EXIT.STATE;
   }
@@ -1721,7 +1725,7 @@ export async function cmdCrewRename(deps: CrewDeps, args: readonly string[]): Pr
     deps.io.err("       usage: collie crew rename <name>");
     return EXIT.USAGE;
   }
-  if (data.pack.name === name) {
+  if (data.crew.name === name) {
     deps.io.out(`this crew is already called "${name}" — nothing to change.`);
     return EXIT.OK;
   }
@@ -1731,12 +1735,12 @@ export async function cmdCrewRename(deps: CrewDeps, args: readonly string[]): Pr
   // bytes between machines, and this change moves none. The shape is the same `CrewChange` every
   // other verb commits, so the store's one write path is unchanged.
   const renamed = await commitCrewChange(deps.store, deps.audit, (current) => {
-    if (current === null || current.pack === null || current.lead !== null) return null;
-    if (current.pack.name === name) return null;
+    if (current === null || current.crew === null || current.lead !== null) return null;
+    if (current.crew.name === name) return null;
     return {
-      next: { ...current, pack: { ...current.pack, name } },
-      result: { from: current.pack.name },
-      audit: { action: "pack.rename", detail: { from: current.pack.name, to: name } },
+      next: { ...current, crew: { ...current.crew, name } },
+      result: { from: current.crew.name },
+      audit: { action: "crew.rename", detail: { from: current.crew.name, to: name } },
     };
   });
   if (renamed === null) {
@@ -1794,7 +1798,7 @@ export async function cmdCrewRemove(deps: CrewDeps, args: readonly string[]): Pr
  * in peer mode, so it publishes no front door and answers no phone, and no longer pinned here, so
  * this lead cannot reach it either. Invisible from both ends.
  *
- * **And this verb used to delete the one thing that finishes the job.** `pack-ops.json`'s row for the
+ * **And this verb used to delete the one thing that finishes the job.** `crew-ops.json`'s row for the
  * member is `{sshHost, path, port}` — exactly the connection `crew add` used, and exactly what the
  * sentence above needs — and it was forgotten in the same breath as printing that sentence (F16).
  *
@@ -1919,7 +1923,7 @@ export function schemedAddressLines(memberId: string, address: string, role: Tru
  * The verb exists because a takeover leaves a row nobody minted: the new lead adopts the roster it
  * was handed, including the deposed lead's own entry, and that entry holds a front-door URL
  * ({@link crewAddressRefusal} says why that cannot be dialled). Before this verb the only repair was
- * hand-editing `pack-trust.json`.
+ * hand-editing `crew-trust.json`.
  *
  * **It is not `collie reconnect`, and neither replaces the other.** `reconnect` is the "it moved —
  * re-point me and probe it" verb, and it takes whatever it is given; this one is the lead's
@@ -1935,7 +1939,7 @@ export async function cmdCrewSetAddress(deps: CrewDeps, args: readonly string[])
     return EXIT.USAGE;
   }
   const data = await deps.store.load();
-  if (data === null || data.pack === null) {
+  if (data === null || data.crew === null) {
     deps.io.err("error: this collie is not in a crew — there is no roster to correct.");
     return EXIT.STATE;
   }
@@ -2005,7 +2009,7 @@ export async function cmdCrewApprovePromote(deps: CrewDeps, args: readonly strin
   const { positional, bare } = parseCrewArgs(args, ["force", "cancel"]);
   const cancelling = bare.has("cancel");
   const data = await deps.store.load();
-  if (data === null || data.pack === null) {
+  if (data === null || data.crew === null) {
     deps.io.err("error: this collie is not in a crew — there is no handover to approve.");
     return EXIT.STATE;
   }
@@ -2072,7 +2076,7 @@ export async function cmdPromote(deps: CrewDeps, args: readonly string[]): Promi
   const { flags, bare } = parseCrewArgs(args);
   const force = bare.has("force");
   const data = await deps.store.load();
-  if (data === null || data.pack === null) {
+  if (data === null || data.crew === null) {
     deps.io.err("error: this collie is not in a crew — there is no crown to take.");
     return EXIT.STATE;
   }
@@ -2097,7 +2101,7 @@ export async function cmdPromote(deps: CrewDeps, args: readonly string[]): Promi
     certPem: data.self.certPem,
     address: mine,
   };
-  const client = clientFor(deps, data, data.pack.secret);
+  const client = clientFor(deps, data, data.crew.secret);
   const handover = await client.json(linkOf(data.lead), "lead", undefined, {
     method: "POST",
     headers: CONTENT_TYPE,
@@ -2199,7 +2203,7 @@ export async function cmdPromote(deps: CrewDeps, args: readonly string[]): Promi
 export async function cmdReconnect(deps: CrewDeps, args: readonly string[]): Promise<number> {
   const { positional } = parseCrewArgs(args);
   const data = await deps.store.load();
-  if (data === null || data.pack === null) {
+  if (data === null || data.crew === null) {
     deps.io.err("error: this collie is not in a crew.");
     return EXIT.STATE;
   }
@@ -2225,7 +2229,7 @@ export async function cmdReconnect(deps: CrewDeps, args: readonly string[]): Pro
   }
   deps.io.out(`✓ "${target}" moved from ${moved.from} to ${address} — its pinned certificate is unchanged.`);
 
-  const client = clientFor(deps, data, data.pack.secret);
+  const client = clientFor(deps, data, data.crew.secret);
   const link = { memberId: target, address };
   const outcome = await client.hello(link);
   deps.io.out(outcome.ok ? "  it answered there." : `  it did not answer there yet — ${failureLine(outcome)}`);

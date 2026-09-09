@@ -29,7 +29,7 @@ import { fsTrustStoreIo, type TrustStoreIo } from "./trust-store.ts";
 // there is no reason for that to be more readable than the roster it sits next to.
 
 /** The ops store's filename under `stateDir`. Also the literal the solo baseline scans for. */
-export const CREW_OPS_FILENAME = "pack-ops.json";
+export const CREW_OPS_FILENAME = "crew-ops.json";
 
 /** Absolute path of the ops store for a given state dir. The only place this path is composed. */
 export function crewOpsPath(stateDir: string): string {

@@ -860,7 +860,7 @@ export function fetchDevices(signal?: AbortSignal): Promise<DevicesResponse> {
 }
 
 /**
- * The crew census (`GET /api/pack`). Read-level, like the snapshot — looking at who is in the crew
+ * The crew census (`GET /api/crew`). Read-level, like the snapshot — looking at who is in the crew
  * needs no token; changing it is a CLI verb and has no endpoint here at all.
  *
  * Carries NO scope: the question is "what does this collie lead", and only a lead can answer it. A
@@ -869,7 +869,7 @@ export function fetchDevices(signal?: AbortSignal): Promise<DevicesResponse> {
  * lives at the one call site that knows what a 404 means here (lib/loaders.ts `crewLoader`).
  */
 export function fetchCrew(signal?: AbortSignal): Promise<CrewStatusResponse> {
-  return req<CrewStatusResponse>("/api/pack", { signal });
+  return req<CrewStatusResponse>("/api/crew", { signal });
 }
 
 /**

@@ -441,7 +441,7 @@ export interface CrewRouterDeps {
    * pinned `ca`.
    *
    * `undefined`/`null` ⇒ the field is omitted, which the lead reads as "pre-amendment build, or
-   * nothing active here" and falls back to its own `pack-ops.json` lower bound — today's reading,
+   * nothing active here" and falls back to its own `crew-ops.json` lower bound — today's reading,
    * unchanged (§7.1's absent-means-closed).
    */
   readonly warrantActiveGeneration?: number | null;
@@ -778,7 +778,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   const refuse = (path: string, factor: RefusedFactor): Response => {
     // Audited locally with the real cause; the caller is told only "unauthorized" (§8.1). The two
     // are not in tension: the log is the peer operator's own record on their own disk (§12).
-    deps.audit?.record({ action: "pack.refused", detail: { path, factor } });
+    deps.audit?.record({ action: "crew.refused", detail: { path, factor } });
     return unauthorizedResponse();
   };
 
@@ -1385,7 +1385,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     }
     const sync = parsePairingSync(await readJson(req, cached));
     if (sync === null) return badRequest(self, "a pairing sync needs `packId`, `leadMemberId` and `devices`");
-    if (data.pack === null || sync.packId !== data.pack.packId || sync.leadMemberId !== from.memberId) {
+    if (data.crew === null || sync.packId !== data.crew.crewId || sync.leadMemberId !== from.memberId) {
       return badRequest(self, "this pairing sync is not from this collie's own lead, or not for this crew");
     }
     // ── THE SYNC ALWAYS LANDS. A COLLISION IS REPORTED, NOT A REFUSAL ─────────
@@ -1460,7 +1460,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // read is *why* — a warrant this machine signed that names a deputy it cannot resolve out of
       // its own roster is a hand-edited store or a crew it does not belong to (RFC §8.3).
       deps.audit?.record({
-        action: "pack.deposed",
+        action: "crew.deposed",
         detail: { lead: state.leadMemberId, generation: state.generation, outcome: "parked", reason: heal.reason },
       });
     }
@@ -1521,7 +1521,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
         // Audited with the failing clause, on the machine being taken from — the audit log is this
         // operator's own record (§12), so it may say what the wire deliberately does not.
         deps.audit?.record({
-          action: "pack.lead.refused",
+          action: "crew.lead.refused",
           detail: { member: claim.memberId, clause: gate.refused.clause },
         });
         return handoverNotApproved(self, claim.memberId);

@@ -1084,7 +1084,7 @@ describe("CrewLead — the journal names a verdict once per transition", () => {
   test("an incompatible verdict names its reason and the backoff it earned", async () => {
     const h = lead([member({ memberId: "laptop" })], () => skewed);
     await h.lead.sweep();
-    expect(h.journal).toEqual(["[pack] laptop: incompatible (peer answered protocol 2), next dial in 30s"]);
+    expect(h.journal).toEqual(["[crew] laptop: incompatible (peer answered protocol 2), next dial in 30s"]);
   });
 
   test("a member repeating itself writes nothing — the line is per transition, not per sweep", async () => {
@@ -1092,7 +1092,7 @@ describe("CrewLead — the journal names a verdict once per transition", () => {
     await h.lead.sweep();
     await h.lead.sweep();
     await h.lead.sweep();
-    expect(h.journal).toEqual(["[pack] laptop: unreachable (timed out)"]);
+    expect(h.journal).toEqual(["[crew] laptop: unreachable (timed out)"]);
   });
 
   test("each step of the backoff ladder is its own line, because the step is the fact", async () => {
@@ -1101,8 +1101,8 @@ describe("CrewLead — the journal names a verdict once per transition", () => {
     h.advance(INCOMPATIBLE_BACKOFF_MS[0]!);
     await h.lead.sweep();
     expect(h.journal).toEqual([
-      "[pack] laptop: incompatible (peer answered protocol 2), next dial in 30s",
-      "[pack] laptop: incompatible (peer answered protocol 2), next dial in 120s",
+      "[crew] laptop: incompatible (peer answered protocol 2), next dial in 30s",
+      "[crew] laptop: incompatible (peer answered protocol 2), next dial in 120s",
     ]);
   });
 
@@ -1115,8 +1115,8 @@ describe("CrewLead — the journal names a verdict once per transition", () => {
     await h.lead.sweep();
     await h.lead.sweep();
     expect(h.journal).toEqual([
-      "[pack] laptop: incompatible (peer answered protocol 2), next dial in 30s",
-      "[pack] laptop: reachable again after 1 incompatible verdict(s)",
+      "[crew] laptop: incompatible (peer answered protocol 2), next dial in 30s",
+      "[crew] laptop: reachable again after 1 incompatible verdict(s)",
     ]);
   });
 
@@ -1130,7 +1130,7 @@ describe("CrewLead — the journal names a verdict once per transition", () => {
     answer = true;
     await h.lead.sweep();
     await h.lead.sweep();
-    expect(h.journal).toEqual(["[pack] laptop: unreachable (timed out)", "[pack] laptop: reachable again"]);
+    expect(h.journal).toEqual(["[crew] laptop: unreachable (timed out)", "[crew] laptop: reachable again"]);
   });
 });
 
@@ -1399,7 +1399,7 @@ describe("a reply from an older dial is dropped, never merged (M22/05)", () => {
     h.land(helloDown);
     await Bun.sleep(5);
     // Sweep 1 claimed dial 1, its probe claimed 2, sweep 2 claimed 3. The reply carries 2.
-    expect(h.journal).toContain("[pack] laptop: dropped a stale hello reply, dial 2 of 3");
+    expect(h.journal).toContain("[crew] laptop: dropped a stale hello reply, dial 2 of 3");
   });
 
   test("nothing about the dropped reply reaches the merge", async () => {

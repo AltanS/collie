@@ -63,7 +63,7 @@ function renderHome(data: HomeData, initialPath?: string) {
         ),
       },
       { path: "/pane/:paneId", element: <div data-testid="pane" /> },
-      { path: "/crew", element: <div data-testid="pack" /> },
+      { path: "/crew", element: <div data-testid="crew" /> },
     ],
     { initialEntries: [initialPath ?? (data.scope.host ? `/?h=${data.scope.host}` : "/")] },
   );

@@ -232,7 +232,7 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
   const { positional, flags, bare } = parseCrewArgs(args, ["force", "all"]);
 
   const data = await deps.store.load();
-  if (data === null || data.pack === null) {
+  if (data === null || data.crew === null) {
     deps.io.err("error: this collie is not in a crew — there are no peers to level.");
     deps.io.err("       This machine's own update is `collie update`.");
     return EXIT.STATE;

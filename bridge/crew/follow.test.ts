@@ -301,7 +301,7 @@ describe("the follower spawns the one updater there is", () => {
     const { f, lines } = follower({ installKind: "packaged" });
     f.observe({ leadRelease: "1.4.1", turn: formatTurn("attic", RUN_ID) });
     expect(lines).toEqual([
-      "[pack] follow: not self-levelling (install-is-packaged) — updates come from this machine's package manager (ADR 0035)",
+      "[crew] follow: not self-levelling (install-is-packaged) — updates come from this machine's package manager (ADR 0035)",
     ]);
   });
 
@@ -353,7 +353,7 @@ describe("the follower spawns the one updater there is", () => {
     f.observe({ leadRelease: "1.4.1", turn: formatTurn("attic", RUN_ID) });
     await Promise.resolve();
     await Promise.resolve();
-    expect(lines).toEqual([`[pack] follow: self-levelling to v1.4.1 (run ${RUN_ID.slice(0, 8)})`]);
+    expect(lines).toEqual([`[crew] follow: self-levelling to v1.4.1 (run ${RUN_ID.slice(0, 8)})`]);
   });
 
   test("an updater that will not start is recorded as a refusal rather than thrown", async () => {
@@ -744,9 +744,9 @@ describe("the turn queue names each leg change and the moment a run settles", ()
     turns.observe([member({ memberId: "attic", version: "1.4.1" })], NOW);
     turns.observe([member({ memberId: "attic", version: "1.4.1" })], NOW);
     expect(journal).toEqual([
-      "[pack] update r-abc: attic new -> waiting (1.4.0)",
-      "[pack] update r-abc: attic waiting -> done (1.4.1)",
-      "[pack] update r-abc: settled, 1 peer(s) done",
+      "[crew] update r-abc: attic new -> waiting (1.4.0)",
+      "[crew] update r-abc: attic waiting -> done (1.4.1)",
+      "[crew] update r-abc: settled, 1 peer(s) done",
     ]);
   });
 
@@ -757,7 +757,7 @@ describe("the turn queue names each leg change and the moment a run settles", ()
     turns.observe([member({ memberId: "attic", version: "1.4.1" })], NOW);
     turns.observe([member({ memberId: "attic", version: "1.4.1" })], NOW);
     turns.observe([member({ memberId: "attic", version: "1.4.1" })], NOW);
-    expect(journal.filter((l) => l.includes("settled"))).toEqual(["[pack] update r-abc: settled, 1 peer(s) done"]);
+    expect(journal.filter((l) => l.includes("settled"))).toEqual(["[crew] update r-abc: settled, 1 peer(s) done"]);
   });
 
   test("a member still moving holds the run open, and the settling line names each terminal state", () => {
@@ -782,10 +782,10 @@ describe("the turn queue names each leg change and the moment a run settles", ()
       NOW,
     );
     expect(journal).toEqual([
-      "[pack] update r-abc: attic new -> updating (1.4.0)",
-      "[pack] update r-abc: basement new -> done (1.4.1)",
-      "[pack] update r-abc: attic updating -> rolled-back (1.4.0)",
-      "[pack] update r-abc: settled, 1 peer(s) done, 1 rolled-back",
+      "[crew] update r-abc: attic new -> updating (1.4.0)",
+      "[crew] update r-abc: basement new -> done (1.4.1)",
+      "[crew] update r-abc: attic updating -> rolled-back (1.4.0)",
+      "[crew] update r-abc: settled, 1 peer(s) done, 1 rolled-back",
     ]);
   });
 });

@@ -15,6 +15,9 @@ import {
   DEFAULT_CREW_TIMEOUT_MS,
   CREW_HELLO_TIMEOUT_ENV,
   CREW_TIMEOUT_ENV,
+  LEGACY_CREW_HELLO_TIMEOUT_ENV,
+  LEGACY_CREW_TIMEOUT_ENV,
+  crewEnvFallbackWarning,
   PeerClient,
   foldWarmth,
   operatorReason,
@@ -140,6 +143,53 @@ describe("crewTimeoutClampWarning — the clamp stops being silent", () => {
     for (const raw of ["nonsense", "-5", "0", ""]) {
       expect(crewTimeoutClampWarning(1500, { [CREW_TIMEOUT_ENV]: raw })).toBeNull();
     }
+  });
+});
+
+describe("the 1.7.0 env keys, read as a fallback (REMOVE_IN_1_9_0)", () => {
+  test("the crew keys are the names, and the pack keys are the fallback", () => {
+    expect(CREW_TIMEOUT_ENV).toBe("COLLIE_CREW_TIMEOUT_MS");
+    expect(CREW_HELLO_TIMEOUT_ENV).toBe("COLLIE_CREW_HELLO_TIMEOUT_MS");
+    expect(LEGACY_CREW_TIMEOUT_ENV).toBe("COLLIE_PACK_TIMEOUT_MS");
+    expect(LEGACY_CREW_HELLO_TIMEOUT_ENV).toBe("COLLIE_PACK_HELLO_TIMEOUT_MS");
+  });
+
+  test("the new key is read, and says nothing", () => {
+    expect(crewTimeoutBudget(5000, { [CREW_TIMEOUT_ENV]: "3000" })).toBe(3000);
+    expect(crewHelloBudget(1500, { [CREW_HELLO_TIMEOUT_ENV]: "20000" })).toBe(20_000);
+    expect(crewEnvFallbackWarning({ [CREW_TIMEOUT_ENV]: "3000" })).toBeNull();
+    expect(crewEnvFallbackWarning({ [CREW_HELLO_TIMEOUT_ENV]: "20000" })).toBeNull();
+    expect(crewEnvFallbackWarning({})).toBeNull();
+  });
+
+  test("the old key still buys the budget it always did, and is named once", () => {
+    expect(crewTimeoutBudget(5000, { [LEGACY_CREW_TIMEOUT_ENV]: "3000" })).toBe(3000);
+    expect(crewHelloBudget(1500, { [LEGACY_CREW_HELLO_TIMEOUT_ENV]: "20000" })).toBe(20_000);
+    // The clamp warning reads the same value through the same fallback, so an operator on the old
+    // key is told about the clamp too — in the NEW key's words, because that is the one to write.
+    const clamped = crewTimeoutClampWarning(1500, { [LEGACY_CREW_TIMEOUT_ENV]: "3000" });
+    expect(clamped).toContain("COLLIE_CREW_TIMEOUT_MS=3000");
+
+    const warning = crewEnvFallbackWarning({ [LEGACY_CREW_TIMEOUT_ENV]: "3000" });
+    expect(warning).toContain("COLLIE_PACK_TIMEOUT_MS");
+    expect(warning).toContain("COLLIE_CREW_TIMEOUT_MS");
+    expect(warning).toContain("1.9.0");
+    // ONE line, for both keys — a per-read warning would flood the journal on every poll.
+    const both = crewEnvFallbackWarning({
+      [LEGACY_CREW_TIMEOUT_ENV]: "3000",
+      [LEGACY_CREW_HELLO_TIMEOUT_ENV]: "20000",
+    });
+    expect(both?.split("\n")).toHaveLength(1);
+    expect(both).toContain("COLLIE_PACK_HELLO_TIMEOUT_MS");
+  });
+
+  test("both keys set: the crew key wins and nothing is said about the one it shadows", () => {
+    const env = { [CREW_TIMEOUT_ENV]: "3000", [LEGACY_CREW_TIMEOUT_ENV]: "400" };
+    expect(crewTimeoutBudget(5000, env)).toBe(3000);
+    expect(crewEnvFallbackWarning(env)).toBeNull();
+    const hello = { [CREW_HELLO_TIMEOUT_ENV]: "20000", [LEGACY_CREW_HELLO_TIMEOUT_ENV]: "7000" };
+    expect(crewHelloBudget(1500, hello)).toBe(20_000);
+    expect(crewEnvFallbackWarning(hello)).toBeNull();
   });
 });
 

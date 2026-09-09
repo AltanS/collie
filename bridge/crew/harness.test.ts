@@ -426,17 +426,17 @@ describe("solo zero-tax, measured rather than inferred", () => {
     expect(soloCadence).toBeGreaterThan(0);
   }, 60_000);
 
-  test("`/api/pack` is registered on a solo instance and answers 404 — there is no crew", async () => {
+  test("`/api/crew` is registered on a solo instance and answers 404 — there is no crew", async () => {
     // The Crew overview is a FRONT-DOOR route, so unlike `/crew/v1/*` it exists here: what a solo
     // instance owes is a refusal, not an absence, and it is the same refusal a peer gives (ADR 0013).
-    const res = await fetch(`${lead.origin()}/api/pack`);
+    const res = await fetch(`${lead.origin()}/api/crew`);
     expect(res.status).toBe(404);
     expect(await res.text()).toContain('"code":"crew.not_lead"');
   });
 
   test("a solo snapshot carries no crew fields", async () => {
     const body = await (await fetch(`${lead.origin()}/api/snapshot`)).text();
-    expect(body).not.toMatch(/"servers"|"host":|"pack"/);
+    expect(body).not.toMatch(/"servers"|"host":|"crew"/);
   });
 });
 
@@ -453,7 +453,7 @@ describe("invite → join, end to end", () => {
     // Minting an invite is the moment a crew comes into existence — and the moment the first key
     // material is written. Before it there was nothing (asserted above).
     const data = lead.store();
-    expect(data?.pack).not.toBeNull();
+    expect(data?.crew).not.toBeNull();
     expect(data?.self.certPem).toContain("BEGIN CERTIFICATE");
   }, 60_000);
 
@@ -519,7 +519,7 @@ describe("the TLS factor is enforced at the handshake", () => {
         ca: [peer.store()!.self.certPem],
         checkServerIdentity: () => undefined,
       },
-      headers: { authorization: `Bearer ${peer.store()!.pack!.secret}` },
+      headers: { authorization: `Bearer ${peer.store()!.crew!.secret}` },
     });
     await expect(attempt).rejects.toThrow();
   });
@@ -570,7 +570,7 @@ describe("the lead speaks for the crew", () => {
     expect((snap.sessions ?? []).every((s) => s.host !== undefined && s.host !== "")).toBe(true);
   }, 60_000);
 
-  test("`GET /api/pack` reports the crew from memory, and dials nobody to do it", async () => {
+  test("`GET /api/crew` reports the crew from memory, and dials nobody to do it", async () => {
     const leadId = lead.store()!.self.memberId;
     const peerId = peer.store()!.self.memberId;
     await waitFor(
@@ -578,14 +578,14 @@ describe("the lead speaks for the crew", () => {
       10_000,
       "the lead never merged the peer in",
     );
-    const res = await fetch(`${lead.origin()}/api/pack`);
+    const res = await fetch(`${lead.origin()}/api/crew`);
     expect(res.status).toBe(200);
-    // SAFETY: the handler emits `CrewStatusResponse` (server.ts, `/api/pack`) — the same discipline
+    // SAFETY: the handler emits `CrewStatusResponse` (server.ts, `/api/crew`) — the same discipline
     // `snapshotOf` above applies to the snapshot body.
     const body = (await res.json()) as CrewStatusResponse;
 
-    expect(body.pack.id).toBe(lead.store()!.pack!.packId);
-    expect(body.pack.name).toBe(lead.store()!.pack!.name);
+    expect(body.crew.id).toBe(lead.store()!.crew!.crewId);
+    expect(body.crew.name).toBe(lead.store()!.crew!.name);
     // The lead FIRST, then the peer — the order `servers[]` has, from the same `self` value (§9.2).
     expect(body.members.map((m) => m.id)).toEqual([leadId, peerId]);
     expect(body.members[0]!.isLead).toBe(true);
@@ -602,15 +602,15 @@ describe("the lead speaks for the crew", () => {
 
     // Nothing secret rides this wire, asserted over the bytes rather than field by field.
     const raw = JSON.stringify(body);
-    expect(raw).not.toContain(lead.store()!.pack!.secret);
+    expect(raw).not.toContain(lead.store()!.crew!.secret);
     expect(raw).not.toContain("BEGIN CERTIFICATE");
     expect(raw).not.toContain(lead.store()!.self.fingerprint);
   }, 60_000);
 
-  test("the read gate covers `/api/pack`, exactly as it covers `/api/config`", async () => {
+  test("the read gate covers `/api/crew`, exactly as it covers `/api/config`", async () => {
     // A cross-origin read is refused before the body is composed — the same `guard(…, "read")` every
     // other non-terminal endpoint takes, so a rebound DNS name cannot read the roster either.
-    const res = await fetch(`${lead.origin()}/api/pack`, { headers: { origin: "http://evil.invalid" } });
+    const res = await fetch(`${lead.origin()}/api/crew`, { headers: { origin: "http://evil.invalid" } });
     expect(res.status).toBe(403);
   });
 
@@ -810,7 +810,7 @@ function clientForBudgets(timeoutMs: number, patientTimeoutMs?: number): PeerCli
   const to = peer.store()!;
   return new PeerClient({
     self: from.self.memberId,
-    secret: () => from.pack!.secret,
+    secret: () => from.crew!.secret,
     timeoutMs,
     patientTimeoutMs,
     fetch: crewFetch,
@@ -941,7 +941,7 @@ describe("a two-anchored peer resolves its caller by signature (§8.1, 2026-08-2
     const leadData = lead.store()!;
     const peerData = peer.store()!;
     const unsigned = {
-      packId: peerData.pack!.packId,
+      packId: peerData.crew!.crewId,
       generation: 1,
       deputyMemberId: "deputy",
       deputyFingerprint: deputy.fingerprint,
@@ -963,7 +963,7 @@ describe("a two-anchored peer resolves its caller by signature (§8.1, 2026-08-2
     const to = peer.store()!;
     const timestamp = Date.now();
     const sent = new Headers({
-      authorization: `Bearer ${from.pack!.secret}`,
+      authorization: `Bearer ${from.crew!.secret}`,
       "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
       "x-crew-member": from.self.memberId,
     });
@@ -1074,17 +1074,17 @@ describe("the wire speaks version 2, and version 1 for one release (§0, §0.1)"
 
 describe("rotation", () => {
   test("the lead rotates, dials with the superseded secret, and records the pickup", async () => {
-    const before = lead.store()!.pack!.secretGeneration;
+    const before = lead.store()!.crew!.secretGeneration;
     const rotated = await verb(lead, (d) => cmdCrewRotate(d));
     expect(rotated.code).toBe(EXIT.OK);
     const after = lead.store()!;
-    expect(after.pack!.secretGeneration).toBe(before + 1);
+    expect(after.crew!.secretGeneration).toBe(before + 1);
     // markSecretDelivered ran: the peer is not behind, so it is not dropped to `unenrolled`.
-    expect(after.peers[0]!.secretGeneration).toBe(after.pack!.secretGeneration);
+    expect(after.peers[0]!.secretGeneration).toBe(after.crew!.secretGeneration);
     expect(after.peers[0]!.status).toBe("enrolled");
-    expect(rotated.out).toContain(`picked up generation ${after.pack!.secretGeneration}`);
+    expect(rotated.out).toContain(`picked up generation ${after.crew!.secretGeneration}`);
     // …and the peer adopted it, on its own disk.
-    expect(peer.store()!.pack!.secret).toBe(after.pack!.secret);
+    expect(peer.store()!.crew!.secret).toBe(after.crew!.secret);
   }, 60_000);
 
   test("the crew still works on the new secret", async () => {
@@ -1127,8 +1127,8 @@ describe("promotion", () => {
     expect(newLead.peers.map((p) => p.memberId)).toEqual([oldLeadId]);
     expect(demoted.lead?.memberId).toBe(newLead.self.memberId);
     expect(demoted.peers).toEqual([]);
-    expect(newLead.pack!.packId).toBe(demoted.pack!.packId);
-    expect(newLead.pack!.secret).toBe(demoted.pack!.secret);
+    expect(newLead.crew!.crewId).toBe(demoted.crew!.crewId);
+    expect(newLead.crew!.secret).toBe(demoted.crew!.secret);
     // Single-use: the consent was spent in the same write as the demotion.
     expect(demoted.pendingHandover).toBeNull();
   }, 60_000);
@@ -1167,7 +1167,7 @@ describe("leave", () => {
     expect(left.out).toContain("removed this machine from its roster");
     // Locally: no crew, no pins, no secret — but the identity survives (§8.4).
     const after = lead.store()!;
-    expect(after.pack).toBeNull();
+    expect(after.crew).toBeNull();
     expect(after.lead).toBeNull();
     expect(after.self.certPem).toContain("BEGIN CERTIFICATE");
     // Remotely: the signed `leave` was admitted on the new lead's unpinned surface and applied.
@@ -1370,7 +1370,7 @@ async function dialAsLead(path: string, init: RequestInit, secret?: string): Pro
     ...init,
     headers: {
       ...init.headers,
-      authorization: `Bearer ${secret ?? from.pack!.secret}`,
+      authorization: `Bearer ${secret ?? from.crew!.secret}`,
       "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
       "x-crew-member": from.self.memberId,
     },
@@ -1395,7 +1395,7 @@ async function dialAsLeadV1(path: string, init: RequestInit, secret?: string): P
     ...init,
     headers: {
       ...init.headers,
-      authorization: `Bearer ${secret ?? from.pack!.secret}`,
+      authorization: `Bearer ${secret ?? from.crew!.secret}`,
       "x-pack-protocol": "1",
       "x-pack-member": from.self.memberId,
     },
@@ -1430,7 +1430,7 @@ async function signedLeaveProbe(opts: {
   const signature = opts.corruptSignature === true ? flipBase64(signed) : signed;
   return fetch(`http://127.0.0.1:${lead.port}${CREW_HELLO_PATH}`, {
     headers: {
-      authorization: `Bearer ${from.pack!.secret}`,
+      authorization: `Bearer ${from.crew!.secret}`,
       "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
       "x-crew-member": from.self.memberId,
       [TIMESTAMP_HEADER]: String(timestamp),
@@ -1575,7 +1575,7 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
     const to = target.store()!;
     const res = await crewFetch(`https://127.0.0.1:${target.port}${CREW_HELLO_PATH}`, {
       headers: {
-        authorization: `Bearer ${from.pack!.secret}`,
+        authorization: `Bearer ${from.crew!.secret}`,
         "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
         "x-crew-member": from.self.memberId,
       },
@@ -1812,7 +1812,7 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
   // ── THE LIVE DRILL, BUG 5 (§18.17) ─────────────────────────────────────────
   // The two surfaces above are the deputy's own. The LEAD's said the opposite about the same machine
   // at the same minute — `warrant stored, anchor INACTIVE — restart <member>` — because its only
-  // evidence was `pack-ops.json`, which moves when `crew deputy`'s restart leg completes and never
+  // evidence was `crew-ops.json`, which moves when `crew deputy`'s restart leg completes and never
   // otherwise. Nothing restarted these machines through that verb, and they are armed; so this reads
   // the wire the lead actually reads, and then the sentence the operator would have got.
   test("the LEAD hears the activation over the wire, and stops asking for a restart", async () => {
@@ -1928,7 +1928,7 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
 
     // The WITNESS re-pinned, on its own disk, keeping its member id and the crew secret (§14.5).
     await waitFor(async () => witness.store()!.lead!.memberId === aideId, 15_000, "the witness never re-pinned");
-    expect(witness.store()!.pack!.secret).toBe(aide.store()!.pack!.secret);
+    expect(witness.store()!.crew!.secret).toBe(aide.store()!.crew!.secret);
     expect(witness.store()!.lead!.certPem).toBe(aide.store()!.self.certPem);
 
     // The DEPUTY committed locally, last: it leads, it adopted the roster the push carried, and the
@@ -1989,8 +1989,8 @@ describe("the standby door and the takeover (RFC §6/§7/§9)", () => {
     expect(healed.lead!.certPem).toBe(aide.store()!.self.certPem);
     expect(healed.deputy).toBeNull();
     // The crew identity and the secret are untouched — a role change, not a re-enrollment.
-    expect(healed.pack!.packId).toBe(aide.store()!.pack!.packId);
-    expect(healed.pack!.secret).toBe(aide.store()!.pack!.secret);
+    expect(healed.crew!.crewId).toBe(aide.store()!.crew!.crewId);
+    expect(healed.crew!.secret).toBe(aide.store()!.crew!.secret);
 
     // …and the new lead stops owing it the proof: §9's "one extra round trip, once, and never again".
     await waitFor(

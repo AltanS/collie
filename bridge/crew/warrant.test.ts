@@ -80,7 +80,7 @@ describe("the canonical string", () => {
     expect(fields[0]).toBe(WARRANT_DOMAIN);
     expect(fields).toEqual([
       WARRANT_DOMAIN,
-      CREW.packId,
+      CREW.crewId,
       "1",
       "desk",
       "nas",
@@ -351,7 +351,7 @@ describe("checkWarrantPush — the receiving decision", () => {
   test("refuses on a collie with no store, no crew, or no lead", () => {
     expect(checkWarrantPush(null, push(warrant), T0)).toEqual({ kind: "refuse", reason: "foreign" });
     expect(checkWarrantPush(lead(), push(warrant), T0)).toEqual({ kind: "refuse", reason: "foreign" });
-    expect(checkWarrantPush(peerStore({ pack: null }), push(warrant), T0)).toEqual({
+    expect(checkWarrantPush(peerStore({ crew: null }), push(warrant), T0)).toEqual({
       kind: "refuse",
       reason: "foreign",
     });
@@ -402,7 +402,7 @@ describe("storing", () => {
     const change = storeWarrant(peer(), stored);
     expect(change.next.warrant).toEqual(stored);
     expect(change.next.deputy).toBeUndefined();
-    expect(change.audit.action).toBe("pack.warrant.stored");
+    expect(change.audit.action).toBe("crew.warrant.stored");
   });
 });
 
@@ -419,14 +419,14 @@ describe("a warrant from a crew this collie is not in (the incident)", () => {
     expect(change.next.standbyRoster).toBeNull();
     expect(change.next.deputy).toBeNull();
     expect(change.result).toEqual({ packId: "crew-elsewhere", generation: warrant.generation });
-    expect(change.audit.action).toBe("pack.warrant.foreign");
+    expect(change.audit.action).toBe("crew.warrant.foreign");
   });
 
   test("this crew's OWN warrant is left alone, and so is a store holding none", () => {
     const { warrant } = named();
     expect(discardForeignWarrant(peer({ warrant, deputyCertPem: null }))).toBeNull();
     expect(discardForeignWarrant(peerStore())).toBeNull();
-    expect(discardForeignWarrant(leadStore({ pack: null }))).toBeNull();
+    expect(discardForeignWarrant(leadStore({ crew: null }))).toBeNull();
   });
 });
 
@@ -536,7 +536,7 @@ test("naming a deputy clears the takeover's spent stamp — the question it answ
 test("the deputy warrant survives an update restart — it is store state, not process state", () => {
   const { data } = named();
   // What a restarted process does: re-read the file it left behind. An update rewrites the binary
-  // and the bundle; it does not rewrite `pack-trust.json`.
+  // and the bundle; it does not rewrite `crew-trust.json`.
   const reread = parseTrustStore(serializeTrustStore(data));
   expect(reread).not.toBeNull();
   expect(reread!.warrant).toEqual(data.warrant!);

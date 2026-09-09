@@ -855,7 +855,7 @@ describe("cold boot with no network", () => {
 
 describe("crewLoader", () => {
   it("returns the census a lead serves", async () => {
-    server.use(http.get("/api/pack", () => HttpResponse.json(fixtureCrewStatus)));
+    server.use(http.get("/api/crew", () => HttpResponse.json(fixtureCrewStatus)));
     const { crewLoader } = await import("./loaders");
     const data = await crewLoader();
     expect(data.error).toBe(false);
@@ -869,7 +869,7 @@ describe("crewLoader", () => {
   });
 
   it("keeps a real refusal apart from that answer", async () => {
-    server.use(http.get("/api/pack", () => new HttpResponse(null, { status: 500 })));
+    server.use(http.get("/api/crew", () => new HttpResponse(null, { status: 500 })));
     const { crewLoader } = await import("./loaders");
     expect(await crewLoader()).toEqual({ status: null, error: true });
   });

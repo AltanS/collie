@@ -5,7 +5,7 @@ import type { PeerContribution } from "./merge.ts";
 import type { PeerHealth } from "./registry.ts";
 import type { CrewMemberStatus, CrewStatusResponse } from "../types.ts";
 
-// The body of `GET /api/pack` (bridge/types.ts, {@link CrewStatusResponse}) — the browser's read-only
+// The body of `GET /api/crew` (bridge/types.ts, {@link CrewStatusResponse}) — the browser's read-only
 // view of what `collie crew status` prints, composed from what the RUNNING lead already holds.
 //
 // ── WHY THIS FILE IS PURE, AND WHY THAT IS THE WHOLE POINT ───────────────────
@@ -60,12 +60,12 @@ export interface CrewStatusSources {
  */
 export function crewStatusBody(src: CrewStatusSources): CrewStatusResponse | null {
   const { store } = src;
-  if (store === null || store.pack === null) return null;
+  if (store === null || store.crew === null) return null;
   if (deriveMode(enrollmentOf(store)).mode !== "lead") return null;
-  const crew = store.pack;
+  const crew = store.crew;
   return {
-    pack: {
-      id: crew.packId,
+    crew: {
+      id: crew.crewId,
       name: crew.name,
       secretGeneration: crew.secretGeneration,
       rotatedAt: crew.rotatedAt,

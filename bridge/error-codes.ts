@@ -152,7 +152,7 @@ export const ERROR_CODES = {
   "session.unknown": "unknown session: {session}",
   "host.unknown": "unknown host: {host}",
 
-  // ── The crew overview: GET /api/pack ───────────────────────────────────────────────
+  // ── The crew overview: GET /api/crew ───────────────────────────────────────────────
   /**
    * This collie is not a lead with a crew, so it has no crew to report. Both refusals are this one
    * code on purpose: a solo instance and a peer differ in what they ARE, not in what the phone can

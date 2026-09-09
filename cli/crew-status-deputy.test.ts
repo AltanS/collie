@@ -214,7 +214,7 @@ describe("the peer's own warrant line names what THIS machine's restart activate
 // ── THE LIVE DRILL, BUG 5 (§18.17) ──────────────────────────────────────────
 // The deputy's own `crew status` said `deputy role ACTIVE at this boot` while the LEAD's said
 // `warrant stored, anchor INACTIVE — restart minibuch … a takeover from there is impossible`, about
-// the same machine at the same minute. The lead's only anchor evidence was `pack-ops.json`, which
+// the same machine at the same minute. The lead's only anchor evidence was `crew-ops.json`, which
 // moves when `crew deputy`'s own restart leg completes and at no other time — so a restart done by an
 // update, by the unit, or by a hand on a keyboard left an armed crew rendered as un-armed forever.
 describe("the LEAD prefers the member's own activation report over its ops record (§18.17)", () => {

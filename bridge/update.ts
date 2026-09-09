@@ -625,7 +625,7 @@ export function restartCommandFor(kind: UpdateStatus["installKind"], instance: s
  * separately: hiding a peer's quiet notice must not also hide this host's own offer, even when the
  * two name the same version.
  */
-export type DismissScope = "offer" | "pack";
+export type DismissScope = "offer" | "crew";
 
 /** Persistence seam — just what the monitor needs from {@link UpdateStateStore}. */
 export interface UpdateStore {

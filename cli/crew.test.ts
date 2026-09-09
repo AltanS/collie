@@ -118,7 +118,7 @@ function harness(initial: TrustStoreData | null, replies: Reply[] = [], over: Pa
     // so the only thing the default timeout can do here is misfire under a stalled event loop and
     // report a reachable fake peer as unreachable. Set it far above anything this process could stall
     // for real, so the timer never fires; it does not change what any test observes.
-    ctx: context({ COLLIE_PACK_TIMEOUT_MS: "60000" }, { socket: "/home/pat/.config/herdr/herdr.sock" }),
+    ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000" }, { socket: "/home/pat/.config/herdr/herdr.sock" }),
     io: out,
     exec,
     files,
@@ -226,7 +226,7 @@ function jsonReply<TBody>(body: TBody, status = 200, memberId = "peer"): Respons
 /** The lead's enrollment answer — the §8.2 transfer table, as `join` will parse it. */
 const ENROLLED: EnrollResponse = {
   protocol: 2,
-  packId: CREW.packId,
+  packId: CREW.crewId,
   crewName: CREW.name,
   crewSecret: CREW.secret,
   secretGeneration: 1,
@@ -450,7 +450,7 @@ describe("collie crew invite", () => {
   test("it materialises the store — and identity minting refusing is the whole verb failing", async () => {
     const ok = harness(null);
     expect(await cmdCrewInvite(ok.deps, [])).toBe(EXIT.OK);
-    expect(ok.data()!.pack).not.toBeNull();
+    expect(ok.data()!.crew).not.toBeNull();
 
     const refused = harness(null, [], {
       mintIdentity: () => Promise.reject(new Error("certificate minting is not wired yet")),
@@ -500,7 +500,7 @@ describe("collie join", () => {
     expect(h.exec.calls.join("\n")).not.toContain("token-from-stdin");
 
     const data = h.data()!;
-    expect(data.pack).toMatchObject({ packId: CREW.packId, secret: CREW.secret });
+    expect(data.crew).toMatchObject({ crewId: CREW.crewId, secret: CREW.secret });
     // The ORIGIN that answered, not the string that was typed: every later peer→lead dial reads this
     // field, and a bare `desk.ts.net` would send them all to :443 over TLS this lead never answers.
     expect(data.lead).toMatchObject({
@@ -509,7 +509,7 @@ describe("collie join", () => {
       address: "https://desk.ts.net:8787",
     });
     expect(data.self.memberId).toBe("laptop");
-    expect(h.audit.map((l) => l.action)).toContain("pack.joined");
+    expect(h.audit.map((l) => l.action)).toContain("crew.joined");
   });
 
   test("names the LEAD's restart as the last step — nothing else can tell the operator", async () => {
@@ -537,14 +537,14 @@ describe("collie join", () => {
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.REFUSED);
     expect(text(h.io)).toContain("spent, expired");
     expect(text(h.io)).toContain("collie crew invite");
-    expect(h.data()!.pack).toBeNull();
+    expect(h.data()!.crew).toBeNull();
   });
 
   test("an address that does not answer is UNREACHABLE, and reachability is named as the operator's", async () => {
     const h = harness(null, [new Error("connect ECONNREFUSED")]);
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.UNREACHABLE);
     expect(text(h.io)).toContain("could not reach desk.ts.net");
-    expect(h.data()!.pack).toBeNull();
+    expect(h.data()!.crew).toBeNull();
   });
 
   test("an unreachable lead does not hang forever — the dial has a bounded budget", async () => {
@@ -680,7 +680,7 @@ describe("collie join", () => {
     // The request WAS made (the answer had to arrive to be judged) — but nothing was pinned.
     expect(h.requests).toHaveLength(1);
     expect(h.data()).toEqual(solo);
-    expect(h.audit.map((l) => l.action)).not.toContain("pack.joined");
+    expect(h.audit.map((l) => l.action)).not.toContain("crew.joined");
   });
 
   test("a matching fingerprint enrolls and pins — the check passes the honest lead through", async () => {
@@ -688,7 +688,7 @@ describe("collie join", () => {
     const h = harness(null, [jsonReply(ENROLLED, 200, "desk")]);
     expect(await cmdJoin(h.deps, joinArgs)).toBe(EXIT.OK);
     expect(h.data()!.lead).toMatchObject({ memberId: "desk", fingerprint: fp("desk") });
-    expect(h.audit.map((l) => l.action)).toContain("pack.joined");
+    expect(h.audit.map((l) => l.action)).toContain("crew.joined");
   });
 
   test("an old-format token with no `.` FAILS CLOSED — refused before any dial", async () => {
@@ -722,7 +722,7 @@ describe("collie join", () => {
     expect(text(h.io)).toContain("--insecure");
     // Nothing was dialled and nothing was persisted — the guard runs before the fetch.
     expect(h.requests).toEqual([]);
-    expect(h.data()!.pack).toBeNull();
+    expect(h.data()!.crew).toBeNull();
   });
 
   test("http:// proceeds to the fetch when --insecure is passed", async () => {
@@ -797,7 +797,7 @@ describe("collie join", () => {
       expect(text(h.io)).toContain("--insecure");
       // One attempt, and it was the https one: nothing crossed a plaintext wire.
       expect(h.requests.map((r) => r.url)).toEqual(["https://desk.ts.net:8787/crew/v1/enroll"]);
-      expect(h.data()!.pack).toBeNull();
+      expect(h.data()!.crew).toBeNull();
     }
   });
 
@@ -1180,7 +1180,7 @@ describe("collie leave", () => {
     expect(h.requests[0]!.headers.authorization).toBe(`Bearer ${CREW.secret}`);
     expect(text(h.io)).toContain("The lead removed this machine");
     const data = h.data()!;
-    expect(data.pack).toBeNull();
+    expect(data.crew).toBeNull();
     expect(data.lead).toBeNull();
     expect(serializeTrustStore(data)).not.toContain(CREW.secret);
   });
@@ -1188,7 +1188,7 @@ describe("collie leave", () => {
   test("with the lead down it still stops trusting it here, and SAYS the lead still lists us", async () => {
     const h = harness(peerStore(), [new Error("no route to host")]);
     expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
-    expect(h.data()!.pack).toBeNull();
+    expect(h.data()!.crew).toBeNull();
     expect(text(h.io)).toContain("still lists this machine");
     expect(text(h.io)).toContain("collie crew remove laptop");
   });
@@ -1198,7 +1198,7 @@ describe("collie leave", () => {
   // five seconds forever, under a banner that said "activating" and "yet".
   test("the crew's wide bind is retired, so the machine comes back as a plain loopback collie", async () => {
     const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")], {
-      ctx: context({ COLLIE_HOST: "192.168.77.2", COLLIE_PACK_TIMEOUT_MS: "60000" }),
+      ctx: context({ COLLIE_HOST: "192.168.77.2", COLLIE_CREW_TIMEOUT_MS: "60000" }),
     });
     h.files.write(`${CONFIG}/.env`, "COLLIE_HOST=192.168.77.2\nCOLLIE_PORT=8787\n");
     expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
@@ -1208,7 +1208,7 @@ describe("collie leave", () => {
   });
 
   test("a bind the operator owns is not second-guessed", async () => {
-    const env = { COLLIE_HOST: "192.168.77.2", COLLIE_ALLOW_NON_LOOPBACK_BIND: "1", COLLIE_PACK_TIMEOUT_MS: "60000" };
+    const env = { COLLIE_HOST: "192.168.77.2", COLLIE_ALLOW_NON_LOOPBACK_BIND: "1", COLLIE_CREW_TIMEOUT_MS: "60000" };
     const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")], { ctx: context(env) });
     h.files.write(`${CONFIG}/.env`, "COLLIE_HOST=192.168.77.2\n");
     expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
@@ -1226,7 +1226,7 @@ describe("collie leave", () => {
 
   test("a bind Collie cannot reach says what will happen, and names the variable", async () => {
     const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")], {
-      ctx: context({ COLLIE_HOST: "192.168.77.2", COLLIE_PACK_TIMEOUT_MS: "60000" }),
+      ctx: context({ COLLIE_HOST: "192.168.77.2", COLLIE_CREW_TIMEOUT_MS: "60000" }),
     });
     // The value is real, but it comes from a systemd `Environment=` rather than the .env this owns.
     expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
@@ -1239,7 +1239,7 @@ describe("collie leave", () => {
   // `⚠ Collie isn't answering on 192.168.77.2:8787 yet` about a machine that was healthy on
   // loopback — the same alarm F12 used to raise, now false, at the end of the same command.
   test("the closing banner probes the bind as REWRITTEN, not the one this run started with", async () => {
-    const ctx = context({ COLLIE_HOST: "192.168.77.2", COLLIE_PACK_TIMEOUT_MS: "60000" });
+    const ctx = context({ COLLIE_HOST: "192.168.77.2", COLLIE_CREW_TIMEOUT_MS: "60000" });
     const probed: (string | undefined)[] = [];
     const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")], {
       ctx,
@@ -1259,7 +1259,7 @@ describe("collie leave", () => {
   test("a bind Collie could NOT remove is still the bind — the env keeps it", async () => {
     // The other half of the same rule: the machine really does still bind that address, so a banner
     // that probed loopback here would be the mirror-image lie. Nothing was rewritten; nothing moves.
-    const ctx = context({ COLLIE_HOST: "192.168.77.2", COLLIE_PACK_TIMEOUT_MS: "60000" });
+    const ctx = context({ COLLIE_HOST: "192.168.77.2", COLLIE_CREW_TIMEOUT_MS: "60000" });
     const h = harness(peerStore(), [jsonReply({ removed: "laptop" }, 200, "desk")], { ctx });
     expect(await cmdLeave(h.deps)).toBe(EXIT.OK);
     expect(ctx.env.COLLIE_HOST).toBe("192.168.77.2");
@@ -1270,7 +1270,7 @@ describe("collie leave", () => {
     expect(await cmdLeave(h.deps)).toBe(EXIT.STATE);
     expect(text(h.io)).toContain("collie crew remove");
     expect(text(h.io)).toContain("collie promote");
-    expect(h.data()!.pack).not.toBeNull();
+    expect(h.data()!.crew).not.toBeNull();
   });
 
   test("not being in a crew is a state error, not a no-op success", async () => {
@@ -1406,18 +1406,18 @@ describe("collie crew status", () => {
     expect(text(h.io)).toContain("not probed");
   });
 
-  test("a clamped COLLIE_PACK_TIMEOUT_MS says so instead of silently doing nothing", async () => {
+  test("a clamped COLLIE_CREW_TIMEOUT_MS says so instead of silently doing nothing", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     await cmdCrewStatus(h.deps, ["--no-probe"]);
     // The harness asks for 60000ms against the default 1500ms poll, so the clamp bites hard.
-    expect(text(h.io)).toContain("COLLIE_PACK_TIMEOUT_MS=60000 has no effect beyond 1200ms");
+    expect(text(h.io)).toContain("COLLIE_CREW_TIMEOUT_MS=60000 has no effect beyond 1200ms");
     expect(text(h.io)).toContain("COLLIE_POLL_MS=75000");
   });
 
   test("a wildcard COLLIE_HOST is shown as ALL interfaces in the bind line", async () => {
     const h = harness(peerStore(), [], {
       ctx: context(
-        { COLLIE_HOST: "0.0.0.0", COLLIE_PACK_TIMEOUT_MS: "60000" },
+        { COLLIE_HOST: "0.0.0.0", COLLIE_CREW_TIMEOUT_MS: "60000" },
         { socket: "/home/pat/.config/herdr/herdr.sock" },
       ),
     });
@@ -1585,7 +1585,7 @@ describe("collie crew status", () => {
     // The marker the bridge left at boot: this lead came up with an EMPTY roster, then answered a
     // `collie join` in-process — exactly the gap the two-instance harness found.
     h.files.write(
-      "/state/pack-runtime.json",
+      "/state/crew-runtime.json",
       JSON.stringify({ bootedAt: T0, pid: 999, mode: "solo", roster: [] }),
     );
     expect(await cmdCrewStatus(h.deps, ["--no-probe"])).toBe(EXIT.OK);
@@ -1600,7 +1600,7 @@ describe("collie crew status", () => {
   test("names the mode split when a demoted lead is still running as one", async () => {
     const h = harness(peerStore());
     h.files.write(
-      "/state/pack-runtime.json",
+      "/state/crew-runtime.json",
       JSON.stringify({ bootedAt: T0, pid: 999, mode: "lead", roster: ["peer:nas"] }),
     );
     await cmdCrewStatus(h.deps, ["--no-probe"]);
@@ -1616,7 +1616,7 @@ describe("collie crew status", () => {
   test("a marker that matches the store is silent", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     h.files.write(
-      "/state/pack-runtime.json",
+      "/state/crew-runtime.json",
       JSON.stringify({ bootedAt: T0, pid: 999, mode: "lead", roster: ["peer:nas"] }),
     );
     await cmdCrewStatus(h.deps, ["--no-probe"]);
@@ -1664,7 +1664,7 @@ describe("collie crew status", () => {
     expect(stamped.contactedAt).toBe(T0);
     // Reachable now, so the provisional line is suppressed this run — it was cleared, not half-finished.
     expect(text(h.io)).not.toContain("provisional");
-    expect(h.audit.map((l) => l.action)).toContain("pack.contacted");
+    expect(h.audit.map((l) => l.action)).toContain("crew.contacted");
   });
 });
 
@@ -1676,7 +1676,7 @@ describe("collie crew rotate", () => {
   test("rotates locally FIRST, then distributes with the SUPERSEDED secret", async () => {
     const h = harness(leadStore({ peers: roster }), [jsonReply({ generation: 2 }, 200, "nas"), jsonReply({ generation: 2 }, 200, "laptop")]);
     expect(await cmdCrewRotate(h.deps)).toBe(EXIT.OK);
-    const next = h.data()!.pack!;
+    const next = h.data()!.crew!;
     expect(next.secretGeneration).toBe(2);
     expect(next.secret).not.toBe(CREW.secret);
     for (const req of h.requests) {
@@ -1701,14 +1701,14 @@ describe("collie crew rotate", () => {
     const h = harness(peerStore());
     expect(await cmdCrewRotate(h.deps)).toBe(EXIT.STATE);
     expect(text(h.io)).toContain("runs on the lead");
-    expect(h.data()!.pack!.secretGeneration).toBe(1);
+    expect(h.data()!.crew!.secretGeneration).toBe(1);
   });
 
   test("the new secret is never printed", async () => {
     const h = harness(leadStore({ peers: roster }), [jsonReply({}, 200, "nas"), jsonReply({}, 200, "laptop")]);
     await cmdCrewRotate(h.deps);
-    expect(text(h.io)).not.toContain(h.data()!.pack!.secret);
-    expect(JSON.stringify(h.audit)).not.toContain(h.data()!.pack!.secret);
+    expect(text(h.io)).not.toContain(h.data()!.crew!.secret);
+    expect(JSON.stringify(h.audit)).not.toContain(h.data()!.crew!.secret);
   });
 });
 
@@ -1721,7 +1721,7 @@ describe("collie crew rename", () => {
   test("rewrites the name in the lead's store, prints it, and dials nobody", async () => {
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     expect(await cmdCrewRename(h.deps, ["the shed"])).toBe(EXIT.OK);
-    expect(h.data()!.pack!.name).toBe("the shed");
+    expect(h.data()!.crew!.name).toBe("the shed");
     const said = text(h.io);
     expect(said).toContain('this crew is now called "the shed"');
     expect(said).toContain(`from  ${CREW.name}`);
@@ -1729,17 +1729,17 @@ describe("collie crew rename", () => {
     expect(h.requests).toEqual([]);
     expect(h.data()!.peers[0]!.memberId).toBe("nas");
     // The running bridge reads its trust store once per process, so the verb restarts it — the same
-    // way `rotate`, `remove` and `set-address` make their write visible on /api/pack.
+    // way `rotate`, `remove` and `set-address` make their write visible on /api/crew.
     expect(h.restarts).toHaveLength(1);
     expect(said).toContain("restarting the bridge so the new name takes effect");
-    expect(h.audit.map((a) => a.action)).toContain("pack.rename");
+    expect(h.audit.map((a) => a.action)).toContain("crew.rename");
   });
 
   test("the crew id, the secret and its generation are untouched", async () => {
     const h = harness(leadStore());
     await cmdCrewRename(h.deps, ["the shed"]);
-    const crew = h.data()!.pack!;
-    expect(crew.packId).toBe(CREW.packId);
+    const crew = h.data()!.crew!;
+    expect(crew.crewId).toBe(CREW.crewId);
     expect(crew.secret).toBe(CREW.secret);
     expect(crew.secretGeneration).toBe(CREW.secretGeneration);
     expect(text(h.io)).not.toContain(CREW.secret);
@@ -1748,19 +1748,19 @@ describe("collie crew rename", () => {
   test("a name is trimmed, and the name it already has is a no-op", async () => {
     const h = harness(leadStore());
     expect(await cmdCrewRename(h.deps, ["  the shed  "])).toBe(EXIT.OK);
-    expect(h.data()!.pack!.name).toBe("the shed");
+    expect(h.data()!.crew!.name).toBe("the shed");
     expect(await cmdCrewRename(h.deps, ["the shed"])).toBe(EXIT.OK);
     expect(text(h.io)).toContain('already called "the shed"');
     // One write, one restart: the second run wrote nothing and restarted nothing.
     expect(h.restarts).toHaveLength(1);
-    expect(h.audit.filter((a) => a.action === "pack.rename")).toHaveLength(1);
+    expect(h.audit.filter((a) => a.action === "crew.rename")).toHaveLength(1);
   });
 
   test("renaming runs on the lead — a peer is told where to run it", async () => {
     const h = harness(peerStore());
     expect(await cmdCrewRename(h.deps, ["the shed"])).toBe(EXIT.STATE);
     expect(text(h.io)).toContain("a crew is renamed on the lead");
-    expect(h.data()!.pack!.name).toBe(CREW.name);
+    expect(h.data()!.crew!.name).toBe(CREW.name);
     expect(h.restarts).toEqual([]);
   });
 
@@ -1782,7 +1782,7 @@ describe("collie crew rename", () => {
     expect(text(long.io)).toContain("at most 64 characters");
     // 64 is accepted, so the boundary is pinned from both sides.
     expect(await cmdCrewRename(long.deps, ["n".repeat(64)])).toBe(EXIT.OK);
-    expect(long.data()!.pack!.name).toBe("n".repeat(64));
+    expect(long.data()!.crew!.name).toBe("n".repeat(64));
 
     const control = harness(leadStore());
     expect(await cmdCrewRename(control.deps, ["the\u0007shed"])).toBe(EXIT.USAGE);
@@ -1794,7 +1794,7 @@ describe("collie crew rename", () => {
     expect(await cmdCrewRename(none.deps, ["the", "shed"])).toBe(EXIT.USAGE);
     expect(text(none.io)).toContain("needs quotes");
 
-    for (const h of [empty, control]) expect(h.data()!.pack!.name).toBe(CREW.name);
+    for (const h of [empty, control]) expect(h.data()!.crew!.name).toBe(CREW.name);
     // No name at all is answered from argv alone: the store was not even read.
     expect(none.data()).toBeNull();
     for (const h of [empty, long, control, none]) expect(h.requests).toEqual([]);
@@ -1823,7 +1823,7 @@ describe("collie crew remove", () => {
     expect(h.restarts).toHaveLength(1);
   });
 
-  // F16: the row in pack-ops.json is `{sshHost, path, port}` — exactly the connection that finishes
+  // F16: the row in crew-ops.json is `{sshHost, path, port}` — exactly the connection that finishes
   // the tear-down on the other machine — and it was deleted in the same breath as printing the
   // sentence that needs it. The removed peer is invisible from both ends until `collie leave` runs
   // there, so the verb now prints the line and KEEPS the row.
@@ -1835,7 +1835,7 @@ describe("collie crew remove", () => {
     });
     expect(await cmdCrewRemove(h.deps, ["nas"])).toBe(EXIT.OK);
     expect(text(h.io)).toContain("ssh op@192.168.77.2 /home/op/.collie/bin/collie leave");
-    expect(text(h.io)).toContain("/state/pack-ops.json");
+    expect(text(h.io)).toContain("/state/crew-ops.json");
     // The row survives — this is the whole finding.
     expect(await h.deps.ops.get("nas")).toMatchObject({ sshHost: "op@192.168.77.2" });
   });
@@ -1891,7 +1891,7 @@ describe("collie crew approve-promote — consent on the lead (§14.1)", () => {
     expect(h.restarts).toHaveLength(1);
     // Consent is local: nothing is sent to the member it names.
     expect(h.requests).toEqual([]);
-    expect(h.audit.map((l) => l.action)).toContain("pack.handover.approve");
+    expect(h.audit.map((l) => l.action)).toContain("crew.handover.approve");
   });
 
   test("a peer has nothing to hand over, and a store with no crew has no handover at all", async () => {
@@ -1924,7 +1924,7 @@ describe("collie crew approve-promote — consent on the lead (§14.1)", () => {
     expect(text(h.io)).toContain('cancelled the handover approval for "nas"');
     // The bridge must FORGET it, which is the same mechanism as holding it: a restart.
     expect(h.restarts).toHaveLength(2);
-    expect(h.audit.map((l) => l.action)).toContain("pack.handover.cancel");
+    expect(h.audit.map((l) => l.action)).toContain("crew.handover.cancel");
   });
 
   test("`--cancel` with nothing armed exits cleanly — the operator asked for this state", async () => {
@@ -2038,7 +2038,7 @@ describe("collie promote", () => {
     expect(data.lead).toBeNull();
     expect(data.peers.map((p) => p.memberId).toSorted()).toEqual(["desk", "nas"]);
     // The role change reuses the crew identity and the crew secret — not a re-enrollment.
-    expect(data.pack).toEqual(CREW);
+    expect(data.crew).toEqual(CREW);
     expect(data.self.memberId).toBe("laptop");
     // §14.4/§14.5 (2026-08-12): the old lead is the ONLY machine this verb talks to. "nas" pins the
     // old lead's certificate at its own handshake, so a dial there is refused at TLS — the sweep that
@@ -2112,7 +2112,7 @@ describe("collie crew set-address", () => {
     expect(h.restarts).toHaveLength(1);
     // Local by construction: correcting where we dial a member sends that member nothing.
     expect(h.requests).toEqual([]);
-    expect(h.audit.map((a) => a.action)).toContain("pack.address");
+    expect(h.audit.map((a) => a.action)).toContain("crew.address");
   });
 
   test("a scheme is refused with the reason, and nothing is written", async () => {

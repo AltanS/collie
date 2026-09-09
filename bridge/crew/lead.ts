@@ -244,7 +244,7 @@ export interface CrewLeadDeps {
   readonly pairing?: PairingDistribution;
   readonly now?: () => number;
   /**
-   * Where a `[pack]` line goes. Defaults to `console.log`, which is the bridge's journal.
+   * Where a `[crew]` line goes. Defaults to `console.log`, which is the bridge's journal.
    *
    * Injected for the reason `snapshot` is: a test asserts the sentence rather than the side effect,
    * and a suite that exercises a hundred sweeps stays silent. It changes nothing about the sweep —
@@ -422,7 +422,7 @@ export class CrewLead {
   private staleDial(memberId: string, dialGeneration: number, what: string): boolean {
     const current = this.dialGenerations.get(memberId) ?? 0;
     if (dialGeneration >= current) return false;
-    this.log(`[pack] ${memberId}: dropped a stale ${what} reply, dial ${dialGeneration} of ${current}`);
+    this.log(`[crew] ${memberId}: dropped a stale ${what} reply, dial ${dialGeneration} of ${current}`);
     return true;
   }
 
@@ -576,7 +576,7 @@ export class CrewLead {
     } catch (err) {
       // Defensive: nothing above is supposed to reject. If something does, the crew degrades to
       // "stale" rather than taking the lead's poll loop down with it.
-      console.warn(`[pack] sweep failed: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(`[crew] sweep failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       this.sweeping = false;
     }
@@ -650,17 +650,17 @@ export class CrewLead {
       const runs = previous?.incompatibleRuns ?? 0;
       this.log(
         runs > 0
-          ? `[pack] ${memberId}: reachable again after ${runs} incompatible verdict(s)`
-          : `[pack] ${memberId}: reachable again`,
+          ? `[crew] ${memberId}: reachable again after ${runs} incompatible verdict(s)`
+          : `[crew] ${memberId}: reachable again`,
       );
       return;
     }
     if (outcome.state === "incompatible") {
       const seconds = Math.round(incompatibleBackoffMs(next.incompatibleRuns) / 1000);
-      this.log(`[pack] ${memberId}: incompatible (${outcome.reason}), next dial in ${seconds}s`);
+      this.log(`[crew] ${memberId}: incompatible (${outcome.reason}), next dial in ${seconds}s`);
       return;
     }
-    this.log(`[pack] ${memberId}: ${outcome.state} (${outcome.reason})`);
+    this.log(`[crew] ${memberId}: ${outcome.state} (${outcome.reason})`);
   }
 
   /**
@@ -680,7 +680,7 @@ export class CrewLead {
     try {
       await run();
     } catch (err) {
-      console.warn(`[pack] ${what} failed: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(`[crew] ${what} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -767,7 +767,7 @@ export class CrewLead {
           distribution.collision?.(pushed.labels ?? []);
         }
       } catch (err) {
-        console.warn(`[pack] pairing sync failed: ${err instanceof Error ? err.message : String(err)}`);
+        console.warn(`[crew] pairing sync failed: ${err instanceof Error ? err.message : String(err)}`);
       } finally {
         this.pushingPairing = false;
       }
@@ -810,7 +810,7 @@ export class CrewLead {
       // Defensive, exactly as `sweep` and `probe` are: failure is a value everywhere in the crew
       // client, so a throw here is a bug in an injected transport — and it must not become an
       // unhandled rejection that takes the bridge down.
-      console.warn(`[pack] warrant push failed: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(`[crew] warrant push failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       this.pushingWarrant.delete(link.memberId);
     }
@@ -861,7 +861,7 @@ export class CrewLead {
       // Defensive, exactly as `sweep` is: failure is a value everywhere in the crew client, so a
       // throw here is a bug in an injected transport — and it must not become an unhandled rejection
       // that takes the bridge down.
-      console.warn(`[pack] probe failed: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(`[crew] probe failed: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       this.probing.delete(link.memberId);
     }

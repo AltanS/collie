@@ -266,14 +266,14 @@ describe("the entry points", () => {
             </CrewProvider>
           ),
         },
-        { path: "/crew", element: <div data-testid="pack" /> },
+        { path: "/crew", element: <div data-testid="crew" /> },
       ],
       { initialEntries: ["/settings"] },
     );
     render(<RouterProvider router={router} />);
 
     await user.click(screen.getByRole("button", { name: /Crew overview/ }));
-    expect(await screen.findByTestId("pack")).toBeInTheDocument();
+    expect(await screen.findByTestId("crew")).toBeInTheDocument();
   });
 
   it("puts no footer in a switcher that a solo install never opens", () => {
@@ -293,7 +293,7 @@ describe("the entry points", () => {
     const router = createMemoryRouter(
       [
         { path: "/", element: <ServerSwitcher servers={fixtureServers} scope={{}} /> },
-        { path: "/crew", element: <div data-testid="pack" /> },
+        { path: "/crew", element: <div data-testid="crew" /> },
       ],
       { initialEntries: ["/"] },
     );
@@ -301,7 +301,7 @@ describe("the entry points", () => {
 
     await user.click(screen.getByRole("button", { name: /Switch host/ }));
     await user.click(await screen.findByRole("button", { name: "Crew overview" }));
-    expect(await screen.findByTestId("pack")).toBeInTheDocument();
+    expect(await screen.findByTestId("crew")).toBeInTheDocument();
   });
 });
 

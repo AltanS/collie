@@ -61,7 +61,12 @@ export interface FollowHeaders {
 /** How long a peer has to answer before the poll gives up on it, by default (§10.1). */
 export const DEFAULT_CREW_TIMEOUT_MS = 1200;
 /** Operator override for the per-peer budget. A crew key, so it lives here and not on `Config`. */
-export const CREW_TIMEOUT_ENV = "COLLIE_PACK_TIMEOUT_MS";
+export const CREW_TIMEOUT_ENV = "COLLIE_CREW_TIMEOUT_MS";
+/**
+ * REMOVE_IN_1_9_0: the 1.7.0 spelling of {@link CREW_TIMEOUT_ENV}. Read only when the crew spelling
+ * is absent, so an install that carries the old key in a unit file keeps the budget it asked for.
+ */
+export const LEGACY_CREW_TIMEOUT_ENV = "COLLIE_PACK_TIMEOUT_MS";
 /**
  * The fraction of the lead's poll interval a peer may consume. 1200/1500 — the exact default pair
  * §10.1 names — is this ratio, which is why it is the ratio: a budget must leave the lead time to do
@@ -72,7 +77,7 @@ const BUDGET_FRACTION = 0.8;
 /**
  * The per-peer timeout budget, **strictly below the lead's own poll interval** (§10.1).
  *
- * Clamped rather than trusted: an operator who sets `COLLIE_PACK_TIMEOUT_MS=9000` against a 1500 ms
+ * Clamped rather than trusted: an operator who sets `COLLIE_CREW_TIMEOUT_MS=9000` against a 1500 ms
  * poll has asked for a peer that can stall the lead's snapshot for six polls, which is precisely the
  * failure this budget exists to make impossible. A missed budget is an unreachable poll, not a
  * delayed one, so clamping loses nothing — it converts a stall into a `stale` badge.
@@ -87,7 +92,7 @@ export function crewTimeoutBudget(
 
 /** The two halves {@link crewTimeoutBudget} compares, so the warning below reads the same arithmetic. */
 function budgetParts(pollMs: number, env: Record<string, string | undefined>) {
-  const raw = env[CREW_TIMEOUT_ENV];
+  const raw = readBudgetEnv(env, CREW_TIMEOUT_ENV, LEGACY_CREW_TIMEOUT_ENV);
   const parsed = raw === undefined ? NaN : Number.parseInt(raw.trim(), 10);
   const asked = Number.isFinite(parsed) && parsed > 0;
   return {
@@ -102,7 +107,7 @@ function budgetParts(pollMs: number, env: Record<string, string | undefined>) {
  * smaller one. `null` when they asked for nothing, or asked for something the poll can afford.
  *
  * The clamp itself stays (it is the arithmetic that keeps a slow peer from stalling the lead), but it
- * stops being SILENT: `COLLIE_PACK_TIMEOUT_MS=3000` at the default 1500 ms poll changes nothing at
+ * stops being SILENT: `COLLIE_CREW_TIMEOUT_MS=3000` at the default 1500 ms poll changes nothing at
  * all, and an operator who set it to chase a slow link deserves to be told which knob actually moves —
  * `COLLIE_POLL_MS`. Same posture as `startupWarnings` in `bridge/server.ts`: a pure function that
  * returns the line, and a caller that decides where it is printed.
@@ -115,10 +120,47 @@ export function crewTimeoutClampWarning(
   if (!asked || wanted <= ceiling) return null;
   const neededPoll = Math.ceil(wanted / BUDGET_FRACTION);
   return (
-    `[pack] ${CREW_TIMEOUT_ENV}=${wanted} has no effect beyond ${ceiling}ms: a peer may use at most ` +
+    `[crew] ${CREW_TIMEOUT_ENV}=${wanted} has no effect beyond ${ceiling}ms: a peer may use at most ` +
     `${BUDGET_FRACTION} of the ${pollMs}ms poll, or a slow peer stalls this lead's own snapshot. ` +
     `For the full ${wanted}ms, raise the poll too: COLLIE_POLL_MS=${neededPoll}.`
   );
+}
+
+/**
+ * Read one crew budget key: the crew spelling first, the 1.7.0 `COLLIE_PACK_*` spelling second.
+ *
+ * REMOVE_IN_1_9_0 — the second read, not the function. An operator who set the old key in a systemd
+ * unit or a shell profile keeps the budget they asked for across the 1.8.0 update, and is told once
+ * by {@link crewEnvFallbackWarning} which key to rewrite.
+ */
+function readBudgetEnv(
+  env: Record<string, string | undefined>,
+  key: string,
+  legacy: string,
+): string | undefined {
+  return env[key] ?? env[legacy];
+}
+
+/**
+ * The ONE line to print at start when a 1.7.0 environment key is doing the work of its crew
+ * successor. `null` when no old key is set, or when the crew key beside it already wins.
+ *
+ * One line for both keys, not one per read: {@link readBudgetEnv} runs on every poll, and a warning
+ * on that path would be a log flood rather than a notice. Same posture as
+ * {@link crewTimeoutClampWarning} — a pure function; the caller decides where it lands.
+ *
+ * REMOVE_IN_1_9_0, together with the fallback it announces.
+ */
+export function crewEnvFallbackWarning(
+  env: Record<string, string | undefined> = process.env,
+): string | null {
+  const used = [
+    { legacy: LEGACY_CREW_TIMEOUT_ENV, key: CREW_TIMEOUT_ENV },
+    { legacy: LEGACY_CREW_HELLO_TIMEOUT_ENV, key: CREW_HELLO_TIMEOUT_ENV },
+  ].filter((pair) => env[pair.legacy] !== undefined && env[pair.key] === undefined);
+  if (used.length === 0) return null;
+  const named = used.map((pair) => `${pair.legacy} (use ${pair.key})`).join(", ");
+  return `[crew] ${named}: the COLLIE_PACK_* spelling still works in 1.8.0 and is removed in 1.9.0.`;
 }
 
 /**
@@ -151,7 +193,9 @@ export const WRITE_BUDGET_MS = 5000;
 /** How long a `hello` PROBE may take before the lead calls a member gone (§10.4), by default. */
 export const DEFAULT_CREW_HELLO_TIMEOUT_MS = 5000;
 /** Operator override for the probe budget. A crew key, so it lives here and not on `Config`. */
-export const CREW_HELLO_TIMEOUT_ENV = "COLLIE_PACK_HELLO_TIMEOUT_MS";
+export const CREW_HELLO_TIMEOUT_ENV = "COLLIE_CREW_HELLO_TIMEOUT_MS";
+/** REMOVE_IN_1_9_0: the 1.7.0 spelling of {@link CREW_HELLO_TIMEOUT_ENV}, read as a fallback. */
+export const LEGACY_CREW_HELLO_TIMEOUT_ENV = "COLLIE_PACK_HELLO_TIMEOUT_MS";
 /**
  * A hard stop on the probe budget. It exists only so a typo (`50000000`) cannot wedge a one-shot verb
  * like `crew status` for the rest of the afternoon; nothing on the poll path waits on this budget, so
@@ -191,7 +235,7 @@ export function crewHelloBudget(
   pollMs: number,
   env: Record<string, string | undefined> = process.env,
 ): number {
-  const raw = env[CREW_HELLO_TIMEOUT_ENV];
+  const raw = readBudgetEnv(env, CREW_HELLO_TIMEOUT_ENV, LEGACY_CREW_HELLO_TIMEOUT_ENV);
   const parsed = raw === undefined ? NaN : Number.parseInt(raw.trim(), 10);
   const wanted = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CREW_HELLO_TIMEOUT_MS;
   return Math.max(crewTimeoutBudget(pollMs, env), Math.min(wanted, HELLO_BUDGET_CEILING_MS));
@@ -431,7 +475,7 @@ export interface HelloResult {
    * The other half of RFC §5's two phases, and the half a lead cannot observe: storage is a file the
    * peer reports, activation is what its process came up holding. **Absent means "nothing active
    * there, or a build that cannot say" — never "armed"**, so the lead falls back to the lower bound
-   * in its own `pack-ops.json` and keeps naming the remedy, which is today's reading unchanged.
+   * in its own `crew-ops.json` and keeps naming the remedy, which is today's reading unchanged.
    */
   readonly warrantActiveGeneration: number | null;
   /**
@@ -482,7 +526,7 @@ export interface PeerClientDeps {
    * The patient budget: {@link PeerClient.hello}'s, and a cold link's one bootstrap data attempt
    * ({@link takeDataBudget}). Build it with {@link crewHelloBudget}, never by hand.
    *
-   * It is still built from `COLLIE_PACK_HELLO_TIMEOUT_MS` because it is the same budget the verdict
+   * It is still built from `COLLIE_CREW_HELLO_TIMEOUT_MS` because it is the same budget the verdict
    * probe named on 2026-08-18 and an operator-facing key does not churn for a second caller. Absent ⇒
    * every call shares the strict data budget, which is the pre-2026-08-18 behaviour and the deadlock
    * the two docs above describe — so every production wiring supplies it.

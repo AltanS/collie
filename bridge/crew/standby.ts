@@ -127,7 +127,7 @@ export function armThresholdWarning(env: Env = process.env): string | null {
   const idle = positiveInt(env[POLL_IDLE_ENV]) ?? DEFAULT_POLL_IDLE_MS;
   if (override > idle) return null;
   return (
-    `[pack] ${STANDBY_ARM_ENV}=${override} is at or below ${POLL_IDLE_ENV}=${idle}, so this deputy's ` +
+    `[crew] ${STANDBY_ARM_ENV}=${override} is at or below ${POLL_IDLE_ENV}=${idle}, so this deputy's ` +
     "standby door will arm itself on an idle crew. Raise it above the idle poll (the default formula " +
     `is max(${ARM_FLOOR_MS}, 2.5 × ${POLL_IDLE_ENV})).`
   );
@@ -220,13 +220,13 @@ export function isArmed(facts: StandbyFacts): boolean {
  * A refusal at any clause is total and silent: no warrant, no door.
  */
 export function warrantNamesSelf(mode: CrewMode, data: TrustStoreData | null, now: number = Date.now()): boolean {
-  if (mode !== "peer" || data === null || data.pack === null) return false;
+  if (mode !== "peer" || data === null || data.crew === null) return false;
   const lead = data.lead;
   if (lead === null || lead.status !== "enrolled" || lead.certPem === "") return false;
   const stored = data.warrant ?? null;
   if (stored === null) return false;
   const w = stored.warrant;
-  if (w.packId !== data.pack.packId || w.leadMemberId !== lead.memberId) return false;
+  if (w.packId !== data.crew.crewId || w.leadMemberId !== lead.memberId) return false;
   if (w.deputyMemberId === null || w.deputyMemberId !== data.self.memberId) return false;
   if (warrantExpired(w, now)) return false;
   return verifyWarrantSignature(w, lead.certPem);

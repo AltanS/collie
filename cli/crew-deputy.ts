@@ -28,7 +28,7 @@ import { firstLine, restartScript, runProbe, transportFailure, type CrewAddDeps,
 //
 // ── OVER THE OPERATOR'S OWN SSH, NEVER THE CREW WIRE (ADR 0015/0016) ─────────
 // Same channel `crew add` and `crew update` use, same leg scripts, same remembered route in
-// `pack-ops.json`. The crew link carries runtime data and is not a control channel; a lead that
+// `crew-ops.json`. The crew link carries runtime data and is not a control channel; a lead that
 // could restart a peer down it would be a reboot credential on every machine it leads.
 //
 // ── ONE CONSENT FOR THE BATCH, AND NO `--yes` ────────────────────────────────
@@ -95,7 +95,7 @@ export async function cmdCrewDeputy(deps: CrewAddDeps, args: readonly string[]):
   const revoking = bare.has("revoke");
 
   const data = await deps.store.load();
-  if (data === null || data.pack === null) {
+  if (data === null || data.crew === null) {
     deps.io.err("error: this collie is not in a crew — there is no crown to deputise for.");
     return EXIT.STATE;
   }
@@ -184,9 +184,9 @@ function refuseOrName(deps: CrewAddDeps, data: TrustStoreData, memberId: string 
     deps.io.err("       machine that is not a member is a permission nothing would honour.");
     return stop(EXIT.STATE);
   }
-  if (member.secretGeneration !== data.pack?.secretGeneration) {
+  if (member.secretGeneration !== data.crew?.secretGeneration) {
     deps.io.err(`error: "${memberId}" has not picked up the current crew secret (it holds generation`);
-    deps.io.err(`       ${member.secretGeneration}, this crew is at ${data.pack?.secretGeneration}). Let it catch up, then re-run.`);
+    deps.io.err(`       ${member.secretGeneration}, this crew is at ${data.crew?.secretGeneration}). Let it catch up, then re-run.`);
     return stop(EXIT.STATE);
   }
   return ok(memberId);
@@ -332,7 +332,7 @@ async function pushToPeers(deps: CrewAddDeps, data: TrustStoreData, warrant: War
   const rows = new Map<string, Row>();
   const enrolled = data.peers.filter((p) => p.status === "enrolled");
   if (enrolled.length === 0) return rows;
-  const client = clientFor(deps, data, data.pack?.secret ?? "");
+  const client = clientFor(deps, data, data.crew?.secret ?? "");
   const payload = payloadFor(data, warrant);
   await Promise.all(
     enrolled.map(async (member) => {
@@ -413,7 +413,7 @@ async function armPeers(
   rows: Map<string, Row>,
 ): Promise<number> {
   const targets: Target[] = [];
-  const client = clientFor(deps, data, data.pack?.secret ?? "");
+  const client = clientFor(deps, data, data.crew?.secret ?? "");
   for (const member of data.peers.filter((p) => p.status === "enrolled")) {
     // PHASE 2 IS GATED ON PHASE 1, per member. A machine that does not hold the warrant has nothing
     // for a restart to arm, so it is not probed, not restarted, and no anchor is recorded for it.
@@ -583,7 +583,7 @@ async function rememberReported(
 /**
  * Record which generation this operator armed on that machine.
  *
- * It lands in `pack-ops.json` beside the ssh route, never in the trust store: it is an observation
+ * It lands in `crew-ops.json` beside the ssh route, never in the trust store: it is an observation
  * about what the operator did from here, not trust material (ADR 0016). `crew status` reads it as
  * the anchor column, and a member with none reports `anchor INACTIVE`.
  */

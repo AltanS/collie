@@ -528,7 +528,7 @@ export const rosterPalette: ServerSummary[] = [
   ),
 ];
 
-// ── The census (`GET /api/pack`) ─────────────────────────────────────────────────────────────────
+// ── The census (`GET /api/crew`) ─────────────────────────────────────────────────────────────────
 //
 // One page's worth of paperwork per machine: enrolment, warrant and secret generations, versions.
 // Every timestamp is on the LEAD's clock — the same `TS` as the rosters above, so a card can mount
@@ -572,7 +572,7 @@ const crewSelf = { id: "bluefin", name: "bluefin", version: LEAD_VERSION };
 
 /** One machine, leading nobody but itself — the smallest census a lead can serve. */
 export const censusSolo: CrewStatusResponse = {
-  pack: { ...crewMeta, name: "bluefin" },
+  crew: { ...crewMeta, name: "bluefin" },
   self: crewSelf,
   deputy: null,
   members: [selfMember],
@@ -581,7 +581,7 @@ export const censusSolo: CrewStatusResponse = {
 
 /** Lead + a named deputy + one ordinary peer. Everything healthy. */
 export const censusTrio: CrewStatusResponse = {
-  pack: crewMeta,
+  crew: crewMeta,
   self: crewSelf,
   deputy: { id: "workshop", warrantGeneration: 3 },
   members: [
@@ -598,7 +598,7 @@ export const censusTrio: CrewStatusResponse = {
  * protocol this lead cannot speak — with its refusal quoted word for word.
  */
 export const censusFive: CrewStatusResponse = {
-  pack: crewMeta,
+  crew: crewMeta,
   self: crewSelf,
   deputy: { id: "workshop", warrantGeneration: 3 },
   members: [
@@ -627,7 +627,7 @@ export const censusFive: CrewStatusResponse = {
 
 /** Nine machines. The formation wraps its V; the list below it stays one column. */
 export const censusNine: CrewStatusResponse = {
-  pack: crewMeta,
+  crew: crewMeta,
   self: crewSelf,
   deputy: { id: "workshop", warrantGeneration: 3 },
   members: [
@@ -648,7 +648,7 @@ export const censusNine: CrewStatusResponse = {
  * clears, so the page names it rather than folding it into "unreachable".
  */
 export const censusConflicted: CrewStatusResponse = {
-  pack: crewMeta,
+  crew: crewMeta,
   self: crewSelf,
   deputy: { id: "workshop", warrantGeneration: 3 },
   members: [

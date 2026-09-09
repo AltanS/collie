@@ -267,7 +267,7 @@ describe("GET /crew/v1/hello — behind both factors", () => {
     await call(handler, CREW_HELLO_PATH, { headers: authed });
     await Bun.sleep(5);
     expect(h.lines.map((l) => [l.action, l.detail?.factor])).toEqual([
-      ["pack.refused", "certificate"],
+      ["crew.refused", "certificate"],
     ]);
   });
 });
@@ -796,7 +796,7 @@ describe("POST /crew/v1/enroll — admitted by the TOKEN, not by the two factors
     // No spend was recorded. The `crew.refused` lines `refuse()` writes are a separate, deliberate
     // record of the refusal itself (see "a refusal is audited locally with its real cause") — what
     // F4 was about is the store write and the spend line that used to accompany it.
-    expect(h.lines.map((l) => l.action)).not.toContain("pack.invite.spend");
+    expect(h.lines.map((l) => l.action)).not.toContain("crew.invite.spend");
     // The live invite is untouched: refusing junk must not sweep what has not expired.
     expect(h.data().invites).toHaveLength(1);
   });
@@ -858,7 +858,7 @@ describe("POST /crew/v1/enroll — admitted by the TOKEN, not by the two factors
       body: JSON.stringify(body({ token: h.token })),
     });
     await Bun.sleep(5);
-    expect(h.lines.map((l) => l.action)).toEqual(["pack.invite.spend", "pack.enroll"]);
+    expect(h.lines.map((l) => l.action)).toEqual(["crew.invite.spend", "crew.enroll"]);
     expect(JSON.stringify(h.lines)).not.toContain(h.token);
   });
 });
@@ -1038,15 +1038,15 @@ describe("POST /crew/v1/secret — the peer side of rotation (§8.4)", () => {
     const res = (await call(asLead(h), CREW_SECRET_PATH, post({ secret: "new-secret-value-xxxxxxxxxxxx", generation: 2 })))!;
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ generation: 2, applied: true });
-    expect(h.data().pack!.secret).toBe("new-secret-value-xxxxxxxxxxxx");
-    expect(h.data().pack!.secretGeneration).toBe(2);
+    expect(h.data().crew!.secret).toBe("new-secret-value-xxxxxxxxxxxx");
+    expect(h.data().crew!.secretGeneration).toBe(2);
   });
 
   test("a redelivery answers 200 and applies nothing — the lead's question is still answered", async () => {
     const h = harness(peerStore());
     const res = (await call(asLead(h), CREW_SECRET_PATH, post({ secret: "whatever-value-yyyyyyyyyyyy", generation: 1 })))!;
     expect(await res.json()).toEqual({ generation: 1, applied: false });
-    expect(h.data().pack!.secret).toBe(CREW.secret);
+    expect(h.data().crew!.secret).toBe(CREW.secret);
   });
 
   test("a collie that IS the lead has no lead of its own to admit here — this route is peer-only", async () => {
@@ -1062,8 +1062,8 @@ describe("POST /crew/v1/secret — the peer side of rotation (§8.4)", () => {
     const handler = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true });
     const res = (await call(handler, CREW_SECRET_PATH, post({ secret: "hostile-value-zzzzzzzzzzzzz", generation: 99 })))!;
     expect(res.status).toBe(401);
-    expect(h.data().pack!.secret).toBe(CREW.secret);
-    expect(h.lines.map((l) => l.action)).toContain("pack.refused");
+    expect(h.data().crew!.secret).toBe(CREW.secret);
+    expect(h.lines.map((l) => l.action)).toContain("crew.refused");
   });
 
   test("an unadmitted caller cannot reach it at all", async () => {
@@ -1071,7 +1071,7 @@ describe("POST /crew/v1/secret — the peer side of rotation (§8.4)", () => {
     const handler = createCrewRouter({ store: h.store, audit: h.audit });
     const res = (await call(handler, CREW_SECRET_PATH, post({ secret: "x".repeat(20), generation: 2 })))!;
     expect(res.status).toBe(401);
-    expect(h.data().pack!.secret).toBe(CREW.secret);
+    expect(h.data().crew!.secret).toBe(CREW.secret);
   });
 
   test("a body missing either field is a 400, not a half-applied rotation", async () => {
@@ -1080,7 +1080,7 @@ describe("POST /crew/v1/secret — the peer side of rotation (§8.4)", () => {
       const res = (await call(asLead(h), CREW_SECRET_PATH, post(body)))!;
       expect(res.status).toBe(400);
     }
-    expect(h.data().pack!.secretGeneration).toBe(1);
+    expect(h.data().crew!.secretGeneration).toBe(1);
   });
 });
 
@@ -1110,7 +1110,7 @@ describe("POST /crew/v1/lead — the promotion handover (§14)", () => {
     expect(h.data().lead).toMatchObject({ memberId: "nas", role: "lead" });
     expect(h.data().peers).toEqual([]);
     // A role change, not a re-enrollment: the crew identity and secret are untouched.
-    expect(h.data().pack).toEqual(CREW);
+    expect(h.data().crew).toEqual(CREW);
     // The consent was spent in the same write as the role flip — one approval cannot demote twice.
     expect(h.data().pendingHandover).toBeNull();
   });
@@ -1135,7 +1135,7 @@ describe("POST /crew/v1/lead — the promotion handover (§14)", () => {
     // Nothing moved: still the lead, still holding its roster.
     expect(h.data().lead).toBeNull();
     expect(h.data().peers.map((p) => p.memberId)).toEqual(["nas", "laptop"]);
-    expect(h.lines.map((l) => l.action)).toContain("pack.lead.refused");
+    expect(h.lines.map((l) => l.action)).toContain("crew.lead.refused");
   });
 
   test("the refusal is BYTE-IDENTICAL whether nobody or somebody else is approved", async () => {
@@ -1384,7 +1384,7 @@ describe("N1 — the crew secret alone: a wrong or missing one refuses, and chan
     expect(h.contents()).toBe(before);
     await Bun.sleep(5);
     // One audit line, and it is the refusal — no membership line claiming a change that did not happen.
-    expect(h.lines.map((l) => [l.action, l.detail?.factor])).toEqual([["pack.refused", "secret"]]);
+    expect(h.lines.map((l) => [l.action, l.detail?.factor])).toEqual([["crew.refused", "secret"]]);
   });
 
   test("NO secret at all is the same refusal, with the same nothing behind it", async () => {
@@ -1414,8 +1414,8 @@ describe("N1 — the crew secret alone: a wrong or missing one refuses, and chan
       body: JSON.stringify({ secret: "attacker-chosen-value-000000", generation: 99 }),
     }))!;
     expect(res.status).toBe(401);
-    expect(h.data().pack!.secret).toBe(CREW.secret);
-    expect(h.data().pack!.secretGeneration).toBe(1);
+    expect(h.data().crew!.secret).toBe(CREW.secret);
+    expect(h.data().crew!.secretGeneration).toBe(1);
     expect(h.writes()).toBe(0);
   });
 
@@ -1497,7 +1497,7 @@ describe("N2 — the pinned certificate alone: an identity this collie does not 
     expect(h.writes()).toBe(0);
     expect(h.contents()).toBe(before);
     await Bun.sleep(5);
-    expect(h.lines.map((l) => [l.action, l.detail?.factor])).toEqual([["pack.refused", "certificate"]]);
+    expect(h.lines.map((l) => [l.action, l.detail?.factor])).toEqual([["crew.refused", "certificate"]]);
   });
 
   test("`X-Crew-Member` is a hint, never an identity — naming a pinned member does not admit a stranger", async () => {
@@ -1555,13 +1555,13 @@ describe("N2 — the pinned certificate alone: an identity this collie does not 
       body: JSON.stringify({ secret: "would-be-new-value-0000000", generation: 2 }),
     } satisfies RequestInit;
     expect((await call(unpinned, CREW_SECRET_PATH, rotation))!.status).toBe(401);
-    expect(h.data().pack!.secret).toBe(CREW.secret);
+    expect(h.data().crew!.secret).toBe(CREW.secret);
     expect(h.writes()).toBe(0);
     // The one difference between refused and admitted is the attestation the listener sets — nothing
     // on the request, and nothing configurable.
     const pinned = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true, now: () => T0 });
     expect((await call(pinned, CREW_SECRET_PATH, rotation))!.status).toBe(200);
-    expect(h.data().pack!.secret).toBe("would-be-new-value-0000000");
+    expect(h.data().crew!.secret).toBe("would-be-new-value-0000000");
   });
 
   test("a valid token cannot pin a certificate that does not hash to the claimed fingerprint (§8.2)", async () => {
@@ -1624,7 +1624,7 @@ describe("POST /crew/v1/warrant — the receiving half of the deputy designation
     expect(h.data().warrant?.warrant).toEqual(w);
     // The certificate is what phase 2 needs: BoringSSL anchors on certificates, never on hashes.
     expect(h.data().warrant?.deputyCertPem).toBe(material("nas").certPem);
-    expect(h.lines.map((l) => l.action)).toContain("pack.warrant.stored");
+    expect(h.lines.map((l) => l.action)).toContain("crew.warrant.stored");
   });
 
   test("a redelivery answers 200, applies nothing, and does not touch the disk twice", async () => {
@@ -1690,7 +1690,7 @@ describe("POST /crew/v1/warrant — the receiving half of the deputy designation
     expect(res.status).toBe(401);
     expect(h.data().warrant).toBeUndefined();
     expect(h.writes()).toBe(0);
-    expect(h.lines.map((l) => l.action)).toContain("pack.refused");
+    expect(h.lines.map((l) => l.action)).toContain("crew.refused");
   });
 
   test("one past its 30 days is refused on THIS collie's clock, however well it verifies", async () => {
@@ -2080,7 +2080,7 @@ describe("POST /crew/v1/warrant at a collie that still believes it leads — the
     expect(await res.json()).toEqual({ deposed: "desk", lead: "nas", outcome: "healed" });
     expect(h.data().lead?.memberId).toBe("nas");
     expect(h.data().peers).toEqual([]);
-    expect(h.lines.map((l) => l.action)).toContain("pack.deposed");
+    expect(h.lines.map((l) => l.action)).toContain("crew.deposed");
     expect(seen).toHaveLength(1);
   });
 
@@ -2119,7 +2119,7 @@ describe("POST /crew/v1/warrant at a collie that still believes it leads — the
     expect(await res.json()).toEqual({ deposed: "desk", lead: "nas", outcome: "parked-unverifiable" });
     expect(h.writes()).toBe(1); // the §8.6 replay floor only — the roster itself is untouched
     expect(h.data().lead).toBeNull();
-    expect(h.lines.map((l) => l.action)).toContain("pack.deposed");
+    expect(h.lines.map((l) => l.action)).toContain("crew.deposed");
     expect(seen).toHaveLength(1);
   });
 
@@ -2222,7 +2222,7 @@ describe("a two-anchored peer requires an attested dial, and gives the deputy ZE
       }))!;
       expect(res.status).toBe(401);
       expect(h.writes()).toBe(0);
-      expect(h.lines.map((l) => l.action)).toContain("pack.refused");
+      expect(h.lines.map((l) => l.action)).toContain("crew.refused");
     }
     // …and the two it DOES reach are refused on their own terms — an empty body is a 400 on an
     // admitted link, never a silent success, and still not a write.
@@ -2314,7 +2314,7 @@ describe("a two-anchored peer requires an attested dial, and gives the deputy ZE
 describe("POST /crew/v1/pairing — the lead syncs its registry to the DEPUTY only (RFC §6.5)", () => {
   const DEVICE = { label: "phone", tokenHash: "b".repeat(64), createdAt: T0 };
   const body = (over: { packId?: string; leadMemberId?: string } = {}) => ({
-    packId: CREW.packId,
+    packId: CREW.crewId,
     leadMemberId: "desk",
     devices: [DEVICE],
     ...over,
@@ -2354,7 +2354,7 @@ describe("POST /crew/v1/pairing — the lead syncs its registry to the DEPUTY on
     const res = (await call(r.handler, CREW_PAIRING_PATH, post(body())))!;
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ devices: 1, applied: true });
-    expect(r.synced).toEqual([{ packId: CREW.packId, leadMemberId: "desk", devices: [DEVICE] }]);
+    expect(r.synced).toEqual([{ packId: CREW.crewId, leadMemberId: "desk", devices: [DEVICE] }]);
   });
 
   test("a peer that is NOT the deputy refuses the route outright", async () => {
@@ -2363,7 +2363,7 @@ describe("POST /crew/v1/pairing — the lead syncs its registry to the DEPUTY on
     const res = (await call(r.handler, CREW_PAIRING_PATH, post(body())))!;
     expect(res.status).toBe(401);
     expect(r.synced).toEqual([]);
-    expect(h.lines.map((l) => l.action)).toContain("pack.refused");
+    expect(h.lines.map((l) => l.action)).toContain("crew.refused");
   });
 
   test("a build with no standby surface at all refuses it — absent means closed", async () => {
@@ -2381,7 +2381,7 @@ describe("POST /crew/v1/pairing — the lead syncs its registry to the DEPUTY on
     const res = (await call(r.handler, CREW_PAIRING_PATH, post(body())))!;
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ devices: 1, applied: true });
-    expect(r.synced).toEqual([{ packId: CREW.packId, leadMemberId: "desk", devices: [DEVICE] }]);
+    expect(r.synced).toEqual([{ packId: CREW.crewId, leadMemberId: "desk", devices: [DEVICE] }]);
   });
 
   test("the collision is REPORTED on the exchange, so the lead sees it while it is true", async () => {
@@ -2500,8 +2500,8 @@ describe("POST /crew/v1/takeover — the witness question and the re-pin (RFC §
     expect(await res.json()).toEqual({ ok: true, adopted: true, restartRequired: true, generation: 1 });
     const after = h.data();
     expect(after.lead).toMatchObject({ memberId: "nas", certPem: material("nas").certPem, address: "nas.example:8787" });
-    expect(after.pack).toEqual(data.pack);
-    expect(h.lines.map((l) => l.action)).toContain("pack.takeover.adopted");
+    expect(after.crew).toEqual(data.crew);
+    expect(h.lines.map((l) => l.action)).toContain("crew.takeover.adopted");
   });
 
   test("a COMMIT with no address is a 400 — a peer must know where to dial its new lead", async () => {

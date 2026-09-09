@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { isFingerprint, isMemberId } from "./identity.ts";
+import { migrateCrewStateOnce } from "./state-migration.ts";
 import type { Enrollment } from "./mode.ts";
 
 // The trust store: the one file a crew member persists. It holds this collie's own identity and key
@@ -24,7 +25,7 @@ import type { Enrollment } from "./mode.ts";
 // minting an invite or answering one — and nowhere else.
 
 /** The trust store's filename under `stateDir`. Also the literal the solo baseline scans for. */
-export const TRUST_STORE_FILENAME = "pack-trust.json";
+export const TRUST_STORE_FILENAME = "crew-trust.json";
 
 /** Absolute path of the trust store for a given state dir. The only place this path is composed. */
 export function trustStorePath(stateDir: string): string {
@@ -52,7 +53,7 @@ export interface SelfIdentity {
 
 /** The crew this collie belongs to. Shared by every member; the secret is crew-wide (§8.1). */
 export interface CrewIdentity {
-  readonly packId: string;
+  readonly crewId: string;
   /** Operator-chosen label, for `crew status` and the UI. Never an identifier. */
   readonly name: string;
   /** The crew-wide bearer secret. Rotated as one operation (§8.4). */
@@ -225,7 +226,7 @@ export interface StoredWarrant {
 export interface TrustStoreData {
   readonly version: number;
   readonly self: SelfIdentity;
-  readonly pack: CrewIdentity | null;
+  readonly crew: CrewIdentity | null;
   /** The lead that enrolled this collie, when this collie is a peer. */
   readonly lead: TrustedMember | null;
   /** Peers this collie leads. */
@@ -477,12 +478,17 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
     return null;
   }
 
+  // REMOVE_IN_1_9_0: `pack`/`packId` are the 1.7.0 spellings of `crew`/`crewId`. Read once here,
+  // written back in the crew spelling by the next `update` — a 1.7.0 store therefore needs no
+  // separate rewrite step, and a 1.8.0 store is never read by the old key at all.
+  const crewField = d.crew ?? d.pack;
   let crew: CrewIdentity | null = null;
-  if (d.pack !== null && d.pack !== undefined) {
-    const p = asRecord(d.pack);
+  if (crewField !== null && crewField !== undefined) {
+    const p = asRecord(crewField);
+    const crewId = p === null ? undefined : (p.crewId ?? p.packId);
     if (
       p === null ||
-      typeof p.packId !== "string" ||
+      typeof crewId !== "string" ||
       typeof p.name !== "string" ||
       typeof p.secret !== "string" ||
       typeof p.secretGeneration !== "number" ||
@@ -491,7 +497,7 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
       return null;
     }
     crew = {
-      packId: p.packId,
+      crewId,
       name: p.name,
       secret: p.secret,
       secretGeneration: p.secretGeneration,
@@ -529,7 +535,7 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
       fingerprint: self.fingerprint,
       createdAt: self.createdAt,
     },
-    pack: crew,
+    crew,
     lead,
     peers: d.peers,
     invites: d.invites,
@@ -563,10 +569,24 @@ export interface TrustStoreIo {
   write(path: string, data: string): Promise<void>;
 }
 
-/** The real filesystem, with the 0600/0700 + temp-and-rename discipline `push.ts` established. */
+/**
+ * The real filesystem, with the 0600/0700 + temp-and-rename discipline `push.ts` established.
+ *
+ * REMOVE_IN_1_9_0: each operation below first runs the one-time move of 1.7.0's `pack-*.json` names
+ * ({@link migrateCrewStateOnce}).
+ *
+ * ON THE OPERATION, NOT ON THE FACTORY, and not at a process entry either. Both of those were tried
+ * during M27 and both moved an operator's live files: a factory runs when a CLI verb builds its deps
+ * (`collie crew --help` builds them and opens nothing), and a process entry runs for every verb,
+ * including one invoked under `env -i` with no HOME. Here it runs exactly when this collie is about
+ * to read or write the directory, which is the moment the old name has to be gone. A test injects
+ * its own {@link TrustStoreIo}, so no test reaches it at all.
+ */
 export function fsTrustStoreIo(stateDir: string): TrustStoreIo {
+  const migrate = () => migrateCrewStateOnce(stateDir, (line) => console.warn(line));
   return {
     async read(path) {
+      migrate();
       try {
         return await readFile(path, "utf8");
       } catch (err) {
@@ -575,6 +595,7 @@ export function fsTrustStoreIo(stateDir: string): TrustStoreIo {
       }
     },
     async write(path, data) {
+      migrate();
       await mkdir(stateDir, { recursive: true, mode: 0o700 });
       const tmp = `${path}.tmp`;
       // Mode on create — the temp file is 0600 from the instant it exists, so the private key is
@@ -618,7 +639,7 @@ export class TrustStore {
     this.cached = raw === null ? null : parseTrustStore(raw);
     if (raw !== null && this.cached === null) {
       console.warn(
-        `[pack] ${this.path} is not a trust store this build can read — staying solo and touching nothing. ` +
+        `[crew] ${this.path} is not a trust store this build can read — staying solo and touching nothing. ` +
           `Fix or remove the file; it has NOT been overwritten.`,
       );
     }

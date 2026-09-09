@@ -79,7 +79,7 @@ export interface LiveHealth {
   readonly mode: string;
 }
 
-/** One machine in the live census, as `GET /api/pack` reports it. */
+/** One machine in the live census, as `GET /api/crew` reports it. */
 export interface LiveMember {
   readonly id: string;
   readonly name: string;
@@ -87,9 +87,9 @@ export interface LiveMember {
   readonly health: string;
 }
 
-/** What `GET /api/pack` answers, narrowed to what these cases read. */
+/** What `GET /api/crew` answers, narrowed to what these cases read. */
 export interface LiveCrew {
-  readonly pack: { readonly id: string; readonly name: string };
+  readonly crew: { readonly id: string; readonly name: string };
   readonly deputy: { readonly id: string } | null;
   readonly members: readonly LiveMember[];
 }
@@ -102,8 +102,8 @@ export async function readHealth(request: APIRequestContext): Promise<LiveHealth
 }
 
 export async function readCrew(request: APIRequestContext): Promise<LiveCrew> {
-  const response = await request.get("/api/pack");
-  expect(response.ok(), "GET /api/pack did not answer — is the dev lane up?").toBeTruthy();
+  const response = await request.get("/api/crew");
+  expect(response.ok(), "GET /api/crew did not answer — is the dev lane up?").toBeTruthy();
   const body: LiveCrew = await response.json();
   return { ...body, deputy: body.deputy ?? null };
 }

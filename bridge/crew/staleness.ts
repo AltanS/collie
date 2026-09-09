@@ -29,7 +29,7 @@ import { enrollmentOf, type TrustStoreData } from "./trust-store.ts";
  * restart that was always going to be required.
  */
 
-export const CREW_RUNTIME_FILENAME = "pack-runtime.json";
+export const CREW_RUNTIME_FILENAME = "crew-runtime.json";
 
 export const crewRuntimePath = (stateDir: string): string => join(stateDir, CREW_RUNTIME_FILENAME);
 

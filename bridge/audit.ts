@@ -68,10 +68,10 @@ export interface AuditEntry {
   device?: string | null;
   /**
    * How the action arrived. Absent ⇒ the phone talked to THIS collie directly (every pre-crew line,
-   * and every line on a solo instance). `"pack"` ⇒ it arrived over a crew link, i.e. a lead forwarded
+   * and every line on a solo instance). `"crew"` ⇒ it arrived over a crew link, i.e. a lead forwarded
    * it (CREW_PROTOCOL.md §12) — written on the PEER, whose terminals actually moved.
    */
-  via?: "pack";
+  via?: "crew";
   /**
    * Who forwarded it: the originating crew member id, as proven by the link's two factors (§8.1).
    * Peer-side counterpart of {@link AuditEntry.host}, which is what the LEAD writes on the same event

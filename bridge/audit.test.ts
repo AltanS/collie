@@ -218,7 +218,7 @@ describe("fileAuditAppender rotation", () => {
     const io = fakeIo();
     const cap = 200;
     const append = fileAuditAppender("/s/audit.log", io, cap);
-    const line = `${JSON.stringify({ action: "pack.refused", detail: { code: "unauthorized" } })}\n`;
+    const line = `${JSON.stringify({ action: "crew.refused", detail: { code: "unauthorized" } })}\n`;
     for (let i = 0; i < 1000; i++) await append(line);
     // Exactly two files ever exist — no third generation accumulates behind the rotation.
     expect(Object.keys(io.files).toSorted()).toEqual(["/s/audit.log", "/s/audit.log.1"]);
@@ -248,12 +248,12 @@ describe("crew attribution", () => {
     // handed plus its own `ts` — the key-order assertion right below re-checks that field for field.
     const line = JSON.parse(
       formatAuditLine(
-        { action: "reply", paneId: "w1:p1", session: "work", device: "phone-7", via: "pack", from: "desk", detail: { text: "hi" } },
+        { action: "reply", paneId: "w1:p1", session: "work", device: "phone-7", via: "crew", from: "desk", detail: { text: "hi" } },
         0,
       ),
     ) as AuditEntry & { ts: string };
     expect(Object.keys(line)).toEqual(["ts", "action", "paneId", "session", "device", "via", "from", "detail"]);
-    expect(line.via).toBe("pack");
+    expect(line.via).toBe("crew");
     expect(line.from).toBe("desk");
   });
 
@@ -272,18 +272,18 @@ describe("crew attribution", () => {
     // arrived over a crew link — the handlers take no `via` parameter and there is nothing to forget.
     const lines: string[] = [];
     const log = new AuditLog((l) => void lines.push(l), { now: () => 0 });
-    const crewLog = log.scoped({ via: "pack", from: "desk" });
+    const crewLog = log.scoped({ via: "crew", from: "desk" });
     crewLog.record({ action: "keys", paneId: "w1:p1", device: "phone-7", detail: { keys: ["Enter"] } });
     // The unscoped log is untouched — one process, two views, no leakage between them.
     log.record({ action: "keys", paneId: "w1:p1", detail: {} });
     await Bun.sleep(5);
-    expect(JSON.parse(lines[0]!)).toMatchObject({ action: "keys", via: "pack", from: "desk", device: "phone-7" });
-    expect(lines[1]).not.toContain("pack");
+    expect(JSON.parse(lines[0]!)).toMatchObject({ action: "keys", via: "crew", from: "desk", device: "phone-7" });
+    expect(lines[1]).not.toContain("crew");
   });
 
   test("an entry's own field beats the scope's — the record is what happened, not what was assumed", () => {
     const lines: string[] = [];
-    const log = new AuditLog((l) => void lines.push(l), { now: () => 0 }).scoped({ via: "pack", from: "desk" });
+    const log = new AuditLog((l) => void lines.push(l), { now: () => 0 }).scoped({ via: "crew", from: "desk" });
     log.record({ action: "reply", from: "nas", detail: {} });
     expect(JSON.parse(lines[0]!).from).toBe("nas");
   });
@@ -296,10 +296,10 @@ describe("crew attribution", () => {
     const log = new AuditLog((l) => void lines.push(l), {
       now: () => 0,
       content: "none",
-    }).scoped({ via: "pack", from: "desk" });
+    }).scoped({ via: "crew", from: "desk" });
     log.record({ action: "reply", paneId: "w1:p1", detail: { text: "the secret" } });
     const entry = JSON.parse(lines[0]!);
-    expect(entry).toMatchObject({ action: "reply", via: "pack", from: "desk" });
+    expect(entry).toMatchObject({ action: "reply", via: "crew", from: "desk" });
     expect(lines[0]).not.toContain("the secret");
   });
 });

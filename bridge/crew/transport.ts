@@ -124,9 +124,9 @@ export function deputyAnchorOf(mode: CrewMode, data: TrustStoreData | null, now:
 
 function deputyAnchor(data: TrustStoreData, lead: TrustedMember, now: number): string | null {
   const stored = data.warrant ?? null;
-  if (stored === null || data.pack === null) return null;
+  if (stored === null || data.crew === null) return null;
   const w = stored.warrant;
-  if (w.packId !== data.pack.packId || w.leadMemberId !== lead.memberId) return null;
+  if (w.packId !== data.crew.crewId || w.leadMemberId !== lead.memberId) return null;
   if (w.deputyMemberId === null || w.deputyFingerprint === null) return null;
   if (w.deputyMemberId === data.self.memberId || w.deputyMemberId === lead.memberId) return null;
   if (stored.deputyCertPem === null || stored.deputyCertPem === "") return null;
