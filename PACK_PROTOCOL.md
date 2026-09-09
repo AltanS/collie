@@ -686,6 +686,11 @@ Run **on the peer**, once.
    | Peer's member id (minted by the lead) | lead → peer | both |
    | The address the lead will dial, and the address the peer will listen on | negotiated | both |
 
+   > **Note, added 2026-09-09 (1.7.0). The default human name changed.** A crew minted without
+   > `--name` is called `collie crew`; before 1.7.0 it was `collie pack`. The field itself is
+   > unchanged. The name is display data keyed by the pack id, and a crew that already has a name
+   > keeps it.
+
 4. The lead's roster gains the peer; the peer's roster gains exactly one entry — its lead.
 
 **`<lead-address>` is whatever the operator can reach.** Any network: tailnet, LAN, WireGuard,

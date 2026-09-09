@@ -137,7 +137,7 @@ export function mintInvite(
   };
   const pack: PackIdentity = data.pack ?? {
     packId: random(16),
-    name: opts.packName ?? "collie pack",
+    name: opts.packName ?? "collie crew",
     secret: random(32),
     secretGeneration: 1,
     rotatedAt: opts.now,
