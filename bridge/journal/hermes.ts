@@ -8,7 +8,7 @@
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
-import type { JsonValue } from "../json.ts";
+import type { JsonObject, JsonValue } from "../json.ts";
 import { containedRealpath, MAX_TRANSCRIPT_BYTES, rootList } from "./files.ts";
 import { clamp, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
@@ -72,6 +72,7 @@ interface MessageRow {
 function parseJson(raw: string | null): JsonValue {
   if (raw === null) return null;
   try {
+    // SAFETY: JSON.parse returns only JSON primitives, arrays, and objects; JsonValue names that exact boundary.
     return JSON.parse(raw) as JsonValue;
   } catch {
     return null;
@@ -102,12 +103,25 @@ function isoTimestamp(value: number): string {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
+type ParsedMessageRow = JsonObject & MessageRow;
+
+function isMessageRow(value: JsonValue): value is ParsedMessageRow {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  // SAFETY: JsonValue object branch is JsonObject by definition; fields are narrowed immediately below.
+  const row = value as JsonObject;
+  return typeof row.id === "number" && typeof row.role === "string" && typeof row.timestamp === "number";
+}
+
 function rowEntry(row: MessageRow): TranscriptEntry | null {
   if ((row.active === 0 && row.compacted === 0) || row.display_kind === "hidden") return null;
 
   const parts: TranscriptPart[] = [];
   const reasoning = textPart(row.reasoning ?? row.reasoning_content);
-  if (reasoning !== null && reasoning.kind === "text") parts.push({ kind: "thinking", text: reasoning.text, ...(reasoning.truncated ? { truncated: true } : {}) });
+  if (reasoning !== null && reasoning.kind === "text") {
+    const thinking: TranscriptPart = { kind: "thinking", text: reasoning.text };
+    if (reasoning.truncated) thinking.truncated = true;
+    parts.push(thinking);
+  }
   const content = textPart(row.content);
   if (content !== null) parts.push(content);
   const toolCalls = toolCallPart(parseJson(row.tool_calls), row.tool_name);
@@ -116,11 +130,14 @@ function rowEntry(row: MessageRow): TranscriptEntry | null {
   if (row.role === "tool") {
     const result = textPart(row.content);
     if (result === null) return null;
+    const toolResult = result.kind === "text" && result.truncated
+      ? { text: result.text, truncated: true }
+      : { text: result.kind === "text" ? result.text : "" };
     return {
       uuid: String(row.id),
       ts: isoTimestamp(row.timestamp),
       role: "note",
-      parts: [{ kind: "tool", name: row.tool_name ?? "tool", summary: "", result: { text: result.kind === "text" ? result.text : "", ...(result.kind === "text" && result.truncated ? { truncated: true } : {}) } }],
+      parts: [{ kind: "tool", name: row.tool_name ?? "tool", summary: "", result: toolResult }],
     };
   }
   if (row.role !== "user" && row.role !== "assistant") return null;
@@ -135,7 +152,7 @@ function composeLines(db: Database, sessionId: string): string[] {
   return rows.map((row: MessageRow) => JSON.stringify(row));
 }
 
-function clipLines(lines: string[]): { text: string; complete: boolean } {
+function clipLines(lines: string[]) {
   let bytes = 0;
   let start = 0;
   for (let i = lines.length - 1; i >= 0; i -= 1) {
@@ -154,12 +171,13 @@ export function parseHermesTranscript(text: string): TranscriptEntry[] {
     if (line.trim() === "") continue;
     let raw: JsonValue;
     try {
+      // SAFETY: JSON.parse returns only JSON primitives, arrays, and objects; JsonValue names that exact boundary.
       raw = JSON.parse(line) as JsonValue;
     } catch {
       continue;
     }
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) continue;
-    const entry = rowEntry(raw as unknown as MessageRow);
+    if (!isMessageRow(raw)) continue;
+    const entry = rowEntry(raw);
     if (entry !== null) entries.push(entry);
   }
   return entries;
