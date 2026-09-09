@@ -189,7 +189,7 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
       },
     ]);
     expect(change.result).toEqual({
-      protocol: 1,
+      protocol: 2,
       packId: CREW.packId,
       crewName: CREW.name,
       crewSecret: CREW.secret,
@@ -286,7 +286,7 @@ describe("the exchange — §8.2's transfer table, both directions", () => {
 
 describe("the exchange — parsing untrusted payloads", () => {
   const req = {
-    protocol: 1,
+    protocol: 2,
     token: "t",
     fingerprint: fp("laptop"),
     certPem: material("laptop").certPem,
@@ -315,7 +315,7 @@ describe("the exchange — parsing untrusted payloads", () => {
 
   test("a response with an out-of-grammar member id or unpinnable fingerprint is refused", () => {
     const res = {
-      protocol: 1,
+      protocol: 2,
       packId: "p",
       crewName: "n",
       crewSecret: "s",

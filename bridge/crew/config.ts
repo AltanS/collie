@@ -5,7 +5,7 @@ import type { CrewMode } from "../types.ts";
 // Mode-scoped configuration: the settings that only mean anything once this collie is in a crew.
 //
 // This deliberately does NOT live on `Config` in bridge/config.ts, and the reason is the zero-tax
-// contract rather than taste. PACK_PROTOCOL.md §11 promises a solo instance "no new env key" and no
+// contract rather than taste. CREW_PROTOCOL.md §11 promises a solo instance "no new env key" and no
 // new configuration surface; `bridge/solo-baseline.test.ts` enforces exactly that by pinning
 // `keyof Config` and the `COLLIE_*` literals `config.ts` names. A crew key on `Config` would be a
 // key every solo deployment carries, reads and can typo — so crew settings live behind the mode,
@@ -16,7 +16,7 @@ import type { CrewMode } from "../types.ts";
 
 /** The federation-shaped runtime facts, resolved once at startup, before anything is wired. */
 export interface CrewRuntime {
-  /** This collie's role (PACK_PROTOCOL.md §3). `solo` is the default and needs no configuration. */
+  /** This collie's role (CREW_PROTOCOL.md §3). `solo` is the default and needs no configuration. */
   readonly mode: CrewMode;
   /**
    * Peer mode only: whether this peer keeps serving its own browser front door (the PWA, `/api/*`
@@ -41,7 +41,7 @@ export const PEER_BROWSER_ENV = "COLLIE_PEER_BROWSER";
 /**
  * Resolve the crew runtime: a pure function of the trust store's contents and the environment, in
  * that order of authority. Mode is never read from an env var — an operator-maintained mode flag is
- * exactly the thing that drifts out of agreement with the roster (PACK_PROTOCOL.md §3).
+ * exactly the thing that drifts out of agreement with the roster (CREW_PROTOCOL.md §3).
  *
  * `enrollment` is `null` when no trust store exists, which is every solo instance. Note what does
  * *not* happen on that path: no file is opened, no key material is read or generated, no timer is
@@ -70,7 +70,7 @@ export function resolveCrewRuntime(
  * — is bounded and returns `false`.
  *
  * This is the predicate behind the peer's wildcard-bind warning. The bind never *gates* the crew
- * listener — pinned mutual TLS plus the crew secret do (PACK_PROTOCOL.md §3, ADR 0013) — but a
+ * listener — pinned mutual TLS plus the crew secret do (CREW_PROTOCOL.md §3, ADR 0013) — but a
  * wildcard bind widens *which networks can attempt* that gate to all of them, which the operator
  * should be told rather than left to infer. Pure so the startup path can call it and a test can pin
  * its truth table.

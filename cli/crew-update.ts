@@ -48,7 +48,7 @@ export { answersThisBuild };
 //
 // ── IT RIDES THE OPERATOR'S SSH, NEVER THE CREW WIRE (ADR 0016) ──────────────
 // The code goes the same way `crew add` sent it: this lead's own commit, as a `git bundle`, over an
-// ssh connection the operator authenticates. Nothing about an update crosses `/pack/v1/*` — the crew
+// ssh connection the operator authenticates. Nothing about an update crosses `/crew/v1/*` — the crew
 // link carries runtime data and admits nobody, and a lead that could push code down it would be a
 // code-execution credential on every peer it leads. That is the whole of the reasoning, and it lives
 // in ADR 0016 because it closes a road (an "update all peers" route) that will be proposed again.
@@ -72,7 +72,7 @@ export { answersThisBuild };
 // peers, one at a time, each gated on the member coming back answering that build. The first failure
 // ends the run and every member after it is left untouched and reported as "not attempted".
 //
-// That is a deliberate reversal of "record it and carry on", and the reason is PACK_PROTOCOL.md
+// That is a deliberate reversal of "record it and carry on", and the reason is CREW_PROTOCOL.md
 // §7.1: version skew inside a protocol version is tolerated by design, so a half-updated crew is a
 // SUPPORTED state and stopping is cheap. Pressing on after one machine failed is not — it multiplies
 // one unexplained fault across every machine still to come, and the operator then has N failures to
@@ -1095,7 +1095,7 @@ function leaveRest(
 
 /** Why a half-updated crew is a place it is safe to stop. Printed on every abort, for that reason. */
 function skewNote(deps: Wired): void {
-  deps.io.err("       A half-updated crew keeps working: PACK_PROTOCOL.md §7.1 tolerates version skew");
+  deps.io.err("       A half-updated crew keeps working: CREW_PROTOCOL.md §7.1 tolerates version skew");
   deps.io.err("       inside a protocol version, which is what makes stopping at the first failure safe.");
 }
 

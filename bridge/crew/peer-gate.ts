@@ -1,4 +1,4 @@
-// The PEER's own authorisation for a request that arrived over a crew link (PACK_PROTOCOL.md §12).
+// The PEER's own authorisation for a request that arrived over a crew link (CREW_PROTOCOL.md §12).
 //
 // ── THE RULE THIS FILE EXISTS FOR ────────────────────────────────────────────
 // "A peer is never asked to trust the lead's authorisation decision in place of its own. The peer
@@ -35,7 +35,7 @@ export type PeerGateVerdict = { readonly ok: true } | { readonly ok: false; read
  * May this crew-originated request run, at `level`, on this peer?
  *
  * Reads exactly like {@link deviceAuth}'s matrix, because it IS that matrix — the peer's own policy,
- * evaluated against the device the lead forwarded as `X-Pack-Device`:
+ * evaluated against the device the lead forwarded as `X-Crew-Device`:
  *
  *   - device feature off on this peer  → authorised (today's behaviour for its own operator, and it
  *     would be strange for enrolling in a crew to silently turn on a gate nobody configured);
@@ -64,7 +64,7 @@ export function crewGate(level: "read" | "write", cfg: PeerGateConfig, device: s
 /**
  * Read the forwarded device identity off a crew request (§6). Blank and absent are the same thing.
  *
- * Always `X-Pack-Device`, never the peer's own `COLLIE_DEVICE_HEADER`: the crew link is the trust
+ * Always `X-Crew-Device`, never the peer's own `COLLIE_DEVICE_HEADER`: the crew link is the trust
  * basis for this value (§12), and a peer whose device feature is OFF still wants the identity in its
  * audit line. Attribution and authorisation are different questions — this answers the first, and
  * {@link crewGate} answers the second.

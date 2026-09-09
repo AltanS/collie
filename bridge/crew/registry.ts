@@ -5,7 +5,7 @@ import type { CrewLink, PeerFailure, PeerOutcome } from "./peer-client.ts";
 import type { TrustedMember } from "./trust-store.ts";
 import type { SessionRuntime } from "../sessions.ts";
 
-// The host dimension of the address triple `(host, session, paneId)` (PACK_PROTOCOL.md §4).
+// The host dimension of the address triple `(host, session, paneId)` (CREW_PROTOCOL.md §4).
 //
 // `bridge/sessions.ts` already resolves `(session)`: absent/empty → primary, unknown → `undefined`
 // and the caller 404s (`:154-157`). This module is that registry with one component in front of it,

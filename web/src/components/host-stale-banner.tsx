@@ -18,7 +18,7 @@ import { useLocale } from "@/hooks/use-locale";
 //
 // ── AND WHY IT NAMES THE REFUSAL, NOT JUST THE STALENESS ─────────────────────
 // "Showing last known" alone would leave the operator to discover the write ban by tapping Send. The
-// composer is disabled and every handler refuses (PACK_PROTOCOL.md §10.3 — a write to a member the
+// composer is disabled and every handler refuses (CREW_PROTOCOL.md §10.3 — a write to a member the
 // lead believes unreachable is refused BEFORE it is attempted, never queued, never retried), so the
 // banner says so up front. That is ADR 0010's posture carried across a lossier link: an unsent
 // message you know about beats a send whose outcome you have to guess at.

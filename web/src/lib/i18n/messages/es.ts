@@ -757,7 +757,7 @@ export const es: Dictionary = {
   "apiError.device.unknown": "No existe ningún dispositivo vinculado con ese nombre.",
   "apiError.session.unknown": "No existe la sesión {session} en este collie.",
   "apiError.host.unknown": "No existe el collie {host} en este equipo.",
-  "apiError.pack.not_lead": "Este collie no lidera ningún equipo. No hay datos para mostrar.",
+  "apiError.crew.not_lead": "Este collie no lidera ningún equipo. No hay datos para mostrar.",
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.list_failed": "Error al listar los worktrees: {reason}",
   "apiError.worktree.create_failed": "Error al crear el worktree: {reason}",

@@ -13,7 +13,7 @@ import { join } from "node:path";
 // The limit lives HERE, next to the sweep, rather than in server.ts, because two independent places
 // enforce it: the handler that writes the file, and the lead's upload forward, which rejects an
 // oversize body BEFORE spending a phone's cellular uplink on a peer that would only reject it
-// (PACK_PROTOCOL.md §13). One rule, two enforcers — a second copy would drift.
+// (CREW_PROTOCOL.md §13). One rule, two enforcers — a second copy would drift.
 //
 // The number itself is per install (`COLLIE_MAX_UPLOAD_MB`), so it is no longer a constant: both
 // enforcers take it as an argument. In a crew the two ends can therefore disagree, and the PEER's

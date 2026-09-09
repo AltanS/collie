@@ -782,8 +782,8 @@ export const en = {
   "apiError.device.unknown": "No paired device has that name.",
   "apiError.session.unknown": "There is no session called {session} on this collie.",
   "apiError.host.unknown": "There is no collie called {host} in this crew.",
-  // M27: the key mirrors the wire code `pack.not_lead` — stays until spec 03 (wire)
-  "apiError.pack.not_lead": "This collie doesn't lead a crew, so there is no crew to show.",
+  // The key mirrors the wire code `crew.not_lead` (`bridge/error-codes.ts`). Both say crew from 1.8.0.
+  "apiError.crew.not_lead": "This collie doesn't lead a crew, so there is no crew to show.",
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.list_failed": "The worktrees couldn't be listed: {reason}",
   "apiError.worktree.create_failed": "The worktree couldn't be created: {reason}",

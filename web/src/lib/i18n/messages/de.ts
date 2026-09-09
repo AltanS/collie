@@ -761,7 +761,7 @@ export const de: Dictionary = {
   "apiError.device.unknown": "Kein gekoppeltes Gerät mit diesem Namen vorhanden.",
   "apiError.session.unknown": "Keine Sitzung namens {session} auf diesem collie vorhanden.",
   "apiError.host.unknown": "Kein collie namens {host} in dieser Crew vorhanden.",
-  "apiError.pack.not_lead": "Dieser collie führt keine Crew. Es gibt keine Crew anzuzeigen.",
+  "apiError.crew.not_lead": "Dieser collie führt keine Crew. Es gibt keine Crew anzuzeigen.",
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.list_failed": "Worktrees konnten nicht aufgelistet werden: {reason}",
   "apiError.worktree.create_failed": "Worktree konnte nicht erstellt werden: {reason}",

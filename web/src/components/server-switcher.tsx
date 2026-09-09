@@ -148,7 +148,7 @@ export function ServerSwitcher({ servers, scope, agents = NO_PANES }: ServerSwit
                             {t("connection.host.lead")}
                           </span>
                         )}
-                        {/* Listed, never hidden (PACK_PROTOCOL.md §10.2): a member that is down or
+                        {/* Listed, never hidden (CREW_PROTOCOL.md §10.2): a member that is down or
                             speaking another protocol keeps its row, its counts and an honest reason.
                             A vanished machine reads as "I have no agents there", which is a lie. */}
                         {h.incompatible ? (

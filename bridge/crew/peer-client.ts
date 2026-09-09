@@ -1,5 +1,5 @@
 import type { JsonObject, JsonValue } from "../json.ts";
-import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
+import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import { DEVICE_HEADER, MEMBER_HEADER, PROTOCOL_HEADER, parseProtocolHeader } from "./admission.ts";
 import {
   LEAD_CONFLICT,
@@ -11,6 +11,15 @@ import {
 } from "./router.ts";
 import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
+// REMOVE_IN_1_9_0 — the member's one fallback to `/pack/v1/*` (§0.1).
+import {
+  toVersion1Headers,
+  toVersion2Response,
+  V1_DIAL_DOMAIN,
+  V1_PROTOCOL_VERSION,
+  version1FallbackLine,
+  version1Url,
+} from "./v1-overlap.ts";
 import type { CrewRequestInit, CrewTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
 import { NARROW_VIEW, SESSIONS_ALL, SESSIONS_PARAM, SESSION_PARAM, type SnapshotView } from "../sessions.ts";
@@ -20,12 +29,12 @@ import type { TakeoverBody } from "./takeover.ts";
 import { parseWarrant, parseWarrantActiveReport, type WarrantPush } from "./warrant.ts";
 import { CREW_VERSION_FIELD } from "../update-action.ts";
 
-// The LEAD side of a crew link: the client that dials a peer's `/pack/v1/*` surface.
+// The LEAD side of a crew link: the client that dials a peer's `/crew/v1/*` surface.
 //
 // It is the mirror image of `bridge/crew/router.ts` and the sibling of `bridge/mux/herdr/client.ts`.
 // That module is the only one that knows Herdr method names (ARCHITECTURE.md §5); this
 // one knows **Collie's HTTP routes and no Herdr method at all** — that is the mux-driver seam
-// (ADR 0011, PACK_PROTOCOL.md §2 rule 1), and it is mechanically checked by spec M4/03's grep for a
+// (ADR 0011, CREW_PROTOCOL.md §2 rule 1), and it is mechanically checked by spec M4/03's grep for a
 // dotted method literal in this file.
 //
 // Two properties shape every line below, and both come from `bridge/event-poker.ts`'s rule that a
@@ -43,9 +52,9 @@ import { CREW_VERSION_FIELD } from "../update-action.ts";
  * header is simply not sent, which is the closed reading on the far end.
  */
 export interface FollowHeaders {
-  /** The lead's own settled release (`X-Pack-Lead-Release`), or null while it may state nothing. */
+  /** The lead's own settled release (`X-Crew-Lead-Release`), or null while it may state nothing. */
   readonly leadRelease?: string | null;
-  /** `<member-name>;<run-id>` (`X-Pack-Update-Turn`), for the ONE member holding the turn. */
+  /** `<member-name>;<run-id>` (`X-Crew-Update-Turn`), for the ONE member holding the turn. */
   readonly turn?: string | null;
 }
 
@@ -224,7 +233,7 @@ export interface LinkWarmth {
 export const COLD_LINK: LinkWarmth = { warm: false, bootstrapSpent: false };
 
 /**
- * How long a member may answer with NO `X-Pack-Protocol` header before the lead stops calling it
+ * How long a member may answer with NO `X-Crew-Protocol` header before the lead stops calling it
  * merely unreachable and puts it on the incompatible ladder (§7, §10.2).
  *
  * A DURATION, and not a count of answers, on counsel of 2026-09-08. A count was written first and it
@@ -323,7 +332,7 @@ export type PeerFailure =
        */
       readonly authRefused?: boolean;
     }
-  /** `X-Pack-Protocol` skew (§7) — NOT retried on the cadence; probed on a slow backoff. */
+  /** `X-Crew-Protocol` skew (§7) — NOT retried on the cadence; probed on a slow backoff. */
   | {
       readonly state: "incompatible";
       readonly reason: string;
@@ -456,7 +465,7 @@ export interface HelloResult {
 }
 
 export interface PeerClientDeps {
-  /** The lead's own member id — sent as `X-Pack-Member` (informational only, §6). */
+  /** The lead's own member id — sent as `X-Crew-Member` (informational only, §6). */
   readonly self: string;
   /**
    * The crew-wide bearer secret, read at call time.
@@ -511,7 +520,20 @@ export interface PeerClientDeps {
    * which a single-anchor peer reads exactly as it always has.
    */
   readonly dialSign?: (parts: DialParts) => string;
+  /**
+   * REMOVE_IN_1_9_0 — where the version 1 fallback's one line goes (§0.1). Absent ⇒ `console.log`,
+   * which is the journal on every production wiring.
+   */
+  readonly log?: (line: string) => void;
 }
+
+/**
+ * REMOVE_IN_1_9_0 — one dial's answer, plus the marker that says the far side spoke version 1.
+ *
+ * The marker never escapes this class: it is set only where the answer is about to be discarded in
+ * favour of the fallback dial, and the fallback's own answer never carries one.
+ */
+type DialAnswer = PeerOutcome<Response> & { readonly speaksVersion1?: true };
 
 /**
  * Build the absolute URL for a crew call, from a member's stored address and a route under the crew
@@ -584,13 +606,26 @@ export class PeerClient {
    * names a version. See {@link HEADERLESS_PATIENCE_MS}.
    */
   private readonly headerless = new Map<string, number>();
+  /**
+   * REMOVE_IN_1_9_0 — which members this process has already said speak version 1 (§0.1).
+   *
+   * The FALLBACK is per dial and never cached; only the LOG LINE is remembered, so a journal gets one
+   * sentence per lead rather than one per sweep. Bounded by the roster, cleared by
+   * {@link PeerClient.forget}, and never persisted: a restart costs one more line.
+   */
+  private readonly toldVersion1 = new Set<string>();
 
   constructor(private readonly deps: PeerClientDeps) {
     this.now = deps.now ?? Date.now;
   }
 
+  /** REMOVE_IN_1_9_0 — the fallback's one line. Injected so the test reads it without a journal. */
+  private log(line: string): void {
+    (this.deps.log ?? console.log)(line);
+  }
+
   /**
-   * `GET /pack/v1/hello` — liveness, version and the peer's member id (§5).
+   * `GET /crew/v1/hello` — liveness, version and the peer's member id (§5).
    *
    * **The call that ALWAYS runs on the patient budget** ({@link crewHelloBudget}), where a data
    * request gets one such attempt per cold link ({@link takeDataBudget}) and the strict budget
@@ -650,7 +685,7 @@ export class PeerClient {
   }
 
   /**
-   * `POST /pack/v1/warrant` — deliver or refresh the warrant naming the crew's deputy (§18).
+   * `POST /crew/v1/warrant` — deliver or refresh the warrant naming the crew's deputy (§18).
    *
    * An ordinary **data** dial, on the same budget every other one gets: the strict per-poll budget,
    * plus the single bootstrap credit a cold link is owed ({@link takeDataBudget}). It is deliberately
@@ -670,7 +705,7 @@ export class PeerClient {
   }
 
   /**
-   * `POST /pack/v1/pairing` — sync the lead's paired-device registry to the DEPUTY (RFC §6.5, §18.14).
+   * `POST /crew/v1/pairing` — sync the lead's paired-device registry to the DEPUTY (RFC §6.5, §18.14).
    *
    * An ordinary data dial on the ordinary budget. A `404` or a `401` is the answer, not a fault: a
    * pre-amendment member has no route, and a member that is not the deputy refuses the role — both
@@ -685,7 +720,7 @@ export class PeerClient {
   }
 
   /**
-   * `POST /pack/v1/takeover` — the witness question, then the re-pin (RFC §7).
+   * `POST /crew/v1/takeover` — the witness question, then the re-pin (RFC §7).
    *
    * **Never §8.6-signed, and that is not an omission.** The caller here is the DEPUTY, which is not in
    * the receiving peer's roster at all — so a signature could only ever fail to verify against it, and
@@ -705,11 +740,11 @@ export class PeerClient {
   }
 
   /**
-   * `GET /pack/v1/snapshot` — the one merged route (§5). Shape is spec M4/04's business.
+   * `GET /crew/v1/snapshot` — the one merged route (§5). Shape is spec M4/04's business.
    *
    * `view` is how much of that machine to ask for (M22/06): `session=` as always, plus
    * `sessions=all` when the caller wants every session the peer runs. Both are additive and optional
-   * — a peer too old to read either answers with its primary session and PACK_PROTOCOL_VERSION does
+   * — a peer too old to read either answers with its primary session and CREW_PROTOCOL_VERSION does
    * not move (§7.1). It defaults to {@link NARROW_VIEW}, the ask this method made before the
    * parameter existed.
    *
@@ -824,9 +859,17 @@ export class PeerClient {
   }
 
   /**
-   * The one dial. `mode` decides only what a non-2xx status means — everything before that (the
-   * credential, the URL, the budget, the version check, §7's 409) is identical by construction,
-   * because two dial paths would be two places for a crew request to forget its `Authorization`.
+   * The one dial, and the version order on it: `/crew/v1/*` first, always (§0.1).
+   *
+   * REMOVE_IN_1_9_0 — the fallback. A member that is answered by a lead still on 1.7.0 learns it in
+   * exactly two ways, and both are answers rather than guesses: a `404` carrying no crew protocol
+   * header (a 1.7.0 router does not know the prefix, so the request falls through to the ordinary
+   * 404), or §7's refusal naming version 1. On either it re-dials `/pack/v1/*` ONCE, with version 1
+   * headers and the version 1 dial domain, and writes one journal line per lead.
+   *
+   * **Per dial, never cached.** The moment that lead updates, its answer on `/crew/v1` is a crew
+   * answer and no fallback is taken — so the overlap costs one extra round trip against a lead that
+   * has not updated yet, and nothing at all against one that has.
    */
   private async dial(
     link: CrewLink,
@@ -834,6 +877,34 @@ export class PeerClient {
     params: Record<string, string> | undefined,
     init: CrewRequestInit,
     mode: "consumed" | "passthrough",
+    budgetMs?: number,
+    sign = true,
+  ): Promise<PeerOutcome<Response>> {
+    const answer = await this.dialAt(link, route, params, init, mode, CREW_PROTOCOL_VERSION, budgetMs, sign);
+    // REMOVE_IN_1_9_0 — the fallback, top to bottom.
+    if (answer.speaksVersion1 !== true) return answer;
+    if (!this.toldVersion1.has(link.memberId)) {
+      this.toldVersion1.add(link.memberId);
+      this.log(version1FallbackLine(link.memberId));
+    }
+    return this.dialAt(link, route, params, init, mode, V1_PROTOCOL_VERSION, budgetMs, sign);
+  }
+
+  /**
+   * One dial, at one protocol version. `mode` decides only what a non-2xx status means — everything
+   * before that (the credential, the URL, the budget, the version check, §7's 409) is identical by
+   * construction, because two dial paths would be two places for a crew request to forget its
+   * `Authorization`.
+   */
+  private async dialAt(
+    link: CrewLink,
+    route: string,
+    params: Record<string, string> | undefined,
+    init: CrewRequestInit,
+    mode: "consumed" | "passthrough",
+    // REMOVE_IN_1_9_0: the wire version this dial speaks. Always {@link CREW_PROTOCOL_VERSION} once
+    // the overlap is gone, at which point this argument and `DialAnswer` go with it.
+    wire: number,
     // The one knob a caller may widen, and three callers do: the verdict probe's patient budget
     // (§10.4), §19's fresh preflight, and a forwarded WRITE on WRITE_BUDGET_MS (§10.1's 2026-09-08
     // amendment). Everything else runs on the strict per-poll one — except for the single bootstrap
@@ -848,7 +919,7 @@ export class PeerClient {
     // cannot be computed without buffering it, §8.6's own trade), and `takeover` is dialled by a
     // machine that is not in the receiver's roster, where a signature could only ever be a refusal.
     sign = true,
-  ): Promise<PeerOutcome<Response>> {
+  ): Promise<DialAnswer> {
     const secret = this.deps.secret();
     if (secret === null || secret === "") {
       // Never send an unauthenticated crew request. A missing secret is a local fault (not in a crew,
@@ -856,10 +927,13 @@ export class PeerClient {
       // operator's logs nothing while looking exactly like an attack.
       return this.fail({ state: "unreachable", reason: "no crew secret", attempted: false });
     }
-    const url = crewUrl(link.address, route, params);
-    if (url === null) {
+    const built = crewUrl(link.address, route, params);
+    if (built === null) {
       return this.fail({ state: "unreachable", reason: `unusable address: ${link.address}`, attempted: false });
     }
+    // REMOVE_IN_1_9_0: the version 1 prefix, on the fallback dial only. The URL is otherwise the one
+    // `crewUrl` built, so the address checks that function makes are made once and not twice.
+    const url = wire === V1_PROTOCOL_VERSION ? version1Url(built) : built;
     // Chosen AFTER the two pre-flight refusals above, so a missing secret or an unusable address —
     // neither of which touches a socket — can never spend a link's one bootstrap credit.
     const timeoutMs = budgetMs ?? this.takeBudget(link);
@@ -867,7 +941,7 @@ export class PeerClient {
     const device = this.deps.device?.() ?? null;
     const headers = new Headers(init.headers);
     headers.set("authorization", `Bearer ${secret}`);
-    headers.set(PROTOCOL_HEADER, String(PACK_PROTOCOL_VERSION));
+    headers.set(PROTOCOL_HEADER, String(CREW_PROTOCOL_VERSION));
     headers.set(MEMBER_HEADER, this.deps.self);
     // A per-call device (a forwarded phone request, §12) wins over the client-wide one: it is the
     // operator the LEAD authenticated for *this* action, where the client-level source is a process
@@ -893,8 +967,17 @@ export class PeerClient {
     // streamed upload to pull into memory and therefore no reason to confine it (§8.6).
     if (this.deps.dialSign !== undefined) {
       headers.set(TIMESTAMP_HEADER, String(stampedAt));
-      headers.set(DIAL_HEADER, this.deps.dialSign({ method, path, timestamp: stampedAt, to: link.memberId }));
+      // REMOVE_IN_1_9_0: `domain` — the version 1 dial's own domain tag, which is bytes both ends
+      // hash (`signing.ts` → `canonicalDial`). Absent on every version 2 dial, which is every dial
+      // once the overlap is gone.
+      const domain = wire === V1_PROTOCOL_VERSION ? V1_DIAL_DOMAIN : undefined;
+      headers.set(DIAL_HEADER, this.deps.dialSign({ method, path, timestamp: stampedAt, to: link.memberId, domain }));
     }
+
+    // REMOVE_IN_1_9_0: the whole header set, restated in version 1's vocabulary, as ONE step at the
+    // end — so nothing above this line has to know which version it is dialling, and a header added
+    // there is carried by the fallback without being taught to it.
+    const wireHeaders = wire === V1_PROTOCOL_VERSION ? toVersion1Headers(headers) : headers;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -903,7 +986,7 @@ export class PeerClient {
       // `tls` rides the init: Bun's fetch takes the pinned material per request, so there is no agent
       // to construct, cache or invalidate — the pin is read fresh on every dial, from the store.
       const tls = this.deps.tls?.(link);
-      const dialInit: CrewRequestInit = { ...init, headers, signal: controller.signal };
+      const dialInit: CrewRequestInit = { ...init, headers: wireHeaders, signal: controller.signal };
       // Assigned, never conditionally spread: an unpinned link must carry NO `tls` key at all.
       if (tls) dialInit.tls = tls;
       res = await this.deps.fetch(url, dialInit);
@@ -928,11 +1011,27 @@ export class PeerClient {
       clearTimeout(timer);
     }
 
+    // REMOVE_IN_1_9_0: a version 1 answer, restated in version 2's header vocabulary — so every line
+    // below, and every caller that reads a crew header off this response, is version-agnostic. The
+    // body is not read, so a proxied read stays a stream.
+    if (wire === V1_PROTOCOL_VERSION) res = toVersion2Response(res);
+
     // ── Version first, before status and before the body ─────────────────────
     // §7: "The lead applies the same rule to a peer's RESPONSE header: a reply with a version it
     // cannot read is a mismatch, not a parse error." Reading the body first would turn a v2 peer's
     // perfectly well-formed answer into a parse failure and hide the real cause.
     const received = parseProtocolHeader(res.headers.get(PROTOCOL_HEADER));
+
+    // REMOVE_IN_1_9_0 — the fallback's trigger, and it is only ever read on a version 2 dial (§0.1).
+    //
+    // A build that has never heard of `/crew/v1` produces exactly two shapes, both header-free: its
+    // own `404` for the unknown path, and the `403 non-loopback peer rejected` a declined crew path
+    // falls through to when the dial crossed a machine boundary (`bridge/server.ts`). Neither is a
+    // guess: a peer that is merely restarting answers neither, and a peer that IS speaking version 2
+    // stamps the header, which is checked first.
+    if (wire === CREW_PROTOCOL_VERSION && received === null && (res.status === 404 || res.status === 403)) {
+      return { ...this.fail({ state: "unreachable", reason: `${route}: HTTP ${res.status}` }), speaksVersion1: true };
+    }
     // An answer that NAMES a version tells us the peer is speaking, whatever it said. That ends any
     // headerless run, so a peer that restarts behind a proxy starts from zero the next time.
     if (received !== null) this.headerless.delete(link.memberId);
@@ -985,18 +1084,24 @@ export class PeerClient {
       }
       return this.fail({
         state: "incompatible",
-        reason: `${route}: peer answered ${res.status} with no crew protocol header for over ${Math.round(HEADERLESS_PATIENCE_MS / 1000)}s, this build speaks ${PACK_PROTOCOL_VERSION}`,
-        expected: PACK_PROTOCOL_VERSION,
+        reason: `${route}: peer answered ${res.status} with no crew protocol header for over ${Math.round(HEADERLESS_PATIENCE_MS / 1000)}s, this build speaks ${CREW_PROTOCOL_VERSION}`,
+        expected: CREW_PROTOCOL_VERSION,
         received: null,
       });
     }
-    if (received !== null && received !== PACK_PROTOCOL_VERSION) {
-      return this.fail({
+    if (received !== null && received !== CREW_PROTOCOL_VERSION) {
+      const mismatch = this.fail({
         state: "incompatible",
-        reason: `${route}: peer answered protocol ${received}, this build speaks ${PACK_PROTOCOL_VERSION}`,
-        expected: PACK_PROTOCOL_VERSION,
+        reason: `${route}: peer answered protocol ${received}, this build speaks ${CREW_PROTOCOL_VERSION}`,
+        expected: CREW_PROTOCOL_VERSION,
         received,
       });
+      // REMOVE_IN_1_9_0: a member that NAMED version 1 said so precisely, which is the second of the
+      // two ways a 1.7.0 lead reveals itself (§0.1). Read on a version 2 dial only.
+      if (wire === CREW_PROTOCOL_VERSION && received === V1_PROTOCOL_VERSION) {
+        return { ...mismatch, speaksVersion1: true };
+      }
+      return mismatch;
     }
     if (res.status === 409) {
       // TWO answers share this status, and the body's `code` is what tells them apart (§18.10). The
@@ -1031,6 +1136,10 @@ export class PeerClient {
       }
       // The peer refused *us* for skew (§7). It already named both sides; the body is the reason
       // string the operator sees verbatim in `crew status`, so it is read rather than paraphrased.
+      // NOT a fallback trigger, and deliberately not: reaching this branch means the far side stamped
+      // THIS build's version in the header (the mismatch above returned otherwise), so whatever its
+      // body says about versions, it is not a 1.7.0 collie. The overlap reads the header and the
+      // status, never a body (§0.1).
       const mismatch = readMismatch(body);
       return this.fail({
         state: "incompatible",
@@ -1089,6 +1198,8 @@ export class PeerClient {
    */
   forget(memberId: string, address?: string): void {
     this.headerless.delete(memberId);
+    // REMOVE_IN_1_9_0: a member enrolled again under the same id has not been told about yet.
+    this.toldVersion1.delete(memberId);
     if (address !== undefined) this.warmth.delete(address);
   }
 
@@ -1354,7 +1465,7 @@ function pairingCollisionOf(body: JsonObject | null) {
 /** §7's `expected`/`received` reading, tolerating a peer that sends neither. */
 function readMismatch(body: JsonObject | null) {
   const error = typeof body?.error === "string" ? body.error : "crew protocol mismatch";
-  const expected = typeof body?.expected === "number" ? body.expected : PACK_PROTOCOL_VERSION;
+  const expected = typeof body?.expected === "number" ? body.expected : CREW_PROTOCOL_VERSION;
   const received = typeof body?.received === "number" ? body.received : null;
   return { reason: error, expected, received };
 }

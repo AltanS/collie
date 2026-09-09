@@ -376,7 +376,7 @@ export function isLoopbackBindHost(host: string): boolean {
  * mean nothing. That is why a solo instance and a lead refuse to start. But a crew **peer** binds off
  * loopback BY CONSTRUCTION: its lead dials it across a machine boundary, and the surface it exposes
  * there is gated by pinned mutual TLS plus the crew secret rather than by any of those headers
- * (PACK_PROTOCOL.md §3, [ADR 0013](../.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
+ * (CREW_PROTOCOL.md §3, [ADR 0013](../.adr/0013-a-peer-listens-without-becoming-a-front-door.md)).
  * The mode that decides is not known until the trust store has been read, which happens after this
  * function runs — so `bridge/index.ts` calls it once the mode is in hand.
  *

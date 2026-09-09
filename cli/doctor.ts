@@ -973,7 +973,7 @@ function bridgePid(deps: DoctorDeps, marker: CrewRuntimeMarker | null): number |
   const fromFile = Number(deps.files.read(pidFilePath(deps.ctx.configDir, deps.ctx.instance))?.trim() ?? "");
   if (Number.isInteger(fromFile) && fromFile > 1) return fromFile;
   // A bridge that neither systemd nor the pidfile tier owns still wrote its own pid, but only in a
-  // crew — a solo instance writes no marker (PACK_PROTOCOL.md §11's zero-tax contract).
+  // crew — a solo instance writes no marker (CREW_PROTOCOL.md §11's zero-tax contract).
   return marker === null ? null : marker.pid;
 }
 
@@ -1546,7 +1546,7 @@ function reach(data: TrustStoreData, members: readonly TrustedMember[], reaches:
       continue;
     }
     // F21: on a peer the one enrolled member is the LEAD, and a peer asks its lead for no snapshot —
-    // `/pack/v1/snapshot` is not on the closed peer → lead route set (`bridge/crew/router.ts`, RFC
+    // `/crew/v1/snapshot` is not on the closed peer → lead route set (`bridge/crew/router.ts`, RFC
     // §8.6), so the question has no answer but a refusal. `hello` is the whole verdict for that row.
     if (m.role === "lead") continue;
     if (answered.data === null || !answered.data.ok) {

@@ -6,7 +6,7 @@ import type { LeadContactFacts } from "./lead-contact.ts";
 import type { TrustedMember, TrustStoreData, Warrant } from "./trust-store.ts";
 import { currentWarrant, verifyWarrantSignature } from "./warrant.ts";
 
-// The deposed state and the self-heal that ends it (RFC §8, PACK_PROTOCOL.md §18.11–§18.12).
+// The deposed state and the self-heal that ends it (RFC §8, CREW_PROTOCOL.md §18.11–§18.12).
 //
 // **A former lead that learns the crown has moved stops being a lead, loudly** — and then, in the
 // ordinary case, finishes its own demotion all the way to `peer` on materials both machines already
@@ -291,7 +291,7 @@ function parkText(reason: ParkReason | null): string {
 /**
  * The deposed answer for one request, or `null` when this collie is not deposed.
  *
- * Mounted in `bridge/server.ts` **after** the crew surface and before everything else: `/pack/v1/*`
+ * Mounted in `bridge/server.ts` **after** the crew surface and before everything else: `/crew/v1/*`
  * keeps answering, because the new lead must still be able to reach a machine it has just deposed
  * (RFC §8.1, path 1), while the app, the PWA and `/api/*` are gone.
  */

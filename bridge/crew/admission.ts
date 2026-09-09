@@ -1,9 +1,9 @@
 import { bearerToken, secretEquals } from "./identity.ts";
-import { PACK_PROTOCOL_VERSION } from "./enrollment.ts";
+import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import type { TrustStoreData, TrustedMember } from "./trust-store.ts";
 
-// Crew admission: the two-factor gate every request on `/pack/v1/*` passes before any handler runs
-// (PACK_PROTOCOL.md §8.1, ADR 0013). It is a PURE function of request-shaped facts and the trust
+// Crew admission: the two-factor gate every request on `/crew/v1/*` passes before any handler runs
+// (CREW_PROTOCOL.md §8.1, ADR 0013). It is a PURE function of request-shaped facts and the trust
 // store's contents — no Request, no socket, no clock — which is what makes the failure matrix in
 // admission.test.ts a test of the shipping decision rather than of a harness.
 //
@@ -19,11 +19,11 @@ import type { TrustStoreData, TrustedMember } from "./trust-store.ts";
 //     an `/api/*` handler to consume even if someone wired it there by mistake.
 
 /** The header carrying the protocol version, on requests and on responses (§6, §7). */
-export const PROTOCOL_HEADER = "x-pack-protocol";
+export const PROTOCOL_HEADER = "x-crew-protocol";
 /** Informational "who is speaking". Identity is proven by the pinned certificate, never by this (§6). */
-export const MEMBER_HEADER = "x-pack-member";
+export const MEMBER_HEADER = "x-crew-member";
 /** The operator's device identity, forwarded for the peer's audit trail (§6, §12). */
-export const DEVICE_HEADER = "x-pack-device";
+export const DEVICE_HEADER = "x-crew-device";
 
 /**
  * The facts admission decides on. Deliberately a plain record rather than a `Request`: the TLS
@@ -80,7 +80,7 @@ export interface CrewRequestFacts {
   readonly signedMember: string | null;
   /** The raw `Authorization` header. */
   readonly authorization: string | null;
-  /** The raw `X-Pack-Protocol` header. */
+  /** The raw `X-Crew-Protocol` header. */
   readonly protocol: string | null;
 }
 
@@ -180,7 +180,7 @@ export function admitCrewRequest(data: TrustStoreData | null, facts: CrewRequest
   if (!secretOk) return { ok: false, refusal: "unauthorized", factor: "secret" };
 
   const version = parseProtocolHeader(facts.protocol);
-  if (version !== PACK_PROTOCOL_VERSION) return { ok: false, refusal: "protocol_mismatch", received: version };
+  if (version !== CREW_PROTOCOL_VERSION) return { ok: false, refusal: "protocol_mismatch", received: version };
 
   if (pinned.kind === "deputy") return { ok: true, caller: "deputy", deputy: pinned.deputy, self: data.self.memberId };
   return { ok: true, caller: "member", member: pinned.member, self: data.self.memberId };
@@ -224,7 +224,7 @@ function resolveCaller(data: TrustStoreData, facts: CrewRequestFacts): ResolvedC
 }
 
 /**
- * Parse `X-Pack-Protocol`. An **explicit integer on the wire, never inferred from the app version**
+ * Parse `X-Crew-Protocol`. An **explicit integer on the wire, never inferred from the app version**
  * (§7) — so a missing, non-numeric or fractional header is `null`, which is a mismatch, not a
  * default. Defaulting an absent version to 1 would silently admit a v2 client that forgot to send it.
  */
@@ -255,19 +255,26 @@ export function unauthorizedResponse(): Response {
  * The version refusal (§7): `409`, naming both sides, never a bare 4xx and never a partial answer.
  * Emitted only to a caller that already passed both factors, which is why it may speak freely.
  */
-export function protocolMismatchResponse(received: number | null): Response {
+export function protocolMismatchResponse(
+  received: number | null,
+  // REMOVE_IN_1_9_0: the version this refusal SPEAKS. It is this build's own on every call but the
+  // version 1 overlap's, where the refusal has to name the version the caller was answered on
+  // (`v1-overlap.ts`). The header is stamped with this build's version either way and the overlap
+  // maps it back, so there is exactly one place that rewrites a header.
+  expected: number = CREW_PROTOCOL_VERSION,
+): Response {
   return new Response(
     JSON.stringify({
       error: "crew protocol mismatch",
       code: "protocol_mismatch",
-      expected: PACK_PROTOCOL_VERSION,
+      expected,
       received,
     }),
     {
       status: 409,
       headers: {
         "content-type": "application/json; charset=utf-8",
-        [PROTOCOL_HEADER]: String(PACK_PROTOCOL_VERSION),
+        [PROTOCOL_HEADER]: String(CREW_PROTOCOL_VERSION),
       },
     },
   );
@@ -277,7 +284,7 @@ export function protocolMismatchResponse(received: number | null): Response {
 export function crewResponseHeaders(memberId: string) {
   return {
     "content-type": "application/json; charset=utf-8",
-    [PROTOCOL_HEADER]: String(PACK_PROTOCOL_VERSION),
+    [PROTOCOL_HEADER]: String(CREW_PROTOCOL_VERSION),
     [MEMBER_HEADER]: memberId,
   };
 }

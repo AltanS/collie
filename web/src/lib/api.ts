@@ -191,7 +191,7 @@ function withScope(path: string, scope?: Scope): string {
  *
  * ── AND THE BLOB CARRIES ITS HOST ────────────────────────────────────────────
  * The bytes sit on the machine whose journal named them, so the path takes the scope every other
- * per-pane request takes and the lead forwards it (PACK_PROTOCOL.md §9.1). A `data:` URL is already
+ * per-pane request takes and the lead forwards it (CREW_PROTOCOL.md §9.1). A `data:` URL is already
  * the bytes and is scoped to nothing.
  */
 const BLOB_REF = /^\/api\/blobs\/[0-9a-f]{64}$/i;
@@ -796,7 +796,7 @@ export function dismissUpdate(version: string, scope: DismissScope = "offer"): P
  * door is not answering because the update is restarting it.
  *
  * Same-origin, because that is the deployment this can help in: a failover proxy publishes
- * `/standby/*` beside the app (PACK_PROTOCOL.md §18.15, and `lib/sw-routes.ts` keeps the service
+ * `/standby/*` beside the app (CREW_PROTOCOL.md §18.15, and `lib/sw-routes.ts` keeps the service
  * worker's hands off it). Everywhere else it simply fails, which is exactly what the caller already
  * handles — the card treats a failed poll during `restarting` as expected either way.
  */

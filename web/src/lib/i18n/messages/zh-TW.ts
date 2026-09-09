@@ -722,7 +722,7 @@ export const zhTW: Dictionary = {
   "apiError.device.unknown": "找不到符合此名稱的已配對裝置。",
   "apiError.session.unknown": "目前 collie 上不存在名為 {session} 的工作階段。",
   "apiError.host.unknown": "目前機組中不存在名為 {host} 的 collie 執行個體。",
-  "apiError.pack.not_lead": "目前 collie 不是機組 lead，沒有可顯示的機組。",
+  "apiError.crew.not_lead": "目前 collie 不是機組 lead，沒有可顯示的機組。",
   // --- worktrees (ADR 0032) ---
   "apiError.worktree.list_failed": "取得 worktree 清單失敗：{reason}",
   "apiError.worktree.create_failed": "建立 worktree 失敗：{reason}",

@@ -18,7 +18,7 @@ test("/pack redirects to /crew and keeps the query", async ({ page, request }) =
   await page.goto(`/pack?h=${encodeURIComponent(peer.id)}`);
 
   await expect(page).toHaveURL(new RegExp(`/crew\\?h=${encodeURIComponent(peer.id)}$`));
-  await expect(page.getByRole("heading", { name: message("pack.title") })).toBeVisible();
+  await expect(page.getByRole("heading", { name: message("crew.title") })).toBeVisible();
 
   // `replace`, not a push: Back must not bounce the operator between the two spellings. Nothing to
   // go back to in a fresh context, so the assertion is that the URL does not become /pack again.

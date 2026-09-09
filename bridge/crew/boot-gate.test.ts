@@ -37,7 +37,7 @@ function answered(warrantGeneration: number | null = null): PeerOutcome<HelloRes
   return {
     ok: true,
     value: {
-      protocol: 1,
+      protocol: 2,
       member: "nas",
       version: "1.0.0",
       warrantGeneration,

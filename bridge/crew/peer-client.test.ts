@@ -4,6 +4,7 @@ import type { JsonValue } from "../json.ts";
 import { NARROW_VIEW } from "../sessions.ts";
 
 import { PROTOCOL_HEADER, MEMBER_HEADER, DEVICE_HEADER } from "./admission.ts";
+import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import { leadStore, material, member, muxCaps, CREW, T0 } from "./fixtures.ts";
 import { signDial, verifyDial, DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import { SWEEP_VIEW } from "./merge.ts";
@@ -51,7 +52,7 @@ function replying<TBody>(
   const fetch: CrewFetch = async (url, reqInit) => {
     calls.push({ url, init: reqInit });
     const headers = new Headers({ "content-type": "application/json" });
-    const protocol = init.protocol === undefined ? "1" : init.protocol;
+    const protocol = init.protocol === undefined ? String(CREW_PROTOCOL_VERSION) : init.protocol;
     if (protocol !== null) headers.set(PROTOCOL_HEADER, protocol);
     headers.set(MEMBER_HEADER, init.member ?? "laptop");
     return new Response(typeof body === "string" ? body : JSON.stringify(body), {
@@ -72,10 +73,14 @@ function client(
     sign?: PeerClientDeps["sign"];
     dialSign?: PeerClientDeps["dialSign"];
     now?: () => number;
+    log?: (line: string) => void;
   } = {},
 ) {
   return new PeerClient({
     self: "desk",
+    // REMOVE_IN_1_9_0: silenced by default so the overlap's line does not litter every run. A case
+    // that asserts the line passes its own sink.
+    log: over.log ?? (() => undefined),
     secret: () => (over.secret === undefined ? CREW.secret : over.secret),
     timeoutMs: over.timeoutMs ?? 50,
     patientTimeoutMs: over.patientTimeoutMs,
@@ -207,12 +212,12 @@ describe("crewHelloBudget — the VERDICT budget, which the poll fraction must n
 
 describe("crewUrl — an address is a machine, never a URL with extras", () => {
   test("a bare host:port becomes an https crew URL", () => {
-    expect(crewUrl("laptop.example:8787", "hello")).toBe("https://laptop.example:8787/pack/v1/hello");
+    expect(crewUrl("laptop.example:8787", "hello")).toBe("https://laptop.example:8787/crew/v1/hello");
   });
 
   test("an explicit scheme is kept; params ride the query", () => {
     expect(crewUrl("http://127.0.0.1:8787", "snapshot", { session: "work" })).toBe(
-      "http://127.0.0.1:8787/pack/v1/snapshot?session=work",
+      "http://127.0.0.1:8787/crew/v1/snapshot?session=work",
     );
   });
 
@@ -234,30 +239,30 @@ describe("crewUrl — an address is a machine, never a URL with extras", () => {
     // `new URL` normalises `..` away, so this asserts the post-normalisation pathname — the only
     // check that can actually catch an escape.
     expect(crewUrl("laptop.example", "../../api/snapshot")).toBeNull();
-    expect(crewUrl("laptop.example", "/pane/w1:p1/reply")).toBe("https://laptop.example/pack/v1/pane/w1:p1/reply");
+    expect(crewUrl("laptop.example", "/pane/w1:p1/reply")).toBe("https://laptop.example/crew/v1/pane/w1:p1/reply");
   });
 });
 
 describe("PeerClient — the request the lead sends (§6)", () => {
   test("carries both factors' bearer half, the protocol version and who is speaking", async () => {
-    const { fetch, calls } = replying({ protocol: 1, member: "laptop" });
+    const { fetch, calls } = replying({ protocol: 2, member: "laptop" });
     await client(fetch).hello(laptop);
     const headers = new Headers(calls[0]!.init.headers);
-    expect(calls[0]!.url).toBe("https://laptop.example:8787/pack/v1/hello");
+    expect(calls[0]!.url).toBe("https://laptop.example:8787/crew/v1/hello");
     expect(headers.get("authorization")).toBe(`Bearer ${CREW.secret}`);
-    expect(headers.get(PROTOCOL_HEADER)).toBe("1");
+    expect(headers.get(PROTOCOL_HEADER)).toBe("2");
     expect(headers.get(MEMBER_HEADER)).toBe("desk");
     expect(headers.get(DEVICE_HEADER)).toBeNull();
   });
 
   test("forwards the operator's device id when the lead's device gate is on", async () => {
-    const { fetch, calls } = replying({ protocol: 1, member: "laptop" });
+    const { fetch, calls } = replying({ protocol: 2, member: "laptop" });
     await client(fetch, { device: "phone-1" }).hello(laptop);
     expect(new Headers(calls[0]!.init.headers).get(DEVICE_HEADER)).toBe("phone-1");
   });
 
   test("with no crew secret nothing is sent at all — an unauthenticated probe is never made", async () => {
-    const { fetch, calls } = replying({ protocol: 1, member: "laptop" });
+    const { fetch, calls } = replying({ protocol: 2, member: "laptop" });
     const outcome = await client(fetch, { secret: null }).hello(laptop);
     expect(calls).toEqual([]);
     expect(outcome.ok).toBe(false);
@@ -268,23 +273,23 @@ describe("PeerClient — the request the lead sends (§6)", () => {
   // Both additive-optional, both on the sweep the lead already makes, and both absent by default —
   // which is every sweep of every crew until an operator confirms an update.
 
-  test("X-Pack-Lead-Release rides the sweep, and is absent unless the lead states something", async () => {
+  test("X-Crew-Lead-Release rides the sweep, and is absent unless the lead states something", async () => {
     const { fetch, calls } = replying({});
     const c = client(fetch);
     await c.snapshot(laptop);
-    expect(new Headers(calls[0]!.init.headers).get("X-Pack-Lead-Release")).toBeNull();
+    expect(new Headers(calls[0]!.init.headers).get("X-Crew-Lead-Release")).toBeNull();
     await c.snapshot(laptop, NARROW_VIEW, false, { leadRelease: "1.5.0" });
-    expect(new Headers(calls[1]!.init.headers).get("X-Pack-Lead-Release")).toBe("1.5.0");
+    expect(new Headers(calls[1]!.init.headers).get("X-Crew-Lead-Release")).toBe("1.5.0");
     // The protocol integer does not move for an additive-optional field (§7.1).
-    expect(new Headers(calls[1]!.init.headers).get(PROTOCOL_HEADER)).toBe("1");
+    expect(new Headers(calls[1]!.init.headers).get(PROTOCOL_HEADER)).toBe("2");
   });
 
   test("a lead mid-run states nothing: a null release sends no header at all", async () => {
     const { fetch, calls } = replying({});
     await client(fetch).snapshot(laptop, NARROW_VIEW, false, { leadRelease: null, turn: null });
     const headers = new Headers(calls[0]!.init.headers);
-    expect(headers.get("X-Pack-Lead-Release")).toBeNull();
-    expect(headers.get("X-Pack-Update-Turn")).toBeNull();
+    expect(headers.get("X-Crew-Lead-Release")).toBeNull();
+    expect(headers.get("X-Crew-Update-Turn")).toBeNull();
   });
 
   test("the turn names no code — a member and a run id, and it goes to one member at a time", async () => {
@@ -292,14 +297,14 @@ describe("PeerClient — the request the lead sends (§6)", () => {
     const c = client(fetch);
     await c.snapshot(laptop, NARROW_VIEW, false, { leadRelease: "1.5.0", turn: "laptop;r-7" });
     await c.snapshot(laptop, NARROW_VIEW, false, { leadRelease: "1.5.0" });
-    const first = new Headers(calls[0]!.init.headers).get("X-Pack-Update-Turn");
+    const first = new Headers(calls[0]!.init.headers).get("X-Crew-Update-Turn");
     expect(first).toBe("laptop;r-7");
     // No version, no ref, no URL, no command.
     expect(first).not.toContain("1.5.0");
     expect(first).not.toContain("http");
     expect(first).not.toContain("refs/");
     // The second member of the same sweep gets the release and no turn.
-    expect(new Headers(calls[1]!.init.headers).get("X-Pack-Update-Turn")).toBeNull();
+    expect(new Headers(calls[1]!.init.headers).get("X-Crew-Update-Turn")).toBeNull();
   });
 
   test("the follow headers do not buy the patient budget — only §19's fresh does", async () => {
@@ -308,7 +313,7 @@ describe("PeerClient — the request the lead sends (§6)", () => {
     await c.snapshot(laptop, NARROW_VIEW, false, { leadRelease: "1.5.0", turn: "laptop;r-7" });
     // A lead with something to state must not become a lead that polls more slowly (§10.1).
     expect(calls[0]!.init.headers).toBeDefined();
-    expect(new Headers(calls[0]!.init.headers).get("X-Pack-Preflight")).toBeNull();
+    expect(new Headers(calls[0]!.init.headers).get("X-Crew-Preflight")).toBeNull();
   });
 
   test("`snapshot` names the session only when there is one — absent means the peer's primary", async () => {
@@ -318,9 +323,9 @@ describe("PeerClient — the request the lead sends (§6)", () => {
     await c.snapshot(laptop, { session: "", widen: false });
     await c.snapshot(laptop, { session: "work", widen: false });
     expect(calls.map((c2) => c2.url)).toEqual([
-      "https://laptop.example:8787/pack/v1/snapshot",
-      "https://laptop.example:8787/pack/v1/snapshot",
-      "https://laptop.example:8787/pack/v1/snapshot?session=work",
+      "https://laptop.example:8787/crew/v1/snapshot",
+      "https://laptop.example:8787/crew/v1/snapshot",
+      "https://laptop.example:8787/crew/v1/snapshot?session=work",
     ]);
   });
 
@@ -333,13 +338,13 @@ describe("PeerClient — the request the lead sends (§6)", () => {
     await c.snapshot(laptop, { session: "work", widen: true });
     await c.snapshot(laptop, NARROW_VIEW);
     expect(calls.map((c2) => c2.url)).toEqual([
-      "https://laptop.example:8787/pack/v1/snapshot?sessions=all",
-      "https://laptop.example:8787/pack/v1/snapshot?session=work&sessions=all",
+      "https://laptop.example:8787/crew/v1/snapshot?sessions=all",
+      "https://laptop.example:8787/crew/v1/snapshot?session=work&sessions=all",
       // A narrow ask puts the same bytes on the wire it always has.
-      "https://laptop.example:8787/pack/v1/snapshot",
+      "https://laptop.example:8787/crew/v1/snapshot",
     ]);
     // The protocol integer does not move for an additive-optional parameter (§7.1)…
-    expect(new Headers(calls[0]!.init.headers).get(PROTOCOL_HEADER)).toBe("1");
+    expect(new Headers(calls[0]!.init.headers).get(PROTOCOL_HEADER)).toBe("2");
     // …and widening travels as a session dimension, never as a host: a peer has no peers (§4).
     expect(calls.map((c2) => c2.url).join(" ")).not.toContain("host=");
   });
@@ -347,7 +352,7 @@ describe("PeerClient — the request the lead sends (§6)", () => {
 
 describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
   test("reachable: the body, the peer's id, and the LEAD's receipt time", async () => {
-    const { fetch } = replying({ protocol: 1, member: "laptop" });
+    const { fetch } = replying({ protocol: 2, member: "laptop" });
     const outcome = await client(fetch).hello(laptop);
     expect(outcome).toEqual({
       ok: true,
@@ -357,7 +362,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
       // what keeps the boot gate from reading a silent member as agreement, what keeps an absent
       // activation on the ops file's lower bound, and what makes an absent block mean "the lead's".
       value: {
-        protocol: 1,
+        protocol: 2,
         member: "laptop",
         version: null,
         warrantGeneration: null,
@@ -450,17 +455,18 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
   });
 
   test("a RESPONSE with the wrong version is incompatible — a mismatch, never a parse error (§7)", async () => {
-    // The body is perfectly well-formed v2 JSON. Reading it first would report "malformed body" and
-    // hide the real cause, which is the failure mode §7 names explicitly.
-    const { fetch } = replying({ some: "v2 shape" }, { protocol: "2" });
+    // The body is perfectly well-formed JSON from a version this build does not speak. Reading it
+    // first would report "malformed body" and hide the real cause, which is the failure mode §7 names
+    // explicitly. Version 3 rather than 1: version 1 is a 1.7.0 lead, and that one falls back (§0.1).
+    const { fetch } = replying({ some: "a foreign shape" }, { protocol: "3" });
     const outcome = await client(fetch).snapshot(laptop);
     if (outcome.ok) throw new Error("expected a failure");
     if (outcome.state !== "incompatible") throw new Error(`expected incompatible, got ${outcome.state}`);
-    expect(outcome.received).toBe(2);
-    expect(outcome.expected).toBe(1);
+    expect(outcome.received).toBe(3);
+    expect(outcome.expected).toBe(2);
   });
 
-  test("a response with NO version header is never defaulted to 1", async () => {
+  test("a response with NO version header is never defaulted to a version", async () => {
     const { fetch } = replying({ ok: true }, { protocol: null });
     const outcome = await client(fetch).snapshot(laptop);
     if (outcome.ok) throw new Error("expected a failure");
@@ -508,7 +514,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     if (past.state !== "incompatible") throw new Error(`expected incompatible, got ${past.state}`);
     expect(past.reason).toContain("for over 60s");
     expect(past.received).toBeNull();
-    expect(past.expected).toBe(1);
+    expect(past.expected).toBe(CREW_PROTOCOL_VERSION);
   });
 
   test("the reason names the time already spent, so the move onto the ladder is not a surprise", async () => {
@@ -617,11 +623,11 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
   });
 
   test("a NAMED foreign version is incompatible on the very first answer", async () => {
-    const { fetch } = replying({ some: "v2 shape" }, { protocol: "2" });
+    const { fetch } = replying({ some: "a foreign shape" }, { protocol: "3" });
     const outcome = await client(fetch).snapshot(laptop);
     if (outcome.ok) throw new Error("expected a failure");
     if (outcome.state !== "incompatible") throw new Error(`expected incompatible, got ${outcome.state}`);
-    expect(outcome.received).toBe(2);
+    expect(outcome.received).toBe(3);
   });
 
   test("a matching version with an unparseable body is unreachable, not incompatible", async () => {
@@ -632,7 +638,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
   });
 
   test("`hello`'s optional version is read when the peer reports one (§5)", async () => {
-    const { fetch } = replying({ protocol: 1, member: "laptop", version: "1.0.0-alpha.12" });
+    const { fetch } = replying({ protocol: 2, member: "laptop", version: "1.0.0-alpha.12" });
     const outcome = await client(fetch).hello(laptop);
     expect(outcome.ok && outcome.value.version).toBe("1.0.0-alpha.12");
   });
@@ -641,7 +647,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     // Absent-means-closed: the member is read as claiming no version, never as an error and never as
     // a reason to refuse. Reachability is untouched — the protocol integer is the only thing that
     // refuses, and this reply's protocol matched.
-    const { fetch } = replying({ protocol: 1, member: "laptop" });
+    const { fetch } = replying({ protocol: 2, member: "laptop" });
     const outcome = await client(fetch).hello(laptop);
     expect(outcome.ok).toBe(true);
     expect(outcome.ok && outcome.value.version).toBeNull();
@@ -649,7 +655,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
 
   test("a version that is not a usable string reads as absent, never as a failure (§7.1)", async () => {
     for (const version of [7, null, true, "", { v: "1.0.0" }, ["1.0.0"]]) {
-      const { fetch } = replying({ protocol: 1, member: "laptop", version });
+      const { fetch } = replying({ protocol: 2, member: "laptop", version });
       const outcome = await client(fetch).hello(laptop);
       expect(outcome.ok).toBe(true);
       expect(outcome.ok && outcome.value.version).toBeNull();
@@ -661,7 +667,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     // member's reply is read by an OLDER one without incident. `hello` reads `protocol` and `member`
     // by name off a Record and passes unknown keys over without inspecting them — this pins that,
     // with `version` standing in for whatever the next optional field turns out to be.
-    const { fetch } = replying({ protocol: 1, member: "laptop", version: "9.9.9", futureField: { any: "shape" } });
+    const { fetch } = replying({ protocol: 2, member: "laptop", version: "9.9.9", futureField: { any: "shape" } });
     const outcome = await client(fetch).hello(laptop);
     expect(outcome.ok).toBe(true);
     expect(outcome.ok && outcome.value.member).toBe("laptop");
@@ -669,13 +675,13 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
 
   test("M22's own `mux` block changes nothing an older lead reads off `hello` (§7.1, §16 skew leg)", async () => {
     // The stand-in above pins the CLASS. This pins THE FIELD this milestone actually added, because
-    // the version-skew leg (PACK_PROTOCOL.md §16, 2026-09-08) measured a real 1.6.0 lead reading a
+    // the version-skew leg (CREW_PROTOCOL.md §16, 2026-09-08) measured a real 1.6.0 lead reading a
     // real current-tree peer's `hello` — a body carrying the full capability table, `listSessions`
     // included — and it has to keep behaving exactly as it does with a 1.6.0 member. A 1.6.0 lead
     // has no reader for `mux` at all, so what must hold is that the block is INERT: every field an
     // older parser does read comes back the same with it and without it. That is the property, not
     // "no exception was thrown" — so it is asserted as an equality between the two answers.
-    const bare = { protocol: 1, member: "laptop", version: "9.9.9" };
+    const bare = { protocol: 2, member: "laptop", version: "9.9.9" };
     const withMux = {
       ...bare,
       mux: {
@@ -820,7 +826,7 @@ describe("proxy — the peer's own status codes are the answer, not a failure", 
   });
 
   test("a version skew is still a skew, before any status or body is looked at (§7)", async () => {
-    const { fetch } = replying({ ok: true }, { status: 200, protocol: "2" });
+    const { fetch } = replying({ ok: true }, { status: 200, protocol: "3" });
     const outcome = await client(fetch).proxy(laptop, "pane/w1:p1");
     expect(!outcome.ok && outcome.state).toBe("incompatible");
   });
@@ -869,7 +875,7 @@ describe("the forwarded device identity (§12)", () => {
     });
     const sent = new Headers(calls[0]!.init.headers);
     expect(sent.get("authorization")).toBe(`Bearer ${CREW.secret}`);
-    expect(sent.get(PROTOCOL_HEADER)).toBe("1");
+    expect(sent.get(PROTOCOL_HEADER)).toBe("2");
     expect(sent.get(MEMBER_HEADER)).toBe("desk");
   });
 });
@@ -1069,11 +1075,11 @@ describe("warrant — the lead's push (§18)", () => {
     signature: "sig",
   };
 
-  test("POSTs the warrant and the deputy's certificate to /pack/v1/warrant", async () => {
+  test("POSTs the warrant and the deputy's certificate to /crew/v1/warrant", async () => {
     const { fetch, calls } = replying({ generation: 2, applied: true });
     const outcome = await client(fetch).warrant(laptop, { warrant, deputyCertPem: "PEM" });
     expect(outcome.ok && outcome.value).toEqual({ generation: 2, applied: true });
-    expect(calls[0]!.url).toBe("https://laptop.example:8787/pack/v1/warrant");
+    expect(calls[0]!.url).toBe("https://laptop.example:8787/crew/v1/warrant");
     expect(calls[0]!.init.method).toBe("POST");
     expect(JSON.parse(String(calls[0]!.init.body))).toEqual({ warrant, deputyCertPem: "PEM" });
   });
@@ -1165,7 +1171,7 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
   });
 
   test("hello reads the warrant generation, absent-means-closed", async () => {
-    const withGen = replying({ protocol: 1, member: "laptop", warrantGeneration: 4, pairingDigest: null, pairingCollision: null });
+    const withGen = replying({ protocol: 2, member: "laptop", warrantGeneration: 4, pairingDigest: null, pairingCollision: null });
     expect((await client(withGen.fetch).hello(laptop)).ok).toBe(true);
     const outcome = await client(withGen.fetch).hello(laptop);
     expect(outcome.ok && outcome.value.warrantGeneration).toBe(4);
@@ -1173,7 +1179,7 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
     // Anything that is not a safe integer is "reported nothing" — never a reason to refuse a link,
     // and never read as agreement by the boot gate.
     for (const bad of [null, "4", 1.5, {}]) {
-      const { fetch } = replying({ protocol: 1, member: "laptop", warrantGeneration: bad });
+      const { fetch } = replying({ protocol: 2, member: "laptop", warrantGeneration: bad });
       const o = await client(fetch).hello(laptop);
       expect(o.ok && o.value.warrantGeneration).toBeNull();
     }
@@ -1229,7 +1235,7 @@ describe("PeerClient — every dial is attested (§8.6)", () => {
   });
 
   test("the header rides EVERY route, not a closed set — and names the member being dialled", async () => {
-    const { fetch, calls } = replying({ protocol: 1, member: "laptop" });
+    const { fetch, calls } = replying({ protocol: 2, member: "laptop" });
     const c = client(fetch, withDial());
     await c.hello(laptop);
     await c.snapshot(laptop);
@@ -1265,7 +1271,7 @@ describe("PeerClient — every dial is attested (§8.6)", () => {
   });
 
   test("both signatures share ONE timestamp — one request makes one freshness claim", async () => {
-    const { fetch, calls } = replying({ protocol: 1, member: "laptop" });
+    const { fetch, calls } = replying({ protocol: 2, member: "laptop" });
     await client(fetch, withDial({ sign: () => "request-signature" })).hello(laptop);
     const headers = new Headers(calls[0]!.init.headers);
     const timestamp = Number(headers.get(TIMESTAMP_HEADER));
@@ -1273,7 +1279,7 @@ describe("PeerClient — every dial is attested (§8.6)", () => {
     expect(
       verifyDial(material("desk").certPem, headers.get(DIAL_HEADER)!, {
         method: "GET",
-        path: "/pack/v1/hello",
+        path: "/crew/v1/hello",
         timestamp,
         to: "laptop",
       }),
@@ -1281,7 +1287,7 @@ describe("PeerClient — every dial is attested (§8.6)", () => {
   });
 
   test("a client with no key sends no header at all — absent, never empty", async () => {
-    const { fetch, calls } = replying({ protocol: 1, member: "laptop" });
+    const { fetch, calls } = replying({ protocol: 2, member: "laptop" });
     await client(fetch).hello(laptop);
     expect(new Headers(calls[0]!.init.headers).get(DIAL_HEADER)).toBeNull();
   });
@@ -1329,7 +1335,7 @@ describe("parseMuxReport — a member's declaration, bounded and re-checked", ()
   const block = { name: "reference", capabilities: { createSpace: true }, unsupportedKeys: [], notes: {} };
 
   test("a well-formed block comes through with its answers intact", () => {
-    expect(parseMuxReport({ protocol: 1, member: "nas", mux: block })).toEqual({
+    expect(parseMuxReport({ protocol: 2, member: "nas", mux: block })).toEqual({
       name: "reference",
       capabilities: muxCaps({ createSpace: true }),
       unsupportedKeys: [],
@@ -1382,5 +1388,135 @@ describe("parseMuxReport — a member's declaration, bounded and re-checked", ()
     });
     expect(wire?.unsupportedKeys).toHaveLength(256);
     expect(wire?.notes).toEqual({});
+  });
+});
+
+// ── The version 1 fallback dial (M27/03, CREW_PROTOCOL.md §0.1) ─────────────
+// REMOVE_IN_1_9_0 — this whole describe block, and the minor-9 reminder that guards it lives in
+// `bridge/removal-schedule.test.ts` (its `describe("wire")` block fails once the package minor
+// reaches 9 with any of the overlap still here).
+//
+// The order is `/crew/v1` first, always. A lead still on 1.7.0 reveals itself in exactly two ways,
+// and both are ANSWERS rather than guesses: a header-free `404` or `403` (a build that has never
+// heard of the prefix, either its own 404 or `bridge/server.ts`'s non-loopback refusal for a
+// declined crew path), or a crew header naming version 1.
+describe("the version 1 fallback", () => {
+  /** A fake that answers the version 2 prefix as a 1.7.0 collie would, and `/pack/v1` properly. */
+  function oldLead(status: number) {
+    const calls: string[] = [];
+    const fetch: CrewFetch = async (url) => {
+      calls.push(new URL(url).pathname);
+      if (new URL(url).pathname.startsWith("/crew/v1/")) {
+        return new Response(JSON.stringify({ error: "not found" }), { status });
+      }
+      return new Response(JSON.stringify({ protocol: 1, member: "laptop" }), {
+        status: 200,
+        headers: { "content-type": "application/json", "x-pack-protocol": "1", "x-pack-member": "laptop" },
+      });
+    };
+    return { fetch, calls };
+  }
+
+  for (const status of [404, 403]) {
+    test(`a header-free ${status} on /crew/v1 falls back to /pack/v1, once, and the dial succeeds`, async () => {
+      const { fetch, calls } = oldLead(status);
+      const lines: string[] = [];
+      const outcome = await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
+      expect(outcome.ok).toBe(true);
+      expect(calls).toEqual(["/crew/v1/hello", "/pack/v1/hello"]);
+      // The answer is read in version 2's vocabulary, so nothing downstream knows about the overlap.
+      expect(outcome.ok && outcome.value.protocol).toBe(1);
+      expect(lines).toEqual(["[crew] laptop: speaks version 1, dialling /pack/v1 until it updates"]);
+    });
+  }
+
+  test("a crew header naming version 1 falls back too — the refusal is an answer", async () => {
+    const calls: string[] = [];
+    const fetch: CrewFetch = async (url) => {
+      const { pathname } = new URL(url);
+      calls.push(pathname);
+      // Both prefixes answer, and both name version 1 — a 1.7.0 collie fronted by something that
+      // routes the new prefix at it. The header NAME follows the prefix, as a real one would.
+      const name = pathname.startsWith("/pack/v1/") ? "x-pack-protocol" : "x-crew-protocol";
+      return new Response(JSON.stringify({ protocol: 1, member: "laptop" }), {
+        status: 200,
+        headers: { "content-type": "application/json", [name]: "1", "x-pack-member": "laptop" },
+      });
+    };
+    const lines: string[] = [];
+    const outcome = await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
+    expect(outcome.ok).toBe(true);
+    expect(calls).toEqual(["/crew/v1/hello", "/pack/v1/hello"]);
+    expect(lines).toHaveLength(1);
+  });
+
+  // ONE line per lead, not one per sweep. The fallback itself is per dial and never cached, which is
+  // what lets a member stop using it the moment its lead updates.
+  test("the line is written once per lead, however many times the fallback is taken", async () => {
+    const { fetch, calls } = oldLead(404);
+    const lines: string[] = [];
+    const c = client(fetch, { log: (l) => lines.push(l) });
+    await c.hello(laptop);
+    await c.hello(laptop);
+    await c.snapshot(laptop);
+    expect(lines).toEqual(["[crew] laptop: speaks version 1, dialling /pack/v1 until it updates"]);
+    // Three dials, six requests: the fallback is taken every time, and only the LINE is remembered.
+    expect(calls).toHaveLength(6);
+  });
+
+  test("a member enrolled again under the same id is told about again", async () => {
+    const { fetch } = oldLead(404);
+    const lines: string[] = [];
+    const c = client(fetch, { log: (l) => lines.push(l) });
+    await c.hello(laptop);
+    c.forget(laptop.memberId, laptop.address);
+    await c.hello(laptop);
+    expect(lines).toHaveLength(2);
+  });
+
+  test("an updated lead is never dialled on /pack/v1, and nothing is logged", async () => {
+    const { fetch, calls } = replying({ protocol: 2, member: "laptop" });
+    const lines: string[] = [];
+    const outcome = await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
+    expect(outcome.ok).toBe(true);
+    expect(calls.map((c) => new URL(c.url).pathname)).toEqual(["/crew/v1/hello"]);
+    expect(lines).toEqual([]);
+  });
+
+  // A version the overlap cannot serve is NOT a 1.7.0 lead, so it is the ordinary skew and there is
+  // no second dial to make.
+  test("a foreign version other than 1 does not fall back", async () => {
+    const { fetch, calls } = replying({ some: "a foreign shape" }, { protocol: "3" });
+    const lines: string[] = [];
+    const outcome = await client(fetch, { log: (l) => lines.push(l) }).snapshot(laptop);
+    expect(outcome.ok).toBe(false);
+    expect(calls).toHaveLength(1);
+    expect(lines).toEqual([]);
+  });
+
+  // A dead host answers nothing, so there is nothing to read a version off — and a second dial there
+  // would double the budget every poll spends on a machine that is not there.
+  test("a header-free 502 does not fall back — that is a proxy, not a version", async () => {
+    const { fetch, calls } = replying({ ok: true }, { protocol: null, status: 502 });
+    const lines: string[] = [];
+    await client(fetch, { log: (l) => lines.push(l) }).snapshot(laptop);
+    expect(calls).toHaveLength(1);
+    expect(lines).toEqual([]);
+  });
+
+  test("the fallback dial carries version 1's headers and the version 1 dial domain", async () => {
+    const { fetch, calls } = oldLead(404);
+    const seen: DialParts[] = [];
+    await client(fetch, {
+      log: () => undefined,
+      dialSign: (parts) => {
+        seen.push(parts);
+        return signDial(material("desk").keyPem, parts);
+      },
+    }).hello(laptop);
+    expect(calls).toEqual(["/crew/v1/hello", "/pack/v1/hello"]);
+    // The domain is chosen from the prefix, and the PATH signed is the one actually dialled.
+    expect(seen.map((p) => p.domain ?? null)).toEqual([null, "collie-pack-dial-v1"]);
+    expect(seen.map((p) => p.path)).toEqual(["/crew/v1/hello", "/pack/v1/hello"]);
   });
 });

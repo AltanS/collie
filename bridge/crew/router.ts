@@ -19,6 +19,16 @@ import {
   type PeerRunReport,
 } from "../update-action.ts";
 import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
+// REMOVE_IN_1_9_0 — the version 1 overlap (§0.1). One import, one mount, one module.
+import {
+  isVersion1Path,
+  toVersion1Response,
+  translateVersion1EnrollBody,
+  translateVersion1Request,
+  V1_DIAL_DOMAIN,
+  V1_PROTOCOL_VERSION,
+  version2PathFor,
+} from "./v1-overlap.ts";
 import { apiPathFor } from "./forward.ts";
 import { HOST_PARAM } from "./registry.ts";
 import {
@@ -34,7 +44,7 @@ import {
   parseRosterEntry,
   recordSignedRequest,
   removeMember,
-  PACK_PROTOCOL_VERSION,
+  CREW_PROTOCOL_VERSION,
   type DemotionRefused,
 } from "./enrollment.ts";
 import { randomToken, type RandomSource } from "./identity.ts";
@@ -64,14 +74,14 @@ import { deposedStateFrom, isDepositionProof, selfHeal, type DeposedState } from
 import { selectView, type SnapshotView } from "../sessions.ts";
 import type { MuxConfig, SnapshotResponse } from "../types.ts";
 
-// The `/pack/v1/*` surface. This module exists **so that `bridge/server.ts` contains no crew route
+// The `/crew/v1/*` surface. This module exists **so that `bridge/server.ts` contains no crew route
 // literal at all**: a solo instance's route table is asserted, by reading server.ts's source, to be
-// exactly today's (`bridge/solo-baseline.test.ts` §4, including `not.toMatch(/"\/pack/)`). Keeping
+// exactly today's (`bridge/solo-baseline.test.ts` §4, including `not.toMatch(/"\/crew/)`). Keeping
 // the prefix here means solo does not merely *skip* the crew routes — it never registers them, and
 // the baseline can prove it by grepping the file that does the registering.
 //
 // server.ts takes an OPTIONAL handler and calls it before anything else; index.ts supplies one only
-// when a trust store exists. With no trust store there is no handler, so `/pack/v1/anything` falls
+// when a trust store exists. With no trust store there is no handler, so `/crew/v1/anything` falls
 // through to the ordinary 404 that any unknown path already gets — indistinguishable from a build
 // that had never heard of federation.
 //
@@ -81,11 +91,11 @@ import type { MuxConfig, SnapshotResponse } from "../types.ts";
 // `Bun.serve`, so router.test.ts does exercise it for real).
 
 /** The crew prefix. Must never collide with `/auth`, `/auth/*` or `/cdn-cgi/` (§5) — it does not. */
-export const CREW_PREFIX = "/pack/v1/";
+export const CREW_PREFIX = "/crew/v1/";
 
-export const CREW_ENROLL_PATH = "/pack/v1/enroll";
-export const CREW_HELLO_PATH = "/pack/v1/hello";
-export const CREW_SNAPSHOT_PATH = "/pack/v1/snapshot";
+export const CREW_ENROLL_PATH = "/crew/v1/enroll";
+export const CREW_HELLO_PATH = "/crew/v1/hello";
+export const CREW_SNAPSHOT_PATH = "/crew/v1/snapshot";
 
 /**
  * The OPTIONAL field a `hello` answer carries its own multiplexer block on (§5, §7.1; M22/03).
@@ -104,7 +114,7 @@ export const CREW_MUX_FIELD = "mux";
  * that ignores this header is a **correct peer** — its answer is then simply older, and `asOf` says
  * so. No new route, no new verb; one header on a dial the lead already makes.
  */
-export const PREFLIGHT_HEADER = "X-Pack-Preflight";
+export const PREFLIGHT_HEADER = "X-Crew-Preflight";
 /** The one value {@link PREFLIGHT_HEADER} carries. Anything else reads as an absent header. */
 export const PREFLIGHT_FRESH = "fresh";
 
@@ -120,11 +130,11 @@ export const PREFLIGHT_FRESH = "fresh";
 // rather than to anything it fronts.
 
 /** `POST` — the lead hands a peer the rotated crew secret (§8.4). */
-export const CREW_SECRET_PATH = "/pack/v1/secret";
+export const CREW_SECRET_PATH = "/crew/v1/secret";
 /** `POST` — "this member is the crew's lead now" (§14). Answered by the old lead and by every peer. */
-export const CREW_LEAD_PATH = "/pack/v1/lead";
+export const CREW_LEAD_PATH = "/crew/v1/lead";
 /** `POST` — the caller removes ITSELF from this collie's roster (§8.4, `collie leave`). */
-export const CREW_LEAVE_PATH = "/pack/v1/leave";
+export const CREW_LEAVE_PATH = "/crew/v1/leave";
 /**
  * `POST` — this collie's own lead delivers or refreshes the warrant naming the crew's deputy (§18).
  *
@@ -133,16 +143,16 @@ export const CREW_LEAVE_PATH = "/pack/v1/leave";
  * authorises is built at bind time or not at all (§8.1). That is the two-phase arming, and no route
  * can climb it.
  */
-export const CREW_WARRANT_PATH = "/pack/v1/warrant";
+export const CREW_WARRANT_PATH = "/crew/v1/warrant";
 /**
  * `POST` — the deputy asks a peer to witness, and then to re-pin (RFC §7, §18.16).
  *
  * **Two-phase, and the phase is additive-optional whose absent reading is `probe`** — the reading
  * that changes nothing anywhere. It is the one route a caller admitted **as the deputy** may use, and
  * it is also answerable by a collie that still believes it leads: there it is a deposition, exactly as
- * `/pack/v1/warrant` is, because it is the same proof arriving at a different kind of recipient.
+ * `/crew/v1/warrant` is, because it is the same proof arriving at a different kind of recipient.
  */
-export const CREW_TAKEOVER_PATH = "/pack/v1/takeover";
+export const CREW_TAKEOVER_PATH = "/crew/v1/takeover";
 /**
  * `POST` — the lead syncs its paired-device registry to the DEPUTY ONLY (RFC §6.5, §18.14).
  *
@@ -150,7 +160,7 @@ export const CREW_TAKEOVER_PATH = "/pack/v1/takeover";
  * `paired-devices.json` — `PairingStore.enforced()` is "the registry is non-empty", so a merge would
  * silently arm this machine's own write gate for its own operator (RFC §16, decision 5).
  */
-export const CREW_PAIRING_PATH = "/pack/v1/pairing";
+export const CREW_PAIRING_PATH = "/crew/v1/pairing";
 
 /**
  * The machine-readable `code` on §14.3's refusal of an unapproved leadership claim.
@@ -320,7 +330,7 @@ export interface StandbySurface {
 export interface CrewRouterDeps {
   readonly store: TrustStore;
   readonly audit: AuditLog | null;
-  /** Absent ⇒ `/pack/v1/snapshot` 404s like any unimplemented route. */
+  /** Absent ⇒ `/crew/v1/snapshot` 404s like any unimplemented route. */
   readonly snapshot?: SnapshotSource;
   /** Absent ⇒ the per-pane/tab/workspace half of §5's table 404s. */
   readonly dispatch?: ApiDispatch;
@@ -371,7 +381,7 @@ export interface CrewRouterDeps {
    * mirror of {@link CrewRouterDeps.onLeadDialled}, and the evidence that any backoff this lead holds
    * against that member is a guess about a machine that is plainly reachable.
    *
-   * Fired here and nowhere else, which is what makes "admitted" mean the two `/pack/v1` factors and
+   * Fired here and nowhere else, which is what makes "admitted" mean the two `/crew/v1` factors and
    * nothing weaker: it sits after `admitCrewRequest` and after the deputy refusal, so a browser route
    * cannot reach it by any spelling. Every admitted route counts, exactly as `onLeadDialled` counts a
    * poll and a proxied read alike.
@@ -398,7 +408,7 @@ export interface CrewRouterDeps {
   readonly onDeposed?: (state: DeposedState) => void;
   /**
    * The standby half (RFC §6, §7), supplied **only** by a peer that holds a verified warrant naming
-   * itself. Absent everywhere else, and its absence is what makes `/pack/v1/pairing` refuse and a
+   * itself. Absent everywhere else, and its absence is what makes `/crew/v1/pairing` refuse and a
    * takeover probe read as maximally silent — both of which are the closed readings.
    */
   readonly standby?: StandbySurface;
@@ -439,7 +449,7 @@ export interface CrewRouterDeps {
    * **This machine's own `collie update --check --local` verdict** (§19), published beside the
    * snapshot body so one confirm on the phone can cover the whole crew (M16/03).
    *
-   * `fresh` is the lead's `X-Pack-Preflight: fresh` reaching through: a REQUEST to re-read, which
+   * `fresh` is the lead's `X-Crew-Preflight: fresh` reaching through: a REQUEST to re-read, which
    * the wiring honours at most once per `PREFLIGHT_TTL_MS` and bounds on its own clock. Nothing here
    * decides that — the router passes the request on and serialises whatever comes back.
    *
@@ -485,7 +495,7 @@ interface SignedCaller {
 }
 
 /**
- * Read this request's `X-Pack-Timestamp` and say whether it is inside §8.6's skew window.
+ * Read this request's `X-Crew-Timestamp` and say whether it is inside §8.6's skew window.
  *
  * `signedAt: 0` — the window only. The monotonic floor is per ROSTER MEMBER (`TrustedMember.signedAt`)
  * and there is no such record for a caller that is not one, which is the deputy's case below.
@@ -503,7 +513,7 @@ function withinSkew(req: Request, now: number): boolean {
  * failure returns the same `certificate` factor, which the caller sees as the same uniform 401 as an
  * unpinned certificate — because that is exactly what it is.
  *
- * The candidate set is the pinned roster, narrowed by `X-Pack-Member` when it is present. That header
+ * The candidate set is the pinned roster, narrowed by `X-Crew-Member` when it is present. That header
  * is a **hint that saves verifications, never an identity** (§6): if it names a member whose key does
  * not verify the signature, nothing is admitted, and the fallback tries the rest of the roster rather
  * than trusting the claim.
@@ -542,7 +552,7 @@ function verifySigned(
  * instance that never enrolled, and such an instance has no trust store to register on.
  */
 /**
- * `GET /pack/v1/hello`'s body. `version` is the OPTIONAL field of the 2026-08-12 amendment (§7.1);
+ * `GET /crew/v1/hello`'s body. `version` is the OPTIONAL field of the 2026-08-12 amendment (§7.1);
  * the two warrant fields are the OPTIONAL fields of §18's, read the same way — **absent means "no
  * warrant, or a build that does not know about warrants", never "up to date"** (RFC §11.2).
  */
@@ -624,7 +634,7 @@ function badRequest(self: string, reason: string): Response {
  * §18.10's named answer, or `null` when this caller and this collie agree about who leads.
  *
  * **The question is asked of the caller's CLAIMED identity, and that is sound here.** A verified §8.6
- * signature names the member outright; absent one, `X-Pack-Member` is a hint the transport cannot
+ * signature names the member outright; absent one, `X-Crew-Member` is a hint the transport cannot
  * corroborate (§6) — but a hint is enough to *refuse* on. The worst a forged header buys is a 409
  * that names this collie's own lead and hands over a public object, which is exactly what an admitted
  * caller may already learn (§5), and any caller reaching this line has already cleared both factors.
@@ -669,7 +679,7 @@ function leadConflict(
 /**
  * RFC §9's reconciliation body, read as a takeover COMMIT.
  *
- * It arrives on `/pack/v1/warrant` because that is the route §9 names, and it is a commit because
+ * It arrives on `/crew/v1/warrant` because that is the route §9 names, and it is a commit because
  * that is what §9 describes it doing ("checks the caller's identity against the warrant's
  * `deputyFingerprint`, and re-pins"). The phase is not negotiable here: a deputy-admitted warrant
  * push is only ever a new lead telling a member that was down what it missed.
@@ -690,7 +700,7 @@ function takeoverRefusalText(reason: Exclude<TakeoverRefusal, "bad-signature">):
   return "this warrant is past its validity on this collie's clock — re-run `collie crew deputy`";
 }
 
-/** The one body `/pack/v1/warrant` answers with. `applied: false` is a success, not a refusal. */
+/** The one body `/crew/v1/warrant` answers with. `applied: false` is a success, not a refusal. */
 function warrantAnswer(self: string, generation: number, applied: boolean): Response {
   return new Response(JSON.stringify({ generation, applied }), {
     status: 200,
@@ -737,6 +747,9 @@ function resolveDial(
   url: URL,
   deputy: PinnedDeputy | undefined,
   now: number,
+  // REMOVE_IN_1_9_0: the version 1 dial domain, chosen from the prefix the caller dialled. Version 2
+  // is the default, so deleting the argument leaves today's behaviour.
+  dialDomain?: string,
 ): { memberId: string; isDeputy: boolean } | null {
   const signature = req.headers.get(DIAL_HEADER);
   if (signature === null || data === null) return null;
@@ -745,7 +758,7 @@ function resolveDial(
   // `signedAt: 0` — the window only. The floor belongs to signed MEMBERSHIP calls and stays there.
   if (timestampVerdict(timestamp, now, 0) !== "ok") return null;
 
-  const parts = { method: req.method, path: url.pathname, timestamp, to: data.self.memberId };
+  const parts = { method: req.method, path: url.pathname, timestamp, to: data.self.memberId, domain: dialDomain };
   const lead = data.lead;
   if (lead !== null && lead.status === "enrolled" && verifyDial(lead.certPem, signature, parts)) {
     return { memberId: lead.memberId, isDeputy: false };
@@ -769,11 +782,46 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     return unauthorizedResponse();
   };
 
+  // ── Version negotiation, and it is the PREFIX that decides ─────────────────
+  // A request on `/crew/v1/*` is version 2 and must carry `X-Crew-Protocol: 2` — an absent header is
+  // a refusal, never a default (`admission.ts` → `parseProtocolHeader`). A request on `/pack/v1/*` is
+  // version 1, and it is answered by the very same handlers through two pure translations
+  // (`v1-overlap.ts`). Nothing below this arrow knows which prefix it is serving except through
+  // `wire` and `dialDomain`, so version 1 cannot grow a second decision of its own.
   return async (req, url) => {
-    const { pathname } = url;
+    // REMOVE_IN_1_9_0: the version 1 overlap, mounted here and nowhere else (§0.1).
+    if (isVersion1Path(url.pathname)) {
+      const answered = await answerCrew(
+        translateVersion1Request(req),
+        url,
+        version2PathFor(url.pathname),
+        V1_PROTOCOL_VERSION,
+        V1_DIAL_DOMAIN,
+      );
+      return answered === null ? null : toVersion1Response(answered);
+    }
+    return answerCrew(req, url, url.pathname, CREW_PROTOCOL_VERSION, undefined);
+  };
+
+  /**
+   * One request, answered. `pathname` is the CANONICAL `/crew/v1/*` path this request routes as, and
+   * `url` is what was actually dialled — the two differ only under the version 1 overlap, and the
+   * split is load-bearing: the §8.6 request signature and the dial attestation hash the dialled path,
+   * so routing may be normalised and signing may not.
+   *
+   * `wire` is the protocol integer this answer states, and `dialDomain` the domain its dial
+   * attestation was signed under. Both are version 2's on every call but the overlap's.
+   */
+  async function answerCrew(
+    req: Request,
+    url: URL,
+    pathname: string,
+    wire: number,
+    dialDomain: string | undefined,
+  ): Promise<Response | null> {
     if (!pathname.startsWith(CREW_PREFIX)) return null;
 
-    if (pathname === CREW_ENROLL_PATH) return enroll(req);
+    if (pathname === CREW_ENROLL_PATH) return enroll(req, wire);
 
     // Everything else on the prefix passes the two factors first, before routing — ADR 0013's "two
     // independent factors, both, always, before routing". An admitted caller asking for a route this
@@ -818,14 +866,14 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     // touches the body, so a streamed upload stays a stream and the identity question is still
     // answered. On a single-anchor peer the answer changes nothing; on a two-anchored one it is the
     // only thing that can answer it.
-    const dial = resolveDial(data, req, url, deps.deputyAnchor, now());
+    const dial = resolveDial(data, req, url, deps.deputyAnchor, now(), dialDomain);
 
     const verdict = admitCrewRequest(
       data,
       factsFrom(req, { transportPinned, signedMember: signed.member, deputy: deps.deputyAnchor, dial }),
     );
     if (!verdict.ok) {
-      if (verdict.refusal === "protocol_mismatch") return protocolMismatchResponse(verdict.received);
+      if (verdict.refusal === "protocol_mismatch") return protocolMismatchResponse(verdict.received, wire);
       // §8.4's rotation, seen from the side that was dropped. A `secret` factor means identity was
       // fine — and on a peer the only identity the transport can attest is its lead's — so this is
       // precisely "my lead is calling me and I no longer hold the crew secret". Recorded, never acted
@@ -838,7 +886,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     // second anchor is refused on every route this build has, and it is refused HERE — before the
     // receipt below, before the conflict answer, before dispatch — so no route can forget to ask.
     if (verdict.caller === "deputy") {
-      return deputyAnswer(req, url, signedBody, verdict.deputy, verdict.self, data);
+      return deputyAnswer(req, pathname, signedBody, verdict.deputy, verdict.self, data);
     }
 
     // Gap A (RFC §10.1): every landed call from the lead is a receipt. Stamped here, once, after both
@@ -884,7 +932,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // `version` is the OPTIONAL field of the 2026-08-12 amendment (§7.1) and it is additive: an
       // older parser reads `protocol` and `member` by name and passes the sibling over untouched, so
       // this build answering an older prober costs nothing and needs no coordination.
-      const hello: HelloBody = { protocol: PACK_PROTOCOL_VERSION, member: verdict.self };
+      const hello: HelloBody = { protocol: wire, member: verdict.self };
       if (deps.version !== undefined) hello.version = deps.version;
       // What warrant this member holds (§18). Admissible here for the same reason `member` is: it is
       // already knowable to anyone who cleared both factors, and it names no secret — a generation
@@ -944,7 +992,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     }
     if (pathname === CREW_TAKEOVER_PATH && req.method === "POST") {
       // A takeover arriving at a collie that still believes it LEADS is a deposition, not a witness
-      // question — the same proof, at a different kind of recipient, exactly as `/pack/v1/warrant`
+      // question — the same proof, at a different kind of recipient, exactly as `/crew/v1/warrant`
       // is. Any other member reaching this route is a member exceeding its role.
       if (data !== null && isLeading(data)) {
         return takeoverAtLead(req, signedBody, verdict.member, verdict.self, data);
@@ -1014,7 +1062,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       const clash = deps.standby?.syncedCollision() ?? [];
       const withReport = clash.length === 0 ? withDigest : { ...withDigest, pairingCollision: [...clash] };
       // §19: this machine's own update preflight, in the same seat, for the same reason. The lead's
-      // `X-Pack-Preflight: fresh` is passed on as a REQUEST — a peer that honours it answers with a
+      // `X-Crew-Preflight: fresh` is passed on as a REQUEST — a peer that honours it answers with a
       // freshly-run report, and one that does not answers with an older one and an `asOf` saying so.
       // Absent means unknown at the far end, never green, so a member that cannot check itself
       // blocks the phone's confirm by name instead of passing silently.
@@ -1073,7 +1121,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       local.pathname = apiPath;
       const answer = await deps.dispatch(req, local, verdict.member.memberId);
       const headers = new Headers(answer.headers);
-      headers.set(PROTOCOL_HEADER, String(PACK_PROTOCOL_VERSION));
+      headers.set(PROTOCOL_HEADER, String(CREW_PROTOCOL_VERSION));
       headers.set(MEMBER_HEADER, verdict.self);
       const bodyless = answer.status === 304 || answer.status === 204;
       return new Response(bodyless ? null : answer.body, { status: answer.status, headers });
@@ -1083,7 +1131,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       status: 404,
       headers: crewResponseHeaders(verdict.self),
     });
-  };
+  }
 
   /**
    * What a caller admitted **as the deputy** gets: the two routes of {@link DEPUTY_ROUTES}, and the
@@ -1096,19 +1144,19 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
    */
   async function deputyAnswer(
     req: Request,
-    url: URL,
+    /** The CANONICAL `/crew/v1/*` path, as everywhere else that routes rather than signs. */
+    pathname: string,
     cached: string | null,
     deputy: PinnedDeputy,
     self: string,
     data: TrustStoreData | null,
   ): Promise<Response> {
-    const { pathname } = url;
     if (!DEPUTY_ROUTES.has(pathname) || req.method !== "POST") return refuse(pathname, "not-a-crew-member");
     if (data === null) return refuse(pathname, "not-a-crew-member");
     const body = asRecord(await readJson(req, cached));
     // Both routes carry the SAME proof and are answered by the SAME decision (`takeover.ts`); what
     // differs is only which of them a caller has reason to use — the standby door's exchange runs on
-    // `/pack/v1/takeover`, and RFC §9's reconciliation on `/pack/v1/warrant`, which is the route that
+    // `/crew/v1/takeover`, and RFC §9's reconciliation on `/crew/v1/warrant`, which is the route that
     // sentence names. Two doors, one implementation, so they cannot drift apart.
     const request =
       pathname === CREW_TAKEOVER_PATH
@@ -1157,10 +1205,10 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   }
 
   /**
-   * `POST /pack/v1/takeover` **at a collie that still believes it leads** — the deposition, reached by
+   * `POST /crew/v1/takeover` **at a collie that still believes it leads** — the deposition, reached by
    * the second of its two doors.
    *
-   * It is deliberately the *same* function `/pack/v1/warrant` uses: one proof, one set of clauses, one
+   * It is deliberately the *same* function `/crew/v1/warrant` uses: one proof, one set of clauses, one
    * self-heal. A `probe` is answered honestly rather than specially — this collie IS the lead and it
    * IS answering, which is exactly the `lead_is_alive` the deputy must abort on.
    */
@@ -1209,7 +1257,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   }
 
   /**
-   * `POST /pack/v1/secret` — the peer side of rotation (§8.4).
+   * `POST /crew/v1/secret` — the peer side of rotation (§8.4).
    *
    * **Only this collie's own lead may rotate it.** A crew secret is crew-wide, so without that check
    * any admitted member could hand every other member a value of its own choosing and lock the lead
@@ -1245,9 +1293,9 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   }
 
   /**
-   * `POST /pack/v1/warrant` — the lead delivers or refreshes the warrant naming the deputy (§18).
+   * `POST /crew/v1/warrant` — the lead delivers or refreshes the warrant naming the deputy (§18).
    *
-   * **Only this collie's own lead may push one**, the same role check `/pack/v1/secret` carries and
+   * **Only this collie's own lead may push one**, the same role check `/crew/v1/secret` carries and
    * for the same reason: a warrant is a crew-wide statement about who may take the crown, so an
    * admitted *peer* minting one would be a compromised member reaching past its own machine (§8.5).
    * The check is doubled — the caller must be the pinned lead, and the warrant must claim to come
@@ -1262,7 +1310,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     // §18.12's delivery path 1: this collie still believes it leads, and a member of its OWN roster is
     // handing back a warrant this collie signed. That is not a push to store — it is a deposition, and
     // it is answered here rather than on a route of its own because it is the same object arriving at
-    // a different kind of recipient, exactly as `/pack/v1/lead` is (§14).
+    // a different kind of recipient, exactly as `/crew/v1/lead` is (§14).
     if (data !== null && isLeading(data)) {
       const proof = parseWarrant(asRecord(await readJson(req, cached))?.warrant);
       if (proof === null) return badRequest(self, "a warrant push needs a well-formed `warrant`");
@@ -1302,11 +1350,11 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   }
 
   /**
-   * `POST /pack/v1/pairing` — the lead syncs its paired-device registry to the DEPUTY (RFC §6.5).
+   * `POST /crew/v1/pairing` — the lead syncs its paired-device registry to the DEPUTY (RFC §6.5).
    *
    * Three questions, and all three must answer yes:
    *
-   *   1. **the caller is this collie's own lead** — the same role check `/pack/v1/secret` carries and
+   *   1. **the caller is this collie's own lead** — the same role check `/crew/v1/secret` carries and
    *      for the same reason (§5: *admitted* and *allowed to do this* are different questions);
    *   2. **this collie holds a verified warrant naming ITSELF.** Every other peer that ever receives
    *      one refuses it. A registry on a machine that is not the deputy is a credential store nobody
@@ -1369,7 +1417,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   }
 
   /**
-   * `POST /pack/v1/warrant` **at a collie that still believes it leads** — §18.12's deposition.
+   * `POST /crew/v1/warrant` **at a collie that still believes it leads** — §18.12's deposition.
    *
    * Four clauses, and every one of them is a question about material this collie already holds:
    *
@@ -1428,7 +1476,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   }
 
   /**
-   * `POST /pack/v1/lead` — "the member calling you is the crew's lead now" (§14).
+   * `POST /crew/v1/lead` — "the member calling you is the crew's lead now" (§14).
    *
    * One route, two roles, because it is one fact arriving at two kinds of recipient:
    *   • **the old lead** demotes itself and answers with its roster, which is the only way the new
@@ -1505,13 +1553,13 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
   }
 
   /**
-   * `POST /pack/v1/enroll` — the lead side of §8.2.
+   * `POST /crew/v1/enroll` — the lead side of §8.2.
    *
    * Admitted by the **token**, not by the two factors: at this instant the joining peer holds neither
    * the crew secret nor a pin, which is the entire reason an enrollment exchange exists. The token
    * authenticates the exchange and nothing after it.
    */
-  async function enroll(req: Request): Promise<Response> {
+  async function enroll(req: Request, wire: number): Promise<Response> {
     if (req.method !== "POST") return refuse(CREW_ENROLL_PATH, "token");
 
     let body: JsonValue;
@@ -1524,7 +1572,11 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // unauthenticated caller that this endpoint parses enrollment requests.
       return refuse(CREW_ENROLL_PATH, "token");
     }
-    const parsed = parseEnrollRequest(body);
+    // REMOVE_IN_1_9_0: `enroll` is the one route whose version may arrive in the BODY (the header
+    // wins below, and a 1.7.0 joiner sends both), so the overlap maps that field 1 → 2 here. It is
+    // the only body this translation touches, and it is safe to touch because `enroll` is absent from
+    // `SIGNABLE_PATHS` — no signature covers these bytes.
+    const parsed = parseEnrollRequest(wire === V1_PROTOCOL_VERSION ? translateVersion1EnrollBody(body) : body);
 
     // SPEND FIRST. The token is consumed whether or not the rest of the exchange succeeds, so a
     // stolen token cannot be replayed against a second failure mode until one sticks. This is a
@@ -1536,9 +1588,9 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
 
     // Version is negotiated only after the token proved good — same ordering, same reason, as the
     // two-factor path above (§7 vs §8.5).
-    const version = parseProtocolHeader(req.headers.get("x-pack-protocol")) ?? parsed.protocol;
-    if (version !== PACK_PROTOCOL_VERSION) {
-      return protocolMismatchResponse(Number.isFinite(version) ? version : null);
+    const version = parseProtocolHeader(req.headers.get("x-crew-protocol")) ?? parsed.protocol;
+    if (version !== CREW_PROTOCOL_VERSION) {
+      return protocolMismatchResponse(Number.isFinite(version) ? version : null, wire);
     }
 
     // THE CERTIFICATE ARRIVES IN THE PAYLOAD, AND THAT IS THE WHOLE TRUST STORY HERE (§8.2).

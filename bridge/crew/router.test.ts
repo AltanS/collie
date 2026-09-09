@@ -71,7 +71,7 @@ function call(
   return handler(new Request(url, init), url);
 }
 
-const authed = { authorization: `Bearer ${CREW.secret}`, "x-pack-protocol": "1" };
+const authed = { authorization: `Bearer ${CREW.secret}`, "x-crew-protocol": "2" };
 
 /**
  * Sign a §8.6 request as `memberLabel` — whose pinned certificate is `material(memberLabel).certPem`
@@ -99,8 +99,8 @@ function signedPost<TBody>(memberLabel: string, path: string, body: TBody, times
 }
 
 describe("the prefix", () => {
-  test("it is /pack/v1/ and collides with nothing reserved (§5)", () => {
-    expect(CREW_PREFIX).toBe("/pack/v1/");
+  test("it is /crew/v1/ and collides with nothing reserved (§5)", () => {
+    expect(CREW_PREFIX).toBe("/crew/v1/");
     for (const reserved of ["/auth", "/auth/", "/cdn-cgi/", "/api/"]) {
       expect(CREW_PREFIX.startsWith(reserved)).toBe(false);
       expect(reserved.startsWith(CREW_PREFIX)).toBe(false);
@@ -116,7 +116,7 @@ describe("the prefix", () => {
   });
 });
 
-describe("GET /pack/v1/hello — behind both factors", () => {
+describe("GET /crew/v1/hello — behind both factors", () => {
   const nas = member({ memberId: "nas" });
 
   test("an admitted lead gets liveness, version and the member id", async () => {
@@ -127,9 +127,9 @@ describe("GET /pack/v1/hello — behind both factors", () => {
       headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
     }))!;
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ protocol: 1, member: "desk" });
-    expect(res.headers.get("x-pack-protocol")).toBe("1");
-    expect(res.headers.get("x-pack-member")).toBe("desk");
+    expect(await res.json()).toEqual({ protocol: 2, member: "desk" });
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
+    expect(res.headers.get("x-crew-member")).toBe("desk");
   });
 
   test("this build reports its own version, threaded in at boot (§5, §7.1)", async () => {
@@ -144,7 +144,7 @@ describe("GET /pack/v1/hello — behind both factors", () => {
     const res = (await call(handler, CREW_HELLO_PATH, {
       headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
     }))!;
-    expect(await res.json()).toEqual({ protocol: 1, member: "desk", version: "1.0.0-alpha.12" });
+    expect(await res.json()).toEqual({ protocol: 2, member: "desk", version: "1.0.0-alpha.12" });
   });
 
   test("it carries this machine's own capability block, minus the mark (M22/03)", async () => {
@@ -170,7 +170,7 @@ describe("GET /pack/v1/hello — behind both factors", () => {
       headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
     }))!;
     expect(await res.json()).toEqual({
-      protocol: 1,
+      protocol: 2,
       member: "desk",
       mux: {
         name: "reference",
@@ -219,10 +219,10 @@ describe("GET /pack/v1/hello — behind both factors", () => {
     // A stranger's signature — pinned by nobody in this store — so identity never admits either.
     const strangerSig = signed("stranger", "GET", CREW_HELLO_PATH, "", T0);
     const cases: Array<[string, HeadersInit]> = [
-      ["no secret", { "x-pack-protocol": "1", ...strangerSig }],
-      ["wrong secret", { authorization: "Bearer nope", "x-pack-protocol": "1", ...strangerSig }],
+      ["no secret", { "x-crew-protocol": "2", ...strangerSig }],
+      ["wrong secret", { authorization: "Bearer nope", "x-crew-protocol": "2", ...strangerSig }],
       ["no version", { authorization: `Bearer ${CREW.secret}`, ...strangerSig }],
-      ["wrong version", { ...authed, "x-pack-protocol": "9", ...strangerSig }],
+      ["wrong version", { ...authed, "x-crew-protocol": "9", ...strangerSig }],
     ];
     const unpinned = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
     const refusals: string[] = [];
@@ -240,25 +240,25 @@ describe("GET /pack/v1/hello — behind both factors", () => {
     const h = harness(leadStore({ peers: [nas] }));
     const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
     const res = (await call(handler, CREW_HELLO_PATH, {
-      headers: { ...authed, "x-pack-protocol": "2", ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
+      headers: { ...authed, "x-crew-protocol": "3", ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
     }))!;
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
       error: "crew protocol mismatch",
       code: "protocol_mismatch",
-      expected: 1,
-      received: 2,
+      expected: 2,
+      received: 3,
     });
   });
 
   test("an unimplemented crew route is a 404 only for an admitted caller, else the same 401", async () => {
-    // `/pack/v1/snapshot` is not signable — it travels lead → peer over the pinned handshake — so an
+    // `/crew/v1/snapshot` is not signable — it travels lead → peer over the pinned handshake — so an
     // admitted caller here is this collie's own PINNED LEAD, not a peer of its own.
     const h = harness(peerStore());
     const admitted = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true });
-    expect((await call(admitted, "/pack/v1/snapshot", { headers: authed }))!.status).toBe(404);
+    expect((await call(admitted, "/crew/v1/snapshot", { headers: authed }))!.status).toBe(404);
     const stranger = createCrewRouter({ store: h.store, audit: h.audit });
-    expect((await call(stranger, "/pack/v1/snapshot", { headers: authed }))!.status).toBe(401);
+    expect((await call(stranger, "/crew/v1/snapshot", { headers: authed }))!.status).toBe(401);
   });
 
   test("a refusal is audited locally with its real cause", async () => {
@@ -286,7 +286,7 @@ function ownSnapshot(over: Partial<SnapshotResponse> = {}): SnapshotResponse {
   };
 }
 
-describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
+describe("GET /crew/v1/snapshot — the one merged route, §9.2", () => {
   // `snapshot` is not signable — it travels lead → peer over the pinned handshake (the lead dials
   // each peer to merge its view). So the admitted caller here is this collie's own PINNED LEAD.
 
@@ -298,8 +298,8 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
     const res = (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!;
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual(body);
-    expect(res.headers.get("x-pack-protocol")).toBe("1");
-    expect(res.headers.get("x-pack-member")).toBe("laptop");
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
+    expect(res.headers.get("x-crew-member")).toBe("laptop");
   });
 
   test("?session= is passed through to the injected source", async () => {
@@ -371,7 +371,7 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
   // ── §19 — THE MEMBER'S OWN UPDATE PREFLIGHT ────────────────────────────────
   // A peer answers the update question for ITSELF, over the link its lead already polls. It is a
   // report and never an order: it names no code, no route and no version anybody should install.
-  test("updatePreflight rides BESIDE the body, and the protocol stays 1", async () => {
+  test("updatePreflight rides BESIDE the body, and the protocol stays 2", async () => {
     const h = harness(peerStore());
     const body = ownSnapshot();
     const handler = createCrewRouter({
@@ -386,7 +386,7 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
       }),
     });
     const res = (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!;
-    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
     expect(await res.json()).toEqual({
       ...body,
       updatePreflight: {
@@ -416,7 +416,7 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
     }
   });
 
-  test("X-Pack-Preflight: fresh is passed on as a request; anything else is an absent header", async () => {
+  test("X-Crew-Preflight: fresh is passed on as a request; anything else is an absent header", async () => {
     const h = harness(peerStore());
     const asked: boolean[] = [];
     const handler = createCrewRouter({
@@ -429,9 +429,9 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
         return null;
       },
     });
-    await call(handler, CREW_SNAPSHOT_PATH, { headers: { ...authed, "x-pack-preflight": "fresh" } });
-    await call(handler, CREW_SNAPSHOT_PATH, { headers: { ...authed, "x-pack-preflight": " FRESH " } });
-    await call(handler, CREW_SNAPSHOT_PATH, { headers: { ...authed, "x-pack-preflight": "please" } });
+    await call(handler, CREW_SNAPSHOT_PATH, { headers: { ...authed, "x-crew-preflight": "fresh" } });
+    await call(handler, CREW_SNAPSHOT_PATH, { headers: { ...authed, "x-crew-preflight": " FRESH " } });
+    await call(handler, CREW_SNAPSHOT_PATH, { headers: { ...authed, "x-crew-preflight": "please" } });
     await call(handler, CREW_SNAPSHOT_PATH, { headers: authed });
     expect(asked).toEqual([true, true, false, false]);
   });
@@ -477,11 +477,11 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
       onFollow: (a) => seen.push(a),
     });
     const res = (await call(handler, CREW_SNAPSHOT_PATH, {
-      headers: { ...authed, "x-pack-lead-release": "1.5.0", "x-pack-update-turn": "laptop;r-7" },
+      headers: { ...authed, "x-crew-lead-release": "1.5.0", "x-crew-update-turn": "laptop;r-7" },
     }))!;
     // The snapshot is answered exactly as before — the follow is a notification, never a branch.
     expect(res.status).toBe(200);
-    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
     expect(await res.json()).toEqual(ownSnapshot());
     expect(seen).toEqual([{ leadRelease: "1.5.0", turn: "laptop;r-7" }]);
   });
@@ -497,7 +497,7 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
       onFollow: (a) => seen.push(a),
     });
     await call(handler, CREW_SNAPSHOT_PATH, {
-      headers: { ...authed, "x-pack-lead-release": "1.5.0", "x-pack-update-turn": "basement;r-7" },
+      headers: { ...authed, "x-crew-lead-release": "1.5.0", "x-crew-update-turn": "basement;r-7" },
     });
     // The ROUTER does not decide whose turn it is — it carries the value, and `follow.ts` refuses a
     // turn that does not name this member. Deciding it here would be a second answer to one question.
@@ -516,7 +516,7 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
     });
     await call(handler, CREW_SNAPSHOT_PATH, { headers: authed });
     await call(handler, CREW_SNAPSHOT_PATH, {
-      headers: { ...authed, "x-pack-lead-release": "  ", "x-pack-update-turn": "" },
+      headers: { ...authed, "x-crew-lead-release": "  ", "x-crew-update-turn": "" },
     });
     expect(seen).toEqual([
       { leadRelease: null, turn: null },
@@ -532,10 +532,10 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
       snapshot: () => ownSnapshot(),
     });
     const res = (await call(older, CREW_SNAPSHOT_PATH, {
-      headers: { ...authed, "x-pack-lead-release": "1.5.0", "x-pack-update-turn": "laptop;r-7" },
+      headers: { ...authed, "x-crew-lead-release": "1.5.0", "x-crew-update-turn": "laptop;r-7" },
     }))!;
     expect(res.status).toBe(200);
-    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
     expect(await res.json()).toEqual(ownSnapshot());
   });
 
@@ -576,7 +576,7 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
   // ── §5/§19 — THE MEMBER'S OWN RUNNING VERSION, IN THAT SAME SEAT ───────────
   // The lead's poll dials `snapshot` and never `hello`, so this is the only field that keeps the
   // lead's version ledger current on a crew whose members answer every sweep.
-  test("version rides beside the body on every snapshot answer, and the protocol stays 1", async () => {
+  test("version rides beside the body on every snapshot answer, and the protocol stays 2", async () => {
     const h = harness(peerStore());
     const body = ownSnapshot();
     const handler = createCrewRouter({
@@ -587,7 +587,7 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
       version: "1.4.1",
     });
     const res = (await call(handler, CREW_SNAPSHOT_PATH, { headers: authed }))!;
-    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
     expect(await res.json()).toEqual({ ...body, version: "1.4.1" });
     // The browser's own snapshot is untouched: a crew-only fact never leaks into it.
     expect(body).toEqual(ownSnapshot());
@@ -622,7 +622,7 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
       },
     });
     const res = (await call(handler, CREW_SNAPSHOT_PATH, {
-      headers: { ...authed, "x-pack-lead-release": "1.5.0", "x-pack-update-turn": "laptop;r-7" },
+      headers: { ...authed, "x-crew-lead-release": "1.5.0", "x-crew-update-turn": "laptop;r-7" },
     }))!;
     expect(res.status).toBe(401);
     expect(seen).toBe(0);
@@ -641,7 +641,7 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
         return null;
       },
     });
-    const res = (await call(handler, CREW_SNAPSHOT_PATH, { headers: { ...authed, "x-pack-preflight": "fresh" } }))!;
+    const res = (await call(handler, CREW_SNAPSHOT_PATH, { headers: { ...authed, "x-crew-preflight": "fresh" } }))!;
     expect(res.status).toBe(401);
     expect(calls).toBe(0);
   });
@@ -656,7 +656,7 @@ describe("GET /pack/v1/snapshot — the one merged route, §9.2", () => {
   });
 });
 
-describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors", () => {
+describe("POST /crew/v1/enroll — admitted by the TOKEN, not by the two factors", () => {
   function invited() {
     const minted = mintInvite(leadStore({ peers: [] }), { now: T0, label: "laptop", random: counterRandom("r") });
     const h = harness(minted.next);
@@ -675,7 +675,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
   }
 
   const body = (over: EnrollBody = {}): EnrollBody => ({
-    protocol: 1,
+    protocol: 2,
     fingerprint: fp("laptop"),
     certPem: material("laptop").certPem,
     address: "laptop.ts.net:8787",
@@ -688,7 +688,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
     const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 + 1 });
     const res = (await call(handler, CREW_ENROLL_PATH, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-pack-protocol": "1" },
+      headers: { "content-type": "application/json", "x-crew-protocol": "2" },
       body: JSON.stringify(body({ token: h.token })),
     }))!;
     expect(res.status).toBe(200);
@@ -710,7 +710,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
     const send = () =>
       call(handler, CREW_ENROLL_PATH, {
         method: "POST",
-        headers: { "x-pack-protocol": "1" },
+        headers: { "x-crew-protocol": "2" },
         body: JSON.stringify(body({ token: h.token })),
       });
     expect((await send())!.status).toBe(200);
@@ -723,7 +723,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
     const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 + 1 });
     const bad = (await call(handler, CREW_ENROLL_PATH, {
       method: "POST",
-      headers: { "x-pack-protocol": "77" },
+      headers: { "x-crew-protocol": "77" },
       body: JSON.stringify(body({ token: h.token })),
     }))!;
     expect(bad.status).toBe(409);
@@ -731,7 +731,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
     // …and the good request that follows now has nothing to spend.
     const after = (await call(handler, CREW_ENROLL_PATH, {
       method: "POST",
-      headers: { "x-pack-protocol": "1" },
+      headers: { "x-crew-protocol": "2" },
       body: JSON.stringify(body({ token: h.token })),
     }))!;
     expect(after.status).toBe(401);
@@ -748,7 +748,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
       { method: "POST", body: JSON.stringify({ token: h.token }) },
       { method: "GET" },
     ] satisfies RequestInit[]) {
-      const res = (await call(handler, CREW_ENROLL_PATH, { ...init, headers: { "x-pack-protocol": "1" } }))!;
+      const res = (await call(handler, CREW_ENROLL_PATH, { ...init, headers: { "x-crew-protocol": "2" } }))!;
       refusals.push(JSON.stringify({ status: res.status, body: await res.text(), headers: headerList(res) }));
     }
     expect(new Set(refusals).size).toBe(1);
@@ -760,7 +760,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
     const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 + 11 * 60 * 1000 });
     const res = (await call(handler, CREW_ENROLL_PATH, {
       method: "POST",
-      headers: { "x-pack-protocol": "1" },
+      headers: { "x-crew-protocol": "2" },
       body: JSON.stringify(body({ token: h.token })),
     }))!;
     expect(res.status).toBe(401);
@@ -785,7 +785,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
     for (const payload of [{}, body({ token: "bogus" }), { token: "bogus" }, "not-a-json-object"]) {
       const res = (await call(handler, CREW_ENROLL_PATH, {
         method: "POST",
-        headers: { "x-pack-protocol": "1" },
+        headers: { "x-crew-protocol": "2" },
         body: JSON.stringify(payload),
       }))!;
       expect(res.status).toBe(401);
@@ -815,7 +815,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
       const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => at });
       const res = (await call(handler, CREW_ENROLL_PATH, {
         method: "POST",
-        headers: { "x-pack-protocol": "1" },
+        headers: { "x-crew-protocol": "2" },
         body: JSON.stringify(body({ token: "bogus" })),
       }))!;
       refusals.push(JSON.stringify({ status: res.status, body: await res.text(), headers: headerList(res) }));
@@ -835,13 +835,13 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
     for (const junk of [{}, body({ token: "bogus" })]) {
       await call(handler, CREW_ENROLL_PATH, {
         method: "POST",
-        headers: { "x-pack-protocol": "1" },
+        headers: { "x-crew-protocol": "2" },
         body: JSON.stringify(junk),
       });
     }
     const res = (await call(handler, CREW_ENROLL_PATH, {
       method: "POST",
-      headers: { "x-pack-protocol": "1" },
+      headers: { "x-crew-protocol": "2" },
       body: JSON.stringify(body({ token: h.token })),
     }))!;
     expect(res.status).toBe(200);
@@ -854,7 +854,7 @@ describe("POST /pack/v1/enroll — admitted by the TOKEN, not by the two factors
     const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 + 1 });
     await call(handler, CREW_ENROLL_PATH, {
       method: "POST",
-      headers: { "x-pack-protocol": "1" },
+      headers: { "x-crew-protocol": "2" },
       body: JSON.stringify(body({ token: h.token })),
     });
     await Bun.sleep(5);
@@ -989,8 +989,8 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
     expect(await res.json()).toEqual({ ok: false, error: "no such pane" });
     // Not cosmetic: the lead checks the version BEFORE it reads a byte (§7), so an unstamped
     // response from a perfectly healthy peer would read as a version skew.
-    expect(res.headers.get("x-pack-protocol")).toBe("1");
-    expect(res.headers.get("x-pack-member")).toBe("laptop");
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
+    expect(res.headers.get("x-crew-member")).toBe("laptop");
   });
 
   test("a 304 survives the peer surface with its ETag and no body (§9.1)", async () => {
@@ -1027,7 +1027,7 @@ const post = <TBody,>(body: TBody): RequestInit => ({
   body: JSON.stringify(body),
 });
 
-describe("POST /pack/v1/secret — the peer side of rotation (§8.4)", () => {
+describe("POST /crew/v1/secret — the peer side of rotation (§8.4)", () => {
   // `secret` is not signable — it travels lead → peer over the pinned handshake — so `asLead` admits
   // via `transportPinned`, which resolves to exactly this collie's own pinned lead ("desk").
   const asLead = (h: ReturnType<typeof harness>) =>
@@ -1084,7 +1084,7 @@ describe("POST /pack/v1/secret — the peer side of rotation (§8.4)", () => {
   });
 });
 
-describe("POST /pack/v1/lead — the promotion handover (§14)", () => {
+describe("POST /crew/v1/lead — the promotion handover (§14)", () => {
   const claim = { memberId: "nas", fingerprint: fp("nas"), certPem: material("nas").certPem, address: "nas.example:8787" };
 
   /** A lead's store with the operator's consent for `memberId` armed on it (§14.1). */
@@ -1208,7 +1208,7 @@ describe("POST /pack/v1/lead — the promotion handover (§14)", () => {
   });
 });
 
-describe("POST /pack/v1/leave — the caller drops ITSELF (§8.4)", () => {
+describe("POST /crew/v1/leave — the caller drops ITSELF (§8.4)", () => {
   // `leave` travels peer → lead — the lead cannot pin a client certificate — so every admitted call
   // here is a §8.6 signature from the leaving member.
 
@@ -1258,9 +1258,9 @@ describe("onMembershipChange", () => {
     });
     const res = (await call(handler, CREW_ENROLL_PATH, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-pack-protocol": "1" },
+      headers: { "content-type": "application/json", "x-crew-protocol": "2" },
       body: JSON.stringify({
-        protocol: 1,
+        protocol: 2,
         token: minted.result.token,
         fingerprint: fp("laptop"),
         certPem: material("laptop").certPem,
@@ -1283,8 +1283,8 @@ describe("onMembershipChange", () => {
     });
     const res = (await call(handler, CREW_ENROLL_PATH, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-pack-protocol": "1" },
-      body: JSON.stringify({ protocol: 1, token: "nope", fingerprint: fp("laptop") }),
+      headers: { "content-type": "application/json", "x-crew-protocol": "2" },
+      body: JSON.stringify({ protocol: 2, token: "nope", fingerprint: fp("laptop") }),
     }))!;
     expect(res.status).toBe(401);
     expect(fired).toBe(0);
@@ -1348,7 +1348,7 @@ function signedPostWith<TBody>(
 ): RequestInit {
   const json = JSON.stringify(body);
   const base = {
-    "x-pack-protocol": "1",
+    "x-crew-protocol": "2",
     "content-type": "application/json",
     ...signed(memberLabel, "POST", path, json, timestamp),
   };
@@ -1359,7 +1359,7 @@ function signedPostWith<TBody>(
 
 /** The `Authorization`-carrying half of `authed`, replaced with a value of the test's choosing. */
 const withSecret = (secret: string) => ({
-  "x-pack-protocol": "1",
+  "x-crew-protocol": "2",
   "content-type": "application/json",
   authorization: `Bearer ${secret}`,
 });
@@ -1500,7 +1500,7 @@ describe("N2 — the pinned certificate alone: an identity this collie does not 
     expect(h.lines.map((l) => [l.action, l.detail?.factor])).toEqual([["pack.refused", "certificate"]]);
   });
 
-  test("`X-Pack-Member` is a hint, never an identity — naming a pinned member does not admit a stranger", async () => {
+  test("`X-Crew-Member` is a hint, never an identity — naming a pinned member does not admit a stranger", async () => {
     // The header narrows which pinned key is TRIED first (§6). A claim that names an enrolled member
     // while the signature was made by a key nobody pins must fall through to the same refusal.
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
@@ -1575,9 +1575,9 @@ describe("N2 — the pinned certificate alone: an identity this collie does not 
       await h.store.load();
       const res = (await call(handler, CREW_ENROLL_PATH, {
         method: "POST",
-        headers: { "content-type": "application/json", "x-pack-protocol": "1" },
+        headers: { "content-type": "application/json", "x-crew-protocol": "2" },
         body: JSON.stringify({
-          protocol: 1,
+          protocol: 2,
           token: minted.result.token,
           fingerprint: wrong,
           certPem: material("laptop").certPem,
@@ -1598,7 +1598,7 @@ describe("N2 — the pinned certificate alone: an identity this collie does not 
   });
 });
 
-describe("POST /pack/v1/warrant — the receiving half of the deputy designation (§18)", () => {
+describe("POST /crew/v1/warrant — the receiving half of the deputy designation (§18)", () => {
   // Lead → peer over the pinned handshake, like `secret`: `asLead` admits via `transportPinned`,
   // which resolves to exactly this collie's own pinned lead ("desk").
   const asLead = (h: ReturnType<typeof harness>, now = T0) =>
@@ -1723,7 +1723,7 @@ describe("POST /pack/v1/warrant — the receiving half of the deputy designation
 
   test("an admitted member that is NOT this collie's lead cannot push one", async () => {
     // A lead has no lead of its own, so nothing can present as an identified caller here — the same
-    // shape `/pack/v1/secret` has, and for the same reason (the transport pins exactly one member).
+    // shape `/crew/v1/secret` has, and for the same reason (the transport pins exactly one member).
     const h = harness(leadStore({ peers: [member({ memberId: "nas" })] }));
     const res = (await call(asLead(h), CREW_WARRANT_PATH, post(pushBody(warrantFor("nas")))))!;
     expect(res.status).toBe(401);
@@ -1761,7 +1761,7 @@ describe("what a member reports about the warrant it holds (§18, RFC §11.2)", 
     const res = (await call(handler, CREW_HELLO_PATH, {
       headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
     }))!;
-    expect(await res.json()).toEqual({ protocol: 1, member: "desk", warrantGeneration: 1, warrantRefreshedAt: T0 });
+    expect(await res.json()).toEqual({ protocol: 2, member: "desk", warrantGeneration: 1, warrantRefreshedAt: T0 });
   });
 
   test("hello OMITS both fields when there is no warrant — absent, never zero (§7.1)", async () => {
@@ -1770,7 +1770,7 @@ describe("what a member reports about the warrant it holds (§18, RFC §11.2)", 
     const res = (await call(handler, CREW_HELLO_PATH, {
       headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
     }))!;
-    expect(await res.json()).toEqual({ protocol: 1, member: "desk" });
+    expect(await res.json()).toEqual({ protocol: 2, member: "desk" });
   });
 
   test("snapshot carries them BESIDE the body, never inside the browser's own shape", async () => {
@@ -1819,7 +1819,7 @@ describe("what a member reports about the warrant it holds (§18, RFC §11.2)", 
       headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
     }))!;
     expect(await res.json()).toEqual({
-      protocol: 1,
+      protocol: 2,
       member: "desk",
       warrantGeneration: 1,
       warrantRefreshedAt: T0,
@@ -1835,7 +1835,7 @@ describe("what a member reports about the warrant it holds (§18, RFC §11.2)", 
     const res = (await call(handler, CREW_HELLO_PATH, {
       headers: { ...authed, ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
     }))!;
-    expect(await res.json()).toEqual({ protocol: 1, member: "desk", warrantGeneration: 1, warrantRefreshedAt: T0 });
+    expect(await res.json()).toEqual({ protocol: 2, member: "desk", warrantGeneration: 1, warrantRefreshedAt: T0 });
   });
 
   test("snapshot carries the activation beside the body too — the lead's poll already dials it", async () => {
@@ -1888,7 +1888,7 @@ describe("Gap A — a peer knows when its lead last called (§18.9)", () => {
       onLeadDialled: (at) => dialled.push(at),
     });
     // Right identity, wrong secret: §8.1's second factor, and nothing landed.
-    await call(handler, CREW_HELLO_PATH, { headers: { authorization: "Bearer nope", "x-pack-protocol": "1" } });
+    await call(handler, CREW_HELLO_PATH, { headers: { authorization: "Bearer nope", "x-crew-protocol": "2" } });
     expect(dialled).toEqual([]);
   });
 
@@ -1907,7 +1907,7 @@ describe("Gap A — a peer knows when its lead last called (§18.9)", () => {
       onLeadRefused: (at) => refused.push(at),
     });
     const res = (await call(handler, CREW_HELLO_PATH, {
-      headers: { authorization: "Bearer rotated-away", "x-pack-protocol": "1" },
+      headers: { authorization: "Bearer rotated-away", "x-crew-protocol": "2" },
     }))!;
     expect(res.status).toBe(401);
     expect(refused).toEqual([T0 + 3]);
@@ -1957,7 +1957,7 @@ describe("a member that speaks to its lead is due (M20/02)", () => {
     });
     // Right member, wrong secret: §8.1's second factor, and nothing landed.
     await call(handler, CREW_HELLO_PATH, {
-      headers: { authorization: "Bearer nope", "x-pack-protocol": "1", ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
+      headers: { authorization: "Bearer nope", "x-crew-protocol": "2", ...signed("nas", "GET", CREW_HELLO_PATH, "", T0) },
     });
     // Right secret, no identity at all: a browser route's whole posture, and it is refused here.
     await call(handler, CREW_HELLO_PATH, { headers: authed });
@@ -2003,7 +2003,7 @@ describe("Gap B — lead_conflict, the named answer (§18.10)", () => {
     const h = harness(rePinned());
     const handler = createCrewRouter({ store: h.store, audit: h.audit, transportPinned: true });
     const res = (await call(handler, CREW_HELLO_PATH, { headers: dialledBy("desk") }))!;
-    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(res.headers.get("x-crew-protocol")).toBe("2");
     expect(res.headers.get(MEMBER_HEADER)).toBe("laptop");
   });
 
@@ -2054,7 +2054,7 @@ describe("Gap B — lead_conflict, the named answer (§18.10)", () => {
   });
 });
 
-describe("POST /pack/v1/warrant at a collie that still believes it leads — the deposition (§18.12)", () => {
+describe("POST /crew/v1/warrant at a collie that still believes it leads — the deposition (§18.12)", () => {
   /** `desk`, leading `nas` and `attic`, holding the warrant it signed naming `nas`. */
   function stale(nas = member({ memberId: "nas" })) {
     const base = leadStore({ peers: [nas, member({ memberId: "attic" })] });
@@ -2134,7 +2134,7 @@ describe("POST /pack/v1/warrant at a collie that still believes it leads — the
   });
 
   test("a PEER is unaffected: the same route still stores rather than deposes", async () => {
-    // One object, two kinds of recipient — exactly as `/pack/v1/lead` is (§14). A peer's reading of
+    // One object, two kinds of recipient — exactly as `/crew/v1/lead` is (§14). A peer's reading of
     // a warrant push is unchanged by any of this.
     const h = harness(peerStore());
     const w = mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.result;
@@ -2204,7 +2204,7 @@ describe("a two-anchored peer requires an attested dial, and gives the deputy ZE
       headers: { ...authed, ...attested("desk", "GET", CREW_HELLO_PATH) },
     }))!;
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ protocol: 1, member: "laptop", warrantGeneration: 1, warrantRefreshedAt: T0 });
+    expect(await res.json()).toEqual({ protocol: 2, member: "laptop", warrantGeneration: 1, warrantRefreshedAt: T0 });
   });
 
   test("a DEPUTY-attested dial reaches ONLY the two routes DEPUTY_ROUTES names", async () => {
@@ -2303,7 +2303,7 @@ describe("a two-anchored peer requires an attested dial, and gives the deputy ZE
     const { data, deputyAnchor } = anchored();
     const h = harness(data);
     const res = (await call(router(h, deputyAnchor), CREW_HELLO_PATH, {
-      headers: { "x-pack-protocol": "1", ...attested("desk", "GET", CREW_HELLO_PATH) },
+      headers: { "x-crew-protocol": "2", ...attested("desk", "GET", CREW_HELLO_PATH) },
     }))!;
     expect(res.status).toBe(401);
   });
@@ -2311,7 +2311,7 @@ describe("a two-anchored peer requires an attested dial, and gives the deputy ZE
 
 // ── The standby half: the pairing sync and the takeover exchange (RFC §6.5, §7) ───────────────────
 
-describe("POST /pack/v1/pairing — the lead syncs its registry to the DEPUTY only (RFC §6.5)", () => {
+describe("POST /crew/v1/pairing — the lead syncs its registry to the DEPUTY only (RFC §6.5)", () => {
   const DEVICE = { label: "phone", tokenHash: "b".repeat(64), createdAt: T0 };
   const body = (over: { packId?: string; leadMemberId?: string } = {}) => ({
     packId: CREW.packId,
@@ -2420,7 +2420,7 @@ describe("POST /pack/v1/pairing — the lead syncs its registry to the DEPUTY on
   });
 });
 
-describe("POST /pack/v1/takeover — the witness question and the re-pin (RFC §7)", () => {
+describe("POST /crew/v1/takeover — the witness question and the re-pin (RFC §7)", () => {
   /** A peer of `desk` that has ANCHORED `nas` as its deputy — the store plus the listener's anchor. */
   function anchoredPeer() {
     const w = mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.result;
@@ -2555,7 +2555,7 @@ describe("POST /pack/v1/takeover — the witness question and the re-pin (RFC §
     expect(res.status).toBe(401);
   });
 
-  test("RFC §9's reconciliation: the same decision, on /pack/v1/warrant, from a deputy-admitted caller", async () => {
+  test("RFC §9's reconciliation: the same decision, on /crew/v1/warrant, from a deputy-admitted caller", async () => {
     const { data, warrant, deputyAnchor } = anchoredPeer();
     const h = harness(data);
     const res = (await call(
@@ -2583,7 +2583,7 @@ describe("POST /pack/v1/takeover — the witness question and the re-pin (RFC §
     expect(await probed.json()).toEqual({ ok: false, code: "lead_is_alive", lastDialledAgoMs: 0 });
     expect(probe.data().lead).toBeNull();
 
-    // A commit: the same proof, the same self-heal `/pack/v1/warrant` performs.
+    // A commit: the same proof, the same self-heal `/crew/v1/warrant` performs.
     const h = harness(minted.next);
     const res = (await call(
       createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 + 1 }),
@@ -2594,5 +2594,256 @@ describe("POST /pack/v1/takeover — the witness question and the re-pin (RFC §
     expect(await res.json()).toMatchObject({ deposed: "desk", lead: "nas", outcome: "healed" });
     expect(h.data().lead!.memberId).toBe("nas");
     expect(h.data().peers).toEqual([]);
+  });
+});
+
+// ── The version 1 overlap (M27/03, CREW_PROTOCOL.md §0.1) ───────────────────
+// REMOVE_IN_1_9_0 — this whole describe block.
+//
+// One release of overlap: a 1.8.0 lead answers `/pack/v1/*` in the version 1 shapes so a 1.7.0
+// member can enrol, answer `hello` and self-level over the link it already has. What is asserted
+// here is what a 1.7.0 client actually sends and reads — the old prefix, the old header names, the
+// old dial domain, and `protocol: 1` in the body — against the SAME router this file exercises
+// everywhere above. A second set of handlers would drift; a translation cannot.
+describe("the version 1 overlap", () => {
+  const V1_PREFIX = "/pack/v1/";
+  const nas = member({ memberId: "nas" });
+
+  /** The path a version 1 client dials, for a version 2 constant. */
+  function v1(path: string): string {
+    return `${V1_PREFIX}${path.slice(CREW_PREFIX.length)}`;
+  }
+
+  /** A version 1 client's two factors: the crew secret and `X-Pack-Protocol: 1`. */
+  const authedV1 = { authorization: `Bearer ${CREW.secret}`, "x-pack-protocol": "1" };
+
+  /** A version 1 §8.6 signature. The canonical string names no domain, so only the PATH differs. */
+  function signedV1(memberLabel: string, method: string, path: string, body: string, timestamp: number) {
+    return {
+      "x-pack-signature": signRequest(material(memberLabel).keyPem, { method, path, body, timestamp }),
+      "x-pack-timestamp": String(timestamp),
+    };
+  }
+
+  test("a version 1 member's hello is answered, in version 1's shapes", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const path = v1(CREW_HELLO_PATH);
+    const res = (await call(handler, path, {
+      headers: { ...authedV1, ...signedV1("nas", "GET", path, "", T0) },
+    }))!;
+    expect(res.status).toBe(200);
+    // The body's integer, the header's integer and the header's NAME are all version 1's.
+    expect(await res.json()).toEqual({ protocol: 1, member: "desk" });
+    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(res.headers.get("x-pack-member")).toBe("desk");
+    expect(res.headers.get("x-crew-protocol")).toBeNull();
+    expect(res.headers.get("x-crew-member")).toBeNull();
+  });
+
+  test("a version 1 member enrols, and the version arrives in the body as well as the header", async () => {
+    const minted = mintInvite(leadStore({ peers: [] }), { now: T0, label: "laptop", random: counterRandom("r") });
+    const h = harness(minted.next);
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 + 1 });
+    const res = (await call(handler, v1(CREW_ENROLL_PATH), {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-pack-protocol": "1" },
+      body: JSON.stringify({
+        protocol: 1,
+        token: minted.result.token,
+        fingerprint: fp("laptop"),
+        certPem: material("laptop").certPem,
+        address: "laptop.ts.net:8787",
+        label: "laptop",
+      }),
+    }))!;
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(h.data().peers.map((p) => p.memberId)).toEqual(["laptop"]);
+  });
+
+  // The roll's whole point: a 1.7.0 peer reads its lead's release off the snapshot dial and levels
+  // itself to it. If the follow headers did not survive the translation, the peer would never learn
+  // there was anything to follow.
+  test("a version 1 snapshot dial carries the follow headers through, unchanged", async () => {
+    const h = harness(peerStore());
+    const seen: { leadRelease: string | null; turn: string | null }[] = [];
+    const handler = createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      snapshot: () => ownSnapshot(),
+      onFollow: (a) => seen.push(a),
+    });
+    const res = (await call(handler, v1(CREW_SNAPSHOT_PATH), {
+      headers: { ...authedV1, "x-pack-lead-release": "1.8.0", "x-pack-update-turn": "basement;r-7" },
+    }))!;
+    expect(res.status).toBe(200);
+    expect(seen).toEqual([{ leadRelease: "1.8.0", turn: "basement;r-7" }]);
+    expect(res.headers.get("x-pack-protocol")).toBe("1");
+    expect(await res.json()).toEqual(ownSnapshot());
+  });
+
+  test("a version 1 caller claiming a version nobody serves is refused, naming version 1", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const path = v1(CREW_HELLO_PATH);
+    const res = (await call(handler, path, {
+      headers: {
+        authorization: `Bearer ${CREW.secret}`,
+        "x-pack-protocol": "3",
+        ...signedV1("nas", "GET", path, "", T0),
+      },
+    }))!;
+    expect(res.status).toBe(409);
+    // `expected` is the version the caller was ANSWERED on, not this build's own integer: a 1.7.0
+    // member cannot act on "2" and would read it as a lead that had lost its mind.
+    expect(await res.json()).toEqual({
+      error: "crew protocol mismatch",
+      code: "protocol_mismatch",
+      expected: 1,
+      received: 3,
+    });
+    expect(res.headers.get("x-pack-protocol")).toBe("1");
+  });
+
+  test("an unadmitted version 1 caller gets the same bare 401, with no version banner (§8.5)", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const res = (await call(handler, v1(CREW_HELLO_PATH), { headers: { "x-pack-protocol": "1" } }))!;
+    expect(res.status).toBe(401);
+    expect(headerList(res).filter((l) => l.startsWith("x-pack") || l.startsWith("x-crew"))).toEqual([]);
+  });
+});
+
+// ── Version negotiation: the prefix decides, and version 2 must say so ──────
+describe("version negotiation", () => {
+  const nas = member({ memberId: "nas" });
+
+  // The rule `parseProtocolHeader` was written for, asserted at the router: an ABSENT header is a
+  // refusal and never a default, so a client that forgets it is told rather than admitted.
+  test("a request on /crew/v1 without X-Crew-Protocol is refused, not defaulted", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const res = (await call(handler, CREW_HELLO_PATH, {
+      headers: {
+        authorization: `Bearer ${CREW.secret}`,
+        ...signed("nas", "GET", CREW_HELLO_PATH, "", T0),
+      },
+    }))!;
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({
+      error: "crew protocol mismatch",
+      code: "protocol_mismatch",
+      expected: 2,
+      received: null,
+    });
+  });
+
+  // …and the version 1 header does not admit a version 2 dial. The prefix decides which vocabulary
+  // is read, so a mixed request is simply a request with no version at all. REMOVE_IN_1_9_0.
+  test("a request on /crew/v1 carrying only X-Pack-Protocol is refused", async () => {
+    const h = harness(leadStore({ peers: [nas] }));
+    const handler = createCrewRouter({ store: h.store, audit: h.audit, now: () => T0 });
+    const res = (await call(handler, CREW_HELLO_PATH, {
+      headers: {
+        authorization: `Bearer ${CREW.secret}`,
+        "x-pack-protocol": "1",
+        ...signed("nas", "GET", CREW_HELLO_PATH, "", T0),
+      },
+    }))!;
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ expected: 2, received: null });
+  });
+});
+
+// REMOVE_IN_1_9_0 — the version 1 dial attestation (CREW_PROTOCOL.md §0.1).
+//
+// The dial is the one INBOUND signature whose canonical string names a domain tag, and a tag is
+// bytes both ends hash: a 1.7.0 lead signs `collie-pack-dial-v1`. So the receiver has to choose the
+// tag from the prefix the caller dialled, and the two tags have to be disjoint — otherwise the
+// choice is a coincidence rather than a decision.
+describe("the version 1 dial attestation", () => {
+  const V1_DIAL_DOMAIN = "collie-pack-dial-v1";
+
+  /** A peer of `desk` that has anchored `nas` as its deputy — the case where the dial decides. */
+  function anchoredPeer() {
+    const w = mintWarrant(leadStore({ peers: [member({ memberId: "nas" })] }), "nas", T0)!.result;
+    return {
+      data: peerStore({ warrant: { warrant: w, deputyCertPem: material("nas").certPem } }),
+      deputyAnchor: { memberId: "nas", certPem: material("nas").certPem },
+    };
+  }
+
+  function twoAnchoredRouter(h: ReturnType<typeof harness>, deputyAnchor: { memberId: string; certPem: string }) {
+    return createCrewRouter({
+      store: h.store,
+      audit: h.audit,
+      transportPinned: true,
+      now: () => T0,
+      snapshot: () => ownSnapshot(),
+      deputyAnchor,
+    });
+  }
+
+  const V1_SNAPSHOT_PATH = `/pack/v1/${CREW_SNAPSHOT_PATH.slice(CREW_PREFIX.length)}`;
+
+  test("a version 1 dial is admitted under the version 1 domain", async () => {
+    const { data, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const res = (await call(twoAnchoredRouter(h, deputyAnchor), V1_SNAPSHOT_PATH, {
+      headers: {
+        authorization: `Bearer ${CREW.secret}`,
+        "x-pack-protocol": "1",
+        "x-pack-timestamp": String(T0),
+        "x-pack-dial": signDial(material("desk").keyPem, {
+          method: "GET",
+          path: V1_SNAPSHOT_PATH,
+          timestamp: T0,
+          to: "laptop",
+          domain: V1_DIAL_DOMAIN,
+        }),
+      },
+    }))!;
+    expect(res.status).toBe(200);
+  });
+
+  test("the version 2 domain does NOT verify on the version 1 prefix", async () => {
+    const { data, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const res = (await call(twoAnchoredRouter(h, deputyAnchor), V1_SNAPSHOT_PATH, {
+      headers: {
+        authorization: `Bearer ${CREW.secret}`,
+        "x-pack-protocol": "1",
+        "x-pack-timestamp": String(T0),
+        // No `domain`, i.e. version 2's tag — the same key, the same path, the same timestamp.
+        "x-pack-dial": signDial(material("desk").keyPem, {
+          method: "GET",
+          path: V1_SNAPSHOT_PATH,
+          timestamp: T0,
+          to: "laptop",
+        }),
+      },
+    }))!;
+    expect(res.status).toBe(401);
+  });
+
+  test("and the version 1 domain does not verify on the version 2 prefix either", async () => {
+    const { data, deputyAnchor } = anchoredPeer();
+    const h = harness(data);
+    const res = (await call(twoAnchoredRouter(h, deputyAnchor), CREW_SNAPSHOT_PATH, {
+      headers: {
+        ...authed,
+        [TIMESTAMP_HEADER]: String(T0),
+        [DIAL_HEADER]: signDial(material("desk").keyPem, {
+          method: "GET",
+          path: CREW_SNAPSHOT_PATH,
+          timestamp: T0,
+          to: "laptop",
+          domain: V1_DIAL_DOMAIN,
+        }),
+      },
+    }))!;
+    expect(res.status).toBe(401);
   });
 });

@@ -15,7 +15,7 @@
 //     derived from anything the operator can change (a label, a title, a position) breaks this.
 //  3. **Unique within one collie.** Across every space and tab of the configured target. NOT across
 //     machines — a crew address is `(host, session, paneId)` and the host half is the lead's job
-//     (PACK_PROTOCOL.md §4), so an adapter must not try to make its ids globally unique.
+//     (CREW_PROTOCOL.md §4), so an adapter must not try to make its ids globally unique.
 //  4. **Never recycled onto a different pane** for the lifetime of the bridge process. A
 //     multiplexer that reuses a slot number must salt it; answering for the wrong pane is worse
 //     than answering "gone".

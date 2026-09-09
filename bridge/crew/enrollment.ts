@@ -29,11 +29,11 @@ import {
 // minted value are arguments. That is what makes the failure matrix in enrollment.test.ts an
 // exhaustive test of the actual production path rather than of a test double.
 //
-// The transfer list is PACK_PROTOCOL.md §8.2's table, implemented literally:
+// The transfer list is CREW_PROTOCOL.md §8.2's table, implemented literally:
 //   peer's fingerprint → lead (pinned) · lead's fingerprint → peer (pinned) · crew secret →
 //   peer · crew identity → peer · peer's member id (minted by the lead) → peer · both addresses.
 
-/** Enrollment tokens live 10 minutes (PACK_PROTOCOL.md §8.2). Long enough to paste, short enough. */
+/** Enrollment tokens live 10 minutes (CREW_PROTOCOL.md §8.2). Long enough to paste, short enough. */
 export const INVITE_TTL_MS = 10 * 60 * 1000;
 
 /**
@@ -43,8 +43,16 @@ export const INVITE_TTL_MS = 10 * 60 * 1000;
  */
 export const HANDOVER_TTL_MS = 10 * 60 * 1000;
 
-/** The protocol version this build speaks. Exact-1 window (§7) — there is no range until there is a v2. */
-export const PACK_PROTOCOL_VERSION = 1;
+/**
+ * The protocol version this build speaks (§0). Exact-match window (§7): a version talks only to its
+ * own version, so this integer is the whole compatibility rule.
+ *
+ * **2 since 1.8.0.** Version 2 renamed every name a machine reads on the link and moved nothing else
+ * (ADR 0039): `/crew/v1/*` paths, `X-Crew-*` headers, crew error codes, crew signing contexts. The
+ * one-release overlap that keeps a 1.7.0 member following a 1.8.0 lead is `bridge/crew/v1-overlap.ts`
+ * and it answers version 1 in full, so this constant never has to express a range.
+ */
+export const CREW_PROTOCOL_VERSION = 2;
 
 /** The result of a transition: the next store, what the caller asked for, and the line to audit. */
 export interface CrewChange<T> {
@@ -216,7 +224,7 @@ export interface EnrollRequest {
   readonly label: string | null;
 }
 
-/** What the lead sends back. Exactly PACK_PROTOCOL.md §8.2's transfer table, in one object. */
+/** What the lead sends back. Exactly CREW_PROTOCOL.md §8.2's transfer table, in one object. */
 export interface EnrollResponse {
   readonly protocol: number;
   readonly packId: string;
@@ -338,7 +346,7 @@ export function enrollPeer(
       peers: [...data.peers.filter((p) => p.memberId !== memberId), member],
     },
     result: {
-      protocol: PACK_PROTOCOL_VERSION,
+      protocol: CREW_PROTOCOL_VERSION,
       packId: data.pack.packId,
       crewName: data.pack.name,
       crewSecret: data.pack.secret,

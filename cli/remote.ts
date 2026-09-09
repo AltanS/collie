@@ -37,7 +37,7 @@ import { unitName } from "./unit.ts";
 // the invite comes from the same `mintInvite` path `crew invite` uses, and the far machine runs the
 // same `collie join <lead-address> -`. `crew add` adds NO route, no header and no protocol
 // vocabulary (ADR 0015 (d)) — an installer that needed the protocol's help would be a second
-// admission path into the crew, and the crew has exactly one (PACK_PROTOCOL.md §8.2).
+// admission path into the crew, and the crew has exactly one (CREW_PROTOCOL.md §8.2).
 //
 // ── THIS IS THE ONLY MODULE THAT SPAWNS `ssh` ────────────────────────────────
 // {@link RemoteRunner} is the seam, injected exactly as `CrewDeps` injects `fetch`, `exec` and

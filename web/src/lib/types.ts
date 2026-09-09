@@ -92,7 +92,7 @@ export interface AgentView {
    */
   lastSeenAt?: number;
   /**
-   * Which member of the crew this pane lives on — the `?h=` value (PACK_PROTOCOL.md §4). Mirrors
+   * Which member of the crew this pane lives on — the `?h=` value (CREW_PROTOCOL.md §4). Mirrors
    * `PaneWire.host` in bridge/types.ts.
    *
    * **Present exactly when {@link SnapshotResponse.servers} is**, and absent otherwise: a solo
@@ -253,7 +253,7 @@ export interface SessionSummary {
   blocked: number;
   /**
    * Which member of the crew fronts this session — the `?h=` value. Present exactly when
-   * {@link SnapshotResponse.servers} is (PACK_PROTOCOL.md §9.2/§11); absent on every solo snapshot.
+   * {@link SnapshotResponse.servers} is (CREW_PROTOCOL.md §9.2/§11); absent on every solo snapshot.
    * Sessions are a PER-HOST registry, which is why the switcher lists one host's sessions at a time:
    * a flat merged list would offer "default" twice with no way to tell them apart.
    */
@@ -261,7 +261,7 @@ export interface SessionSummary {
 }
 
 /**
- * One member of the crew (PACK_PROTOCOL.md §9.2) — mirrors `ServerSummary` in bridge/types.ts field
+ * One member of the crew (CREW_PROTOCOL.md §9.2) — mirrors `ServerSummary` in bridge/types.ts field
  * for field. The lead's own entry is included, so the phone renders one uniform host list instead of
  * special-casing "here".
  *
@@ -298,7 +298,7 @@ export interface ServerSummary {
 }
 
 /**
- * `GET /api/pack` — the lead's own answer to "how is my whole crew doing?" (PACK_PROTOCOL.md §9.2,
+ * `GET /api/pack` — the lead's own answer to "how is my whole crew doing?" (CREW_PROTOCOL.md §9.2,
  * §10.2). Read-level, and read-ONLY: nothing on this response is an affordance to change the crew.
  * Join / leave / promote / rotate stay CLI verbs (M5 non-goal), so the page it feeds has no button
  * that mutates anything.
@@ -575,7 +575,7 @@ export interface UpdatePeerLeg {
 }
 
 /**
- * Where one peer's leg is, as the LEAD derived it from its sweep (M16/04, PACK_PROTOCOL.md §20).
+ * Where one peer's leg is, as the LEAD derived it from its sweep (M16/04, CREW_PROTOCOL.md §20).
  *
  * Deliberately not `UpdateRunState`: the lead never runs a peer's updater and never sees its
  * staging, so it can only report what the link told it — behind and waiting, moving, arrived, fallen
@@ -651,7 +651,7 @@ export interface SnapshotResponse {
   /** The bridge's session registry (primary-first). Absent on a single-session / older bridge. */
   sessions?: SessionSummary[];
   /**
-   * Every member of the crew, the lead's own entry first (PACK_PROTOCOL.md §9.2).
+   * Every member of the crew, the lead's own entry first (CREW_PROTOCOL.md §9.2).
    *
    * **Optional-and-absent, like `update?` and unlike the always-present `sessions`** — a solo bridge
    * emits no such key at all (§11), so absent (or fewer than two entries) is the one condition under
@@ -757,7 +757,7 @@ export type CreateResponse =
   | { ok: false; error: string; code?: ApiErrorCode; detail?: ApiErrorDetail };
 
 /**
- * Which role the bridge plays in a crew (PACK_PROTOCOL.md §3). Mirrors CrewMode in bridge/types.ts.
+ * Which role the bridge plays in a crew (CREW_PROTOCOL.md §3). Mirrors CrewMode in bridge/types.ts.
  * `solo` is a lead with zero peers — today's Collie, exactly.
  */
 export type CrewMode = "solo" | "lead" | "peer";

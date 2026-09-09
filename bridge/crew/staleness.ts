@@ -15,10 +15,10 @@ import { enrollmentOf, type TrustStoreData } from "./trust-store.ts";
  * It leaves one hole, which the two-instance harness walked straight into: **a membership change can
  * arrive at a RUNNING bridge over the wire**, from a machine whose operator is not this one.
  *
- *   - the first `join` lands in the lead's store through the lead's own `/pack/v1/enroll`. The lead
+ *   - the first `join` lands in the lead's store through the lead's own `/crew/v1/enroll`. The lead
  *     persists the new peer and goes on merging nothing, because its `CrewLead` was built from a
  *     roster that was empty at boot;
- *   - `promote` demotes the old lead through `/pack/v1/lead`. It adopts the demotion on disk and
+ *   - `promote` demotes the old lead through `/crew/v1/lead`. It adopts the demotion on disk and
  *     keeps its lead-mode listener — unpinned — until something restarts it.
  *
  * Neither is fixed by re-reading the store in place: re-wiring a live process's mode, listener TLS

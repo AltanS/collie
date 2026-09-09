@@ -49,7 +49,7 @@ describe("notModified", () => {
   });
 });
 
-// The host dimension in a merged snapshot's cache key (PACK_PROTOCOL.md §4, §9.2): a pane id is only
+// The host dimension in a merged snapshot's cache key (CREW_PROTOCOL.md §4, §9.2): a pane id is only
 // unique per machine, so the same pane id on two different hosts must never collapse into one ETag —
 // or a phone that just 304'd against "desk" could be served stale/wrong content when it's really
 // asking about "laptop". Pure computeEtag/body-bytes test — no server.ts, no Bun.serve.

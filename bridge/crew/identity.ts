@@ -11,14 +11,14 @@ import {
 // enrollment tokens. Everything here is PURE except the three `random*` mints, which take their
 // entropy from an injectable source so a test can pin an exact value without a global stub.
 //
-// This is the first credential material Collie owns (PACK_PROTOCOL.md §8: "Collie holds no TLS
+// This is the first credential material Collie owns (CREW_PROTOCOL.md §8: "Collie holds no TLS
 // material and mints no credentials today"), so the rules are stated here once and imported
 // everywhere rather than re-derived per call site.
 
 // ── Member ids ───────────────────────────────────────────────────────────────
 
 /**
- * A member id is `[a-z0-9][a-z0-9-]{0,62}` (PACK_PROTOCOL.md §4). It is minted by the lead, it is
+ * A member id is `[a-z0-9][a-z0-9-]{0,62}` (CREW_PROTOCOL.md §4). It is minted by the lead, it is
  * **not** a hostname or an address, and it carries no routing information.
  *
  * The grammar is deliberately narrow because the id travels as `?h=` on a URL and is used as a

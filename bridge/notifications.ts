@@ -54,7 +54,7 @@ export interface MuteGate {
 
 /**
  * Who the alerts flowing through a sink belong to — the `(host, session)` half of the address triple
- * (PACK_PROTOCOL.md §4). **Both halves are omitted-not-null**, and for the same reason: a stamped
+ * (CREW_PROTOCOL.md §4). **Both halves are omitted-not-null**, and for the same reason: a stamped
  * field that is absent for the default case keeps that payload byte-identical to the shape an
  * already-installed service worker was built against.
  */

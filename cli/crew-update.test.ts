@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
-import { PACK_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
+import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, material, member, peerStore, T0 } from "../bridge/crew/fixtures.ts";
 import { type OpsRecord, parseCrewOps } from "../bridge/crew/ops-store.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreData, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
@@ -158,12 +158,12 @@ function harness(opts: HarnessOptions = {}) {
       const answer = opts.hello?.[who];
       if (answer === false) throw new Error("connection refused");
       const version = answer ?? VERSION;
-      return new Response(JSON.stringify({ protocol: PACK_PROTOCOL_VERSION, member: who, version }), {
+      return new Response(JSON.stringify({ protocol: CREW_PROTOCOL_VERSION, member: who, version }), {
         status: 200,
         headers: {
           "content-type": "application/json",
-          "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
-          "x-pack-member": who,
+          "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
+          "x-crew-member": who,
         },
       });
     },

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
 import type { JsonObject, JsonValue } from "../bridge/json.ts";
-import { PACK_PROTOCOL_VERSION, removeMember } from "../bridge/crew/enrollment.ts";
+import { CREW_PROTOCOL_VERSION, removeMember } from "../bridge/crew/enrollment.ts";
 import { fp, leadStore, material, member, peerStore, T0 } from "../bridge/crew/fixtures.ts";
 import { type OpsRecord, parseCrewOps } from "../bridge/crew/ops-store.ts";
 import { checkpointMarker, formatMarker, markerFor, type CrewRuntimeFacts } from "../bridge/crew/staleness.ts";
@@ -31,7 +31,7 @@ import type { CrewAddDeps, RemoteResult } from "./remote.ts";
 
 const CHECKOUT = "/home/pat/.collie";
 
-/** What the fake transport banked about one `POST /pack/v1/warrant`. */
+/** What the fake transport banked about one `POST /crew/v1/warrant`. */
 interface PushedWarrant {
   readonly member: string;
   readonly warrant: Warrant;
@@ -193,7 +193,7 @@ function harness(opts: HarnessOptions = {}) {
       if (reported === false) throw new Error("connection refused");
       const active = opts.active?.[who];
       const body: JsonObject = {
-        protocol: PACK_PROTOCOL_VERSION,
+        protocol: CREW_PROTOCOL_VERSION,
         member: who,
         version: "1.0.0",
         warrantGeneration: reported ?? null,
@@ -250,8 +250,8 @@ function jsonReply(body: JsonValue, from: string): Response {
     status: 200,
     headers: {
       "content-type": "application/json",
-      "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
-      "x-pack-member": from,
+      "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
+      "x-crew-member": from,
     },
   });
 }
@@ -839,7 +839,7 @@ describe("a peer that follows another lead", () => {
 
 // ── `crew status`, the peer's view (RFC §10.1, §5) ───────────────────────────
 
-/** A peer's store holding a warrant its lead signed — the shape `POST /pack/v1/warrant` leaves. */
+/** A peer's store holding a warrant its lead signed — the shape `POST /crew/v1/warrant` leaves. */
 function peerHolding(deputy: string, at = T0): TrustStoreData {
   const lead = withWarrant(
     leadStore({ peers: [member({ memberId: "laptop" }), member({ memberId: deputy })] }),

@@ -19,7 +19,7 @@ import {
 import { counterRandom } from "./fixtures.ts";
 
 describe("member ids", () => {
-  test("the grammar is exactly PACK_PROTOCOL.md §4's, anchored on both ends", () => {
+  test("the grammar is exactly CREW_PROTOCOL.md §4's, anchored on both ends", () => {
     expect(isMemberId("a")).toBe(true);
     expect(isMemberId("laptop-2")).toBe(true);
     expect(isMemberId("a".repeat(63))).toBe(true);

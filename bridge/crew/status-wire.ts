@@ -12,7 +12,7 @@ import type { CrewMemberStatus, CrewStatusResponse } from "../types.ts";
 // It takes a trust store snapshot, the lead's own identity, its per-peer beliefs and a clock
 // reading, and returns a body. No fetch, no timer, no disk, no registry — which is not a testing
 // convenience here but the route's actual guarantee: a surface the phone polls must not be able to
-// make the lead dial a member. The sweep is the ONLY thing that talks to peers (PACK_PROTOCOL.md
+// make the lead dial a member. The sweep is the ONLY thing that talks to peers (CREW_PROTOCOL.md
 // §10.1, §11 — "no second timer"), and a function with no transport in its signature cannot become
 // a second one no matter what a later caller does.
 //
@@ -53,7 +53,7 @@ export interface CrewStatusSources {
 /**
  * Compose the crew overview, or `null` when this collie has no crew to describe.
  *
- * `null` is the route's 404 (`pack.not_lead`), and it covers both refusals: a solo instance, and a
+ * `null` is the route's 404 (`crew.not_lead`), and it covers both refusals: a solo instance, and a
  * peer — which is not a front door at all (ADR 0013). The test is `deriveMode`, never a local
  * re-reading of the roster: mode is decided in one place for the whole process (§3), so a machine
  * this function calls a lead is a machine that IS one.
@@ -164,7 +164,7 @@ function peerRow(
     provisional: record.contactedAt === null && state.health !== "reachable",
   };
   // Assigned, never conditionally spread: an optional key is OMITTED when there is nothing to say,
-  // never sent as null (PACK_PROTOCOL.md §11).
+  // never sent as null (CREW_PROTOCOL.md §11).
   if (state.reason !== null) row.reason = state.reason;
   if (state.version !== null) row.version = state.version;
   // §10.2's presentation split, copied and never re-derived — the registry decided it, on the answer

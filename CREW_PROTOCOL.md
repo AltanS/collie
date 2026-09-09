@@ -30,7 +30,7 @@ this version finishes the rename ([ADR 0039](./.adr/0039-the-machine-says-crew-t
 | Headers | `X-Pack-*`, `x-pack-*` | `X-Crew-*`, `x-crew-*` |
 | Version constant | `PACK_PROTOCOL_VERSION = 1` | `CREW_PROTOCOL_VERSION = 2` |
 | Error codes and JSON field names | say pack | say crew |
-| Signing context strings | `collie-pack-warrant-v1`, `collie-pack-dial-v1` | `collie-crew-warrant-v1`, `collie-crew-dial-v1` |
+| Signing context strings | `collie-pack-warrant-v1`, `collie-pack-dial-v1` | `collie-crew-warrant-v2`, `collie-crew-dial-v2` |
 
 Three readings keep the body below correct as it stands:
 
@@ -48,16 +48,37 @@ A crew is updated lead first (§20), so a 1.8.0 lead has to keep a 1.7.0 member 
 length of the roll. Two mechanisms carry that, and both are removed in **1.9.0**.
 
 - **A 1.8.0 lead answers `/pack/v1/*` as well as `/crew/v1/*`.** The old prefix serves the version 1
-  shapes: version 1 headers, version 1 field names, version 1 error codes, and `protocol: 1` on
-  `hello`. A 1.7.0 member therefore enrols, answers hello and self-levels over the link it already
-  has, exactly as it did before the update.
+  shapes: version 1 headers, version 1 field names, version 1 error codes, `protocol: 1` on `hello`,
+  `expected: 1` on §7's refusal, and the version 1 dial context. A 1.7.0 member therefore enrols,
+  answers hello and self-levels over the link it already has, exactly as it did before the update.
 - **A 1.8.0 member dials `/crew/v1/*` first.** Against a lead that is still 1.7.0 it falls back to
   `/pack/v1/*` once, and it writes one journal line saying it did. The fallback is per dial and it is
   never cached, so a member stops using it the moment its lead is updated.
 
-Both sides carry a `REMOVE_IN_1_9_0` marker in the code, and a test fails at package minor 9 so the
-removal cannot be forgotten. From 1.9.0 a member older than 1.8.0 does not talk to a lead newer than
-1.8.0, which is §7's exact window doing its usual job.
+**The prefix decides the version, and version 2 must state it.** A request on `/crew/v1/*` carries
+`X-Crew-Protocol: 2`; an absent header is a refusal and never a default (§7). A request on
+`/pack/v1/*` carries `X-Pack-Protocol: 1`. The two vocabularies do not mix: a version 1 header on the
+version 2 prefix is read as no version at all, and is refused.
+
+**A member learns its lead is still 1.7.0 from an answer, never from a guess.** Two shapes say it,
+and both come from a build that has never heard of `/crew/v1`: a `404` or `403` carrying no crew
+protocol header (the collie's own 404, or its refusal of a non-loopback caller on a path it declined),
+or a crew header naming version 1. A header-free `502` or `503` is a proxy and not a version, so it
+takes no second dial. The fallback therefore costs one extra round trip against a lead that has not
+updated, and nothing at all against one that has.
+
+**The warrant's context moves on verify only.** A warrant is one signature, minted by the lead and
+stored on every member's disk, so a machine that updates from 1.7.0 comes up holding one signed under
+the old context. A 1.8.0 build therefore **signs `collie-crew-warrant-v2` and accepts either form**;
+refusing its own stored warrant would disarm the standby door on the update instead of on the
+operator's decision (§18). Nothing signs the old form. The consequence during the roll is small and
+named: a warrant a 1.8.0 lead mints is refused by a member that is still on 1.7.0. That member keeps
+reporting the generation it holds, so the lead keeps pushing, and the push lands the moment the
+member has levelled.
+
+Both sides carry a `REMOVE_IN_1_9_0` marker in the code, and `bridge/removal-schedule.test.ts` fails
+at package minor 9 so the removal cannot be forgotten. From 1.9.0 a member older than 1.8.0 does not
+talk to a lead newer than 1.8.0, which is §7's exact window doing its usual job.
 
 ---
 
@@ -472,8 +493,8 @@ and peer are separately updated machines, so skew is the steady state, not an ed
     already names the cause the operator can act on, and it opens no window.
   - **This rule is about a peer's RESPONSE.** The receiving side is unchanged: a REQUEST that
     arrives with no `X-Crew-Protocol` is still refused with `409` and `protocol_mismatch`
-    (`bridge/crew/admission.ts`), because a caller that names no version has not met §7's exact-1
-    window.
+    (`bridge/crew/admission.ts`), because a caller that names no version has not met §7's
+    exact-match window.
 - **An incompatible peer is a distinct state from an unreachable one** (§10). It is not retried on the
   poll cadence, its sessions are shown from last-good state marked incompatible, and the reason string
   is surfaced verbatim in the UI and in `collie crew status`.
@@ -485,7 +506,7 @@ is a *contract*: it says which grammar the bytes are in. A Collie build version 
 a *fact about a running process*: it says how new the code answering is. Lead and peer are separately
 updated machines, so build skew is the steady state (§7), and this section is the class rule for it.
 
-- **The protocol integer is the ONLY thing that refuses.** §7's exact-1 window guards actual wire
+- **The protocol integer is the ONLY thing that refuses.** §7's exact-match window guards actual wire
   incompatibility, and `admission.ts` enforces it before a handler runs. **A build-version difference
   refuses nothing**: no route behaves differently, no response degrades, no code path branches on it.
   A crew that goes dark because two machines disagree on an alpha number has traded an annoyance for
@@ -981,12 +1002,12 @@ the certificate the reader already pinned — and it is a *different canonical s
 different algorithm and never a different trust anchor.
 
 The two are kept apart **structurally**, by a fixed domain tag in the warrant's first field
-(`collie-crew-warrant-v1`), rather than by the field-count disjointness the four-field string above
+(`collie-crew-warrant-v2`), rather than by the field-count disjointness the four-field string above
 relies on. That disjointness is real but it degrades with every signed object added, and the key is
 genuinely shared: a lead signs `hello` probes, `leave`, `lead` *and* warrants with one private key. A
 tag makes the property structural and costs one string. **Retrofitting the request string above is
 deliberately NOT proposed** — it is deployed, and changing a canonical string is a flag day inside
-§7's exact-1 window. The tag is for new objects; §16's reserved signed handover should take one if it
+§7's exact-match window. The tag is for new objects; §16's reserved signed handover should take one if it
 is ever built.
 
 #### The dial attestation — a THIRD signed object, and the lead→peer direction's identity *(added 2026-08-20)*
@@ -1013,7 +1034,7 @@ reuse of the four-field one above, for two reasons that are both load-bearing:
   carries:
 
   ```
-  collie-crew-dial-v1\n<METHOD>\n<path>\n<timestamp>\n<the member being dialled>
+  collie-crew-dial-v2\n<METHOD>\n<path>\n<timestamp>\n<the member being dialled>
   ```
 
 - **Skew: the same ±5 minutes.** **The replay FLOOR is deliberately not applied**, and that is not an
@@ -1689,7 +1710,7 @@ before it is ever powered back on into the crew.
 The change is **additive**: one optional trust-store field, no new wire object.
 
 - **`CREW_PROTOCOL_VERSION` stays `1`.** The approval is a body/field addition, not a new route or a
-  changed shape, and §7's window is exact-1 (`admission.ts`) — bumping it would take **every** route
+  changed shape, and §7's window is exact-match (`admission.ts`) — bumping it would take **every** route
   down between differently-updated members in order to close a hole in one, trading a
   denial-of-service for the escalation.
 - **`TRUST_STORE_VERSION` stays `1`.** The field is read as optional, and `parseTrustStore` refuses an
@@ -1990,7 +2011,7 @@ membership.
 **The canonical string**, exactly — eight LF-separated fields behind a fixed domain tag (§8.6):
 
 ```
-collie-crew-warrant-v1\n<crewId>\n<generation>\n<leadMemberId>\n<deputyMemberId>\n<deputyFingerprint>\n<issuedAt>\n<refreshedAt>
+collie-crew-warrant-v2\n<crewId>\n<generation>\n<leadMemberId>\n<deputyMemberId>\n<deputyFingerprint>\n<issuedAt>\n<refreshedAt>
 ```
 
 `deputyMemberId` and `deputyFingerprint` are the literal string `-` in a revocation warrant. An
@@ -2104,7 +2125,7 @@ makes the lead push rather than assume. Verified precedent: `PeerClient.hello` r
 amount of protocol politeness changes that — it has no warrant, no second anchor and no route. That is
 a **capability** gap, not a **compatibility** gap: nothing breaks, one thing is unavailable, and
 `crew status` says which members it is unavailable for. Bumping the protocol integer would be
-actively wrong — §7's window is exact-1, so a bump takes **every** route down between differently
+actively wrong — §7's window is exact-match, so a bump takes **every** route down between differently
 updated members in order to add a feature that degrades gracefully on its own.
 
 ### 18.8 Not specified here

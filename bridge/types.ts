@@ -131,7 +131,7 @@ export type PaneWire = Omit<AgentView, "agentSession" | "sessionAgent"> & {
   hasSession?: boolean;
   /**
    * Which member of the crew this pane lives on — the `?h=` value completing the `(host, session,
-   * paneId)` address (PACK_PROTOCOL.md §4). Present exactly when {@link SnapshotResponse.servers}
+   * paneId)` address (CREW_PROTOCOL.md §4). Present exactly when {@link SnapshotResponse.servers}
    * is; absent on every solo snapshot (§11). Pane ids are only unique per machine, which is why a
    * merged list must carry this and why the phone's per-pane cache keys on it.
    */
@@ -252,7 +252,7 @@ export interface SessionSummary {
   working: number;
   blocked: number;
   /**
-   * Which member of the crew fronts this session — the `?h=` value (PACK_PROTOCOL.md §4).
+   * Which member of the crew fronts this session — the `?h=` value (CREW_PROTOCOL.md §4).
    *
    * **Present exactly when {@link SnapshotResponse.servers} is**, and absent otherwise. A solo
    * instance emits neither (§11: "no `host` field is added to sessions or panes"), so a session name
@@ -296,7 +296,7 @@ export interface SnapshotResponse {
    */
   sessions: SessionSummary[];
   /**
-   * Every member of the crew, the lead's own entry included (PACK_PROTOCOL.md §9.2).
+   * Every member of the crew, the lead's own entry included (CREW_PROTOCOL.md §9.2).
    *
    * **Optional-and-absent, following `update?` rather than the always-present `sessions`** — and the
    * choice is forced, not stylistic (§11). An always-present field, even an empty array, changes
@@ -314,7 +314,7 @@ export interface SnapshotResponse {
 }
 
 /**
- * One member of the crew in the merged snapshot (PACK_PROTOCOL.md §9.2) — the row `crew status` and
+ * One member of the crew in the merged snapshot (CREW_PROTOCOL.md §9.2) — the row `crew status` and
  * the phone's host list render.
  *
  * `reachable` is not an invention: {@link SessionSummary.reachable} already models an unreachable
@@ -359,9 +359,9 @@ export interface ServerSummary {
  * holds: the trust store it read at startup (`TrustStore.current()`, no disk touched per request)
  * and the {@link PeerState} the lead's existing sweep maintains (bridge/crew/registry.ts). Nothing
  * in this shape can make the lead dial a member — which is what lets a phone poll it beside the
- * snapshot without adding a second call rate to every peer (PACK_PROTOCOL.md §10.1, §11).
+ * snapshot without adding a second call rate to every peer (CREW_PROTOCOL.md §10.1, §11).
  *
- * **Only a lead answers it.** A solo instance and a peer 404 (`pack.not_lead`): a peer is not a
+ * **Only a lead answers it.** A solo instance and a peer 404 (`crew.not_lead`): a peer is not a
  * front door (ADR 0013), and a solo instance has no crew to describe.
  *
  * Nothing here is a secret. Fingerprints, certificates, the crew secret and pairing credentials are
@@ -393,7 +393,7 @@ export interface CrewStatusResponse {
  *
  * Mostly {@link PeerState} re-spelled for the browser, plus the three roster facts the registry does
  * not carry (`address`, `enrolledAt`, `secretBehind`). Optional keys are OMITTED when absent and
- * never sent as null (PACK_PROTOCOL.md §11) — the lead's own entry therefore carries no `address`
+ * never sent as null (CREW_PROTOCOL.md §11) — the lead's own entry therefore carries no `address`
  * and no `enrolledAt`, because a lead is not in its own roster.
  */
 export interface CrewMemberStatus {
@@ -638,7 +638,7 @@ export type WorktreeOpenResponse =
 
 
 /**
- * Which role this collie plays in a crew (PACK_PROTOCOL.md §3). `solo` is a lead with zero peers —
+ * Which role this collie plays in a crew (CREW_PROTOCOL.md §3). `solo` is a lead with zero peers —
  * today's Collie, exactly — and is the only mode that needs no configuration whatsoever.
  */
 export type CrewMode = "solo" | "lead" | "peer";
@@ -835,7 +835,7 @@ export interface Launcher {
 /**
  * GET /api/launchers — this HOST's own launcher rows, read live off its `launchers.toml`. Session-
  * scoped so a `?host=` call forwards to the peer that runs the rows, exactly like `/api/launch`
- * (PACK_PROTOCOL.md §5): rows must come from the machine that will run them, never from the lead's
+ * (CREW_PROTOCOL.md §5): rows must come from the machine that will run them, never from the lead's
  * own file. `home` is that host's operator home dir, so the client can shorten a pinned `cwd` with a
  * leading `~` without knowing which machine answered.
  */
@@ -853,7 +853,7 @@ export interface BridgeConfig {
   /**
    * This collie's crew mode, so `crew status` and the UI can render it without probing behaviour.
    * **Omitted when the mode is `solo`** — absent means "no crew", which is precisely true, and keeps
-   * a solo `/api/config` body byte-identical to today's (the `servers` reasoning, PACK_PROTOCOL.md
+   * a solo `/api/config` body byte-identical to today's (the `servers` reasoning, CREW_PROTOCOL.md
    * §11). Read it as `mode ?? "solo"`.
    */
   mode?: CrewMode;

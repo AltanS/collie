@@ -3,9 +3,11 @@ import { parseRoster, type CrewChange } from "./enrollment.ts";
 import { fingerprintOfCert, isFingerprint, isMemberId, normalizeFingerprint } from "./identity.ts";
 import { signCanonical, verifyCanonical } from "./signing.ts";
 import type { RosterRow, StoredWarrant, TrustStoreData, Warrant } from "./trust-store.ts";
+// REMOVE_IN_1_9_0 — the version 1 warrant string, accepted on verify and signed by nothing (§0.1).
+import { canonicalWarrantVersion1 } from "./v1-overlap.ts";
 
 // The warrant: the lead's standing, signed permission for ONE member to take the crown
-// (PACK_PROTOCOL.md §18, RFC §4). This module mints it, verifies it, and decides what supersedes
+// (CREW_PROTOCOL.md §18, RFC §4). This module mints it, verifies it, and decides what supersedes
 // what. It does not distribute it — that is `peer-client.ts` (the push) and `lead.ts` (the sweep) —
 // and it does not spend it: holding a warrant grants nothing on its own.
 //
@@ -27,8 +29,7 @@ import type { RosterRow, StoredWarrant, TrustStoreData, Warrant } from "./trust-
  * key). That property is real but it degrades with every signed object added. A fixed tag makes the
  * disjointness **structural rather than arithmetic**, and costs one string (RFC §4.3).
  */
-// M27: stays until spec 03 (wire) — the signing domain is bytes both ends hash.
-export const WARRANT_DOMAIN = "collie-pack-warrant-v1";
+export const WARRANT_DOMAIN = "collie-crew-warrant-v2";
 
 /**
  * How long a warrant lives **from its last refresh** — not from its issue (RFC §4.5).
@@ -58,7 +59,7 @@ const NONE = "-";
  * The string that is signed, exactly (RFC §4.3):
  *
  * ```
- * collie-pack-warrant-v1\n<packId>\n<generation>\n<leadMemberId>\n<deputyMemberId>\n<deputyFingerprint>\n<issuedAt>\n<refreshedAt>
+ * collie-crew-warrant-v2\n<packId>\n<generation>\n<leadMemberId>\n<deputyMemberId>\n<deputyFingerprint>\n<issuedAt>\n<refreshedAt>
  * ```
  *
  * Eight LF-separated fields. `deputyMemberId` and `deputyFingerprint` are the literal `-` in a
@@ -79,9 +80,19 @@ export function canonicalWarrant(w: Warrant): string {
   ].join("\n");
 }
 
-/** Did the member whose certificate this is sign this warrant? The whole of the crypto question. */
+/**
+ * Did the member whose certificate this is sign this warrant? The whole of the crypto question.
+ *
+ * **Two forms are accepted for one release.** Version 2 moved the domain tag to
+ * `collie-crew-warrant-v2` (§0), and a warrant is not a request: it is one signature, minted by the
+ * lead, stored on every member's disk and re-read after a restart. A machine that updated from 1.7.0
+ * therefore comes up holding a warrant signed under the old tag, and refusing it would disarm the
+ * standby door on the update instead of on the operator's decision. Nothing signs the old form.
+ */
 export function verifyWarrantSignature(w: Warrant, leadCertPem: string): boolean {
-  return verifyCanonical(leadCertPem, w.signature, canonicalWarrant(w));
+  if (verifyCanonical(leadCertPem, w.signature, canonicalWarrant(w))) return true;
+  // REMOVE_IN_1_9_0: the version 1 warrant, accepted for the length of the overlap (§0.1).
+  return verifyCanonical(leadCertPem, w.signature, canonicalWarrantVersion1(w));
 }
 
 /** Epoch ms at which this warrant is dead on every clock that reads it (RFC §4.5). */
@@ -345,7 +356,7 @@ export function warrantPushNeeded(current: Warrant | null, reported: WarrantRepo
 
 // ── The receiving half ───────────────────────────────────────────────────────
 
-/** The body of `POST /pack/v1/warrant` (RFC §11.1). */
+/** The body of `POST /crew/v1/warrant` (RFC §11.1). */
 export interface WarrantPush {
   readonly warrant: Warrant;
   /**

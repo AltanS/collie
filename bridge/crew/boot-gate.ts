@@ -1,7 +1,7 @@
 import { sweepPeers, type HelloResult, type CrewLink, type PeerOutcome } from "./peer-client.ts";
 import type { Warrant } from "./trust-store.ts";
 
-// The boot-time gate against a split brain (RFC §8.4, PACK_PROTOCOL.md §18.11).
+// The boot-time gate against a split brain (RFC §8.4, CREW_PROTOCOL.md §18.11).
 //
 // ── THE FAILURE THIS CLOSES ──────────────────────────────────────────────────
 // The old lead was down during a takeover, so nobody could tell it anything. It comes back up hours

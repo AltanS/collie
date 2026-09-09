@@ -13,10 +13,13 @@
 # copies its script: both derive their ROOT from BASH_SOURCE and cd there, so a symlink would point
 # them back at the real checkout and they would answer about THIS repository's versions.
 #
-# Guard (B), lint, guard (C), crew wire, and guard (D), flake.lock, are out of scope here and are
-# held off with their own SKIP_* switches: they own their file lists and their messages, and
-# check-crew-wire.sh and check-flake-lock.sh are covered against their own fixtures. What is
-# asserted below is only which commits guard (A) lets through.
+# Guard (B), lint, and guard (D), flake.lock, are out of scope here and are held off with their own
+# SKIP_* switches: they own their file lists and their messages. What the cases in the middle assert
+# is only which commits guard (A) lets through.
+#
+# Guard (C), the crew wire, has its own section at the bottom. It is driven directly rather than
+# through the hook, because the script takes `STAGED_FILES` as an override and that is the whole
+# input it judges — so a case is one variable and one exit code, with no commit in between.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -302,6 +305,69 @@ assert_allowed "SKIP_VERSION_CHECK=1 over an unrecorded source change"
 case "$OUT" in
   *"SKIP_VERSION_CHECK=1"*) ;;
   *) fail "the override passed silently: ${OUT}" ;;
+esac
+
+# ── Guard (C): the crew wire ─────────────────────────────────────────────────
+# ADR 0025: a commit that stages a wire-shape file must record a protocol decision — a staged
+# `CREW_PROTOCOL.md` (additive-optional, §7.1) or a bumped `CREW_PROTOCOL_VERSION`. Both names moved
+# in 1.8.0 (protocol version 2, ADR 0039), and the guard asks for the new ones.
+#
+# `STAGED_FILES` is the script's own override, so each case is one variable. Pass (b) reads the
+# staged and HEAD blobs of `bridge/crew/enrollment.ts` with `git show`, which is why that file has to
+# exist in the fixture and be committed.
+mkdir -p "${REPO}/bridge/crew"
+printf 'export const CREW_PROTOCOL_VERSION = 2;\n' > "${REPO}/bridge/crew/enrollment.ts"
+printf '# Crew protocol v2\n' > "${REPO}/CREW_PROTOCOL.md"
+printf '// REMOVE_IN_1_9_0 — the version 1 overlap.\n' > "${REPO}/bridge/crew/v1-overlap.ts"
+git add -A
+git commit -q --no-verify -m "crew wire fixture"
+
+wire_guard() {
+  set +e
+  OUT="$(STAGED_FILES="$1" bash "${REPO}/scripts/check-crew-wire.sh" 2>&1)"
+  RC=$?
+  set -e
+}
+
+wire_guard "docs/deployment.md"
+assert_allowed "no wire file staged"
+
+wire_guard "bridge/crew/router.ts"
+assert_blocked "a wire file with no decision" "no protocol decision was recorded"
+case "$OUT" in
+  *"CREW_PROTOCOL.md"*) ;;
+  *) fail "the refusal did not name CREW_PROTOCOL.md: ${OUT}" ;;
+esac
+
+wire_guard "bridge/crew/router.ts
+CREW_PROTOCOL.md"
+assert_allowed "a wire file with the contract doc staged"
+case "$OUT" in
+  *"staged CREW_PROTOCOL.md"*) ;;
+  *) fail "the pass did not name CREW_PROTOCOL.md: ${OUT}" ;;
+esac
+
+# The overlap is on the file list, so touching it is a wire change like any other. REMOVE_IN_1_9_0
+# together with `bridge/crew/v1-overlap.ts` itself.
+wire_guard "bridge/crew/v1-overlap.ts"
+assert_blocked "the version 1 overlap with no decision" "bridge/crew/v1-overlap.ts"
+
+# And while the overlap exists it must carry its removal marker, whatever else is staged — a file
+# that lost the marker is a file nobody will remember to delete in 1.9.0. REMOVE_IN_1_9_0.
+printf '// no marker here\n' > "${REPO}/bridge/crew/v1-overlap.ts"
+wire_guard "docs/deployment.md"
+assert_blocked "the overlap without its marker" "carries no REMOVE_IN_1_9_0 marker"
+printf '// REMOVE_IN_1_9_0 — the version 1 overlap.\n' > "${REPO}/bridge/crew/v1-overlap.ts"
+
+# The hatch, and it says so on the way past.
+set +e
+OUT="$(SKIP_CREW_WIRE_CHECK=1 STAGED_FILES="bridge/crew/router.ts" bash "${REPO}/scripts/check-crew-wire.sh" 2>&1)"
+RC=$?
+set -e
+assert_allowed "SKIP_CREW_WIRE_CHECK=1 over a wire change"
+case "$OUT" in
+  *"SKIP_CREW_WIRE_CHECK=1"*) ;;
+  *) fail "the crew-wire override passed silently: ${OUT}" ;;
 esac
 
 echo "✓ pre-commit.test.sh — all cases passed"

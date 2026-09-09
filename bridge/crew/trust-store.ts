@@ -20,7 +20,7 @@ import type { Enrollment } from "./mode.ts";
 //
 // SOLO WRITES NOTHING. `load()` on an instance that never enrolled opens a file that isn't there and
 // returns `null`: no directory is created, no key is generated, no default is materialised
-// (PACK_PROTOCOL.md §11, "Files written"). Materialisation happens on the first *crew* action —
+// (CREW_PROTOCOL.md §11, "Files written"). Materialisation happens on the first *crew* action —
 // minting an invite or answering one — and nowhere else.
 
 /** The trust store's filename under `stateDir`. Also the literal the solo baseline scans for. */
@@ -73,7 +73,7 @@ export type MemberStatus = "enrolled" | "unenrolled";
  * One member of the crew, as this collie pins it.
  *
  * **Keyed by member id, not by address.** The address is a hint the lead dials and a roaming laptop
- * changes; the member id is the stable thing (PACK_PROTOCOL.md §4: "A member id … is not a hostname,
+ * changes; the member id is the stable thing (CREW_PROTOCOL.md §4: "A member id … is not a hostname,
  * not an address, and carries no routing information"). Pinning per address would unpin a laptop
  * every time it moved networks, which is a trust decision made by DHCP.
  */
@@ -108,7 +108,7 @@ export interface TrustedMember {
    */
   readonly contactedAt?: number | null;
   /**
-   * The `X-Pack-Timestamp` of the last signed request this collie **admitted** from this member
+   * The `X-Crew-Timestamp` of the last signed request this collie **admitted** from this member
    * (§8.6). `0` until one arrives.
    *
    * Persisted rather than held in memory because every membership verb restarts the bridge — a replay
@@ -174,7 +174,7 @@ export interface PendingHandover {
 }
 
 /**
- * A standing, lead-signed permission for ONE member to take the crown (RFC §4.2, PACK_PROTOCOL.md
+ * A standing, lead-signed permission for ONE member to take the crown (RFC §4.2, CREW_PROTOCOL.md
  * §18). Signed with the lead's own identity key and verified against the certificate the recipient
  * already pinned — no new key, no new algorithm, no CA (`bridge/crew/warrant.ts`).
  *

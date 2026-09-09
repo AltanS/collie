@@ -4,7 +4,7 @@ import { STATUS_RANK } from "../types.ts";
 import type { PaneWire, ServerSummary, SessionSummary, SnapshotResponse, TabView, WorkspaceView } from "../types.ts";
 import type { PeerState } from "./registry.ts";
 
-// The ONE place the lead re-serialises (PACK_PROTOCOL.md §9.2). Everything else a crew link carries
+// The ONE place the lead re-serialises (CREW_PROTOCOL.md §9.2). Everything else a crew link carries
 // is proxied byte-for-byte; this file folds N peers' snapshots plus the lead's own into the single
 // body `/api/snapshot` answers.
 //
@@ -41,7 +41,7 @@ import type { PeerState } from "./registry.ts";
  * `toPaneWire` applies to a pane leaving the bridge.
  *
  * **`workspaces` and `tabs` are among them since the F14 fix, and nothing new goes on the wire for
- * it.** A peer's `/pack/v1/snapshot` has always answered with its own whole browser body, these two
+ * it.** A peer's `/crew/v1/snapshot` has always answered with its own whole browser body, these two
  * lists included; the lead simply threw them away and rendered its own. §9.2 says every session and
  * every pane is host-tagged, and a space and a tab are the two things left that the phone navigates
  * by, so they are read now and tagged the same way.
@@ -67,7 +67,7 @@ export const MAX_PEER_WORKSPACES = 500;
 export const MAX_PEER_TABS = 500;
 
 /**
- * A peer's `GET /pack/v1/snapshot` body exactly as it arrives off the wire: three lists, none of
+ * A peer's `GET /crew/v1/snapshot` body exactly as it arrives off the wire: three lists, none of
  * them checked until {@link parsePeerSnapshot} runs. Named so the parser's input has a contract of
  * its own rather than being `unknown`.
  */
@@ -80,7 +80,7 @@ export type PeerSnapshotWire = {
 };
 
 /**
- * Coerce a peer's `GET /pack/v1/snapshot` body into {@link PeerSnapshotBody}, or `null` if it is not
+ * Coerce a peer's `GET /crew/v1/snapshot` body into {@link PeerSnapshotBody}, or `null` if it is not
  * one at all.
  *
  * **A peer never asserts its own host.** Any `host` field arriving on a session or a pane is

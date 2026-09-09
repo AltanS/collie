@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { deriveMode, modeForWire, type Enrollment } from "./mode.ts";
 
-// Mode is the seam the whole zero-tax promise hangs off (PACK_PROTOCOL.md §3, §11): if `solo` is
+// Mode is the seam the whole zero-tax promise hangs off (CREW_PROTOCOL.md §3, §11): if `solo` is
 // what an unenrolled instance computes, and every federation path is behind a mode check made once,
 // then "does a solo user pay for this?" is a question about this file. So it is pinned exhaustively,
 // including the inputs a hand-edited or half-written trust store can produce.

@@ -218,7 +218,7 @@ export function NewSpaceSheet({
                     role="radio"
                     aria-checked={selected}
                     // `aria-disabled`, not `disabled`: a member that cannot take writes is still
-                    // LISTED (PACK_PROTOCOL.md §10.2) and still reachable by a screen reader, which
+                    // LISTED (CREW_PROTOCOL.md §10.2) and still reachable by a screen reader, which
                     // is how the reason gets read out at all. A real `disabled` would remove both.
                     aria-disabled={reason !== undefined}
                     aria-label={reason}

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { render } from "ink-testing-library";
 
 import { AuditLog, type AuditEntry } from "../bridge/audit.ts";
-import { PACK_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
+import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, material, member, T0 } from "../bridge/crew/fixtures.ts";
 import { serializeTrustStore, TrustStore, type TrustStoreIo } from "../bridge/crew/trust-store.ts";
 import { capture, context, fakeExec, fakeFiles, fakeOps, ROOT } from "./fakes.ts";
@@ -151,12 +151,12 @@ function harness(opts: {
     fetch: async () =>
       opts.reachable === false
         ? Promise.reject(new Error("connection refused"))
-        : new Response(JSON.stringify({ protocol: PACK_PROTOCOL_VERSION, member: "nas", version: VERSION }), {
+        : new Response(JSON.stringify({ protocol: CREW_PROTOCOL_VERSION, member: "nas", version: VERSION }), {
             status: 200,
             headers: {
               "content-type": "application/json",
-              "x-pack-protocol": String(PACK_PROTOCOL_VERSION),
-              "x-pack-member": "nas",
+              "x-crew-protocol": String(CREW_PROTOCOL_VERSION),
+              "x-crew-member": "nas",
             },
           }),
     now: () => T0,

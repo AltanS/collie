@@ -142,7 +142,7 @@ export function useHostHealth(host: string | undefined): HostHealth | undefined 
 }
 
 /**
- * The reason a write to `host` must be refused before it is attempted (PACK_PROTOCOL.md §10.3), or
+ * The reason a write to `host` must be refused before it is attempted (CREW_PROTOCOL.md §10.3), or
  * `undefined` when it may proceed — which is ALWAYS the answer on a solo install, so every write
  * surface below keeps its exact current behaviour without asking whether there is a crew.
  *

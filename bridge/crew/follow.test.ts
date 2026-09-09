@@ -65,7 +65,7 @@ const red = (id: string, reason: string): PreflightReport => ({
 });
 
 describe("what a lead may state about itself", () => {
-  test("a settled release is stated, and X-Pack-Lead-Release is its bare version", () => {
+  test("a settled release is stated, and X-Crew-Lead-Release is its bare version", () => {
     expect(leadReleaseHeader({ version: "1.4.1", run: null })).toBe("1.4.1");
     expect(leadReleaseHeader({ version: "1.4.1", run: run({ state: "done", to: "v1.4.1" }) })).toBe("1.4.1");
     // A machine that has been on this version since before any recorded run states it too.
@@ -99,9 +99,9 @@ describe("what a lead may state about itself", () => {
     expect(parseTurn("attic;r-1;extra")).toBeNull();
   });
 
-  test("the two header names are the ones PACK_PROTOCOL registers", () => {
-    expect(LEAD_RELEASE_HEADER).toBe("X-Pack-Lead-Release");
-    expect(UPDATE_TURN_HEADER).toBe("X-Pack-Update-Turn");
+  test("the two header names are the ones CREW_PROTOCOL registers", () => {
+    expect(LEAD_RELEASE_HEADER).toBe("X-Crew-Lead-Release");
+    expect(UPDATE_TURN_HEADER).toBe("X-Crew-Update-Turn");
   });
 });
 

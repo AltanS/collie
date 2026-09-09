@@ -64,19 +64,27 @@ describe("service-worker navigation passthrough", () => {
     expect(isNetworkOnlyNavigation("/?h=box2&s=demo")).toBe(false);
   });
 
-  // PACK_PROTOCOL.md §5: a browser never issues a crew request, so a browser must never be able to
+  // CREW_PROTOCOL.md §5: a browser never issues a crew request, so a browser must never be able to
   // cache one. Answering any of these from the precached app shell would hand a collie-to-collie
   // caller an HTML page.
   it("never answers the crew surface from the precache", () => {
     for (const path of [
-      "/pack/v1/snapshot",
-      "/pack/v1/snapshot?session=demo",
-      "/pack/v1/pane/w1:p1",
-      "/pack/v1/enroll",
-      "/pack/v1/hello",
-      "/pack/v1",
-      "/pack/v1?x=1",
+      "/crew/v1/snapshot",
+      "/crew/v1/snapshot?session=demo",
+      "/crew/v1/pane/w1:p1",
+      "/crew/v1/enroll",
+      "/crew/v1/hello",
+      "/crew/v1",
+      "/crew/v1?x=1",
     ]) {
+      expect(isNetworkOnlyNavigation(path)).toBe(true);
+    }
+  });
+
+  // REMOVE_IN_1_9_0 — the version 1 prefix (CREW_PROTOCOL.md §0.1). A 1.8.0 lead answers `/pack/v1/*`
+  // for one release, and a service worker minted from that lead's origin must deny it too.
+  it("never answers the version 1 crew surface from the precache either", () => {
+    for (const path of ["/pack/v1/snapshot", "/pack/v1/hello", "/pack/v1", "/pack/v1?x=1"]) {
       expect(isNetworkOnlyNavigation(path)).toBe(true);
     }
   });
@@ -84,6 +92,7 @@ describe("service-worker navigation passthrough", () => {
   it("does not claim routes that merely start with the crew prefix", () => {
     expect(isNetworkOnlyNavigation("/crew")).toBe(false);
     expect(isNetworkOnlyNavigation("/packages")).toBe(false);
+    expect(isNetworkOnlyNavigation("/crew/v10/snapshot")).toBe(false);
     expect(isNetworkOnlyNavigation("/pack/v10/snapshot")).toBe(false);
   });
 
@@ -117,12 +126,14 @@ describe("service-worker navigation passthrough", () => {
       String(/^\/auth(?:[/?]|$)/),
       String(/^\/outpost\.goauthentik\.io(?:[/?]|$)/),
       String(/^\/cdn-cgi\//),
+      String(/^\/crew\/v1(?:[/?]|$)/),
+      // REMOVE_IN_1_9_0 — the version 1 overlap's line.
       String(/^\/pack\/v1(?:[/?]|$)/),
       String(/^\/standby(?:[/?]|$)/),
     ]);
   });
 
-  // The standby door (PACK_PROTOCOL.md §18.15). On the bad day the phone's FIRST hit is an installed
+  // The standby door (CREW_PROTOCOL.md §18.15). On the bad day the phone's FIRST hit is an installed
   // service worker minted from the LEAD's origin, so a precached app shell here is the difference
   // between reaching the takeover page and staring at the UI of the collie that just died.
   it("passes the whole standby namespace to the network, query and all", () => {

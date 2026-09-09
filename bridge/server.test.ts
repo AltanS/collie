@@ -1238,10 +1238,10 @@ describe("isLoopbackPeer", () => {
   // source that registers it — the same idiom solo-baseline.test.ts uses for the route table.
   //
   // Why it matters: a crew peer binds off loopback by construction and its lead dials it from
-  // another machine (PACK_PROTOCOL.md §3, ADR 0013). Were this check first, every `/pack/v1/*` call
+  // another machine (CREW_PROTOCOL.md §3, ADR 0013). Were this check first, every `/crew/v1/*` call
   // would be refused before the surface that actually admits it — pinned mutual TLS plus the crew
   // secret — ever ran, and the crew link would be dead on a peer.
-  test("the peer check runs AFTER the federated surface, so /pack/v1/* is never refused by it", () => {
+  test("the peer check runs AFTER the federated surface, so /crew/v1/* is never refused by it", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     const dispatch = src.indexOf("const packed = await crewHandler(req, url);");
     const peerCheck = src.indexOf("isLoopbackPeer(server.requestIP(req)?.address)");
@@ -1630,7 +1630,7 @@ describe("bridgeConfigBody — the mux block is appended, never reordering what 
 // `/api/snapshot` is `crewLead ? crewLead.merge(body) : body`, inside Bun.serve — which bun test
 // cannot stand up (CLAUDE.md). So the two halves are asserted where they actually live: the
 // composition through the real CrewLead, and the routing invariants by reading the source that
-// registers them. PACK_PROTOCOL.md §9.2, §10.2.
+// registers them. CREW_PROTOCOL.md §9.2, §10.2.
 
 const snapshotSource = (): SnapshotResponse => ({
   bridge: "connected",
@@ -1871,7 +1871,7 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
   });
 
   test("a peer's own routes are the SAME closure the browser's are (§5), with two callers", () => {
-    // The 1:1 rule: `/pack/v1/pane/:id/reply` and `/api/pane/:id/reply` are not two handlers that
+    // The 1:1 rule: `/crew/v1/pane/:id/reply` and `/api/pane/:id/reply` are not two handlers that
     // agree — they are one block reached by two callers. Exactly one definition, exactly two calls.
     expect([...src.matchAll(/const serveSessionRoute = async/g)]).toHaveLength(1);
     expect([...src.matchAll(/serveSessionRoute\(\s*req/g)]).toHaveLength(2);
