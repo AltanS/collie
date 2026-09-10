@@ -1413,9 +1413,11 @@ export function AgentChat({
             "relative flex min-h-0 min-w-0 flex-1 flex-col",
             // The composer carried the bottom inset, and in zen the composer is gone — so this
             // region takes it over, or the mirror's last row runs under the home indicator. The TOP
-            // inset is deliberately NOT taken: the header element stays mounted with its own
-            // `env(safe-area-inset-top)` even while its row is collapsed away, so claiming it here
-            // would pay for the notch twice.
+            // inset is deliberately NOT taken: the header element stays mounted above this region
+            // even while its row is collapsed away, and the notch is reserved exactly once up there
+            // — by the strip band while it is showing something, by the header itself while it is
+            // not (`app-header.tsx`). Claiming it here would pay for it twice, whichever of the two
+            // currently holds it.
             zen && "[padding-bottom:env(safe-area-inset-bottom)]",
           )}
         >

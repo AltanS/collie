@@ -959,6 +959,10 @@ export const en = {
   // The same host under a prefix Collie does not recognise: there is no manager to name, so the band
   // states the version and points at the page that carries the boundary sentence.
   "updateRibbon.availablePackagedUnnamed": "Collie {version} available.",
+  // The band's own control in the states that can also be PUT DOWN. `ui/notice.tsx` forbids a
+  // whole-row tap beside a dismiss X (a button may not hold a button), so those states name the
+  // tap instead of being one. It opens /settings/updates, where the confirm lives; it starts nothing.
+  "updateRibbon.view": "View",
   "updateRibbon.dismiss": "Dismiss this version",
   // The close on the two QUIET crew states. Not "dismiss this version": what is put down there is a
   // notice about another machine, and this host's own offer is untouched by it.

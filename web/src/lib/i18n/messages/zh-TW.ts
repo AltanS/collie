@@ -872,6 +872,7 @@ export const zhTW: Dictionary = {
   "updateRibbon.available": "Collie {version} 可用。點擊更新。",
   "updateRibbon.availablePackaged": "Collie {version} 可透過 {manager} 取得。",
   "updateRibbon.availablePackagedUnnamed": "Collie {version} 可用。",
+  "updateRibbon.view": "查看",
   "updateRibbon.dismiss": "略過此版本",
   "updateRibbon.hideNotice": "隱藏此通知",
 };

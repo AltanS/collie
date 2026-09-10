@@ -25,6 +25,7 @@ import { settingsPath } from "@/lib/nav";
 import { CollieHome } from "@/components/collie-home";
 import { AlphaBar } from "@/components/alpha-bar";
 import { Collapse } from "@/components/ui/collapse";
+import { useStripBandOpen } from "@/components/ui/strip-host";
 import { SectionLabel } from "@/components/ui/section-label";
 import type { BridgeStatus } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
@@ -59,7 +60,8 @@ interface HeaderClaim {
    *
    *  It is a claim rather than a prop for the same reason the other three are: the shell owns the
    *  `<header>` element, so only the shell can stop drawing it, and the route that wants it gone is
-   *  mounted below it. The element itself STAYS, with its safe-area inset and its reserved rule; the
+   *  mounted below it. The element itself STAYS, with its reserved rule and with whatever safe-area
+   *  inset it is currently holding (see the class list); the
    *  row inside it leaves through `Collapse` — DESIGN.md §1's only sanctioned way an in-flow surface
    *  arrives or leaves, and §2's reason for not tearing 60px out of the top of the page in one frame.
    *  Keeping the inset is deliberate: the notch is not screen a mirror could use anyway, and a route
@@ -127,8 +129,9 @@ interface AppHeaderHostProps {
  * entirely. None of that is reachable by memoising inside the mark: the `useMemo` on its markup is
  * per-instance, and a new instance is exactly what was happening.
  *
- * The pattern is `RootLayout`'s existing one — UpdateRibbon and ConnectionBanner already sit
- * above the outlet and already survive navigation. This is the third thing on that shelf.
+ * The pattern is `RootLayout`'s existing one — the strip band, with UpdateRibbon and
+ * ConnectionBanner registering into it, already sits above the outlet and already survives
+ * navigation. This is the second thing on that shelf, and it renders the outlet itself.
  *
  * Routes feed it through `<RouteHeader/>`; see the note there for why that is a portal and not a
  * store of nodes.
@@ -150,6 +153,9 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
   // the line still reads "on <the lead's mux>" — the name of the thing the page you are running is
   // built on, which is what a support question needs.
   const mux = useMuxName();
+  // Whether the band above this bar is showing a strip right now. It decides ONE thing — who
+  // reserves the safe-area inset — and the reasoning sits on the class below.
+  const bandOpen = useStripBandOpen();
   // The mark that goes with that name, served by the bridge from the ADAPTER's own bytes. Empty
   // whenever no logo was published, and empty renders nothing — see useMuxLogoUrl.
   const muxLogo = useMuxLogoUrl();
@@ -183,8 +189,9 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
 
   return (
     <HeaderSlotContext.Provider value={slots}>
-      {/* A column, not a row: the sticky bar owns the safe-area inset and stacks the (usually absent)
-          prerelease strip above the header row proper, which keeps its original padding. On a stable
+      {/* A column, not a row: the sticky bar reserves the safe-area inset when nothing above it does
+          (see the class list), and stacks the (usually absent) prerelease strip above the header row
+          proper, which keeps its original padding. On a stable
           build AlphaBar renders null and the geometry is byte-for-byte what it always was — the inset +
           the row's own py-2 reproduce the old `calc(safe-area + 0.5rem)` top padding exactly. The strip
           sits ABOVE everything including the find-bar override: while you're searching an alpha it is
@@ -202,7 +209,31 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
           state it — otherwise the dashboard's 640px rule would silently become the viewport's. */}
       <header
         className={cn(
-          "sticky top-0 z-20 flex flex-col border-b bg-background [padding-top:env(safe-area-inset-top)]",
+          "sticky top-0 z-20 flex flex-col border-b bg-background",
+          /*
+           * THE NOTCH IS RESERVED ONCE, BY WHATEVER IS ACTUALLY ON TOP.
+           *
+           * This bar owned `env(safe-area-inset-top)` unconditionally, on a claim that was true when
+           * it was written and is not any more: that the header is the first thing on the screen. It
+           * is not, whenever the band above it (`ui/strip-host.tsx`) is showing a strip — and the
+           * band reserves the inset too, because a strip that clears the notch is the whole reason
+           * the band exists in that position. Two unconditional reservations is one dead inset-tall
+           * strip at the top of an iPhone, which is exactly the bug reported for ribbon + header.
+           *
+           * `useStripBandOpen()` and NOT a `:first-child` selector: the band never unmounts (it
+           * collapses to nothing and keeps its live regions), so the header is never the DOM's first
+           * child once a host is mounted, and the question is whether the band is currently OPEN.
+           * Outside a host the hook is false and this bar owns the inset exactly as before.
+           *
+           * The transition is load-bearing, not decoration. The two reservations hand over during
+           * the band's own 240ms open/close, so without it the header's inset would appear in one
+           * frame while the band was still half-way through animating its own away, and the page
+           * below would jog down and back. On the same duration and the same easing as
+           * `ui/collapse.tsx`'s (COLLAPSE_MS), the sum of the two is monotonic and the operator sees
+           * one movement. Under reduced motion both sides snap together, which is also correct.
+           */
+          "transition-[padding-top] duration-[240ms] ease-out motion-reduce:transition-none",
+          !bandOpen && "[padding-top:env(safe-area-inset-top)]",
           // The rule is RECOLOURED, never removed — DESIGN.md §2's own technique, and the width stays
           // reserved in the base string above. While a route has the row hidden (zen) there are no
           // two regions left to cut apart, so the edge goes transparent; nothing moves by a pixel

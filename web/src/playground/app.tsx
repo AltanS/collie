@@ -544,7 +544,7 @@ function DashboardSection() {
         state="update-band-release-offered"
         label="update band (a) — a release is on offer"
         reach="the bridge's poll reports a newer release upstream. It shows on EVERY screen, because it is a fact about the machine and not about the page you are on."
-        note="The tap NAVIGATES to /settings/updates and never starts anything: the confirm lives on that page, and a band that could start an update from any screen would be the reflex tap the confirm was designed against. The ✕ dismisses this VERSION — the band stays gone until a newer one appears, and the pin outlives a reload (localStorage)."
+        note="The View button NAVIGATES to /settings/updates and never starts anything: the confirm lives on that page, and a band that could start an update from any screen would be the reflex tap the confirm was designed against. It is a named control rather than a row-wide tap because this state also carries a ✕, and ui/notice.tsx forbids the pair — a button may not hold a button. The states with no ✕ (a run in flight, a bundle to reload) keep the whole row as their target. The ✕ dismisses this VERSION — the band stays gone until a newer one appears, and the pin is recorded on the bridge, so it drops the band on every device."
         span={2}
       >
         <Stage>
@@ -748,9 +748,16 @@ function PaneSection() {
         reach="never all six at once by accident, but never impossible either: a stale proxy session
           (401), a release on offer, a status toast, a device this proxy doesn't allowlist,
           and a peer that has gone quiet — all independent facts that can coincide on one pane."
-        note="GENUINE together: UpdateRibbon + ConnectionBanner (RootLayout's own two in-flow
-          rows) wrapping the real StatusArea/ReadOnlyBanner/HostStaleBanner/mirror inside the real
-          AgentChat — the exact nesting routes/root.tsx uses. STAGED: the five causes are independently
+        note="GENUINE together: the real StripHost band with both of RootLayout's strip features
+          registering into it — UpdateRibbon and ConnectionBanner — wrapping the real
+          StatusArea/ReadOnlyBanner/HostStaleBanner/mirror inside the real AgentChat, the exact
+          nesting routes/root.tsx uses. THE BAND SHOWS ONE OF THEM, and that is the point of the
+          card rather than a gap in it: the refusal is AUTH and the offer is UPDATE, so the refusal
+          takes the band and the offer waits (lib/strip-priority.ts). The worst case at the top of
+          this app is therefore ONE strip plus the header, never two strips plus the header — which
+          is also why the safe-area inset is reserved once, by the band while it is open and by the
+          header when it is not. The offer is not lost while it waits: /settings/updates carries it,
+          and it takes the band the moment the refusal clears. STAGED: the five causes are independently
           driven rather than provoked by one real outage, so they can be shown together on demand; nothing
           here is a state the app cannot produce, only a coincidence forced for review. The red
           ConnectionBanner is the auth-error branch (see PaneStackRouter's doc comment in harness.tsx)

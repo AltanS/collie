@@ -13,6 +13,7 @@ import { AgentChat } from "@/components/agent-chat";
 import { AppHeaderHost } from "@/components/app-header";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { CrewProvider } from "@/components/crew-provider";
+import { StripHost } from "@/components/ui/strip-host";
 import { UpdateRibbon } from "@/components/update-ribbon";
 import { CONNECTION_LOST_MS, TROUBLE_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth, markLive } from "@/lib/connection-health";
@@ -75,11 +76,24 @@ export function useConnectionClock(mode: ClockMode): void {
  * `useOptionalRootData()` reads — the update chip, the header's freshness stamp and the crew census
  * all need it. Built once (`useState`'s lazy initialiser) so the route element is stable; the
  * components inside subscribe to their own module stores and re-render without it.
+ *
+ * IT CARRIES THE BAND, exactly as `routes/root.tsx` does. `UpdateRibbon` and `ConnectionBanner`
+ * render nothing where they sit — they register a `StripSlot` with `ui/strip-host.tsx` and the band
+ * paints the winner — so a card that mounts one of them without a host would show an empty stage and
+ * report a bug that is not there. It costs the cards that mount no strip nothing: the band collapses
+ * to no height, and a header inside it goes on reserving the safe-area inset itself.
  */
 export function RootRouter({ data, children }: { data: HomeData; children: ReactNode }) {
   const [router] = useState(() =>
     createMemoryRouter(
-      [{ id: ROOT_ROUTE_ID, path: "/", loader: () => data, element: <>{children}</> }],
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => data,
+          element: <StripHost>{children}</StripHost>,
+        },
+      ],
       { initialEntries: ["/"] },
     ),
   );
@@ -302,10 +316,16 @@ export function PaneRouter({
 const StackDeviceContext = createContext<DeviceAuth | null>(null);
 
 /**
- * {@link PaneRouter}'s pane, PLUS the two tier-1 banners RootLayout mounts as its in-flow siblings —
- * `<UpdateRibbon/>` and `<ConnectionBanner/>` — so the worst-case stack (gap 4) can be judged
- * as one screen instead of summed from cards measured apart. Same real components, same nesting order
- * as `routes/root.tsx`: banners first, pane second.
+ * {@link PaneRouter}'s pane, PLUS the band RootLayout mounts above it — the real `<StripHost>` with
+ * the real `<UpdateRibbon/>` and `<ConnectionBanner/>` registering into it — so the worst-case stack
+ * (gap 4) can be judged as one screen instead of summed from cards measured apart. Same real
+ * components, same nesting as `routes/root.tsx`: the host wraps the two features AND the header, so
+ * the band arbitrates and the header knows whether it still owes the safe-area inset.
+ *
+ * BOTH FEATURES ARE MOUNTED AND ONE OF THEM SHOWS. That is not the harness being lazy — it is the
+ * app's rule made visible: the band takes one strip at a time, and `AUTH` (the refusal below) beats
+ * `UPDATE` (the offer). What this card is for is the height of the real worst case, which is one
+ * strip plus the header, and never two strips plus the header.
  *
  * The red `ConnectionBanner` here is deliberately the AUTH-ERROR branch (`bridge=undefined,
  * authError`), not the trouble→lost escalation — that branch paints red off its props alone, with no
@@ -344,11 +364,13 @@ export function PaneStackRouter({
               pollMs={3_000}
             >
               <div className="flex h-full flex-col">
-                <UpdateRibbon />
-                <ConnectionBanner bridge={undefined} error authError />
-                <AppHeaderHost bridge={data.bridge} error={false}>
-                  <StackPane data={data} fixture={fixture} />
-                </AppHeaderHost>
+                <StripHost>
+                  <UpdateRibbon />
+                  <ConnectionBanner bridge={undefined} error authError />
+                  <AppHeaderHost bridge={data.bridge} error={false}>
+                    <StackPane data={data} fixture={fixture} />
+                  </AppHeaderHost>
+                </StripHost>
               </div>
             </CrewProvider>
           ),

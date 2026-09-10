@@ -47,6 +47,16 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   names, but a future import could have carried them out unnoticed; the website repo now runs a
   build-time check against exactly that (`bun run build:app`), so a real name reaching
   `public/app/` fails the build instead of shipping quietly.
+- **The top of the app no longer reserves the iPhone notch three times over.** The update
+  ribbon, the connection bar and the header each set `env(safe-area-inset-top)` for themselves,
+  each written when it was the first thing on the screen, so any two of them at once left a tall
+  dead band above the notice — the everyday ribbon-plus-header case on iOS. The band above the
+  header now shows one strip at a time and owns the inset while it is open; the header reserves it
+  only while the band is empty, and the handover rides the band's own 240ms open and close, so
+  nothing jumps. The update offer and the connection bar are `ui/notice.tsx` strips now, which also
+  ends two copies of the tint recipe, two hand-rolled collapse animations, and two rows that asked
+  a screen reader to be assertive and polite at once. The offer's states that carry a ✕ trade their
+  row-wide tap for a named View button, since a button may not hold a button.
 
 ### Docs
 

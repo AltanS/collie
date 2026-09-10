@@ -892,6 +892,7 @@ export const ko: Dictionary = {
   "updateRibbon.available": "Collie {version} 사용 가능. 탭하여 업데이트.",
   "updateRibbon.availablePackaged": "Collie {version} ({manager}) 이용 가능.",
   "updateRibbon.availablePackagedUnnamed": "Collie {version} 이용 가능.",
+  "updateRibbon.view": "보기",
   "updateRibbon.dismiss": "이 버전 숨기기",
   "updateRibbon.hideNotice": "이 알림 숨기기",
 };

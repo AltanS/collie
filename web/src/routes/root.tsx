@@ -16,6 +16,7 @@ import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { UpdateRibbon } from "@/components/update-ribbon";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { AppHeaderHost } from "@/components/app-header";
+import { StripHost } from "@/components/ui/strip-host";
 import { CrewProvider } from "@/components/crew-provider";
 import { CollieMark } from "@/components/collie-mark";
 import { describeThrownError } from "@/lib/api-error-message";
@@ -96,23 +97,34 @@ export function RootLayout() {
     // using. That mattered more once the cadence gained inputs beyond the snapshot (#156).
     <CrewProvider servers={data.servers} sessions={data.sessions} ts={data.ts} pollMs={pollMs}>
       <div className="flex h-[100dvh] flex-col overflow-hidden">
-        {/* THE update band, and the only one: a release on offer, a confirm just tapped, a run in
-            flight, a new bridge this bundle is behind, and peers following — one fixed-height row
-            that says whichever of those is true. Mounted unconditionally so the bundle self-updater's
-            controller runs (and can auto-update) for the app's lifetime; it returns null when it has
-            nothing to say. */}
-        <UpdateRibbon />
-        {/* The app's ONE connection surface: a thin, animated bar that stays hidden while healthy, fades
-            in amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates to a
-            red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery. Reads the
-            same shared-clock signals as the header dog, so the two always agree. */}
-        <ConnectionBanner
-          bridge={data.bridge}
-          error={data.error}
-          authError={data.authError}
-          lastSeenAt={shownLastSeenAt(data, pane)}
-        />
-        {/* THE ONE HEADER, and the third thing on this shelf. The two banners above it have always
+        {/* THE BAND, and the rule that there is only ever one strip in it. Four facts can be true at
+            once above the header — the auth refusal, a lost connection, a degraded one, an update on
+            offer — and none of them excludes another. Before this host arbitrated them, each row
+            reserved the notch for itself (each was written assuming it might be the first thing on
+            screen), so ribbon + header on an iPhone paid for the safe-area inset twice and left a
+            dead band at the top of the app. One winner, one inset, one owner.
+
+            The two features below register into it and render nothing where they sit; the header and
+            the route are the host's `children` and follow the band in the DOM. Which fact beats
+            which is `lib/strip-priority.ts` — a fact about this app, deliberately not about `ui/`. */}
+        <StripHost>
+          {/* THE update band, and the only one: a release on offer, a confirm just tapped, a run in
+              flight, a new bridge this bundle is behind, and peers following — one row that says
+              whichever of those is true. Mounted unconditionally so the bundle self-updater's
+              controller runs (and can auto-update) for the app's lifetime; it registers no slot when
+              it has nothing to say. */}
+          <UpdateRibbon />
+          {/* The app's ONE connection surface: a thin bar that stays hidden while healthy, appears
+              amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates to a
+              red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery. Reads the
+              same shared-clock signals as the header dog, so the two always agree. */}
+          <ConnectionBanner
+            bridge={data.bridge}
+            error={data.error}
+            authError={data.authError}
+            lastSeenAt={shownLastSeenAt(data, pane)}
+          />
+          {/* THE ONE HEADER, and the third thing on this shelf. The two banners above it have always
             survived a navigation because they are rendered HERE rather than inside `<Outlet/>`; the
             header did not, because all six routes mounted their own copy of it, and a header inside
             the outlet unmounts and remounts on every route change. That restarted the Collie mark's
@@ -126,9 +138,10 @@ export function RootLayout() {
             `bridge` and `error` are read here, once, off the root snapshot every route was
             forwarding them from anyway — six copies of the same two fields was six chances to
             disagree with the ConnectionBanner two lines up. */}
-        <AppHeaderHost bridge={data.bridge} error={data.error}>
-          <Outlet />
-        </AppHeaderHost>
+          <AppHeaderHost bridge={data.bridge} error={data.error}>
+            <Outlet />
+          </AppHeaderHost>
+        </StripHost>
       </div>
     </CrewProvider>
   );

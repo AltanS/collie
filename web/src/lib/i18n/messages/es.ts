@@ -909,6 +909,7 @@ export const es: Dictionary = {
   "updateRibbon.available": "Collie {version} disponible. Actualiza.",
   "updateRibbon.availablePackaged": "Collie {version} disponible vía {manager}.",
   "updateRibbon.availablePackagedUnnamed": "Collie {version} disponible.",
+  "updateRibbon.view": "Ver",
   "updateRibbon.dismiss": "Descartar esta versión",
   "updateRibbon.hideNotice": "Ocultar este aviso",
 };

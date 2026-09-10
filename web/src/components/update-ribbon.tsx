@@ -1,7 +1,11 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { ArrowUpCircle, Loader2, Package, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { ArrowUpCircle, Loader2, Package, RefreshCw, TriangleAlert } from "lucide-react";
 import { useNavigate } from "react-router";
 
+import { Button } from "@/components/ui/button";
+import { Notice, NOTICE_ACTION } from "@/components/ui/notice";
+import { StripSlot } from "@/components/ui/strip-host";
+import { UPDATE } from "@/lib/strip-priority";
 import { useLocale } from "@/hooks/use-locale";
 import { dismissUpdate } from "@/lib/api";
 import { t } from "@/lib/i18n";
@@ -21,7 +25,6 @@ import {
   type RibbonView,
 } from "@/lib/update-ribbon";
 import type { DismissScope } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 // ── THE UPDATE BAND ─────────────────────────────────────────────────────────────────────────────
 //
@@ -30,17 +33,23 @@ import { cn } from "@/lib/utils";
 // following. It sits in the slot `UpdateAvailableBanner` used to occupy in `routes/root.tsx`, which
 // it absorbs entirely — there is no second top band for updates.
 //
-// ── IN-FLOW, NEVER OVER THE HEADER ───────────────────────────────────────────
-// A flex row in RootLayout's `h-[100dvh]` column, `shrink-0`, with the safe-area top inset. It
-// RESERVES space rather than overlaying, which is the whole reason a banner here can never cover a
-// route's sticky header. No `fixed`, no `absolute`, no z-index escape — asserted by a test.
+// ── IT REGISTERS A SLOT; IT DOES NOT DRAW A ROW ──────────────────────────────
+// The pixels live in the ONE band above the header, `ui/strip-host.tsx`, and this component only
+// says how loud its fact is: `UPDATE`, the quietest of the four (`lib/strip-priority.ts`). That is
+// what ended the band's original fault — this row, the connection bar and the auth refusal each
+// reserved the safe-area inset for themselves, on the assumption that each might be the first thing
+// on the screen, so any two of them at once paid for the notch twice and left a dead strip above
+// the notice. The inset now has one owner and the band has one winner. The losing fact is not lost:
+// the update offer keeps its footer line and its `/settings/updates` control.
 //
 // ── FIXED HEIGHT, IN EVERY STATE ─────────────────────────────────────────────
 // The row is one height whatever it is saying, and only the text changes. A band that grew and
 // shrank as a run progressed would reflow the whole route under the operator's thumb mid-update,
-// which is the one moment they are least able to tolerate it. Hence an explicit height rather than
-// vertical padding, and one truncating line rather than a wrapping paragraph. The strings are held
-// to a 40-character budget in all six locales for the same reason (see the i18n test).
+// which is the one moment they are least able to tolerate it. That height is now `ui/notice.tsx`'s
+// `min-h-[33px]` strip floor, shared with every other strip, rather than a number written here —
+// which is also what makes the band's arbitration height-invariant. One truncating line rather than
+// a wrapping paragraph, and the strings are held to a 40-character budget in all six locales for
+// the same reason (see the i18n test).
 //
 // ── MOUNTED UNCONDITIONALLY ──────────────────────────────────────────────────
 // `useSelfUpdate()` is a CONTROLLER as well as a flag: it drives the bundle auto-reload for the
@@ -58,16 +67,6 @@ import { cn } from "@/lib/utils";
 // could start an update from any screen would be the reflex tap the confirm was designed against.
 // The one exception taps `checkForUpdate()`, which reloads THIS PAGE onto a bundle that is already
 // built — it changes nothing on the host.
-
-/** The row itself. Exported so the tests can assert it is byte-identical across every state. */
-export const BAND_CLASS =
-  "flex w-full shrink-0 items-center gap-2 overflow-hidden border-b px-4 text-left text-xs font-medium text-foreground [height:calc(env(safe-area-inset-top)_+_1.75rem)] [padding-top:env(safe-area-inset-top)]";
-
-/** Existing status tokens only — no new colour enters the app for this band. */
-const TINT = {
-  working: { row: "border-status-working/40 bg-status-working/15", icon: "text-status-working" },
-  blocked: { row: "border-status-blocked/40 bg-status-blocked/15", icon: "text-status-blocked" },
-} as const;
 
 export function UpdateRibbon() {
   useLocale();
@@ -117,34 +116,49 @@ export function UpdateRibbon() {
     void navigate(updatesPath(scope));
   }
 
+  // `announce="status"` and nothing beside it: `role="status"` carries its own politeness, and an
+  // `aria-live` next to it is the double announcement `ui/notice.tsx` makes inexpressible.
+  const shared = {
+    tone: skin.tone,
+    variant: "strip",
+    announce: "status",
+    icon: <skin.Icon className={skin.spin ? "animate-spin" : undefined} />,
+    children: ribbonText(view, update?.linkChange ?? null),
+  } as const;
+
   return (
-    // `role="status"` carries its own politeness — an `aria-live` beside it is the double
-    // announcement `ui/notice.tsx` pins a test against.
-    <div role="status" className={cn(BAND_CLASS, skin.row)}>
-      <button
-        type="button"
-        onClick={onTap}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
-      >
-        <skin.Icon className={cn("size-3.5 shrink-0", skin.icon, skin.spin && "animate-spin")} />
-        <span className="min-w-0 flex-1 truncate">{ribbonText(view, update?.linkChange ?? null)}</span>
-      </button>
-      {target !== null && (
-        <button
-          type="button"
-          aria-label={t(target.scope === "crew" ? "updateRibbon.hideNotice" : "updateRibbon.dismiss")}
-          className="shrink-0 text-muted-foreground"
-          onClick={() => {
+    <StripSlot priority={UPDATE}>
+      {/*
+        TWO SHAPES, BECAUSE A BUTTON MAY NOT HOLD A BUTTON. `ui/notice.tsx` states the exclusion at
+        the type level: a whole-surface tap and a separate dismiss cannot both be true, since the
+        browsers that tolerate the nesting disagree about which control a tap fires. This band used
+        to write exactly that pair — a row-wide tap target with an ✕ beside it — so the states that
+        can be put down give up the row-wide target and get a named control instead. Which states
+        those are is `dismissTarget`'s decision and not a second opinion here: a state describing
+        something still happening carries no close, and therefore keeps the whole row as its target.
+      */}
+      {target === null ? (
+        <Notice {...shared} onActivate={onTap} />
+      ) : (
+        <Notice
+          {...shared}
+          action={
+            <Button size="sm" className={NOTICE_ACTION} onClick={onTap}>
+              {t("updateRibbon.view")}
+            </Button>
+          }
+          dismissLabel={t(
+            target.scope === "crew" ? "updateRibbon.hideNotice" : "updateRibbon.dismiss",
+          )}
+          onDismiss={() => {
             setJustDismissed(target);
             // Told to the bridge, which is where the decision belongs. A failed call is a courtesy
             // lost, not an error worth a line: this band is already gone, and the next tap re-sends.
             void dismissUpdate(target.version, target.scope).catch(() => {});
           }}
-        >
-          <X className="size-3.5" />
-        </button>
+        />
       )}
-    </div>
+    </StripSlot>
   );
 }
 
@@ -159,26 +173,30 @@ function dismissedIn(
   return stored ?? null;
 }
 
-/** Icon + tint per state. A failed peer is the only red the band can show; everything else is
- *  ambient working colour, including a finished run — a done update is not an alarm. */
+/** Icon + tone per state. A failed peer is the only red the band can show; everything else is
+ *  ambient working colour, including a finished run — a done update is not an alarm.
+ *
+ *  The tones are `ui/notice.tsx`'s, and they are the SAME two tokens this band mixed for itself
+ *  before: `danger` is `--status-blocked` and `caution` is `--status-working`. No colour changes
+ *  here; what changes is that the recipe is written once, in the one table allowed to hold it. */
 function skinOf(view: RibbonView) {
   if (view.kind === "peer-failed") {
-    return { Icon: TriangleAlert, spin: false, ...TINT.blocked } as const;
+    return { Icon: TriangleAlert, spin: false, tone: "danger" } as const;
   }
   if (view.kind === "starting" || view.kind === "updating" || view.kind === "peers") {
-    return { Icon: Loader2, spin: true, ...TINT.working } as const;
+    return { Icon: Loader2, spin: true, tone: "caution" } as const;
   }
   // A packaged peer is a state, not an alarm and not a thing in progress: the ambient tint the band
   // already uses, and a still icon. A spinner here would say the run is waiting on that machine.
   if (view.kind === "package-managed") {
-    return { Icon: Package, spin: false, ...TINT.working } as const;
+    return { Icon: Package, spin: false, tone: "caution" } as const;
   }
   // A RELOAD IS NOT AN OFFER (M20/05). `updated` and `bundle` both say "the bundle on this screen is
   // behind, reload it", and `ArrowUpCircle` is the universal mark for "a new version is available".
   // Wearing it here made the operator read the band as a second offer, tap it expecting something to
   // start, and see nothing start. Still, never spinning: nothing is in flight until the tap.
   if (view.kind === "updated" || view.kind === "bundle") {
-    return { Icon: RefreshCw, spin: false, ...TINT.working } as const;
+    return { Icon: RefreshCw, spin: false, tone: "caution" } as const;
   }
-  return { Icon: ArrowUpCircle, spin: false, ...TINT.working } as const;
+  return { Icon: ArrowUpCircle, spin: false, tone: "caution" } as const;
 }

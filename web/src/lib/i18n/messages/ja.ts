@@ -900,6 +900,7 @@ export const ja: Dictionary = {
   "updateRibbon.available": "Collie {version} を利用可能。タップして更新。",
   "updateRibbon.availablePackaged": "Collie {version}（{manager}）が利用可能。",
   "updateRibbon.availablePackagedUnnamed": "Collie {version} が利用可能。",
+  "updateRibbon.view": "表示",
   "updateRibbon.dismiss": "このバージョンを非表示",
   "updateRibbon.hideNotice": "この通知を非表示",
 };

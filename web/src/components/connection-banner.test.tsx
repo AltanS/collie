@@ -2,7 +2,21 @@ import { useState } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
-import { ConnectionBanner, EXIT_MS, GREEN_MS } from "./connection-banner";
+import { COLLAPSE_MS } from "@/components/ui/collapse";
+import { StripHost } from "@/components/ui/strip-host";
+import { ConnectionBanner, GREEN_MS } from "./connection-banner";
+
+// THE BAR IS A STRIP, and this file mounts the band it appears in. `ConnectionBanner` registers a
+// `StripSlot` and draws nothing where it sits, so a case that rendered it alone would be asserting
+// against silence. Two things moved out of this component with the conversion and are therefore no
+// longer asserted here: the enter/exit animation (`ui/collapse.tsx` and the host's ghost own it, on
+// one duration shared with everything else in flow — hence COLLAPSE_MS below where EXIT_MS used to
+// be), and the tint recipe (`ui/notice.tsx`'s one table). What is still this file's is the
+// amber→red→green state machine, the probe, and the words.
+//
+// A ROW IS ADDRESSED BY `data-slot`, NEVER BY `role="status"`. The host keeps two permanent empty
+// live regions mounted so a strip appearing is a change inside a region that already existed, and a
+// role query matches one of those as readily as the row you meant — DESIGN.md §9.
 
 // Drive the two shared-clock thresholds directly so the amber→red→green STATE MACHINE can be tested
 // without burning real seconds; the 4s/15s wall-clock lockstep itself is proven in
@@ -53,8 +67,28 @@ function renderBanner(
       />
     );
   }
-  const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+  const router = createMemoryRouter([
+    {
+      path: "/",
+      element: (
+        <StripHost>
+          <Harness />
+        </StripHost>
+      ),
+    },
+  ]);
   return render(<RouterProvider router={router} />);
+}
+
+/** The strip the band is painting, or null when the band holds nothing. */
+function row(): HTMLElement | null {
+  return document.querySelector<HTMLElement>('[data-slot="collapse"] [data-slot="notice"]');
+}
+
+/** The strip's own live region — the body, where `ui/notice.tsx` puts the role. One attribute or
+ *  none: there is no way to ask that component for a role AND an `aria-live`. */
+function announced(role: "status" | "alert"): HTMLElement | null {
+  return row()?.querySelector<HTMLElement>(`[role="${role}"]`) ?? null;
 }
 
 beforeEach(() => {
@@ -76,7 +110,7 @@ describe("ConnectionBanner — the single connection surface", () => {
     h.lost = true;
     renderBanner({ authError: true });
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(announced("alert")).toHaveTextContent(
       "Access refused. This is not a connection problem.",
     );
     expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument();
@@ -100,16 +134,14 @@ describe("ConnectionBanner — the single connection surface", () => {
 
   it("renders nothing while healthy — no bar at all", () => {
     renderBanner({ bridge: "connected" });
-    expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.queryByRole("alert")).toBeNull();
+    expect(row()).toBeNull();
   });
 
-  it("fades in amber 'Reconnecting…' on sustained trouble — ambient, no Retry button", () => {
+  it("appears amber 'Reconnecting…' on sustained trouble — ambient, no Retry button", () => {
     h.trouble = true;
     renderBanner();
-    const row = screen.getByRole("status");
-    expect(row).toHaveTextContent("Reconnecting…");
-    expect(row.className).toMatch(/bg-status-working/); // amber = checking
+    expect(announced("status")).toHaveTextContent("Reconnecting…");
+    expect(row()?.className).toMatch(/bg-status-working/); // amber = checking
     expect(screen.queryByRole("button", { name: /retry/i })).toBeNull(); // ambient → no actions
   });
 
@@ -119,9 +151,8 @@ describe("ConnectionBanner — the single connection surface", () => {
     cfg.reachable = true; // the config probe succeeds → the bridge is up, so Herdr is the outage
     renderBanner();
     await act(async () => {}); // flush the probe microtask
-    const row = screen.getByRole("alert");
-    expect(row.className).toMatch(/bg-status-blocked/); // red = failed
-    expect(row).toHaveTextContent("Herdr is down on the host");
+    expect(row()?.className).toMatch(/bg-status-blocked/); // red = failed
+    expect(announced("alert")).toHaveTextContent("Herdr is down on the host");
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /reload/i })).toBeInTheDocument();
   });
@@ -133,7 +164,7 @@ describe("ConnectionBanner — the single connection surface", () => {
     renderBanner();
     await act(async () => {});
     expect(screen.getByText("Offline — can't reach Collie")).toBeInTheDocument();
-    expect(screen.getByRole("alert").className).toMatch(/bg-status-blocked/); // offline is always red
+    expect(row()?.className).toMatch(/bg-status-blocked/); // offline is always red
   });
 
   it("says 'Can't reach Collie' when the probe fails but the browser still reports online", async () => {
@@ -153,7 +184,7 @@ describe("ConnectionBanner — the single connection surface", () => {
     setOnline(true);
     renderBanner({ error: true, lastSeenAt: new Date(2026, 0, 2, 14, 32).getTime() });
     await act(async () => {});
-    expect(screen.getByRole("alert")).toHaveTextContent(/Can't reach Collie — last seen \d/);
+    expect(announced("alert")).toHaveTextContent(/Can't reach Collie — last seen \d/);
   });
 
   it("leaves the red row undated when nothing can date it", async () => {
@@ -161,7 +192,7 @@ describe("ConnectionBanner — the single connection surface", () => {
     cfg.reachable = false;
     renderBanner({ error: true });
     await act(async () => {});
-    expect(screen.getByRole("alert")).not.toHaveTextContent(/last seen/);
+    expect(announced("alert")).not.toHaveTextContent(/last seen/);
   });
 
   it("Retry re-probes the bridge", async () => {
@@ -179,13 +210,25 @@ describe("ConnectionBanner — the single connection surface", () => {
     h.lost = true;
     renderBanner();
     await act(async () => {});
-    const row = screen.getByRole("alert");
-    expect(row.className).toMatch(/text-xs/);
-    expect(row.className).not.toMatch(/flex-wrap/);
-    expect(row.querySelector("span.truncate.flex-1")).not.toBeNull();
+    // The shape is `ui/notice.tsx`'s strip now, and the promise is the same one it always was: ONE
+    // truncating, flex-1 span, so no string this component passes can turn the band into two lines.
+    expect(row()?.className).toMatch(/text-xs/);
+    expect(row()?.className).not.toMatch(/flex-wrap/);
+    expect(row()?.querySelector("span.truncate.flex-1")).not.toBeNull();
   });
 
-  it("flashes green 'Connected' only after a visible bar recovers, then collapses and unmounts", () => {
+  it("reserves no safe-area inset of its own — the band above the header does", () => {
+    // The reported iOS bug, at one of its three sources. This row set the inset for itself, as did
+    // the update ribbon and as did the header, each written when it might have been the first thing
+    // on the screen — so any two of them together paid for the notch twice. One owner now, and it is
+    // the band, because clearing the notch is a fact about the row's position in the viewport.
+    h.trouble = true;
+    const { container } = renderBanner();
+    expect(row()?.className).not.toMatch(/safe-area/);
+    expect(container.querySelectorAll("[class*='safe-area-inset-top']")).toHaveLength(1);
+  });
+
+  it("flashes green 'Connected' only after a visible bar recovers, then the band closes over it", () => {
     h.trouble = true;
     renderBanner();
     expect(screen.getByText("Reconnecting…")).toBeInTheDocument();
@@ -193,24 +236,26 @@ describe("ConnectionBanner — the single connection surface", () => {
     // Recover: the signals go healthy → because a bar WAS visible, a green confirmation appears.
     h.trouble = false;
     act(() => rerenderBanner());
-    const green = screen.getByRole("status");
-    expect(green).toHaveTextContent("Connected");
-    expect(green.className).toMatch(/bg-status-done/); // green = established
+    expect(announced("status")).toHaveTextContent("Connected");
+    expect(row()?.className).toMatch(/bg-status-done/); // green = established
 
-    // It lingers ~1.8s, then the row collapses and the DOM node unmounts (delayed-unmount exit).
+    // It lingers ~1.8s — that duration is still this component's, because how long a confirmation is
+    // worth reading is a fact about what the operator is being told. What follows it is not: the
+    // slot deregisters and the BAND keeps painting the strip while it closes, on the one collapse
+    // duration the whole app moves in flow at.
     act(() => vi.advanceTimersByTime(GREEN_MS));
     expect(screen.getByText("Connected")).toBeInTheDocument(); // still there, collapsing
-    act(() => vi.advanceTimersByTime(EXIT_MS));
+    act(() => vi.advanceTimersByTime(COLLAPSE_MS + 16));
     expect(screen.queryByText("Connected")).toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(row()).toBeNull();
   });
 
   it("shows nothing on a blip that never reached trouble — green needs a visible bar first", () => {
     renderBanner({ bridge: "connected" });
     // Never troubled → never showed a bar → a later 'recovery' re-render must not flash green.
     act(() => rerenderBanner());
-    act(() => vi.advanceTimersByTime(GREEN_MS + EXIT_MS));
+    act(() => vi.advanceTimersByTime(GREEN_MS + COLLAPSE_MS + 16));
     expect(screen.queryByText("Connected")).toBeNull();
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(row()).toBeNull();
   });
 });

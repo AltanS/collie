@@ -60,9 +60,9 @@ export type NoticeProps = {
    * `"alert"` emits `role="alert"` and nothing else; `"status"` emits `role="status"` and nothing
    * else; `"none"` emits neither. There is deliberately no way to ask for a role AND an
    * `aria-live` — that pair is a contradiction (a role carries its own implicit liveness, so
-   * `role="alert"` with `aria-live="polite"` asks for assertive and polite at once) and it is live
-   * today at connection-banner.tsx:236-237. Making it inexpressible is half of why this file
-   * exists. Default `"none"`: a notice that never changes must not claim a live region.
+   * `role="alert"` with `aria-live="polite"` asks for assertive and polite at once) and it was live
+   * in both of connection-banner.tsx's rows until they converted. Making it inexpressible is half of
+   * why this file exists. Default `"none"`: a notice that never changes must not claim a live region.
    */
   announce?: NoticeAnnounce;
   /** Decorative, and treated as such — the copy beside it says the same thing in words. */
@@ -286,13 +286,26 @@ export function Notice({
   // 390×33 row passes the 44px floor on area the way a 28px text row never did, and it is one
   // element, so there is no second thing on the row to mis-hit. `text-left` because a <button>
   // centres its text by default and this one is a sentence, not a label.
+  // `data-slot` and not a test id: it is the house handle for addressing a primitive's own element
+  // (`ui/collapse.tsx`, `ui/strip-host.tsx` and the header row all carry one), and DESIGN.md §9
+  // names it as the way to scope a query inside a tree that holds a StripHost — where `role="status"`
+  // matches the band's two permanent empty live regions as readily as the notice you meant.
   if (onActivate) {
     return (
-      <button type="button" onClick={onActivate} className={cn(box, "text-left")}>
+      <button
+        type="button"
+        data-slot="notice"
+        onClick={onActivate}
+        className={cn(box, "text-left")}
+      >
         {inner}
       </button>
     );
   }
 
-  return <div className={box}>{inner}</div>;
+  return (
+    <div data-slot="notice" className={box}>
+      {inner}
+    </div>
+  );
 }

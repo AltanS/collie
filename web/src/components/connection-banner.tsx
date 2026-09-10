@@ -12,6 +12,9 @@ import {
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Notice, NOTICE_ACTION, NOTICE_ACTION_TAP } from "@/components/ui/notice";
+import { StripSlot } from "@/components/ui/strip-host";
+import { AUTH, DEGRADED, OUTAGE } from "@/lib/strip-priority";
 import { cn } from "@/lib/utils";
 import { PROXY_AUTH_PATH } from "@/lib/sw-routes";
 import { useConnectionLost, useConnectionTrouble } from "@/hooks/use-connection-lost";
@@ -48,19 +51,27 @@ type Probe = "unknown" | "reachable" | "unreachable";
 type Tone = "amber" | "red" | "green";
 
 // How long the "Connected" confirmation lingers after a visible bar recovers, then it exits.
+//
+// This one is BUSINESS LOGIC and stays here: how long a confirmation is worth reading is a fact
+// about what the operator is being told, not about how a row leaves the screen. The exit itself was
+// this file's own (`EXIT_MS`, a delayed unmount through a hand-rolled 0fr↔1fr grid) and is now the
+// band's — `ui/strip-host.tsx` keeps painting the last strip while `ui/collapse.tsx` closes it, on
+// one duration shared with everything else in the app that moves in flow.
 export const GREEN_MS = 1_800;
-// The collapse/fade before the row unmounts — matches the CSS transition duration below so the DOM
-// node lives exactly as long as the exit animation (standard delayed-unmount).
-export const EXIT_MS = 200;
 
-// The ONE connection surface: a single, thin, animated bar mounted once in RootLayout (in-flow above
-// the route, a sibling of the UpdateRibbon) that is the app's entire connection UI — the header
-// pill is gone. It fades in only on SUSTAINED trouble, escalates from amber → red on a real outage,
-// flashes green on recovery, and otherwise renders nothing. It reads the SAME two shared-clock signals
+// The ONE connection surface: a single, thin bar in the band above the header — `ui/strip-host.tsx`,
+// registered from here as a StripSlot — that is the app's entire connection UI; the header pill is
+// gone. It appears only on SUSTAINED trouble, escalates from amber → red on a real outage, flashes
+// green on recovery, and otherwise renders nothing. It reads the SAME two shared-clock signals
 // the header dog does (useConnectionTrouble at 4s, useConnectionLost at 15s), so bar and dog can never
 // disagree; `connecting` is poll-truth (isConnecting) — navigator.onLine is COPY-only (it picks the
 // red cause), never a gate. Threshold lockstep with the shared clock is proven in use-connection-lost;
-// here we own the amber→red→green state machine and the smooth mount/unmount.
+// here we own the amber→red→green state machine and nothing else.
+//
+// ONE SLOT, THREE TONES, TWO RANKS. The tone changes inside the slot the way it always did, and the
+// slot's PRIORITY moves with it: a lost connection is `OUTAGE`, trouble and the recovery flash are
+// `DEGRADED` (`lib/strip-priority.ts`). Green is not a fifth level — it is this same fact, resolved,
+// and it outranks the update offer for the second it stands for exactly the reason amber does.
 export function ConnectionBanner({ bridge, error, authError, lastSeenAt }: ConnectionBannerProps) {
   if (authError) return <AuthErrorBanner />;
   return <ConnectionStateBanner bridge={bridge} error={error} lastSeenAt={lastSeenAt} />;
@@ -83,42 +94,46 @@ export function ConnectionBanner({ bridge, error, authError, lastSeenAt }: Conne
 function AuthErrorBanner() {
   useLocale();
   return (
-    <div className="grid shrink-0 grid-rows-[1fr] overflow-hidden opacity-100">
-      <div className="min-h-0 overflow-hidden">
-        <div
-          role="alert"
-          aria-live="polite"
-          className={cn(
-            "flex items-center gap-2 border-b px-4 py-1 text-xs [padding-top:calc(env(safe-area-inset-top)_+_0.25rem)]",
-            TINT.blocked.row,
-          )}
-        >
-          <TriangleAlert className={cn("size-3.5 shrink-0", TINT.blocked.icon)} />
-          <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-            {t("connection.auth.message")}
-          </span>
-          <a
-            href={PROXY_AUTH_PATH}
-            className={cn(
-              buttonVariants({ size: "sm" }),
-              "h-6 gap-1 px-2 text-xs no-underline",
-            )}
-          >
-            <LogIn className="size-3.5" />
-            {t("connection.auth.signIn")}
-          </a>
-          <Button
-            size="icon"
-            variant="ghost"
-            aria-label={t("connection.reload.aria")}
-            className="size-6 text-muted-foreground"
-            onClick={() => window.location.reload()}
-          >
-            <RefreshCw className="size-3.5" />
-          </Button>
-        </div>
-      </div>
-    </div>
+    // The loudest fact this app has, so it takes the band from anything else that wants it. One
+    // announcement, not two: `announce="alert"` emits `role="alert"` and NOTHING beside it — the
+    // `aria-live="polite"` that used to sit next to that role asked for assertive and polite at
+    // once, which is the contradiction `ui/notice.tsx` exists to make unwritable.
+    <StripSlot priority={AUTH}>
+      <Notice
+        tone="danger"
+        variant="strip"
+        announce="alert"
+        icon={<TriangleAlert />}
+        action={
+          <>
+            {/* An <a>, not a button, so it is an ordinary navigation the service worker sees as
+                such — see this component's header for why a reload alone cannot reach the proxy. */}
+            <a
+              href={PROXY_AUTH_PATH}
+              className={cn(
+                buttonVariants({ size: "sm" }),
+                "h-6 gap-1 px-2 text-xs no-underline",
+                NOTICE_ACTION_TAP,
+              )}
+            >
+              <LogIn className="size-3.5" />
+              {t("connection.auth.signIn")}
+            </a>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={t("connection.reload.aria")}
+              className={cn("size-6 text-muted-foreground", NOTICE_ACTION_TAP)}
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCw className="size-3.5" />
+            </Button>
+          </>
+        }
+      >
+        {t("connection.auth.message")}
+      </Notice>
+    </StripSlot>
   );
 }
 
@@ -162,28 +177,14 @@ function ConnectionStateBanner({
     return () => clearTimeout(id);
   }, [activeTone]);
 
-  // Delayed-unmount + enter/exit animation. `present` = there's a tone to show; we keep the row
-  // rendered through the collapse so it animates OUT, then unmount. `open` drives the expanded class,
-  // flipped one tick AFTER mount so the browser transitions from the collapsed initial state in.
-  const present = tone !== null;
-  const [rendered, setRendered] = useState(present);
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (present) {
-      setRendered(true);
-      const id = window.setTimeout(() => setOpen(true), 0);
-      return () => clearTimeout(id);
-    }
-    setOpen(false);
-    const id = window.setTimeout(() => setRendered(false), EXIT_MS);
-    return () => clearTimeout(id);
-  }, [present]);
-
-  // The last real tone, held so the row keeps its copy/tint while collapsing after `tone` → null.
-  const shownToneRef = useRef<Tone>("amber");
-  if (tone) shownToneRef.current = tone;
-  const shownTone = shownToneRef.current;
-
+  // NO EXIT MACHINERY HERE ANY MORE. This component used to run its own delayed unmount, its own
+  // 0fr↔1fr grid and its own `shownToneRef` ghost so the row could animate out with its copy
+  // intact. All three are the band's now: `ui/collapse.tsx` holds the last non-empty children for
+  // the whole exit and `ui/strip-host.tsx` keeps painting the last strip while the band closes. Two
+  // collapse mechanisms on one row would fight — this one would unmount the slot before the band
+  // had finished closing over it — so what is left here is the state machine and nothing else:
+  // there is a tone, or there is no slot.
+  //
   // Probe /api/config only while RED, to tell "bridge unreachable" from "bridge up, Herdr down". Amber
   // (ambient) and green (a success flash) never probe. Reset when we leave red so a later outage re-probes.
   const online = useOnline();
@@ -208,7 +209,7 @@ function ConnectionStateBanner({
     void runProbe();
   }, [lost, runProbe]);
 
-  if (!rendered) return null;
+  if (tone === null) return null;
 
   // Recovery (a successful poll) flips the signals → tone → hidden on its own, no reload. Retry just
   // nudges that along: revalidate the snapshot and re-run the probe.
@@ -219,37 +220,27 @@ function ConnectionStateBanner({
     setRetrying(false);
   }
 
-  const view = resolveView(shownTone, online, probe, lastSeenAt);
+  const view = resolveView(tone, online, probe, lastSeenAt);
 
   return (
-    // Outer grid collapses 0fr → 1fr (an in-flow height animation the layout below rides), fading with
-    // opacity; the inner wrapper clips the content while it's collapsed. Snaps under reduced motion.
-    <div
-      className={cn(
-        "grid shrink-0 overflow-hidden transition-all duration-200 ease-out motion-reduce:transition-none",
-        open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-      )}
-    >
-      <div className="min-h-0 overflow-hidden">
-        <div
-          // Red is an actionable error (assertive alert); amber/green are ambient status.
-          role={shownTone === "red" ? "alert" : "status"}
-          aria-live="polite"
-          className={cn(
-            // Thin single row: text-xs, tight padding, safe-area top inset, never wraps.
-            "flex items-center gap-2 border-b px-4 py-1 text-xs [padding-top:calc(env(safe-area-inset-top)_+_0.25rem)]",
-            view.row,
-          )}
-        >
-          <view.Icon className={cn("size-3.5 shrink-0", view.icon)} />
-          {/* One truncating, flex-1 span — the row can never wrap to a second line, whatever the copy. */}
-          <span className="min-w-0 flex-1 truncate font-medium text-foreground">{view.copy}</span>
-          {/* Actions only in red — amber is ambient (no buttons), green is a passing confirmation. */}
-          {shownTone === "red" && (
+    // A lost connection outranks trouble, and both outrank the update offer. Green rides at
+    // DEGRADED with amber: it is the same fact resolved, not a level of its own.
+    <StripSlot priority={tone === "red" ? OUTAGE : DEGRADED}>
+      <Notice
+        tone={view.tone}
+        variant="strip"
+        // Red is an actionable error (assertive); amber and green are ambient. One attribute either
+        // way — the `aria-live="polite"` that used to sit beside the role is gone, and cannot come
+        // back: `ui/notice.tsx` has no way to spell a role and a liveness at the same time.
+        announce={tone === "red" ? "alert" : "status"}
+        icon={<view.Icon />}
+        // Actions only in red — amber is ambient (no buttons), green is a passing confirmation.
+        action={
+          tone === "red" ? (
             <>
               <Button
                 size="sm"
-                className="h-6 gap-1 px-2 text-xs"
+                className={NOTICE_ACTION}
                 onClick={onRetry}
                 disabled={retrying}
               >
@@ -264,20 +255,22 @@ function ConnectionStateBanner({
                 size="icon"
                 variant="ghost"
                 aria-label={t("connection.reload.aria")}
-                className="size-6 text-muted-foreground"
+                className={cn("size-6 text-muted-foreground", NOTICE_ACTION_TAP)}
                 onClick={() => window.location.reload()}
               >
                 <RefreshCw className="size-3.5" />
               </Button>
             </>
-          )}
-        </div>
-      </div>
-    </div>
+          ) : undefined
+        }
+      >
+        {view.copy}
+      </Notice>
+    </StripSlot>
   );
 }
 
-// Copy + tint + icon per tone. Green/amber are fixed; red names the cause — the bridge answering means
+// Copy + tone + icon per state. Green/amber are fixed; red names the cause — the bridge answering means
 // Herdr is the outage, otherwise onLine decides between a true offline drop and an unreachable Collie.
 //
 // Red also DATES what's on screen when it can ("… — last seen 14:32"). That matters most in the case
@@ -285,14 +278,19 @@ function ConnectionStateBanner({
 // full herd on screen rendered from cache. Without the stamp it looks live. The cause wording is kept
 // rather than replaced by a flat "Disconnected", because "Herdr is down on the host" is a different
 // (and more actionable) fact than "we can't reach Collie", and both can be undated or dated.
+//
+// The three tones are `ui/notice.tsx`'s and name the SAME three tokens this file used to mix for
+// itself: `success` is `--status-done`, `caution` is `--status-working`, `danger` is
+// `--status-blocked`. Nothing here changed colour; the recipe moved to the one table allowed to
+// hold it, which is what stops the next banner drifting an alpha.
 function resolveView(tone: Tone, online: boolean, probe: Probe, lastSeenAt?: number) {
   if (tone === "green") {
-    return { copy: t("connection.connected"), Icon: CheckCircle2, row: TINT.done.row, icon: TINT.done.icon } as const;
+    return { copy: t("connection.connected"), Icon: CheckCircle2, tone: "success" } as const;
   }
   if (tone === "amber") {
     // Static Plug (no spinner) — the galloping dog carries the motion, and a spinner would fight
     // prefers-reduced-motion. Ambient by design.
-    return { copy: t("connection.reconnecting"), Icon: Plug, row: TINT.working.row, icon: TINT.working.icon } as const;
+    return { copy: t("connection.reconnecting"), Icon: Plug, tone: "caution" } as const;
   }
   const cause =
     probe === "reachable"
@@ -304,11 +302,5 @@ function resolveView(tone: Tone, online: boolean, probe: Probe, lastSeenAt?: num
     lastSeenAt === undefined
       ? cause.copy
       : t("connection.withLastSeen", { cause: cause.copy, time: clockTime(lastSeenAt) });
-  return { copy, Icon: cause.Icon, row: TINT.blocked.row, icon: TINT.blocked.icon } as const;
+  return { copy, Icon: cause.Icon, tone: "danger" } as const;
 }
-
-const TINT = {
-  done: { row: "border-status-done/40 bg-status-done/15", icon: "text-status-done" },
-  working: { row: "border-status-working/40 bg-status-working/15", icon: "text-status-working" },
-  blocked: { row: "border-status-blocked/40 bg-status-blocked/15", icon: "text-status-blocked" },
-} as const;

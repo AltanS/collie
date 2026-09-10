@@ -1640,7 +1640,8 @@ describe("the pane fits its viewport", () => {
 // every other test in this file leans on, and that the one floating way out brings them all back.
 //
 // "The chrome" is read as its ROWS, not as its elements: the shared `<header>` element stays mounted
-// (it keeps the safe-area inset and its reserved rule) and its ROW collapses away inside it, and the
+// (it keeps its reserved rule, and the safe-area inset whenever nothing above it is holding one) and
+// its ROW collapses away inside it, and the
 // bottom region leaves as one row through its own `Collapse`. Both leave the tree at the end of the
 // exit rather than at the start, which is why the disappearance is awaited — a control that is off
 // the screen must not still be focusable, and that is the half worth pinning.
@@ -1689,9 +1690,15 @@ describe("AgentChat — zen mode", () => {
     expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pane actions" })).not.toBeInTheDocument();
 
-    // The header ELEMENT stays: it carries the safe-area inset that the notch needs whether or not
-    // there is a row inside it, and a route taking that inset over would pay for it twice.
-    expect(container.querySelector("header")).not.toBeNull();
+    // The header ELEMENT stays, and here — with no strip band mounted above it — it is what
+    // reserves the notch, row or no row. A route taking that inset over would pay for it twice.
+    // WHICH element holds it is not fixed any more: once a `StripHost` above it is showing a strip,
+    // that band reserves it and this element reserves nothing (`app-header.tsx` states the handover,
+    // `routes/root.test.tsx` proves it is exactly one reservation in both states). What is pinned
+    // here is the case this tree actually is: no band, so the header owns it.
+    const header = container.querySelector("header");
+    expect(header).not.toBeNull();
+    expect(header?.className).toContain("[padding-top:env(safe-area-inset-top)]");
 
     // Content stays. Zen hides Collie's chrome, never the pane's output — the mirror keeps polling
     // and keeps rendering exactly as it did.

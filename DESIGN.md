@@ -57,9 +57,11 @@ token. Each was built without checking whether the previous one existed, and tog
 the top of the app moved when its state changed.
 
 The primitive now exists: `ui/notice.tsx`, plus `ui/collapse.tsx`, `ui/strip-host.tsx` and
-`ui/toast-viewport.tsx` around it. §11 is the system they make. **One component is converted** —
-`read-only-banner.tsx`, the pilot. Six are not, and §10 gap 1 lists each with what it still
-hand-rolls; until they land, this app runs two alert systems at once.
+`ui/toast-viewport.tsx` around it. §11 is the system they make. **The band is converted** —
+`read-only-banner.tsx` was the pilot, and `routes/root.tsx` now mounts the one `StripHost` with
+`update-ribbon.tsx` and both of `connection-banner.tsx`'s rows registering into it. Four surfaces
+are still hand-rolled, and §10 gap 1 lists each with what it owns; until they land, this app runs
+two alert systems at once.
 
 **So: no seventh one.** A new notice is a `Notice`. If it appears or disappears, it does so through
 `Collapse`. If it competes for the band above the header, it registers a `StripSlot`. The two
@@ -449,15 +451,14 @@ scope by `data-slot`. Two workers lost time to this before it was written down.
 
 Stated so nobody reads this document as a description of a clean tree.
 
-1. **The alert family is half-converted.** `ui/notice.tsx`, `ui/collapse.tsx`,
-   `ui/strip-host.tsx` and `ui/toast-viewport.tsx` exist (§1, §11), and `read-only-banner.tsx` is
-   the one component built from them. Six surfaces still hand-roll their own box, so the app runs
-   two alert systems at once. Each line below was re-read against the source, not inherited:
+1. **The alert family is most of the way converted.** `ui/notice.tsx`, `ui/collapse.tsx`,
+   `ui/strip-host.tsx` and `ui/toast-viewport.tsx` exist (§1, §11), and the band above the header
+   and `read-only-banner.tsx` are built from them. Four surfaces still hand-roll their own box, so
+   the app runs two alert systems at once. Each line below was re-read against the source, not
+   inherited:
 
    | Still hand-rolled | What it owns that the primitive owns |
    | --- | --- |
-   | `connection-banner.tsx:92` (auth), `:240` (connection) | full-bleed `border-b px-4 py-1 text-xs`, its own safe-area inset, its own tint table (`:311-313`), its own collapse machinery — and `role="alert"` beside `aria-live="polite"` at `:89-90` and `:236-237`, the contradiction §11 exists to make inexpressible |
-   | `update-available-banner.tsx:28` | full-bleed `border-b`, `px-4 py-1.5`, the tint recipe written inline, its own safe-area inset, no height floor |
    | `host-stale-banner.tsx:92` | inset `rounded-sm border … px-4 py-2 text-xs` — the pre-conversion read-only string, verbatim. Mounts and unmounts with no `Collapse`, so it pops. |
    | `no-echo-notice.tsx:43` | `rounded-md bg-muted/40 px-2.5 py-1.5` and **no border at all**; `terminal-draft-preview.tsx:32` is the same string a second time (gap 3 below) |
    | `routes/settings.tsx:158,163` | two `<p>` rows on `border-t border-border px-4 py-2.5`, popping into the card unanimated |
@@ -466,8 +467,19 @@ Stated so nobody reads this document as a description of a clean tree.
    **Closed:** `status-area.tsx` used to carry its own fixed wrapper per route. All three now mount
    `ui/toast-viewport.tsx` — `routes/home.tsx` and `routes/space.tsx` at `dock="bottom"`, the pane
    screen at `dock="top"`. Three copies of the same four utility classes, each drifting a gutter and
-   a z-rung from the others, are one call now. Still unconverted, by design order rather than
-   oversight: nothing mounts a `StripHost` yet — the band is indivisible and lands in one change.
+   a z-rung from the others, are one call now.
+
+   **Closed:** the band. `routes/root.tsx` mounts the one `StripHost`, and `connection-banner.tsx`
+   (auth and connection) and `update-ribbon.tsx` — which is what `update-available-banner.tsx`
+   became, inheriting its fault — now register `StripSlot`s and render `Notice variant="strip"`.
+   All three landed together, because the band is indivisible: converting one of them would have
+   left the other still reserving the safe-area inset beside it. What that closes is a reported bug
+   and not only a tidiness: each of the three set `env(safe-area-inset-top)` for itself, on the
+   assumption that each might be the first thing on screen, so the everyday ribbon + header case on
+   an iPhone paid for the notch twice and showed a dead band above the notice. The inset has one
+   owner now — the band while it is open, `app-header.tsx`'s `<header>` (via `useStripBandOpen()`)
+   while it is not. Gone with it: two tint tables, two hand-rolled collapse machines, and both
+   `role="alert"` + `aria-live="polite"` pairs.
 2. **`space-overview.tsx:136`** — an `outline-none` on the filter `<input>` with no
    replacement focus mark on it or its `<label>`. Trap 2 in its plain form: keyboard focus
    on that field is invisible.
@@ -590,9 +602,10 @@ losing fact is not lost — the update offer keeps its footer line and its setti
 
 `ui/notice.tsx` takes `announce`: `"alert"` emits `role="alert"` and nothing else, `"status"` emits
 `role="status"` and nothing else, `"none"` emits neither. There is deliberately no way to ask for
-both. This is a **correction, not a preference** — `connection-banner.tsx:89-90` and `:236-237`
-carry `role="alert"` beside `aria-live="polite"` today, which asks for assertive and polite at once
-and lets the answer depend on which screen reader is reading. A role already carries its own
+both. This is a **correction, not a preference** — `connection-banner.tsx` carried `role="alert"`
+beside `aria-live="polite"` in both of its rows until the band conversion, which asks for assertive
+and polite at once and lets the answer depend on which screen reader is reading. A role already
+carries its own
 implicit liveness; a second declaration beside it asks one question twice. `strip-host.tsx:108-109`
 keeps one empty polite region and one assertive region mounted permanently, because a live region
 has to exist *before* its content changes to be announced reliably.
