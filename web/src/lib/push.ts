@@ -154,7 +154,10 @@ export async function enablePush(): Promise<EnableResult> {
   if (!pushSupported()) return { ok: false, reason: "unsupported" };
   if (!window.isSecureContext) return { ok: false, reason: "insecure" };
 
-  await pushOperation(navigator.serviceWorker.register("/sw.js"));
+  // The worker must register under the app's base, not the origin: its registration scope is
+  // what the manifest scope and every notification target are resolved against.
+  const swBase = (import.meta.env.BASE_URL ?? "/").replace(/\/+$/, "");
+  await pushOperation(navigator.serviceWorker.register(`${swBase}/sw.js`));
   const reg = await pushOperation(navigator.serviceWorker.ready);
   const cfg = await fetchConfig();
   if (!cfg.push || !cfg.vapidPublicKey) return { ok: false, reason: "server-off" };

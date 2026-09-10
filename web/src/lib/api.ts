@@ -228,8 +228,14 @@ function normaliseProxyRedirect(res: Response): Response {
   });
 }
 
-async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  return normaliseProxyRedirect(await fetch(input, { ...init, redirect: "manual" }));
+// Every caller hands this an origin-relative `/api/...` path it built itself, so the parameter is
+// a string and not `RequestInfo | URL`: the app is mounted at `import.meta.env.BASE_URL`, and a
+// root-absolute path would leave that mount and hit the origin instead. At the default base of
+// "/" the prefix is empty and the request is byte-for-byte the one upstream sends.
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const base = import.meta.env.BASE_URL.replace(/\/+$/, "");
+  const url = path.startsWith("/") ? `${base}${path}` : path;
+  return normaliseProxyRedirect(await fetch(url, { ...init, redirect: "manual" }));
 }
 
 /**

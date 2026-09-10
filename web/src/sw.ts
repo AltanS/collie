@@ -67,7 +67,7 @@ precacheAndRoute(PRECACHE_MANIFEST);
 // bar, has no reachable path to the proxy at all: every navigation, including a reload, is answered
 // by the cached app shell. See lib/sw-routes for the contract.
 registerRoute(
-  new NavigationRoute(createHandlerBoundToURL("/index.html"), {
+  new NavigationRoute(createHandlerBoundToURL(new URL("./index.html", self.location.href).pathname), {
     denylist: [...NAVIGATION_NETWORK_ONLY],
   }),
 );
@@ -142,8 +142,8 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
 // the result, so it must be a monochrome silhouette on transparency. The maskable home-screen tile
 // (`/web-app-manifest-192x192.png`) must never be used for either — it is opaque with no alpha, so
 // Android stamps it on the icon's corner as a solid grey block.
-const ICON = "/notification-icon-192x192.png";
-const BADGE = "/badge-96x96.png";
+const ICON = new URL("./notification-icon-192x192.png", self.location.href).pathname;
+const BADGE = new URL("./badge-96x96.png", self.location.href).pathname;
 
 self.addEventListener("push", (event: PushEvent) => {
   event.waitUntil(handlePush(event));
@@ -225,7 +225,11 @@ self.addEventListener("notificationclick", (event: NotificationEvent) => {
 // opened before any discarded client is navigated (#147, and the Android regression that fix grew).
 // The `matchAll` below is deliberately the ONLY awaited call between the tap and `openWindow`.
 async function openPath(path: string): Promise<OpenOutcome> {
-  const url = new URL(path, self.location.origin).href;
+  // Resolve against the SW's own scope, not the origin. Under COLLIE_BASE_PATH the app lives at
+  // /collie/, and an origin-relative target lands outside the manifest scope: Chrome then matches
+  // no installed client and opens a browser tab at the root. Unset, self.location.href is /sw.js,
+  // so this resolves identically to the origin.
+  const url = new URL(path.replace(/^\/+/, ""), new URL("./", self.location.href)).href;
   const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
   return openNotificationTarget({
     url,

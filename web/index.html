@@ -82,7 +82,7 @@
          above, so for most devices this costs no extra request. */
       @font-face {
         font-family: "Space Grotesk";
-        src: url("/fonts/ui-space-grotesk-2.000-latin.woff2") format("woff2");
+        src: url("%BASE_URL%fonts/ui-space-grotesk-2.000-latin.woff2") format("woff2");
         font-weight: 400 700;
         font-display: swap;
       }
@@ -104,7 +104,7 @@
          while Aldrich rides the preload. Keep in step with index.css. */
       @font-face {
         font-family: "Aldrich";
-        src: url("/fonts/ui-aldrich-1.002-latin.woff2") format("woff2");
+        src: url("%BASE_URL%fonts/ui-aldrich-1.002-latin.woff2") format("woff2");
         font-weight: 400;
         font-display: swap;
       }
@@ -162,7 +162,7 @@
         --dog-frames: 6;
         width: var(--dog-size);
         height: var(--dog-size);
-        background: url("/dog-gallop.png") no-repeat 0 0;
+        background: url("%BASE_URL%dog-gallop.png") no-repeat 0 0;
         background-size: calc(var(--dog-frames) * var(--dog-size))
           var(--dog-size);
         animation: boot-dog-gallop 0.6s steps(6) infinite;

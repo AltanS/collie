@@ -200,7 +200,10 @@ export function useMuxName(): string {
  * "this is what that multiplexer looks like", which would be false.
  */
 export function useMuxLogoUrl(): string {
-  return useMuxConfig()?.logoUrl ?? "";
+  const url = useMuxConfig()?.logoUrl ?? "";
+  // The bridge publishes a root-absolute path; this deployment mounts the app under a base.
+  if (!url.startsWith("/")) return url;
+  return `${(import.meta.env.BASE_URL ?? "/").replace(/\/+$/, "")}${url}`;
 }
 
 /**
