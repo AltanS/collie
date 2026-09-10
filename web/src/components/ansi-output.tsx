@@ -35,29 +35,18 @@ import {
 } from "@/components/mirror-space";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
 import { findLinks } from "@/lib/links";
-import { PromptSelectBlock, type PromptBlockAction } from "@/components/prompt-select-block";
-import { WizardBlock } from "@/components/wizard-block";
-import { PreviewSelectBlock, type PreviewBlockAction } from "@/components/preview-select-block";
-import { MultiSelectBlock } from "@/components/multi-select-block";
-import { MenuBlock, type MenuBlockAction } from "@/components/menu-block";
-import { AutocompleteBlock } from "@/components/autocomplete-block";
 import type { MultiSelectIntent } from "@/lib/multi-select-action";
+import { TypedBlocks } from "@/components/typed-blocks";
+import type { PromptBlockAction } from "@/components/prompt-select-block";
+import type { PreviewBlockAction } from "@/components/preview-select-block";
+import type { MenuBlockAction } from "@/components/menu-block";
 
 /** A raw block, narrowed off the Block union (the highlight/offset paths only touch these). */
 type RawBlock = Extract<Block, { kind: "raw" }>;
-/** The (at most one) prompt-select block — always at the tail. */
-type PromptBlock = Extract<Block, { kind: "prompt-select" }>;
-/** The (at most one) wizard block — always at the tail, mutually exclusive with prompt-select. */
-type WizBlock = Extract<Block, { kind: "wizard" }>;
-/** The (at most one) preview-select block — tail, mutually exclusive with the other two. */
-type PrevBlock = Extract<Block, { kind: "preview-select" }>;
-/** The (at most one) multi-select block — tail, mutually exclusive with the other dialog blocks. */
-type MultiBlock = Extract<Block, { kind: "multi-select" }>;
-/** The (at most one) generic-menu block — tail, and only ever lifted when all four above declined. */
-type GenericMenuBlock = Extract<Block, { kind: "menu" }>;
-/** The (at most one) completion-popup block — tail, and the only non-raw kind that is NOT a modal:
- *  the agent's input box is live under it, so it renders with no controls and locks nothing. */
-type AutoBlock = Extract<Block, { kind: "autocomplete" }>;
+
+// The (at most one) non-raw TAIL block — prompt-select / wizard / preview-select / multi-select /
+// menu / autocomplete — is rendered by the extracted TypedBlocks component (typed-blocks.tsx), the
+// reusable seam a non-mirror view consumes. AnsiOutput keeps only the raw-mirror presentation.
 
 export interface AnsiOutputProps {
   text: string;
@@ -329,30 +318,6 @@ export const AnsiOutput = memo(function AnsiOutput({
       ),
     [blocks, hideLeadingLines],
   );
-  const promptBlock = useMemo(
-    () => blocks.find((b): b is PromptBlock => b.kind === "prompt-select") ?? null,
-    [blocks],
-  );
-  const wizardBlock = useMemo(
-    () => blocks.find((b): b is WizBlock => b.kind === "wizard") ?? null,
-    [blocks],
-  );
-  const previewBlock = useMemo(
-    () => blocks.find((b): b is PrevBlock => b.kind === "preview-select") ?? null,
-    [blocks],
-  );
-  const multiBlock = useMemo(
-    () => blocks.find((b): b is MultiBlock => b.kind === "multi-select") ?? null,
-    [blocks],
-  );
-  const menuBlock = useMemo(
-    () => blocks.find((b): b is GenericMenuBlock => b.kind === "menu") ?? null,
-    [blocks],
-  );
-  const autoBlock = useMemo(
-    () => blocks.find((b): b is AutoBlock => b.kind === "autocomplete") ?? null,
-    [blocks],
-  );
 
   // The table runs of each raw block, by block index. Only while wrapping: with Wrap off the whole
   // <pre> already pans column-faithfully, and a nested scroller would just trap the gesture — so
@@ -424,44 +389,19 @@ export const AnsiOutput = memo(function AnsiOutput({
   // Muted = box-drawing / rule glyphs. Drop ANSI dim opacity so table borders stay visible —
   // var(--border) + dim made them nearly invisible on mobile. See styleFor in mirror-space.ts.
 
-  const prompt = promptBlock ? (
-    <PromptSelectBlock
-      prompt={promptBlock.prompt}
-      disabled={promptDisabled || !onPromptAction}
-      onAction={(action) => onPromptAction?.(action, promptBlock.prompt) ?? false}
+  // The typed tail block renders through the extracted seam (typed-blocks.tsx): the same precedence
+  // chain and injected handlers AnsiOutput has always used, reusable without the raw mirror.
+  const prompt = (
+    <TypedBlocks
+      blocks={blocks}
+      onPromptAction={onPromptAction}
+      onWizardAction={onWizardAction}
+      onPreviewAction={onPreviewAction}
+      onMultiSelectAction={onMultiSelectAction}
+      onMenuAction={onMenuAction}
+      promptDisabled={promptDisabled}
     />
-  ) : wizardBlock ? (
-    <WizardBlock
-      wizard={wizardBlock.wizard}
-      disabled={promptDisabled || !onWizardAction}
-      onAction={(keys) => onWizardAction?.(keys, wizardBlock.wizard)}
-    />
-  ) : previewBlock ? (
-    <PreviewSelectBlock
-      preview={previewBlock.preview}
-      disabled={promptDisabled || !onPreviewAction}
-      onAction={(action) => onPreviewAction?.(action, previewBlock.preview)}
-    />
-  ) : multiBlock ? (
-    <MultiSelectBlock
-      multi={multiBlock.multi}
-      disabled={promptDisabled || !onMultiSelectAction}
-      onAction={(action) => onMultiSelectAction?.(action, multiBlock.multi)}
-    />
-  ) : menuBlock ? (
-    <MenuBlock
-      menu={menuBlock.menu}
-      lines={menuBlock.lines}
-      disabled={promptDisabled || !onMenuAction}
-      onAction={(action) => onMenuAction?.(action, menuBlock.menu)}
-    />
-  ) : autoBlock ? (
-    // No handler and no `disabled`: the completion popup emits no keystroke, so there is nothing for
-    // a read-only device to be refused. It is last in the chain only because it is the least
-    // specific tail shape; the grammars above are mutually exclusive with it anyway (a popup means an
-    // input box, and every dialog above means there isn't one).
-    <AutocompleteBlock autocomplete={autoBlock.autocomplete} />
-  ) : null;
+  );
 
   // Thread a running global offset through raw blocks → lines → segments (advancing by 1 for each
   // inter-line/inter-block "\n" separator) so both splits below can map a segment's slices back to
