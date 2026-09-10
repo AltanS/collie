@@ -9,6 +9,11 @@ beforeAll(() => {
   if (!Element.prototype.scrollTo) Element.prototype.scrollTo = () => {};
 });
 
+// Every router-backed card here (PaneRouter, CrewRouter, SettingsRouter, …) settles through the same
+// promise-based navigation pipeline motion.test.tsx documents for the app-walkthrough card, so a
+// loaded CI runner needs seconds, not Testing Library's default 1000ms, before the first render lands.
+const SLOW = { timeout: 12_000 } as const;
+
 // The regression this pins: commit 52c08bb hoisted the app header out of the routes and onto a shelf
 // above the router outlet (`RootLayout` in routes/root.tsx), so `<RouteHeader/>` now throws when
 // mounted without an `<AppHeaderHost/>` above it — loud by design (app-header.tsx's `RouteHeader`).
@@ -43,13 +48,13 @@ describe("the states playground", () => {
         // host is really there, for the router kind (`PaneRouter`/`PaneStackRouter`) this regression
         // broke. "Crew"/"Settings" are the override host's take-over title (CrewRoute/SettingsRoute).
         if (entry.def.id === "pane") {
-          await screen.findAllByRole("button", { name: "Pane actions" }, { timeout: 12_000 });
+          await screen.findAllByRole("button", { name: "Pane actions" }, SLOW);
         } else if (entry.def.id === "crew") {
-          await screen.findAllByRole("heading", { name: "Crew" }, { timeout: 12_000 });
+          await screen.findAllByRole("heading", { name: "Crew" }, SLOW);
         } else if (entry.def.id === "settings") {
-          await screen.findAllByRole("heading", { name: "Settings" }, { timeout: 12_000 });
+          await screen.findAllByRole("heading", { name: "Settings" }, SLOW);
         } else {
-          await screen.findAllByRole("heading", { name: entry.def.title }, { timeout: 12_000 });
+          await screen.findAllByRole("heading", { name: entry.def.title }, SLOW);
         }
 
         expect(screen.queryByText(/unexpected application error/i)).not.toBeInTheDocument();
@@ -88,34 +93,41 @@ describe("the states playground", () => {
 // attribute. Only one section mounts at a time now, so the handles are collected one tab at a time
 // and pooled into a single union before the rules run over it.
 describe("the playground's card handles", () => {
-  it("gives every card a unique flat-kebab handle", async () => {
-    const handles: string[] = [];
-    for (const entry of SECTIONS) {
-      const { container } = render(<PlaygroundApp tab={entry.def.id} />);
-      // Let each section's routers settle before reading its cards, the same way the render test
-      // does, so a card that would have thrown is not silently read as handle-less.
-      await waitFor(() => expect(container.querySelectorAll(".pg-grid > *").length).toBeGreaterThan(0));
-      for (const card of container.querySelectorAll(".pg-grid > *")) {
-        handles.push(card.getAttribute("data-state") ?? "");
+  it(
+    "gives every card a unique flat-kebab handle",
+    async () => {
+      const handles: string[] = [];
+      for (const entry of SECTIONS) {
+        const { container } = render(<PlaygroundApp tab={entry.def.id} />);
+        // Let each section's routers settle before reading its cards, the same way the render test
+        // does, so a card that would have thrown is not silently read as handle-less.
+        await waitFor(
+          () => expect(container.querySelectorAll(".pg-grid > *").length).toBeGreaterThan(0),
+          SLOW,
+        );
+        for (const card of container.querySelectorAll(".pg-grid > *")) {
+          handles.push(card.getAttribute("data-state") ?? "");
+        }
+        cleanup();
       }
-      cleanup();
-    }
 
-    // A floor, not the count: adding a card must not mean editing this test. It is here only to
-    // stop the three assertions below passing over an empty page.
-    expect(handles.length).toBeGreaterThanOrEqual(54);
+      // A floor, not the count: adding a card must not mean editing this test. It is here only to
+      // stop the three assertions below passing over an empty page.
+      expect(handles.length).toBeGreaterThanOrEqual(54);
 
-    expect(handles.filter((handle) => handle === "")).toEqual([]);
-    expect(handles.filter((handle) => !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(handle))).toEqual([]);
+      expect(handles.filter((handle) => handle === "")).toEqual([]);
+      expect(handles.filter((handle) => !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(handle))).toEqual([]);
 
-    const seen = new Set<string>();
-    const repeated: string[] = [];
-    for (const handle of handles) {
-      if (seen.has(handle)) repeated.push(handle);
-      seen.add(handle);
-    }
-    expect(repeated).toEqual([]);
-  });
+      const seen = new Set<string>();
+      const repeated: string[] = [];
+      for (const handle of handles) {
+        if (seen.has(handle)) repeated.push(handle);
+        seen.add(handle);
+      }
+      expect(repeated).toEqual([]);
+    },
+    30_000,
+  );
 });
 
 // The tab bar: the URL hash selects a section (and, with `#<id>/<card>`, scrolls a card into view),
@@ -134,38 +146,46 @@ function tablist(orientation: "horizontal" | "vertical") {
 }
 
 describe("the playground's tab bar", () => {
-  it("selects the tab named in the hash and scrolls to the card handle", async () => {
-    const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
-    window.location.hash = "#pane/pane-mid-tool-run";
+  it(
+    "selects the tab named in the hash and scrolls to the card handle",
+    async () => {
+      const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
+      window.location.hash = "#pane/pane-mid-tool-run";
 
-    render(<PlaygroundApp />);
+      render(<PlaygroundApp />);
 
-    await screen.findAllByRole("button", { name: "Pane actions" }, { timeout: 12_000 });
-    expect(screen.getByRole("tabpanel")).toHaveAttribute("id", "pg-panel-pane");
-    await waitFor(() => expect(scrollSpy).toHaveBeenCalled());
+      await screen.findAllByRole("button", { name: "Pane actions" }, SLOW);
+      expect(screen.getByRole("tabpanel")).toHaveAttribute("id", "pg-panel-pane");
+      await waitFor(() => expect(scrollSpy).toHaveBeenCalled(), SLOW);
 
-    scrollSpy.mockRestore();
-    window.location.hash = "";
-  });
+      scrollSpy.mockRestore();
+      window.location.hash = "";
+    },
+    30_000,
+  );
 
-  it("remembers the last tab", async () => {
-    render(<PlaygroundApp />);
+  it(
+    "remembers the last tab",
+    async () => {
+      render(<PlaygroundApp />);
 
-    fireEvent.click(within(tablist("horizontal")).getByRole("tab", { name: "Crew" }));
+      fireEvent.click(within(tablist("horizontal")).getByRole("tab", { name: "Crew" }));
 
-    await screen.findAllByRole("heading", { name: "Crew" }, { timeout: 12_000 });
-    expect(localStorage.getItem("collie.playground.tab")).toBe("crew");
+      await screen.findAllByRole("heading", { name: "Crew" }, SLOW);
+      expect(localStorage.getItem("collie.playground.tab")).toBe("crew");
 
-    // A tab reached by editing the hash (or by back/forward, which fires the same event) must be
-    // remembered too, not just a click.
-    window.location.hash = "#settings";
-    fireEvent(window, new Event("hashchange"));
+      // A tab reached by editing the hash (or by back/forward, which fires the same event) must be
+      // remembered too, not just a click.
+      window.location.hash = "#settings";
+      fireEvent(window, new Event("hashchange"));
 
-    await screen.findAllByRole("heading", { name: "Settings" }, { timeout: 12_000 });
-    expect(localStorage.getItem("collie.playground.tab")).toBe("settings");
+      await screen.findAllByRole("heading", { name: "Settings" }, SLOW);
+      expect(localStorage.getItem("collie.playground.tab")).toBe("settings");
 
-    window.location.hash = "";
-  });
+      window.location.hash = "";
+    },
+    30_000,
+  );
 
   it("moves the active tab with arrow keys (horizontal, top bar)", async () => {
     render(<PlaygroundApp />);
