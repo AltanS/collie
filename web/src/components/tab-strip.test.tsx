@@ -433,4 +433,98 @@ describe("TabStrip new-tab busy state", () => {
     await user.click(screen.getByRole("button", { name: "New tab" }));
     expect(onNewTab).not.toHaveBeenCalled();
   });
+
+  // The many-tabs defect (the whole reason `useRevealActive` exists): jsdom lays nothing out, so the
+  // hook's own guard (`clientWidth === 0`) makes the MOUNT reveal a no-op here — that path is pinned
+  // in `use-reveal-active.test.tsx` instead. What this proves is the WIRING: once the scroller has a
+  // stubbed layout, a selection change that lands off-screen calls `scrollTo`, and one that lands
+  // on-screen does not. Both buttons already exist in the DOM before the switch (only `aria-current`
+  // toggles), so their rects can be stubbed ahead of the re-render that flips the selection.
+  function stubRect(el: HTMLElement, rect: { left: number; right: number }): void {
+    el.getBoundingClientRect = (): DOMRect => ({
+      ...rect,
+      top: 0,
+      bottom: 0,
+      width: rect.right - rect.left,
+      height: 0,
+      x: rect.left,
+      y: 0,
+      toJSON: () => ({}),
+    });
+  }
+
+  it("scrolls the newly active tab into view on a selection change", () => {
+    const { container, rerender } = render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={tabs[0]!.tabId}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+    // SAFETY: TabStrip always renders one <nav> with one direct <div> scroller child (its own
+    // structure — see the component's header comment on the -mx-4/px-4 pairing), so a render never
+    // leaves this query unmatched.
+    const scroller = container.querySelector<HTMLDivElement>("nav > div")!;
+    Object.defineProperty(scroller, "clientWidth", { value: 100, configurable: true });
+    scroller.scrollLeft = 0;
+    stubRect(scroller, { left: 0, right: 100 });
+    const scrollTo = vi.fn();
+    scroller.scrollTo = scrollTo;
+    const newlyActive = screen.getByRole("button", { name: "2" });
+    stubRect(newlyActive, { left: 300, right: 340 }); // well past the scroller's right edge
+
+    rerender(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={tabs[1]!.tabId}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo.mock.calls[0]![0].left).toBeGreaterThan(0);
+  });
+
+  it("does not scroll when the newly active tab is already on screen", () => {
+    const { container, rerender } = render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={tabs[0]!.tabId}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+    // SAFETY: TabStrip always renders one <nav> with one direct <div> scroller child (its own
+    // structure — see the component's header comment on the -mx-4/px-4 pairing), so a render never
+    // leaves this query unmatched.
+    const scroller = container.querySelector<HTMLDivElement>("nav > div")!;
+    Object.defineProperty(scroller, "clientWidth", { value: 100, configurable: true });
+    scroller.scrollLeft = 0;
+    stubRect(scroller, { left: 0, right: 100 });
+    const scrollTo = vi.fn();
+    scroller.scrollTo = scrollTo;
+    const newlyActive = screen.getByRole("button", { name: "2" });
+    stubRect(newlyActive, { left: 20, right: 60 }); // comfortably inside the visible range
+
+    rerender(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={tabs[1]!.tabId}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
 });

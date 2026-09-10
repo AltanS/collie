@@ -95,6 +95,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   in all seven locales now says only that the version is available.
 - **The "tap to update" band is a named button again.** The band's text sits in a live region,
   which does not name the button around it; the button now names itself from that text.
+- **A long tab row scrolls its active tab into view.** On arrival and on every selection change,
+  the Spaces, Tabs and Panes strips now carry their active item to the nearest visible edge:
+  instant on arrival, smoothly afterwards, and a workspace with many tabs no longer opens on a
+  tab that's scrolled off-screen.
 
 ### Docs
 

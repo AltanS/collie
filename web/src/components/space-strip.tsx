@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { ChevronLeft, Loader2, Plus } from "lucide-react";
 
 import { Chip } from "@/components/ui/chip";
@@ -12,6 +13,7 @@ import { useMuxCapability, useMuxHasSpaces } from "@/lib/mux-capability";
 import type { AgentView, WorkspaceView } from "@/lib/types";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
+import { useRevealActive } from "@/hooks/use-reveal-active";
 
 interface SpaceStripProps {
   workspaces: WorkspaceView[];
@@ -49,6 +51,10 @@ export function SpaceStrip({
   // not have — and a row of switches with exactly one switch on it says the wrong thing about which.
   const hasSpaces = useMuxHasSpaces();
   useLocale();
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  // Keyed on `selected`; the drill-in (`onBack` set) has no active chip at all — "Back" isn't one —
+  // so there is nothing this strip needs to reveal there, and the hook simply finds no element.
+  useRevealActive(scrollerRef, selected);
   // On a one-space multiplexer the tab strip is the top level and this row has nothing to offer —
   // except the way back, which is navigation rather than a space and must not disappear with them.
   // With no back button there is nothing left to render at all.
@@ -62,7 +68,11 @@ export function SpaceStrip({
     // border-b border-rule: this band closes its own bottom, from ABOVE, so the division between
     // the Spaces row and the Tabs row below it is drawn once — not by whatever the tab bar draws
     // from below, which would land on the same y and read as a doubled 2px line.
-    <LabelledStrip label={t("space.strip.title")} className="border-b border-rule">
+    <LabelledStrip
+      label={t("space.strip.title")}
+      className="border-b border-rule"
+      scrollerRef={scrollerRef}
+    >
       {onBack ? (
         <button
           type="button"

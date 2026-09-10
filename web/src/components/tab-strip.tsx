@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Loader2, Plus } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
@@ -6,6 +6,7 @@ import { STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
 import { TabActionsSheet } from "@/components/tab-actions-sheet";
 import { StatusDot } from "@/components/status-badge";
 import { useLongPress } from "@/hooks/use-long-press";
+import { useRevealActive } from "@/hooks/use-reveal-active";
 import { cn } from "@/lib/utils";
 import { TRIAGE_STATUS, worstTriage, type TriageKey } from "@/lib/triage";
 import { hostKey } from "@/lib/hosts";
@@ -110,6 +111,10 @@ export function TabStrip({
   // Actions need both callbacks wired (revalidate on rename, fall back on close); without them the
   // tabs stay plain tap-to-switch — long-press is inert.
   const actionsEnabled = !!onRenamed && !!onClosed;
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  // Keyed on `selected` (not `workspaceId`): a many-tab strip must reveal the active tab on mount
+  // AND every time the operator switches tabs, and `selected` is the value that changes on a switch.
+  useRevealActive(scrollerRef, selected);
 
   // Tab status is computed over THIS machine's panes only: tab ids (`w1:t1`) collide across a crew
   // exactly as pane and workspace ids do, so an unfiltered merged list would paint a peer's blocked
@@ -136,6 +141,7 @@ export function TabStrip({
         className={cn("shrink-0 border-b border-rule px-4", trailing && "flex items-stretch")}
       >
         <div
+          ref={scrollerRef}
           // -mx-4 px-4: the gutter moves onto the scroller and is cancelled by the negative margin,
           // so the last tab scrolls clean off the screen edge while the first still starts on the
           // route's 16px gutter. The two halves are ONE number and must move together.

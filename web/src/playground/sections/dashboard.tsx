@@ -27,6 +27,9 @@ import {
   herd,
   homeCrew,
   homeSolo,
+  manyTabs,
+  manyTabsActiveTabId,
+  manyTabsWorkspaceId,
   spaces,
   tabs,
   updateCrewLevel,
@@ -129,6 +132,18 @@ export function DashboardSection() {
         >
           <PhoneFrameCard height={140}>
             <StripsHarness backOnly />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="tab-strip-many-tabs"
+          label="tab strip, sixteen tabs, active tab off-screen"
+          reach="open a space with a lot of tabs open, on a workspace whose active tab is well past the first screenful."
+          note="A real <TabStrip> with sixteen tabs; the active one (14th) starts outside the 390px frame. It scrolls into view on mount, at the NEAREST edge, no animation on arrival. Tap another far tab and watch it follow, smoothly this time."
+          span={2}
+        >
+          <PhoneFrameCard height={90}>
+            <ManyTabsHarness />
           </PhoneFrameCard>
         </Card>
       </Group>
@@ -356,6 +371,26 @@ function StripsHarness({ backOnly = false }: { backOnly?: boolean }) {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * A single, real `<TabStrip>` over the sixteen-tab fixture, starting selected on the 14th tab — the
+ * one deep enough into the row to start off-screen at 390px. Proves `useRevealActive` end to end:
+ * mount should land with the active tab visible, and tapping another tab should carry it there too.
+ */
+function ManyTabsHarness() {
+  const [tab, setTab] = useState<string | null>(manyTabsActiveTabId);
+  return (
+    <TabStrip
+      workspaceId={manyTabsWorkspaceId}
+      tabs={manyTabs}
+      agents={[]}
+      selected={tab}
+      onSelect={setTab}
+      onNewTab={() => {}}
+      allowAll={false}
+    />
   );
 }
 

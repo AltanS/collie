@@ -1,4 +1,4 @@
-import { createContext, useContext, useId, type ReactNode } from "react";
+import { createContext, useContext, useId, type ReactNode, type RefObject } from "react";
 
 import { SectionLabel } from "@/components/ui/section-label";
 import { cn } from "@/lib/utils";
@@ -93,6 +93,9 @@ interface LabelledStripProps {
   className?: string;
   /** Extra classes for the INNER scroller — the element the pills actually live in. */
   scrollerClassName?: string;
+  /** A ref onto the INNER scroller, for a caller that needs to read or drive its scroll position
+   *  (e.g. {@link import("@/hooks/use-reveal-active").useRevealActive}). */
+  scrollerRef?: RefObject<HTMLDivElement | null>;
   children: ReactNode;
 }
 
@@ -122,7 +125,13 @@ interface LabelledStripProps {
 //
 // The typography stays in `SectionLabel` (`placement="above"`), so Spaces · Tabs · Panes · Controls
 // cannot drift apart. This owns the structure; that owns the word.
-export function LabelledStrip({ label, className, scrollerClassName, children }: LabelledStripProps) {
+export function LabelledStrip({
+  label,
+  className,
+  scrollerClassName,
+  scrollerRef,
+  children,
+}: LabelledStripProps) {
   const id = useId();
   // Route-level, never per-strip: see StripLabelsVisible. Under a compact route the label keeps its
   // id, its text and the `aria-labelledby` pairing and loses only its paint and its 16px of row.
@@ -147,6 +156,7 @@ export function LabelledStrip({ label, className, scrollerClassName, children }:
         {label}
       </SectionLabel>
       <div
+        ref={scrollerRef}
         className={cn(
           "-mx-4 flex items-center gap-2 overflow-x-auto px-4 py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
           scrollerClassName,

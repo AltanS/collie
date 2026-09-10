@@ -152,6 +152,39 @@ export const tabs: TabView[] = [
   { tabId: "w4:t2", workspaceId: "w4", number: 2, label: "seo-pass", focused: false, paneCount: 1 },
 ];
 
+/**
+ * A workspace with far more tabs than fit a 390px strip — the fixture for the "reveal the active
+ * tab" playground card and its browser case. Sixteen short, realistic tab names; the ACTIVE one
+ * (`aria-current`) is the 14th, deep enough into the row that it starts fully off-screen on mount.
+ */
+export const manyTabsWorkspaceId = "w5";
+export const manyTabsActiveTabId = "w5:t14";
+export const manyTabs: TabView[] = [
+  "shell",
+  "docs",
+  "fix-deploy",
+  "migrate-users",
+  "billing-webhooks",
+  "flake-bump",
+  "hosts",
+  "seo-pass",
+  "post/collie-launch",
+  "feat/crew-overview",
+  "nixcfg",
+  "notes",
+  "scratch",
+  "fix-dirty-refusal",
+  "release-notes",
+  "cleanup",
+].map((label, i) => ({
+  tabId: `w5:t${i + 1}`,
+  workspaceId: manyTabsWorkspaceId,
+  number: i + 1,
+  label,
+  focused: false,
+  paneCount: 1,
+}));
+
 // ── The herd ─────────────────────────────────────────────────────────────────────────────────────
 //
 // Fourteen panes across those four spaces and four harnesses, laid out so every triage section has
