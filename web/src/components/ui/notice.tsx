@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useId } from "react";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -222,18 +223,32 @@ export function Notice({
   // stripping its button semantics from the accessibility tree. A live region announces its
   // subtree's changes wherever it is nested, so nothing is lost by moving it one element in — and
   // the announced text is then exactly the text that changed.
+  //
+  // That placement has a cost when `onActivate` is set: accessible-name-from-content skips a child
+  // whose own role isn't a name-from-content role, and `status`/`alert` aren't, so a button whose
+  // only content is this body would be nameless. `bodyId` + `aria-labelledby` on the button (below)
+  // names it from the same text explicitly, without moving the live region off the body.
   const role = announce === "none" ? undefined : announce;
+  const bodyId = useId();
 
   const body = strip ? (
     // ONE truncating, flex-1 span. This is the whole "strips never wrap" contract, and it is a
     // single element so there is nowhere for a second line to come from.
-    <span role={role} className="min-w-0 flex-1 truncate font-medium">
+    <span
+      role={role}
+      id={onActivate ? bodyId : undefined}
+      className="min-w-0 flex-1 truncate font-medium"
+    >
       {children}
     </span>
   ) : (
     // min-h-6 + centred: the 24px first-line slot the box's floor is derived from. One line centres
     // in it; two or more lines simply outgrow it and the box grows with them.
-    <div role={role} className="flex min-h-6 min-w-0 flex-1 flex-col justify-center">
+    <div
+      role={role}
+      id={onActivate ? bodyId : undefined}
+      className="flex min-h-6 min-w-0 flex-1 flex-col justify-center"
+    >
       {children}
     </div>
   );
@@ -296,6 +311,7 @@ export function Notice({
         type="button"
         data-slot="notice"
         onClick={onActivate}
+        aria-labelledby={bodyId}
         className={cn(box, "text-left")}
       >
         {inner}

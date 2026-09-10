@@ -306,8 +306,10 @@ describe("pwa path unchanged", () => {
     holdReload("an-open-composer-draft");
     confirmStaleBundle();
     await renderBand(info({ releaseAvailable: false }));
-    expect(screen.getByText("New version — tap to update")).toBeInTheDocument();
-    await user.click(screen.getByText("New version — tap to update"));
+    expect(
+      screen.getByRole("button", { name: "New version — tap to update" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "New version — tap to update" }));
     expect(checkForUpdate).toHaveBeenCalledTimes(1);
   });
 });

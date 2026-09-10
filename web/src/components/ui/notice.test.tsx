@@ -181,6 +181,21 @@ describe("Notice — the one notice surface", () => {
     expect(button.querySelector('[role="status"]')).not.toBeNull();
   });
 
+  it("names the whole-surface button from its body text, even though that body is a live region", () => {
+    // Regression for the 59c77fc3 band: `status` is not a name-from-content role, so a <button>
+    // whose only content is a role="status" span got an EMPTY accessible name — a screen reader
+    // regression as well as a broken query. `aria-labelledby` names the button from the same text
+    // explicitly, without moving the live region off the body.
+    render(
+      <Notice tone="info" variant="strip" announce="status" onActivate={() => {}}>
+        New version — tap to update
+      </Notice>,
+    );
+    expect(
+      screen.getByRole("button", { name: "New version — tap to update" }),
+    ).toBeInTheDocument();
+  });
+
   it("makes the whole row the target when it is tappable — one button, no nesting", () => {
     render(
       <Notice tone="info" variant="strip" onActivate={() => {}}>

@@ -93,6 +93,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The update ribbon's text no longer says "Tap to update".** The dismissible ribbon states
   navigate through the View button beside the ✕, so the row itself no longer taps, and the copy
   in all seven locales now says only that the version is available.
+- **The "tap to update" band is a named button again.** The band's text sits in a live region,
+  which does not name the button around it; the button now names itself from that text.
 
 ### Docs
 
