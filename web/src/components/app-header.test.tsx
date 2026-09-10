@@ -67,9 +67,12 @@ describe("the header — the one shared shell", () => {
     expect(container.querySelector(".dog-gallop")).toBeNull(); // mark at rest (static icon)
     expect(screen.getByText("webapp › main")).toBeInTheDocument(); // the breadcrumb slot
     expect(screen.getByText("working")).toBeInTheDocument(); // the agent status badge
-    expect(screen.queryByText("Collie")).toBeNull(); // no brand line in a pane
-    // …and no identity block at all, not an empty one: the pane's width belongs to the breadcrumb.
-    expect(container.querySelector('[data-slot="header-identity"]')).toBeNull();
+    expect(screen.getByText("Collie")).not.toBeVisible(); // no brand line ON SCREEN in a pane
+    // The block stays MOUNTED and goes `hidden`, so the mux logo is not re-fetched on the way back.
+    // Hidden is `display: none`, so it costs the row no width: the pane's width is the breadcrumb's.
+    const identity = container.querySelector('[data-slot="header-identity"]');
+    expect(identity).not.toBeNull();
+    expect(identity).not.toBeVisible();
   });
 
   it("is calm in the DASHBOARD variant while live — identity + settings gear, resting mark", () => {
@@ -428,7 +431,8 @@ describe("the header — the stacked identity", () => {
       </Header>,
     );
     await waitFor(() => expect(screen.getByText("webapp › main")).toBeInTheDocument());
-    expect(screen.queryByText("on reference")).toBeNull();
+    // Off screen, not gone: the block keeps its node (and its logo) and only hides.
+    expect(screen.getByText("on reference")).not.toBeVisible();
   });
 });
 
@@ -594,7 +598,7 @@ describe("the ONE header — hoisted above the outlet", () => {
     // Pane: the breadcrumb takes the middle, the dashboard's items are gone, the mark stays.
     await go("/pane");
     expect(screen.getByText("webapp › main")).toBeInTheDocument();
-    expect(screen.queryByText("Collie")).toBeNull(); // no wordmark inside a pane
+    expect(screen.getByText("Collie")).not.toBeVisible(); // no wordmark inside a pane
     expect(screen.queryByRole("button", { name: "Settings" })).toBeNull();
     expect(screen.getByRole("button", { name: "Collie home" })).toBeInTheDocument();
 

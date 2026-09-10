@@ -1,7 +1,11 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
 import { BootSplash, RootLayout, shownLastSeenAt } from "./root";
+import { RouteHeader } from "@/components/app-header";
+import { server } from "@/test/setup";
+import { __resetOperatorCommands } from "@/lib/operator-config";
 import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 import { collieMark, markIsLive, markPaper } from "@/test/collie-mark";
@@ -252,5 +256,92 @@ describe("RootLayout — the shell survives a navigation", () => {
     // …while the region that DOES remount is the one holding the route.
     expect(container.querySelector("[data-slot='screen-transition']")).not.toBeNull();
     expect(rootLoads).toBe(1);
+  });
+});
+
+// THE IDENTITY BLOCK IS MOUNTED ONCE AND HIDDEN, NEVER UNMOUNTED — the same claim as the one above,
+// one level deeper, and a reported bug rather than a theory. "Collie on <mux>" rides the wordmark
+// claim, which the dashboard makes and a pane does not. Rendered ON that claim, the block left the
+// DOM on every dashboard → pane move and came back new, and with it a NEW mux-logo `<img>`. The
+// bridge serves that logo with `Cache-Control: no-cache` plus an ETag, so every dashboard open cost
+// a conditional request before the picture could paint: on a phone over Tailscale that is a blank
+// logo box for a round trip, which is what the operator saw glitch (reproduced 2026-09-10). So the
+// assertion is element IDENTITY over a round trip, on the block AND on the image inside it.
+describe("RootLayout — the header identity survives a round trip to a pane", () => {
+  beforeEach(() => {
+    __resetOperatorCommands(); // the mux block is cached for the life of the page; re-read it here
+    server.use(
+      http.get("/api/config", () =>
+        HttpResponse.json({
+          push: false,
+          vapidPublicKey: "",
+          mux: {
+            name: "reference",
+            capabilities: {},
+            unsupportedKeys: [],
+            notes: {},
+            logoUrl: "/api/mux/logo.svg",
+          },
+        }),
+      ),
+    );
+  });
+
+  it("keeps the block and its mux logo as the same DOM nodes, hidden inside the pane", async () => {
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => ({ ...home(AFTERNOON), error: false }),
+          element: <RootLayout />,
+          children: [
+            {
+              index: true,
+              element: (
+                <>
+                  <RouteHeader wordmark />
+                  <div>dashboard</div>
+                </>
+              ),
+            },
+            {
+              path: "pane/:paneId",
+              element: (
+                <>
+                  <RouteHeader>
+                    <span>webapp › main</span>
+                  </RouteHeader>
+                  <div>pane</div>
+                </>
+              ),
+            },
+          ],
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+    const { container } = render(<RouterProvider router={router} />);
+    await waitFor(() => expect(screen.getByText("on reference")).toBeInTheDocument());
+
+    const identity = container.querySelector('[data-slot="header-identity"]');
+    const logo = container.querySelector('[data-slot="header-identity"] img');
+    expect(identity).toBeVisible();
+    expect(logo).not.toBeNull();
+    expect(logo).toHaveAttribute("src", "/api/mux/logo.svg");
+
+    // Into the pane: the block yields the width, so it must not be SEEN…
+    await act(() => router.navigate("/pane/w1%3Ap1"));
+    await waitFor(() => expect(screen.getByText("webapp › main")).toBeInTheDocument());
+    expect(container.querySelector('[data-slot="header-identity"]')).toBe(identity);
+    expect(identity).not.toBeVisible();
+    // …and it is still the same two nodes, so nothing re-requests the logo on the way back.
+    expect(container.querySelector('[data-slot="header-identity"] img')).toBe(logo);
+
+    await act(() => router.navigate("/"));
+    await waitFor(() => expect(screen.getByText("dashboard")).toBeInTheDocument());
+    expect(container.querySelector('[data-slot="header-identity"]')).toBe(identity);
+    expect(container.querySelector('[data-slot="header-identity"] img')).toBe(logo);
+    expect(identity).toBeVisible();
   });
 });

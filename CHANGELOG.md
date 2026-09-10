@@ -99,6 +99,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   the Spaces, Tabs and Panes strips now carry their active item to the nearest visible edge:
   instant on arrival, smoothly afterwards, and a workspace with many tabs no longer opens on a
   tab that's scrolled off-screen.
+- **The "Collie on" header line no longer flickers on the dashboard.** The header identity stays
+  mounted across routes and only hides inside a pane, so the multiplexer's logo is fetched once per
+  page instead of once per dashboard open. Over a tailnet that fetch left the logo box blank for a
+  round trip every time you came back from a pane.
 
 ### Docs
 

@@ -335,57 +335,70 @@ export function AppHeaderHost({ bridge, error, children }: AppHeaderHostProps) {
                     logo changes none of it: 1.15em on a -0.2em baseline shift stays inside the
                     line box the type already asked for.
 
-                    It rides WITH the wordmark claim (dashboard + space, never the pane, where the
-                    breadcrumb owns the width) and sits OUTSIDE the home button, as the mux line
-                    always has: that button's aria-label would otherwise replace both lines for a
-                    screen reader. The brand word moved out of the button with it, so the tap target
+                    IT IS MOUNTED ONCE AND HIDDEN off the wordmark routes, rather than rendered
+                    conditionally. It shows where the claim asks for it (dashboard + space, never the
+                    pane, where the breadcrumb owns the width), but the node stays: rendering it on
+                    the claim unmounted it on every dashboard → pane → dashboard move, and each
+                    remount built a fresh mux-logo `<img>`, which the bridge answers with a
+                    conditional request before the picture paints. On a phone over Tailscale that is
+                    a blank logo box for a round trip on every dashboard open, reproduced 2026-09-10.
+                    The switch is the HTML `hidden` ATTRIBUTE and not a `hidden` utility class:
+                    Tailwind's preflight gives `[hidden]` `display: none !important`, so the block
+                    takes no width and leaves the accessibility tree, and no later display utility
+                    can undo it. It also states the fact in the DOM, where a test and a screen
+                    reader read it without a stylesheet.
+
+                    It sits OUTSIDE the home button, as the mux line always has: that button's
+                    aria-label would otherwise replace both lines for a screen reader. The brand word moved out of the button with it, so the tap target
                     is the mark's own 44px box and nothing else — the floor §6 asks for, and the same
                     box the gear at the other end of the row has. */}
-                {claim.wordmark && (
-                  <div data-slot="header-identity" className="relative min-w-0">
-                    <SectionLabel className="absolute bottom-full left-0 max-w-full truncate leading-none">
-                      Collie
-                    </SectionLabel>
-                    {/* The line the freed width is FOR — "on <mux>", the sentence the brand line
-                        above starts. `min-h-6` RESERVES it whether or not a name has arrived:
-                        nothing renders until a bridge has actually named one (an old bridge, a
-                        cached page or a read still in flight all leave it empty, never an "on
-                        unknown" placeholder), and a box with no line box inside it is 0px tall — so
-                        without the reservation the brand line would jump 24px upward the moment
-                        /api/config landed. DESIGN.md §2: a state with nothing to say keeps its slot.
+                <div
+                  data-slot="header-identity"
+                  hidden={!claim.wordmark}
+                  className="relative min-w-0"
+                >
+                  <SectionLabel className="absolute bottom-full left-0 max-w-full truncate leading-none">
+                    Collie
+                  </SectionLabel>
+                  {/* The line the freed width is FOR — "on <mux>", the sentence the brand line
+                      above starts. `min-h-6` RESERVES it whether or not a name has arrived:
+                      nothing renders until a bridge has actually named one (an old bridge, a
+                      cached page or a read still in flight all leave it empty, never an "on
+                      unknown" placeholder), and a box with no line box inside it is 0px tall — so
+                      without the reservation the brand line would jump 24px upward the moment
+                      /api/config landed. DESIGN.md §2: a state with nothing to say keeps its slot.
 
-                        The prefix stays a dictionary string and stays on this line. It is the word
-                        that makes two stacked runs one sentence rather than two loose labels, and it
-                        is the only translated word here — the brand and the multiplexer's own name
-                        are names, and names are not translated. */}
-                    <span className="block min-h-6 truncate text-base">
-                      {mux !== "" && (
-                        <>
-                          {t("nav.mux.onPrefix")}{" "}
-                          {/* The multiplexer's own mark, between "on" and its name. `alt=""` and
-                              nothing else: the name is right there in the same sentence, so a screen
-                              reader announcing the picture too would read the multiplexer twice —
-                              this is decoration OF that word. An `<img>` and never inline SVG: these
-                              bytes come from an adapter, and the one way to be certain adapter-
-                              supplied markup can never become document markup is to never put it in
-                              the document (the mirror's XSS boundary, same rule). The bridge serves
-                              it sandboxed. Sized in `em` so it tracks this line's own type rather
-                              than a pixel guess, and inline so the line stays ONE text run — the
-                              sentence is still "on <name>" to a screen reader and to a text query.
-                              Nothing renders when the bridge published no URL. */}
-                          {muxLogo !== "" && (
-                            <img
-                              src={muxLogo}
-                              alt=""
-                              className="mr-1 inline-block size-[1.15em] align-[-0.2em]"
-                            />
-                          )}
-                          {mux}
-                        </>
-                      )}
-                    </span>
-                  </div>
-                )}
+                      The prefix stays a dictionary string and stays on this line. It is the word
+                      that makes two stacked runs one sentence rather than two loose labels, and it
+                      is the only translated word here — the brand and the multiplexer's own name
+                      are names, and names are not translated. */}
+                  <span className="block min-h-6 truncate text-base">
+                    {mux !== "" && (
+                      <>
+                        {t("nav.mux.onPrefix")}{" "}
+                        {/* The multiplexer's own mark, between "on" and its name. `alt=""` and
+                            nothing else: the name is right there in the same sentence, so a screen
+                            reader announcing the picture too would read the multiplexer twice —
+                            this is decoration OF that word. An `<img>` and never inline SVG: these
+                            bytes come from an adapter, and the one way to be certain adapter-
+                            supplied markup can never become document markup is to never put it in
+                            the document (the mirror's XSS boundary, same rule). The bridge serves
+                            it sandboxed. Sized in `em` so it tracks this line's own type rather
+                            than a pixel guess, and inline so the line stays ONE text run — the
+                            sentence is still "on <name>" to a screen reader and to a text query.
+                            Nothing renders when the bridge published no URL. */}
+                        {muxLogo !== "" && (
+                          <img
+                            src={muxLogo}
+                            alt=""
+                            className="mr-1 inline-block size-[1.15em] align-[-0.2em]"
+                          />
+                        )}
+                        {mux}
+                      </>
+                    )}
+                  </span>
+                </div>
                 {/* Center region: the breadcrumb (or, on the dashboard/space, an empty flex-1 spacer that
                     pushes the right cluster to the edge). min-w-0 so the breadcrumb truncates when tight.
                     Unmounted, not hidden, while a route owns the row: an empty `flex-1` box left standing
