@@ -38,6 +38,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   silent, including a poll revalidation and a machine or session switch: this is a plain entrance
   animation on the route region, not the View Transitions API removed in 0.10.0 for flickering the
   page on every poll. Reduced motion gets the new screen in place, with no slide.
+- **A dev build wears an orange icon, and the playground a red one.** A build whose HEAD isn't the
+  release tag now installs as "Collie (dev)" with orange favicons and manifest tiles, so it is
+  never mistaken for the release build on the same home screen; the states playground gets its own
+  red favicon set. The release build's `index.html` and manifest are unchanged.
 
 ### Fixed
 

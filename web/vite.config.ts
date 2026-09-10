@@ -5,6 +5,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { includeAssetsFor, manifestFor, transformIndexIcons, type Channel } from "./vite-icons";
 
 // The bridge (Bun server) serves the built app from `web/dist` and proxies nothing — the
 // browser talks to the same origin for both static files and /api. In `vite dev`, proxy the
@@ -117,12 +118,17 @@ const pkgVersion = (
 ).version;
 const buildSha = gitSha();
 const buildTime = new Date().toISOString();
-const stampedVersion = isReleaseBuild(pkgVersion) ? pkgVersion : `${pkgVersion}-dev`;
+// isReleaseBuild(pkgVersion) is computed ONCE and drives both the version stamp above and the
+// icon/manifest channel below — never call it twice, the two must always agree.
+const releaseBuild = isReleaseBuild(pkgVersion);
+const stampedVersion = releaseBuild ? pkgVersion : `${pkgVersion}-dev`;
+const channel: Channel = releaseBuild ? "release" : "dev";
 const BUILD_INFO = {
   version: stampedVersion,
   sha: buildSha,
   time: buildTime,
   id: `${stampedVersion}+${buildSha}.${Math.floor(Date.parse(buildTime) / 1000)}`,
+  channel,
 };
 
 // Emit dist/build-info.json so the bridge can read the current build id. Kept out of the SW precache
@@ -138,12 +144,31 @@ const buildInfoPlugin: Plugin = {
   },
 };
 
+// A release build must ship index.html byte-for-byte unchanged, so this only rewrites the four
+// icon <link> hrefs, and only for index.html — never playground.html, which carries its own
+// -playground links statically instead (see playground.html itself). vite-icons.ts's
+// transformIndexIcons is a no-op on the release channel, so the `if` here is belt-and-braces: it
+// also means the hook never even inspects a file that isn't index.html.
+const channelIconsPlugin: Plugin = {
+  name: "collie-channel-icons",
+  transformIndexHtml: {
+    order: "pre",
+    handler(html, ctx) {
+      if (!ctx.filename.endsWith("/index.html")) return html;
+      return transformIndexIcons(html, channel);
+    },
+  },
+};
+
+const channelManifest = manifestFor(channel);
+
 export default defineConfig({
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
   plugins: [
     react(),
     tailwindcss(),
     buildInfoPlugin,
+    channelIconsPlugin,
     VitePWA({
       // Build the manifest + service worker. We use `injectManifest` (not the default generateSW)
       // because we hand-write the SW in `src/sw.ts` to add `push` + `notificationclick` handlers a
@@ -157,10 +182,10 @@ export default defineConfig({
       strategies: "injectManifest",
       srcDir: "src",
       filename: "sw.ts", // source; compiled to dist/sw.js (the bridge sets Service-Worker-Allowed: /)
-      includeAssets: ["favicon.svg", "favicon.ico", "favicon-96x96.png", "apple-touch-icon.png"],
+      includeAssets: includeAssetsFor(channel),
       manifest: {
-        name: "Collie",
-        short_name: "Collie",
+        name: channelManifest.name,
+        short_name: channelManifest.short_name,
         description: "Monitor and reply to your terminal AI agents from your phone",
         id: "/",
         start_url: "/",
@@ -195,8 +220,12 @@ export default defineConfig({
           // The tile's own paper is #0f1113 against a #0a0a0a splash: a hair lighter, invisible in
           // practice, and `background_color` is left alone so the installed chrome keeps one value.
           // If these are ever re-copied, take the `collie-tile-dark-*` files, not the light ones.
-          { src: "/web-app-manifest-192x192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
-          { src: "/web-app-manifest-512x512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+          //
+          // A dev build (channel !== "release") swaps this pair for the `-dev` tiles instead
+          // (vite-icons.ts's manifestFor) — same dark polarity, same safe-zone padding, orange
+          // paint, so a dev install is unmistakable next to a release install on the same home
+          // screen without breaking either fact above.
+          ...channelManifest.icons,
         ],
       },
       injectManifest: {

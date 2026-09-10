@@ -5,6 +5,10 @@ export interface BuildInfo {
   sha: string;
   time: string;
   id: string;
+  /** "release" at the release tag, "dev" everywhere else — see vite.config.ts's isReleaseBuild.
+   *  Drives which icon set this bundle was built with; carried here mainly so `build-info.json`
+   *  (bridge/version.ts) and the footer stamp agree with what the bundle actually shipped. */
+  channel: "release" | "dev";
 }
 
 // The build stamp baked into this bundle at build time (vite `define`, see vite.config.ts).

@@ -414,7 +414,9 @@ with `bin/collie qr`). Your client must be on the same tailnet.
 ![The same card on iOS or iPadOS: installing goes through the share sheet instead.](images/updates/settings-install-ios-hint.png)
 
 Installing the PWA requires HTTPS; `COLLIE_SERVE_MODE=http` disables service workers, so the phone
-can only use the browser tab in that mode.
+can only use the browser tab in that mode. A dev build (any checkout not sitting on its release
+tag) installs as **Collie (dev)** with an orange icon, so it never sits on your home screen next to
+a release install looking the same.
 
 ### Is it actually working?
 
