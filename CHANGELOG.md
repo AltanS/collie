@@ -109,6 +109,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   round trip every time you came back from a pane.
 - **Opening the dashboard no longer re-reads the bridge config.** The footer build stamp asked for
   it on every mount and threw the answer away once the build was known.
+- **A checkout on an untagged release commit builds as dev.** The channel now reads the tags the
+  checkout holds; a tree with no git and a shallow install with no tags still build as release.
 
 ### Docs
 

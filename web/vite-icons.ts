@@ -9,6 +9,35 @@
 
 export type Channel = "release" | "dev";
 
+// The evidence vite.config.ts gathers about the checkout, each field independently nullable when
+// the underlying git call fails. `channelFor` is the pure decision behind `isReleaseBuild` — see
+// vite.config.ts for why the three shapes below exist and how this evidence is collected.
+export interface ChannelEvidence {
+  readonly head: string | null;
+  readonly tagCommit: string | null;
+  readonly tagCount: number | null;
+}
+
+/**
+ * The build channel for a checkout, from three facts about its git state. A checkout is one of
+ * three shapes, checked in order:
+ *
+ * 1. No git at all (`head` is null): a tarball or packaged build with no `.git` directory. Builds
+ *    as release, the same fallback the old catch-all gave.
+ * 2. Git works but the checkout holds no tags at all (`tagCount` is 0): the shallow, detached
+ *    checkout `herdr plugin install` leaves behind. It never fetched any tag, release or not, so
+ *    an empty tag list is expected there, not a sign of a dev tree. Builds as release.
+ * 3. Git works and tags exist: this is a real dev checkout, so the version's own tag decides. Its
+ *    commit matching HEAD means the checkout sits on a cut, tagged release; anything else,
+ *    including a missing tag for this version, is dev.
+ */
+export function channelFor(evidence: ChannelEvidence): Channel {
+  if (evidence.head === null) return "release";
+  if (evidence.tagCount === 0) return "release";
+  if (evidence.tagCommit !== null && evidence.tagCommit === evidence.head) return "release";
+  return "dev";
+}
+
 export interface IconLink {
   readonly rel: string;
   readonly href: string;

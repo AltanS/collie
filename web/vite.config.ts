@@ -5,7 +5,14 @@ import { VitePWA } from "vite-plugin-pwa";
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { includeAssetsFor, manifestFor, transformIndexIcons, type Channel } from "./vite-icons";
+import {
+  channelFor,
+  includeAssetsFor,
+  manifestFor,
+  transformIndexIcons,
+  type Channel,
+  type ChannelEvidence,
+} from "./vite-icons";
 
 // The bridge (Bun server) serves the built app from `web/dist` and proxies nothing — the
 // browser talks to the same origin for both static files and /api. In `vite dev`, proxy the
@@ -95,18 +102,47 @@ function gitSha(): string {
 }
 // Clean-tree builds off a non-release commit (a preview branch, mid-development main) would
 // otherwise stamp a version string identical to the real `vX.Y.Z` release, since `-dirty` only
-// fires on an uncommitted tree. `-dev` covers that gap: true only when the `vX.Y.Z` tag exists
-// AND points at HEAD. Compare full shas (`rev-parse HEAD`, not the short one gitSha() uses) since
-// that's what the tag's rev-parse resolves to. Any failure (no tag, no git) returns true — i.e.
-// we don't add the marker — mirroring build.ts's isStaleBuild "never nag spuriously" policy.
-function isReleaseBuild(version: string): boolean {
+// fires on an uncommitted tree. `-dev` covers that gap, but "does the version's tag exist and
+// point at HEAD" alone is not enough: a checkout can legitimately hold no tags at all and still be
+// a release. There are three shapes, and `channelFor` (vite-icons.ts) is the pure decision over
+// them:
+//
+//   1. no git at all (a tarball or packaged build) -> release
+//   2. git works, but the checkout holds NO tags at all -> release. This is the shallow, detached
+//      checkout `herdr plugin install` leaves (cli/update.ts's header, around line 67): `git init`
+//      + `fetch --depth 1` + `checkout --detach`, so it never fetched a tag either way. `collie
+//      update` fetches tags properly later (cli/update.ts, ~700-735), but until then an empty tag
+//      list here is normal for a genuine release install, not evidence of a dev tree.
+//   3. git works and tags exist -> a real dev checkout, so the version's own tag decides: its
+//      commit matching HEAD means release, anything else (including a missing tag for this
+//      version) means dev. This is the case a dev lane on an untagged `chore(release):` commit
+//      used to get wrong, building as release before its tag existed.
+//
+// Each git call below has its own try/catch, so one failure (e.g. no `.git`) doesn't discard
+// evidence another call already gathered.
+function gitEvidence(version: string): ChannelEvidence {
+  let head: string | null;
   try {
-    const tagCommit = git(`git rev-parse -q --verify "refs/tags/v${version}^{commit}"`);
-    const headCommit = git("git rev-parse HEAD");
-    return tagCommit === headCommit;
+    head = git("git rev-parse HEAD");
   } catch {
-    return true;
+    head = null;
   }
+  let tagCommit: string | null;
+  try {
+    tagCommit = git(`git rev-parse -q --verify "refs/tags/v${version}^{commit}"`);
+  } catch {
+    tagCommit = null;
+  }
+  let tagCount: number | null;
+  try {
+    const tags = git("git tag -l")
+      .split("\n")
+      .filter((line) => line.length > 0);
+    tagCount = tags.length;
+  } catch {
+    tagCount = null;
+  }
+  return { head, tagCommit, tagCount };
 }
 // SAFETY: `web/package.json` is this repo's own manifest, sitting next to this config, and
 // `scripts/check-version.sh` gates every build on its `version` agreeing with the other two files —
@@ -118,11 +154,11 @@ const pkgVersion = (
 ).version;
 const buildSha = gitSha();
 const buildTime = new Date().toISOString();
-// isReleaseBuild(pkgVersion) is computed ONCE and drives both the version stamp above and the
-// icon/manifest channel below — never call it twice, the two must always agree.
-const releaseBuild = isReleaseBuild(pkgVersion);
+// channelFor(pkgVersion's evidence) is computed ONCE and drives both the version stamp above and
+// the icon/manifest channel below — never call it twice, the two must always agree.
+const channel: Channel = channelFor(gitEvidence(pkgVersion));
+const releaseBuild = channel === "release";
 const stampedVersion = releaseBuild ? pkgVersion : `${pkgVersion}-dev`;
-const channel: Channel = releaseBuild ? "release" : "dev";
 const BUILD_INFO = {
   version: stampedVersion,
   sha: buildSha,

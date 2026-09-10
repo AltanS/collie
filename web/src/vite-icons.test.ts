@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   PLAYGROUND_ICON_LINKS,
+  channelFor,
   iconLinksFor,
   includeAssetsFor,
   manifestFor,
@@ -15,6 +16,29 @@ import {
 // built from (see the config's `channel` derivation). Testing them here — rather than running a
 // real Vite build — is what lets this suite run under plain Vitest: vite.config.ts is the only
 // file that imports `vite`/`vite-plugin-pwa`, and this module imports neither.
+
+describe("channelFor", () => {
+  it("no git at all (head null): a tarball or packaged build, release", () => {
+    expect(channelFor({ head: null, tagCommit: null, tagCount: null })).toBe("release");
+  });
+
+  it("git works but holds no tags at all: the shallow detached install, release", () => {
+    expect(channelFor({ head: "abc123", tagCommit: null, tagCount: 0 })).toBe("release");
+  });
+
+  it("tags exist and the version's tag matches HEAD: a real release checkout", () => {
+    expect(channelFor({ head: "abc123", tagCommit: "abc123", tagCount: 3 })).toBe("release");
+  });
+
+  it("tags exist but the version's tag is missing: dev checkout on an untagged commit", () => {
+    // This is the case that shipped 1.8.1 as "release" before v1.8.1 was tagged.
+    expect(channelFor({ head: "abc123", tagCommit: null, tagCount: 3 })).toBe("dev");
+  });
+
+  it("tags exist but the version's tag points elsewhere: dev", () => {
+    expect(channelFor({ head: "abc123", tagCommit: "def456", tagCount: 3 })).toBe("dev");
+  });
+});
 
 describe("iconLinksFor", () => {
   it("release: names the original, undecorated icon files", () => {
