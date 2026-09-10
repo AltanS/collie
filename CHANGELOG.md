@@ -107,6 +107,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   mounted across routes and only hides inside a pane, so the multiplexer's logo is fetched once per
   page instead of once per dashboard open. Over a tailnet that fetch left the logo box blank for a
   round trip every time you came back from a pane.
+- **Opening the dashboard no longer re-reads the bridge config.** The footer build stamp asked for
+  it on every mount and threw the answer away once the build was known.
 
 ### Docs
 

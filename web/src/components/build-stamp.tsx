@@ -20,11 +20,14 @@ export function BuildStamp({ className }: { className?: string }) {
   const serverBuild = useServerBuild();
   const [updating, setUpdating] = useState(false);
   useEffect(() => {
-    let alive = true;
     // Initial fill: the poll-driven header normally seeds the store first, but fetch config once so
     // the footer is correct even before the first poll lands — and so an older bridge that reports
     // `build` in JSON but sends no header still works. Only seed when nothing's been observed yet
     // (the config response's own header usually already has), so we don't double-count an observation.
+    // The check runs before the fetch, because the dashboard remounts on every return from a pane,
+    // and a known build needs no second look.
+    if (getServerBuild() !== undefined) return;
+    let alive = true;
     void (async () => {
       try {
         const c = await fetchConfig();
