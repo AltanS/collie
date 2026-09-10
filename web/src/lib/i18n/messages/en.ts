@@ -951,7 +951,7 @@ export const en = {
   // sentence is not, so the band states WHAT changes and the tap lands on the card, where the rest
   // of it sits above the confirm. Held to the budget like every other band string.
   "updateRibbon.linkChangeShort": "Changes the crew link.",
-  "updateRibbon.available": "Collie {version} available. Tap to update.",
+  "updateRibbon.available": "Collie {version} available.",
   // A packaged host cannot take the tap — its updates come from its package manager (ADR 0035) — so
   // the band STATES the fact and names the manager. It does not instruct: the phone cannot run
   // pacman, and a line that told the operator to would be telling them to go somewhere else.

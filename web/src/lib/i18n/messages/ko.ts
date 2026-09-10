@@ -889,7 +889,7 @@ export const ko: Dictionary = {
   "updateRibbon.peerFailed": "{name} 업데이트 실패: {reason}.",
   "updateRibbon.seeUpdates": "업데이트 화면 보기.",
   "updateRibbon.linkChangeShort": "크루 연결 방식이 바뀝니다.",
-  "updateRibbon.available": "Collie {version} 사용 가능. 탭하여 업데이트.",
+  "updateRibbon.available": "Collie {version} 사용 가능.",
   "updateRibbon.availablePackaged": "Collie {version} ({manager}) 이용 가능.",
   "updateRibbon.availablePackagedUnnamed": "Collie {version} 이용 가능.",
   "updateRibbon.view": "보기",

@@ -875,7 +875,7 @@ export const zh: Dictionary = {
   "updateRibbon.peerFailed": "{name} 更新失败：{reason}。",
   "updateRibbon.seeUpdates": "查看更新。",
   "updateRibbon.linkChangeShort": "机组连接方式会变更。",
-  "updateRibbon.available": "Collie {version} 可用。点击更新。",
+  "updateRibbon.available": "Collie {version} 可用。",
   "updateRibbon.availablePackaged": "Collie {version} 可通过 {manager} 获取。",
   "updateRibbon.availablePackagedUnnamed": "Collie {version} 可用。",
   "updateRibbon.view": "查看",

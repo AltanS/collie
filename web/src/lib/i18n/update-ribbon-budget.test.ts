@@ -16,9 +16,9 @@ import { zhTW } from "./messages/zh-TW";
 // English strings are as terse as they are.
 //
 // The budget is measured with the SLOTS FILLED, because a slot is not what reaches the screen: the
-// template `Collie {version} available. Tap to update.` is 42 characters and the line it prints is
-// 37. Each slot gets one representative value, and they are deliberately generous — a five-part
-// version and an eight-letter machine name.
+// template `Collie {version} available.` is 27 characters and the line it prints is 23. Each slot
+// gets one representative value, and they are deliberately generous — a five-part version and an
+// eight-letter machine name.
 //
 // `{reason}` is the exception, and it is filled EMPTY: a peer's rollback reason is that machine's own
 // prose of unbounded length, so it can never be budgeted as a fixed string. It is cut on a word

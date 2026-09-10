@@ -171,7 +171,7 @@ describe("update ribbon states — the row on screen", () => {
 
   it("(a) offers the release and names the version", async () => {
     await renderBand(info());
-    expect(screen.getByText("Collie 1.5.0 available. Tap to update.")).toBeInTheDocument();
+    expect(screen.getByText("Collie 1.5.0 available.")).toBeInTheDocument();
   });
 
   it("(b) counts through the three words of a run", async () => {
@@ -245,7 +245,7 @@ describe("available navigates, never runs", () => {
     // button, so there is no nesting for a browser to have an opinion about.
     await renderBand(info());
     expect(
-      screen.getByText("Collie 1.5.0 available. Tap to update.").closest("button"),
+      screen.getByText("Collie 1.5.0 available.").closest("button"),
     ).toBeNull();
   });
 
@@ -430,7 +430,7 @@ describe("dismissal is per version, and it belongs to the machine", () => {
   it("a newer release brings it back", async () => {
     const { container } = await renderBand(info({ latest: "1.6.0", dismissedVersion: "1.5.0" }));
     expect(band(container)).not.toBeNull();
-    expect(screen.getByText("Collie 1.6.0 available. Tap to update.")).toBeInTheDocument();
+    expect(screen.getByText("Collie 1.6.0 available.")).toBeInTheDocument();
   });
 
   it("a failed dismiss is a courtesy lost, not an error on screen", async () => {

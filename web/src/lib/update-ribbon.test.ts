@@ -317,7 +317,7 @@ describe("a packaged host reads its own line", () => {
   it("leaves every other install kind on the ordinary offer", () => {
     const view = read({ update: info({ installKind: "binary", packageCommand: undefined }) });
     expect(view).toEqual({ kind: "available", version: "1.5.0" });
-    expect(ribbonText(view)).toBe("Collie 1.5.0 available. Tap to update.");
+    expect(ribbonText(view)).toBe("Collie 1.5.0 available.");
   });
 });
 
@@ -545,14 +545,14 @@ describe("the crew link sentence", () => {
   it("appends the SHORT form to the offer — the band is one budgeted row", () => {
     const view = read({ update: info({ linkChange: { from: 1, to: 2 } }) });
     expect(view).toEqual({ kind: "available", version: "1.5.0" });
-    expect(ribbonText(view, { from: 1, to: 2 })).toBe(`Collie 1.5.0 available. Tap to update. ${SHORT}`);
+    expect(ribbonText(view, { from: 1, to: 2 })).toBe(`Collie 1.5.0 available. ${SHORT}`);
     // Never the whole sentence: that one belongs above the confirm, where there is room for it.
     expect(ribbonText(view, { from: 1, to: 2 })).not.toContain("members follow");
   });
 
   it("is absent when the reading carries no link change", () => {
     const view = read();
-    expect(ribbonText(view)).toBe("Collie 1.5.0 available. Tap to update.");
+    expect(ribbonText(view)).toBe("Collie 1.5.0 available.");
     expect(ribbonText(view, null)).not.toContain("crew link");
     expect(linkChangeBandNote(null)).toBeNull();
     expect(linkChangeBandNote(undefined)).toBeNull();

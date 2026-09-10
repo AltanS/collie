@@ -869,7 +869,7 @@ export const zhTW: Dictionary = {
   "updateRibbon.peerFailed": "{name} 更新失敗：{reason}。",
   "updateRibbon.seeUpdates": "查看更新。",
   "updateRibbon.linkChangeShort": "機組連線方式會變更。",
-  "updateRibbon.available": "Collie {version} 可用。點擊更新。",
+  "updateRibbon.available": "已推出 Collie {version}。",
   "updateRibbon.availablePackaged": "Collie {version} 可透過 {manager} 取得。",
   "updateRibbon.availablePackagedUnnamed": "Collie {version} 可用。",
   "updateRibbon.view": "查看",

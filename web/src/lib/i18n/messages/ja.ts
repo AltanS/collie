@@ -897,7 +897,7 @@ export const ja: Dictionary = {
   "updateRibbon.peerFailed": "{name}を更新不可: {reason}。",
   "updateRibbon.seeUpdates": "更新画面を確認。",
   "updateRibbon.linkChangeShort": "クルーの接続方式が変わります。",
-  "updateRibbon.available": "Collie {version} を利用可能。タップして更新。",
+  "updateRibbon.available": "Collie {version} が利用可能です。",
   "updateRibbon.availablePackaged": "Collie {version}（{manager}）が利用可能。",
   "updateRibbon.availablePackagedUnnamed": "Collie {version} が利用可能。",
   "updateRibbon.view": "表示",

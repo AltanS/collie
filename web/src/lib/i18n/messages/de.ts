@@ -910,7 +910,7 @@ export const de: Dictionary = {
   "updateRibbon.peerFailed": "Fehler bei {name}: {reason}.",
   "updateRibbon.seeUpdates": "Siehe Updates.",
   "updateRibbon.linkChangeShort": "Ändert die Crew-Verbindung.",
-  "updateRibbon.available": "Collie {version} da. Zum Update tippen.",
+  "updateRibbon.available": "Collie {version} verfügbar.",
   "updateRibbon.availablePackaged": "Collie {version} über {manager} verfügbar.",
   "updateRibbon.availablePackagedUnnamed": "Collie {version} verfügbar.",
   "updateRibbon.view": "Ansehen",

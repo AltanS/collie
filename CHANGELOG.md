@@ -90,6 +90,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   ends two copies of the tint recipe, two hand-rolled collapse animations, and two rows that asked
   a screen reader to be assertive and polite at once. The offer's states that carry a ✕ trade their
   row-wide tap for a named View button, since a button may not hold a button.
+- **The update ribbon's text no longer says "Tap to update".** The dismissible ribbon states
+  navigate through the View button beside the ✕, so the row itself no longer taps, and the copy
+  in all seven locales now says only that the version is available.
 
 ### Docs
 
