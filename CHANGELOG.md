@@ -30,6 +30,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **Opening a pane now slides the screen in, and going back slides it back.** The arriving screen
+  enters from the right on the way into a pane and from the left on the way back, 240ms and
+  eased, with the band, the header and the Collie mark holding still. Every other navigation is
+  silent, including a poll revalidation and a machine or session switch: this is a plain entrance
+  animation on the route region, not the View Transitions API removed in 0.10.0 for flickering the
+  page on every poll. Reduced motion gets the new screen in place, with no slide.
+
 ### Fixed
 
 - **The playground's crew fixtures named real machines, not fictional ones.** The lead and

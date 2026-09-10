@@ -200,3 +200,57 @@ describe("RootLayout — the safe-area inset is reserved exactly once", () => {
     expect(container.querySelector("header")?.className).toMatch(/safe-area-inset-top/);
   });
 });
+
+// NOTHING ABOVE THE OUTLET MAY REMOUNT ON A NAVIGATION, and the screen transition is the change
+// that could break it: it keys the outlet region on the pathname so the arriving screen's entrance
+// replays. A key placed one level too high would take the header shell with it, which is the fault
+// `AppHeaderHost` was hoisted out of the routes to end — the Collie mark's 37 CSS animations
+// restarting at zero on every tap — and it would take the band's two permanent live regions with it
+// as well, which is how a strip stops being announced. So the assertion is element IDENTITY across
+// a real dashboard → pane navigation, not a class or a count.
+describe("RootLayout — the shell survives a navigation", () => {
+  it("keeps the header and the band's live regions as the same DOM nodes", async () => {
+    // Counted, because the OTHER half of the claim is that the key remounts a React subtree and
+    // nothing more: a key is a reconciliation hint, and loaders belong to the router, which never
+    // sees it. A root loader that ran twice here would mean the navigation had reloaded the app's
+    // whole snapshot to slide one screen in.
+    let rootLoads = 0;
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => {
+            rootLoads += 1;
+            return home(AFTERNOON);
+          },
+          element: <RootLayout />,
+          children: [
+            { index: true, element: <div>dashboard</div> },
+            { path: "pane/:paneId", element: <div>pane</div> },
+          ],
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+    const { container } = render(<RouterProvider router={router} />);
+    await waitFor(() => expect(screen.getByText("dashboard")).toBeInTheDocument());
+
+    const header = container.querySelector("header");
+    const polite = container.querySelector("[data-slot='strip-live-polite']");
+    const assertive = container.querySelector("[data-slot='strip-live-assertive']");
+    expect(header).not.toBeNull();
+    expect(polite).not.toBeNull();
+    expect(assertive).not.toBeNull();
+
+    await act(() => router.navigate("/pane/w1%3Ap1"));
+    await waitFor(() => expect(screen.getByText("pane")).toBeInTheDocument());
+
+    expect(container.querySelector("header")).toBe(header);
+    expect(container.querySelector("[data-slot='strip-live-polite']")).toBe(polite);
+    expect(container.querySelector("[data-slot='strip-live-assertive']")).toBe(assertive);
+    // …while the region that DOES remount is the one holding the route.
+    expect(container.querySelector("[data-slot='screen-transition']")).not.toBeNull();
+    expect(rootLoads).toBe(1);
+  });
+});

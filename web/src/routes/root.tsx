@@ -17,6 +17,7 @@ import { UpdateRibbon } from "@/components/update-ribbon";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { AppHeaderHost } from "@/components/app-header";
 import { StripHost } from "@/components/ui/strip-host";
+import { ScreenTransition } from "@/components/screen-transition";
 import { CrewProvider } from "@/components/crew-provider";
 import { CollieMark } from "@/components/collie-mark";
 import { describeThrownError } from "@/lib/api-error-message";
@@ -139,7 +140,16 @@ export function RootLayout() {
             forwarding them from anyway — six copies of the same two fields was six chances to
             disagree with the ConnectionBanner two lines up. */}
           <AppHeaderHost bridge={data.bridge} error={data.error}>
-            <Outlet />
+            {/* The everyday move, animated: dashboard → pane slides in from the right, back from
+                the left, and every other navigation — a poll revalidation, a scope change, pane to
+                pane — arrives with no animation at all. It wraps the OUTLET and sits BELOW the
+                header for the reason the header sits above it: the key inside remounts the route's
+                subtree so the entrance replays, and everything that must survive a navigation (the
+                band, the header shell, the mark's 37 animations) is already outside it. It is not
+                the View Transitions API and may not become one — see the file's header. */}
+            <ScreenTransition>
+              <Outlet />
+            </ScreenTransition>
           </AppHeaderHost>
         </StripHost>
       </div>
