@@ -49,6 +49,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   named a real Tailscale hostname (`minibuch`) in its rolled-back-peer example.
   `scripts/docs-screens.sh`, which generates this whole set, carried both and is what's actually
   fixed; the images are just its output.
+- **`scripts/docs-screens.sh` no longer races its own screenshots.** Every capture now scrolls
+  its target flush to the top before the shot, not just the two newest ones: the previous
+  `agent-browser scrollintoview` call centres an element and can still be mid-animation when
+  the screenshot fires, silently cropping the top off. Also tightens the two install-path
+  Notes in `docs/install.md` to open with the platform they apply to, so a reader can tell at
+  a glance which one is theirs.
 
 ## [1.8.0] - 2026-09-09
 

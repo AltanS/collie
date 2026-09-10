@@ -123,7 +123,7 @@ EOF
 
 echo "== settings-updates-row.png"
 tag_phone_frame "settings — lead of a crew, three devices paired" settings-row
-AB scrollintoview "[data-shot=settings-row]"
+scroll_shot_to_top settings-row
 # Scroll the phone's own inner scroller down to the Updates row.
 cat <<'EOF' | AB eval --stdin
 (function() {
@@ -148,7 +148,7 @@ capture_updates_page() {
   AB wait --load networkidle
   sleep 1
   tag_phone_frame "updates — the page the Settings row opens" updates-page
-  AB scrollintoview "[data-shot=updates-page]"
+  scroll_shot_to_top updates-page
   AB screenshot "$TMP/full.png"
   read -r x y w h < <(box_of updates-page)
   crop "$TMP/full.png" "$w" "$h" "$x" "$y" "$OUT_DIR/$out"
@@ -185,14 +185,14 @@ sleep 1
 
 echo "== band-available.png"
 tag_stage "update band (a) — a release is on offer" band-a
-AB scrollintoview "[data-shot=band-a]"
+scroll_shot_to_top band-a
 AB screenshot "$TMP/full.png"
 read -r x y w h < <(box_of band-a)
 crop "$TMP/full.png" 390 32 "$x" "$y" "$OUT_DIR/band-available.png"
 
 echo "== band-updating.png (the Restarting snapshot, third of three)"
 tag_stage "update band (b) — a run in flight, all three words" band-b
-AB scrollintoview "[data-shot=band-b]"
+scroll_shot_to_top band-b
 AB screenshot "$TMP/full.png"
 read -r x y w h < <(box_of band-b)
 # Three stacked rows of ~29px each; the third (Restarting) sits at the bottom of the box.
@@ -200,7 +200,7 @@ crop "$TMP/full.png" 390 32 "$x" "$((y + h - 32))" "$OUT_DIR/band-updating.png"
 
 echo "== band-peers.png (the first of two rows: still-moving peer)"
 tag_stage "update band (d) — peers following, and one that did not" band-d
-AB scrollintoview "[data-shot=band-d]"
+scroll_shot_to_top band-d
 AB screenshot "$TMP/full.png"
 read -r x y w h < <(box_of band-d)
 crop "$TMP/full.png" 390 32 "$x" "$y" "$OUT_DIR/band-peers.png"
@@ -216,7 +216,7 @@ cat <<'EOF' | AB eval --stdin
 EOF
 sleep 1
 tag_stage "update band (c) — this bundle is behind the bridge" band-c
-AB scrollintoview "[data-shot=band-c]"
+scroll_shot_to_top band-c
 AB screenshot "$TMP/full.png"
 read -r x y w h < <(box_of band-c)
 crop "$TMP/full.png" 390 32 "$x" "$y" "$OUT_DIR/band-updated-reload.png"
