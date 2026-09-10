@@ -1,5 +1,5 @@
-// A REAL snapshot off this machine's dev bridge (`GET http://127.0.0.1:8788/api/snapshot`), frozen
-// for the dashboard-row experiment card. DEV-ONLY, like the rest of `src/playground/`.
+// A snapshot off this machine's dev bridge (`GET http://127.0.0.1:8788/api/snapshot`), frozen for
+// the dashboard-row experiment card. DEV-ONLY, like the rest of `src/playground/`.
 //
 // WHY A `.ts` MODULE AND NOT THE `.json` FILE IT STARTED AS: `web/tsconfig.json` does not set
 // `resolveJsonModule`, so `import data from "./dashboard-live.json"` type-checks as an error even
@@ -9,12 +9,17 @@
 //
 // WHAT WAS TAKEN OUT, and nothing else: `device`, `notifications` and `update` (three keys that say
 // something about THIS browser and THIS install rather than about the herd), plus a scan for any
-// token-like key, which found none. Every `cwd`, label, pane title, session name, host id and host
-// name is exactly what the bridge sent — that is the whole point of the card, and a scrubbed path
-// would make the row widths lie.
+// token-like key, which found none. The SHAPE of every `cwd`, label, pane title, session name, host
+// id and host name is exactly what the bridge sent — real nesting depth, real string-length spread,
+// real messiness — that is the whole point of the card. What is NOT real any more: the host id, the
+// host name, the operator's own username, and every client/project codename, each swapped for a
+// same-shape fake (2026-09-10, third leak of this kind found in this directory in two days — see
+// `fixtures.ts`'s header). A scrubbed VALUE does not make the row widths lie; only a scrubbed SHAPE
+// would.
 //
 // It is a PHOTOGRAPH: the timestamps are frozen at capture, so the rows' "how long ago" ages drift
-// further into the past the longer this file lives. Re-capture it when the ages stop being useful.
+// further into the past the longer this file lives. Re-capture it when the ages stop being useful,
+// and scrub it the same way on the way back in — don't let a re-capture reintroduce a real name.
 
 import type { SnapshotResponse } from "@/lib/types";
 
@@ -24,12 +29,12 @@ export const dashboardLive: SnapshotResponse = {
       {
         "paneId": "w1T:p2K",
         "workspaceId": "w1T",
-        "workspaceLabel": "workspace-sportsight",
+        "workspaceLabel": "workspace-fernbridge",
         "workspaceNumber": 2,
         "tabId": "w1T:tR",
         "agent": "claude",
         "status": "working",
-        "cwd": "/var/home/altan/projects/workspace-sportsight",
+        "cwd": "/var/home/nomad/projects/workspace-fernbridge",
         "focused": false,
         "kind": "agent",
         "tabLabel": "work",
@@ -39,17 +44,17 @@ export const dashboardLive: SnapshotResponse = {
         "lastActiveAt": 1788341961188,
         "lastSeenAt": 1788338370094,
         "hasSession": true,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "paneId": "w2H:p1",
         "workspaceId": "w2H",
-        "workspaceLabel": "klaracase",
+        "workspaceLabel": "mossvale",
         "workspaceNumber": 3,
         "tabId": "w2H:t1",
         "agent": "claude",
         "status": "working",
-        "cwd": "/var/home/altan/projects/klaracase",
+        "cwd": "/var/home/nomad/projects/mossvale",
         "focused": false,
         "kind": "agent",
         "terminalTitle": "fix loop",
@@ -58,7 +63,7 @@ export const dashboardLive: SnapshotResponse = {
         "lastActiveAt": 1788317508177,
         "lastSeenAt": 1788158662810,
         "hasSession": true,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "paneId": "w2T:p34",
@@ -68,7 +73,7 @@ export const dashboardLive: SnapshotResponse = {
         "tabId": "w2T:t1",
         "agent": "claude",
         "status": "working",
-        "cwd": "/var/home/altan/projects/collie-workspace",
+        "cwd": "/var/home/nomad/projects/collie-workspace",
         "focused": false,
         "kind": "agent",
         "tabLabel": "work",
@@ -78,7 +83,7 @@ export const dashboardLive: SnapshotResponse = {
         "lastActiveAt": 1788344851213,
         "lastSeenAt": 1788344117453,
         "hasSession": true,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "paneId": "w2T:p39",
@@ -88,7 +93,7 @@ export const dashboardLive: SnapshotResponse = {
         "tabId": "w2T:t1",
         "agent": "claude",
         "status": "working",
-        "cwd": "/var/home/altan/projects/collie-workspace",
+        "cwd": "/var/home/nomad/projects/collie-workspace",
         "focused": false,
         "kind": "agent",
         "tabLabel": "work",
@@ -98,17 +103,17 @@ export const dashboardLive: SnapshotResponse = {
         "lastActiveAt": 1788343834487,
         "lastSeenAt": 1788344061957,
         "hasSession": true,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "paneId": "w2Y:p1H",
         "workspaceId": "w2Y",
-        "workspaceLabel": "workspace-sprqvntrs",
+        "workspaceLabel": "workspace-haldane",
         "workspaceNumber": 5,
         "tabId": "w2Y:tH",
         "agent": "claude",
         "status": "working",
-        "cwd": "/var/home/altan/projects/workspace-sprqvntrs",
+        "cwd": "/var/home/nomad/projects/workspace-haldane",
         "focused": false,
         "kind": "agent",
         "tabLabel": "translate",
@@ -117,36 +122,36 @@ export const dashboardLive: SnapshotResponse = {
         "lastActiveAt": 1788341934249,
         "lastSeenAt": 1788297318046,
         "hasSession": true,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "paneId": "w2Y:p7",
         "workspaceId": "w2Y",
-        "workspaceLabel": "workspace-sprqvntrs",
+        "workspaceLabel": "workspace-haldane",
         "workspaceNumber": 5,
         "tabId": "w2Y:t2",
         "agent": "claude",
         "status": "working",
-        "cwd": "/var/home/altan/projects/workspace-sprqvntrs",
+        "cwd": "/var/home/nomad/projects/workspace-haldane",
         "focused": true,
         "kind": "agent",
-        "tabLabel": "openplate",
-        "terminalTitle": "Openplate release polish",
+        "tabLabel": "fenwick",
+        "terminalTitle": "Fenwick release polish",
         "readableLines": 61,
         "lastActiveAt": 1788343171900,
         "lastSeenAt": 1788294982573,
         "hasSession": true,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "paneId": "w2Z:p2",
         "workspaceId": "w2Z",
-        "workspaceLabel": "anchorgenius",
+        "workspaceLabel": "emberworks",
         "workspaceNumber": 6,
         "tabId": "w2Z:t1",
         "agent": "claude",
         "status": "working",
-        "cwd": "/var/home/altan/projects/anchorgenius",
+        "cwd": "/var/home/nomad/projects/emberworks",
         "focused": false,
         "kind": "agent",
         "terminalTitle": "gsc",
@@ -155,25 +160,25 @@ export const dashboardLive: SnapshotResponse = {
         "lastActiveAt": 1788344586813,
         "lastSeenAt": 1786626095176,
         "hasSession": true,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "paneId": "w9:p2",
         "workspaceId": "w9",
-        "workspaceLabel": "workspace-kaz",
+        "workspaceLabel": "workspace-tolvik",
         "workspaceNumber": 1,
         "tabId": "w9:t1",
         "agent": "claude",
         "status": "working",
-        "cwd": "/home/altan/projects/workspace-kaz",
+        "cwd": "/home/nomad/projects/workspace-tolvik",
         "focused": true,
         "kind": "agent",
-        "terminalTitle": "kaz work",
+        "terminalTitle": "tolvik work",
         "readableLines": 1382,
-        "sessionName": "kaz work",
+        "sessionName": "tolvik work",
         "lastActiveAt": 1788342074956,
         "lastSeenAt": 1788295926286,
-        "host": "minibuch"
+        "host": "workshop"
       },
       {
         "paneId": "wA:p1",
@@ -183,7 +188,7 @@ export const dashboardLive: SnapshotResponse = {
         "tabId": "wA:t1",
         "agent": "claude",
         "status": "idle",
-        "cwd": "/home/altan/nixos-configuration",
+        "cwd": "/home/nomad/nixos-configuration",
         "focused": false,
         "kind": "agent",
         "tabLabel": "1",
@@ -192,7 +197,7 @@ export const dashboardLive: SnapshotResponse = {
         "lastActiveAt": 1788299958988,
         "lastSeenAt": 1788299849328,
         "hasSession": true,
-        "host": "minibuch"
+        "host": "workshop"
       },
       {
         "paneId": "wA:p5",
@@ -202,7 +207,7 @@ export const dashboardLive: SnapshotResponse = {
         "tabId": "wA:t2",
         "agent": "claude",
         "status": "idle",
-        "cwd": "/home/altan/nixos-configuration",
+        "cwd": "/home/nomad/nixos-configuration",
         "focused": false,
         "kind": "agent",
         "tabLabel": "2 👜",
@@ -211,61 +216,61 @@ export const dashboardLive: SnapshotResponse = {
         "lastActiveAt": 1788299454315,
         "lastSeenAt": 1788299837748,
         "hasSession": true,
-        "host": "minibuch"
+        "host": "workshop"
       },
       {
         "paneId": "w2Y:p1S",
         "workspaceId": "w2Y",
-        "workspaceLabel": "workspace-sprqvntrs",
+        "workspaceLabel": "workspace-haldane",
         "workspaceNumber": 5,
         "tabId": "w2Y:tJ",
         "agent": "claude",
         "status": "done",
-        "cwd": "/var/home/altan/projects/workspace-bay",
+        "cwd": "/var/home/nomad/projects/workspace-reed",
         "focused": false,
         "kind": "agent",
-        "tabLabel": "bay",
-        "terminalTitle": "Bay 0.3.0 release and consumer deployment",
+        "tabLabel": "reed",
+        "terminalTitle": "Reed 0.3.0 release and consumer deployment",
         "readableLines": 61,
         "lastActiveAt": 1788344852329,
         "lastSeenAt": 1788337068446,
         "hasSession": true,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       }
     ],
     "shellPanes": [
       {
         "paneId": "w654f9f0c0dd67e:pS",
         "workspaceId": "w654f9f0c0dd67e",
-        "workspaceLabel": "tgl",
+        "workspaceLabel": "atlas",
         "workspaceNumber": 1,
         "tabId": "w654f9f0c0dd67e:t1",
         "agent": "shell",
         "status": "unknown",
-        "cwd": "/var/home/altan/projects/workspace-sprqvntrs/tgl",
+        "cwd": "/var/home/nomad/projects/workspace-haldane/atlas",
         "focused": false,
         "kind": "shell",
         "readableLines": 61,
         "lastActiveAt": 1788295611453,
         "lastSeenAt": 1786108030061,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "paneId": "w2Y:p1P",
         "workspaceId": "w2Y",
-        "workspaceLabel": "workspace-sprqvntrs",
+        "workspaceLabel": "workspace-haldane",
         "workspaceNumber": 5,
         "tabId": "w2Y:tH",
         "agent": "shell",
         "status": "unknown",
-        "cwd": "/var/home/altan/projects/workspace-sprqvntrs/platform",
+        "cwd": "/var/home/nomad/projects/workspace-haldane/platform",
         "focused": false,
         "kind": "shell",
         "tabLabel": "translate",
         "readableLines": 59,
         "lastActiveAt": 1788299870743,
         "lastSeenAt": 1788299870743,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "paneId": "wA:p7",
@@ -275,46 +280,46 @@ export const dashboardLive: SnapshotResponse = {
         "tabId": "wA:t1",
         "agent": "shell",
         "status": "unknown",
-        "cwd": "/home/altan/nixos-configuration",
+        "cwd": "/home/nomad/nixos-configuration",
         "focused": false,
         "kind": "shell",
         "tabLabel": "1",
         "readableLines": 59,
         "lastActiveAt": 1788301027771,
         "lastSeenAt": 1788301027771,
-        "host": "minibuch"
+        "host": "workshop"
       }
     ],
     "workspaces": [
       {
         "workspaceId": "w654f9f0c0dd67e",
         "number": 1,
-        "label": "tgl",
+        "label": "atlas",
         "focused": false,
         "activeTabId": "w654f9f0c0dd67e:t1",
         "tabCount": 1,
         "paneCount": 1,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "workspaceId": "w1T",
         "number": 2,
-        "label": "workspace-sportsight",
+        "label": "workspace-fernbridge",
         "focused": false,
         "activeTabId": "w1T:tR",
         "tabCount": 1,
         "paneCount": 1,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "workspaceId": "w2H",
         "number": 3,
-        "label": "klaracase",
+        "label": "mossvale",
         "focused": false,
         "activeTabId": "w2H:t1",
         "tabCount": 1,
         "paneCount": 1,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "workspaceId": "w2T",
@@ -324,37 +329,37 @@ export const dashboardLive: SnapshotResponse = {
         "activeTabId": "w2T:t1",
         "tabCount": 1,
         "paneCount": 2,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "workspaceId": "w2Y",
         "number": 5,
-        "label": "workspace-sprqvntrs",
+        "label": "workspace-haldane",
         "focused": true,
         "activeTabId": "w2Y:t2",
         "tabCount": 3,
         "paneCount": 4,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "workspaceId": "w2Z",
         "number": 6,
-        "label": "anchorgenius",
+        "label": "emberworks",
         "focused": false,
         "activeTabId": "w2Z:t1",
         "tabCount": 1,
         "paneCount": 1,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "workspaceId": "w9",
         "number": 1,
-        "label": "workspace-kaz",
+        "label": "workspace-tolvik",
         "focused": true,
         "activeTabId": "w9:t1",
         "tabCount": 1,
         "paneCount": 1,
-        "host": "minibuch"
+        "host": "workshop"
       },
       {
         "workspaceId": "wA",
@@ -364,7 +369,7 @@ export const dashboardLive: SnapshotResponse = {
         "activeTabId": "wA:t1",
         "tabCount": 2,
         "paneCount": 3,
-        "host": "minibuch"
+        "host": "workshop"
       }
     ],
     "tabs": [
@@ -375,7 +380,7 @@ export const dashboardLive: SnapshotResponse = {
         "label": "1",
         "focused": false,
         "paneCount": 1,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "tabId": "w1T:tR",
@@ -384,7 +389,7 @@ export const dashboardLive: SnapshotResponse = {
         "label": "work",
         "focused": false,
         "paneCount": 1,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "tabId": "w2H:t1",
@@ -393,7 +398,7 @@ export const dashboardLive: SnapshotResponse = {
         "label": "1",
         "focused": false,
         "paneCount": 1,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "tabId": "w2T:t1",
@@ -402,16 +407,16 @@ export const dashboardLive: SnapshotResponse = {
         "label": "work",
         "focused": false,
         "paneCount": 2,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "tabId": "w2Y:t2",
         "workspaceId": "w2Y",
         "number": 2,
-        "label": "openplate",
+        "label": "fenwick",
         "focused": true,
         "paneCount": 1,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "tabId": "w2Y:tH",
@@ -420,16 +425,16 @@ export const dashboardLive: SnapshotResponse = {
         "label": "translate",
         "focused": false,
         "paneCount": 2,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "tabId": "w2Y:tJ",
         "workspaceId": "w2Y",
         "number": 18,
-        "label": "bay",
+        "label": "reed",
         "focused": false,
         "paneCount": 1,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "tabId": "w2Z:t1",
@@ -438,7 +443,7 @@ export const dashboardLive: SnapshotResponse = {
         "label": "1",
         "focused": false,
         "paneCount": 1,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "tabId": "w9:t1",
@@ -447,7 +452,7 @@ export const dashboardLive: SnapshotResponse = {
         "label": "1",
         "focused": true,
         "paneCount": 1,
-        "host": "minibuch"
+        "host": "workshop"
       },
       {
         "tabId": "wA:t1",
@@ -456,7 +461,7 @@ export const dashboardLive: SnapshotResponse = {
         "label": "1",
         "focused": false,
         "paneCount": 2,
-        "host": "minibuch"
+        "host": "workshop"
       },
       {
         "tabId": "wA:t2",
@@ -465,7 +470,7 @@ export const dashboardLive: SnapshotResponse = {
         "label": "2 👜",
         "focused": false,
         "paneCount": 1,
-        "host": "minibuch"
+        "host": "workshop"
       }
     ],
     "sessions": [
@@ -476,7 +481,7 @@ export const dashboardLive: SnapshotResponse = {
         "agents": 8,
         "working": 7,
         "blocked": 0,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "name": "collie-demo",
@@ -485,7 +490,7 @@ export const dashboardLive: SnapshotResponse = {
         "agents": 5,
         "working": 0,
         "blocked": 0,
-        "host": "collie-04rj6a"
+        "host": "lodge-04rj6a"
       },
       {
         "name": "default",
@@ -494,22 +499,22 @@ export const dashboardLive: SnapshotResponse = {
         "agents": 3,
         "working": 1,
         "blocked": 0,
-        "host": "minibuch"
+        "host": "workshop"
       }
     ],
     "ts": 1788344864196,
     "servers": [
       {
-        "id": "collie-04rj6a",
-        "name": "bluefin",
+        "id": "lodge-04rj6a",
+        "name": "lodge",
         "isLead": true,
         "reachable": true,
         "protocol": "ok",
         "lastSeenAt": 1788344864196
       },
       {
-        "id": "minibuch",
-        "name": "minibuch",
+        "id": "workshop",
+        "name": "workshop",
         "isLead": false,
         "reachable": true,
         "protocol": "ok",

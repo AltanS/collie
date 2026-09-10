@@ -38,6 +38,15 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   feature screens, so this stops the real names from reaching new builds of the public site; a
   dead re-export of the unit-test fixtures was also dropped from this file's public surface,
   since it carried the same two names and nothing read it.
+- **The dashboard-row playground card named real machines, a real username and real clients.**
+  `dashboard-live.ts`'s frozen snapshot carried the real host id and host name a dozen-odd times
+  (now `lodge`/`workshop`, matching the crew fixtures' outbuilding theme), plus the operator's
+  real OS username and several real client/project codenames throughout its `cwd`, label and
+  session fields — a bigger exposure than the hostnames, now swapped for same-shape fakes. This
+  card is dev-only and was never imported by colliepwa.dev, so nothing public was showing these
+  names, but a future import could have carried them out unnoticed; the website repo now runs a
+  build-time check against exactly that (`bun run build:app`), so a real name reaching
+  `public/app/` fails the build instead of shipping quietly.
 
 ### Docs
 
