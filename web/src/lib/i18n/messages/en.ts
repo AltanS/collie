@@ -363,7 +363,6 @@ export const en = {
   "paneActions.status.closeFailed": "Close failed",
 
   // --- keys (the inline Keys tray + its staging strip) ---
-  "keys.tab.keys": "Keys",
   "keys.presets.label": "Presets",
   "keys.fkeys.label": "F keys",
   "keys.confirm.label": "Confirm?",

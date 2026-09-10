@@ -62,6 +62,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   to the rare one, so a tab with a dozen cards can be skimmed by its group titles. `app.tsx`
   (1600+ lines) is split into one file per section under `src/playground/sections/`, registered
   in a small `SECTIONS` table.
+- **The Keys tray is less than half its old height.** One seven-column pad replaces the old
+  Keys/123 toggle and stacked rows, with Space in the middle of the bottom row, and 123, Presets
+  and F keys now sit behind one row of chips instead of two separate disclosures. Measured at a
+  390px-wide viewport: 275px tall before, 119px tall now, every key still at least 36px tall.
 
 ### Fixed
 

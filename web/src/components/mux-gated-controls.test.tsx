@@ -313,7 +313,7 @@ describe("The Keys tray — sendKeys and unsupportedKeys", () => {
   it("greys exactly the buttons whose chord this multiplexer refuses", async () => {
     declares({ sendKeys: true }, {}, ["Enter"]);
     render(<NavTray onSend={vi.fn(async () => true)} unsupportedKeys={["Enter"]} />);
-    expect(screen.getByRole("button", { name: "⏎ Enter" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Enter" })).toBeDisabled();
     // …and nothing else: the door is open, one key is simply not behind it.
     expect(screen.getByRole("button", { name: "Tab" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Esc" })).toBeEnabled();
@@ -326,7 +326,7 @@ describe("The Keys tray — sendKeys and unsupportedKeys", () => {
 
   it("leaves every key live when the multiplexer refuses none", () => {
     render(<NavTray onSend={vi.fn(async () => true)} unsupportedKeys={[]} />);
-    expect(screen.getByRole("button", { name: "⏎ Enter" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Enter" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Ctrl+C" })).toBeEnabled();
   });
 });

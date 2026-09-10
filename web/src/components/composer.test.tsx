@@ -2163,7 +2163,7 @@ describe("Composer — quick keys / image attach", () => {
     await user.click(attach); // clickable without throwing (opens the hidden file input)
   });
 
-  it("does not render digit shortcut buttons in the composer (they live on the Keys dock's 123 tab)", () => {
+  it("does not render digit shortcut buttons in the composer (they live behind the Keys dock's 123 chip)", () => {
     renderComposer();
     for (const d of ["1", "2", "3", "4", "5"]) {
       expect(screen.queryByRole("button", { name: d })).not.toBeInTheDocument();
@@ -2535,8 +2535,10 @@ describe("Composer — a composed key queue is guarded on the way out", () => {
 
   // The ✕ is not the only exit — the Keys toggle and the other drawer buttons unmount the tray just
   // as effectively, which is why the guard lives on the drawer transition rather than the button.
-  // The Controls row's "Keys" toggle and the tray's own "Keys" segmented tab share an accessible
-  // name; only the toggle carries aria-expanded, which is what ties it to the dock.
+  // `getAllByRole` + a filter on `aria-expanded` used to be load-bearing here because the tray's own
+  // segmented "Keys" tab shared the Controls row toggle's accessible name; that tab is gone (the tray
+  // is one fixed pad now), so a plain `getByRole` would resolve too, but the filter still says
+  // precisely which button this helper means.
   const controlsToggle = (name: string): HTMLElement => {
     const toggle = screen
       .getAllByRole("button", { name })

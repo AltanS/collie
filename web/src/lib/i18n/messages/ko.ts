@@ -342,7 +342,6 @@ export const ko: Dictionary = {
   "paneActions.status.closeFailed": "닫기 실패",
 
   // --- keys (the inline Keys tray + its staging strip) ---
-  "keys.tab.keys": "키",
   "keys.presets.label": "프리셋",
   "keys.fkeys.label": "기능 키",
   "keys.confirm.label": "확인",

@@ -349,7 +349,6 @@ export const de: Dictionary = {
   "paneActions.status.closeFailed": "Schließen fehlgeschlagen",
 
   // --- keys (the inline Keys tray + its staging strip) ---
-  "keys.tab.keys": "Tasten",
   "keys.presets.label": "Voreinstellungen",
   "keys.fkeys.label": "F-Tasten",
   "keys.confirm.label": "Bestätigen",

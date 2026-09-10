@@ -348,7 +348,6 @@ export const es: Dictionary = {
   "paneActions.status.closeFailed": "Error al cerrar",
 
   // --- keys (the inline Keys tray + its staging strip) ---
-  "keys.tab.keys": "Teclas",
   "keys.presets.label": "Preajustes",
   "keys.fkeys.label": "Teclas de función",
   "keys.confirm.label": "Confirmar",

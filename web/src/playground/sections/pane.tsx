@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 
 import { Collapse } from "@/components/ui/collapse";
+import { NavTray } from "@/components/nav-tray";
 import { NoEchoNotice } from "@/components/no-echo-notice";
 import { clearStatus, setStatus } from "@/lib/status";
 import type { DeviceAuth } from "@/lib/types";
@@ -93,6 +94,20 @@ export function PaneSection() {
         >
           <PhoneFrameCard height={760}>
             <PaneRouter home={homeSolo} fixture={paneShell} readOnly />
+          </PhoneFrameCard>
+        </Card>
+
+        <Card
+          state="keys-tray"
+          label="the Keys tray, default state"
+          reach="tap Keys in the composer's Controls row. This is the compact seven-column pad: Esc/Tab/the
+            three modifiers/Up/Enter on row one, a quick Ctrl+C/Space/Left-Down-Right on row two, and 123,
+            Presets and F keys behind one row of chips below it."
+          note="Target: at most 120px tall at 390px wide, no clipped labels at 360px, every key at least
+            36px tall. Measured with the agent-browser loop against this exact card."
+        >
+          <PhoneFrameCard height={200}>
+            <NavTray onSend={async () => true} />
           </PhoneFrameCard>
         </Card>
       </Group>

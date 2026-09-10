@@ -331,7 +331,6 @@ export const zh: Dictionary = {
   "paneActions.status.closeFailed": "关闭失败",
 
   // --- keys (the inline Keys tray + its staging strip) ---
-  "keys.tab.keys": "按键",
   "keys.presets.label": "预设配置",
   "keys.fkeys.label": "功能键",
   "keys.confirm.label": "确认操作？",

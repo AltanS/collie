@@ -344,7 +344,6 @@ export const ja: Dictionary = {
   "paneActions.status.closeFailed": "終了処理に失敗しました",
 
   // --- keys (the inline Keys tray + its staging strip) ---
-  "keys.tab.keys": "キー",
   "keys.presets.label": "プリセット",
   "keys.fkeys.label": "ファンクションキー",
   "keys.confirm.label": "確認",
