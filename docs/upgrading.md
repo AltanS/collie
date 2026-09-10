@@ -151,7 +151,7 @@ There is no per-peer button and no second confirmation prompt. For details, the 
 and the one case the phone cannot fix, see
 [Updating the rest of the crew](#updating-the-rest-of-the-crew).
 
-![The Updates page on a lead, with the preflight per member and one button for the crew.](images/updates/updates-page-pack-available.png)
+![The Updates page on a lead, with the preflight per member and one button for the crew.](images/updates/updates-page-crew-available.png)
 
 A band across the top of every screen carries the run: the release on offer, then
 `Starting update…`, `Updating to <version>`, `Updated to <version>. Tap to reload.`, and finally

@@ -39,6 +39,17 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   dead re-export of the unit-test fixtures was also dropped from this file's public surface,
   since it carried the same two names and nothing read it.
 
+### Docs
+
+- **The docs show how to install and update the PWA itself, not just the host.**
+  `docs/install.md` gains two screenshots of the Install card at the top of Settings — the
+  button Chrome and Edge offer, and the share-sheet hint iOS shows instead — since neither
+  existed anywhere before. The Updates screenshots in `docs/upgrading.md` are regenerated too:
+  two still read "Update pack to" and "Retry pack update" from before the crew rename, and one
+  named a real Tailscale hostname (`minibuch`) in its rolled-back-peer example.
+  `scripts/docs-screens.sh`, which generates this whole set, carried both and is what's actually
+  fixed; the images are just its output.
+
 ## [1.8.0] - 2026-09-09
 
 ### Added
