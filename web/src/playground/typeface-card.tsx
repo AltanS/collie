@@ -29,7 +29,7 @@
 //
 // THE SWITCHER IS NOW THE PAGE'S OWN. The choice lives in ./prefs.ts and dresses the ENTIRE
 // playground — every real component on the page inherits the face, which is the honest way to feel
-// a candidate's impact. This card keeps the side-by-side specimen and the commentary; the sidebar's
+// a candidate's impact. This card keeps the side-by-side specimen and the commentary; the top bar's
 // Typeface control is the same store with the words left out.
 import { CollieMark } from "@/components/collie-mark";
 import { cn } from "@/lib/utils";
@@ -197,7 +197,7 @@ export function TypefaceCard() {
   return (
     <Card
       state="ui-typeface-switcher"
-      label="the ui typeface — live switcher, page-wide"
+      label="ui typeface, live switcher, page-wide"
       reach="Settings → Typeface, on the device — the app face is a per-device preference now (ADR 0033), not the maker's choice it used to be. So this card is not where the choice is made any more; it is where a CANDIDATE is auditioned before it joins the shipped list, which costs a subset, a computed twin, an index.css @font-face, a UI_FONT_URLS entry and a note in six dictionaries."
       note="APPROXIMATION: a rebuild of the app's chrome at the app's real sizes, not the real components — the faces cannot all be mounted at once. The four self-hosted faces come from public/fonts/ with metric-matched fallbacks, so the swap you see for them is the swap the app does; two of them (Space Grotesk, Aldrich) are the shipped list and render the same bytes the app renders. The three techno candidates at the end load from the Google CDN with no fallback twin — a playground-only allowance, disqualifying in the shipped app."
     >

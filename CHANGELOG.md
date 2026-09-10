@@ -38,10 +38,30 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   silent, including a poll revalidation and a machine or session switch: this is a plain entrance
   animation on the route region, not the View Transitions API removed in 0.10.0 for flickering the
   page on every poll. Reduced motion gets the new screen in place, with no slide.
+- **The playground has Notices and Motion tabs.** Notices shows the notice family, the strip
+  band, the connection recovery flash, the update ribbon and the status toast. Motion shows the
+  collapse and swap primitives, loading states, sheets, menus, and pending and pulsing controls.
+  Every card carries a Replay control, and the ones that swap between states also carry a Slow
+  toggle. Motion opens with a walkthrough of the real app, every route on fixture data inside a
+  phone frame, with the live route, shortcut buttons and a frame meter for each move.
 - **A dev build wears an orange icon, and the playground a red one.** A build whose HEAD isn't the
   release tag now installs as "Collie (dev)" with orange favicons and manifest tiles, so it is
   never mistaken for the release build on the same home screen; the states playground gets its own
   red favicon set. The release build's `index.html` and manifest are unchanged.
+
+### Changed
+
+- **The states playground is now a tabbed page instead of one long scroll.** The tab list and the
+  theme/clock/typeface/accent controls sit in a sidebar on wide screens and a top bar on narrow
+  ones; only the selected section mounts, so switching sections no longer means scrolling past
+  several of them to reach one. The
+  tabs open with Dashboard, then Pane, Crew and Settings, then Boot & connection, Idle & resume
+  and Brand, then Notices and Motion. The selected tab lives in the URL hash (`#pane`, or
+  `#pane/<card-handle>` to also scroll to a card), remembered in `localStorage` between visits.
+  Within a tab, cards are grouped under a small labelled `Group`, ordered from the everyday state
+  to the rare one, so a tab with a dozen cards can be skimmed by its group titles. `app.tsx`
+  (1600+ lines) is split into one file per section under `src/playground/sections/`, registered
+  in a small `SECTIONS` table.
 
 ### Fixed
 

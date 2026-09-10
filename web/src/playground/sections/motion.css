@@ -1,0 +1,18 @@
+/* Presentation-only rules for the Motion & notices section. Imported once, from motion.tsx alone:
+   nothing here reaches the app; see playground.css's own header comment for why that boundary
+   matters. */
+
+/* The per-card "Slow" toggle (motion-harness.tsx's SlowStage). Flattens every transition and
+   animation under it to one duration, so a fast swap (the strip band's 120ms dissolve, a Collapse's
+   240ms) can be watched frame by frame instead of blinking past. This is deliberately NOT the same
+   knob as the page's "Reduce motion" toggle (playground.css's .pg-reduce-motion): that one snaps to
+   the still frame a real prefers-reduced-motion reader gets; this one plays the same motion, slower,
+   for a sighted reviewer checking easing and sequencing. The two may be combined; which wins where
+   both toggles are on is import-order dependent (both use !important) and not pinned here. The
+   card's own note tells the operator to toggle Slow on its own, not stacked with Reduce motion. */
+.pg-slow *,
+.pg-slow *::before,
+.pg-slow *::after {
+  transition-duration: 1.2s !important;
+  animation-duration: 3s !important;
+}

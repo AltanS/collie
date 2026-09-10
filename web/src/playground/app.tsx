@@ -9,104 +9,22 @@
 // THE OTHER RULE: every card carries a "reach it for real" line. A picture of a state is only useful
 // if you can also get to it, and writing that sentence is what keeps a card from drifting into a
 // state the app can no longer produce.
+//
+// THE PAGE IS TABBED, and this file owns only the chrome and the registry — one section at a time is
+// mounted (see `useSelectedSection` in harness.tsx), and every section's cards live in its own file
+// under `sections/`. A helper used by exactly one section lives beside it there; a helper two
+// sections share lives in `sections/shared.tsx`.
 
-import { useEffect, useState, type ReactNode } from "react";
-import { MemoryRouter } from "react-router";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
-import { AgentList } from "@/components/agent-list";
-import { HostChip } from "@/components/host-chip";
-import { AlphaBar } from "@/components/alpha-bar";
-import { AppHeaderHost, RouteHeader, SettingsGear } from "@/components/app-header";
-import { BuildStamp } from "@/components/build-stamp";
-import { CollieHome } from "@/components/collie-home";
-import { NewSpaceSheet } from "@/components/new-space-sheet";
-import { CrewProvider } from "@/components/crew-provider";
-import { SpaceOverview } from "@/components/space-overview";
-import { CollieMark } from "@/components/collie-mark";
-import { ConnectionBanner } from "@/components/connection-banner";
-import { HostStaleBanner } from "@/components/host-stale-banner";
-import { IdleLock } from "@/components/idle-lock";
-import { NoEchoNotice } from "@/components/no-echo-notice";
-import { Collapse } from "@/components/ui/collapse";
-import { CrewFooterLink } from "@/components/crew-footer-link";
-import { PaneStrip } from "@/components/pane-strip";
-import { ReadOnlyBanner } from "@/components/read-only-banner";
-import { ServerSwitcher } from "@/components/server-switcher";
-import { SessionSwitcher } from "@/components/session-switcher";
-import { SpaceStrip } from "@/components/space-strip";
-import { TabStrip } from "@/components/tab-strip";
-import { UpdateRibbon } from "@/components/update-ribbon";
-import { UpdateBanner } from "@/components/update-banner";
-import { ListGroup } from "@/components/ui/list-group";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { loadOperatorCommands } from "@/lib/operator-config";
-import { clearNotPaired, markNotPaired } from "@/lib/pairing";
-import { holdReload, releaseReload, __resetReloadGuard } from "@/lib/reload-guard";
-import { __resetSelfUpdate, __setReloadImpl } from "@/lib/self-update";
-import { clearUpdateStarted, noteUpdateStarted } from "@/lib/update-ribbon";
-import { observeServerBuild, __resetServerBuild } from "@/lib/server-build";
-import { clearStatus, setStatus } from "@/lib/status";
-import type { DeviceAuth } from "@/lib/types";
-import { BootSplash } from "@/routes/root";
 import { cn } from "@/lib/utils";
 import {
-  allPanes,
-  censusConflicted,
-  censusFive,
-  censusNine,
-  censusTrio,
-  deviceRefused,
-  deviceStack,
-  devicesPaired,
-  devicesUnpaired,
-  herd,
-  homeNine,
-  homeCrew,
-  homeSolo,
-  homeTrio,
-  hostIncompatible,
-  hostNeverSeen,
-  hostUnreachable,
-  noEchoPrompt,
-  paneBlocked,
-  paneHostIncompatible,
-  paneHostNeverSeen,
-  paneHostUnreachable,
-  paneShell,
-  paneStack,
-  paneUploadDraft,
-  paneWorking,
-  rosterFive,
-  rosterPalette,
-  spaces,
-  spacesWithWorktrees,
-  tabs,
-  updateInFlight,
-  updateMajor,
-  updateCrewLevel,
-  updatePeerRolledBack,
-  updatePeersFollowing,
-  updateRelease,
-  updateRestart,
-  uploadedImagePath,
-} from "./fixtures";
-import {
-  Card,
-  ChipNav,
   CLOCK_OPTIONS,
-  PackedRootRouter,
-  CrewRouter,
-  PaneRouter,
-  PaneStackRouter,
-  PhoneFrame,
-  RootRouter,
-  Section,
   Segmented,
-  SettingsRouter,
-  SideNav,
-  Stage,
-  useActiveSection,
   useConnectionClock,
+  useSelectedSection,
   type ClockMode,
   type SectionDef,
 } from "./harness";
@@ -121,53 +39,49 @@ import {
   useFace,
   type FaceId,
 } from "./prefs";
-import { DashboardRowsCard } from "./dashboard-card";
-import { TypefaceCard } from "./typeface-card";
+import * as brand from "./sections/brand";
+import * as boot from "./sections/boot";
+import * as idle from "./sections/idle";
+import * as dashboard from "./sections/dashboard";
+import * as pane from "./sections/pane";
+import * as crew from "./sections/crew";
+import * as settings from "./sections/settings";
+import * as notices from "./sections/notices";
+import * as motion from "./sections/motion";
 
-const SECTIONS = [
-  {
-    id: "brand",
-    title: "Brand",
-    intent:
-      "The app's own voice: the UI typeface under a live switcher, then the three marks it wears — the Collie mark in every weight and state, the multiplexer's own logo as the header prints it, and the installed-app icons at the sizes a launcher actually asks for.",
-  },
-  {
-    id: "boot",
-    title: "Boot & connection",
-    intent:
-      "Everything that answers “is this thing talking to my machine?” — the first paint before any data, the one connection banner, and the header dog that tracks the same two thresholds.",
-  },
-  {
-    id: "idle",
-    title: "Idle & resume",
-    intent:
-      "The pause that appears when Collie is left open, visible and untouched — and the refetch that returning to it fires. A pause, never a gate (ADR 0007).",
-  },
-  {
-    id: "dashboard",
-    title: "Dashboard",
-    intent:
-      "The home screen: the herd in triage order, the strips that say a write will be refused, the two update notices, and the footer's meta zone.",
-  },
-  {
-    id: "pane",
-    title: "Pane",
-    intent:
-      "One terminal, mirrored. The breadcrumb header and status chip, the ANSI mirror with whatever dialog the grammar lifted out of it, and the composer beneath.",
-  },
-  {
-    id: "crew",
-    title: "Crew",
-    intent:
-      "More than one machine. The formation drawing at four sizes, the cards for a crew that isn't one, the host switcher, and the tier-2 banners that name a machine — not a link — as the thing that broke.",
-  },
-  {
-    id: "settings",
-    title: "Settings",
-    intent:
-      "The whole settings route, mounted twice: once on a solo collie with nothing paired, once on a lead with three paired devices and a crew card to show for it. Then the Updates page it links to, which is where the check, the card, the peers and the one button now live.",
-  },
-] as const satisfies readonly SectionDef[];
+/** What a section's `render` gets handed — the page-level knobs a section needs. Today only the
+ *  shared connection clock (`BootSection`'s `clock` prop); a section that needs nothing reads
+ *  nothing off it. */
+export interface SectionRenderCtx {
+  readonly clock: ClockMode;
+}
+
+/** One row of the section registry: the tab's own definition, and how to render its body. Only the
+ *  SELECTED entry's `render` is ever called — see `PlaygroundApp` below. */
+export interface SectionEntry {
+  readonly def: SectionDef;
+  readonly render: (ctx: SectionRenderCtx) => ReactNode;
+}
+
+/**
+ * The page's tabs, in the order they are shown. Exported so `app.test.tsx` can iterate every
+ * section rather than special-casing whatever the page happens to mount by default.
+ *
+ * Adding a section is a one-line addition here, plus its own file under `sections/`:
+ * `{ def: motion.DEF, render: () => <motion.MotionSection /> }`, with
+ * `import * as motion from "./sections/motion";` added to the imports above.
+ */
+export const SECTIONS: readonly SectionEntry[] = [
+  { def: dashboard.DEF, render: () => <dashboard.DashboardSection /> },
+  { def: pane.DEF, render: () => <pane.PaneSection /> },
+  { def: crew.DEF, render: () => <crew.CrewSection /> },
+  { def: settings.DEF, render: () => <settings.SettingsSection /> },
+  { def: boot.DEF, render: (ctx) => <boot.BootSection clock={ctx.clock} /> },
+  { def: idle.DEF, render: () => <idle.IdleSection /> },
+  { def: brand.DEF, render: () => <brand.BrandSection /> },
+  { def: notices.DEF, render: () => <notices.NoticesSection /> },
+  { def: motion.DEF, render: () => <motion.MotionSection /> },
+];
 
 const THEME_OPTIONS = [
   { value: "system", label: "System" },
@@ -175,21 +89,16 @@ const THEME_OPTIONS = [
   { value: "dark", label: "Dark" },
 ] as const satisfies readonly { value: Theme; label: string }[];
 
-type WriteGate = "device" | "pairing";
-const GATE_OPTIONS = [
-  { value: "device", label: "Device" },
-  { value: "pairing", label: "Pairing" },
-] as const satisfies readonly { value: WriteGate; label: string }[];
-
 const ON_OFF = [
   { value: "off", label: "Off" },
   { value: "on", label: "On" },
 ] as const satisfies readonly { value: "on" | "off"; label: string }[];
 
-export function PlaygroundApp() {
+export function PlaygroundApp({ tab }: { tab?: string } = {}) {
   const [clock, setClock] = useState<ClockMode>("live");
   const [phoneWidth, setPhoneWidth] = useState(false);
-  const active = useActiveSection(SECTIONS);
+  const sectionDefs = SECTIONS.map((s) => s.def);
+  const { activeId, selectTab, cardHandle } = useSelectedSection(sectionDefs, tab);
   const face = useFace();
   const accent = useAccent();
   useConnectionClock(clock);
@@ -201,6 +110,22 @@ export function PlaygroundApp() {
     void loadOperatorCommands();
   }, []);
 
+  // `#pane/<card-handle>` names a card to scroll into view once its section has mounted. Runs after
+  // every tab switch and after the hash changes; a re-run against a `cardHandle` the current section
+  // does not carry (a stale hash left over from another tab) simply finds nothing and does nothing.
+  useEffect(() => {
+    if (cardHandle === null) return;
+    // Not a template-built CSS selector: the e2e handle roll call (`web/e2e/handles.spec.ts`) and
+    // app.test.tsx's own handle test both grep this tree for a card's `state` prop by pattern, and a
+    // selector string assembled the same way would read back as one more handle no card actually has.
+    const el = [...document.querySelectorAll("[data-state]")].find(
+      (node) => node.getAttribute("data-state") === cardHandle,
+    );
+    el?.scrollIntoView();
+  }, [activeId, cardHandle]);
+
+  const active = SECTIONS.find((s) => s.def.id === activeId) ?? SECTIONS[0];
+
   return (
     // The prefs land HERE, on the root, not on any card: the typeface and accent overrides cascade
     // into every real component below, which is the only honest way to judge their impact. See
@@ -208,874 +133,62 @@ export function PlaygroundApp() {
     <div className={phoneWidth ? "pg-narrow" : undefined} style={prefStyle(face, accent)}>
       <div className="mx-auto flex min-h-[100dvh] w-full max-w-[2000px] gap-6 bg-background px-4 text-foreground lg:px-6">
         <Sidebar
-          active={active}
+          sections={sectionDefs}
+          activeId={active.def.id}
+          onSelect={selectTab}
           clock={clock}
           onClock={setClock}
           phoneWidth={phoneWidth}
           onPhoneWidth={setPhoneWidth}
         />
 
-        <main className="min-w-0 flex-1 space-y-10 pb-32 pt-4">
+        <main className="min-w-0 flex-1 pb-32 pt-4">
           <TopBar
-            active={active}
+            sections={sectionDefs}
+            activeId={active.def.id}
+            onSelect={selectTab}
             clock={clock}
             onClock={setClock}
             phoneWidth={phoneWidth}
             onPhoneWidth={setPhoneWidth}
           />
 
-          <BrandSection />
-          <BootSection clock={clock} />
-          <IdleSection />
-          <DashboardSection />
-          <PaneSection />
-          <CrewSection />
-          <SettingsSection />
+          <div
+            role="tabpanel"
+            id={`pg-panel-${active.def.id}`}
+            aria-labelledby={`pg-tab-h-${active.def.id} pg-tab-v-${active.def.id}`}
+            className="pt-6 lg:pt-0"
+          >
+            {active.render({ clock })}
+          </div>
         </main>
       </div>
     </div>
   );
 }
 
-// ── 1. Brand ─────────────────────────────────────────────────────────────────
-
-function BrandSection() {
-  return (
-    <Section def={SECTIONS[0]}>
-      <TypefaceCard />
-      <Card
-        state="mark-header-weight"
-        label="the mark — header weight"
-        reach="every screen. 40px in the header bar, 64px on the boot splash and the idle cover."
-        note="`paper` is the ground the mark sits on: it is --background here, --muted in the header, --card on the idle cover."
-      >
-        <Stage>
-          <div className="flex flex-wrap items-end gap-6 p-4">
-            <MarkSample size={40} weight="header" loading={false} />
-            <MarkSample size={40} weight="header" loading />
-            <MarkSample size={64} weight="header" loading={false} />
-            <MarkSample size={64} weight="header" loading />
-          </div>
-        </Stage>
-      </Card>
-
-      <Card
-        state="mark-full-weight"
-        label="the mark — full weight"
-        reach="the drawing anywhere above about 80px. Below that the full weight's detail closes up and the header weight is used instead."
-      >
-        <Stage>
-          <div className="flex flex-wrap items-end gap-6 p-4">
-            <MarkSample size={96} weight="full" loading={false} />
-            <MarkSample size={96} weight="full" loading />
-            <MarkSample size={132} weight="full" loading />
-          </div>
-        </Stage>
-      </Card>
-
-      <Card
-        state="mark-muted-rest"
-        label="the mark — muted rest"
-        reach="let the connection stay lost for 15s. The splash and the header both drop the mark to this rest to say “not connected”."
-      >
-        <Stage>
-          <div className="flex flex-wrap items-end gap-6 p-4">
-            <MarkSample size={40} weight="header" loading={false} muted />
-            <MarkSample size={64} weight="header" loading={false} muted />
-            <MarkSample size={96} weight="full" loading={false} muted />
-          </div>
-        </Stage>
-      </Card>
-
-      <Card
-        state="header-stacked-identity"
-        label="“Collie” over “on <mux>” — the header's stacked identity"
-        reach="open the dashboard or a space view. The block rides WITH the wordmark claim and never appears inside a pane, where the breadcrumb owns the middle of the bar."
-        note="Real <AppHeaderHost>+<RouteHeader wordmark/>. Two lines beside the mark: the 11px uppercase brand tier over the multiplexer at 16px, which is the line the width is for — stacked, the brand costs the name nothing. The name and the logo come from this bridge's own /api/config, so with no bridge behind the dev proxy the second line renders NOTHING, deliberately: “on unknown” would be a worse header than no line at all. The slot is reserved either way, so the brand line does not move when the read lands."
-        span={2}
-      >
-        <Stage>
-          <RootRouter data={homeSolo}>
-            <AppHeaderHost bridge="connected" error={false}>
-              <RouteHeader wordmark rightTrail={<SettingsGear />} />
-            </AppHeaderHost>
-          </RootRouter>
-        </Stage>
-      </Card>
-
-      <Card
-        state="prerelease-strip"
-        label="the prerelease strip — AlphaBar"
-        reach="run a v1 alpha build beside the stable install. It never appears at all on a stable
-          build — `prereleaseLabel` reads THIS bundle's own baked-in version (lib/build.ts, a vite
-          `define`) and returns nothing unless that version carries a SemVer prerelease tag."
-        note="`version` is AlphaBar's own injectable prop (its test seam, alpha-bar.test.tsx uses the
-          same one) — the honest way to stand in for the vite define without editing the component or
-          faking the build. In the real app it is mounted once, inside the one <AppHeaderHost/> above
-          the wordmark row — the header is hoisted out of the routes now, so there is exactly one of
-          it for the app's lifetime; it is shown here on its own so its `version` seam can be driven."
-        span={2}
-      >
-        <Stage>
-          <div className="flex flex-col">
-            <AlphaBar version="1.0.0-alpha.3" />
-            <AlphaBar version="2.0.0-rc.1" />
-          </div>
-        </Stage>
-      </Card>
-
-      <Card
-        state="app-icons-real-sizes"
-        label="favicon & installed-app tiles, at their real sizes"
-        reach="install the PWA, or look at the browser tab. Each tile below is at its native pixel size — no upscaling — so the ones that get downsampled by a launcher can be judged as drawn."
-        span={2}
-      >
-        <Stage>
-          <div className="flex flex-wrap items-end gap-6 p-4">
-            <IconSample src="/favicon.svg" size={16} label="favicon.svg @16" />
-            <IconSample src="/favicon.svg" size={32} label="favicon.svg @32" />
-            <IconSample src="/favicon.ico" size={16} label="favicon.ico 16×16" />
-            <IconSample src="/favicon-96x96.png" size={96} label="favicon 96×96" />
-            <IconSample src="/apple-touch-icon.png" size={180} label="apple-touch 180×180" />
-            <IconSample src="/web-app-manifest-192x192.png" size={192} label="manifest 192×192" />
-          </div>
-        </Stage>
-      </Card>
-
-      <Card
-        state="app-icon-512"
-        label="the 512 tile"
-        reach="the manifest's largest icon — what a launcher downsamples from, and what a splash screen uses whole."
-        span={2}
-      >
-        <Stage>
-          <div className="p-4">
-            <IconSample src="/web-app-manifest-512x512.png" size={512} label="manifest 512×512" />
-          </div>
-        </Stage>
-      </Card>
-    </Section>
-  );
-}
-
-// ── 2. Boot & connection ─────────────────────────────────────────────────────
-
-function BootSection({ clock }: { clock: ClockMode }) {
-  return (
-    <Section def={SECTIONS[1]}>
-      <Card
-        state="boot-splash-connecting"
-        label={`boot splash — connecting → not connected (clock: ${clock})`}
-        reach="the very first load, before the snapshot resolves. It escalates to “Not connected” once that first fetch has been stuck for 15s — e.g. reopening the PWA with the tailnet down."
-        note="Real <BootSplash/> from routes/root.tsx, reading the shared clock. Move the sidebar's CONNECTION CLOCK to pick which half you see."
-      >
-        <Stage height={340} dvh>
-          <RootRouter data={homeSolo}>
-            <BootSplash />
-          </RootRouter>
-        </Stage>
-      </Card>
-
-      <Card
-        state="connection-banner-lost"
-        label={`connection banner — trouble → lost (clock: ${clock})`}
-        reach="pull the tailnet out from under a running Collie. Amber “reconnecting…” after 4s; red with a named cause plus Retry/Reload after 15s; a green flash on recovery."
-        note="Red runs the genuine /api/config probe through the dev proxy, so the cause sentence names whatever the bridge on COLLIE_DEV_TARGET actually answers."
-      >
-        <Stage>
-          <RootRouter data={homeSolo}>
-            <ConnectionBanner
-              bridge="disconnected"
-              error
-              authError={false}
-              lastSeenAt={homeSolo.ts - 3_600_000}
-            />
-          </RootRouter>
-        </Stage>
-      </Card>
-
-      <Card
-        state="connection-banner-refused"
-        label="connection banner — refused (401/403)"
-        reach="let the fronting proxy's identity session expire. A refusal is not an outage, and the banner says so rather than blaming the link."
-      >
-        <Stage>
-          <RootRouter data={homeSolo}>
-            <ConnectionBanner bridge={undefined} error authError />
-          </RootRouter>
-        </Stage>
-      </Card>
-
-      <Card
-        state="header-dog-full-bar"
-        label={`header dog — the full bar (clock: ${clock})`}
-        reach="same two thresholds as the banner: the mark blooms on sustained trouble and rests muted once the outage is lost."
-        note="Follows the shared clock, so this card and the banner above always agree — that is the property the single module-scoped clock exists to guarantee."
-      >
-        <Stage>
-          <RootRouter data={homeSolo}>
-            <AppHeaderHost bridge="disconnected" error>
-              <RouteHeader wordmark rightTrail={<SettingsGear />} />
-            </AppHeaderHost>
-          </RootRouter>
-        </Stage>
-      </Card>
-
-      <Card
-        state="header-dog-three-states"
-        label="header dog — live · troubled · lost, side by side"
-        reach="you cannot reach all three at once for real; there is one clock. <CollieHome/> takes them as ordinary props, which is the one way to line them up."
-      >
-        <Stage>
-          <div className="flex flex-col gap-1 bg-muted p-2">
-            <CollieHome trouble={false} />
-            <CollieHome trouble />
-            <CollieHome trouble lost />
-          </div>
-        </Stage>
-      </Card>
-    </Section>
-  );
-}
-
-// ── 3. Idle & resume ─────────────────────────────────────────────────────────
-
-function IdleSection() {
-  return (
-    <Section def={SECTIONS[2]}>
-      <Card
-        state="idle-lock-paused"
-        label="idle lock — paused"
-        reach="leave Collie open, visible and untouched. A hidden page never locks; polling stops and the app stays mounted underneath, so an in-progress composer draft survives."
-      >
-        <Stage height={420}>
-          <IdleLock onUnlock={() => {}} />
-        </Stage>
-      </Card>
-
-      <Card
-        state="idle-lock-catching-up"
-        label="idle lock — catching up"
-        reach="touch the paused screen, or bring the tab back to the foreground. The cover stays up for exactly as long as the resume refetch is in flight."
-        note="Both states sit on the page at once because `catchingUp` is a prop, not a clock."
-      >
-        <Stage height={420}>
-          <IdleLock onUnlock={() => {}} catchingUp />
-        </Stage>
-      </Card>
-    </Section>
-  );
-}
-
-// ── 4. Dashboard ─────────────────────────────────────────────────────────────
-
-function DashboardSection() {
-  return (
-    <Section def={SECTIONS[3]}>
-      {/* First, deliberately: the row is the unit every other card on this page is made of, and it
-          is the only card here drawn from a real snapshot rather than a designed herd. */}
-      <DashboardRowsCard />
-
-      <Card
-        state="agent-list-working-herd"
-        label="agent list — a working herd, all four sections"
-        reach="the dashboard on a busy day. The order is the one the whole app agrees on: Needs you → Ready · unseen → Working → Recent."
-        note="Fourteen panes across four spaces and five harnesses. `gemini` has no bundled logo, so it lands on the neutral initials tile — the honest rendering, not a placeholder."
-        span={2}
-      >
-        <PhoneFrameCard>
-          <AgentList agents={herd} bridge="connected" onOpen={() => {}} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="agent-list-empty"
-        label="agent list — empty"
-        reach="a Herdr session with no agent panes in it. Nothing is wrong; there is simply nothing running."
-      >
-        <Stage height={220}>
-          <AgentList agents={[]} bridge="connected" onOpen={() => {}} />
-        </Stage>
-      </Card>
-
-      <Card
-        state="agent-list-empty-stale"
-        label="agent list — empty AND stale"
-        reach="the bridge stops answering while the herd list is empty. “Nothing is running” and “we do not know what is running” are different sentences, and this is the second one."
-      >
-        <Stage height={220}>
-          <AgentList
-            agents={[]}
-            bridge={undefined}
-            onOpen={() => {}}
-            error
-            lastSeenAt={homeSolo.ts - 3_600_000}
-          />
-        </Stage>
-      </Card>
-
-      <WriteGateCard />
-
-      <Card
-        state="nav-strips-three-rows"
-        label="the three strips — spaces › tabs › panes"
-        reach="open a space. The three navigation rows stack under the header, one level apart, and every one of them overflows on a phone. Scroll each row sideways: the name stays put, because it sits above the scroller rather than inside it."
-        note="Real <SpaceStrip>, <TabStrip> and <PaneStrip> with the fixture herd, in a 390px frame — the width the row was measured at. The chips are live: tapping one moves the selection. Every pill is drawn 34px tall and answers a 46px touch: the extra 12px is a transparent hit area inside the row's own padding, so the tap floor costs no height. Try tapping just above or just below a pill."
-        span={2}
-      >
-        <PhoneFrameCard height={240}>
-          <StripsHarness />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="nav-strip-drill-in"
-        label="space strip — the drill-in (leads with Back)"
-        reach="tap into a single space. The row leads with an explicit way back instead of the “All” chip."
-        note="Same height as the card above, deliberately: the label is drawn in both states, so navigating in and out does not jump the page."
-        span={2}
-      >
-        <PhoneFrameCard height={140}>
-          <StripsHarness backOnly />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="update-band-release-offered"
-        label="update band (a) — a release is on offer"
-        reach="the bridge's poll reports a newer release upstream. It shows on EVERY screen, because it is a fact about the machine and not about the page you are on."
-        note="The View button NAVIGATES to /settings/updates and never starts anything: the confirm lives on that page, and a band that could start an update from any screen would be the reflex tap the confirm was designed against. It is a named control rather than a row-wide tap because this state also carries a ✕, and ui/notice.tsx forbids the pair — a button may not hold a button. The states with no ✕ (a run in flight, a bundle to reload) keep the whole row as their target. The ✕ dismisses this VERSION — the band stays gone until a newer one appears, and the pin is recorded on the bridge, so it drops the band on every device."
-        span={2}
-      >
-        <Stage>
-          <RootRouter data={{ ...homeSolo, update: updateRelease }}>
-            <UpdateRibbon />
-          </RootRouter>
-        </Stage>
-      </Card>
-
-      <Card
-        state="update-band-confirm-posted"
-        label="update band (s) — the confirm was just tapped"
-        reach="tap Update on /settings/updates and watch the top of the screen for the beat before the run appears."
-        note="POST /api/update returns immediately and hands off to a detached process, so the status object says nothing at all for a moment. This state is the client's OWN knowledge that it just posted, and the run record replaces it the instant it speaks. The store behind it (lib/update-ribbon.ts) is page-wide, so this card drives it behind a toggle — see the (c) card for the same reasoning at more length."
-        span={2}
-      >
-        <StartingRibbonHarness />
-      </Card>
-
-      <Card
-        state="update-band-in-flight"
-        label="update band (b) — a run in flight, all three words"
-        reach="confirm an update and leave the app on any screen. The band counts through the run without you opening the Updates page."
-        note="Three snapshots, three routers — a run is in exactly one state at a time. A poll that FAILS while restarting is the update working, not an outage: the last record stays on screen and the band keeps saying Restarting."
-        span={2}
-      >
-        <Stage>
-          {UPDATE_PHASES.map((state) => (
-            <RootRouter key={state} data={{ ...homeSolo, update: updateInFlight(state) }}>
-              <UpdateRibbon />
-            </RootRouter>
-          ))}
-        </Stage>
-      </Card>
-
-      <Card
-        state="update-band-peers-following"
-        label="update band (d) — peers following, and one that did not"
-        reach="update a crew from the lead. The lead finishes first and the band keeps naming whoever is still moving."
-        note="Three rows: one peer still restarting, one rolled back, and a crew that is level — the third draws NOTHING, which is the point (the band is gone as soon as every peer reports done). The rolled-back row carries the peer's own reason, cut on a word boundary at 40 characters, with the full sentence on /settings/updates. No retry on the band: the retry is that page's single action."
-        span={2}
-      >
-        <Stage>
-          <RootRouter data={{ ...homeSolo, update: updatePeersFollowing }}>
-            <UpdateRibbon />
-          </RootRouter>
-          <RootRouter data={{ ...homeSolo, update: updatePeerRolledBack }}>
-            <UpdateRibbon />
-          </RootRouter>
-          <RootRouter data={{ ...homeSolo, update: updateCrewLevel }}>
-            <UpdateRibbon />
-          </RootRouter>
-        </Stage>
-      </Card>
-
-      <Card
-        state="update-band-bundle-behind"
-        label="update band (c) — this bundle is behind the bridge"
-        reach="a fresh build is confirmed on the server but the app cannot auto-update right now: unsent work, an open sheet, an upload — or it already auto-updated once for this build. With no hold at all the app reloads ITSELF and this row never appears, which is the normal path."
-        note="Driven through the actual controller: a reload hold is taken and a newer build id is observed twice, which is the hysteresis the real poll performs. `lib/self-update.ts` is a PAGE-WIDE singleton, exactly like lib/status.ts and lib/connection-health.ts, and every band on this page reads it — so driving it here puts every OTHER band card into this same state. Hence the toggle, and hence it is off by default. Two rows: with a Collie run behind the new build the band names the version, and with none it is the PWA row exactly as it has always been."
-        span={2}
-      >
-        <StaleBuildHarness />
-      </Card>
-
-      <Card
-        state="update-footer-chip"
-        label="update — the footer chip, all three states"
-        reach="the dashboard footer. It left Settings in M16/01, where one Updates row took its place — but its precedence function still decides that row's status line, which is why all three states are still drawn here."
-        note="Precedence: a stale running PROCESS outranks an available release, which outranks a major that needs explicit consent (ADR 0020). Three snapshots, three routers — the three cannot be true at once on one bridge."
-      >
-        <Stage>
-          <ListGroup>
-            <RootRouter data={{ ...homeSolo, update: updateRestart }}>
-              <div className="p-3">
-                <UpdateBanner />
-              </div>
-            </RootRouter>
-            <RootRouter data={{ ...homeSolo, update: updateRelease }}>
-              <div className="p-3">
-                <UpdateBanner />
-              </div>
-            </RootRouter>
-            <RootRouter data={{ ...homeSolo, update: updateMajor }}>
-              <div className="p-3">
-                <UpdateBanner />
-              </div>
-            </RootRouter>
-          </ListGroup>
-        </Stage>
-      </Card>
-
-      <Card
-        state="footer-crew-link-build-stamp"
-        label="footer — crew link + build stamp"
-        reach="scroll to the bottom of the dashboard. The crew line renders only on a multi-machine roster; on a solo collie the footer is the build stamp alone."
-        note="BuildStamp asks /api/config once for the bridge's own build, so the second line fills in only against a live bridge."
-      >
-        <Stage>
-          <PackedRootRouter data={homeCrew}>
-            <div className="pb-3">
-              <CrewFooterLink scope={{}} className="px-3 pt-3" />
-              <BuildStamp className="px-3 pt-3" />
-            </div>
-          </PackedRootRouter>
-        </Stage>
-      </Card>
-
-      <Card
-        state="session-switcher"
-        label="session switcher"
-        reach="run more than one named Herdr session. The chip names the current one; the sheet lists the rest with their per-session counts, and an unreachable session is greyed out."
-      >
-        <Stage>
-          <RootRouter data={homeSolo}>
-            <div className="flex items-center gap-2 p-3">
-              <SessionSwitcher sessions={homeSolo.sessions} scope={{}} viewAll={false} />
-            </div>
-          </RootRouter>
-        </Stage>
-      </Card>
-    </Section>
-  );
-}
-
-// ── 5. Pane ──────────────────────────────────────────────────────────────────
-
-function PaneSection() {
-  return (
-    <Section def={SECTIONS[4]}>
-      <Card
-        state="pane-permission-prompt"
-        label="pane — blocked on a permission prompt"
-        reach="an agent asks to run something. Everything here is the real pane view — breadcrumb header, StatusBadge, mirror, composer — over a byte-faithful capture from web/src/fixtures/panes/."
-        note="Reads are real; WRITES are not. Tapping an option posts to /api/pane/… and the screen never advances, because nothing on this page is a live terminal. Read it as a photograph."
-        span={2}
-      >
-        <PhoneFrameCard height={760}>
-          <PaneRouter home={homeSolo} fixture={paneBlocked} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="pane-mid-tool-run"
-        label="pane — mid tool-run"
-        reach="watch an agent while it works. This is what the ANSI mirror has to colour: a live screen, no dialog, the composer free."
-        span={2}
-      >
-        <PhoneFrameCard height={760}>
-          <PaneRouter home={homeSolo} fixture={paneWorking} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="pane-upload-draft-path"
-        label="pane — a just-uploaded image path in the draft"
-        reach="attach a picture. `uploadFile()` appends the HOST path the bridge returns, which is one
-          unbroken 70-odd-character token with no break opportunity in it — the widest thing that can
-          ever land in this box, and it arrives without the operator typing a character."
-        note="THE REGRESSION CARD for the Send button walking off the right edge. The field must wrap
-          the path mid-token and Send must stay at the row's right edge, inside the frame. Two classes
-          hold it: `wrap-anywhere` on the field (ui/chat/chat-input.tsx) and `min-w-0` on the Collapse
-          grid item the whole bottom region sits in (ui/collapse.tsx). jsdom cannot see either work —
-          it computes no layout — so this frame is where they are actually looked at."
-        span={2}
-      >
-        <PhoneFrameCard height={760}>
-          <PaneRouter home={homeSolo} fixture={paneUploadDraft} draft={uploadedImagePath} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="pane-shell-read-only"
-        label="pane — a bare shell, composer locked read-only"
-        reach="open a shell pane from a device the bridge will not let write. No agent means no grammar and a ShellBadge in place of the status chip; the write gate locks the composer and raises its banner above it."
-        note="The shell screen is hand-written ANSI, not a capture — the fixture corpus is a corpus of AGENT screens, and a bare shell has no grammar to pin."
-        span={2}
-      >
-        <PhoneFrameCard height={760}>
-          <PaneRouter home={homeSolo} fixture={paneShell} readOnly />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="no-echo-notice"
-        label="no-echo notice — the composer refused a password prompt"
-        reach="tap Send at a pane sitting on `sudo`/`ssh`/`gpg`'s password prompt. Echo is off, so the
-          reply guard's usual evidence can never arrive, and Send is refused every time — this notice
-          is the one sentence that says why and points at the control that works (composer.tsx:1109)."
-        note="Real <NoEchoNotice/>, state-driven rather than reached through a live send (playground
-          writes go nowhere, and this path needs a real `res.noEcho`). `typed` picks which of the four
-          sentences shows; the ✕ is wired to real state — this is the only notice in the app with a
-          real dismiss, and tapping it here removes the card's content, not just a class."
-      >
-        <NoEchoNoticeHarness />
-      </Card>
-
-      <Card
-        state="pane-every-notice-at-once"
-        label="the worst case — every notice live at once"
-        reach="never all six at once by accident, but never impossible either: a stale proxy session
-          (401), a release on offer, a status toast, a device this proxy doesn't allowlist,
-          and a peer that has gone quiet — all independent facts that can coincide on one pane."
-        note="GENUINE together: the real StripHost band with both of RootLayout's strip features
-          registering into it — UpdateRibbon and ConnectionBanner — wrapping the real
-          StatusArea/ReadOnlyBanner/HostStaleBanner/mirror inside the real AgentChat, the exact
-          nesting routes/root.tsx uses. THE BAND SHOWS ONE OF THEM, and that is the point of the
-          card rather than a gap in it: the refusal is AUTH and the offer is UPDATE, so the refusal
-          takes the band and the offer waits (lib/strip-priority.ts). The worst case at the top of
-          this app is therefore ONE strip plus the header, never two strips plus the header — which
-          is also why the safe-area inset is reserved once, by the band while it is open and by the
-          header when it is not. The offer is not lost while it waits: /settings/updates carries it,
-          and it takes the band the moment the refusal clears. STAGED: the five causes are independently
-          driven rather than provoked by one real outage, so they can be shown together on demand; nothing
-          here is a state the app cannot produce, only a coincidence forced for review. The red
-          ConnectionBanner is the auth-error branch (see PaneStackRouter's doc comment in harness.tsx)
-          rather than the trouble→lost escalation, which this page cannot repaint on command — the
-          clock's own `__resetConnectionHealth` never calls its store's `emit()`, so a control flip only
-          takes effect once each consumer's own mount timer next fires. That gap sits in lib/, outside
-          this pass's file allowlist — recommend fixing it there, not worked around by editing the
-          store from here. StatusArea is behind its own toggle below rather than always on: `lib/
-          status.ts` is ALSO a page-wide singleton, and every OTHER pane card on this page mounts a
-          real AgentChat too — an always-on toast here would silently print on every one of them.
-          Toggle it on only while measuring this card, then off again."
-        span={2}
-      >
-        <PhoneFrameCard height={800}>
-          <StackHarness />
-        </PhoneFrameCard>
-      </Card>
-    </Section>
-  );
-}
-
-// ── 6. Crew ──────────────────────────────────────────────────────────────────
-
-function CrewSection() {
-  return (
-    <Section def={SECTIONS[5]}>
-      <Card
-        state="formation-trio"
-        label="formation — solo (lead + deputy + one)"
-        reach="Settings → Crew on a collie that leads a small crew. Lead at the apex, deputy beneath it on the thick connector, everyone else fanned into a V."
-        span={2}
-      >
-        <PhoneFrameCard height={640}>
-          <CrewRouter home={homeTrio} crew={{ status: censusTrio, error: false }} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="formation-five-three-problems"
-        label="formation — five machines, three problems"
-        reach="a real crew that has been running a while: one peer gone quiet, one enrolled and never once reached, one speaking a protocol this lead cannot. Tap a machine for its paperwork."
-        note="The incompatible member's reason is the peer's own words, printed verbatim — the fix follows from the wording, so it is never paraphrased."
-        span={2}
-      >
-        <PhoneFrameCard height={640}>
-          <CrewRouter home={homeCrew} crew={{ status: censusFive, error: false }} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="formation-nine"
-        label="formation — nine machines (the V wraps)"
-        reach="keep adding peers. Past about six the fan cannot stay on one row and the layout wraps it — this is the card that says whether it still reads as a formation."
-        span={2}
-      >
-        <PhoneFrameCard height={640}>
-          <CrewRouter home={homeNine} crew={{ status: censusNine, error: false }} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="formation-conflicted-member"
-        label="formation — a conflicted member"
-        reach="two collies both believe they lead this crew. Not a transient the next poll clears, so the page names it rather than folding it into “unreachable”."
-        span={2}
-      >
-        <PhoneFrameCard height={640}>
-          <CrewRouter home={homeTrio} crew={{ status: censusConflicted, error: false }} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="crew-solo-no-census"
-        label="crew — solo (a 404 is an answer)"
-        reach="open Settings → Crew on a collie that leads no crew. The bridge answers 404, which the loader turns into `null` — “there is no crew here” is an answer, not a failure."
-      >
-        <Stage height={300}>
-          <CrewRouter home={homeSolo} crew={{ status: null, error: false }} />
-        </Stage>
-      </Card>
-
-      <Card
-        state="crew-census-failed"
-        label="crew — the census could not be fetched"
-        reach="open the same page with the bridge down. This one IS a failure, and it says so differently from the solo card above."
-      >
-        <Stage height={300}>
-          <CrewRouter home={homeSolo} crew={{ status: null, error: true }} />
-        </Stage>
-      </Card>
-
-      <Card
-        state="host-colours-palette"
-        label="host colours — the whole palette, and a real crew"
-        reach="be on a crew. Every surface that names a machine tints it, so the dashboard reads as several machines before the eye reads a name."
-        note="Ten hues, assigned by lib/hosts.ts `hostSlot` and defined in index.css, chosen to avoid every status hue. The top row is a made-up ten-machine roster whose ids land one per slot; below it is the five-machine crew, whose names hash to 0, 2, 4, 8 and 9 — which is the honest spread, not an even one. A solo collie gets NO host colour at all."
-        span={2}
-      >
-        <Stage>
-          <div className="flex flex-col gap-3 p-3">
-            <PackedRootRouter data={{ ...homeCrew, servers: rosterPalette }}>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {rosterPalette.map((s) => (
-                  <HostChip key={s.id} host={s.id} />
-                ))}
-              </div>
-            </PackedRootRouter>
-            <PackedRootRouter data={homeCrew}>
-              <div className="flex flex-wrap items-center gap-3">
-                {rosterFive.map((s) => (
-                  <HostChip key={s.id} host={s.id} />
-                ))}
-                <ServerSwitcher servers={rosterFive} scope={{}} agents={homeCrew.agents} />
-              </div>
-            </PackedRootRouter>
-          </div>
-        </Stage>
-      </Card>
-
-      <Card
-        state="host-switcher"
-        label="host switcher"
-        reach="be on a crew with more than one reachable machine. The chip names where you are; tap it for the sheet."
-        note="The sheet's open/closed state is the component's OWN — there is no `open` prop to force, and inventing one would be a fork. Tap the chip; the sheet is portalled to <body>, so it takes the whole window."
-      >
-        <Stage height={120}>
-          <PackedRootRouter data={homeCrew}>
-            <div className="flex items-center gap-2 p-3">
-              <ServerSwitcher servers={rosterFive} scope={{}} agents={homeCrew.agents} />
-            </div>
-          </PackedRootRouter>
-        </Stage>
-      </Card>
-
-      <Card
-        state="host-stale-unreachable"
-        label="host-stale banner — unreachable"
-        reach="on a crew: your link is fine but this pane's MACHINE is not. It appears inside the pane frame, over the last screen that machine did send."
-        note="Hand-built HostHealth values — the banner's table is keyed on `state` and `writable` TOGETHER, so a row of it can only be shown by stating both."
-      >
-        <Stage>
-          <HostStaleBanner health={hostUnreachable} />
-        </Stage>
-      </Card>
-
-      <Card
-        state="host-stale-never-seen"
-        label="host-stale banner — never seen"
-        reach="`collie crew add` a machine that has not come up yet. There is no cached screen behind this one, which is what makes it a different sentence."
-      >
-        <Stage>
-          <HostStaleBanner health={hostNeverSeen} />
-        </Stage>
-      </Card>
-
-      <Card
-        state="host-stale-incompatible"
-        label="host-stale banner — protocol incompatible"
-        reach="run a peer on a Collie whose crew protocol this lead cannot speak. `collie crew update` levels it to the lead's own commit."
-      >
-        <Stage>
-          <HostStaleBanner health={hostIncompatible} />
-        </Stage>
-      </Card>
-
-      <Card
-        state="host-stale-in-pane-unreachable"
-        label="host-stale banner — inside a real pane (unreachable)"
-        reach="open a pane on a peer that has gone quiet. It sits above the tab strip and the mirror, inside the pane frame — never the standalone box the three cards above show it in."
-        note="Real <PaneRouter/> on homeCrew (rosterFive), the pane re-hosted onto `attic` — the SAME
-          real AgentChat mount the Pane section uses, run through the real hostHealth() derivation
-          instead of a hand-built HostHealth. Every homeSolo pane fixture in the Pane section above
-          uses rosterSolo (empty), which is why this banner could never appear there."
-        span={2}
-      >
-        <PhoneFrameCard height={760}>
-          <PaneRouter home={homeCrew} fixture={paneHostUnreachable} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="host-stale-in-pane-never-seen"
-        label="host-stale banner — inside a real pane (never seen)"
-        reach="`collie crew add` a machine, open a pane tagged to it before it has ever come up."
-        span={2}
-      >
-        <PhoneFrameCard height={760}>
-          <PaneRouter home={homeCrew} fixture={paneHostNeverSeen} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="host-stale-in-pane-incompatible"
-        label="host-stale banner — inside a real pane (incompatible)"
-        reach="open a pane on a peer running a crew protocol this lead cannot speak."
-        span={2}
-      >
-        <PhoneFrameCard height={760}>
-          <PaneRouter home={homeCrew} fixture={paneHostIncompatible} />
-        </PhoneFrameCard>
-      </Card>
-    </Section>
-  );
-}
-
-// ── 7. Settings ──────────────────────────────────────────────────────────────
-
-function SettingsSection() {
-  return (
-    <Section def={SECTIONS[6]}>
-      <Card
-        state="settings-solo-unpaired"
-        label="settings — solo collie, nothing paired"
-        reach="tap the gear from the dashboard. With no device paired, writes are ungated and the Paired devices card offers the pairing verb instead of a list."
-        note="The whole real route. Two things on it still reach the network on purpose — /api/config for the diagnostics build, and the browser's own push subscription — and both fail soft, so the page renders whole with no bridge."
-        span={2}
-      >
-        <PhoneFrameCard height={760}>
-          <SettingsRouter home={homeSolo} devices={devicesUnpaired} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="settings-lead-paired"
-        label="settings — lead of a crew, three devices paired"
-        reach="pair a phone with `collie pair`, then open Settings on the lead. The Crew card appears only on a multi-machine roster; the device list names which row is the phone you are holding."
-        note="One Updates row, where three update cards used to stand. Its status line follows the footer chip's old precedence and its chevron says it opens a page."
-        span={2}
-      >
-        <PhoneFrameCard height={760}>
-          <SettingsRouter home={homeCrew} devices={devicesPaired} />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="updates-page"
-        label="updates — the page the Settings row opens"
-        reach="tap the Updates row in Settings. The check control on top, then one card carrying the version, the preflight, the run progress, a read-only line per peer, and the single action button."
-        note="No bridge here, so the card's own read of /api/update/check never lands: the versions come from the snapshot and the peer lines stay empty. Against a live lead the same card grows one line per member, worst first."
-        span={2}
-      >
-        <PhoneFrameCard height={760}>
-          <SettingsRouter home={homeCrew} devices={devicesPaired} start="/settings/updates" />
-        </PhoneFrameCard>
-      </Card>
-      <Card
-        state="spaces-repo-worktrees"
-        label="spaces — a repo and its worktrees"
-        reach="open a worktree of a repo you already have open as a space. Herdr reports the repo on both, so the list nests the worktree under the checkout showing that repo — no extra call, and nothing to switch on."
-        note="`blog` sits outside any repo and stays flat, which is the same row it always was. A worktree whose repo is NOT open would also stay flat: there would be nothing to indent under."
-        span={2}
-      >
-        <PhoneFrameCard height={430}>
-          <SpaceOverview
-            workspaces={spacesWithWorktrees}
-            // No agents: this card is about SHAPE. With a herd attached every row also carries its
-            // triage tint, and a wall of "needs you" red says nothing about nesting.
-            agents={[]}
-            onOpen={() => {}}
-            onNewSpace={() => {}}
-            open
-            onOpenChange={() => {}}
-          />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="new-space-worktree-tab"
-        label="new space — the worktree tab"
-        reach="tap + on the spaces list where at least one open space sits in a repo. With no repo open (or a multiplexer that cannot make one) the tab strip is not rendered at all and this is the plain new-space sheet."
-        note="The repo picker is here because the sheet is opened from the LIST, where there is no current space to take a repo from. `Or open one that already exists` reads the worktrees of the chosen repo once — it is the only route to a checkout that is not a space."
-        span={2}
-      >
-        <PhoneFrameCard height={560}>
-          <NewSpaceSheet
-            open
-            onClose={() => {}}
-            onCreate={() => {}}
-            repos={[
-              { workspaceId: "w1", repoRoot: "/src/collie", label: "collie" },
-              { workspaceId: "w9", repoRoot: "/src/nixcfg", label: "nixcfg" },
-            ]}
-            onCreateWorktree={() => {}}
-            onOpenWorktree={() => {}}
-          />
-        </PhoneFrameCard>
-      </Card>
-
-      <Card
-        state="new-space-pick-host"
-        label="new space — crew, pick a host"
-        reach="tap + on the spaces list of a lead with peers. On a solo collie this row is not rendered at all and the sheet is the one above."
-        note="The chip that is marked is where the create lands: the machine the list was already showing, or the lead. `attic`, `cellar` and `garage` keep their chips and their names — a machine that cannot take writes is dimmed and says why, never dropped, because a missing row reads as a machine you do not have."
-        span={2}
-      >
-        <PhoneFrameCard height={560}>
-          <CrewProvider servers={rosterFive} ts={homeCrew.ts} pollMs={3_000}>
-            <NewSpaceSheet open onClose={() => {}} onCreate={() => {}} scope={{ host: "workshop" }} />
-          </CrewProvider>
-        </PhoneFrameCard>
-      </Card>
-
-    </Section>
-  );
-}
-
 // ── The page's own chrome ────────────────────────────────────────────────────
+//
+// Two shells, one `TabBar`. At `lg` and up, {@link Sidebar} is a sticky left rail: the title, the
+// tab list running DOWN the rail, then the controls stacked under a rule. Below `lg`, {@link TopBar}
+// takes over: the same title and tab list, but the list runs ACROSS as a sticky header row, with the
+// controls in a second row beneath it. Exactly one of the two is ever visible — Tailwind's `lg:`
+// breakpoint hides the other — but BOTH are always mounted, so `TabBar`'s two instances need their
+// own element ids (`idPrefix`) and the tabpanel below is labelled by both.
 
-interface ControlProps {
-  active: string;
+interface ChromeProps {
+  sections: readonly SectionDef[];
+  activeId: string;
+  onSelect: (id: string) => void;
   clock: ClockMode;
   onClock: (next: ClockMode) => void;
   phoneWidth: boolean;
   onPhoneWidth: (next: boolean) => void;
 }
 
-/** Desktop: a sticky rail. Hidden below `lg`, where {@link TopBar}'s chip row takes over. */
-function Sidebar({ active, clock, onClock, phoneWidth, onPhoneWidth }: ControlProps) {
+/** Wide screens: a sticky left rail carrying the vertical tab list and the stacked controls. Hidden
+ *  below `lg`, where {@link TopBar} takes over. */
+function Sidebar({ sections, activeId, onSelect, clock, onClock, phoneWidth, onPhoneWidth }: ChromeProps) {
   return (
     <aside className="hidden w-[220px] shrink-0 lg:block">
       <div className="sticky top-0 max-h-[100dvh] overflow-y-auto py-4">
@@ -1084,7 +197,7 @@ function Sidebar({ active, clock, onClock, phoneWidth, onPhoneWidth }: ControlPr
           Dev-only page. Not in the production bundle.
         </p>
         <div className="mt-4">
-          <SideNav sections={SECTIONS} active={active} />
+          <TabBar orientation="vertical" sections={sections} activeId={activeId} onSelect={onSelect} />
         </div>
         <div className="mt-5 space-y-3 border-t border-rule pt-4">
           <Controls
@@ -1095,31 +208,116 @@ function Sidebar({ active, clock, onClock, phoneWidth, onPhoneWidth }: ControlPr
             stacked
           />
         </div>
-        <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-          The connection clock is GLOBAL because the thing it drives is: one module-scoped store
-          feeds the banner, the header dog and the boot splash, so they can never disagree. A control
-          parked inside one section would quietly be repainting three others.
-        </p>
       </div>
     </aside>
   );
 }
 
-/** Narrow: the same nav as a scrolling chip row, with the controls above it. */
-function TopBar({ active, clock, onClock, phoneWidth, onPhoneWidth }: ControlProps) {
+/** Narrow: a sticky top header carrying the horizontal tab list, with the controls in a second row
+ *  beneath it. Hidden at `lg` and up, where {@link Sidebar} takes over. */
+function TopBar({ sections, activeId, onSelect, clock, onClock, phoneWidth, onPhoneWidth }: ChromeProps) {
   return (
-    <header className="sticky top-0 z-30 -mx-4 border-b border-border bg-background/95 px-4 py-2 backdrop-blur lg:hidden">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pb-2">
-        <h1 className="text-sm font-semibold tracking-tight">Collie — states playground</h1>
-        <Controls
-          clock={clock}
-          onClock={onClock}
-          phoneWidth={phoneWidth}
-          onPhoneWidth={onPhoneWidth}
-        />
+    <header className="sticky top-0 z-30 -mx-4 -mt-4 border-b border-border bg-background/95 px-4 py-2 backdrop-blur lg:hidden">
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 pb-2">
+        <div>
+          <h1 className="text-sm font-semibold tracking-tight">Collie — states playground</h1>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            Dev-only page. Not in the production bundle.
+          </p>
+        </div>
+        <TabBar orientation="horizontal" sections={sections} activeId={activeId} onSelect={onSelect} />
       </div>
-      <ChipNav sections={SECTIONS} active={active} />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pb-2">
+        <Controls clock={clock} onClock={onClock} phoneWidth={phoneWidth} onPhoneWidth={onPhoneWidth} />
+      </div>
     </header>
+  );
+}
+
+/**
+ * A real WAI-ARIA tab list: `role="tablist"` over `role="tab"` buttons, roving focus, and automatic
+ * activation — moving focus with the keyboard selects the tab under it, the same as clicking it.
+ * `orientation` picks which arrow pair moves focus (`ArrowDown`/`ArrowUp` when `"vertical"`,
+ * `ArrowLeft`/`ArrowRight` when `"horizontal"`, per the ARIA authoring practice for a tab list);
+ * `Home`/`End` jump to the ends either way. `PlaygroundApp` renders the matching `role="tabpanel"`.
+ *
+ * `idPrefix` keeps the two mounted instances (the rail's and the header's — see the chrome comment
+ * above) from handing out the same element id twice; the tabpanel's `aria-labelledby` names both.
+ */
+function TabBar({
+  orientation,
+  sections,
+  activeId,
+  onSelect,
+}: {
+  orientation: "horizontal" | "vertical";
+  sections: readonly SectionDef[];
+  activeId: string;
+  onSelect: (id: string) => void;
+}) {
+  const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const idPrefix = orientation === "vertical" ? "pg-tab-v" : "pg-tab-h";
+  const nextKey = orientation === "vertical" ? "ArrowDown" : "ArrowRight";
+  const prevKey = orientation === "vertical" ? "ArrowUp" : "ArrowLeft";
+
+  const moveTo = (index: number): void => {
+    const count = sections.length;
+    const wrapped = ((index % count) + count) % count;
+    const target = sections[wrapped];
+    if (target === undefined) return;
+    onSelect(target.id);
+    buttonRefs.current[wrapped]?.focus();
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
+    if (event.key === nextKey) {
+      event.preventDefault();
+      moveTo(index + 1);
+    } else if (event.key === prevKey) {
+      event.preventDefault();
+      moveTo(index - 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      moveTo(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      moveTo(sections.length - 1);
+    }
+  };
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Sections"
+      aria-orientation={orientation}
+      className={cn("flex gap-1", orientation === "vertical" ? "flex-col" : "flex-wrap")}
+    >
+      {sections.map((s, index) => (
+        <button
+          key={s.id}
+          ref={(el) => {
+            buttonRefs.current[index] = el;
+          }}
+          type="button"
+          role="tab"
+          id={`${idPrefix}-${s.id}`}
+          aria-selected={s.id === activeId}
+          aria-controls={`pg-panel-${s.id}`}
+          tabIndex={s.id === activeId ? 0 : -1}
+          onClick={() => onSelect(s.id)}
+          onKeyDown={(event) => onKeyDown(event, index)}
+          className={cn(
+            "rounded-md px-2.5 py-1 text-[11px] font-medium transition-colors",
+            orientation === "vertical" && "text-left",
+            s.id === activeId
+              ? "bg-foreground text-background"
+              : "bg-transparent text-muted-foreground hover:bg-muted",
+          )}
+        >
+          {s.title}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -1168,8 +366,8 @@ function Controls({
         />
       </Field>
       {/* Page-wide presentation prefs (./prefs.ts). A native select, not a Segmented: eight faces
-          do not fit a 220px rail as chips, and this control repeats what the typeface card offers
-          with commentary — the rail gets the compact form. */}
+          do not fit a 220px rail (or the top bar) as chips, and this control repeats what the
+          typeface card offers with commentary — the chrome gets the compact form. */}
       <Field label="Typeface" stacked={stacked}>
         <select
           value={face}
@@ -1231,384 +429,6 @@ function Field({
     <div className="flex items-center gap-2">
       <span className="text-[11px] text-muted-foreground">{label}</span>
       {children}
-    </div>
-  );
-}
-
-/**
- * The three navigation strips, stacked as the space route stacks them (space › tab › pane) and
- * wired to real state so the selection actually moves. `backOnly` shows the drill-in branch, where
- * SpaceStrip leads with Back instead of the "All" chip.
- *
- * They need no provider: every capability they gate on reads as present when no bridge has said
- * otherwise (lib/mux-capability.ts), which is the same answer the real app gets on a fresh load.
- */
-function StripsHarness({ backOnly = false }: { backOnly?: boolean }) {
-  const [space, setSpace] = useState<string | null>("w1");
-  const [tab, setTab] = useState<string | null>("w1:t1");
-  const panes = allPanes.filter((p) => p.tabId === "w1:t1");
-  const [pane, setPane] = useState(panes[0]?.paneId ?? "");
-  return (
-    <div className="flex flex-col">
-      <SpaceStrip
-        workspaces={spaces}
-        agents={allPanes}
-        selected={space}
-        onSelect={setSpace}
-        onNewSpace={() => {}}
-        onBack={backOnly ? () => {} : undefined}
-      />
-      {!backOnly && (
-        <>
-          <TabStrip
-            workspaceId={space ?? "w1"}
-            tabs={tabs}
-            agents={allPanes}
-            selected={tab}
-            onSelect={setTab}
-            onNewTab={() => {}}
-          />
-          <PaneStrip panes={panes} currentPaneId={pane} onSelect={setPane} />
-        </>
-      )}
-    </div>
-  );
-}
-
-/**
- * A phone frame that centres itself in its (two-column) card. Route-level components are written for
- * a screen; given a card's width they read as a widget, so they get 390px and their own scrollbar.
- */
-function PhoneFrameCard({ height, children }: { height?: number; children: ReactNode }) {
-  return (
-    <div className="flex justify-center">
-      <PhoneFrame height={height}>{children}</PhoneFrame>
-    </div>
-  );
-}
-
-function MarkSample({
-  size,
-  weight,
-  loading,
-  muted = false,
-}: {
-  size: number;
-  weight: "full" | "header";
-  loading: boolean;
-  muted?: boolean;
-}) {
-  return (
-    <div className="flex flex-col items-center gap-1.5">
-      <CollieMark
-        size={size}
-        weight={weight}
-        loading={loading}
-        paper="var(--background)"
-        className={muted ? "opacity-40 grayscale" : undefined}
-      />
-      <span className="font-mono text-[10px] text-muted-foreground">
-        {size} {weight}
-        {loading ? " loading" : ""}
-        {muted ? " muted" : ""}
-      </span>
-    </div>
-  );
-}
-
-function IconSample({ src, size, label }: { src: string; size: number; label: string }) {
-  return (
-    <div className="flex flex-col items-center gap-1.5">
-      <img src={src} width={size} height={size} alt={label} className="max-w-full" />
-      <span className="font-mono text-[10px] text-muted-foreground">{label}</span>
-    </div>
-  );
-}
-
-// ── Two small store-driven harnesses ─────────────────────────────────────────
-
-/**
- * The two write gates are independent on the bridge and compose by AND, and the pairing latch is
- * checked FIRST — so only one of the two strips can ever be on screen. The control picks which fact
- * is true rather than pretending both can be.
- */
-function WriteGateCard() {
-  const [gate, setGate] = useState<WriteGate>("device");
-
-  useEffect(() => {
-    if (gate === "pairing") markNotPaired();
-    else clearNotPaired();
-    return () => clearNotPaired();
-  }, [gate]);
-
-  return (
-    <Card
-      state="read-only-write-gate"
-      label={gate === "pairing" ? "read-only — not paired" : "read-only — device not allowlisted"}
-      reach={
-        gate === "pairing"
-          ? "open Collie on a phone that holds no bearer token, or whose token was revoked. The remedy is on the phone: pair it."
-          : "put a fronting proxy in front that names this device, and leave the name off the bridge's allowlist. Nothing on the phone can fix it."
-      }
-      note="The pairing latch is set through lib/pairing's own markNotPaired/clearNotPaired, and it OUTRANKS the device gate — the two can never both show, so pick one."
-    >
-      <div className="mb-2">
-        <Segmented name="write gate" value={gate} options={GATE_OPTIONS} onChange={setGate} />
-      </div>
-      {/* 390px and the routes' own `mx-4 mt-3`: this box WRAPS in five of six locales, so its
-          height is a function of the width it is read at, and a card-wide stage measures a box
-          nobody has. The gutter rides the component the way home.tsx and space.tsx pass it. */}
-      <div className="mx-auto w-[390px] max-w-full">
-        <Stage>
-          {/* A router, because the pairing strip is a `<Link>` to Settings' Paired-devices card and
-              it reads the active scope off the query. Nothing here navigates — the card only has to
-              provide the context the real app always has. */}
-          <MemoryRouter>
-            <ReadOnlyBanner device={deviceRefused} />
-          </MemoryRouter>
-          <div className="h-3" />
-        </Stage>
-      </div>
-    </Card>
-  );
-}
-
-/** The three run states the band counts through, in the order it counts them. */
-const UPDATE_PHASES = ["preflight", "staging", "restarting"] as const;
-
-/**
- * The band's (s) state: this tab posted the confirm and the run record has not spoken yet.
- *
- * `lib/update-ribbon.ts`'s "just posted" store is page-wide (the band is mounted at the app root and
- * the card that posts is a route away), and (s) outranks every other state — so switching it on puts
- * every band card WITHOUT a run record into this same row. Off by default for that reason, and this
- * card is the only reader that clears it again.
- */
-function StartingRibbonHarness() {
-  const [posted, setPosted] = useState(false);
-  useEffect(() => {
-    if (!posted) return;
-    noteUpdateStarted();
-    return () => clearUpdateStarted();
-  }, [posted]);
-  return (
-    <>
-      <PlaygroundToggle
-        name="confirm posted"
-        on={posted}
-        onToggle={() => setPosted((v) => !v)}
-        onLabel="confirm posted: ON — tap to clear (it also silences the offer cards while on)"
-        offLabel="confirm posted: off — tap to post one (it takes over every band card with no run)"
-      />
-      <Stage>
-        <RootRouter data={homeSolo}>
-          <UpdateRibbon />
-        </RootRouter>
-      </Stage>
-    </>
-  );
-}
-
-/**
- * Drive the self-updater to its "confirmed stale but held" state the way the real poll does: take a
- * reload hold (what an open composer draft or an in-flight upload does), then observe a server build
- * id that is not ours twice — the hysteresis needs two consecutive sightings before it acts.
- * `__setReloadImpl` is the module's own test seam, and it is what stops the page reloading itself.
- *
- * Behind a toggle, and off by default, for the reason the card's own note gives: that controller is
- * one page-wide store and every band on this page reads it.
- */
-function StaleBuildHarness() {
-  const [stale, setStale] = useState(false);
-  useEffect(() => {
-    if (!stale) return;
-    __resetSelfUpdate();
-    __setReloadImpl(() => {});
-    holdReload("collie-playground");
-    observeServerBuild("collie-playground-newer-build");
-    observeServerBuild("collie-playground-newer-build");
-    return () => {
-      releaseReload("collie-playground");
-      __resetReloadGuard();
-      __resetServerBuild();
-      __resetSelfUpdate();
-    };
-  }, [stale]);
-  return (
-    <>
-      <PlaygroundToggle
-        name="stale bundle"
-        on={stale}
-        onToggle={() => setStale((v) => !v)}
-        onLabel="stale bundle: ON — tap to clear (every other band card reads it while on)"
-        offLabel="stale bundle: off — tap to confirm one (it takes over every other band card)"
-      />
-      <Stage>
-        <RootRouter data={{ ...homeSolo, update: updateCrewLevel }}>
-          <UpdateRibbon />
-        </RootRouter>
-        <RootRouter data={homeSolo}>
-          <UpdateRibbon />
-        </RootRouter>
-      </Stage>
-    </>
-  );
-}
-
-/** The strip a card grows when the state it shows lives in a page-wide store and must be opt-in.
- *  Same shape as the two buttons inside {@link StackHarness}, promoted the moment a third appeared. */
-function PlaygroundToggle({
-  name,
-  on,
-  onToggle,
-  onLabel,
-  offLabel,
-}: {
-  /**
-   * The button's accessible name, stable across both halves of the toggle. The visible text is a
-   * whole instruction and it changes with the state, so it is no handle for a browser case; the
-   * pressed state travels on `aria-pressed` instead.
-   */
-  name: string;
-  on: boolean;
-  onToggle: () => void;
-  onLabel: string;
-  offLabel: string;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={name}
-      aria-pressed={on}
-      onClick={onToggle}
-      className="mb-2 w-full rounded-md border border-border bg-muted px-3 py-1 text-left text-[11px] font-medium text-muted-foreground"
-    >
-      {on ? onLabel : offLabel}
-    </button>
-  );
-}
-
-// ── Gap 2: NoEchoNotice ───────────────────────────────────────────────────────
-
-type NoEchoTyped = "untyped" | "typed";
-const NO_ECHO_OPTIONS = [
-  { value: "untyped", label: "Not typed yet" },
-  { value: "typed", label: "Already typed" },
-] as const satisfies readonly { value: NoEchoTyped; label: string }[];
-
-/**
- * `NoEchoNotice`, state-driven since a real refusal needs a live send this page cannot produce
- * (`res.noEcho`). `typed` picks which of the four sentences shows; the ✕ is wired to REAL local state
- * — this is the only notice in the app with a real dismiss, so tapping it here has to remove the
- * notice, not just prove a class toggled.
- *
- * THROUGH `Collapse`, because that is how the composer mounts it (DESIGN.md §1) and the dismiss is
- * the one interaction on this page that shows the exit. A card that popped the notice in and out
- * would be showing a surface the app does not have.
- */
-function NoEchoNoticeHarness() {
-  const [typed, setTyped] = useState<NoEchoTyped>("untyped");
-  const [dismissed, setDismissed] = useState(false);
-  return (
-    <>
-      <div className="mb-2">
-        <Segmented name="no-echo prompt" value={typed} options={NO_ECHO_OPTIONS} onChange={setTyped} />
-      </div>
-      <Stage>
-        <div className="p-3">
-          <Collapse open={!dismissed}>
-            <NoEchoNotice
-              prompt={noEchoPrompt}
-              typed={typed === "typed"}
-              onUseType={() => {}}
-              onDismiss={() => setDismissed(true)}
-            />
-          </Collapse>
-          {dismissed && (
-            <button
-              type="button"
-              className="text-[11px] text-muted-foreground underline underline-offset-4"
-              onClick={() => setDismissed(false)}
-            >
-              dismissed — tap to show it again
-            </button>
-          )}
-        </div>
-      </Stage>
-    </>
-  );
-}
-
-// ── Gap 4: the stack ─────────────────────────────────────────────────────────
-
-/**
- * The header gate as a device the bridge DOES allowlist — the same fixture with one bit flipped, so
- * the read-only box can be made to leave as well as to arrive. Frozen at module scope: a fresh
- * object each render would re-run every `device`-keyed effect inside the real AgentChat below.
- */
-const deviceStackAllowed: DeviceAuth = { ...deviceStack, authorized: true };
-
-/**
- * The band here is driven by the SNAPSHOT — `update.releaseAvailable` on the loader data — and not by
- * the self-updater's page-wide store, which is what this card used to reach for. That store is one
- * module for the whole page, so taking a hold here quietly put every other band card into the stale-
- * bundle state; the offer state is a genuine band state that needs no singleton at all, and the
- * stale-bundle one has its own opt-in card ({@link StaleBuildHarness}).
- *
- * `ConnectionBanner`'s red and `ReadOnlyBanner`/`HostStaleBanner`'s locks are plain props on
- * {@link PaneStackRouter} — see its own doc comment in harness.tsx for why the red state is the
- * auth-error branch, not the escalation clock. `StatusArea` is NOT driven on mount — see this
- * component's own toggle, and why.
- */
-function StackHarness() {
-  const [showStatus, setShowStatus] = useState(false);
-  // The ReadOnlyBanner is the one surface on this card that can be made to appear and disappear on
-  // demand, and after its ui/notice.tsx conversion that transition is the thing worth looking at:
-  // it opens and closes over 240ms instead of popping, and the mirror under it resizes with it
-  // rather than teleporting. Flip this while watching the terminal tail.
-  const [readOnly, setReadOnly] = useState(true);
-
-  // `lib/status.ts` is a page-wide singleton, same shape as `lib/connection-health.ts` — and unlike
-  // the real app, this ONE page mounts several real `AgentChat`s (and therefore several real
-  // `StatusArea`s) at once. Firing it unconditionally on mount would print this card's toast on
-  // every other pane card too. So it is opt-in, and this card is the only reader that clears it again.
-  useEffect(() => {
-    if (!showStatus) return;
-    setStatus("Reply sent · 3 lines", "success", null);
-    return () => clearStatus();
-  }, [showStatus]);
-
-  return (
-    <div className="flex h-full flex-col">
-      <button
-        type="button"
-        aria-label="status toast"
-        aria-pressed={showStatus}
-        onClick={() => setShowStatus((v) => !v)}
-        className="shrink-0 border-b border-border bg-muted px-3 py-1 text-left text-[11px] font-medium text-muted-foreground"
-      >
-        {showStatus
-          ? "StatusArea toast: ON — tap to clear (and stop it leaking into every other pane card)"
-          : "StatusArea toast: off — tap to fire one (leaks into every other pane card while on)"}
-      </button>
-      <button
-        type="button"
-        aria-label="read-only box"
-        aria-pressed={readOnly}
-        onClick={() => setReadOnly((v) => !v)}
-        className="shrink-0 border-b border-border bg-muted px-3 py-1 text-left text-[11px] font-medium text-muted-foreground"
-      >
-        {readOnly
-          ? "read-only box: ON — tap to lift the gate and watch it collapse out"
-          : "read-only box: off — tap to refuse this device and watch it collapse in"}
-      </button>
-      <div className="min-h-0 flex-1">
-        <PaneStackRouter
-          home={{ ...homeCrew, update: updateRelease }}
-          fixture={paneStack}
-          device={readOnly ? deviceStack : deviceStackAllowed}
-        />
-      </div>
     </div>
   );
 }
