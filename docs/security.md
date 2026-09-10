@@ -8,6 +8,49 @@ your user.
 There is no sandbox and no command allow-list, as filtering commands would defeat the purpose of
 the tool. Treat the URL as a root login.
 
+## Pair a device — the write credential
+
+```bash
+# on the host — prints an 8-character code and a QR code, good for 10 minutes
+bin/collie pair
+```
+
+This closes only the write path; the [risk model](#risk-model) below covers what it leaves open.
+
+Open Collie on the phone, go to **Settings** → **Paired devices**, and enter the code with a label
+for the device, or scan the QR code printed by the command to open directly to that screen with
+the code already filled in. The phone stores the returned token. Collie keeps only the hash, and
+the token is displayed once. You do not need to restart the process; the running daemon applies
+pairings and revocations on the next request.
+
+The two device gates answer different questions, and you can run either, both, or neither:
+
+| | asks | trusts | revoke by |
+| --- | --- | --- | --- |
+| `COLLIE_DEVICE_HEADER` | *is this device on the operator's list?* | your proxy, to inject a name it sanitised | editing `COLLIE_DEVICE_ALLOWLIST`, then restarting |
+| **pairing** | *does this device hold a credential I issued?* | nothing on the network | `collie devices revoke <label>` — live |
+
+Pairing requires no extra infrastructure. It fits a direct `tailscale serve` setup where no proxy
+exists to inject headers.
+
+Both options gate write access only. Read requests remain open to anything that passes the
+same-origin check.
+
+```bash
+bin/collie devices list             # what holds a credential, and when each was last seen
+bin/collie devices revoke old-phone # effective immediately, no restart
+```
+
+The write gate is active only while at least one device is paired. No device is paired until you
+run `collie pair`, so until then read and write operations function as before. Pair your current
+phone first. Revoking the final device disables the gate again to prevent lockouts.
+
+Five failed code attempts invalidate the code, which requires running `collie pair` again.
+
+On a host running multiple instances, prefix commands with `COLLIE_INSTANCE=<name>` and open that
+specific instance URL on the phone
+([Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host)).
+
 ## Risk model
 
 Key security boundaries and risks:
@@ -17,7 +60,7 @@ Key security boundaries and risks:
 - **Authentication identifies devices, not humans.** Tailscale verifies the hardware endpoint rather
   than the user holding it. There are no passwords or user sessions; an unlocked or stolen phone
   provides an open shell. You can mitigate this by pairing the device
-  ([below](#pair-a-device--the-write-credential)). The built-in idle lock merely blanks an
+  ([above](#pair-a-device--the-write-credential)). The built-in idle lock merely blanks an
   unattended screen and provides no actual security boundary
   ([ADR 0007](../.adr/0007-the-idle-lock-is-a-pause-not-a-gate.md)).
 - **All local system users can reach the port.** Standard terminal multiplexer sockets (`tmux`,
@@ -69,47 +112,6 @@ you or your machine, only the static user-agent `collie-update-check`.
 If collection is ever added, explicit opt-in is the ceiling — off by default, asked as a visible
 question, never carried by a flag or a default. Removing that promise would be a breaking change
 ([ADR 0034](../.adr/0034-collie-collects-nothing-and-opt-in-is-the-ceiling.md)).
-
-## Pair a device — the write credential
-
-```bash
-bin/collie pair          # on the host — prints an 8-character code and a QR code, good for 10 minutes
-```
-
-Open Collie on the phone, go to **Settings** → **Paired devices**, and enter the code with a label
-for the device, or scan the QR code printed by the command to open directly to that screen with
-the code already filled in. The phone stores the returned token. Collie keeps only the hash, and
-the token is displayed once. You do not need to restart the process; the running daemon applies
-pairings and revocations on the next request.
-
-The two device gates answer different questions, and you can run either, both, or neither:
-
-| | asks | trusts | revoke by |
-| --- | --- | --- | --- |
-| `COLLIE_DEVICE_HEADER` | *is this device on the operator's list?* | your proxy, to inject a name it sanitised | editing `COLLIE_DEVICE_ALLOWLIST`, then restarting |
-| **pairing** | *does this device hold a credential I issued?* | nothing on the network | `collie devices revoke <label>` — live |
-
-Pairing requires no extra infrastructure. It fits a direct `tailscale serve` setup where no proxy
-exists to inject headers.
-
-Both options gate write access only. Read requests remain open to anything that passes the
-same-origin check.
-
-```bash
-bin/collie devices list             # what holds a credential, and when each was last seen
-bin/collie devices revoke old-phone # effective immediately, no restart
-```
-
-The write gate is active only while at least one device is paired. No device is paired until you
-run `collie pair`, so until then read and write operations function as before. Pair your current
-phone first. Revoking the final device disables the gate again to prevent lockouts.
-
-Five failed code attempts invalidate the code, which requires running `collie pair` again.
-
-On a host running multiple instances, prefix commands with `COLLIE_INSTANCE=<name>` and open that
-specific instance URL on the phone
-([Multiple Collie instances on one host](deployment.md#multiple-collie-instances-on-one-host)).
-
 
 ---
 

@@ -308,18 +308,25 @@ convention, is preserved.
 
 ### Updating the rest of the crew
 
-Update a crew from the phone, with one tap and one confirmation. Open **Settings → Updates** on the
-lead and select **Update crew to `<version>`**. The preflight above the button covers every member,
-not just the lead. If a check is red anywhere, the button is disabled and names the failing machine
-and the reason.
+```bash
+collie crew update <member>…      # on the lead
+collie crew update --all
+```
+
+That is the terminal path, for a peer the phone cannot level. From the phone, update the whole crew
+with one tap and one confirmation: open **Settings → Updates** on the lead and select
+**Update crew to `<version>`**. The preflight above the button covers every member, not just the
+lead. If a check is red anywhere, the button is disabled and names the failing machine and the
+reason.
 
 The lead updates first, under its own health gate. Only once it has settled does the first peer
 start. From 1.7.0 that order also matters for the words: a lead older than 1.7.0 reads a member's
 status by its first printed line, and a 1.7.0 member prints `crew   …` where a 1.6.0 one printed
-`pack   …`, so an un-updated lead cannot read it. A 1.7.0 lead reads both. Each peer then levels **itself**: it reads the release its lead is running, fetches that
-exact tag from GitHub, and runs its own preflight, its own health gate and its own rollback. Peers
-move one at a time. The Updates page keeps a line per member: `waiting`, `checking`, `staging`,
-`restarting`, `verifying`, `updated`, `rolled back` or `unreachable`.
+`pack   …`, so an un-updated lead cannot read it. A 1.7.0 lead reads both. Each peer then levels
+**itself**: it reads the release its lead is running, fetches that exact tag from GitHub, and runs
+its own preflight, its own health gate and its own rollback. Peers move one at a time. The Updates
+page keeps a line per member: `waiting`, `checking`, `staging`, `restarting`, `verifying`, `updated`,
+`rolled back` or `unreachable`.
 
 **1.7.0 to 1.8.0.** Lead first again, for a second reason: 1.8.0 renames the wire paths, the two
 environment keys, the three state files and the journal prefix to crew. A 1.8.0 lead answers the old
@@ -332,7 +339,8 @@ daily push; it never gates an update and never changes what one does.
 Two requirements decide whether a peer can follow at all:
 
 - **A peer needs outbound HTTPS to `github.com`.** That is where its code comes from. Without that
-  access, the peer is reported as behind and is levelled from the terminal instead, below.
+  access, the peer is reported as behind and is levelled from the terminal instead, using the
+  command above.
 - **A `-dev+` build never follows.** A machine on a development build stays on it, whatever its lead
   is running.
 
@@ -352,12 +360,12 @@ collie crew update <member>…      # on the lead
 collie crew update --all
 ```
 
-It runs as one sequence over your own SSH. It preflights every machine first, and prints each peer's
-own report beside the answer it gets over SSH, so a disagreement is explicit rather than averaged.
-It asks for one consent. It then updates the lead itself, if the lead is not yet running the build
-it is handing out. Next it takes each peer in turn: the peer is pushed the lead's commit as a git
-bundle, rebuilt, restarted, and polled until it answers the new build within the same 30 second
-budget.
+Running it on the lead is one sequence over your own SSH. It preflights every machine first, and
+prints each peer's own report beside the answer it gets over SSH, so a disagreement is explicit
+rather than averaged. It asks for one consent. It then updates the lead itself, if the lead is not
+yet running the build it is handing out. Next it takes each peer in turn: the peer is pushed the
+lead's commit as a git bundle, rebuilt, restarted, and polled until it answers the new build within
+the same 30 second budget.
 
 The first failure stops the run. Every member after it is left untouched and reported as
 "not attempted", and the summary names the one command that clears the failure. A lead that cannot

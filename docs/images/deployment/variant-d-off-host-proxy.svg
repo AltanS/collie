@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 360" role="img"
+     aria-label="An ingress node authenticates the phone at the tailnet edge, and Collie itself answers only on loopback.">
+  <title>An ingress node authenticates the phone at the tailnet edge, and Collie itself answers only on loopback.</title>
+  <style>
+    .box { fill: #fafafa; stroke: #3f3f46; stroke-width: 1.5; }
+    .link { stroke: #3f3f46; stroke-width: 1.5; fill: none; }
+    text { font-family: system-ui, sans-serif; fill: #18181b; text-anchor: middle; }
+    .name { font-size: 16px; font-weight: 600; }
+    .lbl { font-size: 14px; fill: #52525b; }
+    .lbl-l { text-anchor: start; }
+    .cap { font-size: 13px; fill: #52525b; }
+    .dot { fill: #0d9488; transform: translate(76px, 180px); }
+    @media (prefers-color-scheme: dark) {
+      .box { fill: #27272a; stroke: #a1a1aa; }
+      .link { stroke: #a1a1aa; }
+      text { fill: #f4f4f5; }
+      .lbl, .cap { fill: #a1a1aa; }
+      .dot { fill: #2dd4bf; }
+    }
+    @keyframes tunnel {
+      0%   { transform: translate(76px, 180px); opacity: 0; }
+      4%   { opacity: 1; }
+      26%  { transform: translate(200px, 180px); opacity: 1; }
+      30%  { opacity: 0; }
+      34%  { transform: translate(350px, 180px); opacity: 0; }
+      38%  { opacity: 1; }
+      60%  { transform: translate(560px, 82px); opacity: 1; }
+      64%  { opacity: 0; }
+      68%  { transform: translate(635px, 114px); opacity: 0; }
+      72%  { opacity: 1; }
+      92%  { transform: translate(635px, 222px); opacity: 1; }
+      96%  { opacity: 0; }
+      100% { transform: translate(76px, 180px); opacity: 0; }
+    }
+    .dot { animation: tunnel 6s linear infinite; }
+    @media (prefers-reduced-motion: reduce) {
+      .dot { animation: none; }
+    }
+  </style>
+
+  <rect class="box" x="20" y="110" width="56" height="140" rx="10" />
+  <text class="name" x="48" y="272">phone</text>
+
+  <rect class="box" x="200" y="148" width="150" height="64" rx="8" />
+  <text class="name" x="275" y="184">ingress node</text>
+  <text class="cap" x="275" y="232">TLS + forward-auth,</text>
+  <text class="cap" x="275" y="248">sets the device header</text>
+
+  <rect class="box" x="560" y="50" width="150" height="64" rx="8" />
+  <text class="name" x="635" y="86">agent host</text>
+  <text class="cap" x="635" y="34">tailscale serve, tailnet-only</text>
+
+  <rect class="box" x="560" y="222" width="150" height="64" rx="8" />
+  <text class="name" x="635" y="258">Collie</text>
+  <text class="cap" x="635" y="306">127.0.0.1:8787</text>
+
+  <line class="link" x1="76" y1="180" x2="200" y2="180" />
+  <text class="lbl" x="138" y="165">https</text>
+
+  <line class="link" x1="350" y1="180" x2="560" y2="82" />
+  <text class="lbl" x="470" y="148">http, tailnet only —</text>
+  <text class="lbl" x="470" y="164">WireGuard already encrypts it</text>
+
+  <line class="link" x1="635" y1="114" x2="635" y2="222" />
+  <text class="lbl lbl-l" x="648" y="172">loopback</text>
+
+  <circle class="dot" r="5" />
+</svg>

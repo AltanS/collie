@@ -219,32 +219,34 @@ unavailable rather than returning empty content.
 
 ### tmux tips — getting your windows back after a reboot
 
-Collie does not store multiplexer state. Restarting a tmux server destroys its windows, leaving the
-dashboard empty.
+```bash
+claude --resume      # reconnects the conversation, not the window
+```
 
-You can manage state restoration using standard tmux plugins:
+Collie does not store multiplexer state. Restarting a tmux server destroys its windows, leaving the
+dashboard empty. Standard tmux plugins restore the window layouts and working directories:
 [tpm](https://github.com/tmux-plugins/tpm) for plugin management,
 [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect) for saving session trees, and
 [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) for automated snapshots.
-
-These tools restore **window layouts** and working directories. To restore conversation context, use
-Claude's built-in flags: `claude --resume` or `claude --continue`.
 
 > **Note.** Running agent processes are not preserved. Restart Claude Code manually after recovery.
 
 ### zellij tips — after a reboot there is nothing to restore
 
+```bash
+zellij -s collie-zellij                                  # start the session
+zellij attach --create-background collie-zellij          # headless: start it detached
+claude --resume                                           # reconnects the agent
+```
+
 Zellij does not provide an equivalent to tmux-resurrect. Sessions persisted after terminal
 detachment show as `(EXITED - attach to resurrect)`, and attaching triggers re-execution of session
-commands.
+commands, so a reboot means starting the session fresh with one of the commands above and launching
+agents inside it, reconnecting each with `claude --resume` or `claude --continue`.
 
 > **Note.** Because attaching produces side effects, Collie does not attach to or resurrect
 > sessions. Exited sessions appear as *unreachable*, and the UI displays a disconnection banner
 > instead of an empty session list.
-
-Following a reboot, start the session manually (`zellij -s collie-zellij` or
-`zellij attach --create-background collie-zellij` for headless systems) and launch agents inside it.
-Reconnect to prior agent sessions using `claude --resume` or `claude --continue`.
 
 
 ## Agent beacons (optional, Linux)

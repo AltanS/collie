@@ -162,16 +162,7 @@ cache-control: no-cache
 
 Use this when routing traffic through a centralized Tailscale ingress node.
 
-```
-  phone ──── https ────► ingress node          TLS + forward-auth; SETS the device header
-                            │
-                            │  http, never leaves the tailnet (WireGuard encrypts it)
-                            ▼
-                        host.your-tailnet.ts.net:8787     tailscale serve --http, tailnet-only
-                            │
-                            ▼
-                        127.0.0.1:8787                    Collie
-```
+![An ingress node authenticates the phone at the tailnet edge, and Collie itself answers only on loopback.](images/deployment/variant-d-off-host-proxy.svg)
 
 The requirements from [Variant B](#variant-b--identity-aware-proxy--per-device-authorisation) apply,
 except the proxy targets the host's Tailscale HTTP endpoint instead of loopback.
