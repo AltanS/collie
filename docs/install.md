@@ -402,13 +402,14 @@ with `bin/collie qr`). Your client must be on the same tailnet.
 2. **Install the app**: Tap **Install** in Settings if the browser offers it, or use the share
    sheet on iOS/iPadOS.
 
-Chrome and Edge, on Android and on desktop, offer an install button the moment they decide the app
-is installable, and Collie surfaces that offer as an **Install** card at the top of Settings.
+> **Note.** Chrome and Edge, on Android and on desktop, offer an install button the moment they
+> decide the app is installable, and Collie surfaces that offer as an **Install** card at the top
+> of Settings.
 
 ![The Install card at the top of Settings, with the button Chrome and Edge offer.](images/updates/settings-install-offered.png)
 
-Safari on iOS and iPadOS never makes that offer — installing there always goes through the share
-sheet — so the same card shows those steps instead, exactly while they apply.
+> **Note.** Safari on iOS and iPadOS never makes that offer — installing there always goes through
+> the share sheet — so the same card shows those steps instead, exactly while they apply.
 
 ![The same card on iOS or iPadOS: installing goes through the share sheet instead.](images/updates/settings-install-ios-hint.png)
 
