@@ -191,6 +191,13 @@ export function useDirectTyping({
     clearMode();
   }
 
+  /** Discard a terminal-only session, including batches waiting behind an in-flight write.
+   * The request already on the wire cannot be recalled. Do not focus or transfer the reply draft. */
+  function discard() {
+    sender.reset();
+    resetMode();
+  }
+
   // The effects below are LIFECYCLE handlers, not reactive computations: they must fire on the
   // condition in their dependency list and on nothing else. `clearMode`/`dropKeyboard`/`resetMode`
   // are re-created every render, so naming them as dependencies would re-run — and in the pane-key
@@ -333,6 +340,7 @@ export function useDirectTyping({
     activate,
     deactivate,
     deactivateSilently,
+    discard,
     onChange,
     onCompositionStart,
     onCompositionEnd,

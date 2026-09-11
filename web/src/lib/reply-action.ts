@@ -192,6 +192,9 @@ export interface GuardedReplyArgs {
    * place destructive keys may go.
    */
   force?: boolean;
+  /** Optional caller lifecycle refusal, re-read before each write. A mode change may withdraw a
+   * pending forced send; writes already dispatched cannot be recalled. Ordinary sends omit it. */
+  writeRefusal?: () => string | null;
   /**
    * Work the caller needs done once a live read has POSITIVELY SEEN the composer, and before the
    * first byte of the reply is typed. Exists for exactly one caller and one reason: composer.tsx's
@@ -280,6 +283,8 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   // threw, an adapter with no `composerReady`, and anything added later) skips this by construction
   // rather than by remembering to check. `?.()` is the whole enforcement; there is no list to keep
   // in sync.
+  const withdrawn = writeRefused(args);
+  if (withdrawn) return withdrawn;
   const aborted = await runPreType?.();
   if (aborted) return aborted;
 
@@ -302,6 +307,8 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   for (let i = 0; i < chunks.length - 1; i++) {
     let part;
     try {
+      const refused = writeRefused(args, delivered.length > 0);
+      if (refused) return refused;
       part = await sendReply(args.paneId, chunks[i]!, false, args.scope);
     } catch (e) {
       return { status: "error", error: message(e) };
@@ -329,6 +336,8 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
 
   let typed;
   try {
+    const refused = writeRefused(args, delivered.length > 0);
+    if (refused) return refused;
     typed = await sendReply(args.paneId, chunks[chunks.length - 1]!, false, args.scope);
   } catch (e) {
     return { status: "error", error: message(e) };
@@ -519,6 +528,8 @@ async function oneShot(args: GuardedReplyArgs): Promise<ReplyOutcome> {
   // `adapterFor(agent)?.extractInputDraft`, so a pane with no adapter has no draft to sweep and the
   // composer's callback was already a no-op here.
   try {
+    const refused = writeRefused(args);
+    if (refused) return refused;
     const res = await sendReply(args.paneId, args.text, true, args.scope);
     return res.ok ? { status: "sent" } : { status: "error", error: describeApiError(res) };
   } catch (e) {
@@ -536,6 +547,8 @@ async function submitOnly(
   expectedPrompt?: string,
 ): Promise<ReplyOutcome> {
   try {
+    const refused = writeRefused(args, true);
+    if (refused) return refused;
     const res = await sendReply(args.paneId, "", true, args.scope, expectedPrompt);
     if (res.ok) return { status: "sent" };
     // The text is verifiably sitting in the input box and only the submit key failed — same shape as
@@ -553,6 +566,11 @@ async function submitOnly(
   } catch (e) {
     return { status: "error", error: message(e), textDelivered: true };
   }
+}
+
+function writeRefused(args: GuardedReplyArgs, textDelivered = false): ReplyOutcome | null {
+  const error = args.writeRefusal?.();
+  return error ? { status: "error", error, textDelivered } : null;
 }
 
 function message<TThrown>(e: TThrown): string {

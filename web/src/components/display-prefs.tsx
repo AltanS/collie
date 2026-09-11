@@ -27,6 +27,8 @@ interface DisplayPrefsContentProps {
   setRawTerminal: (raw: boolean) => void;
   setTapToFocus: (tapToFocus: boolean) => void;
   setExpandClippedReply: (expandClippedReply: boolean) => void;
+  /** Hide mirror-only settings while Conversation is showing. */
+  chatOnly?: boolean;
 }
 
 // One settings row: name (+ optional explanation) on the left, control on the right. Module-level so
@@ -62,10 +64,12 @@ export function DisplayPrefsContent({
   setRawTerminal,
   setTapToFocus,
   setExpandClippedReply,
+  chatOnly = false,
 }: DisplayPrefsContentProps) {
   useLocale();
   return (
     <div className="divide-y divide-border border-t border-rule bg-muted/30 px-3 py-1">
+      {!chatOnly && (
       <Row
         label={t("settings.display.wrap.label")}
         hint={t("settings.display.wrap.hint")}
@@ -79,6 +83,7 @@ export function DisplayPrefsContent({
           />
         }
       />
+      )}
       <Row
         label={t("settings.display.tapToType.label")}
         hint={t("settings.display.tapToType.hint")}
@@ -92,6 +97,7 @@ export function DisplayPrefsContent({
           />
         }
       />
+      {!chatOnly && (
       <Row
         label={t("settings.display.fullReply.label")}
         hint={t("settings.display.fullReply.hint")}
@@ -105,6 +111,8 @@ export function DisplayPrefsContent({
           />
         }
       />
+      )}
+      {!chatOnly && (
       <Row
         label={t("settings.display.rawTerminal.label")}
         hint={t("settings.display.rawTerminal.hint")}
@@ -118,6 +126,8 @@ export function DisplayPrefsContent({
           />
         }
       />
+      )}
+      {!chatOnly && (
       <Row
         label={t("settings.display.textSize.label")}
         control={
@@ -148,6 +158,7 @@ export function DisplayPrefsContent({
           </div>
         }
       />
+      )}
     </div>
   );
 }
