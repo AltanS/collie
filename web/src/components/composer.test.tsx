@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { useState } from "react";
 import type { ComponentProps } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -143,6 +145,39 @@ function renderComposerWithStatus(
   render(<RouterProvider router={router} />);
   return props;
 }
+
+describe("Composer Conversation recovery", () => {
+  it.each([
+    ["unsupported modal", readFileSync(join(process.cwd(), "src/fixtures/panes/omp--menu-model.txt"), "utf8"), "omp"],
+    ["password", "$ sudo command\n[sudo] password for altan:", "claude"],
+  ])("routes a %s refusal to Terminal without forcing or clearing the draft", async (_name, text, agent) => {
+    const user = userEvent.setup();
+    const writes = vi.fn();
+    const openTerminal = vi.fn();
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => HttpResponse.json({ paneId: "w1:p1", text, truncated: false, revision: 2 })),
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposerWithStatus({ chatOnly: true, agent, onOpenTerminal: openTerminal });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "keep this draft");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    const recovery = await screen.findByRole("button", { name: "Terminal" });
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /use type/i })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+    await user.click(recovery);
+    expect(openTerminal).toHaveBeenCalledTimes(1);
+    expect(writes).not.toHaveBeenCalled();
+    expect(box).toHaveValue("keep this draft");
+    expect(screen.queryByPlaceholderText("Type into the terminal…")).toBeNull();
+    if (_name === "password") expect(loadDraft(undefined, "w1:p1")).toBeNull();
+  });
+});
 
 describe("Composer — send", () => {
   // #34: a dialog owns the TUI's keyboard. Sending free text at one loses the message AND makes the

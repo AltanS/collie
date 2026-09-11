@@ -161,6 +161,9 @@
         "**/web/src/lib/zen.ts",
         "**/web/src/lib/harness-bar-pref.ts",
         "**/web/src/lib/strips-collapsed.ts",
+        // The pane reading mode store — the same localStorage-backed preference class as
+        // strips-collapsed beside it (Conversation/Terminal surface choice, opt-in per device).
+        "**/web/src/lib/pane-view-mode.ts",
         "**/web/src/lib/follow-terminal.ts"
       ],
       "rules": {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Maximize2, Monitor, Pencil, ScrollText, Search, SlidersHorizontal, XCircle } from "lucide-react";
+import { Maximize2, MessageSquareText, Monitor, Pencil, ScrollText, Search, SlidersHorizontal, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -60,6 +60,11 @@ interface PaneActionsSheetProps {
    *  buffered output to look at. Absence IS the gate, exactly as it is for find and history above —
    *  a device that never asked for zen sees a sheet byte-identical to today's. */
   onZen?: () => void;
+  /** Switch the pane's reading surface to Conversation mode. Offered only for a pane with a
+   *  supported journal, and only while Conversation is NOT already showing (the conversation
+   *  surface carries its own one-tap way back to Terminal). Absence IS the gate, like find/history
+   *  above — a pane without a journal sees a sheet byte-identical to today's. */
+  onConversation?: () => void;
 }
 
 type Mode = "actions" | "rename";
@@ -86,6 +91,7 @@ export function PaneActionsSheet({
   onHistory,
   onSettings,
   onZen,
+  onConversation,
 }: PaneActionsSheetProps) {
   useLocale();
   const [mode, setMode] = useState<Mode>("actions");
@@ -263,7 +269,7 @@ export function PaneActionsSheet({
           sheet; rename and close are the half you arrive at deliberately.
           Hidden in `rename` mode with the rest of the list — that view is a sub-screen, not a
           section. */}
-      {mode === "actions" && (onFind || onHistory || onSettings || onZen) && (
+      {mode === "actions" && (onFind || onHistory || onSettings || onZen || onConversation) && (
         <div className="mb-1 flex flex-col gap-1">
           {onFind && (
             <ActionRow
@@ -284,6 +290,19 @@ export function PaneActionsSheet({
               onClick={() => {
                 onClose();
                 onHistory();
+              }}
+            />
+          )}
+          {/* Conversation trails history deliberately: both read the journal, but Conversation
+              swaps the reading surface in place while History opens another route. Close-then-act,
+              for the reason the find row states. */}
+          {onConversation && (
+            <ActionRow
+              icon={<MessageSquareText className="size-4 shrink-0 text-muted-foreground" />}
+              label={t("chat.conversation.label")}
+              onClick={() => {
+                onClose();
+                onConversation();
               }}
             />
           )}

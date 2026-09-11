@@ -22,10 +22,11 @@ import { server } from "@/test/setup";
 import { clearStatus, setStatus } from "@/lib/status";
 import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
 import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
+import { setPaneViewMode, paneViewMode, __resetPaneViewMode } from "@/lib/pane-view-mode";
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
-import { fixtureAgents, fixtureShellPanes, fixtureTabs } from "@/test/handlers";
+import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscript, recordReply } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
 import type { AgentStatus, AgentView, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
@@ -52,6 +53,9 @@ beforeEach(() => {
   // /api/config read), so a case that declares launchers would otherwise leak them into every case
   // that comes after it.
   __resetOperatorCommands();
+  // And the pane reading mode: a case that opted this device into Conversation would otherwise
+  // leave every later case rendering the thread it never asked for.
+  __resetPaneViewMode();
 });
 
 function renderChat(overrides: Partial<ComponentProps<typeof AgentChat>> = {}) {
@@ -2586,5 +2590,577 @@ describe("AgentChat — full latest reply", () => {
     await waitFor(() => expect(screen.getByText(/bigger claim/)).toBeInTheDocument());
     expect(hits()).toBe(0);
     expect(card()).not.toBeInTheDocument();
+  });
+});
+
+// ── Conversation mode — the opt-in, per-device reading surface ────────────────────────────────
+// The pane keeps two reading surfaces on ONE route. These tests cover the mode switch (same mounted
+// composer, draft preserved, no terminal write, no desktop focus), the thread's honest states
+// (working bubble, terminal-required dialog card, unavailable transcript), the missing-journal
+// fallback, and the chat-only composer (terminal-only controls ABSENT, not disabled).
+describe("AgentChat — Conversation mode", () => {
+  const sessionAgent = () => ({ ...fixtureAgents[0]!, hasSession: true });
+
+  function conversationSurface(container: HTMLElement) {
+    return container.querySelector('[data-slot="conversation-view"]');
+  }
+
+  it("stays in Terminal by default, and offers the switch only for a pane with a session", () => {
+    const { container } = renderChat({ agent: sessionAgent() });
+    expect(conversationSurface(container)).toBeNull();
+    expect(screen.getByText("recent pane output")).toBeInTheDocument();
+  });
+
+  it("hides the sheet row for a pane with no session, and falls back to Terminal without erasing the preference", async () => {
+    setPaneViewMode("conversation");
+    const user = userEvent.setup();
+    const { container } = renderChat({ agent: fixtureAgents[0] }); // no hasSession
+    // The terminal mirror is what renders — the pane has no supported journal — and the stored
+    // preference survives untouched so another pane can still open in Conversation.
+    expect(conversationSurface(container)).toBeNull();
+    expect(screen.getByText("recent pane output")).toBeInTheDocument();
+    await openPaneMenu(user);
+    expect(screen.queryByRole("button", { name: "Conversation view" })).toBeNull();
+    expect(paneViewMode()).toBe("conversation");
+  });
+
+  it("switches surfaces in place: the composer keeps its draft, submits nothing, and the thread renders", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat({ agent: sessionAgent() });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "draft survives the switch");
+
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+
+    expect(conversationSurface(container)).toBeInTheDocument();
+    // The persisted transcript, as the Variant B thread.
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    expect(screen.getByText(/One commit: abc1234/)).toBeInTheDocument();
+    // The SAME mounted composer — draft intact, never submitted.
+    expect(screen.getByPlaceholderText(/type a reply/i)).toHaveValue("draft survives the switch");
+    expect(paneViewMode()).toBe("conversation");
+  });
+
+  it("mode switching writes nothing to the terminal and never calls the desktop focus action", async () => {
+    const writes = vi.fn(() => HttpResponse.json({ ok: true }));
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/(reply|keys|focus)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    const { container } = renderChat({ agent: sessionAgent() });
+
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+    expect(screen.getByText("recent pane output")).toBeInTheDocument();
+
+    expect(writes).not.toHaveBeenCalled();
+    expect(conversationSurface(container)).toBeNull();
+  });
+
+  it("keeps terminal-only controls out of the conversation, and back in Terminal", async () => {
+    const user = userEvent.setup();
+    renderChat({ agent: sessionAgent() });
+    expect(screen.getByRole("button", { name: "Keys" })).toBeInTheDocument();
+
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    // ABSENT, not disabled — the chat-only contract.
+    expect(screen.queryByRole("button", { name: "Keys" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Type into terminal" })).toBeNull();
+
+    await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+    expect(screen.getByRole("button", { name: "Keys" })).toBeInTheDocument();
+  });
+
+  it("hides terminal Find in Conversation and restores working search in Terminal", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat({ agent: sessionAgent(), text: "needle then needle" });
+    await openPaneMenu(user);
+    expect(screen.getByRole("button", { name: "Find in output" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    await screen.findByText("what changed today?");
+
+    await openPaneMenu(user);
+    expect(screen.queryByRole("button", { name: "Find in output" })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+    await openFind(user);
+    await user.type(screen.getByRole("textbox", { name: "Find in output" }), "needle");
+    expect(container.querySelectorAll("[data-find-match]")).toHaveLength(2);
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Next match" }));
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Previous match" }));
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+  });
+
+  it("closes and resets an open terminal Find on Conversation entry", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat({ agent: sessionAgent(), text: "needle then needle" });
+    const draft = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(draft, "keep this draft");
+    await openFind(user);
+    await user.type(screen.getByRole("textbox", { name: "Find in output" }), "needle");
+    await user.click(screen.getByRole("button", { name: "Next match" }));
+    expect(screen.getByText("2/2")).toBeInTheDocument();
+
+    // Find takes over the header, hiding the menu. Exercise the subscribed preference directly,
+    // as a device preference change can reach this mounted pane with Find still open.
+    act(() => setPaneViewMode("conversation"));
+    await screen.findByText("what changed today?");
+    expect(screen.queryByRole("textbox", { name: "Find in output" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close find" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pane actions" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/type a reply/i)).toBe(draft);
+    expect(draft).toHaveValue("keep this draft");
+
+    await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+    expect(screen.queryByRole("textbox", { name: "Find in output" })).not.toBeInTheDocument();
+    expect(container.querySelector("[data-find-match]")).toBeNull();
+    await openFind(user);
+    const find = screen.getByRole("textbox", { name: "Find in output" });
+    expect(find).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Next match" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Previous match" })).toBeDisabled();
+    await user.type(find, "needle");
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("textbox", { name: "Find in output" })).not.toBeInTheDocument();
+  });
+
+  it("keeps Find in missing-journal Terminal fallback and resets it when Conversation recovers", async () => {
+    let available = false;
+    server.use(http.get(/\/api\/pane\/[^/]+\/history$/, () => HttpResponse.json({
+      available,
+      reason: available ? undefined : "no-log",
+      entries: available ? fixtureTranscript : [],
+      hasMore: false,
+      total: 0,
+      fileTruncated: false,
+    })));
+    setPaneViewMode("conversation");
+    const user = userEvent.setup();
+    renderChat({ agent: sessionAgent(), text: "needle then needle" });
+    await screen.findByText("needle then needle");
+    await openFind(user);
+    await user.type(screen.getByRole("textbox", { name: "Find in output" }), "needle");
+    expect(screen.getByText("1/2")).toBeInTheDocument();
+    available = true;
+    await user.click(screen.getByRole("button", { name: "Refresh conversation" }));
+    await screen.findByText("what changed today?");
+    expect(screen.queryByRole("textbox", { name: "Find in output" })).not.toBeInTheDocument();
+    expect(paneViewMode()).toBe("conversation");
+    await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+    await openFind(user);
+    expect(screen.getByRole("textbox", { name: "Find in output" })).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Next match" })).toBeDisabled();
+  });
+
+  it("hides Wrap and Text size in Conversation without changing Terminal preferences", async () => {
+    localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ wrap: true, fontSize: 10 }));
+    const user = userEvent.setup();
+    renderChat({ agent: sessionAgent() });
+    await user.click(screen.getByRole("button", { name: "Display settings" }));
+    await user.click(screen.getByRole("switch", { name: "Wrap lines" }));
+    await user.click(screen.getByRole("button", { name: "Increase font size" }));
+    expect(screen.getByRole("switch", { name: "Wrap lines" })).not.toBeChecked();
+    const stored = localStorage.getItem("collie:display-prefs:v4");
+    expect(JSON.parse(stored!)).toMatchObject({ wrap: false, fontSize: 11 });
+
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    await screen.findByText("what changed today?");
+    expect(screen.queryByRole("switch", { name: "Wrap lines" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Wrap lines")).not.toBeInTheDocument();
+    expect(screen.queryByText("Text size")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Decrease font size" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Increase font size" })).not.toBeInTheDocument();
+    expect(localStorage.getItem("collie:display-prefs:v4")).toBe(stored);
+
+    await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+    expect(screen.getByRole("switch", { name: "Wrap lines" })).not.toBeChecked();
+    expect(screen.getByText("Text size")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Decrease font size" }));
+    await user.click(screen.getByRole("switch", { name: "Wrap lines" }));
+    expect(JSON.parse(localStorage.getItem("collie:display-prefs:v4")!)).toMatchObject({ wrap: true, fontSize: 10 });
+  });
+
+  it("shows the working state as a distinct bubble, never as transcript text", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat({
+      agent: { ...fixtureAgents[0]!, hasSession: true, status: "working" },
+    });
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    expect(await screen.findByText("what changed today?")).toBeInTheDocument();
+    const bubble = container.querySelector('[data-slot="conversation-working"]');
+    expect(bubble).not.toBeNull();
+    expect(bubble).toHaveTextContent("Working…");
+  });
+
+  it("routes a detected dialog to Terminal — supported or not — with a one-tap fallback", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat({ agent: sessionAgent(), text: MENU_TEXT });
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+
+    const card = container.querySelector('[data-slot="conversation-terminal-required"]');
+    expect(card).not.toBeNull();
+    expect(card).toHaveTextContent("This screen needs the terminal");
+    // The one-tap action lands on the terminal mirror for THIS pane. The card's own button is the
+    // one tapped (the mode row carries a second, same-named fallback above the thread).
+    // SAFETY: `card` is the non-null result of `container.querySelector` asserted `not.toBeNull`
+    // two lines above, so it is an Element; `within` needs the wider HTMLElement type.
+    await user.click(within(card as HTMLElement).getByRole("button", { name: "Open the terminal view for this pane" }));
+    expect(screen.getByText(/Do you want to create hello.txt?/)).toBeInTheDocument();
+    expect(conversationSurface(container)).toBeNull();
+  });
+
+  it.each([false, true])("shows unsupported dialog recovery independently of Raw Terminal=%s", async (rawTerminal) => {
+    localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ rawTerminal }));
+    setPaneViewMode("conversation");
+    const text = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--ask-notes-focused.txt"), "utf8");
+    const { container } = renderChat({ agent: { ...sessionAgent(), agent: "codex" }, text });
+    await screen.findByText("what changed today?");
+    const card = container.querySelector('[data-slot="conversation-terminal-required"]');
+    expect(card).toHaveTextContent("This screen needs the terminal");
+    expect(card?.querySelector('[data-slot="notice"]')).not.toBeNull();
+    expect(card?.closest('[data-slot="collapse"]')).toHaveAttribute("data-state", "open");
+    expect(container.querySelector('[data-slot="prompt-select"]')).toBeNull();
+  });
+
+  it.each([false, true])("withdraws a forced send waiting on a pane read, returning to Terminal=%s", async (returnToTerminal) => {
+    const text = readFileSync(join(process.cwd(), "src/fixtures/panes/omp--menu-model.txt"), "utf8");
+    let reads = 0;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const writes = vi.fn();
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, async () => {
+        reads++;
+        if (reads === 2) await held;
+        return HttpResponse.json({ paneId: "w1:p1", text, truncated: false, revision: 2 });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat({ agent: { ...sessionAgent(), agent: "omp" } });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "do not type into this modal");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await user.click(await screen.findByRole("button", { name: "Type anyway?" }));
+    await waitFor(() => expect(reads).toBe(2));
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    if (returnToTerminal) await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+    release();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+    expect(writes).not.toHaveBeenCalled();
+    expect(box).toHaveValue("do not type into this modal");
+  });
+
+  it("does not inherit a frozen Terminal dialog's composer lock in Conversation", async () => {
+    let advance!: (text: string) => void;
+    function Harness() {
+      const [text, setText] = useState(MENU_TEXT);
+      advance = setText;
+      return <AgentChat paneId="w1:p1" agent={sessionAgent()} agents={fixtureAgents} shellPanes={[]} tabs={[]} text={text} onBack={vi.fn()} onSelect={vi.fn()} />;
+    }
+    const user = userEvent.setup();
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }]);
+    const { container } = render(<RouterProvider router={router} />);
+    await screen.findByRole("button", { name: "Yes" });
+    await openFind(user);
+    act(() => {
+      advance("recent pane output");
+      setPaneViewMode("conversation");
+    });
+    await screen.findByText("what changed today?");
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "send after the dialog closed");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(box).toHaveValue(""));
+    expect(container.querySelector('[data-slot="conversation-surface"]')).not.toBeNull();
+  });
+
+  it("forgets Terminal's armed force override when entering Conversation", async () => {
+    const text = readFileSync(join(process.cwd(), "src/fixtures/panes/omp--menu-model.txt"), "utf8");
+    server.use(http.get(/\/api\/pane\/[^/]+$/, () => HttpResponse.json({ paneId: "w1:p1", text, truncated: false, revision: 2 })));
+    const user = userEvent.setup();
+    renderChat({ agent: { ...sessionAgent(), agent: "omp" } });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "keep my reply");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await screen.findByRole("button", { name: "Type anyway?" });
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
+    await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
+    expect(box).toHaveValue("keep my reply");
+  });
+
+  it.each([false, true])("discards in-flight raw input's pending batches, returning to Terminal=%s", async (returnToTerminal) => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const writes: string[][] = [];
+    server.use(http.post<never, { keys: string[] }>(/\/api\/pane\/[^/]+\/keys$/, async ({ request }) => {
+      const body = await request.json();
+      writes.push(body.keys);
+      if (writes.length === 1) await held;
+      return HttpResponse.json({ ok: true });
+    }));
+    const user = userEvent.setup();
+    renderChat({ agent: sessionAgent() });
+    await user.click(screen.getByRole("button", { name: "Type into terminal" }));
+    await user.type(screen.getByPlaceholderText("Type into the terminal…"), "ab");
+    await waitFor(() => expect(writes).toEqual([["a"]]));
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    expect(screen.queryByPlaceholderText("Type into the terminal…")).toBeNull();
+    if (returnToTerminal) await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+    release();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
+    expect(writes).toEqual([["a"]]);
+    expect(screen.queryByPlaceholderText("Type into the terminal…")).toBeNull();
+    if (!returnToTerminal) await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+    await user.click(screen.getByRole("button", { name: "Type into terminal" }));
+    await user.type(screen.getByPlaceholderText("Type into the terminal…"), "c");
+    await waitFor(() => expect(writes).toEqual([["a"], ["c"]]));
+  });
+
+  it("refreshes live settled output and attention while the reader stays scrolled back", async () => {
+    setPaneViewMode("conversation");
+    const idle = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--fresh-idle.txt"), "utf8");
+    const dialog = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--ask-notes-focused.txt"), "utf8");
+    let updateText!: (text: string) => void;
+    let hits = 0;
+    server.use(http.get(/\/api\/pane\/[^/]+\/history/, () => {
+      hits++;
+      return HttpResponse.json({ available: true, entries: fixtureTranscript, hasMore: false, total: 2, fileTruncated: false });
+    }));
+    function ChangingPane() {
+      const [text, setText] = useState(idle);
+      updateText = setText;
+      return <AgentChat paneId="w1:p1" agent={{ ...sessionAgent(), agent: "codex" }} agents={fixtureAgents} shellPanes={[]} tabs={[]} text={text} onBack={() => {}} onSelect={() => {}} />;
+    }
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<ChangingPane />) }]);
+    const { container } = render(<RouterProvider router={router} />);
+    await screen.findByText("what changed today?");
+    expect(container.querySelector('[data-slot="conversation-terminal-required"]')).toBeNull();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1400)); });
+    expect(hits).toBe(2);
+    const scroller = container.querySelector('[data-slot="conversation-thread"]')!.parentElement!;
+    Object.defineProperties(scroller, {
+      scrollHeight: { value: 2000, configurable: true },
+      clientHeight: { value: 400, configurable: true },
+      scrollTop: { value: 100, configurable: true, writable: true },
+    });
+    fireEvent.scroll(scroller);
+    act(() => updateText(dialog));
+    await waitFor(() => expect(container.querySelector('[data-slot="conversation-terminal-required"]')).not.toBeNull());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1800)); });
+    expect(hits).toBe(3);
+    expect(scroller.scrollTop).toBe(100);
+    act(() => updateText(idle));
+    await waitFor(() => expect(container.querySelector('[data-slot="conversation-terminal-required"]')).toBeNull());
+    expect(scroller.scrollTop).toBe(100);
+  }, 10000);
+
+  it.each(["no-log", "no-session"])("falls back on a confirmed %s response without changing the device preference", async (reason) => {
+    setPaneViewMode("conversation");
+    server.use(http.get(/\/api\/pane\/[^/]+\/history/, () => HttpResponse.json({
+      available: false, reason, entries: [], hasMore: false, total: 0, fileTruncated: false,
+    })));
+    const { container } = renderChat({ agent: sessionAgent() });
+    await waitFor(() => expect(container.querySelector(`[data-state="${reason}"]`)).not.toBeNull());
+    expect(screen.getByText("recent pane output")).toBeInTheDocument();
+    expect(container.querySelector('[data-slot="conversation-surface"]')).toBeNull();
+    expect(paneViewMode()).toBe("conversation");
+    server.use(http.get(/\/api\/pane\/[^/]+\/history/, () => HttpResponse.json({
+      available: true, entries: [], hasMore: false, total: 0, fileTruncated: false,
+    })));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Refresh conversation" }));
+    await waitFor(() => expect(container.querySelector('[data-slot="conversation-surface"]')).not.toBeNull());
+    expect(paneViewMode()).toBe("conversation");
+  });
+
+  // ── Review-finding regressions (02, FAIL 1/5) ───────────────────────────────────────────────
+
+  it("disarms an armed Type session on entering Conversation — no raw key write survives the switch", async () => {
+    const writes = vi.fn(() => HttpResponse.json({ ok: true }));
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/(reply|keys)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    const { container } = renderChat({ agent: sessionAgent() });
+    // Arm direct typing exactly as a user would: the Type launcher in Terminal.
+    await user.click(screen.getByRole("button", { name: "Type into terminal" }));
+    expect(screen.getByPlaceholderText("Type into the terminal…")).toBeInTheDocument();
+
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    expect(conversationSurface(container)).toBeInTheDocument();
+
+    // The composer is back to the guarded reply draft (Type was DISCARDED, not paused): what the
+    // user types now can only ever leave through the guarded reply path, and Enter alone sends
+    // nothing. The pre-switch raw path must have written nothing at all.
+    expect(screen.queryByPlaceholderText("Type into the terminal…")).toBeNull();
+    await user.type(screen.getByRole("textbox"), "x");
+    await user.keyboard("{Enter}");
+    expect(writes).not.toHaveBeenCalled();
+  });
+
+  it("closes an open Keys tray on entering Conversation and reopens it fresh in Terminal", async () => {
+    const user = userEvent.setup();
+    renderChat({ agent: sessionAgent() });
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    expect(screen.getByRole("button", { name: "Close Keys" })).toBeInTheDocument();
+
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    // The tray is closed (its launcher is absent in chat-only, and the dock unmounted — which
+    // destroys the composed queue with it, per the composer's own drawer contract).
+    expect(screen.queryByRole("button", { name: "Close Keys" })).toBeNull();
+    expect(screen.queryByText("Keys")).toBeNull();
+
+    await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+    expect(screen.getByText("recent pane output")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Keys" }));
+    // Returning to Terminal restores the LAUNCHER, not the armed state or a stale queue: a fresh,
+    // empty tray.
+    expect(screen.getByRole("button", { name: "Close Keys" })).toBeInTheDocument();
+  });
+
+  it("keeps the toolbar, dialog card and state card outside the transcript scroller", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat({ agent: sessionAgent(), text: MENU_TEXT });
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    await screen.findByText("what changed today?");
+    // The thread lives in the scroller; everything the user must be able to reach at any scroll
+    // position lives OUTSIDE it (review finding F3).
+    const header = container.querySelector('[data-slot="conversation-view"]');
+    const thread = container.querySelector('[data-slot="conversation-thread"]');
+    const card = container.querySelector('[data-slot="conversation-terminal-required"]');
+    expect(header).not.toBeNull();
+    expect(thread).not.toBeNull();
+    expect(card).not.toBeNull();
+    expect(header!.contains(thread!)).toBe(false); // the thread is the only thing that scrolls
+    expect(header!.contains(card!)).toBe(true); // the one-tap action stays outside the scroller
+  });
+
+  it("keeps the unavailable state visible after entries have loaded", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat({ agent: sessionAgent() });
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    await screen.findByText("what changed today?"); // first pass loaded entries
+    expect(container.querySelector('[data-slot="conversation-state"]')).toBeNull();
+
+    // A later pass reports the transcript disabled — with the cache still on screen, the state
+    // card must STILL render (review finding F4: transitions, not just empty initial loads).
+    server.use(
+      http.get(/\/api\/pane\/[^/]+\/history/, () =>
+        HttpResponse.json({
+          paneId: "w1:p1",
+          available: false,
+          reason: "disabled",
+          entries: [],
+          hasMore: false,
+          total: 0,
+          fileTruncated: false,
+        }),
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Refresh conversation" }));
+    expect(
+      await screen.findByText("Transcript history is switched off on this bridge (COLLIE_TRANSCRIPT)."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("what changed today?")).toBeInTheDocument(); // cache retained
+  });
+
+  it("sends a guarded reply from Conversation and refreshes the thread", async () => {
+    const replies: { text?: string; submit?: boolean }[] = [];
+    let historyHits = 0;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        // Mirror the shared handler: the guarded send's verify step re-reads the pane, so the sent
+        // text must actually reach the fixture pane or the guard withholds the submit key.
+        // SAFETY: `lib/api.ts` is the only caller of this endpoint and posts exactly
+        // `{ text, submit, expected_prompt? }`; the narrowed shape is what `recordReply` accepts.
+        const body = (await request.json()) as { text?: string; submit?: boolean };
+        replies.push(body);
+        recordReply(body);
+        return HttpResponse.json({ ok: true });
+      }),
+      http.get(/\/api\/pane\/[^/]+\/history/, () => {
+        historyHits += 1;
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          available: true,
+          entries: fixtureTranscript,
+          hasMore: false,
+          total: fixtureTranscript.length,
+          fileTruncated: false,
+        });
+      }),
+    );
+    const user = userEvent.setup();
+    const { container } = renderChat({ agent: sessionAgent() });
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    await screen.findByText("what changed today?");
+    const entryFetches = historyHits;
+
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "sent from the thread");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    // The guarded path: the text is typed first (submit withheld), then the submit goes out once
+    // the pre-flight's live read has seen it land — the composer guard's own contract.
+    expect(replies[0]).toMatchObject({ text: "sent from the thread", submit: false });
+    expect(replies.at(-1)).toMatchObject({ submit: true });
+    // The successful send also triggered the thread's bounded refresh.
+    await waitFor(() => expect(historyHits).toBeGreaterThan(entryFetches));
+    expect(conversationSurface(container)).toBeInTheDocument();
+  });
+
+  it("uploads an attachment from Conversation through the existing path", async () => {
+    const uploads: FormData[] = [];
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/upload$/, async ({ request }) => {
+        uploads.push(await request.formData());
+        return HttpResponse.json({ ok: true, path: "/tmp/notes.txt" });
+      }),
+    );
+    const user = userEvent.setup();
+    const { container } = renderChat({ agent: sessionAgent() });
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    await screen.findByText("what changed today?");
+
+    const input = document.querySelector('input[data-testid="attach-files"]');
+    // SAFETY: the composer always renders this hidden file input (components/composer.tsx);
+    // the assertion below is what proves it is present.
+    expect(input).not.toBeNull();
+    // SAFETY: the assertion above proved the query found the composer's file input.
+    await user.upload(input as HTMLInputElement, new File(["png"], "shot.png", { type: "image/png" }));
+    await waitFor(() => expect(uploads).toHaveLength(1));
+    // MSW's `request.formData()` rebuilds the multipart body with its OWN File class, so the
+    // identity check is the mime type, not the constructor.
+    expect(uploads[0]!.get("file")).toHaveProperty("type", "image/png");
+    expect(conversationSurface(container)).toBeInTheDocument();
   });
 });
