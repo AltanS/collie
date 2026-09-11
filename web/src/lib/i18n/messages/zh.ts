@@ -268,6 +268,7 @@ export const zh: Dictionary = {
   "chat.history.label": "对话历史",
   "chat.conversation.label": "会话视图",
   "chat.conversation.title": "会话",
+  "chat.conversation.updated": "会话已更新。跳到最新消息",
   "chat.conversation.openTerminal": "终端",
   "chat.conversation.openTerminalAria": "打开此面板的终端视图",
   "chat.conversation.refreshAria": "刷新会话",

@@ -46,6 +46,7 @@ import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { canRenderInline } from "@/components/typed-blocks";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
+import { ConversationMessageList } from "@/components/conversation-message-list";
 import { ConversationView, ConversationThread } from "@/components/conversation-view";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
@@ -60,7 +61,7 @@ import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { CompactStripLabels, STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
-import { useHostHealth } from "@/components/crew-provider";
+import { useCrew, useHostHealth } from "@/components/crew-provider";
 import { writeRefusal } from "@/lib/host-health";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
@@ -724,6 +725,14 @@ export function AgentChat({
   const viewMode = usePaneViewMode();
   const conversationWanted = viewMode === "conversation";
   const transcriptSupported = historyAvailable && !isShell;
+  const { servers, sessions } = useCrew();
+  // Only observable identity fields belong here, not health, counts, timestamps or array identity.
+  // An invisible same-pane journal replacement remains unsupported by the web-only contract.
+  const conversationSource = JSON.stringify([
+    agent?.agent,
+    servers.map(server => [server.id, server.isLead]).toSorted(),
+    sessions.map(session => [session.host, session.name, session.isPrimary]).toSorted(),
+  ]);
   const setViewMode = setPaneViewMode;
   const openTerminal = () => setViewMode("terminal");
 
@@ -733,7 +742,9 @@ export function AgentChat({
   const conversation = useConversation({
     paneId,
     scope,
-    enabled: conversationWanted && transcriptSupported,
+    enabled: transcriptSupported,
+    active: conversationWanted,
+    sourceKey: conversationSource,
     mirrorText: text,
   });
   // A confirmed missing journal falls back for this pane only. Keep the source enabled so its
@@ -835,7 +846,7 @@ export function AgentChat({
     scope,
     // Disabled while Conversation owns the transcript: both read the same journal, and the card
     // would duplicate the thread's fetches (the Conversation hook owns that cadence now).
-    enabled: historyAvailable && prefs.expandClippedReply && !conversationActive,
+    enabled: historyAvailable && prefs.expandClippedReply && !conversationWanted,
     mirrorText: display,
   });
   const placement = useMemo(
@@ -1869,17 +1880,7 @@ export function AgentChat({
                  animate through Collapse. Only the thread scrolls, inside the pane's height. */
               <div data-slot="conversation-surface" className="flex h-full min-h-0 flex-col">
                 <div className="min-h-0 flex-1">
-                  <ChatMessageList
-                    ref={listRef}
-                    // Follow the thread's tail: the last entry's uuid changes whenever a persisted turn
-                    // lands or an existing one is replaced (later tool results), so the same follow
-                    // behaviour the mirror has rides on transcript identity rather than pane text.
-                    dep={conversation.entries.at(-1)?.uuid ?? ""}
-                    // The list owns reader position; it must not freeze Terminal's live mirror.
-                    // (No onAtBottomChange here: the conversation thread's scroll position is its
-                    // own — see the setFollowing(true) on entry above.)
-                    className="px-4 pt-2 pb-3"
-                  >
+                  <ConversationMessageList ref={listRef} entries={conversation.entries}>
                     <ConversationThread
                       entries={conversation.entries}
                       state={conversation.state}
@@ -1894,7 +1895,7 @@ export function AgentChat({
                       onMenuAction={handleMenuAction}
                       promptDisabled={readOnly || gone}
                     />
-                  </ChatMessageList>
+                  </ConversationMessageList>
                 </div>
               </div>
             ) : (

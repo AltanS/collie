@@ -284,6 +284,7 @@ export const es: Dictionary = {
   "chat.history.label": "Historial de conversación",
   "chat.conversation.label": "Vista de conversación",
   "chat.conversation.title": "Conversación",
+  "chat.conversation.updated": "Conversación actualizada. Ir al último mensaje",
   "chat.conversation.openTerminal": "Terminal",
   "chat.conversation.openTerminalAria": "Abrir la vista de terminal de este panel",
   "chat.conversation.refreshAria": "Actualizar conversación",

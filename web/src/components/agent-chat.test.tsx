@@ -27,7 +27,7 @@ import { setPaneViewMode, paneViewMode, __resetPaneViewMode } from "@/lib/pane-v
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
-import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscript, recordReply } from "@/test/handlers";
+import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscript, fixtureServers, recordReply } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
 import type { AgentStatus, AgentView, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
@@ -88,6 +88,36 @@ async function openFind(user: User) {
   await openPaneMenu(user);
   await user.click(screen.getByRole("button", { name: "Find in output" }));
 }
+
+describe("AgentChat Conversation source continuity", () => {
+  it("invalidates a held journal response when the observable crew changes without a pane change", async () => {
+    setPaneViewMode("conversation");
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    let calls = 0;
+    server.use(http.get(/\/api\/pane\/[^/]+\/history$/, async () => {
+      const first = ++calls === 1;
+      if (first) await held;
+      return HttpResponse.json({ available: true, entries: [{ ...fixtureTranscript[1]!, uuid: first ? "old" : "new", parts: [{ kind: "text", text: first ? "Old crew transcript" : "Current crew transcript" }] }], hasMore: false, total: 1, fileTruncated: false });
+    }));
+    const agent = { ...fixtureAgents[0]!, hasSession: true };
+    function Harness() {
+      const [changed, setChanged] = useState(false);
+      const servers = changed ? fixtureServers.map(member => Object.assign({}, member, { id: `${member.id}-new` })) : fixtureServers;
+      return <CrewProvider servers={servers}>
+        <button onClick={() => setChanged(true)}>Change fixture crew</button>
+        <AgentChat paneId={agent.paneId} agent={agent} agents={[agent]} shellPanes={[]} tabs={[]} text="tail" onBack={() => {}} onSelect={() => {}} />
+      </CrewProvider>;
+    }
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }]);
+    render(<RouterProvider router={router} />);
+    await waitFor(() => expect(calls).toBe(1));
+    fireEvent.click(screen.getByRole("button", { name: "Change fixture crew" }));
+    expect(await screen.findByText("Current crew transcript")).toBeInTheDocument();
+    await act(async () => release());
+    expect(screen.queryByText("Old crew transcript")).not.toBeInTheDocument();
+  });
+});
 
 describe("AgentChat — reply flow", () => {
   it("sends a typed reply and clears the composer on success", async () => {

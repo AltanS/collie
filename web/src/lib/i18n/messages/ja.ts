@@ -281,6 +281,7 @@ export const ja: Dictionary = {
   "chat.history.label": "会話履歴",
   "chat.conversation.label": "会話ビュー",
   "chat.conversation.title": "会話",
+  "chat.conversation.updated": "会話が更新されました。最新へ移動",
   "chat.conversation.openTerminal": "ターミナル",
   "chat.conversation.openTerminalAria": "このペインのターミナルビューを開く",
   "chat.conversation.refreshAria": "会話を更新",
