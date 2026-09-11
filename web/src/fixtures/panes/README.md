@@ -419,10 +419,11 @@ the UI retained `COLLIE_RULE_18110_MODAL_GUARD`, offered the explicit override, 
 ## omp mobile paper fill (reconstructed 2026-09-11)
 
 **Not a capture.** Reconstructed from a live omp pane whose tool cards paint near-white paper
-fills (`48;2;230;236;231` and `48;2;231;237;244`). The mirror is authored in dark space and
-inverted under the light theme, so those fills land as solid black bars on a phone. It is the
-ground truth for `omp/display.ts` only. Content is generic; replace with a real `format:ansi`
-capture when a sandbox pane paints these rows, and delete this note.
+fills. The mirror is authored in dark space and inverted under the light theme, so light fills
+land as solid black bars on a phone. `omp/display.ts` keys off luminance, not one theme's
+hexes; this file is one example (plus a dark semantic-diff row that must keep its background).
+Content is generic; replace with a real `format:ansi` capture when a sandbox pane paints these
+rows, and delete this note.
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|

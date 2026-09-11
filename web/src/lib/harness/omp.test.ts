@@ -394,19 +394,21 @@ describe("omp mobile display cleanup", () => {
     expect(decorateOmpDisplay(lines)).toBe(lines);
   });
 
-  it("marks only omp's observed paper fills for mobile transparency", () => {
+  it("marks any light fill, not one theme's paper, and leaves dark diffs alone", () => {
     const esc = String.fromCharCode(27);
     const paper = `${esc}[48;2;230;236;231mtool chrome${esc}[0m`;
-    const paper2 = `${esc}[48;2;231;237;244mother card${esc}[0m`;
+    const otherLight = `${esc}[48;2;250;250;250mother theme${esc}[0m`;
+    const darkBody = `${esc}[48;2;15;18;22mdark body${esc}[0m`;
     const diff = `${esc}[48;2;33;58;43m+ semantic diff${esc}[0m`;
-    const [paperLine, paper2Line, diffLine] = decorateOmpDisplay(
-      splitLines(parseAnsi(`${paper}\n${paper2}\n${diff}`)),
+    const [paperLine, otherLine, bodyLine, diffLine] = decorateOmpDisplay(
+      splitLines(parseAnsi(`${paper}\n${otherLight}\n${darkBody}\n${diff}`)),
     );
 
-    expect(paperLine!.segments[0]!.bg).toBe("rgb(230,236,231)");
-    expect(paperLine!.segments[0]!.style.backgroundColor).toBe("rgb(230,236,231)");
     expect(paperLine!.segments[0]!.mobileTransparentBg).toBe(true);
-    expect(paper2Line!.segments[0]!.mobileTransparentBg).toBe(true);
+    expect(otherLine!.segments[0]!.bg).toBe("rgb(250,250,250)");
+    expect(otherLine!.segments[0]!.mobileTransparentBg).toBe(true);
+    expect(bodyLine!.segments[0]!.bg).toBe("rgb(15,18,22)");
+    expect(bodyLine!.segments[0]!.mobileTransparentBg).toBeUndefined();
     expect(diffLine!.segments[0]!.bg).toBe("rgb(33,58,43)");
     expect(diffLine!.segments[0]!.mobileTransparentBg).toBeUndefined();
   });
