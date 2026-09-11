@@ -43,6 +43,7 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { adapterFor, rendersNativeMirror } from "@/lib/harness";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
+import { canRenderInline } from "@/components/typed-blocks";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
 import { ConversationView, ConversationThread } from "@/components/conversation-view";
@@ -742,23 +743,52 @@ export function AgentChat({
   const conversationActive = conversationWanted && transcriptSupported && !journalMissing;
   const conversationFallback = conversationWanted && transcriptSupported && journalMissing;
   // Find belongs to the Terminal mirror. Discard its session on entry, including journal recovery,
-  // so returning to Terminal cannot restore a stale query, count or selected match.
+  // so returning to Terminal cannot restore a stale query, count or selected match. Entry also
+  // re-adopts the live pane pair: the mirror may have been left frozen by a scroll-up in Terminal,
+  // and the inline prompts' freshness binding (shown.revision) must be the revision of what the
+  // thread actually renders.
   useEffect(() => {
     if (!conversationActive) return;
+    setFollowing(true);
     setFindOpen(false);
     setFindQuery("");
     setMatchCount(0);
     setCurrentMatch(0);
   }, [conversationActive]);
+  // The pane's typed blocks, derived LIVE from the pane text — the same source as the attention
+  // check below, so what renders inline and what the attention card says can never disagree. They
+  // are consumed verbatim: the supported non-raw tail block renders inline in the thread through
+  // TypedBlocks with the UNCHANGED handlers, so no grammar, no fresh rederivation and no guard is
+  // duplicated. The tap's freshness binding is the frozen {text, revision} pair the guards already
+  // use (`shown.revision`, the revision of what the user is LOOKING AT): if the pane changes after
+  // the render, the guard's fresh read no longer matches the binding and the action refuses — the
+  // same stale-refusal contract the mirror's controls have always had. Conversation forces
+  // tail-follow on entry (below), so the shown pair is the live pair while reading.
+  const conversationBlocks = useMemo(
+    // Raw Terminal is a mirror display preference, never a Conversation detection switch.
+    () => adapterFor(agent?.agent)?.buildBlocks(splitLines(parseAnsi(text))) ?? [],
+    [text, agent?.agent],
+  );
   // Attention is live state, not the frozen Terminal mirror or its Raw display preference.
   // Readiness refusal covers unsupported dialogs without inventing controls for raw blocks.
+  // FAIL CLOSED: only a SUPPORTED typed tail block renders inline. A keyboard-owning screen with no
+  // typed model — unknown, stale, malformed, password-like — and a not-ready composer have NO
+  // Conversation action; they surface the Terminal-required card instead. `autocomplete` is the one
+  // non-raw kind that owns no keyboard: it renders inline as pure presentation, which TypedBlocks
+  // already models, and the composer stays live over it exactly as in Terminal.
   const conversationAttention = useMemo(() => {
     const adapter = adapterFor(agent?.agent);
     if (!text || !adapter) return { dialogPresent: false, requiresTerminal: false };
     const lines = splitLines(parseAnsi(text));
-    const ownsKeyboard = adapter.buildBlocks(lines).some(blockOwnsKeyboard);
-    return { dialogPresent: ownsKeyboard, requiresTerminal: ownsKeyboard || adapter.composerReady?.(lines) === false };
-  }, [text, agent?.agent]);
+    const ownsKeyboard = conversationBlocks.some(blockOwnsKeyboard);
+    const supportedTail = canRenderInline(conversationBlocks);
+    return {
+      dialogPresent: ownsKeyboard,
+      requiresTerminal: supportedTail
+        ? false
+        : ownsKeyboard || adapter.composerReady?.(lines) === false,
+    };
+  }, [conversationBlocks, text, agent?.agent]);
   // A FOURTH state, and the per-pane sibling of the third (#137). `hasSession` folds two facts into
   // one flag bridge-side — "this pane named a session" AND "this agent has a journal adapter" — so
   // its absence alone cannot say which half failed, and the two want opposite words. On an agent
@@ -1846,6 +1876,8 @@ export function AgentChat({
                     // behaviour the mirror has rides on transcript identity rather than pane text.
                     dep={conversation.entries.at(-1)?.uuid ?? ""}
                     // The list owns reader position; it must not freeze Terminal's live mirror.
+                    // (No onAtBottomChange here: the conversation thread's scroll position is its
+                    // own — see the setFollowing(true) on entry above.)
                     className="px-4 pt-2 pb-3"
                   >
                     <ConversationThread
@@ -1854,6 +1886,13 @@ export function AgentChat({
                       working={!isShell && agent?.status === "working"}
                       agent={agent?.agent}
                       scope={scope}
+                      blocks={conversationBlocks}
+                      onPromptAction={handlePromptAction}
+                      onWizardAction={handleWizardAction}
+                      onPreviewAction={handlePreviewAction}
+                      onMultiSelectAction={handleMultiSelectAction}
+                      onMenuAction={handleMenuAction}
+                      promptDisabled={readOnly || gone}
                     />
                   </ChatMessageList>
                 </div>

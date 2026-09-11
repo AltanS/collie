@@ -7,6 +7,7 @@ import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider, useParams } from "react-router";
 
 import { __resetConnectionHealth } from "@/lib/connection-health";
+import { claudeAdapter, claudeBuildBlocks } from "@/lib/harness/claude";
 
 // Mock the race guard at AgentChat's seam so the frozen-revision tests can observe exactly what
 // `detectedRevision` the tap handler passes (the guard's own behaviour is covered in
@@ -2804,21 +2805,63 @@ describe("AgentChat — Conversation mode", () => {
     expect(bubble).toHaveTextContent("Working…");
   });
 
-  it("routes a detected dialog to Terminal — supported or not — with a one-tap fallback", async () => {
+  it("does not show the working bubble while an inline prompt asks its question", async () => {
+    const user = userEvent.setup();
+    const { container } = renderChat({
+      agent: { ...sessionAgent(), status: "working" },
+      text: MENU_TEXT,
+    });
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+    expect(await screen.findByRole("button", { name: "Yes" })).toBeInTheDocument();
+    // A prompt is a question waiting for an answer; "Working…" beside tappable answers would
+    // claim both states of the same screen at once.
+    expect(container.querySelector('[data-slot="conversation-working"]')).toBeNull();
+    expect(container.querySelector('[data-slot="conversation-inline-prompts"]')).not.toBeNull();
+  });
+
+  it("renders a supported prompt inline in the thread through the terminal's own guarded handler", async () => {
+    const mockSubmit = vi.mocked(submitPromptOption);
+    mockSubmit.mockReset();
+    mockSubmit.mockResolvedValue({ status: "sent" });
     const user = userEvent.setup();
     const { container } = renderChat({ agent: sessionAgent(), text: MENU_TEXT });
+    await openPaneMenu(user);
+    await user.click(screen.getByRole("button", { name: "Conversation view" }));
+
+    // The REAL detector lifted the tail menu, and the buttons live INSIDE the thread — inline at
+    // the tail, not as a Terminal-required card and not as a separate action bar.
+    // SAFETY: the non-null assertion follows immediately; `within` needs the wider HTMLElement type.
+    const thread = container.querySelector('[data-slot="conversation-thread"]') as HTMLElement;
+    expect(thread).not.toBeNull();
+    expect(within(thread).getByRole("button", { name: "Yes" })).toBeInTheDocument();
+    expect(container.querySelector('[data-slot="conversation-terminal-required"]')).toBeNull();
+
+    // Tapping it runs the SAME guarded handler the mirror's controls use: the guard's freshness
+    // binding (the frozen {text, revision} pair) rides along unchanged.
+    await user.click(within(thread).getByRole("button", { name: "Yes" }));
+    await waitFor(() => expect(mockSubmit).toHaveBeenCalledTimes(1));
+    expect(mockSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ paneId: "w1:p1", detectedRevision: expect.any(Number), prompt: expect.objectContaining({ question: "Do you want to create hello.txt?" }) }),
+    );
+  });
+
+  it("routes a screen no grammar recognises to Terminal with a one-tap fallback", async () => {
+    const user = userEvent.setup();
+    const text = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--ask-notes-focused.txt"), "utf8");
+    const { container } = renderChat({ agent: { ...sessionAgent(), agent: "codex" }, text });
     await openPaneMenu(user);
     await user.click(screen.getByRole("button", { name: "Conversation view" }));
 
     const card = container.querySelector('[data-slot="conversation-terminal-required"]');
     expect(card).not.toBeNull();
     expect(card).toHaveTextContent("This screen needs the terminal");
+    expect(container.querySelector('[data-slot="conversation-inline-prompts"]')).toBeNull();
     // The one-tap action lands on the terminal mirror for THIS pane. The card's own button is the
     // one tapped (the mode row carries a second, same-named fallback above the thread).
     // SAFETY: `card` is the non-null result of `container.querySelector` asserted `not.toBeNull`
     // two lines above, so it is an Element; `within` needs the wider HTMLElement type.
     await user.click(within(card as HTMLElement).getByRole("button", { name: "Open the terminal view for this pane" }));
-    expect(screen.getByText(/Do you want to create hello.txt?/)).toBeInTheDocument();
     expect(conversationSurface(container)).toBeNull();
   });
 
@@ -2833,6 +2876,58 @@ describe("AgentChat — Conversation mode", () => {
     expect(card?.querySelector('[data-slot="notice"]')).not.toBeNull();
     expect(card?.closest('[data-slot="collapse"]')).toHaveAttribute("data-state", "open");
     expect(container.querySelector('[data-slot="prompt-select"]')).toBeNull();
+  });
+
+  it("offers Terminal instead of approval when a typed prompt has no displayable context", async () => {
+    // Exercise a presentation gap at the adapter seam, without adding a second detector.
+    const build = vi.spyOn(claudeAdapter, "buildBlocks").mockImplementation(
+      (lines) => claudeBuildBlocks(lines).filter((block) => block.kind !== "raw"),
+    );
+    try {
+      setPaneViewMode("conversation");
+      const user = userEvent.setup();
+      const { container } = renderChat({ agent: sessionAgent(), text: MENU_TEXT });
+      await screen.findByText("what changed today?");
+      expect(container.querySelector('[data-slot="conversation-inline-prompts"]')).toBeNull();
+      expect(screen.queryByRole("button", { name: "Yes" })).toBeNull();
+      expect(screen.getByText("This screen needs the terminal")).toBeVisible();
+      const draft = screen.getByPlaceholderText(/type a reply/i);
+      await user.type(draft, "keep my draft");
+      await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+      expect(screen.getByRole("button", { name: "Yes" })).toBeVisible();
+      expect(draft).toHaveValue("keep my draft");
+    } finally {
+      build.mockRestore();
+    }
+  });
+
+  it.each([false, true])("locks known-dialog sends despite failed fresh reads and Raw Terminal=%s", async (rawTerminal) => {
+    localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ rawTerminal }));
+    setPaneViewMode("conversation");
+    const text = readFileSync(join(process.cwd(), "src/fixtures/panes/claude--permission-bash.txt"), "utf8");
+    const writes = vi.fn();
+    const reads = vi.fn();
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        reads();
+        return HttpResponse.json({ error: "injected pane read failure" }, { status: 500 });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat({ agent: sessionAgent(), text });
+    await screen.findByText("what changed today?");
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "do not type into this modal");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    expect(await screen.findByText(/A dialog is waiting/)).toBeVisible();
+    expect(box).toHaveValue("do not type into this modal");
+    // The live dialog lock refuses BEFORE preflight. A failing read cannot remove that fact.
+    expect(reads).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
   });
 
   it.each([false, true])("withdraws a forced send waiting on a pane read, returning to Terminal=%s", async (returnToTerminal) => {
@@ -3046,7 +3141,10 @@ describe("AgentChat — Conversation mode", () => {
 
   it("keeps the toolbar, dialog card and state card outside the transcript scroller", async () => {
     const user = userEvent.setup();
-    const { container } = renderChat({ agent: sessionAgent(), text: MENU_TEXT });
+    // An UNSUPPORTED screen owns the card now: a supported prompt renders inline in the thread
+    // (its own test above), so the card needs a screen no grammar recognises.
+    const text = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--ask-notes-focused.txt"), "utf8");
+    const { container } = renderChat({ agent: { ...sessionAgent(), agent: "codex" }, text });
     await openPaneMenu(user);
     await user.click(screen.getByRole("button", { name: "Conversation view" }));
     await screen.findByText("what changed today?");
