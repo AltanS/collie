@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef } from "react";
 import type {
   Block,
   MenuModel,
@@ -13,6 +14,8 @@ import { MultiSelectBlock } from "@/components/multi-select-block";
 import { MenuBlock, type MenuBlockAction } from "@/components/menu-block";
 import { AutocompleteBlock } from "@/components/autocomplete-block";
 import type { MultiSelectIntent } from "@/lib/multi-select-action";
+import { lineText } from "@/lib/blocks";
+import { QuestionHeading } from "@/components/option-button";
 
 // The reusable typed-block seam: the presentation half of AnsiOutput's non-raw tail block, extracted
 // so a view that does NOT render raw terminal rows (Conversation mode) can still show the supported
@@ -48,6 +51,57 @@ export interface TypedBlocksProps {
   onMenuAction?: (action: MenuBlockAction, menu: MenuModel) => void | Promise<void>;
   /** Disable the prompt-select/wizard/preview/multi-select/menu buttons (read-only / gone pane). */
   promptDisabled?: boolean;
+}
+
+/** These controls rely on the raw mirror for their question and action details in Terminal. */
+function contextQuestion(blocks: readonly Block[]): string | undefined {
+  const block = blocks.find((candidate) => candidate.kind !== "raw");
+  if (block?.kind === "prompt-select") return block.prompt.question;
+  if (block?.kind === "preview-select" && block.preview.steps === null) return block.preview.question;
+  return undefined;
+}
+
+function rawContext(blocks: readonly Block[]): string {
+  return blocks.flatMap((block) => block.kind === "raw" ? block.lines.map(lineText) : []).join("\n");
+}
+
+/** Presentation eligibility only. Keyboard ownership and action authorization remain independent. */
+export function canRenderInline(blocks: readonly Block[]): boolean {
+  if (!blocks.some((block) => block.kind !== "raw")) return false;
+  const question = contextQuestion(blocks);
+  if (question === undefined) return true;
+  // These renderers expect the current question in the raw preamble. An adapter that places it
+  // elsewhere may also have lifted action details we cannot display here. Use Terminal instead
+  // of treating unrelated raw output as approval context. Normalize wrapping, not grammar.
+  const visibleQuestion = question.replace(/\s+/g, " ").trim();
+  return visibleQuestion.length > 0 && rawContext(blocks).replace(/\s+/g, " ").includes(visibleQuestion);
+}
+
+/** Add the context Terminal normally supplies, without changing its controls or their callbacks. */
+export function InlineTypedBlocks(props: TypedBlocksProps) {
+  const contextRef = useRef<HTMLPreElement>(null);
+  const question = contextQuestion(props.blocks);
+  // Keep ALL captured raw context. A row cap could drop the command, filename or beginning of a
+  // proposed edit. The AST has no semantic start-of-action boundary; do not invent one here.
+  const context = rawContext(props.blocks);
+  // Start at the current action beside the question, not old output at the pane's head. Earlier
+  // rows remain scrollable, and an unrelated render must not reset the reader's position.
+  useLayoutEffect(() => {
+    const node = contextRef.current;
+    if (node) node.scrollTop = node.scrollHeight;
+  }, [context]);
+  if (!canRenderInline(props.blocks)) return null;
+  return (
+    <>
+      {question !== undefined && (
+        <div data-slot="conversation-inline-context" className="min-w-0 max-w-full">
+          <pre ref={contextRef} className="mb-2 max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono text-xs text-foreground focus-visible:outline-2 outline-offset-2 outline-ring">{context}</pre>
+          <QuestionHeading>{question}</QuestionHeading>
+        </div>
+      )}
+      <TypedBlocks {...props} />
+    </>
+  );
 }
 
 export function TypedBlocks({

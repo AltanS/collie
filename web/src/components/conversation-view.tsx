@@ -11,6 +11,7 @@ import type { TranscriptEntry, TranscriptPart } from "@/lib/types";
 import { getLocaleSnapshot, t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 import type { ConversationState } from "@/hooks/use-conversation";
+import { canRenderInline, InlineTypedBlocks, type TypedBlocksProps } from "@/components/typed-blocks";
 
 // The Conversation reading surface: the pane's persisted transcript as a Collie-native Variant B
 // message thread — user turns as right-aligned bubbles, the agent's turns plain on the left, tool
@@ -22,8 +23,8 @@ import type { ConversationState } from "@/hooks/use-conversation";
 //  1. Working state is a distinct BUBBLE at the tail — never synthetic transcript text, never a
 //     promised partial turn. The journal has no completion marker, so the bubble only ever says
 //     "the agent is working", nothing about what it is producing.
-//  2. Any detected dialog — supported or not, until inline prompts land — shows a Terminal-required
-//     card: one tap to the in-app terminal mirror, which never calls focusPane and never writes.
+//  2. A dialog without displayable inline context shows a Terminal-required card. Its in-app
+//     Terminal switch never calls focusPane and never writes.
 
 function clockTime(iso: string): string {
   if (!iso) return "";
@@ -131,11 +132,22 @@ export interface ConversationViewProps {
   state: ConversationState;
   /** The pane's agent is actively working — the distinct working bubble, never synthetic text. */
   working: boolean;
-  /** A dialog is detected on the terminal — supported or not, this slice routes it to Terminal. */
+  /** The current screen cannot be represented inline and needs the Terminal fallback. */
   dialogPresent: boolean;
   /** The pane's agent name, for the per-turn brand icon. */
   agent?: string;
   scope?: Scope;
+  /** The pane's typed blocks (raw included). A supported non-raw tail block renders inline. */
+  blocks: TypedBlocksProps["blocks"];
+  /** The SAME guarded handlers the Terminal mirror's controls use — no rederivation or guard is
+   *  duplicated here; prompt binding, fresh pane reads and guarded key submission stay upstream. */
+  onPromptAction: TypedBlocksProps["onPromptAction"];
+  onWizardAction: TypedBlocksProps["onWizardAction"];
+  onPreviewAction: TypedBlocksProps["onPreviewAction"];
+  onMultiSelectAction: TypedBlocksProps["onMultiSelectAction"];
+  onMenuAction: TypedBlocksProps["onMenuAction"];
+  /** Disable the inline controls (read-only / gone pane) — the same flag Terminal's blocks get. */
+  promptDisabled: TypedBlocksProps["promptDisabled"];
   onRefresh: () => void;
   /** One-tap in-app Terminal fallback. Never calls focusPane; swaps the reading surface only. */
   onOpenTerminal: () => void;
@@ -193,8 +205,9 @@ export function ConversationView({
 
       {/* Terminal-required card. Rendered OUTSIDE the transcript scroller (this whole component
           is), so tail-follow cannot scroll it — or the toolbar's Terminal button — offscreen.
-          Honest about BOTH cases: supported prompts stay here too until inline prompts land in
-          the next slice. */}
+          FAIL CLOSED: only screens with NO supported typed tail block land here (unknown, stale,
+          malformed, password-like, composer-not-ready). A supported prompt renders inline in the
+          thread instead and never shows this card. */}
       <Collapse open={dialogPresent}>
         {dialogPresent && (
           <div data-slot="conversation-terminal-required" className="pt-2">
@@ -227,15 +240,44 @@ export function ConversationView({
   );
 }
 
-/** The scrollable Variant B thread itself: entries, the empty state, and the working bubble. */
+/** The scrollable Variant B thread itself: entries, the empty state, the inline prompt, and the
+ *  working bubble. */
 export function ConversationThread({
   entries,
   state,
   working,
   agent,
   scope,
-}: Pick<ConversationViewProps, "entries" | "state" | "working" | "agent" | "scope">) {
+  blocks,
+  onPromptAction,
+  onWizardAction,
+  onPreviewAction,
+  onMultiSelectAction,
+  onMenuAction,
+  promptDisabled,
+}: Pick<
+  ConversationViewProps,
+  | "entries"
+  | "state"
+  | "working"
+  | "agent"
+  | "scope"
+  | "blocks"
+  | "onPromptAction"
+  | "onWizardAction"
+  | "onPreviewAction"
+  | "onMultiSelectAction"
+  | "onMenuAction"
+  | "promptDisabled"
+>) {
   useLocale();
+  // A supported typed tail block renders INLINE at the thread's tail, through the same TypedBlocks
+  // seam the Terminal mirror uses and the same injected handlers — the guards (fresh pane rereads,
+  // dialog rederivation, prompt binding, guarded key submission) stay in AgentChat untouched. This
+  // is not a re-implementation of any grammar. InlineTypedBlocks supplies the raw context that
+  // Terminal normally renders beside these controls. Missing context withholds the controls and
+  // the Terminal-required card above the thread supplies the fallback.
+  const inlinePrompts = canRenderInline(blocks);
   return state === "loading" && entries.length === 0 ? (
     <div className="flex justify-center py-10 text-muted-foreground">
       <Loader2 className="size-5 animate-spin" aria-label={t("chat.conversation.loading")} />
@@ -250,23 +292,43 @@ export function ConversationThread({
       {entries.map((entry) => (
         <Entry key={entry.uuid} entry={entry} agent={agent} scope={scope} />
       ))}
+      {/* The inline prompt: the last message in the thread is the agent asking. Rendered inside
+          the scroller so it reads as part of the conversation, not as chrome above it. */}
+      {inlinePrompts && (
+        <li data-slot="conversation-inline-prompts" className="min-w-0 max-w-full self-start">
+          <InlineTypedBlocks
+            blocks={blocks}
+            onPromptAction={onPromptAction}
+            onWizardAction={onWizardAction}
+            onPreviewAction={onPreviewAction}
+            onMultiSelectAction={onMultiSelectAction}
+            onMenuAction={onMenuAction}
+            promptDisabled={promptDisabled}
+          />
+        </li>
+      )}
       {/* The working bubble: distinct, terminal-colour-free, and the ONLY representation of
           live work on this surface. It renders whenever the pane reports the agent working —
-          alongside or instead of transcript content. */}
-      <li className="max-w-[85%] self-start">
-        <Collapse open={working}>
-          {working && (
-            <div data-slot="conversation-working">
-              <Notice tone="neutral" variant="box" announce="status" icon={<AgentIcon agent={agent ?? "claude"} />}>
-                <span className="flex items-center gap-1.5">
-                  <Loader2 className="size-3.5 animate-spin" />
-                  {t("chat.conversation.working")}
-                </span>
-              </Notice>
-            </div>
-          )}
-        </Collapse>
-      </li>
+          alongside or instead of transcript content — EXCEPT while an inline prompt is on
+          screen: a prompt is a question waiting for an answer, and "Working…" next to tappable
+          answers would claim both states at once (the working state and the action state are
+          the same screen's two readings; the question wins). */}
+      {!inlinePrompts && (
+        <li className="max-w-[85%] self-start">
+          <Collapse open={working}>
+            {working && (
+              <div data-slot="conversation-working">
+                <Notice tone="neutral" variant="box" announce="status" icon={<AgentIcon agent={agent ?? "claude"} />}>
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    {t("chat.conversation.working")}
+                  </span>
+                </Notice>
+              </div>
+            )}
+          </Collapse>
+        </li>
+      )}
     </ol>
   );
 }

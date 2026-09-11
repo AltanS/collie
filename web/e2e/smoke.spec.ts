@@ -370,6 +370,118 @@ test.describe("conversation mode smoke", () => {
     await expect(page.getByRole("button", { name: en["composer.controls.keys"] })).toBeVisible();
   });
 
+  test("a supported prompt renders inline in the thread and answers through the guarded keys path", async ({ page }, testInfo) => {
+    // The default fixture agent is Claude, so its permission prompt is the supported family here
+    // (the fixture's tail is the "Do you want to proceed?" select menu).
+    const permission = readFileSync(join(process.cwd(), "src/fixtures/panes/claude--permission-bash.txt"), "utf8");
+    let keyWrites = 0;
+    await page.route((url) => /\/api\/pane\/[^/]+$/.test(url.pathname), (route) =>
+      route.fulfill({ json: { paneId: "w1:p1", text: permission, truncated: false, revision: 1 } }),
+    );
+    await page.route((url) => /\/api\/pane\/[^/]+\/keys$/.test(url.pathname), (route) => {
+      keyWrites++;
+      return route.fulfill({ json: { ok: true } });
+    });
+    await page.goto(`/pane/${encodeURIComponent("w1:p1")}`);
+    await page.getByRole("button", { name: en["chat.paneMenu.aria"] }).click();
+    await page.getByRole("button", { name: en["chat.conversation.label"] }).click();
+    await expect(page.getByText("what changed today?").first()).toBeVisible();
+
+    // The prompt lives INSIDE the thread, and no terminal-required card stands over it.
+    await expect(page.locator('[data-slot="conversation-inline-prompts"]')).toBeVisible();
+    await expect(page.getByText(en["chat.conversation.requiresTerminal"])).toHaveCount(0);
+
+    // Answering it sends the option's keys through the same guarded write the terminal uses.
+    await page.locator('[data-slot="conversation-inline-prompts"]').getByRole("button", { name: "Yes", exact: true }).first().click();
+    await expect.poll(() => keyWrites).toBeGreaterThan(0);
+
+    await page.screenshot({ path: testInfo.outputPath("conversation-inline-prompt.png") });
+  });
+
+  for (const [fixture, question, detail, answer] of [
+    ["claude--permission-edit.txt", "Do you want to create hello.txt?", "1 hello", "Yes"],
+    ["claude--select-preview.txt", "Which widget design should we use?", "Which widget design should we use?", "Rounded"],
+  ]) {
+    test(`inline context stays visible and stale actions refuse: ${fixture}`, async ({ page }, testInfo) => {
+      const initial = readFileSync(join(process.cwd(), "src/fixtures/panes", fixture!), "utf8");
+      let text = initial;
+      let reads = 0;
+      let holdReads: Promise<void> | undefined;
+      const writes: unknown[] = [];
+      await page.route((url) => /\/api\/pane\/[^/]+$/.test(url.pathname), async (route) => {
+        reads++;
+        if (holdReads) await holdReads;
+        return route.fulfill({ json: { paneId: "w1:p1", text, truncated: false, revision: 1 } });
+      });
+      await page.route((url) => /\/api\/pane\/[^/]+\/(reply|keys)$/.test(url.pathname), (route) => {
+        writes.push(route.request().postDataJSON());
+        return route.fulfill({ json: { ok: true } });
+      });
+      await page.addInitScript(() => localStorage.setItem("collie:pane-view-mode:v1", "conversation"));
+      await page.goto(`/pane/${encodeURIComponent("w1:p1")}`);
+      await expect(page.getByText("what changed today?", { exact: true })).toBeVisible();
+      const visibleQuestion = page.getByText(question!, { exact: true });
+      await expect(visibleQuestion).toBeVisible();
+      await expect(page.getByText(detail!, { exact: false }).first()).toBeVisible();
+      const action = page.getByRole("button", { name: answer!, exact: true });
+      await action.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath("inline-context.png") });
+      // Hold read responses until AFTER the tap. Polling must not adopt the changed prompt while
+      // Playwright waits for actionability, which would turn this into a legitimate fresh tap.
+      let release!: () => void;
+      holdReads = new Promise<void>((resolve) => { release = resolve; });
+      // Change the subject without advancing revision. The shared content guard must still refuse.
+      text = initial.replaceAll("hello.txt", "other.txt").replaceAll("widget design", "toolbar design");
+      const before = reads;
+      await action.click();
+      release();
+      await expect.poll(() => reads).toBeGreaterThan(before);
+      await expect(page.getByRole("button", { name: answer!, exact: true })).toBeEnabled();
+      expect(writes).toEqual([]);
+      await expect(page.getByText(question!.replace("hello.txt", "other.txt").replace("widget design", "toolbar design"), { exact: true })).toBeVisible();
+      await testInfo.attach("context-and-stale-result", {
+        body: JSON.stringify({ viewport: page.viewportSize(), fixture, reads, writes }), contentType: "application/json",
+      });
+    });
+  }
+
+  for (const rawTerminal of [false, true]) {
+    test(`known dialog keeps its send lock after failed reads with Raw Terminal=${rawTerminal}`, async ({ page }, testInfo) => {
+      const text = readFileSync(join(process.cwd(), "src/fixtures/panes/claude--permission-bash.txt"), "utf8");
+      let failReads = false;
+      let failedReads = 0;
+      const writes: unknown[] = [];
+      await page.route((url) => /\/api\/pane\/[^/]+$/.test(url.pathname), (route) => {
+        if (failReads) {
+          failedReads++;
+          return route.fulfill({ status: 500, json: { error: "injected pane read failure" } });
+        }
+        return route.fulfill({ json: { paneId: "w1:p1", text, truncated: false, revision: 1 } });
+      });
+      await page.route((url) => /\/api\/pane\/[^/]+\/(reply|keys)$/.test(url.pathname), (route) => {
+        writes.push(route.request().postDataJSON());
+        return route.fulfill({ json: { ok: true } });
+      });
+      await page.addInitScript((raw) => {
+        localStorage.setItem("collie:pane-view-mode:v1", "conversation");
+        localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ rawTerminal: raw }));
+      }, rawTerminal);
+      await page.goto(`/pane/${encodeURIComponent("w1:p1")}`);
+      await expect(page.getByText("what changed today?", { exact: true })).toBeVisible();
+      const draft = page.getByPlaceholder(en["composer.placeholder.reply"]);
+      await draft.fill("do not type into this modal");
+      failReads = true;
+      await expect.poll(() => failedReads, { timeout: 15000 }).toBeGreaterThan(0);
+      await page.getByRole("button", { name: "Send", exact: true }).click();
+      await expect(page.getByText(en["composer.status.dialogWaiting"])).toBeVisible();
+      expect(writes).toEqual([]);
+      await expect(draft).toHaveValue("do not type into this modal");
+      await testInfo.attach("known-dialog-lock-result", {
+        body: JSON.stringify({ viewport: page.viewportSize(), rawTerminal, failedReads, writes }), contentType: "application/json",
+      });
+    });
+  }
+
   test("live work appears as the distinct working bubble", async ({ page }) => {
     await page.route("**/api/snapshot", (route) =>
       route.fulfill({
