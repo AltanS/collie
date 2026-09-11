@@ -9,6 +9,7 @@ import { lineText, rstrip } from "./omp/markers";
 import { locateRuleComposer } from "./omp/rule";
 import { describeAdapterConformance } from "./conformance";
 import { parseKeyHintFooter } from "./menu-hints";
+import { decorateOmpDisplay } from "./omp/display";
 
 // The omp adapter's CI gate. This adapter is Tier 1 BY CHOICE — it up-levels nothing, so `ownFixtures`
 // is empty and every one of the 25 captures is a NEUTRAL fixture the adapter must leave raw. That is
@@ -360,3 +361,44 @@ function footerText(name: string, row: number): string {
   const boxed = BOXED_FOOTER.exec(text);
   return (boxed === null ? text : boxed[1]!).trim();
 }
+
+describe("omp mobile display cleanup", () => {
+  it("marks light fills and leaves dark diffs alone", () => {
+    const esc = String.fromCharCode(27);
+    const light = `${esc}[48;2;250;250;250mlight card${esc}[0m`;
+    const dark = `${esc}[48;2;15;18;22mdark body${esc}[0m`;
+    const diff = `${esc}[48;2;33;58;43m+ semantic diff${esc}[0m`;
+    const [lightLine, darkLine, diffLine] = decorateOmpDisplay(
+      splitLines(parseAnsi(`${light}\n${dark}\n${diff}`)),
+    );
+
+    expect(lightLine!.segments[0]!.mobileTransparentBg).toBe(true);
+    expect(darkLine!.segments[0]!.bg).toBe("rgb(15,18,22)");
+    expect(darkLine!.segments[0]!.mobileTransparentBg).toBeUndefined();
+    expect(diffLine!.segments[0]!.bg).toBe("rgb(33,58,43)");
+    expect(diffLine!.segments[0]!.mobileTransparentBg).toBeUndefined();
+  });
+
+  it("does not change visible text", () => {
+    const esc = String.fromCharCode(27);
+    const lines = splitLines(parseAnsi(`${esc}[48;2;250;250;250mcard${esc}[0m`));
+    expect(decorateOmpDisplay(lines).map(lineText)).toEqual(lines.map(lineText));
+  });
+
+  it("returns the same array when nothing is light", () => {
+    const lines = splitLines(parseAnsi("plain text"));
+    expect(decorateOmpDisplay(lines)).toBe(lines);
+  });
+
+  it("ompBuildBlocks marks the fill on the raw block", () => {
+    const esc = String.fromCharCode(27);
+    const [block] = ompAdapter.buildBlocks(
+      splitLines(parseAnsi(`${esc}[48;2;250;250;250mlight card${esc}[0m`)),
+    );
+    expect(block!.kind).toBe("raw");
+    if (block!.kind !== "raw") return;
+    expect(block.lines.some((line) => line.segments.some((segment) => segment.mobileTransparentBg))).toBe(
+      true,
+    );
+  });
+});
