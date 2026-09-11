@@ -416,6 +416,19 @@ empty `submit:true`; the pane rendered the exact marker and not the stale prefix
 the UI retained `COLLIE_RULE_18110_MODAL_GUARD`, offered the explicit override, sent no `/reply` or
 `/keys` write, and left the modal unchanged.
 
+## omp mobile paper fill (reconstructed 2026-09-11)
+
+**Not a capture.** Reconstructed from a live omp pane whose tool cards paint near-white paper
+fills (`48;2;230;236;231` and `48;2;231;237;244`). The mirror is authored in dark space and
+inverted under the light theme, so those fills land as solid black bars on a phone. It is the
+ground truth for `omp/display.ts` only. Content is generic; replace with a real `format:ansi`
+capture when a sandbox pane paints these rows, and delete this note.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--tool-paper-fill.txt` | A paper-filled tool card, a second paper fill, and a green semantic-diff row that must keep its background | `idle` |
+
+
 ## Lessons already encoded here (don't re-learn them)
 
 - **Match on parsed text, not raw bytes**: SGR codes sit *between* glyphs (`❯` and `1.` are in

@@ -9,6 +9,7 @@ import { lineText, rstrip } from "./omp/markers";
 import { locateRuleComposer } from "./omp/rule";
 import { describeAdapterConformance } from "./conformance";
 import { parseKeyHintFooter } from "./menu-hints";
+import { decorateOmpDisplay } from "./omp/display";
 
 // The omp adapter's CI gate. This adapter is Tier 1 BY CHOICE — it up-levels nothing, so `ownFixtures`
 // is empty and every one of the 25 captures is a NEUTRAL fixture the adapter must leave raw. That is
@@ -64,6 +65,8 @@ const DECLINED = new Set([
   //   (lib/agent-commands.ts's `omp` catalog), not a lifted block.
   "omp--slash-palette--filtered.txt",
   "omp--slash-palette.txt",
+  // — Reconstructed paper-fill screen for decorateOmpDisplay only. Still raw; not a dialog.
+  "omp--tool-paper-fill.txt",
   // — The `ask` tool's dialogs. A boxed widget whose `handleInput` we have not read; its `Other (type
   //   your own)` and `n note` rows open free-text inputs that would strand a phone user mid-dialog;
   //   and `omp--select-multi-review.txt` renders a NUMBERED summary (`1. toppings: …`), the exact
@@ -126,17 +129,18 @@ describe("the omp corpus", () => {
     "omp--select-multi.txt",
     "omp--slash-palette--filtered.txt",
     "omp--slash-palette.txt",
+    "omp--tool-paper-fill.txt",
     "omp--v18-rule-draft.txt",
     "omp--v18-rule-idle.txt",
     "omp--v18-rule-wrapped.txt",
     "omp--working.txt",
   ];
 
-  it("is exactly the 25 captures this adapter was developed against", () => {
+  it("is exactly the 26 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("declines all twenty-five — nothing is up-levelled", () => {
+  it("declines all twenty-six — nothing is up-levelled", () => {
     expect(neutralFixtures).toEqual(PINNED);
     expect(ownFixtures).toEqual([]);
   });
@@ -360,3 +364,59 @@ function footerText(name: string, row: number): string {
   const boxed = BOXED_FOOTER.exec(text);
   return (boxed === null ? text : boxed[1]!).trim();
 }
+
+describe("omp mobile display cleanup", () => {
+  const FIXTURE = "omp--tool-paper-fill.txt";
+
+  it("marks the fixture's paper fill, and leaves the diff row alone", () => {
+    const decorated = decorateOmpDisplay(fixtureLines(FIXTURE));
+    const marked = decorated.filter((line) =>
+      line.segments.some((segment) => segment.mobileTransparentBg),
+    );
+    expect(marked.length).toBeGreaterThan(0);
+    expect(marked.some((line) => lineText(line).includes("Edit  example.wxml"))).toBe(true);
+
+    const diffBackgrounds = decorated
+      .flatMap((line) => line.segments)
+      .filter((segment) => segment.bg && !segment.mobileTransparentBg)
+      .map((segment) => segment.bg);
+    expect(diffBackgrounds).toEqual(["rgb(33,58,43)"]);
+  });
+
+  it("changes not one byte of visible text", () => {
+    const lines = fixtureLines(FIXTURE);
+    const decorated = decorateOmpDisplay(lines);
+    expect(decorated.map(lineText)).toEqual(lines.map(lineText));
+  });
+
+  it("returns the same array when a screen carries no paper fill", () => {
+    const lines = fixtureLines("omp--v18-rule-idle.txt");
+    expect(decorateOmpDisplay(lines)).toBe(lines);
+  });
+
+  it("marks only omp's observed paper fills for mobile transparency", () => {
+    const esc = String.fromCharCode(27);
+    const paper = `${esc}[48;2;230;236;231mtool chrome${esc}[0m`;
+    const paper2 = `${esc}[48;2;231;237;244mother card${esc}[0m`;
+    const diff = `${esc}[48;2;33;58;43m+ semantic diff${esc}[0m`;
+    const [paperLine, paper2Line, diffLine] = decorateOmpDisplay(
+      splitLines(parseAnsi(`${paper}\n${paper2}\n${diff}`)),
+    );
+
+    expect(paperLine!.segments[0]!.bg).toBe("rgb(230,236,231)");
+    expect(paperLine!.segments[0]!.style.backgroundColor).toBe("rgb(230,236,231)");
+    expect(paperLine!.segments[0]!.mobileTransparentBg).toBe(true);
+    expect(paper2Line!.segments[0]!.mobileTransparentBg).toBe(true);
+    expect(diffLine!.segments[0]!.bg).toBe("rgb(33,58,43)");
+    expect(diffLine!.segments[0]!.mobileTransparentBg).toBeUndefined();
+  });
+
+  it("ompBuildBlocks marks the fill on the raw block", () => {
+    const [block] = ompAdapter.buildBlocks(fixtureLines(FIXTURE));
+    expect(block!.kind).toBe("raw");
+    if (block!.kind !== "raw") return;
+    expect(block.lines.some((line) => line.segments.some((segment) => segment.mobileTransparentBg))).toBe(
+      true,
+    );
+  });
+});
