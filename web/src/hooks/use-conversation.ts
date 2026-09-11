@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fetchHistory } from "@/lib/api";
-import { paneScopeKey, type Scope } from "@/lib/scope";
+import { internScope, paneScopeKey, type Scope } from "@/lib/scope";
 import type { TranscriptEntry } from "@/lib/types";
 
 // The Conversation-mode transcript source: a bounded recent window of the pane's persisted journal
@@ -31,9 +31,9 @@ import type { TranscriptEntry } from "@/lib/types";
 // MERGE BY UUID. Later tool results can be attached to an earlier turn, so an entry whose parts
 // changed REPLACES the copy on screen rather than duplicating it (PRD story 16).
 //
-// STALE DISCARD. Keyed on paneScopeKey(scope, paneId) — the ADDRESS, not the id: the same pane id
-// on another host or multiplexer session is a different pane. This is not a resolved agent-journal
-// identity: the wire exposes none. Observed loss of eligibility also invalidates cached entries.
+// STALE DISCARD. The pane address and observable crew/harness identity invalidate pending reads.
+// Observed eligibility loss also clears cached entries. Invisible journal replacement inside an
+// otherwise unchanged pane is unsupported: the wire exposes no resolved agent-journal identity.
 
 /** Turns requested. Newest-anchored, bounded. */
 const TURNS = 30;
@@ -65,17 +65,25 @@ export interface Conversation {
 
 export function useConversation({
   paneId,
-  scope,
+  scope: requestedScope,
+  sourceKey = "",
   enabled,
+  active = enabled,
   mirrorText,
 }: {
   paneId: string;
   scope?: Scope;
-  /** False for a pane with no supported journal, or while Conversation is not showing. */
+  /** Browser-visible crew membership and harness identity, never a journal path or inferred ID. */
+  sourceKey?: string;
+  /** Journal eligibility. Losing it clears the cache even while Terminal is showing. */
   enabled: boolean;
+  /** Reading mode. Pausing cancels requests without discarding this pane's transcript. */
+  active?: boolean;
   /** Live pane text, independent of the reader's scroll position. */
   mirrorText: string;
 }): Conversation {
+  const scope = internScope(requestedScope);
+  const running = enabled && active;
   const [entries, setEntries] = useState<TranscriptEntry[]>([]);
   const [state, setState] = useState<ConversationState>("loading");
   // The ONE trigger counter. Every coalesced trigger — settle, send, resume, refresh — lands here;
@@ -85,25 +93,36 @@ export function useConversation({
   const settledRef = useRef(mirrorText);
   const retryingRef = useRef(false);
 
-  // Fire a trigger pass: a real trigger, which rearms the bounded retry.
+  // A short trailing debounce also coalesces events delivered in separate browser tasks.
+  // React batching alone only joins calls from the same task.
+  const triggerTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const retryTimer = useRef<number | null>(null);
   const fire = useCallback(() => {
-    retryingRef.current = false;
-    setTrigger((n) => n + 1);
+    // A new trigger replaces an imminent retry too, not just another debounced trigger.
+    if (retryTimer.current !== null) clearTimeout(retryTimer.current);
+    retryTimer.current = null;
+    clearTimeout(triggerTimer.current);
+    triggerTimer.current = setTimeout(() => {
+      retryingRef.current = false;
+      setTrigger((n) => n + 1);
+    }, 50);
   }, []);
 
   // A disabled source may have lost its agent session without changing the pane address.
-  // Clear on both edges of eligibility/mode changes; recovery must start with a fresh page.
-  const address = paneScopeKey(scope, paneId);
+  // Clear on both edges of eligibility changes. Reading-mode changes retain the cache.
+  const address = JSON.stringify([paneScopeKey(scope, paneId), sourceKey]);
+  useEffect(() => () => clearTimeout(triggerTimer.current), [address, running]);
   useEffect(() => {
     setEntries([]);
     setState("loading");
     settledRef.current = mirrorText; // a fresh pane starts from its own current tail
+    retryingRef.current = false;
   }, [address, enabled]); // eslint-disable-line react-hooks/exhaustive-deps -- seed current live text on source transitions
 
   // Settle trigger: the mirror going quiet. Only a CHANGE from the last settled text fires — an
   // unchanged mirror (the common case, every poll) triggers nothing.
   useEffect(() => {
-    if (!enabled) return;
+    if (!running) return;
     if (mirrorText === settledRef.current) return;
     const timer = setTimeout(() => {
       if (mirrorText === settledRef.current) return;
@@ -111,23 +130,23 @@ export function useConversation({
       fire();
     }, SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [mirrorText, enabled]); // eslint-disable-line react-hooks/exhaustive-deps -- fire is stable
+  }, [address, mirrorText, running]); // eslint-disable-line react-hooks/exhaustive-deps -- fire is stable
 
   // Foreground resume: a stale background thread must be replaced when the tab comes back.
   useEffect(() => {
-    if (!enabled) return;
+    if (!running) return;
     const onVisible = () => {
       if (document.visibilityState === "visible") fire();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [enabled]); // eslint-disable-line react-hooks/exhaustive-deps -- fire is stable
+  }, [running]); // eslint-disable-line react-hooks/exhaustive-deps -- fire is stable
 
   // The fetch pass. One counter, one pass per commit — overlapping triggers coalesce.
   const fetchSeq = useRef(0);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!running) return;
     const seq = ++fetchSeq.current;
     const abort = new AbortController();
     let live = true;
@@ -158,14 +177,13 @@ export function useConversation({
       live = false;
       abort.abort();
     };
-  }, [paneId, scope, enabled, trigger]);
+  }, [address, paneId, scope, running, trigger]);
 
   // The bounded retry: each TRIGGERED pass arms exactly one extra pass after RETRY_MS, to cover
   // the journal being flushed after the screen updated. A retry pass consumes its own mark and
   // arms nothing — so an idle pane stops after entry plus one retry, whatever the fetch latency.
-  const retryTimer = useRef<number | null>(null);
   useEffect(() => {
-    if (!enabled) return;
+    if (!running) return;
     if (retryingRef.current) {
       retryingRef.current = false; // THIS pass is the retry — do not rearm it.
       return;
@@ -182,7 +200,7 @@ export function useConversation({
         retryTimer.current = null;
       }
     };
-  }, [enabled, trigger]);
+  }, [address, running, trigger]);
 
   return enabled ? { entries, state, refresh: fire, bump: fire } : { entries: [], state: "loading", refresh: fire, bump: fire };
 }

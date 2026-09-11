@@ -307,6 +307,7 @@ export const en = {
   // calls the desktop focus action.
   "chat.conversation.label": "Conversation view",
   "chat.conversation.title": "Conversation",
+  "chat.conversation.updated": "Conversation updated. Jump to latest",
   "chat.conversation.openTerminal": "Terminal",
   "chat.conversation.openTerminalAria": "Open the terminal view for this pane",
   "chat.conversation.refreshAria": "Refresh conversation",

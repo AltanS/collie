@@ -279,6 +279,7 @@ export const ko: Dictionary = {
   "chat.history.label": "대화 기록",
   "chat.conversation.label": "대화 보기",
   "chat.conversation.title": "대화",
+  "chat.conversation.updated": "대화가 업데이트되었습니다. 최신 메시지로 이동",
   "chat.conversation.openTerminal": "터미널",
   "chat.conversation.openTerminalAria": "이 패널의 터미널 보기 열기",
   "chat.conversation.refreshAria": "대화 새로 고침",

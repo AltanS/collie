@@ -62,7 +62,7 @@ function Entry({ entry, agent, scope }: { entry: TranscriptEntry; agent?: string
   if (entry.role === "summary" || entry.role === "note") {
     // Neither of these is speech — muted, dashed, set apart, as in the history route.
     return (
-      <li className="max-w-[85%] self-start">
+      <li data-conversation-entry={entry.uuid} className="max-w-[85%] self-start">
         <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-sm">
           <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             {entry.role === "summary" ? t("transcript.summaryLabel") : t("transcript.systemLabel")}
@@ -77,7 +77,7 @@ function Entry({ entry, agent, scope }: { entry: TranscriptEntry; agent?: string
   if (isUser) {
     // Variant B: the user's turn is a right-aligned bubble — clearly theirs, clearly apart.
     return (
-      <li className="flex max-w-[85%] flex-col items-end self-end">
+      <li data-conversation-entry={entry.uuid} className="flex max-w-[85%] flex-col items-end self-end">
         <div className="rounded-sm bg-primary px-3.5 py-2 text-sm text-primary-foreground">
           <EntryParts entry={entry} scope={scope} />
         </div>
@@ -88,7 +88,7 @@ function Entry({ entry, agent, scope }: { entry: TranscriptEntry; agent?: string
   // The agent's turn: plain on the left, under the agent's own mark — the reading surface, not a
   // quoted card, so long runs of tool calls and prose stay scannable.
   return (
-    <li className="max-w-full self-start">
+    <li data-conversation-entry={entry.uuid} className="max-w-full self-start">
       <div className="mb-0.5 flex items-center gap-1.5">
         <AgentIcon agent={agent ?? "claude"} className="size-3.5" />
         <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
@@ -280,7 +280,7 @@ export function ConversationThread({
   const inlinePrompts = canRenderInline(blocks);
   return state === "loading" && entries.length === 0 ? (
     <div className="flex justify-center py-10 text-muted-foreground">
-      <Loader2 className="size-5 animate-spin" aria-label={t("chat.conversation.loading")} />
+      <Loader2 className="size-5 animate-spin motion-reduce:animate-none" aria-label={t("chat.conversation.loading")} />
     </div>
   ) : (
     <ol data-slot="conversation-thread" className="flex flex-col gap-3 pb-2">
@@ -320,7 +320,7 @@ export function ConversationThread({
               <div data-slot="conversation-working">
                 <Notice tone="neutral" variant="box" announce="status" icon={<AgentIcon agent={agent ?? "claude"} />}>
                   <span className="flex items-center gap-1.5">
-                    <Loader2 className="size-3.5 animate-spin" />
+                    <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
                     {t("chat.conversation.working")}
                   </span>
                 </Notice>

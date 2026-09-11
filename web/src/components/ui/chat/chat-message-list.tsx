@@ -21,6 +21,8 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
   onAtBottomChange?: (atBottom: boolean) => void;
   /** Dot the "jump to latest" button when newer output arrived while you were scrolled up. */
   hasNew?: boolean;
+  /** Optional accessible freshness cue for a transcript reader. Terminal keeps its existing label. */
+  newContentLabel?: string;
 }
 
 // Scrollable conversation container that auto-follows new messages and shows a "jump to latest"
@@ -28,7 +30,7 @@ interface ChatMessageListProps extends React.HTMLAttributes<HTMLDivElement> {
 // after an action, and reports at-bottom changes so the parent can freeze content while you read.
 const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListProps>(
   function ChatMessageList(
-    { className, children, dep, onAtBottomChange, hasNew, ...props },
+    { className, children, dep, onAtBottomChange, hasNew, newContentLabel, ...props },
     ref,
   ) {
     useLocale();
@@ -59,13 +61,14 @@ const ChatMessageList = React.forwardRef<ChatMessageListHandle, ChatMessageListP
           {children}
         </div>
 
+        {newContentLabel && <span className="sr-only" role="status">{hasNew ? newContentLabel : ""}</span>}
         {!isAtBottom && (
           <Button
             onClick={() => scrollToBottom()}
             size="icon"
             variant="outline"
-            className="absolute bottom-3 left-1/2 z-10 size-9 -translate-x-1/2 rounded-full shadow-md"
-            aria-label={t("common.scrollToLatestAria")}
+            className={cn("absolute bottom-3 left-1/2 z-10 size-9 -translate-x-1/2 rounded-full shadow-md", newContentLabel && "size-11")}
+            aria-label={hasNew && newContentLabel ? newContentLabel : t("common.scrollToLatestAria")}
           >
             <ArrowDown className="size-4" />
             {hasNew && (

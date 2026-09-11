@@ -286,6 +286,7 @@ export const de: Dictionary = {
   "chat.history.label": "Verlauf",
   "chat.conversation.label": "Konversationsansicht",
   "chat.conversation.title": "Konversation",
+  "chat.conversation.updated": "Konversation aktualisiert. Zum neuesten Beitrag springen",
   "chat.conversation.openTerminal": "Terminal",
   "chat.conversation.openTerminalAria": "Terminalansicht für dieses Pane öffnen",
   "chat.conversation.refreshAria": "Konversation aktualisieren",

@@ -267,6 +267,7 @@ export const zhTW: Dictionary = {
   "chat.history.label": "對話記錄",
   "chat.conversation.label": "會話檢視",
   "chat.conversation.title": "會話",
+  "chat.conversation.updated": "會話已更新。跳至最新訊息",
   "chat.conversation.openTerminal": "終端機",
   "chat.conversation.openTerminalAria": "開啟此面板的終端機檢視",
   "chat.conversation.refreshAria": "重新整理會話",
