@@ -285,17 +285,13 @@ all twenty-one are asserted that way (`harness/omp.test.ts`). Ten carry a live c
 eleven are modals the reply pre-flight has to refuse, and they are **six picker screens** (`/model`,
 `/settings` and `/resume`, each with a moved-selection twin) plus **five `ask`-tool screens**.
 
-**What this corpus does not contain: omp's tool-approval dialog.** No capture of it exists here, so
-nothing below pins `composerReady` on the one screen where a wrong `true` would be worst — a reply
-typed at a live approval prompt, with the submit key answering it. Two things stand in for a capture
-today, and neither is a substitute for one: `ompBuildBlocks` returns a `raw` block *unconditionally*,
-so an approval screen cannot be up-levelled whether or not anyone has seen it; and the pre-flight's
-`false` on such a screen is **inferred** from the eleven modals that were captured. The inference now
-rests on something the scanner actually tests rather than on a property of the captures: every one of
-those eleven is a **box drawn at column 0**, and `locateComposer` refuses any composer with a box
-under it (`opensBox`, omp/chrome.ts step (a)), so an approval dialog drawn the way all eleven are is
-declined by the same rule. What remains uncaptured is whether omp draws that one as a box at all.
-Capturing it is the first thing the later Tier-2 contribution owes, ahead of any grammar.
+**omp's tool-approval dialog now has its own section below** ("OMP tool-approval corpus", captured
+2026-09-10). It used to be this corpus's known gap, and the reason it mattered is worth keeping:
+`ompBuildBlocks` returns a `raw` block *unconditionally*, so an approval screen could never be
+up-levelled whether or not anyone had seen it — but the pre-flight's `false` on one was **inferred**
+from the eleven modals here rather than measured, on the one screen where a wrong `true` would be
+worst. That inference rested on a premise nothing tested: whether omp draws that screen as a box at
+all. It does, and the captures below measure it.
 
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
@@ -415,6 +411,48 @@ prompt, typed `COLLIE_RULE_18110_LIVE_ACK` with `submit:false`, read the pane ba
 empty `submit:true`; the pane rendered the exact marker and not the stale prefix. With `/model` open,
 the UI retained `COLLIE_RULE_18110_MODAL_GUARD`, offered the explicit override, sent no `/reply` or
 `/keys` write, and left the modal unchanged.
+
+## OMP tool-approval corpus (captured 2026-09-10, oh-my-pi `omp` v18.1.17, herdr 0.9.0, two sandbox panes)
+
+Three byte-faithful `pane.read format:ansi` captures from throwaway Herdr panes in
+`/tmp/collie-omp-sandbox` (a `git init` repo), taken with `scripts/capture-fixture.sh`. They close the
+gap `harness/omp/index.ts` named: the tool-approval dialog, which the omp adapter declined without
+anyone ever having captured it.
+
+**One sanitization pass, LENGTH-PRESERVING.** The operator's statusline is the final row and names
+per-account quota. Two substitutions there, both same-length and with the SGR escape sequences left
+untouched: every DIGIT becomes `0`, and the account labels become generic (`A`/`B`/`C`/`D` for the
+Claude profiles, `codex1`/`codex2` for the Codex accounts). The row's byte length is unchanged — 1267
+bytes before and after, all three files. Nothing else needed substitution: no username, hostname,
+home path, session id or credential-shaped string appears in any of the three. LF throughout with no
+trailing newline; their `wc -l` counts are 52, 48 and 48.
+
+The dialog is a BOX AT COLUMN 0 that spans the pane, titled `Allow tool: <tool>`, with two option
+rows (`Approve` then `Deny`) and an `up/down navigate  enter select  esc cancel` footer. Every row of
+it opens with a Box Drawing character — `╭`, `│`, `╰` — which is what `markers.ts`'s `BOX_ROW` matches,
+so `locateComposer` refuses the composer beneath it. That is the premise `omp/index.ts` had to infer
+and these captures measure.
+
+**The body fields are not fixed.** A bash approval gated by a config `approval: prompt` pattern
+carries `Reason:` (naming the pattern) and `Command:`. A `write` approval gated by
+`--approval-mode always-ask` carries `Path:` and `Content:`, and `Content:` runs onto its own row, so
+a body field can be multi-line. `Reason:` appeared only on the pattern-gated capture, so it looks
+tied to WHY approval was requested rather than to the tool — one example each, so that is a
+hypothesis, not a finding.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--approval-bash.txt` | bash approval from a config pattern: `Reason: Prompt required by bash pattern: gh issue create *`, `Command: gh issue create --help`, Approve selected | `blocked` |
+| `omp--approval-write.txt` | `write` approval under `--approval-mode always-ask`: `Path:` plus a multi-row `Content:`, Approve selected | `blocked` |
+| `omp--approval-write--deny.txt` | The same screen with Deny selected. Three rows differ from the capture above: the two option rows, which swap the U+F054 marker, and the `Working…` spinner row, whose visible text is identical but whose SGR styling is not (the spinner was mid-animation) | `blocked` |
+
+Keys live-probed on the real dialogs, not inferred. `y` is NOT a shortcut: the dialog was unchanged,
+no character was typed anywhere, and the command did not run. `enter` selects the marked row — on the
+bash dialog it approved and `gh issue create --help` then ran. `down` moves the U+F054 marker from
+`Approve` to `Deny`, which is the entire difference between the two `write` captures. `esc` cancels —
+probed on the `write` dialog, with the target file verified absent afterwards. One reproduction trap
+worth recording: `read` is auto-approved even under `--approval-mode always-ask`, so a read call
+paints no dialog and cannot be used to generate one.
 
 ## Lessons already encoded here (don't re-learn them)
 
