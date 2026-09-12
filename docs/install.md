@@ -418,6 +418,12 @@ can only use the browser tab in that mode. A dev build (any checkout not sitting
 tag) installs as **Collie (dev)** with an orange icon, so it never sits on your home screen next to
 a release install looking the same.
 
+**First launch.** The first time Collie opens on a device and the dashboard loads, three slides say
+what Collie mirrors, how to answer a pane, and how to be told when one needs you.
+
+The slides are marked seen as soon as they open, so a tab lost halfway through does not bring them
+back. Settings has a **Show the tour again** row that replays them on demand.
+
 ### Is it actually working?
 
 Verify status and logs:
