@@ -205,6 +205,82 @@ describe("Composer Conversation recovery", () => {
     expect(writes).not.toHaveBeenCalled();
     expect(box).toHaveValue("keep this draft");
   });
+
+  // The in-flight race the click-time gate cannot close: the send starts composer-ready
+  // (`requiresTerminal` false at the tap), the guarded reply's pre-flight read is HELD, and the live
+  // Conversation state turns Terminal-required inside that window. The withdrawal must come from
+  // the pre-write refusal callback re-reading the live prop — even when the held read then FAILS.
+  it("withdraws an in-flight send whose Conversation state goes Terminal-required while the preflight read is held, then fails", async () => {
+    const user = userEvent.setup();
+    const writes = vi.fn();
+    const openTerminal = vi.fn();
+    let reads = 0;
+    let holdReads = false;
+    let failReads = false;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let goTerminal!: (value: boolean) => void;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, async () => {
+        reads++;
+        if (holdReads) await held;
+        if (failReads) return HttpResponse.json({ error: "injected pane read failure" }, { status: 500 });
+        return HttpResponse.json({ paneId: "w1:p1", text: "pane output", truncated: false, revision: 2 });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    function Harness() {
+      const [requiresTerminal, setRequiresTerminal] = useState(false);
+      goTerminal = setRequiresTerminal;
+      return (
+        <CrewProvider servers={undefined}>
+          <StatusSentinel />
+          <Composer
+            paneId="w1:p1"
+            agent="codex"
+            isShell={false}
+            gone={false}
+            readOnly={false}
+            dialogPresent={false}
+            chatOnly
+            requiresTerminal={requiresTerminal}
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+            setWrap={vi.fn()}
+            stepFontSize={vi.fn()}
+            setRawTerminal={vi.fn()}
+            setTapToFocus={vi.fn()}
+            setExpandClippedReply={vi.fn()}
+            onSent={vi.fn()}
+            onOpenTerminal={openTerminal}
+          />
+        </CrewProvider>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "started ready");
+    // Hold the pre-flight read so the send is mid-flight while the state turns.
+    holdReads = true;
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(reads).toBeGreaterThan(0));
+    act(() => goTerminal(true));
+    // Release the held read as a failure: the refusal reads the LIVE condition, not the read.
+    failReads = true;
+    release();
+    expect(await screen.findByTestId("status")).toHaveTextContent(/This screen needs the terminal/i);
+    expect(screen.getByRole("button", { name: "Terminal" })).toBeVisible();
+    expect(openTerminal).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+    expect(box).toHaveValue("started ready");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+  });
 });
 
 describe("Composer — send", () => {
