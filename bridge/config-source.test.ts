@@ -99,6 +99,12 @@ describe("precedence", () => {
     expect(overlayConfig({ COLLIE_PORT: undefined }, layer).COLLIE_PORT).toBe("8800");
   });
 
+  test("a key only the file set reports the file it came from", async () => {
+    const layer = await read({ [HOME_FILE]: "[network]\nport = 8800\n" });
+    const effective = overlayConfig({}, layer);
+    expect(sourceOf(settingByEnv("COLLIE_PORT")!, effective, layer)).toBe("file:home");
+  });
+
   test("a key nobody set anywhere reads as the default", async () => {
     const layer = await read({});
     expect(sourceOf(settingByEnv("COLLIE_PORT")!, {}, layer)).toBe("default");

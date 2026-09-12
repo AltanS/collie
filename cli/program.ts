@@ -2,6 +2,15 @@ import { Command as Program, CommanderError } from "commander";
 
 import { type BeaconEmitDeps, runBeaconEmit } from "./beacon.ts";
 import { cmdBuild } from "./build.ts";
+import {
+  cmdConfig,
+  cmdConfigCheck,
+  cmdConfigInit,
+  cmdConfigShow,
+  configDeps,
+  CONFIG_SUBCOMMANDS,
+  type ConfigDeps,
+} from "./config.ts";
 import { collieVersion, loadContext } from "./context.ts";
 import {
   cmdHooks,
@@ -240,6 +249,11 @@ function sttDeps(io: Io): SttDeps {
  * dropped for the same reason. `process.ppid` is the `claude` process: a hook command runs as its
  * direct child (probed 2026-08-20 — see `cli/beacon.ts`).
  */
+/** `config`'s seams: the context (which already carries the file layer), the io and the filesystem. */
+function configVerbDeps(io: Io): ConfigDeps {
+  return configDeps(loadContext(io.err), io, realFiles);
+}
+
 function beaconDeps(): BeaconEmitDeps {
   return {
     ctx: loadContext(() => {}),
@@ -609,6 +623,32 @@ export const COMMANDS: readonly Command[] = [
     ],
     // Bare or misspelt lands here, and `cmdStt` owns that message — as `cmdDevices` does.
     run: (args, s) => cmdStt(sttDeps(s.io), args),
+  },
+  // ── The config file (ADR 0040) ─────────────────────────────────────────────
+  // Declared beside `stt` because it is the same shape of verb: a tree the operator's own terminal
+  // drives, over a file in their own config dir, with no route and no Herdr plugin action.
+  {
+    name: "config",
+    summary: `the config file: ${CONFIG_SUBCOMMANDS.join(", ")}`,
+    subcommands: [
+      {
+        name: "show",
+        summary: "every setting, its effective value, and which layer it came from",
+        run: (args, s) => cmdConfigShow(configVerbDeps(s.io), args),
+      },
+      {
+        name: "check",
+        summary: "validate the two files that would be read, or one named file",
+        run: (args, s) => cmdConfigCheck(configVerbDeps(s.io), args),
+      },
+      {
+        name: "init",
+        summary: "write a commented file with every setting and its default (--instance, --print)",
+        run: (args, s) => cmdConfigInit(configVerbDeps(s.io), args),
+      },
+    ],
+    // Bare or misspelt lands here, and `cmdConfig` owns that message — as `cmdStt` does.
+    run: (args, s) => cmdConfig(configVerbDeps(s.io), args),
   },
   // ── The crew (M4/07, renamed in M24) ──────────────────────────────────────
   // The only way a machine enters or leaves a crew. The verb is `crew`; `crew` is an alias onto the

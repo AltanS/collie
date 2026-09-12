@@ -347,19 +347,29 @@ export function overlayConfig(processEnv: Environment, layer: ConfigFileLayer): 
 }
 
 /**
- * Where each setting's effective value came from, given the file layer and the process environment
- * that sat on top of it. One answer per setting in the schema, which is what `config show` prints.
+ * Where a setting's effective value came from, given the EFFECTIVE environment (the one a verb
+ * actually reads, file layer and `.env` already merged in) and the layer that went under it.
+ *
+ * A name the file set and the effective environment still carries unchanged came from the file. A
+ * name carrying anything else came from the environment, which is the only thing that could have
+ * replaced it. That is an answer, not a guess: `overlayConfig` is the one merge, and it only ever
+ * overwrites.
  */
 export function sourceOf(
   setting: ConfigSetting,
-  processEnv: Environment,
+  effective: Environment,
   layer: ConfigFileLayer,
 ): ConfigSource {
-  const names = setting.alias === undefined ? [setting.env] : [setting.env, setting.alias];
-  if (names.some((n) => (processEnv[n] ?? "") !== "")) return "env";
   const fromFile = layer.sources.get(setting.env);
-  if (fromFile !== undefined) return fromFile;
-  return "default";
+  if (fromFile === "file:blocked") return "file:blocked";
+  const names = setting.alias === undefined ? [setting.env] : [setting.env, setting.alias];
+  for (const name of names) {
+    const value = effective[name];
+    if (value === undefined || value === "") continue;
+    if (fromFile !== undefined && layer.env[setting.env] === value) return fromFile;
+    return "env";
+  }
+  return fromFile ?? "default";
 }
 
 // ── Validation ───────────────────────────────────────────────────────────────

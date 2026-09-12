@@ -34,6 +34,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - **A row of the running agent's own commands, above the keys.** Claude Code panes get Model, Effort, Compact and Resume under the thumb; Codex, pi and omp get their own. Operators add or replace the row with `bar = true` in `commands.toml`. It is visible by default; Settings, Harness shortcuts, hides it per device.
 - **A config file carries every setting.** `~/.collie/config.toml` sets any Collie setting in TOML for the whole machine, and a `config.toml` beside your `.env` overrides it for one instance; the environment and your `.env` still win over both, and a broken key never stops the bridge from starting.
+- **Three verbs for that file.** `collie config init` writes a commented file with every setting and its default, `collie config check` validates one, and `collie config show` prints both file paths and every setting with its effective value and where it came from.
 
 ### Changed
 

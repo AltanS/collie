@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { join } from "node:path";
 
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, CREW, peerStore, T0 } from "../bridge/crew/fixtures.ts";
@@ -8,6 +9,7 @@ import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "../bridge/be
 import { BEACON_SCHEMA_VERSION } from "../bridge/beacon/types.ts";
 import type { JsonObject } from "../bridge/json.ts";
 import { BEACON_HOOKS } from "./beacon.ts";
+import type { CliContext } from "./context.ts";
 import { cmdDoctor, type DoctorDeps, type Finding } from "./doctor.ts";
 import { HOOK_MARKER, HOOK_MARKER_PREFIX } from "./hooks.ts";
 import type { LinkProbe } from "./link.ts";
@@ -26,6 +28,12 @@ import {
   STATE,
 } from "./fakes.ts";
 import { EXIT } from "./io.ts";
+import {
+  configFilePaths,
+  readConfigFilesSync,
+  type ConfigFileLayer,
+  type ConfigFileReader,
+} from "../bridge/config-source.ts";
 
 // `collie doctor`, against fakes for every seam. Like cli/crew.test.ts, NOTHING here reaches a
 // service manager, a tailnet, a real trust store or a network — and unlike it, there is nothing to
@@ -150,6 +158,17 @@ function fakeUi(): FakeUi {
   };
 }
 
+/** The context overrides this harness passes through, built one property at a time. */
+function contextOver(over: {
+  root?: string;
+  configLayer?: ConfigFileLayer;
+}): Partial<CliContext> {
+  const out: Partial<CliContext> = { socket: SOCKET };
+  if (over.root !== undefined) out.root = over.root;
+  if (over.configLayer !== undefined) out.configLayer = over.configLayer;
+  return out;
+}
+
 function harness(
   initial: TrustStoreData | null,
   replies: (Response | Error)[] = [],
@@ -164,6 +183,8 @@ function harness(
     beacons?: FakeBeacon[];
     /** The plugin root this Collie resolved — a staged checkout's is a worktree under `versions/`. */
     root?: string;
+    /** The two `config.toml` files this run read. No file at all is the default. */
+    configLayer?: ConfigFileLayer;
   } = {},
 ): Harness {
   const contents = initial === null ? null : serializeTrustStore(initial);
@@ -182,10 +203,7 @@ function harness(
     deps: {
       // As in cli/crew.test.ts: the peer client races the fake fetch against a REAL timer, so the
       // budget is set far above anything this process could stall for.
-      ctx: context(
-        { COLLIE_CREW_TIMEOUT_MS: "60000", ...over.env },
-        over.root === undefined ? { socket: SOCKET } : { socket: SOCKET, root: over.root },
-      ),
+      ctx: context({ COLLIE_CREW_TIMEOUT_MS: "60000", ...over.env }, contextOver(over)),
       io: out,
       exec,
       files,
@@ -273,6 +291,7 @@ describe("collie doctor — the contract", () => {
     expect(code).toBe(EXIT.OK);
     expect([...byCheck.keys()]).toEqual([
       "collie",
+      "config-file",
       "web-dist",
       "path-link",
       "install",
@@ -1175,6 +1194,7 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
     // The whole set, so a Herdr-flavoured check added later cannot slip in unnoticed.
     expect([...byCheck.keys()]).toEqual([
       "collie",
+      "config-file",
       "web-dist",
       "path-link",
       "install",
@@ -1524,5 +1544,82 @@ describe("collie doctor — a packaged install", () => {
     const run = await findings(harness(null));
     expect(run.byCheck.get("update-source")?.detail ?? "").toContain("github.com");
     expect(run.byCheck.get("versions")?.status).not.toBe("skipped");
+  });
+});
+
+// ── The config file (ADR 0040) ───────────────────────────────────────────────
+
+describe("the config-file finding", () => {
+  const HOME_FILE = join(HOME, ".collie", "config.toml");
+  const INSTANCE_FILE = join(CONFIG, "config.toml");
+
+  /** A layer over seeded text, optionally with a file the process cannot make owner-only. */
+  function layer(seed: Record<string, string>, tightenable = true): ConfigFileLayer {
+    const entries = new Map(Object.entries(seed));
+    const reader: ConfigFileReader = {
+      read: (p) => ({ text: entries.get(p) ?? null, error: null }),
+    };
+    return readConfigFilesSync(reader, configFilePaths({}, HOME, CONFIG), () => {}, {
+      home: HOME,
+      perms: { mode: () => 0o644, tighten: () => tightenable },
+    });
+  }
+
+  test("config-file names BOTH paths and their presence, even with no file at all", async () => {
+    const { byCheck } = await findings(harness(null));
+    const f = byCheck.get("config-file")!;
+    expect(f.status).toBe("skipped");
+    expect(f.detail).toContain(HOME_FILE);
+    expect(f.detail).toContain(INSTANCE_FILE);
+    expect(f.detail).toContain("absent");
+    expect(f.remedy).toBe("`collie config init`");
+  });
+
+  test("config-file is ok when a file parsed clean", async () => {
+    const { byCheck } = await findings(
+      harness(null, [], { configLayer: layer({ [HOME_FILE]: "[network]\nport = 8800\n" }) }),
+    );
+    const f = byCheck.get("config-file")!;
+    expect(f.status).toBe("ok");
+    expect(f.detail).toContain("parsed clean");
+  });
+
+  test("config-file warns with the count and the remedy when a file had problems", async () => {
+    const { byCheck } = await findings(
+      harness(null, [], { configLayer: layer({ [HOME_FILE]: "[bridge]\npoll_mss = 1\n" }) }),
+    );
+    const f = byCheck.get("config-file")!;
+    expect(f.status).toBe("warn");
+    expect(f.detail).toContain("1 problem");
+    expect(f.remedy).toBe("`collie config check`");
+  });
+
+  test("config-file is bad when a secret was dropped for permissions", async () => {
+    const { code, byCheck } = await findings(
+      harness(null, [], {
+        configLayer: layer({ [HOME_FILE]: '[push]\nvapid_private = "x"\n' }, false),
+      }),
+    );
+    const f = byCheck.get("config-file")!;
+    expect(f.status).toBe("error");
+    expect(f.detail).toContain("COLLIE_VAPID_PRIVATE");
+    expect(f.detail).not.toContain('"x"');
+    expect(f.remedy).toContain("chmod 600");
+    // A dropped secret is a real failure, so the verb's exit code says so.
+    expect(code).not.toBe(EXIT.OK);
+  });
+
+  test("a typo'd COLLIE_CONFIG shows as an absent path rather than as silence", async () => {
+    const reader: ConfigFileReader = { read: () => ({ text: null, error: null }) };
+    const typo = readConfigFilesSync(
+      reader,
+      configFilePaths({ COLLIE_CONFIG: "/etc/collie-tpyo.toml" }, HOME, CONFIG),
+      () => {},
+      { home: HOME },
+    );
+    const { byCheck } = await findings(
+      harness(null, [], { configLayer: typo, env: { COLLIE_CONFIG: "/etc/collie-tpyo.toml" } }),
+    );
+    expect(byCheck.get("config-file")!.detail).toContain("/etc/collie-tpyo.toml (absent)");
   });
 });

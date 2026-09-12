@@ -13,6 +13,7 @@ import {
 import { beaconReader } from "../bridge/beacon-io.ts";
 import { readBeacons, type BeaconSweepDeps } from "../bridge/beacon/reader.ts";
 import { envBool, nonLoopbackBindRefusal, resolveBridgeHost } from "../bridge/config.ts";
+import { configFilePaths } from "../bridge/config-source.ts";
 import type { MuxCapabilityDeclaration } from "../bridge/mux/capabilities.ts";
 import {
   buildMuxRegistry,
@@ -180,6 +181,7 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   const runtimeMarker = parseMarker(deps.files.read(crewRuntimePath(deps.ctx.stateDir)));
   const local: Finding[] = [
     identity(deps),
+    configFile(deps),
     webDist(deps),
     pathLink(deps),
     installKind(deps, install),
@@ -313,6 +315,43 @@ function identity(deps: DoctorDeps): Finding {
   const version = collieVersionBare(deps.ctx.root, (p) => deps.files.read(p));
   const platform = platformId(process.platform, process.arch) ?? `${process.platform}-${process.arch}`;
   return ok("collie", `v${version} · ${platform}`);
+}
+
+/**
+ * The two `config.toml` files (ADR 0040), both named whether or not they are there.
+ *
+ * BOTH paths are always in the message, because the failure this check exists for is a typo'd
+ * `COLLIE_CONFIG` pointing at a file nobody wrote: the settings an operator believes they set are
+ * then simply absent, and nothing else in Collie would say so. The verdict ladder is the layer's own
+ * state — a dropped secret is the only `error`, because it is the only case where a value reached the
+ * file and deliberately did not reach the process.
+ */
+function configFile(deps: DoctorDeps): Finding {
+  const layer = deps.ctx.configLayer;
+  // The PATHS come from the resolver, not from the layer, so both are named even when nothing was
+  // read — which is exactly the typo'd-`COLLIE_CONFIG` case this check exists for.
+  const present = new Map(layer.files.map((f) => [f.path, f.present]));
+  const where = configFilePaths(deps.ctx.env, deps.ctx.home, deps.ctx.configDir)
+    .map((f) => `${f.layer} ${f.path} (${present.get(f.path) === true ? "present" : "absent"})`)
+    .join(" · ");
+  if (layer.blocked.length > 0) {
+    return bad(
+      "config-file",
+      `${where} — dropped ${layer.blocked.join(", ")}: the file holding them is not owner-only`,
+      "`chmod 600` that file, then `collie restart`",
+    );
+  }
+  if (layer.problems.length > 0) {
+    return warn(
+      "config-file",
+      `${where} — ${String(layer.problems.length)} problem(s)`,
+      "`collie config check`",
+    );
+  }
+  if (![...present.values()].includes(true)) {
+    return skipped("config-file", `${where} — no config file, the env decides everything`, "`collie config init`");
+  }
+  return ok("config-file", `${where} — parsed clean`);
 }
 
 /** The bundle the bridge serves from disk at request time. Absent means a blank app, not an error page. */

@@ -258,6 +258,78 @@ assert_eq "$(stat -c '%a' "${CONFIG_DIR}/.env" 2>/dev/null || stat -f '%Lp' "${C
 run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" "$BIN" version   || fail "version failed over a mode-600 .env"
 case "$STDERR" in *"expected 600"*) fail "a private .env was still reported" ;; esac
 
+# ── The config file (ADR 0040) ───────────────────────────────────────────────
+# `config init | check | show` against the compiled binary, in a sandbox of their own: these three
+# verbs RESOLVE real paths and one of them WRITES a file, so they never run against the developer's
+# own `~/.collie` or `~/.config`.
+C_HOME="${TMP_ROOT}/config-home"
+C_CONFIG="${TMP_ROOT}/config-dir"
+mkdir -p "$C_HOME" "$C_CONFIG"
+c_collie() { run_stripped HOME="$C_HOME" HERDR_PLUGIN_CONFIG_DIR="$C_CONFIG" "$BIN" "$@"; }
+
+# `init` writes the machine's file, prints the path it wrote, and holds it owner-only.
+c_collie config init || fail "config init failed"
+assert_eq "$STDOUT" "${C_HOME}/.collie/config.toml"
+[ -f "${C_HOME}/.collie/config.toml" ] || fail "config init wrote no file"
+assert_eq "$(stat -c '%a' "${C_HOME}/.collie/config.toml" 2>/dev/null || stat -f '%Lp' "${C_HOME}/.collie/config.toml")" "600"
+assert_eq "$(stat -c '%a' "${C_HOME}/.collie" 2>/dev/null || stat -f '%Lp' "${C_HOME}/.collie")" "700"
+# It is a complete listing of the schema, and it changes nothing as written.
+assert_contains "$(cat "${C_HOME}/.collie/config.toml")" "#poll_ms = 1500"
+assert_contains "$(cat "${C_HOME}/.collie/config.toml")" "always override this file"
+
+# And it refuses to overwrite one that is already there.
+if c_collie config init; then fail "config init overwrote an existing file"; fi
+assert_contains "$STDERR" "refusing to overwrite"
+
+# A generated file checks clean, and `show` names BOTH paths in precedence order.
+c_collie config check || fail "config check failed on a generated file"
+assert_contains "$STDOUT" "ok: no problems."
+c_collie config show || fail "config show failed"
+assert_contains "$STDOUT" "machine   ${C_HOME}/.collie/config.toml  (present)"
+assert_contains "$STDOUT" "instance  ${C_CONFIG}/config.toml  (absent)"
+
+# One key uncommented is read, and the source column says which file won it.
+sed -i.bak 's/^#port = 8787$/port = 8800/' "${C_HOME}/.collie/config.toml"
+c_collie config show || fail "config show failed over an edited file"
+assert_contains "$STDOUT" "8800  [file:home]"
+
+# The instance file beats the machine's, key by key.
+c_collie config init --instance || fail "config init --instance failed"
+assert_eq "$STDOUT" "${C_CONFIG}/config.toml"
+sed -i.bak 's/^#port = 8787$/port = 8801/' "${C_CONFIG}/config.toml"
+c_collie config show || fail "config show failed over two files"
+assert_contains "$STDOUT" "8801  [file:instance]"
+
+# And the environment beats both, which is the whole precedence rule.
+printf 'COLLIE_PORT=8802\n' > "${C_CONFIG}/.env"
+chmod 600 "${C_CONFIG}/.env"
+c_collie config show || fail "config show failed with a .env"
+assert_contains "$STDOUT" "8802  [env]"
+
+# A secret in the file is never printed back, whatever it says.
+sed -i.bak 's|^#vapid_private = ""$|vapid_private = "a-signing-key-nobody-should-see"|' "${C_CONFIG}/config.toml"
+c_collie config show || fail "config show failed with a secret in the file"
+assert_contains "$STDOUT" "vapid_private"
+case "$STDOUT" in *a-signing-key-nobody-should-see*) fail "config show printed a secret" ;; esac
+
+# A broken key is a non-zero `config check` naming the key, and it never stops another verb.
+printf '[bridge]\npoll_mss = 1\n' > "${C_HOME}/.collie/config.toml"
+if c_collie config check; then fail "config check passed over an unknown key"; fi
+assert_contains "$STDERR" 'has no key "poll_mss"'
+c_collie version || fail "a broken config file stopped \`collie version\`"
+
+# `config check <path>` checks that one file alone, which is how a file is checked before it moves.
+printf '[network]\nport = 8900\n' > "${TMP_ROOT}/candidate.toml"
+c_collie config check "${TMP_ROOT}/candidate.toml" || fail "config check <path> failed on a good file"
+assert_contains "$STDOUT" "ok: no problems."
+
+# A bare `config` prints its usage block and exits 2.
+if c_collie config; then fail "a bare \`collie config\` exited 0"; fi
+assert_contains "$STDERR" "usage: collie config"
+
+rm -f "${C_HOME}/.collie/config.toml.bak" "${C_CONFIG}/config.toml.bak"
+echo "✓ collie CLI config: init writes 0600 in 0700 and refuses to overwrite, show names both paths and the winning layer, a secret is never printed, a broken key stops nothing"
+
 # ── Lifecycle ────────────────────────────────────────────────────────────────
 # Carried over from scripts/collie-ctl.test.sh:312-578 — `start`/`status`/`restart`/`stop` on all
 # three supervision tiers, the launchd bootstrap retry, and the front door that must not abort
