@@ -278,6 +278,8 @@ export const zh: Dictionary = {
   "chat.conversation.requiresTerminal": "此屏幕需要终端",
   "chat.conversation.requiresTerminalBody":
     "智能体正在显示 Collie 无法从聊天中安全操作的屏幕。请打开终端处理。",
+  "chat.conversation.withdrawnPartial":
+    "该屏幕需要终端。此前的一次写入已到达面板且不会被撤回——之后没有发送任何内容。请查看终端。",
   "chat.paneMenu.aria": "窗格菜单",
   "chat.header.openOverviewAria": "打开 {workspace} 概览{status}",
   "chat.header.statusAria": "（{label}）",

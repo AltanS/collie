@@ -291,6 +291,8 @@ export const ja: Dictionary = {
   "chat.conversation.requiresTerminal": "この画面にはターミナルが必要です",
   "chat.conversation.requiresTerminalBody":
     "エージェントはチャットから安全に操作できない画面を表示しています。ターミナルを開いて操作してください。",
+  "chat.conversation.withdrawnPartial":
+    "この画面にはターミナルが必要です。先ほどの書き込みはすでにペインに届いており、取り消されません — それ以降は何も送信されていません。ターミナルを確認してください。",
   "chat.paneMenu.aria": "ペイン操作",
   "chat.header.openOverviewAria": "{workspace} の概要を開く{status}",
   "chat.header.statusAria": "（{label}）",

@@ -5,6 +5,7 @@ import { http, HttpResponse } from "msw";
 
 import { server } from "@/test/setup";
 import * as registry from "./harness/registry";
+import { sendKeys } from "./api";
 import { draftCarriesSend, sendGuardedReply } from "./reply-action";
 
 // The regression suite for #34: a free-text reply must never fire the submit key until the text is
@@ -897,5 +898,293 @@ describe("the pre-type work is handed the region its keys must be bound to", () 
 
     expect(out.status).toBe("blocked");
     expect(log).toEqual([]);
+  });
+
+  // S5's later boundary: a MULTI-CHUNK send where one chunk was already acknowledged when the
+  // caller's live safety state turns unsafe. The acknowledged write cannot be recalled — the guard
+  // must refuse at the NEXT boundary, deliver nothing further (no second chunk, no submit), and
+  // report `textDelivered: true` so the caller can say the earlier write stands instead of
+  // claiming zero writes.
+  it("withdraws a multi-chunk send at the later boundary after a chunk was acknowledged, reporting the partial delivery", async () => {
+    // omp chunks at 512 UTF-16 units: exactly two chunks, the first one verifiable on screen.
+    const head = "x".repeat(512);
+    const text = `${head}tail of a long message`;
+    const calls: Array<{ text: string; submit: boolean }> = [];
+    let readCount = 0;
+    let unsafe = false;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        readCount++;
+        // Reads 1-2 (pre-flight, multi-chunk pre-read) see an empty composer; the verification
+        // reads after the first chunk see exactly the acknowledged chunk on the input line.
+        const draft = calls.length > 0 ? head : "";
+        return HttpResponse.json({
+          paneId: "w1:p1",
+          text: `some output\n╭── statusline ───╮\n╰─ ${draft}   ─╯`,
+          truncated: false,
+          revision: 1,
+        });
+      }),
+      http.post<never, { text: string; submit: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = await request.json();
+        calls.push(body);
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+
+    const out = await sendGuardedReply({
+      paneId: "w1:p1",
+      text,
+      agent: "omp",
+      writeRefusal: () => {
+        // Flip AFTER the first chunk was acknowledged: the next boundary re-reads the refusal and
+        // must withdraw with textDelivered. The latch-free shape here is deliberate — this file
+        // tests the GUARD's contract (refuse + textDelivered), not the composer's latch.
+        if (calls.length >= 1) unsafe = true;
+        return unsafe ? "This screen needs the terminal" : null;
+      },
+      ...instant,
+    });
+    expect(calls).toEqual([{ text: head, submit: false }]);
+    expect(out).toEqual({
+      status: "error",
+      error: "This screen needs the terminal",
+      textDelivered: true,
+      keysDelivered: false,
+      writeRefused: true,
+    });
+    expect(readCount).toBeGreaterThanOrEqual(3);
+  });
+
+  describe.each(["pi", "hermes", "opencode"])("pending combined response without an adapter: %s", (agent) => {
+    describe.each([false, true])("withdrawal=%s", (withdraw) => {
+      it.each(["acknowledged", "partial", "API error", "prompt changed", "HTTP failure", "network failure"] as const)("preserves the completion contract for %s", async (response) => {
+        const text = "combined boundary reply";
+        let reads = 0;
+        let withdrawn = false;
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => { release = resolve; });
+        const wire: unknown[] = [];
+        const onComposerSeen = vi.fn();
+        server.use(
+          http.get(/\/api\/pane\/[^/]+$/, () => {
+            reads++;
+            return HttpResponse.json({ paneId: "w1:p1", text: "pane output", truncated: false, revision: reads });
+          }),
+          http.post(/\/api\/pane\/[^/]+\/(keys|focus)$/, ({ request }) => {
+            wire.push(request.url);
+            return HttpResponse.json({ ok: true });
+          }),
+          http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+            wire.push(await request.json());
+            await held;
+            if (response === "acknowledged") return HttpResponse.json({ ok: true });
+            if (response === "partial") return HttpResponse.json({ ok: false, code: "reply.not_submitted", textDelivered: true, error: "typed but submit failed" });
+            if (response === "network failure") return HttpResponse.error();
+            if (response === "HTTP failure") return HttpResponse.json({ error: "injected combined failure" }, { status: 500 });
+            if (response === "prompt changed") return HttpResponse.json({ ok: false, code: "prompt_changed", error: "prompt changed" }, { status: 409 });
+            return HttpResponse.json({ ok: false, error: "injected combined failure" });
+          }),
+        );
+        const pending = sendGuardedReply({
+          paneId: "w1:p1", agent, text, ...instant, onComposerSeen,
+          writeRefusal: () => withdrawn ? "latched withdrawal" : null,
+        });
+        await vi.waitFor(() => expect(wire).toEqual([{ text, submit: true }]));
+        withdrawn = withdraw;
+        release();
+        const result = await pending;
+        expect(reads).toBe(0);
+        expect(onComposerSeen).not.toHaveBeenCalled();
+        expect(wire).toEqual([{ text, submit: true }]);
+        if (response === "acknowledged") {
+          expect(result).toEqual({ status: "sent" });
+        } else if (withdraw) {
+          // Dispatch alone acknowledges nothing. Only the resolved partial response confirms text.
+          expect(result).toEqual({ status: "error", error: "latched withdrawal", writeRefused: true, textDelivered: response === "partial", keysDelivered: false });
+        } else {
+          const error = response === "partial" ? expect.stringMatching(/typed into the pane but not sent/i)
+            : response === "prompt changed" ? expect.stringMatching(/The screen changed before that could be sent/)
+            : response === "network failure" ? "Failed to fetch" : "injected combined failure";
+          // Ordinary no-withdrawal outcomes keep their original shape, including the partial case.
+          expect(result).toEqual({ status: "error", error });
+        }
+      });
+    });
+  });
+
+  describe.each([false, true])("pending submit response after pre-type keys=%s", (keysSent) => {
+    describe.each([false, true])("withdrawal=%s", (withdraw) => {
+      it.each(["acknowledged", "API error", "prompt changed", "HTTP failure", "network failure"] as const)("retains the completion contract for %s", async (response) => {
+        const text = "check the submit boundary";
+        let draft = "";
+        let reads = 0;
+        let withdrawn = false;
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => { release = resolve; });
+        const wire: string[] = [];
+        const acknowledgements: string[] = [];
+        server.use(
+          http.get(/\/api\/pane\/[^/]+$/, () => {
+            reads++;
+            return HttpResponse.json({ paneId: "w1:p1", text: `some output\n╭── statusline ───╮\n╰─ ${draft}   ─╯`, truncated: false, revision: reads });
+          }),
+          http.post(/\/api\/pane\/[^/]+\/keys$/, () => {
+            wire.push("keys dispatched");
+            acknowledgements.push("keys acknowledged");
+            return HttpResponse.json({ ok: true });
+          }),
+          http.post<never, { text: string; submit?: boolean; expected_prompt?: string }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+            const body = await request.json();
+            wire.push(body.submit ? "submit dispatched" : "text dispatched");
+            if (!body.submit) {
+              draft = body.text;
+              acknowledgements.push("text acknowledged");
+              return HttpResponse.json({ ok: true });
+            }
+            expect(body).toEqual({ text: "", submit: true, expected_prompt: `╰─ ${text}   ─╯` });
+            await held;
+            if (response === "network failure") return HttpResponse.error();
+            if (response === "HTTP failure") return HttpResponse.json({ error: "injected submit failure" }, { status: 500 });
+            if (response === "prompt changed") return HttpResponse.json({ ok: false, code: "prompt_changed", error: "prompt changed" }, { status: 409 });
+            if (response === "API error") return HttpResponse.json({ ok: false, error: "injected submit failure" });
+            acknowledgements.push("submit acknowledged");
+            return HttpResponse.json({ ok: true });
+          }),
+        );
+        const pending = sendGuardedReply({
+          paneId: "w1:p1", agent: "omp", text, ...instant,
+          writeRefusal: () => withdrawn ? "latched withdrawal" : null,
+          onComposerSeen: async ({ promptRegion }) => {
+            if (keysSent) {
+              const result = await sendKeys("w1:p1", ["ctrl+k"], undefined, promptRegion ?? undefined);
+              expect(result.ok).toBe(true);
+            }
+            return { ok: true, keysSent };
+          },
+        });
+        const expectedWire = [...(keysSent ? ["keys dispatched"] : []), "text dispatched", "submit dispatched"];
+        const priorAcknowledgements = [...(keysSent ? ["keys acknowledged"] : []), "text acknowledged"];
+        await vi.waitFor(() => expect(wire).toEqual(expectedWire));
+        expect(acknowledgements).toEqual(priorAcknowledgements);
+        expect(reads).toBe(keysSent ? 3 : 2);
+        withdrawn = withdraw;
+        release();
+        const result = await pending;
+        expect(wire).toEqual(expectedWire);
+        expect(reads).toBe(keysSent ? 3 : 2);
+        expect(draft).toBe(text);
+        if (response === "acknowledged") {
+          // The dispatched submit completed. A late withdrawal cannot turn it into a retry.
+          expect(result).toEqual({ status: "sent" });
+          expect(acknowledgements).toEqual([...priorAcknowledgements, "submit acknowledged"]);
+        } else {
+          expect(acknowledgements).toEqual(priorAcknowledgements);
+          if (withdraw) {
+            expect(result).toEqual({ status: "error", error: "latched withdrawal", writeRefused: true, textDelivered: true, keysDelivered: keysSent });
+          } else {
+            const error = response === "prompt changed" ? expect.stringMatching(/The screen changed before that could be sent/)
+              : response === "API error" ? expect.stringMatching(/typed into the pane but not sent/i)
+              : response === "HTTP failure" ? "injected submit failure" : "Failed to fetch";
+            expect(result).toEqual({ status: "error", error, textDelivered: true });
+          }
+        }
+      });
+    });
+  });
+
+  describe.each(["intermediate", "final"])("pending %s chunk response", (boundary) => {
+    describe.each(["none", "keys", "text"])("with earlier acknowledged writes: %s", (prior) => {
+      it.each([
+        ["HTTP failure", true], ["network failure", true],
+        ["HTTP failure", false], ["network failure", false],
+      ] as const)("handles %s, withdrawal=%s without counting the failed request as acknowledged", async (response, withdraw) => {
+        const prefix = prior === "text" ? "x".repeat(512) : "";
+        const chunk = boundary === "intermediate" ? "y".repeat(512) : "tail";
+        const text = prefix + chunk + (boundary === "intermediate" ? "tail" : "");
+        let acknowledged = "";
+        let withdrawn = false;
+        let reads = 0;
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => { release = resolve; });
+        const calls: Array<{ text: string; submit: boolean }> = [];
+        server.use(
+          http.get(/\/api\/pane\/[^/]+$/, () => {
+            reads++;
+            return HttpResponse.json({ paneId: "w1:p1", text: `some output\n╭── statusline ───╮\n╰─ ${acknowledged}   ─╯`, truncated: false, revision: reads });
+          }),
+          http.post<never, { text: string; submit: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+            const body = await request.json();
+            calls.push(body);
+            if (calls.length === (prior === "text" ? 2 : 1)) {
+              await held;
+              return response === "HTTP failure"
+                ? HttpResponse.json({ error: "injected write response failure" }, { status: 500 })
+                : HttpResponse.error();
+            }
+            acknowledged += body.text;
+            return HttpResponse.json({ ok: true });
+          }),
+        );
+        const pending = sendGuardedReply({
+          paneId: "w1:p1", text, agent: "omp",
+          onComposerSeen: async () => ({ ok: true, keysSent: prior === "keys" }),
+          writeRefusal: () => withdrawn ? "operation withdrawn" : null,
+          ...instant,
+        });
+        const expectedCalls = [...(prefix ? [{ text: prefix, submit: false }] : []), { text: chunk, submit: false }];
+        await vi.waitFor(() => expect(calls).toEqual(expectedCalls));
+        const readsBeforeFailure = reads;
+        withdrawn = withdraw;
+        release();
+        const out = await pending;
+        expect(out).toEqual(withdraw ? {
+          status: "error", error: "operation withdrawn", writeRefused: true,
+          textDelivered: prior === "text", keysDelivered: prior === "keys",
+        } : {
+          // Terminal-started callers never arm the Conversation latch. Keep their error unchanged.
+          status: "error", error: response === "HTTP failure" ? "injected write response failure" : "Failed to fetch",
+        });
+        expect(acknowledged).toBe(prefix);
+        expect(calls).toEqual(expectedCalls);
+        expect(reads).toBe(readsBeforeFailure);
+      });
+    });
+  });
+
+  describe.each(["pre-type keys", "intermediate chunk", "final chunk"])("withdrawal evidence after %s", (boundary) => {
+    it.each(["ready", "unsafe", "failed"])("takes precedence over a %s verification read", async (readResult) => {
+      const text = boundary === "intermediate chunk" ? "x".repeat(512) + "tail" : "reply text";
+      const boundaryRead = boundary === "intermediate chunk" ? 3 : 2;
+      let reads = 0;
+      let withdrawn = false;
+      const calls: Array<{ text: string; submit: boolean }> = [];
+      server.use(
+        http.get(/\/api\/pane\/[^/]+$/, () => {
+          reads++;
+          if (reads === boundaryRead) withdrawn = true;
+          if (withdrawn && readResult === "failed") return HttpResponse.error();
+          const draft = calls.length ? text.slice(0, 512) : "";
+          const ready = boundary === "intermediate chunk" ? `some output\n╭── statusline ───╮\n╰─ ${draft}   ─╯` : paneWithDraft(draft);
+          return HttpResponse.json({ paneId: "w1:p1", text: withdrawn && readResult === "unsafe" ? paneWithDialog : ready, truncated: false, revision: reads });
+        }),
+        http.post<never, { text: string; submit: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+          calls.push(await request.json());
+          return HttpResponse.json({ ok: true });
+        }),
+      );
+      const out = await sendGuardedReply({
+        paneId: "w1:p1", text, agent: boundary === "intermediate chunk" ? "omp" : "claude",
+        onComposerSeen: async () => ({ ok: true, keysSent: boundary === "pre-type keys" }),
+        writeRefusal: () => withdrawn ? "operation withdrawn" : null,
+        ...instant,
+      });
+      expect(out).toEqual({
+        status: "error", error: "operation withdrawn", writeRefused: true,
+        textDelivered: boundary !== "pre-type keys", keysDelivered: boundary === "pre-type keys",
+      });
+      expect(reads).toBe(boundaryRead);
+      expect(calls).toEqual(boundary === "pre-type keys" ? [] : [{ text: text.slice(0, 512), submit: false }]);
+    });
   });
 });

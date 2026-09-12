@@ -289,6 +289,8 @@ export const ko: Dictionary = {
   "chat.conversation.requiresTerminal": "이 화면은 터미널이 필요합니다",
   "chat.conversation.requiresTerminalBody":
     "에이전트가 채팅에서 안전하게 응답할 수 없는 화면을 표시하고 있습니다. 터미널을 열어 처리하세요.",
+  "chat.conversation.withdrawnPartial":
+    "이 화면에는 터미널이 필요합니다. 이전 쓰기는 이미 페인에 전달되었으며 취소되지 않습니다 — 이후에는 아무것도 전송되지 않았습니다. 터미널을 확인하세요.",
   "chat.paneMenu.aria": "창 작업",
   "chat.header.openOverviewAria": "{workspace} 개요 열기{status}",
   "chat.header.statusAria": " — {label}",

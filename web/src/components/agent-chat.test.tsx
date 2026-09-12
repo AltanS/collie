@@ -3065,6 +3065,283 @@ describe("AgentChat — Conversation mode", () => {
     expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
   });
 
+  // S4: a SUPPORTED inline prompt is the other form of keyboard ownership — `dialogPresent` true
+  // while `requiresTerminal` stays false — and the pane can reach one while a composer-ready send's
+  // guarded read is held. The pre-write refusal must catch that transition under both Raw Terminal
+  // settings. S5's fresh-retry half is here too: after the withdrawal, once the pane returns to a
+  // valid composer-ready state, a brand-new explicit send runs normally — the latch is scoped to
+  // the withdrawn operation, not to the pane.
+  it.each([false, true])("withdraws an in-flight composer-ready send when a supported dialog appears while the guarded read is held, then sends fresh after recovery, Raw Terminal=%s", async (rawTerminal) => {
+    localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ rawTerminal }));
+    setPaneViewMode("conversation");
+    const ready = paneTextWithDraft("hello from the pane");
+    // A SUPPORTED permission prompt: it renders inline in Conversation (a prompt block), so it sets
+    // `dialogPresent` true WITHOUT the Terminal-required card — exactly the transition S4 left open.
+    const supportedPrompt = readFileSync(join(process.cwd(), "src/fixtures/panes/claude--permission-bash.txt"), "utf8");
+    let advance!: (text: string) => void;
+    function Harness() {
+      const [text, setText] = useState(ready);
+      advance = setText;
+      const claudeAgent = sessionAgent();
+      return <AgentChat paneId="w1:p1" agent={claudeAgent} agents={[claudeAgent]} shellPanes={[]} tabs={[]} text={text} onBack={vi.fn()} onSelect={vi.fn()} />;
+    }
+    let reads = 0;
+    let holdReads = false;
+    let failReads = false;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const writes = vi.fn();
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, async () => {
+        reads++;
+        if (holdReads) await held;
+        if (failReads) return HttpResponse.json({ error: "injected pane read failure" }, { status: 500 });
+        // The live pane stays composer-ready (the recorded reply keeps its input line honest).
+        return HttpResponse.json({ paneId: "w1:p1", text: paneTextWithDraft("hello from the pane"), truncated: false, revision: 2 });
+      }),
+      http.post<never, { text: string; submit?: boolean }>(/\/api\/pane\/[^/]+\/(keys|reply)$/, async ({ request }) => {
+        const body = await request.json();
+        if (body.text !== undefined) recordReply(body);
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }]);
+    const { container } = render(<RouterProvider router={router} />);
+    await screen.findByText("what changed today?");
+    expect(container.querySelector('[data-slot="conversation-terminal-required"]')).toBeNull();
+    expect(screen.queryByRole("button", { name: "Yes" })).toBeNull();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "send while it is still safe");
+    holdReads = true;
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(reads).toBeGreaterThan(0));
+    // While the read is held, the pane transitions to the supported permission prompt: keyboard
+    // ownership changes, and the thread renders the prompt inline rather than a Terminal-required
+    // card — but the in-flight send must be withdrawn all the same.
+    act(() => advance(supportedPrompt));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Yes" })).toBeVisible());
+    // Release the held read as a FAILURE: the withdrawal must not depend on the read succeeding.
+    failReads = true;
+    release();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+    expect(box).toHaveValue("send while it is still safe");
+    expect(screen.getAllByText("This screen needs the terminal").length).toBeGreaterThan(0);
+    expect(writes).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("button", { name: "Open the terminal view for this pane" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
+    // The latch is scoped to the withdrawn send: with the pane back on a composer-ready screen and
+    // the supported prompt answered, a NEW explicit send runs normally.
+    act(() => advance(ready));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Yes" })).toBeNull());
+    failReads = false;
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(writes).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled(), { timeout: 5000 });
+    expect(box).toHaveValue("");
+  });
+
+  describe.each([false, true])("pending combined response in pi Conversation, Raw Terminal=%s", (rawTerminal) => {
+    describe.each(["Terminal", "Terminal then Conversation", "missing journal then recovery", "no transition", "Terminal-started"])("%s", (transition) => {
+      it.each(["acknowledged", "partial", "HTTP failure", "network failure"] as const)("handles %s without repeating the dispatched request", async (response) => {
+        localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ rawTerminal }));
+        setPaneViewMode(transition === "Terminal-started" ? "terminal" : "conversation");
+        const agent = { ...sessionAgent(), agent: "pi" };
+        let available = true;
+        let reads = 0;
+        let release!: () => void;
+        const held = new Promise<void>((resolve) => { release = resolve; });
+        const wire: unknown[] = [];
+        server.use(
+          http.get(/\/api\/pane\/[^/]+\/history$/, () => HttpResponse.json({
+            available, reason: available ? undefined : "no-log", entries: available ? fixtureTranscript : [],
+            hasMore: false, total: available ? fixtureTranscript.length : 0, fileTruncated: false,
+          })),
+          http.get(/\/api\/pane\/[^/]+$/, () => {
+            reads++;
+            return HttpResponse.json({ paneId: agent.paneId, text: "pi output", truncated: false, revision: reads });
+          }),
+          http.post(/\/api\/pane\/[^/]+\/(keys|focus)$/, ({ request }) => {
+            wire.push(request.url);
+            return HttpResponse.json({ ok: true });
+          }),
+          http.post(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+            wire.push(await request.json());
+            await held;
+            if (response === "acknowledged") return HttpResponse.json({ ok: true });
+            if (response === "partial") return HttpResponse.json({ ok: false, code: "reply.not_submitted", textDelivered: true, error: "typed but submit failed" });
+            if (response === "HTTP failure") return HttpResponse.json({ error: "injected combined failure" }, { status: 500 });
+            return HttpResponse.error();
+          }),
+        );
+        const { container } = renderChat({ agent, agents: [agent], text: "pi output" });
+        if (transition !== "Terminal-started") {
+          await screen.findByText("what changed today?");
+          expect(conversationSurface(container)).not.toBeNull();
+          expect(container.querySelector('[data-slot="conversation-terminal-required"]')).toBeNull();
+        }
+        const user = userEvent.setup();
+        const box = screen.getByPlaceholderText(/type a reply/i);
+        const text = "pi combined boundary reply";
+        fireEvent.change(box, { target: { value: text } });
+        await user.click(screen.getByRole("button", { name: "Send" }));
+        await waitFor(() => expect(wire).toEqual([{ text, submit: true }]));
+        expect(reads).toBe(0);
+        if (transition === "Terminal" || transition === "Terminal then Conversation") {
+          await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+          expect(conversationSurface(container)).toBeNull();
+          expect(paneViewMode()).toBe("terminal");
+        }
+        if (transition === "Terminal then Conversation" || transition === "Terminal-started") {
+          await openPaneMenu(user);
+          await user.click(screen.getByRole("button", { name: "Conversation view" }));
+          await screen.findByText("what changed today?");
+        }
+        if (transition === "missing journal then recovery") {
+          available = false;
+          await user.click(screen.getByRole("button", { name: "Refresh conversation" }));
+          // Automatic fallback keeps the Conversation header, but removes the thread.
+          await waitFor(() => expect(container.querySelector('[data-slot="conversation-surface"]')).toBeNull());
+          expect(paneViewMode()).toBe("conversation");
+          available = true;
+          await user.click(screen.getByRole("button", { name: "Refresh conversation" }));
+          await screen.findByText("what changed today?");
+        }
+        // Each transition has rendered. Recovery must not revive this pending operation.
+        act(() => release());
+        await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+        expect(screen.getByPlaceholderText(/type a reply/i)).toBe(box);
+        expect(wire).toEqual([{ text, submit: true }]);
+        expect(reads).toBe(0);
+        if (response === "acknowledged") {
+          expect(box).toHaveValue("");
+          expect(screen.getByText("Sent ✓")).toBeVisible();
+          expect(screen.queryByRole("button", { name: "Terminal" })).toBeNull();
+        } else {
+          expect(box).toHaveValue(text);
+          const withdrawn = transition !== "no transition" && transition !== "Terminal-started";
+          if (withdrawn) {
+            expect(screen.getAllByText(response === "partial" ? /An earlier write already reached the pane and is not recalled/ : "This screen needs the terminal")[0]!).toBeVisible();
+            await user.click(await screen.findByRole("button", { name: "Terminal" }));
+            expect(paneViewMode()).toBe("terminal");
+            expect(box).toHaveValue(text);
+            expect(wire).toEqual([{ text, submit: true }]);
+            expect(reads).toBe(0);
+          } else {
+            expect(screen.queryByRole("button", { name: "Terminal" })).toBeNull();
+            const error = response === "partial" ? /typed into the pane but not sent/i
+              : response === "HTTP failure" ? "injected combined failure" : "Failed to fetch";
+            expect(screen.getByText(error)).toBeVisible();
+          }
+        }
+      });
+    });
+  });
+
+  describe.each([
+    "Terminal", "Terminal then Conversation", "missing journal", "missing journal then recovery",
+    "unsupported then ready", "unsupported then Terminal",
+  ])("ordinary send withdrawal across %s", (transition) => {
+    it.each([
+      [false, false], [false, true], [true, false], [true, true],
+    ])("preserves the draft and allows a fresh retry, Raw Terminal=%s, failed read=%s", async (rawTerminal, failRead) => {
+      localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ rawTerminal }));
+      setPaneViewMode("conversation");
+      const ready = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--draft.txt"), "utf8");
+      const idle = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--fresh-idle.txt"), "utf8");
+      const notes = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--ask-notes-focused.txt"), "utf8");
+      let advance!: (text: string) => void;
+      function Harness() {
+        const [text, setText] = useState(ready);
+        advance = setText;
+        const agent = { ...sessionAgent(), agent: "codex" };
+        return <AgentChat paneId="w1:p1" agent={agent} agents={[agent]} shellPanes={[]} tabs={[]} text={text} onBack={vi.fn()} onSelect={vi.fn()} />;
+      }
+      let available = true;
+      let reads = 0;
+      let draft = "hi there";
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      const wire: string[] = [];
+      server.use(
+        http.get(/\/api\/pane\/[^/]+\/history$/, () => HttpResponse.json({
+          available, reason: available ? undefined : "no-log", entries: available ? fixtureTranscript : [],
+          hasMore: false, total: 0, fileTruncated: false,
+        })),
+        http.get(/\/api\/pane\/[^/]+$/, async () => {
+          const read = ++reads;
+          if (read === 1) {
+            await held;
+            if (failRead) return HttpResponse.error();
+          }
+          return HttpResponse.json({ paneId: "w1:p1", text: draft ? ready.replace("hi there", draft) : idle, truncated: false, revision: read });
+        }),
+        http.post(/\/api\/pane\/[^/]+\/(keys|focus)$/, ({ request }) => {
+          wire.push(request.url.endsWith("/keys") ? "keys" : "focus");
+          draft = "";
+          return HttpResponse.json({ ok: true });
+        }),
+        http.post<never, { text: string; submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+          const body = await request.json();
+          wire.push(body.submit ? "submit" : "text");
+          if (!body.submit) draft = body.text;
+          return HttpResponse.json({ ok: true });
+        }),
+      );
+      const user = userEvent.setup();
+      const { container } = render(<RouterProvider router={createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }])} />);
+      await screen.findByText("what changed today?");
+      const box = screen.getByPlaceholderText(/type a reply/i);
+      await user.type(box, "held ordinary reply");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(reads).toBe(1));
+      if (transition.startsWith("unsupported")) {
+        act(() => advance(notes));
+        await waitFor(() => expect(container.querySelector('[data-slot="conversation-terminal-required"]')).not.toBeNull());
+        if (transition === "unsupported then ready") act(() => advance(ready));
+        else await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+      } else if (transition.startsWith("missing journal")) {
+        available = false;
+        await user.click(screen.getByRole("button", { name: "Refresh conversation" }));
+        // The Conversation header stays mounted during automatic fallback; the thread does not.
+        await waitFor(() => expect(container.querySelector('[data-slot="conversation-surface"]')).toBeNull());
+        expect(paneViewMode()).toBe("conversation");
+        if (transition === "missing journal then recovery") {
+          available = true;
+          await user.click(screen.getByRole("button", { name: "Refresh conversation" }));
+          await screen.findByText("what changed today?");
+        }
+      } else {
+        await user.click(screen.getAllByRole("button", { name: "Open the terminal view for this pane" })[0]!);
+        expect(conversationSurface(container)).toBeNull();
+        if (transition === "Terminal then Conversation") {
+          await openPaneMenu(user);
+          await user.click(screen.getByRole("button", { name: "Conversation view" }));
+          await screen.findByText("what changed today?");
+        }
+      }
+      expect(wire).toEqual([]);
+      release();
+      await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+      expect(wire).toEqual([]);
+      expect(reads).toBe(1);
+      expect(screen.getByPlaceholderText(/type a reply/i)).toBe(box);
+      expect(box).toHaveValue("held ordinary reply");
+      expect(screen.getByRole("button", { name: "Terminal" })).toBeVisible();
+      expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
+
+      // End the withdrawn operation before recovering and explicitly starting another one.
+      act(() => { advance(ready); setPaneViewMode("conversation"); });
+      available = true;
+      await user.click(screen.getByRole("button", { name: "Refresh conversation" }));
+      await screen.findByText("what changed today?");
+      await user.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(box).toHaveValue(""), { timeout: 5000 });
+      expect(wire).toEqual(rawTerminal ? ["text", "submit"] : ["keys", "text", "submit"]);
+    });
+  });
+
   it.each([false, true])("withdraws a forced send waiting on a pane read, returning to Terminal=%s", async (returnToTerminal) => {
     const text = readFileSync(join(process.cwd(), "src/fixtures/panes/omp--menu-model.txt"), "utf8");
     let reads = 0;

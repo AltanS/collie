@@ -294,6 +294,8 @@ export const es: Dictionary = {
   "chat.conversation.requiresTerminal": "Esta pantalla necesita la terminal",
   "chat.conversation.requiresTerminalBody":
     "El agente muestra una pantalla que Collie no puede responder de forma segura desde el chat. Abre la terminal para actuar.",
+  "chat.conversation.withdrawnPartial":
+    "Esta pantalla necesita la terminal. Una escritura anterior ya llegó al panel y no se retira — no se envió nada más. Revisa la terminal.",
   "chat.paneMenu.aria": "Acciones del panel",
   "chat.header.openOverviewAria": "Abrir vista general de {workspace}{status}",
   "chat.header.statusAria": ": {label}",
