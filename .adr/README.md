@@ -106,6 +106,7 @@ the pointer, it was a supersede.
 | [0037](./0037-a-staged-update-confirms-its-runner-before-it-exits.md) | A staged update confirms its runner before it exits | Accepted |
 | [0038](./0038-the-group-is-a-crew-the-wire-keeps-pack.md) | The group is a crew; the wire keeps "pack" (supersedes the word in 0012) | Superseded in part by 0039 |
 | [0039](./0039-the-machine-says-crew-too.md) | The machine says "crew" too: protocol version 2, one release of overlap (supersedes the machine names in 0038) | Accepted |
+| [0042](./0042-notification-kinds-and-the-cache-watch.md) | Notification kinds, and the cache watch: global OR per-pane, keyed by session ref | Accepted |
 | [0043](./0043-operator-bar-rows-replace-the-bar-not-the-palette.md) | Operator bar rows replace the bar, not the palette (applies 0018 per surface) | Accepted |
 | [0045](./0045-a-build-below-the-protocol-floor-is-a-red-preflight.md) | A build below the protocol floor is a red preflight, never a silent link | Accepted |
 

@@ -382,6 +382,16 @@ taken one turn, because nothing is guessed before it is measured. A pane whose h
 adapter shows nothing at all, and neither does one whose vendor publishes no lifetime Collie could
 quote.
 
+A phone can also be warned before a pane's cache goes cold. One variable sets how early.
+
+| var | default | meaning |
+| --- | --- | --- |
+| `COLLIE_CACHE_WARN_SECONDS` | `300` | how many seconds before a watched pane's cache expires the push goes out; floor 30, ceiling 3600 |
+
+This is the push window and nothing else. It is **not** the threshold that turns the chip amber, which
+is a quarter of each rule's own TTL and so differs per rule. Switching the warning on, per pane or for
+every pane, is in [voice-and-push.md](voice-and-push.md#which-alerts-collie-sends).
+
 ## Attachments
 
 The paperclip beside the message box uploads a file to the host and puts its path in your message.
