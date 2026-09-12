@@ -27,7 +27,7 @@ import { setPaneViewMode, paneViewMode, __resetPaneViewMode } from "@/lib/pane-v
 import { __resetOperatorCommands } from "@/lib/operator-config";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
-import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscript, fixtureServers, recordReply } from "@/test/handlers";
+import { fixtureAgents, fixtureShellPanes, fixtureTabs, fixtureTranscript, fixtureServers, paneTextWithDraft, recordReply } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
 import type { AgentStatus, AgentView, ServerSummary, TabView } from "@/lib/types";
 import { withHeaderHost } from "@/test/header-host";
@@ -2960,6 +2960,44 @@ describe("AgentChat — Conversation mode", () => {
     expect(writes).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])("refuses unsupported-state sends before any terminal write despite failed fresh reads and Raw Terminal=%s", async (rawTerminal) => {
+    localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ rawTerminal }));
+    setPaneViewMode("conversation");
+    const text = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--ask-notes-focused.txt"), "utf8");
+    const writes = vi.fn();
+    const reads = vi.fn();
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        reads();
+        return HttpResponse.json({ error: "injected pane read failure" }, { status: 500 });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    renderChat({ agent: { ...sessionAgent(), agent: "codex" }, text });
+    await screen.findByText("what changed today?");
+    expect(screen.getByText("This screen needs the terminal")).toBeVisible();
+    const recoveryBefore = screen.getAllByText("This screen needs the terminal").length;
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "do not type into this screen");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    // The composer's refusal strip joins the card that was already up — the send was refused by
+    // the Composer gate, not silently swallowed.
+    await waitFor(() =>
+      expect(screen.getAllByText("This screen needs the terminal").length).toBeGreaterThan(recoveryBefore),
+    );
+    expect(box).toHaveValue("do not type into this screen");
+    // The Conversation-rendered Terminal-required state refuses BEFORE preflight: no read, no
+    // reply text, no keys — zero terminal-driving writes, and the local Terminal recovery is up.
+    expect(reads).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("button", { name: "Open the terminal view for this pane" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
+  });
+
   it.each([false, true])("withdraws a forced send waiting on a pane read, returning to Terminal=%s", async (returnToTerminal) => {
     const text = readFileSync(join(process.cwd(), "src/fixtures/panes/omp--menu-model.txt"), "utf8");
     let reads = 0;
@@ -3006,7 +3044,7 @@ describe("AgentChat — Conversation mode", () => {
     await screen.findByRole("button", { name: "Yes" });
     await openFind(user);
     act(() => {
-      advance("recent pane output");
+      advance(paneTextWithDraft());
       setPaneViewMode("conversation");
     });
     await screen.findByText("what changed today?");
@@ -3247,7 +3285,10 @@ describe("AgentChat — Conversation mode", () => {
       }),
     );
     const user = userEvent.setup();
-    const { container } = renderChat({ agent: sessionAgent() });
+    // Composer-READY mirror text: a not-ready composer is Conversation's fail-closed send gate, so
+    // the normal-reply regression has to model the ready case (the live read has always been ready
+    // — `paneTextWithDraft` renders the Claude input box — only the initial prop lagged).
+    const { container } = renderChat({ agent: sessionAgent(), text: paneTextWithDraft() });
     await openPaneMenu(user);
     await user.click(screen.getByRole("button", { name: "Conversation view" }));
     await screen.findByText("what changed today?");

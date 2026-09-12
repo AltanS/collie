@@ -123,6 +123,74 @@ test.describe("conversation continuity", () => {
     await page.screenshot({ path: info.outputPath("closed-pane.png") });
   });
 
+  // The whole-effort safety gap, at BOTH viewport projects AND BOTH Raw Terminal settings (the
+  // for-loop below runs phone AND tablet per project, so all four viewport/settings combinations
+  // run): the unsupported Codex notes screen owns the Terminal-required card, so ordinary free-text
+  // Send must refuse BEFORE any terminal-driving write — even while every post-entry pane read
+  // fails. The refusal keeps the draft and the local Terminal action. The write endpoints are
+  // writable fixtures, so a wrongly-scheduled write would succeed and be RECORDED, not silently
+  // lost to a failed request.
+  for (const rawTerminal of [false, true] as const) {
+    test(`an unsupported Terminal-required state refuses free-text sends with zero writes (raw terminal: ${rawTerminal})`, async ({ page }, info) => {
+      const notes = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--ask-notes-focused.txt"), "utf8");
+      const writes: string[] = [];
+      let failedReads = 0;
+      let failReads = false;
+      page.on("request", request => {
+        if (request.method() === "POST" && /\/(reply|keys|focus)$/.test(new URL(request.url()).pathname)) writes.push(request.url());
+      });
+      // Pin the Raw Terminal preference BEFORE navigation so the setting is deterministic at load.
+      await page.addInitScript(raw => {
+        localStorage.setItem("collie:display-prefs:v4", JSON.stringify({
+          wrap: true, fontSize: 10, draftFontSize: 14, fontFamily: "system",
+          rawTerminal: raw, tapToFocus: true, expandClippedReply: true,
+        }));
+      }, rawTerminal);
+      await page.route("**/api/snapshot", route => route.fulfill({ json: {
+        ...fixtureSnapshot,
+        agents: fixtureSnapshot.agents.map(agent => Object.assign({}, agent, { agent: "codex", hasSession: true, status: "working" })),
+      } }));
+      // Writable reply/keys endpoints: any terminal-driving write would 200 and land in `writes`.
+      await page.route(url => /\/api\/pane\/[^/]+\/(reply|keys)$/.test(url.pathname), route => {
+        writes.push(route.request().url());
+        return route.fulfill({ json: { ok: true } });
+      });
+      await page.route(url => /\/api\/pane\/[^/]+$/.test(url.pathname), route => {
+        if (failReads) {
+          failedReads++;
+          return route.fulfill({ status: 500, json: { error: "injected pane read failure" } });
+        }
+        return route.fulfill({ json: { paneId: "w1:p1", text: notes, truncated: false, revision: 1 } });
+      });
+      await page.goto("/pane/w1%3Ap1");
+      await expect(page.getByText(en["chat.conversation.requiresTerminal"], { exact: true }).first()).toBeVisible();
+      // Every pane read after entry fails, deterministically — not conditional on a read count.
+      failReads = true;
+      // Observe an actually-failed pane response before the send attempt, so the failed-read half
+      // of the matrix is a recorded fact, not an assumption. The refusal gate reads the ALREADY
+      // rendered Terminal-required state and requires no fresh read itself.
+      await expect.poll(() => failedReads, { timeout: 15000 }).toBeGreaterThan(0);
+      const recoveryBefore = await page.getByText(en["chat.conversation.requiresTerminal"], { exact: true }).count();
+      const field = page.getByPlaceholder(en["composer.placeholder.reply"]);
+      await field.fill("must not reach the pane");
+      const send = page.getByRole("button", { name: en["composer.send.sendAria"] });
+      // The Send control must be actionable, so an unrelated disabled state cannot explain the
+      // refusal that follows.
+      await expect(send).toBeEnabled();
+      await send.click();
+      // The refusal strip is the composer's own fail-closed gate; the draft survives untouched.
+      await expect(field).toHaveValue("must not reach the pane");
+      await expect.poll(async () =>
+        (await page.getByText(en["chat.conversation.requiresTerminal"], { exact: true }).count()),
+      ).toBeGreaterThan(recoveryBefore);
+      await expect(page.getByRole("button", { name: en["chat.conversation.openTerminalAria"] }).first()).toBeVisible();
+      await page.waitForTimeout(1500); // let any wrongly-scheduled write land
+      expect(writes).toEqual([]);
+      await info.attach("unsupported-refusal", { body: JSON.stringify({ viewport: page.viewportSize(), rawTerminal, failedReads, writes }), contentType: "application/json" });
+      await page.screenshot({ path: info.outputPath(`unsupported-refusal-raw-${String(rawTerminal)}.png`) });
+    });
+  }
+
   for (const theme of ["light", "dark"] as const) {
     test(`keyboard, live status, reduced motion and contrast in ${theme}`, async ({ page }, info) => {
       let prompt = false;

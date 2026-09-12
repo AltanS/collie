@@ -2200,6 +2200,12 @@ export function AgentChat({
                   // machine am I typing into" has to be answerable without tapping Send to find out.
                   hostBlock={hostBlock}
                   dialogPresent={conversationActive ? conversationAttention.dialogPresent : dialogPresent}
+                  // Conversation's own fail-closed gate (see Composer): the same live knowledge the
+                  // thread used to render the Terminal-required card, handed to the send path so an
+                  // ordinary free-text Send refuses BEFORE any terminal write instead of betting on
+                  // the guarded reply's transient fresh read. Terminal mode leaves it undefined and
+                  // keeps its deliberate fail-open-for-text behavior.
+                  requiresTerminal={conversationActive && conversationAttention.requiresTerminal}
                   text={text}
                   terminalDraft={terminalDraft}
                   rawTerminalDraft={rawTerminalDraft}

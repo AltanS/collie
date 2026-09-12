@@ -177,6 +177,34 @@ describe("Composer Conversation recovery", () => {
     expect(screen.queryByPlaceholderText("Type into the terminal…")).toBeNull();
     if (_name === "password") expect(loadDraft(undefined, "w1:p1")).toBeNull();
   });
+
+  it("refuses an unsupported Terminal-required state before any write, even with failed fresh reads", async () => {
+    const user = userEvent.setup();
+    const writes = vi.fn();
+    const openTerminal = vi.fn();
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        return HttpResponse.json({ error: "injected pane read failure" }, { status: 500 });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposerWithStatus({ chatOnly: true, requiresTerminal: true, agent: "codex", onOpenTerminal: openTerminal });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "keep this draft");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    // Conversation already KNOWS the screen cannot be represented safely — the refusal does not
+    // wait for (or need) a fresh read, and it offers the local Terminal recovery instead of the
+    // "Type anyway?" override Terminal mode would offer.
+    expect(await screen.findByTestId("status")).toHaveTextContent(/This screen needs the terminal/i);
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Terminal" }));
+    expect(openTerminal).toHaveBeenCalledTimes(1);
+    expect(writes).not.toHaveBeenCalled();
+    expect(box).toHaveValue("keep this draft");
+  });
 });
 
 describe("Composer — send", () => {
