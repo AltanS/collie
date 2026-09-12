@@ -434,6 +434,17 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     doc: "The mailto: or https: subject the push service is told to reach you at.",
     configField: "vapidSubject",
   },
+  {
+    key: "cache_warn_seconds",
+    env: "COLLIE_CACHE_WARN_SECONDS",
+    section: "push",
+    kind: "int",
+    default: 300,
+    min: 30,
+    max: 3600,
+    doc: "Seconds before a watched pane's prompt cache expires that the warning push is sent.",
+    configField: "cacheWarnSeconds",
+  },
 
   // ── uploads ────────────────────────────────────────────────────────────────
   {

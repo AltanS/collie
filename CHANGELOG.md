@@ -60,6 +60,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   the remedy, and reads as `incompatible` in `crew status`. The `collie pack` command alias, `collie
   docs pack` and the app's `/pack` address are untouched and stay until 2.0.0.
 - **Push availability copy has one home.** Settings and the tour read the same sentences.
+- **The config schema names the cache warn window.** `COLLIE_CACHE_WARN_SECONDS` has its row, so `collie config show` and `config init` carry it.
 
 ## [1.8.2] - 2026-09-12
 
