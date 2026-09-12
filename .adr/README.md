@@ -106,8 +106,11 @@ the pointer, it was a supersede.
 | [0037](./0037-a-staged-update-confirms-its-runner-before-it-exits.md) | A staged update confirms its runner before it exits | Accepted |
 | [0038](./0038-the-group-is-a-crew-the-wire-keeps-pack.md) | The group is a crew; the wire keeps "pack" (supersedes the word in 0012) | Superseded in part by 0039 |
 | [0039](./0039-the-machine-says-crew-too.md) | The machine says "crew" too: protocol version 2, one release of overlap (supersedes the machine names in 0038) | Accepted |
+| [0040](./0040-configuration-precedence-and-the-config-file.md) | Configuration precedence, and the config file under it | Accepted |
+| [0041](./0041-cache-rules-are-sourced-claims.md) | Cache rules are sourced claims | Accepted |
 | [0042](./0042-notification-kinds-and-the-cache-watch.md) | Notification kinds, and the cache watch: global OR per-pane, keyed by session ref | Accepted |
 | [0043](./0043-operator-bar-rows-replace-the-bar-not-the-palette.md) | Operator bar rows replace the bar, not the palette (applies 0018 per surface) | Accepted |
+| [0044](./0044-the-update-screen-is-one-reducer-and-one-shared-poll.md) | The update screen is one reducer and one shared poll | Accepted |
 | [0045](./0045-a-build-below-the-protocol-floor-is-a-red-preflight.md) | A build below the protocol floor is a red preflight, never a silent link | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
