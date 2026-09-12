@@ -55,6 +55,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   to 1.9.0: a member still on 1.7.0 now shows red on the lead's preflight, naming both versions and
   the remedy, and reads as `incompatible` in `crew status`. The `collie pack` command alias, `collie
   docs pack` and the app's `/pack` address are untouched and stay until 2.0.0.
+- **Push availability copy has one home.** Settings and the tour read the same sentences.
 
 ## [1.8.2] - 2026-09-12
 

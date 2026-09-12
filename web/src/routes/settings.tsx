@@ -29,7 +29,7 @@ import { t } from "@/lib/i18n";
 import { type DevicesData } from "@/lib/loaders";
 import { homePath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
-import type { PushAvailability } from "@/lib/push";
+import { availabilityNote, reasonText } from "@/lib/push-copy";
 import { describeThrownError } from "@/lib/api-error-message";
 import { useOptionalRootData } from "@/lib/route-data";
 
@@ -243,38 +243,4 @@ export function SettingsRoute() {
       </main>
     </div>
   );
-}
-
-function reasonText(reason: PushAvailability | undefined): string {
-  switch (reason) {
-    case "insecure":
-      return t("settings.push.reason.insecure");
-    case "server-off":
-      return t("settings.push.reason.serverOff");
-    case "unavailable":
-      return t("settings.push.availability.unavailable");
-    case "denied":
-      return t("settings.push.reason.denied");
-    case "unsupported":
-      return t("settings.push.reason.unsupported");
-    default:
-      return t("settings.push.reason.default");
-  }
-}
-
-function availabilityNote(a: PushAvailability): string {
-  switch (a) {
-    case "insecure":
-      return t("settings.push.availability.insecure");
-    case "server-off":
-      return t("settings.push.availability.serverOff");
-    case "unavailable":
-      return t("settings.push.availability.unavailable");
-    case "denied":
-      return t("settings.push.availability.denied");
-    case "unsupported":
-      return t("settings.push.availability.unsupported");
-    case "ready":
-      return "";
-  }
 }
