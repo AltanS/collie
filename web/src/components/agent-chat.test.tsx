@@ -2998,6 +2998,73 @@ describe("AgentChat — Conversation mode", () => {
     expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
   });
 
+  // The remaining race from ticket 05: an ordinary send that starts composer-ready spends the
+  // guarded reply's round trips with `requiresTerminal` false, and the pane can go Terminal-required
+  // inside that window. The withdrawal must come from the guarded reply's pre-write refusal callback
+  // re-reading the LIVE Conversation condition — not the click-time snapshot — immediately before
+  // every terminal-driving write, even when the already-started fresh read fails.
+  it.each([false, true])("withdraws an in-flight composer-ready send when the pane goes Terminal-required while the guarded read is held, Raw Terminal=%s", async (rawTerminal) => {
+    localStorage.setItem("collie:display-prefs:v4", JSON.stringify({ rawTerminal }));
+    setPaneViewMode("conversation");
+    const ready = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--draft.txt"), "utf8");
+    const notes = readFileSync(join(process.cwd(), "src/fixtures/panes/codex--ask-notes-focused.txt"), "utf8");
+    let advance!: (text: string) => void;
+    function Harness() {
+      const [text, setText] = useState(ready);
+      advance = setText;
+      const codexAgent = { ...sessionAgent(), agent: "codex" };
+      return <AgentChat paneId="w1:p1" agent={codexAgent} agents={[codexAgent]} shellPanes={[]} tabs={[]} text={text} onBack={vi.fn()} onSelect={vi.fn()} />;
+    }
+    let reads = 0;
+    let holdReads = false;
+    let failReads = false;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const writes = vi.fn();
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, async () => {
+        reads++;
+        if (holdReads) await held;
+        if (failReads) return HttpResponse.json({ error: "injected pane read failure" }, { status: 500 });
+        return HttpResponse.json({ paneId: "w1:p1", text: notes, truncated: false, revision: 2 });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    const user = userEvent.setup();
+    const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }]);
+    const { container } = render(<RouterProvider router={router} />);
+    await screen.findByText("what changed today?");
+    expect(container.querySelector('[data-slot="conversation-terminal-required"]')).toBeNull();
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "send while it is still safe");
+    // Hold the guarded reply's pre-flight read: the send has started composer-ready, with the live
+    // pane still one the mode can represent.
+    holdReads = true;
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(reads).toBeGreaterThan(0));
+    // While the read is held, the pane transitions to the unsupported Codex notes screen — the same
+    // state that renders the Terminal-required card.
+    act(() => advance(notes));
+    await waitFor(() => expect(container.querySelector('[data-slot="conversation-terminal-required"]')).not.toBeNull());
+    const recoveryBefore = screen.getAllByText("This screen needs the terminal").length;
+    // Release the held read as a FAILURE: the refusal must not depend on the read succeeding.
+    failReads = true;
+    release();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+    // The in-flight withdrawal: the draft survives, the Terminal-required recovery presents, and
+    // not a single terminal-driving write went out — no sweep keys, no reply text, no submit.
+    expect(box).toHaveValue("send while it is still safe");
+    await waitFor(() =>
+      expect(screen.getAllByText("This screen needs the terminal").length).toBeGreaterThan(recoveryBefore),
+    );
+    expect(writes).not.toHaveBeenCalled();
+    expect(screen.getAllByRole("button", { name: "Open the terminal view for this pane" }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
+  });
+
   it.each([false, true])("withdraws a forced send waiting on a pane read, returning to Terminal=%s", async (returnToTerminal) => {
     const text = readFileSync(join(process.cwd(), "src/fixtures/panes/omp--menu-model.txt"), "utf8");
     let reads = 0;

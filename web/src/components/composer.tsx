@@ -797,10 +797,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         agent,
         scope,
         force,
-        writeRefusal: force ? () =>
-          chatOnlyRef.current || forceGeneration.current !== startedGeneration
-            ? translate("chat.conversation.requiresTerminal")
-            : null : undefined,
+        // The pre-write refusal callback, handed to EVERY send now, not only forced ones. The
+        // click-time gate above cannot close the race it left open: an ordinary send that starts
+        // composer-ready spends the guarded reply's round trips with `requiresTerminal` still false
+        // in this closure, and the pane can go Terminal-required (an unsupported dialog up, or the
+        // adapter reporting no composer) inside that window. `writeRefusal` is re-read immediately
+        // before every terminal-driving write — the pre-clear sweep keys, each reply chunk, the
+        // submit — and reads the LIVE refs, not the snapshot the tap captured, so a screen the
+        // mirror has since rendered as Terminal-required withdraws the send with nothing typed.
+        // Terminal mode keeps its deliberate fail-open-for-text behavior: chatOnly is what turns
+        // the first check on, and a forced retry (armed in Terminal, the only place it can be)
+        // stays withdrawn the moment it would be running against Conversation or a stale burst.
+        writeRefusal: () => {
+          if (chatOnlyRef.current && requiresTerminalRef.current)
+            return translate("chat.conversation.requiresTerminal");
+          if (force && (chatOnlyRef.current || forceGeneration.current !== startedGeneration))
+            return translate("chat.conversation.requiresTerminal");
+          return null;
+        },
         // Clear a stranded draft on the terminal's "❯" line before pane.send_text appends at cursor —
         // ctrl+k kills cursor→end, Backspace sweep kills the head (preview-action.ts pattern). Skip
         // when there's no draft: a blind sweep races the TUI and Enter can fire before the PTY
@@ -928,6 +942,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // double-sending, and on a stall their message is still here to re-send once the dialog is
         // answered.
         //
+        // A withdrawal from the pre-write refusal arrives in this branch too, and under chatOnly it
+        // is not an ordinary failure: the pane has gone Terminal-required mid-flight, so the same
+        // local recovery the click-time gate presents comes up here. The draft is still in the
+        // input, nothing was typed, and no desktop focus is involved.
+        //
         // Except at a password prompt, where the draft staying put is the wrong call and the notice
         // says so: the text is already IN the pane (unsubmitted), so a re-send types a second copy of
         // a secret rather than recovering a lost message. The notice's handoff is what clears it.
@@ -936,6 +955,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ? { prompt: res.noEcho, typed: true }
             : null,
         );
+        if (chatOnlyRef.current && res.error === translate("chat.conversation.requiresTerminal")) {
+          setTerminalRecovery(true);
+        }
         setStatus(res.error, "error");
         return false;
       }
