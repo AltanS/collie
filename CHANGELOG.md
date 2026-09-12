@@ -41,6 +41,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The first launch walks you through Collie in three slides.** A sheet on the first
   snapshot says what Collie mirrors, how to answer a pane, and how to be told when one needs
   you; it is shown once per device, and Settings has a row to show it again.
+- **A push warns you before a pane's prompt cache goes cold.** Switch it on for one pane from its settings sheet, or for every pane under Settings → Notify when, where the panes you watched one by one are listed. The warning fires once per warm cycle, honours the snooze, and `COLLIE_CACHE_WARN_SECONDS` moves its 300-second window.
 
 ### Changed
 

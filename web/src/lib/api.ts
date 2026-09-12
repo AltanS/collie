@@ -16,6 +16,8 @@ import type {
   DismissScope,
   DevicesResponse,
   CacheRulesResponse,
+  CacheWatchListResponse,
+  CacheWatchState,
   LaunchersResponse,
   NotifyPrefs,
   PaneHistoryResponse,
@@ -725,6 +727,43 @@ export function setNotifyPrefs(patch: Partial<NotifyPrefs>): Promise<NotifyPrefs
   return req<NotifyPrefs>("/api/notifications/prefs", {
     method: "POST",
     body: JSON.stringify(patch),
+  });
+}
+
+/**
+ * One pane's place in the prompt-cache watch list (ADR 0042).
+ *
+ * The scope names the machine the PANE lives on; the preference itself always lands on the collie this
+ * phone is talking to, because that is the only machine holding a push subscription. So this call is
+ * never forwarded, and `?host=` here is an argument rather than an address.
+ */
+export function getCacheWatch(paneId: string, scope?: Scope): Promise<CacheWatchState> {
+  return req<CacheWatchState>(withScope(`/api/notifications/cache-watch?pane=${encodeURIComponent(paneId)}`, scope));
+}
+
+/** Switch this pane's warning on or off. Returns the same body the read returns, after the write. */
+export function setCacheWatch(paneId: string, on: boolean, scope?: Scope): Promise<CacheWatchState> {
+  return req<CacheWatchState>(
+    withScope(`/api/notifications/cache-watch?pane=${encodeURIComponent(paneId)}`, scope),
+    { method: "POST", body: JSON.stringify({ on }) },
+  );
+}
+
+/** The whole bridge's watch list, for the Settings card. Not one pane's, and not scoped. */
+export function getCacheWatchList(): Promise<CacheWatchListResponse> {
+  return req<CacheWatchListResponse>("/api/notifications/cache-watch/list");
+}
+
+/**
+ * Drop one entry by its opaque id, and get the list back.
+ *
+ * The id is the only address removal has: an entry whose pane is gone cannot be un-watched by the
+ * per-pane call, which needs a live `(host, session, paneId)`.
+ */
+export function forgetCacheWatch(id: string): Promise<CacheWatchListResponse> {
+  return req<CacheWatchListResponse>("/api/notifications/cache-watch/forget", {
+    method: "POST",
+    body: JSON.stringify({ id }),
   });
 }
 

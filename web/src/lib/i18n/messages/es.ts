@@ -69,6 +69,13 @@ export const es: Dictionary = {
   "settings.notify.done.hint": "un agente completa su tarea",
   "settings.notify.updates.label": "Actualizaciones",
   "settings.notify.updates.hint": "hay una nueva versión de Collie disponible",
+  "settings.notify.cache.label": "Cache about to go cold",
+  "settings.notify.cache.hint":
+    "a pane's prompt cache expires in a few minutes; also covers panes you watched one by one",
+  "settings.notify.watched.title": "Watched panes",
+  "settings.notify.watched.empty": "None yet — open a pane's settings to watch it.",
+  "settings.notify.watched.remove": "Remove",
+  "settings.notify.watched.removeAria": "Stop watching {label}",
 
   // --- settings.snooze ---
   "settings.snooze.title": "Pausar avisos",
@@ -327,8 +334,17 @@ export const es: Dictionary = {
   "prompt.feedback.freeText.typedPrefix":
     "Respuesta personalizada en la terminal: ",
 
+  // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
+  "paneSettings.title": "Pane settings",
+  "paneSettings.cacheWatch.label": "Warn me before this pane's cache goes cold",
+  "paneSettings.cacheWatch.hint": "about {minutes} minutes before it expires",
+  "paneSettings.cacheWatch.pushOff": "Turn notifications on for this device in Settings first.",
+  "paneSettings.cacheWatch.globalOn": "Settings warns about every pane, so this one is covered.",
+  "paneSettings.cacheWatch.noSession": "This pane's agent names no session, so there is nothing to watch.",
+
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "Panel",
+  "paneActions.settings.label": "Pane settings",
   "paneActions.readOnly": "Solo lectura: este dispositivo no tiene permisos para renombrar o cerrar paneles.",
   "paneActions.hostBlockSuffix": "{hostBlock}: renombrar y cerrar no estarán disponibles hasta que responda.",
   "paneActions.rename.label": "Renombrar",
@@ -757,6 +773,8 @@ export const es: Dictionary = {
   "apiError.pairing.bad_code": "El código de vinculación no coincide.",
   "apiError.pairing.duplicate_label": "Ya existe un dispositivo registrado con ese nombre.",
   "apiError.device.unknown": "No existe ningún dispositivo vinculado con ese nombre.",
+  "apiError.cache.pane_unknown": "That pane is gone, nothing was changed.",
+  "apiError.cache.no_session": "That pane's agent names no session, so it can't be watched.",
   "apiError.session.unknown": "No existe la sesión {session} en este collie.",
   "apiError.host.unknown": "No existe el collie {host} en este equipo.",
   "apiError.crew.not_lead": "Este collie no lidera ningún equipo. No hay datos para mostrar.",

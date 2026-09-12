@@ -1118,6 +1118,40 @@ export interface NotifyPrefs {
   done: boolean;
   /** Push when a new Collie version is available (a restart or upgrade is waiting). Default on. */
   updates: boolean;
+  /** Push before an agent pane's prompt cache expires. Default off, and it covers EVERY pane — the
+   *  panes watched one by one from their own settings sheet keep warning either way (ADR 0042). */
+  cache: boolean;
+}
+
+/**
+ * GET/POST /api/notifications/cache-watch — one pane's place in the cache watch list.
+ *
+ * `global` is `prefs.cache`, so the sheet can say Settings already covers this pane rather than show a
+ * switch that looks off while warnings are going out. `watchable` is false when the pane names no
+ * harness session, carries no cache reading at all, or reads `unknown` — the switch is then disabled
+ * and the reason is named. `warnSeconds` comes from the bridge so the copy quotes its number.
+ */
+export interface CacheWatchState {
+  on: boolean;
+  global: boolean;
+  watchable: boolean;
+  warnSeconds: number;
+}
+
+/** One row of the watched-pane list under the Settings switch. `id` is an opaque handle, never a ref. */
+export interface CacheWatchListEntry {
+  id: string;
+  label: string;
+  /** The crew member this pane lives on. Absent for a local pane, never null. */
+  host?: string;
+  session?: string;
+  /** Absent when the entry's pane is not in the current snapshot. Such a row lists, and still removes. */
+  paneId?: string;
+}
+
+/** GET /api/notifications/cache-watch/list — the whole bridge's list, not one pane's. */
+export interface CacheWatchListResponse {
+  entries: CacheWatchListEntry[];
 }
 
 /** Lower sorts first — "needs you" at the top. Mirrors STATUS_RANK on the server. */

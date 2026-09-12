@@ -434,12 +434,23 @@ export const handlers = [
     return HttpResponse.json({ snoozedUntil });
   }),
   http.get("/api/notifications/prefs", () =>
-    HttpResponse.json({ blocked: true, done: false, updates: true }),
+    HttpResponse.json({ blocked: true, done: false, updates: true, cache: false }),
   ),
-  http.post<never, Partial<{ blocked: boolean; done: boolean; updates: boolean }>>("/api/notifications/prefs", async ({ request }) => {
+  http.post<never, Partial<{ blocked: boolean; done: boolean; updates: boolean; cache: boolean }>>("/api/notifications/prefs", async ({ request }) => {
     const patch = await request.json();
-    return HttpResponse.json({ blocked: true, done: false, updates: true, ...patch });
+    return HttpResponse.json({ blocked: true, done: false, updates: true, cache: false, ...patch });
   }),
+  // The prompt-cache watch list (ADR 0042). The default world watches NOTHING and has the global switch
+  // off, which is a fresh install: a test that wants a watched pane overrides these three.
+  http.get("/api/notifications/cache-watch", () =>
+    HttpResponse.json({ on: false, global: false, watchable: true, warnSeconds: 300 }),
+  ),
+  http.post<never, { on: boolean }>("/api/notifications/cache-watch", async ({ request }) => {
+    const { on } = await request.json();
+    return HttpResponse.json({ on, global: false, watchable: true, warnSeconds: 300 });
+  }),
+  http.get("/api/notifications/cache-watch/list", () => HttpResponse.json({ entries: [] })),
+  http.post("/api/notifications/cache-watch/forget", () => HttpResponse.json({ entries: [] })),
   // Device pairing. The default world has NOTHING paired — writes are ungated, exactly like a
   // fresh install — so every pre-existing test keeps asserting the unpaired-and-unenforced bridge,
   // and a test that wants pairing on overrides these two.

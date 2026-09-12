@@ -66,6 +66,13 @@ export const zh: Dictionary = {
   "settings.notify.done.hint": "Agent 已完成当前任务",
   "settings.notify.updates.label": "版本更新",
   "settings.notify.updates.hint": "Collie 有新版本可用",
+  "settings.notify.cache.label": "Cache about to go cold",
+  "settings.notify.cache.hint":
+    "a pane's prompt cache expires in a few minutes; also covers panes you watched one by one",
+  "settings.notify.watched.title": "Watched panes",
+  "settings.notify.watched.empty": "None yet — open a pane's settings to watch it.",
+  "settings.notify.watched.remove": "Remove",
+  "settings.notify.watched.removeAria": "Stop watching {label}",
 
   // --- settings.snooze ---
   "settings.snooze.title": "勿扰模式",
@@ -310,8 +317,17 @@ export const zh: Dictionary = {
     "自由文本输入框已占用终端键盘焦点。此时点击按钮会输入文本而非提交响应，关闭该输入框即可恢复正常功能。",
   "prompt.feedback.freeText.typedPrefix": "正在终端中输入自定义内容：",
 
+  // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
+  "paneSettings.title": "Pane settings",
+  "paneSettings.cacheWatch.label": "Warn me before this pane's cache goes cold",
+  "paneSettings.cacheWatch.hint": "about {minutes} minutes before it expires",
+  "paneSettings.cacheWatch.pushOff": "Turn notifications on for this device in Settings first.",
+  "paneSettings.cacheWatch.globalOn": "Settings warns about every pane, so this one is covered.",
+  "paneSettings.cacheWatch.noSession": "This pane's agent names no session, so there is nothing to watch.",
+
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "窗格",
+  "paneActions.settings.label": "Pane settings",
   "paneActions.readOnly": "只读模式。当前设备无权对窗格进行重命名或关闭操作。",
   "paneActions.hostBlockSuffix": "{hostBlock}。等待主机响应后方可重命名或关闭。",
   "paneActions.rename.label": "重命名",
@@ -726,6 +742,8 @@ export const zh: Dictionary = {
   "apiError.pairing.bad_code": "配对码不匹配。",
   "apiError.pairing.duplicate_label": "该设备名称已被占用。",
   "apiError.device.unknown": "未找到匹配该名称的已配对设备。",
+  "apiError.cache.pane_unknown": "That pane is gone, nothing was changed.",
+  "apiError.cache.no_session": "That pane's agent names no session, so it can't be watched.",
   "apiError.session.unknown": "当前 collie 上不存在名为 {session} 的会话。",
   "apiError.host.unknown": "当前机组中不存在名为 {host} 的 collie 实例。",
   "apiError.crew.not_lead": "当前 collie 不是机组 lead，无可展示的机组。",

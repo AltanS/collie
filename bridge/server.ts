@@ -10,6 +10,8 @@ import { MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } f
 import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
 import { allCacheRules } from "./cache/rules/index.ts";
 import type { CacheOverride } from "./cache/engine.ts";
+import { localWatchPane, peerWatchPane, type CacheWarnPane } from "./cache/watch-key.ts";
+import { watchKeyOf, type CacheWatchSurface } from "./cache/watch.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
@@ -79,6 +81,8 @@ import type {
   LaunchersResponse,
   CacheRulesResponse,
   CacheRuleWire,
+  CacheWatchListResponse,
+  CacheWatchResponse,
   PaneCache,
   PaneHistoryResponse,
   PaneReadResponse,
@@ -720,6 +724,14 @@ export function startServer(opts: {
    * `COLLIE_TRANSCRIPT` off.
    */
   cache?: { get(sessionKey: string): PaneCache | undefined };
+  /**
+   * The prompt-cache watch list — which panes the operator asked to be warned about (ADR 0042).
+   *
+   * Absent means the three `cache-watch` routes answer 404, which is every caller that builds this
+   * server by hand in a test. `bridge/index.ts` always passes one: the store writes no file until an
+   * operator toggles something, so a bridge nobody asks still writes exactly today's four entries.
+   */
+  cacheWatch?: CacheWatchSurface;
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, crew } = opts;
   // The prompt-cache ledger, built in bridge/index.ts beside the journal registry it probes through,
@@ -864,6 +876,44 @@ export function startServer(opts: {
     // Only report device state when the feature is on, so an off deployment sends nothing new.
     if (device !== null) body.device = device;
     return body;
+  };
+
+  /**
+   * Every watchable pane in sight, by watch key, with the pane id it currently answers to.
+   *
+   * Built per request and thrown away: it is read by the list route only, which a phone opens when it
+   * is looking at Settings. A watched pane that is in NO snapshot is simply absent from the map, which
+   * is what makes its row list without a link rather than disappear (ADR 0042).
+   */
+  const watchedPaneIds = (): Map<string, string> => {
+    const out = new Map<string, string>();
+    for (const rt of registry.all()) {
+      for (const view of rt.engine.current().agents) {
+        const pane = localWatchPane(view, rt.isPrimary ? undefined : rt.name);
+        if (pane !== undefined) out.set(pane.key, pane.paneId);
+      }
+    }
+    for (const contribution of crewLead?.contributions() ?? []) {
+      for (const wire of contribution.body?.agents ?? []) {
+        const pane = peerWatchPane(wire, contribution.state.memberId);
+        if (pane !== undefined) out.set(pane.key, pane.paneId);
+      }
+    }
+    return out;
+  };
+
+  /** One pane's place in the list, as the sheet reads it. */
+  const cacheWatchBody = (watch: CacheWatchSurface, pane: CacheWarnPane): CacheWatchResponse => ({
+    on: watch.has(pane.key),
+    global: notifyPrefs.current().cache,
+    watchable: cacheWatchable(pane),
+    warnSeconds: cfg.cacheWarnSeconds,
+  });
+
+  /** The whole bridge's list, with a pane id on every row whose pane is in sight. */
+  const cacheWatchListBody = (watch: CacheWatchSurface): CacheWatchListResponse => {
+    const ids = watchedPaneIds();
+    return { entries: watch.list((entry) => ids.get(watchKeyOf(entry))) };
   };
 
   /**
@@ -1270,6 +1320,45 @@ export function startServer(opts: {
       const host = crewHandler ? selectHostFrom(url) : LOCAL_HOST;
 
       /**
+       * The watch identity behind `(host, session, paneId)`, or the reason there is none.
+       *
+       * THE BRIDGE IS THE ONLY PARTY THAT CAN DO THIS, which is the whole reason the routes speak an
+       * address rather than a key: a phone can only ever name `(host, session, paneId)`, and the ref a
+       * watch is keyed by is server-side only (`bridge/types.ts` § agentSession).
+       *
+       * It resolves WITHOUT FORWARDING. A peer's pane is read out of the body the lead's own sweep
+       * last parsed (`CrewLead.contributions`), exactly as `bridge/crew/notify.ts` reads it, because
+       * the preference belongs on the machine holding the subscription and a forward would store it on
+       * the machine that cannot send.
+       */
+      const watchTargetFor = (
+        paneId: string,
+        selector: HostSelector,
+        session: string | undefined,
+      ): { pane: CacheWarnPane; error?: undefined } | { pane?: undefined; error: ErrorCode } => {
+        if (selector.kind === "member") {
+          const body = crewLead?.contributions().find((c) => c.state.memberId === selector.id)?.body;
+          const wire = body?.agents.find((p) => p.paneId === paneId);
+          if (wire === undefined) return { error: "cache.pane_unknown" };
+          // A peer's pane carries no ref, so `hasSession` is what "names a session" means here — the
+          // same flag the History affordance is gated on.
+          if (wire.hasSession !== true) return { error: "cache.no_session" };
+          const pane = peerWatchPane(wire, selector.id);
+          return pane === undefined ? { error: "cache.no_session" } : { pane };
+        }
+        if (selector.kind !== "local") return { error: "cache.pane_unknown" };
+        const rt = registry.get(session);
+        if (!rt) return { error: "cache.pane_unknown" };
+        const view = rt.engine.current().agents.find((p) => p.paneId === paneId);
+        if (view === undefined) return { error: "cache.pane_unknown" };
+        // The session is omitted for the primary, the omitted-not-null rule the push payload follows —
+        // and it is read off the REGISTRY rather than off the query, so one pane has one key however
+        // the caller spelled its address.
+        const pane = localWatchPane(view, rt.isPrimary ? undefined : rt.name, (key) => cache?.get(key));
+        return pane === undefined ? { error: "cache.no_session" } : { pane };
+      };
+
+      /**
        * The `(host, session)` target of a session-scoped route, or the Response refusing it.
        *
        * An unknown host is a 404, mirroring `unknownSession()` exactly (§4) — and so is an
@@ -1589,6 +1678,78 @@ export function startServer(opts: {
           return json(updated, req.headers.get("accept-encoding"));
         }
         return text("method not allowed", 405);
+      }
+      // ── The per-pane half of the cache warning (ADR 0042) ────────────────
+      // Three paths in the `notifications` family, all read-level for the reason the prefs block above
+      // is: setting your own notification preference does not drive a terminal.
+      //
+      // THEY ARE QUERY-ADDRESSED AND NONE OF THEM IS FORWARDABLE. `?host=` names the machine the PANE
+      // lives on; the preference itself always lives on the collie the phone is talking to, because
+      // that is the only machine holding a push subscription (CREW_PROTOCOL.md §5). A segment on
+      // `PANE_ROUTE` would have been forwarded to the peer and stored there, where nothing can send.
+      if (pathname === "/api/notifications/cache-watch") {
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        const watch = opts.cacheWatch;
+        if (!watch) return text("not found", 404);
+        const paneId = url.searchParams.get("pane");
+        // A malformed REQUEST is refused the way the prefs block above refuses one: in plain text, with
+        // no code. A code is for a refusal the phone has to explain to the operator, and "you forgot a
+        // query parameter" is a bug in the caller. The two refusals below are the explainable ones.
+        if (paneId === null || paneId === "") return text("bad request", 400);
+        const found = watchTargetFor(paneId, host, sessionName);
+        if (found.error !== undefined) {
+          const status = found.error === "cache.pane_unknown" ? 404 : 409;
+          return jsonError(apiError(found.error, { paneId }), status, req.headers.get("accept-encoding"));
+        }
+        if (req.method === "POST") {
+          let body: JsonValue;
+          try {
+            // SAFETY: `Request.json()` output IS a JsonValue by construction; `parseCacheWatchRequest`
+            // rejects anything that is not a single boolean `on`.
+            body = (await req.json()) as JsonValue;
+          } catch {
+            return text("bad request", 400);
+          }
+          const parsed = parseCacheWatchRequest(body);
+          if (parsed === null) return text("bad on", 400);
+          // The 409 a race earns: the GET already reported `watchable: false` and the sheet already
+          // disabled the switch, so the ordinary operator never sees this. It exists for the tap that
+          // lands after the harness dropped its session, where accepting would leave a switch that lies.
+          if (parsed.on && !cacheWatchable(found.pane)) {
+            return jsonError(apiError("cache.no_session", { paneId }), 409, req.headers.get("accept-encoding"));
+          }
+          await watch.set(found.pane, found.pane.label, parsed.on);
+        } else if (req.method !== "GET") {
+          return text("method not allowed", 405);
+        }
+        return json(cacheWatchBody(watch, found.pane), req.headers.get("accept-encoding"));
+      }
+      if (pathname === "/api/notifications/cache-watch/list" && req.method === "GET") {
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        const watch = opts.cacheWatch;
+        if (!watch) return text("not found", 404);
+        return json(cacheWatchListBody(watch), req.headers.get("accept-encoding"));
+      }
+      if (pathname === "/api/notifications/cache-watch/forget" && req.method === "POST") {
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        const watch = opts.cacheWatch;
+        if (!watch) return text("not found", 404);
+        let body: JsonValue;
+        try {
+          // SAFETY: as above — `parseCacheWatchForget` rejects anything but a non-empty string `id`.
+          body = (await req.json()) as JsonValue;
+        } catch {
+          return text("bad request", 400);
+        }
+        const id = parseCacheWatchForget(body);
+        if (id === null) return text("bad id", 400);
+        // An id naming no entry is NOT an error: removing something already gone is the outcome the
+        // operator asked for, and the answer is the list either way.
+        await watch.forget(id);
+        return json(cacheWatchListBody(watch), req.headers.get("accept-encoding"));
       }
       if (pathname === "/api/update/check" && req.method === "POST") {
         // Force an immediate upstream check (the "check for updates" button), instead of waiting for
@@ -3652,6 +3813,36 @@ export function parseNotifyPrefsPatch(v: JsonValue | undefined): Partial<NotifyP
     patch[key] = value;
   }
   return patch;
+}
+
+/**
+ * Validate an untrusted `POST /api/notifications/cache-watch` body. `{ on: true }` or `{ on: false }`
+ * and nothing else; any other shape is `null` → 400. `parseNotifyPrefsPatch`'s sibling, and pure +
+ * exported for the same reason (CLAUDE.md: a route body cannot be unit-tested, a parser can).
+ */
+export function parseCacheWatchRequest(v: JsonValue | undefined): { on: boolean } | null {
+  const o = asJsonRecord(v);
+  if (o === null || typeof o.on !== "boolean") return null;
+  return { on: o.on };
+}
+
+/** The same for `POST /api/notifications/cache-watch/forget`: one non-empty opaque id. */
+export function parseCacheWatchForget(v: JsonValue | undefined): string | null {
+  const o = asJsonRecord(v);
+  if (o === null || typeof o.id !== "string" || o.id === "") return null;
+  return o.id;
+}
+
+/**
+ * Can this pane be watched at all?
+ *
+ * False when it carries no prompt-cache reading — a pane with no rule, no probe, or an agent that has
+ * not taken a turn yet — and false for `unknown`, which is spec 02's "nothing measured, so nothing
+ * said". The switch is then disabled with the reason beside it rather than accepting a preference that
+ * could never fire.
+ */
+export function cacheWatchable(pane: CacheWarnPane): boolean {
+  return pane.cache !== undefined && pane.cache.state !== "unknown";
 }
 
 // Shape-check an untrusted /api/subscribe body before persisting it (a malformed sub would be

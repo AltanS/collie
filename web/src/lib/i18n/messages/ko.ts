@@ -69,6 +69,13 @@ export const ko: Dictionary = {
   "settings.notify.done.hint": "에이전트 작업이 끝났을 때",
   "settings.notify.updates.label": "앱 업데이트",
   "settings.notify.updates.hint": "새로운 Collie 버전이 릴리스되었을 때",
+  "settings.notify.cache.label": "Cache about to go cold",
+  "settings.notify.cache.hint":
+    "a pane's prompt cache expires in a few minutes; also covers panes you watched one by one",
+  "settings.notify.watched.title": "Watched panes",
+  "settings.notify.watched.empty": "None yet — open a pane's settings to watch it.",
+  "settings.notify.watched.remove": "Remove",
+  "settings.notify.watched.removeAria": "Stop watching {label}",
 
   // --- settings.snooze ---
   "settings.snooze.title": "방해 금지 모드",
@@ -321,8 +328,17 @@ export const ko: Dictionary = {
     "텍스트 입력 필드가 터미널 키보드를 점유 중입니다. 필드가 닫히면 버튼이 다시 활성화됩니다.",
   "prompt.feedback.freeText.typedPrefix": "터미널에서 직접 답변 작성 중: ",
 
+  // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
+  "paneSettings.title": "Pane settings",
+  "paneSettings.cacheWatch.label": "Warn me before this pane's cache goes cold",
+  "paneSettings.cacheWatch.hint": "about {minutes} minutes before it expires",
+  "paneSettings.cacheWatch.pushOff": "Turn notifications on for this device in Settings first.",
+  "paneSettings.cacheWatch.globalOn": "Settings warns about every pane, so this one is covered.",
+  "paneSettings.cacheWatch.noSession": "This pane's agent names no session, so there is nothing to watch.",
+
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "창",
+  "paneActions.settings.label": "Pane settings",
   "paneActions.readOnly": "읽기 전용. 이 기기에는 창 이름을 바꾸거나 닫을 권한이 없습니다.",
   "paneActions.hostBlockSuffix": "{hostBlock}. 응답할 때까지 이름 변경 및 닫기 작업이 비활성화됩니다.",
   "paneActions.rename.label": "이름 변경",
@@ -740,6 +756,8 @@ export const ko: Dictionary = {
   "apiError.pairing.bad_code": "페어링 코드가 일치하지 않습니다.",
   "apiError.pairing.duplicate_label": "동일한 이름을 사용하는 기기가 이미 존재합니다.",
   "apiError.device.unknown": "해당 이름을 가진 페어링된 기기가 없습니다.",
+  "apiError.cache.pane_unknown": "That pane is gone, nothing was changed.",
+  "apiError.cache.no_session": "That pane's agent names no session, so it can't be watched.",
   "apiError.session.unknown": "해당 collie에 {session} 세션이 없습니다.",
   "apiError.host.unknown": "해당 크루에 {host} collie가 없습니다.",
   "apiError.crew.not_lead": "해당 collie가 크루를 lead하지 않으므로 표시할 크루가 없습니다.",

@@ -21,9 +21,19 @@ export interface NotifyPrefs {
    *  which otherwise bypass snooze (an update isn't quiet-hours material). Not an agent status, so it
    *  never flows through {@link isNotifiable}; the update monitor reads it directly. */
   updates: boolean;
+  /** Push about five minutes before an agent pane's prompt cache expires. Default OFF, and the global
+   *  half of a two-state rule: a pane is warned when this is true OR its session is on the watch list
+   *  (`bridge/cache/watch.ts`, ADR 0042). There is no per-pane off that overrides it. Not an agent
+   *  status either, so it never flows through {@link isNotifiable}; the cache warden reads it directly. */
+  cache: boolean;
 }
 
-export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = { blocked: true, done: false, updates: true };
+export const DEFAULT_NOTIFY_PREFS: NotifyPrefs = {
+  blocked: true,
+  done: false,
+  updates: true,
+  cache: false,
+};
 
 /**
  * Coerce an untrusted parsed value into a {@link NotifyPrefs}, filling any missing or non-boolean key
@@ -36,6 +46,7 @@ export function coerceNotifyPrefs(raw: JsonValue | undefined): NotifyPrefs {
     blocked: typeof o.blocked === "boolean" ? o.blocked : DEFAULT_NOTIFY_PREFS.blocked,
     done: typeof o.done === "boolean" ? o.done : DEFAULT_NOTIFY_PREFS.done,
     updates: typeof o.updates === "boolean" ? o.updates : DEFAULT_NOTIFY_PREFS.updates,
+    cache: typeof o.cache === "boolean" ? o.cache : DEFAULT_NOTIFY_PREFS.cache,
   };
 }
 
@@ -76,6 +87,7 @@ export class NotifyPrefsStore {
     if (patch.blocked !== undefined) this.prefs.blocked = patch.blocked;
     if (patch.done !== undefined) this.prefs.done = patch.done;
     if (patch.updates !== undefined) this.prefs.updates = patch.updates;
+    if (patch.cache !== undefined) this.prefs.cache = patch.cache;
     await this.save();
     return this.current();
   }

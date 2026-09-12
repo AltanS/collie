@@ -71,6 +71,13 @@ export const de: Dictionary = {
   "settings.notify.done.hint": "ein Agent schließt seine Aufgabe ab",
   "settings.notify.updates.label": "App-Updates",
   "settings.notify.updates.hint": "eine neue Collie-Version ist verfügbar",
+  "settings.notify.cache.label": "Cache about to go cold",
+  "settings.notify.cache.hint":
+    "a pane's prompt cache expires in a few minutes; also covers panes you watched one by one",
+  "settings.notify.watched.title": "Watched panes",
+  "settings.notify.watched.empty": "None yet — open a pane's settings to watch it.",
+  "settings.notify.watched.remove": "Remove",
+  "settings.notify.watched.removeAria": "Stop watching {label}",
 
   // --- settings.snooze ---
   "settings.snooze.title": "Nicht stören",
@@ -328,8 +335,17 @@ export const de: Dictionary = {
     "Die Freitextzeile hat den Fokus im Terminal. Tastatureingaben schreiben in das Feld, anstatt Aktionen auszulösen. Nach dem Schließen sind die Schaltflächen wieder aktiv.",
   "prompt.feedback.freeText.typedPrefix": "Eigene Eingabe im Terminal: ",
 
+  // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
+  "paneSettings.title": "Pane settings",
+  "paneSettings.cacheWatch.label": "Warn me before this pane's cache goes cold",
+  "paneSettings.cacheWatch.hint": "about {minutes} minutes before it expires",
+  "paneSettings.cacheWatch.pushOff": "Turn notifications on for this device in Settings first.",
+  "paneSettings.cacheWatch.globalOn": "Settings warns about every pane, so this one is covered.",
+  "paneSettings.cacheWatch.noSession": "This pane's agent names no session, so there is nothing to watch.",
+
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "Pane",
+  "paneActions.settings.label": "Pane settings",
   "paneActions.readOnly": "Nur Lesezugriff: Dieses Gerät darf Panes weder umbenennen noch schließen.",
   "paneActions.hostBlockSuffix": "{hostBlock}: Umbenennen und Schließen bleiben blockiert, bis der Host antwortet.",
   "paneActions.rename.label": "Umbenennen",
@@ -761,6 +777,8 @@ export const de: Dictionary = {
   "apiError.pairing.bad_code": "Ungültiger Kopplungscode.",
   "apiError.pairing.duplicate_label": "Ein Gerät mit diesem Namen existiert bereits.",
   "apiError.device.unknown": "Kein gekoppeltes Gerät mit diesem Namen vorhanden.",
+  "apiError.cache.pane_unknown": "That pane is gone, nothing was changed.",
+  "apiError.cache.no_session": "That pane's agent names no session, so it can't be watched.",
   "apiError.session.unknown": "Keine Sitzung namens {session} auf diesem collie vorhanden.",
   "apiError.host.unknown": "Kein collie namens {host} in dieser Crew vorhanden.",
   "apiError.crew.not_lead": "Dieser collie führt keine Crew. Es gibt keine Crew anzuzeigen.",

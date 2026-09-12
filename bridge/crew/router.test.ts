@@ -966,7 +966,19 @@ describe("dispatched routes — the peer runs its own routes for an admitted lea
   test("the routes §5 excludes are not reachable across a link, even though they exist locally", async () => {
     const d = dispatcher(() => new Response("{}"));
     const { handler } = peerRouter(d);
-    for (const route of ["subscribe", "notifications/snooze", "notifications/prefs", "update/check", "config"]) {
+    // The three `cache-watch` paths join the list for the same reason the other two notification
+    // routes are on it: the preference lives on the collie holding the push subscription, and a
+    // forwarded one would be stored on a peer that can never send (ADR 0042, §5).
+    for (const route of [
+      "subscribe",
+      "notifications/snooze",
+      "notifications/prefs",
+      "notifications/cache-watch",
+      "notifications/cache-watch/list",
+      "notifications/cache-watch/forget",
+      "update/check",
+      "config",
+    ]) {
       expect((await call(handler, `${CREW_PREFIX}${route}`, { method: "POST", headers: authed }))!.status).toBe(404);
     }
     expect(d.seen).toEqual([]);

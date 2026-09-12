@@ -617,6 +617,13 @@ describe("solo zero-tax — routes", () => {
       // read-gated through the same closure `/api/launch` rides, so a `?host=` call forwards to
       // the peer that runs the rows rather than reading the lead's own file.
       "/api/launchers",
+      // The prompt-cache watch list (M28/03, ADR 0042). Three SOLO routes in the notifications family,
+      // named here rather than exempted: the preference lives on the collie holding the subscription, so
+      // none of the three is forwardable and `bridge/crew/router.test.ts` pins all three as 404 across a
+      // link. A solo instance registers them and answers about its own panes.
+      "/api/notifications/cache-watch",
+      "/api/notifications/cache-watch/forget",
+      "/api/notifications/cache-watch/list",
       "/api/notifications/prefs",
       "/api/notifications/snooze",
       // The Crew overview (bridge/crew/status-wire.ts) — a FRONT-DOOR route, and it legitimately
@@ -714,6 +721,7 @@ const CONFIG_KEYS = {
   multiSession: true,
   skipServe: true,
   uploadExtraTypes: true,
+  cacheWarnSeconds: true,
 } satisfies Record<keyof Config, true>;
 
 describe("solo zero-tax — config", () => {
@@ -725,6 +733,7 @@ describe("solo zero-tax — config", () => {
       "allowedOrigins",
       "auditContent",
       "cacheRulesFile",
+      "cacheWarnSeconds",
       "commandsFile",
       "deviceAllowlist",
       "deviceHeader",
@@ -799,6 +808,7 @@ describe("solo zero-tax — config", () => {
       "COLLIE_ALLOW_ANY_HOST",
       "COLLIE_ALLOW_NON_LOOPBACK_BIND",
       "COLLIE_AUDIT_CONTENT",
+      "COLLIE_CACHE_WARN_SECONDS",
       "COLLIE_CODEX_ROOT",
       "COLLIE_DEVICE_ALLOWLIST",
       "COLLIE_DEVICE_HEADER",
@@ -849,6 +859,10 @@ const STATE_DIR_ENTRIES = [
   // READS it, and the emitter that fills it is a CLI verb the operator installs a hook for. An
   // instance whose operator never ran `collie hooks install` never has this directory at all.
   "beacons",
+  // The prompt-cache watch list (M28/03). Absent until the first watch toggle or the first warning sent
+  // under the global switch — both are events, so a bridge that is merely started still writes the four
+  // entries asserted below.
+  "cache-watch.json",
   "notify-prefs.json",
   // Device pairing. Both are absent until the operator runs `collie pair`, and an install that
   // never does keeps writing exactly the six entries above it.

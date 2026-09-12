@@ -9,6 +9,9 @@ import { packageCommand } from "../cli/package-command.ts";
 import { realExec, realFiles } from "../cli/sys.ts";
 import { ActivityLedger } from "./activity.ts";
 import { CacheTracker } from "./cache/tracker.ts";
+import { CacheWarden } from "./cache/warden.ts";
+import { CacheWatchStore } from "./cache/watch.ts";
+import { localWatchPane, peerWatchPane } from "./cache/watch-key.ts";
 import { buildJournalRegistry } from "./journal/registry.ts";
 import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
@@ -17,7 +20,7 @@ import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
 import { loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
 import { applyConfigLayer } from "./config-source.ts";
-import type { CrewMode, CrewStatusResponse } from "./types.ts";
+import type { AgentView, CrewMode, CrewStatusResponse } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import { exePathOf, exeReplaced } from "./exe-replaced.ts";
 import {
@@ -588,6 +591,25 @@ const paneCache =
     ? null
     : new CacheTracker(journals, { overrides: () => cacheRulesReader() }, () => Date.now());
 
+// Which panes the operator asked to be warned about before their prompt cache goes cold, and the
+// deadlines already warned (bridge/cache/watch.ts). Loaded here beside the other two preference stores;
+// the file does not exist until an operator toggles something or a warning actually goes out.
+const cacheWatch = new CacheWatchStore(cfg);
+await cacheWatch.load();
+
+// The warden that judges them. A DEPS LITERAL WITH NO LOGIC IN IT, for the reason
+// `bridge/update.ts`'s monitor is built the same way: there is no `bridge/index.test.ts`, so every gate
+// is proved in `bridge/cache/warden.test.ts` instead and this line must hold nothing that could be
+// wrong. It owns no timer — `tick` is called from the poll below, and on a lead from the peer sweep.
+const cacheWarden = new CacheWarden({
+  now: () => Date.now(),
+  muted: () => snooze.isMuted(),
+  globalOn: () => notifyPrefs.current().cache,
+  store: cacheWatch,
+  warnSeconds: cfg.cacheWarnSeconds,
+  send: (msg) => void push.send(msg),
+});
+
 // ── Update-availability monitor ───────────────────────────────────────────────
 // The running plugin version, captured NOW at module load — never re-read from disk later, or a
 // post-pull package.json would mask the very update we detect (same class of bug as the buildId gap).
@@ -1010,7 +1032,22 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
   // not awaited — `onUpdate` is synchronous and a poll must never wait on a probe — and the tracker
   // itself never throws, so a rejected promise here is not a case that exists. Its own per-session
   // floor means a poll every 1.5 s does not become a read every 1.5 s.
-  if (paneCache !== null) engine.onUpdate((s) => void paneCache.refresh(s.agents));
+  // The cache warning rides the same poll, one step behind the probe: `refresh` is awaited through its
+  // own promise so the panes the warden judges already carry the reading this very tick produced (spec
+  // 02's ordering, made mechanical). `refresh` never throws, so there is no rejection branch to write.
+  if (paneCache !== null) {
+    const tracker = paneCache;
+    const probeThenWarn = async (panes: readonly AgentView[]): Promise<void> => {
+      await tracker.refresh(panes);
+      cacheWarden.tick(
+        panes.flatMap((p) => {
+          const pane = localWatchPane(p, isPrimary ? undefined : name, (key) => tracker.get(key));
+          return pane === undefined ? [] : [pane];
+        }),
+      );
+    };
+    engine.onUpdate((s) => void probeThenWarn(s.agents));
+  }
 
   // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
   // diffing snapshots). Each session gets its own coordinator + notification slot: the primary keeps
@@ -1325,7 +1362,19 @@ const crewLead = (() => {
     self: crewSelfOf(data),
     // Notifications for a peer's panes, derived on the lead from the body this sweep just parsed and
     // pushed through the same coordinator machinery a local session uses (M4/06).
-    onPeerSnapshot: (memberId, body) => peerNotifier?.observe(memberId, body),
+    onPeerSnapshot: (memberId, body) => {
+      peerNotifier?.observe(memberId, body);
+      // A member's watched pane warns FROM THE LEAD, where the subscriptions are, and on the hook the
+      // member's alerts already ride (§10.1: no second timer). The body's panes carry spec 02's
+      // reading, so nothing is probed here; a peer's pane is keyed by the identity the lead has
+      // (bridge/cache/watch-key.ts).
+      cacheWarden.tick(
+        body.agents.flatMap((p) => {
+          const pane = peerWatchPane(p, memberId);
+          return pane === undefined ? [] : [pane];
+        }),
+      );
+    },
     onPeerGone: (memberId) => {
       peerNotifier?.forget(memberId);
       // The client remembers one thing that reaches a verdict, how long this member has been
@@ -1721,6 +1770,7 @@ const server = startServer({
   // Built above so the cache tracker probes through the same adapters this serves history from.
   journals: journals ?? undefined,
   cache: paneCache ?? undefined,
+  cacheWatch,
   crew,
   pairing,
   stt,

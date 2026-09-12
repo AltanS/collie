@@ -35,6 +35,8 @@ import type {
   DeviceAuth,
   CrewMemberStatus,
   CrewStatusResponse,
+  CacheWatchListEntry,
+  CacheWatchState,
   PaneCache,
   ServerSummary,
   SessionSummary,
@@ -1070,6 +1072,22 @@ export function paneCache(overrides: Partial<PaneCache> & { state: PaneCache["st
     ...overrides,
   };
 }
+
+// ── The prompt-cache watch list ──────────────────────────────────────────────────────────────────
+
+/**
+ * Two watched panes: one on this collie, one on a member. Enough to show both row shapes the Settings
+ * list has — the bare label, and the label with a machine under it — plus the remove button beside each.
+ *
+ * The ids are what the bridge would publish: eight hex characters of a hash nobody can reverse.
+ */
+export const watchedPanes: CacheWatchListEntry[] = [
+  { id: "b7f1c2a9", label: "collie · next", session: "next", paneId: "%1" },
+  { id: "3d90ee14", label: "infra · claude", host: "minibuch", paneId: "w2:p1" },
+];
+
+/** One pane's place in the list: off, watchable, with the bridge's own 300-second window. */
+export const cacheWatchOff: CacheWatchState = { on: false, global: false, watchable: true, warnSeconds: 300 };
 
 // ── NoEchoNotice (gap 2) ─────────────────────────────────────────────────────────────────────────
 

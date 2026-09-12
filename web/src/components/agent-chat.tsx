@@ -52,6 +52,7 @@ import { StripsSummary } from "@/components/strips-summary";
 import { CacheChip } from "@/components/cache-chip";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
+import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { CompactStripLabels, STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
@@ -129,7 +130,7 @@ function foldLabelKey(tabCount: number, paneCount: number): MessageKey {
 
 // At most one drawer/sheet is open at a time; null = none. (The composer's own Keys/Quick/Agent
 // sheets are separate and live inside <Composer>.)
-type Drawer = "switcher" | "paneMenu" | null;
+type Drawer = "switcher" | "paneMenu" | "paneSettings" | null;
 
 /**
  * Is the caret in the MESSAGE COMPOSER's field, as opposed to any other input on the screen?
@@ -2112,6 +2113,19 @@ export function AgentChat({
           // flexible element the budget protects. Zen is also the same FAMILY as the two rows it
           // joins — "look at the output differently" — so the menu it belongs in already existed.
           onZen={zenAvailable && display ? enterZen : undefined}
+          // The settings row, opened from the ⋮ for the reason zen is: the header's Action slot is
+          // already spent. It hands over to the sheet below in one React event, so the actions sheet
+          // unmounts in the same commit the settings sheet mounts.
+          onSettings={() => setDrawer("paneSettings")}
+        />
+        {/* This pane's own settings — one switch today, the prompt-cache warning (ADR 0042). Scoped to
+            the PANE's machine, because `?host=` there names where the pane lives; the preference itself
+            lands on the collie this phone is talking to, which is the only one that can push. */}
+        <PaneSettingsSheet
+          open={drawer === "paneSettings"}
+          onClose={closeDrawer}
+          paneId={paneId}
+          scope={scope}
         />
       </div>
     </CompactStripLabels>

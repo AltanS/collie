@@ -140,6 +140,14 @@ export const ACK_MANIFEST = {
     channel: "echo",
     why: "The switch flips optimistically under the thumb; the server's merged view then reconciles it, and a REVERT is paired with an error status because a switch that moves back in silence misinforms anyone who has stopped looking (hooks/use-notify-prefs.ts).",
   },
+  setCacheWatch: {
+    channel: "echo",
+    why: "The sheet's switch flips optimistically under the thumb and the bridge's answer reconciles it; a revert is paired with an error status, for the reason `setNotifyPrefs` states (hooks/use-cache-watch.ts).",
+  },
+  forgetCacheWatch: {
+    channel: "echo",
+    why: "The row leaves the watched list synchronously, so the row VANISHING is the receipt; the bridge's returned list then reconciles it, and a failure puts the row back with an error status (hooks/use-cache-watch-list.ts).",
+  },
   registerPushSubscription: {
     channel: "inline",
     why: "Settings switches on only after the bridge acknowledges registration; setup failures stay beside the switch so the operator can read them and retry (routes/settings.tsx).",

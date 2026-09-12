@@ -277,6 +277,14 @@ export interface Config {
    */
   cacheRulesFile: string;
   /**
+   * How many seconds before a pane's prompt cache expires the watched-pane push goes out
+   * (`bridge/cache/warden.ts`). One window for every watched pane; there is no per-pane threshold.
+   *
+   * NOT the threshold that turns the countdown chip amber, which is a quarter of each rule's own TTL
+   * (`bridge/cache/engine.ts` § warnSecondsFor). Two numbers with two jobs.
+   */
+  cacheWarnSeconds: number;
+  /**
    * Tailscale identity gate. If set under `tailscale serve`, the request must carry a matching
    * `Tailscale-User-Login` header. A mismatch is rejected. A missing header is also rejected —
    * serve injects none for tagged nodes, so tolerating it let any tagged node write. Under
@@ -583,6 +591,10 @@ export function loadConfig(env: Environment = process.env): Config {
     pollMs: envInt("COLLIE_POLL_MS", 1500, { min: 250 }, env),
     pollIdleMs: envInt("COLLIE_POLL_IDLE_MS", 12_000, { min: 1000 }, env),
     notifyDelayMs: envInt("COLLIE_NOTIFY_DELAY_MS", 30_000, { min: 0 }, env),
+    // How early a watched pane's prompt-cache warning goes out. The floor is 30 s (a window shorter
+    // than one poll's idle resolution is noise, not a warning) and the ceiling an hour, which is past
+    // the longest TTL any shipped rule claims.
+    cacheWarnSeconds: envInt("COLLIE_CACHE_WARN_SECONDS", 300, { min: 30, max: 3600 }, env),
     readLines: envInt("COLLIE_READ_LINES", 200, { min: 1 }, env),
     // Whole megabytes in, bytes out. The floor is 1 MB (a cap below one screenshot is a broken
     // install, not a tight one) and the ceiling 512 MB, which is well past useful and still short

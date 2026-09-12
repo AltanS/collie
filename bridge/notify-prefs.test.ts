@@ -22,18 +22,17 @@ afterAll(async () => {
 
 describe("coerceNotifyPrefs", () => {
   test("fills missing / non-boolean keys from defaults", () => {
-    expect(coerceNotifyPrefs(undefined)).toEqual({ blocked: true, done: false, updates: true });
-    expect(coerceNotifyPrefs(null)).toEqual({ blocked: true, done: false, updates: true });
-    expect(coerceNotifyPrefs({})).toEqual({ blocked: true, done: false, updates: true });
-    expect(coerceNotifyPrefs({ blocked: false })).toEqual({ blocked: false, done: false, updates: true });
-    expect(coerceNotifyPrefs({ done: true })).toEqual({ blocked: true, done: true, updates: true });
+    const defaults = { blocked: true, done: false, updates: true, cache: false };
+    expect(coerceNotifyPrefs(undefined)).toEqual(defaults);
+    expect(coerceNotifyPrefs(null)).toEqual(defaults);
+    expect(coerceNotifyPrefs({})).toEqual(defaults);
+    expect(coerceNotifyPrefs({ blocked: false })).toEqual({ ...defaults, blocked: false });
+    expect(coerceNotifyPrefs({ done: true })).toEqual({ ...defaults, done: true });
     // `updates` is a first-class key: an explicit false sticks, non-booleans fall back to the default.
-    expect(coerceNotifyPrefs({ updates: false })).toEqual({ blocked: true, done: false, updates: false });
-    expect(coerceNotifyPrefs({ blocked: "yes", done: 1, updates: 0 })).toEqual({
-      blocked: true,
-      done: false,
-      updates: true,
-    });
+    expect(coerceNotifyPrefs({ updates: false })).toEqual({ ...defaults, updates: false });
+    // `cache` is the fourth, and the one that defaults OFF: an explicit true sticks.
+    expect(coerceNotifyPrefs({ cache: true })).toEqual({ ...defaults, cache: true });
+    expect(coerceNotifyPrefs({ blocked: "yes", done: 1, updates: 0, cache: "on" })).toEqual(defaults);
   });
 });
 
@@ -58,13 +57,13 @@ describe("NotifyPrefsStore", () => {
   test("set merges a partial patch, persists, and returns the updated prefs", async () => {
     const cfg = await tempCfg();
     const store = new NotifyPrefsStore(cfg);
-    const updated = await store.set({ done: true, updates: false });
-    expect(updated).toEqual({ blocked: true, done: true, updates: false });
+    const updated = await store.set({ done: true, updates: false, cache: true });
+    expect(updated).toEqual({ blocked: true, done: true, updates: false, cache: true });
 
     // Round-trips through disk: a fresh store reloads the same values (survives a restart).
     const reloaded = new NotifyPrefsStore(cfg);
     await reloaded.load();
-    expect(reloaded.current()).toEqual({ blocked: true, done: true, updates: false });
+    expect(reloaded.current()).toEqual({ blocked: true, done: true, updates: false, cache: true });
   });
 
   test("current() returns a copy — callers can't mutate the store's state", async () => {
@@ -88,7 +87,7 @@ describe("NotifyPrefsStore", () => {
     await writeFile(join(cfg.stateDir, "notify-prefs.json"), JSON.stringify({ blocked: false }));
     const store = new NotifyPrefsStore(cfg);
     await store.load();
-    expect(store.current()).toEqual({ blocked: false, done: false, updates: true });
+    expect(store.current()).toEqual({ blocked: false, done: false, updates: true, cache: false });
   });
 
   test("load tolerates a missing file (keeps defaults)", async () => {

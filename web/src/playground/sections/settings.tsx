@@ -2,6 +2,7 @@
 // for the whole page's rules.
 
 import { CrewProvider } from "@/components/crew-provider";
+import { NotifyPrefsCard } from "@/components/notify-prefs-control";
 import { NewSpaceSheet } from "@/components/new-space-sheet";
 import { SpaceOverview } from "@/components/space-overview";
 import {
@@ -11,8 +12,9 @@ import {
   homeSolo,
   rosterFive,
   spacesWithWorktrees,
+  watchedPanes,
 } from "../fixtures";
-import { Card, Group, Section, SettingsRouter, type SectionDef } from "../harness";
+import { Card, Group, Section, SettingsRouter, Stage, type SectionDef } from "../harness";
 import { PhoneFrameCard } from "./shared";
 
 export const DEF: SectionDef = {
@@ -48,6 +50,31 @@ export function SettingsSection() {
           <PhoneFrameCard height={760}>
             <SettingsRouter home={homeCrew} devices={devicesPaired} />
           </PhoneFrameCard>
+        </Card>
+      </Group>
+
+      <Group title="Notify when">
+        <Card
+          state="settings-notify-cache-row"
+          label="notify card, the fourth switch and the panes watched one by one"
+          reach="scroll to Notify when in Settings. The fourth row is the cache warning, off by default,
+            and the section under it names the panes switched on one at a time from their own sheets —
+            which is what makes the global-OR-per-pane rule visible instead of implicit."
+          note="The real card with a fixture: the playground answers no API, so the controller's two
+            fetches are replaced by handed-in values rather than stubbed."
+        >
+          <Stage height={420}>
+            <div className="p-4">
+              <NotifyPrefsCard
+                prefs={{ blocked: true, done: false, updates: true, cache: false }}
+                busy={false}
+                onToggle={() => {}}
+                entries={watchedPanes}
+                entriesBusy={false}
+                onForget={() => {}}
+              />
+            </div>
+          </Stage>
         </Card>
       </Group>
 

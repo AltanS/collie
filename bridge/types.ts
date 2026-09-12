@@ -938,6 +938,40 @@ export interface CacheRulesResponse {
   rules: CacheRuleWire[];
 }
 
+/**
+ * GET/POST /api/notifications/cache-watch — one pane's place in the prompt-cache watch list.
+ *
+ * A PREFERENCE, which is why it sits in the `notifications` family and is query-addressed rather than
+ * hung off `PANE_ROUTE`: that route is mirrored onto the crew wire, and a forwarded preference would be
+ * stored on the peer that owns the pane, where no push subscription lives (ADR 0042).
+ */
+export interface CacheWatchResponse {
+  /** This pane's own entry in the list. */
+  on: boolean;
+  /** `prefs.cache`, so the sheet can say the global switch already covers this pane. */
+  global: boolean;
+  /** False when the pane names no harness session, carries no `cache` key, or reads `unknown`. */
+  watchable: boolean;
+  /** The resolved `COLLIE_CACHE_WARN_SECONDS`, so the copy quotes the bridge's number. */
+  warnSeconds: number;
+}
+
+/** One row of the watched-pane list. `id` is an opaque handle; the stored ref never leaves the bridge. */
+export interface CacheWatchEntryWire {
+  id: string;
+  label: string;
+  /** Present only for a peer's pane, omitted for a local one. */
+  host?: string;
+  session?: string;
+  /** Present when the entry's pane is in the current snapshot. Absent means it lists but cannot link. */
+  paneId?: string;
+}
+
+/** GET /api/notifications/cache-watch/list — the whole bridge's list, not one pane's. */
+export interface CacheWatchListResponse {
+  entries: CacheWatchEntryWire[];
+}
+
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */
 export interface BridgeConfig {
   push: boolean;

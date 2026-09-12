@@ -125,6 +125,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     pollMs: 1500,
     pollIdleMs: 12_000,
     notifyDelayMs: 30_000,
+    cacheWarnSeconds: 300,
     readLines: 200,
     transcript: true,
     journalRoots: {
@@ -1939,7 +1940,7 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // rows, one journal blob, tab action, the pane family, "look now", the worktree listing and the
     // worktree actions) reach their runtime through the caller's resolver and nothing else.
     expect([...src.matchAll(/await caller\.resolve\(\);/g)]).toHaveLength(10);
-    // Exactly six `registry.get(` calls remain, and each is a sanctioned one, named here rather
+    // Exactly seven `registry.get(` calls remain, and each is a sanctioned one, named here rather
     // than exempted: assembling THIS collie's own snapshot body; `localRuntime`, the single
     // "(session) → runtime, or 404" helper both callers share; `/api/config`, which reports THIS
     // collie's own multiplexer (M10/06) and is not session-scoped at all; `/api/mux/logo.svg`,
@@ -1948,8 +1949,13 @@ describe("the host gate — `?host=` selects among enrolled members and nothing 
     // THIS collie's own engine on a route that is already local-body-then-merge and has no `?h=`
     // branch to fall through; and the crew surface's own `mux` source, which answers an admitted
     // LEAD with this machine's block on `hello` and is the same local read `/api/config` makes
-    // (M22/03). A seventh would be a route reaching past the gate.
-    expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(6);
+    // (M22/03); and the cache-watch resolver, which turns `(host, session, paneId)` into the watch key
+    // a PREFERENCE is stored under — deliberately NOT through the gate, because that preference belongs
+    // on the collie the phone is talking to and a forward would store it on the machine that holds no
+    // push subscription (ADR 0042, CREW_PROTOCOL.md §5). It reads a peer's pane out of the lead's own
+    // swept body instead, exactly as `bridge/crew/notify.ts` does, and writes to no terminal at all.
+    // An EIGHTH would be a route reaching past the gate.
+    expect([...src.matchAll(/registry\.get\(/g)]).toHaveLength(7);
     // The mux read is a read of the LOCAL primary — never `?host=`, because a peer's capabilities
     // are its own business and reach the lead over the crew API, never out of this registry.
     expect(src).toContain("const activeMux = registry.get();");

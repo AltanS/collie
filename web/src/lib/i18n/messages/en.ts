@@ -79,6 +79,15 @@ export const en = {
   "settings.notify.done.hint": "an agent completes its task",
   "settings.notify.updates.label": "App updates",
   "settings.notify.updates.hint": "a new Collie version is available",
+  "settings.notify.cache.label": "Cache about to go cold",
+  // The second clause is the whole point of this hint: the rule is global OR per-pane, with no per-pane
+  // off, so a watched list keeps working under this switch and the operator is told once, here.
+  "settings.notify.cache.hint":
+    "a pane's prompt cache expires in a few minutes; also covers panes you watched one by one",
+  "settings.notify.watched.title": "Watched panes",
+  "settings.notify.watched.empty": "None yet — open a pane's settings to watch it.",
+  "settings.notify.watched.remove": "Remove",
+  "settings.notify.watched.removeAria": "Stop watching {label}",
 
   // --- settings.snooze ---
   "settings.snooze.title": "Do not disturb",
@@ -345,8 +354,18 @@ export const en = {
     "The free-text row has the keyboard in the terminal — these buttons would type into it instead of answering. They resume when it closes.",
   "prompt.feedback.freeText.typedPrefix": "A custom answer is being written in the terminal: ",
 
+  // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
+  "paneSettings.title": "Pane settings",
+  "paneSettings.cacheWatch.label": "Warn me before this pane's cache goes cold",
+  // "about", because the deadline is read off the agent's own transcript and the clock is the poll.
+  "paneSettings.cacheWatch.hint": "about {minutes} minutes before it expires",
+  "paneSettings.cacheWatch.pushOff": "Turn notifications on for this device in Settings first.",
+  "paneSettings.cacheWatch.globalOn": "Settings warns about every pane, so this one is covered.",
+  "paneSettings.cacheWatch.noSession": "This pane's agent names no session, so there is nothing to watch.",
+
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "Pane",
+  "paneActions.settings.label": "Pane settings",
   "paneActions.readOnly": "Read-only — this device isn't authorised to rename or close panes.",
   "paneActions.hostBlockSuffix": "{hostBlock} — rename and close are unavailable until it answers.",
   "paneActions.rename.label": "Rename",
@@ -784,6 +803,8 @@ export const en = {
   "apiError.pairing.bad_code": "That code doesn't match.",
   "apiError.pairing.duplicate_label": "A device is already using that name.",
   "apiError.device.unknown": "No paired device has that name.",
+  "apiError.cache.pane_unknown": "That pane is gone, nothing was changed.",
+  "apiError.cache.no_session": "That pane's agent names no session, so it can't be watched.",
   "apiError.session.unknown": "There is no session called {session} on this collie.",
   "apiError.host.unknown": "There is no collie called {host} in this crew.",
   // The key mirrors the wire code `crew.not_lead` (`bridge/error-codes.ts`). Both say crew from 1.8.0.

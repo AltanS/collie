@@ -148,6 +148,19 @@ export const ERROR_CODES = {
   /** Revoke named a label no device holds. */
   "device.unknown": "unknown device",
 
+  // ── The prompt-cache watch list: /api/notifications/cache-watch (ADR 0042) ─────────
+  /**
+   * The `(host, session, paneId)` the request named is in no current snapshot — closed, renumbered,
+   * or on a member that has stopped answering. Nothing was stored.
+   */
+  "cache.pane_unknown": "pane not found",
+  /**
+   * The pane names no harness session, so there is nothing to key a watch by. A RACE GUARD: the read
+   * already answered `watchable: false` and the sheet already disabled its switch, so this is the tap
+   * that landed after the harness dropped its session.
+   */
+  "cache.no_session": "this pane's agent names no session",
+
   // ── Addressing: the `(host, session)` a request named does not exist ───────────────
   "session.unknown": "unknown session: {session}",
   "host.unknown": "unknown host: {host}",

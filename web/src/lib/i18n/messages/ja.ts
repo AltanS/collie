@@ -68,6 +68,13 @@ export const ja: Dictionary = {
   "settings.notify.done.hint": "エージェントがタスクを完了したとき",
   "settings.notify.updates.label": "アップデート",
   "settings.notify.updates.hint": "新しい Collie のリリースが存在するとき",
+  "settings.notify.cache.label": "Cache about to go cold",
+  "settings.notify.cache.hint":
+    "a pane's prompt cache expires in a few minutes; also covers panes you watched one by one",
+  "settings.notify.watched.title": "Watched panes",
+  "settings.notify.watched.empty": "None yet — open a pane's settings to watch it.",
+  "settings.notify.watched.remove": "Remove",
+  "settings.notify.watched.removeAria": "Stop watching {label}",
 
   // --- settings.snooze ---
   "settings.snooze.title": "通知の一時停止",
@@ -323,8 +330,17 @@ export const ja: Dictionary = {
     "ターミナル側で自由入力行にフォーカスがあります。ボタン操作は行内に入力されるため、閉じるまで無効化されます。",
   "prompt.feedback.freeText.typedPrefix": "ターミナルに直接入力中: ",
 
+  // --- paneSettings (one pane's own preferences; today the prompt-cache warning, ADR 0042) ---
+  "paneSettings.title": "Pane settings",
+  "paneSettings.cacheWatch.label": "Warn me before this pane's cache goes cold",
+  "paneSettings.cacheWatch.hint": "about {minutes} minutes before it expires",
+  "paneSettings.cacheWatch.pushOff": "Turn notifications on for this device in Settings first.",
+  "paneSettings.cacheWatch.globalOn": "Settings warns about every pane, so this one is covered.",
+  "paneSettings.cacheWatch.noSession": "This pane's agent names no session, so there is nothing to watch.",
+
   // --- paneActions (long-press sheet: rename / close a pane) ---
   "paneActions.title.fallback": "ペイン",
+  "paneActions.settings.label": "Pane settings",
   "paneActions.readOnly": "読み取り専用: この端末にはペインの名前変更や終了の権限がありません。",
   "paneActions.hostBlockSuffix": "{hostBlock} : 応答があるまで名前変更と終了は実行できません。",
   "paneActions.rename.label": "名前変更",
@@ -748,6 +764,8 @@ export const ja: Dictionary = {
   "apiError.pairing.bad_code": "コードが一致しません。",
   "apiError.pairing.duplicate_label": "指定された名前は既に使用されています。",
   "apiError.device.unknown": "該当する名前のペアリング済みデバイスが見つかりません。",
+  "apiError.cache.pane_unknown": "That pane is gone, nothing was changed.",
+  "apiError.cache.no_session": "That pane's agent names no session, so it can't be watched.",
   "apiError.session.unknown": "この collie にセッション {session} は存在しません。",
   "apiError.host.unknown": "このクルーに collie {host} は存在しません。",
   "apiError.crew.not_lead": "この collie はクルーを統括していないため、表示可能なクルーがありません。",

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Maximize2, Monitor, Pencil, ScrollText, Search, XCircle } from "lucide-react";
+import { Maximize2, Monitor, Pencil, ScrollText, Search, SlidersHorizontal, XCircle } from "lucide-react";
 
 import { BottomSheet } from "@/components/ui/sheet";
 import { ActionRow, DestructiveActionRow, RenameView } from "@/components/action-sheet-rows";
@@ -47,6 +47,12 @@ interface PaneActionsSheetProps {
   onFind?: () => void;
   /** Open the agent's own transcript. */
   onHistory?: () => void;
+  /** Open this pane's own settings — today one switch, the prompt-cache warning (ADR 0042).
+   *
+   *  The FOURTH read row, and it is a read in the sense the other three are: it changes a preference on
+   *  this collie and types into nothing. Absence is the gate, as it is for find, history and zen — the
+   *  pane strip passes no callback, so a strip pill opens the sheet it always did. */
+  onSettings?: () => void;
   /** Enter zen mode — hide every Collie surface and leave the mirror alone on the screen.
    *
    *  The THIRD read row, and it is gated twice through this one prop: `Settings → Zen mode` decides
@@ -78,6 +84,7 @@ export function PaneActionsSheet({
   onClosed,
   onFind,
   onHistory,
+  onSettings,
   onZen,
 }: PaneActionsSheetProps) {
   useLocale();
@@ -256,7 +263,7 @@ export function PaneActionsSheet({
           sheet; rename and close are the half you arrive at deliberately.
           Hidden in `rename` mode with the rest of the list — that view is a sub-screen, not a
           section. */}
-      {mode === "actions" && (onFind || onHistory || onZen) && (
+      {mode === "actions" && (onFind || onHistory || onSettings || onZen) && (
         <div className="mb-1 flex flex-col gap-1">
           {onFind && (
             <ActionRow
@@ -277,6 +284,20 @@ export function PaneActionsSheet({
               onClick={() => {
                 onClose();
                 onHistory();
+              }}
+            />
+          )}
+          {/* Pane settings sits between the looking rows and zen: it is the one row here that opens a
+              control rather than a view, and it is still the cheap, reversible half of this sheet — a
+              preference on this collie, typed into no terminal. Close-then-act, for the reason the find
+              row states. */}
+          {onSettings && (
+            <ActionRow
+              icon={<SlidersHorizontal className="size-4 shrink-0 text-muted-foreground" />}
+              label={t("paneActions.settings.label")}
+              onClick={() => {
+                onClose();
+                onSettings();
               }}
             />
           )}
