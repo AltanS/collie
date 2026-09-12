@@ -153,13 +153,12 @@ export function locateComposer(lines: StyledLine[]): ComposerBox | null {
   //     buffer. omp draws every one of those — the six pickers, the five Ask screens, the welcome
   //     panel, the tool-result box, the `╭─── ✘ Error: … ───╮` banner — as a box starting at column 0,
   //     so `opensBox` on the run says "something else owns this screen" without having to recognise
-  //     any of them individually (omp's tool-approval dialog is not in the corpus; it is a box too if
-  //     it is drawn like the eleven that are — see index.ts, which is honest that this is inferred).
-  //     Before this rule, a single blank row was the entire difference between the two verdicts: with
-  //     omp's usual blank separator above a dialog the walk stopped and the answer was null, and
-  //     without it the dialog's own rows passed as "palette" and the pre-flight armed the composer's
-  //     destructive pre-clear sweep against a live modal. That blank is a row omp happens to paint,
-  //     not a claim anything checked.
+  //     any of them individually — the tool-approval dialog included, captured 2026-09-10 and drawn
+  //     as a box at column 0 like the rest (see index.ts). Before this rule, a single blank row was
+  //     the entire difference between the two verdicts: with omp's usual blank separator above a
+  //     dialog the walk stopped and the answer was null, and without it the dialog's own rows passed
+  //     as "palette" and the pre-flight armed the composer's destructive pre-clear sweep against a
+  //     live modal. That blank is a row omp happens to paint, not a claim anything checked.
   //
   //     Each row used to have to measure the box's own width too. On a capture — where every row is
   //     padded out with spaces — that is the claim "this row reaches the terminal's right edge", which

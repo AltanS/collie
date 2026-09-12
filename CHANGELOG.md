@@ -128,6 +128,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   the screenshot fires, silently cropping the top off. Also tightens the two install-path
   Notes in `docs/install.md` to open with the platform they apply to, so a reader can tell at
   a glance which one is theirs.
+- **The omp fixture corpus now covers the tool-approval dialog.** That screen was the corpus's one
+  known gap, and the adapter's own comments said so: the claim that Collie refuses to type into it
+  rested on inference, not on a capture. Three captures close it — a `bash` approval and a `write`
+  approval in both selection states, taken against omp v18.1.17 — and the suite now asserts
+  raw-only blocks and `composerReady === false` on them. The prose and the modal counts in
+  `omp/chrome.ts`, `omp/index.ts` and `omp/markers.ts` are corrected to match. Thanks
+  @christensenjames (#204).
 
 ## [1.8.0] - 2026-09-09
 

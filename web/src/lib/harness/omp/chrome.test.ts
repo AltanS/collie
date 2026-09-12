@@ -106,7 +106,7 @@ describe("locateComposer — the real corpus, pinned so any change to the walk s
 
 describe("the boxed composer gate", () => {
   // This module must decline both modals and other composer shapes. The composite adapter's stronger
-  // assertion — all eleven captured modals make `composerReady` false, while every `rule` fixture is
+  // assertion — every captured modal makes `composerReady` false, while every `rule` fixture is
   // true — lives at the public seam in harness/omp.test.ts.
   it.each(NON_BOX_COMPOSER_FIXTURES)("%s: not a boxed composer", (name) => {
     expect(locateComposer(fixtureLines(name))).toBeNull();
@@ -383,8 +383,8 @@ describe("locateComposer — what it must decline", () => {
   it("declines omp's other panels, which all close corner-to-corner", () => {
     // This is what actually keeps the pickers out, and it is a literal rather than a measurement: the
     // one-space gutters in `╰─ … ─╯` are the composer's alone. A `/model`-shaped box drawn at the
-    // composer's own width — which is what omp really does — is declined for the same reason all
-    // eleven modal captures are.
+    // composer's own width — which is what omp really does — is declined for the same reason every
+    // modal capture is.
     const picker = [
       "╭──" + "─".repeat(55) + "╮",
       "│  ❯ 1. claude-opus" + " ".repeat(60 - 21) + "  │",

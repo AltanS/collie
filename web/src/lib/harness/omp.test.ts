@@ -11,7 +11,7 @@ import { describeAdapterConformance } from "./conformance";
 import { parseKeyHintFooter } from "./menu-hints";
 
 // The omp adapter's CI gate. This adapter is Tier 1 BY CHOICE — it up-levels nothing, so `ownFixtures`
-// is empty and every one of the 25 captures is a NEUTRAL fixture the adapter must leave raw. That is
+// is empty and every one of the captures is a NEUTRAL fixture the adapter must leave raw. That is
 // not a weaker gate than Claude's; it is the whole promise this contribution makes, asserted over the
 // entire corpus rather than over a chosen subset: no interactive block kind is ever constructed, so no
 // tap can reach a keystroke. See harness/omp/index.ts for why the dialog layer is a later PR.
@@ -35,15 +35,19 @@ const allGrokFixtures = readdirSync(PANES_DIR)
   .filter((f) => f.startsWith("grok--") && f.endsWith(".txt"))
   .toSorted();
 const allForeignFixtures = [...allClaudeFixtures, ...allCodexFixtures, ...allGrokFixtures];
+// `omp--menu-dismissed.txt` matches this prefix and is a COMPOSER capture, not a modal.
 const allOmpModalFixtures = allOmpFixtures.filter(
-  (name) => name.startsWith("omp--menu-") || name.startsWith("omp--select-"),
+  (name) =>
+    name.startsWith("omp--menu-") ||
+    name.startsWith("omp--select-") ||
+    name.startsWith("omp--approval-"),
 );
 
 // Every omp screen this adapter DECLINES — which is every screen IN THIS CORPUS, not every screen omp
-// can draw (omp's tool-approval dialog, in particular, was never captured; see omp/index.ts). These
-// are NOT "neutral output" in the plain sense: eleven of them are live modals with the keyboard, and
-// the conformance assertion (raw-only) is exactly the promise worth pinning, because it is a promise
-// about a screen where being wrong would type a keystroke. One reason per line.
+// can draw. These are NOT "neutral output" in the plain sense: fourteen of them are live modals with
+// the keyboard, and the conformance assertion (raw-only) is exactly the promise worth pinning,
+// because it is a promise about a screen where being wrong would type a keystroke. The tool-approval
+// dialog, once this corpus's one known gap, is now three of those fourteen. One reason per line.
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -86,11 +90,20 @@ const DECLINED = new Set([
   "omp--menu-resume.txt",
   "omp--menu-settings-moved.txt",
   "omp--menu-settings.txt",
+  // — The tool-approval dialog: a `bash` screen and a `write` screen, the `write` one in both
+  //   selection states. Captured 2026-09-10 against omp v18.1.17, the screen omp/index.ts named as
+  //   the corpus's one gap. It is a box at column 0 like every modal above, so `locateComposer`
+  //   refuses the composer under it and the adapter stays raw — which these fixtures now MEASURE
+  //   rather than infer. Fail-closed is still the right answer regardless: `Approve`/`Deny` is the
+  //   screen where a wrong lift would run a command.
+  "omp--approval-bash.txt",
+  "omp--approval-write--deny.txt",
+  "omp--approval-write.txt",
 ]);
 
 // Nothing is up-levelled, so there is no own cohort. `describeAdapterConformance` registers a todo for
 // each leg that needs one rather than passing vacuously, and still runs the leg that matters here:
-// raw-only on all 25 omp captures and every foreign harness capture.
+// raw-only on all 28 omp captures and every foreign harness capture.
 const ownFixtures: string[] = [];
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
 
@@ -105,6 +118,9 @@ describeAdapterConformance(ompAdapter, {
 // this test before it can quietly widen or narrow the gate above.
 describe("the omp corpus", () => {
   const PINNED = [
+    "omp--approval-bash.txt",
+    "omp--approval-write--deny.txt",
+    "omp--approval-write.txt",
     "omp--done--tool-result.txt",
     "omp--done.txt",
     "omp--draft-ghost-suggestion-busy.txt",
@@ -132,11 +148,11 @@ describe("the omp corpus", () => {
     "omp--working.txt",
   ];
 
-  it("is exactly the 25 captures this adapter was developed against", () => {
+  it("is exactly the 28 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("declines all twenty-five — nothing is up-levelled", () => {
+  it("declines all twenty-eight — nothing is up-levelled", () => {
     expect(neutralFixtures).toEqual(PINNED);
     expect(ownFixtures).toEqual([]);
   });
