@@ -55,9 +55,6 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   to 1.9.0: a member still on 1.7.0 now shows red on the lead's preflight, naming both versions and
   the remedy, and reads as `incompatible` in `crew status`. The `collie pack` command alias, `collie
   docs pack` and the app's `/pack` address are untouched and stay until 2.0.0.
-=======
-- **Cache rules are dated, sourced claims, and `collie doctor` says when one goes stale.** Every TTL carries the vendor page it was read on and the date it was read; a claim older than 180 days is a doctor warning, and one older than a year fails the build.
->>>>>>> 0425a2ad (feat(cache): sourced, dated cache rules plus two doctor findings)
 
 ## [1.8.2] - 2026-09-12
 
