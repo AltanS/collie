@@ -111,6 +111,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   it on every mount and threw the answer away once the build was known.
 - **A checkout on an untagged release commit builds as dev.** The channel now reads the tags the
   checkout holds; a tree with no git and a shallow install with no tags still build as release.
+- **The top of the app is no longer blurred on iOS 27.** iOS 27 blurs the top edge of a Home Screen
+  web app whose status bar is translucent, into the header. The status bar is opaque now; the header
+  already paints the page colour under it, and iOS 26 and later colour the bar from that. iOS reads
+  the style once, when you add the app to the Home Screen, so an install made before this change
+  stays blurred until you remove it and add it again. Thanks @bendrucker (#203).
 
 ### Docs
 

@@ -26,9 +26,11 @@
     />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Not `black-translucent`: iOS 27 blurs the top edge of a translucent one, into the header.
+         iOS reads this once, at Add to Home Screen, so a change needs a re-add to show. -->
     <meta
       name="apple-mobile-web-app-status-bar-style"
-      content="black-translucent"
+      content="default"
     />
     <meta name="apple-mobile-web-app-title" content="Collie" />
     <title>Collie</title>
