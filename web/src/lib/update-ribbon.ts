@@ -372,6 +372,24 @@ export function dismissTarget(view: RibbonView): Dismissal | null {
   }
 }
 
+/**
+ * The states put down in THIS DOCUMENT rather than on the bridge (2026-09-12).
+ *
+ * `bundle-installing` is the only one, and it is not in {@link dismissTarget} on purpose: nothing
+ * was declined. The install goes on in the background, the controller swap still reloads the page
+ * when it lands, and a version posted to `dismissUpdate` would tell the machine the operator said
+ * no to a release they are in fact downloading.
+ *
+ * It is closable at all because the download is the one band state that can wait forever. A worker
+ * stuck in `installing` on a dead link is waited on with no timer and no forced reload — deliberate,
+ * since the page must not reload before the new worker is in control — so the escape is the other
+ * one: put the row down and keep using the app you already have. The close hides the row for this
+ * document only, and a LATER worker raises it again.
+ */
+export function dismissesLocally(view: RibbonView): boolean {
+  return view.kind === "bundle-installing";
+}
+
 /** The version the quiet crew states are keyed by: what the run is heading for when a record names
  *  it, else the release upstream is offering. Null when neither exists — nothing to key a dismissal
  *  to, so the band stays. */

@@ -624,8 +624,10 @@ test("three taps on an installing worker produce exactly one reload and no secon
 
   // THE ROW CHANGES ITS WORDS ON THE FIRST TAP (2026-09-12). It does not go away: taps two and three
   // land on the same band, now saying a download is in progress, which is what the operator hammering
-  // the phone never had. `checkForUpdate()` is the same call behind it.
-  const downloading = page.getByRole("button", { name: DOWNLOADING });
+  // the phone never had. The row is no longer a button — a download has nothing for a tap to do, and
+  // it carries a close instead so a wait on a dead link is escapable — so the taps land on the text
+  // itself, exactly as a thumb on the phone does.
+  const downloading = page.getByText(DOWNLOADING);
   await expect(downloading).toBeVisible({ timeout: 15_000 });
 
   await downloading.click(); // tap two, well inside RELOAD_GAVE_UP_MS

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   clearUpdateStarted,
+  dismissesLocally,
   dismissTarget,
   DONE_WINDOW_MS,
   getUpdateStarted,
@@ -414,6 +415,23 @@ describe("dismissing the quiet crew states", () => {
     });
     // With nothing to key it to, it stays: a dismissal no newer version can raise again is a mute.
     expect(dismissTarget({ kind: "peer-failed", name: "minibuch", reason: "gate", target: null })).toBeNull();
+  });
+
+  it("the DOWNLOAD row closes in this document and posts nothing (2026-09-12)", () => {
+    // It is closable for the reason the others are not: the wait has no end of its own. A worker
+    // stuck in `installing` on a dead link is waited on with no timer and no forced reload, so the
+    // close is the operator's only way back to the app they already have.
+    expect(dismissesLocally({ kind: "bundle-installing" })).toBe(true);
+    // And it is NOT a dismissal: nothing was declined, so no version goes to the bridge.
+    expect(dismissTarget({ kind: "bundle-installing" })).toBeNull();
+  });
+
+  it("every other state is put down on the bridge or not at all", () => {
+    expect(dismissesLocally({ kind: "bundle" })).toBe(false);
+    expect(dismissesLocally({ kind: "updated", version: "1.5.0" })).toBe(false);
+    expect(dismissesLocally({ kind: "available", version: "1.5.0" })).toBe(false);
+    expect(dismissesLocally({ kind: "starting" })).toBe(false);
+    expect(dismissesLocally({ kind: "silent" })).toBe(false);
   });
 });
 

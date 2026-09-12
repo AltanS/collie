@@ -40,6 +40,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   reload fixed it. The page now reloads only once the new service worker is in control, the band
   says the new version is downloading for as long as that takes, and the eight-second guard fires
   only when nothing is on its way in.
+- **The downloading band can be closed, and the app stays usable meanwhile.** A download that never
+  finishes, on a link that has gone away, is now one you can put down: the row closes, the app on
+  screen goes on working from the bundle it already has, and nothing is declined — the install
+  carries on in the background and the page still reloads itself once the new version takes over.
 
 ## [1.8.1] - 2026-09-12
 

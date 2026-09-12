@@ -34,15 +34,37 @@ import { UpdateRibbon } from "./update-ribbon";
 // know a new bundle is downloading. A box rather than a constant, so the one case about the download
 // row can set it; `vi.hoisted` because a mock factory may not reach an ordinary module variable.
 
-/** The box the stub reads. Named, so the stage is the module's own type and not a widened string. */
+/**
+ * The box the stub reads. Named, so the stage is the module's own type and not a widened string.
+ *
+ * It carries the real module's SUBSCRIPTION too, not just its value: the band drops the download
+ * row on a close and raises it again for the next worker, and "the next worker" is nothing but the
+ * stage leaving `installing` and coming back. A no-op subscribe could not express that.
+ */
 interface StageBox {
   current: UpdateStage;
+  listeners: Set<() => void>;
+  set: (next: UpdateStage) => void;
 }
-const pwaStage = vi.hoisted((): StageBox => ({ current: "idle" }));
+const pwaStage = vi.hoisted((): StageBox => {
+  const listeners = new Set<() => void>();
+  const box: StageBox = {
+    current: "idle",
+    listeners,
+    set: (next: UpdateStage) => {
+      box.current = next;
+      for (const listener of listeners) listener();
+    },
+  };
+  return box;
+});
 vi.mock("@/lib/pwa", () => ({
   checkForUpdate: vi.fn(),
   getUpdateStage: () => pwaStage.current,
-  subscribeUpdateStage: () => () => {},
+  subscribeUpdateStage: (listener: () => void) => {
+    pwaStage.listeners.add(listener);
+    return () => pwaStage.listeners.delete(listener);
+  },
 }));
 // The dismiss posts to the bridge (M17/08). What it SENDS is the assertion; the round trip itself is
 // the bridge's own test.
@@ -164,6 +186,7 @@ let stop: () => void;
 beforeEach(() => {
   vi.clearAllMocks();
   pwaStage.current = "idle";
+  pwaStage.listeners.clear();
   sessionStorage.clear();
   __resetServerBuild();
   __resetReloadGuard();
@@ -337,6 +360,44 @@ describe("pwa path unchanged", () => {
     await renderBand(info({ releaseAvailable: false }));
     expect(screen.getByText("Downloading the new version…")).toBeInTheDocument();
     expect(screen.queryByText("New version — tap to update")).not.toBeInTheDocument();
+  });
+
+  it("the download row carries a named close, and the close puts it down", async () => {
+    // The counsel finding on the 2026-09-12 fix: a worker that never leaves `installing` — a dead
+    // link — is waited on forever and on purpose, since reloading early is the incident. So the row
+    // that says so must be closable, or the operator reads "Downloading" with no way out over an
+    // app that is running perfectly well underneath.
+    const user = userEvent.setup();
+    pwaStage.current = "installing";
+    holdReload("an-open-composer-draft");
+    confirmStaleBundle();
+    const { container } = await renderBand(info({ releaseAvailable: false }));
+    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
+    await settleBand();
+    expect(band(container)).toBeNull();
+    // NOTHING WAS DECLINED, so nothing is posted: the install carries on and the controller swap
+    // still reloads this page when it lands.
+    expect(dismissUpdate).not.toHaveBeenCalled();
+  });
+
+  it("a LATER worker raises the row again — a close covers one download, not every one", async () => {
+    const user = userEvent.setup();
+    pwaStage.current = "installing";
+    holdReload("an-open-composer-draft");
+    confirmStaleBundle();
+    await renderBand(info({ releaseAvailable: false }));
+    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
+    await settleBand();
+    expect(screen.queryByText("Downloading the new version…")).not.toBeInTheDocument();
+
+    // That worker is over and a second `updatefound` starts another. The close was about the first.
+    await act(async () => {
+      pwaStage.set("idle");
+    });
+    await act(async () => {
+      pwaStage.set("installing");
+    });
+    expect(screen.getByText("Downloading the new version…")).toBeInTheDocument();
   });
 });
 

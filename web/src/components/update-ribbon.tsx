@@ -17,6 +17,7 @@ import { useSelfUpdate } from "@/lib/self-update";
 import {
   clearUpdateStarted,
   type Dismissal,
+  dismissesLocally,
   dismissTarget,
   getUpdateStarted,
   ribbonText,
@@ -62,6 +63,10 @@ import type { DismissScope } from "@/lib/types";
 // same request stops tomorrow's digest naming the version that was just declined. The local state
 // below is optimistic only — it drops the band on the tap instead of on the poll.
 //
+// THE DOWNLOAD ROW IS THE ONE EXCEPTION, and it is not a dismissal at all: closing it declines
+// nothing, so it is held in this component and never posted (`lib/update-ribbon.ts`'s
+// `dismissesLocally`). The install carries on and the controller swap still reloads this page.
+//
 // ── THE BAND NEVER STARTS AN UPDATE ──────────────────────────────────────────
 // Four of the five states navigate to `/settings/updates`, where the confirm lives. A band that
 // could start an update from any screen would be the reflex tap the confirm was designed against.
@@ -84,6 +89,10 @@ export function UpdateRibbon() {
   // poll. Keyed by version AND scope like the stored one, so a newer version still raises the band
   // and closing a crew notice does not hide this host's own offer.
   const [justDismissed, setJustDismissed] = useState<Dismissal | null>(null);
+  // THE DOWNLOAD ROW, PUT DOWN FOR THIS DOCUMENT ONLY (2026-09-12). See `dismissesLocally` for why
+  // it is not the bridge's `dismissUpdate`: nothing was declined, the install goes on, and the
+  // controller swap still reloads this page when it lands.
+  const [downloadHidden, setDownloadHidden] = useState(false);
 
   const update = data?.update;
   const runState = update?.run?.state;
@@ -93,6 +102,13 @@ export function UpdateRibbon() {
   useEffect(() => {
     if (runState !== undefined && runState !== "idle") clearUpdateStarted();
   }, [runState]);
+
+  // A CLOSE COVERS ONE DOWNLOAD, NOT EVERY FUTURE ONE. The stage leaving `installing` is the end of
+  // the worker that was closed over, so the next `updatefound` raises the row again rather than
+  // inheriting a decision made about a different bundle.
+  useEffect(() => {
+    if (stage !== "installing") setDownloadHidden(false);
+  }, [stage]);
 
   const view = ribbonView({
     update,
@@ -104,6 +120,9 @@ export function UpdateRibbon() {
     now: Date.now(),
   });
   if (view.kind === "silent") return null;
+  // Closed for this document, and the row stays gone rather than falling back to the offer it
+  // outranks: a band that came straight back as "tap to reload" would be the nag the close refused.
+  if (dismissesLocally(view) && downloadHidden) return null;
 
   const skin = skinOf(view);
   // Which states can be put down, and what a dismiss records, is the reading's own decision — see
@@ -113,11 +132,7 @@ export function UpdateRibbon() {
   function onTap() {
     // The two bundle states reload THIS PAGE onto a bundle that already exists. Everything else is a
     // navigation to the page that owns the confirm.
-    // `bundle-installing` is here too, and on purpose: a tap during the download reaches
-    // `checkForUpdate()`, which finds the worker already on its way in and does nothing but keep
-    // waiting. That is the answer the operator's repeat tap deserves, and it is not a navigation
-    // away from the row that is telling them to wait.
-    if (view.kind === "updated" || view.kind === "bundle" || view.kind === "bundle-installing") {
+    if (view.kind === "updated" || view.kind === "bundle") {
       void checkForUpdate();
       return;
     }
@@ -133,6 +148,23 @@ export function UpdateRibbon() {
     icon: <skin.Icon className={skin.spin ? "animate-spin" : undefined} />,
     children: ribbonText(view, update?.linkChange ?? null),
   } as const;
+
+  // THE DOWNLOAD ROW: A CLOSE AND NOTHING ELSE (2026-09-12). It carries no action button and no
+  // whole-surface tap, because there is nothing for a tap to do while a worker is on its way in —
+  // the old tap reached `checkForUpdate()`, which finds that worker and keeps waiting. What the
+  // operator needs on a dead link is the other door: put the row down, keep using the app on
+  // screen, and let the controller swap reload the page if the download ever lands.
+  if (dismissesLocally(view)) {
+    return (
+      <StripSlot priority={UPDATE}>
+        <Notice
+          {...shared}
+          dismissLabel={t("updateRibbon.hideNotice")}
+          onDismiss={() => setDownloadHidden(true)}
+        />
+      </StripSlot>
+    );
+  }
 
   return (
     <StripSlot priority={UPDATE}>
