@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **A row of the running agent's own commands, above the keys.** Claude Code panes get Model, Effort, Compact and Resume under the thumb; Codex, pi and omp get their own. Operators add or replace the row with `bar = true` in `commands.toml`. It is visible by default; Settings, Harness shortcuts, hides it per device.
+
 ## [1.8.2] - 2026-09-12
 
 ### Fixed

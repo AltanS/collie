@@ -18,6 +18,7 @@ import { ZenControl } from "@/components/zen-control";
 import { InstallControl } from "@/components/install-control";
 import { LanguageControl } from "@/components/language-control";
 import { FontSettingsControl } from "@/components/font-settings";
+import { HarnessBarControl } from "@/components/harness-bar-control";
 import { TypefaceControl } from "@/components/typeface-control";
 import { UpdatesSettingsCard } from "@/components/updates-settings-card";
 import { Switch } from "@/components/ui/switch";
@@ -143,6 +144,11 @@ export function SettingsRoute() {
             own voice first, the thing it renders second. */}
         <TypefaceControl />
         <FontSettingsControl />
+
+        {/* A standing per-device choice, with appearance and under the fonts — ON by default,
+            because this row is new and is the point of the feature rather than a re-draw of
+            something that already existed (lib/harness-bar-pref.ts says why). */}
+        <HarnessBarControl />
 
         {/* Device behaviour sits with appearance — both are "how this phone treats you", as opposed
             to the herd/notification settings below. Renders nothing where vibrate is unsupported. */}

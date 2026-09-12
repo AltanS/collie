@@ -29,6 +29,8 @@ export const de: Dictionary = {
   "settings.install.description": "Collie zum Startbildschirm hinzufügen: Vollbild und eigenes App-Icon.",
   "settings.install.button": "Installieren",
   "settings.install.iosHint": "Unter iOS und iPadOS über das Teilen-Menü des Browsers installieren: Teilen antippen, dann „Zum Home-Bildschirm“.",
+  "settings.harnessBar.title": "Harness shortcuts",
+  "settings.harnessBar.description": "A row of the running agent's own commands above the keys.",
   "settings.zen.title": "Zen-Modus",
   "settings.zen.description": "Fügt dem Menü einen Eintrag hinzu, der alle Elemente außer dem Terminal ausblendet.",
   "settings.zen.auto.label": "Bei Querformat aktivieren",

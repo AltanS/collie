@@ -796,6 +796,15 @@ export interface OperatorCommand {
   argHint: string;
   /** The operator marking their own row dangerous. Optional so an older bridge stays readable. */
   confirm?: boolean;
+  /**
+   * The operator putting this row on the harness bar above the key rail. Resolved by `barFor()` in
+   * lib/harness-bar.ts, which replaces-or-falls-back over the `bar = true` rows ALONE — so a bar row
+   * never blanks the Agent palette for that pane (ADR 0043). Optional, like `confirm`, so an older
+   * bridge stays readable.
+   */
+  bar?: boolean;
+  /** The bar button's text, already shortened to 12 characters. Absent = the command without its slash. */
+  barLabel?: string;
 }
 
 /**

@@ -28,6 +28,8 @@ export const ja: Dictionary = {
   "settings.install.description": "ホーム画面に Collie を追加して、全画面と専用アイコンで起動します。",
   "settings.install.button": "インストール",
   "settings.install.iosHint": "iOS または iPadOS では、ブラウザの共有メニューから「ホーム画面に追加」を選択します。",
+  "settings.harnessBar.title": "Harness shortcuts",
+  "settings.harnessBar.description": "A row of the running agent's own commands above the keys.",
   "settings.zen.title": "Zen モード",
   "settings.zen.description": "ペインメニューに、ターミナル以外のUI要素を非表示にする項目を追加します。",
   "settings.zen.auto.label": "横向きで自動的に有効化",

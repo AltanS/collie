@@ -20,6 +20,7 @@ import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { CommandPalette } from "@/components/command-palette";
 import { QuickActionsContent } from "@/components/quick-actions";
+import { HarnessBar } from "@/components/harness-bar";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
@@ -1262,6 +1263,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <HostChip host={writeHost} variant="caption" className="min-w-0" />
           <StatusWordSlot status={statusWord} stale={stale} />
         </div>
+        {/* The running agent's own commands, above the controls group and below the status band —
+            above the input and below the dock site, like every other row of this chrome. It sends
+            TEXT through `send`, not keys through `pressKeys` — a bar item is a slash command plus a
+            submit, which is what `send` is. The sheet-open prop is deliberately not threaded from
+            here: it is a test seam. */}
+        <HarnessBar
+          agent={agent}
+          mine={operatorCommands}
+          onRun={(command) => send(command, false)}
+          disabled={locked}
+        />
         {/* `gap-1.5` rather than `gap-2`: four gaps at 8px is 32px of a 366px row, and 6px reads the
             same. The group still carries `aria-labelledby` to the word "Controls" — the word is now
             `sr-only` rather than deleted, because it was doing TWO jobs and only one of them was

@@ -695,6 +695,19 @@ export interface OperatorCommand {
    * command's confirm regardless (rule 3 in agent-commands.ts), and `false` cannot lift it.
    */
   confirm: boolean;
+  /**
+   * The operator putting this row on the HARNESS BAR, the row of the running agent's own commands
+   * above the key rail. It is the only way onto that bar, and a bar row is still an ordinary palette
+   * row. Replacement is per surface: bar rows replace the shipped BAR for the panes they address and
+   * leave the Agent palette alone (ADR 0043, which applies ADR 0018's rule to one surface).
+   */
+  bar: boolean;
+  /**
+   * The bar button's text. Absent means the command name without its slash. Over 12 characters it
+   * arrives already shortened — the bridge truncates rather than dropping the row, so a label two
+   * characters too long never costs the operator their button.
+   */
+  barLabel?: string;
 }
 
 /**

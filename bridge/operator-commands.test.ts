@@ -37,6 +37,7 @@ describe("validateOperatorCommands", () => {
         takesArg: false,
         argHint: "",
         confirm: false,
+        bar: false,
       },
     ]);
   });
@@ -50,6 +51,7 @@ describe("validateOperatorCommands", () => {
         takesArg: false,
         argHint: "",
         confirm: false,
+        bar: false,
       },
     ]);
     expect("agent" in out[0]!).toBe(false);
@@ -162,6 +164,99 @@ describe("validateOperatorCommands", () => {
     expect(validateOperatorCommands({ commands: ["/deploy", { command: "/ok" }] }, quiet)).toMatchObject([
       { command: "/ok" },
     ]);
+  });
+});
+
+
+// The two harness-bar keys. `bar` is the only way onto the bar, so an unusable one is a hard drop;
+// `bar_label` only decides how the button READS, so it never costs the operator their row. ADR 0043.
+describe("the bar keys", () => {
+  const warnings: string[] = [];
+  const loud = (m: string) => {
+    warnings.push(m);
+  };
+
+  test("bar defaults to false and needs no label", () => {
+    expect(rows(`[[commands]]\ncommand = "/a"`)).toMatchObject([{ bar: false }]);
+    expect("barLabel" in rows(`[[commands]]\ncommand = "/a"`)[0]!).toBe(false);
+  });
+
+  test("bar = true with a label keeps both", () => {
+    expect(
+      rows(`
+        [[commands]]
+        scope = "claude"
+        command = "/statusline"
+        description = "Set the status line"
+        bar = true
+        bar_label = "Status"
+      `),
+    ).toMatchObject([{ command: "/statusline", bar: true, barLabel: "Status" }]);
+  });
+
+  test("a non-boolean bar DROPS the row, fail-closed like confirm", () => {
+    warnings.length = 0;
+    expect(
+      validateOperatorCommands(Bun.TOML.parse(`[[commands]]\ncommand = "/a"\nbar = "yes"`), loud),
+    ).toEqual([]);
+    expect(warnings.join(" ")).toContain("bar must be true or false");
+  });
+
+  test("a bad bar drops only its own row", () => {
+    expect(
+      rows(`
+        [[commands]]
+        command = "/good"
+        bar = true
+
+        [[commands]]
+        command = "/bad"
+        bar = 1
+      `),
+    ).toMatchObject([{ command: "/good", bar: true }]);
+  });
+
+  test("a 13-character bar_label is cut to 11 plus an ellipsis and the row survives", () => {
+    warnings.length = 0;
+    const label = "Thirteenchar!"; // exactly 13
+    expect(label.length).toBe(13);
+    const out = validateOperatorCommands(
+      Bun.TOML.parse(`[[commands]]\ncommand = "/a"\nbar = true\nbar_label = "${label}"`),
+      loud,
+    );
+    expect(out).toMatchObject([{ command: "/a", bar: true, barLabel: "Thirteencha\u2026" }]);
+    expect(out[0]!.barLabel!.length).toBe(12);
+    expect(warnings.join(" ")).toContain("longer than 12 characters");
+  });
+
+  test("a 12-character bar_label is kept whole", () => {
+    expect(
+      rows(`[[commands]]\ncommand = "/a"\nbar = true\nbar_label = "Twelvechars!"`),
+    ).toMatchObject([{ barLabel: "Twelvechars!" }]);
+  });
+
+  test("an empty or non-string bar_label falls back to the command name, keeping the row", () => {
+    warnings.length = 0;
+    const blank = validateOperatorCommands(
+      Bun.TOML.parse(`[[commands]]\ncommand = "/deploy"\nbar = true\nbar_label = "   "`),
+      loud,
+    );
+    expect(blank).toMatchObject([{ command: "/deploy", bar: true }]);
+    expect("barLabel" in blank[0]!).toBe(false);
+
+    const numeric = validateOperatorCommands(
+      Bun.TOML.parse(`[[commands]]\ncommand = "/deploy"\nbar = true\nbar_label = 7`),
+      loud,
+    );
+    expect(numeric).toMatchObject([{ command: "/deploy", bar: true }]);
+    expect("barLabel" in numeric[0]!).toBe(false);
+    expect(warnings.join(" ")).toContain("bar_label must be a non-empty string");
+  });
+
+  test("bar_label on a row that is not on the bar is simply not carried", () => {
+    const out = rows(`[[commands]]\ncommand = "/a"\nbar_label = "Ignored"`);
+    expect(out).toMatchObject([{ bar: false }]);
+    expect("barLabel" in out[0]!).toBe(false);
   });
 });
 

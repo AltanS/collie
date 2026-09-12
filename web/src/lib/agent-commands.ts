@@ -9,6 +9,12 @@
 // that follow from that, both of which apply to any future palette-sourced agent: only what a capture
 // actually shows, and nothing the capturing user's own machine contributed.
 //
+// A row marked `// harness-bar` has a BUTTON on the harness bar above the key rail
+// (`web/src/lib/harness-bar.ts`). Renaming or removing one of those commands changes a surface the
+// operator drives with their thumb, so the dependency is marked in the file being edited rather
+// than left to a test run later. `harness-bar.test.ts` fails if the bar names a command this file
+// does not have.
+//
 // To regenerate: re-run the per-agent doc-fetch agents (see CHANGELOG) and replace the arrays.
 
 import { canonicalAgent, rowsFor } from "@/lib/operator-scope";
@@ -31,10 +37,10 @@ export interface AgentCommand {
 
 // ── Claude Code ──────────────────────────────────────────────────────────────
 const CLAUDE: readonly AgentCommand[] = [
-  { command: "/compact", description: "Summarize the conversation to free up context; optional focus", takesArg: true, argHint: "[instructions]", common: true, dangerous: false },
+  { command: "/compact", description: "Summarize the conversation to free up context; optional focus", takesArg: true, argHint: "[instructions]", common: true, dangerous: false }, // harness-bar
   { command: "/clear", description: "Start a fresh conversation with empty context", takesArg: false, argHint: "", common: true, dangerous: true },
-  { command: "/model", description: "Switch the model; opens a picker if no name given", takesArg: true, argHint: "[model]", common: true, dangerous: false },
-  { command: "/resume", description: "Resume a previous conversation by id, name, or picker", takesArg: true, argHint: "[session]", common: true, dangerous: false },
+  { command: "/model", description: "Switch the model; opens a picker if no name given", takesArg: true, argHint: "[model]", common: true, dangerous: false }, // harness-bar
+  { command: "/resume", description: "Resume a previous conversation by id, name, or picker", takesArg: true, argHint: "[session]", common: true, dangerous: false }, // harness-bar
   { command: "/init", description: "Generate a starter CLAUDE.md for this project", takesArg: false, argHint: "", common: true, dangerous: false },
   { command: "/review", description: "Review a GitHub pull request by number (lists open PRs if none)", takesArg: true, argHint: "[PR]", common: true, dangerous: false },
   { command: "/status", description: "Show version, model, account, and connectivity info", takesArg: false, argHint: "", common: true, dangerous: false },
@@ -54,7 +60,7 @@ const CLAUDE: readonly AgentCommand[] = [
   { command: "/deep-research", description: "Fan out web searches and synthesize a cited report", takesArg: true, argHint: "<question>", common: false, dangerous: false },
   { command: "/diff", description: "Open an interactive viewer of uncommitted changes", takesArg: false, argHint: "", common: false, dangerous: false },
   { command: "/doctor", description: "Diagnose and verify your Claude Code installation", takesArg: false, argHint: "", common: false, dangerous: false },
-  { command: "/effort", description: "Set the model reasoning effort level", takesArg: true, argHint: "[low|medium|high|max]", common: false, dangerous: false },
+  { command: "/effort", description: "Set the model reasoning effort level", takesArg: true, argHint: "[low|medium|high|max]", common: false, dangerous: false }, // harness-bar
   { command: "/export", description: "Export the conversation as plain text", takesArg: true, argHint: "[filename]", common: false, dangerous: false },
   { command: "/fast", description: "Toggle fast mode on or off", takesArg: true, argHint: "[on|off]", common: false, dangerous: false },
   { command: "/feedback", description: "Submit feedback or report a bug to Anthropic", takesArg: true, argHint: "[report]", common: false, dangerous: false },
@@ -86,16 +92,16 @@ const CLAUDE: readonly AgentCommand[] = [
 
 // ── Codex ────────────────────────────────────────────────────────────────────
 const CODEX: readonly AgentCommand[] = [
-  { command: "/compact", description: "Summarize history to free up context-window tokens", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/compact", description: "Summarize history to free up context-window tokens", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
   { command: "/clear", description: "Reset output and start a new chat in this session", takesArg: false, argHint: "", common: true, dangerous: true },
   { command: "/diff", description: "Show the git diff of the working tree (incl. untracked)", takesArg: false, argHint: "", common: true, dangerous: false },
-  { command: "/model", description: "Switch the active model and reasoning effort", takesArg: true, argHint: "<model>", common: true, dangerous: false },
+  { command: "/model", description: "Switch the active model and reasoning effort", takesArg: true, argHint: "<model>", common: true, dangerous: false }, // harness-bar
   { command: "/new", description: "Start a fresh conversation without leaving the CLI", takesArg: false, argHint: "", common: true, dangerous: true },
   { command: "/status", description: "Show model, approval policy, writable roots, token usage", takesArg: false, argHint: "", common: true, dangerous: false },
   { command: "/review", description: "Request a code review of the current working tree", takesArg: false, argHint: "", common: true, dangerous: false },
   { command: "/mention", description: "Attach specific files or folders to the context", takesArg: true, argHint: "<file>", common: true, dangerous: false },
   { command: "/permissions", description: "Adjust which actions Codex can take without asking", takesArg: false, argHint: "", common: true, dangerous: false },
-  { command: "/resume", description: "Reload a previously saved conversation", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/resume", description: "Reload a previously saved conversation", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
   { command: "/init", description: "Generate an AGENTS.md scaffold in this project", takesArg: false, argHint: "", common: false, dangerous: false },
   { command: "/plan", description: "Enter plan mode to propose a strategy before running", takesArg: true, argHint: "[prompt]", common: false, dangerous: false },
   { command: "/goal", description: "Set, pause, resume, or clear a long-running objective", takesArg: true, argHint: "[objective]", common: false, dangerous: false },
@@ -122,12 +128,12 @@ const CODEX: readonly AgentCommand[] = [
 
 // ── Pi (pi.dev) ──────────────────────────────────────────────────────────────
 const PI: readonly AgentCommand[] = [
-  { command: "/compact", description: "Manually compact context, optionally with instructions", takesArg: true, argHint: "[instructions]", common: true, dangerous: false },
+  { command: "/compact", description: "Manually compact context, optionally with instructions", takesArg: true, argHint: "[instructions]", common: true, dangerous: false }, // harness-bar
   { command: "/new", description: "Start a new session, clearing the current context", takesArg: false, argHint: "", common: true, dangerous: true },
-  { command: "/model", description: "Switch the active model", takesArg: false, argHint: "", common: true, dangerous: false },
-  { command: "/resume", description: "Pick a previous session to resume", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/model", description: "Switch the active model", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
+  { command: "/resume", description: "Pick a previous session to resume", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
   { command: "/session", description: "Show session file, id, messages, tokens, and cost", takesArg: false, argHint: "", common: true, dangerous: false },
-  { command: "/tree", description: "Jump to any earlier point in the session and continue", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/tree", description: "Jump to any earlier point in the session and continue", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
   { command: "/fork", description: "Start a new session from an earlier user message", takesArg: false, argHint: "", common: true, dangerous: false },
   { command: "/share", description: "Upload as a private gist with a shareable HTML link", takesArg: false, argHint: "", common: true, dangerous: false },
   { command: "/copy", description: "Copy the last assistant message to the clipboard", takesArg: false, argHint: "", common: true, dangerous: false },
@@ -209,7 +215,7 @@ const OMP: readonly AgentCommand[] = [
   //     tool results out of context to reclaim tokens without a full /compact — `/shake images` drops
   //     just images". That one sentence names both commands and gives /shake its description and its
   //     optional argument; /compact it names only as the fuller operation /shake avoids.
-  { command: "/compact", description: "Compact the whole conversation to reclaim context", takesArg: false, argHint: "", common: true, dangerous: false },
+  { command: "/compact", description: "Compact the whole conversation to reclaim context", takesArg: false, argHint: "", common: true, dangerous: false }, // harness-bar
   { command: "/shake", description: "Drop heavy tool results from context without a full compact", takesArg: true, argHint: "[images]", common: true, dangerous: false },
 
   // (c) The capture log — each of these was typed to produce a fixture, so its screen is in the
@@ -217,9 +223,9 @@ const OMP: readonly AgentCommand[] = [
   //     up-levels none of omp's modals: from a phone they land the user on the raw mirror, to be
   //     driven with the special-keys pad and dismissed with Escape, and `composerReady` refuses
   //     free-text sends until it is. Useful, but not what to surface first — hence `common: false`.
-  { command: "/model", description: "Open the provider/model picker", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/model", description: "Open the provider/model picker", takesArg: false, argHint: "", common: false, dangerous: false }, // harness-bar
   { command: "/settings", description: "Open the settings panel", takesArg: false, argHint: "", common: false, dangerous: false },
-  { command: "/resume", description: "Open the session picker", takesArg: false, argHint: "", common: false, dangerous: false },
+  { command: "/resume", description: "Open the session picker", takesArg: false, argHint: "", common: false, dangerous: false }, // harness-bar
 ];
 
 // ── Antigravity (agy) ────────────────────────────────────────────────────────

@@ -156,6 +156,7 @@
         "**/web/src/lib/drafts.ts",
         "**/web/src/lib/haptics.ts",
         "**/web/src/lib/zen.ts",
+        "**/web/src/lib/harness-bar-pref.ts",
         "**/web/src/lib/strips-collapsed.ts",
         "**/web/src/lib/follow-terminal.ts"
       ],
