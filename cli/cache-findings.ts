@@ -1,5 +1,6 @@
 import { allCacheRules } from "../bridge/cache/rules/index.ts";
 import { claimAgeDays, staleClaims } from "../bridge/cache/claims.ts";
+import { validateOperatorCacheRules } from "../bridge/operator-cache-rules.ts";
 import type { CliContext } from "./context.ts";
 import { ok, warn, type Finding } from "./finding.ts";
 import type { Files } from "./sys.ts";
@@ -48,7 +49,7 @@ export interface CacheDeps {
 
 /** Every line of the cache section, in the order an operator would read them. */
 export function cacheFindings(deps: CacheDeps): Finding[] {
-  return [claims(deps), env(deps)];
+  return [claims(deps), overrides(deps), env(deps)];
 }
 
 /**
@@ -89,6 +90,46 @@ function claims(deps: CacheDeps): Finding {
     `${summary}; ${lines.join("; ")}`,
     "re-read each vendor page named above, then update `retrievedAt` and the quote in" +
       " `bridge/cache/rules/` — or move the number in `cache-rules.toml` if the vendor changed it",
+  );
+}
+
+/**
+ * `cache-rules` — the operator's own overrides, judged by the grammar the BRIDGE applies.
+ *
+ * It calls `validateOperatorCacheRules` rather than re-reading the file its own way, so `doctor` and
+ * the bridge can never disagree about which row is valid. A row that is dropped is named with the
+ * reason the validator gave; the rest of the file still applies, which is why this is one `warn` line
+ * listing rows rather than a verdict on the file.
+ */
+function overrides(deps: CacheDeps): Finding {
+  const check = "cache-rules";
+  const path = cacheRulesPath(deps.ctx);
+  const text = deps.files.read(path);
+  // No file is the ordinary case of an operator who declared nothing, not a fault.
+  if (text === null) return ok(check, `no ${path} — every TTL is the shipped rule`);
+  const rejected: string[] = [];
+  let kept: ReturnType<typeof validateOperatorCacheRules>;
+  try {
+    // SAFETY: `Bun.TOML.parse` answers a parsed document and `validateOperatorCacheRules` is its only
+    // reader — every field it names is checked before it is believed, so this assertion claims nothing
+    // beyond "a document came back". Exactly the assertion `operator-file.ts` makes.
+    kept = validateOperatorCacheRules(Bun.TOML.parse(text) as { rule?: unknown }, (m) => rejected.push(m));
+  } catch (err) {
+    return warn(
+      check,
+      `${path} is not valid TOML (${String(err)}) — the bridge is holding the last rows that parsed`,
+      "fix the file; `collie doctor` reads it again with no restart",
+    );
+  }
+  const applied = `${String(kept.length)} override(s) applied: ${kept.map((r) => `${r.ruleId} → ${String(r.ttlSeconds)}s`).join(", ")}`;
+  if (rejected.length === 0) {
+    return ok(check, kept.length === 0 ? `${path} declares no rows` : applied);
+  }
+  return warn(
+    check,
+    `${kept.length === 0 ? `${path} applies nothing` : applied}; ${rejected.join("; ")}`,
+    "every row needs an `id` this build ships, a whole `ttl_seconds` from 1 to 86400, a `source_url`" +
+      " and a `retrieved` date — see cache-rules.toml.example",
   );
 }
 

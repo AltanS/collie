@@ -272,6 +272,11 @@ export interface Config {
    */
   launchersFile: string;
   /**
+   * Where the operator's prompt-cache overrides live — `cache-rules.toml`, the sixth file on the same
+   * contract, read the same way (bridge/operator-cache-rules.ts) and likewise never read here.
+   */
+  cacheRulesFile: string;
+  /**
    * Tailscale identity gate. If set under `tailscale serve`, the request must carry a matching
    * `Tailscale-User-Login` header. A mismatch is rejected. A missing header is also rejected —
    * serve injects none for tagged nodes, so tolerating it let any tagged node write. Under
@@ -594,6 +599,7 @@ export function loadConfig(env: Environment = process.env): Config {
     themeFile: join(configDir, "theme.toml"),
     fontsDir: join(configDir, "fonts"),
     launchersFile: join(configDir, "launchers.toml"),
+    cacheRulesFile: join(configDir, "cache-rules.toml"),
     trustedUser: env.COLLIE_TRUSTED_USER ?? "",
     trustedUserOptional: envBool("COLLIE_TRUSTED_USER_OPTIONAL", false, env),
     auditContent: envEnum("COLLIE_AUDIT_CONTENT", ["preview", "none"] as const, "preview", env),

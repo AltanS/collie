@@ -140,6 +140,7 @@ function cfg(overrides: Partial<Config> = {}): Config {
     themeFile: "/nope/theme.toml",
     fontsDir: "/nope/fonts",
     launchersFile: "/nope/launchers.toml",
+    cacheRulesFile: "/nope/cache-rules.toml",
     trustedUser: "",
     trustedUserOptional: false,
     auditContent: "preview",

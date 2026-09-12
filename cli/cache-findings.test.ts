@@ -23,9 +23,10 @@ const find = (findings: readonly Finding[], check: string): Finding => {
   return hit;
 };
 
-test("the section is exactly the two checks, and neither can fail the verb", () => {
+test("the section is exactly the three checks, and none can fail the verb", () => {
   const findings = cacheFindings(deps());
-  expect(findings.map((f) => f.check)).toEqual(["cache-claims", "cache-env"]);
+  expect(findings.map((f) => f.check)).toEqual(["cache-claims", "cache-rules", "cache-env"]);
+  // All three are warn-severity at worst, so `collie doctor` still exits 0 (cli/doctor.ts:219).
   for (const f of findings) expect(f.status === "ok" || f.status === "warn").toBe(true);
 });
 
@@ -55,6 +56,49 @@ describe("cache-claims", () => {
     const at = Date.parse(`${source?.retrievedAt ?? ""}T00:00:00Z`) + CLAIM_WARN_DAYS * 86_400_000;
     if (source !== undefined) expect(claimAgeDays(source, new Date(at))).toBe(CLAIM_WARN_DAYS);
     expect(find(cacheFindings(deps({ now: at })), "cache-claims").status).toBe("ok");
+  });
+});
+
+describe("cache-rules", () => {
+  const CONFIG_FILE = cacheRulesPath(context());
+  const GOOD = `[[rule]]
+id = "claude.api"
+ttl_seconds = 3600
+source_url = "https://platform.claude.com/docs/en/build-with-claude/prompt-caching"
+retrieved = "2026-09-12"
+`;
+
+  test("no file is the ordinary case, not a fault", () => {
+    const f = find(cacheFindings(deps()), "cache-rules");
+    expect(f.status).toBe("ok");
+    expect(f.detail).toContain("every TTL is the shipped rule");
+  });
+
+  test("names each applied override when the file is clean", () => {
+    const f = find(cacheFindings(deps({ files: { [CONFIG_FILE]: GOOD } })), "cache-rules");
+    expect(f.status).toBe("ok");
+    expect(f.detail).toContain("claude.api → 3600s");
+  });
+
+  test("warns with the validator's own reason, naming the row", () => {
+    const bad = GOOD.replace('retrieved = "2026-09-12"', 'retrieved = "soon"');
+    const f = find(cacheFindings(deps({ files: { [CONFIG_FILE]: bad } })), "cache-rules");
+    expect(f.status).toBe("warn");
+    expect(f.detail).toContain('row 1: "retrieved" is not a YYYY-MM-DD date');
+  });
+
+  test("keeps the good rows and warns about the bad one in the same line", () => {
+    const mixed = `${GOOD}\n[[rule]]\nid = "nope.nope"\nttl_seconds = 60\nsource_url = "https://x.invalid"\nretrieved = "2026-09-13"\n`;
+    const f = find(cacheFindings(deps({ files: { [CONFIG_FILE]: mixed } })), "cache-rules");
+    expect(f.status).toBe("warn");
+    expect(f.detail).toContain("claude.api → 3600s");
+    expect(f.detail).toContain("row 2");
+  });
+
+  test("a file that is not TOML is a HOLD, described as one", () => {
+    const f = find(cacheFindings(deps({ files: { [CONFIG_FILE]: "[[rule]\nid =" } })), "cache-rules");
+    expect(f.status).toBe("warn");
+    expect(f.detail).toContain("not valid TOML");
   });
 });
 

@@ -1,0 +1,51 @@
+# Your own prompt-cache lifetimes. Copy to your plugin config dir, next to `.env`:
+#   cp cache-rules.toml.example "$(herdr plugin config-dir herdr.collie)/cache-rules.toml"
+#
+# This file configures ONE thing: how long Collie believes a harness's prompt cache stays warm. Each
+# row moves exactly one shipped rule, by id. Everything else about the chip is unchanged.
+#
+# WHEN YOU NEED IT. Collie ships a TTL per harness and provider, each one read off a vendor's own
+# page on a recorded date. A vendor can move that number in a blog post, and a gateway in front of
+# your agent can change it without telling anybody. Until Collie ships a new rule, this is the lever.
+#
+# `collie doctor` tells you when a shipped claim is going stale: its `cache-claims` line warns on any
+# rule nobody has re-checked in 180 days, and its `cache-rules` line names any row below that this
+# file got wrong. Its `cache-env` line fires when you have set `ENABLE_PROMPT_CACHING_1H` or
+# `FORCE_PROMPT_CACHING_5M` in your shell — the bridge runs as its own systemd unit and cannot read
+# your agent's environment, so a variable you set for Claude Code has to be mirrored here to be seen.
+#
+# FOUR FIELDS ARE REQUIRED AND ONE IS NOT. `id`, `ttl_seconds`, `source_url` and `retrieved` must all
+# be there, or the row is dropped with a line in the log and in `collie doctor`. You may move a
+# number; you may not remove the page and date it came from — that is the whole contract the rule
+# catalog rests on. `note` is optional and is shown in the pane sheet.
+#
+# A MEASURED NUMBER STILL WINS. Claude Code writes which cache window it used into its own
+# transcript, so a session it says is on the one-hour TTL stays on the one-hour TTL whatever this
+# file says. An override sits above the shipped rule and below a live measurement.
+#
+# Rule ids, and what each one is:
+#   claude.subscription   Claude Code on a Claude subscription (Pro/Max)
+#   claude.api            Claude Code on an API key or third-party provider
+#   codex.subscription    Codex CLI signed in with a ChatGPT plan
+#   codex.api             Codex CLI on an OpenAI API key
+#   pi.anthropic          pi talking to Anthropic        opencode.anthropic
+#   pi.openai             pi talking to OpenAI           opencode.openai
+#   pi.google             pi talking to Google           opencode.google
+#   pi.unknown            pi on an upstream that documents no TTL, and the opencode twin
+#
+# Edits are live: the bridge re-reads this file behind an mtime check, so no restart is needed.
+
+# A gateway in front of Claude Code that always asks for the one-hour window.
+# [[rule]]
+# id = "claude.api"
+# ttl_seconds = 3600
+# source_url = "https://platform.claude.com/docs/en/build-with-claude/prompt-caching"
+# retrieved = "2026-09-12"
+# note = "our gateway sends ttl 1h on every request"
+
+# Codex on a model whose 30-minute window you confirmed on OpenAI's own page.
+# [[rule]]
+# id = "codex.api"
+# ttl_seconds = 1800
+# source_url = "https://developers.openai.com/api/docs/guides/prompt-caching"
+# retrieved = "2026-09-12"

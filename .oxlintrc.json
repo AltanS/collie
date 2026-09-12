@@ -131,6 +131,7 @@
         "**/bridge/operator-keys.ts",
         "**/bridge/operator-quick-replies.ts",
         "**/bridge/operator-launchers.ts",
+        "**/bridge/operator-cache-rules.ts",
         "**/bridge/operator-fonts.ts",
         "**/bridge/operator-file.ts",
         "**/bridge/config-source.ts",
