@@ -78,7 +78,7 @@ function Entry({ entry, agent, scope }: { entry: TranscriptEntry; agent?: string
     // Variant B: the user's turn is a right-aligned bubble — clearly theirs, clearly apart.
     return (
       <li data-conversation-entry={entry.uuid} className="flex max-w-[85%] flex-col items-end self-end">
-        <div className="rounded-sm bg-primary px-3.5 py-2 text-sm text-primary-foreground">
+        <div className="max-w-full rounded-sm bg-primary px-3.5 py-2 text-sm text-primary-foreground">
           <EntryParts entry={entry} scope={scope} />
         </div>
         {time && <span className="mt-0.5 text-[10px] text-muted-foreground">{time}</span>}
