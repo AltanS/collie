@@ -8,7 +8,7 @@ import { isLoopbackBindHost, type Config } from "./config.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
-import { computeEtag, gzipJsonResponse, notModified } from "./http-cache.ts";
+import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
 import { createOperatorCommands } from "./operator-commands.ts";
@@ -1881,7 +1881,7 @@ export function startServer(opts: {
       if (isReservedAuthPath(pathname)) return reservedAuthPlaceholder();
 
       // ── Static PWA (with SPA fallback) ───────────────────────────────────
-      return serveStatic(pathname);
+      return serveStatic(pathname, req.headers.get("accept-encoding"));
     },
   });
 
@@ -3726,8 +3726,12 @@ behind your own reverse proxy</em> in the README.</p>
   );
 }
 
-async function serveStatic(pathname: string): Promise<Response> {
-  const resolved = resolveStaticPath(pathname);
+export async function serveStatic(
+  pathname: string,
+  acceptEncoding: string | null,
+  webDir: string = WEB_DIR,
+): Promise<Response> {
+  const resolved = resolveStaticPath(pathname, webDir);
   if (!resolved) return text("forbidden", 403);
   let { rel, full } = resolved;
 
@@ -3736,7 +3740,7 @@ async function serveStatic(pathname: string): Promise<Response> {
     // SPA fallback: extension-less paths fall back to index.html; missing assets 404.
     if (extname(rel) === "") {
       rel = "index.html";
-      full = join(WEB_DIR, "index.html");
+      full = join(webDir, "index.html");
       file = Bun.file(full);
       if (!(await file.exists())) {
         return text("frontend not built — run `bun run build` in web/", 503);
@@ -3754,7 +3758,107 @@ async function serveStatic(pathname: string): Promise<Response> {
   };
   if (ext === ".html") headers["content-security-policy"] = CSP;
   if (rel === "sw.js") headers["service-worker-allowed"] = "/";
-  return secure(new Response(file, { headers }));
+
+  const gz = await gzippedStatic(file, full, ext, acceptEncoding);
+  if (gz === null) return secure(new Response(file, { headers }));
+  headers["content-encoding"] = "gzip";
+  headers["vary"] = "accept-encoding";
+  // Stated rather than left to the runtime, because the length a client must read is the
+  // COMPRESSED one; a length copied from the file on disk would hang the download.
+  headers["content-length"] = String(gz.byteLength);
+  return secure(new Response(gz, { headers }));
+}
+
+/**
+ * Extensions whose bytes are text and therefore worth gzipping. Images, fonts and anything unlisted
+ * are already compressed, so a second pass spends CPU to grow the body by its gzip framing.
+ */
+const COMPRESSIBLE_EXT = new Set([
+  ".js",
+  ".mjs",
+  ".css",
+  ".html",
+  ".svg",
+  ".json",
+  ".webmanifest",
+  ".txt",
+  ".map",
+]);
+
+/**
+ * Below this many bytes a static file goes out raw: gzip's own header and trailer, plus the extra
+ * response headers, eat the saving. Higher than the JSON floor in http-cache.ts because a static
+ * file is usually served once per release and cached, while a JSON body is served every poll.
+ */
+const STATIC_GZIP_MIN_BYTES = 1024;
+
+/** At most this many compressed bodies are held, and at most this many bytes across all of them. */
+const GZIP_CACHE_MAX_ENTRIES = 64;
+const GZIP_CACHE_MAX_BYTES = 16 * 1024 * 1024;
+
+/**
+ * The compressed bodies of the static files served so far, keyed by absolute path + mtime + size —
+ * so a rebuild never serves the old bytes under the new file's name, and nothing has to be
+ * invalidated by hand. A `Map` iterates in insertion order, which makes "evict the oldest" the
+ * first key it yields. Every served extension is cached the same way, hashed asset or not: an
+ * `index.html` is small, and one code path is worth more here than a second policy.
+ */
+const gzipCache = new Map<string, Uint8Array<ArrayBuffer>>();
+let gzipCacheBytes = 0;
+let gzipCacheHits = 0;
+let gzipCacheMisses = 0;
+
+/** What the cache has done so far. Exported so a test can observe a hit without a spy. */
+export function staticGzipStats() {
+  return {
+    entries: gzipCache.size,
+    bytes: gzipCacheBytes,
+    hits: gzipCacheHits,
+    misses: gzipCacheMisses,
+  };
+}
+
+/** Empty the cache and its counters. For tests; the server never needs it. */
+export function resetStaticGzipCache(): void {
+  gzipCache.clear();
+  gzipCacheBytes = 0;
+  gzipCacheHits = 0;
+  gzipCacheMisses = 0;
+}
+
+/**
+ * The gzipped bytes of a static file, or null when this file must go out raw. Asks the three cheap
+ * questions — did the client offer gzip, is the type text, is it big enough — before reading
+ * anything off disk, so an image or a favicon costs exactly what it costs today.
+ */
+async function gzippedStatic(
+  file: ReturnType<typeof Bun.file>,
+  full: string,
+  ext: string,
+  acceptEncoding: string | null,
+): Promise<Uint8Array<ArrayBuffer> | null> {
+  if (!COMPRESSIBLE_EXT.has(ext)) return null;
+  const size = file.size;
+  if (!wantsGzip(acceptEncoding, size, STATIC_GZIP_MIN_BYTES)) return null;
+
+  const key = `${full} ${file.lastModified} ${size}`;
+  const cached = gzipCache.get(key);
+  if (cached !== undefined) {
+    gzipCacheHits += 1;
+    return cached;
+  }
+
+  gzipCacheMisses += 1;
+  const compressed = Bun.gzipSync(new Uint8Array(await file.arrayBuffer()));
+  gzipCache.set(key, compressed);
+  gzipCacheBytes += compressed.byteLength;
+  while (gzipCache.size > GZIP_CACHE_MAX_ENTRIES || gzipCacheBytes > GZIP_CACHE_MAX_BYTES) {
+    const oldest = gzipCache.keys().next();
+    if (oldest.done === true) break;
+    gzipCacheBytes -= gzipCache.get(oldest.value)?.byteLength ?? 0;
+    gzipCache.delete(oldest.value);
+  }
+  return compressed;
 }
 
 /**

@@ -10,6 +10,20 @@
 const GZIP_MIN_BYTES = 256;
 
 /**
+ * The one rule for "should this body go out gzipped": the client offered gzip, and the body is big
+ * enough that the saving beats gzip's own framing. Takes a LENGTH rather than the body so a caller
+ * that would have to read a file off disk can ask before reading it — that is what
+ * `serveStatic` in server.ts does, with its own, larger floor.
+ */
+export function wantsGzip(
+  acceptEncoding: string | null,
+  byteLength: number,
+  minBytes: number = GZIP_MIN_BYTES,
+): boolean {
+  return acceptEncoding !== null && acceptEncoding.includes("gzip") && byteLength >= minBytes;
+}
+
+/**
  * Compute a strong ETag for the given response body.
  * Uses Bun.hash (Wyhash) — fast and deterministic within a process.
  * Returns a quoted ETag value as required by RFC 7232.
@@ -60,10 +74,7 @@ export function gzipJsonResponse<TBody>(
   extraHeaders: Record<string, string> = {},
 ): Response {
   const body = JSON.stringify(data);
-  const useGzip =
-    acceptEncoding !== null &&
-    acceptEncoding.includes("gzip") &&
-    body.length >= GZIP_MIN_BYTES;
+  const useGzip = wantsGzip(acceptEncoding, body.length);
 
   const headers: ResponseHeaders = {
     "content-type": "application/json; charset=utf-8",

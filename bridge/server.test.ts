@@ -30,8 +30,11 @@ import {
   replyPane,
   requestBodyCap,
   requestDevice,
+  resetStaticGzipCache,
   resolveStaticPath,
   sendReplySteps,
+  serveStatic,
+  staticGzipStats,
   startupWarnings,
   healthBody,
   withBuildHeader,
@@ -1337,6 +1340,94 @@ describe("cacheControlFor", () => {
     ]) {
       expect(cacheControlFor(rel)).toBe("no-cache");
     }
+  });
+});
+
+// serveStatic, against a real dist tree on disk. The bundle is the biggest thing a phone downloads
+// — 869 kB of JavaScript on a precache — and it used to go out raw, which took a phone 125 seconds
+// on a slow link with the app reading as offline for the whole minute. These pin that a text file
+// ships gzipped when the client offers it, that an image never does, and that the compressed bytes
+// are computed once per file rather than on every request.
+describe("serveStatic — a text file ships gzipped", () => {
+  /** A dist tree with one hashed asset, one image and an index.html. */
+  async function distTree(): Promise<{ dir: string; js: string }> {
+    const dir = await mkdtemp(join(tmpdir(), "collie-static-gzip-"));
+    await mkdir(join(dir, "assets"), { recursive: true });
+    // Repetitive on purpose: real bundle text compresses about 3.5x, and the point of the case is
+    // the headers, not the ratio.
+    const js = `${"export const greeting = 'hello collie';\n".repeat(200)}`;
+    await writeFile(join(dir, "assets", "index-B7cWgJ3M.js"), js);
+    await writeFile(join(dir, "index.html"), `<!doctype html>${"<p>hello</p>".repeat(200)}`);
+    await Bun.write(join(dir, "apple-touch-icon.png"), new Uint8Array(4096).fill(7));
+    return { dir, js };
+  }
+
+  test("with accept-encoding: gzip the asset arrives compressed and decompresses to the file", async () => {
+    resetStaticGzipCache();
+    const { dir, js } = await distTree();
+    const res = await serveStatic("/assets/index-B7cWgJ3M.js", "gzip, deflate, br", dir);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-encoding")).toBe("gzip");
+    expect(res.headers.get("vary")).toBe("accept-encoding");
+    expect(res.headers.get("content-type")).toBe("text/javascript; charset=utf-8");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+
+    const body = new Uint8Array(await res.arrayBuffer());
+    // The length a client reads is the COMPRESSED one, and it is smaller than the file on disk.
+    expect(res.headers.get("content-length")).toBe(String(body.byteLength));
+    expect(body.byteLength).toBeLessThan(js.length / 2);
+    expect(new TextDecoder().decode(Bun.gunzipSync(body))).toBe(js);
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("without the header the same asset arrives raw", async () => {
+    resetStaticGzipCache();
+    const { dir, js } = await distTree();
+    const res = await serveStatic("/assets/index-B7cWgJ3M.js", null, dir);
+
+    expect(res.headers.get("content-encoding")).toBeNull();
+    expect(res.headers.get("vary")).toBeNull();
+    expect(await res.text()).toBe(js);
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("a png is never compressed, however the client asks", async () => {
+    resetStaticGzipCache();
+    const { dir } = await distTree();
+    const res = await serveStatic("/apple-touch-icon.png", "gzip", dir);
+
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("content-encoding")).toBeNull();
+    expect(staticGzipStats().entries).toBe(0);
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("a second request for the same asset reuses the compressed bytes", async () => {
+    resetStaticGzipCache();
+    const { dir } = await distTree();
+    await serveStatic("/assets/index-B7cWgJ3M.js", "gzip", dir);
+    expect(staticGzipStats()).toMatchObject({ entries: 1, hits: 0, misses: 1 });
+
+    await serveStatic("/assets/index-B7cWgJ3M.js", "gzip", dir);
+    expect(staticGzipStats()).toMatchObject({ entries: 1, hits: 1, misses: 1 });
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("index.html compresses and still revalidates on every load", async () => {
+    resetStaticGzipCache();
+    const { dir } = await distTree();
+    const res = await serveStatic("/", "gzip", dir);
+
+    expect(res.headers.get("cache-control")).toBe("no-cache");
+    expect(res.headers.get("content-encoding")).toBe("gzip");
+    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+
+    await rm(dir, { recursive: true, force: true });
   });
 });
 

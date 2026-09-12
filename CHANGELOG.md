@@ -33,6 +33,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Fixed
 
 - **The service worker precaches only its own channel's icons.** A release build's precache no longer carries the dev build's or the playground's icon files, and vice versa: entries dropped from 37 (1660.11 KiB) to 28 (1485.71 KiB) in a same-channel build.
+- **Static files ship gzipped, so an update downloads in a quarter of the time.** Only JSON API replies were compressed; the app bundle, the stylesheet and the service worker went out raw, so a phone precaching an update pulled the whole thing over the tailnet and showed the app as offline until it finished. Every text asset is now compressed when the browser offers `gzip`, and a compressed asset is cached in memory so the work is done once per build rather than once per request. The main chunk goes from 869 kB to 250 kB; images and fonts are untouched, since they are already compressed.
 
 ## [1.8.1] - 2026-09-12
 
