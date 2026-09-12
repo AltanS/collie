@@ -2056,6 +2056,10 @@ export const RUNNER_ENV_KEYS = [
   // guess a mux — so a runner without it dies on a question nobody is there to answer.
   "COLLIE_MUX",
   "COLLIE_CONFIG_DIR",
+  // The base config file's path, when the operator moved it. The runner re-reads `~/.collie/config.toml`
+  // from its own $HOME and the instance file from its own config dir, exactly as it re-reads the
+  // `.env` — but a path nobody can re-derive has to travel (ADR 0040).
+  "COLLIE_CONFIG",
   "COLLIE_STATE_DIR",
   "COLLIE_PLUGIN_ROOT",
   "COLLIE_PORT",

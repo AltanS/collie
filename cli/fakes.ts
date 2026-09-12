@@ -1,4 +1,5 @@
 import { type OpsRecord, CrewOpsStore } from "../bridge/crew/ops-store.ts";
+import { emptyConfigLayer } from "../bridge/config-source.ts";
 import type { CliContext, Environment } from "./context.ts";
 import { effectiveServePort, instanceSuffix } from "./context.ts";
 import type { Io } from "./io.ts";
@@ -312,6 +313,8 @@ export function context(
     configDir: CONFIG,
     home: HOME,
     env,
+    // No config file: a fixture that wanted one passes its own layer through `over`.
+    configLayer: emptyConfigLayer(),
     port: 8787,
     serveMode: "https",
     // Derived from the fixture env rather than pinned, exactly as `loadContext` derives it: a test

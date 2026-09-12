@@ -7,6 +7,7 @@ import { join, sep } from "node:path";
 import { AuditLog, fileAuditAppender, formatAuditLine, type AuditEntry } from "./audit.ts";
 import { ActivityLedger } from "./activity.ts";
 import { loadConfig, type Config } from "./config.ts";
+import { CONFIG_SETTINGS } from "./config-schema.ts";
 import { computeEtag } from "./http-cache.ts";
 import { muxOk } from "./mux/types.ts";
 import { NotifyPrefsStore } from "./notify-prefs.ts";
@@ -769,9 +770,20 @@ describe("solo zero-tax — config", () => {
     expect(src).toContain('envInt("COLLIE_POLL_IDLE_MS", 12_000');
   });
 
-  test("config.ts reads exactly today's COLLIE_* env keys — no crew enrollment key", () => {
-    const src = readFileSync(join(import.meta.dir, "config.ts"), "utf8");
-    const keys = [...new Set([...src.matchAll(/COLLIE_[A-Z0-9_]+/g)].map((m) => m[0]))].toSorted();
+  // Read from `bridge/config-schema.ts` rather than by grepping `config.ts`'s source, because the
+  // schema is now the single declaration of what every setting is (ADR 0040). The rows that carry a
+  // `configField` are exactly the settings `loadConfig` resolves, which is the list §11 pins. A
+  // CONFIG FILE ADDS NO ENV KEY, so this list is the same 37 names it has always been — the two
+  // `COLLIE_MUX_ENDPOINT_<NAME>` rows collapse back to the prefix the old grep saw, because the env
+  // name is built at the call site and the file key must not be.
+  test("the schema names exactly today's COLLIE_* env keys — no crew enrollment key", () => {
+    const keys = [
+      ...new Set(
+        CONFIG_SETTINGS.filter((s) => s.configField !== undefined && s.env.startsWith("COLLIE_")).map(
+          (s) => (s.env.startsWith("COLLIE_MUX_ENDPOINT_") ? "COLLIE_MUX_ENDPOINT_" : s.env),
+        ),
+      ),
+    ].toSorted();
     expect(keys).toEqual([
       "COLLIE_ALLOWED_ORIGINS",
       "COLLIE_ALLOW_ANY_HOST",

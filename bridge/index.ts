@@ -12,7 +12,8 @@ import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
 import { withAgentHints } from "./beacon/hint.ts";
-import { loadConfig, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
+import { loadConfig, loadConfigLayer, nonLoopbackBindRefusal, resolveConfigDir, type Config } from "./config.ts";
+import { applyConfigLayer } from "./config-source.ts";
 import type { CrewMode, CrewStatusResponse } from "./types.ts";
 import { EventPoker } from "./event-poker.ts";
 import { exePathOf, exeReplaced } from "./exe-replaced.ts";
@@ -163,6 +164,16 @@ const UPDATE_FIRST_DELAY_MS = 90_000;
 const UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 // Entry point: resolve config, wire the pieces, start polling and serving.
+//
+// The config files come FIRST, and they come in under the environment (ADR 0040): `~/.collie/config.toml`
+// then `<configDir>/config.toml`, applied to `process.env` only for names it does not already carry.
+// One read, one application point, so every module that resolves its own settings from the
+// environment — the crew budgets, the standby door, the update lane, speech-to-text — sees the file
+// without learning about it. A broken file warns and the bridge still starts; that is the whole
+// posture, and it is why nothing here can throw.
+const configLayer = await loadConfigLayer(process.env, undefined, (line) => console.warn(line));
+applyConfigLayer(configLayer);
+
 // loadConfig throws on config it cannot parse at all. Print the reason alone — a stack trace here
 // buries the one line the operator needs. (The bind refusal is NOT here; it needs the crew mode,
 // which is not known until the trust store below has been read.)

@@ -1,3 +1,4 @@
+import { emptyConfigLayer } from "../config-source.ts";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { get as httpGet } from "node:http";
@@ -316,6 +317,7 @@ function depsFor(instance: Instance, captured: Captured): CrewDeps {
     configDir: join(instance.home, "config"),
     home: instance.home,
     env: { COLLIE_POLL_MS: "300" },
+    configLayer: emptyConfigLayer(),
     port: instance.port,
     serveMode: "http",
     servePort: DEFAULT_SERVE_PORT,

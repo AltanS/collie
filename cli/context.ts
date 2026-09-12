@@ -3,6 +3,14 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { DEFAULT_PORT, defaultSocketPath, resolveStateDir } from "../bridge/config.ts";
+import {
+  configFilePaths,
+  overlayConfig,
+  readConfigFilesSync,
+  tightenPrivateFile,
+  type ConfigFileLayer,
+  type ConfigFileReader,
+} from "../bridge/config-source.ts";
 import { pluginRoot } from "../bridge/root.ts";
 import {
   herdrActionCommand,
@@ -39,6 +47,13 @@ export interface CliContext {
   home: string;
   /** `.env`-merged environment. The one env any verb should consult. */
   env: Environment;
+  /**
+   * The two `config.toml` files this process read, what they set and what was wrong with them
+   * (ADR 0040). {@link CliContext.env} already has the layer spread UNDER it, so a verb reads values
+   * from `env` as it always has; this field is for the three `config` verbs and `doctor`, which
+   * report where a value came from rather than consume it.
+   */
+  configLayer: ConfigFileLayer;
   port: number;
   serveMode: ServeMode;
   /**
@@ -97,9 +112,6 @@ export interface EnvFilePerms {
   tighten(path: string): boolean;
 }
 
-/** The modes a `.env` may already carry without anyone touching it: owner-only, read or read/write. */
-const PRIVATE_ENV_MODES = new Set([0o600, 0o400]);
-
 /**
  * Hold `.env` to owner-only, tightening it in place when it is not — and say so either way.
  *
@@ -114,12 +126,10 @@ const PRIVATE_ENV_MODES = new Set([0o600, 0o400]);
  * Returns the line for stderr, or `null` when there was nothing to say.
  */
 export function tightenEnvFile(path: string, perms: EnvFilePerms): string | null {
-  const mode = perms.mode(path);
-  if (mode === null || PRIVATE_ENV_MODES.has(mode)) return null;
-  const shown = mode.toString(8).padStart(3, "0");
-  return perms.tighten(path)
-    ? `warn: ${path} was mode ${shown} (expected 600); tightened it to 600.`
-    : `warn: ${path} is mode ${shown} (expected 600) and could not be tightened; it may be readable by other users.`;
+  // One rule, two files. `bridge/config-source.ts` owns it because a `config.toml` holding
+  // `[push] vapid_private` raises exactly this question, and a second implementation would be a
+  // second posture (ADR 0040).
+  return tightenPrivateFile(path, perms).warning;
 }
 
 /**
@@ -314,6 +324,21 @@ function readIfPresent(p: string): string | null {
   }
 }
 
+/**
+ * {@link ConfigFileReader} against the real filesystem. An absent file is not an error, which is the
+ * ordinary case; a file that exists and will not open is, and says which.
+ */
+const diskConfigReader: ConfigFileReader = {
+  read(path) {
+    if (!existsSync(path)) return { text: null, error: null };
+    try {
+      return { text: readFileSync(path, "utf8"), error: null };
+    } catch (err) {
+      return { text: null, error: String(err) };
+    }
+  },
+};
+
 // ── Derived settings ─────────────────────────────────────────────────────────
 
 /**
@@ -494,8 +519,18 @@ export function loadContext(warn: (line: string) => void = (l) => console.error(
   });
   if (note !== null) warn(note);
 
+  // The config files sit UNDER the ambient environment (ADR 0040): default < ~/.collie/config.toml <
+  // <configDir>/config.toml < process env < `.env`. `COLLIE_CONFIG` is read from the PROCESS env
+  // alone, because it decides which file is read and a file cannot name itself.
+  const configLayer = readConfigFilesSync(
+    diskConfigReader,
+    configFilePaths(process.env, home, configDir),
+    warn,
+    { home, perms: diskEnvPerms },
+  );
+
   // `.env` overrides the ambient environment, exactly as `set -a; . .env` did.
-  const env: Environment = { ...process.env };
+  const env: Environment = overlayConfig(process.env, configLayer);
   const envPath = join(configDir, ".env");
   const dotenv = readIfPresent(envPath);
   if (dotenv !== null) {
@@ -517,6 +552,7 @@ export function loadContext(warn: (line: string) => void = (l) => console.error(
     configDir,
     home,
     env,
+    configLayer,
     // Suffixed, so a second instance can never tear down the first's `tailscale serve` mapping —
     // even if the operator points both at one config dir (ADR 0001: we touch only what we recorded).
     handlerFile: managedHandlerPath(configDir, instanceSuffix(instance)),
