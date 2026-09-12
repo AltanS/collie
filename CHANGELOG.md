@@ -38,6 +38,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **Cache rules are dated, sourced claims, and `collie doctor` says when one goes stale.** Every TTL carries the vendor page it was read on and the date it was read; a claim older than 180 days is a doctor warning, and one older than a year fails the build.
 - **`cache-rules.toml` moves a TTL your provider changed.** It sits beside `commands.toml`, overrides one rule id, and must carry the page you read and the date you read it.
 - **Every agent pane shows how long its prompt cache stays warm.** A chip on the dashboard card and in the pane header counts down from the harness's last request, turning amber in the last quarter of the window; a tap on the pane screen opens the rule, its source and the date it was last checked.
+- **The first launch walks you through Collie in three slides.** A sheet on the first
+  snapshot says what Collie mirrors, how to answer a pane, and how to be told when one needs
+  you; it is shown once per device, and Settings has a row to show it again.
 
 ### Changed
 

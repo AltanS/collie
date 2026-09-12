@@ -41,6 +41,7 @@ import {
 } from "./prefs";
 import * as brand from "./sections/brand";
 import * as boot from "./sections/boot";
+import * as tour from "./sections/tour";
 import * as idle from "./sections/idle";
 import * as dashboard from "./sections/dashboard";
 import * as pane from "./sections/pane";
@@ -80,6 +81,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: crew.DEF, render: () => <crew.CrewSection /> },
   { def: settings.DEF, render: () => <settings.SettingsSection /> },
   { def: boot.DEF, render: (ctx) => <boot.BootSection clock={ctx.clock} /> },
+  { def: tour.DEF, render: () => <tour.TourSection /> },
   { def: idle.DEF, render: () => <idle.IdleSection /> },
   { def: brand.DEF, render: () => <brand.BrandSection /> },
   { def: notices.DEF, render: () => <notices.NoticesSection /> },

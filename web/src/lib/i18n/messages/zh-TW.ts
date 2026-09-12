@@ -905,4 +905,33 @@ export const zhTW: Dictionary = {
   "cache.confidence.inferred": "inferred",
   "cache.confidence.observed": "measured",
   "updateRibbon.hideNotice": "隱藏此通知",
+
+  // --- tour (the first-launch sheet) --- ENGLISH, not yet translated.
+  "tour.skip": "Skip",
+  "tour.next": "Next",
+  "tour.start": "Start",
+  // The dot row's per-slide label. {n} is the slide's number, one-based.
+  "tour.dot": "Slide {n}",
+  "tour.slide1.title": "Your agents, on your phone",
+  "tour.slide1.body":
+    "Collie mirrors the agent panes running in your terminal multiplexer, Herdr, tmux or zellij. It shows you what is already on those screens, and it never runs a terminal of its own. The dashboard lists every machine and every workspace, with the panes that are waiting on you at the top under \u201cNeeds you\u201d.",
+  "tour.slide2.title": "Inside a pane",
+  "tour.slide2.body":
+    "Read the live mirror, and answer the agent\u2019s question by tapping one of the cards under it. Type a reply in the box, or open Keys for Esc, Tab and the arrows. Tap Type to send your keystrokes straight to the terminal.",
+  // Shown instead of the line above when device pairing is enforced and this device is not paired.
+  // The first two sentences are the same; only the last one changes, because the rest is still true.
+  "tour.slide2.bodyReadOnly":
+    "Read the live mirror, and answer the agent\u2019s question by tapping one of the cards under it. Type a reply in the box, or open Keys for Esc, Tab and the arrows. Ask the person who runs Collie to pair this device before you can type.",
+  "tour.slide3.title": "Be told when it needs you",
+  "tour.slide3.body":
+    "Collie can push you a notification the moment a pane is blocked on you, or the moment it is done. Turn it on here. Voice input, updates, your crew and this tour again all live in Settings.",
+  "tour.push.enable": "Turn on notifications",
+  "tour.push.enabled": "Notifications are on for this device.",
+  "tour.push.subscribed": "This device already gets notifications.",
+  "tour.push.userDisabled": "You turned notifications off. Settings can turn them back on.",
+
+  // --- settings.tour ---
+  "settings.tour.title": "Show the tour again",
+  "settings.tour.description": "The three slides you saw the first time you opened Collie.",
+  "settings.tour.button": "Show",
 };

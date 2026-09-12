@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { createMemoryRouter, RouterProvider } from "react-router";
 
@@ -10,6 +10,14 @@ import { CONNECTION_LOST_MS } from "@/hooks/use-connection-lost";
 import { __resetConnectionHealth } from "@/lib/connection-health";
 import { collieMark, markIsLive, markPaper } from "@/test/collie-mark";
 import { ROOT_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
+import { en } from "@/lib/i18n/messages/en";
+import {
+  __resetTourStore,
+  markTourSeen,
+  TOUR_STORAGE_KEY,
+  tourSeenVersion,
+  TOUR_VERSION,
+} from "@/lib/tour";
 
 // BootSplash is the router's HydrateFallback: it stays mounted until the FIRST loader run settles, so
 // over a dead tailnet (a hanging initial fetch) it can otherwise bloom the mark forever with no way
@@ -343,5 +351,163 @@ describe("RootLayout — the header identity survives a round trip to a pane", (
     expect(container.querySelector('[data-slot="header-identity"]')).toBe(identity);
     expect(container.querySelector('[data-slot="header-identity"] img')).toBe(logo);
     expect(identity).toBeVisible();
+  });
+});
+
+// THE FIRST-LAUNCH TOUR'S GATE. It lives in `components/tour-sheet.tsx` but it is decided here, at
+// the data root, because the only signal that says "this render is real" is the root snapshot. The
+// sheet's own behaviour is pinned in `components/tour-sheet.test.tsx`; these cases are about WHEN it
+// is allowed to appear, what it writes when it does, and what it holds back while it is up.
+describe("RootLayout — the tour's gate", () => {
+  beforeEach(() => __resetTourStore());
+  afterEach(() => __resetTourStore());
+
+  function renderWith(data: HomeData) {
+    const router = createMemoryRouter(
+      [{ id: ROOT_ROUTE_ID, path: "/", loader: () => data, element: <RootLayout /> }],
+      { initialEntries: ["/"] },
+    );
+    return { ...render(<RouterProvider router={router} />), router };
+  }
+
+  /** The shell has rendered. RootLayout alone mounts no route, so there is no `main` to wait on. */
+  async function shellReady(container: HTMLElement) {
+    await waitFor(() => expect(container.querySelector("header")).not.toBeNull());
+  }
+
+  const live: HomeData = { ...home(AFTERNOON), error: false };
+
+  it("opens on the first live snapshot of a device that has never seen it", async () => {
+    renderWith(live);
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    expect(screen.getByRole("dialog")).toHaveAccessibleName(en["tour.slide1.title"]);
+    expect(screen.getByRole("heading", { name: en["tour.slide1.title"] })).toBeInTheDocument();
+  });
+
+  // Marked seen on OPEN, before the first slide paints. Nothing in the close path writes the key, so
+  // a phone that loses the tab on slide 2 recovers through the Settings row and nowhere else.
+  it("marks itself seen as soon as it opens, not when it closes", async () => {
+    renderWith(live);
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    expect(tourSeenVersion()).toBe(TOUR_VERSION);
+    expect(localStorage.getItem(TOUR_STORAGE_KEY)).toBe(String(TOUR_VERSION));
+  });
+
+  it("stays shut on a device that has already seen this tour", async () => {
+    markTourSeen();
+    const { container } = renderWith(live);
+    await shellReady(container);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  // `error` true means this render is the LAST-GOOD snapshot after a failed refresh. Narrating a
+  // first launch over stale data is narrating something that may not be true any more.
+  it("stays shut while the snapshot on screen is the stale one", async () => {
+    const { container } = renderWith(home(AFTERNOON)); // home() carries error: true
+    await shellReady(container);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("stays shut when the refresh was refused outright", async () => {
+    const { container } = renderWith({ ...live, error: true, authError: true });
+    await shellReady(container);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  // A read-only device SEES the tour. A family tablet left on the dashboard is exactly the device
+  // that needs to be told what it is looking at; slide 2 branches its copy instead.
+  it("still opens on a read-only device, and slide 2 tells it who to ask", async () => {
+    renderWith({
+      ...live,
+      device: { enforced: true, device: "tablet", authorized: false },
+    });
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: en["tour.next"] }));
+    expect(screen.getByText(en["tour.slide2.bodyReadOnly"])).toBeInTheDocument();
+  });
+
+  it("does not re-open itself once it has been closed", async () => {
+    const { router } = renderWith(live);
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: en["tour.skip"] }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    // A poll revalidation re-renders this subtree; the decision is taken once, behind a ref.
+    await act(() => router.revalidate());
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});
+
+// THE PUSH RACE. `usePushSetup` raises the browser's own permission prompt with no user gesture
+// behind it, and behind the tour's backdrop that is a dialog about something the operator has not
+// been told about yet. So it waits for the tour to say it is closed. Observed at the DOM boundary —
+// `navigator.serviceWorker.register` is the first thing `enablePush()` reaches for — rather than by
+// mocking the module.
+describe("RootLayout — the tour holds the push prompt back", () => {
+  let register: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    __resetTourStore();
+    register = vi.fn(() => Promise.resolve({}));
+    Object.defineProperty(navigator, "serviceWorker", {
+      value: {
+        register,
+        ready: Promise.resolve({ pushManager: { getSubscription: () => Promise.resolve(null) } }),
+      },
+      configurable: true,
+    });
+    // `pushSupported()` only asks whether the name is on `window`, never what it is.
+    Object.defineProperty(window, "PushManager", { value: () => {}, configurable: true });
+    Object.defineProperty(window, "Notification", {
+      value: { permission: "granted" },
+      configurable: true,
+    });
+    // jsdom leaves this false; `enablePush()` refuses before it ever reaches `register` without it.
+    Object.defineProperty(window, "isSecureContext", { value: true, configurable: true });
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(navigator, "serviceWorker");
+    Reflect.deleteProperty(window, "PushManager");
+    Reflect.deleteProperty(window, "Notification");
+    Reflect.deleteProperty(window, "isSecureContext");
+    __resetTourStore();
+  });
+
+  it("attempts no subscribe while the tour is up, and exactly one once it closes", async () => {
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => ({ ...home(AFTERNOON), error: false }),
+          element: <RootLayout />,
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+    render(<RouterProvider router={router} />);
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
+    expect(register).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: en["tour.skip"] }));
+    await waitFor(() => expect(register).toHaveBeenCalledTimes(1));
+  });
+
+  it("attempts it straight away when the tour has nothing to show", async () => {
+    markTourSeen();
+    const router = createMemoryRouter(
+      [
+        {
+          id: ROOT_ROUTE_ID,
+          path: "/",
+          loader: () => ({ ...home(AFTERNOON), error: false }),
+          element: <RootLayout />,
+        },
+      ],
+      { initialEntries: ["/"] },
+    );
+    render(<RouterProvider router={router} />);
+    await waitFor(() => expect(register).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

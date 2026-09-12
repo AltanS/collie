@@ -27,6 +27,7 @@ import { clearStatus } from "@/lib/status";
 import { clearUpdateStarted } from "@/lib/update-ribbon";
 import { __resetReloadGuard } from "@/lib/reload-guard";
 import { __resetSelfUpdate } from "@/lib/self-update";
+import { markTourSeen } from "@/lib/tour";
 
 import { Card, FullAppRouter, PhoneFrame, createFullAppRouter } from "../harness";
 import { censusTrio, devicesPaired } from "../fixtures";
@@ -228,15 +229,20 @@ function meterLine(meter: Meter | null): string {
 }
 
 export function AppWalkthroughCard() {
-  const [router] = useState(() =>
-    createFullAppRouter({
+  const [router] = useState(() => {
+    // THE FOURTH ONE-SHOT, pre-spent before the real route table mounts. This is the only card on the
+    // page that mounts `RootLayout`, and `RootLayout` carries the first-launch tour's gate — on a
+    // browser that has never opened the playground its full-height sheet would land over the frame
+    // meter. Same reason the three stores in `useWalkthroughCleanup` are cleared on the way out.
+    markTourSeen();
+    return createFullAppRouter({
       home: walkthroughHome,
       screenFor: walkthroughScreen,
       crew: { status: censusTrio, error: false },
       devices: devicesPaired,
       history: walkthroughHistory,
-    }),
-  );
+    });
+  });
   const trail = useWalkthroughTrail(router);
   useWalkthroughCleanup();
 

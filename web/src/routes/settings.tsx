@@ -15,6 +15,7 @@ import { ThemeControl } from "@/components/theme-control";
 import { HapticsControl } from "@/components/haptics-control";
 import { HandsFreeControl } from "@/components/hands-free-control";
 import { ZenControl } from "@/components/zen-control";
+import { TourControl } from "@/components/tour-control";
 import { InstallControl } from "@/components/install-control";
 import { LanguageControl } from "@/components/language-control";
 import { FontSettingsControl } from "@/components/font-settings";
@@ -165,6 +166,11 @@ export function SettingsRoute() {
             not a rendering pref (those live in the pane's own Display dock). Off by default, because
             zen takes away every way back except one floating button. */}
         <ZenControl />
+
+        {/* Last of the "how this phone treats you" block, and the ONLY way back to a tour that was
+            interrupted — the tour is marked seen the moment it opens. An action, so the row ends in
+            a button rather than a Switch. */}
+        <TourControl />
 
         <Card className="gap-0 py-0">
           <div className="flex items-center justify-between gap-4 p-4">
