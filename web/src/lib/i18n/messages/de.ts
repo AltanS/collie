@@ -296,6 +296,8 @@ export const de: Dictionary = {
   "chat.conversation.requiresTerminal": "Dieser Bildschirm braucht das Terminal",
   "chat.conversation.requiresTerminalBody":
     "Der Agent zeigt einen Bildschirm, den Collie nicht sicher aus dem Chat bedienen kann. Öffne das Terminal, um darauf zu reagieren.",
+  "chat.conversation.withdrawnPartial":
+    "Dieser Bildschirm braucht das Terminal. Ein früherer Schreibvorgang hat das Panel bereits erreicht und wird nicht zurückgenommen — nichts Weiteres wurde gesendet. Prüfe das Terminal.",
   "chat.paneMenu.aria": "Pane-Aktionen",
   "chat.header.openOverviewAria": "Übersicht für {workspace} öffnen{status}",
   "chat.header.statusAria": ", {label}",

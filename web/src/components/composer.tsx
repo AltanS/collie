@@ -277,11 +277,39 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   lockedRef.current = locked;
   // Read at dispatch, including callbacks retained by in-flight raw-key batches.
   const chatOnlyRef = useRef(chatOnly);
-  chatOnlyRef.current = chatOnly;
   // Same snapshotted-prop caveat as chatOnlyRef: send() reads this before its own round trips, so
   // the ref is what a queued burst must re-read, not the closure's prop.
   const requiresTerminalRef = useRef(requiresTerminal ?? false);
+  const dialogPresentRef = useRef(dialogPresent);
+  // The in-flight send's withdrawal latch. A Conversation-started operation that sees its live
+  // safety state change is withdrawn PERMANENTLY — not re-evaluated at the next boundary — so later
+  // recovery (a dialog answered, the adapter re-reporting a composer, automatic journal fallback
+  // resolving, the operator switching back) cannot revive it. The latch is recorded HERE, in the
+  // render body, comparing each prop against the PREVIOUS render's value while a send is in
+  // flight: every transition in reading mode (chatOnly), Terminal-required state, or keyboard
+  // ownership (a supported inline prompt sets dialogPresent just as an unsupported screen sets
+  // requiresTerminal) latches before any pre-write boundary gets the chance to read a state that
+  // has since recovered. Scoping: sendActiveRef/startedChatOnlyRef are armed only by send() for a
+  // Conversation-started operation, so idle state changes — which the click-time gates already
+  // handle — never latch anything, and Terminal-started sends keep their deliberate
+  // fail-open-for-text behavior untouched. withdrawalRef is cleared at the start of each send, so
+  // the latch is scoped to exactly one operation; a fresh explicit send after returning to a valid
+  // composer-ready state latches anew and works normally.
+  const withdrawalRef = useRef<string | null>(null);
+  const sendActiveRef = useRef(false);
+  const startedChatOnlyRef = useRef(false);
+  if (sendActiveRef.current && startedChatOnlyRef.current && withdrawalRef.current === null) {
+    if (chatOnly !== chatOnlyRef.current) {
+      withdrawalRef.current = translate("chat.conversation.requiresTerminal");
+    } else if ((requiresTerminal ?? false) && !requiresTerminalRef.current) {
+      withdrawalRef.current = translate("chat.conversation.requiresTerminal");
+    } else if (dialogPresent && !dialogPresentRef.current) {
+      withdrawalRef.current = translate("chat.conversation.requiresTerminal");
+    }
+  }
+  chatOnlyRef.current = chatOnly;
   requiresTerminalRef.current = requiresTerminal ?? false;
+  dialogPresentRef.current = dialogPresent;
   const [terminalRecovery, setTerminalRecovery] = useState(false);
 
   // The phone-owned draft, restored from (and written through to) the per-pane draft store — the
@@ -780,6 +808,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       return false;
     }
     const startedGeneration = forceGeneration.current;
+    // A Conversation-started send owns a fresh latch: any later transition latches only THIS
+    // operation. Set only after the click-time gates, so a send refused up front latches nothing.
+    startedChatOnlyRef.current = chatOnlyRef.current;
+    withdrawalRef.current = null;
+    sendActiveRef.current = startedChatOnlyRef.current;
+    setTerminalRecovery(false);
     setSending(true);
     // The operator has just acted on this pane, so the poller should watch it land. Stamped HERE —
     // after the refusals above, before the round trip — because the burst is about the operator's
@@ -797,18 +831,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         force,
         // The pre-write refusal callback, handed to EVERY send now, not only forced ones. The
         // click-time gate above cannot close the race it left open: an ordinary send that starts
-        // composer-ready spends the guarded reply's round trips with `requiresTerminal` still false
-        // in this closure, and the pane can go Terminal-required (an unsupported dialog up, or the
-        // adapter reporting no composer) inside that window. `writeRefusal` is re-read immediately
-        // before every terminal-driving write — the pre-clear sweep keys, each reply chunk, the
-        // submit — and reads the LIVE refs, not the snapshot the tap captured, so a screen the
-        // mirror has since rendered as Terminal-required withdraws the send with nothing typed.
-        // Terminal mode keeps its deliberate fail-open-for-text behavior: chatOnly is what turns
-        // the first check on, and a forced retry (armed in Terminal, the only place it can be)
-        // stays withdrawn the moment it would be running against Conversation or a stale burst.
+        // composer-ready spends the guarded reply's round trips with its safety state unchanged in
+        // this closure, and the pane can go unsafe inside that window — an unsupported dialog up,
+        // a supported inline prompt appearing, the adapter reporting no composer, or the reading
+        // mode itself moving (operator switch or automatic journal fallback).
+        //
+        // The withdrawal itself is LATCHED in the render body (see withdrawalRef): the first
+        // transition permanently withdraws this operation, so a later return to composer-ready,
+        // automatic Terminal fallback, or user-selected Terminal cannot revive it. This callback
+        // answers the latch — re-read immediately before every terminal-driving write (the
+        // pre-clear sweep keys, each reply chunk, the submit) — and the "error" branch below
+        // reports honestly when a refusal arrives after a write was already dispatched: the earlier
+        // write is NOT recalled, only everything after it is withheld, and the partial-delivery
+        // message says so. Terminal mode keeps its deliberate fail-open-for-text behavior: only a
+        // Conversation-started send latches, and a forced retry (armed in Terminal, the only place
+        // it can be) stays withdrawn the moment it would be running against Conversation or a
+        // stale burst.
         writeRefusal: () => {
-          if (chatOnlyRef.current && requiresTerminalRef.current)
-            return translate("chat.conversation.requiresTerminal");
+          if (withdrawalRef.current !== null) return withdrawalRef.current;
           if (force && (chatOnlyRef.current || forceGeneration.current !== startedGeneration))
             return translate("chat.conversation.requiresTerminal");
           return null;
@@ -940,10 +980,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // double-sending, and on a stall their message is still here to re-send once the dialog is
         // answered.
         //
-        // A withdrawal from the pre-write refusal arrives in this branch too, and under chatOnly it
-        // is not an ordinary failure: the pane has gone Terminal-required mid-flight, so the same
-        // local recovery the click-time gate presents comes up here. The draft is still in the
-        // input, nothing was typed, and no desktop focus is involved.
+        // A Conversation-started withdrawal arrives here even after leaving Conversation. It
+        // is not an ordinary failure: the pane's safety state changed mid-flight, so the same local
+        // recovery the click-time gate presents comes up here. The draft stays in the input — but
+        // honesty about WHAT was typed matters: a withdrawal at a later boundary (after a reply
+        // chunk already went out) cannot recall that write, so the partial-delivery message says an
+        // earlier write stands rather than claiming nothing was typed. Nothing past the withdrawn
+        // boundary was sent either way, and no desktop focus is involved.
         //
         // Except at a password prompt, where the draft staying put is the wrong call and the notice
         // says so: the text is already IN the pane (unsubmitted), so a re-send types a second copy of
@@ -953,10 +996,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ? { prompt: res.noEcho, typed: true }
             : null,
         );
-        if (chatOnlyRef.current && res.error === translate("chat.conversation.requiresTerminal")) {
+        const withdrawnRefusal = res.status === "error" && res.writeRefused === true &&
+          (startedChatOnlyRef.current || chatOnlyRef.current);
+        if (withdrawnRefusal) {
           setTerminalRecovery(true);
         }
-        setStatus(res.error, "error");
+        // Acknowledged sweep keys count as an earlier write, not as delivered reply text.
+        setStatus(
+          withdrawnRefusal && (res.textDelivered === true || res.keysDelivered === true)
+            ? translate("chat.conversation.withdrawnPartial")
+            : res.error,
+          "error",
+        );
         return false;
       }
     } catch (e) {
@@ -964,6 +1015,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       return false;
     } finally {
       setSending(false);
+      sendActiveRef.current = false;
     }
   }
 
@@ -1390,8 +1442,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other two
             strips, because that is where the eye already is when a send is refused — and it is a
             NOTICE beside the unchanged "Type anyway?" override, never a replacement for it. */}
-        <Collapse open={chatOnly && (terminalRecovery || noEcho !== null)}>
-          {chatOnly && (terminalRecovery || noEcho !== null) && (
+        <Collapse open={terminalRecovery || (chatOnly && noEcho !== null)}>
+          {(terminalRecovery || (chatOnly && noEcho !== null)) && (
             <Notice tone="caution" variant="box" announce="status" className="mb-2">
               <p>{translate(noEcho ? "composer.noEcho.title" : "chat.conversation.requiresTerminal")}</p>
               {noEcho && <p className="font-mono">{noEcho.prompt}</p>}

@@ -47,8 +47,9 @@ export type ReplyOutcome =
    *  `noEcho`: the prompt the last verification read saw, when the reason the text never appeared is
    *  that the screen is deliberately not showing it — see lib/no-echo.ts. */
   | { status: "stalled"; error: string; noEcho?: string }
-  /** Transport/RPC failure. `textDelivered` = text is in the pane but unsubmitted; don't resend. */
-  | { status: "error"; error: string; textDelivered?: boolean };
+  /** Transport/RPC failure or caller withdrawal. Delivery flags record acknowledged writes,
+   *  not proof that the TUI placed them in its input box. Keep the draft for inspection. */
+  | { status: "error"; error: string; textDelivered?: boolean; keysDelivered?: boolean; writeRefused?: true };
 
 /** Minimum visible characters that must match before we believe the input box holds OUR text. */
 export const MIN_MATCH_CHARS = 8;
@@ -192,8 +193,23 @@ export interface GuardedReplyArgs {
    * place destructive keys may go.
    */
   force?: boolean;
-  /** Optional caller lifecycle refusal, re-read before each write. A mode change may withdraw a
-   * pending forced send; writes already dispatched cannot be recalled. Ordinary sends omit it. */
+  /** Optional caller lifecycle refusal, re-read immediately before EVERY terminal-driving write:
+   * the pre-clear sweep keys, each reply chunk, and the submit. Both ordinary and forced callers
+   * hand one in (composer.tsx passes it unconditionally); `force` only relaxes the PRE-FLIGHT'S
+   * refusal, never this one. The callback owns its withdrawal policy: a caller that latches must
+   * keep returning the refusal once set even when the live condition later clears — monotonic
+   * withdrawal means recovery (a dialog answered, a composer re-appearing, a mode change back)
+   * never revives an operation that already started under different safety state. A write already
+   * dispatched cannot be recalled. Refusals carry `writeRefused: true`, including when a read
+   * fails verification or a reply chunk, submit, or no-adapter combined response fails.
+   * `textDelivered` records acknowledged reply text, including explicit text acknowledgement in an
+   * unsuccessful combined response; `keysDelivered` records acknowledged pre-type keys separately. A failed transport
+   * response leaves that request's delivery uncertain and does not count as acknowledgement;
+   * earlier acknowledgements still count. A `prompt_changed` response instead confirms the bridge
+   * refused the bound write. Withdrawal after submit dispatch does not mean submit was withheld
+   * or recalled, including on the combined-send path. An acknowledged submit or successful combined
+   * response still completes as `sent`, even after withdrawal.
+   * False flags do not prove zero delivery, and neither flag proves what the TUI did with the bytes. */
   writeRefusal?: () => string | null;
   /**
    * Work the caller needs done once a live read has POSITIVELY SEEN the composer, and before the
@@ -274,7 +290,10 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   // owns the keyboard (Claude's `/model` picker — no input box at the tail at all) receives the
   // user's text before anything notices. One read up front is the difference between "nothing
   // happened" and "your reply is now sitting in a picker".
-  const { refuse, runPreType } = await preflight(adapter, args);
+  const prepWrites = { keysDelivered: false };
+  const { refuse, runPreType } = await preflight(adapter, args, prepWrites);
+  const withdrawn = writeRefused(args);
+  if (withdrawn) return withdrawn;
   if (refuse !== null) return refuse;
 
   // The ONE call site of the caller's destructive pre-type work — and it is not guarded by a
@@ -283,9 +302,9 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
   // threw, an adapter with no `composerReady`, and anything added later) skips this by construction
   // rather than by remembering to check. `?.()` is the whole enforcement; there is no list to keep
   // in sync.
-  const withdrawn = writeRefused(args);
-  if (withdrawn) return withdrawn;
   const aborted = await runPreType?.();
+  const prepWithdrawal = writeRefused(args, false, prepWrites.keysDelivered);
+  if (prepWithdrawal) return prepWithdrawal;
   if (aborted) return aborted;
 
   const chunks = adapter.replyChunks?.(args.text) ?? [args.text];
@@ -298,22 +317,24 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     try {
       const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
       const lines = splitLines(parseAnsi(fresh.text));
+      const refused = writeRefused(args, false, prepWrites.keysDelivered);
+      if (refused) return refused;
       if (!adapter.composerReady?.(lines)) return { status: "blocked", error: noBoxMessage() };
       previousDraft = adapter.extractInputDraft(lines);
     } catch (e) {
-      return { status: "error", error: message(e) };
+      return writeRefused(args, false, prepWrites.keysDelivered) ?? { status: "error", error: message(e) };
     }
   }
   for (let i = 0; i < chunks.length - 1; i++) {
     let part;
     try {
-      const refused = writeRefused(args, delivered.length > 0);
+      const refused = writeRefused(args, delivered.length > 0, prepWrites.keysDelivered);
       if (refused) return refused;
       part = await sendReply(args.paneId, chunks[i]!, false, args.scope);
     } catch (e) {
-      return { status: "error", error: message(e) };
+      return writeRefused(args, delivered.length > 0, prepWrites.keysDelivered) ?? { status: "error", error: message(e) };
     }
-    if (!part.ok) return { status: "error", error: describeApiError(part) };
+    if (!part.ok) return writeRefused(args, delivered.length > 0, prepWrites.keysDelivered) ?? { status: "error", error: describeApiError(part) };
     delivered += chunks[i]!;
     let verified = false;
     for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
@@ -322,6 +343,8 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
         const fresh = await fetchPane(args.paneId, args.requestedLines, args.scope);
         const lines = splitLines(parseAnsi(fresh.text));
         const draft = adapter.extractInputDraft(lines);
+        const refused = writeRefused(args, true, prepWrites.keysDelivered);
+        if (refused) return refused;
         if (draft !== previousDraft && adapter.composerReady?.(lines) && draftCarriesSend(delivered, draft) && carriesReplyTail(delivered, draft)) {
           verified = true;
           previousDraft = draft;
@@ -330,19 +353,21 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
       } catch {
         // Retry the read only. Never repeat an acknowledged paste.
       }
+      const refused = writeRefused(args, true, prepWrites.keysDelivered);
+      if (refused) return refused;
     }
     if (!verified) return { status: "stalled", error: t("reply.stalled.generic") };
   }
 
   let typed;
   try {
-    const refused = writeRefused(args, delivered.length > 0);
+    const refused = writeRefused(args, delivered.length > 0, prepWrites.keysDelivered);
     if (refused) return refused;
     typed = await sendReply(args.paneId, chunks[chunks.length - 1]!, false, args.scope);
   } catch (e) {
-    return { status: "error", error: message(e) };
+    return writeRefused(args, delivered.length > 0, prepWrites.keysDelivered) ?? { status: "error", error: message(e) };
   }
-  if (!typed.ok) return { status: "error", error: describeApiError(typed) };
+  if (!typed.ok) return writeRefused(args, delivered.length > 0, prepWrites.keysDelivered) ?? { status: "error", error: describeApiError(typed) };
 
   const sleep = args.sleep ?? defaultSleep;
   // The last screen a verification read actually saw, kept only so the stall below can be named. The
@@ -374,9 +399,11 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
       // before sending submitKeys, so a focus change after verification becomes prompt_changed.
       verifiedPrompt = adapter.composerPrompt?.(lines) ?? undefined;
     } catch {
-      continue; // transient read failure — the bounded loop is the timeout
+      // Transient read failure. Withdrawal still takes precedence over retrying verification.
     }
-    if (draftCarriesSend(args.text, draft) && (chunks.length === 1 || (draft !== previousDraft && carriesReplyTail(args.text, draft)))) return submitOnly(args, verifiedPrompt);
+    const refused = writeRefused(args, true, prepWrites.keysDelivered);
+    if (refused) return refused;
+    if (draftCarriesSend(args.text, draft) && (chunks.length === 1 || (draft !== previousDraft && carriesReplyTail(args.text, draft)))) return submitOnly(args, prepWrites.keysDelivered, verifiedPrompt);
     // The adapter gets a second look, and only a second look: a harness can SWALLOW what we typed and
     // paint a token of its own instead (Claude collapses anything past its paste threshold into
     // `[Pasted text #N +M lines]`), so the box never holds our words and the match above structurally
@@ -385,7 +412,7 @@ export async function sendGuardedReply(args: GuardedReplyArgs): Promise<ReplyOut
     // (.adr/0010). It can only widen the evidence, never narrow it, so a harness without the
     // capability is untouched.
     if (draft !== null && adapter.draftCarriesSend?.(args.text, draft)) {
-      return submitOnly(args, verifiedPrompt);
+      return submitOnly(args, prepWrites.keysDelivered, verifiedPrompt);
     }
   }
 
@@ -456,7 +483,11 @@ const blind = (refuse: ReplyOutcome | null): Preflight => ({ refuse, runPreType:
  * `ctrl+k` + 40×Backspace burst is not, because those keys are not withheld by anything downstream —
  * once sent they have already landed in whatever owns the keyboard.
  */
-async function preflight(adapter: HarnessAdapter, args: GuardedReplyArgs): Promise<Preflight> {
+async function preflight(
+  adapter: HarnessAdapter,
+  args: GuardedReplyArgs,
+  prepWrites: { keysDelivered: boolean },
+): Promise<Preflight> {
   // Nothing here can read this harness's input box, so there is no evidence to be had — and no
   // refusal to make either. Same behaviour as before an adapter grows a `composerReady`, minus the
   // sweep, which had no business going out unverified.
@@ -501,6 +532,7 @@ async function preflight(adapter: HarnessAdapter, args: GuardedReplyArgs): Promi
       }
       if (!prep.ok) return { status: "error", error: prep.error };
       if (!prep.keysSent) return null; // the read above is still the freshest thing there is
+      prepWrites.keysDelivered = true;
 
       // The caller put keys on the wire and waited for the TUI to settle, so the evidence that
       // authorised them is now an RPC and a settle old. Re-confirm before the MESSAGE goes out —
@@ -531,9 +563,13 @@ async function oneShot(args: GuardedReplyArgs): Promise<ReplyOutcome> {
     const refused = writeRefused(args);
     if (refused) return refused;
     const res = await sendReply(args.paneId, args.text, true, args.scope);
-    return res.ok ? { status: "sent" } : { status: "error", error: describeApiError(res) };
+    // The combined request was already dispatched. Successful completion is not a retry opportunity.
+    if (res.ok) return { status: "sent" };
+    // A resolved partial response can acknowledge text even though submit did not succeed.
+    return writeRefused(args, res.textDelivered === true) ?? { status: "error", error: describeApiError(res) };
   } catch (e) {
-    return { status: "error", error: message(e) };
+    // Transport failure leaves delivery uncertain. Do not count dispatch as acknowledgement.
+    return writeRefused(args) ?? { status: "error", error: message(e) };
   }
 }
 
@@ -544,15 +580,19 @@ async function oneShot(args: GuardedReplyArgs): Promise<ReplyOutcome> {
  */
 async function submitOnly(
   args: GuardedReplyArgs,
+  keysDelivered: boolean,
   expectedPrompt?: string,
 ): Promise<ReplyOutcome> {
   try {
-    const refused = writeRefused(args, true);
+    const refused = writeRefused(args, true, keysDelivered);
     if (refused) return refused;
     const res = await sendReply(args.paneId, "", true, args.scope, expectedPrompt);
+    // Submit was dispatched while permitted. Its acknowledgement completes the send, even if
+    // the caller withdrew while awaiting the response. Do not offer a retry of a completed send.
     if (res.ok) return { status: "sent" };
-    // The text is verifiably sitting in the input box and only the submit key failed — same shape as
-    // the bridge's own partial-failure case. Tell the caller not to resend.
+    const withdrawn = writeRefused(args, true, keysDelivered);
+    if (withdrawn) return withdrawn;
+    // Preserve the ordinary failed-submit outcome when the caller has not withdrawn.
     return {
       // The bridge's own `reply.not_submitted` case, reached from the client side — so it says it
       // with the bridge's own catalogued sentence rather than a second copy of the English.
@@ -564,13 +604,15 @@ async function submitOnly(
       textDelivered: true,
     };
   } catch (e) {
-    return { status: "error", error: message(e), textDelivered: true };
+    // A failed response cannot recall the dispatched submit or prove it never landed.
+    // Retain prior text/key acknowledgements and the caller's local recovery on withdrawal.
+    return writeRefused(args, true, keysDelivered) ?? { status: "error", error: message(e), textDelivered: true };
   }
 }
 
-function writeRefused(args: GuardedReplyArgs, textDelivered = false): ReplyOutcome | null {
+function writeRefused(args: GuardedReplyArgs, textDelivered = false, keysDelivered = false): ReplyOutcome | null {
   const error = args.writeRefusal?.();
-  return error ? { status: "error", error, textDelivered } : null;
+  return error ? { status: "error", error, textDelivered, keysDelivered, writeRefused: true } : null;
 }
 
 function message<TThrown>(e: TThrown): string {

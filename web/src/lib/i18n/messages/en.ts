@@ -317,6 +317,8 @@ export const en = {
   "chat.conversation.requiresTerminal": "This screen needs the terminal",
   "chat.conversation.requiresTerminalBody":
     "The agent is showing a screen Collie can't answer safely from the chat. Open the terminal to act on it.",
+  "chat.conversation.withdrawnPartial":
+    "This screen needs the terminal. An earlier write already reached the pane and is not recalled — nothing further was sent. Check the terminal.",
   // The header's ⋮ — the glyph names nothing, so the accessible name has to say what it OPENS.
   "chat.paneMenu.aria": "Pane actions",
   "chat.header.openOverviewAria": "Open {workspace} overview{status}",

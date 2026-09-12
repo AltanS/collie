@@ -277,6 +277,8 @@ export const zhTW: Dictionary = {
   "chat.conversation.requiresTerminal": "此畫面需要終端機",
   "chat.conversation.requiresTerminalBody":
     "代理正在顯示 Collie 無法從聊天安全操作的畫面。請開啟終端機處理。",
+  "chat.conversation.withdrawnPartial":
+    "此畫面需要終端機。先前的寫入已送達面板且不會被回收——之後未再送出任何內容。請查看終端機。",
   "chat.paneMenu.aria": "窗格選單",
   "chat.header.openOverviewAria": "開啟 {workspace} 總覽{status}",
   "chat.header.statusAria": "（{label}）",
