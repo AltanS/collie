@@ -419,6 +419,31 @@ describe("clickable links in the mirror", () => {
     expect(anchors.map((a) => a.textContent).join("")).toBe("https://herdr.dev/docs");
   });
 
+  // The mirror renders the *grid*, so a URL longer than the pane arrives cut at the column edge: one
+  // anchor with a truncated href, and the rest of the URL as inert text. The logical read the bridge
+  // sends for exactly that case is what turns the fragments back into the one URL they were.
+  it("links every fragment of a wrapped URL to the whole URL, when the logical text is there", () => {
+    const pre = mirror({
+      text: "run this:\nhttps://a.dev/auth?client=1&s\ntate=y then\n",
+      logicalText: "run this:\nhttps://a.dev/auth?client=1&state=y then\n",
+    });
+    const anchors = [...pre.querySelectorAll("a")];
+    expect(anchors.map((a) => a.getAttribute("href"))).toEqual([
+      "https://a.dev/auth?client=1&state=y",
+      "https://a.dev/auth?client=1&state=y",
+    ]);
+    expect(anchors.map((a) => a.textContent).join("")).toBe("https://a.dev/auth?client=1&state=y");
+    // Faithfulness is not negotiable: the rows are still exactly what the terminal printed.
+    expect(pre.textContent).toBe("run this:\nhttps://a.dev/auth?client=1&s\ntate=y then\n");
+  });
+
+  it("keeps the fragment truncated when no logical text came with it", () => {
+    const pre = mirror({ text: "https://a.dev/auth?client=1&s\ntate=y then\n" });
+    expect([...pre.querySelectorAll("a")].map((a) => a.getAttribute("href"))).toEqual([
+      "https://a.dev/auth?client=1&s",
+    ]);
+  });
+
   // Find and links split the same coordinate space; the order they nest in is the easy thing to get
   // wrong, and getting it wrong drops one of them.
   it("still highlights a find match inside a link", () => {

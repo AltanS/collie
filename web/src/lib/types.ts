@@ -687,6 +687,12 @@ export interface PaneReadResponse {
   truncated: boolean;
   /** Herdr's monotonic pane revision — the prompt-select race guard checks a tapped menu against it. */
   revision: number;
+  /**
+   * The same rows with soft wraps undone, sent only when {@link text} shows a URL the pane's column
+   * edge cut in two. `lib/links.ts` uses it to give every fragment of that URL the href of the whole
+   * URL; absent for every other pane.
+   */
+  logicalText?: string;
   /** Set to true by the client when the server returns 304 Not Modified. Never sent over the wire. */
   notModified?: boolean;
 }

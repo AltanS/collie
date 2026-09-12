@@ -24,7 +24,7 @@
 // it has.
 
 import { KNOWN_HARNESS_NAMES } from "../journal/registry.ts";
-import { muxDataFields } from "../mux/types.ts";
+import { muxDataFields, muxOptionalMethods } from "../mux/types.ts";
 import type {
   MuxAck,
   MuxAdapter,
@@ -139,6 +139,7 @@ export interface AgentHintDeps {
 export function withAgentHints(adapter: MuxAdapter, deps: AgentHintDeps): MuxAdapter {
   return {
     ...muxDataFields(adapter),
+    ...muxOptionalMethods(adapter),
     mux: adapter.mux,
     // A getter, because the wrapped declaration is itself one — the decorator re-reads the emitter's
     // install per request, and freezing the answer here would undo that.
