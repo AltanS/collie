@@ -874,6 +874,11 @@ const CREW_STATE_DIR_ENTRIES = [
   // It is a separate file from `paired-devices.json` on purpose and permanently: `enforced()` is "the
   // registry is non-empty", so merging the two would arm the deputy's own write gate for its own
   // operator (`bridge/crew/standby-devices.ts`).
+  // 1.7.0's trust-store name, and the one entry on this list NOTHING here ever writes, reads or
+  // moves. `legacyStateFileNotice` (`crew/trust-store.ts`, ADR 0045) asks whether it is present so a
+  // state directory that never saw 1.8.x is named rather than adopted in silence. One `exists()` on
+  // the boot path, no open, no rename; a solo instance finds nothing and says nothing.
+  "pack-trust.json",
   "standby-devices.json",
 ];
 

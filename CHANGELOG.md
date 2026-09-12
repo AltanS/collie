@@ -34,6 +34,16 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - **A row of the running agent's own commands, above the keys.** Claude Code panes get Model, Effort, Compact and Resume under the thumb; Codex, pi and omp get their own. Operators add or replace the row with `bar = true` in `commands.toml`. It is visible by default; Settings, Harness shortcuts, hides it per device.
 
+### Changed
+
+- **A crew member too old to speak the current protocol is now a red preflight, not a silent link.**
+  The lead's `collie update --check` walk names a protocol floor: 1.8.0 is the oldest build that
+  speaks crew protocol 2. A member below it, under a lead at 1.9.0 or newer, reds the `version`
+  check with both versions and the remedy, which blocks the crew update instead of starting a roll
+  that cannot finish. A version the lead cannot parse stays amber, as before. A state directory that
+  still carries 1.7.0's `pack-*.json` names is now named at start, with the two hand edits printed
+  in full.
+
 ## [1.8.2] - 2026-09-12
 
 ### Fixed

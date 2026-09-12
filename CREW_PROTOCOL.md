@@ -532,6 +532,15 @@ updated machines, so build skew is the steady state (§7), and this section is t
   A crew that goes dark because two machines disagree on an alpha number has traded an annoyance for
   an outage.
 
+  **One surface reads a build version as a refusal, and it is not the wire.** The lead's own
+  preflight (`collie update --check`, which walks the members over the operator's ssh) reds the
+  `version` check when a member's build is below the protocol floor, the oldest build that speaks
+  this document's `CREW_PROTOCOL_VERSION` (`PROTOCOL_FLOOR_VERSION` in `cli/update-check.ts`,
+  [ADR 0045](./.adr/0045-a-build-below-the-protocol-floor-is-a-red-preflight.md)). That is a
+  judgement about whether a crew update can finish, made before anything is started, and it changes
+  no route, no response and no code path on the link. On the wire the rule above still stands whole:
+  a build-version difference refuses nothing.
+
   The fork worth naming, because it will be re-proposed: *shouldn't a skewed member be refused, to be
   safe?* No. Refusing is only the safe move when the alternative is a **wrong answer**, and inside one
   protocol version there is no wrong answer to prevent — which is true only because of the next rule,

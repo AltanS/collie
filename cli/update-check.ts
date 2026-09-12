@@ -4,6 +4,7 @@ import type { JsonValue } from "../bridge/json.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
+import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { compareSemver, githubTagsUrl, parseTagsResponse } from "../bridge/update.ts";
 import { collieVersionBare, manifestVersionFrom } from "../bridge/version.ts";
 import { loadContext, type CliContext } from "./context.ts";
@@ -779,11 +780,55 @@ async function memberChecks(
   }
 }
 
-/** CREW_PROTOCOL §7.1: skew inside a protocol version is tolerated by design, so it is never red. */
+/**
+ * The oldest build that speaks the crew protocol version this build speaks (ADR 0045).
+ *
+ * THIS CONSTANT AND `CREW_PROTOCOL_VERSION` ARE ONE FACT. `CREW_PROTOCOL_VERSION`
+ * (`bridge/crew/enrollment.ts`) is the number on the link; this is the release in which that number
+ * first shipped. Protocol 2 first shipped in 1.8.0, so the floor is `1.8.0`. Whoever moves the
+ * protocol number moves this string in the same commit, and `cli/update-check.test.ts` fails when
+ * the two drift apart.
+ */
+export const PROTOCOL_FLOOR_VERSION = "1.8.0";
+
+/** The lead's own version from which the floor is enforced: the release that dropped the overlap. */
+const FLOOR_ENFORCED_FROM = "1.9.0";
+
+/** A plain `X.Y.Z` release version, the only shape this check is willing to call old. */
+const RELEASE_VERSION = /^\d+\.\d+\.\d+$/;
+
+/**
+ * How a member's build version reads against this lead's.
+ *
+ * CREW_PROTOCOL §7.1: a build-version difference refuses nothing on the wire, so skew inside a
+ * protocol version is amber and never red. ADR 0045 carves out the one exception, and it is this
+ * one: a member below {@link PROTOCOL_FLOOR_VERSION} under a lead at {@link FLOOR_ENFORCED_FROM} or
+ * newer cannot speak the only protocol this lead has left, so the check is red and names the remedy.
+ *
+ * A version this lead cannot read stays amber. `""`, `unknown`, `1.8.2-rc1` and `1.9.0-dev` are all
+ * unreadable for this purpose: an unparsable version is not a known-old one, and a prerelease is a
+ * build the operator chose, which the lead has no business refusing on a suffix.
+ */
 export function skewCheck(theirs: string, ours: string): PreflightCheck {
   if (theirs === "") return amber("version", "that member did not report a version");
   if (theirs === ours) return green("version", `runs ${theirs}, the same build as this lead`);
-  return amber("version", `runs ${theirs} while this lead runs ${ours} — skew is tolerated, not a blocker`);
+  if (belowProtocolFloor(theirs, ours)) {
+    return red(
+      "version",
+      `runs ${theirs} while this lead runs ${ours}, and ${PROTOCOL_FLOOR_VERSION} is the oldest build ` +
+        `that speaks crew protocol ${CREW_PROTOCOL_VERSION}, which is the only version this lead speaks`,
+      `run \`collie update\` on that member's own machine to bring it to ${PROTOCOL_FLOOR_VERSION} or newer, ` +
+        `this lead can no longer reach it over the link`,
+    );
+  }
+  return amber("version", `runs ${theirs} while this lead runs ${ours}, skew is tolerated, not a blocker`);
+}
+
+/** True when both versions are plain releases, this lead is at 1.9.0 or newer, and the member is old. */
+function belowProtocolFloor(theirs: string, ours: string): boolean {
+  if (!RELEASE_VERSION.test(theirs) || !RELEASE_VERSION.test(ours)) return false;
+  if (compareSemver(ours, FLOOR_ENFORCED_FROM) < 0) return false;
+  return compareSemver(theirs, PROTOCOL_FLOOR_VERSION) < 0;
 }
 
 /** The member's own instance checks, asked of its own binary and merged in under the same ids. */

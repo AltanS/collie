@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import { mkdtemp, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,7 @@ import { join } from "node:path";
 import { deriveMode } from "./mode.ts";
 import {
   enrollmentOf,
+  legacyStateFileNotice,
   parseTrustStore,
   serializeTrustStore,
   TrustStore,
@@ -264,5 +266,71 @@ describe("the store holds what §8.2 says it holds", () => {
     expect(data.lead!.fingerprint).toBe(fp("desk"));
     expect(data.lead!.address).toContain("desk");
     expect(data.self.memberId).toBe("laptop");
+  });
+});
+
+// ── The legacy state-file notice (ADR 0045) ─────────────────────────────────
+// 1.9.0 removed the one-time `pack-*.json` rename. What replaces it is a line, not a move: a state
+// directory that never saw 1.8.x is named at start and left exactly as it is.
+describe("a 1.7.0 state directory is named, never adopted", () => {
+  /** A presence oracle over a plain list of names, so the decision is proved without a disk. */
+  const present = (...names: readonly string[]) => ({
+    exists: (path: string) => names.some((n) => path.endsWith(n)),
+  });
+
+  test("the old name alone gives the line, and the line carries both hand edits", () => {
+    const line = legacyStateFileNotice("/state", present("pack-trust.json"));
+    expect(line).not.toBeNull();
+    expect(line).toContain("/state");
+    // The three file renames.
+    expect(line).toContain("pack-trust.json");
+    expect(line).toContain("crew-trust.json");
+    expect(line).toContain("pack-ops.json");
+    expect(line).toContain("crew-ops.json");
+    expect(line).toContain("pack-runtime.json");
+    expect(line).toContain("crew-runtime.json");
+    // The two inner keys.
+    expect(line).toContain('"pack"');
+    expect(line).toContain('"crew"');
+    expect(line).toContain('"packId"');
+    expect(line).toContain('"crewId"');
+    // And where the rest of the story is.
+    expect(line).toContain("docs/upgrading.md");
+  });
+
+  test("nothing to say when 1.8.x already ran, or when neither name is there", () => {
+    expect(legacyStateFileNotice("/state", present("pack-trust.json", "crew-trust.json"))).toBeNull();
+    expect(legacyStateFileNotice("/state", present("crew-trust.json"))).toBeNull();
+    expect(legacyStateFileNotice("/state", present())).toBeNull();
+  });
+
+  test("it repeats on every later start — nothing is memoised", () => {
+    const io = present("pack-trust.json");
+    const first = legacyStateFileNotice("/state", io);
+    const second = legacyStateFileNotice("/state", io);
+    expect(second).toBe(first!);
+  });
+
+  test("it renames nothing and creates nothing on a real directory", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "collie-legacy-"));
+    try {
+      await writeFile(join(dir, "pack-trust.json"), "{}", { mode: 0o600 });
+      expect(legacyStateFileNotice(dir)).toContain("pack-trust.json");
+      expect(legacyStateFileNotice(dir)).toContain("pack-trust.json");
+      expect((await readdir(dir)).toSorted()).toEqual(["pack-trust.json"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  // Once per PROCESS, which is a fact about the call sites and not about the function: the boot path
+  // calls it exactly once, and `fsTrustStoreIo` — whose `read()` and `write()` run on every access —
+  // never calls it at all. That is the hot path the deleted migration used to sit on.
+  test("the boot path is the only caller, and the trust-store io is not one", () => {
+    const self = readFileSync(new URL("./trust-store.ts", import.meta.url), "utf8");
+    const io = self.slice(self.indexOf("export function fsTrustStoreIo"));
+    expect(io).not.toContain("legacyStateFileNotice");
+    const boot = readFileSync(new URL("../index.ts", import.meta.url), "utf8");
+    expect(boot.match(/legacyStateFileNotice\(/g)).toHaveLength(1);
   });
 });

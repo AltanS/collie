@@ -117,7 +117,13 @@ import {
   TAKEOVER_RESTART_EXIT,
   type CommitOutcome,
 } from "./crew/takeover.ts";
-import { enrollmentOf, TrustStore, type TrustStoreData, type Warrant } from "./crew/trust-store.ts";
+import {
+  enrollmentOf,
+  legacyStateFileNotice,
+  TrustStore,
+  type TrustStoreData,
+  type Warrant,
+} from "./crew/trust-store.ts";
 import { currentWarrant, discardForeignWarrant, refreshWarrant, type WarrantPush } from "./crew/warrant.ts";
 import { Push } from "./push.ts";
 import { pluginRoot } from "./root.ts";
@@ -182,6 +188,11 @@ try {
 // REMOVE_IN_1_9_0: the 1.7.0 `pack-*.json` names are moved to their crew names here — before the
 // store is opened, and before the ops store or the runtime marker below is touched.
 migrateCrewStateOnce(cfg.stateDir, (line) => console.warn(line));
+// A state directory that still carries 1.7.0's names is NAMED, never adopted (ADR 0045). This is the
+// only caller: once per process, on the boot path, and never from `fsTrustStoreIo`, whose `read()`
+// and `write()` run on every trust-store access.
+const legacyNotice = legacyStateFileNotice(cfg.stateDir);
+if (legacyNotice !== null) console.warn(legacyNotice);
 
 const trustStore = new TrustStore(cfg.stateDir);
 const bootTrust = await trustStore.load();

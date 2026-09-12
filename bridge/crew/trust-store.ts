@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -30,6 +31,49 @@ export const TRUST_STORE_FILENAME = "crew-trust.json";
 /** Absolute path of the trust store for a given state dir. The only place this path is composed. */
 export function trustStorePath(stateDir: string): string {
   return join(stateDir, TRUST_STORE_FILENAME);
+}
+
+/** The name 1.7.0 wrote the trust store under. Never read, never moved, only reported (ADR 0045). */
+const LEGACY_TRUST_STORE_FILENAME = "pack-trust.json";
+
+/** The one filesystem question the notice asks, injected so the decision is testable without a disk. */
+export interface StateFilePresence {
+  exists(path: string): boolean;
+}
+
+/** The real filesystem. Synchronous on purpose: this runs at boot, before anything opens a file. */
+export const fsStateFilePresence: StateFilePresence = { exists: (path) => existsSync(path) };
+
+/**
+ * The line to print when a state directory still carries 1.7.0's names, or `null` when it does not.
+ *
+ * 1.8.0 moved `pack-trust.json`, `pack-ops.json` and `pack-runtime.json` to their `crew-` names on
+ * the first start. 1.9.0 removed that move (ADR 0039 scheduled it, ADR 0045 records what replaces
+ * it), so a directory that never saw 1.8.x is no longer adopted in silence: this collie says what it
+ * found, prints both hand edits in full, and stays solo.
+ *
+ * PURE, AND IT RENAMES NOTHING. It asks one question of the filesystem and returns a string. It is
+ * the boot path that calls it (`bridge/index.ts`), once per process, and it is deliberately NOT
+ * called from {@link fsTrustStoreIo}: `read()` and `write()` there run on every trust-store access,
+ * which is the hot path the deleted migration used to sit on. It is not memoised either, so the line
+ * comes back on every later start until the operator renames the files.
+ *
+ * The other two crew filenames are spelled out rather than imported: `ops-store.ts` and
+ * `staleness.ts` both import this module, so reading their constants here would be a cycle.
+ */
+export function legacyStateFileNotice(
+  stateDir: string,
+  io: StateFilePresence = fsStateFilePresence,
+): string | null {
+  if (!io.exists(join(stateDir, LEGACY_TRUST_STORE_FILENAME))) return null;
+  if (io.exists(join(stateDir, TRUST_STORE_FILENAME))) return null;
+  return (
+    `[crew] ${stateDir} holds ${LEGACY_TRUST_STORE_FILENAME}, which is 1.7.0's name, and no ` +
+    `${TRUST_STORE_FILENAME}. This build reads only the crew names, so it is starting solo. To keep ` +
+    `the crew: rename ${LEGACY_TRUST_STORE_FILENAME} to ${TRUST_STORE_FILENAME}, pack-ops.json to ` +
+    `crew-ops.json and pack-runtime.json to crew-runtime.json, then inside ${TRUST_STORE_FILENAME} ` +
+    `rename the key "pack" to "crew" and every "packId" to "crewId". See docs/upgrading.md.`
+  );
 }
 
 /**

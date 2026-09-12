@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
+import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
 import { leadStore, member, peerStore } from "../bridge/crew/fixtures.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import type { TrustStoreData } from "../bridge/crew/trust-store.ts";
@@ -32,6 +34,7 @@ import {
   parseReport,
   preflight,
   PREFLIGHT_SCHEMA,
+  PROTOCOL_FLOOR_VERSION,
   type PreflightCheck,
   type PreflightReport,
   skewCheck,
@@ -684,6 +687,50 @@ describe("preflight crew — the members of a lead", () => {
     expect(skewed.reason).toContain("0.32.0");
     expect(skewed.reason).toContain("1.0.0");
     expect(skewCheck("", "1.0.0").verdict).toBe("amber");
+  });
+
+  // ADR 0045. The one exception to §7.1, and it is not a build-version opinion: a member below the
+  // floor cannot speak the only protocol a 1.9.0 lead has left, so the roll cannot finish.
+  test("a member below the protocol floor is red under a 1.9.0 lead, and names the remedy", () => {
+    expect(PROTOCOL_FLOOR_VERSION).toBe("1.8.0");
+    const old = skewCheck("1.7.0", "1.9.0");
+    expect(old.verdict).toBe("red");
+    expect(old.reason).toContain("1.7.0");
+    expect(old.reason).toContain("1.9.0");
+    expect(old.reason).toContain(PROTOCOL_FLOOR_VERSION);
+    expect(old.reason).toContain(String(CREW_PROTOCOL_VERSION));
+    expect(old.remedy).toContain("collie update");
+    expect(old.remedy).toContain("own machine");
+    // Still red on a lead newer than 1.9.0, and on a member older than 1.7.0.
+    expect(skewCheck("1.7.0", "2.0.0").verdict).toBe("red");
+    expect(skewCheck("1.0.0", "1.9.0").verdict).toBe("red");
+  });
+
+  test("the floor is not enforced by a lead below 1.9.0, and a member at the floor is fine", () => {
+    expect(skewCheck("1.7.0", "1.8.2").verdict).toBe("amber");
+    expect(skewCheck("1.8.0", "1.9.0").verdict).toBe("amber");
+    expect(skewCheck("1.8.2", "1.9.0").verdict).toBe("amber");
+    expect(skewCheck("1.9.0", "1.9.0").verdict).toBe("green");
+  });
+
+  // A version this lead cannot read is not a known-old one. Reddening on a suffix would block an
+  // update on a string, and a prerelease of the floor is a build the operator chose.
+  test("an unreadable or prerelease version stays amber, never red", () => {
+    for (const theirs of ["", "unknown", "1.8.2-rc1", "1.9.0-dev", "1.7.0-beta.3", "v1.7.0", "1.7"]) {
+      expect(skewCheck(theirs, "1.9.0").verdict).toBe("amber");
+    }
+    // And the same on the lead's own side: a lead whose version does not parse reds nobody.
+    expect(skewCheck("1.7.0", "1.9.0-dev").verdict).toBe("amber");
+  });
+
+  // The floor and the protocol number are ONE fact: the floor is the release in which the current
+  // `CREW_PROTOCOL_VERSION` first shipped. Moving the number without moving the floor is red here.
+  test("the floor is the release in which the current protocol version first shipped", () => {
+    const enrollment = readFileSync(new URL("../bridge/crew/enrollment.ts", import.meta.url), "utf8");
+    expect(enrollment).toContain(`export const CREW_PROTOCOL_VERSION = ${CREW_PROTOCOL_VERSION};`);
+    expect(enrollment).toContain(`**${CREW_PROTOCOL_VERSION} since ${PROTOCOL_FLOOR_VERSION}.**`);
+    const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
+    expect(changelog).toContain(`## [${PROTOCOL_FLOOR_VERSION}] - `);
   });
 
   test("a peer runs no crew checks — it leads nobody", async () => {

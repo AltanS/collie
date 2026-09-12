@@ -332,7 +332,10 @@ page keeps a line per member: `waiting`, `checking`, `staging`, `restarting`, `v
 environment keys, the three state files and the journal prefix to crew. A 1.8.0 lead answers the old
 `/pack/v1/*` paths for one release, so a member still on 1.7.0 follows the roll over the link it
 already has. Both old spellings go away in 1.9.0. The names and what each one does on your machine
-are in [Updating from 1.7.0](crew.md#updating-from-170). The `collie-release.json` asset the
+are in [Updating from 1.7.0](crew.md#updating-from-170). Bring every member to 1.8.x before you move
+the lead to 1.9.0: 1.9.0 answers the old paths with nothing, and a member still on 1.7.0 then shows
+red on the lead's preflight, naming both versions and the command to run on that machine. The
+`collie-release.json` asset the
 release publishes only feeds the wording of that notice on the band, on the Updates card and in the
 daily push; it never gates an update and never changes what one does.
 
