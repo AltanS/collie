@@ -41,6 +41,7 @@ import { enrollmentOf, TrustStore, type TrustedMember, type TrustStoreData } fro
 import { collieVersionBare, type CliContext } from "./context.ts";
 import { bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
+import { cacheFindings } from "./cache-findings.ts";
 import { historyFindings } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
 import {
@@ -205,6 +206,10 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
       files: deps.files,
       snapshot: () => ownSnapshot(deps),
     })),
+    // Whether the prompt-cache chip is telling the truth: every TTL's date, and the one variable
+    // `doctor` can read that the bridge deliberately cannot (ADR 0041). Its own module for the same
+    // reason `historyFindings` is one — a section, not a check.
+    ...cacheFindings({ ctx: deps.ctx, files: deps.files, env: deps.ctx.env, now: () => Date.now() }),
     restartPending(deps, install, runtimeMarker),
     clock(inCrew, probes),
   ].filter((f) => appliesToMux(f.check, chosen.name));

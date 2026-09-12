@@ -35,6 +35,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **A row of the running agent's own commands, above the keys.** Claude Code panes get Model, Effort, Compact and Resume under the thumb; Codex, pi and omp get their own. Operators add or replace the row with `bar = true` in `commands.toml`. It is visible by default; Settings, Harness shortcuts, hides it per device.
 - **A config file carries every setting.** `~/.collie/config.toml` sets any Collie setting in TOML for the whole machine, and a `config.toml` beside your `.env` overrides it for one instance; the environment and your `.env` still win over both, and a broken key never stops the bridge from starting.
 - **Three verbs for that file.** `collie config init` writes a commented file with every setting and its default, `collie config check` validates one, and `collie config show` prints both file paths and every setting with its effective value and where it came from.
+- **Cache rules are dated, sourced claims, and `collie doctor` says when one goes stale.** Every TTL carries the vendor page it was read on and the date it was read; a claim older than 180 days is a doctor warning, and one older than a year fails the build.
 
 ### Changed
 
@@ -52,6 +53,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   to 1.9.0: a member still on 1.7.0 now shows red on the lead's preflight, naming both versions and
   the remedy, and reads as `incompatible` in `crew status`. The `collie pack` command alias, `collie
   docs pack` and the app's `/pack` address are untouched and stay until 2.0.0.
+=======
+- **Cache rules are dated, sourced claims, and `collie doctor` says when one goes stale.** Every TTL carries the vendor page it was read on and the date it was read; a claim older than 180 days is a doctor warning, and one older than a year fails the build.
+>>>>>>> 0425a2ad (feat(cache): sourced, dated cache rules plus two doctor findings)
 
 ## [1.8.2] - 2026-09-12
 
