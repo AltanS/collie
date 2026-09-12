@@ -21,6 +21,7 @@ const KEYS = [
   "COLLIE_POLL_MS",
   "COLLIE_POLL_IDLE_MS",
   "COLLIE_NOTIFY_DELAY_MS",
+  "COLLIE_CACHE_WARN_SECONDS",
   "COLLIE_READ_LINES",
   "COLLIE_TRANSCRIPT",
   "COLLIE_TRANSCRIPT_ROOT",
@@ -281,6 +282,21 @@ describe("loadConfig", () => {
     expect(loadConfig().pollIdleMs).toBe(30_000);
     process.env.COLLIE_NOTIFY_DELAY_MS = "0";
     expect(loadConfig().notifyDelayMs).toBe(0);
+  });
+
+  test("COLLIE_CACHE_WARN_SECONDS defaults to 300 and is bounded at 30 and 3600", () => {
+    // The push window for a watched pane (ADR 0042), and NOT the quarter-of-the-TTL threshold that
+    // turns the countdown chip amber. Two numbers with two jobs, so this one has its own bounds: a
+    // window shorter than one idle poll is noise, and an hour is past the longest TTL any rule claims.
+    expect(loadConfig().cacheWarnSeconds).toBe(300);
+    process.env.COLLIE_CACHE_WARN_SECONDS = "600";
+    expect(loadConfig().cacheWarnSeconds).toBe(600);
+    process.env.COLLIE_CACHE_WARN_SECONDS = "29";
+    expect(loadConfig().cacheWarnSeconds).toBe(300);
+    process.env.COLLIE_CACHE_WARN_SECONDS = "3601";
+    expect(loadConfig().cacheWarnSeconds).toBe(300);
+    process.env.COLLIE_CACHE_WARN_SECONDS = "five minutes";
+    expect(loadConfig().cacheWarnSeconds).toBe(300);
   });
 
   test("uses the default upload cap when unset, and resolves COLLIE_MAX_UPLOAD_MB to bytes", () => {

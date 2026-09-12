@@ -28,6 +28,9 @@ import {
   paneReadResponse,
   parsePairRequest,
   parseSnoozeRequest,
+  parseCacheWatchRequest,
+  parseCacheWatchForget,
+  cacheWatchable,
   replyPane,
   requestBodyCap,
   requestDevice,
@@ -1135,6 +1138,41 @@ describe("parsePairRequest — the bootstrap body", () => {
   test("the code is passed through unjudged — shape-checking it would be a free oracle", () => {
     // Not code-shaped at all, but it is the hash compare's job to say so, in constant time.
     expect(parsePairRequest({ code: "!!!!", label: "phone" })?.code).toBe("!!!!");
+  });
+});
+
+describe("the cache-watch request parsers and the watchable gate", () => {
+  test("only a boolean `on` is accepted", () => {
+    expect(parseCacheWatchRequest({ on: true })).toEqual({ on: true });
+    expect(parseCacheWatchRequest({ on: false })).toEqual({ on: false });
+    expect(parseCacheWatchRequest({})).toBeNull();
+    expect(parseCacheWatchRequest({ on: "yes" })).toBeNull();
+    expect(parseCacheWatchRequest(null)).toBeNull();
+    expect(parseCacheWatchRequest([true])).toBeNull();
+  });
+
+  test("only a non-empty string `id` is accepted", () => {
+    expect(parseCacheWatchForget({ id: "b7f1c2a9" })).toBe("b7f1c2a9");
+    expect(parseCacheWatchForget({ id: "" })).toBeNull();
+    expect(parseCacheWatchForget({ id: 7 })).toBeNull();
+    expect(parseCacheWatchForget({})).toBeNull();
+    expect(parseCacheWatchForget("b7f1c2a9")).toBeNull();
+  });
+
+  test("a pane is watchable only once it has a reading that is not `unknown`", () => {
+    const base = { key: "k", ref: "id:a", paneId: "w1:p1", label: "one" };
+    const cache = {
+      state: "warm" as const,
+      expiresAt: 1,
+      ttlSeconds: 600,
+      ruleId: "r",
+      confidence: "documented" as const,
+    };
+    expect(cacheWatchable({ ...base, cache })).toBe(true);
+    expect(cacheWatchable({ ...base, cache: { ...cache, state: "cold" } })).toBe(true);
+    // Nothing measured means nothing to warn about: the switch is disabled and says why.
+    expect(cacheWatchable({ ...base, cache: { ...cache, state: "unknown" } })).toBe(false);
+    expect(cacheWatchable(base)).toBe(false);
   });
 });
 
