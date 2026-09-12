@@ -96,6 +96,9 @@ interface AgentChatProps {
   tabLabel?: string;
   /** Pane output from the route loader (refreshed by polling/revalidation). */
   text: string;
+  /** The same rows with soft wraps undone, present only when {@link text} splits a URL — frozen
+   * alongside it so the autolinker never pairs a stale mirror with a fresh logical read. */
+  logicalText?: string;
   /** The scrollback window `text` was fetched with — tells a grown fetch from a stale in-flight poll. */
   requestedLines?: number;
   /** The pane's `revision` for `text` — the race guard checks a tapped menu against this. */
@@ -179,6 +182,7 @@ export function AgentChat({
   tabs,
   tabLabel,
   text,
+  logicalText,
   requestedLines = 0,
   revision = 0,
   device,
@@ -542,9 +546,9 @@ export function AgentChat({
   // we hold the text steady (no reflow / no re-pin) until you jump back to latest — so a long
   // message stays put long enough to read instead of sliding out of the rolling window.
   //
-  // The frozen snapshot is a {text, revision} PAIR captured at the same instant: the prompt-select
-  // race guard must check a tap against the revision of what the user is LOOKING AT. The live
-  // `revision` prop keeps advancing with background polls while the mirror is frozen — comparing
+  // The frozen snapshot is a {text, revision, logicalText} TRIPLE captured at the same instant: the
+  // prompt-select race guard must check a tap against the revision of what the user is LOOKING AT.
+  // The live `revision` prop keeps advancing with background polls while the mirror is frozen — comparing
   // against it would blind the guard to drift that happened before the freeze (live-vs-live always
   // matches). While following, the frozen pair IS the live pair by definition.
   const [following, setFollowing] = useState(true);
@@ -559,15 +563,15 @@ export function AgentChat({
   // Leaving the pane hands the flag back to its "nothing is open" value. Without this, closing a
   // pane you had scrolled up in would leave the poller believing nobody is following anything.
   useEffect(() => () => publishFollowing(true), []);
-  const [shown, setShown] = useState({ text, revision });
+  const [shown, setShown] = useState({ text, revision, logicalText });
   useEffect(() => {
     if (!following) return;
     // Functional update that returns the previous object when nothing changed keeps React's
     // Object.is bailout — no re-render per poll while the pane is quiet.
     setShown((prev) =>
-      prev.text === text && prev.revision === revision ? prev : { text, revision },
+      prev.text === text && prev.revision === revision ? prev : { text, revision, logicalText },
     );
-  }, [text, revision, following]);
+  }, [text, revision, logicalText, following]);
   const display = shown.text;
   const hasNew = !following && display !== text;
 
@@ -769,8 +773,8 @@ export function AgentChat({
       return;
     }
     pendingRestore.current = true;
-    setShown({ text, revision });
-  }, [requestedLines, text, revision, display]);
+    setShown({ text, revision, logicalText });
+  }, [requestedLines, text, revision, logicalText, display]);
   // After the enlarged display paints, keep the previously-visible content anchored (content grew at
   // the top, so push scrollTop down by the height delta).
   useLayoutEffect(() => {
@@ -1763,6 +1767,7 @@ export function AgentChat({
                   )}
                   <AnsiOutput
                     text={display}
+                    logicalText={shown.logicalText}
                     wrap={prefs.wrap}
                     fontSize={prefs.fontSize}
                     query={findOpen ? findQuery : ""}

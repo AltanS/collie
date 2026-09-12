@@ -40,7 +40,13 @@ import { markersIn, readBeacons, type BeaconSweepDeps } from "./reader.ts";
 import type { BeaconReading, BeaconMarker, BeaconStatus } from "./types.ts";
 import type { AgentSessionRef } from "../journal/types.ts";
 import { declareCapabilities, MUX_CAPABILITIES, type MuxCapabilityDeclaration } from "../mux/capabilities.ts";
-import { muxDataFields, type MuxAdapter, type MuxPane, type MuxSnapshot } from "../mux/types.ts";
+import {
+  muxDataFields,
+  muxOptionalMethods,
+  type MuxAdapter,
+  type MuxPane,
+  type MuxSnapshot,
+} from "../mux/types.ts";
 import type { AgentStatus } from "../types.ts";
 
 /**
@@ -281,6 +287,7 @@ export function withAgentBeacons(
     // than listed here, so the next field added to the contract cannot go missing at this seam
     // (bridge/mux/types.ts § muxDataFields).
     ...muxDataFields(adapter),
+    ...muxOptionalMethods(adapter),
     mux: adapter.mux,
     // A getter, so `collie hooks install claude` reaches a RUNNING bridge: the declaration is read
     // per request (`muxConfigBody`), and the seam behind `hooksInstalled` is what decides how often

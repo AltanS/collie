@@ -1950,7 +1950,62 @@ export function startupWarnings(cfg: Config): string[] {
   return warnings;
 }
 
-async function readPane(
+/** ESC, as a code point: the lint keeps control characters out of regexes, so this is a string. */
+const ESC = "\u001b";
+
+/** CSI final byte — anything from `@` to `~` ends the sequence (ECMA-48 §5.4). */
+const isCsiFinal = (ch: string): boolean => ch >= "@" && ch <= "~";
+
+/**
+ * Drop the escape sequences Herdr's `ansi` read carries — colour and weight only, never cursor moves
+ * (see `MuxGrid`) — leaving the characters the operator sees.
+ *
+ * Written as a scan rather than a regex because a regex for this needs a control character in it,
+ * which this repo's lint forbids outright and which the web's own parser (`web/src/lib/ansi.ts`)
+ * also avoids: an escape is recognised by its code point.
+ */
+export function stripSgr(ansiText: string): string {
+  let visible = "";
+  for (let i = 0; i < ansiText.length; i++) {
+    // SAFETY: `i` is inside the string by the loop's own bound, so this is its character.
+    const ch = ansiText[i] as string;
+    if (ch !== ESC) {
+      visible += ch;
+      continue;
+    }
+    // `ESC [` opens a CSI; skip to its final byte. A lone ESC (or the text ending mid-sequence) is
+    // dropped: it paints nothing either way.
+    let j = i + 1;
+    if (ansiText[j] === "[") {
+      j += 1;
+      // SAFETY: guarded by the bound on `j` in the same condition.
+      while (j < ansiText.length && !isCsiFinal(ansiText[j] as string)) j += 1;
+    }
+    i = j;
+  }
+  return visible;
+}
+
+// A URL that runs to the end of its row, trailing blanks tolerated so a padded row cannot hide the
+// split. The character set is links.ts's stop-set, so the gate and the client's scanner agree on
+// where a URL ends.
+const SPLIT_URL_AT_END = /https?:\/\/[^\s<>"'`\\{}|^[\]]+[ \t]*\r?$/;
+
+/**
+ * Does this grid end a line with an http(s) URL — that is, did the pane's column edge cut one?
+ *
+ * The mirror's autolinker scans one line at a time (`web/src/lib/links.ts`), so a wrapped URL is
+ * only ever linked as its first fragment, with a truncated href. Spotting that shape here is what
+ * keeps the extra `recent_unwrapped` read off every other poll: it is asked for exactly when there
+ * is something to repair. A false positive costs one read and repairs nothing.
+ */
+export function hasSplitUrl(ansiText: string): boolean {
+  return stripSgr(ansiText)
+    .split("\n")
+    .some((line) => SPLIT_URL_AT_END.test(line));
+}
+
+export async function readPane(
   herdr: MuxAdapter,
   cfg: Config,
   paneId: string,
@@ -1971,7 +2026,16 @@ async function readPane(
     // to `strip` would move someone's screen on every revalidate — see the adapter's `readGrid`.
     const read = await herdr.readGrid(paneId, { scope: "recent", lines, styling: "preserve" });
     if (!read.ok) return text(`${herdr.mux} read failed: ${read.detail}`, 502);
-    const data = paneReadResponse(paneId, read.value);
+    // A URL the pane's column edge cut in two is the one thing the mirror cannot repair on its own,
+    // and the repair needs the same rows with soft wraps undone. Ask for them only when the grid
+    // shows such a URL — this is a second round trip, and a multiplexer without the source has
+    // nothing to give. Same `lines` and the same escape-carrying form as the grid read above, so a
+    // read that would move the operator's screen here is the one `readGrid` already refuses.
+    const logical =
+      herdr.readLogicalText !== undefined && hasSplitUrl(read.value.text)
+        ? await herdr.readLogicalText(paneId, lines)
+        : undefined;
+    const data = paneReadResponse(paneId, read.value, logical?.ok ? stripSgr(logical.value) : undefined);
     // ETag is derived from the serialised body — if content hasn't changed the client gets a 304
     // and skips the whole transfer (the big win on a cellular link).
     const bodyStr = JSON.stringify(data);
@@ -2005,8 +2069,17 @@ async function readPane(
  * (the client's prompt-select race guard depends on it) is covered by the bridge unit tests without
  * standing up Bun.serve / a socket.
  */
-export function paneReadResponse(paneId: string, read: MuxGrid): PaneReadResponse {
-  return { paneId, text: read.text, truncated: read.truncated, revision: read.revision };
+export function paneReadResponse(paneId: string, read: MuxGrid, logicalText?: string): PaneReadResponse {
+  const body: PaneReadResponse = {
+    paneId,
+    text: read.text,
+    truncated: read.truncated,
+    revision: read.revision,
+  };
+  // Absent, never empty, when there is nothing to repair: the ETag is computed over this body, so an
+  // always-present key would invalidate every client's cached copy once for no gain.
+  if (logicalText !== undefined) body.logicalText = logicalText;
+  return body;
 }
 
 /**

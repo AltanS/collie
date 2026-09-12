@@ -24,7 +24,9 @@ import {
   keysPane,
   launchersRoute,
   normalizeTabLabel,
+  hasSplitUrl,
   paneReadResponse,
+  readPane,
   parsePairRequest,
   parseSnoozeRequest,
   replyPane,
@@ -77,6 +79,7 @@ import {
   type Launcher,
   type LaunchersResponse,
   type MuxConfig,
+  type PaneReadResponse,
   type SnapshotResponse,
 } from "./types.ts";
 import type { StateEngine } from "./state-engine.ts";
@@ -2804,5 +2807,78 @@ describe("update status peers — the legs of a crew-wide run", () => {
     // A peers-only run starts no updater on this machine.
     const peersBranch = handler.slice(handler.indexOf('if (verdict.kind === "peers")'));
     expect(peersBranch.slice(0, peersBranch.indexOf("return json"))).not.toContain("action.start");
+  });
+});
+
+describe("hasSplitUrl — is a URL cut by the pane's column edge?", () => {
+  test("a URL running to the end of a row is a split", () => {
+    expect(
+      hasSplitUrl("$ gcloud auth login --no-launch-browser\n    https://accounts.google.com/o/oauth2/auth?client_id=1&scope=x"),
+    ).toBe(true);
+  });
+
+  test("Herdr's CR row terminator does not hide the split", () => {
+    // A row that ends `…&s\r` is the shape a real read hands over; without the CR the gate would
+    // never fire on the pane this exists for.
+    expect(hasSplitUrl("\u001b[36mhttps://a.dev/x?y=1\u001b[0m\r\nnext")).toBe(true);
+  });
+
+  test("styling does not hide the split, and a padded row still counts", () => {
+    expect(hasSplitUrl("\u001b[34mhttps://a.dev/x?y=1\u001b[0m")).toBe(true);
+    expect(hasSplitUrl("https://a.dev/x?y=1   ")).toBe(true);
+  });
+
+  test("a URL that ends with prose after it is not a split", () => {
+    expect(hasSplitUrl("open https://a.dev/x then")).toBe(false);
+    expect(hasSplitUrl("https://a.dev/x, and more")).toBe(false);
+  });
+
+  test("no URL at all is not a split", () => {
+    expect(hasSplitUrl("$ echo hello\nworld")).toBe(false);
+  });
+});
+
+describe("readPane — the logical read is asked for only when it can repair something", () => {
+  /** A pane read that answers with `grid`, and remembers whether the logical read was reached. */
+  function paneStub(grid: string, logical: string) {
+    let logicalReads = 0;
+    const stub: Partial<MuxAdapter> = {
+      mux: "herdr",
+      readGrid: (paneId: string) => Promise.resolve(muxOk({ paneId, text: grid, truncated: false, revision: 7 })),
+      readLogicalText: () => {
+        logicalReads += 1;
+        return Promise.resolve(muxOk(logical));
+      },
+    };
+    // SAFETY: `readPane` reaches `mux` for its error text and these two reads, all present above.
+    const adapter = stub as MuxAdapter;
+    return { adapter, reads: () => logicalReads };
+  }
+
+  const get = (paneId: string) =>
+    new Request(`http://x/api/pane/${encodeURIComponent(paneId)}`);
+  const url = new URL("http://x/api/pane/w1:p1");
+
+  test("a grid with no split URL is served from the grid alone", async () => {
+    const { adapter, reads } = paneStub("$ echo hi\nhi", "unused");
+    const res = await readPane(adapter, cfg(), "w1:p1", url, get("w1:p1"));
+    // SAFETY: the bridge's own JSON, served by the call above.
+    const body = (await res.json()) as PaneReadResponse;
+    expect(reads()).toBe(0);
+    expect(body.logicalText).toBeUndefined();
+    expect(body.text).toBe("$ echo hi\nhi");
+  });
+
+  test("a split URL brings the logical text in, with its styling stripped", async () => {
+    const grid = "run:\n\u001b[36mhttps://a.dev/auth?client=1&s\u001b[0m\ntate=y then";
+    const logical = "\u001b[36mrun:\nhttps://a.dev/auth?client=1&state=y then\u001b[0m";
+    const { adapter, reads } = paneStub(grid, logical);
+    const res = await readPane(adapter, cfg(), "w1:p1", url, get("w1:p1"));
+    // SAFETY: the bridge's own JSON, served by the call above.
+    const body = (await res.json()) as PaneReadResponse;
+    expect(reads()).toBe(1);
+    expect(body.logicalText).toBe("run:\nhttps://a.dev/auth?client=1&state=y then");
+    // The mirror keeps its own rows, styling and all — only the hrefs are repaired downstream.
+    expect(body.text).toBe(grid);
   });
 });

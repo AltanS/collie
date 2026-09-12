@@ -563,6 +563,13 @@ export interface PaneReadResponse {
   truncated: boolean;
   /** Herdr's monotonic pane revision — passed through for the client's prompt-select race guard. */
   revision: number;
+  /**
+   * The same rows with soft wraps undone, present only when the grid shows a URL the pane's width
+   * cut in two (`hasSplitUrl`). The mirror keeps rendering `text`; the client uses this to give the
+   * fragments of one URL the href of the whole URL. ABSENT rather than empty when there is nothing
+   * to repair — the payload stays byte-identical to what it was for every other pane.
+   */
+  logicalText?: string;
 }
 
 /**
