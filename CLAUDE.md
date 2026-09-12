@@ -447,6 +447,13 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
 - **The operator's rows in `commands.toml` replace the shipped command catalog on the panes they
   address, never merge into it** ([ADR 0018](./.adr/0018-operator-command-rows-replace-the-catalog.md));
   the bridge re-reads the file behind an mtime check, so edits are live and need no restart.
+- **That replace-law runs PER SURFACE, and the harness bar is the second surface** — a row with
+  `bar = true` goes on the bar above the keys as well as into the palette, and the bar's
+  replace-or-fall-back runs over the `bar = true` rows ALONE, so one bar row never blanks the Agent
+  palette ([ADR 0043](./.adr/0043-operator-bar-rows-replace-the-bar-not-the-palette.md)).
+  `web/src/lib/harness-bar.ts` is a VIEW of `agent-commands.ts`, never a second catalog: a command it
+  spells that the catalog lacks is a failing test, and a row for a capture-sourced harness needs an
+  `evidence` path that exists. `commandsFor` is unchanged.
 - **`keys.toml` is `commands.toml`'s sibling** — the operator's rows replace the Keys tray's shipped
   Ctrl presets on the panes they address (ADR 0018 again), and only those presets: the tray's
   keyboard is fixed. Both files share one reader (`bridge/operator-file.ts`) and one scope ladder

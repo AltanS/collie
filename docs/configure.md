@@ -74,12 +74,38 @@ cp commands.toml.example ~/.config/collie/commands.toml
 scope = "omp"                # optional; omit for every pane
 command = "/fork-in-herdr"
 description = "Fork this conversation into a new herdr tab"
+
+[[commands]]
+scope = "claude"
+command = "/statusline"
+description = "Set the status line"
+bar = true
+bar_label = "Status"
 ```
 
 A pane that matches your configured rows displays only those rows. The narrowest row wins, as
 documented in [ADR 0018](../.adr/0018-operator-command-rows-replace-the-catalog.md).
 
 To verify, open a pane and tap **/**; your rows appear on the first screen.
+
+### Putting a command on the harness bar
+
+`bar = true` also puts the row on the harness bar, the row of buttons above the keys. A bar row is
+still an ordinary palette row, so it appears on both surfaces. `bar_label` is the button's text and
+defaults to the command name without its slash.
+
+Your bar rows replace the shipped bar for the panes they address, and leave the bar alone everywhere
+else. The Agent palette is a separate surface and one bar row never blanks it
+([ADR 0043](../.adr/0043-operator-bar-rows-replace-the-bar-not-the-palette.md)).
+
+A `bar_label` longer than 12 characters is shortened and the button still appears. A `bar` that is
+not `true` or `false` drops that one row, the same way a bad `confirm` does.
+
+The bar sends while the agent is busy, the same as the command palette. The checkmark appears only
+when the pane took the text.
+
+To verify, open a pane running Claude Code, Codex, pi or omp; the row sits directly above the keys.
+Turn it off per device in **Settings → Harness shortcuts**.
 
 ## Your own key presets
 
