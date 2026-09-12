@@ -10,6 +10,53 @@ COLLIE_PUBLIC_HOSTS=myhost.tail1234.ts.net    # only behind your OWN proxy; on a
                                               # start` discovers this for you
 ```
 
+## The config file
+
+Every Collie setting can be written in a TOML file. Write one with every setting and its default:
+
+```bash
+collie config init
+```
+
+That writes `~/.collie/config.toml`, the machine's own statement, and prints the path. Every key in
+it is commented out, so the file as written changes nothing: uncomment a key and restart. Run
+`collie config init --instance` instead to write `config.toml` beside your `.env`, which overrides
+the machine's file for this one instance.
+
+| file | layer | how it is located |
+| --- | --- | --- |
+| `~/.collie/config.toml` | machine | your home directory, or the path in `COLLIE_CONFIG` |
+| `<config-dir>/config.toml` | instance | beside the `.env` the CLI already resolves |
+
+The instance file wins key by key, never file by file: a key absent from it keeps the machine file's
+value. There is no `config.<instance>.toml`, because on a Herdr-managed install the config dir is
+already per instance, and on a binary install it is `~/.config/collie`. A second Collie on one host
+therefore puts its own settings in its own config dir, see
+[docs/deployment.md → Several Collies on one host](deployment.md#several-collies-on-one-host). A
+`.collie/` inside a project directory is not read at all.
+
+Three verbs drive the file:
+
+1. `collie config init` writes a commented file with every setting and its default.
+2. `collie config check` validates the two files that would be read, or one file you name.
+3. `collie config show` prints both paths and every setting with its value and where it came from.
+
+The precedence runs default, then `~/.collie/config.toml`, then `<config-dir>/config.toml`, then the
+process environment, which includes your `.env`. `collie config show` names the winner for every key
+at once, so "why is my poll interval still 1500" is answered in one line.
+
+A broken key never stops the bridge. An unknown key or a wrong type is a problem that
+`collie config check` prints and `collie doctor` reports, and that key alone falls back to what the
+environment says. Every other key in the file still applies.
+
+Collie reads `config.toml` only during startup. Run `collie restart` after modifying it.
+
+> **Note.** A file holding `[push] vapid_private` or `[stt] stt_key` is held to mode 600, exactly as
+> your `.env` is. If Collie cannot tighten it, those keys alone are dropped and `collie doctor` says
+> so.
+
+## The environment still wins
+
 Collie loads configuration from a `.env` file in `~/.config/collie`. If Herdr manages the
 installation, the CLI queries Herdr for the plugin config directory (typically
 `~/.config/herdr/plugins/config/herdr.collie`). Both paths resolve consistently across CLI commands,
@@ -27,13 +74,34 @@ Paths below use `~/.config/collie/…`. On a Herdr-managed install, replace that
 
 Collie reads `.env` only during startup. Run `collie restart` after modifying it.
 
-The [`.env.example`](../.env.example) file lists all options.
+The [`.env.example`](../.env.example) file lists all options, and so does
+`collie config init --print`.
 
 It includes `COLLIE_PORT`, `COLLIE_SERVE_MODE=http` (for Headscale or `.internal` domains), and
 `COLLIE_SERVE_PORT` (to expose HTTPS on a port other than `:443`; see
 [docs/deployment.md → Several Collies on one host](deployment.md#several-collies-on-one-host)). The
 CLI reads the serve parameters to configure `tailscale serve`, rather than passing them to the
 bridge.
+
+## What each section holds
+
+The config file groups every setting under a `[section]`. The environment name of a key is
+`COLLIE_` plus the key in capitals, so `[bridge] poll_ms` is `COLLIE_POLL_MS`.
+
+| section | what it holds |
+| --- | --- |
+| `bridge` | poll cadence, how many lines are read, where state lives |
+| `network` | the port, the bind address, allowed hosts and origins |
+| `mux` | which multiplexer this collie mirrors, and where it lives |
+| `access` | the Tailscale identity gate, the device header, the audit trail |
+| `push` | the three Web Push (VAPID) values |
+| `uploads` | the attachment size cap and the extra text types accepted |
+| `journal` | where each harness keeps its own session log |
+| `crew` | the budgets a lead gives a member, and a peer's own browser |
+| `standby` | the deputy's second door: port, bind address, arming |
+| `update` | where releases come from, how many versions stay |
+| `serve` | whether Collie publishes the front door, and on what |
+| `stt` | speech-to-text, absent until `collie stt setup` runs |
 
 To read history from multiple agent home directories, provide a comma-separated list in
 `COLLIE_TRANSCRIPT_ROOT`.
@@ -60,6 +128,9 @@ Put machine-specific commands, such as a Herdr plugin `/fork-in-herdr` or a cust
 | `keys.toml` | optional, per row | `danger = true` | yes, no restart needed |
 | `quick-replies.toml` | optional, per row | none | yes, no restart needed |
 | `launchers.toml` | none, matched by exact command instead | none | yes, but an already-open tab re-reads the rows only on its next load |
+
+These files are unchanged by the config file. They share the instance `config.toml`'s
+directory, they keep their own formats and their own live reload, and nothing merges them into it.
 
 Any row with the flag set requires a two-tap confirmation before it fires. Edits to any of these
 files take effect without restarting the service. If Collie rejects a row, `journalctl --user -u

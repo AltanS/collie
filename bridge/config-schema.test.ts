@@ -105,6 +105,17 @@ describe("the schema names every setting", () => {
     expect(stale).toEqual([]);
   });
 
+  test("every COLLIE_* name .env.example documents has a row too", () => {
+    // The cross-check the Non-goals name: `.env.example` stays, stays hand-written and keeps
+    // precedence, but it may not document a setting the schema has never heard of.
+    const example = readFileSync(join(REPO_ROOT, ".env.example"), "utf8");
+    const documented = [...new Set([...example.matchAll(/COLLIE_[A-Z0-9_]+/g)].map((m) => m[0]))];
+    const missing = documented.filter(
+      (env) => !EXEMPT_NAMES.has(env) && settingByEnv(env) === undefined,
+    );
+    expect(missing).toEqual([]);
+  });
+
   test("no exemption is also a schema row — a name is a setting or it is not", () => {
     const both = Object.keys(EXEMPT).filter((env) => settingByEnv(env) !== undefined);
     expect(both).toEqual([]);
