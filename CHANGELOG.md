@@ -122,6 +122,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   already uses, and the phone drops the fill and keeps the text. Which fills count is decided by
   luminance rather than by a theme palette, so dark fills, diff colours among them, are unchanged.
   Thanks @tenngoxars (#206).
+- **A peer's space now lists its own panes instead of every tab reading empty.** In a crew, the
+  space screen grouped panes on the machine leading the crew rather than on the machine the space
+  is on, so opening a peer's space drew "(empty tab)" under every tab while the header still
+  counted the panes. Refs #209.
 
 ### Docs
 

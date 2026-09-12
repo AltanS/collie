@@ -13,7 +13,7 @@ interface SpaceViewProps {
   selectedTab: string | null;
   /** Open a row — the PANE, not its id (ids repeat across machines). */
   onOpen: (pane: AgentView) => void;
-  /** The machine this space is on (the lead — peer workspaces aren't unioned). Undefined when solo. */
+  /** The machine this space is on — the WORKSPACE's host, not the crew's lead. Undefined when solo. */
   host?: string;
 }
 

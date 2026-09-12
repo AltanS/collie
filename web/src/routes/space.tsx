@@ -49,9 +49,12 @@ export function SpaceRoute() {
   const toDashboard = () => navigate(homePath(data.scope));
   const switchSpace = (id: string) => navigate(spacePath(id, data.scope));
   const switchTab = (id: string | null) => setTab(id);
-  // Lead-local navigator (peer workspaces are not unioned), so its panes are the lead's — but the
-  // pane still supplies its own host, so opening one can never point the URL at another machine.
-  const navHost = leadHost(data.servers);
+  // The machine THIS space is on, not the one leading the crew. A lead's merged snapshot unions the
+  // peers' spaces and tags each with its own host, and pane grouping is keyed on `(host,
+  // workspaceId)` — so keying a peer's space on the lead matched nothing and drew every tab as
+  // "(empty tab)" (#209). Falls back to the lead for an untagged workspace, which is what a solo
+  // snapshot has (`undefined` both ways) and what a crew emits for nothing at all.
+  const navHost = selectedWs?.host ?? leadHost(data.servers);
   const open = (pane: AgentView) =>
     navigate(panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions)));
 
