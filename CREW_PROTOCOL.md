@@ -558,6 +558,22 @@ updated machines, so build skew is the steady state (§7), and this section is t
   take an action: the action it stands for is "do nothing to that machine". `CREW_PROTOCOL_VERSION`
   stays `1`, no new route, no new verb and no new header.
 
+- **A pane gained an optional `cache`** (added 2026-09-13, M28 spec 02). It carries a prompt-cache
+  reading for that pane: a state word, the expiry, the TTL in seconds, the rule id, a confidence word
+  and two timestamps. Additive-optional with the closed reading this section requires: **absent means
+  nothing has been measured**, which the phone renders as nothing at all. A 1.8.x peer simply omits
+  it, and a lead that predates it ignores it, so neither side refuses the other over it. Nothing in
+  `bridge/crew/merge.ts` changes: `isPaneWire` checks `paneId`, `status` and `workspaceNumber`, and
+  `untagPane` strips `host` with a rest spread and keeps every other key, so the field rides a peer's
+  contribution for free.
+
+  The number is **computed on the machine the pane lives on, with that machine's own rules**, which is
+  why the chip is true where it is rendered even though a peer may hold its own `cache-rules.toml`
+  override. The rule CATALOG behind it (`GET /api/cache-rules`) is deliberately **not** forwarded:
+  quoting the lead's catalog for a peer's number would cite a page that peer never read, so the pane
+  sheet says where the number was read instead. Forwarding it is a follow-up spec, not a bullet on
+  this one. `CREW_PROTOCOL_VERSION` stays `1`, no new route, no new verb and no new header.
+
 - **An addition a lead has no reader for is INERT, not merely tolerated — measured, not assumed**
   (2026-09-08, §16's version-skew leg). This section's promise used to rest on a unit test with a
   stand-in field. It has now been walked with the two real builds: a **1.6.0** lead binary, leading

@@ -39,7 +39,9 @@
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
+import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
+import { asRecord, asText, tokenCount } from "./cache-probe.ts";
 import { containedRealpath, MAX_TRANSCRIPT_BYTES, rootList } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
@@ -393,9 +395,83 @@ export class OpencodeTranscriptSource implements TranscriptSource {
 
 /** OpenCode's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
 export function opencodeJournal(roots: string | readonly string[]): JournalAdapter {
+  const source = new OpencodeTranscriptSource(roots);
   return {
     agent: "opencode",
-    source: new OpencodeTranscriptSource(roots),
+    source,
     parse: parseOpencodeTranscript,
+    cacheProbe: (ref) => opencodeCacheProbe(source, ref),
   };
+}
+
+// ── The prompt-cache probe ───────────────────────────────────────────────────
+//
+// "Seek, don't stream" becomes "query, don't scan". Ported from herdr-cache-alert
+// `src/harness/opencode.ts:210-256`, with its query unchanged: the twelve newest messages for THIS
+// session by indexed key, because the last row is often the operator's own message rather than an
+// assistant turn. Read-only, bound parameters, and nothing outside `message` — the same three rules
+// the rest of this module works under, because the same database holds OAuth tokens.
+//
+// The cache lifetime is the UPSTREAM's, not opencode's: every session records its own `providerID`, so
+// `model` is reported as `providerID:modelID` and `bridge/cache/rules/providers.ts` unwraps a gateway
+// prefix out of it. `tokens.cache.read` / `.write` is the warm/cold verdict, and it is the trustworthy
+// part of the chip even where the upstream documents no TTL at all.
+//
+// Verified against opencode's live database on 2026-09-13: an assistant message's `data` carries
+// `tokens.cache.{read,write}`, `providerID`, `modelID` and `time.{created,completed}` together.
+
+interface ProbeRow {
+  data: string | null;
+  time_created: number;
+}
+
+async function opencodeCacheProbe(
+  source: OpencodeTranscriptSource,
+  ref: AgentSessionRef,
+): Promise<CacheProbe | null> {
+  const key = await source.resolve(ref);
+  if (key === null) return null;
+  const split = splitOpencodeKey(key);
+  if (split === null) return null;
+  const rows =
+    withDb(split.dbPath, (db) =>
+      db
+        .query<ProbeRow, [string]>(
+          "select data, time_created from message where session_id = ? order by time_created desc limit 12",
+        )
+        .all(split.sessionId),
+    ) ?? [];
+
+  for (const row of rows) {
+    const data = parseData(row.data);
+    const message = asRecord(data);
+    if (message === null || message.role !== "assistant") continue;
+    const tokens = asRecord(message.tokens);
+    if (tokens === null) continue;
+    const time = asRecord(message.time);
+    // `time.completed` is when the turn finished, `time.created` when it started. Either beats the
+    // row's own column, which tracks the row and not the request.
+    const at = tokenCount(time?.completed) ?? tokenCount(time?.created) ?? row.time_created;
+    if (!Number.isFinite(at)) continue;
+    const cache = asRecord(tokens.cache);
+    const cacheReadTokens = tokenCount(cache?.read);
+    const cacheCreationTokens = tokenCount(cache?.write);
+    const provider = asText(message.providerID);
+    const model = asText(message.modelID);
+    const pair = provider !== undefined && model !== undefined ? `${provider}:${model}` : model;
+    const probe: CacheProbe = {
+      lastRequestAt: at,
+      // Message ids are unique per turn, and `time_created` stands in for one: two assistant turns
+      // cannot share a millisecond in this schema.
+      turnId: String(row.time_created),
+      // The query's own newest timestamp is this reading's clock — there is no file mtime to take.
+      measuredAt: at,
+      evidence: `${split.dbPath} (${pair ?? "?"}, cache read ${String(cacheReadTokens ?? "?")})`,
+    };
+    if (cacheReadTokens !== undefined) probe.cacheReadTokens = cacheReadTokens;
+    if (cacheCreationTokens !== undefined) probe.cacheCreationTokens = cacheCreationTokens;
+    if (pair !== undefined) probe.model = pair;
+    return probe;
+  }
+  return null;
 }

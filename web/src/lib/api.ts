@@ -15,6 +15,7 @@ import type {
   CreateResponse,
   DismissScope,
   DevicesResponse,
+  CacheRulesResponse,
   LaunchersResponse,
   NotifyPrefs,
   PaneHistoryResponse,
@@ -629,6 +630,19 @@ export function launch(command: string, besidePaneId?: string, scope?: Scope): P
  */
 export function fetchLaunchers(scope?: Scope): Promise<LaunchersResponse> {
   return req<LaunchersResponse>(withScope("/api/launchers", scope));
+}
+
+/**
+ * GET /api/cache-rules — the catalog behind every cache chip on THIS host, plus its applied overrides.
+ *
+ * Fetched once per boot, lazily, the first time a cache sheet is opened: the catalog only moves on a
+ * release or a `cache-rules.toml` edit, and the route is ETagged, so a re-ask costs a 304. NOT scoped
+ * and deliberately not forwarded across the crew link — a peer may hold its own override, so quoting
+ * this catalog for a peer's number would cite a page that peer never read. The sheet on a peer's pane
+ * says where the number was read instead.
+ */
+export function fetchCacheRules(): Promise<CacheRulesResponse> {
+  return req<CacheRulesResponse>("/api/cache-rules");
 }
 
 /** The worktrees of the repo a space sits in. Empty-handed when the space is not in one. */

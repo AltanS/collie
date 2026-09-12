@@ -8,6 +8,9 @@ import { realLinkFs } from "../cli/link.ts";
 import { packageCommand } from "../cli/package-command.ts";
 import { realExec, realFiles } from "../cli/sys.ts";
 import { ActivityLedger } from "./activity.ts";
+import { CacheTracker } from "./cache/tracker.ts";
+import { buildJournalRegistry } from "./journal/registry.ts";
+import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { AuditLog, fileAuditAppender } from "./audit.ts";
 import { beaconReader, hooksInstalledProbe } from "./beacon-io.ts";
 import { withAgentBeacons } from "./beacon/decorate.ts";
@@ -574,6 +577,17 @@ const stt = createSttGate({
 const activity = new ActivityLedger(cfg);
 await activity.load();
 
+// How long each pane's prompt cache stays warm (bridge/cache/tracker.ts). The registry is built HERE,
+// once, and handed to both the tracker and the server, so the probe and the history route share the
+// adapters' memoised path caches. Null when `COLLIE_TRANSCRIPT` is off: no journal means no probe, and
+// every pane then reads exactly as it did before this feature existed.
+const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
+const cacheRulesReader = createCacheRulesReader(cfg.cacheRulesFile);
+const paneCache =
+  journals === null
+    ? null
+    : new CacheTracker(journals, { overrides: () => cacheRulesReader() }, () => Date.now());
+
 // ── Update-availability monitor ───────────────────────────────────────────────
 // The running plugin version, captured NOW at module load — never re-read from disk later, or a
 // post-pull package.json would mask the very update we detect (same class of bug as the buildId gap).
@@ -990,6 +1004,13 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
   engine.onUpdate((s) =>
     activity.reconcile(name, [...s.agents, ...s.shellPanes].map((p) => p.paneId)),
   );
+
+  // The prompt-cache probe rides the same poll, and for the reason the tracker's header gives:
+  // `localSnapshot` is synchronous, so the disk read cannot happen at serialise time. It is fired and
+  // not awaited — `onUpdate` is synchronous and a poll must never wait on a probe — and the tracker
+  // itself never throws, so a rejected promise here is not a case that exists. Its own per-session
+  // floor means a poll every 1.5 s does not become a read every 1.5 s.
+  if (paneCache !== null) engine.onUpdate((s) => void paneCache.refresh(s.agents));
 
   // Background notifications on lifecycle transitions (foreground toasts are computed client-side by
   // diffing snapshots). Each session gets its own coordinator + notification slot: the primary keeps
@@ -1697,6 +1718,9 @@ const server = startServer({
   version: crewVersion,
   audit,
   activity,
+  // Built above so the cache tracker probes through the same adapters this serves history from.
+  journals: journals ?? undefined,
+  cache: paneCache ?? undefined,
   crew,
   pairing,
   stt,

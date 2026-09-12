@@ -315,6 +315,9 @@ describe("collie doctor — the contract", () => {
       "hook-python3",
       "agent-sessions",
       "journal-roots",
+      "cache-claims",
+      "cache-rules",
+      "cache-env",
       "restart-pending",
       "clock",
     ]);
@@ -1209,6 +1212,9 @@ describe("the finding set is scoped by the chosen multiplexer", () => {
       "beacons",
       "agent-sessions",
       "journal-roots",
+      "cache-claims",
+      "cache-rules",
+      "cache-env",
       "restart-pending",
       "clock",
     ]);

@@ -21,8 +21,10 @@
 
 import { readdir } from "node:fs/promises";
 
+import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { dirname, join } from "node:path";
+import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
 import {
   containedRealpath,
   containedRealpathIn,
@@ -314,11 +316,62 @@ export class PiTranscriptSource implements TranscriptSource {
 
 /** pi's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
 export function piJournal(roots: string | readonly string[]): JournalAdapter {
+  const source = new PiTranscriptSource(roots);
   return {
     agent: "pi",
-    source: new PiTranscriptSource(roots),
+    source,
     parse: parsePiTranscript,
+    cacheProbe: (ref) => piCacheProbe(source, ref),
   };
+}
+
+// ── The prompt-cache probe ───────────────────────────────────────────────────
+//
+// herdr-cache-alert has no pi adapter, so this grammar was read off real logs rather than ported
+// (verified 2026-09-13). An assistant row carries everything needed on ONE record, which makes this
+// the simplest of the four:
+//
+//   {"type":"message","id":"…","timestamp":"…","message":{
+//      "role":"assistant","provider":"openrouter","model":"anthropic/claude-opus-4",
+//      "usage":{"input":…,"output":…,"cacheRead":…,"cacheWrite":…,"totalTokens":…}}}
+//
+// pi is provider-agnostic, so the TTL belongs to the upstream and not to pi: `model` is reported as
+// `provider:model` exactly as opencode's is, and `bridge/cache/rules/providers.ts` unwraps a gateway
+// prefix from there. `provider: "openrouter"` with `model: "openai/gpt-5.6-sol"` therefore lands on
+// OpenAI's own 30-minute regime rather than on the pessimistic default.
+//
+// Oh My Pi needs nothing here: `omp` is an alias of `pi` in registry.ts, so an omp pane resolves to
+// this adapter and to `pi.*` rules alike.
+
+async function piCacheProbe(source: PiTranscriptSource, ref: AgentSessionRef): Promise<CacheProbe | null> {
+  const tail = await probeTail(source, ref);
+  if (tail === null) return null;
+  const found = walkBack(tail.lines, (raw): CacheProbe | undefined => {
+    const entry = asRecord(raw);
+    if (entry === null || entry.type !== "message") return undefined;
+    const message = asRecord(entry.message);
+    if (message === null || message.role !== "assistant") return undefined;
+    const usage = asRecord(message.usage);
+    if (usage === null) return undefined;
+    const at = Date.parse(asText(entry.timestamp) ?? "");
+    if (Number.isNaN(at)) return undefined;
+    const provider = asText(message.provider);
+    const model = asText(message.model);
+    const cacheReadTokens = tokenCount(usage.cacheRead);
+    const cacheCreationTokens = tokenCount(usage.cacheWrite);
+    const pair = provider !== undefined && model !== undefined ? `${provider}:${model}` : model;
+    const probe: CacheProbe = {
+      lastRequestAt: at,
+      turnId: asText(entry.id) ?? String(at),
+      measuredAt: tail.mtimeMs,
+      evidence: `${tail.path} (${pair ?? "?"}, cache read ${String(cacheReadTokens ?? "?")})`,
+    };
+    if (cacheReadTokens !== undefined) probe.cacheReadTokens = cacheReadTokens;
+    if (cacheCreationTokens !== undefined) probe.cacheCreationTokens = cacheCreationTokens;
+    if (pair !== undefined) probe.model = pair;
+    return probe;
+  });
+  return found ?? null;
 }
 
 /**

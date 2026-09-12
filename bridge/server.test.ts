@@ -22,6 +22,7 @@ import {
   isLoopbackPeer,
   isReservedAuthPath,
   keysPane,
+  cacheRulesRoute,
   launchersRoute,
   normalizeTabLabel,
   paneReadResponse,
@@ -78,6 +79,7 @@ import {
   MUX_LOGO_PATH,
   type AgentView,
   type Launcher,
+  type CacheRulesResponse,
   type LaunchersResponse,
   type MuxConfig,
   type SnapshotResponse,
@@ -2663,6 +2665,78 @@ describe("GET /api/launchers — this host's own rows, home included", () => {
     const res = await launchersRoute(() => Promise.resolve([]), null);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ launchers: [], home: homedir() });
+  });
+});
+
+describe("GET /api/cache-rules — the catalog behind every cache chip", () => {
+  test("answers every shipped rule with its source and its date", async () => {
+    const res = await cacheRulesRoute(() => Promise.resolve([]), null, null);
+    expect(res.status).toBe(200);
+    // SAFETY: `cacheRulesRoute` is the only writer of this body (this test calls it directly, two
+    // lines up), so the shape it satisfies itself with (`CacheRulesResponse`) is what comes back.
+    const body = (await res.json()) as CacheRulesResponse;
+    expect(body.rules.map((r) => r.id)).toContain("claude.subscription");
+    const claude = body.rules.find((r) => r.id === "claude.subscription");
+    expect(claude?.ttlSeconds).toBe(3600);
+    expect(claude?.confidence).toBe("documented");
+    expect(claude?.retrievedAt).toBe("2026-08-24");
+    expect(claude?.sourceUrl).toBe("https://code.claude.com/docs/en/prompt-caching");
+    expect(claude?.overridden).toBeUndefined();
+    // No shipped rule may reach the sheet without a page and a date behind it (ADR 0041).
+    for (const rule of body.rules) {
+      expect(rule.sourceUrl).not.toBe("");
+      expect(rule.retrievedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  test("marks an overridden rule with the OPERATOR's own url and date, not the vendor's", async () => {
+    const res = await cacheRulesRoute(
+      () =>
+        Promise.resolve([
+          {
+            ruleId: "claude.api",
+            ttlSeconds: 3600,
+            sourceUrl: "https://our.gateway.invalid/notes",
+            retrieved: "2026-09-12",
+            note: "our gateway sends ttl 1h",
+          },
+        ]),
+      null,
+      null,
+    );
+    // SAFETY: as above — this test is the only caller, so the body is the one this route composed.
+    const body = (await res.json()) as CacheRulesResponse;
+    const row = body.rules.find((r) => r.id === "claude.api");
+    expect(row?.ttlSeconds).toBe(300);
+    expect(row?.overridden).toEqual({
+      ttlSeconds: 3600,
+      sourceUrl: "https://our.gateway.invalid/notes",
+      retrieved: "2026-09-12",
+      note: "our gateway sends ttl 1h",
+    });
+  });
+
+  test("answers 304 with the ETag and no body when the phone already has it", async () => {
+    const first = await cacheRulesRoute(() => Promise.resolve([]), null, null);
+    const etag = first.headers.get("etag");
+    expect(etag).not.toBeNull();
+    const again = await cacheRulesRoute(() => Promise.resolve([]), null, etag);
+    expect(again.status).toBe(304);
+    expect(again.headers.get("etag")).toBe(etag);
+    expect(await again.text()).toBe("");
+  });
+
+  test("the ETag moves when an override moves a number", async () => {
+    const plain = await cacheRulesRoute(() => Promise.resolve([]), null, null);
+    const moved = await cacheRulesRoute(
+      () =>
+        Promise.resolve([
+          { ruleId: "codex.api", ttlSeconds: 1800, sourceUrl: "https://x.invalid", retrieved: "2026-09-13" },
+        ]),
+      null,
+      null,
+    );
+    expect(moved.headers.get("etag")).not.toBe(plain.headers.get("etag"));
   });
 });
 

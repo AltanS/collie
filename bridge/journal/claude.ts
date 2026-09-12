@@ -26,7 +26,10 @@
 import { readdir, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import { observedClaim, type Sourced } from "../cache/claims.ts";
+import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
+import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
 import { containedRealpath, exists, head, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
@@ -403,9 +406,69 @@ export class ClaudeTranscriptSource implements TranscriptSource {
  * order.
  */
 export function claudeJournal(roots: string | readonly string[]): JournalAdapter {
+  const source = new ClaudeTranscriptSource(roots);
   return {
     agent: "claude",
-    source: new ClaudeTranscriptSource(roots),
+    source,
     parse: (text) => parseClaudeTranscript(text),
+    cacheProbe: (ref) => claudeCacheProbe(source, ref),
   };
+}
+
+// ── The prompt-cache probe ───────────────────────────────────────────────────
+//
+// Claude is the best-served harness here for the same reason it is the best-served journal: every
+// assistant entry carries `message.usage`, and that one object answers BOTH questions the cache chip
+// exists for.
+//
+//   cache_read_input_tokens = 0 with a real write behind it  → the turn MISSED
+//   cache_creation.ephemeral_1h_input_tokens > 0             → this session is on the ONE-HOUR TTL
+//
+// The second is why no pane ever shows a guessed number for Claude. The same entry that gives
+// `lastRequestAt` says which window was written, so the FIRST reading is already measured — there is
+// no one-turn-wrong answer to live through (ADR 0041, Decision 1). Ported from herdr-cache-alert
+// `src/harness/claude.ts:269-291`.
+
+/** Claude's `usage.cache_creation` split, as far as the probe cares. */
+function ttlFromUsage(usage: JsonObject, path: string): Sourced<number> | undefined {
+  const split = asRecord(usage.cache_creation);
+  if (split === null) return undefined;
+  const hour = tokenCount(split.ephemeral_1h_input_tokens) ?? 0;
+  const fiveMin = tokenCount(split.ephemeral_5m_input_tokens) ?? 0;
+  if (hour > 0) return observedClaim(3600, `${String(hour)} tokens written to the 1h cache in ${path}`);
+  if (fiveMin > 0) return observedClaim(300, `${String(fiveMin)} tokens written to the 5m cache in ${path}`);
+  return undefined;
+}
+
+async function claudeCacheProbe(
+  source: ClaudeTranscriptSource,
+  ref: AgentSessionRef,
+): Promise<CacheProbe | null> {
+  const tail = await probeTail(source, ref);
+  if (tail === null) return null;
+  const found = walkBack(tail.lines, (raw): CacheProbe | undefined => {
+    const entry = asRecord(raw);
+    if (entry === null || entry.type !== "assistant") return undefined;
+    const message = asRecord(entry.message);
+    if (message === null) return undefined;
+    const at = Date.parse(asText(entry.timestamp) ?? "");
+    if (Number.isNaN(at)) return undefined;
+    const usage = asRecord(message.usage) ?? {};
+    const probe: CacheProbe = {
+      lastRequestAt: at,
+      turnId: asText(message.id) ?? asText(entry.uuid) ?? String(at),
+      cacheReadTokens: tokenCount(usage.cache_read_input_tokens) ?? 0,
+      cacheCreationTokens: tokenCount(usage.cache_creation_input_tokens) ?? 0,
+      measuredAt: tail.mtimeMs,
+      evidence: `${tail.path} (${asText(entry.timestamp) ?? "no timestamp"})`,
+    };
+    const observed = ttlFromUsage(usage, tail.path);
+    if (observed !== undefined) probe.observedTtlSeconds = observed;
+    const model = asText(message.model);
+    if (model !== undefined) probe.model = model;
+    return probe;
+  });
+  // The tail held no assistant turn at all — a session that has only just started, or one turn larger
+  // than the window. The tracker keeps whatever the last successful probe left behind.
+  return found ?? null;
 }

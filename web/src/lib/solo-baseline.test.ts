@@ -106,6 +106,9 @@ const AGENT_VIEW_KEYS = {
   // present exactly when the snapshot was widened (`?sessions=all`, the "All sessions" view), absent
   // on every other read — which is every read the app made before that view existed.
   session: true,
+  // Also not a crew dimension: the pane's prompt-cache reading (M28/02), computed on the machine the
+  // pane lives on and absent until its agent has taken one turn. A 1.8.x peer omits it.
+  cache: true,
 } satisfies Record<keyof AgentView, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -189,6 +192,7 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
     expect(AGENT_VIEW_KEYS.session).toBe(true);
     expect(Object.keys(AGENT_VIEW_KEYS).toSorted()).toEqual([
       "agent",
+      "cache",
       "cwd",
       "focused",
       "hasSession",

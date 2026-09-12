@@ -8,6 +8,8 @@
 // make "read that log" a per-harness decision behind one interface, so a new harness is an adapter
 // rather than a fork of the reader.
 
+import type { CacheProbe } from "../cache/engine.ts";
+
 /**
  * How an agent named its session, straight off Herdr's `agent_session` record.
  *
@@ -111,4 +113,18 @@ export interface JournalAdapter {
   readonly agent: string;
   readonly source: TranscriptSource;
   parse(text: string): TranscriptEntry[];
+  /**
+   * The prompt-cache reading for one session, off the same log `parse` reads — or null when there is
+   * nothing to read yet.
+   *
+   * OPTIONAL ON PURPOSE. grok and hermes publish no cache TTL Collie could quote, so they ship no rule
+   * and need no probe, and they stay exactly as they are. Nothing in the history path calls this: it is
+   * driven only by `bridge/cache/tracker.ts` on the state engine's own poll (ADR 0041).
+   *
+   * Unlike `parse` this one IS impure — it reads a 128 KB tail, or one indexed query. It must never
+   * throw: a missing file, a malformed line or a locked database all mean `null`, which the tracker
+   * turns into "no reading", which renders as nothing. Every path it opens goes through
+   * `containedRealpath` like every other journal read.
+   */
+  cacheProbe?(ref: AgentSessionRef): Promise<CacheProbe | null>;
 }

@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
+import { CacheChip } from "@/components/cache-chip";
 import { HostChip } from "@/components/host-chip";
 import { SessionChip } from "@/components/session-chip";
 import { PaneHint } from "@/components/pane-hint";
@@ -231,6 +232,12 @@ export function AgentCard({
               that exists today this column is still the age alone, or nothing. */}
           <HostChip host={agent.host} />
           <SessionChip session={agent.session} />
+          {/* How long this pane's prompt cache stays warm, BEFORE the age: the two are both small
+              right-aligned runs, and the one that is about the future reads better beside the name than
+              behind the one that is about the past. Self-hides like the two chips above — a pane whose
+              agent has not taken a turn yet carries no reading, and nothing is guessed before one
+              exists. Not a control here: the card is already one button. */}
+          <CacheChip cache={agent.cache} host={agent.host} />
           {stamp !== undefined && <Age at={stamp} />}
         </div>
 

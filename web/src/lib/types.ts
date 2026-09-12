@@ -117,6 +117,66 @@ export interface AgentView {
    * rather than with the ambient one.
    */
   session?: string;
+  /**
+   * How long this pane's prompt cache stays warm. Mirrors `PaneWire.cache` in bridge/types.ts.
+   *
+   * **Absent, never a placeholder.** The number is computed on the machine the pane lives on, with that
+   * machine's own rules, so a peer's chip is true where it is rendered. A pane whose harness has no
+   * journal adapter, that named no session, or whose agent has not taken a turn yet carries no key at
+   * all, and a 1.8.x peer simply omits it — every one of those renders as nothing.
+   */
+  cache?: PaneCache;
+}
+
+/**
+ * One rule as the pane sheet reads it. Mirrors `CacheRuleWire` in bridge/types.ts.
+ *
+ * `label`, `sourceTitle` and the publisher are another vendor's words about their own product, so they
+ * are NOT translated — the same carve-out ADR 0030 makes for slash-command descriptions.
+ */
+export interface CacheRuleWire {
+  id: string;
+  label: string;
+  ttlSeconds: number;
+  confidence: CacheConfidence;
+  sourceTitle: string;
+  sourceUrl: string;
+  retrievedAt: string;
+  slidingWindow: boolean;
+  automatic: boolean;
+  note?: string;
+  overridden?: { ttlSeconds: number; sourceUrl: string; retrieved: string; note?: string };
+}
+
+/** GET /api/cache-rules — this host's own catalog. Mirrors `CacheRulesResponse` in bridge/types.ts. */
+export interface CacheRulesResponse {
+  rules: CacheRuleWire[];
+}
+
+/** What the cache chip can say. Mirrors `CacheStateName` in bridge/cache/engine.ts. */
+export type CacheStateName = "warm" | "expiring" | "cold" | "unknown";
+
+/** How sure the number is. Mirrors `Confidence` in bridge/cache/claims.ts. */
+export type CacheConfidence = "documented" | "reported" | "inferred" | "observed";
+
+/**
+ * One pane's prompt-cache reading. Mirrors `PaneCache` in bridge/cache/engine.ts.
+ *
+ * Seven small fields, because the source title and the retrieved date do not ride every pane: the
+ * sheet fetches the rule catalog once from `GET /api/cache-rules`.
+ */
+export interface PaneCache {
+  state: CacheStateName;
+  /** Epoch ms the cache dies. The chip counts down to this against one page clock. */
+  expiresAt?: number;
+  ttlSeconds: number;
+  ruleId: string;
+  confidence: CacheConfidence;
+  lastRequestAt?: number;
+  /** When the evidence was read. Shown in the sheet as "last read 4m"; never used to decide a state. */
+  measuredAt?: number;
+  /** Present, and always `true`, when the number came from the operator's `cache-rules.toml`. */
+  overridden?: true;
 }
 
 /**

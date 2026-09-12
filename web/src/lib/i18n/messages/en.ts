@@ -970,6 +970,37 @@ export const en = {
   "updateRibbon.dismiss": "Dismiss this version",
   // The close on the two QUIET crew states. Not "dismiss this version": what is put down there is a
   // notice about another machine, and this host's own offer is untouched by it.
+  // ── The prompt-cache chip and its sheet (M28/02) ──────────────────────────
+  // A rule's `label`, its source title and its publisher are NOT here: those are another vendor's
+  // words about their own product, the same carve-out ADR 0030 makes for slash-command descriptions.
+  // The countdown itself is a number and a unit letter, which is the compact convention `timeAgoShort`
+  // already follows across every locale.
+  "cache.warm": "Prompt cache warm",
+  "cache.expiring": "Prompt cache expiring",
+  "cache.cold": "cold",
+  "cache.unknown": "Prompt cache not known",
+  "cache.under1m": "<1m",
+  "cache.overridden": "TTL set in cache-rules.toml",
+  "cache.sheet.title": "Prompt cache",
+  "cache.sheet.rule": "Rule",
+  "cache.sheet.ttl": "Stays warm for",
+  "cache.sheet.ttlMinutes": "{minutes} min",
+  "cache.sheet.confidence": "Confidence",
+  "cache.sheet.source": "Read on",
+  "cache.sheet.retrieved": "Checked",
+  "cache.sheet.measured": "Measured on this machine",
+  "cache.sheet.lastRead": "last read {age}",
+  "cache.sheet.overridden": "Moved by cache-rules.toml",
+  "cache.sheet.thisMachine": "This machine",
+  "cache.sheet.onPeer": "Read on {host}. Its rule catalog is not forwarded, so the source is not quoted here.",
+  "cache.sheet.state": "State",
+  "cache.sheet.state.warm": "Warm",
+  "cache.sheet.state.expiring": "Expiring",
+  "cache.sheet.state.cold": "Cold",
+  "cache.confidence.documented": "documented",
+  "cache.confidence.reported": "reported",
+  "cache.confidence.inferred": "inferred",
+  "cache.confidence.observed": "measured",
   "updateRibbon.hideNotice": "Hide this notice",
 } as const;
 

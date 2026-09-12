@@ -1,6 +1,6 @@
 // pane → cache state. The one place the numbers are decided, and it is PURE.
 //
-// No `Date.now()`, no fs, no import from an adapter, no React. `now` arrives as a parameter and the
+// No wall clock, no fs, no import from an adapter, no React. `now` arrives as a parameter and the
 // next memo is RETURNED rather than mutated, so the whole precedence table is testable as data.
 //
 // Two rules govern everything here, both carried over from AltanS/herdr-cache-alert `src/engine.ts`:

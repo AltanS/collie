@@ -122,10 +122,37 @@ export async function head(path: string, bytes = 64 * 1024): Promise<string> {
 export async function loadTail(
   path: string,
 ): Promise<{ text: string; complete: boolean; size: number; mtimeMs: number }> {
+  return tailBytes(path, MAX_TRANSCRIPT_BYTES);
+}
+
+/**
+ * How much of the tail a cache probe reads. Big enough to hold the last assistant turn even after a
+ * few large tool results, small enough to be free — and the same 128 KB window herdr-cache-alert
+ * measured against a 3.7 GB transcript directory.
+ *
+ * It is NOT {@link MAX_TRANSCRIPT_BYTES}: a history read happens when somebody taps History, a cache
+ * probe happens on the poll loop, and 32 MB per pane per poll is not a thing to do.
+ */
+export const CACHE_PROBE_BYTES = 128 * 1024;
+
+/**
+ * Tail-read at most `bytes` of a log. {@link loadTail} is this at the journal's own cap.
+ *
+ * ALWAYS the same window, never a remembered offset. A resume-from-offset read is the right shape for
+ * streaming every turn and the wrong shape for asking "what is the newest turn": a poll where nothing
+ * new was written would read zero bytes and conclude, wrongly, that there is no turn at all.
+ *
+ * Over the cap the clipped first line is a partial JSON object; every parser skips unparseable lines
+ * by design, so the window simply starts one turn later.
+ */
+export async function tailBytes(
+  path: string,
+  bytes: number,
+): Promise<{ text: string; complete: boolean; size: number; mtimeMs: number }> {
   const st = await stat(path);
   const size = st.size;
-  const complete = size <= MAX_TRANSCRIPT_BYTES;
+  const complete = size <= bytes;
   const file = Bun.file(path);
-  const text = complete ? await file.text() : await file.slice(size - MAX_TRANSCRIPT_BYTES).text();
+  const text = complete ? await file.text() : await file.slice(size - bytes).text();
   return { text, complete, size, mtimeMs: st.mtimeMs };
 }

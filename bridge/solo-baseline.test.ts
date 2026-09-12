@@ -302,6 +302,10 @@ const PANE_WIRE_KEYS = {
   // and then on every pane in the body. Nothing in this baseline asks, so it is absent on every
   // pane here and no golden byte moved — which is the claim, not an aside.
   session: true,
+  // The pane's prompt-cache reading (M28/02). Also not a crew dimension, and also absent here: no
+  // pane in this baseline names a session a probe could read, so no golden byte moved — which is the
+  // claim the feature makes, not an aside. The bridge never guesses a number before it measures one.
+  cache: true,
 } satisfies Record<keyof PaneWire, true>;
 
 const DEVICE_AUTH_KEYS = {
@@ -408,6 +412,7 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
   test("PaneWire carries the two address dimensions and nothing else", () => {
     expect(Object.keys(PANE_WIRE_KEYS).toSorted()).toEqual([
       "agent",
+      "cache",
       "cwd",
       "focused",
       "hasSession",
@@ -583,6 +588,9 @@ describe("solo zero-tax — routes", () => {
       "/^\\/api\\/tab\\/([^/]+)\\/(rename|close)$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktree(?:\\/(open))?$/",
       "/^\\/api\\/workspace\\/([^/]+)\\/worktrees$/",
+      // The prompt-cache rule catalog (M28/02). A process-scoped READ, gated exactly as `/api/config`
+      // is, and the only route this feature adds. Not forwarded across the crew link.
+      "/api/cache-rules",
       "/api/config",
       // The Crew overview (bridge/crew/status-wire.ts) — a FRONT-DOOR route, and it legitimately
       // extends this list rather than being exempted, exactly as pairing and STT do. It is not a

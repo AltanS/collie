@@ -1,14 +1,19 @@
 // Domain model for the bridge. These are OUR types, decoupled from Herdr's wire shapes
 // (which live only in mux/herdr/client.ts). The rest of the app talks in these terms.
 
+import type { Confidence } from "./cache/claims.ts";
+import type { PaneCache } from "./cache/engine.ts";
 import type { ApiErrorDetail, ErrorCode } from "./error-codes.ts";
 import type { AgentSessionRef, TranscriptEntry } from "./journal/types.ts";
 import type { MuxCapability, MuxSpaceCapacity, MuxTopologyLatency } from "./mux/capabilities.ts";
 import type { UpdateRun } from "./update-run.ts";
 
 // Re-exported so the wire surface has ONE import site: a consumer of PaneHistoryResponse gets the
-// entry shape from here too, without reaching into an adapter module.
+// entry shape from here too, without reaching into an adapter module. `PaneCache` rides along for the
+// same reason — it is a pane field now, so a reader of this module needs no second import.
 export type { TranscriptEntry, TranscriptPart } from "./journal/types.ts";
+export type { CacheStateName, PaneCache } from "./cache/engine.ts";
+export type { Confidence } from "./cache/claims.ts";
 
 export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
 
@@ -110,6 +115,17 @@ export interface AgentView {
    * `done` agent IS the "finished while you weren't looking" state — there is no stored seen flag.
    */
   lastSeenAt?: number;
+  /**
+   * How long this pane's prompt cache stays warm, read from the harness's own transcript
+   * (bridge/cache/tracker.ts). Attached at serialise time exactly as {@link lastActiveAt} is, so it
+   * rides `toPaneWire`'s rest spread onto the wire.
+   *
+   * ABSENT, NEVER A PLACEHOLDER. A pane with no journal adapter, no session, or an agent that has not
+   * taken a turn yet carries no key at all — the bridge cannot read the agent's environment, so it
+   * does not guess ([ADR 0041](../.adr/0041-cache-rules-are-sourced-claims.md)). That is what keeps a
+   * solo body byte-identical to 1.8.2's for every non-agent pane (`solo-baseline.test.ts`).
+   */
+  cache?: PaneCache;
 }
 
 /**
@@ -883,6 +899,43 @@ export interface Launcher {
 export interface LaunchersResponse {
   launchers: Launcher[];
   home: string;
+}
+
+/**
+ * One rule as the pane sheet reads it — the catalog entry behind a pane's `cache.ruleId`.
+ *
+ * The source title and the retrieved date do NOT ride every pane: seven small fields do, and the sheet
+ * fetches this catalog once per boot, lazily, on the first time it is opened. A rule the operator moved
+ * carries `overridden` with their OWN url and date, because an override may move a number and may not
+ * remove its provenance (ADR 0041).
+ */
+export interface CacheRuleWire {
+  id: string;
+  /** Another vendor's words for their own product, so it is not translated (ADR 0030's carve-out). */
+  label: string;
+  ttlSeconds: number;
+  confidence: Confidence;
+  sourceTitle: string;
+  sourceUrl: string;
+  retrievedAt: string;
+  slidingWindow: boolean;
+  automatic: boolean;
+  /** One line a reader needs in order to not misread the number. Absent when the rule carries none. */
+  note?: string;
+  /** Present only when `cache-rules.toml` moves this rule, and then it is the operator's own source. */
+  overridden?: { ttlSeconds: number; sourceUrl: string; retrieved: string; note?: string };
+}
+
+/**
+ * GET /api/cache-rules — the catalog behind every cache chip on THIS host, plus its applied overrides.
+ *
+ * A read, gated as `/api/config` is, ETagged through `bridge/http-cache.ts`. It is this host's own
+ * catalog and is not forwarded across the crew link: a peer may hold its own override, so quoting the
+ * lead's catalog for a peer's number would cite a page that peer never read. The sheet on a peer's pane
+ * says so in a sentence instead.
+ */
+export interface CacheRulesResponse {
+  rules: CacheRuleWire[];
 }
 
 /** GET /api/config — bridge capabilities and the build id (push setup + stale-cache detection). */

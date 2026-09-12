@@ -49,6 +49,7 @@ import * as crew from "./sections/crew";
 import * as settings from "./sections/settings";
 import * as notices from "./sections/notices";
 import * as motion from "./sections/motion";
+import * as cache from "./sections/cache";
 
 /** What a section's `render` gets handed — the page-level knobs a section needs. Today only the
  *  shared connection clock (`BootSection`'s `clock` prop); a section that needs nothing reads
@@ -83,6 +84,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: brand.DEF, render: () => <brand.BrandSection /> },
   { def: notices.DEF, render: () => <notices.NoticesSection /> },
   { def: motion.DEF, render: () => <motion.MotionSection /> },
+  { def: cache.DEF, render: () => <cache.CacheSection /> },
 ];
 
 const THEME_OPTIONS = [

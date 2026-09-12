@@ -8,6 +8,9 @@ import { isLoopbackBindHost, type Config } from "./config.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { MUX_CAPABILITIES, type MuxCapability, type MuxCapabilityDeclaration } from "./mux/capabilities.ts";
 import type { MuxAdapter, MuxAck, MuxGrid } from "./mux/types.ts";
+import { allCacheRules } from "./cache/rules/index.ts";
+import type { CacheOverride } from "./cache/engine.ts";
+import { createCacheRulesReader } from "./operator-cache-rules.ts";
 import { computeEtag, gzipJsonResponse, notModified, wantsGzip } from "./http-cache.ts";
 import { pluginRoot } from "./root.ts";
 import type { NotifyPrefs, NotifyPrefsStore } from "./notify-prefs.ts";
@@ -74,6 +77,9 @@ import type {
   CrewStatusResponse,
   Launcher,
   LaunchersResponse,
+  CacheRulesResponse,
+  CacheRuleWire,
+  PaneCache,
   PaneHistoryResponse,
   PaneReadResponse,
   PaneWire,
@@ -702,8 +708,24 @@ export function startServer(opts: {
    * answers 503, and one that was never given it does the same.
    */
   stt?: () => Promise<SttProvider | null>;
+  /**
+   * The journal registry, built once by the caller. Absent means this function builds its own, which
+   * is what every test does; `bridge/index.ts` passes one so the cache tracker and the history route
+   * share the adapters' memoised path caches.
+   */
+  journals?: Record<string, JournalAdapter>;
+  /**
+   * The prompt-cache ledger, read synchronously at serialise time exactly as `activity` is. Absent
+   * means no pane carries a `cache` key — which is every test, and every install with
+   * `COLLIE_TRANSCRIPT` off.
+   */
+  cache?: { get(sessionKey: string): PaneCache | undefined };
 }) {
   const { cfg, registry, push, snooze, notifyPrefs, updateMonitor, audit, activity, crew } = opts;
+  // The prompt-cache ledger, built in bridge/index.ts beside the journal registry it probes through,
+  // because the state engine's poll is what drives it and that poll is wired there. Undefined when
+  // `COLLIE_TRANSCRIPT` is off: no journal, no probe, and every pane reads exactly as it did in 1.8.2.
+  const cache = opts.cache;
   const pairing = opts.pairing;
   const stt = opts.stt ?? (async () => null);
   // One gate per Bun server, not per request: two slow uploads and their two provider calls share
@@ -728,7 +750,11 @@ export function startServer(opts: {
   const operatorFonts = createOperatorFonts(cfg.themeFile);
   // Its sibling too, on the same contract: one reader, one mtime cache, launchers.toml off the hot path.
   const operatorLaunchers = createOperatorLaunchers(cfg.launchersFile);
-  const journals = cfg.transcript ? buildJournalRegistry(cfg.journalRoots) : null;
+  // The sixth on that contract: the operator's own prompt-cache TTLs, cache-rules.toml off the hot path.
+  const operatorCacheRules = createCacheRulesReader(cfg.cacheRulesFile);
+  // ONE registry for the process, built by the caller so the cache tracker probes through the same
+  // adapters (and therefore the same memoised path caches) the history route reads.
+  const journals = cfg.transcript ? (opts.journals ?? buildJournalRegistry(cfg.journalRoots)) : null;
   const transcripts = cfg.transcript ? new TranscriptStore() : null;
   /** Does this agent have a journal at all — the snapshot's History-affordance gate. */
   const hasJournal = (agent: string) => adapterFor(journals ?? {}, agent) !== undefined;
@@ -777,9 +803,17 @@ export function startServer(opts: {
     // are read at serialise time, i.e. as fresh as the request. The ledger is keyed by SESSION, so
     // the runtime whose panes are being serialised is the one that has to be asked — which is why
     // this takes the runtime rather than closing over the ambient one.
+    // The prompt-cache reading rides the same way and for the same reason: the tracker's map is read
+    // HERE, at serialise time, because `localSnapshot` is synchronous and a probe touches disk (the
+    // probe runs on the state engine's poll instead — bridge/cache/tracker.ts). Keyed by the harness
+    // SESSION id rather than the pane id, because pane ids churn and a renumbered pane must inherit
+    // nothing. No entry means no key at all, which renders as nothing.
     const withActivity = (from: SessionRuntime, p: AgentView): AgentView => {
       const a = activity.get(from.name, p.paneId);
-      return a ? { ...p, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : p;
+      const withTimes = a ? { ...p, lastActiveAt: a.activeAt, lastSeenAt: a.seenAt } : p;
+      const key = p.agentSession?.value;
+      const reading = key === undefined ? undefined : cache?.get(key);
+      return reading === undefined ? withTimes : { ...withTimes, cache: reading };
     };
     // The one place a pane leaves the bridge: the session ref is stripped to a presence flag here,
     // so an agent-reported filesystem path never reaches a browser (see toPaneWire). The flag is
@@ -1345,6 +1379,18 @@ export function startServer(opts: {
       if (sessionRouted) return sessionRouted;
 
       // ── Misc API ─────────────────────────────────────────────────────────
+      // The rule catalog behind the cache chips, and the overrides this host applies. Gated exactly as
+      // `/api/config` is — read-level, and through `guard` so COLLIE_PUBLIC_HOSTS covers it — because
+      // it is the same kind of payload: Collie's own facts plus operator-authored text.
+      if (pathname === "/api/cache-rules" && req.method === "GET") {
+        const denied = guard(req, cfg, "read", pairing);
+        if (denied) return denied;
+        return cacheRulesRoute(
+          operatorCacheRules,
+          req.headers.get("accept-encoding"),
+          req.headers.get("if-none-match"),
+        );
+      }
       if (pathname === "/api/config") {
         // Read-level, like the other non-terminal endpoints. Nothing Collie puts here is a
         // credential — the VAPID public key is handed to every browser by design — but the payload
@@ -3012,6 +3058,56 @@ export async function launchersRoute(
   const rows = await getLaunchers();
   return json({ launchers: rows, home: homedir() } satisfies LaunchersResponse, acceptEncoding);
 }
+
+// GET /api/cache-rules — the rule catalog behind every cache chip on THIS host, plus the overrides
+// the operator's own `cache-rules.toml` applies right now.
+//
+// A READ, and a cheap one: a dozen object literals and one mtime-checked file read. ETagged because
+// the catalog only moves on a release or a file edit, so a phone that has it re-asks with one
+// `if-none-match` and gets 304 for the rest of its boot.
+//
+// NOT FORWARDED ACROSS THE CREW LINK, and that is a decision rather than an omission. A peer may hold
+// its own override, so quoting the lead's catalog for a peer's number would cite a page that peer never
+// read. The sheet on a peer's pane says where the number was read instead (ADR 0041, Decision 11).
+export async function cacheRulesRoute(
+  getOverrides: () => Promise<readonly CacheOverride[]>,
+  acceptEncoding: string | null,
+  ifNoneMatch: string | null,
+): Promise<Response> {
+  const overrides = await getOverrides();
+  const byId = new Map(overrides.map((o) => [o.ruleId, o]));
+  const rules: CacheRuleWire[] = allCacheRules().map((rule) => {
+    const row: CacheRuleWire = {
+      id: rule.id,
+      label: rule.label,
+      ttlSeconds: rule.ttlSeconds.value,
+      confidence: rule.ttlSeconds.confidence,
+      sourceTitle: rule.ttlSeconds.source.title,
+      sourceUrl: rule.ttlSeconds.source.url,
+      retrievedAt: rule.ttlSeconds.source.retrievedAt,
+      slidingWindow: rule.slidingWindow,
+      automatic: rule.automatic,
+    };
+    // One line, not the whole list: the sheet has room for the caveat that changes how the number is
+    // read, and `notes` is written caveat-first.
+    const note = rule.ttlSeconds.note ?? rule.notes?.[0];
+    if (note !== undefined) row.note = note;
+    const moved = byId.get(rule.id);
+    if (moved !== undefined) {
+      const overridden = { ttlSeconds: moved.ttlSeconds, sourceUrl: moved.sourceUrl, retrieved: moved.retrieved };
+      row.overridden = moved.note === undefined ? overridden : { ...overridden, note: moved.note };
+    }
+    return row;
+  });
+  const body: CacheRulesResponse = { rules };
+  const etag = computeEtag(JSON.stringify(body));
+  if (notModified(ifNoneMatch, etag)) {
+    // RFC 7232 §4.1: a 304 MUST echo the ETag and MUST carry no body.
+    return new Response(null, { status: 304, headers: { etag, "cache-control": "no-store" } });
+  }
+  return gzipJsonResponse(body, acceptEncoding, { etag });
+}
+
 
 // Launch one allowlisted command, either in a new throwaway Space (from the dashboard, no pane
 // context) or as a new tab beside a pane the client names (from a pane, the swipe-up switcher). The

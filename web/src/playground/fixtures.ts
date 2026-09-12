@@ -35,6 +35,7 @@ import type {
   DeviceAuth,
   CrewMemberStatus,
   CrewStatusResponse,
+  PaneCache,
   ServerSummary,
   SessionSummary,
   TabView,
@@ -1045,6 +1046,30 @@ export const paneStack: PaneFixture = paneHostUnreachable;
 /** A device the fronting proxy names and the bridge does not allowlist — the OTHER composer lock,
  *  independent of the crew host gate above, both driven at once for the stack card. */
 export const deviceStack: DeviceAuth = deviceRefused;
+
+// ── Prompt cache readings ────────────────────────────────────────────────────────────────────────
+//
+// `CacheChip` reads the live page clock (`lib/cache-clock.ts`'s own `Date.now()`), never a fixture's
+// clock, so a card's `expiresAt` has to be measured from THIS module's load time or every card would
+// read cold the moment it renders. `cacheNow` is that anchor — a second one from `TS` above, because
+// the cache chip's countdown and the herd's "since" ages are unrelated facts and have no reason to
+// share a number.
+
+export const cacheNow = Date.now();
+
+/**
+ * One pane's prompt-cache reading, with the ordinary defaults a rule-driven number carries. A card
+ * overrides only what it is demonstrating — `state` and usually `expiresAt` — so the ones it doesn't
+ * mention read as a plain, unremarkable rule.
+ */
+export function paneCache(overrides: Partial<PaneCache> & { state: PaneCache["state"] }): PaneCache {
+  return {
+    ttlSeconds: 300,
+    ruleId: "anthropic-claude-sonnet",
+    confidence: "documented",
+    ...overrides,
+  };
+}
 
 // ── NoEchoNotice (gap 2) ─────────────────────────────────────────────────────────────────────────
 

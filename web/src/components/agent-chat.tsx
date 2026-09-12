@@ -49,6 +49,8 @@ import { AgentIcon } from "@/components/agent-icon";
 import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
 import { StripsSummary } from "@/components/strips-summary";
+import { CacheChip } from "@/components/cache-chip";
+import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { CompactStripLabels, STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
@@ -296,6 +298,10 @@ export function AgentChat({
   // Drawers/sheets are mutually exclusive — at most one open. A single value makes that invariant
   // unrepresentable to violate.
   const [drawer, setDrawer] = useState<Drawer>(null);
+  // The prompt-cache sheet is NOT one of the mutually-exclusive drawers above: it is a reading with no
+  // control in it, opened from the header rather than from the composer, and it closes nothing the
+  // operator was in the middle of. Its own boolean says so.
+  const [cacheSheetOpen, setCacheSheetOpen] = useState(false);
   const closeDrawer = () => {
     setDrawer(null);
     setPull(0);
@@ -1399,6 +1405,22 @@ export function AgentChat({
               <span className="truncate font-semibold">{t("chat.header.agentGone")}</span>
             </div>
           )}
+          {/* How long this pane's prompt cache stays warm, and a tap opens the rule behind the number.
+              A SIBLING of the identity button rather than a child of it, which the spec's "line one of
+              the identity block" cannot be: a button inside a button is invalid, and an aria-label on
+              the outer one replaces everything inside it, so a chip nested there would be a control no
+              reader could reach and no pointer could hit. Beside it, on the same row and the same
+              baseline, it reads as the line-one mark it is meant to be and keeps its own 
+              44px-high hit box. Self-hides until the agent has taken a turn. */}
+          {agent !== undefined && (
+            <CacheChip
+              cache={agent.cache}
+              host={agent.host}
+              variant="button"
+              onOpen={() => setCacheSheetOpen(true)}
+              className="min-h-11 items-center px-1"
+            />
+          )}
           </HeaderStatus>
         </RouteHeader>
 
@@ -2059,6 +2081,15 @@ export function AgentChat({
             node. FindBar's own mount effect then focuses the input and pops the keyboard. Verified in
             agent-chat.test.tsx rather than reasoned about, because the ordering is the whole
             argument. */}
+        {/* The rule behind the header chip's number: its source, the date it was last checked, and on a
+            peer's pane the sentence that says why the source is not quoted. A reading, with no control
+            in it — the only lever is `cache-rules.toml` on the machine that computed the number. */}
+        <CacheSheet
+          open={cacheSheetOpen}
+          onClose={() => setCacheSheetOpen(false)}
+          cache={agent?.cache}
+          host={agent?.host}
+        />
         <PaneActionsSheet
           open={drawer === "paneMenu"}
           onClose={closeDrawer}

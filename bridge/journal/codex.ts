@@ -26,7 +26,9 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
+import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
 import { containedRealpath, exists, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, MAX_RESULT_CHARS, MAX_TEXT_CHARS, oneLine, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
@@ -326,9 +328,83 @@ async function descending(dir: string): Promise<string[]> {
 
 /** Codex's journal adapter. `agent` matches the Herdr snapshot's `agent` string. */
 export function codexJournal(roots: string | readonly string[]): JournalAdapter {
+  const source = new CodexTranscriptSource(roots);
   return {
     agent: "codex",
-    source: new CodexTranscriptSource(roots),
+    source,
     parse: parseCodexTranscript,
+    cacheProbe: (ref) => codexCacheProbe(source, ref),
   };
+}
+
+// ── The prompt-cache probe ───────────────────────────────────────────────────
+//
+// Ported from herdr-cache-alert `src/harness/codex.ts:259-326`. THREE facts live on THREE DIFFERENT
+// ROWS, which is why this walks back collecting rather than matching one line:
+//
+//   the clock      — any row's own `timestamp`
+//   the cache counts — `payload.info.last_token_usage` where `payload.type === "token_count"`
+//   the turn + model — `payload.turn_id` / `payload.model` where `type === "turn_context"`
+//
+// `last_token_usage` is the TURN. `total_token_usage` is a running total that reaches millions and
+// would read as permanently warm, so it is never read. And `turn_context` is written once per turn
+// while `token_count` fires many times, so the model can sit much further back than the newest counts
+// — which is why the window is 128 KB and not smaller: a shorter tail finds the tokens and loses the
+// model, silently demoting every GPT-5.6 session to the five-minute rule.
+//
+// Codex publishes nothing that names its TTL outright, so unlike Claude there is no `observedTtl`
+// here. The model is what the rule is picked by (`bridge/cache/rules/index.ts` § modelRuleFor).
+
+async function codexCacheProbe(
+  source: CodexTranscriptSource,
+  ref: AgentSessionRef,
+): Promise<CacheProbe | null> {
+  const tail = await probeTail(source, ref);
+  if (tail === null) return null;
+
+  let lastRequestAt = 0;
+  let stamp = "";
+  let turnId = "";
+  let model: string | undefined;
+  let usage: JsonObject | undefined;
+
+  walkBack(tail.lines, (raw): true | undefined => {
+    const entry = asRecord(raw);
+    if (entry === null) return undefined;
+    if (lastRequestAt === 0) {
+      const ts = asText(entry.timestamp);
+      const at = Date.parse(ts ?? "");
+      if (!Number.isNaN(at)) {
+        lastRequestAt = at;
+        stamp = ts ?? "";
+      }
+    }
+    const payload = asRecord(entry.payload);
+    if (usage === undefined && payload !== null && payload.type === "token_count") {
+      usage = asRecord(asRecord(payload.info)?.last_token_usage) ?? undefined;
+    }
+    if (turnId === "" && entry.type === "turn_context" && payload !== null) {
+      turnId = asText(payload.turn_id) ?? "";
+      model = asText(payload.model);
+    }
+    // `true` stops the walk; `undefined` keeps it going. Everything needed is in hand.
+    return lastRequestAt !== 0 && usage !== undefined && turnId !== "" ? true : undefined;
+  });
+
+  if (lastRequestAt === 0) return null;
+  const cacheReadTokens = tokenCount(usage?.cached_input_tokens);
+  const cacheCreationTokens = tokenCount(usage?.cache_write_input_tokens);
+  const detail = usage === undefined ? "no token_count in tail" : `cache read ${String(cacheReadTokens ?? "?")}`;
+  const probe: CacheProbe = {
+    lastRequestAt,
+    // The turn id keeps a cold turn judged once. Falling back to the timestamp is correct but coarser:
+    // `token_count` fires many times per turn, so a timestamp key re-judges the same turn every poll.
+    turnId: turnId === "" ? String(lastRequestAt) : turnId,
+    measuredAt: tail.mtimeMs,
+    evidence: `${tail.path} (${stamp}${model === undefined ? "" : `, ${model}`}, ${detail})`,
+  };
+  if (cacheReadTokens !== undefined) probe.cacheReadTokens = cacheReadTokens;
+  if (cacheCreationTokens !== undefined) probe.cacheCreationTokens = cacheCreationTokens;
+  if (model !== undefined) probe.model = model;
+  return probe;
 }

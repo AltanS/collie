@@ -179,7 +179,7 @@ describe("newestReleaseDate", () => {
 });
 
 test("no shipped claim is more than a year older than this release", () => {
-  // The gate's clock is the CHANGELOG, never `Date.now()`. Only the release commit writes that date
+  // The gate's clock is the CHANGELOG, never the wall clock. Only the release commit writes that date
   // (`scripts/check-version.sh:8-11`), so the gate bites at exactly the moment a release would ship a
   // year-old number, which is the moment it should.
   const changelog = readFileSync(join(import.meta.dir, "..", "..", "CHANGELOG.md"), "utf8");
