@@ -12,7 +12,7 @@ type Handlers = Record<string, () => void>;
 interface FakeWorker {
   state: string;
   addEventListener: (type: string, fn: () => void) => void;
-  postMessage: (message: { type: string }, transfer?: readonly Transferable[]) => void;
+  postMessage: ReturnType<typeof vi.fn>;
 }
 
 function worker(state: string, on: Handlers): FakeWorker {
@@ -21,19 +21,22 @@ function worker(state: string, on: Handlers): FakeWorker {
     addEventListener: (type, fn) => {
       on[type] = fn;
     },
-    postMessage: () => {},
+    // A spy, because the nudge out of `waiting` is an assertion of its own below.
+    postMessage: vi.fn(),
   };
 }
 
 /** Load a fresh `pwa.ts` against a stubbed registration, and hand back every seam it wired. */
-async function load(opts: { controlled?: boolean; installing?: FakeWorker | null } = {}) {
+async function load(
+  opts: { controlled?: boolean; installing?: FakeWorker | null; waiting?: FakeWorker | null } = {},
+) {
   vi.resetModules();
   const reload = vi.fn();
   const regEvents: Handlers = {};
   const swEvents: Handlers = {};
   const registration = {
     installing: opts.installing ?? null,
-    waiting: null,
+    waiting: opts.waiting ?? null,
     update: vi.fn(async () => {}),
     unregister: vi.fn(async () => true),
     addEventListener: (type: string, fn: () => void) => {
@@ -132,16 +135,91 @@ describe("the reload latch is split into two lanes", () => {
     expect(h.reload).toHaveBeenCalledTimes(1);
   });
 
-  it("a worker that activates for the automatic lane reloads through the automatic latch", async () => {
+  it("a worker reaching activated does not reload; the controller swap does (2026-09-12)", async () => {
+    // `activated` runs BEFORE the controller swap, and it is the handler that sweeps the superseded
+    // precache. A page reloaded there is a page asking the outgoing worker for a shell that is being
+    // deleted, which is the 2026-09-12 hang. The swap is the signal; nothing earlier is.
     const on: Handlers = {};
     const installing = worker("installing", on);
     const h = await load({ controlled: true, installing });
     h.regEvents.updatefound?.();
     installing.state = "activated";
     on.statechange?.();
+    expect(h.reload).not.toHaveBeenCalled();
+
+    h.swEvents.controllerchange?.();
     expect(h.reload).toHaveBeenCalledTimes(1);
-    // And a second activation on the same page adds nothing.
+    // And a second swap on the same page adds nothing.
+    h.swEvents.controllerchange?.();
+    expect(h.reload).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a tap while a worker is on its way in (2026-09-12)", () => {
+  // The incident: a self-update from 1.8.0 to 1.8.1, the band saying "updated, tap to reload", and a
+  // tap that reloaded the page eight seconds later while the new worker was still installing — an
+  // 869 kB chunk down a slow link, 125 seconds of it. The reload was answered by the OLD worker out
+  // of the OLD precache, so the page asked for 1.8.0's entry chunk; that chunk was gone from disk and
+  // then gone from the cache, React never booted, and the pre-React dog galloped until the operator
+  // reloaded by hand. The rule below is the whole fix.
+
+  it("INSTALLING: the tap reloads nothing and says so", async () => {
+    const on: Handlers = {};
+    const installing = worker("installing", on);
+    const h = await load({ controlled: true, installing });
+
+    await h.mod.checkForUpdate();
+    await vi.advanceTimersByTimeAsync(30_000); // far past the stuck guard
+    expect(h.reload).not.toHaveBeenCalled();
+    expect(h.registration.update).not.toHaveBeenCalled(); // nothing to ask: it is already happening
+    expect(h.registration.unregister).not.toHaveBeenCalled();
+    expect(h.mod.getUpdateStage()).toBe("installing");
+
+    // The swap is what moves the page, and the band stops saying "downloading" on the way.
+    installing.state = "activated";
     on.statechange?.();
+    expect(h.mod.getUpdateStage()).toBe("idle");
+    h.swEvents.controllerchange?.();
+    expect(h.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("WAITING: the tap nudges the worker through and still reloads on the swap", async () => {
+    const on: Handlers = {};
+    const waiting = worker("installed", on);
+    const h = await load({ controlled: true, waiting });
+
+    await h.mod.checkForUpdate();
+    expect(waiting.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" }, []);
+    expect(h.reload).not.toHaveBeenCalled();
+
+    h.swEvents.controllerchange?.();
+    expect(h.reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("THE GUARD IS GATED: a download started by this very tap is not a wedge", async () => {
+    // The guard is armed before `reg.update()` is awaited, so the worker it must not reload over is
+    // usually one this tap itself started. Eight seconds is the budget for a wedge, never for a
+    // download.
+    const on: Handlers = {};
+    const installing = worker("installing", on);
+    const h = await load({ controlled: true });
+    h.registration.update.mockImplementation(async () => {
+      h.registration.installing = installing;
+    });
+
+    await h.mod.checkForUpdate();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(h.reload).not.toHaveBeenCalled();
+    expect(h.mod.getUpdateStage()).toBe("installing");
+  });
+
+  it("NOTHING COMING: update() that finds no worker still takes the wedged-precache path", async () => {
+    // The other half of the gate. With nothing on its way in there is no download to protect, so the
+    // 2026-09-09 escape is untouched: unregister, drop the caches, go to the bridge.
+    const h = await load({ controlled: true });
+    await h.mod.checkForUpdate();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(h.registration.unregister).toHaveBeenCalledTimes(1);
     expect(h.reload).toHaveBeenCalledTimes(1);
   });
 });
@@ -165,15 +243,26 @@ describe("the tap after the stuck guard's own reload", () => {
     observeServerBuild("a-build-this-bundle-is-not");
   }
 
+  /**
+   * The wedge the guard is FOR, since 2026-09-12: an update job that never settles.
+   *
+   * It used to be reproduced with a worker stuck in `installing`, which is no longer a wedge at all
+   * — the page waits out a download however long it takes. What remains genuinely stuck is the job
+   * queue itself: `reg.update()` is a job on the same per-scope queue as a wedged one, so it never
+   * resolves, nothing is ever installing, and the tap has nothing to wait for.
+   */
+  function theUpdateJobNeverSettles(h: { registration: { update: ReturnType<typeof vi.fn> } }): void {
+    h.registration.update.mockImplementation(() => new Promise<void>(() => {}));
+  }
+
   it("THE CYCLE: the second tap unregisters instead of repeating the guard", async () => {
-    const on: Handlers = {};
-    const installing = worker("installing", on);
-    const h = await load({ controlled: true, installing });
+    const h = await load({ controlled: true });
+    theUpdateJobNeverSettles(h);
     await aPollSaysWeAreStale();
 
-    // Tap one. A worker is installing, so nothing is forced: the tap waits, and the stuck guard is
-    // what eventually reloads the page — on the stale bundle, precache intact.
-    await h.mod.checkForUpdate();
+    // Tap one. Nothing is on its way in and the job never settles, so the stuck guard is what
+    // eventually reloads the page — on the stale bundle, precache intact.
+    void h.mod.checkForUpdate();
     await vi.advanceTimersByTimeAsync(8_000);
     expect(h.reload).toHaveBeenCalledTimes(1);
     expect(h.registration.unregister).not.toHaveBeenCalled();
@@ -194,14 +283,13 @@ describe("the tap after the stuck guard's own reload", () => {
   it("a page the guard reloaded onto a bundle that is level does NOT unregister", async () => {
     // The note alone must not arm it. Nothing was observed off the header here, so the page is not
     // provably stale, and dropping a precache on that evidence buys a reload loop and no update.
-    const on: Handlers = {};
-    const installing = worker("installing", on);
-    const h = await load({ controlled: true, installing });
+    const h = await load({ controlled: true });
+    theUpdateJobNeverSettles(h);
 
-    await h.mod.checkForUpdate();
+    void h.mod.checkForUpdate();
     await vi.advanceTimersByTimeAsync(8_000);
     await vi.advanceTimersByTimeAsync(3_000);
-    await h.mod.checkForUpdate();
+    void h.mod.checkForUpdate();
     await vi.advanceTimersByTimeAsync(0);
     expect(h.registration.unregister).not.toHaveBeenCalled();
   });
@@ -211,9 +299,7 @@ describe("the tap after the stuck guard's own reload", () => {
     // worse than any stale bundle. So the branch also asks whether the bridge is still there, and
     // the answer is the poll: no header for twenty seconds is no network. The tap then takes the old
     // path — a thrown update(), a plain reload, precache intact.
-    const on: Handlers = {};
-    const installing = worker("installing", on);
-    const h = await load({ controlled: true, installing });
+    const h = await load({ controlled: true });
     await aPollSaysWeAreStale();
     sessionStorage.setItem("collie:pwa:guardReload:v1", "1");
     h.registration.update.mockRejectedValueOnce(new Error("offline"));

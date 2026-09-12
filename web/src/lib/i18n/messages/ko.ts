@@ -582,6 +582,7 @@ export const ko: Dictionary = {
 
   // --- pwa (self-update banner) ---
   "pwa.updateAvailable": "새 버전 업데이트 가능. 탭하여 적용하십시오.",
+  "pwa.updateInstalling": "Downloading the new version…",
 
   // --- history (pane transcript route) ---
   "history.unavailable.disabled": "현재 브리지에서 트랜스크립트 기록이 비활성화되어 있습니다 (COLLIE_TRANSCRIPT).",

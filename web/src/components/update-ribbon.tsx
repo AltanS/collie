@@ -10,7 +10,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { dismissUpdate } from "@/lib/api";
 import { t } from "@/lib/i18n";
 import { updatesPath } from "@/lib/nav";
-import { checkForUpdate } from "@/lib/pwa";
+import { checkForUpdate, getUpdateStage, subscribeUpdateStage } from "@/lib/pwa";
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import { useSelfUpdate } from "@/lib/self-update";
@@ -76,6 +76,9 @@ export function UpdateRibbon() {
   // The self-updater's own flag. Reading it here is also what MOUNTS the controller — see the header.
   const bundleStale = useSelfUpdate();
   const startedAt = useSyncExternalStore(subscribeUpdateStarted, getUpdateStarted, getUpdateStarted);
+  // The service worker's own progress (`lib/pwa.ts`). The band is the only surface that shows it,
+  // and it shows it as one word: a download is happening, wait for it (2026-09-12).
+  const stage = useSyncExternalStore(subscribeUpdateStage, getUpdateStage, getUpdateStage);
   // OPTIMISTIC ONLY. The dismissal itself lives on the bridge (M17/08) and arrives on the snapshot;
   // this holds what the operator just closed so the band drops on the tap rather than on the next
   // poll. Keyed by version AND scope like the stored one, so a newer version still raises the band
@@ -95,6 +98,7 @@ export function UpdateRibbon() {
     update,
     startedAt,
     bundleStale,
+    bundleInstalling: stage === "installing",
     dismissedVersion: dismissedIn("offer", justDismissed, update?.dismissedVersion),
     dismissedCrewVersion: dismissedIn("crew", justDismissed, update?.dismissedCrewVersion),
     now: Date.now(),
@@ -109,7 +113,11 @@ export function UpdateRibbon() {
   function onTap() {
     // The two bundle states reload THIS PAGE onto a bundle that already exists. Everything else is a
     // navigation to the page that owns the confirm.
-    if (view.kind === "updated" || view.kind === "bundle") {
+    // `bundle-installing` is here too, and on purpose: a tap during the download reaches
+    // `checkForUpdate()`, which finds the worker already on its way in and does nothing but keep
+    // waiting. That is the answer the operator's repeat tap deserves, and it is not a navigation
+    // away from the row that is telling them to wait.
+    if (view.kind === "updated" || view.kind === "bundle" || view.kind === "bundle-installing") {
       void checkForUpdate();
       return;
     }
@@ -183,7 +191,15 @@ function skinOf(view: RibbonView) {
   if (view.kind === "peer-failed") {
     return { Icon: TriangleAlert, spin: false, tone: "danger" } as const;
   }
-  if (view.kind === "starting" || view.kind === "updating" || view.kind === "peers") {
+  // A DOWNLOAD IS A THING IN FLIGHT, so it wears the spinner (2026-09-12). It is the one bundle
+  // state that does: the other two are standing offers, and a spinner on an offer would say
+  // something was already running.
+  if (
+    view.kind === "starting" ||
+    view.kind === "updating" ||
+    view.kind === "peers" ||
+    view.kind === "bundle-installing"
+  ) {
     return { Icon: Loader2, spin: true, tone: "caution" } as const;
   }
   // A packaged peer is a state, not an alarm and not a thing in progress: the ambient tint the band

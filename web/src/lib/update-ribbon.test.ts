@@ -56,6 +56,7 @@ const read = (over: Partial<RibbonInput> = {}) =>
     update: info(),
     startedAt: null,
     bundleStale: false,
+    bundleInstalling: false,
     dismissedVersion: null,
     dismissedCrewVersion: null,
     now: NOW,

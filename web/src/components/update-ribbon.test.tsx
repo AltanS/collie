@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { checkForUpdate } from "@/lib/pwa";
+import { checkForUpdate, type UpdateStage } from "@/lib/pwa";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { __resetReloadGuard, holdReload } from "@/lib/reload-guard";
 import { __resetSelfUpdate, __setReloadImpl, startSelfUpdate } from "@/lib/self-update";
@@ -30,7 +30,20 @@ import { UpdateRibbon } from "./update-ribbon";
 // The bundle states are driven through the REAL self-updater, the way the real poll drives it: a
 // build id that is not ours, observed twice (the hysteresis), with or without a reload hold.
 
-vi.mock("@/lib/pwa", () => ({ checkForUpdate: vi.fn() }));
+// The update STAGE is part of this seam too (2026-09-12): the band reads `lib/pwa.ts`'s own store to
+// know a new bundle is downloading. A box rather than a constant, so the one case about the download
+// row can set it; `vi.hoisted` because a mock factory may not reach an ordinary module variable.
+
+/** The box the stub reads. Named, so the stage is the module's own type and not a widened string. */
+interface StageBox {
+  current: UpdateStage;
+}
+const pwaStage = vi.hoisted((): StageBox => ({ current: "idle" }));
+vi.mock("@/lib/pwa", () => ({
+  checkForUpdate: vi.fn(),
+  getUpdateStage: () => pwaStage.current,
+  subscribeUpdateStage: () => () => {},
+}));
 // The dismiss posts to the bridge (M17/08). What it SENDS is the assertion; the round trip itself is
 // the bridge's own test.
 vi.mock("@/lib/api", () => ({ dismissUpdate: vi.fn(async () => undefined) }));
@@ -150,6 +163,7 @@ function confirmStaleBundle(): void {
 let stop: () => void;
 beforeEach(() => {
   vi.clearAllMocks();
+  pwaStage.current = "idle";
   sessionStorage.clear();
   __resetServerBuild();
   __resetReloadGuard();
@@ -311,6 +325,18 @@ describe("pwa path unchanged", () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "New version — tap to update" }));
     expect(checkForUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("says the new version is DOWNLOADING while a worker is on its way in (2026-09-12)", async () => {
+    // The incident's missing word. The band offered "tap to update", the operator tapped, and for
+    // the two minutes the download took the row went on saying the same thing — so the tap read as
+    // ignored and the next one was a reload that landed on a shell about to be deleted.
+    pwaStage.current = "installing";
+    holdReload("an-open-composer-draft");
+    confirmStaleBundle();
+    await renderBand(info({ releaseAvailable: false }));
+    expect(screen.getByText("Downloading the new version…")).toBeInTheDocument();
+    expect(screen.queryByText("New version — tap to update")).not.toBeInTheDocument();
   });
 });
 

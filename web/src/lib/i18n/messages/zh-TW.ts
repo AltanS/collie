@@ -567,6 +567,7 @@ export const zhTW: Dictionary = {
 
   // --- pwa (self-update banner) ---
   "pwa.updateAvailable": "發現新版本，點擊以套用更新",
+  "pwa.updateInstalling": "Downloading the new version…",
 
   // --- history (pane transcript route) ---
   "history.unavailable.disabled": "目前 Bridge 已停用工作階段記錄（COLLIE_TRANSCRIPT）。",

@@ -95,6 +95,7 @@ export type RibbonView =
   | { kind: "updating"; phase: RibbonPhase; version: string }
   | { kind: "updated"; version: string }
   | { kind: "bundle" }
+  | { kind: "bundle-installing" }
   | {
       kind: "peers";
       names: string[];
@@ -122,6 +123,15 @@ export interface RibbonInput {
   startedAt: number | null;
   /** `useSelfUpdate()`'s banner flag — see the header. Never re-derived here. */
   bundleStale: boolean;
+  /**
+   * A new bundle is downloading into the precache right now (`lib/pwa.ts`'s update stage).
+   *
+   * The 2026-09-12 incident's missing word. The band offered "tap to reload", the operator tapped,
+   * and the app went on saying the same thing for the two minutes the download took — so the tap
+   * looked ignored and the next one was a reload nobody should have made. A download the operator
+   * can see is a download the operator waits out.
+   */
+  bundleInstalling: boolean;
   /**
    * The version whose OFFER the operator closed. A newer one is a different version, so it raises
    * the band again.
@@ -388,6 +398,12 @@ export function ribbonView(input: RibbonInput): RibbonView {
     };
   }
 
+  // THE DOWNLOAD OUTRANKS BOTH BUNDLE STATES (2026-09-12). It is the same row about the same fact,
+  // one step further on: this bundle is behind, and the new one is on its way in. Above (c) as well
+  // as (c)'s other half, because "Updated to 1.8.1. Tap to reload." after the tap was taken is the
+  // sentence that made the operator tap again.
+  if (input.bundleStale && input.bundleInstalling) return { kind: "bundle-installing" };
+
   const finished =
     run !== undefined && run.state === "done" && input.now - run.updatedAt < DONE_WINDOW_MS;
 
@@ -508,6 +524,8 @@ function ribbonLine(view: RibbonView): string {
       return t("updateRibbon.updated", { version: view.version });
     case "bundle":
       return t("pwa.updateAvailable");
+    case "bundle-installing":
+      return t("pwa.updateInstalling");
     case "peers": {
       const line = tn("updateRibbon.peers", view.names.length, { names: view.names.join(", ") });
       // PAST THE PATIENCE WINDOW THE BAND NAMES THE TIME (M20/04). Before it, the words are exactly

@@ -114,6 +114,46 @@ export function spendFail(directive: FailDirective): void {
   else setFail({ ...directive, times: directive.times - 1 });
 }
 
+/**
+ * The throttle directive: a response served SLOWLY rather than held back whole.
+ *
+ * {@link DelayDirective} stops a response dead and then hands it over in one piece, which is the
+ * right shape for "this asset is wedged". It is the wrong shape for the 2026-09-12 incident, where
+ * nothing was wedged at all: the phone's precache install took 125 seconds because an 869 kB chunk
+ * was coming down a slow link with the tab in the background. A worker in that state is not stuck,
+ * it is downloading, and the difference is the whole point of the fix — so the reproduction needs a
+ * server that dribbles a real response out at a real rate.
+ */
+const THROTTLE = join(BUILDS_DIR, "throttle.json");
+
+export interface ThrottleDirective {
+  /** Substring of the request path to slow down, e.g. build B's entry chunk. */
+  readonly match: string;
+  /** The rate to write it at. 8192 is roughly the phone's link on the day. */
+  readonly bytesPerSecond: number;
+}
+
+/** Serve every matching response at `bytesPerSecond` until {@link clearThrottle}. */
+export function setThrottle(directive: ThrottleDirective): void {
+  writeFileSync(THROTTLE, JSON.stringify(directive));
+}
+
+/** Let the throttled path run at full speed again, INCLUDING a response already mid-flight. */
+export function clearThrottle(): void {
+  rmSync(THROTTLE, { force: true });
+}
+
+/** The server's own read of the directive. `undefined` when the file is absent. */
+export function readThrottle(): ThrottleDirective | undefined {
+  try {
+    // SAFETY: as with the other two directives — one writer, {@link setThrottle}, and anything else
+    // in the file throws in JSON.parse and reads as "no directive".
+    return JSON.parse(readFileSync(THROTTLE, "utf8")) as ThrottleDirective;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface BuildStamp {
   readonly version: string;
   readonly sha: string;
@@ -204,6 +244,7 @@ export function buildBoth(): void {
   mkdirSync(BUILDS_DIR, { recursive: true });
   clearDelay();
   clearFail();
+  clearThrottle();
   for (const name of BUILD_NAMES) {
     if (name !== BUILD_NAMES[0]) waitOutTheSecond();
     execFileSync("bunx", ["vite", "build", "--outDir", join("e2e", ".builds", name), "--emptyOutDir"], {

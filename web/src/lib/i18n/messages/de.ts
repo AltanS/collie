@@ -592,6 +592,7 @@ export const de: Dictionary = {
 
   // --- pwa (self-update banner) ---
   "pwa.updateAvailable": "Neue Version verfügbar. Zum Aktualisieren tippen.",
+  "pwa.updateInstalling": "Downloading the new version…",
 
   // --- history (pane transcript route) ---
   "history.unavailable.disabled": "Transkriptverlauf ist auf dieser Bridge deaktiviert (COLLIE_TRANSCRIPT).",

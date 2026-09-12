@@ -21,9 +21,44 @@ const UPDATE_CHECK_MS = 60_000;
 // Hard cap so the manual button can never get stuck on "updating…": if no worker has activated by
 // now, reload anyway (served by whatever SW is active). The activated-watcher below almost always
 // fires first (install+activate is usually 1–2s); this is pure insurance.
+//
+// IT IS GATED ON "NOTHING IS INSTALLING" (2026-09-12, see {@link workerOnItsWayIn}). A download is
+// not a wedge, and eight seconds is not a download's budget.
 const STUCK_GUARD_MS = 8_000;
 
 let registration: ServiceWorkerRegistration | undefined;
+
+/**
+ * THE RULE, AFTER 2026-09-12: THIS PAGE RELOADS ONLY ON `controllerchange`.
+ *
+ * The incident, release lane, 1.8.0 to 1.8.1, on a real phone. The band said "updated, tap to
+ * reload". The tap reloaded the page while the new worker was still INSTALLING — an 869 kB chunk
+ * down a slow link with the tab backgrounded, 125 seconds of it — so the navigation was answered by
+ * the worker still in control, which is the OLD one, out of the OLD precache. The page that came
+ * back was build 1.8.0's `index.html`, and it asked for 1.8.0's entry chunk. That chunk was gone
+ * from disk (the deploy had swapped `web/dist`) and, moments later, gone from the cache as well (the
+ * new worker activated and workbox swept the superseded precache). Nothing answered, React never
+ * booted, and the pre-React splash in `web/index.html` galloped forever. A second manual reload
+ * fixed it, which is the operator having to repair the app by hand.
+ *
+ * Every one of those pieces is normal. The one thing that was not is the reload's TIMING: a reload
+ * issued while a new worker is on its way in lands on a shell that is about to be deleted. So the
+ * page now waits for the controller swap, and the three exits that used to race it are each gated:
+ *
+ *   1. a tap that finds a worker installing or waiting FOLLOWS it and reloads on nothing;
+ *   2. the stuck guard below fires only while no worker is on its way in — a download is not a
+ *      wedge, and {@link forceReload} would delete the cache that download is filling;
+ *   3. a worker reaching `activated` no longer reloads either. `activated` is BEFORE the swap, and
+ *      the sweep of the old precache runs in that very handler.
+ *
+ * What survives untouched is the whole 2026-09-09 apparatus below — the two lanes, the guard's note,
+ * the unregister path. Those answer "nothing is coming"; this answers "something is coming, wait".
+ */
+
+/** The worker on its way in, or null. Installing and waiting are one fact to every caller here. */
+function workerOnItsWayIn(reg: ServiceWorkerRegistration | undefined): ServiceWorker | null {
+  return reg?.installing ?? reg?.waiting ?? null;
+}
 
 /**
  * Which of the two reload lanes a caller is in (M20/05).
@@ -211,24 +246,67 @@ function onControllerChange() {
   else hadController = true;
 }
 
-// Reload as soon as a freshly-installed worker reaches "activated". Used by both the periodic
-// auto-check and the manual button, so neither depends on vite-plugin-pwa's (unreliable) auto-reload.
-//
-// `lane` is who is waiting on it. A worker found by the registration's own `updatefound` is the
-// automatic lane; one this function was pointed at by `checkForUpdate` is the completion of the
-// operator's tap, and reloading for it must not be able to consume the automatic latch.
-function watchWorker(worker: ServiceWorker | null, lane: ReloadLane) {
-  if (!worker) return;
-  if (worker.state === "activated") {
-    reloadOnce(lane);
-    return;
-  }
+/**
+ * WHAT THE BAND SAYS WHILE A WORKER IS ON ITS WAY IN.
+ *
+ * `installing` means a new bundle is downloading into the precache right now. It is the state the
+ * 2026-09-12 incident had no word for: the band said "tap to reload", the operator tapped, and the
+ * app had nothing to tell them but a reload it should not have done. The band reads this and says
+ * "downloading" instead, so a wait looks like a wait.
+ *
+ * A store rather than a return value, because the fact outlives the call: the operator's tap is one
+ * moment and the download is two minutes, and the automatic lane starts downloads nobody tapped for.
+ */
+export type UpdateStage = "idle" | "installing";
+
+let stage: UpdateStage = "idle";
+const stageListeners = new Set<() => void>();
+
+export function getUpdateStage(): UpdateStage {
+  return stage;
+}
+
+export function subscribeUpdateStage(listener: () => void): () => void {
+  stageListeners.add(listener);
+  return () => stageListeners.delete(listener);
+}
+
+function setStage(next: UpdateStage): void {
+  if (stage === next) return;
+  stage = next;
+  for (const listener of stageListeners) listener();
+}
+
+/**
+ * Follow a worker that is on its way in, and reload for NOTHING it does.
+ *
+ * The only thing done to it is the nudge out of `installed`: `sw.ts` calls `skipWaiting()` on
+ * install, but a worker that parks in the waiting phase anyway is one message away from activating,
+ * and an activation is what the page is waiting for. The reload itself belongs to
+ * {@link onControllerChange} — see the rule at the top of this file.
+ *
+ * Returns whether there was a worker at all, so a caller can say "then there is nothing coming".
+ */
+function followWorker(worker: ServiceWorker | null): boolean {
+  if (!worker) return false;
+  if (worker.state === "redundant") return false;
+  setStage("installing");
+  nudge(worker);
   worker.addEventListener("statechange", () => {
-    // skipWaiting is set in the generated SW, but if a worker still parks in "installed" (waiting),
-    // nudge it through so it activates instead of stranding us.
-    if (worker.state === "installed") registration?.waiting?.postMessage({ type: "SKIP_WAITING" });
-    if (worker.state === "activated") reloadOnce(lane);
+    nudge(worker);
+    // `activated` is NOT the reload (2026-09-12). It is the handler that sweeps the superseded
+    // precache, and the controller swap is behind it. The band simply stops saying "downloading".
+    if (worker.state === "activated" || worker.state === "redundant") setStage("idle");
   });
+  return true;
+}
+
+function nudge(worker: ServiceWorker): void {
+  if (worker.state !== "installed") return;
+  // `ServiceWorker.postMessage(message, transfer)` — the second argument is a TRANSFER LIST, not a
+  // target origin: the recipient is our own registered worker, reached by reference, so there is no
+  // cross-origin window to address. Spelled out as empty because nothing is transferred.
+  worker.postMessage({ type: "SKIP_WAITING" }, []);
 }
 
 registerSW({
@@ -236,8 +314,14 @@ registerSW({
   onRegisteredSW(_swUrl, r) {
     registration = r;
     if (!r) return;
-    // Any newly-found worker (from the poll below or a manual check) → reload when it activates.
-    r.addEventListener("updatefound", () => watchWorker(r.installing, "auto"));
+    // Any newly-found worker (from the poll below or a manual check) → follow it, and let the
+    // controller swap behind it be what reloads the page.
+    r.addEventListener("updatefound", () => followWorker(r.installing));
+    // A worker that was ALREADY on its way in when this document loaded. A page reloaded by hand
+    // mid-install never sees `updatefound` — it fired for the document that left — so without this
+    // the new document would sit out the download with nothing to say and nothing nudging a worker
+    // that parked in `waiting`.
+    followWorker(workerOnItsWayIn(r));
     // A new SW taking control is the other reliable "we're updated now" signal — but only when it
     // *replaces* a prior controller (see onControllerChange); the first-visit initial claim is not
     // an update and must not reload.
@@ -247,7 +331,8 @@ registerSW({
 });
 
 // Force an immediate update check — the footer's manual "tap to update". A newer SW installs,
-// skip-waits, activates, and watchWorker reloads us onto it (the happy path). The ONE path that
+// skip-waits, activates, takes control, and the controller swap reloads us onto it (the happy path;
+// since 2026-09-12 this function itself reloads for nothing a worker does). The ONE path that
 // forceReload()s — unregistering the worker so the reload bypasses a stale precache — is when
 // update() SUCCEEDS (so we're online) but finds nothing to activate while the footer shows us stale:
 // the wedged-precache trap. Network-failure paths (a thrown update(), or the stuck-guard) fall back to
@@ -260,6 +345,18 @@ export async function checkForUpdate(): Promise<void> {
     reloadOnce("manual");
     return;
   }
+  // A WORKER ALREADY ON ITS WAY IN OUTRANKS EVERY BRANCH BELOW (2026-09-12, see the rule at the top).
+  //
+  // FIRST, and before the guard's note is even read: every other path here ends in a reload or in
+  // dropping the precache, and both of those are wrong while a download is in progress. There is
+  // nothing to ask the worker either — it is already doing the one thing this tap could start. So
+  // the tap becomes a wait, the band says "downloading", and `controllerchange` reloads the page
+  // when the new worker is actually in charge of it.
+  //
+  // The note is deliberately left unspent on this path. The guard can no longer fire while a worker
+  // is on its way in, so a note that exists was left by a genuinely stuck page, and it stays in
+  // sessionStorage for the tap that finds one.
+  if (followWorker(workerOnItsWayIn(registration))) return;
   // Is this the tap AFTER a stuck-guard reload that landed straight back on the stale bundle
   // (2026-09-09, see GUARD_RELOAD_KEY)? Read before anything else, so the note is spent whatever this
   // tap turns into.
@@ -290,6 +387,12 @@ export async function checkForUpdate(): Promise<void> {
   // button never hangs. A plain reload (not forceReload) — a hung activation may just be a flaky network, and
   // dropping the precache offline would be worse than staying on the current build.
   setTimeout(() => {
+    // A DOWNLOAD IS NOT A WEDGE (2026-09-12). Between arming this timer and it firing, `reg.update()`
+    // may well have found a worker and started installing it — which is the incident exactly: the
+    // guard reloaded a page out from under a 125-second precache install, onto a shell that was
+    // about to be deleted. While something is on its way in the page waits for it, however long it
+    // takes, and `controllerchange` is what ends the wait.
+    if (workerOnItsWayIn(reg)) return;
     // The note for the tap after this one, left only when this timer is really the thing that
     // reloads the page — the same two conditions `reloadOnce` is about to apply. It has to be
     // written BEFORE `location.reload()`, which does not return.
@@ -304,17 +407,13 @@ export async function checkForUpdate(): Promise<void> {
     reloadOnce("manual");
     return;
   }
-  watchWorker(reg.installing, "manual");
-  if (reg.waiting) {
-    watchWorker(reg.waiting, "manual");
-    // `ServiceWorker.postMessage(message, transfer)` — the second argument is a TRANSFER LIST, not
-    // a target origin: the recipient is our own registered worker, reached by reference, so there is
-    // no cross-origin window to address. Spelled out as empty because nothing is transferred; the
-    // structured clone of the message itself is all that crosses.
-    reg.waiting.postMessage({ type: "SKIP_WAITING" }, []);
-  }
+  // `update()` resolves once the job has found the new script and handed it to Install, so this is
+  // where a freshly-started download turns up. Following it is the whole answer: no reload here.
+  if (followWorker(workerOnItsWayIn(reg))) return;
   // update() succeeded yet found nothing to activate, while the button only shows when we're provably
   // stale → the active worker is behind and won't self-update. The one place unregister-then-reload is
-  // both safe (we're online) and necessary — bypass the wedged precache rather than re-serve it.
-  if (!reg.installing && !reg.waiting) await forceReload("manual");
+  // both safe (we're online) and necessary — bypass the wedged precache rather than re-serve it. It
+  // is reachable only from here, with nothing installing, which is rule 3 of the 2026-09-12 fix: a
+  // `forceReload` during an install would delete the very cache that install is filling.
+  await forceReload("manual");
 }

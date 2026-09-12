@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 
@@ -13,6 +13,7 @@ import {
   buildsExist,
   readDelay,
   readFail,
+  readThrottle,
   servedBuild,
   spendFail,
 } from "./fixtures/builds";
@@ -29,9 +30,9 @@ import {
 //   1. the served directory is a pointer, so a deploy is one file write (`fixtures/builds.ts`);
 //   2. nothing is ever cached by the HTTP layer, so the only cache in play is the service worker's,
 //      which is the thing under test;
-//   3. one response can be held back, or failed, on the case's instruction — the two things a case
-//      cannot do with `page.route`, because a service worker's own fetches never go through the
-//      page's network stack;
+//   3. one response can be held back, SLOWED DOWN, or failed, on the case's instruction — the three
+//      things a case cannot do with `page.route`, because a service worker's own fetches never go
+//      through the page's network stack;
 //   4. a navigation to a path in `NAVIGATION_NETWORK_ONLY` gets a real, identifiable page, so case
 //      four can tell "the server answered" from "the precache answered". The list is imported from
 //      `src/lib/sw-routes.ts` rather than restated, so the case and the worker cannot drift.
@@ -154,6 +155,39 @@ async function answer(pathname: string, search: string): Promise<Answer> {
 // escape hatch for a tight local loop on the case bodies themselves.
 if (!(process.env.E2E_REUSE_BUILDS === "1" && buildsExist())) buildBoth();
 
+/**
+ * Write the body out at the case's rate, or all at once when no rate is set.
+ *
+ * Ten writes a second, so a rate is a rate and not a stutter. The directive is re-read on every
+ * round for the same reason {@link hold} re-reads its own: `clearThrottle()` has to release a
+ * response that is ALREADY half-written, because the case's shape is "keep the worker installing
+ * while the assertions go in, then let it finish as fast as the machine can".
+ *
+ * No `content-length` is sent for a throttled response: the connection stays chunked, which is what
+ * a slow link looks like to a browser and what keeps the install genuinely in progress.
+ */
+async function writeBody(
+  res: ServerResponse,
+  body: Buffer,
+  pathAndSearch: string,
+): Promise<void> {
+  const rate = (): number => {
+    const live = readThrottle();
+    return live && pathAndSearch.includes(live.match) ? live.bytesPerSecond : 0;
+  };
+  let at = 0;
+  while (at < body.length) {
+    const bytesPerSecond = rate();
+    if (bytesPerSecond <= 0) break; // never throttled, or released while half-written
+    const chunk = Math.max(1, Math.floor(bytesPerSecond / 10));
+    res.write(body.subarray(at, at + chunk));
+    at += chunk;
+    if (at < body.length) await sleep(100);
+  }
+  // Whatever is left, at full speed. `at` is 0 on the ordinary path, so this is the whole body.
+  res.end(body.subarray(at));
+}
+
 createServer((req, res) => {
   void (async () => {
     const url = new URL(req.url ?? "/", SWAP_BASE_URL);
@@ -166,7 +200,7 @@ createServer((req, res) => {
       // What the bridge stamps on every static response, so `sw.js` is allowed the root scope.
       "service-worker-allowed": "/",
     });
-    res.end(out.body);
+    await writeBody(res, Buffer.from(out.body), url.pathname + url.search);
   })();
 }).listen(SWAP_PORT, "127.0.0.1", () => {
   console.log(`e2e: swappable bundle server on ${SWAP_BASE_URL} (serving ${servedBuild()})`);

@@ -11,16 +11,18 @@ import {
   SWAP_BASE_URL,
   clearDelay,
   clearFail,
+  clearThrottle,
   readBuildStamp,
   readEntryScript,
   serveBuild,
   setDelay,
   setFail,
+  setThrottle,
 } from "./fixtures/builds";
 
 // AN OLD SHELL PICKS UP A NEW BUNDLE (M26/04).
 //
-// Seven cases over the one path no unit test can reach: the service worker exists only in a real
+// Nine cases over the one path no unit test can reach: the service worker exists only in a real
 // build (`vite.config.ts` sets `devOptions: { enabled: false }`), and the reload it causes is a real
 // navigation. Two bundles are built into `e2e/.builds/{a,b}` and a swappable static server hands out
 // one of them (`e2e/fixtures/builds.ts`, `e2e/serve-builds.ts`), so "the bridge got rebuilt" is one
@@ -53,6 +55,13 @@ import {
 // "updating…", stopped, and came back stale. It took about three minutes. Cases five to seven are
 // that incident, split into the three paths that fit it. Case three names the 2026-09-07 latch
 // regression the two-lane split was built for.
+//
+// AND WHAT WAS PROVEN BY HAND ON 2026-09-12. Release lane, 1.8.0 to 1.8.1, a real phone: the band
+// said "updated, tap to reload", the tap reloaded the page onto the OLD shell while the new worker
+// was still installing, and the entry chunk that shell named was gone from disk and from the cache.
+// React never booted. Cases eight and nine are that incident, and they are the two that own the
+// server's throttle — a download at a real rate, not a response held back whole. The rule they pin
+// is in `src/lib/pwa.ts`'s header: this page reloads only on `controllerchange`.
 //
 // WHAT A LOADED MACHINE DOES TO THIS FILE. Every case that asserts an activation is bounded by the
 // app's own eight-second guard: past it the operator's tap reloads from the ACTIVE worker, on the
@@ -91,6 +100,9 @@ const CHIP = en["settings.buildStamp.tapToUpdate"];
  *  It is the repeat-tap surface: the footer chip disables itself for the rest of the page's life on
  *  the first tap, so a case about tapping three times has to address the band. */
 const BAND = en["pwa.updateAvailable"];
+/** What the same band says once a worker is on its way in (2026-09-12). The row does not go away on
+ *  the tap, it changes its words: a download the operator can see is a download they wait out. */
+const DOWNLOADING = en["pwa.updateInstalling"];
 
 /** Where the reload counter lives. Read back after a navigation, so `sessionStorage`, not a variable. */
 const RELOADS_KEY = "e2e:reloads";
@@ -125,6 +137,7 @@ test.beforeEach(async ({ page }, testInfo) => {
 
   clearDelay();
   clearFail();
+  clearThrottle();
   serveBuild("a");
   stampAs("a");
 
@@ -146,6 +159,7 @@ test.beforeEach(async ({ page }, testInfo) => {
 test.afterEach(() => {
   clearDelay();
   clearFail();
+  clearThrottle();
 });
 
 /** Stamp this build's id on every following snapshot response. The deploy, from the app's side. */
@@ -328,20 +342,21 @@ function deployB(): void {
 }
 
 /**
- * One precached asset, held, so an INSTALL cannot finish while the page stays perfectly usable.
+ * THE UPDATE JOB ITSELF, WEDGED — which is what "stuck" means since 2026-09-12.
  *
- * The asset is `index.html`, and the choice is not free. A new install only re-downloads entries
- * whose precache revision moved, so the unhashed icons and fonts — identical bytes in both builds —
- * are copied from the old cache and holding one of them holds nothing (measured on 2026-09-09: the
- * install finished in tens of milliseconds with the 512px icon delayed). What does move is
- * `index.html` (it names the new chunks) and the hashed `assets/*`. `index.html` is the one of those
- * two that the running page never asks for by that path: its own navigations are `/`, and the
- * service worker answers them from the cache (`createHandlerBoundToURL("/index.html")` in
- * `src/sw.ts:32`, no network). Workbox asks for it as `/index.html?__WB_REVISION__=…`, which the
- * server matches by substring and serves slowly.
+ * Case seven used to wedge the INSTALL — it held `/index.html`, the one precached entry that moves
+ * between builds and that the running page never asks for by that path — and let the app's
+ * eight-second guard reload over it. That is now the bug rather than the behaviour: while a worker
+ * is installing the page waits, however long the download takes. So the case reproduces the state
+ * the guard is still for — an update job that never settles, so `reg.update()` never resolves and
+ * nothing is ever on its way in.
+ *
+ * Held in the SERVER, not with `page.route`: the worker script is fetched through the
+ * service-worker machinery and a route on it never fires (checked first-hand on 2026-09-09). The
+ * server has no such blind spot, which is what case five's 503 already relies on.
  */
-function holdTheInstall(ms: number): void {
-  setDelay({ match: "/index.html", ms });
+function holdTheWorkerScript(ms: number): void {
+  setDelay({ match: "/sw.js", ms });
 }
 
 /**
@@ -355,6 +370,63 @@ function holdTheInstall(ms: number): void {
  */
 function crossTheGiveBackBoundary(): Promise<void> {
   return new Promise((done) => setTimeout(done, RELOAD_GAVE_UP_MS + 300));
+}
+
+/**
+ * A SLOW LINK, not a wedge (2026-09-12).
+ *
+ * The incident's install was not stuck: build B's entry chunk was 869 kB coming down a phone's link
+ * with the tab in the background, and it took 125 seconds. Nothing about that is a failure, so
+ * a held response ({@link setDelay}) is the wrong instrument — it says "this asset will never
+ * arrive", and the two cases below are about an asset that is arriving, slowly. The rate is the
+ * server's (`e2e/serve-builds.ts`), one chunk every 100 ms, and the case takes it away the moment
+ * its assertions are in.
+ */
+const SLOW_LINK_BPS = 8 * 1024;
+
+function throttleTheInstall(bytesPerSecond = SLOW_LINK_BPS): void {
+  // Build B's ENTRY CHUNK, one file, for the reason case six gives: a match on `/assets/` slows ten
+  // of them and a browser runs six requests to a host at once.
+  setThrottle({ match: readEntryScript("b"), bytesPerSecond });
+}
+
+/** Is a worker on its way in right now — installing, or installed and waiting? */
+async function workerOnItsWayIn(page: Page): Promise<boolean> {
+  return page
+    .evaluate(async () => {
+      const reg = await navigator.serviceWorker.getRegistration();
+      return reg?.installing !== null || reg?.waiting !== null;
+    })
+    .catch(() => false); // a navigation mid-read is not an answer
+}
+
+/**
+ * Every path the PAGE asked for, from the moment this is called.
+ *
+ * The incident is a request, not a state: the reloaded page asked for build A's entry chunk, which
+ * was gone from disk and gone from the cache the new worker had just cleaned, and the module never
+ * loaded. So the case watches what the page asks for and what it gets back, and the two facts it
+ * asserts are exactly the two the operator suffered — an OLD entry chunk requested at all, and an
+ * entry script that came back 404.
+ */
+function watchTheWire(page: Page) {
+  const asked: string[] = [];
+  const missing: string[] = [];
+  page.on("request", (request) => asked.push(new URL(request.url()).pathname));
+  page.on("response", (response) => {
+    const path = new URL(response.url()).pathname;
+    if (response.status() === 404 && path.startsWith("/assets/") && path.endsWith(".js")) {
+      missing.push(`${path} → 404`);
+    }
+  });
+  return { asked, missing };
+}
+
+/** React is on screen, and the pre-React splash in `web/index.html` is not. The operator's whole
+ *  test of "did it come back": a dog that never stops galloping is the bug. */
+async function expectReactBooted(page: Page): Promise<void> {
+  await expect(page.getByRole("main")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByLabel("Loading Collie")).toHaveCount(0);
 }
 
 // ── The seven cases ─────────────────────────────────────────────────────────────────────────────
@@ -527,8 +599,9 @@ test("three taps on an installing worker produce exactly one reload and no secon
   page,
 }) => {
   // 2026-09-09, path (b): a worker was still installing from an earlier tap, so each further tap only
-  // attached another watcher (`src/lib/pwa.ts:181`). What must NOT happen is a reload per tap, or a
-  // second registration: the manual lane's own latch decides, once.
+  // attached another watcher. What must NOT happen is a reload per tap, or a second registration.
+  // Since 2026-09-12 a tap that finds a worker on its way in does even less than that — it follows it
+  // and reloads for nothing — and the band says "downloading" rather than repeating the offer.
   await openAndTakeControl(page);
   announceB();
 
@@ -548,9 +621,16 @@ test("three taps on an installing worker produce exactly one reload and no secon
   deployB();
 
   await band.click(); // tap one — the install starts and is held
-  await band.click(); // tap two, well inside RELOAD_GAVE_UP_MS
+
+  // THE ROW CHANGES ITS WORDS ON THE FIRST TAP (2026-09-12). It does not go away: taps two and three
+  // land on the same band, now saying a download is in progress, which is what the operator hammering
+  // the phone never had. `checkForUpdate()` is the same call behind it.
+  const downloading = page.getByRole("button", { name: DOWNLOADING });
+  await expect(downloading).toBeVisible({ timeout: 15_000 });
+
+  await downloading.click(); // tap two, well inside RELOAD_GAVE_UP_MS
   await crossTheGiveBackBoundary();
-  await band.click(); // tap three, on the far side of it
+  await downloading.click(); // tap three, on the far side of it
   // All three taps are in, so the hold has nothing left to do. Released here rather than at the end
   // of the case, so the activation races nothing but the machine.
   clearDelay();
@@ -578,9 +658,12 @@ test("the stuck guard reloads onto A, and the tap after it unregisters instead o
   announceB();
   await expect(page.getByRole("button", { name: CHIP })).toBeVisible({ timeout: 20_000 });
 
-  // ONE asset, held well past the guard, so no install can finish inside this case at all — not the
-  // tap's, and not the browser's own. Whatever moves this page to B is not an activation.
-  holdTheInstall(20_000);
+  // THE WORKER SCRIPT, held well past the guard (changed 2026-09-12, see {@link holdTheWorkerScript}).
+  // `reg.update()` never settles, so nothing is ever on its way in, no install can finish inside this
+  // case at all — not the tap's, and not the browser's own — and whatever moves this page to B is not
+  // an activation. Holding one PRECACHED asset no longer produces this state: a worker that is
+  // installing is a download, and the page now waits it out instead of reloading over it.
+  holdTheWorkerScript(20_000);
   deployB();
   await page.getByRole("button", { name: CHIP }).click();
 
@@ -605,4 +688,87 @@ test("the stuck guard reloads onto A, and the tap after it unregisters instead o
   // once more when the fresh worker claims it. That third hop is the cost of the escape hatch, and
   // the operator sees it as one update rather than two.
   await expect.poll(() => reloadCount(page), { timeout: 5_000 }).toBeGreaterThanOrEqual(2);
+});
+
+
+// ── The 2026-09-12 race: a tap while the new worker is still installing ──────────────────────────
+
+test("a tap while build B is still installing never reloads onto build A", async ({ page }) => {
+  // 2026-09-12, release lane, 1.8.0 to 1.8.1, real phone. The band said "updated, tap to reload".
+  // The tap reloaded the page at the eight-second stuck guard while build B's worker was still
+  // installing — 125 seconds of it, an 869 kB chunk on a slow link with the tab backgrounded. The
+  // reload was answered by the OLD worker, so the page got build A's index.html, which asked for
+  // build A's entry chunk; by the time that request went out the new worker had activated and swept
+  // the old precache, and the chunk was gone from disk too. React never booted and the pre-React dog
+  // galloped forever. A second manual reload fixed it.
+  //
+  // THE RULE THIS PINS: while a worker is installing there is no "stuck", there is "downloading",
+  // and the page does not reload until the new worker is in control.
+  await openAndTakeControl(page);
+  announceB();
+  const band = page.getByRole("button", { name: BAND });
+  await expect(band).toBeVisible({ timeout: 30_000 });
+
+  const wire = watchTheWire(page);
+  throttleTheInstall();
+  deployB();
+
+  await band.click();
+  // The premise, asserted rather than assumed: this tap landed on a worker that is on its way in.
+  await expect
+    .poll(() => workerOnItsWayIn(page), { timeout: 10_000, intervals: [100] })
+    .toBe(true);
+
+  // Past the app's own stuck guard, which is where the incident happened. The one wall-clock wait
+  // this case owns, and it is a boundary in `src/lib/pwa.ts` rather than an event to wait for.
+  await new Promise((done) => setTimeout(done, STUCK_GUARD_MS + 2_500));
+
+  // NOTHING LEFT. The page has not reloaded, so it cannot have reloaded onto the old shell.
+  // SOFT, both of them, because they are two readings of ONE fact and a reader of a failure wants
+  // both: the page left, and what the page that arrived then went looking for.
+  expect.soft(await reloadCount(page), "no reload while a worker is installing").toBe(0);
+  expect
+    .soft(
+      wire.asked.filter((path) => path === readEntryScript("a")),
+      "build A's entry chunk must never be asked for again after the swap",
+    )
+    .toEqual([]);
+
+  // The link speeds up, the install finishes, the new worker takes control, and THAT is the reload.
+  clearThrottle();
+  await expectRunning(page, "b", 20_000);
+  await expectReactBooted(page);
+  expect(wire.missing, "no entry script came back 404").toEqual([]);
+  expect(await reloadCount(page)).toBe(1);
+});
+
+test("a manual reload during the install still comes back to a booted app", async ({ page }) => {
+  // The operator's own way out on the day: reload again. It must not be the way INTO the hang —
+  // a navigation the old worker answers from its own precache is fine, as long as the chunk that
+  // shell names is still there to serve. What must not happen is an entry script that 404s and a
+  // page that never boots.
+  await openAndTakeControl(page);
+  announceB();
+  const band = page.getByRole("button", { name: BAND });
+  await expect(band).toBeVisible({ timeout: 30_000 });
+
+  const wire = watchTheWire(page);
+  throttleTheInstall();
+  deployB();
+
+  await band.click();
+  await expect
+    .poll(() => workerOnItsWayIn(page), { timeout: 10_000, intervals: [100] })
+    .toBe(true);
+
+  // One more reload, by hand, well inside the install window.
+  await page.reload();
+  await expectReactBooted(page);
+  expect(wire.missing, "no entry script came back 404").toEqual([]);
+
+  // And the update still lands once the link speeds up.
+  clearThrottle();
+  await expectRunning(page, "b", 20_000);
+  await expectReactBooted(page);
+  expect(wire.missing, "no entry script came back 404").toEqual([]);
 });
