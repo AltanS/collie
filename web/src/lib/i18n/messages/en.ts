@@ -1034,6 +1034,65 @@ export const en = {
   "settings.tour.title": "Show the tour again",
   "settings.tour.description": "The three slides you saw the first time you opened Collie.",
   "settings.tour.button": "Show",
+
+  // --- updateScreen (M28/01) ---
+  // The sheet a running update takes the screen with: one row per machine, one for this device's own
+  // download, and a way out of every state that can stall. `components/update-screen.tsx` renders it;
+  // `lib/update-screen.ts` decides every state it can be in. Short words — these rows are read on a
+  // phone while a machine is being rebuilt underneath them.
+  "updateScreen.dialogAria": "Update in progress",
+  "updateScreen.title": "Updating Collie",
+  "updateScreen.close": "Close",
+  "updateScreen.rows.label": "Machines",
+  "updateScreen.thisMachine": "This machine",
+  "updateScreen.versionUnknown": "an unknown version",
+  "updateScreen.reasonUnknown": "no reason given",
+  "updateScreen.seeUpdates": "See Updates",
+  "updateScreen.keepWaiting": "Keep waiting",
+  // The one sentence of truth, small and last: the run is on the machines, and this screen only shows
+  // it. An operator who thinks closing the phone stops the update will not close the phone.
+  "updateScreen.truth": "The update runs on the machines. This screen only shows it, and closing the app does not stop it.",
+  // The badge, on a device that did not start the run. One line, so it truncates rather than wraps.
+  "updateScreen.badge.moving": "{name}: {word}",
+  "updateScreen.badge.downloading": "Downloading the new app",
+  "updateScreen.badge.generic": "Update in progress",
+  // A row's state, in the fewest words that are still true. The lead's four in-flight states say what
+  // the machine is DOING; a peer reports `updating` for all four, because the lead cannot see inside.
+  "updateScreen.state.preflight": "checking",
+  "updateScreen.state.staging": "building",
+  "updateScreen.state.restarting": "restarting, back in a moment",
+  "updateScreen.state.verifying": "checking the new version",
+  "updateScreen.state.done": "done",
+  "updateScreen.state.rolledBack": "back on {version}",
+  "updateScreen.state.stuck": "stuck",
+  "updateScreen.state.interrupted": "interrupted",
+  "updateScreen.state.idle": "idle",
+  "updateScreen.state.waiting": "waiting",
+  "updateScreen.state.updating": "updating",
+  "updateScreen.state.unreachable": "no answer",
+  "updateScreen.state.packageManaged": "package-managed",
+  "updateScreen.peer.lastSeen": "last seen {ago} ago",
+  "updateScreen.peer.packageManagedNote": "Its package manager owns this machine, so the run leaves it alone.",
+  // The run ended and it did not arrive. The sentence names what happened and the reason the host gave.
+  "updateScreen.failed.rolledBack": "The update rolled back. This machine is still on {version}: {reason}",
+  "updateScreen.failed.stuck": "The update is stuck: {reason}",
+  "updateScreen.failed.interrupted": "The update was interrupted: {reason}",
+  // The lead has held one state longer than a whole build, restart and verify takes. Keep waiting, with
+  // the app back in your hands — never a cancel, and never a forced reload.
+  "updateScreen.lead.stalled": "Still working. Nothing is wrong yet, and waiting is the whole job.",
+  // THIS device, which is not a machine in the crew: it is the phone fetching the bundle the machines
+  // now serve. Counted in FILES, because per-file is the only thing the service worker reports.
+  "updateScreen.device.title": "This device",
+  "updateScreen.device.downloading": "Downloading the new app, {done} of {total} files",
+  "updateScreen.device.downloadingUnknown": "Downloading the new app",
+  "updateScreen.device.switching": "Switching to the new app",
+  "updateScreen.device.progressAria": "Files downloaded",
+  "updateScreen.device.hung": "Still downloading. Keep using the app you have, and it will switch over when it lands.",
+  "updateScreen.device.keepUsing": "Keep using the app",
+  // The end, through the status channel every other confirmation uses. A solo install names the MACHINE,
+  // because there is no crew to name.
+  "updateScreen.done.crew": "Crew updated to {version}",
+  "updateScreen.done.solo": "{machine} updated to {version}",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

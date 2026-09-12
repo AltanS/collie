@@ -242,8 +242,17 @@ async function forceReload(lane: ReloadLane): Promise<void> {
 }
 
 function onControllerChange() {
-  if (hadController) reloadOnce("auto");
-  else hadController = true;
+  // A REAL SWAP ONLY, never the first-visit initial claim. Stamped BEFORE the reload, which does not
+  // return. The update screen reads it as "this device's own leg is done": the page is now running
+  // the bundle the worker installed. Stamping the initial claim as well would tell the screen a
+  // download had finished on a device that has not started one.
+  if (!hadController) {
+    hadController = true;
+    return;
+  }
+  controllerChangedAt = Date.now();
+  for (const listener of controllerListeners) listener();
+  reloadOnce("auto");
 }
 
 /**
@@ -274,7 +283,92 @@ export function subscribeUpdateStage(listener: () => void): () => void {
 function setStage(next: UpdateStage): void {
   if (stage === next) return;
   stage = next;
+  if (next === "installing") installingSince = Date.now();
+  else {
+    installingSince = null;
+    precacheProgress = null;
+    for (const listener of progressListeners) listener();
+  }
   for (const listener of stageListeners) listener();
+}
+
+/**
+ * WHEN THE DOWNLOAD STARTED, so a download with no progress yet still has an age.
+ *
+ * The update screen needs it twice: to show elapsed time, and to tell a download that is slow from
+ * one that has stopped (`lib/update-screen.ts`'s `DOWNLOAD_HUNG_MS`). Before the first asset lands
+ * there is no progress message to date, and a row that said nothing until one arrived would be
+ * silent for exactly the worst case.
+ */
+let installingSince: number | null = null;
+
+export function getInstallingSince(): number | null {
+  return installingSince;
+}
+
+/**
+ * PROGRESS, COUNTED IN FILES, BECAUSE FILES ARE THE ONLY HONEST UNIT (M28/01).
+ *
+ * `src/sw.ts` adds a precache plugin whose `fetchDidSucceed` posts one message per COMPLETED asset.
+ * That hook fires once per asset and carries no byte count, so a bar weighted by bytes would move in
+ * file-sized jumps anyway while costing a build-time size stamp, an extra fetch and a fallback for
+ * when the stamp is missing. `total` is the manifest's own length, which the worker knows exactly.
+ *
+ * `at` is the stamp of the message, not of the render: the screen asks "has anything arrived lately?"
+ * and a value dated when it was read could never answer that.
+ */
+export interface PrecacheProgress {
+  readonly done: number;
+  readonly total: number;
+  readonly at: number;
+}
+
+let precacheProgress: PrecacheProgress | null = null;
+const progressListeners = new Set<() => void>();
+
+export function getPrecacheProgress(): PrecacheProgress | null {
+  return precacheProgress;
+}
+
+export function subscribePrecacheProgress(listener: () => void): () => void {
+  progressListeners.add(listener);
+  return () => progressListeners.delete(listener);
+}
+
+/**
+ * WHEN THE CONTROLLER SWAPPED, or null.
+ *
+ * Stamped before the reload, because the reload is what the swap causes and the stamp has to outlive
+ * the decision to make it. A document that arrives with a stamp of null and a worker already in
+ * charge is the ordinary case: the swap happened to the document that left.
+ */
+let controllerChangedAt: number | null = null;
+const controllerListeners = new Set<() => void>();
+
+export function getControllerChangedAt(): number | null {
+  return controllerChangedAt;
+}
+
+export function subscribeControllerChanged(listener: () => void): () => void {
+  controllerListeners.add(listener);
+  return () => controllerListeners.delete(listener);
+}
+
+// The worker's own messages. Registered in module scope rather than inside `onRegisteredSW`, because
+// a worker that was ALREADY installing when this document loaded starts posting before the
+// registration callback has run.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (event: MessageEvent) => {
+    // SAFETY: `MessageEvent.data` is `any` — a structured clone from our own registered worker, which
+    // is the only thing that can reach this listener on a same-origin page. Every field is read
+    // through a narrow shape and a payload of any other shape simply fails the comparison below.
+    const data = event.data as { type?: string; done?: number; total?: number } | null;
+    if (data?.type !== "precache-progress") return;
+    const { done, total } = data;
+    if (!Number.isFinite(done) || !Number.isFinite(total)) return;
+    precacheProgress = { done: done ?? 0, total: total ?? 0, at: Date.now() };
+    for (const listener of progressListeners) listener();
+  });
 }
 
 /**

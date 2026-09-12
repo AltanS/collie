@@ -49,6 +49,7 @@ import * as harnessBar from "./sections/harness-bar";
 import * as crew from "./sections/crew";
 import * as settings from "./sections/settings";
 import * as notices from "./sections/notices";
+import * as updateScreen from "./sections/update-screen";
 import * as motion from "./sections/motion";
 import * as cache from "./sections/cache";
 
@@ -85,6 +86,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: idle.DEF, render: () => <idle.IdleSection /> },
   { def: brand.DEF, render: () => <brand.BrandSection /> },
   { def: notices.DEF, render: () => <notices.NoticesSection /> },
+  { def: updateScreen.DEF, render: () => <updateScreen.UpdateScreenSection /> },
   { def: motion.DEF, render: () => <motion.MotionSection /> },
   { def: cache.DEF, render: () => <cache.CacheSection /> },
 ];

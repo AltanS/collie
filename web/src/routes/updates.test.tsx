@@ -2,12 +2,13 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { http, HttpResponse } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { server } from "@/test/setup";
 import { withHeaderHost } from "@/test/header-host";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import type { PreflightReport, UpdateInfo, UpdateCrewMember } from "@/lib/types";
+import { __resetUpdateRunStore } from "@/lib/update-run-store";
 import { UpdatesRoute } from "./updates";
 
 // ── THE UPDATES PAGE ────────────────────────────────────────────────────────────────────────────
@@ -103,8 +104,15 @@ function serveCheck(update: UpdateInfo, crew?: UpdateCrewMember[]) {
 }
 
 beforeEach(() => {
+  // The update poll is a module-scoped store now (M28/01): without this, one case's census is the
+  // next case's opening state.
+  __resetUpdateRunStore();
   serveCheck(info());
   server.use(http.post("/api/update/snooze", () => HttpResponse.json(info())));
+});
+
+afterEach(() => {
+  __resetUpdateRunStore();
 });
 
 describe("updates page", () => {

@@ -211,23 +211,6 @@ describe("update ribbon states — the row on screen", () => {
     expect(screen.getByText("Collie 1.5.0 available.")).toBeInTheDocument();
   });
 
-  it("(b) counts through the three words of a run", async () => {
-    await renderBand(info({ run: run("preflight") }));
-    expect(screen.getByText("Updating to 1.5.0. Fetching")).toBeInTheDocument();
-  });
-
-  it("(b) says Building while staging", async () => {
-    await renderBand(info({ run: run("staging") }));
-    expect(screen.getByText("Updating to 1.5.0. Building")).toBeInTheDocument();
-  });
-
-  it("(c) names the new version once the bundle is behind and a hold is active", async () => {
-    holdReload("an-open-composer-draft");
-    confirmStaleBundle();
-    await renderBand(info({ run: run("done") }));
-    expect(screen.getByText("Updated to 1.5.0. Tap to reload.")).toBeInTheDocument();
-  });
-
   it("(d) names a peer that rolled back, with its reason and a pointer to the page", async () => {
     const peers: UpdatePeerLeg[] = [
       { name: "minibuch", state: "rolled-back", reason: "health gate timed out" },
@@ -241,26 +224,36 @@ describe("update ribbon states — the row on screen", () => {
   });
 });
 
-describe("starting update — the beat between the confirm and the first status", () => {
-  it("shows on the client's own knowledge that it just posted", async () => {
+// ── THE RUN IS THE SCREEN'S (M28/01) ────────────────────────────────────────────────────────────
+//
+// Every state that IS a run moved to `components/update-screen.tsx`. What this band must do about one
+// is nothing at all: a forty-character row counting "Restarting" beside a full-screen sheet saying
+// the same thing is one fact reconciled on two surfaces, which is the bug M20 spent three specs on.
+describe("a run in progress is not this band's row", () => {
+  it("draws no row for the tap that started it, nor for any of the four in-flight states", async () => {
     noteUpdateStarted();
-    await renderBand(info());
-    expect(screen.getByText("Starting update…")).toBeInTheDocument();
+    for (const state of ["preflight", "staging", "restarting", "verifying"] as const) {
+      const { container, unmount } = await renderBand(info({ releaseAvailable: false, run: run(state) }));
+      expect(band(container)).toBeNull();
+      unmount();
+    }
   });
 
-  it("yields as soon as the status object speaks", async () => {
-    noteUpdateStarted();
+  it("draws no row for a peer that is still moving", async () => {
+    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting" }];
+    const { container } = await renderBand(info({ releaseAvailable: false, run: run("done", { peers }) }));
+    expect(band(container)).toBeNull();
+  });
+
+  it("draws no row for a peer whose package manager owns it", async () => {
+    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
+    const { container } = await renderBand(info({ releaseAvailable: false, run: run("done", { peers }) }));
+    expect(band(container)).toBeNull();
+  });
+
+  it("still shows the OFFER under a run, because a standing fact is not the run", async () => {
     await renderBand(info({ run: run("staging") }));
-    expect(screen.queryByText("Starting update…")).toBeNull();
-    expect(screen.getByText("Updating to 1.5.0. Building")).toBeInTheDocument();
-  });
-});
-
-describe("update ribbon precedence — on screen", () => {
-  it("a run in flight is shown instead of the offer that produced it", async () => {
-    await renderBand(info({ run: run("restarting") }));
-    expect(screen.getByText("Updating to 1.5.0. Restarting")).toBeInTheDocument();
-    expect(screen.queryByText(/available/)).toBeNull();
+    expect(screen.getByText("Collie 1.5.0 available.")).toBeInTheDocument();
   });
 });
 
@@ -298,15 +291,6 @@ describe("available navigates, never runs", () => {
   });
 });
 
-describe("restarting gap is not an outage — on screen", () => {
-  it("a run stuck at restarting keeps its progress words and grows no error tint", async () => {
-    const { container } = await renderBand(info({ run: run("restarting") }));
-    expect(screen.getByText("Updating to 1.5.0. Restarting")).toBeInTheDocument();
-    expect(band(container)?.className).toContain("bg-status-working/15");
-    expect(band(container)?.className).not.toContain("status-blocked");
-  });
-});
-
 describe("a reload prompt does not look like an offer (M20/05)", () => {
   /** The band's leading icon, by the class lucide stamps on every one of its svgs. */
   function icon(container: HTMLElement): string | null {
@@ -326,15 +310,6 @@ describe("a reload prompt does not look like an offer (M20/05)", () => {
     expect(icon(container)).toBe("lucide-refresh-cw");
   });
 
-  it("an UPDATED run asks for a reload too, and wears the same mark", async () => {
-    // The 2026-09-07 reading: the up-arrow here says "another new version", so the operator taps
-    // expecting an update to start and sees nothing start. The crew has already updated; what is
-    // left is this screen.
-    holdReload("an-open-composer-draft");
-    confirmStaleBundle();
-    const { container } = await renderBand(info({ run: run("done") }));
-    expect(icon(container)).toBe("lucide-refresh-cw");
-  });
 });
 
 describe("pwa path unchanged", () => {
@@ -418,82 +393,25 @@ describe("auto-reload unless held", () => {
     confirmStaleBundle();
     await renderBand(info({ releaseAvailable: false, run: run("done") }));
     expect(reload).not.toHaveBeenCalled();
-    expect(screen.getByText("Updated to 1.5.0. Tap to reload.")).toBeInTheDocument();
+    expect(screen.getByText("New version — tap to update")).toBeInTheDocument();
   });
 
-  it("(c)'s tap takes the same reload path the footer button does", async () => {
+  it("the reload row's tap takes the same path the footer button does", async () => {
     const user = userEvent.setup();
     holdReload("an-open-composer-draft");
     confirmStaleBundle();
-    await renderBand(info({ run: run("done") }));
-    await user.click(screen.getByText("Updated to 1.5.0. Tap to reload."));
+    await renderBand(info({ releaseAvailable: false, run: run("done") }));
+    await user.click(screen.getByText("New version — tap to update"));
     expect(checkForUpdate).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("updating 1 peer", () => {
-  it("names the peer the lead is waiting on", async () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting" }];
-    await renderBand(info({ run: run("done", { peers }) }));
-    expect(screen.getByText("Updating 1 peer: minibuch")).toBeInTheDocument();
-  });
-
-  it("names both when two are moving", async () => {
-    const peers: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "restarting" },
-      { name: "cellar", state: "preflight" },
-    ];
-    await renderBand(info({ run: run("done", { peers }) }));
-    expect(screen.getByText("Updating 2 peers: minibuch, cellar")).toBeInTheDocument();
-  });
-
-  it("is gone once all peers report done", async () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "done" }];
-    const { container } = await renderBand(info({ releaseAvailable: false, run: run("done", { peers }) }));
-    expect(band(container)).toBeNull();
-  });
-
-  it("tapping it opens the Updates page", async () => {
-    const user = userEvent.setup();
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting" }];
-    await renderBand(info({ run: run("done", { peers }) }));
-    // The WHOLE ROW, and it stays that way: a moving peer is undismissable (the operator must be
-    // able to see the end of a run somebody is still driving), so there is no ✕ for a row-wide tap
-    // target to conflict with.
-    await user.click(screen.getByText("Updating 1 peer: minibuch"));
-    expect(await screen.findByText("the updates page")).toBeInTheDocument();
-  });
-});
-
-describe("a packaged peer waits for its package manager", () => {
-  it("says so instead of counting the peer among the ones still moving", async () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
-    await renderBand(info({ run: run("done", { peers }) }));
-    expect(screen.getByText("minibuch waits for its package manager")).toBeInTheDocument();
-  });
-
-  it("is kept out of the peers line, which is about what the run is waiting on", async () => {
-    const peers: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "restarting" },
-      { name: "cellar", state: "package-managed" },
-    ];
-    await renderBand(info({ run: run("done", { peers }) }));
-    // One peer, not two: the packaged machine is not one the run is waiting on.
-    expect(screen.getByText("Updating 1 peer: minibuch")).toBeInTheDocument();
-  });
-
-  it("never spins — a packaged peer is a state, never something in progress", async () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
-    const { container } = await renderBand(info({ run: run("done", { peers }) }));
-    expect(container.querySelector(".animate-spin")).toBeNull();
-    // And it stays out of the red weight a rolled-back peer carries.
-    expect(band(container)!.className).not.toContain("status-blocked");
-  });
-});
-
 describe("dismissal is per version, and it belongs to the machine", () => {
-  it("a run in flight carries no dismiss", async () => {
-    await renderBand(info({ run: run("restarting") }));
+  it("the DOWNLOAD row carries no version dismiss — nothing was declined (2026-09-12)", async () => {
+    holdReload("an-open-composer-draft");
+    confirmStaleBundle();
+    pwaStage.set("installing");
+    await renderBand(info({ releaseAvailable: false }));
     expect(screen.queryByRole("button", { name: "Dismiss this version" })).toBeNull();
   });
 
@@ -556,31 +474,6 @@ describe("a packaged host on the band", () => {
     await settleBand();
     expect(band(container)).toBeNull();
     expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "offer");
-  });
-});
-
-describe("hiding the quiet crew notice", () => {
-  const managed: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
-  const quiet = () => info({ releaseAvailable: false, run: run("done", { peers: managed }) });
-
-  it("carries its own label — a notice about another machine, not this version", async () => {
-    await renderBand(quiet());
-    expect(screen.getByRole("button", { name: "Hide this notice" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Dismiss this version" })).toBeNull();
-  });
-
-  it("hides on the tap and tells the bridge, in the crew scope", async () => {
-    const user = userEvent.setup();
-    const { container } = await renderBand(quiet());
-    await user.click(screen.getByRole("button", { name: "Hide this notice" }));
-    await settleBand();
-    expect(band(container)).toBeNull();
-    expect(dismissUpdate).toHaveBeenCalledWith("1.5.0", "crew");
-  });
-
-  it("stays down for the next screen, off the snapshot's own field", async () => {
-    const { container } = await renderBand(info({ ...quiet(), dismissedCrewVersion: "1.5.0" }));
-    expect(band(container)).toBeNull();
   });
 });
 

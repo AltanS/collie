@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { precacheAndRoute, createHandlerBoundToURL } from "workbox-precaching";
+import { addPlugins, precacheAndRoute, createHandlerBoundToURL } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
 import { clientsClaim } from "workbox-core";
 
@@ -22,7 +22,45 @@ declare const self: ServiceWorkerGlobalScope & {
 };
 
 // ── App-shell caching (parity with the previous generateSW config) ──────────────────────────────
-precacheAndRoute(self.__WB_MANIFEST);
+//
+// ── PROGRESS IS COUNTED IN FILES, AND THAT IS THE ONLY HONEST UNIT (M28/01) ──
+// `fetchDidSucceed` fires once per COMPLETED precache asset and carries no byte count. So the worker
+// posts "n of N files" to every open client and the update screen draws its bar from that. A bar
+// weighted by bytes would need a build-time size stamp, a fetch to read it and a fallback for when it
+// is missing — and it would still move in file-sized jumps, because this is the only hook there is.
+// `total` is the manifest's own length, which is exact.
+//
+// Best-effort, and off the response path: the asset is returned whatever the postMessage does. A
+// client list that cannot be read costs the bar, never the install.
+const PRECACHE_MANIFEST = self.__WB_MANIFEST;
+let precached = 0;
+
+addPlugins([
+  {
+    fetchDidSucceed: async ({ request, response }) => {
+      precached += 1;
+      const message = {
+        type: "precache-progress",
+        done: precached,
+        total: PRECACHE_MANIFEST.length,
+        url: request.url,
+      };
+      try {
+        const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        // `Client.postMessage(message, transfer)` — the second argument is a TRANSFER LIST, not a
+        // target origin: the recipient is a client of this worker's own scope, reached by reference,
+        // so there is no cross-origin window to address. Spelled out as empty, exactly as
+        // `lib/pwa.ts` spells its own post to the worker, because nothing is transferred.
+        for (const client of windows) client.postMessage(message, []);
+      } catch {
+        /* no clients to tell, or the list refused — the install is what matters */
+      }
+      return response;
+    },
+  },
+]);
+
+precacheAndRoute(PRECACHE_MANIFEST);
 // SPA fallback so deep links (/pane/:id) resolve offline too. The denylist is the set of paths this
 // SW must never answer from the precache — the API, and the `/auth/` namespace reserved for a
 // fronting proxy's sign-in page. Without that second entry an installed PWA, which has no address

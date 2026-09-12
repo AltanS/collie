@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { ArrowUpCircle, Loader2, Package, RefreshCw, TriangleAlert } from "lucide-react";
+import { ArrowUpCircle, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { useNavigate } from "react-router";
 
 import { Button } from "@/components/ui/button";
@@ -15,24 +15,27 @@ import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import { useSelfUpdate } from "@/lib/self-update";
 import {
-  clearUpdateStarted,
   type Dismissal,
   dismissesLocally,
   dismissTarget,
-  getUpdateStarted,
   ribbonText,
   ribbonView,
-  subscribeUpdateStarted,
   type RibbonView,
 } from "@/lib/update-ribbon";
 import type { DismissScope } from "@/lib/types";
 
 // ── THE UPDATE BAND ─────────────────────────────────────────────────────────────────────────────
 //
-// ONE top-of-app row for the whole update subject: a release is available, the confirm was just
-// tapped, a run is in flight, the bridge is new and this bundle is behind it, and peers are
-// following. It sits in the slot `UpdateAvailableBanner` used to occupy in `routes/root.tsx`, which
-// it absorbs entirely — there is no second top band for updates.
+// ONE top-of-app row for the part of the update subject that is NOT a run: a release is available, a
+// peer's leg failed, this bundle is behind the bridge, and a new bundle is downloading into the
+// precache. It sits in the slot `UpdateAvailableBanner` used to occupy in `routes/root.tsx`, which it
+// absorbs entirely — there is no second top band for updates.
+//
+// ── A RUN IN PROGRESS IS THE SCREEN'S, NOT THIS ROW'S (M28/01) ───────────────
+// The confirm just tapped, the run in flight, the run finished and the peers trailing it all left for
+// `components/update-screen.tsx`, which shows a row per machine and this device's own download. The
+// reasoning sits at the precedence list in `lib/update-ribbon.ts`. What this row must never do is say
+// the same thing again in forty characters.
 //
 // ── IT REGISTERS A SLOT; IT DOES NOT DRAW A ROW ──────────────────────────────
 // The pixels live in the ONE band above the header, `ui/strip-host.tsx`, and this component only
@@ -68,8 +71,9 @@ import type { DismissScope } from "@/lib/types";
 // `dismissesLocally`). The install carries on and the controller swap still reloads this page.
 //
 // ── THE BAND NEVER STARTS AN UPDATE ──────────────────────────────────────────
-// Four of the five states navigate to `/settings/updates`, where the confirm lives. A band that
-// could start an update from any screen would be the reflex tap the confirm was designed against.
+// Every state but the bundle reload navigates to `/settings/updates`, where the confirm lives. A band
+// that could start an update from any screen would be the reflex tap the confirm was designed
+// against.
 // The one exception taps `checkForUpdate()`, which reloads THIS PAGE onto a bundle that is already
 // built — it changes nothing on the host.
 
@@ -80,9 +84,9 @@ export function UpdateRibbon() {
   const data = useOptionalRootData();
   // The self-updater's own flag. Reading it here is also what MOUNTS the controller — see the header.
   const bundleStale = useSelfUpdate();
-  const startedAt = useSyncExternalStore(subscribeUpdateStarted, getUpdateStarted, getUpdateStarted);
-  // The service worker's own progress (`lib/pwa.ts`). The band is the only surface that shows it,
-  // and it shows it as one word: a download is happening, wait for it (2026-09-12).
+  // The service worker's own progress (`lib/pwa.ts`). With no run behind it this band is the only
+  // surface that shows it, and it shows it as one word: a download is happening, wait for it
+  // (2026-09-12). Inside a run the update screen counts the files instead.
   const stage = useSyncExternalStore(subscribeUpdateStage, getUpdateStage, getUpdateStage);
   // OPTIMISTIC ONLY. The dismissal itself lives on the bridge (M17/08) and arrives on the snapshot;
   // this holds what the operator just closed so the band drops on the tap rather than on the next
@@ -95,13 +99,6 @@ export function UpdateRibbon() {
   const [downloadHidden, setDownloadHidden] = useState(false);
 
   const update = data?.update;
-  const runState = update?.run?.state;
-
-  // (s) is over the moment the status object speaks. Done as an effect rather than inside the
-  // reading so the store is left tidy for the next confirm, and so the reading stays pure.
-  useEffect(() => {
-    if (runState !== undefined && runState !== "idle") clearUpdateStarted();
-  }, [runState]);
 
   // A CLOSE COVERS ONE DOWNLOAD, NOT EVERY FUTURE ONE. The stage leaving `installing` is the end of
   // the worker that was closed over, so the next `updatefound` raises the row again rather than
@@ -112,7 +109,6 @@ export function UpdateRibbon() {
 
   const view = ribbonView({
     update,
-    startedAt,
     bundleStale,
     bundleInstalling: stage === "installing",
     dismissedVersion: dismissedIn("offer", justDismissed, update?.dismissedVersion),
@@ -130,9 +126,9 @@ export function UpdateRibbon() {
   const target = dismissTarget(view);
 
   function onTap() {
-    // The two bundle states reload THIS PAGE onto a bundle that already exists. Everything else is a
+    // The bundle state reloads THIS PAGE onto a bundle that already exists. Everything else is a
     // navigation to the page that owns the confirm.
-    if (view.kind === "updated" || view.kind === "bundle") {
+    if (view.kind === "bundle") {
       void checkForUpdate();
       return;
     }
@@ -226,24 +222,14 @@ function skinOf(view: RibbonView) {
   // A DOWNLOAD IS A THING IN FLIGHT, so it wears the spinner (2026-09-12). It is the one bundle
   // state that does: the other two are standing offers, and a spinner on an offer would say
   // something was already running.
-  if (
-    view.kind === "starting" ||
-    view.kind === "updating" ||
-    view.kind === "peers" ||
-    view.kind === "bundle-installing"
-  ) {
+  if (view.kind === "bundle-installing") {
     return { Icon: Loader2, spin: true, tone: "caution" } as const;
   }
-  // A packaged peer is a state, not an alarm and not a thing in progress: the ambient tint the band
-  // already uses, and a still icon. A spinner here would say the run is waiting on that machine.
-  if (view.kind === "package-managed") {
-    return { Icon: Package, spin: false, tone: "caution" } as const;
-  }
-  // A RELOAD IS NOT AN OFFER (M20/05). `updated` and `bundle` both say "the bundle on this screen is
-  // behind, reload it", and `ArrowUpCircle` is the universal mark for "a new version is available".
-  // Wearing it here made the operator read the band as a second offer, tap it expecting something to
-  // start, and see nothing start. Still, never spinning: nothing is in flight until the tap.
-  if (view.kind === "updated" || view.kind === "bundle") {
+  // A RELOAD IS NOT AN OFFER (M20/05). `bundle` says "the bundle on this screen is behind, reload it",
+  // and `ArrowUpCircle` is the universal mark for "a new version is available". Wearing it here made
+  // the operator read the band as a second offer, tap it expecting something to start, and see
+  // nothing start. Still, never spinning: nothing is in flight until the tap.
+  if (view.kind === "bundle") {
     return { Icon: RefreshCw, spin: false, tone: "caution" } as const;
   }
   return { Icon: ArrowUpCircle, spin: false, tone: "caution" } as const;

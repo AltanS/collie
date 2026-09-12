@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Outlet,
   useLoaderData,
@@ -25,6 +25,7 @@ import { TourHost } from "@/components/tour-sheet";
 import { describeThrownError } from "@/lib/api-error-message";
 import { homePath } from "@/lib/nav";
 import { scopeFromUrl } from "@/lib/session";
+import { noteLeadName, noteSnapshotRun } from "@/lib/update-run-store";
 import { PANE_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -90,6 +91,21 @@ export function RootLayout() {
   // would fire the prompt before `TourHost` had decided anything.
   const [tourDecision, setTourDecision] = useState<"pending" | "open" | "closed">("pending");
   usePushSetup(tourDecision !== "closed");
+
+  // TWO FACTS PUBLISHED OUT OF THIS ROUTER, and nothing mounted (M28/01). The update screen lives in
+  // `App.tsx`, beside the wrapper it makes inert, so it has no loader data and no `CrewProvider` — and
+  // it needs the snapshot's run record and this machine's own name. Both go into
+  // `lib/update-run-store.ts`, which is the one place the run is reconciled. A component rendered here
+  // would be a descendant of the node the sheet makes inert, which is the arrangement the sheet exists
+  // to avoid.
+  const leadName = data.servers?.find((server) => server.isLead)?.name ?? null;
+  useEffect(() => {
+    noteLeadName(leadName);
+  }, [leadName]);
+  const snapshotRun = data.update?.run;
+  useEffect(() => {
+    noteSnapshotRun(snapshotRun);
+  }, [snapshotRun]);
 
   // A viewport-height flex column: the top banners (when shown) are in-flow rows at the top and the
   // active route fills the rest (each route root is `min-h-0 flex-1`). This is what keeps a banner

@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/setup";
 import { ROOT_ROUTE_ID, type HomeData } from "@/lib/loaders";
 import { __resetReloadGuard, isReloadHeld } from "@/lib/reload-guard";
+import { __resetUpdateRunStore } from "@/lib/update-run-store";
 import type {
   PreflightReport,
   UpdateInfo,
@@ -169,6 +170,9 @@ function serveCheck(update: UpdateInfo, preflight: PreflightReport | null, crew?
 
 beforeEach(() => {
   __resetReloadGuard();
+  // The run poll is a module-scoped store now (M28/01), so one case's run would otherwise be the
+  // next case's opening state.
+  __resetUpdateRunStore();
   serveCheck(info(), GREEN);
   server.use(http.post("/api/update/snooze", () => HttpResponse.json(info())));
 });
@@ -176,6 +180,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   __resetReloadGuard();
+  __resetUpdateRunStore();
 });
 
 describe("update card — what it says before anything happens", () => {

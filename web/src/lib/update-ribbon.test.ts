@@ -55,7 +55,6 @@ const info = (over: Partial<UpdateInfo> = {}): UpdateInfo => ({
 const read = (over: Partial<RibbonInput> = {}) =>
   ribbonView({
     update: info(),
-    startedAt: null,
     bundleStale: false,
     bundleInstalling: false,
     dismissedVersion: null,
@@ -80,61 +79,6 @@ describe("update ribbon states", () => {
     expect(read({ update: info({ latest: null }) })).toEqual({ kind: "silent" });
   });
 
-  it("(s) shows starting update at the instant of confirm", () => {
-    expect(read({ startedAt: NOW })).toEqual({ kind: "starting" });
-  });
-
-  it("(b) counts through fetching, building and restarting", () => {
-    const phase = (state: UpdateRunState) =>
-      read({ update: info({ run: run(state) }) });
-    expect(phase("preflight")).toEqual({ kind: "updating", phase: "fetching", version: "1.5.0" });
-    expect(phase("staging")).toEqual({ kind: "updating", phase: "building", version: "1.5.0" });
-    expect(phase("restarting")).toEqual({ kind: "updating", phase: "restarting", version: "1.5.0" });
-    expect(phase("verifying")).toEqual({ kind: "updating", phase: "restarting", version: "1.5.0" });
-  });
-
-  it("(c) names the new version once the run is done and this bundle is behind", () => {
-    expect(read({ update: info({ run: run("done") }), bundleStale: true })).toEqual({
-      kind: "updated",
-      version: "1.5.0",
-    });
-  });
-
-  it("(d) names the peers the lead is waiting on", () => {
-    const peers: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "restarting" },
-      { name: "cellar", state: "done" },
-    ];
-    expect(read({ update: info({ run: run("done", { peers }) }) })).toEqual({
-      kind: "peers",
-      names: ["minibuch"],
-      target: null, // a moving peer carries no dismiss — see `dismissTarget`
-      elapsedMs: null, // no leg stamp, so nothing to count (M20/04)
-    });
-  });
-
-  it("(d) is gone once every peer reports done", () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "done" }];
-    expect(read({ update: info({ releaseAvailable: false, run: run("done", { peers }) }) })).toEqual({
-      kind: "silent",
-    });
-  });
-
-  it("counts a peer state it has never heard of as still moving, never as finished", () => {
-    // A newer bridge may report a word this client does not know. A leg that vanished from the band
-    // would read as "that machine is fine".
-    // SAFETY: the assertion is the POINT of this test — it plants a wire value outside the union
-    // this client compiles against, which is exactly what an older client reading a newer bridge
-    // receives. Nothing downstream trusts the value; the reading only asks whether it is `done`.
-    const peers = [{ name: "minibuch", state: "levitating" as UpdatePeerLegState }];
-    expect(read({ update: info({ run: run("done", { peers }) }) })).toEqual({
-      kind: "peers",
-      names: ["minibuch"],
-      target: null, // a moving peer carries no dismiss — see `dismissTarget`
-      elapsedMs: null, // no leg stamp, so nothing to count (M20/04)
-    });
-  });
-
   it("an unreachable peer is a failed leg, not a moving one (M16/04)", () => {
     // The lead gave up on that machine after three missed sweeps, so the band names it rather than
     // counting it among the machines still going.
@@ -151,40 +95,77 @@ describe("update ribbon states", () => {
     });
   });
 
-  it("stops speaking about a run that finished long ago — state (c) ONLY (M20/04)", () => {
-    // The window gates the "Updated to X, tap to reload" line and nothing else. It used to gate the
-    // moving-peers line as well, which is how the band fell silent at ten minutes on 2026-09-07
-    // while the Updates card kept the same peer moving for five more.
+  it("a finished run that is long past still leaves the bundle row alone", () => {
+    // `DONE_WINDOW_MS` used to gate an "Updated to X, tap to reload" row of the band's own. That row
+    // is the update screen's toast now, and what is left here is the PWA row, which has never had a
+    // window: the bundle on screen either is behind the bridge or it is not.
     const stale = run("done", { updatedAt: NOW - DONE_WINDOW_MS - 1 });
     expect(read({ update: info({ run: stale }), bundleStale: true })).toEqual({ kind: "bundle" });
   });
 });
 
-describe("update ribbon precedence", () => {
-  it("(s) outranks an offer, and yields the moment the status object speaks", () => {
-    expect(read({ startedAt: NOW })).toEqual({ kind: "starting" });
-    // An `idle` record is the placeholder, not a run: it has not spoken.
-    expect(read({ startedAt: NOW, update: info({ run: run("idle") }) })).toEqual({ kind: "starting" });
-    expect(read({ startedAt: NOW, update: info({ run: run("preflight") }) })).toMatchObject({
-      kind: "updating",
+// ── THE HANDOVER, PINNED ────────────────────────────────────────────────────────────────────────
+//
+// M28/01 moved every state that IS a run to `components/update-screen.tsx`: the confirm just tapped,
+// the four in-flight states, the finished run, and the peers trailing it. A band that still said any
+// of those would be a forty-character row repeating a full-screen sheet, reconciled twice — which is
+// the class of bug M20 spent three specs on. This is the test named in the milestone's checklist.
+describe("run states belong to the screen", () => {
+  it("says nothing about a run in flight, in any of its four states", () => {
+    for (const state of ["preflight", "staging", "restarting", "verifying"] as const) {
+      expect(read({ update: info({ releaseAvailable: false, run: run(state) }) })).toEqual({
+        kind: "silent",
+      });
+    }
+  });
+
+  it("says nothing about a run that finished", () => {
+    expect(read({ update: info({ releaseAvailable: false, run: run("done") }) })).toEqual({
+      kind: "silent",
     });
   });
 
-  it("a run in flight outranks the offer that produced it", () => {
-    expect(read({ update: info({ run: run("staging") }) })).toMatchObject({ kind: "updating" });
+  it("says nothing about a peer that is still moving", () => {
+    const peers: UpdatePeerLeg[] = [
+      { name: "minibuch", state: "restarting" },
+      { name: "cellar", state: "done" },
+    ];
+    expect(read({ update: info({ releaseAvailable: false, run: run("done", { peers }) }) })).toEqual({
+      kind: "silent",
+    });
   });
 
-  it("a finished run outranks both the offer and the peers trailing it", () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting" }];
-    expect(read({ update: info({ run: run("done", { peers }) }), bundleStale: true })).toEqual({
-      kind: "updated",
+  it("says nothing about a peer whose package manager owns it", () => {
+    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
+    expect(read({ update: info({ releaseAvailable: false, run: run("done", { peers }) }) })).toEqual({
+      kind: "silent",
+    });
+  });
+
+  it("lets the offer through under a run, because the offer is not the run", () => {
+    // The row that used to be suppressed by a run in flight is a standing fact about the machine, and
+    // the sheet over it is about this run. Two different things, and the band keeps the one that is
+    // still true.
+    expect(read({ update: info({ run: run("staging") }) })).toEqual({
+      kind: "available",
       version: "1.5.0",
     });
   });
 
-  it("peers outrank the offer", () => {
-    const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting" }];
-    expect(read({ update: info({ run: run("done", { peers }) }) })).toMatchObject({ kind: "peers" });
+  it("keeps the FAILED leg, which is not a run in progress but a statement about one that is over", () => {
+    const peers: UpdatePeerLeg[] = [
+      { name: "cellar", state: "restarting" },
+      { name: "minibuch", state: "rolled-back", reason: "health gate timed out" },
+    ];
+    expect(read({ update: info({ releaseAvailable: false, run: run("done", { peers }) }) })).toMatchObject({
+      kind: "peer-failed",
+      name: "minibuch",
+    });
+  });
+
+  it("keeps both download states, which are about the PWA and not about a run", () => {
+    expect(read({ bundleStale: true, bundleInstalling: true })).toEqual({ kind: "bundle-installing" });
+    expect(read({ bundleStale: true })).toEqual({ kind: "bundle" });
   });
 });
 
@@ -235,12 +216,13 @@ describe("rolled back peer on the band", () => {
   });
 });
 
-describe("restarting gap is not an outage", () => {
-  it("keeps saying Restarting while the bridge is away", () => {
-    // A poll that fails leaves the last record on screen, which is exactly this input again.
-    const view = read({ update: info({ run: run("restarting") }) });
-    expect(view).toEqual({ kind: "updating", phase: "restarting", version: "1.5.0" });
-    expect(ribbonText(view)).toBe("Updating to 1.5.0. Restarting");
+describe("the restarting gap", () => {
+  it("is the update screen's to narrate, and the band adds nothing to it (M28/01)", () => {
+    // A poll that fails during `restarting` leaves the last record on screen, and the sheet is what
+    // says "restarting, back in a moment". The band's job here is to stay out of the way.
+    expect(read({ update: info({ releaseAvailable: false, run: run("restarting") }) })).toEqual({
+      kind: "silent",
+    });
   });
 });
 
@@ -322,99 +304,26 @@ describe("a packaged host reads its own line", () => {
     expect(ribbonText(view)).toBe("Collie 1.5.0 available.");
   });
 });
-
 // ── WHAT A DISMISS CAN CLOSE (M17/08) ───────────────────────────────────────────────────────────
 //
-// The rule is whether the state ends on its own. A run, a finished run and a failed peer do, and a
-// band the operator closed there is an ending they can no longer see. The offer and the QUIET crew
-// states do not: a machine a package manager owns can stand behind for weeks.
+// The rule is whether the state ends on its own. A failed peer does, and it is closable for that
+// reason: it has already ended, badly, and the sentence would otherwise stand until some later run
+// replaced it. The offer is a standing fact and closable too. The quiet crew states left with the run
+// states (M28/01), so what is left here is the offer, the failed leg and the download.
 
-describe("dismissing the quiet crew states", () => {
-  const managed: UpdatePeerLeg[] = [{ name: "minibuch", state: "package-managed" }];
-  const quiet = (over: Partial<UpdateInfo> = {}) =>
-    info({ releaseAvailable: false, run: run("done", { peers: managed }), ...over });
-
-  it("offers a dismiss in the CREW scope, keyed by the version the crew is heading for", () => {
-    const view = read({ update: quiet() });
-    expect(view).toEqual({ kind: "package-managed", names: ["minibuch"], target: "1.5.0" });
-    expect(dismissTarget(view)).toEqual({ scope: "crew", version: "1.5.0" });
-  });
-
-  it("keys the dismiss to the release upstream names when the run record names no target", () => {
-    const view = read({ update: quiet({ run: run("done", { peers: managed, to: null }) }) });
-    expect(dismissTarget(view)).toEqual({ scope: "crew", version: "1.5.0" }); // `update.latest`
-  });
-
-  it("hides the quiet band once that version was dismissed IN ITS OWN SCOPE", () => {
-    expect(read({ update: quiet(), dismissedCrewVersion: "1.5.0" })).toEqual({ kind: "silent" });
-  });
-
-  it("is untouched by a dismissed offer at the same version — two decisions, two keys", () => {
-    // The offer is about THIS host and the notice is about another machine. Putting one down must
-    // not put the other down with it.
-    expect(read({ update: quiet(), dismissedVersion: "1.5.0" })).toMatchObject({
-      kind: "package-managed",
-    });
-  });
-
-  it("raises the band again for a newer target — a dismiss is a version, not a mute", () => {
-    const view = read({
-      update: quiet({ latest: "1.6.0", run: run("done", { peers: managed, to: "1.6.0" }) }),
-      dismissedCrewVersion: "1.5.0",
-    });
-    expect(view).toMatchObject({ kind: "package-managed", target: "1.6.0" });
-  });
-
-  it("lets a failed leg win over the quiet states, and carries its own close (M20/04)", () => {
-    // A rolled-back peer outranks the quiet crew notice beside it: the operator asked for that run
-    // and this is how it ended. It is CLOSABLE, unlike a run in progress, because it has ended and
-    // nothing will replace the sentence until some later run does.
-    const peers: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "rolled-back", reason: "health gate timed out" },
-      { name: "cellar", state: "package-managed" },
-    ];
-    const view = read({
-      update: quiet({ run: run("done", { peers }) }),
-      dismissedVersion: "1.5.0",
-      dismissedCrewVersion: "1.5.0",
-    });
-    expect(view).toMatchObject({ kind: "peer-failed", name: "minibuch" });
-    expect(dismissTarget(view)).toEqual({ scope: "crew", version: "1.5.0" });
-  });
-
-  it("dismisses nothing while a peer is still moving", () => {
-    const peers: UpdatePeerLeg[] = [
-      { name: "minibuch", state: "restarting" },
-      { name: "cellar", state: "package-managed" },
-    ];
-    const view = read({
-      update: quiet({ run: run("done", { peers }) }),
-      dismissedCrewVersion: "1.5.0",
-    });
-    // Still on screen despite the dismissal, and carrying no close: the operator has to be able to
-    // see the end of a run somebody is driving.
-    expect(view).toMatchObject({ kind: "peers", names: ["minibuch"] });
-    expect(dismissTarget(view)).toBeNull();
-  });
-
-  it("gives a run and the bundle row no dismiss at all", () => {
-    expect(dismissTarget(read({ update: info({ run: run("staging") }) }))).toBeNull();
-    expect(dismissTarget({ kind: "starting" })).toBeNull();
-    expect(dismissTarget({ kind: "updated", version: "1.5.0" })).toBeNull();
-    expect(dismissTarget({ kind: "bundle" })).toBeNull();
-    expect(dismissTarget({ kind: "silent" })).toBeNull();
-  });
-
-  it("a FAILED peer can be put down, because it is the one crew state that does not end (M20/04)", () => {
-    // Every other state here describes something in progress, and a dismissed run is a run the
-    // operator can no longer see the end of. A failed leg has already ended, badly, and the sentence
-    // would otherwise stand until some later run replaced it.
+describe("what carries a close", () => {
+  it("a FAILED peer can be put down, keyed to the version the run was heading for (M20/04)", () => {
     expect(dismissTarget({ kind: "peer-failed", name: "minibuch", reason: "gate", target: "1.5.0" })).toEqual({
       scope: "crew",
       version: "1.5.0",
     });
     // With nothing to key it to, it stays: a dismissal no newer version can raise again is a mute.
     expect(dismissTarget({ kind: "peer-failed", name: "minibuch", reason: "gate", target: null })).toBeNull();
+  });
+
+  it("gives the bundle row and silence no dismiss at all", () => {
+    expect(dismissTarget({ kind: "bundle" })).toBeNull();
+    expect(dismissTarget({ kind: "silent" })).toBeNull();
   });
 
   it("the DOWNLOAD row closes in this document and posts nothing (2026-09-12)", () => {
@@ -428,9 +337,7 @@ describe("dismissing the quiet crew states", () => {
 
   it("every other state is put down on the bridge or not at all", () => {
     expect(dismissesLocally({ kind: "bundle" })).toBe(false);
-    expect(dismissesLocally({ kind: "updated", version: "1.5.0" })).toBe(false);
     expect(dismissesLocally({ kind: "available", version: "1.5.0" })).toBe(false);
-    expect(dismissesLocally({ kind: "starting" })).toBe(false);
     expect(dismissesLocally({ kind: "silent" })).toBe(false);
   });
 });
@@ -438,55 +345,57 @@ describe("dismissing the quiet crew states", () => {
 // ── One clock (M20/04) ──────────────────────────────────────────────────────
 
 describe("the band and the card read one clock", () => {
-  it("a peer still moving long past the DONE window is still the peers band", () => {
+  it("a peer still moving long past the DONE window is still MOVING, whatever the clock says", () => {
     // The 2026-09-07 shape exactly: the lead finished at 17:43, the peer was still listed as moving
-    // at 17:58, and the band had gone quiet at 17:53 because state (d) borrowed (c)'s window.
+    // at 17:58, and the band had gone quiet at 17:53 because state (d) borrowed (c)'s window. The
+    // band no longer draws that state at all (M28/01) — the reading it and the card share still has
+    // to answer the question, and the update screen is now the surface that renders the answer.
     const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting", updatedAt: NOW - 15 * 60_000 }];
     const stale = run("done", { updatedAt: NOW - DONE_WINDOW_MS - 1, peers });
-    expect(read({ update: info({ releaseAvailable: false, run: stale }) })).toMatchObject({
-      kind: "peers",
-      names: ["minibuch"],
-    });
+    const reading = readRun({ update: info({ releaseAvailable: false, run: stale }), now: NOW });
+    expect(reading.moving).toBe(true);
+    expect(reading.movingLegs.map((l) => l.name)).toEqual(["minibuch"]);
   });
 
-  it("goes quiet the moment the lead stamps the run settled, and not before", () => {
+  it("goes still the moment the lead stamps the run settled, and not before", () => {
     // `settledAt` is the key, never elapsed time. Spec 01 writes it when the last leg goes terminal.
     const peers: UpdatePeerLeg[] = [{ name: "minibuch", state: "restarting" }];
     const moving = info({ releaseAvailable: false, run: run("done", { peers }) });
-    expect(read({ update: moving })).toMatchObject({ kind: "peers" });
+    expect(readRun({ update: moving, now: NOW }).moving).toBe(true);
 
     const settled = info({
       releaseAvailable: false,
       run: run("done", { peers, settledAt: NOW - 1_000 }),
     });
-    expect(read({ update: settled })).toEqual({ kind: "silent" });
+    expect(readRun({ update: settled, now: NOW }).moving).toBe(false);
   });
 
-  it("a peers-only run has no local record at all, and the band still sees it (M20/09)", () => {
-    // "Retry crew update" writes nothing to `update.json`, so `run` is absent for the whole run. The
-    // band used to require a `done` record here and was therefore blind to it.
+  it("a peers-only run has no local record at all, and the reading still sees it (M20/09)", () => {
+    // "Retry crew update" writes nothing to `update.json`, so `run` is absent for the whole run. Both
+    // surfaces used to require a `done` record here and were therefore blind to it.
     const update = info({
       releaseAvailable: false,
       peers: [{ name: "minibuch", state: "updating" }],
     });
-    expect(read({ update })).toMatchObject({ kind: "peers", names: ["minibuch"] });
+    const reading = readRun({ update, now: NOW });
+    expect(reading.moving).toBe(true);
+    expect(reading.movingLegs.map((l) => l.name)).toEqual(["minibuch"]);
   });
 
-  it("past the patience window the band names the elapsed time; before it, the words are unchanged", () => {
+  it("past the patience window the reading calls the run slow; before it, it does not", () => {
     const at = (ago: number) =>
-      read({
+      readRun({
         update: info({
           releaseAvailable: false,
           run: run("done", { peers: [{ name: "minibuch", state: "restarting", updatedAt: NOW - ago }] }),
         }),
+        now: NOW,
       });
-    expect(at(CREW_PATIENCE_MS - 1)).toMatchObject({ elapsedMs: null });
-    expect(ribbonText(at(CREW_PATIENCE_MS - 1))).toBe("Updating 1 peer: minibuch");
-
-    const slow = at(CREW_PATIENCE_MS);
-    expect(slow).toMatchObject({ kind: "peers", elapsedMs: CREW_PATIENCE_MS });
-    expect(ribbonText(slow)).toBe("Updating 1 peer: minibuch, 2 min");
+    expect(at(CREW_PATIENCE_MS - 1).slow).toBe(false);
+    expect(at(CREW_PATIENCE_MS).slow).toBe(true);
+    expect(at(CREW_PATIENCE_MS).elapsedMs).toBe(CREW_PATIENCE_MS);
   });
+
 
   it("readRun answers every question both surfaces ask, from one pass", () => {
     const legs: UpdatePeerLeg[] = [
@@ -589,8 +498,10 @@ describe("the crew link sentence", () => {
     expect(ribbonText(view, { from: 1, to: 2 })).toBe(`Collie 1.5.0 available via pacman. ${SHORT}`);
   });
 
-  it("says nothing on a state that is past being told — a run already in flight", () => {
-    const view = read({ update: info({ run: run("staging") }) });
-    expect(ribbonText(view, { from: 1, to: 2 })).toBe("Updating to 1.5.0. Building");
+  it("says nothing on a state that is past being told — the bundle reload row", () => {
+    // The sentence only changes what the operator DOES before a confirm, and the reload row is not
+    // one: the tap there reloads this page onto a bundle that already exists.
+    const view = read({ bundleStale: true });
+    expect(ribbonText(view, { from: 1, to: 2 })).toBe(ribbonText(view));
   });
 });

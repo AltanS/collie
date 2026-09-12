@@ -22,14 +22,21 @@ export interface Dismissal {
 // snapshot plus two client facts (this tab just posted a confirm; the bundle on screen is stale), so
 // the precedence is pinned by unit tests instead of by pulling a DOM apart.
 //
-// ── THE PRECEDENCE, AND WHY IT IS THIS ORDER ─────────────────────────────────
-// A run outranks an offer, a finished run outranks both, peers trail, and an offer is last:
+// ── THE RUN STATES BELONG TO THE SCREEN, NOT TO THE BAND (M28/01) ────────────
+// This band used to carry the whole run as well: (s) the confirm just tapped, (b) the run in flight,
+// (c) the run finished, (d) the peers trailing it. A running update now owns the screen — one sheet
+// with a row per machine and a row for this device's own download (`lib/update-screen.ts`) — and a
+// forty-character row counting "Restarting" beside a sheet saying the same thing in full was two
+// surfaces about one fact, reconciled twice. So the band keeps only what is NOT a run:
 //
-//   (s) starting     the confirm was tapped and the status object has not spoken yet
-//   (b) updating     the polled run is in flight
-//   (c) updated      the run finished and this bundle is behind the bridge
-//   (d) peers        the lead finished and a peer is still moving, or one rolled back
-//   (a) available    a newer release exists upstream
+//   (f) peer-failed        a terminal leg, after the run is over, with its own reason
+//   (i) bundle-installing  THIS document's worker is fetching a new bundle
+//   (c) bundle             this bundle is behind the bridge and the page may reload onto it
+//   (a) available          a newer release exists upstream
+//
+// The two download states stay here because they are about the PWA and not about a run: with no run
+// to be about, the sheet shows nothing and this row is the whole story (2026-09-12). The sheet shows
+// this device's download only as part of a run.
 //
 // ── THE BUNDLE AND COLLIE ARE TWO DIFFERENT UPDATES ──────────────────────────
 // `lib/self-update.ts` updates the BUNDLE; the update card updates COLLIE. The band renders both,
@@ -85,25 +92,11 @@ export const DONE_WINDOW_MS = 10 * 60_000;
 /** How much of a peer's own prose fits the band. The page carries the rest. */
 export const REASON_BUDGET = 40;
 
-/** The three words state (b) counts through, mapped off the run state below. */
-export type RibbonPhase = "fetching" | "building" | "restarting";
-
 /** What the band is currently about. `silent` renders nothing (the component returns null). */
 export type RibbonView =
   | { kind: "silent" }
-  | { kind: "starting" }
-  | { kind: "updating"; phase: RibbonPhase; version: string }
-  | { kind: "updated"; version: string }
   | { kind: "bundle" }
   | { kind: "bundle-installing" }
-  | {
-      kind: "peers";
-      names: string[];
-      target: string | null;
-      /** How long the slowest moving leg has been at it, or null before the patience window. */
-      elapsedMs: number | null;
-    }
-  | { kind: "package-managed"; names: string[]; target: string | null }
   | {
       kind: "peer-failed";
       name: string;
@@ -115,12 +108,10 @@ export type RibbonView =
   | { kind: "available"; version: string }
   | { kind: "available-packaged"; version: string; manager: string | null };
 
-/** Everything the reading needs. Two of the four are client facts; the other two are the poll. */
+/** Everything the reading needs. Two are client facts; the rest are the poll. */
 export interface RibbonInput {
   /** The snapshot's update block. Absent on an older bridge, which reads as "nothing to say". */
   update: UpdateInfo | undefined;
-  /** When THIS tab posted the confirm, or null if it has not. State (s) is nothing but this. */
-  startedAt: number | null;
   /** `useSelfUpdate()`'s banner flag — see the header. Never re-derived here. */
   bundleStale: boolean;
   /**
@@ -146,19 +137,6 @@ export interface RibbonInput {
    *  decision, so a separate input — see {@link DismissScope}. */
   dismissedCrewVersion: string | null;
   now: number;
-}
-
-/**
- * `preflight` is the fetch, `staging` is the build, `restarting`/`verifying` is the restart.
- *
- * Three words need three sources and the run reports four states. The spec names "staging
- * completing" for *Building*, which the wire does not report as a state of its own; this is the
- * nearest reading that still counts through all three words rather than skipping one.
- */
-function phaseOf(state: UpdateRunState): RibbonPhase {
-  if (state === "preflight") return "fetching";
-  if (state === "staging") return "building";
-  return "restarting";
 }
 
 /** The leg states that are OVER. `package-managed` joins `done` here: a package manager owns that
@@ -358,9 +336,6 @@ export function dismissTarget(view: RibbonView): Dismissal | null {
     case "available":
     case "available-packaged":
       return { scope: "offer", version: view.version };
-    case "peers":
-    case "package-managed":
-      return view.target === null ? null : { scope: "crew", version: view.target };
     // A FAILED LEG IS CLOSABLE, and by this rule's own logic (M20/04). The rule is whether the state
     // describes something that ends on its own. A failed leg is the one crew state that does not:
     // it is terminal, the run is over, and the sentence would otherwise stand until another run
@@ -390,9 +365,9 @@ export function dismissesLocally(view: RibbonView): boolean {
   return view.kind === "bundle-installing";
 }
 
-/** The version the quiet crew states are keyed by: what the run is heading for when a record names
- *  it, else the release upstream is offering. Null when neither exists — nothing to key a dismissal
- *  to, so the band stays. */
+/** The version a failed leg's close is keyed by: what the run was heading for when a record names it,
+ *  else the release upstream is offering. Null when neither exists — nothing to key a dismissal to,
+ *  so the band stays. */
 function targetOf(input: RibbonInput, to: string | null): string | null {
   return to ?? input.update?.latest ?? null;
 }
@@ -400,79 +375,30 @@ function targetOf(input: RibbonInput, to: string | null): string | null {
 /** The whole band, decided once. See the precedence in this file's header. */
 export function ribbonView(input: RibbonInput): RibbonView {
   const run = input.update?.run;
-  // "The status object has spoken": a record exists and it is about a run, not the idle placeholder.
-  const spoke = run !== undefined && run.state !== "idle";
 
-  // (s) — the gap between the 202 and the first status the detached process writes.
-  if (input.startedAt !== null && !spoke) return { kind: "starting" };
-
-  // (b) — a run in flight. A failed poll during `restarting` simply leaves the last record in place,
-  // so this branch keeps saying "Restarting" rather than becoming an error.
-  if (run !== undefined && RUN_IN_FLIGHT.has(run.state)) {
-    return {
-      kind: "updating",
-      phase: phaseOf(run.state),
-      version: run.to ?? input.update?.latest ?? "",
-    };
-  }
-
-  // THE DOWNLOAD OUTRANKS BOTH BUNDLE STATES (2026-09-12). It is the same row about the same fact,
-  // one step further on: this bundle is behind, and the new one is on its way in. Above (c) as well
-  // as (c)'s other half, because "Updated to 1.8.1. Tap to reload." after the tap was taken is the
-  // sentence that made the operator tap again.
+  // THE DOWNLOAD OUTRANKS THE OFFER IT IS THE ANSWER TO (2026-09-12). Same row, same fact, one step
+  // further on: this bundle is behind, and the new one is on its way in.
   if (input.bundleStale && input.bundleInstalling) return { kind: "bundle-installing" };
 
-  const finished =
-    run !== undefined && run.state === "done" && input.now - run.updatedAt < DONE_WINDOW_MS;
-
-  // (c) — the bridge answers with the new version and this bundle is behind it.
-  if (finished && input.bundleStale && run.to !== null) return { kind: "updated", version: run.to };
-
-  // (c)'s other half: a stale bundle with no Collie update behind it is the PWA row exactly as it
-  // has always been, with its own words. Above (d) and (a) because it is the same slot.
-  if (input.bundleStale) return { kind: "bundle" };
-
-  // (d) — the crew is not done. NO TIME WINDOW, and no `finished` gate (M20/04).
-  //
-  // It used to hang off `finished`, so a moving peer inherited (c)'s ten-minute window and the band
-  // fell silent at ten minutes over a card that was still counting. It also required a `done` record
-  // on THIS machine, so a peers-only run — which writes none — was invisible to the band entirely
-  // (M20/09). Both gates are gone. What ends this branch is `settledAt`, the lead's own answer,
-  // stamped once when the last leg went terminal.
+  // (f) — a terminal leg, named with its reason. No time window and no `finished` gate (M20/04): what
+  // ends this branch is `settledAt`, the lead's own answer, stamped when the last leg went terminal.
+  // A leg still MOVING is the update screen's business now, and no longer this row's.
   {
     const reading = readRun({ update: input.update, now: input.now });
-    const target = targetOf(input, run?.to ?? null);
     if (reading.failed !== null) {
       const reason = reading.failed.reason ?? t("settings.updateCard.peer.unknownReason");
       return {
         kind: "peer-failed",
         name: reading.failed.name,
         reason: truncateWords(reason, REASON_BUDGET),
-        target,
+        target: targetOf(input, run?.to ?? null),
       };
     }
-    const quiet = target !== null && target === input.dismissedCrewVersion;
-    // A moving peer is undismissable, so its target is null however the crew was closed before: the
-    // operator must be able to see the end of a run somebody is still driving.
-    if (reading.movingLegs.length > 0) {
-      return {
-        kind: "peers",
-        names: reading.movingLegs.map((leg) => leg.name),
-        target: null,
-        // Past the patience window the band stops assuming the operator will simply wait: it says
-        // how long, and it says nobody has to do anything. Before it, the words are unchanged.
-        elapsedMs: reading.slow ? reading.elapsedMs : null,
-      };
-    }
-    // Below the moving peers, never among them: the band's peers line is about what the run is
-    // waiting on, and it is waiting on nothing here. Named anyway, so the operator learns why that
-    // machine did not move without opening the page to find out — and closable, because a machine
-    // a package manager owns can stand behind for weeks and a band nobody can put down is a nag.
-    // Still gated on `finished`: it is a QUIET standing fact, not a run in progress, and raising it
-    // about a run nobody started would be a nag with no run behind it.
-    const managed = reading.managed.map((leg) => leg.name);
-    if (finished && managed.length > 0 && !quiet) return { kind: "package-managed", names: managed, target };
   }
+
+  // (c) — a stale bundle is the PWA row exactly as it has always been. Above (a) because it is the
+  // same slot, and the tap reloads THIS PAGE onto a bundle that already exists.
+  if (input.bundleStale) return { kind: "bundle" };
 
   // (a) — an offer, and only an offer. The tap navigates; nothing here starts anything.
   const latest = input.update?.latest ?? null;
@@ -532,37 +458,10 @@ function ribbonLine(view: RibbonView): string {
   switch (view.kind) {
     case "silent":
       return "";
-    case "starting":
-      return t("updateRibbon.starting");
-    case "updating":
-      if (view.phase === "fetching") return t("updateRibbon.fetching", { version: view.version });
-      if (view.phase === "building") return t("updateRibbon.building", { version: view.version });
-      return t("updateRibbon.restarting", { version: view.version });
-    case "updated":
-      return t("updateRibbon.updated", { version: view.version });
     case "bundle":
       return t("pwa.updateAvailable");
     case "bundle-installing":
       return t("pwa.updateInstalling");
-    case "peers": {
-      const line = tn("updateRibbon.peers", view.names.length, { names: view.names.join(", ") });
-      // PAST THE PATIENCE WINDOW THE BAND NAMES THE TIME (M20/04). Before it, the words are exactly
-      // what they were. After it, the one fact the operator does not have is how long this has been
-      // going, and on 2026-09-07 not having it is what turned a wait into a dozen taps.
-      //
-      // The reassurance sentence that goes with it — "No action needed, this finishes on its own" —
-      // lives on the Updates CARD and not here. This band is one truncating row about forty
-      // characters wide (`i18n/update-ribbon-budget.test.ts` enforces it over all seven locales), and
-      // a sentence that long would be a sentence nobody reads the end of. A tap lands on the card,
-      // which is where there is room to say it.
-      if (view.elapsedMs === null) return line;
-      return tn("updateRibbon.peersSlow", view.names.length, {
-        names: view.names.join(", "),
-        elapsed: minutesWord(view.elapsedMs),
-      });
-    }
-    case "package-managed":
-      return tn("updateRibbon.packageManaged", view.names.length, { names: view.names.join(", ") });
     case "peer-failed":
       // ONE SENTENCE FOR ALL FOUR FAILED STATES (M20/04). It used to say "rolled back" about every
       // one of them, which is a specific and often false claim: an `unreachable` peer did not roll
@@ -582,37 +481,57 @@ function ribbonLine(view: RibbonView): string {
   }
 }
 
-// ── "THIS TAB JUST POSTED" ──────────────────────────────────────────────────────────────────────
+// ── "THIS DEVICE STARTED IT" ────────────────────────────────────────────────────────────────────
 //
-// `POST /api/update` returns immediately and hands off to a detached process, so there is a window
-// between the confirm and the first status the run record reports. An empty band there says "nothing
-// happened" about the thing the operator just consented to. The card stamps this store on the way
-// out of its own POST; the band reads it, and the moment the status object speaks the reading above
-// stops using it. Module-scoped for the same reason every other cross-surface flag in this app is:
-// the band is mounted at the root and the card is a route away.
+// One fact, and it is now the one that decides whether the app is blocked. The card stamps this store
+// on the way out of its own `POST /api/update`; the update screen reads it, takes the screen, and
+// makes the app behind inert for exactly as long as the run is in flight.
+//
+// IT LIVES FOR THE LENGTH OF THE RUN, NOT FOR THE GAP BEFORE IT SPEAKS (M28/01). It used to be
+// cleared the moment the run record said anything, because all it fed was the band's "Starting
+// update…" row. That row is gone, and clearing it early would hand the device that tapped its app
+// back one second into a run it asked to watch. `hooks/use-update-screen.ts` clears it when the run
+// goes terminal; a failed POST clears it at once, because nothing was started.
+//
+// Module-scoped for the same reason every other cross-surface flag in this app is: the screen is
+// mounted in `App.tsx` and the card is a route away, inside a router the screen cannot see.
 
 let startedAt: number | null = null;
+let startedRunId: string | null = null;
 const listeners = new Set<() => void>();
 
 function emit(): void {
   for (const listener of listeners) listener();
 }
 
-/** The confirm was tapped and the POST was accepted. Safe to call on every attempt. */
-export function noteUpdateStarted(at: number = Date.now()): void {
+/**
+ * The confirm was tapped and the POST was accepted. Safe to call on every attempt.
+ *
+ * `runId` is the 202's own run id when the bridge sent one (M16/04). It is recorded rather than used
+ * for a branch: a device holding a stamp for a run that is over has no claim on the next one, and the
+ * id is how a future reader can say so without guessing from timestamps.
+ */
+export function noteUpdateStarted(at: number = Date.now(), runId: string | null = null): void {
   startedAt = at;
+  startedRunId = runId;
   emit();
 }
 
-/** The POST failed, or the status object has spoken — either way (s) is over. */
+/** The POST failed, or the run this device started is over. Either way the claim is spent. */
 export function clearUpdateStarted(): void {
   if (startedAt === null) return;
   startedAt = null;
+  startedRunId = null;
   emit();
 }
 
 export function getUpdateStarted(): number | null {
   return startedAt;
+}
+
+/** The run id this device consented to, when the 202 named one. */
+export function getUpdateStartedRun(): string | null {
+  return startedRunId;
 }
 
 export function subscribeUpdateStarted(listener: () => void): () => void {
