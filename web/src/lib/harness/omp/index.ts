@@ -88,6 +88,7 @@ import {
   ruleComposerPrompt,
   stripRuleChrome,
 } from "./rule";
+import { decorateOmpDisplay } from "./display";
 
 /**
  * omp's block pipeline: one raw block with the composer chrome stripped off the tail. There is no
@@ -104,14 +105,15 @@ import {
  * Claude's `/model` picker is pinned against. `composerReady` already delivers the safety half.
  */
 export function ompBuildBlocks(lines: StyledLine[]): Block[] {
-  return [{ kind: "raw", lines: stripChrome(lines) }];
+  return [{ kind: "raw", lines: decorateOmpDisplay(stripChrome(lines)) }];
 }
 
 export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   const pi = locatePiComposer(lines);
-  if (pi) return lines.slice(pi.bottom + 1, pi.suggestEnd);
+  if (pi) return decorateOmpDisplay(lines.slice(pi.bottom + 1, pi.suggestEnd));
   const rule = locateRuleComposer(lines);
-  return rule === null ? extractBoxStatusLines(lines) : extractRuleStatusLines(lines, rule);
+  const status = rule === null ? extractBoxStatusLines(lines) : extractRuleStatusLines(lines, rule);
+  return decorateOmpDisplay(status);
 }
 
 export function extractInputDraft(lines: StyledLine[]): string | null {

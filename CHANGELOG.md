@@ -116,6 +116,12 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   already paints the page colour under it, and iOS 26 and later colour the bar from that. iOS reads
   the style once, when you add the app to the Home Screen, so an install made before this change
   stays blurred until you remove it and add it again. Thanks @bendrucker (#203).
+- **A light fill in an omp pane no longer reads as a black bar.** The phone renders the mirror dark
+  and inverts it, so a light ANSI background came through as a solid black block with the text lost
+  inside it. omp's light fills now carry the same `mobileTransparentBg` hint the codex adapter
+  already uses, and the phone drops the fill and keeps the text. Which fills count is decided by
+  luminance rather than by a theme palette, so dark fills, diff colours among them, are unchanged.
+  Thanks @tenngoxars (#206).
 
 ### Docs
 

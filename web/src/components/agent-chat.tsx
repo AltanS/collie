@@ -34,7 +34,7 @@ import { Collapse, CollapseSwap } from "@/components/ui/collapse";
 import { RouteHeader } from "@/components/app-header";
 import { HeaderStatus } from "@/components/header-status";
 import { AnsiOutput } from "@/components/ansi-output";
-import { MIRROR_SPACE, MIRROR_INVERT, styleFor } from "@/components/mirror-space";
+import { MIRROR_SPACE, MIRROR_INVERT, segmentStyle } from "@/components/mirror-space";
 import { cn } from "@/lib/utils";
 import { paneTag } from "@/lib/pane-tag";
 import { parseAnsi } from "@/lib/ansi";
@@ -1871,7 +1871,11 @@ export function AgentChat({
                       {row.segments.map((s, si) => (
                         // Text nodes only — colour and weight come from the ANSI parse, never markup.
                         // Same XSS boundary as the mirror.
-                        <span key={si} style={styleFor(s)}>
+                        <span
+                          key={si}
+                          style={segmentStyle(s)}
+                          className={s.mobileTransparentBg ? "terminal-mobile-transparent-bg" : undefined}
+                        >
                           {s.text}
                         </span>
                       ))}

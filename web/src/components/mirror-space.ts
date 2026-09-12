@@ -40,3 +40,14 @@ export const MIRROR_INVERT = "[filter:invert(1)_hue-rotate(180deg)] dark:[filter
 export function styleFor(s: AnsiSegment): CSSProperties {
   return s.muted ? { ...s.style, color: "#a1a1a1", fontWeight: 400, opacity: 1 } : s.style;
 }
+
+/** Honor `mobileTransparentBg`: keep the fill in a custom property so phone CSS can drop it. */
+export function segmentStyle(s: AnsiSegment): CSSProperties {
+  const style = styleFor(s);
+  if (!s.mobileTransparentBg) return style;
+  const { backgroundColor, ...rest } = style;
+  // SAFETY: a CSS custom property is a valid style key at runtime; React passes any `--*` key
+  // straight to the CSSOM. CSSProperties has no index signature for it, so the cast is the only
+  // spelling. The value is the backgroundColor just removed from the same object.
+  return { ...rest, "--terminal-seg-bg": backgroundColor } as CSSProperties;
+}
