@@ -30,126 +30,39 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-09-12
+
 ### Added
 
-- **Opening a pane now slides the screen in, and going back slides it back.** The arriving screen
-  enters from the right on the way into a pane and from the left on the way back, 240ms and
-  eased, with the band, the header and the Collie mark holding still. Every other navigation is
-  silent, including a poll revalidation and a machine or session switch: this is a plain entrance
-  animation on the route region, not the View Transitions API removed in 0.10.0 for flickering the
-  page on every poll. Reduced motion gets the new screen in place, with no slide.
-- **The playground has Notices and Motion tabs.** Notices shows the notice family, the strip
-  band, the connection recovery flash, the update ribbon and the status toast. Motion shows the
-  collapse and swap primitives, loading states, sheets, menus, and pending and pulsing controls.
-  Every card carries a Replay control, and the ones that swap between states also carry a Slow
-  toggle. Motion opens with a walkthrough of the real app, every route on fixture data inside a
-  phone frame, with the live route, shortcut buttons and a frame meter for each move.
-- **A dev build wears an orange icon, and the playground a red one.** A build whose HEAD isn't the
-  release tag now installs as "Collie (dev)" with orange favicons and manifest tiles, so it is
-  never mistaken for the release build on the same home screen; the states playground gets its own
-  red favicon set. The release build's `index.html` and manifest are unchanged.
+- **Opening a pane now slides the screen in, and going back slides it back.** The arriving screen enters from the right on the way into a pane and from the left on the way back, 240ms and eased, with the band, the header and the Collie mark holding still. Every other navigation is silent, including a poll revalidation and a machine or session switch: this is a plain entrance animation on the route region, not the View Transitions API removed in 0.10.0 for flickering the page on every poll. Reduced motion gets the new screen in place, with no slide. ([d24a4d73](https://github.com/AltanS/collie/commit/d24a4d73))
+- **The playground has Notices and Motion tabs.** Notices shows the notice family, the strip band, the connection recovery flash, the update ribbon and the status toast. Motion shows the collapse and swap primitives, loading states, sheets, menus, and pending and pulsing controls. Every card carries a Replay control, and the ones that swap between states also carry a Slow toggle. Motion opens with a walkthrough of the real app, every route on fixture data inside a phone frame, with the live route, shortcut buttons and a frame meter for each move. ([9429bd61](https://github.com/AltanS/collie/commit/9429bd61))
+- **A dev build wears an orange icon, and the playground a red one.** A build whose HEAD isn't the release tag now installs as "Collie (dev)" with orange favicons and manifest tiles, so it is never mistaken for the release build on the same home screen; the states playground gets its own red favicon set. The release build's `index.html` and manifest are unchanged. ([c7c4cc9e](https://github.com/AltanS/collie/commit/c7c4cc9e))
 
 ### Changed
 
-- **The states playground is now a tabbed page instead of one long scroll.** The tab list and the
-  theme/clock/typeface/accent controls sit in a sidebar on wide screens and a top bar on narrow
-  ones; only the selected section mounts, so switching sections no longer means scrolling past
-  several of them to reach one. The
-  tabs open with Dashboard, then Pane, Crew and Settings, then Boot & connection, Idle & resume
-  and Brand, then Notices and Motion. The selected tab lives in the URL hash (`#pane`, or
-  `#pane/<card-handle>` to also scroll to a card), remembered in `localStorage` between visits.
-  Within a tab, cards are grouped under a small labelled `Group`, ordered from the everyday state
-  to the rare one, so a tab with a dozen cards can be skimmed by its group titles. `app.tsx`
-  (1600+ lines) is split into one file per section under `src/playground/sections/`, registered
-  in a small `SECTIONS` table.
-- **The Keys tray is less than half its old height.** One seven-column pad replaces the old
-  Keys/123 toggle and stacked rows, with Space in the middle of the bottom row, and 123, Presets
-  and F keys now sit behind one row of chips instead of two separate disclosures. Measured at a
-  390px-wide viewport: 275px tall before, 119px tall now, every key still at least 36px tall.
+- **The states playground is now a tabbed page instead of one long scroll.** The tab list and the theme/clock/typeface/accent controls sit in a sidebar on wide screens and a top bar on narrow ones; only the selected section mounts, so switching sections no longer means scrolling past several of them to reach one. The tabs open with Dashboard, then Pane, Crew and Settings, then Boot & connection, Idle & resume and Brand, then Notices and Motion. The selected tab lives in the URL hash (`#pane`, or `#pane/<card-handle>` to also scroll to a card), remembered in `localStorage` between visits. Within a tab, cards are grouped under a small labelled `Group`, ordered from the everyday state to the rare one, so a tab with a dozen cards can be skimmed by its group titles. `app.tsx` (1600+ lines) is split into one file per section under `src/playground/sections/`, registered in a small `SECTIONS` table. ([9429bd61](https://github.com/AltanS/collie/commit/9429bd61))
+- **The Keys tray is less than half its old height.** One seven-column pad replaces the old Keys/123 toggle and stacked rows, with Space in the middle of the bottom row, and 123, Presets and F keys now sit behind one row of chips instead of two separate disclosures. Measured at a 390px-wide viewport: 275px tall before, 119px tall now, every key still at least 36px tall. ([e12b4334](https://github.com/AltanS/collie/commit/e12b4334))
 
 ### Fixed
 
-- **The playground's crew fixtures named real machines, not fictional ones.** The lead and
-  deputy are now `lodge` and `workshop`, matching the fixture set's own outbuilding theme
-  (attic, cellar, garage, loft, shed, barn, kennel). These fixtures mount into colliepwa.dev's
-  feature screens, so this stops the real names from reaching new builds of the public site; a
-  dead re-export of the unit-test fixtures was also dropped from this file's public surface,
-  since it carried the same two names and nothing read it.
-- **The dashboard-row playground card named real machines, a real username and real clients.**
-  `dashboard-live.ts`'s frozen snapshot carried the real host id and host name a dozen-odd times
-  (now `lodge`/`workshop`, matching the crew fixtures' outbuilding theme), plus the operator's
-  real OS username and several real client/project codenames throughout its `cwd`, label and
-  session fields — a bigger exposure than the hostnames, now swapped for same-shape fakes. This
-  card is dev-only and was never imported by colliepwa.dev, so nothing public was showing these
-  names, but a future import could have carried them out unnoticed; the website repo now runs a
-  build-time check against exactly that (`bun run build:app`), so a real name reaching
-  `public/app/` fails the build instead of shipping quietly.
-- **The top of the app no longer reserves the iPhone notch three times over.** The update
-  ribbon, the connection bar and the header each set `env(safe-area-inset-top)` for themselves,
-  each written when it was the first thing on the screen, so any two of them at once left a tall
-  dead band above the notice — the everyday ribbon-plus-header case on iOS. The band above the
-  header now shows one strip at a time and owns the inset while it is open; the header reserves it
-  only while the band is empty, and the handover rides the band's own 240ms open and close, so
-  nothing jumps. The update offer and the connection bar are `ui/notice.tsx` strips now, which also
-  ends two copies of the tint recipe, two hand-rolled collapse animations, and two rows that asked
-  a screen reader to be assertive and polite at once. The offer's states that carry a ✕ trade their
-  row-wide tap for a named View button, since a button may not hold a button.
-- **The update ribbon's text no longer says "Tap to update".** The dismissible ribbon states
-  navigate through the View button beside the ✕, so the row itself no longer taps, and the copy
-  in all seven locales now says only that the version is available.
-- **The "tap to update" band is a named button again.** The band's text sits in a live region,
-  which does not name the button around it; the button now names itself from that text.
-- **A long tab row scrolls its active tab into view.** On arrival and on every selection change,
-  the Spaces, Tabs and Panes strips now carry their active item to the nearest visible edge:
-  instant on arrival, smoothly afterwards, and a workspace with many tabs no longer opens on a
-  tab that's scrolled off-screen.
-- **The "Collie on" header line no longer flickers on the dashboard.** The header identity stays
-  mounted across routes and only hides inside a pane, so the multiplexer's logo is fetched once per
-  page instead of once per dashboard open. Over a tailnet that fetch left the logo box blank for a
-  round trip every time you came back from a pane.
-- **Opening the dashboard no longer re-reads the bridge config.** The footer build stamp asked for
-  it on every mount and threw the answer away once the build was known.
-- **A checkout on an untagged release commit builds as dev.** The channel now reads the tags the
-  checkout holds; a tree with no git and a shallow install with no tags still build as release.
-- **The top of the app is no longer blurred on iOS 27.** iOS 27 blurs the top edge of a Home Screen
-  web app whose status bar is translucent, into the header. The status bar is opaque now; the header
-  already paints the page colour under it, and iOS 26 and later colour the bar from that. iOS reads
-  the style once, when you add the app to the Home Screen, so an install made before this change
-  stays blurred until you remove it and add it again. Thanks @bendrucker (#203).
-- **A light fill in an omp pane no longer reads as a black bar.** The phone renders the mirror dark
-  and inverts it, so a light ANSI background came through as a solid black block with the text lost
-  inside it. omp's light fills now carry the same `mobileTransparentBg` hint the codex adapter
-  already uses, and the phone drops the fill and keeps the text. Which fills count is decided by
-  luminance rather than by a theme palette, so dark fills, diff colours among them, are unchanged.
-  Thanks @tenngoxars (#206).
-- **A peer's space now lists its own panes instead of every tab reading empty.** In a crew, the
-  space screen grouped panes on the machine leading the crew rather than on the machine the space
-  is on, so opening a peer's space drew "(empty tab)" under every tab while the header still
-  counted the panes. Refs #209.
+- **The playground's crew fixtures named real machines, not fictional ones.** The lead and deputy are now `lodge` and `workshop`, matching the fixture set's own outbuilding theme (attic, cellar, garage, loft, shed, barn, kennel). These fixtures mount into colliepwa.dev's feature screens, so this stops the real names from reaching new builds of the public site; a dead re-export of the unit-test fixtures was also dropped from this file's public surface, since it carried the same two names and nothing read it. ([260dbe46](https://github.com/AltanS/collie/commit/260dbe46))
+- **The dashboard-row playground card named real machines, a real username and real clients.** `dashboard-live.ts`'s frozen snapshot carried the real host id and host name a dozen-odd times (now `lodge`/`workshop`, matching the crew fixtures' outbuilding theme), plus the operator's real OS username and several real client/project codenames throughout its `cwd`, label and session fields — a bigger exposure than the hostnames, now swapped for same-shape fakes. This card is dev-only and was never imported by colliepwa.dev, so nothing public was showing these names, but a future import could have carried them out unnoticed; the website repo now runs a build-time check against exactly that (`bun run build:app`), so a real name reaching `public/app/` fails the build instead of shipping quietly. ([4269ae2d](https://github.com/AltanS/collie/commit/4269ae2d))
+- **The top of the app no longer reserves the iPhone notch three times over.** The update ribbon, the connection bar and the header each set `env(safe-area-inset-top)` for themselves, each written when it was the first thing on the screen, so any two of them at once left a tall dead band above the notice — the everyday ribbon-plus-header case on iOS. The band above the header now shows one strip at a time and owns the inset while it is open; the header reserves it only while the band is empty, and the handover rides the band's own 240ms open and close, so nothing jumps. The update offer and the connection bar are `ui/notice.tsx` strips now, which also ends two copies of the tint recipe, two hand-rolled collapse animations, and two rows that asked a screen reader to be assertive and polite at once. The offer's states that carry a ✕ trade their row-wide tap for a named View button, since a button may not hold a button. ([59c77fc3](https://github.com/AltanS/collie/commit/59c77fc3))
+- **The update ribbon's text no longer says "Tap to update".** The dismissible ribbon states navigate through the View button beside the ✕, so the row itself no longer taps, and the copy in all seven locales now says only that the version is available. ([15bd0bbd](https://github.com/AltanS/collie/commit/15bd0bbd))
+- **The "tap to update" band is a named button again.** The band's text sits in a live region, which does not name the button around it; the button now names itself from that text. ([93a4ecc2](https://github.com/AltanS/collie/commit/93a4ecc2))
+- **A long tab row scrolls its active tab into view.** On arrival and on every selection change, the Spaces, Tabs and Panes strips now carry their active item to the nearest visible edge: instant on arrival, smoothly afterwards, and a workspace with many tabs no longer opens on a tab that's scrolled off-screen. ([8a774cc4](https://github.com/AltanS/collie/commit/8a774cc4))
+- **The "Collie on" header line no longer flickers on the dashboard.** The header identity stays mounted across routes and only hides inside a pane, so the multiplexer's logo is fetched once per page instead of once per dashboard open. Over a tailnet that fetch left the logo box blank for a round trip every time you came back from a pane. ([1b3939cf](https://github.com/AltanS/collie/commit/1b3939cf))
+- **Opening the dashboard no longer re-reads the bridge config.** The footer build stamp asked for it on every mount and threw the answer away once the build was known. ([e3c7816e](https://github.com/AltanS/collie/commit/e3c7816e))
+- **A checkout on an untagged release commit builds as dev.** The channel now reads the tags the checkout holds; a tree with no git and a shallow install with no tags still build as release. ([ee3338a2](https://github.com/AltanS/collie/commit/ee3338a2))
+- **The top of the app is no longer blurred on iOS 27.** iOS 27 blurs the top edge of a Home Screen web app whose status bar is translucent, into the header. The status bar is opaque now; the header already paints the page colour under it, and iOS 26 and later colour the bar from that. iOS reads the style once, when you add the app to the Home Screen, so an install made before this change stays blurred until you remove it and add it again. Thanks @bendrucker (#203). ([1907ce2e](https://github.com/AltanS/collie/commit/1907ce2e))
+- **A light fill in an omp pane no longer reads as a black bar.** The phone renders the mirror dark and inverts it, so a light ANSI background came through as a solid black block with the text lost inside it. omp's light fills now carry the same `mobileTransparentBg` hint the codex adapter already uses, and the phone drops the fill and keeps the text. Which fills count is decided by luminance rather than by a theme palette, so dark fills, diff colours among them, are unchanged. Thanks @tenngoxars (#206). ([64f0d698](https://github.com/AltanS/collie/commit/64f0d698))
+- **A peer's space now lists its own panes instead of every tab reading empty.** In a crew, the space screen grouped panes on the machine leading the crew rather than on the machine the space is on, so opening a peer's space drew "(empty tab)" under every tab while the header still counted the panes. Refs #209. ([5784191b](https://github.com/AltanS/collie/commit/5784191b))
 
 ### Docs
 
-- **The docs show how to install and update the PWA itself, not just the host.**
-  `docs/install.md` gains two screenshots of the Install card at the top of Settings — the
-  button Chrome and Edge offer, and the share-sheet hint iOS shows instead — since neither
-  existed anywhere before. The Updates screenshots in `docs/upgrading.md` are regenerated too:
-  two still read "Update pack to" and "Retry pack update" from before the crew rename, and one
-  named a real Tailscale hostname (`minibuch`) in its rolled-back-peer example.
-  `scripts/docs-screens.sh`, which generates this whole set, carried both and is what's actually
-  fixed; the images are just its output.
-- **`scripts/docs-screens.sh` no longer races its own screenshots.** Every capture now scrolls
-  its target flush to the top before the shot, not just the two newest ones: the previous
-  `agent-browser scrollintoview` call centres an element and can still be mid-animation when
-  the screenshot fires, silently cropping the top off. Also tightens the two install-path
-  Notes in `docs/install.md` to open with the platform they apply to, so a reader can tell at
-  a glance which one is theirs.
-- **The omp fixture corpus now covers the tool-approval dialog.** That screen was the corpus's one
-  known gap, and the adapter's own comments said so: the claim that Collie refuses to type into it
-  rested on inference, not on a capture. Three captures close it — a `bash` approval and a `write`
-  approval in both selection states, taken against omp v18.1.17 — and the suite now asserts
-  raw-only blocks and `composerReady === false` on them. The prose and the modal counts in
-  `omp/chrome.ts`, `omp/index.ts` and `omp/markers.ts` are corrected to match. Thanks
-  @christensenjames (#204).
+- **The docs show how to install and update the PWA itself, not just the host.** `docs/install.md` gains two screenshots of the Install card at the top of Settings — the button Chrome and Edge offer, and the share-sheet hint iOS shows instead — since neither existed anywhere before. The Updates screenshots in `docs/upgrading.md` are regenerated too: two still read "Update pack to" and "Retry pack update" from before the crew rename, and one named a real Tailscale hostname (`minibuch`) in its rolled-back-peer example. `scripts/docs-screens.sh`, which generates this whole set, carried both and is what's actually fixed; the images are just its output. ([22d20160](https://github.com/AltanS/collie/commit/22d20160))
+- **`scripts/docs-screens.sh` no longer races its own screenshots.** Every capture now scrolls its target flush to the top before the shot, not just the two newest ones: the previous `agent-browser scrollintoview` call centres an element and can still be mid-animation when the screenshot fires, silently cropping the top off. Also tightens the two install-path Notes in `docs/install.md` to open with the platform they apply to, so a reader can tell at a glance which one is theirs. ([1f444d6d](https://github.com/AltanS/collie/commit/1f444d6d))
+- **The omp fixture corpus now covers the tool-approval dialog.** That screen was the corpus's one known gap, and the adapter's own comments said so: the claim that Collie refuses to type into it rested on inference, not on a capture. Three captures close it — a `bash` approval and a `write` approval in both selection states, taken against omp v18.1.17 — and the suite now asserts raw-only blocks and `composerReady === false` on them. The prose and the modal counts in `omp/chrome.ts`, `omp/index.ts` and `omp/markers.ts` are corrected to match. Thanks @christensenjames (#204). ([3a4f68db](https://github.com/AltanS/collie/commit/3a4f68db))
 
 ## [1.8.0] - 2026-09-09
 
