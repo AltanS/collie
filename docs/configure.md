@@ -120,7 +120,7 @@ Without this setting, the UI will load as an empty page. See
 ## Your own slash commands
 
 Put machine-specific commands, such as a Herdr plugin `/fork-in-herdr` or a custom `/deploy`, in
-`commands.toml`. This is one of four config files that share the same reader and load pattern:
+`commands.toml`. This is one of six config files that share the same reader and load pattern:
 
 | file | scope | confirm/danger flag | live reload |
 | --- | --- | --- | --- |
@@ -128,6 +128,7 @@ Put machine-specific commands, such as a Herdr plugin `/fork-in-herdr` or a cust
 | `keys.toml` | optional, per row | `danger = true` | yes, no restart needed |
 | `quick-replies.toml` | optional, per row | none | yes, no restart needed |
 | `launchers.toml` | none, matched by exact command instead | none | yes, but an already-open tab re-reads the rows only on its next load |
+| `cache-rules.toml` | none, matched by exact rule id instead | none | yes, no restart needed |
 
 These files are unchanged by the config file. They share the instance `config.toml`'s
 directory, they keep their own formats and their own live reload, and nothing merges them into it.
@@ -319,6 +320,67 @@ Three behaviors to note:
   transcript, and rendered markdown retain their own typography.
 - **Live on next reload.** Changes do not require a restart, taking effect on the next page reload.
   Invalid configurations log errors visible via `journalctl --user -u collie -n 20`.
+
+## Your own cache rules
+
+`cache-rules.toml` moves a prompt-cache lifetime your provider changed.
+
+```bash
+cp cache-rules.toml.example ~/.config/collie/cache-rules.toml
+```
+
+Collie ships one rule per harness and provider, each read off a vendor's own page on a recorded date.
+A vendor can move that number without announcing it, and a gateway in front of your agent can change
+it too. This file is the lever until Collie ships a new rule.
+
+```toml
+[[rule]]
+id = "claude.api"
+ttl_seconds = 3600
+source_url = "https://platform.claude.com/docs/en/build-with-claude/prompt-caching"
+retrieved = "2026-09-12"
+note = "our gateway sends ttl 1h on every request"
+```
+
+A row is kept only when all four rules hold. `id` names a rule this build ships. `ttl_seconds` is a
+whole number from 1 to 86400. `source_url` is a non-empty string. `retrieved` parses as a real
+`YYYY-MM-DD` date. Anything else drops that one row, with the reason in the log, and the rest of the
+file still applies.
+
+> **Note.** You may move a number, you may not remove the page and date it came from. That is the
+> whole contract the rule catalog rests on.
+
+`collie doctor` reports on three lines. `cache-claims` warns when a shipped rule has not been
+re-checked in 180 days. `cache-rules` names every row this file got wrong. `cache-env` fires when you
+set `ENABLE_PROMPT_CACHING_1H` or `FORCE_PROMPT_CACHING_5M` in your shell: the bridge runs as its own
+service and cannot read your agent's environment, so a variable you set for Claude Code has to be
+mirrored here to be seen.
+
+The rule ids are `claude.subscription`, `claude.api`, `codex.subscription`, `codex.api`, and
+`anthropic`, `openai`, `google` and `unknown` under both `pi.` and `opencode.`.
+
+## The prompt-cache countdown
+
+A small chip on each agent pane says how long that agent's prompt cache stays warm.
+
+Every harness Collie fronts keeps a cached copy of the conversation so far, and charges a fraction of
+the usual rate while that copy is warm. The chip counts down from the agent's last request, so it is
+idle time and never session age. Each new request resets it.
+
+It turns amber in the last quarter of the window, and reads `cold` once the window has run out or once
+a turn came back having paid full rate. Under a minute it reads `<1m`, never a second count.
+
+Tap the chip in a pane's header to see the rule behind the number: which rule it is, the vendor page
+it was read on, and the date somebody last read that page.
+
+> **Note.** A number is a vendor's published claim with a date on it, not a measurement, unless the
+> sheet says **measured**. Claude Code writes which cache window it used into its own transcript, so
+> a Claude pane is usually measured.
+
+Some panes show nothing, and that is the feature working. A pane shows a chip only after its agent has
+taken one turn, because nothing is guessed before it is measured. A pane whose harness has no journal
+adapter shows nothing at all, and neither does one whose vendor publishes no lifetime Collie could
+quote.
 
 ## Attachments
 

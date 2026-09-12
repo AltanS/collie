@@ -7,7 +7,7 @@ Symptoms below, in order — search the page for yours. **`Os { NotFound }` from
 reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window** ·
 **`tmux list: output did not parse`** · **`herdr plugin list` shows the old version** ·
 **stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it** ·
-**an update started from the phone stays at staging**.
+**an update started from the phone stays at staging** · **a pane shows no prompt-cache chip**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
 directory" }`** (plugin install fails, action invoke fails)**.** This is *not* a Collie problem — it
@@ -142,6 +142,13 @@ its own client's list, and a crew is Collie's own; neither list feeds the other.
 machine from the phone, enrol it: `collie crew add <ssh-host>` on the lead, then `collie restart` on
 the lead and `collie crew status` to check the link. Adding or removing a machine in Herdr changes
 nothing in the crew ([Herdr machines and the crew](crew.md#herdr-machines-and-the-crew)).
+
+**A pane shows no prompt-cache chip.** One of three things, and `collie doctor` tells them apart. The
+pane's harness has no journal adapter, which its `integration-<agent>` and `journal-roots` lines name.
+The pane never reported a session, which its `agent-sessions` line lists by pane id. Or the agent has
+not taken a turn yet, which is not a fault: nothing is shown before it is measured, so the chip appears
+on the agent's first reply. A harness whose vendor publishes no cache lifetime shows nothing either,
+and `cache-claims` lists every rule this build does ship.
 
 **An update started from the phone stays at staging.** On Collie up to 1.6.0, an update tapped on
 the phone could stage the new version and then stop: the runner that performs the swap was never
