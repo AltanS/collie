@@ -95,6 +95,12 @@ interface ComposerProps {
   /** A dialog (prompt/wizard/preview/multi-select) is on screen, so the TUI's keyboard belongs to it.
    * Free-text sending is refused while true — see send(). Answer it with its own buttons instead. */
   dialogPresent: boolean;
+  /** Conversation-only fail-closed gate: the mode's own rendered Terminal-required state
+   * (unsupported keyboard-owning dialog or a composer the adapter says is not ready). Unlike the
+   * guarded reply path's deliberate fail-open-for-text after a transient read failure, this is
+   * knowledge Conversation already rendered — ordinary free-text Send must refuse BEFORE any
+   * terminal write, present the Terminal-required recovery, and keep the draft. */
+  requiresTerminal?: boolean;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
   /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), STABILISED across
@@ -218,7 +224,7 @@ function ComposerDock({
 const ATTACH_PRESS_MS = 220;
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply, onSent, pullHandle, chatOnly = false, onOpenTerminal },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, requiresTerminal, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply, onSent, pullHandle, chatOnly = false, onOpenTerminal },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -272,6 +278,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // Read at dispatch, including callbacks retained by in-flight raw-key batches.
   const chatOnlyRef = useRef(chatOnly);
   chatOnlyRef.current = chatOnly;
+  // Same snapshotted-prop caveat as chatOnlyRef: send() reads this before its own round trips, so
+  // the ref is what a queued burst must re-read, not the closure's prop.
+  const requiresTerminalRef = useRef(requiresTerminal ?? false);
+  requiresTerminalRef.current = requiresTerminal ?? false;
   const [terminalRecovery, setTerminalRecovery] = useState(false);
 
   // The phone-owned draft, restored from (and written through to) the per-pane draft store — the
@@ -746,6 +756,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   async function send(value: string, isDraft: boolean, force = false): Promise<boolean> {
     const t = value.trim();
     if (!t || locked || sending || (force && chatOnlyRef.current)) return false;
+    // Conversation's own fail-closed gate, BEFORE anything touches the pane — not even a read, and
+    // certainly not the pre-clear sweep or reply text. The thread is already rendering the
+    // Terminal-required card because the live adapter said this screen cannot be represented safely
+    // (a keyboard-owning dialog with no typed model, or a composer it reports as not ready); letting
+    // the guarded reply run would hand that same screen the text anyway, betting on its transient
+    // fresh read. Terminal mode keeps its deliberate fail-open-for-text behavior — this gate only
+    // exists under chatOnly. The draft stays, the recovery card below offers the one-tap Terminal,
+    // and no desktop focus is involved.
+    if (chatOnlyRef.current && requiresTerminalRef.current) {
+      setTerminalRecovery(true);
+      setStatus(translate("chat.conversation.requiresTerminal"), "error");
+      return false;
+    }
     // A dialog on screen owns the TUI's keyboard: our text is swallowed and the submit key ANSWERS
     // the dialog, approving whatever option was highlighted (#34). Refuse BEFORE the destructive
     // pre-clear sweep below — those ctrl+k/Backspaces would land in the dialog too. The input is
