@@ -80,6 +80,76 @@ test.describe("conversation continuity", () => {
     await page.screenshot({ path: info.outputPath("foreground-resume.png") });
   });
 
+  test("long unbroken conversation content stays inside the thread", async ({ page }, info) => {
+    const longPath = `/Users/example/.local/state/collie/uploads/workspace_pane-${"unbroken".repeat(18)}.jpg`;
+    const longUrl = `https://example.test/artifacts/${"assistant-token".repeat(18)}`;
+    const longNote = `journal-${"summary-token".repeat(18)}`;
+    const entries: TranscriptEntry[] = [
+      {
+        ...fixtureTranscript[0]!,
+        uuid: "long-user-turn",
+        role: "user",
+        parts: [{ kind: "text", text: `${longPath}\n\ndimmi cosa vedi` }],
+      },
+      {
+        ...fixtureTranscript[1]!,
+        uuid: "long-agent-turn",
+        role: "assistant",
+        parts: [{ kind: "text", text: longUrl }],
+      },
+      {
+        ...fixtureTranscript[0]!,
+        uuid: "long-summary-turn",
+        role: "summary",
+        parts: [{ kind: "text", text: longNote }],
+      },
+    ];
+    await page.route(url => /\/api\/pane\/[^/]+\/history$/.test(url.pathname), route =>
+      route.fulfill({ json: { available: true, entries, hasMore: false, total: entries.length, fileTruncated: false } }),
+    );
+    await page.goto("/pane/w1%3Ap1");
+    const region = page.getByRole("region", { name: en["chat.conversation.title"] });
+    await expect(region).toContainText(longPath);
+    await expect(region).toContainText(longUrl);
+    await expect(region).toContainText(longNote);
+    const geometries = [];
+    for (const uuid of ["long-user-turn", "long-agent-turn", "long-summary-turn"]) {
+      const entry = page.locator(`[data-conversation-entry="${uuid}"]`);
+      await expect(entry).toBeVisible();
+      geometries.push(await entry.evaluate(element => {
+        const scrollport = element.closest('[role="region"]')!;
+        const entryRect = element.getBoundingClientRect();
+        const scrollportRect = scrollport.getBoundingClientRect();
+        const children = Array.from(element.children);
+        return {
+          uuid: element.getAttribute("data-conversation-entry"),
+          entryInsideInlineBounds:
+            entryRect.left >= scrollportRect.left && entryRect.right <= scrollportRect.right,
+          childrenInsideEntry: children.every(child => {
+            const rect = child.getBoundingClientRect();
+            return rect.left >= entryRect.left && rect.right <= entryRect.right;
+          }),
+          childContentWraps: children.every(child => child.scrollWidth <= child.clientWidth),
+        };
+      }));
+    }
+    expect(geometries).toEqual([
+      { uuid: "long-user-turn", entryInsideInlineBounds: true, childrenInsideEntry: true, childContentWraps: true },
+      { uuid: "long-agent-turn", entryInsideInlineBounds: true, childrenInsideEntry: true, childContentWraps: true },
+      { uuid: "long-summary-turn", entryInsideInlineBounds: true, childrenInsideEntry: true, childContentWraps: true },
+    ]);
+    const userMaximum = await page.locator('[data-conversation-entry="long-user-turn"]').evaluate(element => {
+      const scrollport = element.closest('[role="region"]')!;
+      return element.firstElementChild!.getBoundingClientRect().width <= scrollport.getBoundingClientRect().width * 0.86;
+    });
+    expect(userMaximum).toBe(true);
+    await info.attach("long-conversation-content", {
+      body: JSON.stringify({ viewport: page.viewportSize(), geometries, userMaximum }),
+      contentType: "application/json",
+    });
+    await page.screenshot({ path: info.outputPath("long-conversation-content.png") });
+  });
+
   test("outage and rapid switches preserve the draft; a healthy closed-pane snapshot returns home", async ({ page }, info) => {
     let outage = false;
     let closed = false;
