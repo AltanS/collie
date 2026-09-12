@@ -134,6 +134,38 @@ export const PLAYGROUND_ICON_LINKS: readonly IconLink[] = [
   { rel: "icon", type: "image/png", href: "/favicon-playground-96x96.png", sizes: "96x96" },
 ];
 
+// The bare (no leading "/") filenames for one channel's icons, derived from the same lists
+// `includeAssetsFor`/`manifestFor` build from — so a new icon added to either list is picked up
+// here for free, and the two can never drift apart.
+function channelIconFiles(channel: Channel): string[] {
+  const includeAssets = channel === "dev" ? DEV_INCLUDE_ASSETS : RELEASE_INCLUDE_ASSETS;
+  const manifest = channel === "dev" ? DEV_MANIFEST : RELEASE_MANIFEST;
+  return [...includeAssets, ...manifest.icons.map((icon) => icon.src.replace(/^\//, ""))];
+}
+
+// The playground's own files, by the same derivation from PLAYGROUND_ICON_LINKS, plus its HTML
+// entry and a wildcard for any asset named after it — the playground never builds into `dist`
+// today (it's a dev-only Vite server, see playground.html's own header), but a precache ignore
+// list is cheap insurance against that changing silently.
+function playgroundFiles(): string[] {
+  return [
+    ...PLAYGROUND_ICON_LINKS.map((link) => link.href.replace(/^\//, "")),
+    "playground.html",
+    "playground-*",
+  ];
+}
+
+/**
+ * The workbox `globIgnores` for this channel's precache: every icon file that belongs to a
+ * DIFFERENT channel, plus everything playground. A release build's service worker has no
+ * business precaching the dev tiles or the playground's red icon set, and vice versa — every
+ * byte of that precache competes with the app's own polls on a slow link.
+ */
+export function precacheIgnoresFor(channel: Channel): string[] {
+  const otherChannel: Channel = channel === "dev" ? "release" : "dev";
+  return [...channelIconFiles(otherChannel), ...playgroundFiles()];
+}
+
 /**
  * Rewrite index.html's icon `<link>` hrefs for `channel`. A release channel returns `html`
  * unchanged — byte-identical is the point, not merely equivalent. A dev channel swaps each

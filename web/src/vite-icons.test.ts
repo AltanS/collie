@@ -9,6 +9,7 @@ import {
   iconLinksFor,
   includeAssetsFor,
   manifestFor,
+  precacheIgnoresFor,
   transformIndexIcons,
 } from "../vite-icons";
 
@@ -154,5 +155,48 @@ describe("the states playground wears its own red icon set", () => {
     // No manifest link, no apple-touch-icon — the file header says why (no install, no SW).
     expect(playgroundHtml).not.toContain('rel="manifest"');
     expect(playgroundHtml).not.toContain("apple-touch-icon");
+  });
+});
+
+describe("precacheIgnoresFor — a channel's precache carries only its own icons", () => {
+  const releaseFiles = [
+    ...includeAssetsFor("release"),
+    ...manifestFor("release").icons.map((i) => i.src.replace(/^\//, "")),
+  ];
+  const devFiles = [
+    ...includeAssetsFor("dev"),
+    ...manifestFor("dev").icons.map((i) => i.src.replace(/^\//, "")),
+  ];
+  const playgroundFiles = PLAYGROUND_ICON_LINKS.map((l) => l.href.replace(/^\//, ""));
+
+  it("release ignores every dev file and no release file", () => {
+    const ignores = precacheIgnoresFor("release");
+    for (const file of devFiles) expect(ignores).toContain(file);
+    for (const file of releaseFiles) expect(ignores).not.toContain(file);
+  });
+
+  it("release ignores every playground file", () => {
+    const ignores = precacheIgnoresFor("release");
+    for (const file of playgroundFiles) expect(ignores).toContain(file);
+  });
+
+  it("dev ignores every release file and no dev file", () => {
+    const ignores = precacheIgnoresFor("dev");
+    for (const file of releaseFiles) expect(ignores).toContain(file);
+    for (const file of devFiles) expect(ignores).not.toContain(file);
+  });
+
+  it("dev ignores every playground file", () => {
+    const ignores = precacheIgnoresFor("dev");
+    for (const file of playgroundFiles) expect(ignores).toContain(file);
+  });
+
+  it("never ignores index.html, sw.js or the JS/CSS asset bundle, in either channel", () => {
+    for (const channel of ["release", "dev"] as const) {
+      const ignores = precacheIgnoresFor(channel);
+      expect(ignores).not.toContain("index.html");
+      expect(ignores).not.toContain("sw.js");
+      expect(ignores).not.toContain("assets/**");
+    }
   });
 });

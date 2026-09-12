@@ -9,6 +9,7 @@ import {
   channelFor,
   includeAssetsFor,
   manifestFor,
+  precacheIgnoresFor,
   transformIndexIcons,
   type Channel,
   type ChannelEvidence,
@@ -272,6 +273,11 @@ export default defineConfig({
         // `unicode-range` already makes them lazy (index.css), so precaching them would charge
         // every install for glyphs most herds never paint. src/sw.ts caches them on first use.
         globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"],
+        // A release build's precache must not carry the dev channel's icons, and neither build
+        // may carry the playground's — see vite-icons.ts's precacheIgnoresFor. Without this, a
+        // release SW precached the dev AND playground icon sets too, every byte of it competing
+        // with the app's own polls on a slow link (2026-09-12 proxy log on a phone).
+        globIgnores: precacheIgnoresFor(channel),
       },
       // Over plain HTTP (insecure context) the SW can't register; in dev we don't want it anyway.
       devOptions: { enabled: false },

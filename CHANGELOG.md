@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+
+- **The service worker precaches only its own channel's icons.** A release build's precache no longer carries the dev build's or the playground's icon files, and vice versa: entries dropped from 37 (1660.11 KiB) to 28 (1485.71 KiB) in a same-channel build.
+
 ## [1.8.1] - 2026-09-12
 
 ### Added
