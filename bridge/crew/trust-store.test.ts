@@ -278,7 +278,7 @@ describe("a 1.7.0 state directory is named, never adopted", () => {
     exists: (path: string) => names.some((n) => path.endsWith(n)),
   });
 
-  test("the old name alone gives the line, and the line carries both hand edits", () => {
+  test("pack-trust.json alone gives the line, and the line carries both hand edits", () => {
     const line = legacyStateFileNotice("/state", present("pack-trust.json"));
     expect(line).not.toBeNull();
     expect(line).toContain("/state");

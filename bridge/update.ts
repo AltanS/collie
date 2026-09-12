@@ -598,11 +598,7 @@ export class UpdateStateStore {
       const last = rec === null ? undefined : rec.lastNotified;
       const pushed = rec === null ? undefined : rec.lastPushedAt;
       const closed = rec === null ? undefined : rec.dismissedVersion;
-      // REMOVE_IN_1_9_0: `dismissedPackVersion` is 1.7.0's name for `dismissedCrewVersion`. A
-      // record written by that build is read once under the old key here and written back under the
-      // new one by the next dismissal, so no separate rewrite step is needed.
-      const closedCrew =
-        rec === null ? undefined : (rec.dismissedCrewVersion ?? rec.dismissedPackVersion);
+      const closedCrew = rec === null ? undefined : rec.dismissedCrewVersion;
       this.lastVersion = typeof last === "string" ? last : null;
       // A record written before M17/08 carries neither dismissal. Both read as "nothing dismissed",
       // which is the band's own default — an operator who closed the band on an older build simply

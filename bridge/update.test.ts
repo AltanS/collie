@@ -869,26 +869,6 @@ describe("the dismissed version", () => {
     expect(store.lastNotified()).toBe("1.5.0"); // and the record beside them is still believed
   });
 
-  // REMOVE_IN_1_9_0: `dismissedPackVersion` is 1.7.0's name for `dismissedCrewVersion`, so a record
-  // written by that build has to be read once under the old key. Three records, one per shape a
-  // real state dir can hold during the roll: the old key alone, the new key alone, and both.
-  it("reads 1.7.0's `dismissedPackVersion` when the crew key is absent", async () => {
-    const cfg = await tempCfg();
-    await Bun.write(
-      join(cfg.stateDir, "update-state.json"),
-      JSON.stringify({ dismissedVersion: "1.6.0", dismissedPackVersion: "1.5.0" }),
-    );
-    const store = new UpdateStateStore(cfg);
-    await store.load();
-    expect(store.dismissedCrewVersion()).toBe("1.5.0");
-    expect(store.dismissedVersion()).toBe("1.6.0");
-    // And the next dismissal writes the record back under the NEW key alone.
-    await store.setDismissed("crew", "1.7.0");
-    const back = await Bun.file(join(cfg.stateDir, "update-state.json")).text();
-    expect(back).toContain('"dismissedCrewVersion": "1.7.0"');
-    expect(back).not.toContain("dismissedPackVersion");
-  });
-
   it("reads the crew key on its own", async () => {
     const cfg = await tempCfg();
     await Bun.write(join(cfg.stateDir, "update-state.json"), JSON.stringify({ dismissedCrewVersion: "1.5.0" }));
@@ -901,7 +881,7 @@ describe("the dismissed version", () => {
     const cfg = await tempCfg();
     await Bun.write(
       join(cfg.stateDir, "update-state.json"),
-      JSON.stringify({ dismissedCrewVersion: "1.5.0", dismissedPackVersion: "1.4.0" }),
+      JSON.stringify({ dismissedCrewVersion: "1.5.0", [`dismissed${"Pack"}Version`]: "1.4.0" }),
     );
     const store = new UpdateStateStore(cfg);
     await store.load();

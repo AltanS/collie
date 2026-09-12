@@ -163,10 +163,7 @@ export function parsePreflightReport(stdout: string): PreflightReport | null {
   // SAFETY: `verdict` was checked against `VERDICTS` above, which holds exactly the three members of
   // the union, and the guard there returned for every string that is not one of them.
   const printed = verdict as "green" | "amber" | "red";
-  // REMOVE_IN_1_9_0: `pack` is 1.7.0's name for `crew`. The document read here is printed by a
-  // SEPARATE process — `collie update --check --json` — which may be the older binary mid-swap, so
-  // both names are accepted. Only `crew` is ever written.
-  const members = rec.crew ?? rec.pack;
+  const members = rec.crew;
   const topLevel = members === undefined ? printed : worstVerdict(checks.map((c) => c.verdict));
   const kind = readInstallKind(rec.installKind);
   // Assigned, never conditionally spread: a report that named no kind must carry NO such key.
@@ -480,9 +477,7 @@ const CREW_VERDICTS: ReadonlySet<string> = new Set(["green", "amber", "red", "un
 export function parseCrewRows(doc: JsonValue): CrewUpdateRow[] {
   const rec = asRecord(doc);
   if (rec === null) return [];
-  // REMOVE_IN_1_9_0: `pack` is 1.7.0's name for `crew`, and the answer read here comes from a
-  // bridge that may still be the older build. Both names are accepted; only `crew` is written.
-  const rows = rec.crew ?? rec.pack;
+  const rows = rec.crew;
   if (!Array.isArray(rows)) return [];
   const out: CrewUpdateRow[] = [];
   for (const raw of rows) {

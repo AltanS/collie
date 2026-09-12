@@ -1588,14 +1588,10 @@ export function startServer(opts: {
         // notice about a machine a package manager owns. Absent reads as the offer, which is what
         // every client before the crew states could close.
         //
-        // REMOVE_IN_1_9_0: `"pack"` is 1.7.0's name for the `"crew"` scope, and a phone still
-        // running the 1.7.0 bundle sends it. Accepted here and folded into `"crew"` before anything
-        // is written, so the record on disk only ever carries the new name.
-        const asked = record === null ? undefined : record.scope;
-        if (asked !== undefined && asked !== "offer" && asked !== "crew" && asked !== "pack") {
+        const scope = record === null ? undefined : record.scope;
+        if (scope !== undefined && scope !== "offer" && scope !== "crew") {
           return text("bad scope", 400);
         }
-        const scope = asked === "pack" ? "crew" : asked;
         await updateMonitor.dismiss(version, scope ?? "offer");
         return json(updateMonitor.status(), req.headers.get("accept-encoding"));
       }
@@ -1805,13 +1801,6 @@ export function startServer(opts: {
         audit.record({ action: "pair", device: parsed.label, detail: { label: parsed.label } });
         // The ONLY time this token exists outside the requesting device. Nothing stores it here.
         return json({ token: claimed.token, label: parsed.label }, req.headers.get("accept-encoding"));
-      }
-      // REMOVE_IN_1_9_0: `/api/pack` is 1.7.0's name for the route below. A 308 keeps the method,
-      // so a phone still serving the 1.7.0 bundle out of its service worker cache follows it and
-      // reads the same census. The query string rides along rather than being dropped.
-      if (pathname === "/api/pack" && req.method === "GET") {
-        const moved = `/api/crew${url.search}`;
-        return new Response(null, { status: 308, headers: { location: moved } });
       }
       if (pathname === "/api/crew" && req.method === "GET") {
         // Read-level, exactly like `/api/devices` and `/api/config`: this is a report about machines

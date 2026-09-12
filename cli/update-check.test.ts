@@ -725,7 +725,7 @@ describe("preflight crew — the members of a lead", () => {
 
   // The floor and the protocol number are ONE fact: the floor is the release in which the current
   // `CREW_PROTOCOL_VERSION` first shipped. Moving the number without moving the floor is red here.
-  test("the floor is the release in which the current protocol version first shipped", () => {
+  test("the protocol floor is 1.8.0, the release in which the current protocol version shipped", () => {
     const enrollment = readFileSync(new URL("../bridge/crew/enrollment.ts", import.meta.url), "utf8");
     expect(enrollment).toContain(`export const CREW_PROTOCOL_VERSION = ${CREW_PROTOCOL_VERSION};`);
     expect(enrollment).toContain(`**${CREW_PROTOCOL_VERSION} since ${PROTOCOL_FLOOR_VERSION}.**`);
@@ -800,21 +800,15 @@ describe("the JSON contract", () => {
     expect(parseReport('{"schema":1,"checks":[]}')).toBeNull();
   });
 
-  // REMOVE_IN_1_9_0: this document is printed by a MEMBER, over ssh, and during the roll that member
-  // may still be on 1.7.0 — which spells the crew rows `pack`. Read under both names, written under
-  // `crew` alone.
-  test("a member still on 1.7.0 spells the rows `pack`, and they are read as `crew`", () => {
+  // The member's rows are read under `crew` and nothing else since 1.9.0. A document naming 1.7.0's
+  // `pack` reads as a document with no crew rows, which is the closed reading.
+  test("the crew rows are read under `crew` alone", () => {
     const rows = [{ memberId: "nas", host: "nas.local", verdict: "red", checks: [] }];
-    const old = parseReport(JSON.stringify({ schema: 1, verdict: "red", checks: [], pack: rows }))!;
-    expect(old.crew).toHaveLength(1);
-    expect(old.crew![0]!.memberId).toBe("nas");
-    // The new spelling reads the same, and a document carrying both takes `crew`.
     const fresh = parseReport(JSON.stringify({ schema: 1, verdict: "red", checks: [], crew: rows }))!;
     expect(fresh.crew).toHaveLength(1);
-    const both = parseReport(
-      JSON.stringify({ schema: 1, verdict: "red", checks: [], crew: rows, pack: [] }),
-    )!;
-    expect(both.crew).toHaveLength(1);
+    expect(fresh.crew![0]!.memberId).toBe("nas");
+    const old = parseReport(JSON.stringify({ schema: 1, verdict: "red", checks: [], pack: rows }))!;
+    expect(old.crew).toBeUndefined();
   });
 
   test("exit code — 0 with no red, 1 with one", async () => {

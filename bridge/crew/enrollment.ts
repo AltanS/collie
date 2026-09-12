@@ -276,10 +276,7 @@ export function parseEnrollResponse(value: JsonValue | undefined): EnrollRespons
   }
   const v: JsonObject = value;
   const fingerprint = typeof v.leadFingerprint === "string" ? normalizeFingerprint(v.leadFingerprint) : null;
-  // REMOVE_IN_1_9_0: `packId` is the 1.7.0 spelling of `crewId` (§0.1). Same rule as the warrant's
-  // and the standby sync's — every 1.8.0 writer emits `crewId`, every 1.8.0 reader accepts either —
-  // so a 1.8.0 joiner enrols at a lead that is still 1.7.0 without the overlap touching a body.
-  const crewId = typeof v.crewId === "string" ? v.crewId : v.packId;
+  const crewId = v.crewId;
   if (
     typeof crewId !== "string" ||
     typeof v.crewName !== "string" ||

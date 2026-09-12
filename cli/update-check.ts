@@ -667,16 +667,12 @@ export function parseReport(stdout: string): PreflightReport | null {
   const start = stdout.indexOf("{");
   const end = stdout.lastIndexOf("}");
   if (start < 0 || end <= start) return null;
-  // REMOVE_IN_1_9_0: the `pack` arm. A member still on 1.7.0 spells the members `pack`, so the
-  // shape this document is READ as carries both names; see the read below.
-  let doc: (Partial<PreflightReport> & { pack?: readonly PreflightMember[] }) | null;
+  let doc: Partial<PreflightReport> | null;
   try {
     // SAFETY: the assertion asserts NOTHING about the document — every field it names is checked
     // below before it is used, and a value that is not an object at all reads every one of them as
     // `undefined` and fails the first check. It exists only to give `JSON.parse`'s `any` a name.
-    doc = JSON.parse(stdout.slice(start, end + 1)) as
-      | (Partial<PreflightReport> & { pack?: readonly PreflightMember[] })
-      | null;
+    doc = JSON.parse(stdout.slice(start, end + 1)) as Partial<PreflightReport> | null;
   } catch {
     return null;
   }
@@ -691,10 +687,7 @@ export function parseReport(stdout: string): PreflightReport | null {
     kind === undefined
       ? { schema: PREFLIGHT_SCHEMA, verdict, checks: doc.checks }
       : { schema: PREFLIGHT_SCHEMA, verdict, installKind: kind, checks: doc.checks };
-  // REMOVE_IN_1_9_0: `pack` is 1.7.0's name for `crew`. This document was printed by ANOTHER
-  // machine — a member the lead walked over ssh — which may still be on 1.7.0 during the roll, so
-  // both names are accepted on read. Only `crew` is ever written.
-  const members = doc.crew ?? doc.pack;
+  const members = doc.crew;
   return members === undefined ? report : { ...report, crew: members };
 }
 

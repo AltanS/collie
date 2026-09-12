@@ -784,12 +784,10 @@ describe("isLeading", () => {
   });
 });
 
-// ── The enroll answer's crew id (M27/09, CREW_PROTOCOL.md §0.1) ─────────────
-// REMOVE_IN_1_9_0 — the `packId` half of this describe block. Same rule as the warrant's and the
-// standby sync's: every 1.8.0 writer emits `crewId`, every 1.8.0 reader accepts either. It is what
-// lets a 1.8.0 joiner read the answer of a lead that is still 1.7.0, without the overlap having to
-// translate a body.
-describe("the enroll answer's crew id, in both spellings", () => {
+// ── The enroll answer's crew id (M27/09, CREW_PROTOCOL.md §0) ───────────────
+// One spelling since 1.9.0: `crewId`, written and read. 1.8.0 also accepted 1.7.0's `packId` for one
+// release so a joiner could enrol at a lead that had not updated yet; that arm is gone (ADR 0039).
+describe("the enroll answer's crew id", () => {
   /** The §8.2 transfer table as it travels, field by field so a case can bend exactly one. */
   const answer = () => ({
     protocol: 2,
@@ -822,20 +820,16 @@ describe("the enroll answer's crew id, in both spellings", () => {
     expect(parseEnrollResponse(answer())?.crewId).toBe(CREW.crewId);
   });
 
-  test("the reader falls back to a 1.7.0 answer's `packId`", () => {
+  test("1.7.0's `packId` is no longer read, so an answer naming only it is a refusal", () => {
     const { crewId, ...rest } = answer();
     expect(crewId).toBe(CREW.crewId);
-    expect(parseEnrollResponse({ ...rest, packId: crewId })?.crewId).toBe(CREW.crewId);
+    expect(parseEnrollResponse({ ...rest, packId: crewId })).toBeNull();
   });
 
-  test("`crewId` wins when an answer carries both", () => {
-    expect(parseEnrollResponse({ ...answer(), packId: "crew-elsewhere" })?.crewId).toBe(CREW.crewId);
-  });
-
-  test("neither spelling, or a mistyped one, is still a refusal", () => {
+  test("an absent or mistyped `crewId` is a refusal", () => {
     const { crewId, ...rest } = answer();
     expect(crewId).toBe(CREW.crewId);
     expect(parseEnrollResponse(rest)).toBeNull();
-    expect(parseEnrollResponse({ ...rest, packId: 7 })).toBeNull();
+    expect(parseEnrollResponse({ ...rest, crewId: 7 })).toBeNull();
   });
 });

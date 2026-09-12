@@ -42,63 +42,36 @@ Three readings keep the body below correct as it stands:
 - **Where the body says "v1" for the design line**, it means the line this document has described
   since 1.0, not the version integer.
 
-### 0.1 One release of overlap
+### 0.1 Version 2 is the only version, and 1.8.0 is the floor
 
-A crew is updated lead first (§20), so a 1.8.0 lead has to keep a 1.7.0 member following it for the
-length of the roll. Two mechanisms carry that, and both are removed in **1.9.0**.
+**A build speaks version 2 and nothing else.** §7's window is exact: a version talks only to its own
+version, so there is no negotiation and nothing in between two machines.
 
-- **A 1.8.0 lead answers `/pack/v1/*` as well as `/crew/v1/*`.** The old prefix serves the version 1
-  shapes: version 1 headers, version 1 field names, version 1 error codes, `protocol: 1` on `hello`,
-  `expected: 1` on §7's refusal, and the version 1 dial context. A 1.7.0 member therefore enrols,
-  answers hello and self-levels over the link it already has, exactly as it did before the update.
-- **A 1.8.0 member dials `/crew/v1/*` first.** Against a lead that is still 1.7.0 it falls back to
-  `/pack/v1/*` once, and it writes one journal line saying it did. The fallback is per dial and it is
-  never cached, so a member stops using it the moment its lead is updated.
+**1.8.0 is the oldest build that speaks version 2.** That is where the number first shipped, and it is
+a named constant on the operator's side too: `PROTOCOL_FLOOR_VERSION` in `cli/update-check.ts`, tied to
+`CREW_PROTOCOL_VERSION` by a test so the two move together
+([ADR 0045](./.adr/0045-a-build-below-the-protocol-floor-is-a-red-preflight.md)).
 
-**The prefix decides the version, and version 2 must state it.** A request on `/crew/v1/*` carries
-`X-Crew-Protocol: 2`; an absent header is a refusal and never a default (§7). A request on
-`/pack/v1/*` carries `X-Pack-Protocol: 1`. The two vocabularies do not mix: a version 1 header on the
-version 2 prefix is read as no version at all, and is refused.
+**A member below the floor lands on §7's exact-match window, and it is told twice.** On the link, its
+answers carry no crew protocol header, so the headerless ladder calls it `unreachable` for the first
+minute and `incompatible` after that, with a reason that states the version this build speaks. On the
+operator's own path, the lead's `collie update --check` walk reds the `version` check, naming both
+versions and the remedy, which is to level that machine from its own terminal. The red blocks the crew
+update rather than starting a roll that cannot finish (§7.1, ADR 0045).
 
-**A member learns its lead is still 1.7.0 from an answer, never from a guess.** Two things say it. The
-first is a crew header naming version 1. The second is an answer that carries **no crew protocol
-header and is not JSON either** — because a crew answer is always both (§6), so such an answer is a
-build routing the path to something else.
+**The overlap that carried the 1.7.0 roll was removed in 1.9.0.** 1.8.0 answered the old path prefix as
+well as `/crew/v1/*`, fell back to it once as a member, read a crew id under either spelling, read two
+`COLLIE_PACK_*` budget keys, renamed three state files on its first start and redirected the old census
+route. All of it is gone. That was the plan ADR 0039 recorded when the rename shipped, and
+`bridge/removal-schedule.test.ts` is now the tombstone that keeps those names out.
 
-On a real 1.7.0 collie that answer is **`200 OK` with `Content-Type: text/html`** and the PWA's app
-shell: the SPA catch-all owns every unrouted path so a deep link works, and a path the build has never
-heard of is a deep link as far as that fallthrough is concerned. **It is never a `404`.** Verified in
-the VM lab on 2026-09-09 against 1.7.0+35b60df, which also answered `x-collie-build: 1.7.0+35b60df`
-and about 9 KB of `<!doctype html>`. Two narrower shapes count for the same reason and are kept: a
-peer serving no web bundle answers `404`, and a loopback-strict one answers `403`. The `403` never
-fires on a crew machine, because those all set `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`.
+**A state directory that never saw 1.8.x is named, never adopted.** The one-time state-file rename went
+with the overlap, so a collie that finds 1.7.0's `pack-trust.json` without `crew-trust.json` says so at
+start, prints both hand edits, and stays solo. The canonical signed strings did not move, so a warrant
+any 1.8.x lead minted still verifies (§18).
 
-A `5xx` is excluded, whatever it serves: that is a proxy or a peer mid-restart, not a version, and a
-second dial there would double what every poll spends on a machine that is not answering. The
-fallback therefore costs one extra round trip against a lead that has not updated, and nothing at all
-against one that has.
-
-**The warrant's context moves on verify only.** A warrant is one signature, minted by the lead and
-stored on every member's disk, so a machine that updates from 1.7.0 comes up holding one signed under
-the old context. A 1.8.0 build therefore **signs `collie-crew-warrant-v2` and accepts either form**;
-refusing its own stored warrant would disarm the standby door on the update instead of on the
-operator's decision (§18). Nothing signs the old form. The consequence during the roll is small and
-named: a warrant a 1.8.0 lead mints is refused by a member that is still on 1.7.0. That member keeps
-reporting the generation it holds, so the lead keeps pushing, and the push lands the moment the
-member has levelled.
-
-**A crew id in a body is written `crewId` and read either way.** 1.7.0 spelled it `packId` in the
-warrant, in the standby-device sync and in the enroll answer. Every 1.8.0 writer emits `crewId`; every 1.8.0 reader takes
-`crewId` and falls back to `packId`. That is what covers both skews without the overlap translating a
-body: a 1.8.0 lead's version 1 listener reads a 1.7.0 member's body at the same parser, and so does a
-1.8.0 member under a 1.7.0 lead. The direction 1.8.0 lead to 1.7.0 member needs nothing, because a
-warrant a 1.8.0 lead mints is already refused there on the signing context above, and the push lands
-after that member levels. **The canonical signed string does not move**: it is positional and
-LF-separated, so it hashes the crew id's VALUE at a fixed field and never the key.
-
-Both sides carry a `REMOVE_IN_1_9_0` marker in the code, and `bridge/removal-schedule.test.ts` fails
-at package minor 9 so the removal cannot be forgotten. From 1.9.0 a member older than 1.8.0 does not
-talk to a lead newer than 1.8.0, which is §7's exact window doing its usual job.
+The rename table in §0 stays as the history of what moved. Everything below this section describes
+version 2 and only version 2.
 
 ---
 

@@ -255,19 +255,12 @@ export function unauthorizedResponse(): Response {
  * The version refusal (§7): `409`, naming both sides, never a bare 4xx and never a partial answer.
  * Emitted only to a caller that already passed both factors, which is why it may speak freely.
  */
-export function protocolMismatchResponse(
-  received: number | null,
-  // REMOVE_IN_1_9_0: the version this refusal SPEAKS. It is this build's own on every call but the
-  // version 1 overlap's, where the refusal has to name the version the caller was answered on
-  // (`v1-overlap.ts`). The header is stamped with this build's version either way and the overlap
-  // maps it back, so there is exactly one place that rewrites a header.
-  expected: number = CREW_PROTOCOL_VERSION,
-): Response {
+export function protocolMismatchResponse(received: number | null): Response {
   return new Response(
     JSON.stringify({
       error: "crew protocol mismatch",
       code: "protocol_mismatch",
-      expected,
+      expected: CREW_PROTOCOL_VERSION,
       received,
     }),
     {

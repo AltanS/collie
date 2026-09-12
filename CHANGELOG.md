@@ -43,6 +43,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   that cannot finish. A version the lead cannot parse stays amber, as before. A state directory that
   still carries 1.7.0's `pack-*.json` names is now named at start, with the two hand edits printed
   in full.
+- **The crew link speaks one version again: the 1.7.0 compatibility layer is gone.** 1.8.0 kept the
+  old `/pack/v1/*` paths, the `COLLIE_PACK_*` timeout keys, the `pack-*.json` state-file rename, the
+  `/api/pack` redirect and every `packId` reader alive for one release so a 1.7.0 member could
+  follow the update roll. All of it is removed. Bring every member to 1.8.x before you move the lead
+  to 1.9.0: a member still on 1.7.0 now shows red on the lead's preflight, naming both versions and
+  the remedy, and reads as `incompatible` in `crew status`. The `collie pack` command alias, `collie
+  docs pack` and the app's `/pack` address are untouched and stay until 2.0.0.
 
 ## [1.8.2] - 2026-09-12
 

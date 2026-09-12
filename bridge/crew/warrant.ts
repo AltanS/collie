@@ -3,8 +3,6 @@ import { parseRoster, type CrewChange } from "./enrollment.ts";
 import { fingerprintOfCert, isFingerprint, isMemberId, normalizeFingerprint } from "./identity.ts";
 import { signCanonical, verifyCanonical } from "./signing.ts";
 import type { RosterRow, StoredWarrant, TrustStoreData, Warrant } from "./trust-store.ts";
-// REMOVE_IN_1_9_0 — the version 1 warrant string, accepted on verify and signed by nothing (§0.1).
-import { canonicalWarrantVersion1 } from "./v1-overlap.ts";
 
 // The warrant: the lead's standing, signed permission for ONE member to take the crown
 // (CREW_PROTOCOL.md §18, RFC §4). This module mints it, verifies it, and decides what supersedes
@@ -83,16 +81,13 @@ export function canonicalWarrant(w: Warrant): string {
 /**
  * Did the member whose certificate this is sign this warrant? The whole of the crypto question.
  *
- * **Two forms are accepted for one release.** Version 2 moved the domain tag to
- * `collie-crew-warrant-v2` (§0), and a warrant is not a request: it is one signature, minted by the
- * lead, stored on every member's disk and re-read after a restart. A machine that updated from 1.7.0
- * therefore comes up holding a warrant signed under the old tag, and refusing it would disarm the
- * standby door on the update instead of on the operator's decision. Nothing signs the old form.
+ * **One form, since 1.9.0.** Version 2 moved the domain tag to `collie-crew-warrant-v2` (§0) and
+ * 1.8.0 accepted the 1.7.0 form as well for one release, so a machine updating from 1.7.0 kept the
+ * warrant it already held. 1.9.0 dropped that second form. A warrant minted by any 1.8.x or newer
+ * lead verifies here unchanged, because the canonical string did not move.
  */
 export function verifyWarrantSignature(w: Warrant, leadCertPem: string): boolean {
-  if (verifyCanonical(leadCertPem, w.signature, canonicalWarrant(w))) return true;
-  // REMOVE_IN_1_9_0: the version 1 warrant, accepted for the length of the overlap (§0.1).
-  return verifyCanonical(leadCertPem, w.signature, canonicalWarrantVersion1(w));
+  return verifyCanonical(leadCertPem, w.signature, canonicalWarrant(w));
 }
 
 /** Epoch ms at which this warrant is dead on every clock that reads it (RFC §4.5). */
@@ -157,11 +152,7 @@ function asRecord(value: JsonValue | undefined): JsonObject | null {
 export function parseWarrant(value: JsonValue | undefined): Warrant | null {
   const w = asRecord(value);
   if (w === null) return null;
-  // REMOVE_IN_1_9_0: `packId` is the 1.7.0 spelling of `crewId` (§0.1). Every 1.8.0 writer emits
-  // `crewId`; this reader prefers it and falls back, which covers both skews without the overlap
-  // having to translate a body — a 1.8.0 lead's version 1 listener and a 1.8.0 member under a 1.7.0
-  // lead both arrive here, at the same parser.
-  const crewId = typeof w.crewId === "string" ? w.crewId : w.packId;
+  const crewId = w.crewId;
   if (typeof crewId !== "string" || crewId === "") return null;
   if (typeof w.generation !== "number" || !Number.isSafeInteger(w.generation) || w.generation < 1) return null;
   if (!isMemberId(w.leadMemberId)) return null;

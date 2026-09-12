@@ -5,8 +5,6 @@ import { NARROW_VIEW } from "../sessions.ts";
 
 import { PROTOCOL_HEADER, MEMBER_HEADER, DEVICE_HEADER } from "./admission.ts";
 import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
-// REMOVE_IN_1_9_0 — the overlap's shape rule, asserted as a table below.
-import { routesNoCrewV1 } from "./v1-overlap.ts";
 import { leadStore, material, member, muxCaps, CREW, T0 } from "./fixtures.ts";
 import { signDial, verifyDial, DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
 import { SWEEP_VIEW } from "./merge.ts";
@@ -17,9 +15,6 @@ import {
   DEFAULT_CREW_TIMEOUT_MS,
   CREW_HELLO_TIMEOUT_ENV,
   CREW_TIMEOUT_ENV,
-  LEGACY_CREW_HELLO_TIMEOUT_ENV,
-  LEGACY_CREW_TIMEOUT_ENV,
-  crewEnvFallbackWarning,
   PeerClient,
   foldWarmth,
   operatorReason,
@@ -45,6 +40,9 @@ import type { CrewRequestInit } from "./transport.ts";
 // The interesting surface is not "does it GET" — it is the verdict matrix: every way a peer can fail
 // has to land in exactly one of §10.2's three states, because the phone renders each differently and
 // only `incompatible` stops being retried on the poll cadence.
+
+/** The protocol version this build speaks, as a peer's answer states it. One version, since 1.9.0. */
+const OURS = String(CREW_PROTOCOL_VERSION);
 
 const laptop: CrewLink = { memberId: "laptop", address: "laptop.example:8787" };
 
@@ -78,18 +76,10 @@ function client(
     sign?: PeerClientDeps["sign"];
     dialSign?: PeerClientDeps["dialSign"];
     now?: () => number;
-    log?: (line: string) => void;
-    toldVersion1?: Set<string>;
   } = {},
 ) {
   return new PeerClient({
     self: "desk",
-    // REMOVE_IN_1_9_0: silenced by default so the overlap's line does not litter every run. A case
-    // that asserts the line passes its own sink.
-    log: over.log ?? (() => undefined),
-    // REMOVE_IN_1_9_0: absent ⇒ a fresh set per client, which is what every case but the shared one
-    // wants. The shared case hands the same set to two clients.
-    toldVersion1: over.toldVersion1,
     secret: () => (over.secret === undefined ? CREW.secret : over.secret),
     timeoutMs: over.timeoutMs ?? 50,
     patientTimeoutMs: over.patientTimeoutMs,
@@ -149,53 +139,6 @@ describe("crewTimeoutClampWarning — the clamp stops being silent", () => {
     for (const raw of ["nonsense", "-5", "0", ""]) {
       expect(crewTimeoutClampWarning(1500, { [CREW_TIMEOUT_ENV]: raw })).toBeNull();
     }
-  });
-});
-
-describe("the 1.7.0 env keys, read as a fallback (REMOVE_IN_1_9_0)", () => {
-  test("the crew keys are the names, and the pack keys are the fallback", () => {
-    expect(CREW_TIMEOUT_ENV).toBe("COLLIE_CREW_TIMEOUT_MS");
-    expect(CREW_HELLO_TIMEOUT_ENV).toBe("COLLIE_CREW_HELLO_TIMEOUT_MS");
-    expect(LEGACY_CREW_TIMEOUT_ENV).toBe("COLLIE_PACK_TIMEOUT_MS");
-    expect(LEGACY_CREW_HELLO_TIMEOUT_ENV).toBe("COLLIE_PACK_HELLO_TIMEOUT_MS");
-  });
-
-  test("the new key is read, and says nothing", () => {
-    expect(crewTimeoutBudget(5000, { [CREW_TIMEOUT_ENV]: "3000" })).toBe(3000);
-    expect(crewHelloBudget(1500, { [CREW_HELLO_TIMEOUT_ENV]: "20000" })).toBe(20_000);
-    expect(crewEnvFallbackWarning({ [CREW_TIMEOUT_ENV]: "3000" })).toBeNull();
-    expect(crewEnvFallbackWarning({ [CREW_HELLO_TIMEOUT_ENV]: "20000" })).toBeNull();
-    expect(crewEnvFallbackWarning({})).toBeNull();
-  });
-
-  test("the old key still buys the budget it always did, and is named once", () => {
-    expect(crewTimeoutBudget(5000, { [LEGACY_CREW_TIMEOUT_ENV]: "3000" })).toBe(3000);
-    expect(crewHelloBudget(1500, { [LEGACY_CREW_HELLO_TIMEOUT_ENV]: "20000" })).toBe(20_000);
-    // The clamp warning reads the same value through the same fallback, so an operator on the old
-    // key is told about the clamp too — in the NEW key's words, because that is the one to write.
-    const clamped = crewTimeoutClampWarning(1500, { [LEGACY_CREW_TIMEOUT_ENV]: "3000" });
-    expect(clamped).toContain("COLLIE_CREW_TIMEOUT_MS=3000");
-
-    const warning = crewEnvFallbackWarning({ [LEGACY_CREW_TIMEOUT_ENV]: "3000" });
-    expect(warning).toContain("COLLIE_PACK_TIMEOUT_MS");
-    expect(warning).toContain("COLLIE_CREW_TIMEOUT_MS");
-    expect(warning).toContain("1.9.0");
-    // ONE line, for both keys — a per-read warning would flood the journal on every poll.
-    const both = crewEnvFallbackWarning({
-      [LEGACY_CREW_TIMEOUT_ENV]: "3000",
-      [LEGACY_CREW_HELLO_TIMEOUT_ENV]: "20000",
-    });
-    expect(both?.split("\n")).toHaveLength(1);
-    expect(both).toContain("COLLIE_PACK_HELLO_TIMEOUT_MS");
-  });
-
-  test("both keys set: the crew key wins and nothing is said about the one it shadows", () => {
-    const env = { [CREW_TIMEOUT_ENV]: "3000", [LEGACY_CREW_TIMEOUT_ENV]: "400" };
-    expect(crewTimeoutBudget(5000, env)).toBe(3000);
-    expect(crewEnvFallbackWarning(env)).toBeNull();
-    const hello = { [CREW_HELLO_TIMEOUT_ENV]: "20000", [LEGACY_CREW_HELLO_TIMEOUT_ENV]: "7000" };
-    expect(crewHelloBudget(1500, hello)).toBe(20_000);
-    expect(crewEnvFallbackWarning(hello)).toBeNull();
   });
 });
 
@@ -499,7 +442,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
   test("a peer's 409 is INCOMPATIBLE and carries the reason verbatim, with both versions", async () => {
     const { fetch } = replying(
       { error: "crew protocol mismatch", code: "protocol_mismatch", expected: 2, received: 1 },
-      { status: 409, protocol: "1" },
+      { status: 409, protocol: OURS },
     );
     const outcome = await client(fetch).snapshot(laptop);
     expect(outcome.ok).toBe(false);
@@ -597,7 +540,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
     clock += HEADERLESS_PATIENCE_MS - 1_000;
     // The peer finished its restart and answers properly. That is what resets the run, and the NEXT
     // outage must get a fresh patient minute rather than land on the ladder on its first answer.
-    protocol = "1";
+    protocol = OURS;
     await peer.snapshot(laptop);
     protocol = null;
     clock += 2_000;
@@ -784,7 +727,7 @@ describe("PeerClient — the verdict matrix (§7, §10.2)", () => {
 
   test("`raw` hands the Response back unread, so a proxied read keeps its bytes and its ETag", async () => {
     const fetch: CrewFetch = async () =>
-      new Response("mirror bytes", { status: 200, headers: { [PROTOCOL_HEADER]: "1", etag: 'W/"abc"' } });
+      new Response("mirror bytes", { status: 200, headers: { [PROTOCOL_HEADER]: OURS, etag: 'W/"abc"' } });
     const outcome = await client(fetch).raw(laptop, "pane/w1:p1");
     if (!outcome.ok) throw new Error("expected success");
     expect(outcome.value.bodyUsed).toBe(false);
@@ -825,7 +768,7 @@ describe("sweepPeers — concurrent, never serial (§10.1)", () => {
     ];
     const fetch: CrewFetch = async (url) => {
       if (url.includes("down")) throw new Error("ECONNREFUSED");
-      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { [PROTOCOL_HEADER]: "1" } });
+      return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { [PROTOCOL_HEADER]: OURS } });
     };
     const c = client(fetch);
     const results = await sweepPeers(links, (link) => c.snapshot(link));
@@ -1172,7 +1115,7 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
   });
 
   test("a 409 with the named code is CONFLICTED, and the warrant comes through intact", async () => {
-    const { fetch } = replying(conflictBody(), { status: 409, protocol: "1" });
+    const { fetch } = replying(conflictBody(), { status: 409, protocol: OURS });
     const outcome = await client(fetch).snapshot(laptop);
     if (outcome.ok) throw new Error("expected a failure");
     if (outcome.state !== "conflicted") throw new Error(`expected conflicted, got ${outcome.state}`);
@@ -1187,7 +1130,7 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
   test("it is NOT incompatible — this build reads that member's protocol perfectly well", async () => {
     // The two answers share a status, and conflating them would put a member that answered precisely
     // onto §10.2's slow protocol backoff and tell the operator to go update a build.
-    const { fetch } = replying(conflictBody(), { status: 409, protocol: "1" });
+    const { fetch } = replying(conflictBody(), { status: 409, protocol: OURS });
     const outcome = await client(fetch).snapshot(laptop);
     expect(outcome.ok === false && outcome.state).not.toBe("incompatible");
     expect(outcome.ok === false && outcome.state).not.toBe("unreachable");
@@ -1195,14 +1138,14 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
   });
 
   test("a conflict with no warrant is still a conflict — it just carries no proof", async () => {
-    const { fetch } = replying(conflictBody({ warrant: undefined }), { status: 409, protocol: "1" });
+    const { fetch } = replying(conflictBody({ warrant: undefined }), { status: 409, protocol: OURS });
     const outcome = await client(fetch).snapshot(laptop);
     if (outcome.ok || outcome.state !== "conflicted") throw new Error("expected conflicted");
     expect(outcome.warrant).toBeNull();
   });
 
   test("a malformed warrant on an otherwise good conflict reads as no proof, never as a broken link", async () => {
-    const { fetch } = replying(conflictBody({ warrant: { crewId: 7 } }), { status: 409, protocol: "1" });
+    const { fetch } = replying(conflictBody({ warrant: { crewId: 7 } }), { status: 409, protocol: OURS });
     const outcome = await client(fetch).snapshot(laptop);
     if (outcome.ok || outcome.state !== "conflicted") throw new Error("expected conflicted");
     expect(outcome.warrant).toBeNull();
@@ -1211,7 +1154,7 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
   test("a 409 that names no lead falls back to the SKEW reading — the closed one", async () => {
     // Without a member id the answer names nothing, and a conflict naming nobody is indistinguishable
     // from a 409 that happened to carry the code.
-    const { fetch } = replying(conflictBody({ leadMemberId: "" }), { status: 409, protocol: "1" });
+    const { fetch } = replying(conflictBody({ leadMemberId: "" }), { status: 409, protocol: OURS });
     const outcome = await client(fetch).snapshot(laptop);
     expect(outcome.ok === false && outcome.state).toBe("incompatible");
   });
@@ -1219,7 +1162,7 @@ describe("PeerClient — lead_conflict, §10.2's fourth state (§18.10)", () => 
   test("§7's protocol mismatch is untouched — the body is read ONCE and both readings come off it", async () => {
     const { fetch } = replying(
       { error: "crew protocol mismatch", code: "protocol_mismatch", expected: 2, received: 1 },
-      { status: 409, protocol: "1" },
+      { status: 409, protocol: OURS },
     );
     const outcome = await client(fetch).snapshot(laptop);
     if (outcome.ok || outcome.state !== "incompatible") throw new Error("expected incompatible");
@@ -1252,7 +1195,7 @@ describe("PeerClient — pairing_label_collision, the other 409 (§18.14)", () =
   });
 
   test("it is a REFUSAL that carries the labels, never §7's version skew", async () => {
-    const { fetch } = replying(collisionBody(), { status: 409, protocol: "1" });
+    const { fetch } = replying(collisionBody(), { status: 409, protocol: OURS });
     const outcome = await client(fetch).pairing(laptop, sync);
     if (outcome.ok) throw new Error("expected a failure");
     if (outcome.state !== "refused") throw new Error(`expected refused, got ${outcome.state}`);
@@ -1263,21 +1206,21 @@ describe("PeerClient — pairing_label_collision, the other 409 (§18.14)", () =
   });
 
   test("a collision naming no label is still a refusal — with nothing to rename", async () => {
-    const { fetch } = replying(collisionBody({ labels: undefined }), { status: 409, protocol: "1" });
+    const { fetch } = replying(collisionBody({ labels: undefined }), { status: 409, protocol: OURS });
     const outcome = await client(fetch).pairing(laptop, sync);
     if (outcome.ok || outcome.state !== "refused") throw new Error("expected refused");
     expect(outcome.labels).toEqual([]);
   });
 
   test("a label list with junk in it keeps the strings and drops the rest", async () => {
-    const { fetch } = replying(collisionBody({ labels: ["phone", 7, null] }), { status: 409, protocol: "1" });
+    const { fetch } = replying(collisionBody({ labels: ["phone", 7, null] }), { status: 409, protocol: OURS });
     const outcome = await client(fetch).pairing(laptop, sync);
     if (outcome.ok || outcome.state !== "refused") throw new Error("expected refused");
     expect(outcome.labels).toEqual(["phone"]);
   });
 
   test("a 409 without the code is untouched — it still reads as the skew, the closed reading", async () => {
-    const { fetch } = replying(collisionBody({ code: undefined }), { status: 409, protocol: "1" });
+    const { fetch } = replying(collisionBody({ code: undefined }), { status: 409, protocol: OURS });
     const outcome = await client(fetch).pairing(laptop, sync);
     expect(outcome.ok === false && outcome.state).toBe("incompatible");
   });
@@ -1444,288 +1387,5 @@ describe("parseMuxReport — a member's declaration, bounded and re-checked", ()
     });
     expect(wire?.unsupportedKeys).toHaveLength(256);
     expect(wire?.notes).toEqual({});
-  });
-});
-
-// ── The version 1 fallback dial (M27/03, CREW_PROTOCOL.md §0.1) ─────────────
-// REMOVE_IN_1_9_0 — this whole describe block, and the minor-9 reminder that guards it lives in
-// `bridge/removal-schedule.test.ts` (its `describe("wire")` block fails once the package minor
-// reaches 9 with any of the overlap still here).
-//
-// The order is `/crew/v1` first, always. A lead still on 1.7.0 reveals itself in exactly two ways,
-// and both are ANSWERS rather than guesses: a header-free `404` or `403` (a build that has never
-// heard of the prefix, either its own 404 or `bridge/server.ts`'s non-loopback refusal for a
-// declined crew path), or a crew header naming version 1.
-describe("the version 1 fallback", () => {
-  /** A fake that answers the version 2 prefix as a 1.7.0 collie would, and `/pack/v1` properly. */
-  function oldLead(status: number) {
-    const calls: string[] = [];
-    const fetch: CrewFetch = async (url) => {
-      calls.push(new URL(url).pathname);
-      if (new URL(url).pathname.startsWith("/crew/v1/")) {
-        return new Response(JSON.stringify({ error: "not found" }), { status });
-      }
-      return new Response(JSON.stringify({ protocol: 1, member: "laptop" }), {
-        status: 200,
-        headers: { "content-type": "application/json", "x-pack-protocol": "1", "x-pack-member": "laptop" },
-      });
-    };
-    return { fetch, calls };
-  }
-
-  for (const status of [404, 403]) {
-    test(`a header-free ${status} on /crew/v1 falls back to /pack/v1, once, and the dial succeeds`, async () => {
-      const { fetch, calls } = oldLead(status);
-      const lines: string[] = [];
-      const outcome = await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
-      expect(outcome.ok).toBe(true);
-      expect(calls).toEqual(["/crew/v1/hello", "/pack/v1/hello"]);
-      // The answer is read in version 2's vocabulary, so nothing downstream knows about the overlap.
-      expect(outcome.ok && outcome.value.protocol).toBe(1);
-      expect(lines).toEqual(["[crew] laptop: speaks version 1, dialling /pack/v1 until it updates"]);
-    });
-  }
-
-  test("a crew header naming version 1 falls back too — the refusal is an answer", async () => {
-    const calls: string[] = [];
-    const fetch: CrewFetch = async (url) => {
-      const { pathname } = new URL(url);
-      calls.push(pathname);
-      // Both prefixes answer, and both name version 1 — a 1.7.0 collie fronted by something that
-      // routes the new prefix at it. The header NAME follows the prefix, as a real one would.
-      const name = pathname.startsWith("/pack/v1/") ? "x-pack-protocol" : "x-crew-protocol";
-      return new Response(JSON.stringify({ protocol: 1, member: "laptop" }), {
-        status: 200,
-        headers: { "content-type": "application/json", [name]: "1", "x-pack-member": "laptop" },
-      });
-    };
-    const lines: string[] = [];
-    const outcome = await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
-    expect(outcome.ok).toBe(true);
-    expect(calls).toEqual(["/crew/v1/hello", "/pack/v1/hello"]);
-    expect(lines).toHaveLength(1);
-  });
-
-  // ONE line per lead, not one per sweep. The fallback itself is per dial and never cached, which is
-  // what lets a member stop using it the moment its lead updates.
-  test("the line is written once per lead, however many times the fallback is taken", async () => {
-    const { fetch, calls } = oldLead(404);
-    const lines: string[] = [];
-    const c = client(fetch, { log: (l) => lines.push(l) });
-    await c.hello(laptop);
-    await c.hello(laptop);
-    await c.snapshot(laptop);
-    expect(lines).toEqual(["[crew] laptop: speaks version 1, dialling /pack/v1 until it updates"]);
-    // Three dials, six requests: the fallback is taken every time, and only the LINE is remembered.
-    expect(calls).toHaveLength(6);
-  });
-
-  // A LEAD holds more than one client per peer (`bridge/index.ts` builds the sweep's and the
-  // takeover's), so a set per client wrote the line twice per member. The set is the process's.
-  test("two clients sharing one set write the line once for the same lead", async () => {
-    const { fetch } = oldLead(404);
-    const lines: string[] = [];
-    const shared = new Set<string>();
-    await client(fetch, { log: (l) => lines.push(l), toldVersion1: shared }).hello(laptop);
-    await client(fetch, { log: (l) => lines.push(l), toldVersion1: shared }).snapshot(laptop);
-    expect(lines).toEqual(["[crew] laptop: speaks version 1, dialling /pack/v1 until it updates"]);
-  });
-
-  test("two clients with their own sets each write it — the default is per client", async () => {
-    const { fetch } = oldLead(404);
-    const lines: string[] = [];
-    await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
-    await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
-    expect(lines).toHaveLength(2);
-  });
-
-  test("a member enrolled again under the same id is told about again", async () => {
-    const { fetch } = oldLead(404);
-    const lines: string[] = [];
-    const c = client(fetch, { log: (l) => lines.push(l) });
-    await c.hello(laptop);
-    c.forget(laptop.memberId, laptop.address);
-    await c.hello(laptop);
-    expect(lines).toHaveLength(2);
-  });
-
-  test("an updated lead is never dialled on /pack/v1, and nothing is logged", async () => {
-    const { fetch, calls } = replying({ protocol: 2, member: "laptop" });
-    const lines: string[] = [];
-    const outcome = await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
-    expect(outcome.ok).toBe(true);
-    expect(calls.map((c) => new URL(c.url).pathname)).toEqual(["/crew/v1/hello"]);
-    expect(lines).toEqual([]);
-  });
-
-  // A version the overlap cannot serve is NOT a 1.7.0 lead, so it is the ordinary skew and there is
-  // no second dial to make.
-  test("a foreign version other than 1 does not fall back", async () => {
-    const { fetch, calls } = replying({ some: "a foreign shape" }, { protocol: "3" });
-    const lines: string[] = [];
-    const outcome = await client(fetch, { log: (l) => lines.push(l) }).snapshot(laptop);
-    expect(outcome.ok).toBe(false);
-    expect(calls).toHaveLength(1);
-    expect(lines).toEqual([]);
-  });
-
-  // A dead host answers nothing, so there is nothing to read a version off — and a second dial there
-  // would double the budget every poll spends on a machine that is not there.
-  test("a header-free 502 does not fall back — that is a proxy, not a version", async () => {
-    const { fetch, calls } = replying({ ok: true }, { protocol: null, status: 502 });
-    const lines: string[] = [];
-    await client(fetch, { log: (l) => lines.push(l) }).snapshot(laptop);
-    expect(calls).toHaveLength(1);
-    expect(lines).toEqual([]);
-  });
-
-  test("the fallback dial carries version 1's headers and the version 1 dial domain", async () => {
-    const { fetch, calls } = oldLead(404);
-    const seen: DialParts[] = [];
-    await client(fetch, {
-      log: () => undefined,
-      dialSign: (parts) => {
-        seen.push(parts);
-        return signDial(material("desk").keyPem, parts);
-      },
-    }).hello(laptop);
-    expect(calls).toEqual(["/crew/v1/hello", "/pack/v1/hello"]);
-    // The domain is chosen from the prefix, and the PATH signed is the one actually dialled.
-    expect(seen.map((p) => p.domain ?? null)).toEqual([null, "collie-pack-dial-v1"]);
-    expect(seen.map((p) => p.path)).toEqual(["/crew/v1/hello", "/pack/v1/hello"]);
-  });
-});
-
-// ── The shape a REAL 1.7.0 collie answers with (M27/03b) ────────────────────
-// REMOVE_IN_1_9_0 — this whole describe block.
-//
-// Ground truth, measured in the VM lab on 2026-09-09: a 1.7.0 bridge answers `/crew/v1/hello` with
-// `200 OK`, `content-type: text/html`, `x-collie-build: 1.7.0+35b60df`, and ~9 KB of the PWA's app
-// shell. `bridge/server.ts` hands every unrouted path the built `index.html` so a deep link works,
-// and a path it has never heard of is a deep link to that fallthrough. It is NEVER a 404.
-//
-// The first draft of the trigger read 404-or-403 and therefore fired on neither skew: members read
-// `unreachable · hello: peer answered 200 with no crew protocol header` and no fallback line was ever
-// written. These cases are that failure, pinned from both directions.
-describe("the version 1 fallback, against the shape a real 1.7.0 collie answers with", () => {
-  /** The app shell a 1.7.0 bridge hands an unrouted path. Short, but the same headers. */
-  const APP_SHELL = '<!doctype html><html lang="en"><head><title>Collie</title></head><body></body></html>';
-
-  /**
-   * A 1.7.0 collie: the SPA catch-all on `/crew/v1/*`, a real crew answer on `/pack/v1/*`.
-   *
-   * `answer` is what the version 1 surface replies with, so one fake serves both skews — a member
-   * dialling its lead's `hello`, and a lead dialling a peer's `snapshot`.
-   */
-  function collie17(answer: JsonValue) {
-    const calls: string[] = [];
-    const fetch: CrewFetch = async (url) => {
-      const { pathname } = new URL(url);
-      calls.push(pathname);
-      if (pathname.startsWith("/crew/v1/")) {
-        return new Response(APP_SHELL, {
-          status: 200,
-          headers: { "content-type": "text/html;charset=utf-8", "x-collie-build": "1.7.0+35b60df" },
-        });
-      }
-      return new Response(JSON.stringify(answer), {
-        status: 200,
-        headers: { "content-type": "application/json", "x-pack-protocol": "1", "x-pack-member": "laptop" },
-      });
-    };
-    return { fetch, calls };
-  }
-
-  // Skew one: a 1.8.0 MEMBER under a lead that has not been updated yet. `hello` is the call that
-  // runs in the peer → lead direction (§8.6), and it is what `crew status` and `reconnect` probe with.
-  test("a 1.8.0 member reaches its 1.7.0 lead, and says so once", async () => {
-    const { fetch, calls } = collie17({ protocol: 1, member: "laptop" });
-    const lines: string[] = [];
-    const outcome = await client(fetch, { log: (l) => lines.push(l) }).hello(laptop);
-    expect(outcome.ok).toBe(true);
-    expect(calls).toEqual(["/crew/v1/hello", "/pack/v1/hello"]);
-    expect(lines).toEqual(["[crew] laptop: speaks version 1, dialling /pack/v1 until it updates"]);
-  });
-
-  // Skew two: a 1.8.0 LEAD sweeping a member that has not been updated yet — the skew the roll
-  // actually produces, because a crew is updated lead first (§20). One dial serves both directions,
-  // so the fix lands on both, and this case is what proves it rather than assuming it.
-  test("a 1.8.0 lead reaches its 1.7.0 peer's snapshot, and says so once", async () => {
-    const { fetch, calls } = collie17({ bridge: "connected", agents: [], shellPanes: [] });
-    const lines: string[] = [];
-    const outcome = await client(fetch, { log: (l) => lines.push(l) }).snapshot(laptop);
-    expect(outcome.ok).toBe(true);
-    expect(calls).toEqual(["/crew/v1/snapshot", "/pack/v1/snapshot"]);
-    expect(lines).toEqual(["[crew] laptop: speaks version 1, dialling /pack/v1 until it updates"]);
-  });
-
-  // The regression, stated as the sentence the operator was reading before this fix.
-  test("the member no longer reports the app shell as an unreachable peer", async () => {
-    const { fetch } = collie17({ protocol: 1, member: "laptop" });
-    const outcome = await client(fetch).hello(laptop);
-    expect(outcome.ok).toBe(true);
-    if (outcome.ok) return;
-    expect(outcome.reason).not.toContain("with no crew protocol header");
-  });
-
-  // And the exclusions the shape rule must not swallow. A 5xx is a proxy or a peer mid-restart, and
-  // a JSON 200 with no header is the case §7 already had an answer for.
-  test("a 5xx app shell is still not a version — no second dial", async () => {
-    const calls: string[] = [];
-    const fetch: CrewFetch = async (url) => {
-      calls.push(new URL(url).pathname);
-      return new Response(APP_SHELL, { status: 502, headers: { "content-type": "text/html" } });
-    };
-    const lines: string[] = [];
-    await client(fetch, { log: (l) => lines.push(l) }).snapshot(laptop);
-    expect(calls).toEqual(["/crew/v1/snapshot"]);
-    expect(lines).toEqual([]);
-  });
-
-  test("a headerless JSON 200 is not a version either — no second dial", async () => {
-    const { fetch, calls } = replying({ ok: true }, { protocol: null, status: 200 });
-    const lines: string[] = [];
-    await client(fetch, { log: (l) => lines.push(l) }).snapshot(laptop);
-    expect(calls).toHaveLength(1);
-    expect(lines).toEqual([]);
-  });
-});
-
-// The shape rule on its own, as a table — pure, so it reads as the decision rather than a harness.
-// REMOVE_IN_1_9_0.
-describe("routesNoCrewV1", () => {
-  const answer = (status: number, contentType: string | null): Response =>
-    new Response(status === 204 ? null : "x", {
-      status,
-      headers: contentType === null ? {} : { "content-type": contentType },
-    });
-
-  test("a 200 that is not JSON is a build answering a path it does not route", () => {
-    expect(routesNoCrewV1(answer(200, "text/html;charset=utf-8"))).toBe(true);
-    expect(routesNoCrewV1(answer(200, "text/plain"))).toBe(true);
-    expect(routesNoCrewV1(answer(200, null))).toBe(true);
-  });
-
-  test("a 200 that IS JSON is not — a crew answer is always JSON", () => {
-    expect(routesNoCrewV1(answer(200, "application/json"))).toBe(false);
-    expect(routesNoCrewV1(answer(200, "application/json; charset=utf-8"))).toBe(false);
-    expect(routesNoCrewV1(answer(200, "APPLICATION/JSON"))).toBe(false);
-  });
-
-  test("the two narrower shapes still count: no bundle 404s, loopback-strict 403s", () => {
-    expect(routesNoCrewV1(answer(404, "text/plain"))).toBe(true);
-    expect(routesNoCrewV1(answer(403, "text/plain"))).toBe(true);
-  });
-
-  test("a 5xx never counts, whatever it serves", () => {
-    for (const status of [500, 502, 503, 504]) {
-      expect(routesNoCrewV1(answer(status, "text/html"))).toBe(false);
-    }
-  });
-
-  test("no other status counts — a 304 or a 401 is not a version", () => {
-    for (const status of [204, 301, 401, 409, 429]) {
-      expect(routesNoCrewV1(answer(status, "text/html"))).toBe(false);
-    }
   });
 });

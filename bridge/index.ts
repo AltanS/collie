@@ -61,7 +61,6 @@ import { leadLabel } from "./crew/merge.ts";
 import { crewStatusBody } from "./crew/status-wire.ts";
 import { herdPushGate, PeerNotifier } from "./crew/notify.ts";
 import {
-  crewEnvFallbackWarning,
   crewHelloBudget,
   crewTimeoutBudget,
   crewTimeoutClampWarning,
@@ -105,7 +104,6 @@ import {
   syncedDevicesOf,
   type SyncedDevice,
 } from "./crew/standby-devices.ts";
-import { migrateCrewStateOnce } from "./crew/state-migration.ts";
 import {
   adoptLeadership,
   clearRePin,
@@ -185,9 +183,6 @@ try {
 // is generated, no default is written back and no timer is armed. That is the zero-tax contract
 // (§11) holding at its startup seam — and `trustStore.load()` returning `null` is the same `null` a
 // solo instance will hand `resolveCrewRuntime` forever after.
-// REMOVE_IN_1_9_0: the 1.7.0 `pack-*.json` names are moved to their crew names here — before the
-// store is opened, and before the ops store or the runtime marker below is touched.
-migrateCrewStateOnce(cfg.stateDir, (line) => console.warn(line));
 // A state directory that still carries 1.7.0's names is NAMED, never adopted (ADR 0045). This is the
 // only caller: once per process, on the boot path, and never from `fsTrustStoreIo`, whose `read()`
 // and `write()` run on every trust-store access.
@@ -295,23 +290,12 @@ function releaseFrontDoor(mode: CrewMode, isDeposed: boolean, why: string): void
 let pairingCollision: PairingCollision | null = null;
 
 /**
- * REMOVE_IN_1_9_0 — which members THIS PROCESS has already said speak version 1 (§0.1).
- *
- * One set for every client this file builds, because this file builds more than one per peer: the
- * boot gate's, the sweep's and the takeover's. A set per client wrote the same sentence once per
- * client; the journal wants it once per member.
- */
-const toldVersion1 = new Set<string>();
-
-/**
  * One crew client, built the same way for the boot gate and for the lead's sweep — because two would
  * be two places for a crew request to forget its budget, its pin or its secret.
  */
 function crewPeerClient(data: TrustStoreData): PeerClient {
   return new PeerClient({
     self: data.self.memberId,
-    // REMOVE_IN_1_9_0: the process-wide set, so the fallback's line is written once per member.
-    toldVersion1,
     // Read at call time so a rotation is picked up without a restart (§8.3, §8.4).
     secret: () => trustStore.current()?.crew?.secret ?? null,
     // Strictly below the lead's own poll interval, so a slow peer can never stall this snapshot
@@ -1254,10 +1238,6 @@ if (warnsOnWildcardBind(crew.mode, cfg.host)) {
 {
   const clamped = crewTimeoutClampWarning(cfg.pollMs);
   if (clamped !== null) console.warn(clamped);
-  // REMOVE_IN_1_9_0: the same posture for the 1.7.0 spelling of the two crew budget keys — said
-  // once here, never on the poll path that actually reads them.
-  const legacyEnv = crewEnvFallbackWarning();
-  if (legacyEnv !== null) console.warn(legacyEnv);
 }
 
 /**
@@ -1503,8 +1483,6 @@ if (crewLead) {
 function takeoverClient(data: TrustStoreData): PeerClient {
   return new PeerClient({
     self: data.self.memberId,
-    // REMOVE_IN_1_9_0: the same process-wide set the sweep's client uses. See `toldVersion1`.
-    toldVersion1,
     secret: () => trustStore.current()?.crew?.secret ?? null,
     timeoutMs: crewTimeoutBudget(cfg.pollMs),
     patientTimeoutMs: crewHelloBudget(cfg.pollMs),

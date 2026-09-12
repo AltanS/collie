@@ -558,18 +558,14 @@ test("a follow-driven restart writes no warrant field — the update path never 
   expect(follow).not.toContain("storeWarrant");
 });
 
-// ── The crew id's field name (M27/09, CREW_PROTOCOL.md §0.1) ────────────────
-// REMOVE_IN_1_9_0 — the `packId` half of this describe block.
+// ── The crew id's field name (M27/09, CREW_PROTOCOL.md §0) ──────────────────
+// One spelling since 1.9.0: `crewId`, written and read. 1.8.0 also accepted 1.7.0's `packId` for one
+// release, on the wire and off disk; that arm is gone (ADR 0039).
 //
-// The warrant's crew id is spelled `crewId` on the version 2 wire and `packId` on 1.7.0's. The rule
-// is one sentence: every 1.8.0 writer emits `crewId`, every 1.8.0 reader accepts either and prefers
-// `crewId`. That covers both skews without the overlap translating a body, because both skews arrive
-// at this same parser.
-//
-// The CANONICAL SIGNED STRING is unaffected. It is positional — domain, crew id, generation, and so
-// on, LF-separated — so it hashes the VALUE and never the key. A warrant a 1.7.0 lead signed
+// The CANONICAL SIGNED STRING never moved. It is positional — domain, crew id, generation, and so
+// on, LF-separated — so it hashes the VALUE and never the key. A warrant any 1.8.x lead minted
 // therefore still verifies here byte for byte, which the last case proves against a real signature.
-describe("the warrant's crew id, in both spellings", () => {
+describe("the warrant's crew id", () => {
   test("the writer emits `crewId` and never `packId`", () => {
     const { warrant } = named();
     const document = JSON.stringify(warrant);
@@ -583,51 +579,41 @@ describe("the warrant's crew id, in both spellings", () => {
     expect(parseWarrant(wireOf(warrant))?.crewId).toBe(CREW.crewId);
   });
 
-  test("the parser reads a 1.7.0 body, which names the field `packId`", () => {
+  test("a body naming only 1.7.0's `packId` is a refusal", () => {
     const { warrant } = named();
     const { crewId, ...rest } = wireOf(warrant);
-    expect(parseWarrant({ ...rest, packId: crewId })?.crewId).toBe(CREW.crewId);
+    expect(parseWarrant({ ...rest, packId: crewId })).toBeNull();
   });
 
-  test("`crewId` wins when a body carries both — a writer that says crew means crew", () => {
-    const { warrant } = named();
-    expect(parseWarrant({ ...wireOf(warrant), packId: "crew-elsewhere" })?.crewId).toBe(CREW.crewId);
-  });
-
-  test("neither spelling, or an empty one, is still a refusal", () => {
+  test("an absent, empty or mistyped `crewId` is a refusal", () => {
     const { warrant } = named();
     const { crewId, ...rest } = wireOf(warrant);
     expect(crewId).toBe(CREW.crewId);
     expect(parseWarrant(rest)).toBeNull();
-    expect(parseWarrant({ ...rest, packId: "" })).toBeNull();
-    expect(parseWarrant({ ...rest, packId: 7 })).toBeNull();
+    expect(parseWarrant({ ...rest, crewId: "" })).toBeNull();
+    expect(parseWarrant({ ...rest, crewId: 7 })).toBeNull();
   });
 
-  // The one that matters most: the signature covers the field's VALUE at a fixed position, so a
-  // warrant written under the old key verifies unchanged. If the canonical string had ever keyed off
-  // the field name, this is the case that would go red.
-  test("a warrant stored by 1.7.0 under `packId` still verifies, signature untouched", () => {
+  // The one that matters most: the signature covers the field's VALUE at a fixed position, never the
+  // key, which is why the rename never touched a signature and why dropping the second accepted form
+  // breaks no warrant a 1.8.x lead minted.
+  test("a warrant off a crew-spelled store verifies, signature untouched", () => {
     const { data, warrant } = named();
-    const { crewId, ...rest } = wireOf(warrant);
-    const parsed = parseWarrant({ ...rest, packId: crewId });
-    if (parsed === null) throw new Error("expected the 1.7.0 body to parse");
-    expect(verifyWarrantSignature(parsed, data.self.certPem)).toBe(true);
-    expect(canonicalWarrant(parsed)).toBe(canonicalWarrant(warrant));
+    const stored: StoredWarrant = { warrant, deputyCertPem: material("nas").certPem };
+    const parsed = parseTrustStore(serializeTrustStore({ ...data, warrant: stored }));
+    expect(parsed?.warrant?.warrant.crewId).toBe(CREW.crewId);
+    expect(verifyWarrantSignature(parsed!.warrant!.warrant, data.self.certPem)).toBe(true);
+    expect(canonicalWarrant(parsed!.warrant!.warrant)).toBe(canonicalWarrant(warrant));
   });
 
-  // And off disk: a 1.7.0 trust store holds the warrant under the old key, and the value has to
-  // arrive on `crewId` or every reader downstream would see `undefined`.
-  test("a 1.7.0 trust store's warrant is read onto `crewId`, and written back that way", () => {
+  // And off disk in the old spelling: a store that never saw 1.8.x is REFUSED, not adopted. The
+  // operator is told at start instead (`legacyStateFileNotice`, ADR 0045).
+  test("a 1.7.0 trust store is refused rather than read", () => {
     const { data, warrant } = named();
     const stored: StoredWarrant = { warrant, deputyCertPem: material("nas").certPem };
     const modern = serializeTrustStore({ ...data, warrant: stored });
-    const old = modern.replace(/"crewId":/g, '"packId":').replace(/"pack":/g, '"crew":');
+    const old = modern.replace(/"crewId":/g, '"packId":').replace(/"crew":/g, '"pack":');
     expect(old).toContain('"packId":');
-
-    const parsed = parseTrustStore(old);
-    expect(parsed?.warrant?.warrant.crewId).toBe(CREW.crewId);
-    expect(verifyWarrantSignature(parsed!.warrant!.warrant, data.self.certPem)).toBe(true);
-    // The fallback is spent by being read once: the next write carries the crew spelling only.
-    expect(serializeTrustStore(parsed!)).not.toContain('"packId":');
+    expect(parseTrustStore(old)).toBeNull();
   });
 });

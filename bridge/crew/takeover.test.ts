@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { MEMBER_HEADER, PROTOCOL_HEADER, type PinnedDeputy } from "./admission.ts";
+import { CREW_PROTOCOL_VERSION } from "./enrollment.ts";
 import { fp, leadStore, material, member, CREW, peerStore, T0 } from "./fixtures.ts";
 import { PeerClient, type CrewFetch, type CrewLink, type PeerOutcome } from "./peer-client.ts";
 import type { RosterRow, StoredWarrant, TrustStoreData, Warrant } from "./trust-store.ts";
@@ -540,7 +541,11 @@ describe("takeoverDialTls — the deputy pins its witnesses and cannot pin its l
       calls.push({ url, init });
       return new Response(JSON.stringify({ protocol: 2, member: "desk" }), {
         status: 200,
-        headers: { "content-type": "application/json", [PROTOCOL_HEADER]: "1", [MEMBER_HEADER]: "desk" },
+        headers: {
+          "content-type": "application/json",
+          [PROTOCOL_HEADER]: String(CREW_PROTOCOL_VERSION),
+          [MEMBER_HEADER]: "desk",
+        },
       });
     };
     // The takeover client's wiring, exactly (bridge/index.ts): no body signature, a dial attestation

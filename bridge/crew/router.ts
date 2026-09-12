@@ -19,16 +19,6 @@ import {
   type PeerRunReport,
 } from "../update-action.ts";
 import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
-// REMOVE_IN_1_9_0 — the version 1 overlap (§0.1). One import, one mount, one module.
-import {
-  isVersion1Path,
-  toVersion1Response,
-  translateVersion1EnrollBody,
-  translateVersion1Request,
-  V1_DIAL_DOMAIN,
-  V1_PROTOCOL_VERSION,
-  version2PathFor,
-} from "./v1-overlap.ts";
 import { apiPathFor } from "./forward.ts";
 import { HOST_PARAM } from "./registry.ts";
 import {
@@ -747,9 +737,6 @@ function resolveDial(
   url: URL,
   deputy: PinnedDeputy | undefined,
   now: number,
-  // REMOVE_IN_1_9_0: the version 1 dial domain, chosen from the prefix the caller dialled. Version 2
-  // is the default, so deleting the argument leaves today's behaviour.
-  dialDomain?: string,
 ): { memberId: string; isDeputy: boolean } | null {
   const signature = req.headers.get(DIAL_HEADER);
   if (signature === null || data === null) return null;
@@ -758,7 +745,7 @@ function resolveDial(
   // `signedAt: 0` — the window only. The floor belongs to signed MEMBERSHIP calls and stays there.
   if (timestampVerdict(timestamp, now, 0) !== "ok") return null;
 
-  const parts = { method: req.method, path: url.pathname, timestamp, to: data.self.memberId, domain: dialDomain };
+  const parts = { method: req.method, path: url.pathname, timestamp, to: data.self.memberId };
   const lead = data.lead;
   if (lead !== null && lead.status === "enrolled" && verifyDial(lead.certPem, signature, parts)) {
     return { memberId: lead.memberId, isDeputy: false };
@@ -782,46 +769,23 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     return unauthorizedResponse();
   };
 
-  // ── Version negotiation, and it is the PREFIX that decides ─────────────────
-  // A request on `/crew/v1/*` is version 2 and must carry `X-Crew-Protocol: 2` — an absent header is
-  // a refusal, never a default (`admission.ts` → `parseProtocolHeader`). A request on `/pack/v1/*` is
-  // version 1, and it is answered by the very same handlers through two pure translations
-  // (`v1-overlap.ts`). Nothing below this arrow knows which prefix it is serving except through
-  // `wire` and `dialDomain`, so version 1 cannot grow a second decision of its own.
-  return async (req, url) => {
-    // REMOVE_IN_1_9_0: the version 1 overlap, mounted here and nowhere else (§0.1).
-    if (isVersion1Path(url.pathname)) {
-      const answered = await answerCrew(
-        translateVersion1Request(req),
-        url,
-        version2PathFor(url.pathname),
-        V1_PROTOCOL_VERSION,
-        V1_DIAL_DOMAIN,
-      );
-      return answered === null ? null : toVersion1Response(answered);
-    }
-    return answerCrew(req, url, url.pathname, CREW_PROTOCOL_VERSION, undefined);
-  };
+  // ── One prefix, one version ────────────────────────────────────────────────
+  // A request on `/crew/v1/*` is the only thing this router answers, and it must carry
+  // `X-Crew-Protocol: 2` — an absent header is a refusal, never a default (`admission.ts` →
+  // `parseProtocolHeader`). 1.8.0's one release of overlap on 1.7.0's old prefix was removed in 1.9.0
+  // (CREW_PROTOCOL.md §0.1, ADR 0039), so there is no second prefix and no second version to state.
+  return async (req, url) => answerCrew(req, url, url.pathname);
 
   /**
-   * One request, answered. `pathname` is the CANONICAL `/crew/v1/*` path this request routes as, and
-   * `url` is what was actually dialled — the two differ only under the version 1 overlap, and the
-   * split is load-bearing: the §8.6 request signature and the dial attestation hash the dialled path,
-   * so routing may be normalised and signing may not.
-   *
-   * `wire` is the protocol integer this answer states, and `dialDomain` the domain its dial
-   * attestation was signed under. Both are version 2's on every call but the overlap's.
+   * One request, answered. `pathname` is the `/crew/v1/*` path this request routes as, and `url` is
+   * what was actually dialled. The two are the same path now that the overlap is gone, and the split
+   * is kept because it is load-bearing: the §8.6 request signature and the dial attestation hash the
+   * dialled path, so routing may be normalised and signing may not.
    */
-  async function answerCrew(
-    req: Request,
-    url: URL,
-    pathname: string,
-    wire: number,
-    dialDomain: string | undefined,
-  ): Promise<Response | null> {
+  async function answerCrew(req: Request, url: URL, pathname: string): Promise<Response | null> {
     if (!pathname.startsWith(CREW_PREFIX)) return null;
 
-    if (pathname === CREW_ENROLL_PATH) return enroll(req, wire);
+    if (pathname === CREW_ENROLL_PATH) return enroll(req);
 
     // Everything else on the prefix passes the two factors first, before routing — ADR 0013's "two
     // independent factors, both, always, before routing". An admitted caller asking for a route this
@@ -866,14 +830,14 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     // touches the body, so a streamed upload stays a stream and the identity question is still
     // answered. On a single-anchor peer the answer changes nothing; on a two-anchored one it is the
     // only thing that can answer it.
-    const dial = resolveDial(data, req, url, deps.deputyAnchor, now(), dialDomain);
+    const dial = resolveDial(data, req, url, deps.deputyAnchor, now());
 
     const verdict = admitCrewRequest(
       data,
       factsFrom(req, { transportPinned, signedMember: signed.member, deputy: deps.deputyAnchor, dial }),
     );
     if (!verdict.ok) {
-      if (verdict.refusal === "protocol_mismatch") return protocolMismatchResponse(verdict.received, wire);
+      if (verdict.refusal === "protocol_mismatch") return protocolMismatchResponse(verdict.received);
       // §8.4's rotation, seen from the side that was dropped. A `secret` factor means identity was
       // fine — and on a peer the only identity the transport can attest is its lead's — so this is
       // precisely "my lead is calling me and I no longer hold the crew secret". Recorded, never acted
@@ -932,7 +896,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // `version` is the OPTIONAL field of the 2026-08-12 amendment (§7.1) and it is additive: an
       // older parser reads `protocol` and `member` by name and passes the sibling over untouched, so
       // this build answering an older prober costs nothing and needs no coordination.
-      const hello: HelloBody = { protocol: wire, member: verdict.self };
+      const hello: HelloBody = { protocol: CREW_PROTOCOL_VERSION, member: verdict.self };
       if (deps.version !== undefined) hello.version = deps.version;
       // What warrant this member holds (§18). Admissible here for the same reason `member` is: it is
       // already knowable to anyone who cleared both factors, and it names no secret — a generation
@@ -1559,7 +1523,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
    * the crew secret nor a pin, which is the entire reason an enrollment exchange exists. The token
    * authenticates the exchange and nothing after it.
    */
-  async function enroll(req: Request, wire: number): Promise<Response> {
+  async function enroll(req: Request): Promise<Response> {
     if (req.method !== "POST") return refuse(CREW_ENROLL_PATH, "token");
 
     let body: JsonValue;
@@ -1572,11 +1536,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
       // unauthenticated caller that this endpoint parses enrollment requests.
       return refuse(CREW_ENROLL_PATH, "token");
     }
-    // REMOVE_IN_1_9_0: `enroll` is the one route whose version may arrive in the BODY (the header
-    // wins below, and a 1.7.0 joiner sends both), so the overlap maps that field 1 → 2 here. It is
-    // the only body this translation touches, and it is safe to touch because `enroll` is absent from
-    // `SIGNABLE_PATHS` — no signature covers these bytes.
-    const parsed = parseEnrollRequest(wire === V1_PROTOCOL_VERSION ? translateVersion1EnrollBody(body) : body);
+    const parsed = parseEnrollRequest(body);
 
     // SPEND FIRST. The token is consumed whether or not the rest of the exchange succeeds, so a
     // stolen token cannot be replayed against a second failure mode until one sticks. This is a
@@ -1590,7 +1550,7 @@ export function createCrewRouter(deps: CrewRouterDeps): CrewHandler {
     // two-factor path above (§7 vs §8.5).
     const version = parseProtocolHeader(req.headers.get("x-crew-protocol")) ?? parsed.protocol;
     if (version !== CREW_PROTOCOL_VERSION) {
-      return protocolMismatchResponse(Number.isFinite(version) ? version : null, wire);
+      return protocolMismatchResponse(Number.isFinite(version) ? version : null);
     }
 
     // THE CERTIFICATE ARRIVES IN THE PAYLOAD, AND THAT IS THE WHOLE TRUST STORY HERE (§8.2).

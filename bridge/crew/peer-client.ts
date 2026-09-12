@@ -11,16 +11,6 @@ import {
 } from "./router.ts";
 import { LEAD_RELEASE_HEADER, UPDATE_TURN_HEADER } from "./follow.ts";
 import { DIAL_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, type DialParts } from "./signing.ts";
-// REMOVE_IN_1_9_0 — the member's one fallback to `/pack/v1/*` (§0.1).
-import {
-  routesNoCrewV1,
-  toVersion1Headers,
-  toVersion2Response,
-  V1_DIAL_DOMAIN,
-  V1_PROTOCOL_VERSION,
-  version1FallbackLine,
-  version1Url,
-} from "./v1-overlap.ts";
 import type { CrewRequestInit, CrewTlsOptions } from "./transport.ts";
 import type { Warrant } from "./trust-store.ts";
 import { NARROW_VIEW, SESSIONS_ALL, SESSIONS_PARAM, SESSION_PARAM, type SnapshotView } from "../sessions.ts";
@@ -64,11 +54,6 @@ export const DEFAULT_CREW_TIMEOUT_MS = 1200;
 /** Operator override for the per-peer budget. A crew key, so it lives here and not on `Config`. */
 export const CREW_TIMEOUT_ENV = "COLLIE_CREW_TIMEOUT_MS";
 /**
- * REMOVE_IN_1_9_0: the 1.7.0 spelling of {@link CREW_TIMEOUT_ENV}. Read only when the crew spelling
- * is absent, so an install that carries the old key in a unit file keeps the budget it asked for.
- */
-export const LEGACY_CREW_TIMEOUT_ENV = "COLLIE_PACK_TIMEOUT_MS";
-/**
  * The fraction of the lead's poll interval a peer may consume. 1200/1500 — the exact default pair
  * §10.1 names — is this ratio, which is why it is the ratio: a budget must leave the lead time to do
  * its own poll and serialise its own snapshot, or a slow peer stalls the phone by arithmetic.
@@ -93,7 +78,7 @@ export function crewTimeoutBudget(
 
 /** The two halves {@link crewTimeoutBudget} compares, so the warning below reads the same arithmetic. */
 function budgetParts(pollMs: number, env: Record<string, string | undefined>) {
-  const raw = readBudgetEnv(env, CREW_TIMEOUT_ENV, LEGACY_CREW_TIMEOUT_ENV);
+  const raw = readBudgetEnv(env, CREW_TIMEOUT_ENV);
   const parsed = raw === undefined ? NaN : Number.parseInt(raw.trim(), 10);
   const asked = Number.isFinite(parsed) && parsed > 0;
   return {
@@ -128,40 +113,13 @@ export function crewTimeoutClampWarning(
 }
 
 /**
- * Read one crew budget key: the crew spelling first, the 1.7.0 `COLLIE_PACK_*` spelling second.
+ * Read one crew budget key.
  *
- * REMOVE_IN_1_9_0 — the second read, not the function. An operator who set the old key in a systemd
- * unit or a shell profile keeps the budget they asked for across the 1.8.0 update, and is told once
- * by {@link crewEnvFallbackWarning} which key to rewrite.
+ * 1.8.0 read a 1.7.0 `COLLIE_PACK_*` spelling here as a second source; 1.9.0 reads the crew spelling
+ * and nothing else. An operator who never rewrote the old key now gets the default budget.
  */
-function readBudgetEnv(
-  env: Record<string, string | undefined>,
-  key: string,
-  legacy: string,
-): string | undefined {
-  return env[key] ?? env[legacy];
-}
-
-/**
- * The ONE line to print at start when a 1.7.0 environment key is doing the work of its crew
- * successor. `null` when no old key is set, or when the crew key beside it already wins.
- *
- * One line for both keys, not one per read: {@link readBudgetEnv} runs on every poll, and a warning
- * on that path would be a log flood rather than a notice. Same posture as
- * {@link crewTimeoutClampWarning} — a pure function; the caller decides where it lands.
- *
- * REMOVE_IN_1_9_0, together with the fallback it announces.
- */
-export function crewEnvFallbackWarning(
-  env: Record<string, string | undefined> = process.env,
-): string | null {
-  const used = [
-    { legacy: LEGACY_CREW_TIMEOUT_ENV, key: CREW_TIMEOUT_ENV },
-    { legacy: LEGACY_CREW_HELLO_TIMEOUT_ENV, key: CREW_HELLO_TIMEOUT_ENV },
-  ].filter((pair) => env[pair.legacy] !== undefined && env[pair.key] === undefined);
-  if (used.length === 0) return null;
-  const named = used.map((pair) => `${pair.legacy} (use ${pair.key})`).join(", ");
-  return `[crew] ${named}: the COLLIE_PACK_* spelling still works in 1.8.0 and is removed in 1.9.0.`;
+function readBudgetEnv(env: Record<string, string | undefined>, key: string): string | undefined {
+  return env[key];
 }
 
 /**
@@ -195,8 +153,6 @@ export const WRITE_BUDGET_MS = 5000;
 export const DEFAULT_CREW_HELLO_TIMEOUT_MS = 5000;
 /** Operator override for the probe budget. A crew key, so it lives here and not on `Config`. */
 export const CREW_HELLO_TIMEOUT_ENV = "COLLIE_CREW_HELLO_TIMEOUT_MS";
-/** REMOVE_IN_1_9_0: the 1.7.0 spelling of {@link CREW_HELLO_TIMEOUT_ENV}, read as a fallback. */
-export const LEGACY_CREW_HELLO_TIMEOUT_ENV = "COLLIE_PACK_HELLO_TIMEOUT_MS";
 /**
  * A hard stop on the probe budget. It exists only so a typo (`50000000`) cannot wedge a one-shot verb
  * like `crew status` for the rest of the afternoon; nothing on the poll path waits on this budget, so
@@ -236,7 +192,7 @@ export function crewHelloBudget(
   pollMs: number,
   env: Record<string, string | undefined> = process.env,
 ): number {
-  const raw = readBudgetEnv(env, CREW_HELLO_TIMEOUT_ENV, LEGACY_CREW_HELLO_TIMEOUT_ENV);
+  const raw = readBudgetEnv(env, CREW_HELLO_TIMEOUT_ENV);
   const parsed = raw === undefined ? NaN : Number.parseInt(raw.trim(), 10);
   const wanted = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_CREW_HELLO_TIMEOUT_MS;
   return Math.max(crewTimeoutBudget(pollMs, env), Math.min(wanted, HELLO_BUDGET_CEILING_MS));
@@ -565,31 +521,7 @@ export interface PeerClientDeps {
    * which a single-anchor peer reads exactly as it always has.
    */
   readonly dialSign?: (parts: DialParts) => string;
-  /**
-   * REMOVE_IN_1_9_0 — where the version 1 fallback's one line goes (§0.1). Absent ⇒ `console.log`,
-   * which is the journal on every production wiring.
-   */
-  readonly log?: (line: string) => void;
-  /**
-   * REMOVE_IN_1_9_0 — the members this PROCESS has already said speak version 1, shared by every
-   * client in it (§0.1).
-   *
-   * Injected because a lead holds more than one client per peer — the sweep's and the takeover's are
-   * built by two separate factories in `bridge/index.ts` — and a set per client made the line print
-   * once per client instead of once per member. The set is the process's, so the journal gets one
-   * sentence per member. Absent ⇒ a fresh set, which is what a test wants and what a one-shot verb
-   * can live with.
-   */
-  readonly toldVersion1?: Set<string>;
 }
-
-/**
- * REMOVE_IN_1_9_0 — one dial's answer, plus the marker that says the far side spoke version 1.
- *
- * The marker never escapes this class: it is set only where the answer is about to be discarded in
- * favour of the fallback dial, and the fallback's own answer never carries one.
- */
-type DialAnswer = PeerOutcome<Response> & { readonly speaksVersion1?: true };
 
 /**
  * Build the absolute URL for a crew call, from a member's stored address and a route under the crew
@@ -662,27 +594,9 @@ export class PeerClient {
    * names a version. See {@link HEADERLESS_PATIENCE_MS}.
    */
   private readonly headerless = new Map<string, number>();
-  /**
-   * REMOVE_IN_1_9_0 — which members this process has already said speak version 1 (§0.1).
-   *
-   * The FALLBACK is per dial and never cached; only the LOG LINE is remembered, so a journal gets one
-   * sentence per lead rather than one per sweep. Bounded by the roster, cleared by
-   * {@link PeerClient.forget}, and never persisted: a restart costs one more line.
-   *
-   * SHARED across the clients of one process when {@link PeerClientDeps.toldVersion1} is supplied,
-   * because a lead builds more than one client for the same peer.
-   */
-  private readonly toldVersion1: Set<string>;
 
   constructor(private readonly deps: PeerClientDeps) {
     this.now = deps.now ?? Date.now;
-    // REMOVE_IN_1_9_0: shared with every other client in this process when the wiring hands one over.
-    this.toldVersion1 = deps.toldVersion1 ?? new Set<string>();
-  }
-
-  /** REMOVE_IN_1_9_0 — the fallback's one line. Injected so the test reads it without a journal. */
-  private log(line: string): void {
-    (this.deps.log ?? console.log)(line);
   }
 
   /**
@@ -920,23 +834,17 @@ export class PeerClient {
   }
 
   /**
-   * The one dial, and the version order on it: `/crew/v1/*` first, always (§0.1).
+   * The one dial, and there is one prefix on it: `/crew/v1/*`, always.
    *
-   * REMOVE_IN_1_9_0 — the fallback. A member that is answered by a lead still on 1.7.0 learns it in
-   * exactly two ways, and both are answers rather than guesses: an answer carrying NO crew protocol
-   * header that is not JSON either ({@link routesNoCrewV1} — on a real 1.7.0 bridge that is a
-   * `200 text/html` app shell, because the SPA catch-all owns every unrouted path), or §7's refusal
-   * naming version 1. On either it re-dials `/pack/v1/*` ONCE, with version 1 headers and the
-   * version 1 dial domain, and writes one journal line per lead per process.
+   * 1.8.0 held a fallback to 1.7.0's old prefix for one release, so a member could follow a lead that
+   * was still on 1.7.0 (CREW_PROTOCOL.md §0.1, ADR 0039). 1.9.0 removed it. A lead that does not answer a
+   * crew protocol header now lands on the headerless ladder below, which reaches `incompatible`
+   * naming the version this build speaks, and the remedy is named by the lead's own preflight
+   * (`PROTOCOL_FLOOR_VERSION` in `cli/update-check.ts`, ADR 0045).
    *
-   * The first of those two is a HEURISTIC about a build already in the field, not a contract: a
-   * 1.7.0 bridge cannot be patched after the fact to announce its version on a path it does not
-   * route. It is measured rather than assumed (VM lab, 2026-09-09) and it goes in 1.9.0 with the
-   * rest of the overlap.
-   *
-   * **Per dial, never cached.** The moment that lead updates, its answer on `/crew/v1` is a crew
-   * answer and no fallback is taken — so the overlap costs one extra round trip against a lead that
-   * has not updated yet, and nothing at all against one that has.
+   * `mode` decides only what a non-2xx status means — everything before that (the credential, the
+   * URL, the budget, the version check, §7's 409) is identical by construction, because two dial
+   * paths would be two places for a crew request to forget its `Authorization`.
    */
   private async dial(
     link: CrewLink,
@@ -944,34 +852,6 @@ export class PeerClient {
     params: Record<string, string> | undefined,
     init: CrewRequestInit,
     mode: "consumed" | "passthrough",
-    budgetMs?: number,
-    sign = true,
-  ): Promise<PeerOutcome<Response>> {
-    const answer = await this.dialAt(link, route, params, init, mode, CREW_PROTOCOL_VERSION, budgetMs, sign);
-    // REMOVE_IN_1_9_0 — the fallback, top to bottom.
-    if (answer.speaksVersion1 !== true) return answer;
-    if (!this.toldVersion1.has(link.memberId)) {
-      this.toldVersion1.add(link.memberId);
-      this.log(version1FallbackLine(link.memberId));
-    }
-    return this.dialAt(link, route, params, init, mode, V1_PROTOCOL_VERSION, budgetMs, sign);
-  }
-
-  /**
-   * One dial, at one protocol version. `mode` decides only what a non-2xx status means — everything
-   * before that (the credential, the URL, the budget, the version check, §7's 409) is identical by
-   * construction, because two dial paths would be two places for a crew request to forget its
-   * `Authorization`.
-   */
-  private async dialAt(
-    link: CrewLink,
-    route: string,
-    params: Record<string, string> | undefined,
-    init: CrewRequestInit,
-    mode: "consumed" | "passthrough",
-    // REMOVE_IN_1_9_0: the wire version this dial speaks. Always {@link CREW_PROTOCOL_VERSION} once
-    // the overlap is gone, at which point this argument and `DialAnswer` go with it.
-    wire: number,
     // The one knob a caller may widen, and three callers do: the verdict probe's patient budget
     // (§10.4), §19's fresh preflight, and a forwarded WRITE on WRITE_BUDGET_MS (§10.1's 2026-09-08
     // amendment). Everything else runs on the strict per-poll one — except for the single bootstrap
@@ -986,7 +866,7 @@ export class PeerClient {
     // cannot be computed without buffering it, §8.6's own trade), and `takeover` is dialled by a
     // machine that is not in the receiver's roster, where a signature could only ever be a refusal.
     sign = true,
-  ): Promise<DialAnswer> {
+  ): Promise<PeerOutcome<Response>> {
     const secret = this.deps.secret();
     if (secret === null || secret === "") {
       // Never send an unauthenticated crew request. A missing secret is a local fault (not in a crew,
@@ -998,9 +878,7 @@ export class PeerClient {
     if (built === null) {
       return this.fail({ state: "unreachable", reason: `unusable address: ${link.address}`, attempted: false });
     }
-    // REMOVE_IN_1_9_0: the version 1 prefix, on the fallback dial only. The URL is otherwise the one
-    // `crewUrl` built, so the address checks that function makes are made once and not twice.
-    const url = wire === V1_PROTOCOL_VERSION ? version1Url(built) : built;
+    const url = built;
     // Chosen AFTER the two pre-flight refusals above, so a missing secret or an unusable address —
     // neither of which touches a socket — can never spend a link's one bootstrap credit.
     const timeoutMs = budgetMs ?? this.takeBudget(link);
@@ -1034,17 +912,8 @@ export class PeerClient {
     // streamed upload to pull into memory and therefore no reason to confine it (§8.6).
     if (this.deps.dialSign !== undefined) {
       headers.set(TIMESTAMP_HEADER, String(stampedAt));
-      // REMOVE_IN_1_9_0: `domain` — the version 1 dial's own domain tag, which is bytes both ends
-      // hash (`signing.ts` → `canonicalDial`). Absent on every version 2 dial, which is every dial
-      // once the overlap is gone.
-      const domain = wire === V1_PROTOCOL_VERSION ? V1_DIAL_DOMAIN : undefined;
-      headers.set(DIAL_HEADER, this.deps.dialSign({ method, path, timestamp: stampedAt, to: link.memberId, domain }));
+      headers.set(DIAL_HEADER, this.deps.dialSign({ method, path, timestamp: stampedAt, to: link.memberId }));
     }
-
-    // REMOVE_IN_1_9_0: the whole header set, restated in version 1's vocabulary, as ONE step at the
-    // end — so nothing above this line has to know which version it is dialling, and a header added
-    // there is carried by the fallback without being taught to it.
-    const wireHeaders = wire === V1_PROTOCOL_VERSION ? toVersion1Headers(headers) : headers;
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -1053,7 +922,7 @@ export class PeerClient {
       // `tls` rides the init: Bun's fetch takes the pinned material per request, so there is no agent
       // to construct, cache or invalidate — the pin is read fresh on every dial, from the store.
       const tls = this.deps.tls?.(link);
-      const dialInit: CrewRequestInit = { ...init, headers: wireHeaders, signal: controller.signal };
+      const dialInit: CrewRequestInit = { ...init, headers, signal: controller.signal };
       // Assigned, never conditionally spread: an unpinned link must carry NO `tls` key at all.
       if (tls) dialInit.tls = tls;
       res = await this.deps.fetch(url, dialInit);
@@ -1078,42 +947,12 @@ export class PeerClient {
       clearTimeout(timer);
     }
 
-    // REMOVE_IN_1_9_0: a version 1 answer, restated in version 2's header vocabulary — so every line
-    // below, and every caller that reads a crew header off this response, is version-agnostic. The
-    // body is not read, so a proxied read stays a stream.
-    if (wire === V1_PROTOCOL_VERSION) res = toVersion2Response(res);
-
     // ── Version first, before status and before the body ─────────────────────
     // §7: "The lead applies the same rule to a peer's RESPONSE header: a reply with a version it
     // cannot read is a mismatch, not a parse error." Reading the body first would turn a v2 peer's
     // perfectly well-formed answer into a parse failure and hide the real cause.
     const received = parseProtocolHeader(res.headers.get(PROTOCOL_HEADER));
 
-    // REMOVE_IN_1_9_0 — the fallback's trigger, and it is only ever read on a version 2 dial (§0.1).
-    //
-    // What a 1.7.0 collie ACTUALLY answers `/crew/v1/hello` with, measured in the VM lab on
-    // 2026-09-09: `200 OK`, `content-type: text/html`, `x-collie-build: 1.7.0+35b60df`, and ~9 KB of
-    // the PWA's app shell. It is the SPA catch-all: `bridge/server.ts` hands every unrouted path the
-    // built `index.html` so a deep link works, and a path it has never heard of is a deep link as far
-    // as that fallthrough is concerned. It is never a 404.
-    //
-    // The first draft of this guard read 404 or 403 and fired on neither. The 403 arm cannot help
-    // either: the non-loopback peer check that produces it is off whenever
-    // `COLLIE_ALLOW_NON_LOOPBACK_BIND=1`, which every machine in a real crew sets. Both arms stay,
-    // because a peer serving no web bundle does 404 and a loopback-strict one does 403, but the shape
-    // that decides it in practice is the third.
-    //
-    // So the rule is: NO crew protocol header, and an answer that is not JSON. A crew answer is
-    // always JSON and always stamped (`crewResponseHeaders`), so this cannot claim one. A 5xx is
-    // excluded and stays excluded: that is a proxy or a peer mid-restart, not a version, and a second
-    // dial there would double what every poll spends on a machine that is not answering.
-    //
-    // **It is a HEURISTIC, and it has to be.** What it reads is what a 1.7.0 bridge happens to answer
-    // an unknown path with, and a 1.7.0 bridge cannot be patched after the fact to say so plainly.
-    // That is why the whole trigger goes in 1.9.0 rather than being tightened.
-    if (wire === CREW_PROTOCOL_VERSION && received === null && routesNoCrewV1(res)) {
-      return { ...this.fail({ state: "unreachable", reason: `${route}: HTTP ${res.status}` }), speaksVersion1: true };
-    }
     // An answer that NAMES a version tells us the peer is speaking, whatever it said. That ends any
     // headerless run, so a peer that restarts behind a proxy starts from zero the next time.
     if (received !== null) this.headerless.delete(link.memberId);
@@ -1178,11 +1017,6 @@ export class PeerClient {
         expected: CREW_PROTOCOL_VERSION,
         received,
       });
-      // REMOVE_IN_1_9_0: a member that NAMED version 1 said so precisely, which is the second of the
-      // two ways a 1.7.0 lead reveals itself (§0.1). Read on a version 2 dial only.
-      if (wire === CREW_PROTOCOL_VERSION && received === V1_PROTOCOL_VERSION) {
-        return { ...mismatch, speaksVersion1: true };
-      }
       return mismatch;
     }
     if (res.status === 409) {
@@ -1280,8 +1114,6 @@ export class PeerClient {
    */
   forget(memberId: string, address?: string): void {
     this.headerless.delete(memberId);
-    // REMOVE_IN_1_9_0: a member enrolled again under the same id has not been told about yet.
-    this.toldVersion1.delete(memberId);
     if (address !== undefined) this.warmth.delete(address);
   }
 

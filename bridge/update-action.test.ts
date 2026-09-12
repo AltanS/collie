@@ -125,24 +125,6 @@ describe("the update preflight report, as the bridge reads it", () => {
     expect("crew" in (report ?? {})).toBe(false);
   });
 
-  // REMOVE_IN_1_9_0: the same document as the case above, spelled as a 1.7.0 binary spells it. The
-  // reader is a separate process from the writer, so a mid-swap binary can still print `pack`.
-  test("a report carrying 1.7.0's `pack` is read the same way", () => {
-    const text = JSON.stringify({
-      schema: 1,
-      verdict: "red",
-      checks: [
-        { id: "disk", verdict: "green", reason: "4.2 GB free" },
-        { id: "bun", verdict: "amber", reason: "Bun 1.1.0 is older than measured" },
-      ],
-      pack: [{ memberId: "nas", host: "nas.local", verdict: "red", checks: [] }],
-    });
-    const report = parsePreflightReport(text);
-    expect(report?.verdict).toBe("amber");
-    expect("crew" in (report ?? {})).toBe(false);
-    expect("pack" in (report ?? {})).toBe(false);
-  });
-
   test("without `crew` the top-level verdict is taken as printed", () => {
     const text = JSON.stringify({
       schema: 1,
@@ -558,11 +540,11 @@ describe("crew rows — what GET /api/update/check answers with", () => {
     expect(parseCrewRows(null)).toEqual([]);
   });
 
-  // REMOVE_IN_1_9_0: the reader is `collie crew update` and the writer is its own bridge — two
-  // processes, and mid-swap the bridge can still be the 1.7.0 build, which spells the key `pack`.
-  test("`parseCrewRows` still reads 1.7.0's `pack` key, and prefers `crew` when both are there", () => {
-    expect(parseCrewRows({ pack: [WIRE_ROW] })).toEqual([PARSED_ROW]);
-    expect(parseCrewRows({ crew: [WIRE_ROW], pack: [] })).toEqual([PARSED_ROW]);
+  // 1.7.0's `pack` key is no longer read (1.9.0, ADR 0039). A document that names only it has no
+  // crew rows at all, which is the closed reading.
+  test("`parseCrewRows` reads only `crew`", () => {
+    expect(parseCrewRows({ pack: [WIRE_ROW] })).toEqual([]);
+    expect(parseCrewRows({ crew: [WIRE_ROW] })).toEqual([PARSED_ROW]);
   });
 });
 

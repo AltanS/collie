@@ -1039,36 +1039,25 @@ describe("a two-anchored peer resolves its caller by signature (§8.1, 2026-08-2
 
 // ── Rotation, promotion, leave ───────────────────────────────────────────────
 
-// ── §0.1: both wire versions, against the same real listener ────────────────
-// REMOVE_IN_1_9_0 — the version 1 half of this describe, and `dialAsLeadV1`.
-//
+// ── §0: one wire version, against a real listener ───────────────────────────
 // The unit tests translate a `Request` in memory; this one goes over the real pinned handshake to a
-// real child bridge, on both prefixes, with each version's own header names. It is the only place
-// both ends are real, so it is the only place that can catch the overlap being answered by a
-// listener that was never mounted.
-describe("the wire speaks version 2, and version 1 for one release (§0, §0.1)", () => {
+// real child bridge. 1.8.0's second prefix is gone (1.9.0, ADR 0039), so there is one prefix and one
+// vocabulary, and the old header names reach nothing.
+describe("the wire speaks version 2, and only version 2 (§0)", () => {
   test("a version 2 dial is answered in version 2's shapes", async () => {
     const res = await dialAsLead(CREW_HELLO_PATH, {});
     expect(res.status).toBe(200);
     expect(res.headers.get("x-crew-protocol")).toBe(String(CREW_PROTOCOL_VERSION));
-    expect(res.headers.get("x-pack-protocol")).toBeNull();
+    expect(res.headers.get(`x-${"pack"}-protocol`)).toBeNull();
     expect(await res.json()).toMatchObject({ protocol: CREW_PROTOCOL_VERSION });
   });
 
-  test("a version 1 dial is answered in version 1's shapes, on the version 1 prefix", async () => {
-    const res = await dialAsLeadV1("/pack/v1/hello", {});
-    expect(res.status).toBe(200);
-    expect(res.headers.get("x-pack-protocol")).toBe("1");
-    expect(res.headers.get("x-pack-member")).not.toBeNull();
+  // 1.7.0's prefix is not a crew path any more. The front door owns it, so the crew router declines
+  // it and nothing answers a crew shape there.
+  test("1.7.0's prefix is not answered by the crew listener at all", async () => {
+    const res = await dialAsLead(`/${"pack"}/v1/hello`, {});
     expect(res.headers.get("x-crew-protocol")).toBeNull();
-    expect(await res.json()).toMatchObject({ protocol: 1 });
-  });
-
-  test("a version 1 dial with the wrong secret is the same bare 401 — no version banner (§8.5)", async () => {
-    const res = await dialAsLeadV1("/pack/v1/hello", {}, "not-the-secret");
-    expect(res.status).toBe(401);
-    expect(res.headers.get("x-pack-protocol")).toBeNull();
-    expect(res.headers.get("x-crew-protocol")).toBeNull();
+    expect(res.headers.get(`x-${"pack"}-protocol`)).toBeNull();
   });
 });
 
@@ -1383,30 +1372,6 @@ async function dialAsLead(path: string, init: RequestInit, secret?: string): Pro
   });
 }
 
-/**
- * REMOVE_IN_1_9_0 — {@link dialAsLead}'s version 1 twin (§0.1). Same pinned handshake, same secret,
- * version 1's header names and version 1's integer: exactly what a 1.7.0 lead sends.
- */
-async function dialAsLeadV1(path: string, init: RequestInit, secret?: string): Promise<Response> {
-  const from = lead.store()!;
-  const to = peer.store()!;
-  const target = from.peers.find((p) => p.memberId === to.self.memberId) ?? to.lead!;
-  return crewFetch(`https://127.0.0.1:${peer.port}${path}`, {
-    ...init,
-    headers: {
-      ...init.headers,
-      authorization: `Bearer ${secret ?? from.crew!.secret}`,
-      "x-pack-protocol": "1",
-      "x-pack-member": from.self.memberId,
-    },
-    tls: {
-      cert: from.self.certPem,
-      key: from.self.keyPem,
-      ca: [target.certPem],
-      checkServerIdentity: () => undefined,
-    },
-  });
-}
 
 /**
  * A signed peer→lead request, with the knobs each §8.6 refusal needs.

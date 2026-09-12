@@ -231,10 +231,10 @@ name, and the members already in the crew keep the old string in a field nobody 
 trimmed, is at most 64 characters, and carries no control characters. On a peer, or on a machine in
 no crew, the verb refuses and says where to run it.
 
-## Updating from 1.7.0
+## Updating to 1.9.0 from 1.7.0 or 1.8.x
 
-**Update the lead first.** The phone and `collie crew update` already take that order, and 1.8.0
-adds a second reason for it.
+**Bring every member to 1.8.x before you move the lead to 1.9.0.** 1.9.0 speaks one version of the
+crew link, and 1.8.0 is the oldest build that speaks it.
 
 You do not have to remember which releases those are. From 1.8.0 the update notice tells you when
 the release ahead changes the crew link, on the band, on the Updates card and in the daily push, and
@@ -245,28 +245,31 @@ files and the journal prefix all say crew now
 ([ADR 0039](../.adr/0039-the-machine-says-crew-too.md)). The link behaves exactly as before, and
 nothing you scripted has to move on the same day.
 
-**A 1.8.0 lead keeps a 1.7.0 member following it.** The lead answers the old `/pack/v1/*` paths for
-one release, so a member still on 1.7.0 enrols, answers hello and levels itself over the link it
-already has. A lead still on 1.7.0 cannot read a 1.8.0 member's status line, which is the reason
-lead first was already the order.
+**1.8.0 carried a 1.7.0 member for one release, and 1.9.0 does not.** A 1.8.0 lead also answered the
+old paths, so a member still on 1.7.0 kept following it. 1.9.0 removed that, which is what ADR 0039
+said it would do.
 
-A member you update first is not stuck. A 1.8.0 member dials `/crew/v1/*`, falls back to
-`/pack/v1/*` once against a 1.7.0 lead, and writes one journal line saying it did. The old paths and
-that fallback both go away in 1.9.0, so bring the whole crew to 1.8.0 before that release.
+**A member still on 1.7.0 under a 1.9.0 lead shows up twice, and neither is silence.** The lead's
+preflight reds the `version` check, naming both versions and the command to run, and that red blocks
+the crew update rather than starting a roll that cannot finish. In `collie crew status` the same
+member reads `incompatible`, with a reason that ends "this build speaks 2".
+
+**Level that member from its own machine.** A 1.9.0 lead cannot reach it over the link any more, so
+run `collie update` there, bring it to 1.8.x or newer, and the lead picks it up on the next poll.
 
 ### The new names
 
 | 1.7.0 | 1.8.0 | What happens on your machine |
 | --- | --- | --- |
-| `COLLIE_PACK_TIMEOUT_MS` | `COLLIE_CREW_TIMEOUT_MS` | The old key is still read while the new one is absent, and Collie logs one warning line at start. Both old keys go away in 1.9.0 |
+| `COLLIE_PACK_TIMEOUT_MS` | `COLLIE_CREW_TIMEOUT_MS` | Gone in 1.9.0. A 1.9.0 build reads the crew key only, so an unrenamed old key gives you the default budget |
 | `COLLIE_PACK_HELLO_TIMEOUT_MS` | `COLLIE_CREW_HELLO_TIMEOUT_MS` | The same |
-| `pack-trust.json`, `pack-ops.json`, `pack-runtime.json` | `crew-trust.json`, `crew-ops.json`, `crew-runtime.json` | Renamed once, on the first start, in `~/.local/state/collie/`. No copy of the old file is kept |
+| `pack-trust.json`, `pack-ops.json`, `pack-runtime.json` | `crew-trust.json`, `crew-ops.json`, `crew-runtime.json` | Renamed once by 1.8.x, in `~/.local/state/collie/`. Gone in 1.9.0: a directory that never saw 1.8.x is named at start and the collie stays solo |
 | `[pack]` | `[crew]` | The prefix on the crew's own journal lines |
-| `/pack/v1/…` | `/crew/v1/…` | Every path on the lead-to-member link |
+| `/pack/v1/…` | `/crew/v1/…` | Every path on the lead-to-member link. Gone in 1.9.0 |
 | `PACK_PROTOCOL.md` | [`CREW_PROTOCOL.md`](../CREW_PROTOCOL.md) | The wire contract itself |
 
-Rename the two environment keys in your own `.env` when it suits you. Until you do, Collie reads the
-old key and prints that warning at every start.
+Rename the two environment keys in your own `.env` before you move to 1.9.0. A 1.9.0 build does not
+read the old key and does not warn about it.
 
 **On a journal that spans the update, grep for both prefixes:**
 

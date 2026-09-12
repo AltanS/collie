@@ -38,7 +38,6 @@ import { crewOpsPath, CrewOpsStore, type OpsRecord } from "../bridge/crew/ops-st
 import {
   crewHelloBudget,
   crewTimeoutBudget,
-  crewEnvFallbackWarning,
   crewTimeoutClampWarning,
   PeerClient,
   sweepPeers,
@@ -209,12 +208,6 @@ function patientTimeoutFor(ctx: CliContext): number {
 }
 
 /**
- * REMOVE_IN_1_9_0 — which members this VERB has already said speak version 1 (§0.1). Shared by every
- * client {@link clientFor} builds, because a verb can build more than one for the same member.
- */
-const toldVersion1 = new Set<string>();
-
-/**
  * A client for talking to other members, authenticated by `secret`.
  *
  * `secret` is passed in rather than read from the store because rotation needs the *superseded* value:
@@ -225,9 +218,6 @@ const toldVersion1 = new Set<string>();
 export function clientFor(deps: ProbeDeps, data: TrustStoreData, secret: string): PeerClient {
   return new PeerClient({
     self: data.self.memberId,
-    // REMOVE_IN_1_9_0: the process-wide set, so a verb that builds two clients — rotation builds one
-    // per secret — says the fallback line once per member rather than once per client.
-    toldVersion1,
     secret: () => secret,
     timeoutMs: timeoutFor(deps.ctx),
     patientTimeoutMs: patientTimeoutFor(deps.ctx),
@@ -1240,9 +1230,6 @@ export async function cmdCrewStatus(deps: CrewDeps, args: readonly string[]): Pr
   const reaches = bare.has("no-probe") ? new Map<string, MemberReach>() : await probeMemberReach(deps, data, members);
   const clamped = crewTimeoutClampWarning(pollFor(deps.ctx), deps.ctx.env);
   if (clamped !== null) deps.io.out(clamped);
-  // REMOVE_IN_1_9_0: one line when a 1.7.0 `COLLIE_PACK_*` budget key is still the one being read.
-  const legacyEnv = crewEnvFallbackWarning(deps.ctx.env);
-  if (legacyEnv !== null) deps.io.out(legacyEnv);
   // This build's own version, resolved once for the whole roster by the same rule `collie version`
   // uses (`bridge/version.ts`) — the bridge answers `hello` with that exact string, so the two sides
   // of every comparison below are the same kind of thing.

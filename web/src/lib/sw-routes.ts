@@ -60,11 +60,6 @@ export const NAVIGATION_NETWORK_ONLY = [
   // Scoped to `v1` rather than all of `/crew/`: the protocol reserves the versioned prefix, and a
   // future `/crew/v2/` arrives with a bridge that can add its own line here.
   /^\/crew\/v1(?:[/?]|$)/,
-  // REMOVE_IN_1_9_0 — the version 1 prefix (CREW_PROTOCOL.md §0.1). A 1.8.0 lead still answers
-  // `/pack/v1/*` so a 1.7.0 member can follow the update roll, and a service worker minted from that
-  // lead's origin must deny it for the reason it denies the line above. It goes when the listener
-  // does; the two are asserted together in `bridge/removal-schedule.test.ts`.
-  /^\/pack\/v1(?:[/?]|$)/,
   // The standby door (CREW_PROTOCOL.md §18.15, RFC §6.2). In the same-origin failover deployment the
   // phone's FIRST hit on the bad day is an installed service worker minted from the LEAD's origin —
   // so without this line the takeover page is answered from the precache with the app shell of the

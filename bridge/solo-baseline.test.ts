@@ -585,7 +585,7 @@ describe("solo zero-tax — routes", () => {
       "/api/config",
       // The Crew overview (bridge/crew/status-wire.ts) — a FRONT-DOOR route, and it legitimately
       // extends this list rather than being exempted, exactly as pairing and STT do. It is not a
-      // crew route: `/pack/v1/*` is the link a peer answers (ADR 0013), and this is the lead's own
+      // crew route: `/crew/v1/*` is the link a peer answers (ADR 0013), and this is the lead's own
       // browser answering its own operator. A solo instance registers it and 404s
       // (`crew.not_lead`) — the same shape `/api/stt` has when no provider is configured.
       "/api/crew",
@@ -615,9 +615,6 @@ describe("solo zero-tax — routes", () => {
       // crew route: `/crew/v1/*` is the link a peer answers (ADR 0013), and this is the lead's own
       // browser answering its own operator. A solo instance registers it and 404s
       // (`crew.not_lead`) — the same shape `/api/stt` has when no provider is configured.
-      // REMOVE_IN_1_9_0: 1.7.0's name for the census, answering a 308 to `/api/crew`. Named here
-      // for the same reason every other route is: it arrives on purpose, and it leaves on purpose.
-      "/api/pack",
       "/api/pair",
       // "Look now" (ADR 0031) — a SOLO route that legitimately extends this list, named here rather
       // than exempted. It is session-scoped and read-gated, and it registers no crew route of its
@@ -651,14 +648,13 @@ describe("solo zero-tax — routes", () => {
   // §11's actual promise, and it is about the PREFIX: `/crew/v1/*` is not routed here on any
   // instance, solo or otherwise — it is declared in `bridge/crew/router.ts` and reached through the
   // `crewRouter` closure, which is what lets this file prove by grep that server.ts names no crew
-  // path. A front-door route whose NAME contains the word (`/api/pack`, 1.7.0's name for
-  // `/api/crew`) is a different thing
-  // entirely and is pinned by the list above; matching on the substring would have conflated the two.
+  // path. A front-door route whose NAME merely contained the word would be a different thing
+  // entirely and would be pinned by the list above; matching on the substring would have conflated
+  // the two.
   //
-  // BOTH prefixes are asserted. The version 1 overlap (`/pack/v1/*`, REMOVE_IN_1_9_0) is declared in
-  // `bridge/crew/v1-overlap.ts` and dispatched by `bridge/crew/router.ts`, for the same reason
-  // version 2 is, so server.ts names neither and solo still registers nothing.
-  test("no crew prefix is routed at all, version 2 or the version 1 overlap", () => {
+  // 1.7.0's prefix is asserted too, and since 1.9.0 dropped the overlap (ADR 0039) it is absent on
+  // both counts: server.ts never named it, and now nothing routes it either.
+  test("no crew prefix is routed at all, and 1.7.0's is gone with the overlap", () => {
     const src = readFileSync(join(import.meta.dir, "server.ts"), "utf8");
     expect(declaredRoutes().filter((r) => r.startsWith("/crew") || r.startsWith("/pack"))).toEqual([]);
     expect(src).not.toMatch(/"\/crew/);

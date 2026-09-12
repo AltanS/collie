@@ -188,15 +188,6 @@ export interface DialParts {
   readonly timestamp: number;
   /** The member id this dial is aimed at. The field that makes a captured dial unusable elsewhere. */
   readonly to: string;
-  /**
-   * REMOVE_IN_1_9_0 — the domain tag to sign under, for the version 1 overlap alone (§0.1).
-   *
-   * Absent means {@link DIAL_DOMAIN}, which is every dial on `/crew/v1/*`. A dial on `/pack/v1/*`
-   * passes `V1_DIAL_DOMAIN` (`v1-overlap.ts`), because the domain is bytes both ends hash and a
-   * 1.7.0 member hashes the old one. It rides here rather than in a second function so the two ends
-   * cannot drift: `signDial` and `verifyDial` read the same field.
-   */
-  readonly domain?: string | undefined;
 }
 
 /**
@@ -207,9 +198,7 @@ export interface DialParts {
  * ```
  */
 export function canonicalDial(parts: DialParts): string {
-  // REMOVE_IN_1_9_0: `parts.domain ??` — the overlap's only reach into this string.
-  const domain = parts.domain ?? DIAL_DOMAIN;
-  return [domain, parts.method.toUpperCase(), parts.path, String(parts.timestamp), parts.to].join("\n");
+  return [DIAL_DOMAIN, parts.method.toUpperCase(), parts.path, String(parts.timestamp), parts.to].join("\n");
 }
 
 /** Sign one dial with this collie's own identity key. */

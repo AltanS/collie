@@ -2196,13 +2196,11 @@ describe("the update write gate — POST api/update rides the pane path's own ga
     // One call, and the monitor is what decides whether the digest is snoozed with it. If the route
     // ever spells that itself, the rule can be edited apart from the record it belongs to.
     expect(handler).toContain('await updateMonitor.dismiss(version, scope ?? "offer")');
-    // REMOVE_IN_1_9_0: 1.7.0's `"pack"` scope is accepted and folded into `"crew"` at the door, so
-    // nothing past this line ever sees the old name.
-    expect(handler).toContain('const scope = asked === "pack" ? "crew" : asked');
     expect(handler).not.toContain("snoozeDigest");
     // WHICH band, because they are two decisions. An absent scope reads as the offer, which is what
-    // every client before the crew states could close.
-    expect(handler).toContain('asked !== "offer" && asked !== "crew"');
+    // every client before the crew states could close. 1.7.0's `"pack"` scope is no longer one of
+    // them: an unknown scope is a 400, which is what an unknown scope has always been.
+    expect(handler).toContain('scope !== "offer" && scope !== "crew"');
     expect(handler).toContain('text("bad scope", 400)');
     // A version, checked before anything is written: the band is keyed by version, so an empty one
     // would dismiss nothing and pin the store to a fact that is not one.

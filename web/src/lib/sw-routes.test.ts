@@ -81,19 +81,12 @@ describe("service-worker navigation passthrough", () => {
     }
   });
 
-  // REMOVE_IN_1_9_0 — the version 1 prefix (CREW_PROTOCOL.md §0.1). A 1.8.0 lead answers `/pack/v1/*`
-  // for one release, and a service worker minted from that lead's origin must deny it too.
-  it("never answers the version 1 crew surface from the precache either", () => {
-    for (const path of ["/pack/v1/snapshot", "/pack/v1/hello", "/pack/v1", "/pack/v1?x=1"]) {
-      expect(isNetworkOnlyNavigation(path)).toBe(true);
-    }
-  });
-
   it("does not claim routes that merely start with the crew prefix", () => {
     expect(isNetworkOnlyNavigation("/crew")).toBe(false);
     expect(isNetworkOnlyNavigation("/packages")).toBe(false);
     expect(isNetworkOnlyNavigation("/crew/v10/snapshot")).toBe(false);
-    expect(isNetworkOnlyNavigation("/pack/v10/snapshot")).toBe(false);
+    // 1.7.0's prefix is an ordinary navigation again since 1.9.0 (ADR 0039).
+    expect(isNetworkOnlyNavigation(`/${"pack"}/v1/snapshot`)).toBe(false);
   });
 
   it("still owns every Collie route, so deep links keep resolving offline", () => {
@@ -127,8 +120,6 @@ describe("service-worker navigation passthrough", () => {
       String(/^\/outpost\.goauthentik\.io(?:[/?]|$)/),
       String(/^\/cdn-cgi\//),
       String(/^\/crew\/v1(?:[/?]|$)/),
-      // REMOVE_IN_1_9_0 — the version 1 overlap's line.
-      String(/^\/pack\/v1(?:[/?]|$)/),
       String(/^\/standby(?:[/?]|$)/),
     ]);
   });

@@ -254,6 +254,22 @@ and `crew-runtime.json` need no edit at all. If you would rather not touch the f
 of `pack-trust.json` taken before the update, or stay on 1.8.0: a 1.7.0 build that cannot read the
 trust store starts solo and enforces no roster.
 
+**Going the other way into 1.9.0 needs the same two edits, by hand.** 1.8.x renamed the three files
+for you on its first start; 1.9.0 does not rename anything. So a state directory that never saw 1.8.x
+still holds the 1.7.0 names, and a 1.9.0 build reads only the crew names. It says so at start, names
+both edits, and stays solo rather than adopting the directory. Do them before you start it:
+
+```bash
+cd ~/.local/state/collie
+mv pack-trust.json crew-trust.json
+mv pack-ops.json crew-ops.json
+mv pack-runtime.json crew-runtime.json
+```
+
+Then rename two key names inside `crew-trust.json`: the block `"pack"` becomes `"crew"`, and every
+`"packId"` inside it becomes `"crewId"`. Nothing else in the three files changes. A file left under
+the old name costs no data, it only costs the crew: that collie comes up solo until the rename.
+
 #### Verify
 
 ```bash
@@ -332,7 +348,7 @@ page keeps a line per member: `waiting`, `checking`, `staging`, `restarting`, `v
 environment keys, the three state files and the journal prefix to crew. A 1.8.0 lead answers the old
 `/pack/v1/*` paths for one release, so a member still on 1.7.0 follows the roll over the link it
 already has. Both old spellings go away in 1.9.0. The names and what each one does on your machine
-are in [Updating from 1.7.0](crew.md#updating-from-170). Bring every member to 1.8.x before you move
+are in [Updating to 1.9.0 from 1.7.0 or 1.8.x](crew.md#updating-to-190-from-170-or-18x). Bring every member to 1.8.x before you move
 the lead to 1.9.0: 1.9.0 answers the old paths with nothing, and a member still on 1.7.0 then shows
 red on the lead's preflight, naming both versions and the command to run on that machine. The
 `collie-release.json` asset the

@@ -4,7 +4,6 @@ import { join } from "node:path";
 
 import type { JsonObject, JsonValue } from "../json.ts";
 import { isFingerprint, isMemberId } from "./identity.ts";
-import { migrateCrewStateOnce } from "./state-migration.ts";
 import type { Enrollment } from "./mode.ts";
 
 // The trust store: the one file a crew member persists. It holds this collie's own identity and key
@@ -438,10 +437,7 @@ function isWarrant(value: JsonValue | undefined): value is JsonValue & Warrant {
   const named = isMemberId(w.deputyMemberId) && isFingerprint(w.deputyFingerprint);
   const revoked = w.deputyMemberId === null && w.deputyFingerprint === null;
   return (
-    // REMOVE_IN_1_9_0: `packId` is the 1.7.0 spelling of `crewId`. A store written by 1.7.0 holds a
-    // warrant under the old key, and {@link storedWarrantCrewId} is what puts the value under the new
-    // one — this guard only has to accept either, or the whole store reads as malformed.
-    typeof warrantCrewId(w) === "string" &&
+    typeof w.crewId === "string" &&
     typeof w.generation === "number" &&
     Number.isSafeInteger(w.generation) &&
     (named || revoked) &&
@@ -461,52 +457,6 @@ function isTimestamp(value: JsonValue | undefined): value is JsonValue & number 
 /** {@link isMemberId} at this parser's argument type, so the optional reader below can take it. */
 function isDeputyId(value: JsonValue | undefined): value is JsonValue & string {
   return isMemberId(value);
-}
-
-/**
- * REMOVE_IN_1_9_0 — the warrant's crew id, under either spelling (§0.1).
- *
- * The warrant is one signature that lives on every member's disk and travels the wire, so a machine
- * that updates from 1.7.0 comes up holding one written under `packId`. Every 1.8.0 WRITER emits
- * `crewId`; every 1.8.0 READER accepts both, and this is the one place that decides which.
- *
- * `undefined` when neither is a string, which is what makes the guard above refuse the store.
- */
-function warrantCrewId(w: JsonObject): JsonValue | undefined {
-  return typeof w.crewId === "string" ? w.crewId : w.packId;
-}
-
-/**
- * REMOVE_IN_1_9_0 — a stored warrant with its crew id moved to the crew spelling.
- *
- * The guard accepts either key, but the value handed downstream must carry `crewId`, or a 1.7.0 blob
- * would satisfy the type and read `undefined` at every use. The next write puts the crew spelling on
- * disk, so a store is converted by being read once.
- *
- * `raw` is the same field before narrowing, so the old key is read as JSON rather than asserted
- * through the type — the guard already proved one of the two is a string.
- */
-function storedWarrantCrewId(stored: StoredWarrant | null, raw: JsonValue | undefined): StoredWarrant | null {
-  if (stored === null || typeof stored.warrant.crewId === "string") return stored;
-  const legacy = asRecord(asRecord(raw)?.warrant);
-  const crewId = legacy === null ? undefined : legacy.packId;
-  if (typeof crewId !== "string") return stored;
-  // Field by field rather than a spread: a spread would keep the dead `packId` beside the new key,
-  // and the next write would put BOTH on disk — a store that migrates for ever.
-  const w = stored.warrant;
-  return {
-    ...stored,
-    warrant: {
-      crewId,
-      generation: w.generation,
-      deputyMemberId: w.deputyMemberId,
-      deputyFingerprint: w.deputyFingerprint,
-      leadMemberId: w.leadMemberId,
-      issuedAt: w.issuedAt,
-      refreshedAt: w.refreshedAt,
-      signature: w.signature,
-    },
-  };
 }
 
 function isStoredWarrant(value: JsonValue | undefined): value is JsonValue & StoredWarrant {
@@ -571,14 +521,11 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
     return null;
   }
 
-  // REMOVE_IN_1_9_0: `pack`/`crewId` are the 1.7.0 spellings of `crew`/`crewId`. Read once here,
-  // written back in the crew spelling by the next `update` — a 1.7.0 store therefore needs no
-  // separate rewrite step, and a 1.8.0 store is never read by the old key at all.
-  const crewField = d.crew ?? d.pack;
+  const crewField = d.crew;
   let crew: CrewIdentity | null = null;
   if (crewField !== null && crewField !== undefined) {
     const p = asRecord(crewField);
-    const crewId = p === null ? undefined : (p.crewId ?? p.packId);
+    const crewId = p === null ? undefined : p.crewId;
     if (
       p === null ||
       typeof crewId !== "string" ||
@@ -641,8 +588,7 @@ export function parseTrustStore(raw: string): TrustStoreData | null {
   let out = store;
   if (handover.value !== undefined) out = { ...out, pendingHandover: handover.value };
   if (deputy.value !== undefined) out = { ...out, deputy: deputy.value };
-  // REMOVE_IN_1_9_0: `storedWarrantCrewId` moves a 1.7.0 `packId` onto `crewId`.
-  if (warrant.value !== undefined) out = { ...out, warrant: storedWarrantCrewId(warrant.value, d.warrant) };
+  if (warrant.value !== undefined) out = { ...out, warrant: warrant.value };
   if (standbyRoster.value !== undefined) out = { ...out, standbyRoster: standbyRoster.value };
   if (spentAt.value !== undefined) out = { ...out, deputySpentAt: spentAt.value };
   return out;
@@ -666,21 +612,14 @@ export interface TrustStoreIo {
 /**
  * The real filesystem, with the 0600/0700 + temp-and-rename discipline `push.ts` established.
  *
- * REMOVE_IN_1_9_0: each operation below first runs the one-time move of 1.7.0's `pack-*.json` names
- * ({@link migrateCrewStateOnce}).
- *
- * ON THE OPERATION, NOT ON THE FACTORY, and not at a process entry either. Both of those were tried
- * during M27 and both moved an operator's live files: a factory runs when a CLI verb builds its deps
- * (`collie crew --help` builds them and opens nothing), and a process entry runs for every verb,
- * including one invoked under `env -i` with no HOME. Here it runs exactly when this collie is about
- * to read or write the directory, which is the moment the old name has to be gone. A test injects
- * its own {@link TrustStoreIo}, so no test reaches it at all.
+ * NOTHING RUNS HERE BUT THE OPERATION. 1.8.0 hung the one-time `pack-*.json` rename on `read()` and
+ * `write()`, because a factory or a process entry both moved an operator's live files during M27.
+ * 1.9.0 removed that rename; what replaced it is {@link legacyStateFileNotice}, read once from the
+ * boot path, precisely so this hot path stays one filesystem call per access.
  */
 export function fsTrustStoreIo(stateDir: string): TrustStoreIo {
-  const migrate = () => migrateCrewStateOnce(stateDir, (line) => console.warn(line));
   return {
     async read(path) {
-      migrate();
       try {
         return await readFile(path, "utf8");
       } catch (err) {
@@ -689,7 +628,6 @@ export function fsTrustStoreIo(stateDir: string): TrustStoreIo {
       }
     },
     async write(path, data) {
-      migrate();
       await mkdir(stateDir, { recursive: true, mode: 0o700 });
       const tmp = `${path}.tmp`;
       // Mode on create — the temp file is 0600 from the instant it exists, so the private key is
