@@ -1,6 +1,7 @@
 import type { Page, Route } from "@playwright/test";
 
 import type { Locale } from "@/lib/i18n/locale";
+import { TOUR_STORAGE_KEY, TOUR_VERSION } from "@/lib/tour";
 import {
   fixtureCrewSnapshot,
   fixtureCrewStatus,
@@ -128,17 +129,42 @@ async function answer(route: Route, path: string): Promise<void> {
   );
 }
 
+/** What a case wants the first-launch tour to do. `"seen"` is the default and covers every spec
+ *  that is not about the tour: the sheet is full-height, so an unseeded origin would put it over the
+ *  screen each case is actually looking at. `"fresh"` is the tour's own spec. */
+export interface ApiStubOptions {
+  readonly tour?: "seen" | "fresh";
+}
+
 /**
  * Install the stub. ONE `page.route` for the whole `/api/**` surface, so there is no registration
  * order to reason about: a case that wants a different answer for one endpoint registers its own
  * `page.route` AFTER this call and Playwright checks the newest handler first.
  *
+ * It also pre-spends the first-launch tour by default, which is what keeps every existing `app` spec
+ * working unedited.
+ *
  * Call it before the first `page.goto`.
  */
-export async function installApiStub(page: Page): Promise<void> {
+export async function installApiStub(page: Page, options: ApiStubOptions = {}): Promise<void> {
+  if (options.tour !== "fresh") await seedTourSeen(page);
   await page.route("**/api/**", async (route) => {
     await answer(route, new URL(route.request().url()).pathname);
   });
+}
+
+/**
+ * Tell the origin it has already seen this bundle's tour, before the first script runs. The key and
+ * the version both come from `src/lib/tour.ts` — neither is re-typed here, so a bumped
+ * `TOUR_VERSION` seeds the new number without this file changing.
+ */
+export async function seedTourSeen(page: Page): Promise<void> {
+  await page.addInitScript(
+    ([key, value]) => {
+      window.localStorage.setItem(key, value);
+    },
+    [TOUR_STORAGE_KEY, String(TOUR_VERSION)],
+  );
 }
 
 /**
