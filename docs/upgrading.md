@@ -117,7 +117,9 @@ your multiplexer, so the agents keep running and the phone comes back on the new
 never rides a routine update: crossing one asks its own confirm, names the version as a new major,
 and tells you to read the release notes first.
 
-While it runs, the card shows the state it is in:
+While it runs, a sheet takes the screen. See
+[What the phone shows while an update runs](#what-the-phone-shows-while-an-update-runs) below. The
+card on the Updates page carries the same states in more detail:
 
 | State | What it means |
 | --- | --- |
@@ -153,18 +155,41 @@ and the one case the phone cannot fix, see
 
 ![The Updates page on a lead, with the preflight per member and one button for the crew.](images/updates/updates-page-crew-available.png)
 
-A band across the top of every screen carries the run: the release on offer, then
-`Starting update…`, `Updating to <version>`, `Updated to <version>. Tap to reload.`, and finally
-`Updating <n> peers: <names>` as the peers follow. A peer that rolled back is named there too, with
-**See Updates.** as the way back to the page. The band appears in this sequence:
+A band across the top of every screen carries what is standing rather than what is running: the
+release on offer, a peer that could not update, and `New version — tap to update` when the app in
+your hand is behind the bridge. A running update is the sheet's, not the band's.
 
 ![The band when a new release is ready to install.](images/updates/band-available.png)
 
-![The band while the update installation runs.](images/updates/band-updating.png)
+### What the phone shows while an update runs
 
-![The band after the new version answered.](images/updates/band-updated-reload.png)
+A sheet takes the screen on the device that tapped the confirm, and every other device gets a badge.
 
-![The band while the peers update.](images/updates/band-peers.png)
+The sheet carries one row per machine, the lead first, each with its version and the state it is in.
+Under those sits this device's own row, which is about the app in your hand and not about a machine:
+once the bridge serves the new version, the phone fetches that app in the background and the row
+counts the files as they arrive. The sheet also says once, in small type, that the update runs on the
+machines and that closing the app does not stop it.
+
+The device that started the run cannot use the app behind the sheet. Nothing else is blocked: a
+second phone or a tablet shows one line it can tap to open, and closes again.
+
+When every machine is done and the phone is running the new app, the sheet closes itself and a short
+message names the version. On a crew it reads `Crew updated to <version>`; on one machine it names
+that machine instead.
+
+Three states can stall, and each one has a way out. None of them cancels the update, and none of them
+reloads the app.
+
+| What you see | What it means | What to do |
+| --- | --- | --- |
+| `last seen <time> ago` on a machine | That machine has stopped answering the lead. | **See Updates** for the reason, or leave it. |
+| *Still downloading. Keep using the app you have…* | The phone's own download has made no progress for two minutes. | **Keep using the app.** The download carries on. |
+| *Still working. Nothing is wrong yet…* | The lead has held one state for three minutes. | **Keep waiting.** The run carries on. |
+
+> **Note.** "Still downloading, keep using the app" is about the app on your phone and never about the
+> machine. The machines have finished; only the new app has not arrived yet. The app you are holding
+> keeps working, and it switches over on its own the moment the download lands.
 
 ### From the terminal
 
