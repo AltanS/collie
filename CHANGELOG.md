@@ -30,20 +30,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+## [1.8.2] - 2026-09-12
+
 ### Fixed
 
-- **The service worker precaches only its own channel's icons.** A release build's precache no longer carries the dev build's or the playground's icon files, and vice versa: entries dropped from 37 (1660.11 KiB) to 28 (1485.71 KiB) in a same-channel build.
-- **Static files ship gzipped, so an update downloads in a quarter of the time.** Only JSON API replies were compressed; the app bundle, the stylesheet and the service worker went out raw, so a phone precaching an update pulled the whole thing over the tailnet and showed the app as offline until it finished. Every text asset is now compressed when the browser offers `gzip`, and a compressed asset is cached in memory so the work is done once per build rather than once per request. The main chunk goes from 869 kB to 250 kB; images and fonts are untouched, since they are already compressed.
-- **The update band waits for the new bundle instead of reloading early.** Tapping "tap to reload"
-  while the new version was still downloading reloaded the phone onto the old app shell, which then
-  asked for a chunk that no longer existed, so the loading dog ran forever and only a second manual
-  reload fixed it. The page now reloads only once the new service worker is in control, the band
-  says the new version is downloading for as long as that takes, and the eight-second guard fires
-  only when nothing is on its way in.
-- **The downloading band can be closed, and the app stays usable meanwhile.** A download that never
-  finishes, on a link that has gone away, is now one you can put down: the row closes, the app on
-  screen goes on working from the bundle it already has, and nothing is declined — the install
-  carries on in the background and the page still reloads itself once the new version takes over.
+- **The service worker precaches only its own channel's icons.** A release build's precache no longer carries the dev build's or the playground's icon files, and vice versa: entries dropped from 37 (1660.11 KiB) to 28 (1485.71 KiB) in a same-channel build. ([d43fcf80](https://github.com/AltanS/collie/commit/d43fcf80))
+- **Static files ship gzipped, so an update downloads in a quarter of the time.** Only JSON API replies were compressed; the app bundle, the stylesheet and the service worker went out raw, so a phone precaching an update pulled the whole thing over the tailnet and showed the app as offline until it finished. Every text asset is now compressed when the browser offers `gzip`, and a compressed asset is cached in memory so the work is done once per build rather than once per request. The main chunk goes from 869 kB to 250 kB; images and fonts are untouched, since they are already compressed. ([9b484bdb](https://github.com/AltanS/collie/commit/9b484bdb))
+- **The update band waits for the new bundle instead of reloading early.** Tapping "tap to reload" while the new version was still downloading reloaded the phone onto the old app shell, which then asked for a chunk that no longer existed, so the loading dog ran forever and only a second manual reload fixed it. The page now reloads only once the new service worker is in control, the band says the new version is downloading for as long as that takes, and the eight-second guard fires only when nothing is on its way in. ([44b7afb1](https://github.com/AltanS/collie/commit/44b7afb1))
+- **The downloading band can be closed, and the app stays usable meanwhile.** A download that never finishes, on a link that has gone away, is now one you can put down: the row closes, the app on screen goes on working from the bundle it already has, and nothing is declined — the install carries on in the background and the page still reloads itself once the new version takes over. ([5646f7e6](https://github.com/AltanS/collie/commit/5646f7e6))
 
 ## [1.8.1] - 2026-09-12
 
