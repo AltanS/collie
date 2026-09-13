@@ -1,72 +1,76 @@
-// Pane-access ideas: five ways the pane screen could spend less height on "which pane am I in, and
-// how do I get to another one". NONE OF THESE IS SHIPPED. This section is a staging ground for a
-// decision, not a picture of the app — which is why every card says "idea, not shipped" where the
-// rest of the playground says "reach it for real".
+// Pull-up handle ideas: six ways the bottom of the pane screen could offer the switcher sheet, on
+// eight cards — two of the ideas need a second card to show a second state.
+// NONE OF THESE IS SHIPPED except the first, which is the reference. This section is a staging
+// ground for a decision, not a picture of the app — which is why every card but the first says
+// "idea, not shipped" where the rest of the playground says "reach it for real".
 //
-// WHAT IS REAL HERE AND WHAT IS NOT. The two strips, the bead bar, the pane pills, the status dots
-// and the fold animation are the app's own components on the app's own fixtures (`StripsSummary`,
-// `TabStrip`, `PaneStrip`, `StatusDot`, `Collapse`) — an idea that reuses them is measured at the
-// height they really are. Everything an idea INVENTS is drawn here and nowhere else: the pane
-// header (not extractable from `agent-chat.tsx`, so its structure and classes are copied), the
-// breadcrumb list, the beacon pill, the nested row, the composer stand-in and the keyboard block.
-// Each card's note says which side of that line it sits on.
+// THE TARGET. `components/agent-chat.tsx` draws a chrome block above the composer
+// (`data-slot="chrome-block"`, `border-t border-rule bg-chrome`) and puts a full-width button in it:
+// `py-3` around a 6px grip, so 30px of height whose only job is to open the switcher sheet — by tap,
+// or by a finger-tracked drag (`hooks/use-sheet-pull.ts`). Under it sits the actions belt
+// (`components/actions-row.tsx`, a 48px full-bleed band), then the input. The round asks what else
+// could hold that job for less than 30px.
+//
+// WHAT IS REAL HERE AND WHAT IS NOT. The belt under every handle is the app's own `ActionsRow` on
+// Claude, in the roomy layout, mounted the way `sections/actions-row.tsx` mounts it — so the thing
+// each handle is measured AGAINST is never a drawing. The shipped handle is the shipped markup,
+// copied character for character. The fold is the app's own `Collapse`, the peeking sheet is the app's
+// own `BottomSheet` driven through its real `pull`/`pullFrom` props with the real `ThreadSidebar`
+// inside it, and the dense lane's geometry is copied from `components/space-agents-row.tsx`. What is
+// INVENTED is drawn here and nowhere else: the grip on the rule, the switcher pill, the belt copy it
+// needs, the drag hint, the mirror slice and the composer's input row. Each card's note says which
+// side of that line it sits on.
 //
 // THE MIRROR IS THE CONSTANT. Every card shows the same eight lines of the same captured screen
 // (`paneWorking`, run through the app's own ANSI parser to drop the colour), at the same width, so
-// the only thing that differs between two cards is the chrome above it — which is the whole
+// the only thing that differs between two cards is the chrome below it — which is the whole
 // question. The slice is read-only: no scroller, no grammar, no dialog lift.
 //
 // DEV-ONLY, unreachable from the app entry.
 
-import { useRef, useState, type ReactNode } from "react";
-import { ChevronDown, ChevronLeft, ChevronUp, EllipsisVertical, TriangleAlert } from "lucide-react";
+import type { ReactNode } from "react";
+import { ArrowUp, ChevronUp, Layers } from "lucide-react";
 
-import { AgentIcon } from "@/components/agent-icon";
+import { ActionsRow } from "@/components/actions-row";
+import { ThreadSidebar } from "@/components/agent-sidebar";
+import { HarnessBar } from "@/components/harness-bar";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
-import { PaneStrip } from "@/components/pane-strip";
-import { StatusDot } from "@/components/status-badge";
-import { StripsSummary } from "@/components/strips-summary";
-import { TabStrip } from "@/components/tab-strip";
+import { Button } from "@/components/ui/button";
 import { Collapse } from "@/components/ui/collapse";
-import { usePinSide } from "@/hooks/use-pin-side";
-import { useRevealActive } from "@/hooks/use-reveal-active";
+import { STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
+import { OverflowEdges } from "@/components/ui/overflow-edges";
+import { BottomSheet } from "@/components/ui/sheet";
 import { parseAnsi } from "@/lib/ansi";
 import { lineText, splitLines } from "@/lib/blocks";
-import { paneTag } from "@/lib/pane-tag";
-import { TRIAGE_ORDER, bucketOf, worstTriage } from "@/lib/triage";
-import { paneDisplayName, type AgentView, type TabView } from "@/lib/types";
+import type { AgentView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-import { allPanes, herd, paneWorking, tabs } from "../fixtures";
+import { allPanes, herd, paneWorking, shells } from "../fixtures";
 import { Card, Group, Section, type SectionDef } from "../harness";
+import { took, useRoomyActions } from "./shared";
 
 export const DEF: SectionDef = {
   id: "ideas",
-  title: "Pane access ideas",
+  title: "Pull-up handle ideas",
   intent:
-    "The pane screen spends 111px above the mirror on the tab strip and the pane strip, foldable to a 24px bead bar; zen takes all of it away and the dense layout moves it below the mirror instead. Five other answers, staged side by side over the same eight lines of the same captured screen, so the height each one costs can be read off the cards rather than argued about. Every card states its cost at rest in px, measured from the mock at 390px, and what it costs in taps to reach a sibling pane and the one pane that is blocked. The 111px is measured, and it is not the 94px strips-summary.tsx's own comment quotes: that number counts two 47px rows, and the pane row is 62px because it carries the \"Panes\" label, with 4px of page under the open folder tab on top. None of these is shipped and none is a proposal yet.",
+    "The bar at the bottom that can be dragged up. Today it is a 30px band — `py-3` around a 6px grip — sitting inside the chrome block, directly above a 48px actions belt and the input: 78px of chrome under the mirror before a single word is typed, and 30px of it does nothing but open one sheet. This round asks how to keep that sheet reachable by thumb for less. Eight cards, each a phone-width mock of the BOTTOM of the pane screen over the same eight lines of the same captured screen, with the REAL actions belt under every handle so the comparison is against the real neighbour. Each note states the handle's measured height at rest in px, what it costs in taps or gestures to open the sheet, and the main risk. The first card is the shipped handle, as the reference; the other seven carry five ideas, two of which need a second card for a second state, and none of them is a proposal yet.",
 };
 
 // ── The space every card is standing in ──────────────────────────────────────
 //
-// `sprqvntrs-api` (w2), because it is the only fixture space that has the shape the hardest idea
-// needs: three tabs, one of which holds three panes, and a pane in ANOTHER tab that is blocked. So
-// "the sibling pane" and "the blocked pane" are two different distances on every card, which is the
-// difference the notes are about.
+// `sprqvntrs-api` (w2), because it is the only fixture space with the shape the "only when there is
+// somewhere to go" idea needs: one tab holding three panes, so the handle has a reason to exist, and
+// a sibling that can be taken away to make the solo card.
 
 const SPACE_ID = "w2";
-const SPACE_LABEL = "sprqvntrs-api";
 
-/** The three tabs of that space, in the snapshot's own order. */
-const spaceTabs: TabView[] = tabs.filter((tab) => tab.workspaceId === SPACE_ID);
-
-/** Every pane in the space — agents and shells together, as the strips see them. */
+/** Every pane in the space — agents and shells together, as the switcher sheet sees them. */
 const spacePanes: AgentView[] = allPanes.filter((pane) => pane.workspaceId === SPACE_ID);
 
 /**
  * One pane out of the fixture space, or a loud failure. A `!` here would be a claim about a file
  * this one does not own: the fixtures are edited for other cards, and a card built on a pane that
- * quietly became `undefined` would render a blank header rather than say so.
+ * quietly became `undefined` would render a blank screen rather than say so.
  */
 function fixturePane(match: (pane: AgentView) => boolean, what: string): AgentView {
   const found = spacePanes.find(match);
@@ -74,22 +78,22 @@ function fixturePane(match: (pane: AgentView) => boolean, what: string): AgentVi
   return found;
 }
 
-/** The pane the operator has open: `claude` on `billing-webhooks`, working, waiting on CI. */
+/** The pane the operator has open: `claude` on `billing-webhooks`, working. */
 const current: AgentView = fixturePane((pane) => pane.paneId === "w2:p2", "pane w2:p2");
 
-/** The three panes that share the open pane's tab, in the order `PaneStrip` draws them. */
-const tabPanes: AgentView[] = spacePanes.filter((pane) => pane.tabId === current.tabId);
+/** The agents of that space, for the switcher sheet the peek card actually mounts. */
+const spaceAgents: AgentView[] = herd.filter((pane) => pane.workspaceId === SPACE_ID);
 
-/** The one pane in this space that is waiting on the operator — it sits in ANOTHER tab. */
-const blocked: AgentView = fixturePane((pane) => pane.status === "blocked", "blocked pane");
+/** The bare shells of that space, listed under the agents in the same sheet. */
+const spaceShells: AgentView[] = shells.filter((pane) => pane.workspaceId === SPACE_ID);
 
 // ── The mirror slice ─────────────────────────────────────────────────────────
 
 /**
  * Eight lines out of a real capture, with the colour parsed away by the app's own parser rather
  * than by a regex written here. It is text in a `<pre>`, not `AnsiOutput`: the point of these cards
- * is the height of the chrome ABOVE the mirror, and mounting the real renderer would bring its
- * grammars, its dialog lift and its scroll behaviour into a card that has no business driving them.
+ * is what sits BELOW the mirror, and mounting the real renderer would bring its grammars, its
+ * dialog lift and its scroll behaviour into a card that has no business driving them.
  */
 const MIRROR_SLICE: string = splitLines(parseAnsi(paneWorking.text))
   .slice(46, 54)
@@ -114,519 +118,386 @@ function MirrorSlice() {
 
 /**
  * One card's phone: 390px wide, or the column's width under the "Phone width" toggle, with the
- * header on top, whatever chrome the idea adds under it, and the mirror slice at the bottom. It is
- * a BOX, not a screen — no fixed height, because the height is what the cards are being compared on
- * and a frame that pinned it would hide the answer.
+ * mirror on top and whatever chrome the idea puts under it. It is a BOX, not a screen — no fixed
+ * height, because the height is what the cards are being compared on and a frame that pinned it
+ * would hide the answer.
+ *
+ * `stage` turns the box into a containing block (`transform`) with its own clip, which is what a
+ * `position: fixed` descendant needs to resolve against the card instead of escaping to the page.
+ * One card wants it: the peek, which mounts a real `BottomSheet`.
  */
-function PhoneMock({ children }: { children: ReactNode }) {
+function PhoneMock({ stage = false, children }: { stage?: boolean; children: ReactNode }) {
   return (
-    <div className="w-[390px] max-w-full overflow-hidden rounded-xl border border-border bg-background">
+    <div
+      className="relative w-[390px] max-w-full overflow-hidden rounded-xl border border-border bg-background"
+      style={stage ? { transform: "translate(0)" } : undefined}
+    >
       {children}
     </div>
   );
 }
 
 /**
- * The pane screen's header, MOCKED — `agent-chat.tsx` builds it inline inside a 2,000-line
- * component and there is nothing to import. The structure and the class strings are copied from the
- * identity block there (`data-slot="pane-identity"` / `pane-lines`), so the 60px floor, the 20/4/12
- * line boxes and the badged status dot are the real ones; the back arrow and the ⋮ are inert
- * squares standing in for the shell's own controls.
- *
- * `title` replaces line 1's name run. That is idea 2's whole move, and it is the reason this is a
- * slot rather than a fixed block.
+ * The chrome block, as `agent-chat.tsx` draws it: ONE surface closed against the terminal above by
+ * ONE rule. The class string is copied from `data-slot="chrome-block"` there, because it is not
+ * extractable — it is a `<div>` inside a 2,000-line component. Every idea's handle goes inside it,
+ * above the belt, which is exactly where the shipped one lives.
  */
-function PaneHeaderMock({ pane, title }: { pane: AgentView; title?: ReactNode }) {
+function ChromeBlock({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-15 items-center gap-2 border-b border-rule bg-background py-1 pl-4 pr-2">
-      <span
-        aria-hidden="true"
-        className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground"
-      >
-        <ChevronLeft className="size-5" />
-      </span>
-      <div className="-mx-1 flex min-h-11 min-w-0 flex-1 items-center rounded-lg px-1 text-left">
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="flex min-w-0 items-center gap-2 leading-5">
-            <div className="relative shrink-0">
-              <AgentIcon agent={pane.agent} className="size-4" />
-              <StatusDot
-                status={pane.status}
-                surface="bg-background"
-                className="absolute -bottom-0.5 -right-0.5 size-2 rounded-full ring-2 ring-background"
-              />
-            </div>
-            {title ?? (
-              <>
-                <span className="block truncate font-semibold leading-5">
-                  {paneDisplayName(pane)}
-                </span>
-                <span className="shrink-0 font-mono text-[10px] leading-5 text-muted-foreground">
-                  {paneTag(pane.paneId)}
-                </span>
-              </>
-            )}
-          </div>
-          <span className="block truncate font-mono text-[11px] leading-3 text-muted-foreground">
-            {pane.cwd}
-          </span>
-        </div>
-      </div>
-      <span
-        aria-hidden="true"
-        className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground"
-      >
-        <EllipsisVertical className="size-5" />
-      </span>
+    <div data-slot="chrome-block" className="border-t border-rule bg-chrome">
+      {children}
     </div>
   );
 }
 
-/** The composer's top edge, mocked — the beacon has to float above something to be judged. */
+/**
+ * The REAL actions belt, on Claude, in the roomy layout, inside the composer's own `px-3` dock —
+ * which the belt's `-mx-3` cancels, so the band runs edge to edge exactly as it does on a phone.
+ * `children` is how the two ideas that draw ON the belt reach it: they need it wrapped in a
+ * positioned box, and nothing else on the card does.
+ */
+function Belt({ children }: { children?: ReactNode }) {
+  const general = useRoomyActions();
+  return (
+    <div className="relative bg-chrome px-3">
+      <ActionsRow general={general} agent="claude" onRun={took} />
+      {children}
+    </div>
+  );
+}
+
+/** The composer's input row, MOCKED — `Composer` is a 1,400-line component that owns a draft store,
+ *  an upload queue and a send guard, and none of that is what these cards are about. The dock's own
+ *  ground and padding are the real ones (`bg-chrome px-3`, `composer.tsx`). */
 function ComposerMock() {
   return (
-    <div className="flex items-center gap-2 border-t border-rule bg-background px-3 py-2">
-      <div className="flex h-9 min-w-0 flex-1 items-center rounded-2xl border border-border px-3 text-[13px] text-muted-foreground">
+    <div className="flex items-center gap-2 bg-chrome px-3 pb-2">
+      <div className="flex h-9 min-w-0 flex-1 items-center rounded-2xl border border-border bg-background px-3 text-[13px] text-muted-foreground">
         Reply to claude…
       </div>
       <span
         aria-hidden="true"
         className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground"
       >
-        <ChevronUp className="size-4" />
+        <ArrowUp className="size-4" />
       </span>
     </div>
   );
 }
 
-/** The soft keyboard, as a labelled grey block. Idea 4 is only readable with one on the card. */
-function KeyboardMock() {
-  return (
-    <div className="flex h-[150px] items-center justify-center bg-muted text-[11px] uppercase tracking-wide text-muted-foreground">
-      keyboard
-    </div>
-  );
-}
+// ── Idea 0: the handle as it ships ───────────────────────────────────────────
 
-// ── The real strips, wired to nothing ────────────────────────────────────────
-//
-// Every switcher below is inert: the cards are photographs of a layout, and a tap that navigated
-// would need a router, a snapshot and a pane view this section deliberately does not mount.
-
-const inert = () => {};
-
-function RealTabStrip({ trailing }: { trailing?: ReactNode }) {
-  return (
-    <TabStrip
-      workspaceId={SPACE_ID}
-      tabs={tabs}
-      agents={herd}
-      selected={current.tabId}
-      onSelect={inert}
-      onNewTab={inert}
-      allowAll={false}
-      trailing={trailing}
-    />
-  );
-}
-
-function RealPaneStrip() {
-  return <PaneStrip panes={tabPanes} currentPaneId={current.paneId} onSelect={inert} />;
-}
-
-/** The two strips as the pane screen stacks them, including the 4px of page the folder tab sits on. */
-function RealStrips({ trailing }: { trailing?: ReactNode }) {
-  return (
-    <div className="pb-1">
-      <RealTabStrip trailing={trailing} />
-      <RealPaneStrip />
-    </div>
-  );
-}
-
-function RealBeadBar({ onExpand = inert }: { onExpand?: () => void }) {
-  return (
-    <StripsSummary
-      workspaceId={SPACE_ID}
-      tabs={tabs}
-      agents={herd}
-      selectedTabId={current.tabId}
-      panes={tabPanes}
-      currentPaneId={current.paneId}
-      onExpand={onExpand}
-    />
-  );
-}
-
-/** The fold chevron the tab row pins to its trailing end, drawn the size the real one is drawn. */
-function FoldChevron({ onClick = inert }: { onClick?: () => void }) {
+/**
+ * The shipped handle, copied character for character out of `agent-chat.tsx` (the `<button>` inside
+ * `data-slot="chrome-block"`): `py-3` around an `h-1.5 w-12` grip, full width, `touch-none`. The two
+ * things it cannot carry into a card are the two things a card has no use for — `useSheetPull`'s ref,
+ * which needs a sheet to reveal, and the translated aria label, which the playground does not run
+ * through `t()`.
+ *
+ * `onOpen` is how the "when needed" pair and the reference card stay one component: the real handle
+ * both taps and drags into the sheet, and a card that only taps is still the same 30px.
+ */
+function ShippedHandle({ onOpen }: { onOpen: () => void }) {
   return (
     <button
       type="button"
-      onClick={onClick}
-      aria-label="Hide tabs and panes"
-      className="flex size-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent"
+      aria-label="Switch pane"
+      onClick={onOpen}
+      className="flex w-full touch-none items-center justify-center py-3 transition-colors active:bg-muted/50"
     >
-      <ChevronUp className="size-4" />
+      <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
     </button>
   );
 }
 
-// ── Idea 2: the breadcrumb list ──────────────────────────────────────────────
+// ── Idea 1: the grip straddles the belt's top rule ───────────────────────────
 
-/** Line 1 of the header, as idea 2 rewrites it: the address, and a chevron that opens the list. */
-function CrumbTitle({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+/**
+ * A mark centred ON the belt's top rule, half above and half below, on a small `bg-chrome` patch so
+ * the rule appears to break around it. It costs NO layout at all: the patch is absolutely positioned
+ * over the belt's own border, and the 44px hit box is a `::before` pseudo-element reaching out from
+ * it — the same negative-inset trick `ui/labelled-strip.tsx`'s `STRIP_TAP_TARGET` uses to give a 32px
+ * pill a 46px answer, and the same "absolute, so it costs no layout" move `space-agents-row.tsx`
+ * makes with its own handle.
+ *
+ * `top-1.5` is the belt's `mt-1.5`: the rule sits 6px below this box's top edge, and
+ * `-translate-y-1/2` centres the patch on it.
+ */
+function RuleGrip({ onOpen }: { onOpen: () => void }) {
   return (
     <button
       type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      className="-mx-1 flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 text-left leading-5 transition-colors hover:bg-accent/40"
+      aria-label="Switch pane"
+      onClick={onOpen}
+      className="absolute top-1.5 left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center rounded-md bg-chrome px-2 py-0.5 text-muted-foreground transition-colors select-none before:absolute before:-inset-4 before:content-[''] active:bg-muted/50"
     >
-      <span className="min-w-0 truncate font-semibold leading-5">
-        {SPACE_LABEL}
-        <span className="px-1 font-normal text-muted-foreground">›</span>
-        {current.tabLabel}
-      </span>
-      <span className="shrink-0 font-mono text-[10px] leading-5 text-muted-foreground">
-        {paneTag(current.paneId)}
-      </span>
-      <ChevronDown
-        aria-hidden="true"
-        className={cn(
-          "size-4 shrink-0 text-muted-foreground transition-transform",
-          open && "rotate-180",
-        )}
-      />
+      <ChevronUp className="size-3" />
     </button>
   );
 }
 
+// ── Idea 2: a switcher pill on the belt ──────────────────────────────────────
+
 /**
- * Every pane in the space, grouped by tab, with the tab that is shouting loudest first and, inside
- * a tab, the pane that is shouting loudest first. The order is `lib/triage.ts`'s own
- * (`worstTriage` / `bucketOf` over `TRIAGE_ORDER`), not a second opinion written here — so the
- * blocked pane leads the list for the same reason it leads the dashboard.
+ * A COPY of the belt, because the idea puts a pill inside it and `ActionsRow` has no prop for that.
+ * Every class string here is copied from `components/actions-row.tsx` — the band's own
+ * `-mx-3 … border-y border-border bg-foreground/6 mt-1.5 mb-1.5`, the `STRIP_SCROLLER` inside it, the
+ * `STRIP_ROW_PILL` face on each pill — and the harness section is the REAL `HarnessBar`, so only the
+ * general half is a drawing. A card built this way drifts the day the real belt changes; the note on
+ * the card says so, and the fix is a prop on `ActionsRow`, not a better copy.
  */
-function paneRank(pane: AgentView): number {
-  return TRIAGE_ORDER.indexOf(bucketOf(pane));
-}
-
-function tabRank(tab: TabView): number {
-  const worst = worstTriage(spacePanes.filter((pane) => pane.tabId === tab.tabId));
-  return worst === null ? TRIAGE_ORDER.length : TRIAGE_ORDER.indexOf(worst);
-}
-
-function crumbGroups(): { tab: TabView; panes: AgentView[] }[] {
-  return spaceTabs
-    .map((tab) => ({
-      tab,
-      panes: spacePanes
-        .filter((pane) => pane.tabId === tab.tabId)
-        .toSorted((a, b) => paneRank(a) - paneRank(b)),
-    }))
-    .toSorted((a, b) => tabRank(a.tab) - tabRank(b.tab));
-}
-
-/** The flat list idea 2 drops under the header. Drawn here; nothing like it exists in the app. */
-function CrumbList() {
+function BeltWithPill({ onOpen }: { onOpen: () => void }) {
+  const general = useRoomyActions();
   return (
-    <div className="border-b border-rule bg-background">
-      {crumbGroups().map((group, index) => (
-        <div key={group.tab.tabId} className={cn(index > 0 && "border-t border-rule")}>
-          <p className="px-4 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            {group.tab.label}
-          </p>
-          {group.panes.map((pane) => (
-            <button
-              key={pane.paneId}
-              type="button"
-              onClick={inert}
-              aria-current={pane.paneId === current.paneId ? "true" : undefined}
-              className={cn(
-                "flex h-11 w-full items-center gap-2 px-4 text-left text-sm transition-colors hover:bg-accent/40",
-                pane.paneId === current.paneId && "bg-accent/60 font-medium",
-              )}
-            >
-              <StatusDot status={pane.status} className="size-2 shrink-0" />
-              <AgentIcon agent={pane.agent} className="size-3.5 shrink-0" />
-              <span className="min-w-0 flex-1 truncate">{paneDisplayName(pane)}</span>
-              <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                {paneTag(pane.paneId)}
-              </span>
-            </button>
-          ))}
-        </div>
-      ))}
+    <div className="bg-chrome px-3">
+      <div className="-mx-3 mt-1.5 mb-1.5 flex items-center border-y border-border bg-foreground/6">
+        <OverflowEdges>
+          {(scrollerRef) => (
+            <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "px-3")}>
+              <div role="group" aria-label="Controls" className="flex shrink-0 items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Panes"
+                  aria-haspopup="dialog"
+                  onClick={onOpen}
+                  className={cn(`${STRIP_ROW_PILL} gap-1.5 text-xs`, "text-muted-foreground")}
+                >
+                  <Layers className="size-4 shrink-0" />
+                  Panes
+                </Button>
+                {general.map((action) => (
+                  <Button
+                    key={action.id}
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    aria-label={action.label}
+                    aria-expanded={action.expanded}
+                    aria-pressed={action.pressed}
+                    onClick={action.onSelect}
+                    className={cn(`${STRIP_ROW_PILL} gap-1.5 text-xs`, "text-muted-foreground")}
+                  >
+                    <action.icon className="size-4 shrink-0" />
+                    {action.word ?? action.label}
+                  </Button>
+                ))}
+              </div>
+              <HarnessBar agent="claude" onRun={took} />
+            </div>
+          )}
+        </OverflowEdges>
+      </div>
     </div>
   );
 }
 
-// ── Idea 3: the beacon ───────────────────────────────────────────────────────
+// ── Idea 3: the dense layout's lane ──────────────────────────────────────────
 
 /**
- * The pill, on the edge the holding thumb does NOT rest on: `usePinSide` is the real per-device
- * preference for where the fixed pins dock (left by default, the thumb's own side), and this takes
- * the other one, so the beacon never lands under the thumb that is holding the phone.
+ * The dense layout's handle lane, lifted into roomy. The geometry is copied from
+ * `components/space-agents-row.tsx`: a `pt-2.5` lane (10px) the handle fills without displacing
+ * anything, and an `absolute top-0 left-1/2 h-2.5 w-16 -translate-x-1/2` button centred in it.
+ *
+ * WHAT THE DENSE LANE ACTUALLY DRAWS IS THE 6px BAR, not a chevron — `agent-chat.tsx`'s comment
+ * calls it "the up-chevron centred on the chrome border" and the code paints the same grip the
+ * shipped handle wears. This copies the CODE. The card says so.
  */
-function Beacon({ count }: { count: number }) {
-  const { side } = usePinSide();
+function DenseLane({ onOpen }: { onOpen: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={inert}
-      className={cn(
-        "absolute -top-3 z-10 flex h-7 items-center gap-1.5 rounded-full border border-border bg-background px-2.5 text-[11px] font-medium shadow-md",
-        side === "left" ? "right-3" : "left-3",
-      )}
-    >
-      <TriangleAlert aria-hidden="true" className="size-3.5 text-status-blocked" />
-      <span>{count} needs you</span>
-    </button>
-  );
-}
-
-// ── Idea 5: one nested row ───────────────────────────────────────────────────
-
-/**
- * Tabs and panes in ONE row: a tab is a pill group, its panes are small pills inside it, and the
- * open pane is the emphasised one. Drawn here — the app has no such control, and this is the idea
- * that would need a real component built before it could be judged on anything but height.
- */
-function NestedRow() {
-  // The app's own reveal, because a row that starts scrolled away from the pane you are in is not
-  // the idea — it is a bug in the mock. `TabStrip` and `PaneStrip` both run this hook; a single
-  // nested row would have to run it too, and running it here is what makes the screenshot honest.
-  const scrollerRef = useRef<HTMLElement>(null);
-  useRevealActive(scrollerRef, current.paneId);
-  return (
-    <nav
-      ref={scrollerRef}
-      aria-label="Tabs and panes"
-      className="flex h-11 shrink-0 items-center gap-2 overflow-x-auto border-b border-rule px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-    >
-      {spaceTabs.map((tab) => {
-        const panes = spacePanes.filter((pane) => pane.tabId === tab.tabId);
-        return (
-          <span
-            key={tab.tabId}
-            className={cn(
-              "flex shrink-0 items-center gap-1 rounded-md border px-1.5 py-1",
-              tab.tabId === current.tabId
-                ? "border-rule bg-muted/60"
-                : "border-transparent bg-muted/30",
-            )}
-          >
-            <span className="whitespace-nowrap pl-0.5 text-[11px] font-medium text-muted-foreground">
-              {tab.label}
-            </span>
-            {panes.map((pane) => (
-              <button
-                key={pane.paneId}
-                type="button"
-                onClick={inert}
-                aria-current={pane.paneId === current.paneId ? "true" : undefined}
-                aria-label={`${tab.label} — ${paneDisplayName(pane)}`}
-                className={cn(
-                  "flex h-6 shrink-0 items-center gap-1 rounded-full px-1.5 font-mono text-[10px] transition-colors",
-                  pane.paneId === current.paneId
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-background text-muted-foreground hover:bg-accent",
-                )}
-              >
-                <StatusDot
-                  status={pane.status}
-                  surface={pane.paneId === current.paneId ? "bg-primary" : "bg-background"}
-                  className="size-1.5"
-                />
-                {paneTag(pane.paneId)}
-              </button>
-            ))}
-          </span>
-        );
-      })}
-    </nav>
+    <div className="relative touch-pan-x overscroll-y-none pt-2.5">
+      <button
+        type="button"
+        aria-label="Switch pane"
+        aria-haspopup="dialog"
+        onClick={onOpen}
+        className="absolute top-0 left-1/2 z-10 flex h-2.5 w-16 -translate-x-1/2 touch-manipulation items-center justify-center rounded-md transition-colors select-none active:bg-muted/50"
+      >
+        <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
+      </button>
+    </div>
   );
 }
 
 // ── The cards ────────────────────────────────────────────────────────────────
 
-/** Every card's `reach` line. These are ideas; none of them can be reached. */
+/** Every idea card's `reach` line. These are ideas; none of them can be reached. */
 const NOT_SHIPPED = "idea, not shipped:";
 
-export function IdeasSection() {
-  const [beadsOpen, setBeadsOpen] = useState(false);
-  const [crumbOpen, setCrumbOpen] = useState(false);
+/** Nothing on these cards navigates: they are photographs of a layout, and a tap that switched panes
+ *  would need a router, a snapshot and a pane view this section deliberately does not mount. */
+const inert = () => {};
 
+export function IdeasSection() {
+  // NO STATE AT ALL, and that is deliberate: every pair on this page is two cards rather than one
+  // card with a toggle, because a screenshot has to be able to address one state without tapping
+  // anything. The peek is mounted already peeking; the "when needed" pair is two Collapses, one open
+  // and one shut.
   return (
     <Section def={DEF}>
-      <Group title="1 · Beads at rest, strips on demand">
+      <Group title="0 · The handle as it ships">
         <Card
-          state="ideas-beads-rest"
-          label="at rest: the 24px bead bar, and nothing else"
-          reach={`${NOT_SHIPPED} the bead bar already exists (StripsSummary) — what is new is making it the RESTING state rather than the folded one, so the strips are what you opt into.`}
-          note="Cost at rest: 24px, measured — the real StripsSummary at its real height, over the real header. Reaching a sibling pane in this tab: 2 taps (bar, then its pill). Reaching the blocked pane, which sits in another tab: 3 taps (bar, tab, pill). The beads say how many and where you are; they do not say the tabs' names, which is the honest cost of folding."
+          state="handle-today"
+          label="today: a 30px band above the belt, tap or drag"
+          reach="open any pane."
+          note="Height at rest: 30px, measured — `py-3` (12px + 12px) around a 6px grip, full width. To open the sheet: one tap, or one upward drag that passes useSheetPull's 6px slop and then travels 120px (OPEN_PX) or flings at 0.6px/ms. The risk is the one this round exists for: 30px of permanent chrome, directly above a 48px belt, for one errand. It already stands down while the keyboard is up and in the dense layout, which is the admission that it is expensive."
         >
           <PhoneMock>
-            <PaneHeaderMock pane={current} />
-            <RealBeadBar />
             <MirrorSlice />
-          </PhoneMock>
-        </Card>
-
-        <Card
-          state="ideas-beads-open"
-          label="expanded in place: both strips, as they are today"
-          reach={`${NOT_SHIPPED} this is today's unfolded state, shown here as the other half of idea 1.`}
-          note="Cost while open: 111px, measured — a 45px tab row (44px plus its baseline rule), a 62px pane row (34px pills under the row's own 'Panes' label), and 4px of page under the open folder tab. That is the height the fold buys back, 87px of it, and the number every other idea on this page is compared against. Both strips are the real components on the real fixtures."
-        >
-          <PhoneMock>
-            <PaneHeaderMock pane={current} />
-            <RealStrips trailing={<FoldChevron />} />
-            <MirrorSlice />
-          </PhoneMock>
-        </Card>
-
-        <Card
-          state="ideas-beads-tap"
-          label="the gesture: tap the bar, the strips grow out of it"
-          reach={`${NOT_SHIPPED} the two cards above are the two ends of this one — tap the bar, then the chevron, to see the edge between them.`}
-          note="The same real Collapse the app folds with (240ms, and it snaps under prefers-reduced-motion), so what you are judging is the app's own movement. The two ends are also separate cards above, because a screenshot has to be able to address one state without tapping anything."
-        >
-          <PhoneMock>
-            <PaneHeaderMock pane={current} />
-            <Collapse open={!beadsOpen}>
-              {!beadsOpen && <RealBeadBar onExpand={() => setBeadsOpen(true)} />}
-            </Collapse>
-            <Collapse open={beadsOpen}>
-              {beadsOpen && (
-                <RealStrips trailing={<FoldChevron onClick={() => setBeadsOpen(false)} />} />
-              )}
-            </Collapse>
-            <MirrorSlice />
-          </PhoneMock>
-        </Card>
-      </Group>
-
-      <Group title="2 · Breadcrumb in the header">
-        <Card
-          state="ideas-crumb-rest"
-          label="at rest: no strip at all, one chevron on the address"
-          reach={`${NOT_SHIPPED} the header shows the pane's name today; this replaces that run with the whole address and hangs the switcher off it.`}
-          note="Cost at rest: 0px beyond the header — the chevron rides inside line 1's existing 20px line box, and the header's 60px floor is unchanged. The cost is paid in the header's WIDTH instead: space › tab eats the room the pane's own name had, so on a 390px phone the tab name is what truncates."
-        >
-          <PhoneMock>
-            <PaneHeaderMock
-              pane={current}
-              title={<CrumbTitle open={false} onToggle={inert} />}
-            />
-            <MirrorSlice />
-          </PhoneMock>
-        </Card>
-
-        <Card
-          state="ideas-crumb-open"
-          label="open: every pane in the space, grouped by tab, blocked first"
-          reach={`${NOT_SHIPPED} nothing in the app draws this list — it is mocked here, over the real fixtures and the real triage order.`}
-          note="Cost while open: 292px, measured — five pane rows at 44px, three tab captions, two hairlines. It covers the mirror rather than pushing it, which is the trade: the list is transient, so it may be tall. Reaching ANY pane in the space, blocked or not: 2 taps. That is the only idea here where the blocked pane and a sibling cost the same, because the list is ordered by lib/triage.ts and the blocked one leads it."
-        >
-          <PhoneMock>
-            <PaneHeaderMock pane={current} title={<CrumbTitle open onToggle={inert} />} />
-            <CrumbList />
-            <MirrorSlice />
-          </PhoneMock>
-        </Card>
-
-        <Card
-          state="ideas-crumb-tap"
-          label="the gesture: tap the address, the list drops"
-          reach={`${NOT_SHIPPED} tap the address line to open and close the list.`}
-          note="Same real Collapse as idea 1, so the drop is the app's own 240ms. Both ends are separate cards above for the same reason."
-        >
-          <PhoneMock>
-            <PaneHeaderMock
-              pane={current}
-              title={<CrumbTitle open={crumbOpen} onToggle={() => setCrumbOpen((was) => !was)} />}
-            />
-            <Collapse open={crumbOpen}>{crumbOpen && <CrumbList />}</Collapse>
-            <MirrorSlice />
-          </PhoneMock>
-        </Card>
-      </Group>
-
-      <Group title="3 · Needs-you beacon">
-        <Card
-          state="ideas-beacon"
-          label="one sibling is blocked: a pill above the composer's far edge"
-          reach={`${NOT_SHIPPED} the pill is drawn here; only the thumb-side preference behind it (usePinSide) is the app's own.`}
-          note="Cost at rest: 0px — the pill floats over the mirror's bottom edge and takes no row of its own. Reaching the blocked pane: 1 tap, the cheapest on this page. Reaching a sibling that is NOT blocked: impossible from here — this idea answers one question only, and every other switch falls back to the header or the dashboard. It docks opposite usePinSide's pin edge, so it never lands under the holding thumb."
-        >
-          <PhoneMock>
-            <PaneHeaderMock pane={current} />
-            <MirrorSlice />
-            <div className="relative">
-              <Beacon count={1} />
+            <ChromeBlock>
+              <ShippedHandle onOpen={inert} />
+              <Belt />
               <ComposerMock />
-            </div>
-          </PhoneMock>
-        </Card>
-
-        <Card
-          state="ideas-beacon-quiet"
-          label="nothing is blocked: the pill is absent"
-          reach={`${NOT_SHIPPED} the quiet half of idea 3 — which is most of the day.`}
-          note={`Cost at rest: 0px, and here that is literal — there is no control on the screen at all, and the chrome above the mirror is the header alone. Whether that is calm or disorienting is the question this card is asking. The blocked pane (${paneDisplayName(blocked)} on ${blocked.tabLabel}) is still blocked; nothing on this screen says so.`}
-        >
-          <PhoneMock>
-            <PaneHeaderMock pane={current} />
-            <MirrorSlice />
-            <ComposerMock />
+            </ChromeBlock>
           </PhoneMock>
         </Card>
       </Group>
 
-      <Group title="4 · Auto-fold on keyboard">
+      <Group title="1 · The grip moves onto the belt's rule">
         <Card
-          state="ideas-autofold-closed"
-          label="keyboard closed: today's two strips, unchanged"
-          reach={`${NOT_SHIPPED} today the fold is a tap and it stays where you left it; this makes the keyboard decide.`}
-          note="Cost with the keyboard closed: 111px, the same as idea 1's open card — because it IS that card. The claim is that this height is affordable when the mirror has the whole screen, and only becomes expensive when the keyboard takes 45% of it."
+          state="handle-on-rule"
+          label="no band at all: a chevron straddling the belt's top rule"
+          reach={`${NOT_SHIPPED} the mark and its patch are drawn here; the belt under them is the app's own ActionsRow.`}
+          note="Height at rest: 0px, measured — the patch is absolutely positioned over the belt's own border, so the belt does not move and the chrome block loses the whole 30px. The 44px hit box is a ::before reaching 16px out on every side (the negative-inset trick from ui/labelled-strip.tsx), so the target is bigger than the shipped grip's while the layout cost is nothing. To open the sheet: one tap, or the same drag, bound to the same 44px box. The risk is affordance: a 12px chevron sitting on a hairline is a much quieter promise than a full-width band, and it is the FIRST thing a thumb finds by feel today."
         >
           <PhoneMock>
-            <PaneHeaderMock pane={current} />
-            <RealStrips trailing={<FoldChevron />} />
             <MirrorSlice />
-            <ComposerMock />
+            <ChromeBlock>
+              <Belt>
+                <RuleGrip onOpen={inert} />
+              </Belt>
+              <ComposerMock />
+            </ChromeBlock>
           </PhoneMock>
         </Card>
 
         <Card
-          state="ideas-autofold-open"
-          label="keyboard open: the strips fold themselves to the bead bar"
-          reach={`${NOT_SHIPPED} the fold is the app's own; what is new is the keyboard driving it. The grey block is a stand-in for the soft keyboard.`}
-          note="Cost with the keyboard open: 24px, so the fold hands 87px back to the mirror exactly when the mirror has least. Reaching a sibling pane while typing: 2 taps, and the second one dismisses the keyboard — which is the objection: a rule that moves the chrome under your thumb while you type is a rule you cannot predict. The two states are two cards rather than a toggle because the driver is the keyboard, not a tap."
+          state="handle-on-rule-peek"
+          label="mid-drag: the sheet peeking 60px up under the finger"
+          reach={`${NOT_SHIPPED} the peek is REAL — the app's own BottomSheet in its peeking state, with the real ThreadSidebar inside it, driven through the real pull/pullFrom props.`}
+          note="Height at rest: still 0px; what this card shows is the 60px of sheet a half-finished drag reveals. `pull` is 60 and `pullFrom` is 0, so the panel's top edge stands 60px off the card's bottom edge and the backdrop dims to pull/120 × 0.5, exactly what useSheetPull feeds it on a phone — the one difference is that a real drag measures pullFrom from the handle's own distance to the viewport bottom, which on this idea is the belt's rule rather than the screen's edge. The card is a stage (transform + clip), so the sheet's `fixed` resolves against the mock instead of escaping to the page. The risk this card is asking about: at 60px the sheet shows one row and a title, so the drag has to go most of the way to OPEN_PX before it tells you anything."
         >
-          <PhoneMock>
-            <PaneHeaderMock pane={current} />
-            <RealBeadBar />
+          <PhoneMock stage>
             <MirrorSlice />
-            <ComposerMock />
-            <KeyboardMock />
+            <ChromeBlock>
+              <Belt>
+                <RuleGrip onOpen={inert} />
+              </Belt>
+              <ComposerMock />
+            </ChromeBlock>
+            <BottomSheet
+              open={false}
+              onClose={inert}
+              title="Switch pane"
+              pull={60}
+              pullFrom={0}
+            >
+              <ThreadSidebar
+                agents={spaceAgents}
+                shellPanes={spaceShells}
+                currentPaneId={current.paneId}
+                onSelect={inert}
+              />
+            </BottomSheet>
           </PhoneMock>
         </Card>
       </Group>
 
-      <Group title="5 · One nested row">
+      <Group title="2 · The belt carries it">
         <Card
-          state="ideas-nested"
-          label="tabs and panes in one row: a pill group per tab, pane pills inside it"
-          reach={`${NOT_SHIPPED} drawn here and nowhere else — this is the only idea on the page that would need a new component built before it could be judged on anything but height.`}
-          note="Cost at rest: 44px, measured — one row instead of two, 67px less than today's 111px and 20px more than the bead bar. Reaching a sibling pane: 1 tap. Reaching the blocked pane in another tab: 1 tap, because its pill is already on the row. The breaking point is visible on this card: three tabs, one of them holding three panes, and the row already scrolls at 390px — the pane pills are reduced to their pN tag, so 'which agent' is a dot and a two-character id rather than a name."
+          state="handle-belt-pill"
+          label="no handle: a Panes pill, first on the belt, left of Keys"
+          reach={`${NOT_SHIPPED} and this belt is a MOCK — a copy of ActionsRow's own class strings, because the component has no prop for an extra pill. Only the harness section inside it is the real HarnessBar.`}
+          note="Height at rest: 0px — the belt already exists and the pill rides in it, so the chrome block loses the full 30px and nothing takes its place. To open the sheet: one tap, and there is no gesture at all, which is the trade. Two risks. The pill takes the belt's LEFT EDGE, which actions-row.tsx says is Keys on every pane there is — leading with something else means the left edge means a different thing per pane. And the belt scrolls sideways: on a narrow phone with a long harness section the pill is still first, but a thumb that has flicked the belt right has to flick back to find it."
         >
           <PhoneMock>
-            <PaneHeaderMock pane={current} />
-            <NestedRow />
             <MirrorSlice />
+            <ChromeBlock>
+              <BeltWithPill onOpen={inert} />
+              <ComposerMock />
+            </ChromeBlock>
+          </PhoneMock>
+        </Card>
+      </Group>
+
+      <Group title="3 · The dense layout's lane, adopted">
+        <Card
+          state="handle-dense-lane"
+          label="a 10px lane above the belt, the handle absolute inside it"
+          reach={`${NOT_SHIPPED} the geometry is copied from space-agents-row.tsx, which is what the dense layout really draws; the belt under it is the real one.`}
+          note="Height at rest: 10px, measured — a `pt-2.5` lane, with the handle `absolute top-0 … h-2.5 w-16`, so the mark costs nothing beyond the lane it sits in. That is 20px handed back against today's 30px. To open the sheet: one tap on a 64×10 target, or the row's own swipe-up. Two things this card is honest about. The dense lane draws the SAME 6px bar the shipped handle wears, not a chevron — agent-chat.tsx's comment calls it an up-chevron and the code does not. And in dense the lane is paid for by the sessions row underneath it, which lists the panes; lifted into roomy with nothing under it, 10px of empty chrome above a rule may read as a gap rather than a control."
+        >
+          <PhoneMock>
+            <MirrorSlice />
+            <ChromeBlock>
+              <DenseLane onOpen={inert} />
+              <Belt />
+              <ComposerMock />
+            </ChromeBlock>
+          </PhoneMock>
+        </Card>
+      </Group>
+
+      <Group title="4 · Only when there is somewhere to go">
+        <Card
+          state="handle-when-needed"
+          label="more than one pane in the space: today's handle, unchanged"
+          reach={`${NOT_SHIPPED} the fold is the app's own Collapse; the handle inside it is the shipped markup.`}
+          note="Height at rest: 30px, measured — this IS the shipped card, and that is the point: the idea changes nothing about the handle and everything about when it is there. The space behind this card holds three panes in the open tab, so the sheet has something to show and the band is earned. To open the sheet: one tap or the drag, exactly as today."
+        >
+          <PhoneMock>
+            <MirrorSlice />
+            <ChromeBlock>
+              <Collapse open>
+                <ShippedHandle onOpen={inert} />
+              </Collapse>
+              <Belt />
+              <ComposerMock />
+            </ChromeBlock>
+          </PhoneMock>
+        </Card>
+
+        <Card
+          state="handle-when-needed-solo"
+          label="one pane and no launchers: the handle collapses to nothing"
+          reach={`${NOT_SHIPPED} the same real Collapse, closed — which is how the app already takes this handle away while the keyboard is up.`}
+          note="Height at rest: 0px, measured — Collapse unmounts the button at the end of the exit, so it leaves the tab order with the pixels. To open the sheet: you cannot, and that is the idea, because there is nothing in it. The risk is that the app's own condition is already close to this (`agents.length + shellPanes.length > 0 || launchers.length > 0`) and still shows the handle on a solo pane, deliberately: the sheet is the way back to something alive when the open pane is GONE. A rule that counts siblings has to answer that case, or a dead pane becomes a dead end."
+        >
+          <PhoneMock>
+            <MirrorSlice />
+            <ChromeBlock>
+              <Collapse open={false}>
+                <ShippedHandle onOpen={inert} />
+              </Collapse>
+              <Belt />
+              <ComposerMock />
+            </ChromeBlock>
+          </PhoneMock>
+        </Card>
+      </Group>
+
+      <Group title="5 · The belt itself is the handle">
+        <Card
+          state="handle-drag-belt"
+          label="no mark at all: drag the whole belt upward"
+          reach={`${NOT_SHIPPED} the belt is the real ActionsRow; the arrow hint over its ground is drawn here, and it is a stand-in for whatever a real answer to 'nothing says this drags' would be.`}
+          note="Height at rest: 0px — the belt is already there and the gesture is free. To open the sheet: an upward drag anywhere on the 48px band, no tap path at all. The risk is a real conflict, not a stylistic one: the belt is a horizontal scroller (STRIP_SCROLLER, overflow-x-auto), so a drag that starts on it is already claimed by the browser until a direction is decided. space-agents-row.tsx solves the same collision with `touch-pan-x` plus `overscroll-y-none`, handing vertical to the handler and keeping horizontal for the chips — so this is buildable, but every diagonal flick has to be adjudicated, and a thumb aiming for Keys that drifts 7px up would open a sheet instead."
+        >
+          <PhoneMock>
+            <MirrorSlice />
+            <ChromeBlock>
+              <Belt>
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-x-0 top-1.5 flex h-12 items-center justify-center text-muted-foreground/40"
+                >
+                  <ArrowUp className="size-6" />
+                </span>
+              </Belt>
+              <ComposerMock />
+            </ChromeBlock>
           </PhoneMock>
         </Card>
       </Group>
