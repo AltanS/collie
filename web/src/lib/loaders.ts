@@ -156,6 +156,10 @@ export interface PaneData {
   text: string;
   /** True when the buffer was cut off at the requested line count — older scrollback still exists. */
   truncated: boolean;
+  /** The same rows with soft wraps undone, when the bridge found a URL the pane split — the mirror
+   * hands it to the autolinker so a wrapped URL is one whole link instead of a truncated first
+   * fragment. Absent on every pane that needs no repair. */
+  logicalText?: string;
   /** The scrollback window this result was fetched with — lets the UI tell a grown fetch from a
    * stale in-flight poll (a "Load older" tap raises this; see growRequestedLines). */
   requestedLines: number;
@@ -481,6 +485,7 @@ export async function paneLoader({
       scope,
       text,
       truncated: read.truncated,
+      logicalText: read.logicalText,
       requestedLines: lines,
       revision: read.revision,
       error: false,

@@ -314,10 +314,27 @@ export class HerdrMux implements MuxAdapter {
     }
   }
 
+  /**
+   * The same scrollback with soft wraps undone (`recent_unwrapped`), for URL repair.
+   *
+   * Read in the same escape-carrying form as `readGrid` on purpose: `ansi` is the format whose read
+   * was never observed to harvest an alt-screen pane, which is the property that keeps the mirror
+   * from scrolling somebody's terminal (HERDR_API.md → `pane.read`). Callers strip the styling;
+   * this read exists only for the URLs in it. On an agent pane the unwrapped rows equal the wrapped
+   * ones — the bridge asks for this only when a URL is actually split.
+   */
+  async readLogicalText(paneId: string, lines: number): Promise<MuxOutcome<string>> {
+    try {
+      const read = await this.client.readPane(paneId, "recent_unwrapped", lines, "ansi");
+      return muxOk(read.text);
+    } catch (err) {
+      return transportRefusal(err);
+    }
+  }
+
   async typeText(paneId: string, text: string): Promise<MuxAck> {
     return this.attempt(() => this.client.sendPaneText(paneId, text));
   }
-
   /**
    * Keys in the contract's spelling, translated and applied in order.
    *

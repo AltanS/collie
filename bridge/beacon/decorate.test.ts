@@ -5,7 +5,8 @@ import { withAgentHints } from "./hint.ts";
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "./fake.ts";
 import { BEACON_SCHEMA_VERSION, type BeaconMarker, type BeaconStatus } from "./types.ts";
 import { declareCapabilities, type MuxCapability } from "../mux/capabilities.ts";
-import {
+import {type MuxOutcome,
+  
   muxAck,
   muxGone,
   muxOk,
@@ -60,6 +61,9 @@ class StubAdapter implements MuxAdapter {
   readonly mux = "stub";
   /** The adapter's mark, when a case gives it one. Absent by default, like an adapter with none. */
   logo?: string;
+  /** The unwrapped pane read, when a case gives it one. Absent by default, like a multiplexer that
+   *  cannot unwrap at all (tmux) — the decorators must carry it without inventing it. */
+  readLogicalText?: (paneId: string, lines: number) => Promise<MuxOutcome<string>>;
   capabilities = declareCapabilities({
     supports: ["paneGrid", "typeText", "sendKeys"],
     notes: { agentDetection: "the adapter's own note", closePane: "untouched" },
@@ -255,6 +259,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
     snapshot: true,
     refresh: true,
     readGrid: true,
+    readLogicalText: true,
     typeText: true,
     sendKeys: true,
     renamePane: true,
@@ -289,6 +294,7 @@ describe("a decorator preserves the adapter's whole surface", () => {
   function fullAdapter(): MuxAdapter {
     const stub = new StubAdapter();
     stub.logo = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"></svg>`;
+    stub.readLogicalText = (paneId, lines) => Promise.resolve(muxOk(`${paneId}:${lines}`));
     return stub;
   }
 
@@ -312,6 +318,13 @@ describe("a decorator preserves the adapter's whole surface", () => {
     const wrapped = withAgentHints(decorate(raw, []), { hooksInstalled: () => false });
     expect(surfaceOf(wrapped)).toEqual(CONTRACT);
     expect(wrapped.logo).toBe(raw.logo);
+  });
+
+  test("an adapter with no unwrapped read does not gain one from a decorator", () => {
+    // Optional, so `in` is the question that matters: a decorator that defined the key would make
+    // every multiplexer without the read look like it had one.
+    expect("readLogicalText" in decorate(new StubAdapter(), [])).toBe(false);
+    expect("readLogicalText" in withAgentHints(new StubAdapter(), { hooksInstalled: () => false })).toBe(false);
   });
 
   test("an adapter with no mark comes out with the KEY absent, through either decorator", () => {
@@ -363,6 +376,17 @@ describe("everything but capabilities and snapshot is a pass-through", () => {
       { method: "createSpace", args: [{ cwd: "/tmp" }] },
       { method: "watch", args: [watchOptions] },
     ]);
+  });
+
+  test("the unwrapped read passes through with its arguments, through either decorator", async () => {
+    const adapter = new StubAdapter();
+    adapter.readLogicalText = (paneId, lines) => Promise.resolve(muxOk(`${paneId}/${lines}`));
+    expect(await decorate(adapter, []).readLogicalText?.("%1", 20)).toEqual(
+      await adapter.readLogicalText("%1", 20),
+    );
+    expect(
+      await withAgentHints(adapter, { hooksInstalled: () => false }).readLogicalText?.("%1", 20),
+    ).toEqual(await adapter.readLogicalText("%1", 20));
   });
 
   test("a beacon changing synthesises no event — watch is the wrapped adapter's, untouched", () => {
