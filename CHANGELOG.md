@@ -75,7 +75,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Fixed
 
-- **A pane's cache countdown survives a `/compact`.** A transcript probe that finds no turn inside its 128 KB window now keeps the last reading and lets it age, instead of dropping the pane's countdown for good; a read that actually fails still drops it.
+- **A pane's cache countdown survives a `/compact`.** A transcript probe that finds no turn inside its 128 KB window now keeps the last reading and lets it age, instead of dropping the pane's countdown for good.
 - **A measured cache window cites the rule it was really measured on.** A Claude pane on a subscription measures the one-hour window, so the sheet now quotes the subscription page and date instead of the five-minute API page the tier guess had picked.
 - **A member serving plain HTTP no longer reads as a rejected certificate.** `collie doctor` and `crew status` said "the TLS certificate was not accepted" for a member that answered with no TLS at all, which sent the operator to a pin that was never consulted; the reason now says the address answers over plain HTTP, the same sentence `collie join` already gives.
 - **A URL the pane wrapped is one whole link again.** A URL longer than the pane was cut at the column edge, so only its first row became a link, and that link opened a truncated URL. On Herdr the bridge now reads the same rows with soft wraps undone when a URL runs to a row's end, and every row of that URL opens the whole URL. Thanks @thelinuxlich (#212).
@@ -88,6 +88,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **`collie doctor` no longer credits a commented-out cache rule.** The `cache-env` check read the example file's commented rows as a live override; it now counts only rows that validate, and a `retrieved` date in the future is rejected like any other bad row.
 - **The cache countdown no longer blinks between polls.** A refresh that arrived without a reading unmounted the chip for a frame and put it back on the next poll; the last reading now holds until a new one, or an explicit cold, replaces it, and it is dropped when the pane goes away.
 - **The pane title no longer shows a raw pane id.** A tab with several unnamed panes appended the multiplexer's `p3` to the title and printed it on every pill of the switcher; the title names the tab now, and a pill carries its place in the row only when a pill beside it would otherwise read the same.
+- **A second Herdr session no longer wipes the first one's cache readings.** The bridge's cache tracker forgot every reading a session's poll did not name, including the other session's, so each poll dropped and re-probed every pane; a poll now forgets only its own session's departed panes, and a transient probe failure keeps the last reading.
 
 ## [1.8.2] - 2026-09-12
 

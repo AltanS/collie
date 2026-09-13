@@ -217,45 +217,88 @@ describe("the read gate", () => {
   });
 });
 
-describe("a failed read drops the memo, never freezes it", () => {
-  test("a stat that throws", async () => {
+describe("a failed read keeps the last reading and lets it age", () => {
+  test("a stat that throws keeps the reading, and a stat that comes back re-reads", async () => {
     const c = clock();
-    const { adapter, state } = fakeAdapter("claude");
+    const { adapter, calls, state } = fakeAdapter("claude");
     state.probe = probe();
     const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
     const panes = [pane("claude", "ses-1")];
     await tracker.refresh(panes);
-    expect(tracker.get("ses-1")).toBeDefined();
+    const before = tracker.get("ses-1");
+    expect(before?.state).toBe("warm");
     c.advance(2000);
     state.statThrows = true;
     await tracker.refresh(panes);
-    expect(tracker.get("ses-1")).toBeUndefined();
+    expect(tracker.get("ses-1")?.expiresAt).toBe(before?.expiresAt);
+
+    // The memo stands on the stat it came from, so the file moving on is still seen as a change.
+    c.advance(2000);
+    state.statThrows = false;
+    state.stat = { size: 40, mtimeMs: 400 };
+    const reads = calls.probe;
+    await tracker.refresh(panes);
+    expect(calls.probe).toBe(reads + 1);
   });
 
-  test("a log that has gone — resolve answers null", async () => {
+  test("a log that has gone — resolve answers null — keeps the reading", async () => {
     const c = clock();
     const { adapter, state } = fakeAdapter("claude");
     state.probe = probe();
     const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
     const panes = [pane("claude", "ses-1")];
     await tracker.refresh(panes);
+    const before = tracker.get("ses-1");
     c.advance(2000);
     state.path = null;
     await tracker.refresh(panes);
-    expect(tracker.get("ses-1")).toBeUndefined();
+    expect(tracker.get("ses-1")?.expiresAt).toBe(before?.expiresAt);
   });
 
-  test("a probe that throws", async () => {
+  test("a probe that throws keeps the reading", async () => {
     const c = clock();
     const { adapter, state } = fakeAdapter("claude");
     state.probe = probe();
     const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
     const panes = [pane("claude", "ses-1")];
     await tracker.refresh(panes);
+    const before = tracker.get("ses-1");
+    expect(before?.state).toBe("warm");
     c.advance(2000);
     state.stat = { size: 99, mtimeMs: 999 };
     state.probeThrows = true;
     await tracker.refresh(panes);
+    const after = tracker.get("ses-1");
+    expect(after?.state).toBe("warm");
+    expect(after?.ttlSeconds).toBe(before?.ttlSeconds);
+    expect(after?.expiresAt).toBe(before?.expiresAt);
+  });
+
+  test("a reading kept through a failure still ages to cold", async () => {
+    const c = clock();
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe({ lastRequestAt: NOW, observedTtlSeconds: undefined });
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
+    const panes = [pane("claude", "ses-1")];
+    await tracker.refresh(panes);
+    expect(tracker.get("ses-1")?.state).toBe("warm");
+    c.advance(400_000);
+    state.statThrows = true;
+    await tracker.refresh(panes);
+    expect(tracker.get("ses-1")?.state).toBe("cold");
+  });
+
+  test("a pane that leaves the list drops its reading, failure or not", async () => {
+    const c = clock();
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe();
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
+    await tracker.refresh([pane("claude", "ses-1")]);
+    c.advance(2000);
+    state.statThrows = true;
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.get("ses-1")).toBeDefined();
+    await tracker.refresh([]);
     expect(tracker.get("ses-1")).toBeUndefined();
   });
 
@@ -336,6 +379,30 @@ describe("forgetting", () => {
     expect(tracker.get("ses-1")).toBeUndefined();
   });
 
+  test("a pane whose session id one poll could not resolve keeps its reading", async () => {
+    // One poll where the harness session id is unresolved is not a departure: the pane is still the
+    // session's, so the entry stands and the next poll that names it costs no transcript read.
+    const c = clock();
+    const { adapter, calls, state } = fakeAdapter("claude");
+    state.probe = probe();
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
+    await tracker.refresh([pane("claude", "ses-1", "w1:p1")], { session: "one" });
+    const before = tracker.get("ses-1");
+    expect(before?.state).toBe("warm");
+
+    c.advance(2000);
+    await tracker.refresh([pane("claude", undefined, "w1:p1")], { session: "one" });
+    expect(tracker.get("ses-1")?.expiresAt).toBe(before?.expiresAt);
+
+    // And the pane naming a DIFFERENT session id does reap the old one — that is a real departure.
+    c.advance(2000);
+    const reads = calls.probe;
+    await tracker.refresh([pane("claude", "ses-2", "w1:p1")], { session: "one" });
+    expect(calls.probe).toBe(reads + 1);
+    expect(tracker.get("ses-1")).toBeUndefined();
+    expect(tracker.get("ses-2")).toBeDefined();
+  });
+
   test("forget drops exactly the keys it is handed", async () => {
     const { adapter, state } = fakeAdapter("claude");
     state.probe = probe();
@@ -345,6 +412,57 @@ describe("forgetting", () => {
     expect(tracker.get("ses-1")).toBeDefined();
     tracker.forget(["ses-1"]);
     expect(tracker.get("ses-1")).toBeUndefined();
+  });
+});
+
+describe("one tracker, many multiplexer sessions", () => {
+  // `bridge/index.ts` builds ONE tracker and every session runtime refreshes it with its OWN panes.
+  // A reap that forgot every key its own list did not name deleted the other session's readings on
+  // every poll, so each poll re-probed every transcript on the machine.
+  test("two sessions refreshing alternately keep both readings", async () => {
+    const c = clock();
+    const one = fakeAdapter("claude");
+    one.state.probe = probe();
+    const two = fakeAdapter("codex");
+    two.state.probe = probe({ model: "gpt-5.6-sol" });
+    const tracker = new CacheTracker({ claude: one.adapter, codex: two.adapter }, noOverrides, c.now, {
+      floorMs: 1000,
+    });
+    const first = [pane("claude", "ses-a", "w1:p1")];
+    const second = [pane("codex", "ses-b", "w2:p1")];
+
+    await tracker.refresh(first, { session: "one" });
+    await tracker.refresh(second, { session: "two" });
+    expect(tracker.get("ses-a")).toBeDefined();
+    expect(tracker.get("ses-b")).toBeDefined();
+
+    // Three more alternating polls, each past the floor. Both readings survive every one of them.
+    for (let i = 0; i < 3; i++) {
+      c.advance(2000);
+      await tracker.refresh(first, { session: "one" });
+      expect(tracker.get("ses-b")).toBeDefined();
+      c.advance(2000);
+      await tracker.refresh(second, { session: "two" });
+      expect(tracker.get("ses-a")).toBeDefined();
+    }
+  });
+
+  test("a session's poll reaps only its own departed panes", async () => {
+    const c = clock();
+    const one = fakeAdapter("claude");
+    one.state.probe = probe();
+    const two = fakeAdapter("codex");
+    two.state.probe = probe({ model: "gpt-5.6-sol" });
+    const tracker = new CacheTracker({ claude: one.adapter, codex: two.adapter }, noOverrides, c.now, {
+      floorMs: 1000,
+    });
+    await tracker.refresh([pane("claude", "ses-a", "w1:p1")], { session: "one" });
+    await tracker.refresh([pane("codex", "ses-b", "w2:p1")], { session: "two" });
+
+    c.advance(2000);
+    await tracker.refresh([], { session: "one" });
+    expect(tracker.get("ses-a")).toBeUndefined();
+    expect(tracker.get("ses-b")).toBeDefined();
   });
 });
 

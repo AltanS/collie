@@ -1028,10 +1028,13 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
   // The cache warning rides the same poll, one step behind the probe: `refresh` is awaited through its
   // own promise so the panes the warden judges already carry the reading this very tick produced (spec
   // 02's ordering, made mechanical). `refresh` never throws, so there is no rejection branch to write.
+  // The tracker is ONE object for the whole bridge and every session runtime polls it with its own
+  // panes, so each poll names its session: the reap then forgets only this session's departed panes
+  // and never the other sessions' readings (bridge/cache/tracker.ts, § one tracker, many sessions).
   if (paneCache !== null) {
     const tracker = paneCache;
     const probeThenWarn = async (panes: readonly AgentView[]): Promise<void> => {
-      await tracker.refresh(panes);
+      await tracker.refresh(panes, { session: name });
       cacheWarden.tick(
         panes.flatMap((p) => {
           const pane = localWatchPane(p, isPrimary ? undefined : name, (key) => tracker.get(key));

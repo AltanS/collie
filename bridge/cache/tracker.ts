@@ -15,12 +15,14 @@
 //     gets its own, longer floor.
 // Forty panes therefore cost about eight `stat`s a second in total, not forty per poll.
 //
-// A FAILED READ DROPS THE MEMO, IT NEVER FREEZES IT (ADR 0041, Decision 9). A stat that throws, a tail
-// read that fails, a locked database: the session's entry is deleted, the chip falls to `unknown` and
-// renders nothing, and the next floor tick retries. A forever-stale countdown is worse than no
-// countdown, because it is confidently wrong.
+// A FAILED READ KEEPS THE LAST READING AND LETS IT AGE. A stat that throws, a tail read that fails, a
+// locked database: the entry stands on the memo the last successful probe left, and the next floor
+// tick retries. The reading is not frozen — it keeps ageing on the clock, so warm becomes expiring and
+// expiring becomes cold on its own. Only a pane that has LEFT its session's pane list drops its entry.
+// Dropping on a transient failure made every such blip erase a countdown the bridge already knew, and
+// the next poll paid a full transcript read to learn the same number again.
 //
-// A PROBE THAT FOUND NOTHING IS NOT A FAILED READ, and it keeps the last reading. The 128 KB tail is a
+// A PROBE THAT FOUND NOTHING IS NOT A FAILED READ EITHER, and it keeps the last reading too. The 128 KB tail is a
 // window, not the log: `/compact` in a Claude pane writes a summary large enough to push the last
 // assistant turn out of that window, and a Codex or pi turn can do the same. The read succeeded and the
 // window simply holds no turn, so the entry stands on its memo and ages on the clock — which is what
@@ -31,6 +33,19 @@
 //
 // STATE IS KEYED BY THE HARNESS SESSION ID, never the pane id. Pane ids churn — a renumbered pane must
 // inherit nothing — and a session id is what both the transcript and the rule catalog are about.
+//
+// ONE TRACKER, MANY MULTIPLEXER SESSIONS, AND A REAP THAT IS SCOPED TO ONE OF THEM. `bridge/index.ts`
+// builds ONE tracker and every session runtime calls `refresh` with its OWN panes, on its own poll. So
+// the list a `refresh` is handed is never the whole machine, and reaping every key it does not name
+// would delete the other sessions' readings on every poll. `refresh` therefore takes the session's
+// name, each entry remembers the session and the pane it was read for, and a poll forgets only entries
+// that belong to THAT session and whose pane has left its list. A refresh with no session named owns
+// the entries it wrote and no others, so a solo caller behaves exactly as before.
+//
+// AN UNRESOLVED SESSION ID IS NOT A DEPARTURE. A pane whose `agentSession` the poll could not resolve
+// is still one of the session's panes, so its entry stands. Ownership is judged on the PANE, not on
+// whether this poll managed to name its session — otherwise one unlucky poll reaped a live pane's
+// reading and the next poll re-probed the transcript to learn it again.
 //
 // NOTHING IS PERSISTED. A restart costs one poll, and a memo that survived a restart would be a
 // countdown for a process that is gone.
@@ -69,8 +84,19 @@ export const DEFAULT_OPENCODE_FLOOR_MS = 10_000;
  */
 export const QUERY_BACKED_AGENTS: ReadonlySet<string> = new Set(["opencode"]);
 
+/** Which multiplexer session's poll this refresh speaks for. Absent means "the only caller there is". */
+export interface CacheRefreshScope {
+  session?: string;
+}
+
+/** Who an entry belongs to: the session that read it, and the pane it was read for. */
+interface Owner {
+  session: string | undefined;
+  paneId: string;
+}
+
 /** What the tracker remembers per session. None of it survives a restart. */
-interface Entry {
+interface Entry extends Owner {
   /** When this session was last looked at — the floor's own clock. */
   lastProbedAt: number;
   /** The `stat` the current memo was derived from. */
@@ -122,23 +148,37 @@ export class CacheTracker {
    * session. A session under its floor is not even `stat`ed. Everything else is one `stat`, and a tail
    * read only when that `stat` moved.
    */
-  async refresh(panes: readonly AgentView[]): Promise<void> {
+  async refresh(panes: readonly AgentView[], scope: CacheRefreshScope = {}): Promise<void> {
     const at = this.now();
-    const live = new Set<string>();
+    const session = scope.session;
+    // What each of THIS session's panes named, including the panes that named nothing. The reap reads
+    // this map by pane id, so an unresolved id keeps the entry rather than reaping it.
+    const named = new Map<string, string | undefined>();
     for (const pane of panes) {
       const ref = pane.agentSession;
+      named.set(pane.paneId, ref?.value);
       if (ref === undefined) continue;
       const harness = journalAgentOf(pane);
       const adapter = adapterFor(this.registry, harness);
       if (adapter?.cacheProbe === undefined) continue;
-      live.add(ref.value);
       const entry = this.bySession.get(ref.value);
       const floor = QUERY_BACKED_AGENTS.has(adapter.agent) ? this.opencodeFloorMs : this.floorMs;
-      if (entry !== undefined && at - entry.lastProbedAt < floor) continue;
-      await this.look(adapter, harness, ref, at);
+      const owner = { session, paneId: pane.paneId };
+      if (entry !== undefined && at - entry.lastProbedAt < floor) {
+        // Under the floor nothing is read, but the pane is still this session's — re-stamp the owner
+        // so a pane that moved between sessions is reaped by the one that now holds it.
+        this.bySession.set(ref.value, { ...entry, ...owner });
+        continue;
+      }
+      await this.look(adapter, harness, ref, at, owner);
     }
-    // Reap the sessions no pane names any more, on the same poll the activity ledger reconciles on.
-    this.forget([...this.bySession.keys()].filter((key) => !live.has(key)));
+    // Reap THIS session's departed panes, on the same poll the activity ledger reconciles on. Another
+    // session's entries are none of this poll's business.
+    this.forget(
+      [...this.bySession.entries()]
+        .filter(([key, entry]) => entry.session === session && departed(named, key, entry.paneId))
+        .map(([key]) => key),
+    );
   }
 
   /** One session's look: the floor has passed, so `stat`, then read only if it moved. */
@@ -147,25 +187,27 @@ export class CacheTracker {
     harness: string,
     ref: { kind: "id" | "path"; value: string },
     at: number,
+    owner: Owner,
   ): Promise<void> {
     const key = ref.value;
     const previous = this.bySession.get(key);
-    const drop = () => this.bySession.delete(key);
 
     const stat = await this.statOf(adapter, ref);
+    const overrides = await this.overridesOrNone();
     if (stat === null) {
-      drop();
+      // A stat that failed. Keep the last reading on ITS OWN `seen`, so the next stat that succeeds is
+      // still compared against the file the memo came from, and let the clock age it.
+      if (previous !== undefined) this.keep(key, at, previous.seen, previous, overrides, owner);
       return;
     }
 
-    const overrides = await this.overridesOrNone();
     const unchanged =
       previous !== undefined && previous.seen.size === stat.size && previous.seen.mtimeMs === stat.mtimeMs;
 
     // Unchanged: nothing new has been written, so the memo stands and only the clock has moved. Still
     // re-evaluated, because warm becomes expiring and expiring becomes cold without anybody writing.
     if (unchanged) {
-      this.keep(key, at, stat, previous, overrides);
+      this.keep(key, at, stat, previous, overrides, owner);
       return;
     }
 
@@ -173,19 +215,20 @@ export class CacheTracker {
     try {
       probe = await adapter.cacheProbe?.(ref);
     } catch {
-      // A read that FAILED: drop rather than freeze (Decision 9).
-      drop();
+      // A read that FAILED. Same rule as a stat that failed: keep the last reading on its own `seen`,
+      // so the file the memo came from is still what the next successful stat is compared against.
+      if (previous !== undefined) this.keep(key, at, previous.seen, previous, overrides, owner);
       return;
     }
     if (probe === null || probe === undefined) {
       // A read that found no turn in the window — see the module header. Keep what the last successful
       // probe left behind, and let it age; with nothing behind it there is nothing to say (Decision 1).
-      if (previous !== undefined) this.keep(key, at, stat, previous, overrides);
+      if (previous !== undefined) this.keep(key, at, stat, previous, overrides, owner);
       return;
     }
     const rule = ruleForProbe(harness, probe);
     const modelTtl = modelRuleFor(harness, probe.model);
-    this.store(key, at, stat, rule, modelTtl, {
+    this.store(key, at, stat, rule, modelTtl, owner, {
       rule,
       probe,
       memo: previous?.memo,
@@ -208,8 +251,9 @@ export class CacheTracker {
     seen: { size: number; mtimeMs: number },
     previous: Entry,
     overrides: readonly CacheOverride[],
+    owner: Owner,
   ): void {
-    this.store(key, at, seen, previous.rule, previous.modelTtl, {
+    this.store(key, at, seen, previous.rule, previous.modelTtl, owner, {
       rule: previous.rule,
       memo: previous.memo,
       modelTtl: previous.modelTtl,
@@ -225,6 +269,7 @@ export class CacheTracker {
     seen: { size: number; mtimeMs: number },
     rule: CacheRule | undefined,
     modelTtl: Sourced<number> | undefined,
+    owner: Owner,
     input: EvaluateInput,
   ): void {
     const out = evaluate(input);
@@ -232,7 +277,16 @@ export class CacheTracker {
       this.bySession.delete(key);
       return;
     }
-    this.bySession.set(key, { lastProbedAt: at, seen, memo: out.memo, cache: out.cache, rule, modelTtl });
+    this.bySession.set(key, {
+      lastProbedAt: at,
+      seen,
+      memo: out.memo,
+      cache: out.cache,
+      rule,
+      modelTtl,
+      session: owner.session,
+      paneId: owner.paneId,
+    });
   }
 
   /** `resolve` then `stat`, both through the adapter's own source. Null for anything unreadable. */
@@ -257,6 +311,19 @@ export class CacheTracker {
       return [];
     }
   }
+}
+
+/**
+ * Has the pane this entry was read for left the session's list?
+ *
+ * Two ways, and only two. The pane is gone from the list altogether; or the pane is still there and
+ * has NAMED a different harness session, which makes this entry the previous session's leftover. A
+ * pane still in the list that named nothing this poll is neither — see the module header.
+ */
+function departed(named: Map<string, string | undefined>, key: string, paneId: string): boolean {
+  if (!named.has(paneId)) return true;
+  const now = named.get(paneId);
+  return now !== undefined && now !== key;
 }
 
 /** The override for a rule id, or undefined. A memo-only poll has no probe to pick a rule with. */

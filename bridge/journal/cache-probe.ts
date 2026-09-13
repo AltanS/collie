@@ -3,9 +3,9 @@
 // `payload.info.last_token_usage`, pi reads `message.usage.cacheRead` — and only the walking is shared.
 //
 // Everything here is read-only and never throws. A missing file, an unreadable one or a containment
-// failure all answer null, which the tracker treats as "no reading" (ADR 0041, Decision 9): the memo
-// for that session is dropped and the chip falls back to showing nothing. A forever-stale countdown is
-// worse than no countdown, because it is confidently wrong.
+// failure all answer null, which the tracker treats as "nothing new to read": the last reading stands
+// and ages on the clock, and the next floor tick tries again. Nothing is written back, so the memo a
+// successful probe left is the only thing a reader ever sees.
 //
 // Containment is not re-argued here. `source.resolve(ref)` is the same call the history route makes,
 // and it is the one that puts every candidate through `containedRealpath` (files.ts).
