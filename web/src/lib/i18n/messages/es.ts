@@ -484,6 +484,17 @@ export const es: Dictionary = {
   "commands.empty": "Ningún comando coincide con “{query}”.",
   "commands.confirm": "Confirmar",
 
+  // --- harnessBar (the row of the running agent's own commands, above the keys) ---
+  // Slash commands are NEVER translated — they are wire text the harness parses — and neither is an
+  // operator's own `bar_label`. Only these labels are.
+  "harnessBar.label": "Harness shortcuts",
+  "harnessBar.model": "Model",
+  "harnessBar.effort": "Effort",
+  "harnessBar.compact": "Compact",
+  "harnessBar.resume": "Resume",
+  "harnessBar.tree": "Tree",
+  "harnessBar.confirmAria": "Tap again to confirm {command}",
+
   // --- quickActions (one-tap reply dock) ---
   "quickActions.group.confirm": "confirmar",
   "quickActions.group.common": "comunes",

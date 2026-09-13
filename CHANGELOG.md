@@ -65,6 +65,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The config schema names the cache warn window.** `COLLIE_CACHE_WARN_SECONDS` has its row, so `collie config show` and `config init` carry it.
 - **The config schema forgets the 1.7.0 pack keys.** The two `COLLIE_PACK_*` timeout aliases left with the crew wire overlap, so `collie config show` no longer lists them.
 - **The agent card drops the relative-time chip.** The prompt-cache countdown next to it says what matters; the extra number read as a session clock and confused.
+- **Model sends `/model` and the pane's own picker takes over.** Every harness button is one tap now: the sheet of model names and effort levels is gone, because that list belongs to the harness, it changes without telling us, and the harness paints its own picker in the mirror anyway.
 
 ### Fixed
 

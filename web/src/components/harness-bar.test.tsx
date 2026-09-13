@@ -56,42 +56,25 @@ describe("HarnessBar", () => {
     await waitFor(() => expect(screen.queryByText("Compact")).not.toBeInTheDocument());
   });
 
-  it("opens a chooser rather than firing, then sends the picked argument", async () => {
-    const onRun = took();
-    render(<HarnessBar agent="claude" onRun={onRun} />);
-    await userEvent.click(screen.getByRole("button", { name: "Effort" }));
-    expect(onRun).not.toHaveBeenCalled();
-    await userEvent.click(screen.getByRole("button", { name: "high" }));
-    expect(onRun).toHaveBeenCalledWith("/effort high");
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-  });
-
-  it("sends the bare command for an option whose arg is empty", async () => {
+  it("sends Model bare and opens no sheet — the pane's own picker takes over", async () => {
     const onRun = took();
     render(<HarnessBar agent="claude" onRun={onRun} />);
     await userEvent.click(screen.getByRole("button", { name: "Model" }));
-    await userEvent.click(screen.getByRole("button", { name: "Pick in Claude" }));
     expect(onRun).toHaveBeenCalledWith("/model");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("picks nothing when the chooser is dismissed", async () => {
+  it("sends Effort bare too, so the levels stay the harness's list and not ours", async () => {
     const onRun = took();
-    render(<HarnessBar agent="claude" onRun={onRun} initialOpen="effort" />);
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    await userEvent.keyboard("{Escape}");
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(onRun).not.toHaveBeenCalled();
+    render(<HarnessBar agent="claude" onRun={onRun} />);
+    await userEvent.click(screen.getByRole("button", { name: "Effort" }));
+    expect(onRun).toHaveBeenCalledWith("/effort");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("opens on initialOpen, which is the playground and test seam", () => {
-    render(<HarnessBar agent="claude" onRun={took()} initialOpen="model" />);
-    expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Pick in Claude" })).toBeInTheDocument();
-  });
-
-  it("tells a Codex operator where the effort dial went, inside the Model sheet", () => {
-    render(<HarnessBar agent="codex" onRun={took()} initialOpen="model" />);
-    expect(screen.getByText(/reasoning effort inside this same picker/i)).toBeInTheDocument();
+  it("gives Codex no Effort button, because its /model picker sets both dials", () => {
+    render(<HarnessBar agent="codex" onRun={took()} />);
+    expect(screen.getByRole("button", { name: "Model" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Effort" })).not.toBeInTheDocument();
   });
 
@@ -125,24 +108,14 @@ describe("HarnessBar", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Compact" })).toBeInTheDocument());
   });
 
-  it("is accessible: a named group, a labelled button each, and a focused chooser", async () => {
+  it("is accessible: a named group and a labelled button each, and nothing pops up", () => {
     render(<HarnessBar agent="claude" onRun={took()} />);
-    const group = screen.getByRole("group", { name: "Harness shortcuts" });
-    expect(group).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Harness shortcuts" })).toBeInTheDocument();
     for (const b of screen.getAllByRole("button")) {
       expect(b).toHaveAccessibleName();
+      // No item opens anything: every one of them sends its command and the pane answers.
+      expect(b).not.toHaveAttribute("aria-haspopup");
     }
-    expect(screen.getByRole("button", { name: "Model" })).toHaveAttribute(
-      "aria-haspopup",
-      "dialog",
-    );
-    expect(screen.getByRole("button", { name: "Compact" })).not.toHaveAttribute("aria-haspopup");
-
-    await userEvent.click(screen.getByRole("button", { name: "Model" }));
-    const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveAttribute("aria-modal", "true");
-    // useDialogFocus moves focus into the panel, so a reader lands inside the sheet.
-    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
   });
 
   it("two-taps an operator row that names a shipped dangerous command", async () => {

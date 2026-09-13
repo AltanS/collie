@@ -463,6 +463,17 @@ export const zhTW: Dictionary = {
   "commands.empty": "找不到符合「{query}」的指令。",
   "commands.confirm": "確認？",
 
+  // --- harnessBar (the row of the running agent's own commands, above the keys) ---
+  // Slash commands are NEVER translated — they are wire text the harness parses — and neither is an
+  // operator's own `bar_label`. Only these labels are.
+  "harnessBar.label": "Harness shortcuts",
+  "harnessBar.model": "Model",
+  "harnessBar.effort": "Effort",
+  "harnessBar.compact": "Compact",
+  "harnessBar.resume": "Resume",
+  "harnessBar.tree": "Tree",
+  "harnessBar.confirmAria": "Tap again to confirm {command}",
+
   // --- quickActions (one-tap reply dock) ---
   "quickActions.group.confirm": "確認",
   "quickActions.group.common": "一般",

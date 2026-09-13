@@ -478,6 +478,17 @@ export const ko: Dictionary = {
   "commands.empty": "“{query}”와 일치하는 명령어가 없습니다.",
   "commands.confirm": "실행할까요?",
 
+  // --- harnessBar (the row of the running agent's own commands, above the keys) ---
+  // Slash commands are NEVER translated — they are wire text the harness parses — and neither is an
+  // operator's own `bar_label`. Only these labels are.
+  "harnessBar.label": "Harness shortcuts",
+  "harnessBar.model": "Model",
+  "harnessBar.effort": "Effort",
+  "harnessBar.compact": "Compact",
+  "harnessBar.resume": "Resume",
+  "harnessBar.tree": "Tree",
+  "harnessBar.confirmAria": "Tap again to confirm {command}",
+
   // --- quickActions (one-tap reply dock) ---
   "quickActions.group.confirm": "확인",
   "quickActions.group.common": "일반",

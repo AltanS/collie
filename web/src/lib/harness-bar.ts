@@ -18,29 +18,27 @@ import type { OperatorCommand } from "@/lib/types";
 const PANES = "web/src/fixtures/panes";
 
 /**
- * One button on the bar.
+ * One button on the bar. Every one of them sends its `command` as it stands, on one tap.
  *
- * A `command` fires straight away. A `chooser` opens a bottom sheet of arguments first and then
- * fires the command with the one that was picked.
+ * **NOTHING HERE OFFERS ARGUMENTS.** An earlier round opened a bottom sheet of model aliases and
+ * effort levels before sending, and it was wrong twice over: Collie would have to track a list the
+ * harness owns and changes without telling us, and the harness paints its OWN picker in the mirror
+ * the moment the bare command lands. So the button sends `/model`, and Claude's picker takes the
+ * screen from there. One tap, no list of ours to go stale.
  */
 export interface HarnessBarItem {
-  /** Stable. Keys the echo, and (for a shipped row) names the i18n label. */
+  /** Stable. Keys the echo, names the i18n label, and picks the button's icon in the component. */
   id: string;
   /**
    * The button's text. **A label that starts with `harnessBar.` is an i18n key and is translated at
    * render; anything else is literal text and is printed as it stands.** Shipped rows carry the key
-   * `harnessBar.<id>`; an operator's `bar_label` and a model alias carry themselves. The split is
-   * here rather than in the component because the reason for it is per row: an operator's own words
-   * and a harness's own wire text are both things we must not reword.
+   * `harnessBar.<id>`; an operator's `bar_label` carries itself. The split is here rather than in
+   * the component because the reason for it is per row: an operator's own words are a thing we must
+   * not reword.
    */
   label: string;
-  kind: "command" | "chooser";
-  /** `"command"`: sent as it stands. `"chooser"`: the stem the picked argument is appended to. */
+  /** Sent as it stands, then submitted. */
   command: string;
-  /** `"chooser"` only. `arg: ""` sends the bare command and lets the harness's own picker come up. */
-  options?: readonly { readonly label: string; readonly arg: string }[];
-  /** One line under the chooser's title, an i18n key. Only Codex's Model sheet has one. */
-  note?: string;
   /** Two-tap, through `usePendingConfirm`. Inherited as a floor from the shipped catalog. */
   confirm?: boolean;
   /**
@@ -62,68 +60,35 @@ export interface HarnessBarItem {
 export const CAPTURE_SOURCED: readonly string[] = ["omp"];
 
 // ── Claude Code ──────────────────────────────────────────────────────────────
-// Model, Effort, Compact, Resume — the four Altan drives Claude Code with from the phone.
+// Model, Effort, Compact, Resume — the four Altan drives Claude Code with from the phone. Each one
+// sends its bare command and Claude's own picker comes up in the mirror.
 //
-// The four model ALIASES below are the only strings in this file that no shipped catalog vouches
-// for: they are names Claude Code accepts, not model ids, which is why they can be a fixed list at
-// all (a phone offering `claude-opus-4-6-20260501` would be wrong within a month). They therefore
-// need a capture, and `claude--model-alias.txt` is it — a live pane where `/model sonnet` was typed
-// and Claude answered "Set model to Sonnet 5 and saved as your default for new sessions", which is
-// the alias form of the command being accepted rather than inferred. The capture is cited on the
-// item, because an option row carries no evidence field of its own.
-//
-// "Pick in Claude" stays as the last option: the aliases are a shortcut, and the bare `/model` is
-// still how you reach a model the four names do not cover.
+// Model keeps its capture even though it now carries no argument. `claude--model-alias.txt` is a
+// live pane where the command was typed and Claude answered "Set model to Sonnet 5 and saved as
+// your default for new sessions" — which is this row's claim, that `/model` reaches Claude Code's
+// model picker at all, proved on a real pane rather than inferred from a page.
 const CLAUDE: readonly HarnessBarItem[] = [
   {
     id: "model",
     label: "harnessBar.model",
-    kind: "chooser",
     command: "/model",
     evidence: `${PANES}/claude--model-alias.txt`,
-    options: [
-      { label: "Opus", arg: "opus" },
-      { label: "Sonnet", arg: "sonnet" },
-      { label: "Haiku", arg: "haiku" },
-      { label: "Default", arg: "default" },
-      { label: "harnessBar.pick.claude", arg: "" },
-    ],
   },
-  // The options are the `argHint` at agent-commands.ts's /effort row, verbatim. An effort level is
-  // wire text the harness parses, so it is never translated and never title-cased.
-  {
-    id: "effort",
-    label: "harnessBar.effort",
-    kind: "chooser",
-    command: "/effort",
-    options: [
-      { label: "low", arg: "low" },
-      { label: "medium", arg: "medium" },
-      { label: "high", arg: "high" },
-      { label: "max", arg: "max" },
-    ],
-  },
-  { id: "compact", label: "harnessBar.compact", kind: "command", command: "/compact" },
+  // Bare, for the same reason Model is bare: the levels are the harness's list, not ours, and
+  // `/effort` prints them itself.
+  { id: "effort", label: "harnessBar.effort", command: "/effort" },
+  { id: "compact", label: "harnessBar.compact", command: "/compact" },
   // Bare, which the catalog says opens the picker in the mirror.
-  { id: "resume", label: "harnessBar.resume", kind: "command", command: "/resume" },
+  { id: "resume", label: "harnessBar.resume", command: "/resume" },
 ];
 
 // ── Codex ────────────────────────────────────────────────────────────────────
 // No Effort button, and that is the harness's own shape rather than an omission: Codex's `/model`
-// picker sets the model AND the reasoning effort. Model is a one-option chooser purely so the sheet
-// can carry the line that says where the effort dial went. It costs one extra tap on Codex and it is
-// the only place in the bar that does.
+// picker sets the model AND the reasoning effort, so the one button reaches both dials.
 const CODEX: readonly HarnessBarItem[] = [
-  {
-    id: "model",
-    label: "harnessBar.model",
-    kind: "chooser",
-    command: "/model",
-    note: "harnessBar.codex.modelNote",
-    options: [{ label: "harnessBar.pick.codex", arg: "" }],
-  },
-  { id: "compact", label: "harnessBar.compact", kind: "command", command: "/compact" },
-  { id: "resume", label: "harnessBar.resume", kind: "command", command: "/resume" },
+  { id: "model", label: "harnessBar.model", command: "/model" },
+  { id: "compact", label: "harnessBar.compact", command: "/compact" },
+  { id: "resume", label: "harnessBar.resume", command: "/resume" },
 ];
 
 // ── pi ───────────────────────────────────────────────────────────────────────
@@ -132,10 +97,10 @@ const CODEX: readonly HarnessBarItem[] = [
 // deliberately off the bar for that reason, and `/session` is off it because it prints stats rather
 // than opening a picker. Every row here is in pi's own doc-sourced catalog, so none needs evidence.
 const PI: readonly HarnessBarItem[] = [
-  { id: "model", label: "harnessBar.model", kind: "command", command: "/model" },
-  { id: "compact", label: "harnessBar.compact", kind: "command", command: "/compact" },
-  { id: "tree", label: "harnessBar.tree", kind: "command", command: "/tree" },
-  { id: "resume", label: "harnessBar.resume", kind: "command", command: "/resume" },
+  { id: "model", label: "harnessBar.model", command: "/model" },
+  { id: "compact", label: "harnessBar.compact", command: "/compact" },
+  { id: "tree", label: "harnessBar.tree", command: "/tree" },
+  { id: "resume", label: "harnessBar.resume", command: "/resume" },
 ];
 
 // ── omp ──────────────────────────────────────────────────────────────────────
@@ -146,28 +111,24 @@ const OMP: readonly HarnessBarItem[] = [
   {
     id: "model",
     label: "harnessBar.model",
-    kind: "command",
     command: "/model",
     evidence: `${PANES}/omp--menu-model.txt`,
   },
   {
     id: "compact",
     label: "harnessBar.compact",
-    kind: "command",
     command: "/compact",
     evidence: `${PANES}/omp--slash-palette.txt`,
   },
   {
     id: "tree",
     label: "harnessBar.tree",
-    kind: "command",
     command: "/tree",
     evidence: `${PANES}/omp--tree.txt`,
   },
   {
     id: "resume",
     label: "harnessBar.resume",
-    kind: "command",
     command: "/resume",
     evidence: `${PANES}/omp--menu-resume.txt`,
   },
@@ -215,7 +176,6 @@ export function barFor(
   return aimed.map((row) => ({
     id: `op:${row.command}`,
     label: row.barLabel ?? row.command.slice(1),
-    kind: "command" as const,
     command: row.command,
     confirm: (shippedDanger.get(row.command) ?? false) || row.confirm === true,
     operator: true,

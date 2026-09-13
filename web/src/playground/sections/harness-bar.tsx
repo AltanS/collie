@@ -13,13 +13,13 @@ import { HarnessBar } from "@/components/harness-bar";
 import { HarnessBarControl } from "@/components/harness-bar-control";
 import { __resetHarnessBar } from "@/lib/harness-bar-pref";
 
-import { Card, Group, Section, Stage, type SectionDef } from "../harness";
+import { Card, Group, Section, type SectionDef } from "../harness";
 
 export const DEF: SectionDef = {
   id: "harness-bar",
   title: "Harness bar",
   intent:
-    "The row of the running agent's own slash commands, above the key rail. Four or five 44px buttons per harness, a bottom sheet where a command wants an argument, and nothing at all on a harness the table does not name. Tapping a button really runs it — here that means a stub that says yes, so the checkmark is the real echo.",
+    "The row of the running agent's own slash commands, above the key rail. Four or five 44px buttons per harness, every one of them sending its bare command, and nothing at all on a harness the table does not name. Tapping a button really runs it — here that means a stub that says yes, so the checkmark is the real echo.",
 };
 
 /** A stub `send()` that accepted the text, which is what drives the ✓. */
@@ -38,16 +38,16 @@ export function HarnessBarSection() {
           state="claude"
           label="claude code: model, effort, compact, resume"
           reach="open a pane running Claude Code. The four commands Altan drives it with from the phone, in that order."
-          note="Model and Effort are choosers; Compact and Resume fire on one tap. Model offers opus, sonnet, haiku and default, each vouched for by web/src/fixtures/panes/claude--model-alias.txt, then Pick in Claude for a model those four names do not cover."
+          note="Every button is one tap. Model sends /model and Claude's own picker takes the screen from there, which is why Collie carries no list of model names to go stale."
         >
           <HarnessBar agent="claude" onRun={took} />
         </Card>
 
         <Card
           state="codex"
-          label="codex: model as a one-option chooser, compact, resume"
+          label="codex: model, compact, resume"
           reach="open a pane running Codex. No Effort button, because Codex's own /model picker sets the model and the reasoning effort together."
-          note="The one-option chooser exists only to carry that sentence in its sheet. It is the one place in the bar that costs an extra tap."
+          note="One button reaches both dials, so there is nothing for a second one to do."
         >
           <HarnessBar agent="codex" onRun={took} />
         </Card>
@@ -68,23 +68,6 @@ export function HarnessBarSection() {
           note="Tree waited on its capture rather than on omp being a pi fork. web/src/fixtures/panes/omp--tree.txt is a live omp pane where /tree painted a Session Tree picker, so the button ships in pi's order."
         >
           <HarnessBar agent="omp" onRun={took} />
-        </Card>
-      </Group>
-
-      <Group title="The chooser">
-        <Card
-          state="chooser-open"
-          label="claude's model sheet, open"
-          reach="tap Model on a Claude Code pane. Picking a row closes the sheet and sends the command; dismissing it picks nothing."
-          note="Mounted with initialOpen='model', which is a test and playground seam and is never passed from the composer. A card that had to simulate a tap first could not be screenshotted."
-          span={2}
-        >
-          {/* Inside a Stage, because the sheet is `position: fixed` — the Stage's own transform makes
-              it the containing block, so the sheet renders at its true size in this card instead of
-              over the whole page. */}
-          <Stage height={420}>
-            <HarnessBar agent="claude" onRun={took} initialOpen="model" />
-          </Stage>
         </Card>
       </Group>
 

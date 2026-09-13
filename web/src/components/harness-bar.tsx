@@ -1,8 +1,6 @@
-import { useState } from "react";
 import { Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { BottomSheet } from "@/components/ui/sheet";
 import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useLocale } from "@/hooks/use-locale";
@@ -33,9 +31,8 @@ import { cn } from "@/lib/utils";
 
 /**
  * A bar label is either an i18n key or literal text, and the prefix is the discriminator:
- * `harnessBar.…` is translated, anything else is printed as it stands. That covers the two things we
- * must not reword — an operator's own `bar_label` and a harness's own wire text (a model alias, an
- * effort level) — without the table having to carry a second flag for each.
+ * `harnessBar.…` is translated, anything else is printed as it stands. That covers the one thing we
+ * must not reword, an operator's own `bar_label`, without the table having to carry a second flag.
  */
 function labelText(label: string): string {
   if (!label.startsWith("harnessBar.")) return label;
@@ -43,14 +40,6 @@ function labelText(label: string): string {
   // the i18n parity test holds the other six catalogs to the same set. A label that is not a key
   // would not start with this prefix.
   return translate(label as MessageKey);
-}
-
-/** The chooser's note line. Always ours, never operator text — a chooser is not expressible in TOML. */
-function noteText(note: string): string {
-  // SAFETY: the only `note` in lib/harness-bar.ts is `harnessBar.codex.modelNote`, which is a key in
-  // messages/en.ts, and the i18n parity test holds the other six catalogs to the same set. A chooser
-  // cannot be declared in `commands.toml`, so no operator string ever reaches this line.
-  return translate(note as MessageKey);
 }
 
 export interface HarnessBarProps {
@@ -62,28 +51,13 @@ export interface HarnessBarProps {
   onRun: (text: string) => Promise<boolean>;
   /** Bound to the composer's `locked`. Greys every button in place. */
   disabled?: boolean;
-  /**
-   * **A TEST AND PLAYGROUND SEAM, NOT A PRODUCT PROP.** When set, it is the `id` of a `chooser` item
-   * whose sheet is open on first render. THE COMPOSER NEVER PASSES IT, and nothing should thread it
-   * in from there later. The playground's `chooser-open` card and the component test pass it, because
-   * the alternative is a card that has to simulate a tap before it shows anything — which makes a
-   * static screenshot of that state impossible.
-   */
-  initialOpen?: string;
 }
 
-export function HarnessBar({
-  agent,
-  mine,
-  onRun,
-  disabled,
-  initialOpen,
-}: HarnessBarProps) {
+export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
   useLocale();
   const shown = useHarnessBarEnabled();
   const echo = useActionEcho();
   const { pending, confirm, reset } = usePendingConfirm();
-  const [openId, setOpenId] = useState<string | undefined>(initialOpen);
 
   // The gate lives here rather than at the two call sites, so the composer cannot drift into showing
   // the row in one layout and not the other. Off, or no items for this agent, and it renders nothing
@@ -91,29 +65,14 @@ export function HarnessBar({
   const items = shown ? barFor(agent, mine) : [];
   if (items.length === 0) return null;
 
-  const open = items.find((i) => i.id === openId && i.kind === "chooser");
-
   function fire(item: HarnessBarItem) {
-    if (item.kind === "chooser") {
-      setOpenId(item.id);
-      return;
-    }
     if (item.confirm === true && !confirm(item.id)) return; // first tap arms the confirm
     reset();
     void echo.run(item.id, () => onRun(item.command));
   }
 
-  function pick(item: HarnessBarItem, arg: string) {
-    setOpenId(undefined);
-    // Keyed on the PARENT item, so the checkmark lands on the bar button the operator pressed rather
-    // than on a sheet row that is already gone. `arg: ""` sends the bare command and lets the
-    // harness's own picker come up in the mirror.
-    void echo.run(item.id, () => onRun(`${item.command} ${arg}`.trim()));
-  }
-
   return (
-    <>
-      <div
+    <div
         data-slot="harness-bar"
         role="group"
         aria-label={translate("harnessBar.label")}
@@ -134,7 +93,6 @@ export function HarnessBar({
                 size="sm"
                 disabled={disabled}
                 onClick={() => fire(item)}
-                aria-haspopup={item.kind === "chooser" ? "dialog" : undefined}
                 aria-label={
                   armed
                     ? translate("harnessBar.confirmAria", { command: item.command })
@@ -152,34 +110,6 @@ export function HarnessBar({
             );
           })}
         </div>
-      </div>
-
-      {open !== undefined && (
-        <BottomSheet
-          open
-          onClose={() => setOpenId(undefined)}
-          title={translate("harnessBar.chooser.title", { command: open.command })}
-        >
-          {/* Codex's Model sheet carries one line saying where the effort dial went — that picker
-              sets the model AND the reasoning effort, which is why Codex has no Effort button. No
-              other harness gets a note. */}
-          {open.note !== undefined && (
-            <p className="mb-3 text-sm text-muted-foreground">{noteText(open.note)}</p>
-          )}
-          <div className="flex flex-col gap-1">
-            {(open.options ?? []).map((option) => (
-              <button
-                key={`${option.label}:${option.arg}`}
-                type="button"
-                onClick={() => pick(open, option.arg)}
-                className="flex h-11 shrink-0 items-center rounded-md px-3 text-left text-sm font-medium text-foreground transition-colors active:bg-muted"
-              >
-                {labelText(option.label)}
-              </button>
-            ))}
-          </div>
-        </BottomSheet>
-      )}
-    </>
+    </div>
   );
 }

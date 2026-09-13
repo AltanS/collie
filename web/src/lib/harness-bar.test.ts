@@ -44,19 +44,14 @@ describe("the shipped bar", () => {
     expect(barFor("claude").map((i) => i.id)).toEqual(["model", "effort", "compact", "resume"]);
   });
 
-  it("gives Codex a one-option Model chooser carrying the effort note, and no Effort button", () => {
-    const bar = barFor("codex");
-    expect(bar.map((i) => i.id)).toEqual(["model", "compact", "resume"]);
-    const model = bar[0]!;
-    expect(model.kind).toBe("chooser");
-    expect(model.options).toHaveLength(1);
-    expect(model.options?.[0]?.arg).toBe("");
-    expect(model.note).toBe("harnessBar.codex.modelNote");
+  it("gives Codex Model, Compact and Resume, and no Effort button", () => {
+    // Codex's own /model picker sets the model AND the reasoning effort, so the one button reaches
+    // both dials and there is nothing for a second one to do.
+    expect(barFor("codex").map((i) => i.id)).toEqual(["model", "compact", "resume"]);
   });
 
   it("gives pi Tree and no Effort, because pi has no effort command", () => {
     expect(barFor("pi").map((i) => i.id)).toEqual(["model", "compact", "tree", "resume"]);
-    expect(barFor("pi").every((i) => i.kind === "command")).toBe(true);
   });
 
   it("gives omp Tree, in pi's order, now that a capture vouches for it", () => {
@@ -74,12 +69,21 @@ describe("the shipped bar", () => {
     expect(barFor("  CLAUDE ").map((i) => i.id)).toEqual(barFor("claude").map((i) => i.id));
   });
 
-  it("spells every shipped label as a harnessBar key, and every chooser has options", () => {
+  it("spells every shipped label as a harnessBar key", () => {
     for (const agent of BAR_AGENTS) {
       for (const item of barFor(agent)) {
         expect(item.label, `${agent}/${item.id}`).toMatch(/^harnessBar\./);
-        if (item.kind === "chooser") expect(item.options?.length ?? 0).toBeGreaterThan(0);
-        else expect(item.options).toBeUndefined();
+      }
+    }
+  });
+
+  it("sends every command bare, so the harness's own picker is what offers the arguments", () => {
+    // THE RULE THIS FILE EXISTS TO KEEP. A bar item carries no argument list: Collie would have to
+    // track a list the harness owns and changes without telling us, and `/model` paints Claude's own
+    // picker in the mirror anyway. One tap, no list of ours to go stale.
+    for (const agent of BAR_AGENTS) {
+      for (const item of barFor(agent)) {
+        expect(item.command, `${agent}/${item.id}`).toMatch(/^\/\S+$/);
       }
     }
   });
@@ -108,18 +112,12 @@ describe("evidence", () => {
     }
   });
 
-  it("is claimed on the one doc-sourced row whose options no catalog vouches for", () => {
-    // Claude's catalog comes from a published page, so only its Model item cites a capture: the four
-    // model aliases are names Claude Code accepts rather than catalog commands, and
-    // `claude--model-alias.txt` is the live pane that proves the alias form is taken.
+  it("is claimed on the one doc-sourced row a live pane vouches for", () => {
+    // Claude's catalog comes from a published page, so only its Model item cites a capture:
+    // `claude--model-alias.txt` is the live pane that proves /model reaches Claude's model picker.
     const cited = barFor("claude").filter((i) => i.evidence !== undefined);
     expect(cited.map((i) => i.id)).toEqual(["model"]);
     expect(cited[0]?.evidence).toBe("web/src/fixtures/panes/claude--model-alias.txt");
-  });
-
-  it("offers Claude the four aliases plus the harness's own picker", () => {
-    const model = barFor("claude")[0]!;
-    expect(model.options?.map((o) => o.arg)).toEqual(["opus", "sonnet", "haiku", "default", ""]);
   });
 });
 
@@ -130,7 +128,6 @@ describe("the operator's bar rows", () => {
       {
         id: "op:/statusline",
         label: "Status",
-        kind: "command",
         command: "/statusline",
         confirm: false,
         operator: true,
@@ -185,11 +182,6 @@ describe("the operator's bar rows", () => {
   it("never carry evidence — the operator vouches for their own commands", () => {
     const mine = [op({ agent: "omp", command: "/fork-in-herdr", bar: true })];
     expect(barFor("omp", mine)[0]!.evidence).toBeUndefined();
-  });
-
-  it("are always commands, never choosers", () => {
-    const mine = [op({ command: "/anything", bar: true })];
-    expect(barFor("claude", mine).every((i) => i.kind === "command")).toBe(true);
   });
 
   it("let a narrower bar = false row take a command back off the bar", () => {
