@@ -412,14 +412,18 @@ export function AgentChat({
 
   const gone = !agent;
 
-  // Drag the grip on the actions belt's rule up to bring up the pane switcher, tracked
-  // finger-by-finger so the sheet peeks up under the thumb rather than appearing on release. Tapping
-  // is still the reliable fallback (the same button's onClick). `pull` is the live upward travel in
-  // px, fed straight to the switcher BottomSheet's `pull` prop; a release past the open threshold
-  // buzzes and opens for real, a release short of it snaps back to 0. `pullFrom` is the grip's own
-  // distance from the viewport bottom, measured once per gesture (useSheetPull's `onAnchor`) — the
-  // grip sits on the belt, with the whole input row below it, so without it the peek would rise from
-  // the screen's bottom edge with the composer sandwiched between the panel and the thumb.
+  // Drag the ACTIONS BELT up to bring up the pane switcher, tracked finger-by-finger so the sheet
+  // peeks up under the thumb rather than appearing on release. The whole belt is the drag surface —
+  // `ref` goes on the band, not on the chevron riding its rule — because the chevron alone was a
+  // good sign and a poor target, which is what Altan reported from the phone. Tapping the chevron is
+  // still the reliable fallback (its own onClick). `pull` is the live upward travel in px, fed
+  // straight to the switcher BottomSheet's `pull` prop; a release past the open threshold buzzes and
+  // opens for real, a release short of it snaps back to 0. `pullFrom` is the BELT's own distance
+  // from the viewport bottom, measured once per gesture (useSheetPull's `onAnchor`) — the belt has
+  // the whole input row below it, so without it the peek would rise from the screen's bottom edge
+  // with the composer sandwiched between the panel and the thumb. The belt is also a sideways
+  // scroller, so the hook arbitrates per gesture which axis a touch belongs to; use-sheet-pull.ts's
+  // header holds that rule.
   const [pull, setPull] = useState(0);
   const [pullFrom, setPullFrom] = useState(0);
   const sheetPull = useSheetPull({
@@ -436,8 +440,10 @@ export function AgentChat({
       setPullFrom(0);
     },
   });
-  // THE MARK ITSELF, handed to the composer, which hands it to the actions belt — the belt owns the
-  // rule it is drawn on, so the belt draws it (actions-row.tsx). `undefined` means no mark at all.
+  // THE MARK AND THE DRAG, handed to the composer, which hands both to the actions belt — the belt
+  // owns the rule the mark is drawn on and the band the drag runs over, so the belt wires both
+  // (actions-row.tsx: `ref` to the band, `onClick` to the chevron). `undefined` means neither: no
+  // mark, and the belt is not a drag surface.
   //
   // Shown whenever there is somewhere to go: a pane to switch to, a shell, or a launcher to start.
   // Launchers count on their own, because a lone pane with launchers still needs a way to reach
@@ -1949,12 +1955,16 @@ export function AgentChat({
                   moved, which is the whole point: the mirror gets a row back for a control that is
                   still there.
 
-                  The tap and the finger-tracked drag are unchanged — same `sheetPull.ref`, same
-                  `setDrawer("switcher")`, one element carrying both. What changed is the DRAG ANCHOR:
-                  useSheetPull measures its node's distance from the viewport bottom, and that node is
-                  now on the belt's top edge rather than 30px above it, so the sheet peeks from the
-                  belt. That is the right place — the belt is the top of the chrome block's working
-                  area, and the peek should rise from the chrome, not from behind it.
+                  THE TAP AND THE DRAG NOW LIVE ON TWO ELEMENTS. `setDrawer("switcher")` is the
+                  chevron's onClick; `sheetPull.ref` is on the BELT, so an upward drag from anywhere
+                  on the band opens the same sheet. The chevron was the only drag target for half a
+                  day and Altan's verdict from the phone was that it is "kinda difficult to hit" — a
+                  28x16 mark on a hairline says where the sheet comes from well and receives a thumb
+                  badly. The DRAG ANCHOR is unchanged by any of it: useSheetPull measures its node's
+                  distance from the viewport bottom, the chevron is centred ON the belt's top edge,
+                  so the belt and the chevron report the same line. That is the right place — the
+                  belt is the top of the chrome block's working area, and the peek should rise from
+                  the chrome, not from behind it.
 
                   The old position lesson survives the move by construction. The band used to render
                   ABOVE the agent's statusline, so its height was a function of what the terminal had

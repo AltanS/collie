@@ -127,12 +127,13 @@ describe("ActionsRow", () => {
     // absolutely positioned, so it takes no layout at all — and the belt draws it only because the
     // belt owns the rule. The pane decides whether there is one (agent-chat.tsx).
     const onClick = vi.fn();
+    const ref = vi.fn();
     const { unmount } = render(
       <ActionsRow
         general={[general()]}
         agent="claude"
         onRun={took}
-        handle={{ ref: vi.fn(), onClick, label: "Switch pane" }}
+        handle={{ ref, onClick, label: "Switch pane" }}
       />,
     );
     const grip = screen.getByRole("button", { name: "Switch pane" });
@@ -141,6 +142,17 @@ describe("ActionsRow", () => {
     const belt = document.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
     expect(grip.parentElement).toBe(belt);
     expect(belt.firstElementChild).toBe(grip);
+    // THE DRAG REF LANDS ON THE BELT, NOT ON THE CHEVRON. A drag up from anywhere on the band opens
+    // the switcher; the chevron only says where it comes from and takes the tap. Asserted as
+    // "the node the ref got CONTAINS the chevron", which is the shape that fails the moment somebody
+    // puts the ref back on the button.
+    const dragged = ref.mock.calls.map(([node]) => node).findLast((node) => node !== null);
+    expect(dragged).toBe(belt);
+    expect(belt.contains(grip)).toBe(true);
+    expect(dragged).not.toBe(grip);
+    // …and the belt yields the sideways pan to the scroller, so the pills still scroll under a
+    // horizontal drag (use-sheet-pull.ts arbitrates the rest).
+    expect(belt.className).toMatch(/(?:^|\s)touch-pan-x(?=\s|$)/);
     // …and the belt's own pills are untouched: the grip is an addition, never a replacement.
     expect(names()).toContain("Keys");
     expect(screen.getByRole("group", { name: "Harness shortcuts" })).toBeInTheDocument();

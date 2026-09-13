@@ -116,9 +116,10 @@ interface ComposerProps {
   onSent: () => void;
 
   /**
-   * The pane switcher's mark — a small up-chevron — to be worn on the actions belt's top rule.
+   * The pane switcher, in two pieces: a small up-chevron worn on the actions belt's top rule
+   * (`onClick`, the tap) and the belt itself as a drag surface (`ref`, the finger-tracked pull).
    * Threaded straight through to {@link import("@/components/actions-row").ActionsRow} — this file
-   * decides nothing about it and draws none of it.
+   * decides nothing about either and draws none of it.
    *
    * Absent, rather than flagged off, the way `writeHost` is: the pane passes nothing here when
    * there is nowhere to switch to.
@@ -1248,8 +1249,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           mine={operatorCommands}
           onRun={(command) => send(command, false)}
           disabled={locked}
-          // The pane switcher's grip, on this belt's top rule. The pane decides whether there is one
-          // (agent-chat.tsx); this row draws it and costs no height for it.
+          // The pane switcher: the chevron on this belt's top rule, and the belt itself as the drag
+          // surface behind it. The pane decides whether there is one (agent-chat.tsx); this row
+          // draws the mark, wires the drag, and costs no height for either.
           handle={pullHandle}
         />
         {/* ── THE FOOTER'S NOTICE STRIPS, SORTED BY KIND (DESIGN.md §1, §2) ─────────────────────

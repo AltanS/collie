@@ -178,15 +178,32 @@ export interface ActionsRowProps {
    * of its own, where a wide grip reads correctly. This mark sits ON a rule shared with everything
    * else on the belt, where a wide bar would read as a second hairline.
    *
-   * `ref` goes on the drawn button, which is what {@link import("@/hooks/use-sheet-pull")} measures:
-   * the anchor it reports is now the belt's own top edge, which is where the sheet should peek from.
-   * `onClick` is the tap, and the two live on ONE element on purpose — widening the drag target to
-   * the whole belt later is then one move of this object, not a re-wiring.
+   * THE TWO HALVES LAND ON TWO DIFFERENT ELEMENTS, AND THAT IS THE DESIGN. `ref` goes on the BELT —
+   * the outer element, not the chevron — so a drag upward from anywhere on the band opens the
+   * switcher: a pill, the harness section, the bare ground, the chevron itself. `onClick` stays on
+   * the chevron, which is the thing that LOOKS tappable and is the only thing a tap may hit.
+   *
+   * Altan, on the phone, after the chevron shipped: "the pull-up handle chevron looks nice, but it's
+   * kinda difficult to hit". A 28x16 mark on a hairline is a good SIGN and a poor TARGET, and the
+   * answer is not to draw it bigger until it stops being a hairline mark — it is to stop asking the
+   * thumb to find it. The belt is 48px of glass running the full width of the phone, so the drag
+   * target is now roughly twenty times the area it was, and the chevron says where the sheet comes
+   * from rather than being the only place it comes from.
+   *
+   * The anchor is unchanged by the move: {@link import("@/hooks/use-sheet-pull")} measures its
+   * node's top edge, the chevron is centred ON the belt's top edge, so both report the same line and
+   * the sheet peeks from the same place it always did.
+   *
+   * The belt wears `touch-pan-x` for it (`touch-action: pan-x`): the browser keeps the scroller's
+   * sideways pan and hands vertical movement to the hook, which then decides per gesture which axis
+   * a touch belongs to (use-sheet-pull.ts's header holds the arbitration). The chevron keeps
+   * `touch-none` — a touch that starts on the mark is never the scroller's.
    */
   handle?: {
-    /** {@link import("@/hooks/use-sheet-pull").useSheetPull}'s ref — the finger-tracked drag. */
+    /** {@link import("@/hooks/use-sheet-pull").useSheetPull}'s ref — the finger-tracked drag. It
+     *  lands on the BELT, not on the chevron: the whole band is the drag surface. */
     ref: (node: HTMLElement | null) => void;
-    /** The tap. Opens the same switcher sheet the drag opens. */
+    /** The tap, on the CHEVRON. Opens the same switcher sheet the drag opens. */
     onClick: () => void;
     /** ALREADY TRANSLATED. The button's accessible name — "Switch pane". */
     label: string;
@@ -226,7 +243,18 @@ export function ActionsRow({
       // `relative` so the grip below can be centred on this element's own top rule. It is here
       // unconditionally rather than only with a handle: a positioning context changes no pixel,
       // and a class that appears with a prop is a class nobody remembers is conditional.
-      className="relative -mx-3 mt-1.5 mb-1.5 flex items-center border-y border-border bg-foreground/6"
+      //
+      // THIS ELEMENT IS THE DRAG SURFACE. `handle.ref` attaches here and not to the chevron, so an
+      // upward drag anywhere on the band brings the switcher up (`handle` above says why). With it
+      // comes `touch-pan-x`: the browser keeps the sideways pan that scrolls the pills and hands
+      // vertical movement to the hook, which arbitrates per gesture. Both appear only WITH a handle,
+      // and that is not the "conditional class" the paragraph above warns against — `touch-pan-x`
+      // with no listener behind it would forbid a vertical page gesture and give nothing back.
+      ref={handle?.ref}
+      className={cn(
+        "relative -mx-3 mt-1.5 mb-1.5 flex items-center border-y border-border bg-foreground/6",
+        handle && "touch-pan-x",
+      )}
     >
       {/* THE MARK, ON THE RULE — see `handle` above for why it lives on this row at all, and for why
           it is a small up-chevron rather than a wide bar.
@@ -241,10 +269,16 @@ export function ActionsRow({
           `size-3` chevron that makes the rule visibly break around the mark rather than run behind
           it.
           THE HIT BOX IS A `::before`, the negative-inset trick from ui/labelled-strip.tsx's
-          STRIP_TAP_TARGET. The patch itself draws 28x16 (12px icon + 2·8px x-padding, 12px icon +
-          2·2px y-padding); centred on the rule the 44-tall/64-wide answer needs
-          `-inset-y-[14px]` (16 + 14 + 14 = 44) and `-inset-x-[18px]` (28 + 18 + 18 = 64). Nothing
-          clips it — this row is not a scroll container, only the scroller inside it is.
+          STRIP_TAP_TARGET. The patch draws 40x24 (16px icon + 2·12px x-padding, 16px icon + 2·4px
+          y-padding); centred on the rule the 48-tall/96-wide answer needs `-inset-y-[12px]`
+          (24 + 12 + 12 = 48) and `-inset-x-[28px]` (40 + 28 + 28 = 96). Nothing clips it — this row
+          is not a scroll container, only the scroller inside it is.
+          IT GREW ONCE, AND THE REASON WAS A THUMB. Altan on the phone: the chevron "looks nice, but
+          it's kinda difficult to hit". The mark went from a `size-3` icon on a 28x16 patch with a
+          44x64 hit box to a `size-4` icon on a 40x24 patch with a 48x96 one, and the DRAG left it
+          entirely — the whole belt is the drag surface now (`handle` above). Bigger is the smaller
+          half of that answer: a mark on a hairline can only grow so far before it stops reading as a
+          mark, so the target the thumb actually aims at had to become the band itself.
           IT OVERLAPS THE BELT, KNOWINGLY. The top of the belt over the centre patch belongs
           to the mark, and `touch-none` means a touch starting there cannot pan the belt sideways.
           The belt is 48px tall and scrolls from anywhere else on its length, so the trade is one
@@ -252,12 +286,11 @@ export function ActionsRow({
       {handle && (
         <button
           type="button"
-          ref={handle.ref}
           aria-label={handle.label}
           onClick={handle.onClick}
-          className="absolute top-0 left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center rounded-md bg-chrome px-2 py-0.5 text-muted-foreground transition-colors select-none before:absolute before:-inset-y-[14px] before:-inset-x-[18px] before:content-[''] active:bg-muted/50"
+          className="absolute top-0 left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center rounded-md bg-chrome px-3 py-1 text-muted-foreground transition-colors select-none before:absolute before:-inset-y-[12px] before:-inset-x-[28px] before:content-[''] active:bg-muted/50"
         >
-          <ChevronUp className="size-3" aria-hidden />
+          <ChevronUp className="size-4" aria-hidden />
         </button>
       )}
       {/* OverflowEdges measures this scroller and fades — and chevrons — only the end that still
