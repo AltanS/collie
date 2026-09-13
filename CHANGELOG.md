@@ -66,6 +66,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The actions row is two capsules of matching pills.** Collie's own controls sit in an outlined capsule and the harness's commands in a filled one that opens with the harness's mark; every pill is an icon and a word, so the two groups read as one family and apart at a glance.
 - **A scrolling row says which way it scrolls.** The actions row fades and shows a chevron only on the edge that hides more, so a row wider than the screen no longer looks like it ends at the last visible button.
 - **The states playground stages five ideas for reaching another pane.** A new "Pane access ideas" tab draws the bead bar, a header breadcrumb, a needs-you beacon, a keyboard-driven fold and one nested row over the same slice of the same mirror, each card stating what it costs in pixels and in taps. Design exploration only: nothing here is shipped, the page is dev-only and no app code changed.
+- **The actions row is a belt.** One full-bleed band above the input carries Collie's controls on its ground and the harness's commands in a section tinted with the harness's colour, so the row reads as one strip with two parts rather than two floating capsules.
 
 ### Fixed
 

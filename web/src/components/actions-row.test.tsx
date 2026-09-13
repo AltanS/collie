@@ -86,20 +86,39 @@ describe("ActionsRow", () => {
     expect(onSelect).toHaveBeenCalledOnce();
   });
 
-  it("tints the harness segment in the harness's own colour, and never with a rule down its side", () => {
+  it("tints the harness section in the harness's own colour, and never with a rule down its side", () => {
     render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
-    const segment = document.querySelector<HTMLElement>('[data-slot="harness-bar"]')!;
+    const section = document.querySelector<HTMLElement>('[data-slot="harness-bar"]')!;
     // Claude's #D97757, at 14% of whatever ground is behind it. jsdom normalises the hex to rgb().
-    expect(segment.style.backgroundColor).toBe("color-mix(in srgb, rgb(217, 119, 87) 14%, transparent)");
-    expect(segment.className).not.toMatch(/border-l/);
+    expect(section.style.backgroundColor).toBe("color-mix(in srgb, rgb(217, 119, 87) 14%, transparent)");
+    // A tint that reads (1.12:1 light, 1.22:1 dark against the belt) needs no edge, and an edge here
+    // would be the divider the belt exists to do without.
+    expect(section.className).not.toMatch(/border-l/);
   });
 
-  it("falls back to the app's own ground for a brand whose colour is black", () => {
+  it("falls back to the app's own ground for a brand whose colour is black, and edges THAT one", () => {
     // Codex and pi are officially monochrome. A near-black icon is invisible in the dark theme, so
-    // absent is a real answer and the segment takes the muted ground instead of a wrong colour.
+    // absent is a real answer and the section takes the muted ground instead of a wrong colour.
+    // On the belt that ground measures 1.02:1 in dark — nothing — so this section, and only this
+    // one, colours the left edge BELT_SECTION already reserves.
     render(<ActionsRow general={[general()]} agent="codex" onRun={took} />);
-    const segment = document.querySelector<HTMLElement>('[data-slot="harness-bar"]')!;
-    expect(segment.style.backgroundColor).toBe("");
-    expect(segment.className).toMatch(/(?:^|\s)bg-muted(?=\s|$)/);
+    const section = document.querySelector<HTMLElement>('[data-slot="harness-bar"]')!;
+    expect(section.style.backgroundColor).toBe("");
+    expect(section.className).toMatch(/(?:^|\s)bg-muted(?=\s|$)/);
+    expect(section.className).toMatch(/(?:^|\s)border-l-border(?=\s|$)/);
+  });
+
+  it("draws the belt itself: one full-bleed band, hairlines on both edges, no rounded ends", () => {
+    // The ground and the rules belong to the element carrying the `-mx-3`, or they stop 12px short
+    // of both screen edges and the band reads as a wide capsule again.
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
+    const belt = document.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
+    expect(belt.className).toMatch(/(?:^|\s)-mx-3(?=\s|$)/);
+    expect(belt.className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
+    expect(belt.className).toMatch(/(?:^|\s)bg-foreground\/6(?=\s|$)/);
+    expect(belt.className).not.toMatch(/rounded/);
+    // Collie's own controls stand on that ground with no box of their own.
+    const controls = document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!;
+    expect(controls.className).not.toMatch(/rounded|border|bg-/);
   });
 });

@@ -70,9 +70,9 @@ export const STRIP_SCROLLER =
  *
  * `px-2` and not `px-2.5`: when the actions row's general half took its words back, five labelled
  * pills measured 416px against a 382px row, and the 10px came off here rather than off a label or
- * off the type size. It buys 5px a pill — 25px across the general capsule, 20px across a four-button
- * harness one — and it is ONE number for every pill in every strip on purpose, because the actions
- * row's two capsules only read as one family while their pills are the same box. The key rail wears
+ * off the type size. It buys 5px a pill — 25px across the five general pills, 20px across a four-button
+ * harness section — and it is ONE number for every pill in every strip on purpose, because the
+ * actions row's two parts only read as one belt while their pills are the same box. The key rail wears
  * it too; its caps are mono and short, so it lost 5px a key and nothing else.
  *
  * `has-[>svg]:px-2` is not decoration and may not be dropped: `ui/button.tsx`'s `sm` size sets
@@ -83,25 +83,36 @@ export const STRIP_SCROLLER =
 export const STRIP_ROW_PILL = `${STRIP_TAP_TARGET} before:-inset-x-px h-8 min-w-11 shrink-0 touch-manipulation px-2 has-[>svg]:px-2 select-none`;
 
 /**
- * The capsule a GROUP of {@link STRIP_ROW_PILL}s sits in, so a scrolling row reads as groups rather
- * than as one run of evenly spaced buttons. The actions row wears two of them: Collie's own controls
- * and the harness's commands.
+ * A SECTION OF THE BELT — the rectangle a group of {@link STRIP_ROW_PILL}s sits in when it needs a
+ * ground of its own inside the actions row. One caller today: the harness's commands.
  *
- * It owns the geometry and NOT the ground: `rounded-full px-1` makes the capsule 8px wider than the
- * run of pills, whose own 32px faces are untouched, and `gap-1` is the inside gap. The caller adds
- * the paint — a `border-border` outline, or a tinted background — and the two then differ only in
- * that, which is the whole device: two like-shaped boxes, one hollow and one filled.
+ * It replaced `STRIP_CAPSULE`, which drew two rounded floating capsules, because the actions row is
+ * now one continuous band and the groups on it are parts of that band rather than objects dropped on
+ * it (`components/actions-row.tsx` holds the whole argument). So: SQUARE corners, and the box spans
+ * the belt's full inner height instead of floating inside it.
  *
- * `border border-transparent` is here rather than at the outlined caller, and it is load-bearing:
- * without it the outlined capsule draws 2px taller than the filled one and the row's two halves sit
- * at different heights. It is the §2 recipe (reserve the border, colour it later) applied across two
- * siblings instead of across two states.
+ * Three numbers, and each is measured against {@link STRIP_SCROLLER}:
  *
- * The gap BETWEEN capsules is the caller's, and it must be wider than this one — that ratio is the
- * only thing separating the groups, because there is no rule and no divider between them.
+ *  1. **`-my-1.5` with `py-1.5`** is what makes it full height. The scroller's own `py-1.5` is 6px
+ *     the section must reach INTO — and exactly reach, never past: the section's border box then
+ *     lands on the scroller's padding box, which is both the clip boundary and the edge of the
+ *     scrollable overflow region. One pixel more and `overflow-x: auto` (which forces `overflow-y`
+ *     to `auto` too) grows a vertical scrollbar; one pixel less and the section stops short of the
+ *     belt's rules and reads as a floating box again. The `py-1.5` puts the same 6px back inside, so
+ *     the pills sit exactly where they sat as capsule children and their 44px tap areas are
+ *     unchanged (see {@link STRIP_TAP_TARGET}).
+ *  2. **`px-1.5` and `gap-1.5` are the belt's own pill gap, 6px**, the same number the scroller uses
+ *     between the general pills and this section. One gap everywhere is what makes the belt read as
+ *     one strip: the section is told apart by its TINT, not by a wider gap around it.
+ *  3. **`border border-transparent`** is reserved, never drawn by default. It is the §2 recipe — a
+ *     section that needs a hairline on one edge (see the black-branded fallback in
+ *     `harness-bar.tsx`) colours the reserved width instead of adding one, so the tinted and the
+ *     untinted section are the same box to the pixel.
+ *
+ * It owns the geometry and NOT the ground. The caller paints it.
  */
-export const STRIP_CAPSULE =
-  "flex shrink-0 items-center gap-1 rounded-full border border-transparent px-1";
+export const BELT_SECTION =
+  "-my-1.5 flex shrink-0 items-center gap-1.5 border border-transparent px-1.5 py-1.5";
 
 /**
  * Whether the strips in this subtree DRAW their names, or only expose them to a screen reader.

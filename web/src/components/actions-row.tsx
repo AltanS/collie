@@ -4,55 +4,89 @@ import { Button } from "@/components/ui/button";
 import { HarnessBar, useHarnessBarItems } from "@/components/harness-bar";
 import { OverflowEdges } from "@/components/ui/overflow-edges";
 import { SectionLabel } from "@/components/ui/section-label";
-import { STRIP_CAPSULE, STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
+import { STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
 import { useLocale } from "@/hooks/use-locale";
 import { t as translate } from "@/lib/i18n";
 import type { OperatorCommand } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 // ONE ROW OF ACTIONS, DIRECTLY ABOVE THE INPUT. Collie's own controls first — Keys, Type, Quick,
-// Agent, the display gear — then the running harness's own commands in a segment of their own. It
+// Agent, the display gear — then the running harness's own commands in a section of their own. It
 // scrolls sideways; nothing wraps and nothing is dropped.
 //
-// TWO CAPSULES OF ONE GEOMETRY, AND THAT IS THE STRUCTURE. Both halves wear STRIP_CAPSULE: the
-// general one is an OUTLINE (a 1px border on the app's border colour, no ground), the harness one is
-// a FILL (the brand tint, no visible border). Outline against fill is what keeps them apart on a
-// Codex pane, where both are neutral, and one shape is what makes them read as siblings rather than
-// as two unrelated things. The gap BETWEEN the capsules (`gap-2.5`, 10px) is wider than the gap
-// inside them (`gap-1`, 4px); that ratio is the only separator, because a vertical rule between two
-// scrolling groups is a line the eye has to step over on every pan.
+// IT IS A BELT: ONE FULL-BLEED BAND, NOT TWO FLOATING CAPSULES. The row is a continuous strip that
+// runs edge to edge, closed above and below by a hairline, with a quiet ground of its own. Collie's
+// controls stand DIRECTLY on that ground with no outline at all; the harness's commands stand in a
+// SECTION of the same band — a square-cornered rectangle spanning the belt's full inner height,
+// tinted with the harness's brand. One belt, two parts, and the tint boundary is what separates
+// them. There is no divider and no thick left border: a rule between two groups in one scroller is a
+// line the eye steps over on every pan, and a thick left border is a house rule we do not break.
 //
-// It is here because Altan tested the merged row on his phone and said it "lacks some structure":
-// five identical grey glyphs at equal spacing, no boundary anywhere, then a tinted blob cut off
-// mid-word. Nothing told the eye where one group ended. The behaviour was already right and did not
-// change — only how the row is drawn.
+// It is here because Altan tested the two-capsule row on his phone and asked for "a ribbon or belt
+// like visual for this menu". The capsules read as two objects dropped onto the chrome; the belt
+// reads as one strip with two parts, which is what the row actually is. Nothing about the behaviour
+// changed — only how the row is drawn.
+//
+// THE GROUND IS AN OPERATOR'S CALL THAT OVERRIDES DESIGN.md §4, AND IT SAYS SO HERE ON PURPOSE.
+// §4 is "chrome separates with a rule, not a fill", and the status band one row above used to carry
+// the measurement that argued a fill down. A belt IS a fill, Altan asked for one by name, and this
+// row alone takes it — §4 still governs every other strip of chrome in the app.
+//
+// WHICH fill was measured, not chosen. The belt sits on the composer's chrome block (`--chrome`:
+// rgb 235 light, rgb 23 dark) and BOTH its neighbours are that same ground — the dock/handle above
+// and the input below, which is `bg-transparent` over it. So the ground had to separate from
+// `--chrome` in both themes, and no single token does: `--muted` IS `--chrome` in light (1.00:1,
+// invisible) and `--card` IS `--chrome` in dark (1.00:1, invisible). `bg-muted/40`, the first thing
+// tried, therefore measured 1.00:1 light / 1.06:1 dark — nothing at all in light. An alpha wash of
+// the FOREGROUND is the one recipe that is symmetric by construction, because the foreground flips
+// with the theme: black at 6% darkens the light ground, white at 6% lightens the dark one. Measured
+// against `--chrome`:
+//
+//    bg-foreground/6   1.13:1 light (rgb 221)  ·  1.16:1 dark (rgb 37)
+//    bg-accent         1.06:1 light            ·  1.19:1 dark   (asymmetric, near-nothing in light)
+//    bg-background     1.09:1 light            ·  1.11:1 dark   (but rgb 10 in dark IS the terminal
+//                                                                mirror's fill — a hole, not a band)
+//
+// The chevrons keep reading over it: `text-muted-foreground` measures 4.84:1 light and 5.93:1 dark
+// on the belt's ground, against 5.48 / 5.83 on the bare chrome — the belt costs them nothing that
+// matters, and both clear 4.5:1.
+//
+// THE HAIRLINES ARE `--border`, NOT `--rule`. The belt's neighbours are the same chrome surface it
+// stands on, so these are component edges inside one surface, which is what `--border` is for —
+// the same reading the status band above it came to. `border-y` and no rounded ends anywhere: a
+// belt with rounded corners is a capsule again.
 //
 // It replaced two separate rows. The Controls row and the harness bar sat one above the other, each
 // spending a row of a phone's glass on four or five buttons, and the operator read them as one thing
 // anyway: "what can I press from here". Merged, the composer gets a row back and the harness
 // commands sit at the same height as the keys they were always meant to live beside.
 //
-// WHY THE GENERAL SEGMENT IS FIRST. It is the half that is ALWAYS there. The harness segment is
+// WHY THE GENERAL PART IS FIRST. It is the part that is ALWAYS there. The harness section is
 // absent on a bare shell, on grok, on opencode, and whenever the operator has the Settings switch
 // off — so leading with it would make the row's left edge mean a different thing per pane, and the
 // thumb could not learn one position. The left edge is Keys on every pane there is.
 //
-// EVERY PILL IS AN ICON AND A WORD, IN BOTH CAPSULES, AND THE ROW OVERFLOWS BECAUSE OF IT. The
-// general half was icon-only for half a day, and Altan's verdict on it was that it "looks alien to
-// what we've added now for harness specific stuff": two capsules that are meant to read as one
-// family cannot hold two different kinds of pill. So the words came back, and the cost was paid in
+// EVERY PILL IS AN ICON AND A WORD, IN BOTH PARTS, AND THE ROW OVERFLOWS BECAUSE OF IT. The
+// general part was icon-only for half a day, and Altan's verdict on it was that it "looks alien to
+// what we've added now for harness specific stuff": two parts that are meant to read as one belt
+// cannot hold two different kinds of pill. So the words came back, and the cost was paid in
 // scroll rather than in shape.
 //
 // The numbers, measured in the playground at a 382px row, deviceScaleFactor 2:
 //
-//  * The general capsule with words is 396px — wider than the row on its own, so the harness
-//    capsule starts at 418px and neither its mark nor Model is visible at rest on a Claude pane.
-//    Icon-only it was 244px and left ~120px of tint showing. That is the trade, made knowingly.
-//  * 20px of that came back by tightening STRIP_ROW_PILL to `px-2` (416px → 396px), which is as far
+//  * The general run with words was 396px as an outlined capsule — wider than the row on its own,
+//    so the harness half started at 418px and neither its mark nor Model was visible at rest on a
+//    Claude pane. Icon-only it was 244px and left ~120px of tint showing. That is the trade, made
+//    knowingly.
+//  * The belt gave a little of it back without touching a label: the capsule's own `px-1` and its
+//    2px of reserved border are gone (−10px), and the wide 10px gap that used to separate the two
+//    capsules is now the belt's ordinary 6px pill gap (−4px). The general pills' own gap went the
+//    other way, 4px → 6px, because without a capsule around them a 4px run reads as one smear.
+//  * 20px came back earlier by tightening STRIP_ROW_PILL to `px-2` (416px → 396px), which is as far
 //    as padding goes before the pills stop looking like pills. Nothing else was cut: not a label,
 //    not the type size, not the harness mark.
 //  * The row is a scroller by design and the edge mask already says "there is more this way", which
-//    is the answer it was built to give. One thumb-flick reaches the harness half.
+//    is the answer it was built to give. One thumb-flick reaches the harness section.
 //
 // The general pills DRAW a short word and ANNOUNCE the full one (`word` vs `label` below): the row
 // has one word of room per pill, and "Type into terminal" and "Display settings" are still what a
@@ -117,29 +151,36 @@ export function ActionsRow({ general, agent, mine, onRun, disabled }: ActionsRow
   return (
     <div
       data-slot="composer-actions"
-      className="-mx-3 mt-2 mb-1.5 flex items-center"
+      // THE BELT ITSELF, and the ground and the rules go HERE rather than on the scroller inside it:
+      // this is the element carrying the `-mx-3` that cancels the dock's `px-3`, so a fill or a rule
+      // drawn here runs edge to edge. Drawn one level in, the band would stop 12px short of both
+      // screen edges and read as a wide capsule — the shape this row just stopped being.
+      className="-mx-3 mt-2 mb-1.5 flex items-center border-y border-border bg-foreground/6"
     >
       {/* OverflowEdges measures this scroller and fades — and chevrons — only the end that still
-          hides a capsule. The `px-3` stays on the scroller, paired with the `-mx-3` above: the
+          hides something. The `px-3` stays on the scroller, paired with the `-mx-3` above: the
           wrapper adds no padding of its own, it only owns the flex sizing the scroller used to
           carry directly.
-          gap-2.5 overrides the scroller's own gap-1.5: its children here are the two capsules, and
-          this is the wide half of the gap ratio that groups them. */}
+          The scroller's own `gap-1.5` stands — 6px is the belt's ONE pill gap, between the general
+          pills, and between the last of them and the harness section's edge. The old `gap-2.5`
+          override is gone with the capsules: a wider gap around a group was the separator when the
+          groups were floating boxes, and the section's tint is the separator now. */}
       <OverflowEdges>
         {(scrollerRef) => (
-          <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "gap-2.5 px-3")}>
+          <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "px-3")}>
             {general.length > 0 && (
               // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
               // self-labelling buttons and earned nothing, but in the accessibility tree it is the only
               // thing that names this group at all. Delete it and a reader enters an unnamed run of
-              // buttons. The harness segment names itself, separately, for the same reason.
+              // buttons. The harness section names itself, separately, for the same reason.
               <div
                 data-slot="composer-controls"
                 role="group"
                 aria-labelledby="composer-controls-label"
-                // The OUTLINED capsule: the shared geometry, coloured by a border alone. The harness's
-                // fills the same box instead.
-                className={cn(STRIP_CAPSULE, "border-border")}
+                // NO BOX OF ITS OWN. Collie's controls stand directly on the belt's ground: no
+                // outline, no ground, no padding — a group in the accessibility tree and a flex run
+                // in the paint. The harness section is the only thing on this belt that is drawn.
+                className="flex shrink-0 items-center gap-1.5"
               >
                 <SectionLabel id="composer-controls-label" className="sr-only">
                   {translate("composer.controls.label")}

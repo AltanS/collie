@@ -1557,12 +1557,17 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // …stated as ONE utility. `border-b border-t` would paint the same two lines and read as two
     // decisions, and a later `border-b` in the same cn() would silently drop the top one.
     expect(band().className).not.toMatch(/(?:^|\s)border-[bt](?=\s|$)/);
-    // The controls group below draws no SEAM: its border is a closed capsule, which is a group's
-    // outline and not a boundary between two chrome regions. A directional edge there would be a
-    // second rule at this seam, which is the fault this case exists to catch.
-    expect(row().className).toMatch(/(?:^|\s)rounded-full(?=\s|$)/);
-    expect(row().className).not.toMatch(/(?:^|\s)border-[bt](?=\s|$)/);
-    expect(row().className).not.toMatch(/(?:^|\s)border-y(?=\s|$)/);
+    // The controls group below draws NOTHING at all any more: with the capsule retired it stands on
+    // the belt's own ground, so it can neither double a seam nor outline itself.
+    expect(row().className).not.toMatch(/(?:^|\s)border/);
+    expect(row().className).not.toMatch(/(?:^|\s)rounded/);
+    // The BELT closes its own two edges, the same way and with the same token the band does, and the
+    // 8px of chrome between the band's bottom rule and the belt's top one is what keeps those two
+    // from reading as one doubled seam.
+    expect(actions().className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
+    expect(actions().className).toMatch(/(?:^|\s)border-border(?=\s|$)/);
+    expect(actions().className).not.toMatch(/(?:^|\s)border-rule(?=\s|$)/);
+    expect(actions().className).not.toMatch(/(?:^|\s)rounded/);
     // …and the dock around them draws no edge either — the chrome block above it does.
     const dock = band().parentElement!;
     expect(dock.className).not.toMatch(/(?:^|\s)border/);
@@ -1721,9 +1726,9 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // The 12px goes back on the SCROLLER, not on the OverflowEdges wrapper between them: that
     // wrapper owns the flex sizing and the edge cues, and deliberately no padding of its own.
     expect(actions().querySelector(".overflow-x-auto")!.className).toMatch(/(?:^|\s)px-3(?=\s|$)/);
-    // The group's GUTTER is still the scroller's: the only horizontal padding it owns is the 4px
-    // that makes its capsule wider than the run of pills inside it (STRIP_CAPSULE).
-    expect(row().className).toMatch(/(?:^|\s)px-1(?=\s|$)/);
+    // The group's GUTTER is the scroller's and nothing else: with the capsule gone, Collie's
+    // controls stand on the belt's own ground and own no padding at all.
+    expect(row().className).not.toMatch(/(?:^|\s)px-/);
   });
 });
 
