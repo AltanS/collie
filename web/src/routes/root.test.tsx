@@ -354,11 +354,11 @@ describe("RootLayout — the header identity survives a round trip to a pane", (
   });
 });
 
-// THE FIRST-LAUNCH TOUR'S GATE. It lives in `components/tour-sheet.tsx` but it is decided here, at
+// THE FIRST-RUN SCREEN'S GATE. It lives in `components/tour-sheet.tsx` but it is decided here, at
 // the data root, because the only signal that says "this render is real" is the root snapshot. The
-// sheet's own behaviour is pinned in `components/tour-sheet.test.tsx`; these cases are about WHEN it
-// is allowed to appear, what it writes when it does, and what it holds back while it is up.
-describe("RootLayout — the tour's gate", () => {
+// screen's own behaviour is pinned in `components/tour-sheet.test.tsx`; these cases are about WHEN
+// it is allowed to appear, what it writes when it does, and what it holds back while it is up.
+describe("RootLayout — the first-run gate", () => {
   beforeEach(() => __resetTourStore());
   afterEach(() => __resetTourStore());
 
@@ -380,12 +380,12 @@ describe("RootLayout — the tour's gate", () => {
   it("opens on the first live snapshot of a device that has never seen it", async () => {
     renderWith(live);
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
-    expect(screen.getByRole("dialog")).toHaveAccessibleName(en["tour.slide1.title"]);
-    expect(screen.getByRole("heading", { name: en["tour.slide1.title"] })).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveAccessibleName(en["tour.title"]);
+    expect(screen.getByRole("heading", { name: en["tour.title"] })).toBeInTheDocument();
   });
 
-  // Marked seen on OPEN, before the first slide paints. Nothing in the close path writes the key, so
-  // a phone that loses the tab on slide 2 recovers through the Settings row and nowhere else.
+  // Marked seen on OPEN, before the screen paints. Nothing in the close path writes the key, so a
+  // phone that loses the tab half way down recovers through the Settings row and nowhere else.
   it("marks itself seen as soon as it opens, not when it closes", async () => {
     renderWith(live);
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
@@ -393,7 +393,7 @@ describe("RootLayout — the tour's gate", () => {
     expect(localStorage.getItem(TOUR_STORAGE_KEY)).toBe(String(TOUR_VERSION));
   });
 
-  it("stays shut on a device that has already seen this tour", async () => {
+  it("stays shut on a device that has already seen this screen", async () => {
     markTourSeen();
     const { container } = renderWith(live);
     await shellReady(container);
@@ -414,16 +414,16 @@ describe("RootLayout — the tour's gate", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  // A read-only device SEES the tour. A family tablet left on the dashboard is exactly the device
-  // that needs to be told what it is looking at; slide 2 branches its copy instead.
-  it("still opens on a read-only device, and slide 2 tells it who to ask", async () => {
+  // A read-only device SEES it. A family tablet left on the dashboard is exactly the device that
+  // needs to be told what it is looking at; the setup row and the first card branch instead.
+  it("still opens on a read-only device, and offers pairing as the first thing to do", async () => {
     renderWith({
       ...live,
       device: { enforced: true, device: "tablet", authorized: false },
     });
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: en["tour.next"] }));
-    expect(screen.getByText(en["tour.slide2.bodyReadOnly"])).toBeInTheDocument();
+    expect(screen.getByText(en["tour.setup.readOnly"])).toBeInTheDocument();
+    expect(screen.getByText(en["tour.pair.title"])).toBeInTheDocument();
   });
 
   it("does not re-open itself once it has been closed", async () => {

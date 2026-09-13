@@ -8,8 +8,8 @@ import {
   TOUR_VERSION,
 } from "./tour";
 
-// The first-launch tour's per-device store. The whole gate is `shouldShowTour(seen)`, so the value
-// in storage has to be a number the app can compare — never a boolean, never JSON.
+// The first-run screen's per-device store. The whole gate is `shouldShowTour(seen)`, so the value in
+// storage has to be a number the app can compare — never a boolean, never JSON.
 
 /** Re-import the module with storage already seeded, since `load()` runs once at module scope. */
 async function loadWith(raw: string | null) {
@@ -19,16 +19,16 @@ async function loadWith(raw: string | null) {
   return await import("./tour");
 }
 
-describe("tour store", () => {
+describe("first-run store", () => {
   beforeEach(() => __resetTourStore());
   afterEach(() => __resetTourStore());
 
-  it("starts unseen, so a fresh device is shown the tour", () => {
+  it("starts unseen, so a fresh device is shown the screen", () => {
     expect(tourSeenVersion()).toBe(0);
     expect(shouldShowTour(tourSeenVersion())).toBe(true);
   });
 
-  it("marks the tour seen at this bundle's version, as a bare decimal string", () => {
+  it("marks it seen at this bundle's version, as a bare decimal string", () => {
     markTourSeen();
     expect(localStorage.getItem(TOUR_STORAGE_KEY)).toBe(String(TOUR_VERSION));
     expect(tourSeenVersion()).toBe(TOUR_VERSION);
@@ -42,8 +42,8 @@ describe("tour store", () => {
     expect(shouldShowTour(tourSeenVersion())).toBe(true);
   });
 
-  // The bump rule: a device that saw an older tour is shown the new one exactly once.
-  it("shows the tour again once the version is bumped past what the device saw", () => {
+  // The bump rule: a device that saw an older screen is shown the new one exactly once.
+  it("shows it again once the version is bumped past what the device saw", () => {
     expect(shouldShowTour(TOUR_VERSION - 1)).toBe(true);
     expect(shouldShowTour(TOUR_VERSION)).toBe(false);
     expect(shouldShowTour(TOUR_VERSION + 1)).toBe(false);
@@ -61,7 +61,15 @@ describe("tour store", () => {
     expect(mod.tourSeenVersion()).toBe(1);
   });
 
-  it("notifies subscribers so the host repaints when the tour is reset", () => {
+  // The three-slide tour was version 1 and every device that ran it holds that number. The single
+  // scrolling screen replaced every claim on it, so all of them earn one more look.
+  it("shows the new screen to a device that only ever saw the three-slide tour", async () => {
+    const mod = await loadWith("1");
+    expect(mod.TOUR_VERSION).toBe(2);
+    expect(mod.shouldShowTour(mod.tourSeenVersion())).toBe(true);
+  });
+
+  it("notifies subscribers so the host repaints when the store is reset", () => {
     // useSyncExternalStore's subscribe is module-private; the observable effect is the same one the
     // Settings row depends on — a write reaches a reader that already read the old value.
     markTourSeen();
