@@ -1045,7 +1045,6 @@ describe("operatorReason — one runtime failure, said once, in Collie's words",
     expect(operatorReason("connect ECONNREFUSED 10.0.0.2:8787")).toBe("nothing accepted a connection at this address");
     expect(operatorReason("getaddrinfo ENOTFOUND nas.example")).toBe("this address does not resolve");
     expect(operatorReason("unable to verify the first certificate")).toBe("the TLS certificate was not accepted");
-    expect(operatorReason("unknown certificate verification error")).toBe("the TLS certificate was not accepted");
     expect(operatorReason("connect EHOSTUNREACH")).toBe("there is no route to this address");
     expect(operatorReason("The socket connection was closed unexpectedly")).toBe(
       "the connection closed before an answer arrived",
@@ -1059,6 +1058,63 @@ describe("operatorReason — one runtime failure, said once, in Collie's words",
   test("an unrecognised failure is passed through, not dressed up", () => {
     // A confident sentence describing the wrong thing is worse than a string they can search for.
     expect(operatorReason("something nobody has seen yet")).toBe("something nobody has seen yet");
+  });
+
+  test("Bun's catch-all is NOT read as a rejected pin — it is read before the certificate row", () => {
+    // The lead dials `https://` (`crewUrl`'s default scheme). A member that came up SOLO built no
+    // pinned listener, so it answers the ClientHello with plain HTTP and Bun throws its catch-all.
+    // Both spellings Bun gives — the message and the `code` — say the same nothing about a pin.
+    // The sentence is `cli/crew.ts`'s, verbatim in substance: one event, told one way.
+    expect(operatorReason("unknown certificate verification error")).toBe(
+      "this address answers over plain HTTP, not HTTPS",
+    );
+    expect(operatorReason("UNKNOWN_CERTIFICATE_VERIFICATION_ERROR")).toBe(
+      "this address answers over plain HTTP, not HTTPS",
+    );
+    // The distinction is the whole point: neither sends the operator to the pin.
+    expect(operatorReason("unknown certificate verification error")).not.toContain("certificate");
+  });
+});
+
+// ── A member that came up SOLO, dialled by a lead that still has it on the roster ─────────────
+//
+// Observed 2026-09-13 on the dev crew. The member was a 1.9.0 build whose state directory still
+// held the 1.7.0 `pack-*.json` names, so it found no trust store, resolved `solo`, and opened a
+// PLAIN HTTP listener (`peerListenerTls` needs an enrolled lead certificate). The lead still had
+// the member enrolled, so it dialled `https://minibuch…:8789/crew/v1/hello` with a real pin.
+// `collie doctor` then printed "hello: the TLS certificate was not accepted" and sent the operator
+// to a pin that was never consulted.
+describe("hello against a solo member — the reason must be about TLS being absent, not refused", () => {
+  /** Exactly what Bun throws for an `https://` dial at a plain `Bun.serve`. Reproduced 2026-09-13. */
+  function bunPlainHttpThrow(): Error {
+    const err = new TypeError("unknown certificate verification error");
+    Object.defineProperty(err, "code", { value: "UNKNOWN_CERTIFICATE_VERIFICATION_ERROR" });
+    return err;
+  }
+
+  test("the operator is told no TLS answered, and is NOT pointed at the pin", async () => {
+    const fetch: CrewFetch = () => Promise.reject(bunPlainHttpThrow());
+    const outcome = await client(fetch).hello(laptop);
+    expect(outcome.ok).toBe(false);
+    // Still §10.2's `unreachable`: a dial that never completed is one state, whatever killed it.
+    expect(outcome.ok === false && outcome.state).toBe("unreachable");
+    expect(outcome.ok === false && outcome.reason).toBe(
+      "hello: this address answers over plain HTTP, not HTTPS",
+    );
+    // The regression, named: "the TLS certificate was not accepted" is a claim about a pin, and
+    // there was no certificate on the wire to accept or reject.
+    expect(outcome.ok === false && outcome.reason).not.toContain("certificate");
+  });
+
+  test("a solo member reached over plain http answers no crew route, and that stays its own story", async () => {
+    // The other half of the same incident: an address the operator typed WITH `http://` reaches the
+    // solo member's ordinary port, where `/crew/v1/*` is not mounted. A 404 with no crew protocol
+    // header is the headerless rule's case (§7), never a TLS sentence and never `incompatible`.
+    const { fetch } = replying({ error: "not found" }, { status: 404, protocol: null });
+    const outcome = await client(fetch).hello({ memberId: "laptop", address: "http://laptop.example:8787" });
+    expect(outcome.ok).toBe(false);
+    expect(outcome.ok === false && outcome.state).toBe("unreachable");
+    expect(outcome.ok === false && outcome.reason).toBe("hello: peer answered 404 with no crew protocol header");
   });
 });
 

@@ -69,6 +69,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - **A pane's cache countdown survives a `/compact`.** A transcript probe that finds no turn inside its 128 KB window now keeps the last reading and lets it age, instead of dropping the pane's countdown for good; a read that actually fails still drops it.
 - **A measured cache window cites the rule it was really measured on.** A Claude pane on a subscription measures the one-hour window, so the sheet now quotes the subscription page and date instead of the five-minute API page the tier guess had picked.
+- **A member serving plain HTTP no longer reads as a rejected certificate.** `collie doctor` and `crew status` said "the TLS certificate was not accepted" for a member that answered with no TLS at all, which sent the operator to a pin that was never consulted; the reason now says the address answers over plain HTTP, the same sentence `collie join` already gives.
 
 ## [1.8.2] - 2026-09-12
 

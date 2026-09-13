@@ -1206,6 +1206,21 @@ const TRANSPORT_REASONS: readonly (readonly [RegExp, string])[] = [
   [/unable to connect|connection refused|econnrefused|connectionrefused/, "nothing accepted a connection at this address"],
   [/unable to resolve|enotfound|getaddrinfo|dns/, "this address does not resolve"],
   [/econnreset|epipe|socket|closed unexpectedly|connection closed/, "the connection closed before an answer arrived"],
+  // Bun's CATCH-ALL, and it must be read before the row below it. `UNKNOWN_CERTIFICATE_VERIFICATION_
+  // ERROR` / "unknown certificate verification error" is what Bun throws when the far side answered
+  // the ClientHello with something that is not TLS at all — the case being a member that came up
+  // SOLO and therefore built no pinned listener, while the lead still dialled it `https://`
+  // (`crewUrl`'s default scheme). Confirmed 2026-09-13 on the dev crew, and reproduced against a
+  // plain `Bun.serve` with a real pinned `ca`.
+  //
+  // The generic row below matched it on the word "certificate" and said "the TLS certificate was not
+  // accepted", which sent the operator to the pin. There was no certificate and no handshake: the
+  // remedy was to re-enrol the member, and the pin was the one thing that was fine. So this row
+  // names the observable fact instead, and leaves the pin out of it.
+  //
+  // `cli/crew.ts` reads the SAME event off `join`'s dial (`looksLikePlaintextListener`) and already
+  // tells the operator the host "answers over plain HTTP, not HTTPS". One event, one sentence.
+  [/unknown.certificate.verification/, "this address answers over plain HTTP, not HTTPS"],
   // Anything the TLS layer refused: an unmatched pin, an expired or untrusted certificate, a front
   // door presenting one this member was never told to expect (§8.1).
   [/certificate|self.signed|tls|ssl|handshake/, "the TLS certificate was not accepted"],
