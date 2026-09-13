@@ -1368,12 +1368,6 @@ describe("Composer — destructive-input confirm", () => {
     expect(screen.getByTestId("status")).toHaveTextContent(
       "Destructive: sudo (runs as root) on workshop — tap Send again to confirm",
     );
-    // …and the SAME machine is named at the box the words were typed into. Two statements of one
-    // fact is right here and only here: the chip answers "where will this land" before you commit,
-    // the confirm answers it at the moment you do, and a destructive command on the wrong machine is
-    // the failure both exist to prevent. It is one node, docked inside the field, not a standalone
-    // row above it — the row above the input is the status line's.
-    expect(screen.getByLabelText("Sends to host: workshop")).toBeInTheDocument();
   });
 
   it("does not arm the confirm for innocent input", async () => {
@@ -1406,31 +1400,6 @@ describe("Composer — the machine opens the actions belt, and no band stands ab
   const actions = () => document.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
   /** The field's own reserved strip. Read off the class, because the jsdom render has no layout. */
   const reserved = (el: HTMLElement) => /(?:^|\s)pr-(\d+)(?=\s|$)/.exec(el.className)?.[1];
-
-  it("opens the belt with the machine on a crew, and draws nothing there on a solo install", () => {
-    // Solo — every install that exists today. There is no "which machine" question to answer, so
-    // the belt opens with Keys and the chip's own hide rule renders nothing at all. Scoped by
-    // data-slot, never a bare role query: `ui/strip-host` mounts two permanent sr-only live regions,
-    // so a role sweep is ambiguous in any tree with a host.
-    renderComposerWithStatus({ scope: { host: "workshop" } });
-    expect(actions().querySelector('[aria-label*="host" i]')).toBeNull();
-    cleanup();
-
-    // Crew — the chip appears, ON THE BELT, and it is PINNED at the belt's right end rather than
-    // taking the scroller's first slot. Not inside the controls group either: that group is named
-    // "Controls" and a machine is not one of Collie's controls, it is where all of them land.
-    renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
-    const chip = screen.getByLabelText("Sends to host: workshop");
-    expect(actions().contains(chip)).toBe(true);
-    expect(row().contains(chip)).toBe(false);
-    const scroller = actions().querySelector(".overflow-x-auto")!;
-    expect(scroller.contains(chip)).toBe(false);
-    // The `tag` variant, never `caption`: the 10px uppercase run was sized for the 14px band that
-    // is gone, and among 32px pills it reads as a word that fell off something. The tag is a
-    // bordered pill, which is what `caption` explicitly is not (host-chip.tsx).
-    expect(chip.className).toMatch(/(?:^|\s)border(?=\s|$)/);
-    expect(chip.className).not.toMatch(/uppercase/);
-  });
 
   it("has no status band at all any more, and adds no visible word in its place", () => {
     // The band is gone, and the word did not move somewhere else: a status word anywhere in this

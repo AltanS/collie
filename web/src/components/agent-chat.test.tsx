@@ -252,13 +252,10 @@ describe("AgentChat — the pane header's identity block", () => {
     const block = identity(container);
     expect(block?.textContent).not.toMatch(/workshop/i);
     expect(block?.textContent).not.toContain("needs you");
-    // …and the belt below opens with the machine. This pane's machine is unreachable, so the chip
-    // carries the fault with it rather than showing a calm name beside a placeholder that says the
-    // write will be refused.
+    // The belt below carries neither one. It held the machine for a day; the machine has since moved
+    // UP into this header's own trailing column, under the cache reading (the case below pins it).
     const row = belt(container);
-    expect(
-      within(row!).getByLabelText(/^sends to host: workshop \(unreachable\)$/i),
-    ).toBeInTheDocument();
+    expect(row!.querySelector('[aria-label*="host" i]')).toBeNull();
     // The state is not down there either — that was the half Altan asked to be rid of.
     expect(row!.textContent).not.toContain("needs you");
   });
@@ -716,12 +713,12 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
       // The composer's own box, reached through the actions belt inside it — the status band this
       // used to reach through is gone (composer.tsx says where it went).
       const composer = belt.parentElement!;
-      // THE GRIP IS THE BELT'S OWN FIRST CHILD, and first is load-bearing: the belt's scroller wears
-      // an overflow mask (ui/overflow-edges.tsx), a mask applies to its element's whole subtree, and
-      // a grip inside that wrapper would fade out exactly where the belt overflows. Outside it, and
-      // before it, nothing masks it.
-      expect(handle.parentElement).toBe(belt);
-      expect(belt.firstElementChild).toBe(handle);
+      // THE GRIP IS INSIDE THE BELT AND OUTSIDE ITS SCROLLER, and both halves are load-bearing: the
+      // scroller wears an overflow mask (ui/overflow-edges.tsx), a mask applies to its element's
+      // whole subtree, and a grip inside that wrapper would fade out exactly where the belt
+      // overflows. Pinned beside it, nothing masks it.
+      expect(belt.contains(handle)).toBe(true);
+      expect(belt.querySelector(".overflow-x-auto")!.contains(handle)).toBe(false);
       // No Collapse of its OWN, either: the grip costs 0px, so there is no height for a presence
       // animation to hand back. Asserted as "the nearest one above the grip is the nearest one above
       // the belt" — the whole composer region sits inside one, and that one is not the grip's.

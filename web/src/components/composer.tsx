@@ -116,13 +116,13 @@ interface ComposerProps {
   onSent: () => void;
 
   /**
-   * The pane switcher, in two pieces: a small up-chevron worn on the actions belt's top rule
+   * The pane switcher, in two pieces: a Switch pill pinned at the actions belt's right end
    * (`onClick`, the tap) and the belt itself as a drag surface (`ref`, the finger-tracked pull).
    * Threaded straight through to {@link import("@/components/actions-row").ActionsRow} — this file
    * decides nothing about either and draws none of it.
    *
-   * Absent, rather than flagged off, the way `writeHost` is: the pane passes nothing here when
-   * there is nowhere to switch to.
+   * Absent, rather than flagged off: the pane passes nothing here when there is nowhere to switch
+   * to.
    */
   pullHandle?: {
     ref: (node: HTMLElement | null) => void;
@@ -246,7 +246,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // The machine every write on this row lands on. The pane view addresses one host (the pane's own,
   // carried in `?h=` since the row was opened), so the ambient scope IS the target here. Undefined on
   // a solo install, which renders no chip and leaves every confirm string unchanged.
-  // It opens the actions belt below (roomy only); it used to open the status band above it.
+  // It names the Keys dock's own header; the belt below it carried the tag for a day and the pane
+  // header carries it now (agent-chat.tsx).
   const writeHost = useAmbientHost(scope?.host);
   // Its display name, or undefined when there is no crew — the copy-level half of the hide rule.
   const writeHostLabel = useHostLabel(scope?.host);
@@ -1127,10 +1128,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             is unnecessary at this place."
 
             SO THE TWO RUNS WENT DIFFERENT WAYS. The machine moved ONE row down, onto the actions
-            belt, where it opens the row (actions-row.tsx, `writeHost`). It is the same write
-            surface and the same question — the belt is the thing doing the writing — at a size that
-            belongs among 32px pills rather than in a 12px line of chrome type, which is why it is
-            `variant="tag"` there and not `caption`.
+            belt — and then UP, into the pane header, under the cache reading, once the belt's right
+            end was needed for the Switch pill (agent-chat.tsx draws it, actions-row.tsx says why).
+            It is a `variant="tag"` either way: the 10px uppercase caption was sized for this band
+            and reads as a word that fell off something anywhere else.
 
             THE STATUS WORD WAS DELETED, NOT MOVED, AND THAT NEEDED ONE CHECK FIRST. The word was
             here because a 10px dot encodes this range in HUE ALONE and the range does not survive
@@ -1242,16 +1243,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 onSelect: () => requestDrawer(drawer === "display" ? null : "display"),
               },
           ]}
-          // The machine every one of those buttons — and the field below — writes to. It opens the
-          // belt, where the status band used to say it one row up.
-          writeHost={writeHost}
           agent={agent}
           mine={operatorCommands}
           onRun={(command) => send(command, false)}
           disabled={locked}
-          // The pane switcher: the chevron on this belt's top rule, and the belt itself as the drag
-          // surface behind it. The pane decides whether there is one (agent-chat.tsx); this row
-          // draws the mark, wires the drag, and costs no height for either.
+          // The pane switcher: a Switch pill pinned at this belt's right end, above Send, and the
+          // belt itself as the drag surface behind it. The pane decides whether there is one
+          // (agent-chat.tsx); this row draws the pill, wires the drag, and costs no height.
           handle={pullHandle}
         />
         {/* ── THE FOOTER'S NOTICE STRIPS, SORTED BY KIND (DESIGN.md §1, §2) ─────────────────────

@@ -61,17 +61,17 @@ describe("Host tag ideas section", () => {
     }
   });
 
-  it("keeps the tag on the belt on the shipped card only, and out of its scroller", () => {
+  it("pins the Switch pill on the shipped card, out of the scroller, and the tag on no belt at all", () => {
     render(<HostTagSection />);
-    // The crew is real, so the chip's hide rule is satisfied and the shipped tag is really there.
-    const shipped = beltIn(cardFor("host-today"));
-    const tag = within(shipped).getByLabelText(TAG_LABEL);
-    // PINNED, not in the scroller: that is the whole of what shipped, and this card draws the real
+    // The belt's pinned slot holds the pane switcher now, not the machine. This card draws the real
     // ActionsRow, so the claim is checked against the app rather than against a mock.
-    expect(shipped.querySelector(".overflow-x-auto")!.contains(tag)).toBe(false);
-    // Every road not taken puts the name somewhere else entirely, which is what made it an option.
-    for (const option of OPTIONS) {
-      expect(within(beltIn(cardFor(option))).queryByLabelText(TAG_LABEL)).toBeNull();
+    const shipped = beltIn(cardFor("host-today"));
+    const pill = within(shipped).getByRole("button", { name: "Switch pane" });
+    expect(shipped.querySelector(".overflow-x-auto")!.contains(pill)).toBe(false);
+    // The machine is on NO belt any more — not the shipped one, and not on any road not taken,
+    // each of which put the name somewhere else entirely, which is what made it an option.
+    for (const handle of HANDLES) {
+      expect(within(beltIn(cardFor(handle))).queryByLabelText(TAG_LABEL)).toBeNull();
     }
   });
 

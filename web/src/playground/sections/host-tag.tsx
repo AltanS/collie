@@ -61,6 +61,9 @@ export const DEF: SectionDef = {
 
 const HOST = "lodge";
 
+/** A card is a photograph: every callback on it does nothing. */
+const inert = () => {};
+
 function Crew({ children }: { children: ReactNode }) {
   return (
     <CrewProvider servers={rosterFive} ts={TS} pollMs={3_000}>
@@ -124,15 +127,20 @@ function ChromeBlock({ children }: { children: ReactNode }) {
  * The REAL actions belt, on Claude, in the roomy layout, inside the composer's own `px-3` dock,
  * which the belt's `-mx-3` cancels, so the band runs edge to edge exactly as it does on a phone.
  *
- * `host` is the whole question: passed, the belt opens with the shipped tag; omitted, the scroller
- * starts on Keys and the 63px is back. `children` is how the one idea that draws ON the belt reaches
- * it, and nothing else on the card needs the positioned box.
+ * `switcher` hands it the app's own handle, so the belt's right end carries the shipped Switch pill;
+ * omitted, the scroller runs to the edge. `children` is how the one idea that draws ON the belt
+ * reaches it, and nothing else on the card needs the positioned box.
  */
-function Belt({ host, children }: { host?: string; children?: ReactNode }) {
+function Belt({ switcher, children }: { switcher?: boolean; children?: ReactNode }) {
   const general = useRoomyActions();
   return (
     <div className="relative bg-chrome px-3">
-      <ActionsRow general={general} agent="claude" writeHost={host} onRun={took} />
+      <ActionsRow
+        general={general}
+        agent="claude"
+        onRun={took}
+        handle={switcher ? { ref: inert, onClick: inert, label: "Switch pane" } : undefined}
+      />
       {children}
     </div>
   );
@@ -257,15 +265,15 @@ export function HostTagSection() {
       <Group title="0 · The tag as it ships">
         <Card
           state="host-today"
-          label="shipped: the tag is pinned at the belt's right end, Keys starts at 0"
+          label="shipped: the belt's right end is the Switch pill, and the machine is in the header"
           reach="open any pane on a collie that leads a crew."
-          note="SHIPPED 2026-09-13, and this card is the real belt, so it is what your phone draws. The tag no longer opens the scroller: it is an absolute span over the band's right end, capped at the send button's 44px, with the pills panning under a two-layer fade. The belt got the whole 63px back — the 57px pill plus the scroller's own 6px gap — and the row's left edge is Keys on a crew exactly as on a solo install. The name now reads in all three states, before typing, while typing and with the keyboard up, and it never scrolls away, which the opening tag did. Two costs were taken knowingly: the glyph is gone, because 44px leaves 30px of text and a mark would take 16 of them, and the scroll cue had to learn to step around the tag (OverflowEdges' insetRight) so the fade that means there is more this way is not drawn under it. The four cards below are the roads not taken."
+          note="SHIPPED 2026-09-13 as a pinned host tag, REPLACED 2026-09-14, and this card is the real belt, so it is what your phone draws. The pinned slot at the belt's right end now holds the pane switcher's Switch pill, above the send button, over the same two-layer fade the tag stood on; the pills still pan under it and the scroll cue still steps around it (OverflowEdges' insetRight). The machine moved UP, into the pane header, under the cache reading and right-aligned, which is the two-corner layout the dashboard rows already use. Altan's verdict that moved it: the pull-up chevron, centred on the belt's rule, was 'now blocking the Quick action, it's a bad spot'. The four cards below are the roads not taken from the round that pinned the tag here."
         >
           <Crew>
             <PhoneMock>
               <MirrorSlice />
               <ChromeBlock>
-                <Belt host={HOST} />
+                <Belt switcher />
                 <InputRow />
               </ChromeBlock>
             </PhoneMock>

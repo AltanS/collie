@@ -1,9 +1,8 @@
-import { ChevronUp } from "lucide-react";
+import { Layers } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { HarnessBar, useHarnessBarItems } from "@/components/harness-bar";
-import { HostChip, useHostChipShown } from "@/components/host-chip";
 import { OverflowEdges } from "@/components/ui/overflow-edges";
 import { SectionLabel } from "@/components/ui/section-label";
 import { STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
@@ -63,16 +62,14 @@ import { cn } from "@/lib/utils";
 // anyway: "what can I press from here". Merged, the composer gets a row back and the harness
 // commands sit at the same height as the keys they were always meant to live beside.
 //
-// THE MACHINE OPENS THE BELT, AND THE STATUS WORD IS GONE. There was a 14px status band above this
-// row naming the write host and the pane's state. Altan's verdict: "the server is still necessary
-// somewhere, but the status is unnecessary at this place." So the band went, and the host moved
-// here — the belt is the surface every one of these buttons writes from, which is what made the
-// band's sentence worth saying in the first place. The STATE did not move anywhere: it stays on the
-// pane header's dot (named, so a reader still gets it without paint) and on the dashboard.
-//
-// WHY IT SITS BEFORE THE CONTROLS GROUP RATHER THAN INSIDE IT. `role="group"` here is named
-// "Controls"; the machine is not one of Collie's controls, it is where all of them land. It is also
-// not a button and must never become one — `host-chip.tsx` says why at length.
+// THE BELT'S RIGHT END IS THE SWITCH PILL, AND THE MACHINE IS NOT HERE ANY MORE. The write host was
+// pinned at that end for a day. Altan's verdict on the phone, once the pull-up chevron had shipped
+// on the rule: the chevron "is now blocking the Quick action, it's a bad spot". So the chevron went,
+// the pinned slot became the Switch pill — a real target, at the pill register, above the send
+// button — and the machine moved up to the pane header, under the cache reading, in the two-corner
+// layout the dashboard rows already use (agent-chat.tsx draws it). The STATE never moved either: it
+// stays on the pane header's dot (named, so a reader still gets it without paint) and on the
+// dashboard.
 //
 // WHY THE GENERAL PART IS FIRST. It is the part that is ALWAYS there. The harness section is
 // absent on a bare shell, on grok, on opencode, and whenever the operator has the Settings switch
@@ -112,32 +109,22 @@ const ON = "bg-control-on text-control-on-foreground hover:bg-control-on";
 const OFF = "text-muted-foreground";
 
 /**
- * THE HOST TAG NEVER OUTGROWS THE SEND BUTTON. Altan's rule, and it is a rule about the pair rather
- * than about the tag: the send button is `size-11` (44px) in composer.tsx, it is the widest single
- * object on the row below, and a name that ran past it would be the loudest thing on the chrome
- * block while naming something the operator already knows.
+ * How much of the belt's right end the pinned Switch pill owns, in px, for the scroll cue to step
+ * around (`OverflowEdges`'s `insetRight`). It is the whole pinned span: 78px of pill, the 12px of
+ * `pr-3` that keeps it off the screen edge, and the 32px of `pl-8` its fade leads in over.
  *
- * 44px is a hard budget and it costs the tag its glyph. Inside it the tag spends 2px of border and
- * 12px of `px-1.5`, leaving 30px of text; the 12px `Server` mark and its 4px gap would take 16 of
- * those 30 and leave room for two characters. The mark is the piece that gives, because the name is
- * the whole message and a glyph beside two letters names nothing. Nothing is lost on the degraded
- * reading either: {@link AddressTag} encodes that in the DASH of its border, not in the glyph, so it
- * still reads without colour.
- */
-const HOST_TAG_MAX_W = "max-w-11";
-
-/**
- * How much of the belt's right end the pinned tag owns, in px, for the scroll cue to step around
- * (`OverflowEdges`'s `insetRight`). It is the whole pinned span: 44px of tag, the 12px of `pr-3`
- * that keeps it off the screen edge, and the 32px of `pl-8` its fade leads in over.
+ * The pill's 78px is MEASURED, at a 390px viewport with deviceScaleFactor 2: `STRIP_ROW_PILL`'s
+ * 2·8px of `px-2`, the 16px `Layers` mark, the 6px `gap-1.5`, and 36px for the word "Switch" at
+ * `text-xs`. It is wider than the 44px host tag it replaces, and it may be — the tag was capped at
+ * the send button's width because it was only a name; this one is the target the thumb aims at.
  *
- * The fade's 32px is IN the number, and that was measured rather than assumed. At 56 — the tag and
- * its padding alone — the chevron landed inside the fade's lead-in, where the patch is already about
- * 87% opaque, so the one mark that says "there is more this way" was drawn at 13% and read as
- * nothing. At 88 it sits just outside the patch, on clear ground, and the patch's own fade picks the
- * line up from there, which is what makes the two cues read as one.
+ * The fade's 32px is IN the number, and that was measured rather than assumed when the tag stood
+ * here: at the pinned object's own width alone the scroll cue landed inside the fade's lead-in,
+ * where the patch is already about 87% opaque, so the one mark that says "there is more this way"
+ * was drawn at 13% and read as nothing. Clear of the patch it reads, and the patch's own fade picks
+ * the line up from there, which is what makes the two cues read as one.
  */
-const HOST_TAG_INSET = 88;
+const SWITCH_PILL_INSET = 122;
 
 /**
  * One of Collie's own actions. The composer owns every one of these — what it does, whether it is
@@ -170,26 +157,6 @@ export interface GeneralAction {
 export interface ActionsRowProps {
   /** Collie's own actions, in the order the thumb should meet them. */
   general: readonly GeneralAction[];
-  /**
-   * The machine every button on this belt — and the field below it — writes to. It is drawn as a
-   * `HostChip` and it is not a control: {@link HostChip} is deliberately not one.
-   *
-   * IT IS PINNED AT THE BELT'S RIGHT END AND TAKES NO SCROLLER WIDTH. It opened the scroller for
-   * half a day, as its first child, and Altan's verdict on the phone was that the tag "is taking up
-   * too much space": the belt already overflows on a Claude pane, so the 63px the tag spent (a 57px
-   * pill plus the scroller's own 6px gap) came out of Keys, Type, Quick, Agent and Display. Pinned,
-   * it is an absolute span over the band — the pills scroll UNDER it behind a fade, the scroller
-   * starts on Keys on a crew exactly as on a solo install, and the name never scrolls away, which
-   * the opening tag did. It is one of six placements drawn for the decision; the other five are kept
-   * as roads not taken in `playground/sections/host-tag.tsx`, with what each one cost.
-   *
-   * It SELF-HIDES on a solo install, which is every install that exists today, so passing it costs
-   * a solo phone nothing and nothing appears there — not the tag, and not the inset the scroll cue
-   * takes around it.
-   *
-   * Absent, rather than flagged off, where there is no crew to name.
-   */
-  writeHost?: string;
   /** The focused pane's agent — picks the harness section and its brand colour. */
   agent: string | undefined | null;
   /** The snapshot's `operatorCommands`; the `bar = true` ones replace the shipped bar (ADR 0043). */
@@ -199,67 +166,49 @@ export interface ActionsRowProps {
   /** Bound to the composer's `locked`. Greys the harness buttons in place. */
   disabled?: boolean;
   /**
-   * THE PANE SWITCHER'S MARK, RIDING THIS BELT'S TOP RULE. Absent by default, and absent is the
-   * whole of the old behaviour: nothing renders and no class on this row changes.
+   * THE PANE SWITCHER, PINNED AT THE BELT'S RIGHT END. Absent by default, and absent is the whole of
+   * the old behaviour: nothing renders and no class on this row changes.
    *
-   * The belt owns it because the belt owns the rule the mark sits on. It used to be a 30px band of
-   * its own above the composer; the band is gone and a small up-chevron moved down onto the
-   * hairline, half above and half below, on a small `bg-chrome` patch that breaks the rule around
-   * it. It costs the chrome block NO height at all — the patch is absolutely positioned, so the
-   * belt does not move and nothing below it does either.
+   * It used to be a 30px band of its own above the composer, then a small up-chevron centred on this
+   * belt's top rule. Altan's verdict on that chevron, from the phone: it "is now blocking the Quick
+   * action, it's a bad spot" — a mark centred on the rule stands over whichever pill happens to be
+   * in the middle of the band, and on a Claude pane that is Quick. So the mark is gone and the
+   * switcher is a PILL now, at the belt's right end, over the same two-layer fade the host tag used:
+   * an ordinary belt pill, icon and word like every other, but pinned rather than scrolling, so it
+   * never pans away and it covers nothing that scrolls under it.
    *
-   * IT IS A SMALL CHEVRON AND NOT THE OLD 6px BAR. That bar was a drag handle on a full-width lane
-   * of its own, where a wide grip reads correctly. This mark sits ON a rule shared with everything
-   * else on the belt, where a wide bar would read as a second hairline.
+   * IT SITS DIRECTLY ABOVE SEND, which is the whole of why the right end. The thumb that reaches for
+   * the send button is already there, the pill is the one thing on this belt that leaves the
+   * composer, and a pinned object at the end of a scroller costs the scroller only its own width.
    *
    * THE TWO HALVES LAND ON TWO DIFFERENT ELEMENTS, AND THAT IS THE DESIGN. `ref` goes on the BELT —
-   * the outer element, not the chevron — so a drag upward from anywhere on the band opens the
-   * switcher: a pill, the harness section, the bare ground, the chevron itself. `onClick` stays on
-   * the chevron, which is the thing that LOOKS tappable and is the only thing a tap may hit.
+   * the outer element, not the pill — so a drag upward from anywhere on the band opens the switcher:
+   * a pill, the harness section, the bare ground, the Switch pill itself. `onClick` is the pill's,
+   * which is the thing that LOOKS tappable and is the only thing a tap may hit.
    *
-   * Altan, on the phone, after the chevron shipped: "the pull-up handle chevron looks nice, but it's
-   * kinda difficult to hit". A 28x16 mark on a hairline is a good SIGN and a poor TARGET, and the
-   * answer is not to draw it bigger until it stops being a hairline mark — it is to stop asking the
-   * thumb to find it. The belt is 48px of glass running the full width of the phone, so the drag
-   * target is now roughly twenty times the area it was, and the chevron says where the sheet comes
-   * from rather than being the only place it comes from.
-   *
-   * The anchor is unchanged by the move: {@link import("@/hooks/use-sheet-pull")} measures its
-   * node's top edge, the chevron is centred ON the belt's top edge, so both report the same line and
-   * the sheet peeks from the same place it always did.
+   * The anchor is unchanged by any of this: {@link import("@/hooks/use-sheet-pull")} measures its
+   * node's top edge, and its node is still the belt, so the sheet peeks from the same line it always
+   * did.
    *
    * The belt wears `touch-pan-x` for it (`touch-action: pan-x`): the browser keeps the scroller's
    * sideways pan and hands vertical movement to the hook, which then decides per gesture which axis
-   * a touch belongs to (use-sheet-pull.ts's header holds the arbitration). The chevron keeps
-   * `touch-none` — a touch that starts on the mark is never the scroller's.
+   * a touch belongs to (use-sheet-pull.ts's header holds the arbitration).
    */
   handle?: {
     /** {@link import("@/hooks/use-sheet-pull").useSheetPull}'s ref — the finger-tracked drag. It
-     *  lands on the BELT, not on the chevron: the whole band is the drag surface. */
+     *  lands on the BELT, not on the pill: the whole band is the drag surface. */
     ref: (node: HTMLElement | null) => void;
-    /** The tap, on the CHEVRON. Opens the same switcher sheet the drag opens. */
+    /** The tap, on the SWITCH PILL. Opens the same switcher sheet the drag opens. */
     onClick: () => void;
     /** ALREADY TRANSLATED. The button's accessible name — "Switch pane". */
     label: string;
   };
 }
 
-export function ActionsRow({
-  general,
-  writeHost,
-  agent,
-  mine,
-  onRun,
-  disabled,
-  handle,
-}: ActionsRowProps) {
+export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: ActionsRowProps) {
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
-  // Whether a tag is really pinned, asked of the chip's own hide rule rather than guessed from
-  // `writeHost` being set: a solo install passes a host and draws nothing, and insetting the scroll
-  // cue for a tag nobody can see would fade the row's right end for no reason.
-  const hostPinned = useHostChipShown(writeHost);
 
   // Nothing to draw at all. Render nothing rather than an empty scroller, so the row costs no
   // height.
@@ -275,14 +224,13 @@ export function ActionsRow({
       // `mt-1.5` and not `mt-2`, and the 2px is a re-measurement rather than a shave: the 8px was
       // the air between the status band and these buttons, and that band is gone (composer.tsx says
       // where it went). What the number separates now is the top of the chrome block from this
-      // belt's own rule, and a rule needs less air than a line of type did. It is also the room the
-      // grip's upper half hangs into, so it may not be cut to nothing.
+      // belt's own rule, and a rule needs less air than a line of type did.
       //
-      // `relative` so the grip below can be centred on this element's own top rule. It is here
-      // unconditionally rather than only with a handle: a positioning context changes no pixel,
+      // `relative` so the pinned span below can be laid over this element's own right end. It is
+      // here unconditionally rather than only with a handle: a positioning context changes no pixel,
       // and a class that appears with a prop is a class nobody remembers is conditional.
       //
-      // THIS ELEMENT IS THE DRAG SURFACE. `handle.ref` attaches here and not to the chevron, so an
+      // THIS ELEMENT IS THE DRAG SURFACE. `handle.ref` attaches here and not to the pill, so an
       // upward drag anywhere on the band brings the switcher up (`handle` above says why). With it
       // comes `touch-pan-x`: the browser keeps the sideways pan that scrolls the pills and hands
       // vertical movement to the hook, which arbitrates per gesture. Both appear only WITH a handle,
@@ -294,43 +242,6 @@ export function ActionsRow({
         handle && "touch-pan-x",
       )}
     >
-      {/* THE MARK, ON THE RULE — see `handle` above for why it lives on this row at all, and for why
-          it is a small up-chevron rather than a wide bar.
-          It is the FIRST child and a SIBLING of the OverflowEdges wrapper, and both facts are
-          load-bearing. A mask applies to its element's whole subtree (overflow-edges.tsx says so at
-          the middle div), so a mark inside the wrapper would fade out with the pills exactly where
-          the belt overflows; outside it, nothing masks it. `z-10` puts it over the scroller, so a
-          pill that pans under the patch cannot take the tap.
-          THE GEOMETRY. `top-0` resolves against this row's PADDING box, which is one border-width
-          below the rule, and `-translate-y-1/2` then centres the patch on it — half above the
-          hairline, half below, within half a CSS pixel. `px-2 py-0.5` is the patch around the
-          `size-3` chevron that makes the rule visibly break around the mark rather than run behind
-          it.
-          THE HIT BOX IS A `::before`, the negative-inset trick from ui/labelled-strip.tsx's
-          STRIP_TAP_TARGET. The patch draws 40x24 (16px icon + 2·12px x-padding, 16px icon + 2·4px
-          y-padding); centred on the rule the 48-tall/96-wide answer needs `-inset-y-[12px]`
-          (24 + 12 + 12 = 48) and `-inset-x-[28px]` (40 + 28 + 28 = 96). Nothing clips it — this row
-          is not a scroll container, only the scroller inside it is.
-          IT GREW ONCE, AND THE REASON WAS A THUMB. Altan on the phone: the chevron "looks nice, but
-          it's kinda difficult to hit". The mark went from a `size-3` icon on a 28x16 patch with a
-          44x64 hit box to a `size-4` icon on a 40x24 patch with a 48x96 one, and the DRAG left it
-          entirely — the whole belt is the drag surface now (`handle` above). Bigger is the smaller
-          half of that answer: a mark on a hairline can only grow so far before it stops reading as a
-          mark, so the target the thumb actually aims at had to become the band itself.
-          IT OVERLAPS THE BELT, KNOWINGLY. The top of the belt over the centre patch belongs
-          to the mark, and `touch-none` means a touch starting there cannot pan the belt sideways.
-          The belt is 48px tall and scrolls from anywhere else on its length, so the trade is one
-          small centre patch against a gesture that used to cost 30px of glass. */}
-      {handle && (
-        <button
-          type="button"
-          aria-label={handle.label}
-          onClick={handle.onClick}
-          className="absolute top-0 left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center rounded-md bg-chrome px-3 py-1 text-muted-foreground transition-colors select-none before:absolute before:-inset-y-[12px] before:-inset-x-[28px] before:content-[''] active:bg-muted/50"
-        >
-          <ChevronUp className="size-4" aria-hidden />
-        </button>
-      )}
       {/* OverflowEdges measures this scroller and fades — and chevrons — only the end that still
           hides something. The `px-3` stays on the scroller, paired with the `-mx-3` above: the
           wrapper adds no padding of its own, it only owns the flex sizing the scroller used to
@@ -339,7 +250,7 @@ export function ActionsRow({
           pills, and between the last of them and the harness section's edge. The old `gap-2.5`
           override is gone with the capsules: a wider gap around a group was the separator when the
           groups were floating boxes, and the section's tint is the separator now. */}
-      <OverflowEdges insetRight={hostPinned ? HOST_TAG_INSET : 0}>
+      <OverflowEdges insetRight={handle ? SWITCH_PILL_INSET : 0}>
         {(scrollerRef) => (
           <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "px-3")}>
             {general.length > 0 && (
@@ -382,35 +293,46 @@ export function ActionsRow({
           </div>
         )}
       </OverflowEdges>
-      {/* THE MACHINE, PINNED AT THE BELT'S RIGHT END — see {@link HOST_TAG_INSET} above for why it
-          is here rather than in the scroller, and `writeHost` for what it names.
-          It is a SIBLING of the OverflowEdges wrapper, for the same reason the chevron is: a mask
-          applies to its element's whole subtree, and a tag inside the wrapper would fade out with
-          the pills exactly where the belt overflows — which is always, once a tag is pinned.
-          `pointer-events-none` on the whole span, and it is not a shortcut: this chip is not a
-          control and may not become one (host-chip.tsx says so at length), so a touch that lands on
-          it belongs to the scroller underneath. The belt still pans from under the tag, which
-          matters — the right end is exactly where a thumb flicks to reach the harness section.
+      {/* THE SWITCH PILL, PINNED AT THE BELT'S RIGHT END — see {@link SWITCH_PILL_INSET} above for
+          why the scroll cue steps around it, and `handle` for why it stands here at all.
+          It is a SIBLING of the OverflowEdges wrapper, and that is load-bearing: a mask applies to
+          its element's whole subtree (overflow-edges.tsx says so at the middle div), so a pill
+          inside the wrapper would fade out with the scrolling pills exactly where the belt
+          overflows — which is always, once a pill is pinned. `z-10` puts it over the scroller, so a
+          pill that pans under the fade cannot take the tap.
           THE FADE IS TWO STACKED LAYERS UNDER ONE MASK, and it has to be two: the belt's ground is
           `bg-foreground/6` OVER `bg-chrome`, so a single `bg-chrome` patch would read as a lighter
           hole punched in the band. The mask fades both layers in over the first 32px, which is what
-          lets a pill disappear UNDER the tag instead of stopping dead against it. */}
-      {hostPinned && (
-        <span className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
+          lets a scrolling pill disappear UNDER this one instead of stopping dead against it. The
+          fade alone is `pointer-events-none`, so the belt still pans from the 32px of lead-in while
+          the pill itself takes its own taps. */}
+      {handle && (
+        <span className="absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
           <span
             aria-hidden
-            className="absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
+            className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
           >
             <span className="absolute inset-0 bg-foreground/6" />
           </span>
-          <span className="relative">
-            {/* `variant="tag"` and never `caption`: the 10px uppercase caption was sized for the
-                14px status band this row absorbed, and a 10px run of chrome type sitting among 32px
-                pills reads as a word that fell off something. `sends` because that is what this
-                surface does: the chip must announce "sends to workshop", never "host: workshop", a
-                thumb's width from the box. */}
-            <HostChip host={writeHost} variant="tag" sends glyph={false} className={HOST_TAG_MAX_W} />
-          </span>
+          {/* AN ORDINARY BELT PILL, drawn exactly like the general run above — same
+              `STRIP_ROW_PILL`, same `gap-1.5 text-xs`, same muted tone, an icon and a word. Only its
+              POSITION differs, which is the whole idea: the belt holds one kind of pill, and the one
+              that leaves the composer is simply the one that never scrolls away.
+              It DRAWS "Switch" and ANNOUNCES "Switch pane", the same short-word/full-name split the
+              general pills use — a visible word the accessible name contains, never a different one
+              (WCAG 2.5.3). */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={handle.label}
+            aria-haspopup="dialog"
+            onClick={handle.onClick}
+            className={cn(`${STRIP_ROW_PILL} relative gap-1.5 text-xs`, OFF)}
+          >
+            <Layers className="size-4 shrink-0" />
+            {translate("composer.controls.switch")}
+          </Button>
         </span>
       )}
     </div>
