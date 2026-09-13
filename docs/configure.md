@@ -166,10 +166,27 @@ To verify, open a pane and tap **/**; your rows appear on the first screen.
 row is still an ordinary palette row, so it appears on both surfaces. `bar_label` is the button's
 text and defaults to the command name without its slash.
 
-The actions row holds two groups. Collie's own controls come first: Keys, Type, Quick, Agent and the
-display gear. The harness's own commands follow, in a tinted segment carrying the harness's brand
-colour, so you can see at a glance which buttons type into the agent. The row scrolls sideways when
-the two groups do not fit; nothing is dropped.
+The actions row is a belt, one full-bleed band above the keyboard. Collie's own controls sit
+directly on the band: Keys, Type, Quick, Agent and the display gear. The running harness's own
+commands sit beside them, in a section tinted with the harness's brand colour, so you can see at a
+glance which buttons type into the agent. A sideways drag scrolls the belt; nothing is dropped.
+
+Each harness ships its own buttons, in this order:
+
+| Harness | Buttons |
+| --- | --- |
+| Claude Code | Model, Effort, Compact, Resume |
+| Codex | Model, Compact, Resume |
+| pi | Model, Compact, Tree, Resume |
+| omp | Model, Compact, Tree, Resume |
+
+Codex and pi have no Effort button. Codex's `/model` picker sets the model and the reasoning effort
+on one screen, so one button already reaches both. pi has no effort or thinking command at all;
+that dial lives inside `/settings`, a modal the keys pad cannot usefully drive.
+
+omp's Tree button sits between Compact and Resume. It opens omp's own session tree in the mirror, a
+picker that jumps to any earlier point in the session. The same command, `/tree`, is also in omp's
+command palette.
 
 Every harness button sends its command bare. **Model sends `/model`, and the agent's own model
 picker takes over in the pane.** Collie keeps no list of model names, because that list is the
@@ -184,6 +201,9 @@ not `true` or `false` drops that one row, the same way a bad `confirm` does.
 
 The row sends while the agent is busy, the same as the command palette. The checkmark appears only
 when the pane took the text.
+
+A Switch pill sits at the belt's right end and opens the pane switcher. A drag up, anywhere on the
+belt, opens the same switcher. A sideways drag scrolls the belt instead.
 
 To verify, open a pane running Claude Code, Codex, pi or omp; the tinted segment sits at the right
 of the row above the keyboard. Turn that segment off per device in **Settings → Harness shortcuts**;
