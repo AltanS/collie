@@ -49,8 +49,7 @@ import { AgentIcon } from "@/components/agent-icon";
 import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
 import { StripsSummary } from "@/components/strips-summary";
-import { CacheChip } from "@/components/cache-chip";
-import { HostChip } from "@/components/host-chip";
+import { PaneMeta } from "@/components/pane-meta";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
@@ -1247,88 +1246,54 @@ export function AgentChat({
           // can never show more than the visible viewport. Offered only when the pane reported an
           // agent session id, so the row never leads to an empty screen. Both gates are now `undefined`
           // callbacks rather than unrendered buttons; the sheet hides a row it was given no callback for.
-          // THE TRAILING META IS THE DASHBOARD ROW'S OWN TWO CORNERS, copied from `agent-card.tsx`:
-          // same column, same order, same two slot heights — the ADDRESS on top, the cache reading
-          // below it — so a pane's header and a list of panes read as one language. The ⋮ joins the
-          // top slot, after the address, because it is the only thing here the dashboard row has no
-          // twin for.
+          // THE TRAILING META IS THE DASHBOARD ROW'S OWN TWO CORNERS, and now literally so: both
+          // screens render `pane-meta.tsx`, so the column, the order and the two slot heights cannot
+          // drift apart. That file's header holds the geometry and the argument for it.
           //
-          // IT COSTS THE ROW NOTHING. Altan, on the header this replaces: the cache button and the
-          // host name "are super ugly and increasing header row height". They were: the cache chip
-          // was wearing a `min-h-11` tap box as its DRAWN height and the ⋮ a 44px one, which stacked
-          // to a 69px column against a 44px identity block and pushed the row from its `min-h-15`
-          // floor (60px, app-header.tsx) to 77px. The column is 21 + 4 + 16 = 41px now, under every
-          // other thing in the row, so the floor is what sets the height again and nothing here can
-          // raise it.
+          // THE ⋮ HAS ITS OWN COLUMN, WHICH IS WHAT PUT THE CORNER STRAIGHT. It used to sit in the
+          // top slot beside the host tag, so the tag's bordered box ended 28px left of the cache
+          // reading below it: Altan, from his phone, "the alignment is off". It was. A bordered tag
+          // and a bare glyph cannot share a right edge, and no amount of padding makes them — so the
+          // menu stepped out of the stack entirely. The stack now aligns on its own edge, both slots
+          // ending on one line, and the menu stands beside it with 8px between them. A menu is not
+          // part of a pane's address, which is the same sentence said in layout.
           //
-          // THE TAP BOXES DID NOT SHRINK WITH IT. Both controls draw small and reach out: the ⋮ is a
-          // `size-5` glyph whose `::before` reaches 12px on every side (20 + 24 = 44), and the cache
-          // chip's reaches 14px above and below its 16px line (16 + 28 = 44). That is the
-          // negative-inset trick `ui/labelled-strip.tsx`'s STRIP_TAP_TARGET already uses; nothing
-          // clips either one, because this row is not a scroll container.
+          // AND THE TAP BOX IS DRAWN AGAIN, because the column made room for it: `w-11` (44px) wide
+          // and `self-stretch` tall against a 44px button, a real target rather than a `size-5` glyph
+          // reaching out with a `::before`. A real box can show it was pressed, which is why
+          // `active:bg-muted/60` is back. The column is 44px in every state — when there is no pane
+          // to act on it stands empty rather than collapsing, so nothing in this corner ever moves
+          // (DESIGN.md §2).
           //
-          // IT IS ALWAYS MOUNTED, AND THAT IS THE WHOLE OF THE NO-SHIFT RULE (DESIGN.md §2). Three
-          // gates used to take the column away and give it back: it hung off `agent`, so a pane
-          // arrived at one height and grew when its snapshot landed; it sat in `children`, which
-          // {@link HeaderStatus} REPLACES outright while a status is live, so every toast moved the
-          // row; and each chip self-hides. So the column and both slots are unconditional and carry
-          // their own heights, and only the chips INSIDE them come and go.
+          // IT STILL COSTS THE ROW NOTHING. Altan, on the header before all this: the cache button
+          // and the host name "are super ugly and increasing header row height". They were, at 69px
+          // against a 44px identity block, which pushed the row off its `min-h-15` floor (60px,
+          // app-header.tsx) to 77px. The tallest thing here is now the 44px menu, under the floor, so
+          // the floor is what sets the height and nothing in this corner can raise it.
           //
-          // RIGHT EDGES. `pr-3` is the line every corner lands on: the ⋮'s glyph ends there, the
-          // cache reading ends there, and the tag's border ends there where no ⋮ stands beside it.
-          // 12px from the column's edge is where the ⋮'s glyph sat before this change too, so the
-          // one control in this corner did not move.
+          // RIGHT EDGES. `pr-3` is the line the corner lands on: the menu column's own edge. The
+          // stack's edges land 52px inside it, which is the width of the column plus the gap — the
+          // price of a menu that is a real button, paid once and in one place.
           rightLead={
-            <div
-              data-slot="pane-meta"
-              className="flex shrink-0 flex-col items-end justify-between gap-1 self-stretch pr-3"
-            >
-              {/* Top slot — the row's ADDRESS, then the ⋮. `h-[21px]` is the bordered `AddressTag`'s
-                  rendered box, measured in agent-card.tsx and repeated here rather than derived, so
-                  the slot keeps its height when the tag self-hides on a solo install — which is
-                  every install that exists today. `variant="tag"` WITH its glyph: this is the
-                  dashboard's own tag, not the actions belt's width-capped one. The write host stood
-                  at the belt's right end for a day; that end is the Switch pill's now
-                  (actions-row.tsx says why). */}
-              <div className="flex h-[21px] items-center gap-2">
-                <HostChip host={agent?.host} variant="tag" />
-                {agent ? (
-                  <button
-                    type="button"
-                    onClick={() => setDrawer("paneMenu")}
-                    aria-label={t("chat.paneMenu.aria")}
-                    // A real 44px target, stated, for the same reason SettingsGear states one — but
-                    // reached rather than drawn. A 44px BOX here would be twice the slot and would
-                    // set the row's height on its own, which is the fault this whole column just
-                    // stopped causing. `size-5` drawn, `-inset-3` on the `::before` (20 + 12 + 12 =
-                    // 44 in both axes). Nothing clips it: this row is not a scroll container.
-                    className="relative grid size-5 place-items-center text-muted-foreground transition-colors before:absolute before:-inset-3 before:content-[''] active:text-foreground"
-                  >
-                    <EllipsisVertical className="size-5" />
-                  </button>
-                ) : null}
-              </div>
-              {/* Bottom slot — how long this pane's prompt cache stays warm, and a tap opens the rule
-                  behind the number. `h-4` is the borderless chip's own line box, agent-card.tsx's
-                  measurement again, drawn whether or not there is a reading: a pane whose agent has
-                  not taken a turn yet carries none, and nothing is guessed before one exists.
-                  It is a BUTTON here and a plain span on the dashboard, which is the one difference
-                  between the two corners — the card is already one button and may not hold a second,
-                  and this header is not. The look is identical; `variant` decides only whether there
-                  is a tap. A SIBLING of the identity button rather than a child of it: a button
-                  inside a button is invalid, and an aria-label on the outer one replaces everything
-                  inside it, so a chip nested there would be a control no reader could reach. */}
-              <div className="flex h-4 items-center">
-                {agent !== undefined && (
-                  <CacheChip
-                    cache={agent.cache}
-                    host={agent.host}
-                    variant="button"
-                    onOpen={() => setCacheSheetOpen(true)}
-                    className="relative before:absolute before:inset-x-0 before:-inset-y-[14px] before:content-['']"
-                  />
-                )}
-              </div>
+            <div className="flex items-stretch gap-2 pr-3">
+              <PaneMeta
+                host={agent?.host}
+                cache={agent?.cache}
+                onOpenCache={() => setCacheSheetOpen(true)}
+              />
+              {agent ? (
+                <button
+                  type="button"
+                  onClick={() => setDrawer("paneMenu")}
+                  aria-label={t("chat.paneMenu.aria")}
+                  className="grid w-11 min-h-11 shrink-0 place-items-center self-stretch rounded-md text-muted-foreground transition-colors active:bg-muted/60 active:text-foreground"
+                >
+                  <EllipsisVertical className="size-5" />
+                </button>
+              ) : (
+                // The pane is gone. The column stays, empty, so the stack beside it does not slide.
+                <div className="w-11 shrink-0" />
+              )}
             </div>
           }
         >

@@ -4,9 +4,7 @@ import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
-import { CacheChip } from "@/components/cache-chip";
-import { HostChip } from "@/components/host-chip";
-import { SessionChip } from "@/components/session-chip";
+import { PaneMeta } from "@/components/pane-meta";
 import { PaneHint } from "@/components/pane-hint";
 import { paneParts, paneTitleInTab } from "@/lib/pane-name";
 import type { PaneParts } from "@/lib/pane-name";
@@ -204,31 +202,12 @@ export function AgentCard({
         </div>
 
         {/* The trailing meta is a COLUMN OF TWO FIXED SLOTS, pinned to the card's right edge, not an
-            inline row. A row let the two positions trade places: a card with no cache reading showed
-            only the host chip, which slid right into the spot the cache chip would have taken on the
-            next card over, so the same corner meant two different things from row to row (Altan's
-            phone feedback, with a screenshot). Each slot now owns a fixed spot and a fixed height —
-            measured off each chip's own rendered box, `21px` for the bordered `AddressTag` pair and
-            `h-4` for the borderless cache chip — and renders that height even when its chip
-            self-hides, so an empty slot is an invisible box rather than a missing one and nothing
-            downstream ever moves. `self-stretch` plus `justify-between` puts the top slot at the top
-            right of the row and the bottom slot at the bottom right; a row with no detail line grows
-            to fit two slots and the gap between them, which is the uniform pitch this trades for. */}
-        <div className="flex shrink-0 flex-col items-end justify-between gap-1 self-stretch">
-          {/* Top slot — the row's ADDRESS, both halves, in the order the address itself reads: which
-              machine, then which session on it. Each self-hides — the host when there is no crew, the
-              session when the row is in the primary one or the list was never widened. */}
-          <div className="flex h-[21px] items-center gap-2">
-            <HostChip host={agent.host} />
-            <SessionChip session={agent.session} />
-          </div>
-          {/* Bottom slot — how long this pane's prompt cache stays warm. Self-hides like the two chips
-              above — a pane whose agent has not taken a turn yet carries no reading, and nothing is
-              guessed before one exists. Not a control here: the card is already one button. */}
-          <div className="flex h-4 items-center">
-            <CacheChip cache={agent.cache} host={agent.host} />
-          </div>
-        </div>
+            inline row — and it is `pane-meta.tsx`, the same component the pane header renders, so the
+            two screens cannot drift apart. Why the geometry is what it is, and why it never moves,
+            sits in that file's header. A row with no detail line grows to fit two slots and the gap
+            between them, which is the uniform pitch this trades for. No `onOpenCache` here: the card
+            is already one button and may not hold a second. */}
+        <PaneMeta host={agent.host} cache={agent.cache} session={agent.session} />
 
         {isShell ? (
           <ShellBadge />

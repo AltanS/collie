@@ -71,7 +71,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **A Switch pill at the end of the actions belt opens the pane switcher.** The belt's right end carries a Switch pill above Send, tinted with the app accent, a drag up anywhere on the belt still opens the switcher, and the 30px handle band above the composer is gone.
 - **The states playground stages ideas for the host name near the input.** A new Host tag ideas tab puts six mocks of the composer's bottom side by side: the belt as it ships, which pays 63px of scroller width for the machine's name, and five ways an absolute span could carry that name on the input or on the send button instead. Dev-only, unreachable from the app entry, and no app code changed.
 - **The whole actions belt pulls the pane switcher up.** A drag up from anywhere on the belt opens the switcher, and a sideways drag still scrolls it.
-- **The machine's name moves into the pane header.** On a crew the host tag sits above the cache reading at the header's right edge, in the same two-corner layout the dashboard rows use, the row keeps the height it always had, and the actions belt no longer carries it.
+- **The machine's name moves into the pane header.** On a crew the host tag sits over the cache reading at the header's right edge, both ending on one line, with the pane menu in a column of its own beside them; it is the same two-corner layout the dashboard rows use, drawn by the same component, the row keeps the height it always had, and the actions belt no longer carries the name.
 
 ### Fixed
 

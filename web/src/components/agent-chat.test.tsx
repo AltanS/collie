@@ -269,16 +269,18 @@ describe("AgentChat — the pane header's identity block", () => {
     // surface a reply is typed on, which is the whole of what `sends` marks. Unreachable here, so
     // the tag carries the fault with it.
     const tag = screen.getByLabelText(/^host: workshop \(unreachable\)$/i);
-    // In the header's trailing column, in its FIRST slot beside the ⋮, above the cache reading, and
-    // outside the identity button — a chip inside that button would be a control no reader could
-    // reach. The order is the dashboard row's own (agent-card.tsx): the address on top, the cache
-    // reading below it.
+    // In the header's trailing column, in its FIRST slot, above the cache reading, and outside the
+    // identity button — a chip inside that button would be a control no reader could reach. The
+    // order is the dashboard row's own (pane-meta.tsx, which both screens render): the address on
+    // top, the cache reading below it.
     const column = container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
-    // SAFETY: the column's first child is the plain <div> top slot written in agent-chat.tsx, never
+    // SAFETY: the column's first child is the plain <div> top slot written in pane-meta.tsx, never
     // an SVG or other non-HTMLElement.
     const topSlot = column.children[0] as HTMLElement;
     expect(topSlot.contains(tag)).toBe(true);
-    expect(within(topSlot).getByLabelText(/pane actions/i)).toBeInTheDocument();
+    // THE ⋮ IS NOT IN THE STACK. It stands in a column of its own, beside this one: a bordered tag
+    // and a bare glyph cannot share a right edge, which is what put the corner out of true.
+    expect(column.contains(screen.getByLabelText(/pane actions/i))).toBe(false);
     expect(identity(container)!.contains(tag)).toBe(false);
     cleanup();
 
@@ -1021,10 +1023,13 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     renderChat();
     const menu = screen.getByRole("button", { name: "Pane actions" });
     expect(menu).toBeInTheDocument();
-    // 44px, reached rather than drawn: the glyph is `size-5` and its `::before` adds 12px on
-    // every side, so the header's trailing column stays 41px tall (see the no-shift case above).
-    expect(menu.className).toContain("size-5");
-    expect(menu.className).toMatch(/before:-inset-3/);
+    // 44px, DRAWN, because the menu has a column of its own now: `w-11` wide and stretched against
+    // a `min-h-11` floor. It was a `size-5` glyph reaching out with a `::before` while it stood
+    // inside the meta stack, where a real box would have been twice the slot; out of the stack there
+    // is room for the box, and a real box can show that it was pressed.
+    expect(menu.className).toMatch(/(?:^|\s)w-11(?=\s|$)/);
+    expect(menu.className).toMatch(/(?:^|\s)min-h-11(?=\s|$)/);
+    expect(menu.className).not.toMatch(/before:-inset-3/);
   });
 
   // \u00a72: no state may move content. Opening the menu must not touch the row that triggered it \u2014
