@@ -16,6 +16,8 @@ import type { TranscriptEntry } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
+import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
+import { cn } from "@/lib/utils";
 
 // Pane history route — the agent's own transcript, which is the ONLY conversation history a Claude
 // pane can have. Its terminal runs on the alternate screen, so Herdr retains no scrollback ring at
@@ -61,6 +63,12 @@ export function HistoryRoute() {
   // Whether an agent session log can exist here at all — a property of the multiplexer THIS PANE's
   // machine runs (M22/03), not of the pane. See the empty-state branch below for what it changes.
   const sessionLog = useMuxCapability("agentSessionRef", scope);
+  // The chosen terminal font (Settings → Terminal font) — same source and same idiom as the live
+  // pane mirror (components/agent-chat.tsx). This route renders the same agent transcript, just
+  // scrolled back further, so it must not fall back to the app's own face while the live view
+  // reflects the operator's choice.
+  const { prefs } = useDisplayPrefs();
+  const mirrorFace = mirrorFont(prefs.fontFamily);
 
   const agent =
     root.agents.find((a) => a.paneId === paneId) ??
@@ -264,7 +272,7 @@ export function HistoryRoute() {
         </div>
       </RouteHeader>
 
-      <div className="relative min-h-0 min-w-0 flex-1">
+      <div className={cn("relative min-h-0 min-w-0 flex-1", mirrorFace.className)} style={mirrorFace.style}>
         <ChatMessageList ref={listRef} className="px-3 py-3">
           {entries.length === 0 ? (
             <div className="px-2 py-16 text-center text-sm leading-relaxed text-muted-foreground">
