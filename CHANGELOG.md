@@ -69,6 +69,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The actions row is a belt.** One full-bleed band above the input carries Collie's controls on its ground and the harness's commands in a section tinted with the harness's colour, so the row reads as one strip with two parts rather than two floating capsules.
 - **The pane's status word leaves the composer.** The thin line above the controls that named the machine and the pane's state is gone; the machine's name now opens the actions belt on a crew, and the state stays on the header's dot and the dashboard.
 - **The pane switcher's chevron rides the actions belt.** The 30px handle band above the composer is gone; a small up-chevron sits on the belt's top rule with a 44px hit box, so a tap or a drag still opens the switcher sheet and the mirror gets the row back, keyboard up or not.
+- **The states playground stages ideas for the host name near the input.** A new Host tag ideas tab puts six mocks of the composer's bottom side by side: the belt as it ships, which pays 63px of scroller width for the machine's name, and five ways an absolute span could carry that name on the input or on the send button instead. Dev-only, unreachable from the app entry, and no app code changed.
 
 ### Fixed
 
