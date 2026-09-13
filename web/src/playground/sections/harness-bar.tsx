@@ -38,7 +38,7 @@ export function HarnessBarSection() {
           state="claude"
           label="claude code: model, effort, compact, resume"
           reach="open a pane running Claude Code. The four commands Altan drives it with from the phone, in that order."
-          note="Model and Effort are choosers; Compact and Resume fire on one tap. Model has one option today — the four aliases wait on web/src/fixtures/panes/claude--model-alias.txt."
+          note="Model and Effort are choosers; Compact and Resume fire on one tap. Model offers opus, sonnet, haiku and default, each vouched for by web/src/fixtures/panes/claude--model-alias.txt, then Pick in Claude for a model those four names do not cover."
         >
           <HarnessBar agent="claude" onRun={took} />
         </Card>

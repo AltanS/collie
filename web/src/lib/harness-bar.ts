@@ -67,21 +67,25 @@ export const CAPTURE_SOURCED: readonly string[] = ["omp"];
 // The four model ALIASES below are the only strings in this file that no shipped catalog vouches
 // for: they are names Claude Code accepts, not model ids, which is why they can be a fixed list at
 // all (a phone offering `claude-opus-4-6-20260501` would be wrong within a month). They therefore
-// need a capture, and until one lands Model is the single "Pick in Claude" option, which needs none
-// because the bare `/model` is in the catalog. UNCOMMENT THE FOUR THE MOMENT
-// web/src/fixtures/panes/claude--model-alias.txt EXISTS, and put the evidence path on the item.
+// need a capture, and `claude--model-alias.txt` is it — a live pane where `/model sonnet` was typed
+// and Claude answered "Set model to Sonnet 5 and saved as your default for new sessions", which is
+// the alias form of the command being accepted rather than inferred. The capture is cited on the
+// item, because an option row carries no evidence field of its own.
+//
+// "Pick in Claude" stays as the last option: the aliases are a shortcut, and the bare `/model` is
+// still how you reach a model the four names do not cover.
 const CLAUDE: readonly HarnessBarItem[] = [
   {
     id: "model",
     label: "harnessBar.model",
     kind: "chooser",
     command: "/model",
+    evidence: `${PANES}/claude--model-alias.txt`,
     options: [
-      // evidence: web/src/fixtures/panes/claude--model-alias.txt
-      // { label: "Opus", arg: "opus" },
-      // { label: "Sonnet", arg: "sonnet" },
-      // { label: "Haiku", arg: "haiku" },
-      // { label: "Default", arg: "default" },
+      { label: "Opus", arg: "opus" },
+      { label: "Sonnet", arg: "sonnet" },
+      { label: "Haiku", arg: "haiku" },
+      { label: "Default", arg: "default" },
       { label: "harnessBar.pick.claude", arg: "" },
     ],
   },

@@ -770,6 +770,9 @@ describe("real corpus — pinned so any change to the walk shows up as a diff", 
     { fixture: "permission-bash", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "permission-edit", statusRows: 0, draft: null, stripped: 0 },
     { fixture: "plan-approval", statusRows: 0, draft: null, stripped: 0 },
+    // `/model sonnet` accepted: the acknowledgement row sits in the transcript, the box is empty, and
+    // the statusline below it is three rows (a LIMITS row, the model/cwd row, the mode row).
+    { fixture: "model-alias", statusRows: 3, draft: null, stripped: 55 },
     { fixture: "menu-model-picker", statusRows: 0, draft: null, stripped: 1 },
     { fixture: "menu-model-picker-dismissed", statusRows: 3, draft: null, stripped: 7 },
     { fixture: "menu-model-picker-moved", statusRows: 0, draft: null, stripped: 1 },

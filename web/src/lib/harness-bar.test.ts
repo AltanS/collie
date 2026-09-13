@@ -108,10 +108,18 @@ describe("evidence", () => {
     }
   });
 
-  it("is not claimed by a doc-sourced harness that does not need it", () => {
-    // Claude's four model aliases are commented out until their capture lands, so nothing on the
-    // Claude bar claims one today. When it lands, the Model item gains the path and this flips.
-    expect(barFor("claude").some((i) => i.evidence !== undefined)).toBe(false);
+  it("is claimed on the one doc-sourced row whose options no catalog vouches for", () => {
+    // Claude's catalog comes from a published page, so only its Model item cites a capture: the four
+    // model aliases are names Claude Code accepts rather than catalog commands, and
+    // `claude--model-alias.txt` is the live pane that proves the alias form is taken.
+    const cited = barFor("claude").filter((i) => i.evidence !== undefined);
+    expect(cited.map((i) => i.id)).toEqual(["model"]);
+    expect(cited[0]?.evidence).toBe("web/src/fixtures/panes/claude--model-alias.txt");
+  });
+
+  it("offers Claude the four aliases plus the harness's own picker", () => {
+    const model = barFor("claude")[0]!;
+    expect(model.options?.map((o) => o.arg)).toEqual(["opus", "sonnet", "haiku", "default", ""]);
   });
 });
 

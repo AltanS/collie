@@ -53,6 +53,10 @@ const NEUTRAL = new Set([
   // thing separating it from a draft; see harness/claude/chrome.ts.
   "claude--ghost-suggestion.txt",
   "claude--ghost-typed-over.txt",
+  // `/model sonnet` answered with one acknowledgement row above an empty input box: the evidence that
+  // the harness bar's alias options are a real command form, and an ordinary idle screen to this
+  // adapter. Nothing on it is a dialog — the alias needs no picker, which is the point of the row.
+  "claude--model-alias.txt",
 ]);
 
 const allClaudeFixtures = readdirSync(PANES_DIR)

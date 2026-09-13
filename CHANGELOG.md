@@ -42,6 +42,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   snapshot says what Collie mirrors, how to answer a pane, and how to be told when one needs
   you; it is shown once per device, and Settings has a row to show it again.
 - **A push warns you before a pane's prompt cache goes cold.** Switch it on for one pane from its settings sheet, or for every pane under Settings → Notify when, where the panes you watched one by one are listed. The warning fires once per warm cycle, honours the snooze, and `COLLIE_CACHE_WARN_SECONDS` moves its 300-second window.
+- **Claude's Model button offers opus, sonnet, haiku and default.** One tap on the harness bar sets the model by the alias Claude Code itself accepts, and Pick in Claude still opens the harness's own picker for a model those four names do not cover.
 
 ### Changed
 

@@ -238,6 +238,35 @@ neighbours), so the grammar matches on shape and never on colour.
 | `claude--autocomplete-slash-long.txt` | `/model` typed on a machine with many skills: 23 popup rows — 17 entries at a description column of 43, six of whose blurbs wrap onto a continuation row. **No statusline and no key-hint footer**: while the popup is open the run reaches the last line of the screen. The capture the bug was diagnosed from |
 | `claude--autocomplete-slash-short.txt` | The 3-row shape (`/re` → `/rename`, `/resume`, `/release-notes`) at a description column of 23, first row highlighted. **Derived**: written to the same layout and SGR palette as the long capture, at a width that fits the page |
 
+## Model-alias capture (2026-09-13, Claude Code v2.1.270, throwaway Herdr pane)
+
+One byte-faithful `pane.read format:ansi` capture, and the only thing it is evidence for is that
+Claude Code takes an ALIAS as an argument to `/model`. The harness bar's Claude Model chooser offers
+`opus`, `sonnet`, `haiku` and `default`, and those four names are the one set of strings in
+[`harness-bar.ts`](../../lib/harness-bar.ts) that no published catalog vouches for — so the row cites
+this file. `/model sonnet` was typed into an idle pane in `/tmp/fable-capture-claude` and Enter
+pressed; nothing else was sent, and no model turn was ever run. Claude answered on the row under the
+echo, and the statusline under it moved from `[Opus·medium]` to `[Sonnet·xhigh]` in the same frame.
+That acknowledgement is the whole point of the file: it says the command was understood, not merely
+that it was accepted as text.
+
+CRLF throughout with no trailing newline; `wc -l` is 62.
+
+**One sanitization pass, LENGTH-PRESERVING, two substitutions.** The welcome banner names the
+subscription the session runs on (`Claude Max` → `Claude Pro`), and the statusline's `LIMITS` row
+prints per-account quota, whose four values become zeroes (`12%`, `31m`, `14%`, `18h` → `00%`, `00m`,
+`00%`, `00h`) the way the OMP approval corpus below zeroes its own. Byte length is unchanged, 2799
+before and after. Nothing else needed it: the cwd is a throwaway `/tmp` directory, and no username,
+hostname, home path, email, session id or credential-shaped string appears in the file.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `claude--model-alias.txt` | `❯ /model sonnet` echoed on a filled row, then `⎿ Set model to Sonnet 5 and saved as your default for new sessions`, a screen of blank rows, and the idle input box above a `LIMITS` row and a `[Sonnet·xhigh]` statusline | `idle` |
+
+**Running this capture changes the operator's saved default.** Claude's own sentence says so, and the
+`model` key in `~/.claude/settings.json` really moved. Put it back by hand after capturing, or capture
+with an isolated `CLAUDE_CONFIG_DIR`.
+
 ## Wizard corpus (captured 2026-07-05, sandbox pane; choreography in `../../lib/grammar/WIZARD_NOTES.md`)
 
 | Fixture | State / what's in it |
