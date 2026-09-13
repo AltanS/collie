@@ -37,16 +37,6 @@ interface AgentListProps {
   lastSeenAt?: number;
 }
 
-/** Which timestamp a section's rows date themselves by. Attention rows show none — a blocked
- *  agent's age is noise beside the fact that it's blocked. */
-const AGE_BY_SECTION = new Map<TriageKey, "seen" | "active">([
-  ["ready", "active"],
-  // "working for 3h" and "working for 40s" are very different facts, and now that the age rides
-  // the title row it costs no vertical space to say which.
-  ["working", "active"],
-  ["recent", "seen"],
-]);
-
 /** The sections that mean "a human is required here" — the only ones that get card chrome. */
 const ATTENTION: ReadonlySet<TriageKey> = new Set<TriageKey>(["needs", "ready"]);
 
@@ -130,7 +120,6 @@ export function AgentList({
         const foldable = !!s.collapsible && onRecentOpenChange !== undefined;
         const open = foldable ? recentOpen : true;
         const bodyId = `agent-section-${s.key}`;
-        const age = AGE_BY_SECTION.get(s.key);
         // statusStyle="dot": the section heading already says the status, so a pill on every row
         // restates it and costs the width the title needs.
         const rows = s.agents.map((a) => (
@@ -145,7 +134,6 @@ export function AgentList({
             onClick={() => onOpen(a)}
             statusStyle="dot"
             density={ATTENTION.has(s.key) ? "card" : "row"}
-            {...(age ? { age } : {})}
           />
         ));
 

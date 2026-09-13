@@ -92,9 +92,9 @@ function Frame({ width }: { width: number }) {
 
 /**
  * The home route's flat section, as `components/agent-list.tsx` builds it — the same page gutter,
- * the same `SectionHeader`, the same `ListGroup`, and rows at `density="row"` / `statusStyle="dot"`
- * with the working section's `age="active"`. Nothing here is a copy of a component; the only thing
- * this function decides is which rows go in, and that is `ROWS` above.
+ * the same `SectionHeader`, the same `ListGroup`, and rows at `density="row"` / `statusStyle="dot"`.
+ * Nothing here is a copy of a component; the only thing this function decides is which rows go in,
+ * and that is `ROWS` above.
  */
 function RowList() {
   return (
@@ -106,14 +106,7 @@ function RowList() {
         <SectionHeader label="Panes" count={ROWS.length} dot="bg-status-working" />
         <ListGroup>
           {ROWS.map((a) => (
-            <AgentCard
-              key={paneRowKey(a)}
-              agent={a}
-              onClick={() => {}}
-              statusStyle="dot"
-              density="row"
-              age="active"
-            />
+            <AgentCard key={paneRowKey(a)} agent={a} onClick={() => {}} statusStyle="dot" density="row" />
           ))}
         </ListGroup>
       </section>

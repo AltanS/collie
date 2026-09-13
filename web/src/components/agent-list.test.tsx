@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AgentList } from "./agent-list";
@@ -279,36 +279,6 @@ describe("AgentList — the direction toggle", () => {
   });
 });
 
-describe("AgentList — timestamps on rows", () => {
-  it("dates a Recent row by when you last used it", () => {
-    const seen = Date.now() - 5 * 60 * 1000;
-    render(<AgentList agents={[agent("p", "idle", { lastSeenAt: seen })]} onOpen={vi.fn()} />);
-    expect(screen.getByText("5m")).toBeInTheDocument();
-  });
-
-  it("dates a Ready · unseen row by when it FINISHED, not when you last looked", () => {
-    const finished = Date.now() - 2 * 60 * 1000;
-    render(
-      <AgentList
-        agents={[agent("p", "done", { lastActiveAt: finished, lastSeenAt: finished - 60_000 })]}
-        onOpen={vi.fn()}
-      />,
-    );
-    const section = screen.getByText(/ready · unseen/i).closest("section")!;
-    expect(within(section).getByText("2m")).toBeInTheDocument();
-  });
-
-  it("puts no age on a blocked row — it's noise beside 'needs you'", () => {
-    render(
-      <AgentList
-        agents={[agent("p", "blocked", { lastActiveAt: Date.now() - 300_000, lastSeenAt: 1 })]}
-        onOpen={vi.fn()}
-      />,
-    );
-    expect(screen.queryByText(/^\d+[mhd]$|^now$/)).not.toBeInTheDocument();
-  });
-});
-
 describe("AgentList — an older bridge with no timestamps", () => {
   it("still renders a coherent dashboard, with Ready·unseen simply absent", () => {
     render(
@@ -323,7 +293,6 @@ describe("AgentList — an older bridge with no timestamps", () => {
       expect.stringContaining("recent"),
     ]);
     expect(screen.queryByText(/ready · unseen/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/^\d+[mhd]$|^now$/)).not.toBeInTheDocument();
   });
 });
 

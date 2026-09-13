@@ -64,6 +64,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **Push availability copy has one home.** Settings and the tour read the same sentences.
 - **The config schema names the cache warn window.** `COLLIE_CACHE_WARN_SECONDS` has its row, so `collie config show` and `config init` carry it.
 - **The config schema forgets the 1.7.0 pack keys.** The two `COLLIE_PACK_*` timeout aliases left with the crew wire overlap, so `collie config show` no longer lists them.
+- **The agent card drops the relative-time chip.** The prompt-cache countdown next to it says what matters; the extra number read as a session clock and confused.
 
 ### Fixed
 

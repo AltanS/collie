@@ -8,7 +8,6 @@ import { CacheChip } from "@/components/cache-chip";
 import { HostChip } from "@/components/host-chip";
 import { SessionChip } from "@/components/session-chip";
 import { PaneHint } from "@/components/pane-hint";
-import { timeAgoShort } from "@/lib/format";
 import { paneParts, paneTitleInTab } from "@/lib/pane-name";
 import type { PaneParts } from "@/lib/pane-name";
 import { statusLabel } from "@/lib/types";
@@ -18,12 +17,6 @@ import { useLocale } from "@/hooks/use-locale";
 interface AgentCardProps {
   agent: AgentView;
   onClick: () => void;
-  /**
-   * Show "how long ago" on the second line, and which timestamp it means: "seen" for the Recent
-   * section (when you last opened it), "active" for Ready · unseen (when it finished). Omitted
-   * elsewhere — a blocked agent's age is noise next to the fact that it's blocked.
-   */
-  age?: "seen" | "active";
   /**
    * Where the row is being shown. "herd" (default) is a flat list across every space, so line 1
    * carries the pane's own title and line 2 the address it sits at. "tab" is a list already grouped
@@ -70,12 +63,6 @@ function herdLines(parts: PaneParts): RowLines {
   return { primary: parts.project, detailLead: null, detailTail: null, tailMono: false };
 }
 
-/** The row's age, in the trailing slot of whichever line it sits on. Not mono — it's a footnote,
- *  not data; mono made it read like the path it replaced. */
-function Age({ at }: { at: number }) {
-  return <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{timeAgoShort(at)}</span>;
-}
-
 // A pane row, used by the triage home and the space view. Usually an agent; for a bare shell pane
 // (kind:"shell") it shows a terminal glyph and a muted "shell" tag instead of a status badge.
 //
@@ -99,7 +86,6 @@ function Age({ at }: { at: number }) {
 export function AgentCard({
   agent,
   onClick,
-  age,
   scope = "herd",
   statusStyle = "badge",
   density = "card",
@@ -111,7 +97,6 @@ export function AgentCard({
   const flat = density === "row";
   const parts = paneParts(agent);
   const tabTitle = paneTitleInTab(agent);
-  const stamp = age === "seen" ? agent.lastSeenAt : age === "active" ? agent.lastActiveAt : undefined;
   // Line 1's name, and line 2's two runs. In a tab-scoped list the space and the tab are already
   // established by the heading above, so line 2 is the path alone.
   const lines: RowLines = inTab
@@ -224,21 +209,17 @@ export function AgentCard({
             it, and the chip is centred against the whole row by the shell's own `items-center`.
             Costs no height — the row pitch is unchanged. HostChip self-hides: nothing renders
             unless the snapshot lists more than one machine (components/host-chip.tsx), so on a solo
-            install this column collapses to the age alone, or to nothing. */}
+            install this column can collapse to nothing. */}
         <div className="flex shrink-0 items-center gap-2">
           {/* The row's ADDRESS, both halves, in the order the address itself reads: which machine,
               then which session on it. Each self-hides — the host when there is no crew, the session
-              when the row is in the primary one or the list was never widened — so on every install
-              that exists today this column is still the age alone, or nothing. */}
+              when the row is in the primary one or the list was never widened. */}
           <HostChip host={agent.host} />
           <SessionChip session={agent.session} />
-          {/* How long this pane's prompt cache stays warm, BEFORE the age: the two are both small
-              right-aligned runs, and the one that is about the future reads better beside the name than
-              behind the one that is about the past. Self-hides like the two chips above — a pane whose
-              agent has not taken a turn yet carries no reading, and nothing is guessed before one
-              exists. Not a control here: the card is already one button. */}
+          {/* How long this pane's prompt cache stays warm. Self-hides like the two chips above — a
+              pane whose agent has not taken a turn yet carries no reading, and nothing is guessed
+              before one exists. Not a control here: the card is already one button. */}
           <CacheChip cache={agent.cache} host={agent.host} />
-          {stamp !== undefined && <Age at={stamp} />}
         </div>
 
         {isShell ? (
