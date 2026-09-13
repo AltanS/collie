@@ -48,10 +48,35 @@ export function canonicalHarness(harness: string): string {
  */
 export function ruleForProbe(harness: string, probe: CacheProbe | undefined): CacheRule | undefined {
   const name = canonicalHarness(harness);
+  return measuredRule(name, probe) ?? ruleByTier(name, probe);
+}
+
+/** The tier or provider guess — what the catalog says before the transcript is allowed a vote. */
+function ruleByTier(name: string, probe: CacheProbe | undefined): CacheRule | undefined {
   if (name === "claude") return claudeRuleFor(probe?.tier);
   if (name === "codex") return codexRuleFor(probe?.tier);
   if (PROVIDER_FANNING.has(name)) return cacheRuleById(providerRuleIdFor(name, probe?.model));
   return undefined;
+}
+
+/**
+ * The rule a MEASURED TTL identifies on its own, when exactly one of the harness's rules carries it.
+ *
+ * The chip's number comes from the transcript (precedence rung 1), but the rule id is what the sheet
+ * cites a page and a date from — so the two must agree. A Claude pane on a Max subscription names no
+ * tier anywhere in its log, so `claudeRuleFor(undefined)` takes the pessimistic `claude.api`, and a
+ * measured 3600 s was then shown beside the five-minute API page. The measurement already answers the
+ * question the tier guess was guessing at: one hour is the subscription rule and nothing else.
+ *
+ * Deliberately narrow. Two rules sharing a TTL (codex's two both fall back to 300 s) identify nothing,
+ * so the guess stands; a measurement matching no rule leaves the guess alone as well, because an
+ * unrecognised number is not evidence about which page to quote.
+ */
+function measuredRule(name: string, probe: CacheProbe | undefined): CacheRule | undefined {
+  const measured = probe?.observedTtlSeconds?.value;
+  if (measured === undefined) return undefined;
+  const matches = ALL.filter((rule) => rule.harness === name && rule.ttlSeconds.value === measured);
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 /**

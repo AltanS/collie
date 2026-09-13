@@ -68,6 +68,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Fixed
 
 - **A pane's cache countdown survives a `/compact`.** A transcript probe that finds no turn inside its 128 KB window now keeps the last reading and lets it age, instead of dropping the pane's countdown for good; a read that actually fails still drops it.
+- **A measured cache window cites the rule it was really measured on.** A Claude pane on a subscription measures the one-hour window, so the sheet now quotes the subscription page and date instead of the five-minute API page the tier guess had picked.
 
 ## [1.8.2] - 2026-09-12
 
