@@ -17,7 +17,7 @@ import { UpdateBanner } from "@/components/update-banner";
 import { useDashPrefs, openForCount } from "@/hooks/use-dash-prefs";
 import { useSpaceActions } from "@/hooks/use-spaces";
 import { useMuxCapability } from "@/lib/mux-capability";
-import { ambientPanes, leadHost, paneScope, sessionsOnHost } from "@/lib/hosts";
+import { ambientHost, ambientPanes, paneScope, sessionsOnHost } from "@/lib/hosts";
 import { panePath, spacePath } from "@/lib/nav";
 import type { AgentView } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
@@ -61,13 +61,15 @@ export function HomeRoute() {
   const open = (pane: AgentView) =>
     navigate(panePath(pane.paneId, paneScope(data.scope, pane, data.servers, data.sessions)));
   const drillInto = (id: string) => navigate(spacePath(id, data.scope));
-  // The space navigator is LEAD-LOCAL (the merge deliberately does not union peer workspaces — their
-  // ids are only unique per machine), so the spaces on screen belong to the lead and their panes must
-  // be looked up under the lead's host. Undefined when solo, which keys everything exactly as before.
-  const navHost = leadHost(data.servers);
+  // The space navigator shows the ADDRESSED machine's spaces — the loader's `ambientSpaces` has
+  // already narrowed `data.workspaces`/`data.tabs` to the host `?h=` names (or the lead, absent one;
+  // untagged rows, i.e. every solo snapshot, pass regardless). Their panes must be looked up under
+  // that same host, so the navigator and the loader agree on which machine is on screen. Undefined
+  // when solo, which keys everything exactly as before.
+  const navHost = ambientHost(data.servers, data.scope.host);
   // Sessions are a per-host registry, so the session switcher only ever lists this host's.
   const sessionsHere = sessionsOnHost(data.sessions ?? [], data.scope, data.servers);
-  // …AND LEAD-LOCAL IS ALSO SESSION-LOCAL, which is the half the widened view would otherwise break.
+  // …AND THE ADDRESSED HOST IS ALSO SESSION-LOCAL, which is the half the widened view would otherwise break.
   // Workspace ids collide across sessions exactly as they collide across machines, and the space
   // navigator keys by `(host, workspaceId)` with no session in it — so on a widened body another
   // session's `w1` panes would paint their blocked dot and their recency onto the AMBIENT `w1` row,

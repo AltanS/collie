@@ -34,7 +34,12 @@ export function groupPanesByTab(
 ): TabGroup[] {
   const key = spaceKey(host, workspaceId);
   const panes = [...agents, ...shellPanes].filter((p) => paneSpaceKey(p) === key);
-  const wsTabs = tabs.filter((t) => t.workspaceId === workspaceId);
+  // Same "untagged is ambient" rule as ambientPanes/findPane (lib/hosts.ts): a tab addressed on this
+  // host matches when it carries that host's own tag OR no tag at all, so a solo snapshot — where no
+  // tab is host-tagged — keeps grouping exactly as it always did.
+  const wsTabs = tabs.filter(
+    (t) => t.workspaceId === workspaceId && (t.host === undefined || t.host === host),
+  );
 
   const groups: TabGroup[] = wsTabs.map((t) => ({
     tabId: t.tabId,

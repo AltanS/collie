@@ -240,6 +240,19 @@ describe("host-qualified space keys", () => {
     expect(last.tabId).toBe(`${spaceKey("alpha", "w1")}:other`);
   });
 
+  it("keeps a tab tagged for one host out of another host's groups", () => {
+    // A tab carries a host tag exactly as a pane does (the lead's merge tags both), so a `w1:t1`
+    // that belongs to beta must not surface as alpha's tab of the same id — its pane becomes an
+    // orphan instead of silently adopting another machine's tab.
+    const betaTab = { ...tab("w1:t1", "w1", 1), host: "beta" };
+    const mine = onA({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1" });
+    const groups = groupPanesByTab("w1", [betaTab], [mine], [], "alpha");
+    expect(groups.some((g) => g.tabId === "w1:t1")).toBe(false);
+    const last = groups.at(-1)!;
+    expect(last.tabId).toBe(`${spaceKey("alpha", "w1")}:other`);
+    expect(last.panes).toEqual([mine]);
+  });
+
   it("sorts a host's spaces by that host's recency, not the other's", () => {
     const spaces: WorkspaceView[] = [
       { workspaceId: "w1", number: 1, label: "one", focused: false, activeTabId: "w1:t1", tabCount: 1, paneCount: 1 },

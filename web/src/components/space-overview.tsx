@@ -31,9 +31,10 @@ interface SpaceOverviewProps {
   /** True while a Space create is in flight — see `space-strip.tsx`'s prop of the same name. */
   creatingSpace?: boolean;
   /**
-   * The machine these workspaces belong to — the lead, since the merged snapshot deliberately does
-   * not union peer workspaces. Undefined on a solo install. Without it, a peer's `w1` would pour its
-   * triage dot and its last-seen time into the lead's `w1` row (lib/spaces.ts).
+   * The machine these workspaces belong to — the ADDRESSED host (`?h=`, or the lead absent one),
+   * since `workspaces` is already narrowed to it by the loader's `ambientSpaces`. Undefined on a
+   * solo install. Without it, a peer's `w1` would pour its triage dot and its last-seen time into
+   * another host's `w1` row (lib/spaces.ts).
    */
   host?: string;
   /** Fold state, owned by the dashboard so it can be persisted. */

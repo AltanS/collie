@@ -10,8 +10,10 @@ import { SpaceRoute } from "./space";
 
 // The space screen on a crew. The one thing asserted here is the HOST the space is read on: a lead's
 // merged snapshot unions the peers' spaces and tags each pane with the machine it is on, and pane
-// grouping is keyed on `(host, workspaceId)`. Read a peer's space on the LEAD's id and the key
-// matches nothing, so every tab draws as "(empty tab)" while the header still counts the panes (#209).
+// grouping is keyed on `(host, workspaceId)`. The route trusts the ADDRESSED host (`data.scope.host`,
+// or the lead absent one) rather than re-deriving one from the found workspace — reading a peer's
+// space while still keyed on the lead matched nothing, so every tab drew as "(empty tab)" while the
+// header still counted the panes (#209).
 
 const LEAD = "bluefin";
 const PEER = "workshop";
@@ -58,25 +60,32 @@ const peerAgent: AgentView = {
   host: PEER,
 };
 
-const data: HomeData = {
-  bridge: "connected",
-  device: undefined,
-  agents: [peerAgent],
-  shellPanes: [],
-  workspaces,
-  tabs,
-  sessions: [],
-  servers: fixtureServers,
-  ts: 0,
-  scope: { host: PEER },
-  viewAll: false,
-  snoozedUntil: null,
-  update: undefined,
-  error: false,
-  authError: false,
-};
+// `data.scope.host` is what the route trusts (`ambientHost`, lib/hosts.ts) — the loader's own
+// `ambientSpaces` has already narrowed `workspaces`/`tabs` to that same addressed host before this
+// route ever sees them, so a call here always addresses the host it navigates to, exactly as the
+// loader would hand it off.
+function dataFor(host: string | undefined): HomeData {
+  return {
+    bridge: "connected",
+    device: undefined,
+    agents: [peerAgent],
+    shellPanes: [],
+    workspaces,
+    tabs,
+    sessions: [],
+    servers: fixtureServers,
+    ts: 0,
+    scope: { host },
+    viewAll: false,
+    snoozedUntil: null,
+    update: undefined,
+    error: false,
+    authError: false,
+  };
+}
 
-function renderSpace(spaceId: string) {
+function renderSpace(spaceId: string, host?: string) {
+  const data = dataFor(host);
   const router = createMemoryRouter(
     [
       {
@@ -96,7 +105,7 @@ function renderSpace(spaceId: string) {
       },
       { path: "/pane/:paneId", element: <div data-testid="pane" /> },
     ],
-    { initialEntries: [`/space/${spaceId}?h=${PEER}`] },
+    { initialEntries: [host ? `/space/${spaceId}?h=${host}` : `/space/${spaceId}`] },
   );
   render(<RouterProvider router={router} />);
   return router;
@@ -104,7 +113,7 @@ function renderSpace(spaceId: string) {
 
 describe("SpaceRoute on a crew", () => {
   it("lists a peer space's own panes instead of drawing every tab empty", async () => {
-    renderSpace("wA");
+    renderSpace("wA", PEER);
 
     expect(await screen.findByText("peer pane")).toBeInTheDocument();
     expect(screen.queryByText("(empty tab)")).not.toBeInTheDocument();

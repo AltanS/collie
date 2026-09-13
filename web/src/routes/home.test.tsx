@@ -10,6 +10,8 @@ import {
   fixtureCrewAgents,
   fixtureCrewSessions,
   fixtureCrewShellPanes,
+  fixtureCrewTabs,
+  fixtureCrewWorkspaces,
   fixtureServers,
   fixtureSessions,
   fixtureShellPanes,
@@ -156,6 +158,40 @@ describe("the dashboard across machines", () => {
     const leadRow = screen.getAllByRole("button", { name: /webapp/i })[0]!;
     await userEvent.click(leadRow);
     await waitFor(() => expect(url(router)).toBe("/pane/w1%3Ap1"));
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The space navigator, addressed at a peer (#209). The loader's `ambientSpaces` narrows
+// `workspaces`/`tabs` to the host `?h=` names before HomeRoute ever sees them — this fixture mirrors
+// that narrowing by hand — so the row on screen is the addressed host's own "moonward", and the
+// navigator must key it by that SAME host, not the lead's, to find its blocked agent.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("the space navigator on a crew, addressed at a peer (#209)", () => {
+  it("gives the peer's own space its recency and blocked dot on ?h=<peer>", async () => {
+    const peerWorkspace = fixtureCrewWorkspaces.find((w) => w.host === "workshop")!;
+    const peerTabs = fixtureCrewTabs.filter((t) => t.host === "workshop");
+    renderHome(
+      homeData(
+        {
+          agents: fixtureCrewAgents,
+          shellPanes: fixtureCrewShellPanes,
+          workspaces: [peerWorkspace],
+          tabs: peerTabs,
+          sessions: fixtureCrewSessions,
+          servers: fixtureServers,
+        },
+        { host: "workshop" },
+      ),
+    );
+    await settled();
+    const spacesBody = document.getElementById("spaces-body");
+    if (!spacesBody) throw new Error("the Spaces section did not render");
+    const spaceRow = within(spacesBody).getByRole("button", { name: /moonward/i });
+    // Keyed on the LEAD instead, this row's status lookup misses entirely and shows no dot at all —
+    // the bug this test pins.
+    expect(within(spaceRow).getByText(/needs you/i)).toBeInTheDocument();
   });
 });
 

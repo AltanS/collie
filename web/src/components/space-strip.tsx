@@ -18,6 +18,13 @@ import { useRevealActive } from "@/hooks/use-reveal-active";
 interface SpaceStripProps {
   workspaces: WorkspaceView[];
   agents: AgentView[];
+  /**
+   * The addressed host (`?h=`, or the lead absent one) — the same value the space route looks its
+   * panes up under. Without it, a chip matched agents by `workspaceId` alone, so a blocked agent in
+   * another machine's identically-numbered space coloured this one's chip too (#209). Undefined on a
+   * solo install, which is what every agent's own `host` is there too.
+   */
+  host?: string;
   /** Selected workspace id, or null for the "All" triage view. */
   selected: string | null;
   onSelect: (workspaceId: string | null) => void;
@@ -38,6 +45,7 @@ interface SpaceStripProps {
 export function SpaceStrip({
   workspaces,
   agents,
+  host,
   selected,
   onSelect,
   onNewSpace,
@@ -100,8 +108,15 @@ export function SpaceStrip({
             label={w.label}
             active={selected === w.workspaceId}
             ring={w.focused}
-            // Same dot language as the tab strip directly below it, and as the herd list.
-            status={worstTriage(agents.filter((a) => a.workspaceId === w.workspaceId))}
+            // Same dot language as the tab strip directly below it, and as the herd list. Host-
+            // qualified: another machine's identically-numbered space is not this one, however an
+            // UNTAGGED agent (an un-widened solo body) matches any host — the same rule
+            // `ambientPanes`/`findPane` use in lib/hosts.ts.
+            status={worstTriage(
+              agents.filter(
+                (a) => a.workspaceId === w.workspaceId && (a.host === undefined || a.host === host),
+              ),
+            )}
             onClick={() => onSelect(w.workspaceId)}
           />
         ))}
