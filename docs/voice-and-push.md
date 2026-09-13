@@ -245,7 +245,9 @@ snooze that ends inside the window still warns.
 
 > **Note.** This alert needs the prompt-cache reading, so it covers the panes that show a cache
 > countdown and no others: the harness has to keep a transcript Collie can read, and the agent has to
-> have taken at least one turn.
+> have taken at least one turn. A pane whose whole window is no longer than the warning itself never
+> warns, because the push would then go out on every request; at the default 300 seconds that is
+> every pane on a five-minute cache.
 
 Stale subscriptions can accumulate over time because home-screen reinstalls and service-worker
 resets create new endpoints without always returning an HTTP 410. Collie updates the record when a
