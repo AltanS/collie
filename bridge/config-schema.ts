@@ -92,7 +92,7 @@ interface ConfigSettingBase {
   readonly section: ConfigSection;
   /** One sentence, written for the operator reading the generated file. */
   readonly doc: string;
-  /** A deprecated environment name this row also answers to — the `COLLIE_PACK_*` spellings. */
+  /** A deprecated environment name this row also answers to. */
   readonly alias?: string;
   /**
    * The `Config` field in `bridge/config.ts` this setting resolves into, when it is one.
@@ -532,7 +532,6 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     kind: "int",
     default: 1200,
     min: 1,
-    alias: "COLLIE_PACK_TIMEOUT_MS",
     doc: "How long a member has to answer a lead's poll. Clamped to 0.8 of poll_ms.",
   },
   {
@@ -542,7 +541,6 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     kind: "int",
     default: 5000,
     min: 1,
-    alias: "COLLIE_PACK_HELLO_TIMEOUT_MS",
     doc: "How long a hello probe may take before the lead calls a member gone.",
   },
   {

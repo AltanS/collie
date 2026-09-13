@@ -178,12 +178,8 @@ describe("the table's own shape", () => {
     }
   });
 
-  test("the three COLLIE_PACK_* spellings are aliases, never rows of their own", () => {
+  test("a row's alias, if it declares one, is never a row of its own", () => {
     const aliases = CONFIG_SETTINGS.filter((s) => s.alias !== undefined);
-    expect(aliases.map((s) => s.alias).toSorted()).toEqual([
-      "COLLIE_PACK_HELLO_TIMEOUT_MS",
-      "COLLIE_PACK_TIMEOUT_MS",
-    ]);
     for (const s of aliases) expect(settingByEnv(s.alias!)).toBe(s);
   });
 
