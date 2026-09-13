@@ -333,15 +333,15 @@ Three behaviors to note:
 
 ## Your own cache rules
 
-`cache-rules.toml` moves a prompt-cache lifetime your provider changed.
+Use `cache-rules.toml` to change a prompt-cache lifetime that your provider changed.
 
 ```bash
 cp cache-rules.toml.example ~/.config/collie/cache-rules.toml
 ```
 
-Collie ships one rule per harness and provider, each read off a vendor's own page on a recorded date.
-A vendor can move that number without announcing it, and a gateway in front of your agent can change
-it too. This file is the lever until Collie ships a new rule.
+Collie ships one rule per harness and provider. Collie read each rule from a vendor page on a
+recorded date. A vendor can change that value without notice. A gateway in front of your agent can
+change it too. Use this file to override values until Collie ships an update.
 
 ```toml
 [[rule]]
@@ -352,55 +352,53 @@ retrieved = "2026-09-12"
 note = "our gateway sends ttl 1h on every request"
 ```
 
-A row is kept only when all four rules hold. `id` names a rule this build ships. `ttl_seconds` is a
-whole number from 1 to 86400. `source_url` is a non-empty string. `retrieved` parses as a real
-`YYYY-MM-DD` date. Anything else drops that one row, with the reason in the log, and the rest of the
-file still applies.
+Collie keeps a row only when all four rules hold. `id` must name a shipped rule. `ttl_seconds` must
+be an integer from 1 to 86400. `source_url` must be a non-empty string. `retrieved` must parse as a
+valid `YYYY-MM-DD` date. Invalid rows are dropped and logged. The rest of the file still applies.
 
-> **Note.** You may move a number, you may not remove the page and date it came from. That is the
-> whole contract the rule catalog rests on.
+> **Note.** You may change a number. You may not remove its source page or retrieval date. The rule
+> catalog requires both fields.
 
-`collie doctor` reports on three lines. `cache-claims` warns when a shipped rule has not been
-re-checked in 180 days. `cache-rules` names every row this file got wrong. `cache-env` fires when you
-set `ENABLE_PROMPT_CACHING_1H` or `FORCE_PROMPT_CACHING_5M` in your shell: the bridge runs as its own
-service and cannot read your agent's environment, so a variable you set for Claude Code has to be
-mirrored here to be seen.
+`collie doctor` checks three items. `cache-claims` warns when nobody has re-checked a shipped rule in
+180 days. `cache-rules` lists invalid rows in your file. `cache-env` flags when you set
+`ENABLE_PROMPT_CACHING_1H` or `FORCE_PROMPT_CACHING_5M` in your shell. The bridge runs as a separate
+service and cannot read your agent's environment. Mirror these Claude Code variables here so the
+bridge can read them.
 
-The rule ids are `claude.subscription`, `claude.api`, `codex.subscription`, `codex.api`, and
-`anthropic`, `openai`, `google` and `unknown` under both `pi.` and `opencode.`.
+The valid rule ids are `claude.subscription`, `claude.api`, `codex.subscription`, `codex.api`, plus
+`anthropic`, `openai`, `google`, and `unknown` under both `pi.` and `opencode.`.
 
 ## The prompt-cache countdown
 
-A small chip on each agent pane says how long that agent's prompt cache stays warm.
+A chip on each agent pane shows how long that agent's prompt cache stays warm.
 
-Every harness Collie fronts keeps a cached copy of the conversation so far, and charges a fraction of
-the usual rate while that copy is warm. The chip counts down from the agent's last request, so it is
-idle time and never session age. Each new request resets it.
+Every supported harness caches the current conversation. Harnesses charge lower rates while that
+cache stays warm. The chip counts down idle time since the agent's last request. It does not track
+total session age. Each new request resets the timer.
 
-It turns amber in the last quarter of the window, and reads `cold` once the window has run out or once
-a turn came back having paid full rate. Under a minute it reads `<1m`, never a second count.
+The chip turns amber during the final quarter of the window. It shows `cold` when the window expires
+or when a turn pays the full rate. When under one minute remains, it shows `<1m` instead of seconds.
 
-Tap the chip in a pane's header to see the rule behind the number: which rule it is, the vendor page
-it was read on, and the date somebody last read that page.
+Tap the chip in the pane header to view the underlying rule: the rule id, the vendor source page,
+and the retrieval date.
 
-> **Note.** A number is a vendor's published claim with a date on it, not a measurement, unless the
-> sheet says **measured**. Claude Code writes which cache window it used into its own transcript, so
-> a Claude pane is usually measured.
+> **Note.** Values are vendor claims with recorded dates, not live measurements, unless marked
+> **measured**. Claude Code writes cache windows directly to its transcript, so Claude panes are
+> usually measured.
 
-Some panes show nothing, and that is the feature working. A pane shows a chip only after its agent has
-taken one turn, because nothing is guessed before it is measured. A pane whose harness has no journal
-adapter shows nothing at all, and neither does one whose vendor publishes no lifetime Collie could
-quote.
+Some panes show no chip. This is expected. A pane shows a chip only after its agent completes one
+turn. Collie makes no assumptions before measurement. A pane shows nothing if its harness lacks a
+journal adapter, or if its vendor publishes no lifetime data.
 
-A phone can also be warned before a pane's cache goes cold. One variable sets how early.
+Collie can also send push alerts to a phone before a cache expires. One variable controls the timing.
 
 | var | default | meaning |
 | --- | --- | --- |
 | `COLLIE_CACHE_WARN_SECONDS` | `300` | how many seconds before a watched pane's cache expires the push goes out; floor 30, ceiling 3600 |
 
-This is the push window and nothing else. It is **not** the threshold that turns the chip amber, which
-is a quarter of each rule's own TTL and so differs per rule. Switching the warning on, per pane or for
-every pane, is in [voice-and-push.md](voice-and-push.md#which-alerts-collie-sends).
+This setting controls only the push alert. It does **not** control when the chip turns amber. The
+amber threshold is fixed at one-quarter of each rule's TTL. To enable warnings for specific panes or
+all panes, see [voice-and-push.md](voice-and-push.md#which-alerts-collie-sends).
 
 ## Attachments
 
