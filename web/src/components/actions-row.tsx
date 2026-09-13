@@ -314,10 +314,19 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           >
             <span className="absolute inset-0 bg-foreground/6" />
           </span>
-          {/* AN ORDINARY BELT PILL, drawn exactly like the general run above — same
-              `STRIP_ROW_PILL`, same `gap-1.5 text-xs`, same muted tone, an icon and a word. Only its
-              POSITION differs, which is the whole idea: the belt holds one kind of pill, and the one
-              that leaves the composer is simply the one that never scrolls away.
+          {/* A BELT PILL IN SHAPE AND SIZE, IN A DIFFERENT COLOUR — same `STRIP_ROW_PILL`, same
+              `gap-1.5 text-xs`, an icon and a word, but wearing a light wash of the app accent. It
+              is the one pill on this belt that does not operate the composer: Keys, Type, Quick,
+              Agent and Display all act on the box below, and this one LEAVES the pane. Altan's ask
+              after the pill shipped in muted grey: it "needs a different colour, something subtle".
+              So: a 10% accent ground inside a 30% accent border, the mark at full accent, and the
+              word left at `text-foreground` — the word is the message and a tinted word on a tinted
+              ground is two washes arguing.
+              THE HOVER TINTS ARE PINNED TO THE SAME VALUES, the same way {@link ON} pins its own.
+              `variant="ghost"` carries `hover:bg-accent hover:text-accent-foreground`, and
+              tailwind-merge does not treat a `hover:` utility as conflicting with its bare twin — so
+              without these the pill would repaint itself in the accent's FULL strength under a
+              cursor and read as a different control.
               It DRAWS "Switch" and ANNOUNCES "Switch pane", the same short-word/full-name split the
               general pills use — a visible word the accessible name contains, never a different one
               (WCAG 2.5.3). */}
@@ -328,9 +337,12 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
             aria-label={handle.label}
             aria-haspopup="dialog"
             onClick={handle.onClick}
-            className={cn(`${STRIP_ROW_PILL} relative gap-1.5 text-xs`, OFF)}
+            className={cn(
+              `${STRIP_ROW_PILL} relative gap-1.5 text-xs`,
+              "border-primary/30 bg-primary/10 text-foreground hover:bg-primary/10 hover:text-foreground",
+            )}
           >
-            <Layers className="size-4 shrink-0" />
+            <Layers className="size-4 shrink-0 text-primary" />
             {translate("composer.controls.switch")}
           </Button>
         </span>
