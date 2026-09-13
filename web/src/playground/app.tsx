@@ -45,6 +45,7 @@ import * as tour from "./sections/tour";
 import * as idle from "./sections/idle";
 import * as dashboard from "./sections/dashboard";
 import * as pane from "./sections/pane";
+import * as ideas from "./sections/ideas";
 import * as actionsRow from "./sections/actions-row";
 import * as crew from "./sections/crew";
 import * as settings from "./sections/settings";
@@ -79,6 +80,7 @@ export interface SectionEntry {
 export const SECTIONS: readonly SectionEntry[] = [
   { def: dashboard.DEF, render: () => <dashboard.DashboardSection /> },
   { def: pane.DEF, render: () => <pane.PaneSection /> },
+  { def: ideas.DEF, render: () => <ideas.IdeasSection /> },
   { def: actionsRow.DEF, render: () => <actionsRow.ActionsRowSection /> },
   { def: crew.DEF, render: () => <crew.CrewSection /> },
   { def: settings.DEF, render: () => <settings.SettingsSection /> },
