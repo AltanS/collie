@@ -35,3 +35,18 @@ required: `Question X/Y (N unanswered)` header, a non-empty question line, conse
 pointer rows, and the notes footer. The NOTES-FOCUSED state refuses to raw (footer
 `tab or esc to clear notes`, or a `› Add notes` row): a digit there would type into the box.
 Typing notes from the phone is deliberately not offered — it has no probed recipe.
+
+## Wrapped cards (2026-09-10, Codex 0.153.4)
+
+A read-only inspection found cards with wrapped questions and descriptions. One footer put
+`esc to interrupt` on its own final row. The released detector returned null for that card.
+
+`ask.test.ts` applies those layout changes to the public fruit capture through
+`parseAnsi → splitLines`. These are synthetic variants, not new byte-faithful captures.
+The parser joins question and description rows, keeps the original rows in its signature,
+and accepts the standalone interrupt hint only directly below the submit footer.
+A continuation must belong to an existing description and start at or beyond its column.
+Wrapped labels, incomplete options, notes mode, and output after the footer stay raw.
+
+The digit recipe above is unchanged. No keys were sent to the observed work session.
+Maintainer live-verification on a wrapped card is still needed before merge.
