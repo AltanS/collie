@@ -30,48 +30,67 @@ const OPTION = /^(?:\s{2}› |\s{4})([1-9])\. (.+)$/;
 /** request_user_input card at the tail, or null. */
 export function detectAskRegion(lines: StyledLine[]): AskRegion | null {
   const texts = lines.map((l) => rstrip(lineText(l)));
-  const fi = lastNonBlankIndex(texts);
+  const end = lastNonBlankIndex(texts);
+  let fi = end;
+  if (/^\s*esc to interrupt$/.test(texts[fi] ?? "")) fi--;
   if (fi < 0) return null;
   // The notes-focused state is explicitly refused rather than merely unrecognized, so the
   // refusal survives layout drift in the rows above.
   if (NOTES_FOOTER.test(texts[fi]!)) return null;
   if (!FOOTER.test(texts[fi]!)) return null;
 
-  // One blank row separates the footer from the option run; the options are contiguous.
+  // One blank row separates the footer from the option run. Descriptions may wrap.
   const bottom = skipBlanksUp(texts, fi - 1);
   if (bottom < 0) return null;
   if (NOTES_BOX.test(texts[bottom]!)) return null;
 
   const options: PromptOption[] = [];
+  let continuation: string[] = [];
   let i = bottom;
   for (; i >= 0; i--) {
     const t = texts[i]!;
     if (NOTES_BOX.test(t)) return null;
     const opt = OPTION.exec(t);
-    if (opt === null) break;
+    if (opt === null) {
+      if (/^ {6,}\S/.test(t) && !/^\s*\d+\./.test(t)) {
+        continuation.unshift(t);
+        continue;
+      }
+      break;
+    }
     const raw = opt[2]!.trim();
     const split = raw.split(/\s{2,}/);
     const label = (split[0] ?? raw).trim();
     const description = split.slice(1).join(" ").trim();
     const option: PromptOption = { label, keys: [opt[1]!] };
-    if (description !== "") option.description = description;
+    if (continuation.length > 0) {
+      // Only description rows may continue. A label-only option stays raw when it wraps.
+      const separator = /\s{2,}/.exec(raw);
+      if (separator === null) return null;
+      const descriptionColumn = t.indexOf(raw) + separator.index + separator[0].length;
+      if (description === "" || continuation.some((row) => row.search(/\S/) < descriptionColumn)) {
+        return null;
+      }
+      option.description = [description, ...continuation.map((row) => row.trim())].join(" ");
+      continuation = [];
+    } else if (description !== "") option.description = description;
     options.unshift(option);
   }
-  if (options.length < 2) return null;
+  if (continuation.length > 0 || options.length < 2) return null;
   for (let k = 0; k < options.length; k++) {
     if (options[k]!.keys[0] !== String(k + 1)) return null;
   }
 
-  // Above the options (across one blank row): the question line, with the Question X/Y header
-  // directly above it. Both are required — they are what separates this card from any other
-  // pointer-numbered list.
-  const questionRow = skipBlanksUp(texts, i);
-  if (questionRow < 1) return null;
-  const question = texts[questionRow]!.trim();
-  if (question === "" || !HEADER.test(texts[questionRow - 1]!)) return null;
-
-  const start = bottom - options.length + 1;
-  const signature = regionSignature(lines, questionRow - 1, fi + 1);
+  const start = i + 1;
+  const questionEnd = skipBlanksUp(texts, i);
+  let header = questionEnd;
+  while (header >= 0 && /^ {2}\S/.test(texts[header]!) && !HEADER.test(texts[header]!)) {
+    if (NOTES_BOX.test(texts[header]!)) return null;
+    header--;
+  }
+  if (header < 0 || !HEADER.test(texts[header]!) || header === questionEnd) return null;
+  const question = texts.slice(header + 1, questionEnd + 1).map((row) => row.trim()).join(" ");
+  const signature = regionSignature(lines, header, end + 1);
   if (signature === "") return null;
 
   return {
