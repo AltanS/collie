@@ -7,7 +7,7 @@ import { StatusDot } from "@/components/status-badge";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { useLongPress } from "@/hooks/use-long-press";
 import { paneDisplayName } from "@/lib/types";
-import { paneTag } from "@/lib/pane-tag";
+import { paneOrdinals } from "@/lib/pane-ordinal";
 import type { AgentView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 import { t } from "@/lib/i18n";
@@ -30,7 +30,20 @@ interface PaneStripProps {
 }
 
 // The panes within the current tab, as a horizontal switcher one level below the tab bar
-// (space › tab › pane). Mobile deliberately doesn't replicate the desktop's pane tiling — a tab can
+// (space › tab › pane).
+//
+// ── THIS ROW IS WHERE PANES ARE TOLD APART, AND THE TITLE IS NOT ─────────────
+// The pane header above used to append the multiplexer's pane id suffix to its own name whenever it
+// fell back to naming the tab, and every pill here printed that same suffix, on the argument that the
+// two are read together and must not drift. The argument was sound and the string was wrong: `p3` is
+// Herdr's coordinate for a pane, and Altan, who built this, read his own phone and said "idk what pN
+// means". So the two surfaces now say different things on purpose. The TITLE names the tab, with
+// nothing appended — a tab is what line 1 fell back to and a suffix does not make that sentence
+// truer. THIS ROW tells the panes apart, because it is the row whose whole job that is, and it only
+// speaks when it has to: a pill carries a small position number when another pill beside it would
+// otherwise read identically (lib/pane-ordinal.ts), and nothing otherwise.
+//
+// Mobile deliberately doesn't replicate the desktop's pane tiling — a tab can
 // hold several panes, and this is just a quick way to flip between them. Rendered only when the tab
 // actually holds more than one pane (a lone pane needs no switcher), so it's an optional extra row.
 // A long-press on a pill opens its actions sheet (rename / close) when the parent wires the actions.
@@ -52,6 +65,10 @@ export function PaneStrip({
   useRevealActive(scrollerRef, currentPaneId);
 
   if (panes.length < 2) return null;
+
+  // Which pills have a twin, worked out ONCE for the row: a pill cannot know on its own whether it
+  // needs a number, because the answer is about its neighbours.
+  const ordinals = paneOrdinals(panes);
 
   return (
     <>
@@ -83,6 +100,7 @@ export function PaneStrip({
             pane={p}
             active={p.paneId === currentPaneId}
             onSelect={onSelect}
+            ordinal={ordinals.get(p.paneId)}
             onLongPress={actionsEnabled ? () => setSheetPane(p) : undefined}
             // Tapping the already-active pill would otherwise be a useless re-navigate; repurpose it
             // to open the same actions sheet a long-press would, so it's not a dead tap.
@@ -109,22 +127,21 @@ export function PaneStrip({
 function PanePill({
   pane,
   active,
+  ordinal,
   onSelect,
   onLongPress,
   onTapActive,
 }: {
   pane: AgentView;
   active: boolean;
+  /** This pane's 1-based place in the row, given only when a neighbour reads the same (pane-ordinal.ts). */
+  ordinal?: number;
   onSelect: (paneId: string) => void;
   onLongPress?: () => void;
   /** A plain tap on the pill when it's already `active` — opens actions instead of a no-op re-select. */
   onTapActive?: () => void;
 }) {
   const isShell = pane.kind === "shell";
-  // The "pN" suffix of the pane id disambiguates same-named panes (two claudes in one tab). The rule
-  // is `lib/pane-tag.ts` and not an expression here, because the pane header directly above this row
-  // appends the same suffix to its own fallback name — the two are read together and may not drift.
-  const tag = paneTag(pane.paneId);
   // A user label, then Claude's /rename session name, then the agent/shell name (see paneDisplayName)
   // — the icon still conveys which agent it is.
   const name = paneDisplayName(pane);
@@ -146,6 +163,10 @@ function PanePill({
       onClick={onClick}
       {...longPress}
       aria-current={active ? "true" : undefined}
+      // A numbered pill states its own name, because the number is a separate text node and the
+      // accessible name computation would otherwise run the two together as "claude2". A pill with
+      // nothing to disambiguate keeps its content as its name, unchanged.
+      aria-label={ordinal === undefined ? undefined : `${name} ${ordinal}`}
       title={active && onTapActive ? t("home.sidebar.paneActionsTitle") : undefined}
       className={cn(
         // select-none + -webkit-touch-callout:none stop iOS Safari's selection loupe / touch callout,
@@ -180,14 +201,18 @@ function PanePill({
         <StatusDot status={pane.status} live />
       )}
       <span>{name}</span>
-      <span
-        className={cn(
-          "font-mono text-[10px]",
-          active ? "text-primary-foreground/70" : "text-muted-foreground/60",
-        )}
-      >
-        {tag}
-      </span>
+      {/* The number is part of the pill's own text, not a decoration beside it: a screen reader
+          hearing two pills called "claude" is in exactly the trouble the eye is. */}
+      {ordinal !== undefined && (
+        <span
+          className={cn(
+            "font-mono text-[10px]",
+            active ? "text-primary-foreground/70" : "text-muted-foreground/60",
+          )}
+        >
+          {ordinal}
+        </span>
+      )}
     </button>
   );
 }

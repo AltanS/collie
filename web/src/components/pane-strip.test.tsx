@@ -60,6 +60,40 @@ describe("PaneStrip", () => {
     expect(screen.getByRole("button", { name: /claude/ })).not.toHaveAttribute("aria-current");
   });
 
+  // ── A PILL IS NUMBERED ONLY WHEN IT HAS TO BE ───────────────────────────────
+  // Every pill used to carry the multiplexer's pane id suffix (`p1`, `p3`), whether or not there was
+  // anything to tell apart. Altan, reading his own phone: "idk what pN means". The suffix is gone; a
+  // pill now carries its 1-based place in the row, and only when a neighbour reads the same.
+  it("numbers nothing when every pill already reads differently", () => {
+    render(
+      <PaneStrip
+        panes={[pane("w1:p1", "claude"), pane("w1:p3", "codex")]}
+        currentPaneId="w1:p1"
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "claude" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "codex" })).toBeInTheDocument();
+    // And no pane id anywhere on the row.
+    expect(screen.queryByText(/^p\d+$/)).toBeNull();
+  });
+
+  it("numbers two pills that would otherwise read the same, by their place in the row", () => {
+    render(
+      <PaneStrip
+        panes={[pane("w1:p1", "claude"), pane("w1:p4", "claude"), pane("w1:p9", "codex")]}
+        currentPaneId="w1:p1"
+        onSelect={vi.fn()}
+      />,
+    );
+    // The position in the row, which is what the reader can see — never the id suffix `p4`.
+    expect(screen.getByRole("button", { name: "claude 1" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "claude 2" })).toBeInTheDocument();
+    // The odd one out keeps its clean name: the number answers a question only the twins raise.
+    expect(screen.getByRole("button", { name: "codex" })).toBeInTheDocument();
+    expect(screen.queryByText("p4")).toBeNull();
+  });
+
   it("shows Claude's /rename session name on a pill when no user label is set", () => {
     render(
       <PaneStrip

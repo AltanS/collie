@@ -87,6 +87,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **An update tapped on a Mac phone no longer leaves the service unloaded.** On macOS neither `systemd-run` nor a `setsid` binary exists, so the bridge started the update runner inside the launchd job's process group; restarting the job killed the runner before it could load the job again. The bridge now spawns that runner in a session of its own on every tier except `systemd-run`, which stays as it was. If a phone update has already left the service unloaded, `collie restart` loads it again. Thanks @PhillipChaffee (#213).
 - **`collie doctor` no longer credits a commented-out cache rule.** The `cache-env` check read the example file's commented rows as a live override; it now counts only rows that validate, and a `retrieved` date in the future is rejected like any other bad row.
 - **The cache countdown no longer blinks between polls.** A refresh that arrived without a reading unmounted the chip for a frame and put it back on the next poll; the last reading now holds until a new one, or an explicit cold, replaces it, and it is dropped when the pane goes away.
+- **The pane title no longer shows a raw pane id.** A tab with several unnamed panes appended the multiplexer's `p3` to the title and printed it on every pill of the switcher; the title names the tab now, and a pill carries its place in the row only when a pill beside it would otherwise read the same.
 
 ## [1.8.2] - 2026-09-12
 

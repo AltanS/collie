@@ -428,42 +428,36 @@ describe("AgentChat — the pane header's identity block", () => {
     );
   });
 
-  // LINE 1 NAMES A TAB, THE DOT BESIDE IT REPORTS A PANE — and only on the fallback branch, which is
-  // exactly the branch a multi-pane tab lands on. So the header could read "this tab is done" while
-  // only the open pane is done. The fix names the PANE and leaves the dot per-pane: the mirror, the
-  // composer and the dot on this screen all scope to one pane, and the dot ladder elsewhere
-  // (pane strip per pane, tab strip worst-in-tab, space strip worst-in-space) is right as it stands.
+  // THE TITLE NEVER SHOWS A RAW PANE ID. Line 1 used to append the multiplexer's own pane id suffix
+  // — `p3` — whenever it fell back to naming the tab and that tab held more than one pane, so the
+  // header could be matched against the pill row below, which printed the same suffix. Altan, reading
+  // his own phone: "idk what pN means". It is Herdr's coordinate for a pane, not a name.
+  //
+  // The two surfaces now say different things on purpose. The title names the tab and stops there;
+  // telling panes apart is the switcher's job, and the switcher does it with a position number and
+  // only when two pills would otherwise read the same (pane-strip.tsx, lib/pane-ordinal.ts).
   //
   // `base` has no paneLabel and no sessionName, so its name is the `space › tab` fallback.
   const solo = fixtureAgents[0]!; // w1:p1, workspaceLabel "webapp", tab w1:t1
   const sibling: AgentView = { ...solo, paneId: "w1:p7", status: "working" };
 
-  it("appends the pane's own suffix to the fallback name when the tab holds several panes", () => {
+  it("never appends a pane id to the title, however many panes the tab holds", () => {
     const { container } = renderChat({ agent: solo, agents: [solo, sibling] });
-    // The suffix is `lib/pane-tag.ts`'s rule — the trailing segment of the pane id — and it is the
-    // same string the pill row below prints, which is the whole reason it discriminates: the reader
-    // matches the header to a pill without being told to.
-    expect(slot(container, "tag")?.textContent).toBe("p1");
-    // And it is its OWN span, not glued onto the name. A joined string tail-truncates at 390px, so
-    // the one part that discriminates would be the first part to disappear (lib/pane-name.ts states
-    // the same rule one level down). The name gives up width; the suffix is `shrink-0`.
     expect(slot(container, "name")?.textContent).toBe("webapp");
-    expect(slot(container, "tag")?.className).toMatch(/(^|\s)shrink-0(?=\s|$)/);
+    expect(slot(container, "tag")).toBeNull();
+    // The pill row below IS on screen in this case — that is where the two panes are told apart.
+    expect(screen.getByRole("navigation", { name: "Panes" })).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/\bp[17]\b/);
   });
 
-  it("keeps the clean name when the tab holds ONE pane", () => {
-    // Nothing to disambiguate: the tab's name effectively names the pane, and PaneStrip renders no
-    // pill row below for a suffix to be matched against. Both facts come off the same list, on
-    // purpose — a header decorated over an absent pill row is the failure that would look like.
+  it("keeps the clean name when the tab holds ONE pane, with no pill row either", () => {
     const { container } = renderChat({ agent: solo, agents: [solo] });
+    expect(slot(container, "name")?.textContent).toBe("webapp");
     expect(slot(container, "tag")).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull();
   });
 
-  it("never decorates a name the operator or the agent chose, even in a multi-pane tab", () => {
-    // A `pane.rename` label and Claude's own `/rename` session name each name THIS PANE already, so
-    // there is no tab/pane mismatch to correct — appending an id would only add noise to a string
-    // somebody picked deliberately.
+  it("still shows a name the operator or the agent chose, undecorated", () => {
     const labelled = { ...solo, paneLabel: "logs" };
     const { container: byLabel } = renderChat({ agent: labelled, agents: [labelled, sibling] });
     expect(slot(byLabel, "name")?.textContent).toBe("logs");
@@ -473,26 +467,6 @@ describe("AgentChat — the pane header's identity block", () => {
     const { container: bySession } = renderChat({ agent: session, agents: [session, sibling] });
     expect(slot(bySession, "name")?.textContent).toBe("refactor the parser");
     expect(slot(bySession, "tag")).toBeNull();
-  });
-
-  it("adds the suffix without growing line 1, so the header row does not grow on this route alone", () => {
-    // The coupling the two-line test above pins, restated for the one element that can break it: the
-    // block is a SUM of line boxes (20 + 4 + 12) and app-header.tsx's row floor is sized against it.
-    // A span with no stated line-height inherits the body's 1.45 strut, which takes line 1 past 20px
-    // and grows the header on the pane route only — the route-local jump `min-h-15` exists to kill.
-    const { container } = renderChat({ agent: solo, agents: [solo, sibling] });
-    const box = (name: string, cls: string) => {
-      const m = /(?:^|\s)leading-(\d+)(?=\s|$)/.exec(cls);
-      expect(m, `leading-* on the ${name} span, in "${cls}"`).not.toBeNull();
-      return Number(m![1]) * 4; // Tailwind's --spacing is 0.25rem, and the app's root is 16px
-    };
-    expect(box("tag", slot(container, "tag")?.className ?? "")).toBe(
-      box("name", slot(container, "name")?.className ?? ""),
-    );
-    // And it rides ON line 1 rather than becoming a line of its own — same parent as the name, so
-    // the block stays the run of boxes the floor was sized against. (The cwd line is absent here:
-    // `~/webapp` under the name `webapp` is the same word twice, which the gate above covers.)
-    expect(slot(container, "tag")?.parentElement).toBe(slot(container, "name")?.parentElement);
   });
 });
 
