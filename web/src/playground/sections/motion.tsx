@@ -15,7 +15,7 @@ import { OneOf } from "@/components/ui/one-of";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { BusyBar } from "@/components/busy-bar";
 import { trackBusy } from "@/lib/busy";
-import { StatusDot, StatusBadge, StatusWord, StatusWordSlot } from "@/components/status-badge";
+import { StatusDot, StatusBadge, StatusWord } from "@/components/status-badge";
 import { BottomSheet } from "@/components/ui/sheet";
 import { AnchoredMenu } from "@/components/ui/anchored-menu";
 import { UpdateCheckControl } from "@/components/update-check-control";
@@ -264,7 +264,7 @@ function StatusIndicatorsCard() {
   return (
     <Card
       state="status-indicators"
-      label="StatusDot, StatusBadge, StatusWord & StatusWordSlot"
+      label="StatusDot, StatusBadge & StatusWord"
       reach="any agent row (dashboard, tab strip, pane strip, pane header) for the dot; the pane
         header's line 1 for the word."
       note="Every dot below has `live` breathing ON so the animation can be judged. In the real app
@@ -293,11 +293,6 @@ function StatusIndicatorsCard() {
           <Row label="StatusWord">
             {STATUSES.map((s) => (
               <StatusWord key={s} status={s} />
-            ))}
-          </Row>
-          <Row label="StatusWordSlot, reserves the widest word">
-            {STATUSES.map((s) => (
-              <StatusWordSlot key={s} status={s} />
             ))}
           </Row>
         </div>

@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { HarnessBar, useHarnessBarItems } from "@/components/harness-bar";
+import { HostChip } from "@/components/host-chip";
 import { OverflowEdges } from "@/components/ui/overflow-edges";
 import { SectionLabel } from "@/components/ui/section-label";
 import { STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
@@ -60,6 +61,17 @@ import { cn } from "@/lib/utils";
 // spending a row of a phone's glass on four or five buttons, and the operator read them as one thing
 // anyway: "what can I press from here". Merged, the composer gets a row back and the harness
 // commands sit at the same height as the keys they were always meant to live beside.
+//
+// THE MACHINE OPENS THE BELT, AND THE STATUS WORD IS GONE. There was a 14px status band above this
+// row naming the write host and the pane's state. Altan's verdict: "the server is still necessary
+// somewhere, but the status is unnecessary at this place." So the band went, and the host moved
+// here — the belt is the surface every one of these buttons writes from, which is what made the
+// band's sentence worth saying in the first place. The STATE did not move anywhere: it stays on the
+// pane header's dot (named, so a reader still gets it without paint) and on the dashboard.
+//
+// WHY IT SITS BEFORE THE CONTROLS GROUP RATHER THAN INSIDE IT. `role="group"` here is named
+// "Controls"; the machine is not one of Collie's controls, it is where all of them land. It is also
+// not a button and must never become one — `host-chip.tsx` says why at length.
 //
 // WHY THE GENERAL PART IS FIRST. It is the part that is ALWAYS there. The harness section is
 // absent on a bare shell, on grok, on opencode, and whenever the operator has the Settings switch
@@ -129,7 +141,21 @@ export interface GeneralAction {
 export interface ActionsRowProps {
   /** Collie's own actions, in the order the thumb should meet them. */
   general: readonly GeneralAction[];
-  /** The focused pane's agent — picks the harness segment and its brand colour. */
+  /**
+   * The machine every button on this belt — and the field below it — writes to. It opens the belt,
+   * as a `HostChip`, and it is not a control: {@link HostChip} is deliberately not one.
+   *
+   * It SELF-HIDES on a solo install, which is every install that exists today, so passing it costs
+   * a solo phone nothing and nothing appears there. On a crew the belt opens with the machine's
+   * name and the general pills start after it — so the pills sit at a different x on a crew than on
+   * a solo install. That is an INSTALL-WIDE difference, not a per-state shift: the chip's answer is
+   * fixed for the life of the install, so no state a pane can enter moves it, and DESIGN.md §2 is
+   * about the second thing, not the first.
+   *
+   * Absent, rather than flagged off, where there is no crew to name.
+   */
+  writeHost?: string;
+  /** The focused pane's agent — picks the harness section and its brand colour. */
   agent: string | undefined | null;
   /** The snapshot's `operatorCommands`; the `bar = true` ones replace the shipped bar (ADR 0043). */
   mine?: readonly OperatorCommand[];
@@ -139,7 +165,14 @@ export interface ActionsRowProps {
   disabled?: boolean;
 }
 
-export function ActionsRow({ general, agent, mine, onRun, disabled }: ActionsRowProps) {
+export function ActionsRow({
+  general,
+  writeHost,
+  agent,
+  mine,
+  onRun,
+  disabled,
+}: ActionsRowProps) {
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
@@ -155,7 +188,11 @@ export function ActionsRow({ general, agent, mine, onRun, disabled }: ActionsRow
       // this is the element carrying the `-mx-3` that cancels the dock's `px-3`, so a fill or a rule
       // drawn here runs edge to edge. Drawn one level in, the band would stop 12px short of both
       // screen edges and read as a wide capsule — the shape this row just stopped being.
-      className="-mx-3 mt-2 mb-1.5 flex items-center border-y border-border bg-foreground/6"
+      // `mt-1.5` and not `mt-2`, and the 2px is a re-measurement rather than a shave: the 8px was
+      // the air between the status band and these buttons, and that band is gone (composer.tsx says
+      // where it went). What the number separates now is the chrome block's swipe handle from the
+      // belt's own top rule, and a rule needs less air than a line of type did.
+      className="-mx-3 mt-1.5 mb-1.5 flex items-center border-y border-border bg-foreground/6"
     >
       {/* OverflowEdges measures this scroller and fades — and chevrons — only the end that still
           hides something. The `px-3` stays on the scroller, paired with the `-mx-3` above: the
@@ -168,6 +205,15 @@ export function ActionsRow({ general, agent, mine, onRun, disabled }: ActionsRow
       <OverflowEdges>
         {(scrollerRef) => (
           <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "px-3")}>
+            {/* THE MACHINE OPENS THE BELT. It is a sibling of the controls group and not a member of
+                it, on purpose: the group is named "Controls" and a machine's name is not one of
+                Collie's controls — it names where every one of them lands. `variant="tag"` and never
+                `caption`: the 10px uppercase caption was sized for the 14px status band this row
+                absorbed, and a 10px run of chrome type sitting among 32px pills reads as a word that
+                fell off something. `sends` because that is what this surface does: the chip must
+                announce "sends to workshop", never "host: workshop", a thumb's width from the box.
+                Renders null on a solo install, by its own hide rule. */}
+            <HostChip host={writeHost} variant="tag" sends />
             {general.length > 0 && (
               // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
               // self-labelling buttons and earned nothing, but in the accessibility tree it is the only

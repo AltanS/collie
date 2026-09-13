@@ -13,7 +13,7 @@ import { server } from "@/test/setup";
 import { fixtureServers, recordReply } from "@/test/handlers";
 import { CrewProvider } from "./crew-provider";
 import { Composer, TUI_SETTLE_MS } from "./composer";
-import { statusLabel, type ServerSummary } from "@/lib/types";
+import { type ServerSummary } from "@/lib/types";
 
 // A guarded send is TWO reply calls: type (submit:false), then — once the text is verified on the
 // input line — submit-only (empty text). Overriding the reply handler therefore has to keep the fake
@@ -1390,45 +1390,57 @@ describe("Composer — destructive-input confirm", () => {
   });
 });
 
-// THE MACHINE, ON THE COMPOSER'S STATUS STRIP. For one round it was docked inside the text box; the
-// reasoning survives ("which machine will this land on" is asked while writing, not while reading)
-// but the 60px it took out of the typing area does not. The strip above the controls row is the same
-// write surface and its space was already reserved and already empty.
+// THE MACHINE, ON THE ACTIONS BELT. It has moved twice and the reasoning is cumulative. Docked
+// inside the text box it cost 60px of the widest part of the composer; on the 14px status band above
+// the controls row it cost nothing, but the band's other half — the pane's status word — was what
+// Altan asked to be rid of ("the server is still necessary somewhere, but the status is unnecessary
+// at this place"). So the band went and the chip came down one row, onto the belt every one of those
+// buttons writes from.
 //
-// Four claims, each failing in BOTH directions — a chip that never renders passes none of them, a
-// chip that always renders fails the solo case, and a chip put back in the field fails the second.
-describe("Composer — the machine and the state, on a band of their own", () => {
+// Each claim below fails in BOTH directions: a chip that never renders passes none of them, a chip
+// that always renders fails the solo case, and a chip left on a band fails the first.
+describe("Composer — the machine opens the actions belt, and no band stands above it", () => {
   const box = () => screen.getByPlaceholderText(/type a reply/i);
   const row = () => document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!;
-  /** The scrolling row the controls group now sits in — it carries the row's own margins. */
+  /** The belt: the scrolling row, which carries the ground, the rules and the row's own margins. */
   const actions = () => document.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
-  /** The status band above it: the host run, the status slot, or both. */
-  const band = () => document.querySelector<HTMLElement>('[data-slot="composer-status"]')!;
-  /** The reserved word slot — the band's last child (`ui/one-of.tsx`).
-   *  SAFETY: the band renders exactly two children in this order, the host run then the slot, and
-   *  the host run is `null` on a solo install — so its last child is always the slot's element. */
-  const slot = () => band().lastElementChild as HTMLElement;
-  /** Every alternative the slot is holding open space for, in order. */
-  const words = () => Array.from(slot().children).map((l) => l.textContent);
-  /** The one it is actually SHOWING. */
-  const shown = () => slot().querySelector<HTMLElement>("[data-active]")?.textContent ?? null;
   /** The field's own reserved strip. Read off the class, because the jsdom render has no layout. */
   const reserved = (el: HTMLElement) => /(?:^|\s)pr-(\d+)(?=\s|$)/.exec(el.className)?.[1];
 
-  it("names the machine on the band above the controls row, and renders NOTHING on a solo install", () => {
-    // Solo — every install that exists today. There is no "which machine" question to answer, so the
-    // band carries the word alone. Scoped by data-slot, never a bare role query: `ui/strip-host`
-    // mounts two permanent sr-only live regions, so a role sweep is ambiguous in any tree with a host.
+  it("opens the belt with the machine on a crew, and draws nothing there on a solo install", () => {
+    // Solo — every install that exists today. There is no "which machine" question to answer, so
+    // the belt opens with Keys and the chip's own hide rule renders nothing at all. Scoped by
+    // data-slot, never a bare role query: `ui/strip-host` mounts two permanent sr-only live regions,
+    // so a role sweep is ambiguous in any tree with a host.
     renderComposerWithStatus({ scope: { host: "workshop" } });
-    expect(band().querySelector('[aria-label*="host" i]')).toBeNull();
+    expect(actions().querySelector('[aria-label*="host" i]')).toBeNull();
     cleanup();
 
-    // Crew — the chip appears, INSIDE the band and nowhere else. Not inside the controls group: it
-    // names a machine, not a run of five buttons, and `role="group"` is named "Controls".
+    // Crew — the chip appears, ON THE BELT, and it is the belt's FIRST element. Not inside the
+    // controls group: that group is named "Controls" and a machine is not one of Collie's controls,
+    // it is where all of them land.
     renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
     const chip = screen.getByLabelText("Sends to host: workshop");
-    expect(band().contains(chip)).toBe(true);
+    expect(actions().contains(chip)).toBe(true);
     expect(row().contains(chip)).toBe(false);
+    const scroller = actions().querySelector(".overflow-x-auto")!;
+    expect(scroller.firstElementChild).toBe(chip);
+    // The `tag` variant, never `caption`: the 10px uppercase run was sized for the 14px band that
+    // is gone, and among 32px pills it reads as a word that fell off something. The tag is a
+    // bordered pill, which is what `caption` explicitly is not (host-chip.tsx).
+    expect(chip.className).toMatch(/(?:^|\s)border(?=\s|$)/);
+    expect(chip.className).not.toMatch(/uppercase/);
+  });
+
+  it("has no status band at all any more, and adds no visible word in its place", () => {
+    // The band is gone, and the word did not move somewhere else: a status word anywhere in this
+    // footer would be the thing Altan
+    // asked to be rid of, wearing a different address.
+    renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
+    expect(document.querySelector('[data-slot="composer-status"]')).toBeNull();
+    for (const word of ["needs you", "working", "done", "idle", "unknown", "shell"]) {
+      expect(screen.queryByText(word)).toBeNull();
+    }
   });
 
   it("is NOT in the composer field: no chip in the box, and the typing width is the attach strip alone", async () => {
@@ -1456,7 +1468,7 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // "Controls" was doing two jobs and only one of them was visual. Sighted it labelled five
     // self-labelling buttons; in the accessibility tree it is the ONLY thing naming the group. So it
     // is `sr-only`, not deleted — which is also why `composer.controls.label` is still a live key in
-    // all six dictionaries. Delete the label and this group announces as an unnamed run of buttons.
+    // all seven dictionaries. Delete the label and this group announces as an unnamed run of buttons.
     renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
     expect(screen.getByRole("group", { name: "Controls" })).toBe(row());
     expect(row().getAttribute("aria-labelledby")).toBe("composer-controls-label");
@@ -1464,265 +1476,55 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     expect(label.className).toMatch(/(?:^|\s)sr-only(?=\s|$)/);
   });
 
-  it("holds host + word on a crew, the word ALONE on a solo install, in that order", () => {
-    // THE MOVE THIS ROUND MADE. The pane header's caption line carried the status word by itself, so
-    // the top of a 60px row was spent on one word; it came down here, beside the machine, where
-    // "which machine, and what is it doing" reads as one sentence at the surface being typed into.
-    // It was MOVED and not deleted: on the app's own tokens a deuteranope reads blocked / working /
-    // done as one colour in light theme, so the header's dot cannot carry the range alone
-    // (status-badge.tsx holds the measurement, agent-chat.test.tsx pins the dot's survival).
-    renderComposerWithStatus({ scope: { host: "workshop" }, status: "blocked" }, fixtureServers);
-    expect(band().firstElementChild).toHaveTextContent("workshop"); // machine first…
-    expect(shown()).toBe("needs you"); // …then what it is doing
-    cleanup();
-
-    // Solo — every install that exists today. HostChip renders null, so the word stands alone.
-    renderComposerWithStatus({ scope: { host: "workshop" }, status: "blocked" });
-    expect(shown()).toBe("needs you");
-    expect(band().querySelector('[aria-label*="host" i]')).toBeNull();
-    cleanup();
-
-    // A bare shell has no agent and therefore no agent status, and still owes the band a word.
-    renderComposerWithStatus({ isShell: true, scope: { host: "workshop" } });
-    expect(shown()).toBe("shell");
-  });
-
-  it("reserves the WORD's slot, so no status can change its width", () => {
-    // THE BUG THE OPERATOR FOUND. The band is right-aligned and the word is variable-width, so every
-    // status change slid the host sideways — DESIGN.md §2, verbatim: a state may repaint, it may not
-    // re-lay-out. MEASURED in the playground at a true 390px content width, crew pane, host chip's
-    // left edge: it was 262.92 / 271.89 / 290.86 / 296.28 / 267.33px for the five statuses (a 33.4px
-    // swing) and is 262.92px for all five now. In German the swing was 41.3px and is zero.
-    //
-    // jsdom has no layout, so what is pinned here is the STRUCTURE that makes it true: the slot
-    // renders every word it could ever hold, always, and a status change only moves `data-active`
-    // between them. Render one word alone and the DOM below differs per status; the test fails.
-    const dom = new Map<string, string>();
-    for (const status of ["blocked", "working", "done", "idle", "unknown"] as const) {
-      renderComposerWithStatus({ scope: { host: "workshop" }, status }, fixtureServers);
-      expect(words()).toEqual(["needs you", "working", "done", "idle", "unknown"]);
-      expect(shown()).toBe(statusLabel(status));
-      // Everything except which layer is in front is byte-identical across the five.
-      // Normalise away the marks whose whole job is to say WHICH layer is in front — everything
-      // else, the five words and the boxes they stand in, has to be identical.
-      const front = /(?: data-active=""| inert=""| aria-hidden="true"|opacity-\d+|pointer-events-none)/g;
-      dom.set(status, slot().innerHTML.replace(front, "").replace(/\s+/g, " "));
-      cleanup();
-    }
-    expect(new Set(dom.values()).size).toBe(1);
-
-    // …and the reserve is NOT a number. A pixel width could not do this job: the same slot is
-    // "braucht dich" (72.2px) in German and "desconocido" (70.0px) in Spanish against "needs you"
-    // at 54.6px, so any constant clips one locale or wastes another's space. The layout engine
-    // measures the real glyphs of the real dictionary instead.
-    renderComposerWithStatus({ scope: { host: "workshop" }, status: "done" }, fixtureServers);
-    expect(slot().className).not.toMatch(/(?:^|\s)(?:min-)?w-\[/);
-    expect(slot().className).not.toMatch(/(?:^|\s)(?:min-)?w-\d/);
-    cleanup();
-
-    // A GONE pane shows no word at all — and keeps the slot, because "shows nothing" is a state too
-    // and a pane dying under you must not slide the machine's name at the moment you are reading it.
-    renderComposerWithStatus({ scope: { host: "workshop" }, status: undefined }, fixtureServers);
-    expect(shown()).toBeNull();
-    expect(words()).toHaveLength(5);
-    cleanup();
-
-    // A SHELL pane reserves only what it can become. Its word is "shell" forever, so reserving the
-    // agent set would buy a solo shell ~24px of permanent emptiness for states it can never enter.
-    renderComposerWithStatus({ isShell: true, scope: { host: "workshop" } }, fixtureServers);
-    expect(words()).toEqual(["shell"]);
-  });
-
-  it("carries exactly ONE rule at each seam, and draws each from above", () => {
+  it("carries exactly ONE rule at each seam, and the belt draws its own two", () => {
     // DESIGN.md §4: where two chrome regions stack, ONE component draws the boundary. Two drawing it
     // gives a 2px line where the language says 1px — a fault this codebase has already fixed twice
     // (space-strip / tab-strip).
     //
-    // THE BAND NOW CLOSES BOTH OF ITS OWN EDGES, and that is the operator's third report answered:
-    // it had a rule below and the dock's 10px `pt-2.5` above, so the box the EYE drew ran from the
-    // dock's top rule to the band's bottom one — ~23px of unbroken ground with the words sitting at
-    // the bottom of it. Bounded on both edges the band IS the box it is centred in. The 10px moved
-    // BELOW, onto the controls row, where it separates the band from the buttons.
-    //
-    // The dock therefore draws NOTHING: its top rule and fill moved out to the chrome block in
-    // agent-chat.tsx, which also carries the swipe handle, so the boundary against the terminal is
-    // drawn once above everything the thumb operates. agent-chat.test.tsx pins that half.
-    renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" }, fixtureServers);
-    expect(band().className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
-    // `border-border`, not `border-rule` — the band's edges are component edges inside ONE chrome
-    // surface (handle above, controls below); the regional cut is the chrome block's top rule. The
-    // operator read the 24% pair as too loud around 10px type; 12% still states the box.
-    expect(band().className).toMatch(/(?:^|\s)border-border(?=\s|$)/);
-    expect(band().className).not.toMatch(/(?:^|\s)border-rule(?=\s|$)/);
-    // …stated as ONE utility. `border-b border-t` would paint the same two lines and read as two
-    // decisions, and a later `border-b` in the same cn() would silently drop the top one.
-    expect(band().className).not.toMatch(/(?:^|\s)border-[bt](?=\s|$)/);
-    // The controls group below draws NOTHING at all any more: with the capsule retired it stands on
-    // the belt's own ground, so it can neither double a seam nor outline itself.
-    expect(row().className).not.toMatch(/(?:^|\s)border/);
-    expect(row().className).not.toMatch(/(?:^|\s)rounded/);
-    // The BELT closes its own two edges, the same way and with the same token the band does, and the
-    // 8px of chrome between the band's bottom rule and the belt's top one is what keeps those two
-    // from reading as one doubled seam.
+    // The belt closes both of its own edges, and there is nothing above it that draws one: the dock
+    // draws nothing (its top rule and fill moved out to the chrome block in agent-chat.tsx, which
+    // also carries the swipe handle, so the boundary against the terminal is drawn once above
+    // everything the thumb operates — agent-chat.test.tsx pins that half), and the status band that
+    // used to sit between them is gone.
+    renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
     expect(actions().className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
+    // `border-border`, not `border-rule` — the belt's edges are component edges inside ONE chrome
+    // surface (handle above, input below); the regional cut is the chrome block's top rule.
     expect(actions().className).toMatch(/(?:^|\s)border-border(?=\s|$)/);
     expect(actions().className).not.toMatch(/(?:^|\s)border-rule(?=\s|$)/);
-    expect(actions().className).not.toMatch(/(?:^|\s)rounded/);
+    // …stated as ONE utility. `border-b border-t` would paint the same two lines and read as two
+    // decisions, and a later `border-b` in the same cn() would silently drop the top one.
+    expect(actions().className).not.toMatch(/(?:^|\s)border-[bt](?=\s|$)/);
+    // The controls group draws NOTHING at all: with the capsule retired it stands on the belt's own
+    // ground, so it can neither double a seam nor outline itself.
+    expect(row().className).not.toMatch(/(?:^|\s)border/);
+    expect(row().className).not.toMatch(/(?:^|\s)rounded/);
     // …and the dock around them draws no edge either — the chrome block above it does.
-    const dock = band().parentElement!;
+    const dock = actions().previousElementSibling!;
     expect(dock.className).not.toMatch(/(?:^|\s)border/);
-    // The 10px the dock used to spend above the band is now below it, on the actions row — which is
-    // the element that carries the margins since the controls group moved inside it.
     expect(dock.className).not.toMatch(/(?:^|\s)pt-/);
-    expect(actions().className).toMatch(/(?:^|\s)mt-2(?=\s|$)/);
-    // A border colour with no width paints nothing (DESIGN.md §7 trap 1) — so the width is asserted
-    // beside the colour, and this pin fails if either is dropped.
+    // The belt's own top margin. It was `mt-2`, which was the air between the status band and these
+    // buttons; with the band gone the number separates the swipe handle from a hairline instead, and
+    // a rule needs less air than a line of type did.
+    expect(actions().className).toMatch(/(?:^|\s)mt-1\.5(?=\s|$)/);
   });
 
-  it("stands at ONE height — solo, crew, shell, gone, and across every status", () => {
-    // MEASURED in the browser on the pane screen at a true 390px viewport, both themes: the band is
-    // 14.00px — 1 + 12 + 1 — with the word alone (solo), with host + word (crew), on a shell, with
-    // no word at all (a gone pane) and on every one of the five statuses. The five buttons below
-    // still measure 44.00px, DESIGN.md §6's floor.
+  it("runs the ground and the rules edge to edge, and puts the gutter back on the scroller", () => {
+    // FULL-BLEED: `-mx-3` cancels the dock's `px-3`, so the ground and both rules reach the viewport
+    // edges. A band that stopped 12px short would read as a wide capsule — the shape this row just
+    // stopped being — so the ground and the rules belong to the element carrying that margin and
+    // never to the scroller one level in.
     //
-    // THE STACK GOT 9px SHORTER in the same edit: the dock's 10px of top padding went away and the
-    // band's new top rule cost 1px back.
-    //
-    // The height is STATED (`h-[14px]`) rather than summed from whatever stands in the band. It used
-    // to be 12px of line box plus the rules, i.e. equal solo and on a crew only because the occupants
-    // happened to agree; an occupant that ever measured 13 would have grown the band and nothing
-    // would have said so. Pinning the border box makes solo and crew identical by construction.
-    //
-    // jsdom has no layout, so what is pinned are the facts that make that true and that a refactor
-    // could quietly undo.
-    renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" });
-    const soloBand = band().className;
-    const soloRow = row().className;
-    expect(soloBand).toMatch(/(?:^|\s)h-\[14px\](?=\s|$)/);
-    // The 12px line box is stated on the BAND, not just on the runs inside it, and that is
-    // load-bearing: a block layer in the slot takes its line box from its own inherited strut, so
-    // without this the 14px page strut wins and the band measures 25px instead of 14px. One utility
-    // and never `text-[10px] leading-3` — tailwind-merge drops an earlier `leading-*` when a later
-    // `text-<size>` lands in the same cn(), which once rendered the host run at a 15px line and grew
-    // the pane header to 63px.
-    expect(soloBand).toContain("text-[10px]/3");
-    expect(soloBand).not.toMatch(/(?:^|\s)leading-/);
-    // Nothing PADS the row of buttons — the 10px above it is a margin, outside the band's box, so
-    // the band's own height stays a fact about the band.
-    expect(soloRow).not.toMatch(/(?:^|\s)pt-/);
-    expect(soloRow).not.toMatch(/(?:^|\s)py-/);
-    // And the band carries NO vertical padding in any direction: it is 1 + 12 + 1 exactly, and a
-    // pixel spent on either side would push a rule off the height the row was argued down to. The
-    // `pt-px` that used to sit here is gone with the reason for it — see the centring test below.
-    expect(soloBand).not.toMatch(/(?:^|\s)(?:pt|pb|py)-/);
-    cleanup();
-
-    for (const overrides of [
-      { scope: { host: "workshop" }, status: "blocked" as const },
-      { scope: { host: "workshop" }, status: "done" as const },
-      { scope: { host: "workshop" }, status: undefined },
-    ]) {
-      renderComposerWithStatus(overrides, fixtureServers);
-      expect(band().className).toBe(soloBand); // the crew pays nothing for the chip
-      expect(row().className).toBe(soloRow);
-      // Both runs state the same 12px line box, as ONE utility.
-      for (const run of [band().firstElementChild!, slot().firstElementChild!.firstElementChild!]) {
-        expect(run.className).toContain("text-[10px]/3");
-        expect(run.className).not.toMatch(/(?:^|\s)leading-/);
-      }
-      cleanup();
-    }
-  });
-
-  it("centres both occupants on the band's OWN middle, not on its content box's", () => {
-    // THE OPERATOR'S THIRD REPORT: "content in the bottom status row is still not vertically
-    // centered." The second report had already been answered with `h-[13px] pt-px`, and the numbers
-    // said it worked — so the third report is the useful one, because it says the numbers were
-    // answering the wrong question.
-    //
-    // THE BOX WAS WRONG, NOT THE CENTRING. The band had a rule below it and the dock's `pt-2.5`
-    // above it, on the dock's own ground: nothing marked where the band started, so the box the eye
-    // drew ran from the dock's top rule to the band's bottom rule — about 23px of unbroken surface
-    // with the two runs sitting in the last 13 of it. No amount of centring inside the 13px can fix
-    // a 23px box. `border-y` states the box instead, and the 10px goes below the band as the
-    // controls row's top margin (mt-2 since the 2026-08-31 shave), separating rather than
-    // pretending to belong.
-    //
-    // AND THE 1px NUDGE GOES WITH IT. `pt-px` existed to pay for a hairline on ONE edge. With both
-    // edges ruled the box is symmetric by construction and a compensation still applied tips it the
-    // other way. MEASURED on the page at 390px, DPR 3, dark, as ink rows in the band's own 14px
-    // border box (rules at 0 → 1 and 13 → 14), by sampling rendered pixels rather than boxes:
-    //
-    //                            WITH pt-px        WITHOUT
-    //   caps, both runs          4.00 → 11.00      3.00 → 10.00
-    //   caps centroid            7.33              6.33
-    //   ALL ink centroid         7.83              6.83
-    //   band centre              7.00              7.00
-    //
-    // The eye centres the CLUSTER, not the capital letters — the host's 10px glyph is part of the
-    // line and sits lower than the caps do — so the all-ink row is the one that decides: 0.83px low
-    // becomes 0.17px high. `items-center` over a stated height does the whole job.
-    //
-    // jsdom has no layout — it cannot measure any of the above — so what is pinned is the mechanism
-    // that produces it, and every clause fails in both directions: drop `items-center` and nothing
-    // centres, drop a rule and the box stops being the one the eye reads, put `pt-px` back and the
-    // cluster sits low again, put the glyph back to `size-3` and it fills the content box entirely.
-    renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" }, fixtureServers);
-    expect(band().className).toMatch(/(?:^|\s)items-center(?=\s|$)/);
-    expect(band().className).toMatch(/(?:^|\s)h-\[14px\](?=\s|$)/);
-    expect(band().className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
-    // No compensating pixel, in either direction. This is the clause that fails if someone reads
-    // the old comment and "restores" the nudge.
-    expect(band().className).not.toMatch(/(?:^|\s)(?:pt|pb|py)-/);
-    // One height utility — a second `h-*` would win under tailwind-merge and the stated box would
-    // quietly become someone else's.
-    expect(band().className.match(/(?:^|\s)h-\S+/g)).toEqual([" h-[14px]"]);
-    // The glyph beside the host name is 10px here and nothing else. At 12px it was the band's whole
-    // content box, so it could not be centred in it — there was no room either side to centre into.
-    const glyph = band().querySelector("svg")!;
-    expect(glyph.getAttribute("class")).toMatch(/(?:^|\s)size-2\.5(?=\s|$)/);
-    expect(glyph.getAttribute("class")).not.toMatch(/(?:^|\s)size-3(?=\s|$)/);
-    // And the line box is still ONE utility on the band, unsplit — the whole geometry above is a
-    // sum of stated boxes, and a `leading-*` that tailwind-merge could delete would undo it.
-    expect(band().className).toContain("text-[10px]/3");
-    expect(band().className).not.toMatch(/(?:^|\s)leading-/);
-    cleanup();
-
-    // A SOLO install renders no host at all, so the band's only occupant is the word — and the
-    // centring must not be a fact about the crew. Same utilities, same class string.
-    renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" });
-    expect(band().querySelector("svg")).toBeNull();
-    expect(band().className).toMatch(/(?:^|\s)items-center(?=\s|$)/);
-    expect(band().className).toMatch(/(?:^|\s)h-\[14px\](?=\s|$)/);
-    expect(band().className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
-    expect(band().className).not.toMatch(/(?:^|\s)(?:pt|pb|py)-/);
-  });
-
-  it("runs the ground and the rule edge to edge, and still insets the content by 10px", () => {
-    // The operator asked for a different background AND a bottom border. Both halves are read off
-    // the class because jsdom has no layout.
-    //
-    // FULL-BLEED: `-mx-3` cancels the dock's `px-3`, so the fill and the rule reach both viewport
-    // edges. A fill that stopped 12px short would read as a floating bar, and a rule that stopped
-    // short would not separate the two regions it sits between. `px-2.5` then puts the content back
-    // at the 10px inset the controls row asked for — which is also what absorbed the row's old
-    // `-mx-0.5`: as a 2px overhang on a TRANSPARENT strip it was invisible, and on a filled one it
-    // would not have been. tailwind-merge keeps only the LAST padding-* in one cn(), which is why the
-    // band's inset is one `px-*` and not two.
-    //
-    // NO FILL. `--card` was tried here and measured against DESIGN.md §4, which says chrome is the
-    // page colour separated by a rule and never a fill band: 1.19:1 against the dock below in both
-    // themes, 1.09:1 / 1.10:1 against the mirror above, against a `border-b border-rule` doing
-    // 1.45:1 light and 2.19:1 dark. The rule was doing the separating; the fill was dropped. The
-    // band is page colour, per §4 — no `bg-*` utility of its own.
-    renderComposerWithStatus({ scope: { host: "workshop" }, status: "working" }, fixtureServers);
-    expect(band().className).toMatch(/(?:^|\s)-mx-3(?=\s|$)/);
-    expect(band().className).toMatch(/(?:^|\s)px-2\.5(?=\s|$)/);
-    expect(band().className).not.toMatch(/(?:^|\s)bg-/);
-    expect(band().className).toMatch(/(?:^|\s)justify-end(?=\s|$)/);
-    // The actions row bleeds the dock's own 12px gutter and puts it back on the scroller, so the
-    // last button scrolls clean off the screen instead of stopping short of it.
+    // THE GROUND IS A FILL, AND THAT OVERRIDES DESIGN.md §4 FOR THIS ROW ALONE. §4 says chrome
+    // separates with a rule and never a fill, and the status band that used to stand here carried
+    // the measurement that argued one down. Altan asked for a belt, which is a fill, so this is the
+    // operator's call. WHICH fill is measured: against the composer's `--chrome`, `bg-foreground/6`
+    // is 1.13:1 light and 1.16:1 dark, and it is the only symmetric recipe available — `--muted` IS
+    // `--chrome` in light and `--card` IS `--chrome` in dark, so neither token separates in both.
+    renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
     expect(actions().className).toMatch(/(?:^|\s)-mx-3(?=\s|$)/);
+    expect(actions().className).toMatch(/(?:^|\s)bg-foreground\/6(?=\s|$)/);
+    expect(actions().className).not.toMatch(/rounded/);
     // The 12px goes back on the SCROLLER, not on the OverflowEdges wrapper between them: that
     // wrapper owns the flex sizing and the edge cues, and deliberately no padding of its own.
     expect(actions().querySelector(".overflow-x-auto")!.className).toMatch(/(?:^|\s)px-3(?=\s|$)/);

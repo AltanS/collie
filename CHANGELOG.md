@@ -67,6 +67,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **A scrolling row says which way it scrolls.** The actions row fades and shows a chevron only on the edge that hides more, so a row wider than the screen no longer looks like it ends at the last visible button.
 - **The states playground stages five ideas for reaching another pane.** A new "Pane access ideas" tab draws the bead bar, a header breadcrumb, a needs-you beacon, a keyboard-driven fold and one nested row over the same slice of the same mirror, each card stating what it costs in pixels and in taps. Design exploration only: nothing here is shipped, the page is dev-only and no app code changed.
 - **The actions row is a belt.** One full-bleed band above the input carries Collie's controls on its ground and the harness's commands in a section tinted with the harness's colour, so the row reads as one strip with two parts rather than two floating capsules.
+- **The pane's status word leaves the composer.** The thin line above the controls that named the machine and the pane's state is gone; the machine's name now opens the actions belt on a crew, and the state stays on the header's dot and the dashboard.
 
 ### Fixed
 

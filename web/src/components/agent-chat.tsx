@@ -1324,6 +1324,12 @@ export function AgentChat({
                     {isShell ? (
                       <div className="flex size-4 items-center justify-center rounded-sm border bg-muted">
                         <TerminalSquare className="size-2.5 text-muted-foreground" />
+                        {/* A shell pane has no agent status, so there is no dot to name — and the
+                            composer's status band, which used to say "shell" in words a thumb's
+                            width below, is gone. Unpainted the word costs nothing and a reader
+                            still learns what kind of pane this is; the tile alone said it only to
+                            the eye. */}
+                        <span className="sr-only">{t("status.shellBadge")}</span>
                       </div>
                     ) : (
                       <AgentIcon agent={agent.agent} className="size-4" />
@@ -1984,12 +1990,11 @@ export function AgentChat({
                   scope={scope}
                   agent={agent?.agent}
                   isShell={isShell}
-                  // The state, as the WORD on the composer's status strip. It used to be the pane
-                  // header's caption line; the dot badged onto the agent's tile up there stays, because
-                  // the two carry the range together (status-badge.tsx). `stale` is the same
-                  // `connecting` the dot reads, so the pair still dims as one.
-                  status={agent?.status}
-                  stale={connecting}
+                  // NO `status` AND NO `stale` GO DOWN ANY MORE. The composer drew the state as a
+                  // word on a 14px band above its controls row; Altan asked for that band's status
+                  // half to go, so the prop went with it. The state is stated up here instead — the
+                  // named StatusDot badged on the agent's tile below, which reads without colour —
+                  // and on the dashboard.
                   // The one read of the keyboard, handed down. See `composing` above.
                   composing={composing}
                   gone={gone}

@@ -181,31 +181,31 @@ describe("AgentChat — the pane header's identity block", () => {
   const identity = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-identity"]');
   const slot = (c: HTMLElement, name: string) =>
     c.querySelector<HTMLElement>(`[data-slot="pane-${name}"]`);
-  /** The composer's status strip — where the word went. Same render, same container, same rule. */
-  const strip = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="composer-status"]');
-  /** The word the status slot is SHOWING. The slot renders every word it could ever hold, stacked in
-   *  one grid cell so its width is the widest of them and no state can move the host beside it
-   *  (ui/one-of.tsx, DESIGN.md §2) — so its `textContent` is all five, and the visible one is the
-   *  layer marked `data-active`. */
-  const shownWord = (c: HTMLElement | null) =>
-    c?.querySelector<HTMLElement>("[data-active]")?.textContent ?? null;
+  /** The composer's actions belt — where the machine went once the status band was removed. */
+  const belt = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="composer-actions"]');
   /** Every named mark inside the identity block — the agent's own logo is one too. */
   const names = (c: HTMLElement) =>
     Array.from(identity(c)?.querySelectorAll('[role="img"]') ?? []).map((e) =>
       e.getAttribute("aria-label"),
     );
 
-  it("says the state in a WORD on the composer strip and in the DOT up here, in every state", () => {
-    // THE ONE THIS ROUND EXISTS FOR, restated after the move. Reducing the state to colour alone does
-    // not survive a colour-vision simulation on the app's own tokens: for a deuteranope, blocked /
-    // working / done collapse to ONE colour in light theme, and "needs you" against "done" — the most
-    // consequential opposite pair the app has — collapses in BOTH themes. Idle and unknown are 0.02
-    // apart in lightness and are the same dot for everybody. So the word may move, and may not go.
+  it("says the state in the DOT up here, and NOWHERE as a word, in every state", () => {
+    // THE ONE THIS ROUND EXISTS FOR, restated after the second move. The word used to stand on the
+    // composer's status band; Altan asked for that band's status half to go ("the status is
+    // unnecessary at this place"), and it went rather than moving again. That is only safe while the
+    // state survives WITHOUT colour somewhere, because reducing it to colour alone does not: for a
+    // deuteranope, blocked / working / done collapse to ONE colour in light theme on the app's own
+    // tokens, and "needs you" against "done" — the most consequential opposite pair the app has —
+    // collapses in BOTH themes.
     //
-    // THREE claims per status, and each fails on its own: the word is ON the composer's status strip,
-    // the word is NOT in the header any more, and the dot is STILL badged onto the agent's tile.
-    // Delete the word and the first fails; leave it in the caption and the second fails; drop the
-    // badge while "tidying" the header and the third fails.
+    // What carries it now is this header's dot, which is the ONE NAMED StatusDot in the app: an empty
+    // span with `aria-label={statusLabel(...)}`, so a reader gets the word and the eye gets the
+    // colour, and nothing is painted for it.
+    //
+    // THREE claims per status, and each fails on its own: the dot NAMES the state, no word is drawn
+    // in the header, and no word is drawn on the composer either. Drop the label while "tidying" the
+    // header and the first fails; put a caption line back and the second fails; restore the band and
+    // the third fails.
     //
     // Exhaustive by construction: a `Record<AgentStatus, string>` literal is complete-checked by tsc,
     // so a sixth status cannot be added without either teaching this test or failing the typecheck.
@@ -222,30 +222,27 @@ describe("AgentChat — the pane header's identity block", () => {
     for (const [status, word] of Object.entries(words) as [AgentStatus, string][]) {
       const agent = { ...fixtureAgents[0]!, status };
       const { container } = renderChat({ agent, agents: [agent] });
-      expect(strip(container)?.textContent).toContain(word); // down at the write surface
-      // …and NOT in the identity block's own text. (Its aria-label still carries the state — see the
-      // accessibility-tree test below — because a label on a button replaces everything inside it.)
-      expect(identity(container)?.textContent).not.toContain(word);
-      expect(slot(container, "caption")).toBeNull(); // the line itself is gone, not merely emptied
-      // …and the dot is still there, badged onto the agent's own tile inside the identity block, and
-      // it NAMES itself. The dot is an empty span; unnamed it reaches no screen reader and matches no
-      // text query. (The AgentIcon beside it is also a role="img", hence the list rather than a
-      // first-match query — the assertion is that the state is among the named marks.)
+      // The dot names it, badged onto the agent's own tile inside the identity block. (The AgentIcon
+      // beside it is also a role="img", hence the list rather than a first-match query.)
       expect(names(container)).toContain(word);
+      // …and nothing DRAWS it: not the header's text, not the composer's.
+      expect(identity(container)?.textContent).not.toContain(word);
+      expect(slot(container, "caption")).toBeNull(); // the caption line is gone, not merely emptied
+      expect(container.textContent).not.toContain(word);
       cleanup();
     }
-    // A bare shell has no agent status; the strip still carries a word, or a solo install's strip
-    // would be empty and the row would be a run of buttons with nothing said above it.
+    // A bare shell has no agent status and therefore no dot to name. Its tile carries an `sr-only`
+    // "shell" instead, which is the same bargain: readable without colour, drawn nowhere.
     const shell = renderChat({ agent: fixtureShellPanes[0]!, agents: [fixtureShellPanes[0]!] });
-    expect(strip(shell.container)?.textContent).toContain("shell");
     expect(names(shell.container)).toEqual([]); // no agent, no status, so no badge to name
+    expect(within(identity(shell.container)!).getByText("shell").className).toContain("sr-only");
   });
 
-  it("carries neither the host nor the state — both stand on the composer's strip, as one sentence", () => {
+  it("carries neither the host nor the state — the machine stands on the composer's belt", () => {
     // THE OTHER HALF, now complete. The caption line led with the machine, which spent the identity
-    // block's width on an answer to a question nobody has while READING; the machine left first and
-    // the word followed it. Both are asserted absent HERE and present THERE, so a run deleted from
-    // both files passes neither test.
+    // block's width on an answer to a question nobody has while READING; the machine left first, the
+    // word followed it onto a status band, and when that band was removed the machine came down one
+    // more row onto the actions belt while the word was deleted outright.
     //
     // Scoped by data-slot, never by a bare role query: `ui/strip-host.tsx` mounts two permanent
     // sr-only live regions, so `getByRole("status")` is ambiguous in any tree with a host in it and
@@ -255,16 +252,15 @@ describe("AgentChat — the pane header's identity block", () => {
     const block = identity(container);
     expect(block?.textContent).not.toMatch(/workshop/i);
     expect(block?.textContent).not.toContain("needs you");
-    // …and one strip below carries the pair, in that order: which machine, then what it is doing.
-    const line = strip(container);
-    // Machine first, then what it is doing. The host is read off its own label rather than the
-    // strip's text, because the strip's text now includes the four words it is RESERVING for.
-    expect(shownWord(line)).toBe("needs you");
-    // This pane's machine is unreachable, so the host run carries the fault with it rather than
-    // showing a calm name beside a placeholder that says the write will be refused.
+    // …and the belt below opens with the machine. This pane's machine is unreachable, so the chip
+    // carries the fault with it rather than showing a calm name beside a placeholder that says the
+    // write will be refused.
+    const row = belt(container);
     expect(
-      within(line!).getByLabelText(/^sends to host: workshop \(unreachable\)$/i),
+      within(row!).getByLabelText(/^sends to host: workshop \(unreachable\)$/i),
     ).toBeInTheDocument();
+    // The state is not down there either — that was the half Altan asked to be rid of.
+    expect(row!.textContent).not.toContain("needs you");
   });
 
   it("puts the state into the accessibility tree, which the caption's own text cannot do", () => {
@@ -709,8 +705,9 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
     for (const text of [STATUS_TEXT, MENU_TEXT]) {
       const { container } = renderChat({ text });
       const handle = screen.getByRole("button", { name: "Switch pane" });
-      const band = container.querySelector('[data-slot="composer-status"]')!;
-      const composer = band.parentElement!;
+      // The composer's own box, reached through the actions belt inside it — the status band this
+      // used to reach through is gone (composer.tsx says where it went).
+      const composer = container.querySelector('[data-slot="composer-actions"]')!.parentElement!;
       // ROW IDENTITY, NOT ELEMENT IDENTITY. The handle now stands inside a `Collapse` — it stands
       // down while the soft keyboard is up — so its element is two wrappers deep. `Collapse` is a
       // presence animation and nothing else (it "styles NOTHING", per its header), so the ROW in
@@ -827,13 +824,15 @@ describe("AgentChat — mirror tap must not pop the keyboard on option taps", ()
 });
 
 // Connection copy now lives in the single top ConnectionBanner (mounted in RootLayout), not in the
-// header — so the pane header has no pill. What it still owns: the agent StatusBadge, which shows the
-// LAST snapshot's status and must stop reading as current during an outage (it dims on any not-live).
+// header — so the pane header has no pill. What it still owns: the agent's status DOT, which shows
+// the LAST snapshot's status and must stop reading as current during an outage (it dims on any
+// not-live). The dot is what carries this now: the word that used to stand on the composer's status
+// band went with the band.
 describe("AgentChat — shared header: stale-status dimming", () => {
   beforeEach(() => __resetConnectionHealth());
 
-  it("dims the agent StatusBadge while the connection is not live and restores it on recovery", () => {
-    // fixtureAgents[0] is a blocked claude agent → StatusBadge reads "needs you".
+  it("dims the agent status dot while the connection is not live and restores it on recovery", () => {
+    // fixtureAgents[0] is a blocked claude agent → the dot is NAMED "needs you".
     let setError: (e: boolean) => void = () => {};
     function Harness() {
       const [error, setErr] = useState(true);
@@ -856,10 +855,13 @@ describe("AgentChat — shared header: stale-status dimming", () => {
     const router = createMemoryRouter([{ path: "/", element: withHeaderHost(<Harness />) }]);
     render(<RouterProvider router={router} />);
 
-    const badge = screen.getByText("needs you");
-    expect(badge).toHaveClass("opacity-40"); // not live → frozen status dimmed
+    // Addressed by its accessible name, which is the only handle it has: the dot is an empty span,
+    // so it matches no text query. That naming is load-bearing in its own right now — it is how a
+    // reader gets the state at all since the word left.
+    const dot = screen.getByLabelText("needs you");
+    expect(dot).toHaveClass("opacity-40"); // not live → frozen status dimmed
     act(() => setError(false)); // snapshot recovers → live
-    expect(badge).not.toHaveClass("opacity-40"); // undimmed instantly
+    expect(dot).not.toHaveClass("opacity-40"); // undimmed instantly
   });
 });
 
@@ -1050,10 +1052,12 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     expect(container.querySelector("header")).toBe(shell);
   });
 
-  // The status word has left this row entirely — it stands on the composer's status strip now. What
-  // the header row still owes is its ORDER: the identity leads and the one action follows it. The
-  // word's own absence here is asserted rather than assumed, because "the header got quieter" is
-  // exactly the kind of change that silently takes a state report with it.
+  // The status word has left this row, and then left the app's paint entirely — it stood on the
+  // composer's status band for a while and went with it. What the header row still owes is its
+  // ORDER: the identity leads and the one action follows it. The word's own absence here is
+  // asserted rather than assumed, because "the header got quieter" is exactly the kind of change
+  // that silently takes a state report with it — and what keeps this honest is the NAMED dot on the
+  // agent's tile, pinned in the identity-block describe above.
   it("holds the identity ahead of the menu, and holds no status word at all", () => {
     const agent = { ...fixtureAgents[0]!, hasSession: true };
     const { container } = renderChat({ agent, agents: [agent] });
@@ -1061,10 +1065,8 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     const title = screen.getByRole("button", { name: /open webapp overview/i });
     expect(title.compareDocumentPosition(menu) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(headerRow(container).textContent).not.toContain("needs you");
-    // …and it is not simply missing: it is one row down, at the surface being typed into.
-    expect(container.querySelector('[data-slot="composer-status"]')?.textContent).toContain(
-      "needs you",
-    );
+    // …and it is not one row down either: nothing in this tree DRAWS the word any more.
+    expect(container.textContent).not.toContain("needs you");
   });
 });
 
@@ -1571,11 +1573,13 @@ describe("the pane fits its viewport", () => {
       // the rows back in one tap. Pinned in its own describe below, not here; this test is about
       // the two rows that genuinely leave.
 
-      // …and the band is untouched, keyboard or no keyboard.
-      expect(container.querySelector('[data-slot="composer-status"]')).not.toBeNull();
+      // …and the actions belt is untouched, keyboard or no keyboard. (It used to be the status band
+      // that was asserted here; the band is gone and the belt is what now stands directly above the
+      // input, so it is the row this claim is about.)
+      expect(container.querySelector('[data-slot="composer-actions"]')).not.toBeNull();
       // The dock also stops paying the home-indicator inset twice: the keyboard covers the
       // indicator, so reserving for it as well is ~24px spent on the one screen that has none.
-      const dock = container.querySelector('[data-slot="composer-status"]')!.parentElement!;
+      const dock = container.querySelector('[data-slot="composer-actions"]')!.parentElement!;
       expect(dock.className).toMatch(/(?:^|\s)pb-2(?=\s|$)/);
       expect(dock.className).not.toMatch(/safe-area-inset-bottom/);
     } finally {

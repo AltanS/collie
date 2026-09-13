@@ -26,6 +26,17 @@ interface HostChipProps {
    * muted type it did. It is also the narrowest form the chip has.
    */
   variant?: "tag" | "target" | "caption";
+  /**
+   * This chip stands ON a write surface, so its accessible name says "sends to <name>" rather than
+   * "host: <name>". `target` and `caption` imply it and need not pass it.
+   *
+   * It is a separate flag rather than a fourth variant because it is a fact about the SURFACE, not
+   * about the drawing: the actions belt opens with an ordinary `tag` — a pill among 32px pills, at
+   * the pill register — and that pill still names the machine every button beside it writes to. A
+   * `tag` on a dashboard row names which machine a row is ABOUT and keeps "host:", which is why
+   * this cannot simply be the variant's default.
+   */
+  sends?: boolean;
   className?: string;
 }
 
@@ -44,7 +55,7 @@ interface HostChipProps {
 // server glyph rather than the switcher's layers, and it is a plain text node — a host name comes
 // from the operator's `join` label and is rendered as text, never markup, like every other
 // user-supplied string that reaches this UI.
-export function HostChip({ host, state, variant = "tag", className }: HostChipProps) {
+export function HostChip({ host, state, variant = "tag", sends, className }: HostChipProps) {
   useLocale();
   const { servers, multi } = useCrew();
   const health = useHostHealth(host);
@@ -89,11 +100,12 @@ export function HostChip({ host, state, variant = "tag", className }: HostChipPr
   const target = variant === "target";
   const caption = variant === "caption";
   // The name is decorative repetition for a screen reader if it were bare text, so the WHOLE chip
-  // carries one label that says what it MEANS. Both write-surface variants say "sends to": `target`
-  // heads a dock or sheet that is about to write, and `caption` stands on the composer's own status
-  // strip, a thumb's width from the box being typed into. "Host: attic" there would be a fact with no
+  // carries one label that says what it MEANS. Every write surface says "sends to": `target` heads a
+  // dock or sheet that is about to write, `caption` was the composer's own status band, and `sends`
+  // is the flag the actions belt passes on its opening `tag` — a thumb's width from the box being
+  // typed into, and beside five buttons that all write. "Host: attic" there would be a fact with no
   // verb, beside the one control whose whole question is where the text is going.
-  const label = t(target || caption ? "connection.host.ariaSends" : "connection.host.ariaHost", {
+  const label = t(target || caption || sends === true ? "connection.host.ariaSends" : "connection.host.ariaHost", {
     name,
     unreachable: linkSuffix(link),
   });
