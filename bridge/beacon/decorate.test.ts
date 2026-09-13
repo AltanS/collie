@@ -5,13 +5,13 @@ import { withAgentHints } from "./hint.ts";
 import { fakeBeaconReader, FAKE_BEACON_NOW, type FakeBeacon } from "./fake.ts";
 import { BEACON_SCHEMA_VERSION, type BeaconMarker, type BeaconStatus } from "./types.ts";
 import { declareCapabilities, type MuxCapability } from "../mux/capabilities.ts";
-import {type MuxOutcome,
-  
+import {
   muxAck,
   muxGone,
   muxOk,
   type MuxAdapter,
   type MuxGridRequest,
+  type MuxOutcome,
   type MuxPane,
   type MuxSession,
   type MuxSnapshot,

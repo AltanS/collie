@@ -116,12 +116,18 @@ function scanLinks(text: string): LinkMatch[] {
   return links;
 }
 
+/** The characters a URL may be made of — `URL_SCAN`'s own class, anchored to a whole string. */
+const URL_CHARS_ONLY = /^[^\s<>"'`\\{}|^[\]]*$/;
+
 /**
- * Does the line this fragment sits on end right here? Herdr's own reads terminate a row with `\r\n`;
- * a bare `\n` is what a joined-lines fixture looks like anywhere else.
+ * Where the row holding `at` ends, before its terminator: Herdr's own reads terminate a row with
+ * `\r\n`, a bare `\n` is what a joined-lines fixture looks like anywhere else. `-1` for the last row,
+ * which has no next row to continue on.
  */
-function atLineEnd(text: string, at: number): boolean {
-  return text[at] === "\n" || (text[at] === "\r" && text[at + 1] === "\n");
+function rowEnd(text: string, at: number): number {
+  const lf = text.indexOf("\n", at);
+  if (lf === -1) return -1;
+  return text[lf - 1] === "\r" ? lf - 1 : lf;
 }
 
 /**
@@ -132,9 +138,10 @@ function atLineEnd(text: string, at: number): boolean {
  * URL, with the rest of the URL as inert text. The logical read has the URL whole, which makes the
  * pairing exact rather than a guess:
  *
- *   · a fragment is considered only when it runs to the END OF ITS LINE — nothing but the row
- *     terminator after it (`\n`, or Herdr's own `\r\n`). A fragment the scan stopped at a delimiter
- *     for ended there for real, and nothing continues it;
+ *   · a fragment is considered only when it runs to the END OF ITS LINE — nothing but URL
+ *     characters the scan trimmed as punctuation, then the row terminator (`\n`, or Herdr's own
+ *     `\r\n`). A fragment the scan stopped at a delimiter for ended there for real, and nothing
+ *     continues it;
  *   · the fragment must be a prefix of exactly ONE URL in the logical text (duplicates of the same
  *     URL — a typed command and its output — count as one), so two DIFFERENT candidates leave the
  *     link alone instead of picking one;
@@ -154,11 +161,16 @@ function repairWrapped(found: LinkMatch[], text: string, logical: LinkMatch[]): 
   const repaired: LinkMatch[] = [];
 
   for (const link of found) {
-    if (!atLineEnd(text, link.end)) {
+    // The scan trims prose punctuation off a URL's end (`trimTrailing`), and the column edge cuts
+    // wherever it likes: `…client_id=123.apps.` is a fragment whose `.` is the URL's, not a full
+    // stop. So the fragment is the whole run to the row's end, as long as that run is URL characters.
+    const end = rowEnd(text, link.end);
+    const fragment = end === -1 ? "" : text.slice(link.start, end);
+    if (end === -1 || !URL_CHARS_ONLY.test(text.slice(link.end, end))) {
       repaired.push(link);
       continue;
     }
-    const full = candidates.filter((href) => href.length > link.href.length && href.startsWith(link.href));
+    const full = candidates.filter((href) => href.length > fragment.length && href.startsWith(fragment));
     if (full.length !== 1) {
       repaired.push(link);
       continue;
@@ -166,13 +178,14 @@ function repairWrapped(found: LinkMatch[], text: string, logical: LinkMatch[]): 
     const href = full[0]!;
 
     const rest: LinkMatch[] = [];
-    let consumed = link.href.length;
-    let cursor = link.end;
+    let consumed = fragment.length;
+    let cursor = end;
     while (consumed < href.length) {
       if (text[cursor] === "\r") cursor += 1; // Herdr terminates a row with CR before the LF
       if (text[cursor] !== "\n") break;
       const lineStart = cursor + 1;
-      const lineEnd = text.indexOf("\n", lineStart);
+      const lineEnd = rowEnd(text, lineStart);
+      // The row's own characters, never its CR: a middle row of a three-row URL ends `…\r\n` too.
       const line = text.slice(lineStart, lineEnd === -1 ? text.length : lineEnd);
       const want = href.slice(consumed, consumed + line.length);
       if (want.length === 0 || !line.startsWith(want)) break;
@@ -184,7 +197,7 @@ function repairWrapped(found: LinkMatch[], text: string, logical: LinkMatch[]): 
       repaired.push(link);
       continue;
     }
-    repaired.push({ ...link, href }, ...rest);
+    repaired.push({ start: link.start, end, href }, ...rest);
   }
 
   return repaired.toSorted((a, b) => a.start - b.start);

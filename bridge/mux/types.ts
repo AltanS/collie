@@ -568,15 +568,17 @@ export interface MuxAdapter {
   readGrid(paneId: string, request: MuxGridRequest): Promise<MuxOutcome<MuxGrid>>;
 
   /**
-   * The same rows with soft wraps undone, plain text, when the multiplexer can produce them.
+   * The same rows with soft wraps undone, when the multiplexer can produce them.
    *
    * The mirror renders the grid, so a URL longer than the pane arrives in fragments and the web app
    * can only make an anchor out of the first one — a truncated href (`web/src/lib/links.ts`). This
    * read is what says what the whole URL was. OPTIONAL by design: a multiplexer without it (or one
    * whose panes never soft-wrap) simply yields no repair, exactly as today.
    *
-   * Text, never styling: this is only ever read for the URLs in it, and `text` is also the format
-   * that cannot harvest an alt-screen pane (HERDR_API.md → `pane.read`).
+   * Read in the same escape-carrying form as `readGrid`, and the caller strips the styling: this is
+   * only ever read for the URLs in it. Not `text`, which is the format Herdr was observed to harvest
+   * an idle alt-screen pane with, scrolling the operator's terminal; `ansi` never was
+   * (HERDR_API.md → `pane.read`).
    */
   readLogicalText?(paneId: string, lines: number): Promise<MuxOutcome<string>>;
 

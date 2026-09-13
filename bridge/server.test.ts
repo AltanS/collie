@@ -3021,7 +3021,7 @@ describe("update status peers — the legs of a crew-wide run", () => {
 describe("hasSplitUrl — is a URL cut by the pane's column edge?", () => {
   test("a URL running to the end of a row is a split", () => {
     expect(
-      hasSplitUrl("$ gcloud auth login --no-launch-browser\n    https://accounts.google.com/o/oauth2/auth?client_id=1&scope=x"),
+      hasSplitUrl("$ gcloud auth login --no-launch-browser\n    https://accounts.google.com/o/oauth2/auth?client_id=1&scope=x\n&response_type=code"),
     ).toBe(true);
   });
 
@@ -3031,9 +3031,17 @@ describe("hasSplitUrl — is a URL cut by the pane's column edge?", () => {
     expect(hasSplitUrl("\u001b[36mhttps://a.dev/x?y=1\u001b[0m\r\nnext")).toBe(true);
   });
 
-  test("styling does not hide the split, and a padded row still counts", () => {
-    expect(hasSplitUrl("\u001b[34mhttps://a.dev/x?y=1\u001b[0m")).toBe(true);
-    expect(hasSplitUrl("https://a.dev/x?y=1   ")).toBe(true);
+  test("styling does not hide the split", () => {
+    expect(hasSplitUrl("\u001b[34mhttps://a.dev/x?y=1\u001b[0m\n\u001b[34m&z=2\u001b[0m")).toBe(true);
+  });
+
+  test("a URL with nothing that could continue it is not worth the read", () => {
+    // The last row, a blank row, an indented row, a padded URL row: the client repairs none of them,
+    // so the gate must not pay for a read on them either.
+    expect(hasSplitUrl("done\nhttps://a.dev/x?y=1")).toBe(false);
+    expect(hasSplitUrl("https://a.dev/x?y=1\n\nnext")).toBe(false);
+    expect(hasSplitUrl("https://a.dev/x?y=1\r\n  indented")).toBe(false);
+    expect(hasSplitUrl("https://a.dev/x?y=1   \nnext")).toBe(false);
   });
 
   test("a URL that ends with prose after it is not a split", () => {

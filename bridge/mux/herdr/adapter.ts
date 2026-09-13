@@ -335,6 +335,7 @@ export class HerdrMux implements MuxAdapter {
   async typeText(paneId: string, text: string): Promise<MuxAck> {
     return this.attempt(() => this.client.sendPaneText(paneId, text));
   }
+
   /**
    * Keys in the contract's spelling, translated and applied in order.
    *

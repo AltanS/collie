@@ -58,7 +58,8 @@ the socket assumptions behind the design in [`ARCHITECTURE.md`](./ARCHITECTURE.m
   - **`recent_unwrapped` is how a wrapped URL gets repaired.** The mirror renders the grid, so a URL
     longer than the pane arrives cut at the column edge and the client can only link the first
     fragment — with a truncated href (`web/src/lib/links.ts`). The bridge asks for `recent_unwrapped`
-    when the grid it already has shows a URL touching a line end, strips the SGR and sends it as
+    when the grid it already has shows a URL touching a row end with a row below that could
+    continue it (`hasSplitUrl`), strips the SGR and sends it as
     `PaneReadResponse.logicalText`, which the client uses to give every fragment of that URL the href
     of the whole URL. Same `lines` and same `ansi` format as the mirror read above, deliberately: the
     observation that keeps this read from harvesting is the one the mirror read rests on too, and the

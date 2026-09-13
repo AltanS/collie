@@ -129,6 +129,40 @@ describe("findLinks — a URL the terminal hard-wrapped", () => {
   });
 });
 
+describe("findLinks — the column edge cuts where it likes", () => {
+  it("repairs a fragment that ends on a character the scan trims as punctuation", () => {
+    // `.` and `_` are prose punctuation at a URL's end, but a cut at the column edge can land right
+    // after one: the fragment is still the whole run to the row's end.
+    const grid = ["https://a.dev/o?client_id=123.apps.", "googleusercontent.com&x_", "y=1 then"].join("\n");
+    const logical = ["https://a.dev/o?client_id=123.apps.googleusercontent.com&x_y=1 then"].join("\n");
+    const href = "https://a.dev/o?client_id=123.apps.googleusercontent.com&x_y=1";
+    expect(findLinks(grid, logical).map((l) => [grid.slice(l.start, l.end), l.href])).toEqual([
+      ["https://a.dev/o?client_id=123.apps.", href],
+      ["googleusercontent.com&x_", href],
+      ["y=1", href],
+    ]);
+  });
+
+  it("repairs a URL across three CR-terminated rows", () => {
+    const grid = "https://a.dev/one-two\r\n-three-four\r\n-five end\r\n";
+    const logical = "https://a.dev/one-two-three-four-five end\r\n";
+    const href = "https://a.dev/one-two-three-four-five";
+    expect(findLinks(grid, logical).map((l) => [grid.slice(l.start, l.end), l.href])).toEqual([
+      ["https://a.dev/one-two", href],
+      ["-three-four", href],
+      ["-five", href],
+    ]);
+  });
+
+  it("leaves a sentence's full stop alone when the next row does not continue the URL", () => {
+    const grid = ["see https://a.dev/x.", "Next step"].join("\n");
+    const logical = ["see https://a.dev/x.", "Next step"].join("\n");
+    expect(findLinks(grid, logical).map((l) => [grid.slice(l.start, l.end), l.href])).toEqual([
+      ["https://a.dev/x", "https://a.dev/x"],
+    ]);
+  });
+});
+
 describe("findLinks — a URL the pane shows twice", () => {
   it("adopts the whole URL when the same URL appears more than once in the logical text", () => {
     // A typed command and its output both carry the URL — that is one URL to adopt, not a tie.

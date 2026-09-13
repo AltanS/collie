@@ -595,7 +595,9 @@ export function AgentChat({
     // Functional update that returns the previous object when nothing changed keeps React's
     // Object.is bailout — no re-render per poll while the pane is quiet.
     setShown((prev) =>
-      prev.text === text && prev.revision === revision ? prev : { text, revision, logicalText },
+      prev.text === text && prev.revision === revision && prev.logicalText === logicalText
+        ? prev
+        : { text, revision, logicalText },
     );
   }, [text, revision, logicalText, following]);
   const display = shown.text;

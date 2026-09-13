@@ -2182,23 +2182,28 @@ export function stripSgr(ansiText: string): string {
   return visible;
 }
 
-// A URL that runs to the end of its row, trailing blanks tolerated so a padded row cannot hide the
-// split. The character set is links.ts's stop-set, so the gate and the client's scanner agree on
-// where a URL ends.
-const SPLIT_URL_AT_END = /https?:\/\/[^\s<>"'`\\{}|^[\]]+[ \t]*\r?$/;
+// A URL that runs to the end of its row, and a row that starts with a URL character. The character
+// set is links.ts's stop-set, so the gate and the client's repair (`repairWrapped`) agree on what a
+// fragment and its continuation look like: the client adopts nothing across trailing blanks or onto
+// a row that opens with whitespace, so neither is worth a read here.
+const URL_AT_ROW_END = /https?:\/\/[^\s<>"'`\\{}|^[\]]+\r?$/;
+const URL_CHAR_AT_ROW_START = /^[^\s<>"'`\\{}|^[\]]/;
 
 /**
- * Does this grid end a line with an http(s) URL — that is, did the pane's column edge cut one?
+ * Does this grid end a row with an http(s) URL that the next row could continue — that is, might
+ * the pane's column edge have cut one?
  *
  * The mirror's autolinker scans one line at a time (`web/src/lib/links.ts`), so a wrapped URL is
  * only ever linked as its first fragment, with a truncated href. Spotting that shape here is what
  * keeps the extra `recent_unwrapped` read off every other poll: it is asked for exactly when there
- * is something to repair. A false positive costs one read and repairs nothing.
+ * is something the client could repair. A false positive (a URL that happens to end a row above a
+ * row of prose) costs one read and repairs nothing.
  */
 export function hasSplitUrl(ansiText: string): boolean {
-  return stripSgr(ansiText)
-    .split("\n")
-    .some((line) => SPLIT_URL_AT_END.test(line));
+  const rows = stripSgr(ansiText).split("\n");
+  return rows.some(
+    (row, i) => URL_AT_ROW_END.test(row) && URL_CHAR_AT_ROW_START.test(rows[i + 1] ?? ""),
+  );
 }
 
 export async function readPane(
