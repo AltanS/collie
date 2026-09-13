@@ -41,7 +41,7 @@ class RecordingPush {
   }
 }
 
-function pane(paneId: string, status: AgentStatus, agent = "claude"): PaneWire {
+function pane(paneId: string, status: AgentStatus, agent = "claude", extra: Partial<PaneWire> = {}): PaneWire {
   return {
     paneId,
     workspaceId: "w1",
@@ -53,6 +53,7 @@ function pane(paneId: string, status: AgentStatus, agent = "claude"): PaneWire {
     cwd: "/home/you/collie",
     focused: false,
     kind: "agent",
+    ...extra,
   };
 }
 
@@ -163,15 +164,20 @@ describe("PeerNotifier — a peer's alerts on the lead's phone", () => {
     peer.observe("laptop", body([pane("p1", "working"), pane("p2", "working"), pane("p3", "working")]));
     peer.observe(
       "laptop",
-      body([pane("p1", "blocked"), pane("p2", "blocked", "codex"), pane("p3", "blocked", "pi")]),
+      body([
+        pane("p1", "blocked", "claude", { cwd: "/home/you/api" }),
+        pane("p2", "blocked", "codex", { cwd: "/home/you/web" }),
+        pane("p3", "blocked", "pi", { cwd: "/home/you/worker" }),
+      ]),
     );
     clock.fireAll();
 
     // One slot, and its final state is the digest — the existing "one summary, not three races".
+    // Named by pane (cwd basename), not agent kind — three different repos, three different words.
     expect(new Set(push.tags)).toEqual(new Set(["collie:herd@laptop"]));
     expect(push.sent.at(-1)).toMatchObject({
       title: "3 agents need you",
-      body: "laptop · claude, codex, pi",
+      body: "laptop · api, web, worker",
     });
   });
 

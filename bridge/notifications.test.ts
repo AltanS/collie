@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   NotificationCoordinator,
   makeNotifySink,
+  paneAlertLabel,
   type HerdSummary,
   type NotifyClock,
   type NotifySink,
@@ -59,7 +60,7 @@ class RecordingSink implements NotifySink {
   }
 }
 
-function agentNamed(paneId: string, name: string, status: AgentStatus): AgentView {
+function agentNamed(paneId: string, name: string, status: AgentStatus, extra: Partial<AgentView> = {}): AgentView {
   return {
     paneId,
     workspaceId: "w1",
@@ -71,6 +72,7 @@ function agentNamed(paneId: string, name: string, status: AgentStatus): AgentVie
     cwd: "/home/you/demo",
     focused: false,
     kind: "agent",
+    ...extra,
   };
 }
 const agent = (paneId: string, status: AgentStatus) => agentNamed(paneId, "claude", status);
@@ -121,15 +123,16 @@ describe("NotificationCoordinator — debounce", () => {
 });
 
 describe("NotificationCoordinator — coalescing", () => {
-  test("two outstanding agents collapse into one digest that buzzes", () => {
+  test("two outstanding agents collapse into one digest that buzzes, named by their pane", () => {
     const { clock, sink, coord } = setup();
-    coord.onTransition(agentNamed("p1", "claude", "blocked"), "working", "blocked");
-    coord.onTransition(agentNamed("p2", "codex", "blocked"), "working", "blocked");
+    coord.onTransition(agentNamed("p1", "claude", "blocked", { cwd: "/home/you/api" }), "working", "blocked");
+    coord.onTransition(agentNamed("p2", "codex", "blocked", { cwd: "/home/you/web" }), "working", "blocked");
     clock.fireAll();
-    // p1 renders as a single, then p2 promotes it to a digest.
+    // p1 renders as a single, then p2 promotes it to a digest — named by cwd basename, not agent kind
+    // (issue #215: several panes of the same kind would otherwise repeat the same word).
     expect(sink.renders.at(-1)).toEqual({
       title: "2 agents need you",
-      body: "claude, codex",
+      body: "api, web",
       paneId: undefined,
       renotify: true,
     });
@@ -154,6 +157,101 @@ describe("NotificationCoordinator — coalescing", () => {
       body: "demo · /home/you/demo",
       paneId: "p1",
       renotify: false, // a retraction update must not re-buzz
+    });
+  });
+});
+
+describe("paneAlertLabel", () => {
+  test("prefers the operator's own pane label", () => {
+    expect(paneAlertLabel({ paneLabel: "release notes", cwd: "/home/you/collie", agent: "claude" })).toBe(
+      "release notes",
+    );
+  });
+
+  test("falls back to the cwd basename when there is no pane label", () => {
+    expect(paneAlertLabel({ cwd: "/home/you/collie", agent: "claude" })).toBe("collie");
+  });
+
+  test("falls back to the agent kind when the cwd has no basename", () => {
+    expect(paneAlertLabel({ cwd: "/", agent: "claude" })).toBe("claude");
+  });
+
+  test("an empty pane label is treated as unset", () => {
+    expect(paneAlertLabel({ paneLabel: "", cwd: "/home/you/collie", agent: "claude" })).toBe("collie");
+  });
+});
+
+describe("NotificationCoordinator — multi-agent digest labels (#215)", () => {
+  test("several panes of the SAME agent kind are told apart by their pane label", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agentNamed("p1", "claude", "blocked", { paneLabel: "frontend" }), "working", "blocked");
+    coord.onTransition(agentNamed("p2", "claude", "blocked", { paneLabel: "backend" }), "working", "blocked");
+    coord.onTransition(agentNamed("p3", "claude", "blocked", { paneLabel: "docs" }), "working", "blocked");
+    clock.fireAll();
+    // Before the fix this was "claude, claude, claude" — indistinguishable, per issue #215.
+    expect(sink.last?.body).toBe("frontend, backend, docs");
+  });
+
+  test("falls back to the cwd basename when no pane is labelled", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agentNamed("p1", "claude", "blocked", { cwd: "/home/you/api" }), "working", "blocked");
+    coord.onTransition(agentNamed("p2", "claude", "blocked", { cwd: "/home/you/web" }), "working", "blocked");
+    clock.fireAll();
+    expect(sink.last?.body).toBe("api, web");
+  });
+
+  test("a label shared by two panes gains the workspace as a suffix", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(
+      agentNamed("p1", "claude", "blocked", { cwd: "/home/you/api", workspaceLabel: "left" }),
+      "working",
+      "blocked",
+    );
+    coord.onTransition(
+      agentNamed("p2", "claude", "blocked", { cwd: "/home/you/api", workspaceLabel: "right" }),
+      "working",
+      "blocked",
+    );
+    clock.fireAll();
+    expect(sink.last?.body).toBe("api · left, api · right");
+  });
+
+  test("a third, uniquely-labelled pane is left alone while the other two are disambiguated", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(
+      agentNamed("p1", "claude", "blocked", { cwd: "/home/you/api", workspaceLabel: "left" }),
+      "working",
+      "blocked",
+    );
+    coord.onTransition(
+      agentNamed("p2", "claude", "blocked", { cwd: "/home/you/api", workspaceLabel: "right" }),
+      "working",
+      "blocked",
+    );
+    coord.onTransition(agentNamed("p3", "codex", "blocked", { paneLabel: "docs" }), "working", "blocked");
+    clock.fireAll();
+    expect(sink.last?.body).toBe("api · left, api · right, docs");
+  });
+
+  test("a label AND workspace collision is left as a duplicate — keep it simple", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agentNamed("p1", "claude", "blocked", { cwd: "/home/you/api" }), "working", "blocked");
+    coord.onTransition(agentNamed("p2", "codex", "blocked", { cwd: "/home/you/api" }), "working", "blocked");
+    clock.fireAll();
+    // Same cwd basename AND same workspace: disambiguation can't tell them apart, so both show as
+    // "api · demo" rather than trying a third key.
+    expect(sink.last?.body).toBe("api · demo, api · demo");
+  });
+
+  test("the single-agent path is unchanged by a pane label", () => {
+    const { clock, sink, coord } = setup();
+    coord.onTransition(agentNamed("p1", "claude", "blocked", { paneLabel: "frontend" }), "working", "blocked");
+    clock.fireAll();
+    expect(sink.last).toEqual({
+      title: "claude needs you",
+      body: "demo · /home/you/demo",
+      paneId: "p1",
+      renotify: true,
     });
   });
 });

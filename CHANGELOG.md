@@ -79,6 +79,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **A URL the pane wrapped is one whole link again.** A URL longer than the pane was cut at the column edge, so only its first row became a link, and that link opened a truncated URL. On Herdr the bridge now reads the same rows with soft wraps undone when a URL runs to a row's end, and every row of that URL opens the whole URL. Thanks @thelinuxlich (#212).
 - **A wrapped Codex question card is recognised instead of falling back to raw.** A long question, a description, or the `esc to interrupt` hint can each wrap onto their own row, and `ask.ts` now joins a wrapped row back into the question or description it belongs to, accepting a continuation only when it starts at or beyond that description's own column. The digit recipe is unchanged. Thanks @alvinycheung (#201).
 - **The history view reads in the chosen terminal font.** The full-transcript reading page ignored Settings → Terminal font and always rendered in the shipped default face; it now applies the same font to its own `ChatMessageList`, matching the live pane mirror. Thanks @fjse (#216).
+- **A multi-agent push notification names the panes, not the agent kind.** With several agents blocked at once the body read `claude, claude, claude`; it now shows each pane's own label, falling back to its folder name and then its agent kind, and adds the workspace when two panes still match. Thanks @caioreis123 (#215).
 
 ## [1.8.2] - 2026-09-12
 
