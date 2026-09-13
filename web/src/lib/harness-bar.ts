@@ -139,10 +139,9 @@ const PI: readonly HarnessBarItem[] = [
 ];
 
 // ── omp ──────────────────────────────────────────────────────────────────────
-// Capture-sourced, so every row names a capture. omp is a pi fork and very likely has `/tree`, but
-// no capture vouches for it and omp's catalog header forbids a row no capture vouches for — so Tree
-// is written out below and COMMENTED OUT, with its evidence path in the comment. It uncomments in
-// the commit that adds the capture, and nothing else about it changes.
+// Capture-sourced, so every row names a capture. Tree shipped commented out because omp being a pi
+// fork is not evidence; `omp--tree.txt` is. `/tree` was run on a live omp v18.1.19 pane and painted a
+// `Session Tree` picker, which is also what puts Tree on the bar rather than in the palette alone.
 const OMP: readonly HarnessBarItem[] = [
   {
     id: "model",
@@ -159,14 +158,19 @@ const OMP: readonly HarnessBarItem[] = [
     evidence: `${PANES}/omp--slash-palette.txt`,
   },
   {
+    id: "tree",
+    label: "harnessBar.tree",
+    kind: "command",
+    command: "/tree",
+    evidence: `${PANES}/omp--tree.txt`,
+  },
+  {
     id: "resume",
     label: "harnessBar.resume",
     kind: "command",
     command: "/resume",
     evidence: `${PANES}/omp--menu-resume.txt`,
   },
-  // { id: "tree", label: "harnessBar.tree", kind: "command", command: "/tree",
-  //   evidence: "web/src/fixtures/panes/omp--tree.txt" },
 ];
 
 // A Map for the same reason the command catalog uses one: the key tested against it is Herdr's

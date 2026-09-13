@@ -59,8 +59,8 @@ describe("the shipped bar", () => {
     expect(barFor("pi").every((i) => i.kind === "command")).toBe(true);
   });
 
-  it("leaves omp's Tree out until a capture vouches for it", () => {
-    expect(barFor("omp").map((i) => i.id)).toEqual(["model", "compact", "resume"]);
+  it("gives omp Tree, in pi's order, now that a capture vouches for it", () => {
+    expect(barFor("omp").map((i) => i.id)).toEqual(["model", "compact", "tree", "resume"]);
   });
 
   it("renders nothing for an agent with no bar, and for no agent at all", () => {

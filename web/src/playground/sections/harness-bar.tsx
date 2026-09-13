@@ -63,9 +63,9 @@ export function HarnessBarSection() {
 
         <Card
           state="omp"
-          label="omp: model, compact, resume"
-          reach="open a pane running oh-my-pi. Three buttons, each vouched for by a capture under web/src/fixtures/panes/."
-          note="Tree is written into the table and commented out: omp is a pi fork and very likely has /tree, but no capture proves it, and omp's catalog forbids a row no capture vouches for."
+          label="omp: model, compact, tree, resume"
+          reach="open a pane running oh-my-pi. Four buttons, each vouched for by a capture under web/src/fixtures/panes/."
+          note="Tree waited on its capture rather than on omp being a pi fork. web/src/fixtures/panes/omp--tree.txt is a live omp pane where /tree painted a Session Tree picker, so the button ships in pi's order."
         >
           <HarnessBar agent="omp" onRun={took} />
         </Card>

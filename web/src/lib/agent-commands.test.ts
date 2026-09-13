@@ -55,7 +55,9 @@ describe("commandsFor", () => {
   // tolerance has to keep them apart in both directions or an omp user gets pi's palette.
   it("does not route omp to the Pi catalog, or pi to omp's", () => {
     expect(commandsFor("omp")).not.toBe(commandsFor("pi"));
-    expect(commandsFor("omp").some((c) => c.command === "/tree")).toBe(false); // Pi-specific
+    // `/tree` is in both now — a capture proved omp has its own — so the discriminator is a command
+    // the omp corpus is silent on. `/hotkeys` is in pi's published catalog and in no omp capture.
+    expect(commandsFor("omp").some((c) => c.command === "/hotkeys")).toBe(false); // Pi-specific
     expect(commandsFor("pi").some((c) => c.command === "/plan-review")).toBe(false); // omp-specific
   });
 

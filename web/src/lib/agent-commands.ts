@@ -219,12 +219,15 @@ const OMP: readonly AgentCommand[] = [
   { command: "/shake", description: "Drop heavy tool results from context without a full compact", takesArg: true, argHint: "[images]", common: true, dangerous: false },
 
   // (c) The capture log — each of these was typed to produce a fixture, so its screen is in the
-  //     corpus and the command demonstrably exists. All three open a MODAL, and this adapter
+  //     corpus and the command demonstrably exists. All four open a MODAL, and this adapter
   //     up-levels none of omp's modals: from a phone they land the user on the raw mirror, to be
   //     driven with the special-keys pad and dismissed with Escape, and `composerReady` refuses
   //     free-text sends until it is. Useful, but not what to surface first — hence `common: false`.
   { command: "/model", description: "Open the provider/model picker", takesArg: false, argHint: "", common: false, dangerous: false }, // harness-bar
   { command: "/settings", description: "Open the settings panel", takesArg: false, argHint: "", common: false, dangerous: false },
+  // Described by the screen `omp--tree.txt` shows, not by pi's own /tree: omp paints a `Session Tree`
+  // picker whose first hint is `Enter: switch`, over the session's turns.
+  { command: "/tree", description: "Open the session tree picker to switch turns", takesArg: false, argHint: "", common: false, dangerous: false }, // harness-bar
   { command: "/resume", description: "Open the session picker", takesArg: false, argHint: "", common: false, dangerous: false }, // harness-bar
 ];
 

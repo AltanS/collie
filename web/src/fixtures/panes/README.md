@@ -483,6 +483,36 @@ probed on the `write` dialog, with the target file verified absent afterwards. O
 worth recording: `read` is auto-approved even under `--approval-mode always-ask`, so a read call
 paints no dialog and cannot be used to generate one.
 
+## OMP `/tree` capture (2026-09-13, oh-my-pi `omp` v18.1.19, throwaway Herdr pane)
+
+One byte-faithful `pane.read format:ansi` capture, and the only thing it is evidence for is that omp
+has `/tree` and what omp paints for it. The harness bar's omp rows each name a capture, so the Tree
+button waited on this file rather than on the argument that omp is a pi fork
+([`harness-bar.ts`](../../lib/harness-bar.ts)).
+
+omp 18.1.19 was installed into a throwaway prefix and run in `/tmp/fable-omp-sandbox`, a `git init`
+repo. Its five-step first-run setup was skipped with `Escape`, so the session has **no model at all**
+— the screen carries omp's own `No models available` warning. `/tree` still works, which is itself the
+finding: the command is local to the TUI and needs no provider.
+
+The screen is a box at column 0 titled `Session Tree`, with a long hint row
+(`Enter: switch. Alt+↑/↓: previous/next turn. PgUp/PgDn (←/→): page. …`), a `Search:` row, a rule, and
+then the filtered list, which here reads `1 entries hidden by the current filter [default]` over
+`Press Alt+A to show all, Alt+D for default` and `(0/1)`. `Alt+A` was probed: it reveals the one entry
+as `› • [thinking: high]` and flips the footer to `[all]`. `Alt+D` put the default filter back, and the
+capture is that default state — what `/tree` paints on its own, with nothing driven after it.
+
+CRLF throughout with no trailing newline; `wc -l` is 35. **No sanitization pass was needed**, and that
+is verified rather than assumed: the file contains no username, hostname, home path, email, session id,
+credential-shaped string or UUID, and the modal covers the statusline that would otherwise carry the
+cwd. The session had no provider signed in, so there is no vendor account state to rewrite either.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `omp--tree.txt` | The welcome panel and the `No models available` warning above a `╭─ Session Tree ─╮` box: hint row, `Search:` row, rule, then the default filter's `1 entries hidden` notice and `(0/1)` | `idle` |
+
+`/tree` was dismissed with `Escape`; nothing in the tree was ever switched to.
+
 ## Lessons already encoded here (don't re-learn them)
 
 - **Match on parsed text, not raw bytes**: SGR codes sit *between* glyphs (`❯` and `1.` are in

@@ -43,6 +43,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   you; it is shown once per device, and Settings has a row to show it again.
 - **A push warns you before a pane's prompt cache goes cold.** Switch it on for one pane from its settings sheet, or for every pane under Settings → Notify when, where the panes you watched one by one are listed. The warning fires once per warm cycle, honours the snooze, and `COLLIE_CACHE_WARN_SECONDS` moves its 300-second window.
 - **Claude's Model button offers opus, sonnet, haiku and default.** One tap on the harness bar sets the model by the alias Claude Code itself accepts, and Pick in Claude still opens the harness's own picker for a model those four names do not cover.
+- **omp's harness bar has a Tree button.** It sits between Compact and Resume, the order pi's bar already uses, and opens omp's own session tree in the mirror. `/tree` joins the omp command palette with it.
 
 ### Changed
 

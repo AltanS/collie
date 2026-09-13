@@ -37,18 +37,20 @@ const allGrokFixtures = readdirSync(PANES_DIR)
   .toSorted();
 const allForeignFixtures = [...allClaudeFixtures, ...allCodexFixtures, ...allGrokFixtures];
 // `omp--menu-dismissed.txt` matches this prefix and is a COMPOSER capture, not a modal.
+// `omp--tree.txt` is a modal under a name that fits none of those prefixes, so it is named outright.
 const allOmpModalFixtures = allOmpFixtures.filter(
   (name) =>
     name.startsWith("omp--menu-") ||
     name.startsWith("omp--select-") ||
-    name.startsWith("omp--approval-"),
+    name.startsWith("omp--approval-") ||
+    name === "omp--tree.txt",
 );
 
 // Every omp screen this adapter DECLINES — which is every screen IN THIS CORPUS, not every screen omp
-// can draw. These are NOT "neutral output" in the plain sense: fourteen of them are live modals with
+// can draw. These are NOT "neutral output" in the plain sense: fifteen of them are live modals with
 // the keyboard, and the conformance assertion (raw-only) is exactly the promise worth pinning,
 // because it is a promise about a screen where being wrong would type a keystroke. The tool-approval
-// dialog, once this corpus's one known gap, is now three of those fourteen. One reason per line.
+// dialog, once this corpus's one known gap, is now three of those fifteen. One reason per line.
 const DECLINED = new Set([
   // — Composer states. An input box is chrome, never a dialog; stripChrome peels it, the statusline
   //   and stranded-draft probes re-surface what it carried.
@@ -100,11 +102,16 @@ const DECLINED = new Set([
   "omp--approval-bash.txt",
   "omp--approval-write--deny.txt",
   "omp--approval-write.txt",
+  // — The `/tree` picker, captured 2026-09-13 against omp v18.1.19 to vouch for the harness bar's
+  //   Tree button. Another box at column 0, and declined for the same reason as the pickers above:
+  //   its hint row names `Alt+↑/↓`, `PgUp/PgDn`, `Shift+Enter` and `Ctrl+O`, compound tokens
+  //   `menuKeyFor` rejects, so a lifted modal would offer almost none of what the screen advertises.
+  "omp--tree.txt",
 ]);
 
 // Nothing is up-levelled, so there is no own cohort. `describeAdapterConformance` registers a todo for
 // each leg that needs one rather than passing vacuously, and still runs the leg that matters here:
-// raw-only on all 28 omp captures and every foreign harness capture.
+// raw-only on all 29 omp captures and every foreign harness capture.
 const ownFixtures: string[] = [];
 const neutralFixtures = allOmpFixtures.filter((f) => DECLINED.has(f));
 
@@ -143,17 +150,18 @@ describe("the omp corpus", () => {
     "omp--select-multi.txt",
     "omp--slash-palette--filtered.txt",
     "omp--slash-palette.txt",
+    "omp--tree.txt",
     "omp--v18-rule-draft.txt",
     "omp--v18-rule-idle.txt",
     "omp--v18-rule-wrapped.txt",
     "omp--working.txt",
   ];
 
-  it("is exactly the 28 captures this adapter was developed against", () => {
+  it("is exactly the 29 captures this adapter was developed against", () => {
     expect(allOmpFixtures).toEqual(PINNED);
   });
 
-  it("declines all twenty-eight — nothing is up-levelled", () => {
+  it("declines all twenty-nine — nothing is up-levelled", () => {
     expect(neutralFixtures).toEqual(PINNED);
     expect(ownFixtures).toEqual([]);
   });
