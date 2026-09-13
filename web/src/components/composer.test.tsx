@@ -1416,15 +1416,15 @@ describe("Composer — the machine opens the actions belt, and no band stands ab
     expect(actions().querySelector('[aria-label*="host" i]')).toBeNull();
     cleanup();
 
-    // Crew — the chip appears, ON THE BELT, and it is the belt's FIRST element. Not inside the
-    // controls group: that group is named "Controls" and a machine is not one of Collie's controls,
-    // it is where all of them land.
+    // Crew — the chip appears, ON THE BELT, and it is PINNED at the belt's right end rather than
+    // taking the scroller's first slot. Not inside the controls group either: that group is named
+    // "Controls" and a machine is not one of Collie's controls, it is where all of them land.
     renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
     const chip = screen.getByLabelText("Sends to host: workshop");
     expect(actions().contains(chip)).toBe(true);
     expect(row().contains(chip)).toBe(false);
     const scroller = actions().querySelector(".overflow-x-auto")!;
-    expect(scroller.firstElementChild).toBe(chip);
+    expect(scroller.contains(chip)).toBe(false);
     // The `tag` variant, never `caption`: the 10px uppercase run was sized for the 14px band that
     // is gone, and among 32px pills it reads as a word that fell off something. The tag is a
     // bordered pill, which is what `caption` explicitly is not (host-chip.tsx).

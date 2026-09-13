@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { HarnessBar, useHarnessBarItems } from "@/components/harness-bar";
-import { HostChip } from "@/components/host-chip";
+import { HostChip, useHostChipShown } from "@/components/host-chip";
 import { OverflowEdges } from "@/components/ui/overflow-edges";
 import { SectionLabel } from "@/components/ui/section-label";
 import { STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
@@ -112,6 +112,34 @@ const ON = "bg-control-on text-control-on-foreground hover:bg-control-on";
 const OFF = "text-muted-foreground";
 
 /**
+ * THE HOST TAG NEVER OUTGROWS THE SEND BUTTON. Altan's rule, and it is a rule about the pair rather
+ * than about the tag: the send button is `size-11` (44px) in composer.tsx, it is the widest single
+ * object on the row below, and a name that ran past it would be the loudest thing on the chrome
+ * block while naming something the operator already knows.
+ *
+ * 44px is a hard budget and it costs the tag its glyph. Inside it the tag spends 2px of border and
+ * 12px of `px-1.5`, leaving 30px of text; the 12px `Server` mark and its 4px gap would take 16 of
+ * those 30 and leave room for two characters. The mark is the piece that gives, because the name is
+ * the whole message and a glyph beside two letters names nothing. Nothing is lost on the degraded
+ * reading either: {@link AddressTag} encodes that in the DASH of its border, not in the glyph, so it
+ * still reads without colour.
+ */
+const HOST_TAG_MAX_W = "max-w-11";
+
+/**
+ * How much of the belt's right end the pinned tag owns, in px, for the scroll cue to step around
+ * (`OverflowEdges`'s `insetRight`). It is the whole pinned span: 44px of tag, the 12px of `pr-3`
+ * that keeps it off the screen edge, and the 32px of `pl-8` its fade leads in over.
+ *
+ * The fade's 32px is IN the number, and that was measured rather than assumed. At 56 — the tag and
+ * its padding alone — the chevron landed inside the fade's lead-in, where the patch is already about
+ * 87% opaque, so the one mark that says "there is more this way" was drawn at 13% and read as
+ * nothing. At 88 it sits just outside the patch, on clear ground, and the patch's own fade picks the
+ * line up from there, which is what makes the two cues read as one.
+ */
+const HOST_TAG_INSET = 88;
+
+/**
  * One of Collie's own actions. The composer owns every one of these — what it does, whether it is
  * on, whether it is refused — and this file owns only how it is drawn.
  */
@@ -143,15 +171,21 @@ export interface ActionsRowProps {
   /** Collie's own actions, in the order the thumb should meet them. */
   general: readonly GeneralAction[];
   /**
-   * The machine every button on this belt — and the field below it — writes to. It opens the belt,
-   * as a `HostChip`, and it is not a control: {@link HostChip} is deliberately not one.
+   * The machine every button on this belt — and the field below it — writes to. It is drawn as a
+   * `HostChip` and it is not a control: {@link HostChip} is deliberately not one.
+   *
+   * IT IS PINNED AT THE BELT'S RIGHT END AND TAKES NO SCROLLER WIDTH. It opened the scroller for
+   * half a day, as its first child, and Altan's verdict on the phone was that the tag "is taking up
+   * too much space": the belt already overflows on a Claude pane, so the 63px the tag spent (a 57px
+   * pill plus the scroller's own 6px gap) came out of Keys, Type, Quick, Agent and Display. Pinned,
+   * it is an absolute span over the band — the pills scroll UNDER it behind a fade, the scroller
+   * starts on Keys on a crew exactly as on a solo install, and the name never scrolls away, which
+   * the opening tag did. It is one of six placements drawn for the decision; the other five are kept
+   * as roads not taken in `playground/sections/host-tag.tsx`, with what each one cost.
    *
    * It SELF-HIDES on a solo install, which is every install that exists today, so passing it costs
-   * a solo phone nothing and nothing appears there. On a crew the belt opens with the machine's
-   * name and the general pills start after it — so the pills sit at a different x on a crew than on
-   * a solo install. That is an INSTALL-WIDE difference, not a per-state shift: the chip's answer is
-   * fixed for the life of the install, so no state a pane can enter moves it, and DESIGN.md §2 is
-   * about the second thing, not the first.
+   * a solo phone nothing and nothing appears there — not the tag, and not the inset the scroll cue
+   * takes around it.
    *
    * Absent, rather than flagged off, where there is no crew to name.
    */
@@ -222,6 +256,10 @@ export function ActionsRow({
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
+  // Whether a tag is really pinned, asked of the chip's own hide rule rather than guessed from
+  // `writeHost` being set: a solo install passes a host and draws nothing, and insetting the scroll
+  // cue for a tag nobody can see would fade the row's right end for no reason.
+  const hostPinned = useHostChipShown(writeHost);
 
   // Nothing to draw at all. Render nothing rather than an empty scroller, so the row costs no
   // height.
@@ -301,18 +339,9 @@ export function ActionsRow({
           pills, and between the last of them and the harness section's edge. The old `gap-2.5`
           override is gone with the capsules: a wider gap around a group was the separator when the
           groups were floating boxes, and the section's tint is the separator now. */}
-      <OverflowEdges>
+      <OverflowEdges insetRight={hostPinned ? HOST_TAG_INSET : 0}>
         {(scrollerRef) => (
           <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "px-3")}>
-            {/* THE MACHINE OPENS THE BELT. It is a sibling of the controls group and not a member of
-                it, on purpose: the group is named "Controls" and a machine's name is not one of
-                Collie's controls — it names where every one of them lands. `variant="tag"` and never
-                `caption`: the 10px uppercase caption was sized for the 14px status band this row
-                absorbed, and a 10px run of chrome type sitting among 32px pills reads as a word that
-                fell off something. `sends` because that is what this surface does: the chip must
-                announce "sends to workshop", never "host: workshop", a thumb's width from the box.
-                Renders null on a solo install, by its own hide rule. */}
-            <HostChip host={writeHost} variant="tag" sends />
             {general.length > 0 && (
               // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
               // self-labelling buttons and earned nothing, but in the accessibility tree it is the only
@@ -353,6 +382,37 @@ export function ActionsRow({
           </div>
         )}
       </OverflowEdges>
+      {/* THE MACHINE, PINNED AT THE BELT'S RIGHT END — see {@link HOST_TAG_INSET} above for why it
+          is here rather than in the scroller, and `writeHost` for what it names.
+          It is a SIBLING of the OverflowEdges wrapper, for the same reason the chevron is: a mask
+          applies to its element's whole subtree, and a tag inside the wrapper would fade out with
+          the pills exactly where the belt overflows — which is always, once a tag is pinned.
+          `pointer-events-none` on the whole span, and it is not a shortcut: this chip is not a
+          control and may not become one (host-chip.tsx says so at length), so a touch that lands on
+          it belongs to the scroller underneath. The belt still pans from under the tag, which
+          matters — the right end is exactly where a thumb flicks to reach the harness section.
+          THE FADE IS TWO STACKED LAYERS UNDER ONE MASK, and it has to be two: the belt's ground is
+          `bg-foreground/6` OVER `bg-chrome`, so a single `bg-chrome` patch would read as a lighter
+          hole punched in the band. The mask fades both layers in over the first 32px, which is what
+          lets a pill disappear UNDER the tag instead of stopping dead against it. */}
+      {hostPinned && (
+        <span className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
+          <span
+            aria-hidden
+            className="absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
+          >
+            <span className="absolute inset-0 bg-foreground/6" />
+          </span>
+          <span className="relative">
+            {/* `variant="tag"` and never `caption`: the 10px uppercase caption was sized for the
+                14px status band this row absorbed, and a 10px run of chrome type sitting among 32px
+                pills reads as a word that fell off something. `sends` because that is what this
+                surface does: the chip must announce "sends to workshop", never "host: workshop", a
+                thumb's width from the box. */}
+            <HostChip host={writeHost} variant="tag" sends glyph={false} className={HOST_TAG_MAX_W} />
+          </span>
+        </span>
+      )}
     </div>
   );
 }

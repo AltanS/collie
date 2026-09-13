@@ -4,7 +4,10 @@ import { Keyboard, Terminal } from "lucide-react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { __resetHarnessBar, setHarnessBarEnabled } from "@/lib/harness-bar-pref";
+import { fixtureServers } from "@/test/handlers";
+import type { ServerSummary } from "@/lib/types";
 import { ActionsRow, type GeneralAction } from "./actions-row";
+import { CrewProvider } from "./crew-provider";
 
 afterEach(() => __resetHarnessBar());
 
@@ -163,5 +166,52 @@ describe("ActionsRow", () => {
     // Without the prop there is no such button anywhere, and that is the whole of the old behaviour.
     render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
     expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeInTheDocument();
+  });
+
+  // THE MACHINE IS PINNED AT THE RIGHT END AND COSTS THE SCROLLER NOTHING. It opened the scroller
+  // as its first child for half a day, and Altan's verdict was that the tag "is taking up too much
+  // space" — 63px of a row that already overflows on a Claude pane. Pinned, the pills start on Keys
+  // on a crew exactly as on a solo install, and the name never scrolls away.
+  //
+  // A real CrewProvider over two machines, because the chip's hide rule is "more than one machine"
+  // and a solo provider would render nothing at all — which is the other half of what is asserted.
+  describe("the pinned host tag", () => {
+    const beltOf = () => document.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
+    const scrollerOf = () => beltOf().querySelector<HTMLElement>(".overflow-x-auto")!;
+
+    function renderBelt(servers?: ServerSummary[]) {
+      render(
+        <CrewProvider servers={servers}>
+          <ActionsRow general={[general()]} agent="claude" writeHost="workshop" onRun={took} />
+        </CrewProvider>,
+      );
+    }
+
+    it("stands OUTSIDE the scroller, so the pills pan under it and start at the same x", () => {
+      renderBelt(fixtureServers);
+      const tag = screen.getByLabelText("Sends to host: workshop");
+      expect(beltOf().contains(tag)).toBe(true);
+      // Not in the scroller at all — not its first child, not anywhere in it. Inside, it would both
+      // take width and fade out with the pills, because a mask applies to its whole subtree.
+      expect(scrollerOf().contains(tag)).toBe(false);
+      // …and the scroller's own first child is the controls group, on a crew as on a solo install.
+      expect(scrollerOf().firstElementChild?.getAttribute("data-slot")).toBe("composer-controls");
+    });
+
+    it("is never wider than the send button, and says 'sends to' rather than 'host:'", () => {
+      renderBelt(fixtureServers);
+      const tag = screen.getByLabelText("Sends to host: workshop");
+      // `max-w-11` is the send button's own `size-11`, 44px — Altan's rule, and the number that
+      // costs this tag its glyph (actions-row.tsx holds the arithmetic).
+      expect(tag.className).toMatch(/(?:^|\s)max-w-11(?=\s|$)/);
+      expect(tag.className).not.toMatch(/max-w-\[8rem\]/);
+    });
+
+    it("draws nothing, and insets nothing, on a solo install", () => {
+      renderBelt();
+      expect(screen.queryByLabelText(/^Sends to host/)).toBeNull();
+      // No pinned tag means no reason to hold the right end back, so the cue is on the edge again.
+      expect(beltOf().querySelector("[style*='--edge-inset-right']")).toBeNull();
+    });
   });
 });

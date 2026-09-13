@@ -1,15 +1,16 @@
-// Host tag placement ideas: six ways the composer could name the machine it writes to, on six
-// cards. ONLY THE FIRST IS SHIPPED; the other five are drawings staged for a decision, which is why
-// every one of them says "idea, not shipped" where the rest of the playground says "reach it for
-// real".
+// Host tag placement ideas: five ways the composer could name the machine it writes to, on five
+// cards. THE FIRST ONE SHIPPED, on 2026-09-13; the other four are the roads not taken, kept with
+// what each would have cost, which is why every one of them says "idea, not shipped" where the rest
+// of the playground says "reach it for real".
 //
-// THE TARGET. `components/actions-row.tsx` opens the belt with `<HostChip host={writeHost}
-// variant="tag" sends />`, so on a crew the first thing in the scroller is the machine's name, and
-// the five control pills start after it. Altan's verdict on the phone: the tag "is taking up too
+// THE TARGET. `components/actions-row.tsx` used to open the belt with `<HostChip host={writeHost}
+// variant="tag" sends />`, so on a crew the first thing in the scroller was the machine's name and
+// the five control pills started after it. Altan's verdict on the phone: the tag "is taking up too
 // much space". The belt is a scroller that already overflows on a Claude pane, so every pixel the
-// tag takes is a pixel of Keys, Type, Quick, Agent and Display that has to be flicked for. The round
-// asks whether the same answer can be given closer to the input or to the send button, from an
-// absolute span that latches onto one of them and therefore costs the scroller nothing.
+// tag took was a pixel of Keys, Type, Quick, Agent and Display that had to be flicked for. The round
+// asked whether the same answer could be given from an absolute span that costs the scroller
+// nothing, and the answer Altan picked keeps the pill where it was but stops it taking width: it is
+// pinned over the belt's right end with the pills scrolling under it.
 //
 // WHAT IS REAL HERE AND WHAT IS NOT. The belt on every card is the app's own `ActionsRow` on Claude,
 // in the roomy layout, inside a real `CrewProvider` over the `rosterFive` fixture, so the shipped tag
@@ -33,7 +34,6 @@ import { Paperclip, Send } from "lucide-react";
 
 import { ActionsRow } from "@/components/actions-row";
 import { CrewProvider } from "@/components/crew-provider";
-import { HostChip } from "@/components/host-chip";
 import { Button } from "@/components/ui/button";
 import { ChatInput } from "@/components/ui/chat/chat-input";
 import { MIRROR_INVERT, MIRROR_SPACE } from "@/components/mirror-space";
@@ -49,7 +49,7 @@ export const DEF: SectionDef = {
   id: "host-tag",
   title: "Host tag ideas",
   intent:
-    "The machine the input sends to, named somewhere other than the front of the actions belt. Today it opens the scroller as a HostChip tag: 57px of pill plus the belt's own 6px gap, 63px of a row that already has to be flicked sideways on a Claude pane. Six cards, each a phone-width mock of the BOTTOM of the pane screen, with the REAL belt over the REAL input row, on a crew whose lead is called lodge. The first card is the belt as it ships, as the reference; the other five latch the name onto the input or onto the send button with an absolute span, so the scroller gets the whole 63px back. Each note states what the belt saves, where the name reads before typing, while typing and with the keyboard up, and the main risk.",
+    "The machine the input sends to, named without spending the front of the actions belt on it. The tag used to open the scroller: 57px of pill plus the belt's own 6px gap, 63px of a row that already has to be flicked sideways on a Claude pane. Five cards, each a phone-width mock of the BOTTOM of the pane screen, with the REAL belt over the REAL input row, on a crew whose lead is called lodge. The first card is what SHIPPED on 2026-09-13, the tag pinned over the belt's right end with the pills panning under it; the other four latch the name onto the input or onto the send button and are kept as the roads not taken. Each note states what the belt saves, where the name reads before typing, while typing and with the keyboard up, and the main risk.",
 };
 
 // ── The crew every card stands on ────────────────────────────────────────────
@@ -244,36 +244,6 @@ function SendBadge({ host }: { host: string }) {
   );
 }
 
-/**
- * Idea 5: the shipped tag, kept, but pinned at the belt's RIGHT end as an absolute span, so the
- * pills scroll underneath it and it takes no scroller width at all.
- *
- * The fade is two stacked layers under one mask, and it has to be two: the belt's ground is
- * `bg-foreground/6` OVER `bg-chrome`, so a single `bg-chrome` patch would read as a lighter hole
- * punched in the band. The mask fades both layers in over the first 32px, which is what lets a pill
- * disappear under the tag instead of stopping dead against it.
- *
- * `top-1.5 bottom-1.5` is the belt's own `mt-1.5 mb-1.5`, so the patch covers the band and not the
- * chrome above or below it. `pointer-events-none` on the whole thing means the scroller still pans
- * from under the tag, which matters: the right end is exactly where a thumb flicks to reach the
- * harness section.
- */
-function BeltEndTag({ host }: { host: string }) {
-  return (
-    <span className="pointer-events-none absolute top-1.5 right-0 bottom-1.5 z-10 flex items-center pr-3 pl-8">
-      <span
-        aria-hidden="true"
-        className="absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
-      >
-        <span className="absolute inset-0 bg-foreground/6" />
-      </span>
-      <span className="relative">
-        <HostChip host={host} variant="tag" sends />
-      </span>
-    </span>
-  );
-}
-
 // ── The cards ────────────────────────────────────────────────────────────────
 
 /** Every idea card's `reach` line. These are ideas; none of them can be reached. */
@@ -287,9 +257,9 @@ export function HostTagSection() {
       <Group title="0 · The tag as it ships">
         <Card
           state="host-today"
-          label="today: the tag opens the belt, Keys starts 63px in"
+          label="shipped: the tag is pinned at the belt's right end, Keys starts at 0"
           reach="open any pane on a collie that leads a crew."
-          note="The belt pays 63px for the name, measured: a 57px HostChip plus the scroller's own 6px gap. That is the baseline every card below is counted against. The name reads before typing, while typing and with the keyboard up, because the belt stands above the input in all three. The risk is the one this round exists for: the belt is a scroller that already overflows on a Claude pane, so those 63px come out of Keys, Type, Quick, Agent and Display, and the left edge of the row means a different thing on a crew than on a solo install."
+          note="SHIPPED 2026-09-13, and this card is the real belt, so it is what your phone draws. The tag no longer opens the scroller: it is an absolute span over the band's right end, capped at the send button's 44px, with the pills panning under a two-layer fade. The belt got the whole 63px back — the 57px pill plus the scroller's own 6px gap — and the row's left edge is Keys on a crew exactly as on a solo install. The name now reads in all three states, before typing, while typing and with the keyboard up, and it never scrolls away, which the opening tag did. Two costs were taken knowingly: the glyph is gone, because 44px leaves 30px of text and a mark would take 16 of them, and the scroll cue had to learn to step around the tag (OverflowEdges' insetRight) so the fade that means there is more this way is not drawn under it. The four cards below are the roads not taken."
         >
           <Crew>
             <PhoneMock>
@@ -375,26 +345,6 @@ export function HostTagSection() {
         </Card>
       </Group>
 
-      <Group title="3 · The tag stays on the belt, but stops taking width">
-        <Card
-          state="host-belt-end"
-          label="the shipped tag, pinned at the belt's right end with the pills scrolling under it"
-          reach={`${NOT_SHIPPED} the tag is the REAL HostChip and the belt is the real ActionsRow; the fade and the pin are drawn here.`}
-          note="Saves 63px of scroller width and keeps the pill itself, which no other card does: the tag is absolute over the band, so the scroller starts on Keys and the pills pan underneath the fade. It costs 0px of layout and 101px of the band's right end in paint. The name reads in all three states, and it never scrolls away, which the shipped tag does. Two risks. The right end is where the harness section lives on a Claude pane, so the tag stands over Claude's own tinted commands and the first of them is always half covered. And a permanently masked right edge argues with OverflowEdges, whose fade is the app's way of saying there is more this way."
-        >
-          <Crew>
-            <PhoneMock>
-              <MirrorSlice />
-              <ChromeBlock>
-                <Belt>
-                  <BeltEndTag host={HOST} />
-                </Belt>
-                <InputRow />
-              </ChromeBlock>
-            </PhoneMock>
-          </Crew>
-        </Card>
-      </Group>
     </Section>
   );
 }

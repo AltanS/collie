@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { HostTagSection } from "./host-tag";
 
-// The six states this section stages, as the screenshots and any browser case address them:
+// The five states this section stages, as the screenshots and any browser case address them:
 // `[data-state="…"]`, the playground's one allowed handle (CLAUDE.md → "The selector rule").
 const HANDLES = [
   "host-today",
@@ -11,10 +11,10 @@ const HANDLES = [
   "host-in-placeholder",
   "host-under-send",
   "host-on-send",
-  "host-belt-end",
 ] as const;
 
-/** Every card but the baseline. These are the five that must have taken the tag out of the belt. */
+/** Every card but the shipped one. These are the four roads not taken, and each of them must have
+ *  taken the name out of the belt entirely. */
 const OPTIONS = HANDLES.filter((h) => h !== "host-today");
 
 /** The chip's own accessible name on a write surface (`connection.host.ariaSends`), which is how a
@@ -61,27 +61,29 @@ describe("Host tag ideas section", () => {
     }
   });
 
-  it("keeps the tag in the belt on the baseline card only", () => {
+  it("keeps the tag on the belt on the shipped card only, and out of its scroller", () => {
     render(<HostTagSection />);
     // The crew is real, so the chip's hide rule is satisfied and the shipped tag is really there.
-    expect(within(beltIn(cardFor("host-today"))).getByLabelText(TAG_LABEL)).toBeInTheDocument();
-    // Every option takes it out of the scroller, which is the whole claim each of them makes.
+    const shipped = beltIn(cardFor("host-today"));
+    const tag = within(shipped).getByLabelText(TAG_LABEL);
+    // PINNED, not in the scroller: that is the whole of what shipped, and this card draws the real
+    // ActionsRow, so the claim is checked against the app rather than against a mock.
+    expect(shipped.querySelector(".overflow-x-auto")!.contains(tag)).toBe(false);
+    // Every road not taken puts the name somewhere else entirely, which is what made it an option.
     for (const option of OPTIONS) {
       expect(within(beltIn(cardFor(option))).queryByLabelText(TAG_LABEL)).toBeNull();
     }
   });
 
-  it("names the machine somewhere on every option card", () => {
+  it("names the machine somewhere on every road not taken", () => {
     render(<HostTagSection />);
-    // The belt-end idea keeps the REAL chip, pinned outside the scroller; the other four draw the
-    // name themselves, so the card's text is the assertion that holds for all five.
+    // Each of the four draws the name itself, in the field's placeholder or in a span of its own,
+    // so the card's own text is the assertion that holds for all of them.
     for (const option of OPTIONS) {
       const card = cardFor(option);
       const drawn = card.querySelector('[data-slot="chat-input"]')?.getAttribute("placeholder") ?? "";
-      const pinned = within(card).queryAllByLabelText(TAG_LABEL).length > 0;
       const spans = [...card.querySelectorAll("span")].some((s) => s.textContent === "lodge");
-      expect(pinned || spans || drawn.includes("lodge")).toBe(true);
+      expect(spans || drawn.includes("lodge")).toBe(true);
     }
-    expect(within(cardFor("host-belt-end")).getByLabelText(TAG_LABEL)).toBeInTheDocument();
   });
 });

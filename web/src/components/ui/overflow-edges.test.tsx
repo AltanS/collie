@@ -23,9 +23,9 @@ function pinMetrics(el: HTMLElement, { scrollWidth, clientWidth }: { scrollWidth
   };
 }
 
-function mount() {
+function mount(insetRight?: number) {
   const { container } = render(
-    <OverflowEdges>
+    <OverflowEdges insetRight={insetRight}>
       {(ref) => (
         <div ref={ref}>
           <button type="button">Keys</button>
@@ -71,5 +71,32 @@ describe("OverflowEdges", () => {
     scrollTo(0);
     expect(wrapper.dataset.overflow).toBe("none");
     expect(wrapper.querySelectorAll("svg")).toHaveLength(0);
+  });
+
+  // `insetRight` holds the right-hand cue back from the edge, for a caller that has pinned
+  // something over its own right end — the actions belt's host tag. A cue drawn under that tag
+  // says nothing, so the fade and the chevron move to its left and the tag's fade carries on.
+  //
+  // jsdom has no layout, so what is pinned is the two places the number LANDS: the custom property
+  // the gradient reads, and the chevron's own offset. The pixels themselves were measured in Chrome.
+  describe("insetRight", () => {
+    it("moves both halves of the right cue in by the given px", () => {
+      const { wrapper, scroller } = mount(56);
+      pinMetrics(scroller, { scrollWidth: 1000, clientWidth: 400 })(0);
+      expect(wrapper.dataset.overflow).toBe("right");
+      const masked = scroller.parentElement!;
+      expect(masked.style.getPropertyValue("--edge-inset-right")).toBe("56px");
+      // The chevron keeps the 4px the LEFT one sits at, measured from its real right edge.
+      const chevron = wrapper.querySelector("svg")!;
+      expect(chevron.getAttribute("style")).toContain("right: 60px");
+    });
+
+    it("changes nothing at all when it is absent — no property, no offset", () => {
+      const { wrapper, scroller } = mount();
+      pinMetrics(scroller, { scrollWidth: 1000, clientWidth: 400 })(0);
+      const masked = scroller.parentElement!;
+      expect(masked.getAttribute("style")).toBeNull();
+      expect(wrapper.querySelector("svg")!.getAttribute("style")).toBeNull();
+    });
   });
 });

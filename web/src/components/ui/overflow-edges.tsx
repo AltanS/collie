@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { hasResizeObserver } from "@/lib/env";
@@ -46,8 +46,9 @@ export type OverflowEdge = "none" | "left" | "right" | "both";
 const MASK = {
   none: "",
   left: "[mask-image:linear-gradient(to_right,transparent,black_1.5rem)]",
-  right: "[mask-image:linear-gradient(to_right,black_calc(100%-1.5rem),transparent)]",
-  both: "[mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem),transparent)]",
+  right:
+    "[mask-image:linear-gradient(to_right,black_calc(100%-1.5rem-var(--edge-inset-right,0px)),transparent_calc(100%-var(--edge-inset-right,0px)))]",
+  both: "[mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem-var(--edge-inset-right,0px)),transparent_calc(100%-var(--edge-inset-right,0px)))]",
 } satisfies Record<OverflowEdge, string>;
 
 function edgeOf(left: boolean, right: boolean): OverflowEdge {
@@ -125,6 +126,19 @@ interface OverflowEdgesProps {
   className?: string;
   /** The scroller, built by the caller, with the handed-out ref on it. */
   children: (ref: React.RefObject<HTMLDivElement | null>) => ReactNode;
+  /**
+   * How far in from the RIGHT edge the right-hand cue sits, in px. `0` (the default) puts it on the
+   * edge, which is every caller that owns its whole right end.
+   *
+   * It exists for the actions belt, which pins the host tag over its own right end: the cue drawn
+   * under that tag says nothing, so the fade and the chevron move to just left of it and the tag's
+   * own fade continues the line. It is a NUMBER and not a class because the value is a measurement
+   * of another element, and Tailwind compiles source text — an assembled class would produce no CSS
+   * at all. It reaches the mask as `--edge-inset-right`, read by the literal gradients above.
+   *
+   * The left edge is untouched: nothing is ever pinned there.
+   */
+  insetRight?: number;
 }
 
 /**
@@ -142,16 +156,34 @@ interface OverflowEdgesProps {
  *     underneath, and `aria-hidden` keeps them out of the accessibility tree — a screen reader gets
  *     the buttons themselves, which were never hidden from it.
  */
-export function OverflowEdges({ className, children }: OverflowEdgesProps) {
+export function OverflowEdges({ className, children, insetRight = 0 }: OverflowEdgesProps) {
   const { ref, edge } = useOverflowEdges<HTMLDivElement>();
+  // A custom property is not a `CSSProperties` key, so the type is widened at the declaration rather
+  // than asserted at the call: `style` takes this object as it stands.
+  const maskStyle: CSSProperties & Record<string, string> | undefined =
+    insetRight > 0 ? { "--edge-inset-right": `${insetRight}px` } : undefined;
   return (
     <div data-overflow={edge} className={cn("relative flex min-w-0 flex-1", className)}>
-      <div className={cn("flex min-w-0 flex-1", MASK[edge])}>{children(ref)}</div>
+      <div
+        // The inset travels as a custom property so the gradients above can stay whole strings.
+        // Unset it entirely at 0 rather than writing `0px`: the fallback in the `var()` is then the
+        // one definition of "no inset", and the default caller's DOM is byte-identical to before.
+        style={maskStyle}
+        className={cn("flex min-w-0 flex-1", MASK[edge])}
+      >
+        {children(ref)}
+      </div>
       {(edge === "left" || edge === "both") && (
         <ChevronLeft aria-hidden className="pointer-events-none absolute top-1/2 left-1 size-3 -translate-y-1/2 text-muted-foreground" />
       )}
       {(edge === "right" || edge === "both") && (
-        <ChevronRight aria-hidden className="pointer-events-none absolute top-1/2 right-1 size-3 -translate-y-1/2 text-muted-foreground" />
+        <ChevronRight
+          aria-hidden
+          // `right-1` is the 4px the left chevron keeps; the inset is added to it, so the mark lands
+          // the same distance from whatever its right edge really is.
+          style={insetRight > 0 ? { right: `${insetRight + 4}px` } : undefined}
+          className="pointer-events-none absolute top-1/2 right-1 size-3 -translate-y-1/2 text-muted-foreground"
+        />
       )}
     </div>
   );

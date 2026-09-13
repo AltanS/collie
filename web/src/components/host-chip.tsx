@@ -37,6 +37,17 @@ interface HostChipProps {
    * this cannot simply be the variant's default.
    */
   sends?: boolean;
+  /**
+   * Draw the server mark before the name. On by default, and off only where the tag is on a width
+   * budget too tight to spend 16px on it — the actions belt's pinned tag, capped at the send
+   * button's 44px, is the one caller that says so ({@link AddressTag}'s `glyph` holds the sum).
+   *
+   * It is a flag and not a fifth variant because it changes nothing else about the tag: same
+   * border, same tones, same accessible name. The `caption` run ignores it, and deliberately — that
+   * form carries the fault in its GLYPH (`ServerOff`) because it has no border to dash, so dropping
+   * the mark there would drop the encoding with it.
+   */
+  glyph?: boolean;
   className?: string;
 }
 
@@ -55,13 +66,29 @@ interface HostChipProps {
 // server glyph rather than the switcher's layers, and it is a plain text node — a host name comes
 // from the operator's `join` label and is rendered as text, never markup, like every other
 // user-supplied string that reaches this UI.
-export function HostChip({ host, state, variant = "tag", sends, className }: HostChipProps) {
+/**
+ * THE HIDE RULE, ASKED RATHER THAN GUESSED. `true` exactly when {@link HostChip} would draw
+ * something for this host.
+ *
+ * It exists for the one caller that has to KNOW: the actions belt pins the chip over its right end
+ * and has to inset its own scroll cue by the pinned width — but only where a chip is really there,
+ * or a solo install would fade a row for a tag nobody can see. Every other caller mounts the chip
+ * unconditionally and lets it answer for itself, which is still the rule this file's header states.
+ * One definition, two readers: the component below calls this, it does not repeat it.
+ */
+export function useHostChipShown(host: string | undefined): boolean {
+  const { multi } = useCrew();
+  return multi && host !== undefined;
+}
+
+export function HostChip({ host, state, variant = "tag", sends, glyph = true, className }: HostChipProps) {
   useLocale();
-  const { servers, multi } = useCrew();
+  const { servers } = useCrew();
   const health = useHostHealth(host);
+  const shown = useHostChipShown(host);
   // No crew, or nothing to name: the whole dimension is invisible. (Hooks run first — the hide rule
   // is a render decision, not a reason to call a hook conditionally.)
-  if (!multi || host === undefined) return null;
+  if (!shown || host === undefined) return null;
 
   const name = hostName(servers, host) ?? host;
   // The machine's IDENTITY tint, or null when there is nothing to tell apart (lib/hosts.ts). It is
@@ -156,7 +183,7 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
   return (
     <AddressTag
       aria-label={label}
-      glyph={<Server className="size-3 shrink-0" aria-hidden />}
+      glyph={glyph ? <Server className="size-3 shrink-0" aria-hidden /> : undefined}
       prefix={target ? t("connection.host.onPrefix") : undefined}
       name={name}
       size={target ? "md" : "sm"}

@@ -71,6 +71,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The pane switcher's chevron rides the actions belt.** The 30px handle band above the composer is gone; a small up-chevron sits on the belt's top rule with a 44px hit box, so a tap or a drag still opens the switcher sheet and the mirror gets the row back, keyboard up or not.
 - **The states playground stages ideas for the host name near the input.** A new Host tag ideas tab puts six mocks of the composer's bottom side by side: the belt as it ships, which pays 63px of scroller width for the machine's name, and five ways an absolute span could carry that name on the input or on the send button instead. Dev-only, unreachable from the app entry, and no app code changed.
 - **The whole actions belt pulls the pane switcher up.** A drag up from anywhere on the belt opens the switcher, a sideways drag still scrolls it, and the chevron on its rule is bigger with a wider tap box.
+- **The machine's name is pinned at the end of the actions belt.** The tag no longer takes the first slot of the scroller; it sits over the belt's right end, never wider than the send button, and the pills scroll under it, which gives the belt its first 63px back.
 
 ### Fixed
 

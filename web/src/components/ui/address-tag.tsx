@@ -10,8 +10,15 @@ interface AddressTagProps {
    * to say what the name MEANS — a bare machine or session name is a noun with no verb.
    */
   "aria-label": string;
-  /** The leading mark, already sized by the caller (a 12px lucide glyph in both callers today). */
-  glyph: ReactNode;
+  /**
+   * The leading mark, already sized by the caller (a 12px lucide glyph in most callers).
+   *
+   * `undefined` draws no mark and no gap before the name. It is for a tag on a hard width budget,
+   * where a 12px glyph and its 4px gap would take more of the box than the name gets: a mark beside
+   * two truncated letters names nothing. Nothing about the degraded reading depends on it — that is
+   * the DASH of the border, which every tone below keeps.
+   */
+  glyph?: ReactNode;
   /** A quiet word before the name — the `target` variant's "on". Omitted everywhere else. */
   prefix?: string;
   /** The name itself. Rendered as a text node, never markup: it is operator-supplied. */
@@ -92,7 +99,7 @@ export function AddressTag({
         className,
       )}
     >
-      <span className={glyphTint}>{glyph}</span>
+      {glyph !== undefined && <span className={glyphTint}>{glyph}</span>}
       {prefix !== undefined && (
         <span className="shrink-0 text-muted-foreground/70" aria-hidden>
           {prefix}
