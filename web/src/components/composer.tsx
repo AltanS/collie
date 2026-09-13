@@ -116,9 +116,9 @@ interface ComposerProps {
   onSent: () => void;
 
   /**
-   * The pane switcher's grip, to be worn on the actions belt's top rule. Threaded straight through
-   * to {@link import("@/components/actions-row").ActionsRow} — this file decides nothing about it
-   * and draws none of it.
+   * The pane switcher's mark — a small up-chevron — to be worn on the actions belt's top rule.
+   * Threaded straight through to {@link import("@/components/actions-row").ActionsRow} — this file
+   * decides nothing about it and draws none of it.
    *
    * Absent, rather than flagged off, the way `writeHost` is: the pane passes nothing here when
    * there is nowhere to switch to.
@@ -1156,7 +1156,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             the harness's own colour. It replaced the Controls row and the separate harness bar,
             which were two rows of a phone's glass answering one question. The row itself is
             actions-row.tsx; everything below is only what each action DOES.
- */}
+  */}
         <ActionsRow
           general={[
               // Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to

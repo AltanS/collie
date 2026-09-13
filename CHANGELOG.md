@@ -68,7 +68,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The states playground stages ideas for the pull-up handle.** A "Pull-up handle ideas" tab puts seven cards above the real actions belt, comparing the shipped 30px handle with a grip on the belt's rule, a switcher pill, a handle that appears only with somewhere to go, and dragging the belt itself, each card stating its height at rest, its gesture and its risk. Design exploration only: nothing here is shipped, the page is dev-only and no app code changed.
 - **The actions row is a belt.** One full-bleed band above the input carries Collie's controls on its ground and the harness's commands in a section tinted with the harness's colour, so the row reads as one strip with two parts rather than two floating capsules.
 - **The pane's status word leaves the composer.** The thin line above the controls that named the machine and the pane's state is gone; the machine's name now opens the actions belt on a crew, and the state stays on the header's dot and the dashboard.
-- **The pane switcher's grip rides the actions belt.** The 30px handle band above the composer is gone; the same grip sits on the belt's top rule with a 44px hit box, so a tap or a drag still opens the switcher sheet and the mirror gets the row back, keyboard up or not.
+- **The pane switcher's chevron rides the actions belt.** The 30px handle band above the composer is gone; a small up-chevron sits on the belt's top rule with a 44px hit box, so a tap or a drag still opens the switcher sheet and the mirror gets the row back, keyboard up or not.
 
 ### Fixed
 

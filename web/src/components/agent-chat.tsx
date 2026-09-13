@@ -436,8 +436,8 @@ export function AgentChat({
       setPullFrom(0);
     },
   });
-  // THE GRIP ITSELF, handed to the composer, which hands it to the actions belt — the belt owns the
-  // rule it is drawn on, so the belt draws it (actions-row.tsx). `undefined` means no grip at all.
+  // THE MARK ITSELF, handed to the composer, which hands it to the actions belt — the belt owns the
+  // rule it is drawn on, so the belt draws it (actions-row.tsx). `undefined` means no mark at all.
   //
   // Shown whenever there is somewhere to go: a pane to switch to, a shell, or a launcher to start.
   // Launchers count on their own, because a lone pane with launchers still needs a way to reach
@@ -445,7 +445,7 @@ export function AgentChat({
   //
   // `composing` IS NOT IN THIS CONDITION ANY MORE, and its absence is the decision. The old band
   // stood down while the soft keyboard was up because it cost 30px at the one moment the screen had
-  // none to give. The grip costs 0px in every state, so there is nothing left to buy back by hiding
+  // none to give. The mark costs 0px in every state, so there is nothing left to buy back by hiding
   // it — and the switcher sheet is now reachable mid-sentence, which it never was before.
   const pullHandle =
     agents.length + shellPanes.length > 0 || launchers.length > 0
@@ -1940,13 +1940,14 @@ export function AgentChat({
                 )}
               </Collapse>
 
-              {/* THE PANE SWITCHER'S GRIP IS NOT A ROW ANY MORE. It was a 30px full-width band here,
+              {/* THE PANE SWITCHER'S MARK IS NOT A ROW ANY MORE. It was a 30px full-width band here,
                   directly above the composer: `py-3` around a 6px grip, tap or drag, gated on there
-                  being somewhere to go. The band is gone and the grip rides the ACTIONS BELT'S TOP
-                  RULE instead — a small patch straddling the hairline, half above and half below,
-                  absolutely positioned so it costs NO height at all (actions-row.tsx draws it and
-                  holds the geometry). The chrome block is 30px shorter and nothing else moved, which
-                  is the whole point: the mirror gets a row back for a control that is still there.
+                  being somewhere to go. The band is gone and a small up-chevron rides the ACTIONS
+                  BELT'S TOP RULE instead — a small patch straddling the hairline, half above and
+                  half below, absolutely positioned so it costs NO height at all (actions-row.tsx
+                  draws it and holds the geometry). The chrome block is 30px shorter and nothing else
+                  moved, which is the whole point: the mirror gets a row back for a control that is
+                  still there.
 
                   The tap and the finger-tracked drag are unchanged — same `sheetPull.ref`, same
                   `setDrawer("switcher")`, one element carrying both. What changed is the DRAG ANCHOR:
@@ -1958,15 +1959,15 @@ export function AgentChat({
                   The old position lesson survives the move by construction. The band used to render
                   ABOVE the agent's statusline, so its height was a function of what the terminal had
                   printed (the strip is 1–3 rows, re-derived every poll) and the thumb's target moved
-                  50px between panes — DESIGN.md §2. The grip now lives INSIDE the composer, below
+                  50px between panes — DESIGN.md §2. The mark now lives INSIDE the composer, below
                   every one of those rows, so nothing the terminal prints can relocate it. */}
-              {/* THE CHROME BLOCK, DRAWN ONCE. Everything the thumb operates — the switcher grip, the
+              {/* THE CHROME BLOCK, DRAWN ONCE. Everything the thumb operates — the switcher mark, the
                   controls, the input — stands on ONE surface, closed against the terminal above by ONE
                   rule. The handle used to stand OUTSIDE it, on the mirror's own black: the dock read as
                   chrome and the handle floating above it read as part of the terminal, a control with
                   no ground. That is what "hard to distinguish" meant in dark, where `--background` IS
                   the mirror's fill (mirror-space.ts) and a 6px grip at `bg-muted-foreground/50` was the
-                  only thing on screen saying a control was there. The grip is on the chrome now in the
+                  only thing on screen saying a control was there. The mark is on the chrome now in the
                   strongest sense there is: it is drawn on the belt's own rule.
 
                   The rule and the fill live HERE rather than on the composer's dock so that boundary
@@ -2014,7 +2015,7 @@ export function AgentChat({
                   setTapToFocus={setTapToFocus}
                   setExpandClippedReply={setExpandClippedReply}
                   onSent={onSent}
-                  // The switcher grip, for the actions belt's top rule — see the condition at
+                  // The switcher mark, for the actions belt's top rule — see the condition at
                   // `pullHandle` above, and actions-row.tsx for what it draws.
                   pullHandle={pullHandle}
                 />

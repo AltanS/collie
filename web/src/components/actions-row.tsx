@@ -1,3 +1,4 @@
+import { ChevronUp } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -164,14 +165,18 @@ export interface ActionsRowProps {
   /** Bound to the composer's `locked`. Greys the harness buttons in place. */
   disabled?: boolean;
   /**
-   * THE PANE SWITCHER'S GRIP, RIDING THIS BELT'S TOP RULE. Absent by default, and absent is the
+   * THE PANE SWITCHER'S MARK, RIDING THIS BELT'S TOP RULE. Absent by default, and absent is the
    * whole of the old behaviour: nothing renders and no class on this row changes.
    *
-   * The belt owns it because the belt owns the rule the grip sits on. It used to be a 30px band of
-   * its own above the composer; the band is gone and the mark moved down onto the hairline, half
-   * above and half below, on a small `bg-chrome` patch that breaks the rule around it. It costs the
-   * chrome block NO height at all — the patch is absolutely positioned, so the belt does not move
-   * and nothing below it does either.
+   * The belt owns it because the belt owns the rule the mark sits on. It used to be a 30px band of
+   * its own above the composer; the band is gone and a small up-chevron moved down onto the
+   * hairline, half above and half below, on a small `bg-chrome` patch that breaks the rule around
+   * it. It costs the chrome block NO height at all — the patch is absolutely positioned, so the
+   * belt does not move and nothing below it does either.
+   *
+   * IT IS A SMALL CHEVRON AND NOT THE OLD 6px BAR. That bar was a drag handle on a full-width lane
+   * of its own, where a wide grip reads correctly. This mark sits ON a rule shared with everything
+   * else on the belt, where a wide bar would read as a second hairline.
    *
    * `ref` goes on the drawn button, which is what {@link import("@/hooks/use-sheet-pull")} measures:
    * the anchor it reports is now the belt's own top edge, which is where the sheet should peek from.
@@ -223,22 +228,25 @@ export function ActionsRow({
       // and a class that appears with a prop is a class nobody remembers is conditional.
       className="relative -mx-3 mt-1.5 mb-1.5 flex items-center border-y border-border bg-foreground/6"
     >
-      {/* THE GRIP, ON THE RULE — see `handle` above for why it lives on this row at all.
+      {/* THE MARK, ON THE RULE — see `handle` above for why it lives on this row at all, and for why
+          it is a small up-chevron rather than a wide bar.
           It is the FIRST child and a SIBLING of the OverflowEdges wrapper, and both facts are
           load-bearing. A mask applies to its element's whole subtree (overflow-edges.tsx says so at
-          the middle div), so a grip inside the wrapper would fade out with the pills exactly where
+          the middle div), so a mark inside the wrapper would fade out with the pills exactly where
           the belt overflows; outside it, nothing masks it. `z-10` puts it over the scroller, so a
           pill that pans under the patch cannot take the tap.
           THE GEOMETRY. `top-0` resolves against this row's PADDING box, which is one border-width
-          below the rule, and `-translate-y-1/2` then centres the 6px grip on it — half above the
-          hairline, half below, within half a CSS pixel. `px-1` is the 4px of patch either side that
-          makes the rule visibly break around the mark rather than run behind it.
+          below the rule, and `-translate-y-1/2` then centres the patch on it — half above the
+          hairline, half below, within half a CSS pixel. `px-2 py-0.5` is the patch around the
+          `size-3` chevron that makes the rule visibly break around the mark rather than run behind
+          it.
           THE HIT BOX IS A `::before`, the negative-inset trick from ui/labelled-strip.tsx's
-          STRIP_TAP_TARGET: 6 + 19 + 19 = 44 tall and 56 + 4 + 4 = 64 wide, answered by a patch that
-          draws 56x6 and takes no layout at all. Nothing clips it — this row is not a scroll
-          container, only the scroller inside it is.
-          IT OVERLAPS THE BELT, KNOWINGLY. The top ~16px of the belt over a 64px centre patch belongs
-          to the grip, and `touch-none` means a touch starting there cannot pan the belt sideways.
+          STRIP_TAP_TARGET. The patch itself draws 28x16 (12px icon + 2·8px x-padding, 12px icon +
+          2·2px y-padding); centred on the rule the 44-tall/64-wide answer needs
+          `-inset-y-[14px]` (16 + 14 + 14 = 44) and `-inset-x-[18px]` (28 + 18 + 18 = 64). Nothing
+          clips it — this row is not a scroll container, only the scroller inside it is.
+          IT OVERLAPS THE BELT, KNOWINGLY. The top of the belt over the centre patch belongs
+          to the mark, and `touch-none` means a touch starting there cannot pan the belt sideways.
           The belt is 48px tall and scrolls from anywhere else on its length, so the trade is one
           small centre patch against a gesture that used to cost 30px of glass. */}
       {handle && (
@@ -247,9 +255,9 @@ export function ActionsRow({
           ref={handle.ref}
           aria-label={handle.label}
           onClick={handle.onClick}
-          className="absolute top-0 left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center rounded-md bg-chrome px-1 transition-colors select-none before:absolute before:-inset-x-1 before:-inset-y-[19px] before:content-[''] active:bg-muted/50"
+          className="absolute top-0 left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center rounded-md bg-chrome px-2 py-0.5 text-muted-foreground transition-colors select-none before:absolute before:-inset-y-[14px] before:-inset-x-[18px] before:content-[''] active:bg-muted/50"
         >
-          <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
+          <ChevronUp className="size-3" aria-hidden />
         </button>
       )}
       {/* OverflowEdges measures this scroller and fades — and chevrons — only the end that still
