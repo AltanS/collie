@@ -1,22 +1,33 @@
-import { Check } from "lucide-react";
+import { Check, Cpu, Gauge, History, ListTree, Shrink, Slash } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
+import { AGENT_BRANDS } from "@/components/agent-icon-data";
 import { Button } from "@/components/ui/button";
-import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
+import { STRIP_ROW_PILL } from "@/components/ui/labelled-strip";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useLocale } from "@/hooks/use-locale";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
 import { t as translate, type MessageKey } from "@/lib/i18n";
 import { barFor, type HarnessBarItem } from "@/lib/harness-bar";
 import { useHarnessBarEnabled } from "@/lib/harness-bar-pref";
+import { canonicalAgent } from "@/lib/operator-scope";
 import type { OperatorCommand } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// The harness bar: one row of the running agent's own slash commands, above the key rail and below
-// the status band. Model, Effort, Compact and Resume on a Claude Code pane; Codex, pi and omp get
-// their own. The table is lib/harness-bar.ts — nothing here decides what the buttons are.
+// The harness segment of the actions row: the running agent's own slash commands, sitting inside the
+// one scrolling row above the input (components/actions-row.tsx). Model, Effort, Compact and Resume
+// on a Claude Code pane; Codex, pi and omp get their own. The table is lib/harness-bar.ts — nothing
+// here decides what the buttons are.
 //
 // It exists because Altan drives Claude Code from the phone and wants those four under the thumb
 // rather than three taps down inside the Agent palette.
+//
+// IT IS COLOURED, AND THE COLOUR IS THE POINT. These buttons do not do what their neighbours do: a
+// general action opens one of Collie's own docks, and one of these types into somebody else's
+// program. So the segment carries the harness's own brand tint and draws its icons in that colour,
+// which says "these belong to Claude Code" without a word and without a rule down its side. A brand
+// with no legible accent (Codex, pi — both officially black) falls back to the app's muted ground;
+// see `accent` in agent-icon-data.ts for why absent is a real answer there.
 //
 // IT ADDS NO REFUSAL OF ITS OWN. `disabled` (the composer's `locked`) greys every button in place,
 // the way the key rail greys a key the multiplexer refuses rather than removing it. Everything else
@@ -25,9 +36,9 @@ import { cn } from "@/lib/utils";
 // gate, one place. The checkmark is the honest signal — it appears only when `send()` resolved true,
 // so a tap that was refused shows nothing and the label stays put.
 //
-// It does not collapse or animate. A row that appeared and disappeared would move the input under the
-// thumb, and DESIGN.md §2 says reserve, never reflow — so its presence is decided by the pane's
-// agent, which does not change while the pane is on screen.
+// It does not collapse or animate. A segment that appeared and disappeared would move the input
+// under the thumb, and DESIGN.md §2 says reserve, never reflow — so its presence is decided by the
+// pane's agent, which does not change while the pane is on screen.
 
 /**
  * A bar label is either an i18n key or literal text, and the prefix is the discriminator:
@@ -42,6 +53,29 @@ function labelText(label: string): string {
   return translate(label as MessageKey);
 }
 
+/**
+ * One glyph per bar ID, so the same idea wears the same icon on every harness: Compact is the same
+ * button on Claude Code and on omp, and the thumb learns it once.
+ *
+ * Keyed on the ID rather than declared in the table, because lib/harness-bar.ts is pure by design —
+ * no React import, no `t()`, no DOM — and a lucide component is all three.
+ *
+ * A Map, not an object literal, for the reason the table itself gives: an operator row's id is
+ * `op:/whatever`, which an object lookup would answer for inherited names.
+ */
+const ICONS = new Map<string, LucideIcon>([
+  ["model", Cpu], // which brain is answering
+  ["effort", Gauge], // how hard it is told to think
+  ["compact", Shrink], // fold the context up
+  ["resume", History], // go back to an earlier session
+  ["tree", ListTree], // the session tree
+]);
+
+/** An operator's own row gets the slash — it is their command, and we know nothing else about it. */
+function iconFor(id: string): LucideIcon {
+  return ICONS.get(id) ?? Slash;
+}
+
 export interface HarnessBarProps {
   /** The focused pane's agent — the same value the composer threads into the command palettes. */
   agent: string | undefined | null;
@@ -53,17 +87,31 @@ export interface HarnessBarProps {
   disabled?: boolean;
 }
 
+/**
+ * The segment's items, or none — the Settings switch and the table, asked as one question.
+ *
+ * Exported because the ACTIONS ROW has to know whether this segment will draw anything before it
+ * decides to draw itself at all (a row with no general actions and no harness must cost no
+ * height). One gate, one place: the row asks this, it does not re-read the switch.
+ */
+export function useHarnessBarItems(
+  agent: string | undefined | null,
+  mine?: readonly OperatorCommand[],
+): readonly HarnessBarItem[] {
+  const shown = useHarnessBarEnabled();
+  return shown ? barFor(agent, mine) : [];
+}
+
 export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
   useLocale();
-  const shown = useHarnessBarEnabled();
   const echo = useActionEcho();
   const { pending, confirm, reset } = usePendingConfirm();
+  const items = useHarnessBarItems(agent, mine);
 
-  // The gate lives here rather than at the two call sites, so the composer cannot drift into showing
-  // the row in one layout and not the other. Off, or no items for this agent, and it renders nothing
-  // and costs no height.
-  const items = shown ? barFor(agent, mine) : [];
+  // Off, or no items for this agent, and it renders nothing and costs no width.
   if (items.length === 0) return null;
+
+  const accent = accentFor(agent);
 
   function fire(item: HarnessBarItem) {
     if (item.confirm === true && !confirm(item.id)) return; // first tap arms the confirm
@@ -73,43 +121,67 @@ export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
 
   return (
     <div
-        data-slot="harness-bar"
-        role="group"
-        aria-label={translate("harnessBar.label")}
-        className="-mx-3 mt-1 mb-1 flex items-center"
-      >
-        {/* 32px faces inside a `py-1.5` scroller give each button a 44px touch height, `min-w-11`
-            supplies the other axis, and the row scrolls sideways rather than wrapping to a second
-            line. */}
-        <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain px-3 py-1.5 [mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {items.map((item) => {
-            const phase = echo.phaseOf(item.id);
-            const armed = pending === item.id;
-            return (
-              <Button
-                key={item.id}
-                type="button"
-                variant={phase === "idle" && !armed ? "ghost" : "default"}
-                size="sm"
-                disabled={disabled}
-                onClick={() => fire(item)}
-                aria-label={
-                  armed
-                    ? translate("harnessBar.confirmAria", { command: item.command })
-                    : labelText(item.label)
-                }
-                className={cn(
-                  `${STRIP_TAP_TARGET} before:-inset-x-px h-8 min-w-11 shrink-0 touch-manipulation px-2.5 text-xs select-none`,
-                  armed
-                    ? "border border-destructive/40 bg-destructive/10 text-destructive"
-                    : "text-muted-foreground",
-                )}
-              >
-                {phase === "done" ? <Check className="size-4" /> : labelText(item.label)}
-              </Button>
-            );
-          })}
-        </div>
+      data-slot="harness-bar"
+      role="group"
+      aria-label={translate("harnessBar.label")}
+      // A tinted capsule, never a rule down one side. `rounded-full px-1` is the whole device: the
+      // pills keep their own 32px faces, and the capsule is 8px wider than the run of them.
+      className={cn(
+        "flex shrink-0 items-center gap-1 rounded-full px-1",
+        accent === undefined && "bg-muted",
+      )}
+      style={
+        accent === undefined
+          ? undefined
+          : // 14% of the brand on whatever ground is behind it, so the one value reads in both
+            // themes instead of one tint fighting the dark one.
+            { backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)` }
+      }
+    >
+      {items.map((item) => {
+        const phase = echo.phaseOf(item.id);
+        const armed = pending === item.id;
+        const Icon = iconFor(item.id);
+        return (
+          <Button
+            key={item.id}
+            type="button"
+            variant={phase === "idle" && !armed ? "ghost" : "default"}
+            size="sm"
+            disabled={disabled}
+            onClick={() => fire(item)}
+            aria-label={
+              armed
+                ? translate("harnessBar.confirmAria", { command: item.command })
+                : labelText(item.label)
+            }
+            className={cn(
+              `${STRIP_ROW_PILL} gap-1.5 text-xs`,
+              armed
+                ? "border border-destructive/40 bg-destructive/10 text-destructive"
+                : "text-foreground",
+            )}
+          >
+            {phase === "done" ? (
+              <Check className="size-4" />
+            ) : (
+              <>
+                {/* The icon takes the brand colour and the word does not. An icon is held to 3:1
+                    (non-text contrast) and clears it on both themes; a 12px word in #D97757 would
+                    not, so the label keeps the app's own text colour and stays readable. */}
+                <Icon className="size-4 shrink-0" style={accent ? { color: accent } : undefined} />
+                {labelText(item.label)}
+              </>
+            )}
+          </Button>
+        );
+      })}
     </div>
   );
+}
+
+/** The pane's brand accent, through the catalog's own agent ladder so `claude-code` finds Claude. */
+function accentFor(agent: string | undefined | null): string | undefined {
+  if (!agent) return undefined;
+  return AGENT_BRANDS.get(canonicalAgent(agent.toLowerCase().trim()))?.accent;
 }

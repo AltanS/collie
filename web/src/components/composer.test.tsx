@@ -1400,6 +1400,8 @@ describe("Composer — destructive-input confirm", () => {
 describe("Composer — the machine and the state, on a band of their own", () => {
   const box = () => screen.getByPlaceholderText(/type a reply/i);
   const row = () => document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!;
+  /** The scrolling row the controls group now sits in — it carries the row's own margins. */
+  const actions = () => document.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
   /** The status band above it: the host run, the status slot, or both. */
   const band = () => document.querySelector<HTMLElement>('[data-slot="composer-status"]')!;
   /** The reserved word slot — the band's last child (`ui/one-of.tsx`).
@@ -1560,9 +1562,10 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // …and the dock around them draws no edge either — the chrome block above it does.
     const dock = band().parentElement!;
     expect(dock.className).not.toMatch(/(?:^|\s)border/);
-    // The 10px the dock used to spend above the band is now below it, on the controls row.
+    // The 10px the dock used to spend above the band is now below it, on the actions row — which is
+    // the element that carries the margins since the controls group moved inside it.
     expect(dock.className).not.toMatch(/(?:^|\s)pt-/);
-    expect(row().className).toMatch(/(?:^|\s)mt-2(?=\s|$)/);
+    expect(actions().className).toMatch(/(?:^|\s)mt-2(?=\s|$)/);
     // A border colour with no width paints nothing (DESIGN.md §7 trap 1) — so the width is asserted
     // beside the colour, and this pin fails if either is dropped.
   });
@@ -1695,8 +1698,7 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // short would not separate the two regions it sits between. `px-2.5` then puts the content back
     // at the 10px inset the controls row asked for — which is also what absorbed the row's old
     // `-mx-0.5`: as a 2px overhang on a TRANSPARENT strip it was invisible, and on a filled one it
-    // would not have been. The controls row keeps its own `-mx-0.5`, which is the 1px per button it
-    // was bought for. tailwind-merge keeps only the LAST padding-* in one cn(), which is why the
+    // would not have been. tailwind-merge keeps only the LAST padding-* in one cn(), which is why the
     // band's inset is one `px-*` and not two.
     //
     // NO FILL. `--card` was tried here and measured against DESIGN.md §4, which says chrome is the
@@ -1709,8 +1711,11 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     expect(band().className).toMatch(/(?:^|\s)px-2\.5(?=\s|$)/);
     expect(band().className).not.toMatch(/(?:^|\s)bg-/);
     expect(band().className).toMatch(/(?:^|\s)justify-end(?=\s|$)/);
-    expect(row().className).toMatch(/(?:^|\s)-mx-0\.5(?=\s|$)/);
-    expect(row().className).not.toMatch(/(?:^|\s)px-/); // the row's inset is the dock's, trimmed
+    // The actions row bleeds the dock's own 12px gutter and puts it back on the scroller, so the
+    // last button scrolls clean off the screen instead of stopping short of it.
+    expect(actions().className).toMatch(/(?:^|\s)-mx-3(?=\s|$)/);
+    expect(actions().firstElementChild!.className).toMatch(/(?:^|\s)px-3(?=\s|$)/);
+    expect(row().className).not.toMatch(/(?:^|\s)px-/); // the group's inset is the scroller's
   });
 });
 

@@ -20,7 +20,7 @@ import { ChatInput } from "@/components/ui/chat/chat-input";
 import { NavTray } from "@/components/nav-tray";
 import { CommandPalette } from "@/components/command-palette";
 import { QuickActionsContent } from "@/components/quick-actions";
-import { HarnessBar } from "@/components/harness-bar";
+import { ActionsRow } from "@/components/actions-row";
 import { DisplayPrefsContent } from "@/components/display-prefs";
 import { SectionLabel } from "@/components/ui/section-label";
 import { Collapse } from "@/components/ui/collapse";
@@ -137,46 +137,11 @@ interface ComposerProps {
 // "display" joined the drawer union when the permanent icon-only View row was retired: wrap / raw
 // terminal / font size are settings you touch once, so they cost a whole row of a phone viewport for
 // nothing, and the raw-terminal toggle in particular was an unlabelled `>_` glyph nobody could
-// decode. They now live behind the ⚙ on the single Controls row, as labelled rows in the same
+// decode. They now live behind the ⚙ on the actions row, as labelled rows in the same
 // in-flow dock (they change how the mirror LOOKS, so the mirror has to stay visible while you flip
 // them). Find moved the other way — to the header, where its find bar already takes over the row.
 type ComposerDrawer = "quick" | "cmd" | "keys" | "display" | null;
 
-// The Controls row's "on" look, authored once so an open dock and an armed mode can never drift
-// apart. `hover:` is pinned to the same tint: without it, hovering an already-on control repaints it
-// with the ghost variant's hover background and it reads as switching off under the cursor.
-const CONTROL_ON = "bg-control-on text-control-on-foreground hover:bg-control-on";
-const CONTROL_OFF = "text-muted-foreground";
-
-// The box every LABELLED control on that row wears. Authored once because the row's whole defect was
-// per-button drift in a fixed width: four buttons sized by their own text, in a container that is
-// 366px on a 390px phone and cannot grow.
-//
-// `shrink` is the load-bearing word. `ui/button.tsx`'s base string carries `shrink-0`, so `flex-1`
-// (which does set flex-shrink:1, in a shorthand) lost to the longhand and every button sat at its
-// CONTENT width. Measured on the pane screen at 390px: the row's scrollWidth ran 18px past its
-// clientWidth in English and 70px past in Japanese, and the overflow-x-hidden ancestor on the pane
-// column cut the ⚙ in half rather than letting it scroll — the control was not reachable at all.
-// Restoring flex-shrink, plus `min-w-0` to lift the flex item's min-content floor, plus `truncate`
-// on the label span (below) makes the row structurally incapable of exceeding its container: the
-// worst case is now an ellipsis on the longest word, not a missing button.
-//
-// `h-11` is 44px — the tap target the row never actually had (it was `h-8`/32px). It costs the
-// composer 12px of height, and that is the trade: a control you can hit beats a control that only
-// looks tidy.
-//
-// The icon sits ABOVE the word (`flex-col`) rather than beside it, and that is a MEASUREMENT, not a
-// taste. Side by side, a 74.5px button spends 16px on the icon and its gap before the first letter,
-// which leaves ~38px of text — and four of the six shipped locales ellipsised at 390px, CJK worst
-// (`エージェント` is six full-width glyphs). Stacked, the word gets the button's whole width and a
-// 10px size, so all six draw in full at 390px and only ja's longest ellipsises at 320px. A fix that
-// only reads in English is not a fix.
-const CONTROL_BUTTON =
-  "h-11 min-w-0 flex-1 shrink flex-col gap-0.5 px-1 has-[>svg]:px-1 text-[10px] font-medium leading-none [&>svg]:shrink-0";
-// The label inside that box. `truncate` needs a box of its own to clip against — a bare text node
-// in a flex button has none — and `max-w-full` is what keeps that box from simply being the text's
-// own width.
-const CONTROL_LABEL = "max-w-full truncate";
 
 // Pause after clearing a stranded terminal draft so the TUI settles before pane.send_text. Exported
 // so the test can pin the WAIT ITSELF (the reply never overtakes the sweep) against the constant
@@ -1263,122 +1228,97 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <HostChip host={writeHost} variant="caption" className="min-w-0" />
           <StatusWordSlot status={statusWord} stale={stale} />
         </div>
-        {/* The running agent's own commands, above the controls group and below the status band —
-            above the input and below the dock site, like every other row of this chrome. It sends
-            TEXT through `send`, not keys through `pressKeys` — a bar item is a slash command plus a
-            submit, which is what `send` is. The sheet-open prop is deliberately not threaded from
-            here: it is a test seam. */}
-        <HarnessBar
+        {/* ── THE ACTIONS ROW ──────────────────────────────────────────────────────────────────
+            One row, two segments: Collie's own controls, then the running harness's own commands in
+            the harness's own colour. It replaced the Controls row and the separate harness bar,
+            which were two rows of a phone's glass answering one question. The row itself is
+            actions-row.tsx; everything below is only what each action DOES.
+ */}
+        <ActionsRow
+          general={[
+              // Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to
+              // open, tap again to close. `expanded` ties each to the dock; the "on" tint marks
+              // it pressed while open. Both share the single-valued `drawer`, so opening one
+              // closes the other.
+              {
+                id: "keys",
+                icon: Keyboard,
+                label: translate("composer.controls.keys"),
+                on: drawer === "keys",
+                expanded: drawer === "keys",
+                disabled: locked,
+                onSelect: () => requestDrawer(drawer === "keys" ? null : "keys"),
+              },
+              // "Type into terminal" lives HERE, beside Keys, rather than on the Send button.
+              // It is the same problem split in half: Keys exists because the phone keyboard
+              // cannot send Esc/Tab/arrows/chords, this exists because it cannot send bare
+              // printable letters — so someone who wants to press `b` looks in this row first.
+              // It is also used in bursts (a picker, a y/n prompt) and then not for days, which
+              // is the wrong shape for a permanent fixture on the app's most-used control: a
+              // split Send button cost a third of the primary action's width every day to serve
+              // a mode used on a few of them.
+              // Unlike its neighbours this toggles state instead of opening a dock — the armed
+              // strip above the input is what makes that visible. Arming is still an explicit
+              // NAMED choice, which is what keeps an accidental touch from quietly wiring the
+              // keyboard to a live terminal; see use-direct-typing.ts for the rest.
+              {
+                id: "type",
+                icon: Terminal,
+                label: translate("composer.controls.typeAria"),
+                on: direct.active,
+                pressed: direct.active,
+                disabled: locked || sending,
+                onSelect: () => {
+                  if (direct.active) {
+                    direct.deactivate();
+                    return;
+                  }
+                  // Close whatever dock is open first: the mode needs the phone keyboard, and a
+                  // dock holding half the viewport is the thing in its way. Routed through
+                  // requestDrawer so a staged key queue still gets its discard confirm
+                  // (ADR 0005).
+                  requestDrawer(null);
+                  direct.activate();
+                },
+              },
+              {
+                id: "quick",
+                icon: Zap,
+                label: translate("composer.controls.quick"),
+                on: drawer === "quick",
+                expanded: drawer === "quick",
+                disabled: locked,
+                onSelect: () => requestDrawer(drawer === "quick" ? null : "quick"),
+              },
+              // Withdrawn rather than greyed when this pane has no commands at all: there is no
+              // palette to open, which is a different thing from one this device may not use.
+              ...(commands.length > 0
+                ? [
+                    {
+                      id: "agent",
+                      icon: Slash,
+                      label: translate("composer.controls.agent"),
+                      disabled: locked,
+                      onSelect: () => requestDrawer("cmd"),
+                    },
+                  ]
+                : []),
+              // Display prefs. Not gated on `locked`: wrap/font/raw-terminal are local view
+              // state, so a read-only device or a gone pane can still make its mirror readable.
+              {
+                id: "display",
+                icon: Settings2,
+                label: translate("composer.controls.displayAria"),
+                on: drawer === "display",
+                expanded: drawer === "display",
+                onSelect: () => requestDrawer(drawer === "display" ? null : "display"),
+              },
+          ]}
           agent={agent}
           mine={operatorCommands}
           onRun={(command) => send(command, false)}
           disabled={locked}
         />
-        {/* `gap-1.5` rather than `gap-2`: four gaps at 8px is 32px of a 366px row, and 6px reads the
-            same. The group still carries `aria-labelledby` to the word "Controls" — the word is now
-            `sr-only` rather than deleted, because it was doing TWO jobs and only one of them was
-            visual. Sighted, it labelled a row of five self-labelling buttons and earned nothing. In
-            the accessibility tree it is the only thing that names the group at all, and dropping it
-            would leave a bare `role="group"` wrapping Keys/Type/Quick/Agent/⚙ with no name for a
-            screen reader to announce on entry. The host does NOT inherit that job: it names a
-            machine, not a run of controls, and it is absent on every solo install — which is also
-            why it now stands OUTSIDE this group, in the band above, where it belongs to the line it
-            completes rather than to five buttons it does not describe. */}
-        <div
-          data-slot="composer-controls"
-          role="group"
-          aria-labelledby="composer-controls-label"
-          className="-mx-0.5 mb-1.5 mt-2 flex items-center gap-1.5"
-        >
-          <SectionLabel id="composer-controls-label" className="sr-only">
-            {translate("composer.controls.label")}
-          </SectionLabel>
-          {/* Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to open, tap
-              again to close. aria-expanded ties each to the dock; secondary variant marks it pressed
-              while open. Both share the single-valued `drawer`, so opening one closes the other. */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(CONTROL_BUTTON, drawer === "keys" ? CONTROL_ON : CONTROL_OFF)}
-            disabled={locked}
-            aria-expanded={drawer === "keys"}
-            aria-label={translate("composer.controls.keys")}
-            onClick={() => requestDrawer(drawer === "keys" ? null : "keys")}
-          >
-            <Keyboard className="size-4" />
-            <span className={CONTROL_LABEL}>{translate("composer.controls.keys")}</span>
-          </Button>
-          {/* "Type into terminal" lives HERE, beside Keys, rather than on the Send button.
-              It is the same problem split in half: Keys exists because the phone keyboard cannot
-              send Esc/Tab/arrows/chords, this exists because it cannot send bare printable letters —
-              so someone who wants to press `b` looks in this row first. It is also used in bursts
-              (a picker, a y/n prompt) and then not for days, which is the wrong shape for a
-              permanent fixture on the app's most-used control: a split Send button cost a third of
-              the primary action's width every day to serve a mode used on a few of them.
-              Unlike its neighbours this toggles state instead of opening a dock — the armed strip
-              above the input is what makes that visible. Arming is still an explicit NAMED choice,
-              which is what keeps an accidental touch from quietly wiring the keyboard to a live
-              terminal; see use-direct-typing.ts for the rest of that argument. */}
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(CONTROL_BUTTON, direct.active ? CONTROL_ON : CONTROL_OFF)}
-            disabled={locked || sending}
-            aria-pressed={direct.active}
-            aria-label={translate("composer.controls.typeAria")}
-            onClick={() => {
-              if (direct.active) {
-                direct.deactivate();
-                return;
-              }
-              // Close whatever dock is open first: the mode needs the phone keyboard, and a dock
-              // holding half the viewport is the thing in its way. Routed through requestDrawer so a
-              // staged key queue still gets its discard confirm (ADR 0005).
-              requestDrawer(null);
-              direct.activate();
-            }}
-          >
-            <Terminal className="size-4" />
-            <span className={CONTROL_LABEL}>{translate("composer.controls.type")}</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(CONTROL_BUTTON, drawer === "quick" ? CONTROL_ON : CONTROL_OFF)}
-            disabled={locked}
-            aria-expanded={drawer === "quick"}
-            aria-label={translate("composer.controls.quick")}
-            onClick={() => requestDrawer(drawer === "quick" ? null : "quick")}
-          >
-            <Zap className="size-4" />
-            <span className={CONTROL_LABEL}>{translate("composer.controls.quick")}</span>
-          </Button>
-          {commands.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(CONTROL_BUTTON, "text-muted-foreground")}
-              disabled={locked}
-              aria-label={translate("composer.controls.agent")}
-              onClick={() => requestDrawer("cmd")}
-            >
-              <Slash className="size-4" />
-              <span className={CONTROL_LABEL}>{translate("composer.controls.agent")}</span>
-            </Button>
-          )}
-          {/* Display prefs. Not gated on `locked`: wrap/font/raw-terminal are local view state, so a
-              read-only device or a gone pane can still make its mirror readable. */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn("size-11 shrink-0", drawer === "display" ? CONTROL_ON : CONTROL_OFF)}
-            aria-label={translate("composer.controls.displayAria")}
-            aria-expanded={drawer === "display"}
-            onClick={() => requestDrawer(drawer === "display" ? null : "display")}
-          >
-            <Settings2 className="size-4" />
-          </Button>
-        </div>
         {/* ── THE FOOTER'S NOTICE STRIPS, SORTED BY KIND (DESIGN.md §1, §2) ─────────────────────
             Every strip below arrives and leaves through `Collapse`, which is the only sanctioned way
             an in-flow surface appears at all. Before this they were bare conditionals, so each one

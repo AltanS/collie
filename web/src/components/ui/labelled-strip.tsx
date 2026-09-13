@@ -42,6 +42,29 @@ export const STRIP_TAP_TARGET =
 export const STRIP_TAP_TARGET_SQUARE = `${STRIP_TAP_TARGET} before:-inset-x-[7px]`;
 
 /**
+ * The sideways scroller the composer's thin rows are built on — the key rail and the actions row.
+ *
+ * Written down once because the recipe is four decisions that only work together: `py-1.5` is the
+ * room {@link STRIP_TAP_TARGET} reaches into for its 44px floor, `min-w-0` lets the row shrink
+ * inside its flex parent instead of pushing its neighbours off, the edge mask says "there is more
+ * this way" without a scrollbar, and the two scrollbar rules hide the one the platform would draw.
+ * Change one of them at a call site and that row quietly loses its tap floor or its overflow.
+ *
+ * The horizontal padding is NOT here: each row pairs its own `px-*` with the negative margin that
+ * cancels it, and those two are one number (see LabelledStrip's note 3).
+ */
+export const STRIP_SCROLLER =
+  "flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-1.5 [mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+
+/**
+ * The 32px face a button wears inside {@link STRIP_SCROLLER}: 32 drawn, 46 answered, 44 wide at its
+ * narrowest. `before:-inset-x-px` reaches the border edges rather than a neighbour, which is what
+ * lets these sit at a 6px gap without two hit boxes overlapping. The caller adds its own colour and
+ * typography; nothing about the box is a caller's to pick.
+ */
+export const STRIP_ROW_PILL = `${STRIP_TAP_TARGET} before:-inset-x-px h-8 min-w-11 shrink-0 touch-manipulation px-2.5 select-none`;
+
+/**
  * Whether the strips in this subtree DRAW their names, or only expose them to a screen reader.
  *
  * This is a ROUTE-level treatment and deliberately not a prop. `hideLabel` used to be a prop and was

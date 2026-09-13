@@ -160,24 +160,34 @@ documented in [ADR 0018](../.adr/0018-operator-command-rows-replace-the-catalog.
 
 To verify, open a pane and tap **/**; your rows appear on the first screen.
 
-### Putting a command on the harness bar
+### Putting a command on the actions row
 
-`bar = true` also puts the row on the harness bar, the row of buttons above the keys. A bar row is
-still an ordinary palette row, so it appears on both surfaces. `bar_label` is the button's text and
-defaults to the command name without its slash.
+`bar = true` also puts the row on the actions row, the one row of buttons above the keyboard. A bar
+row is still an ordinary palette row, so it appears on both surfaces. `bar_label` is the button's
+text and defaults to the command name without its slash.
 
-Your bar rows replace the shipped bar for the panes they address, and leave the bar alone everywhere
-else. The Agent palette is a separate surface and one bar row never blanks it
+The actions row holds two groups. Collie's own controls come first: Keys, Type, Quick, Agent and the
+display gear. The harness's own commands follow, in a tinted segment carrying the harness's brand
+colour, so you can see at a glance which buttons type into the agent. The row scrolls sideways when
+the two groups do not fit; nothing is dropped.
+
+Every harness button sends its command bare. **Model sends `/model`, and the agent's own model
+picker takes over in the pane.** Collie keeps no list of model names, because that list is the
+harness's and it changes without telling us. Effort works the same way.
+
+Your bar rows replace the shipped harness segment for the panes they address, and leave it alone
+everywhere else. The Agent palette is a separate surface and one bar row never blanks it
 ([ADR 0043](../.adr/0043-operator-bar-rows-replace-the-bar-not-the-palette.md)).
 
 A `bar_label` longer than 12 characters is shortened and the button still appears. A `bar` that is
 not `true` or `false` drops that one row, the same way a bad `confirm` does.
 
-The bar sends while the agent is busy, the same as the command palette. The checkmark appears only
+The row sends while the agent is busy, the same as the command palette. The checkmark appears only
 when the pane took the text.
 
-To verify, open a pane running Claude Code, Codex, pi or omp; the row sits directly above the keys.
-Turn it off per device in **Settings → Harness shortcuts**.
+To verify, open a pane running Claude Code, Codex, pi or omp; the tinted segment sits at the right
+of the row above the keyboard. Turn that segment off per device in **Settings → Harness shortcuts**;
+Collie's own controls stay.
 
 ## Your own key presets
 

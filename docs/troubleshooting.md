@@ -73,7 +73,7 @@ the fourth proxy requirement in
 [`docs/deployment.md`](deployment.md#variant-b--identity-aware-proxy--per-device-authorisation).
 
 **A `sudo` (or SSH passphrase, or `gpg`) prompt won't take your reply.** Use **Type** in the
-Controls row, not Send. Send *verifies* what it typed by reading it back off the screen before it
+actions row above the keyboard, not Send. Send *verifies* what it typed by reading it back off the screen before it
 presses Enter ([#34](https://github.com/AltanS/collie/issues/34)), and a password prompt turns echo
 off, so there is nothing to read back — **Type** sends your keystrokes straight to the pane, Enter
 included. Nothing you type in **Type** is stored, echoed into a draft, or restored later, and the
