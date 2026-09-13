@@ -269,10 +269,15 @@ describe("AgentChat — the pane header's identity block", () => {
     // surface a reply is typed on, which is the whole of what `sends` marks. Unreachable here, so
     // the tag carries the fault with it.
     const tag = screen.getByLabelText(/^host: workshop \(unreachable\)$/i);
-    // In the header's trailing column, in its SECOND slot, and outside the identity button — a chip
-    // inside that button would be a control no reader could reach.
+    // In the header's trailing column, in its SECOND slot, under the cache reading and the ⋮, and
+    // outside the identity button — a chip inside that button would be a control no reader could
+    // reach. The ⋮ is in the column too, so the whole trailing corner is one object.
     const column = container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
     expect(column.children[1]!.contains(tag)).toBe(true);
+    // SAFETY: the column's first child is the plain <div> top slot written in agent-chat.tsx, never
+    // an SVG or other non-HTMLElement.
+    const topSlot = column.children[0] as HTMLElement;
+    expect(within(topSlot).getByLabelText(/pane actions/i)).toBeInTheDocument();
     expect(identity(container)!.contains(tag)).toBe(false);
     cleanup();
 
@@ -283,6 +288,40 @@ describe("AgentChat — the pane header's identity block", () => {
     const soloColumn = solo.container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
     expect(soloColumn.children).toHaveLength(2);
     expect(soloColumn.children[1]!.className).toMatch(/h-\[21px\]/);
+  });
+
+  it("never changes the header's height, whatever the column has to say", () => {
+    // DESIGN.md §2, and the fault Altan reported from his phone: the header jumped as the host tag
+    // arrived. The column is 69px and the identity block is 44px, so the COLUMN is what sets this
+    // row's height — and it used to be gated three ways, each of which took that 69px away and gave
+    // it back: it hung off `agent`, it sat in HeaderStatus's `children` (which a live status
+    // REPLACES outright), and each chip self-hides on its own.
+    //
+    // What is asserted is the construction rather than a pixel: the column and both of its slots
+    // exist, at the same fixed heights, in every state — crew, solo, and a pane whose agent is gone
+    // — and no slot's height is written in terms of what is inside it.
+    const slotHeights = (c: HTMLElement) => {
+      const column = c.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
+      // SAFETY: every child of the column is a plain <div> written in agent-chat.tsx, never an SVG
+      // or other non-HTMLElement, so each one carries a string className.
+      return [...column.children].map(
+        (box) => /h-(?:11|\[21px\])/.exec((box as HTMLElement).className)?.[0],
+      );
+    };
+    const crew = renderCrewChat("workshop");
+    const withCrew = slotHeights(crew.container);
+    expect(withCrew).toEqual(["h-11", "h-[21px]"]);
+    cleanup();
+
+    // Solo: no tag, and the same two boxes.
+    const solo = renderChat();
+    expect(slotHeights(solo.container)).toEqual(withCrew);
+    cleanup();
+
+    // A pane whose agent is gone: no cache chip, no ⋮, no tag — and still the same two boxes.
+    const gone = renderChat({ agent: undefined, agents: [] });
+    expect(slotHeights(gone.container)).toEqual(withCrew);
+    expect(screen.queryByLabelText(/pane actions/i)).toBeNull();
   });
 
   it("puts the state into the accessibility tree, which the caption's own text cannot do", () => {

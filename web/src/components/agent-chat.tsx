@@ -1247,23 +1247,71 @@ export function AgentChat({
           // can never show more than the visible viewport. Offered only when the pane reported an
           // agent session id, so the row never leads to an empty screen. Both gates are now `undefined`
           // callbacks rather than unrendered buttons; the sheet hides a row it was given no callback for.
+          // THE TRAILING META, A COLUMN OF TWO FIXED SLOTS pinned to the row's right edge — the same
+          // two-corner shape `agent-card.tsx` gives every dashboard row, so one pane's header and a
+          // list of panes read the same way. Top slot: how long the prompt cache stays warm, then
+          // the ⋮. Bottom slot: the machine.
+          //
+          // IT IS ALWAYS MOUNTED, AND THAT IS THE WHOLE OF THE NO-SHIFT RULE (DESIGN.md §2). The
+          // column is 69px, taller than the identity block's 44px, so it is what sets this row's
+          // height — and a column that came and went would take 17px of the header with it. Three
+          // gates used to do exactly that: it hung off `agent`, so a pane arrived at 60px and grew
+          // when its snapshot landed; it sat in `children`, which {@link HeaderStatus} REPLACES
+          // outright while a status is live, so every toast shrank the row and grew it back; and
+          // each chip self-hides. So the column and both slots are unconditional and carry their own
+          // heights, and only the chips INSIDE them come and go.
+          //
+          // RIGHT EDGES. The column's own `pr-3` is where the tag's border and the ⋮'s glyph both
+          // land: the top slot cancels that padding with `-mr-3` so the ⋮'s 44px box still reaches
+          // the row's edge, and its `size-5` glyph, centred, sits 12px in — on the tag's line. The
+          // cache chip gives back its own trailing `px-1` for the same reason, so its reading sits
+          // beside the ⋮ rather than 4px off it.
           rightLead={
-            agent ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setDrawer("paneMenu")}
-                  aria-label={t("chat.paneMenu.aria")}
-                  // A real 44px box, stated, for the same reason SettingsGear states one and with no
-                  // negative margin for the same reason: the two icons this replaces were size-8 with
-                  // `-mr-1`, i.e. 32px drawn and 28px of unshared hit area at the very edge of the row.
-                  // One control can afford the floor.
-                  className="grid size-11 place-items-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
-                >
-                  <EllipsisVertical className="size-5" />
-                </button>
-              </>
-            ) : undefined
+            <div
+              data-slot="pane-meta"
+              className="flex shrink-0 flex-col items-end gap-1 pr-3"
+            >
+              {/* Each slot draws its own height whether or not the chip inside it does — the cache
+                  reading is absent until the agent has taken a turn, the machine is absent on a solo
+                  install, and the ⋮ is absent on a gone pane. None of those may move the others.
+                  `h-11` is the ⋮'s and the cache chip's own 44px tap box; `h-[21px]` is the bordered
+                  `AddressTag`'s rendered height, both measured the way agent-card.tsx measured them.
+                  `justify-end` so a longer cache reading grows LEFTWARD and the ⋮ never moves. */}
+              <div className="-mr-3 flex h-11 items-center justify-end gap-1">
+                {agent !== undefined && (
+                  <CacheChip
+                    cache={agent.cache}
+                    host={agent.host}
+                    variant="button"
+                    onOpen={() => setCacheSheetOpen(true)}
+                    className="-mr-1 min-h-11 items-center px-1"
+                  />
+                )}
+                {agent ? (
+                  <button
+                    type="button"
+                    onClick={() => setDrawer("paneMenu")}
+                    aria-label={t("chat.paneMenu.aria")}
+                    // A real 44px box, stated, for the same reason SettingsGear states one: the two
+                    // icons this replaces were size-8 with `-mr-1`, i.e. 32px drawn and 28px of
+                    // unshared hit area at the very edge of the row. One control can afford the
+                    // floor. The `-mr-3` that reaches the row's edge is the SLOT's, not this
+                    // button's, so the box is still square and still 44px.
+                    className="grid size-11 place-items-center rounded-lg text-muted-foreground transition-colors active:bg-muted/60"
+                  >
+                    <EllipsisVertical className="size-5" />
+                  </button>
+                ) : null}
+              </div>
+              {/* The machine. `variant="tag"` WITH its glyph — this is the dashboard's own tag, not
+                  the actions belt's width-capped one — and the chip's own hide rule takes care of a
+                  solo install, which is every install that exists today. It carried the write host
+                  at the belt's right end for a day; that end is the Switch pill's now
+                  (actions-row.tsx says why). */}
+              <div className="flex h-[21px] items-center">
+                <HostChip host={agent?.host} variant="tag" />
+              </div>
+            </div>
           }
         >
           {/* Title block: the agent's brand logo and the space › tab share line 1 (the agent name
@@ -1442,51 +1490,6 @@ export function AgentChat({
           ) : (
             <div className="min-w-0 flex-1">
               <span className="truncate font-semibold">{t("chat.header.agentGone")}</span>
-            </div>
-          )}
-          {/* THE ROW'S TRAILING META, A COLUMN OF TWO FIXED SLOTS pinned to the header's right edge —
-              the same two-corner shape `agent-card.tsx` gives every dashboard row, so the eye reads
-              one pane's header and a list of panes the same way. The cache reading on top, the
-              machine under it, both right-aligned, both drawing their own fixed height even when the
-              chip inside self-hides, so nothing downstream moves when one arrives or leaves.
-              A SIBLING of the identity button rather than a child of it, which the spec's "line one of
-              the identity block" cannot be: a button inside a button is invalid, and an aria-label on
-              the outer one replaces everything inside it, so a chip nested there would be a control no
-              reader could reach and no pointer could hit. Beside it, on the same row and the same
-              baseline, it reads as the line-one mark it is meant to be and keeps its own
-              44px-high hit box. Self-hides until the agent has taken a turn.
-              IT GROWS THE ROW, AND BY THE SLOT ALONE. The header row's floor is `min-h-15` (60px,
-              app-header.tsx) and the identity block's 44px sat inside it with slack; the column is
-              44 + 4 + 21 = 69px, so the row goes to 77px with its `py-1`. The cache chip's 44px is a
-              tap target and is not the thing that gives.
-              THE MACHINE IS BELOW THE CACHE and not above it because the cache reading was already in
-              that corner and a mark that moves corners between two releases is a mark nobody trusts.
-              It carried the write host at the actions belt's right end for a day; that end is the
-              Switch pill's now (actions-row.tsx says why). `variant="tag"` WITH its glyph here — this
-              is the dashboard's own tag, not the belt's width-capped one — and the chip's own hide
-              rule takes care of a solo install, which is every install that exists today. */}
-          {agent !== undefined && (
-            <div
-              data-slot="pane-meta"
-              className="flex shrink-0 flex-col items-end justify-between gap-1"
-            >
-              {/* Each slot draws its own height whether or not the chip inside it does — the cache
-                  reading is absent until the agent has taken a turn and the machine is absent on a
-                  solo install, and neither absence may move the other chip or the row. `h-11` is the
-                  cache chip's own 44px tap box; `h-[21px]` is the bordered `AddressTag`'s rendered
-                  height, both measured the same way agent-card.tsx measured them. */}
-              <div className="flex h-11 items-center">
-                <CacheChip
-                  cache={agent.cache}
-                  host={agent.host}
-                  variant="button"
-                  onOpen={() => setCacheSheetOpen(true)}
-                  className="min-h-11 items-center px-1"
-                />
-              </div>
-              <div className="flex h-[21px] items-center">
-                <HostChip host={agent.host} variant="tag" />
-              </div>
             </div>
           )}
           </HeaderStatus>
