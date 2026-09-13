@@ -62,6 +62,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The config schema forgets the 1.7.0 pack keys.** The two `COLLIE_PACK_*` timeout aliases left with the crew wire overlap, so `collie config show` no longer lists them.
 - **The agent card drops the relative-time chip.** The prompt-cache countdown next to it says what matters; the extra number read as a session clock and confused.
 - **The dashboard row keeps its chips in two fixed corners.** The machine and session sit top right, the cache countdown bottom right, and an empty corner keeps its space, so a row without a cache reading no longer slides its host chip sideways.
+- **The cache countdown carries a thermometer mark.** The chip on the dashboard row and in the pane header opens with one fixed glyph in the chip's own ink, so the number reads as a cache reading beside the host chip's server mark rather than as a loose word.
 
 ### Fixed
 

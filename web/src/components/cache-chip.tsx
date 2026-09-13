@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { Thermometer } from "lucide-react";
+
 import { useCrew } from "@/components/crew-provider";
 import { useLocale } from "@/hooks/use-locale";
 import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
@@ -29,6 +31,12 @@ import { cn } from "@/lib/utils";
 // `HostChip` wears — so a crew dashboard shows at a glance which numbers came from elsewhere. It does
 // NOT get a coloured dot of its own: `crew-formation.tsx` already settled that a second coloured mark
 // beside a `HostChip` says one fact twice.
+//
+// ── ONE FIXED GLYPH, LIKE HostChip'S Server MARK ─────────────────────────────
+// A bare `12m` sitting beside a `HostChip` that carries a `Server` glyph reads as a loose word, not a
+// reading — the eye has one shape to anchor "this is an address" and none for "this is a cache". The
+// same `Thermometer` mark opens the chip in every state; the state is carried by the word and the ink,
+// never by a second icon, so warm, expiring and cold all wear the one mark this component owns.
 
 // `--status-working` IS the app's amber, measured against both grounds in index.css's contrast table;
 // there is no second amber token and adding one would be a second answer to one question. `warm` and
@@ -70,6 +78,10 @@ export function CacheChip({ cache, host, variant = "row", onOpen, className }: C
 
   const body = (
     <>
+      {/* One fixed mark, in every state — the sibling of HostChip's `Server` glyph, at the same
+          `tag`-variant size. It inherits `currentColor`, so a peer's chip paints it in that
+          machine's identity ink with no extra code. */}
+      <Thermometer className="size-3 shrink-0" aria-hidden />
       <span aria-hidden>{view.label}</span>
       {view.overridden && (
         <>
