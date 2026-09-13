@@ -269,14 +269,15 @@ describe("AgentChat — the pane header's identity block", () => {
     // surface a reply is typed on, which is the whole of what `sends` marks. Unreachable here, so
     // the tag carries the fault with it.
     const tag = screen.getByLabelText(/^host: workshop \(unreachable\)$/i);
-    // In the header's trailing column, in its SECOND slot, under the cache reading and the ⋮, and
+    // In the header's trailing column, in its FIRST slot beside the ⋮, above the cache reading, and
     // outside the identity button — a chip inside that button would be a control no reader could
-    // reach. The ⋮ is in the column too, so the whole trailing corner is one object.
+    // reach. The order is the dashboard row's own (agent-card.tsx): the address on top, the cache
+    // reading below it.
     const column = container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
-    expect(column.children[1]!.contains(tag)).toBe(true);
     // SAFETY: the column's first child is the plain <div> top slot written in agent-chat.tsx, never
     // an SVG or other non-HTMLElement.
     const topSlot = column.children[0] as HTMLElement;
+    expect(topSlot.contains(tag)).toBe(true);
     expect(within(topSlot).getByLabelText(/pane actions/i)).toBeInTheDocument();
     expect(identity(container)!.contains(tag)).toBe(false);
     cleanup();
@@ -287,30 +288,45 @@ describe("AgentChat — the pane header's identity block", () => {
     expect(screen.queryByLabelText(/^host: /i)).toBeNull();
     const soloColumn = solo.container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
     expect(soloColumn.children).toHaveLength(2);
-    expect(soloColumn.children[1]!.className).toMatch(/h-\[21px\]/);
+    expect(soloColumn.children[0]!.className).toMatch(/h-\[21px\]/);
   });
 
   it("never changes the header's height, whatever the column has to say", () => {
-    // DESIGN.md §2, and the fault Altan reported from his phone: the header jumped as the host tag
-    // arrived. The column is 69px and the identity block is 44px, so the COLUMN is what sets this
-    // row's height — and it used to be gated three ways, each of which took that 69px away and gave
-    // it back: it hung off `agent`, it sat in HeaderStatus's `children` (which a live status
-    // REPLACES outright), and each chip self-hides on its own.
+    // DESIGN.md §2, and two faults Altan reported from his phone: the header jumped as the host tag
+    // arrived, and then the corner it landed in was "increasing header row height". Both are the
+    // same sentence — the column used to be TALLER than everything else in the row, so it set the
+    // height, and it was gated three ways that each took that height away and gave it back: it hung
+    // off `agent`, it sat in HeaderStatus's `children` (which a live status REPLACES outright), and
+    // each chip self-hides on its own.
     //
-    // What is asserted is the construction rather than a pixel: the column and both of its slots
-    // exist, at the same fixed heights, in every state — crew, solo, and a pane whose agent is gone
-    // — and no slot's height is written in terms of what is inside it.
+    // TWO CLAIMS, and the second is the one that ends the argument. The column and both of its slots
+    // exist at the same fixed heights in every state — crew, solo, and a pane whose agent is gone.
+    // And those heights sum to 41px (21 + 4 + 16), under the identity block's own 44px, so the row's
+    // `min-h-15` floor is what sets its height and nothing in this corner can raise it: the two tap
+    // targets in here are reached with a `::before`, not drawn.
     const slotHeights = (c: HTMLElement) => {
       const column = c.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
       // SAFETY: every child of the column is a plain <div> written in agent-chat.tsx, never an SVG
       // or other non-HTMLElement, so each one carries a string className.
       return [...column.children].map(
-        (box) => /h-(?:11|\[21px\])/.exec((box as HTMLElement).className)?.[0],
+        (box) => /h-(?:4|\[21px\])/.exec((box as HTMLElement).className)?.[0],
       );
     };
     const crew = renderCrewChat("workshop");
     const withCrew = slotHeights(crew.container);
-    expect(withCrew).toEqual(["h-11", "h-[21px]"]);
+    expect(withCrew).toEqual(["h-[21px]", "h-4"]);
+    // The row still states one floor and no height of its own, and the column is shorter than it.
+    const row = crew.container.querySelector<HTMLElement>('[data-slot="header-row"]')!;
+    expect(row.className).toMatch(/(?:^|\s)min-h-15(?=\s|$)/);
+    expect(row.className).not.toMatch(/(?:^|\s)h-\d/);
+    // Nothing in the corner draws a 44px box; both targets are reached with a `::before`.
+    const column = crew.container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
+    // SAFETY: every element inside the column is HTML written in agent-chat.tsx or in the two chip
+    // components it mounts; the `svg` marks inside them are excluded by the selector, so every hit
+    // carries a string className.
+    for (const el of column.querySelectorAll<HTMLElement>("div, button, span")) {
+      expect(el.className).not.toMatch(/(?:^|\s)(?:size-11|h-11|min-h-11)(?=\s|$)/);
+    }
     cleanup();
 
     // Solo: no tag, and the same two boxes.
@@ -1005,8 +1021,10 @@ describe("AgentChat \u2014 the pane menu in the header", () => {
     renderChat();
     const menu = screen.getByRole("button", { name: "Pane actions" });
     expect(menu).toBeInTheDocument();
-    // 44px, stated \u2014 the drawn box IS the hit box here (no negative margin pulling it back).
-    expect(menu.className).toContain("size-11");
+    // 44px, reached rather than drawn: the glyph is `size-5` and its `::before` adds 12px on
+    // every side, so the header's trailing column stays 41px tall (see the no-shift case above).
+    expect(menu.className).toContain("size-5");
+    expect(menu.className).toMatch(/before:-inset-3/);
   });
 
   // \u00a72: no state may move content. Opening the menu must not touch the row that triggered it \u2014
