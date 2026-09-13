@@ -1450,20 +1450,20 @@ describe("Composer — the machine opens the actions belt, and no band stands ab
     // gives a 2px line where the language says 1px — a fault this codebase has already fixed twice
     // (space-strip / tab-strip).
     //
-    // The belt closes both of its own edges, and there is nothing above it that draws one: the dock
-    // draws nothing (its top rule and fill moved out to the chrome block in agent-chat.tsx, which
-    // also carries the swipe handle, so the boundary against the terminal is drawn once above
-    // everything the thumb operates — agent-chat.test.tsx pins that half), and the status band that
-    // used to sit between them is gone.
+    // The belt closes its LOWER edge only, and the chrome block draws the upper one: the dock draws
+    // nothing (its top rule and fill moved out to the chrome block in agent-chat.tsx, which also
+    // carries the swipe handle, so the boundary against the terminal is drawn once above everything
+    // the thumb operates — agent-chat.test.tsx pins that half), the status band that used to sit
+    // between them is gone, and the belt now stands flush under that one rule with no margin.
     renderComposerWithStatus({ scope: { host: "workshop" } }, fixtureServers);
-    expect(actions().className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
-    // `border-border`, not `border-rule` — the belt's edges are component edges inside ONE chrome
-    // surface (handle above, input below); the regional cut is the chrome block's top rule.
+    expect(actions().className).toMatch(/(?:^|\s)border-b(?=\s|$)/);
+    // `border-border`, not `border-rule` — the belt's edge is a component edge inside ONE chrome
+    // surface (the input below); the regional cut is the chrome block's top rule.
     expect(actions().className).toMatch(/(?:^|\s)border-border(?=\s|$)/);
     expect(actions().className).not.toMatch(/(?:^|\s)border-rule(?=\s|$)/);
-    // …stated as ONE utility. `border-b border-t` would paint the same two lines and read as two
-    // decisions, and a later `border-b` in the same cn() would silently drop the top one.
-    expect(actions().className).not.toMatch(/(?:^|\s)border-[bt](?=\s|$)/);
+    // NO top rule and NO top margin — either one would put a second hairline, or a strip of empty
+    // chrome, between the mirror and the belt.
+    expect(actions().className).not.toMatch(/(?:^|\s)(?:border-y|border-t|mt-)/);
     // The controls group draws NOTHING at all: with the capsule retired it stands on the belt's own
     // ground, so it can neither double a seam nor outline itself.
     expect(row().className).not.toMatch(/(?:^|\s)border/);
@@ -1472,10 +1472,10 @@ describe("Composer — the machine opens the actions belt, and no band stands ab
     const dock = actions().previousElementSibling!;
     expect(dock.className).not.toMatch(/(?:^|\s)border/);
     expect(dock.className).not.toMatch(/(?:^|\s)pt-/);
-    // The belt's own top margin. It was `mt-2`, which was the air between the status band and these
-    // buttons; with the band gone the number separates the swipe handle from a hairline instead, and
-    // a rule needs less air than a line of type did.
-    expect(actions().className).toMatch(/(?:^|\s)mt-1\.5(?=\s|$)/);
+    // …and the belt has no top margin of its own. It was `mt-2`, the air between the status band and
+    // these buttons, then `mt-1.5`, the room the pull-up grip's upper half hung into. Both are gone,
+    // so the belt stands flush under the chrome block's rule and there is no empty strip above it.
+    expect(actions().className).toMatch(/(?:^|\s)mb-1\.5(?=\s|$)/);
   });
 
   it("runs the ground and the rules edge to edge, and puts the gutter back on the scroller", () => {

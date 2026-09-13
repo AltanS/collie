@@ -114,7 +114,10 @@ describe("ActionsRow", () => {
     render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
     const belt = document.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
     expect(belt.className).toMatch(/(?:^|\s)-mx-3(?=\s|$)/);
-    expect(belt.className).toMatch(/(?:^|\s)border-y(?=\s|$)/);
+    // `border-b` and NOT `border-y`: the belt is flush under the mirror and the chrome block's own
+    // top rule is the boundary up there, so a rule here would be the second of two.
+    expect(belt.className).toMatch(/(?:^|\s)border-b(?=\s|$)/);
+    expect(belt.className).not.toMatch(/(?:^|\s)(?:border-y|border-t|mt-)/);
     expect(belt.className).toMatch(/(?:^|\s)bg-foreground\/6(?=\s|$)/);
     expect(belt.className).not.toMatch(/rounded/);
     // Collie's own controls stand on that ground with no box of their own.

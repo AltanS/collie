@@ -52,10 +52,12 @@ import { cn } from "@/lib/utils";
 // on the belt's ground, against 5.48 / 5.83 on the bare chrome — the belt costs them nothing that
 // matters, and both clear 4.5:1.
 //
-// THE HAIRLINES ARE `--border`, NOT `--rule`. The belt's neighbours are the same chrome surface it
-// stands on, so these are component edges inside one surface, which is what `--border` is for —
-// the same reading the status band above it came to. `border-y` and no rounded ends anywhere: a
-// belt with rounded corners is a capsule again.
+// THE HAIRLINE IS `--border`, NOT `--rule`. The belt's lower neighbour is the same chrome surface it
+// stands on, so that is a component edge inside one surface, which is what `--border` is for — the
+// same reading the status band above it came to. `border-b` alone: the belt stands flush under the
+// mirror and the chrome block's own `border-t border-rule` is the boundary up there, so a second
+// rule here would be two lines where the language says one. No rounded ends anywhere either: a belt
+// with rounded corners is a capsule again.
 //
 // It replaced two separate rows. The Controls row and the harness bar sat one above the other, each
 // spending a row of a phone's glass on four or five buttons, and the operator read them as one thing
@@ -221,10 +223,14 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
       // this is the element carrying the `-mx-3` that cancels the dock's `px-3`, so a fill or a rule
       // drawn here runs edge to edge. Drawn one level in, the band would stop 12px short of both
       // screen edges and read as a wide capsule — the shape this row just stopped being.
-      // `mt-1.5` and not `mt-2`, and the 2px is a re-measurement rather than a shave: the 8px was
-      // the air between the status band and these buttons, and that band is gone (composer.tsx says
-      // where it went). What the number separates now is the top of the chrome block from this
-      // belt's own rule, and a rule needs less air than a line of type did.
+      // NO TOP MARGIN AND NO TOP RULE, and both are the same decision. The belt is the FIRST thing
+      // in the chrome block, and the block already closes itself against the mirror with
+      // `border-t border-rule` (agent-chat.tsx) — so a `border-t` here painted a second hairline 6px
+      // below the first with a strip of empty chrome between them, which is the doubled seam
+      // DESIGN.md §4 forbids. Altan, from the phone: "there is now an empty row above the actions
+      // belt that we can remove." The 6px was `mt-1.5`, the air the old pull-up grip's upper half
+      // hung into; the grip is gone, and nothing hangs there any more. `mb-1.5` below stands — that
+      // one separates the belt from the input, which has no rule of its own.
       //
       // `relative` so the pinned span below can be laid over this element's own right end. It is
       // here unconditionally rather than only with a handle: a positioning context changes no pixel,
@@ -238,7 +244,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
       // with no listener behind it would forbid a vertical page gesture and give nothing back.
       ref={handle?.ref}
       className={cn(
-        "relative -mx-3 mt-1.5 mb-1.5 flex items-center border-y border-border bg-foreground/6",
+        "relative -mx-3 mb-1.5 flex items-center border-b border-border bg-foreground/6",
         handle && "touch-pan-x",
       )}
     >
