@@ -69,6 +69,36 @@ describe("rootLoader", () => {
     expect(stale.agents[0]!.paneId).toBe(fixtureAgents[0]!.paneId);
   });
 
+  // ── THE CACHE COUNTDOWN DOES NOT BLINK BETWEEN POLLS ────────────────────────
+  // The reading is a MEASUREMENT, not a field of the pane, and the bridge drops one for a poll on
+  // several ordinary paths (bridge/cache/tracker.ts: a failed `stat`, a harness session id that has
+  // not resolved yet, another Herdr session's poll reaping the entry). Each of those arrived here as
+  // `cache` going from defined to undefined and back, and the chip unmounted for a frame: "cache is
+  // blinking". The rule is lib/cache-hold.ts; this is the proof that the loader applies it.
+  it("holds a pane's cache reading across a poll that arrived without one", async () => {
+    const warm = {
+      state: "warm",
+      expiresAt: Date.now() + 12 * 60_000,
+      ttlSeconds: 3600,
+      ruleId: "claude.subscription",
+      confidence: "documented",
+      lastRequestAt: Date.now() - 48 * 60_000,
+    } as const;
+    const withReading = {
+      ...fixtureSnapshot,
+      agents: fixtureSnapshot.agents.map((a, i) => (i === 0 ? { ...a, cache: warm } : a)),
+    };
+    server.use(http.get("/api/snapshot", () => HttpResponse.json(withReading)));
+    const { rootLoader } = await import("./loaders");
+    expect((await rootLoader()).agents[0]!.cache).toEqual(warm);
+
+    // The very same snapshot, minus the measurement — which is exactly what the bridge sends on the
+    // polls named above. Without the hold this pane's chip would render nothing at all.
+    server.use(http.get("/api/snapshot", () => HttpResponse.json(fixtureSnapshot)));
+    expect(fixtureSnapshot.agents[0]!.cache).toBeUndefined();
+    expect((await rootLoader()).agents[0]!.cache).toEqual(warm);
+  });
+
   it("does not mark a network error as an auth error", async () => {
     const { rootLoader } = await import("./loaders");
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("network failed"));
