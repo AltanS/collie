@@ -50,6 +50,7 @@ import { TabStrip } from "@/components/tab-strip";
 import { PaneStrip } from "@/components/pane-strip";
 import { StripsSummary } from "@/components/strips-summary";
 import { CacheChip } from "@/components/cache-chip";
+import { HostChip } from "@/components/host-chip";
 import { CacheSheet } from "@/components/cache-sheet";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
@@ -1443,21 +1444,50 @@ export function AgentChat({
               <span className="truncate font-semibold">{t("chat.header.agentGone")}</span>
             </div>
           )}
-          {/* How long this pane's prompt cache stays warm, and a tap opens the rule behind the number.
+          {/* THE ROW'S TRAILING META, A COLUMN OF TWO FIXED SLOTS pinned to the header's right edge —
+              the same two-corner shape `agent-card.tsx` gives every dashboard row, so the eye reads
+              one pane's header and a list of panes the same way. The cache reading on top, the
+              machine under it, both right-aligned, both drawing their own fixed height even when the
+              chip inside self-hides, so nothing downstream moves when one arrives or leaves.
               A SIBLING of the identity button rather than a child of it, which the spec's "line one of
               the identity block" cannot be: a button inside a button is invalid, and an aria-label on
               the outer one replaces everything inside it, so a chip nested there would be a control no
               reader could reach and no pointer could hit. Beside it, on the same row and the same
-              baseline, it reads as the line-one mark it is meant to be and keeps its own 
-              44px-high hit box. Self-hides until the agent has taken a turn. */}
+              baseline, it reads as the line-one mark it is meant to be and keeps its own
+              44px-high hit box. Self-hides until the agent has taken a turn.
+              IT GROWS THE ROW, AND BY THE SLOT ALONE. The header row's floor is `min-h-15` (60px,
+              app-header.tsx) and the identity block's 44px sat inside it with slack; the column is
+              44 + 4 + 21 = 69px, so the row goes to 77px with its `py-1`. The cache chip's 44px is a
+              tap target and is not the thing that gives.
+              THE MACHINE IS BELOW THE CACHE and not above it because the cache reading was already in
+              that corner and a mark that moves corners between two releases is a mark nobody trusts.
+              It carried the write host at the actions belt's right end for a day; that end is the
+              Switch pill's now (actions-row.tsx says why). `variant="tag"` WITH its glyph here — this
+              is the dashboard's own tag, not the belt's width-capped one — and the chip's own hide
+              rule takes care of a solo install, which is every install that exists today. */}
           {agent !== undefined && (
-            <CacheChip
-              cache={agent.cache}
-              host={agent.host}
-              variant="button"
-              onOpen={() => setCacheSheetOpen(true)}
-              className="min-h-11 items-center px-1"
-            />
+            <div
+              data-slot="pane-meta"
+              className="flex shrink-0 flex-col items-end justify-between gap-1"
+            >
+              {/* Each slot draws its own height whether or not the chip inside it does — the cache
+                  reading is absent until the agent has taken a turn and the machine is absent on a
+                  solo install, and neither absence may move the other chip or the row. `h-11` is the
+                  cache chip's own 44px tap box; `h-[21px]` is the bordered `AddressTag`'s rendered
+                  height, both measured the same way agent-card.tsx measured them. */}
+              <div className="flex h-11 items-center">
+                <CacheChip
+                  cache={agent.cache}
+                  host={agent.host}
+                  variant="button"
+                  onOpen={() => setCacheSheetOpen(true)}
+                  className="min-h-11 items-center px-1"
+                />
+              </div>
+              <div className="flex h-[21px] items-center">
+                <HostChip host={agent.host} variant="tag" />
+              </div>
+            </div>
           )}
           </HeaderStatus>
         </RouteHeader>

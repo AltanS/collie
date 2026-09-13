@@ -260,6 +260,31 @@ describe("AgentChat — the pane header's identity block", () => {
     expect(row!.textContent).not.toContain("needs you");
   });
 
+  it("carries the machine in its trailing column, under the cache reading, on a crew only", () => {
+    // THE TWO-CORNER LAYOUT THE DASHBOARD ROWS ALREADY USE (agent-card.tsx): the cache reading in the
+    // top right corner, the machine in the one below it. The belt carried the name for a day and its
+    // right end is the Switch pill's now (actions-row.tsx), so the header is where the name lives.
+    const { container } = renderCrewChat("workshop"); // a REAL crew — HostChip hides on a solo one
+    // The plain `tag`, so it announces "host: …" — this header is ABOUT a pane, it is not the
+    // surface a reply is typed on, which is the whole of what `sends` marks. Unreachable here, so
+    // the tag carries the fault with it.
+    const tag = screen.getByLabelText(/^host: workshop \(unreachable\)$/i);
+    // In the header's trailing column, in its SECOND slot, and outside the identity button — a chip
+    // inside that button would be a control no reader could reach.
+    const column = container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
+    expect(column.children[1]!.contains(tag)).toBe(true);
+    expect(identity(container)!.contains(tag)).toBe(false);
+    cleanup();
+
+    // Solo — every install that exists today. Both slots are still drawn, so the header does not
+    // move; the chip inside the lower one renders nothing at all.
+    const solo = renderChat();
+    expect(screen.queryByLabelText(/^host: /i)).toBeNull();
+    const soloColumn = solo.container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
+    expect(soloColumn.children).toHaveLength(2);
+    expect(soloColumn.children[1]!.className).toMatch(/h-\[21px\]/);
+  });
+
   it("puts the state into the accessibility tree, which the caption's own text cannot do", () => {
     // An aria-label on a button REPLACES everything inside it, so moving the status word into this
     // block would have taken the pane's status out of the accessibility tree altogether — the badge

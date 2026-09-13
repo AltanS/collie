@@ -67,10 +67,11 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **A scrolling row says which way it scrolls.** The actions row fades and shows a chevron only on the edge that hides more, so a row wider than the screen no longer looks like it ends at the last visible button.
 - **The states playground stages ideas for the pull-up handle.** A "Pull-up handle ideas" tab puts seven cards above the real actions belt, comparing the shipped 30px handle with a grip on the belt's rule, a switcher pill, a handle that appears only with somewhere to go, and dragging the belt itself, each card stating its height at rest, its gesture and its risk. Design exploration only: nothing here is shipped, the page is dev-only and no app code changed.
 - **The actions row is a belt.** One full-bleed band above the input carries Collie's controls on its ground and the harness's commands in a section tinted with the harness's colour, so the row reads as one strip with two parts rather than two floating capsules.
-- **The pane's status word leaves the composer.** The thin line above the controls that named the machine and the pane's state is gone; the machine's name now opens the actions belt on a crew, and the state stays on the header's dot and the dashboard.
+- **The pane's status word leaves the composer.** The thin line above the controls that named the machine and the pane's state is gone; the machine's name moved up to the pane header on a crew, and the state stays on the header's dot and the dashboard.
 - **A Switch pill at the end of the actions belt opens the pane switcher.** The belt's right end carries a Switch pill above Send, a drag up anywhere on the belt still opens the switcher, and the 30px handle band above the composer is gone.
 - **The states playground stages ideas for the host name near the input.** A new Host tag ideas tab puts six mocks of the composer's bottom side by side: the belt as it ships, which pays 63px of scroller width for the machine's name, and five ways an absolute span could carry that name on the input or on the send button instead. Dev-only, unreachable from the app entry, and no app code changed.
 - **The whole actions belt pulls the pane switcher up.** A drag up from anywhere on the belt opens the switcher, and a sideways drag still scrolls it.
+- **The machine's name moves into the pane header.** On a crew the host tag sits under the cache reading at the header's right edge, in the same two-corner layout the dashboard rows use, and the actions belt no longer carries it.
 
 ### Fixed
 
