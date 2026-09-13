@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { HarnessBar, useHarnessBarItems } from "@/components/harness-bar";
+import { OverflowEdges } from "@/components/ui/overflow-edges";
 import { SectionLabel } from "@/components/ui/section-label";
 import { STRIP_CAPSULE, STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
 import { useLocale } from "@/hooks/use-locale";
@@ -118,46 +119,54 @@ export function ActionsRow({ general, agent, mine, onRun, disabled }: ActionsRow
       data-slot="composer-actions"
       className="-mx-3 mt-2 mb-1.5 flex items-center"
     >
-      {/* gap-2.5 overrides the scroller's own gap-1.5: its children here are the two capsules, and
+      {/* OverflowEdges measures this scroller and fades — and chevrons — only the end that still
+          hides a capsule. The `px-3` stays on the scroller, paired with the `-mx-3` above: the
+          wrapper adds no padding of its own, it only owns the flex sizing the scroller used to
+          carry directly.
+          gap-2.5 overrides the scroller's own gap-1.5: its children here are the two capsules, and
           this is the wide half of the gap ratio that groups them. */}
-      <div className={cn(STRIP_SCROLLER, "gap-2.5 px-3")}>
-        {general.length > 0 && (
-          // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
-          // self-labelling buttons and earned nothing, but in the accessibility tree it is the only
-          // thing that names this group at all. Delete it and a reader enters an unnamed run of
-          // buttons. The harness segment names itself, separately, for the same reason.
-          <div
-            data-slot="composer-controls"
-            role="group"
-            aria-labelledby="composer-controls-label"
-            // The OUTLINED capsule: the shared geometry, coloured by a border alone. The harness's
-            // fills the same box instead.
-            className={cn(STRIP_CAPSULE, "border-border")}
-          >
-            <SectionLabel id="composer-controls-label" className="sr-only">
-              {translate("composer.controls.label")}
-            </SectionLabel>
-            {general.map((action) => (
-              <Button
-                key={action.id}
-                type="button"
-                variant="ghost"
-                size="sm"
-                disabled={action.disabled}
-                aria-label={action.label}
-                aria-expanded={action.expanded}
-                aria-pressed={action.pressed}
-                onClick={action.onSelect}
-                className={cn(`${STRIP_ROW_PILL} gap-1.5 text-xs`, action.on === true ? ON : OFF)}
+      <OverflowEdges>
+        {(scrollerRef) => (
+          <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "gap-2.5 px-3")}>
+            {general.length > 0 && (
+              // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
+              // self-labelling buttons and earned nothing, but in the accessibility tree it is the only
+              // thing that names this group at all. Delete it and a reader enters an unnamed run of
+              // buttons. The harness segment names itself, separately, for the same reason.
+              <div
+                data-slot="composer-controls"
+                role="group"
+                aria-labelledby="composer-controls-label"
+                // The OUTLINED capsule: the shared geometry, coloured by a border alone. The harness's
+                // fills the same box instead.
+                className={cn(STRIP_CAPSULE, "border-border")}
               >
-                <action.icon className="size-4 shrink-0" />
-                {action.word ?? action.label}
-              </Button>
-            ))}
+                <SectionLabel id="composer-controls-label" className="sr-only">
+                  {translate("composer.controls.label")}
+                </SectionLabel>
+                {general.map((action) => (
+                  <Button
+                    key={action.id}
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={action.disabled}
+                    aria-label={action.label}
+                    aria-expanded={action.expanded}
+                    aria-pressed={action.pressed}
+                    onClick={action.onSelect}
+                    className={cn(`${STRIP_ROW_PILL} gap-1.5 text-xs`, action.on === true ? ON : OFF)}
+                  >
+                    <action.icon className="size-4 shrink-0" />
+                    {action.word ?? action.label}
+                  </Button>
+                ))}
+              </div>
+            )}
+            <HarnessBar agent={agent} mine={mine} onRun={onRun} disabled={disabled} />
           </div>
         )}
-        <HarnessBar agent={agent} mine={mine} onRun={onRun} disabled={disabled} />
-      </div>
+      </OverflowEdges>
     </div>
   );
 }

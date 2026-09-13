@@ -1718,7 +1718,9 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // The actions row bleeds the dock's own 12px gutter and puts it back on the scroller, so the
     // last button scrolls clean off the screen instead of stopping short of it.
     expect(actions().className).toMatch(/(?:^|\s)-mx-3(?=\s|$)/);
-    expect(actions().firstElementChild!.className).toMatch(/(?:^|\s)px-3(?=\s|$)/);
+    // The 12px goes back on the SCROLLER, not on the OverflowEdges wrapper between them: that
+    // wrapper owns the flex sizing and the edge cues, and deliberately no padding of its own.
+    expect(actions().querySelector(".overflow-x-auto")!.className).toMatch(/(?:^|\s)px-3(?=\s|$)/);
     // The group's GUTTER is still the scroller's: the only horizontal padding it owns is the 4px
     // that makes its capsule wider than the run of pills inside it (STRIP_CAPSULE).
     expect(row().className).toMatch(/(?:^|\s)px-1(?=\s|$)/);

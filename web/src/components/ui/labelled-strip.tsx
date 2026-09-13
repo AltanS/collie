@@ -44,17 +44,23 @@ export const STRIP_TAP_TARGET_SQUARE = `${STRIP_TAP_TARGET} before:-inset-x-[7px
 /**
  * The sideways scroller the composer's thin rows are built on — the key rail and the actions row.
  *
- * Written down once because the recipe is four decisions that only work together: `py-1.5` is the
+ * Written down once because the recipe is three decisions that only work together: `py-1.5` is the
  * room {@link STRIP_TAP_TARGET} reaches into for its 44px floor, `min-w-0` lets the row shrink
- * inside its flex parent instead of pushing its neighbours off, the edge mask says "there is more
- * this way" without a scrollbar, and the two scrollbar rules hide the one the platform would draw.
- * Change one of them at a call site and that row quietly loses its tap floor or its overflow.
+ * inside its flex parent instead of pushing its neighbours off, and the two scrollbar rules hide
+ * the one the platform would draw. Change one of them at a call site and that row quietly loses its
+ * tap floor or its overflow.
  *
- * The horizontal padding is NOT here: each row pairs its own `px-*` with the negative margin that
- * cancels it, and those two are one number (see LabelledStrip's note 3).
+ * The "there is more this way" cue is NOT here any more. It used to be a mask that faded both ends
+ * unconditionally, including the left, where nothing was hidden. It now belongs to
+ * `ui/overflow-edges.tsx`, which measures the scroller and fades — and draws a chevron over — only
+ * the side that actually hides something. Wrap this scroller in `OverflowEdges`; a bare one still
+ * scrolls and simply says nothing about it.
+ *
+ * The horizontal padding is NOT here either: each row pairs its own `px-*` with the negative margin
+ * that cancels it, and those two are one number (see LabelledStrip's note 3).
  */
 export const STRIP_SCROLLER =
-  "flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-1.5 [mask-image:linear-gradient(to_right,transparent,black_1.5rem,black_calc(100%-1.5rem),transparent)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+  "flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
 /**
  * The 32px face a button wears inside {@link STRIP_SCROLLER}: 32 drawn, 46 answered, 44 wide at its

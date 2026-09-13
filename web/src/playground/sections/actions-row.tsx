@@ -128,7 +128,7 @@ export function ActionsRowSection() {
           state="overflow"
           label="a narrow phone: the row scrolls, it never wraps"
           reach="hold a 320px phone, or run a harness whose operator put ten rows on the bar."
-          note="The card below is clamped to 280px. Drag the row sideways: the edge mask fades what is still to come, nothing wraps to a second line, and no button is dropped. The tint carrying past the right edge is what says there is more of it."
+          note="The card below is clamped to 280px. Drag the row sideways: the fade and the chevron move to whichever end still hides something — right at rest, both in the middle, left at the far end — nothing wraps to a second line, and no button is dropped."
         >
           <div className="w-[280px] overflow-hidden">
             <Roomy agent="claude" />

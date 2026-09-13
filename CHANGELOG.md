@@ -64,6 +64,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The dashboard row keeps its chips in two fixed corners.** The machine and session sit top right, the cache countdown bottom right, and an empty corner keeps its space, so a row without a cache reading no longer slides its host chip sideways.
 - **The cache countdown carries a thermometer mark.** The chip on the dashboard row and in the pane header opens with one fixed glyph in the chip's own ink, so the number reads as a cache reading beside the host chip's server mark rather than as a loose word.
 - **The actions row is two capsules of matching pills.** Collie's own controls sit in an outlined capsule and the harness's commands in a filled one that opens with the harness's mark; every pill is an icon and a word, so the two groups read as one family and apart at a glance.
+- **A scrolling row says which way it scrolls.** The actions row fades and shows a chevron only on the edge that hides more, so a row wider than the screen no longer looks like it ends at the last visible button.
 
 ### Fixed
 
