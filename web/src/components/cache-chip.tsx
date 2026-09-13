@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import { Thermometer } from "lucide-react";
+import { Hourglass } from "lucide-react";
 
 import { useCrew } from "@/components/crew-provider";
 import { useLocale } from "@/hooks/use-locale";
@@ -35,8 +35,16 @@ import { cn } from "@/lib/utils";
 // ── ONE FIXED GLYPH, LIKE HostChip'S Server MARK ─────────────────────────────
 // A bare `12m` sitting beside a `HostChip` that carries a `Server` glyph reads as a loose word, not a
 // reading — the eye has one shape to anchor "this is an address" and none for "this is a cache". The
-// same `Thermometer` mark opens the chip in every state; the state is carried by the word and the ink,
+// same `Hourglass` mark opens the chip in every state; the state is carried by the word and the ink,
 // never by a second icon, so warm, expiring and cold all wear the one mark this component owns.
+//
+// IT IS AN HOURGLASS AND NOT A THERMOMETER, which was the first pick and the wrong one. A thermometer
+// draws a TEMPERATURE, and the chip's tint already says warm, expiring or cold — so the glyph said
+// the tint's own sentence a second time, in a shape that also had to stay the same in all three
+// states, which is a thermometer reading that never moves. Altan, from his phone: "the cache icon is
+// poorly picked". An hourglass asserts no temperature at all. It says a window is running out, which
+// is the one thing true of every state of this chip, and it leaves warm/expiring/cold to the ink
+// alone — the tint-on-glyph rule (DESIGN.md), kept rather than doubled.
 
 // `--status-working` IS the app's amber, measured against both grounds in index.css's contrast table;
 // there is no second amber token and adding one would be a second answer to one question. `warm` and
@@ -81,7 +89,7 @@ export function CacheChip({ cache, host, variant = "row", onOpen, className }: C
       {/* One fixed mark, in every state — the sibling of HostChip's `Server` glyph, at the same
           `tag`-variant size. It inherits `currentColor`, so a peer's chip paints it in that
           machine's identity ink with no extra code. */}
-      <Thermometer className="size-3 shrink-0" aria-hidden />
+      <Hourglass className="size-3 shrink-0" aria-hidden />
       <span aria-hidden>{view.label}</span>
       {view.overridden && (
         <>

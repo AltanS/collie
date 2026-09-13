@@ -121,3 +121,18 @@ describe("a peer's number wears that machine's ink", () => {
     expect(chip()?.className).toContain("text-muted-foreground");
   });
 });
+
+describe("one mark, in every state", () => {
+  it("is an hourglass, and the same hourglass whether the window is warm, expiring or cold", () => {
+    // The glyph asserts no temperature: the tint alone carries warm/expiring/cold, and a second
+    // encoding of the same fact is what a thermometer was. So the mark may not change with the state.
+    const marks = (["warm", "expiring", "cold"] as const).map((state) => {
+      const view = render(<CacheChip cache={cache({ state })} />, { wrapper: one });
+      const glyph = chip()?.querySelector("svg")?.getAttribute("class") ?? "";
+      view.unmount();
+      return glyph;
+    });
+    expect(marks[0]).toContain("lucide-hourglass");
+    expect(new Set(marks).size).toBe(1);
+  });
+});
