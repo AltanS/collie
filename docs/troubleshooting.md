@@ -7,7 +7,8 @@ Symptoms below, in order — search the page for yours. **`Os { NotFound }` from
 reboot** · **a pane is stuck narrow** · **Collie refuses to open a tmux window** ·
 **`tmux list: output did not parse`** · **`herdr plugin list` shows the old version** ·
 **stale UI after a rebuild** · **I saved a machine in Herdr and the phone does not show it** ·
-**an update started from the phone stays at staging** · **a pane shows no prompt-cache chip**.
+**an update started from the phone stays at staging** · **a phone update on macOS leaves Collie
+unloaded** · **a pane shows no prompt-cache chip**.
 
 **`herdr plugin …` fails with `Error: Os { code: 2, kind: NotFound, message: "No such file or
 directory" }`** (plugin install fails, action invoke fails)**.** This is *not* a Collie problem — it
@@ -178,6 +179,19 @@ staging leaves behind. A suffixed instance keeps them in `~/.local/state/collie-
 whose lock you removed will flip `current` with nothing guarding it. Leave `versions/` alone. The
 half-staged version directory is harmless, the retry builds into it again, and the retention sweep
 removes what it no longer needs.
+
+**A phone update on macOS leaves Collie unloaded.** Run this on the Mac:
+
+```
+collie restart
+```
+
+On Collie up to 1.8.x, an update tapped on the phone could stop the launchd agent and never load it
+again, so the phone lost the service and `launchctl print gui/$(id -u)/herdr.collie` found nothing.
+The runner shared the agent's process group, and restarting the agent killed it half way.
+`collie restart` writes the agent's plist again and loads it. From the next release on, the bridge
+starts the runner in a session of its own. If a phone update still unloads the agent after that, run
+the same command and add a note to [#213](https://github.com/AltanS/collie/issues/213).
 
 ---
 

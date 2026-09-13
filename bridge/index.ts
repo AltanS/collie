@@ -152,6 +152,7 @@ import { SWEEP_INTERVAL_MS, sweepUploads } from "./uploads.ts";
 import { crewTurnStart, readUpdateRun, updateLockHeld } from "./update-run.ts";
 import {
   FreshPreflightGate,
+  launchUpdateRunner,
   parsePreflightReport,
   peerPreflightWire,
   peerRunWire,
@@ -830,7 +831,7 @@ const preflightCache = new PreflightCache({
  * fetches `refs/tags/<tag>` explicitly. Nothing here adds a second mechanism.
  */
 const startDetachedUpdate = (a: { major: boolean; runId: string; toTag?: string | null }) => {
-  const command = updateStartCommand({
+  const plan = updateStartCommand({
     platform: process.platform,
     binary: collieBinary,
     major: a.major,
@@ -840,15 +841,7 @@ const startDetachedUpdate = (a: { major: boolean; runId: string; toTag?: string 
     runId: a.runId,
     toTag: a.toTag ?? null,
   });
-  try {
-    const child = Bun.spawn(command, { cwd: rootDir, stdout: "ignore", stderr: "ignore", stdin: "ignore" });
-    // Never waited on, and never held open: `collie update` stages and then restarts this very
-    // process. The record on disk is how the phone follows it from here (M15/04).
-    child.unref();
-    return { ok: true as const };
-  } catch (err) {
-    return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
-  }
+  return launchUpdateRunner(plan, { cwd: rootDir, spawn: (command, options) => Bun.spawn(command, options) });
 };
 
 /**

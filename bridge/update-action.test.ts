@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   firstRed,
   FreshPreflightGate,
+  launchUpdateRunner,
   mergedUpdateVerdict,
   CREW_PREFLIGHT_MAX_CHECKS,
   CREW_PREFLIGHT_TRUNCATED_ID,
@@ -21,6 +22,8 @@ import {
   PREFLIGHT_TTL_MS,
   updateCadenceTick,
   updateStartCommand,
+  type UpdateRunnerSpawn,
+  type UpdateRunnerSpawnOptions,
   updateStartVerdict,
   type CrewUpdateRow,
   type PreflightCheck,
@@ -329,36 +332,90 @@ describe("POST api/update — the update write gate's verdict", () => {
 describe("update hands off — the command that leaves this process's cgroup", () => {
   const base = { platform: "linux", binary: "/opt/collie/bin/collie", stamp: "42" };
 
-  test("systemd-run --user --collect on a Linux host that has it", () => {
-    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true })).toEqual([
-      "systemd-run",
-      "--user",
-      "--collect",
-      "--unit",
-      "collie-api-update-42",
-      "/opt/collie/bin/collie",
-      "update",
-    ]);
+  test("systemd-run --user --collect on a Linux host that has it, and the spawn stays attached", () => {
+    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: true, hasSetsid: true })).toEqual({
+      command: ["systemd-run", "--user", "--collect", "--unit", "collie-api-update-42", "/opt/collie/bin/collie", "update"],
+      detach: false,
+    });
   });
 
   test("a major crossing hands the CLI its own consent flag (ADR 0020)", () => {
-    const cmd = updateStartCommand({ ...base, major: true, hasSystemdRun: true, hasSetsid: true });
-    expect(cmd.slice(-2)).toEqual(["update", "--major"]);
+    const plan = updateStartCommand({ ...base, major: true, hasSystemdRun: true, hasSetsid: true });
+    expect(plan.command.slice(-2)).toEqual(["update", "--major"]);
   });
 
-  test("setsid where there is no user manager, and a bare spawn where there is neither", () => {
-    expect(updateStartCommand({ ...base, platform: "darwin", major: false, hasSystemdRun: false, hasSetsid: true })).toEqual(
-      ["setsid", "/opt/collie/bin/collie", "update"],
-    );
-    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: false, hasSetsid: false })).toEqual([
-      "/opt/collie/bin/collie",
-      "update",
-    ]);
+  test("setsid where there is no user manager, and a bare spawn where there is neither, both detached", () => {
+    expect(updateStartCommand({ ...base, platform: "darwin", major: false, hasSystemdRun: false, hasSetsid: true })).toEqual({
+      command: ["setsid", "/opt/collie/bin/collie", "update"],
+      detach: true,
+    });
+    expect(updateStartCommand({ ...base, major: false, hasSystemdRun: false, hasSetsid: false })).toEqual({
+      command: ["/opt/collie/bin/collie", "update"],
+      detach: true,
+    });
+  });
+
+  test("a systemd-run binary on a non-Linux platform is not the systemd tier", () => {
+    expect(updateStartCommand({ ...base, platform: "darwin", major: false, hasSystemdRun: true, hasSetsid: false }).detach).toBe(true);
   });
 
   test("it is `collie update` and nothing else — the operator's own verb, not a second recipe", () => {
-    const cmd = updateStartCommand({ ...base, major: false, hasSystemdRun: false, hasSetsid: false });
-    expect(cmd).toEqual(["/opt/collie/bin/collie", "update"]);
+    const plan = updateStartCommand({ ...base, major: false, hasSystemdRun: false, hasSetsid: false });
+    expect(plan.command).toEqual(["/opt/collie/bin/collie", "update"]);
+  });
+});
+
+describe("the runner leaves the service's process group (#213)", () => {
+  const recorder = () => {
+    const calls: { command: string[]; options: UpdateRunnerSpawnOptions }[] = [];
+    let unrefs = 0;
+    const spawn: UpdateRunnerSpawn = (command, options) => {
+      calls.push({ command, options });
+      return { unref: () => void unrefs++ };
+    };
+    return { calls, spawn, unrefs: () => unrefs };
+  };
+
+  test("a macOS checkout with no systemd-run and no setsid binary spawns detached, streams ignored, unref'd", () => {
+    // The reporter's shape: a Herdr checkout under launchd. Nothing on the ladder leaves the job's
+    // process group, so the spawn's own setsid() is the only thing that does.
+    const plan = updateStartCommand({
+      platform: "darwin",
+      binary: "/Users/p/.config/herdr/plugins/herdr.collie/bin/collie",
+      major: false,
+      stamp: "42",
+      hasSystemdRun: false,
+      hasSetsid: false,
+      runId: "run-1",
+    });
+    const r = recorder();
+    expect(launchUpdateRunner(plan, { cwd: "/Users/p/.config/herdr/plugins/herdr.collie", spawn: r.spawn })).toEqual({ ok: true });
+    expect(r.calls).toHaveLength(1);
+    expect(r.calls[0]?.command).toEqual(["/Users/p/.config/herdr/plugins/herdr.collie/bin/collie", "update", "--run-id", "run-1"]);
+    expect(r.calls[0]?.options).toEqual({
+      cwd: "/Users/p/.config/herdr/plugins/herdr.collie",
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+      detached: true,
+    });
+    expect(r.unrefs()).toBe(1);
+  });
+
+  test("the systemd-run tier spawns attached, exactly the command it always ran", () => {
+    const plan = updateStartCommand({ platform: "linux", binary: "/opt/collie/bin/collie", major: false, stamp: "42", hasSystemdRun: true, hasSetsid: true });
+    const r = recorder();
+    launchUpdateRunner(plan, { cwd: "/opt/collie", spawn: r.spawn });
+    expect(r.calls[0]?.command[0]).toBe("systemd-run");
+    expect(r.calls[0]?.options.detached).toBe(false);
+  });
+
+  test("a spawn that throws is a refusal with its reason, not a crash", () => {
+    const plan = updateStartCommand({ platform: "darwin", binary: "/x/collie", major: false, stamp: "1", hasSystemdRun: false, hasSetsid: false });
+    const spawn: UpdateRunnerSpawn = () => {
+      throw new Error("ENOENT");
+    };
+    expect(launchUpdateRunner(plan, { cwd: "/x", spawn })).toEqual({ ok: false, reason: "ENOENT" });
   });
 });
 
