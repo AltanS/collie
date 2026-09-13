@@ -114,6 +114,20 @@ interface ComposerProps {
   setExpandClippedReply: (expandClippedReply: boolean) => void;
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
+
+  /**
+   * The pane switcher's grip, to be worn on the actions belt's top rule. Threaded straight through
+   * to {@link import("@/components/actions-row").ActionsRow} — this file decides nothing about it
+   * and draws none of it.
+   *
+   * Absent, rather than flagged off, the way `writeHost` is: the pane passes nothing here when
+   * there is nowhere to switch to.
+   */
+  pullHandle?: {
+    ref: (node: HTMLElement | null) => void;
+    onClick: () => void;
+    label: string;
+  };
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -192,7 +206,7 @@ function ComposerDock({
 const ATTACH_PRESS_MS = 220;
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply, onSent },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply, onSent, pullHandle },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1234,6 +1248,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           mine={operatorCommands}
           onRun={(command) => send(command, false)}
           disabled={locked}
+          // The pane switcher's grip, on this belt's top rule. The pane decides whether there is one
+          // (agent-chat.tsx); this row draws it and costs no height for it.
+          handle={pullHandle}
         />
         {/* ── THE FOOTER'S NOTICE STRIPS, SORTED BY KIND (DESIGN.md §1, §2) ─────────────────────
             Every strip below arrives and leaves through `Collapse`, which is the only sanctioned way

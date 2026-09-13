@@ -51,8 +51,8 @@ describe("ActionsRow", () => {
   });
 
   it("costs no height when there is neither a general action nor a harness bar", () => {
-    // With nothing to carry, the row must not render an empty scroller — that would spend 12px
-    // on nothing.
+    // With nothing to carry, the row must not render an empty scroller — that would spend 12px on
+    // nothing.
     const { container } = render(<ActionsRow general={[]} agent="grok" onRun={took} />);
     expect(container).toBeEmptyDOMElement();
   });
@@ -120,5 +120,36 @@ describe("ActionsRow", () => {
     // Collie's own controls stand on that ground with no box of their own.
     const controls = document.querySelector<HTMLElement>('[data-slot="composer-controls"]')!;
     expect(controls.className).not.toMatch(/rounded|border|bg-/);
+  });
+
+  it("wears the switcher's grip on its top rule when one is handed down, and nothing when none is", async () => {
+    // The grip used to be a 30px band of its own above the composer. It rides this belt's rule now,
+    // absolutely positioned, so it takes no layout at all — and the belt draws it only because the
+    // belt owns the rule. The pane decides whether there is one (agent-chat.tsx).
+    const onClick = vi.fn();
+    const { unmount } = render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={{ ref: vi.fn(), onClick, label: "Switch pane" }}
+      />,
+    );
+    const grip = screen.getByRole("button", { name: "Switch pane" });
+    // It is the belt's own first child and NOT inside the scroller's masked wrapper: a mask applies
+    // to its whole subtree, so a grip in there would fade out wherever the belt overflows.
+    const belt = document.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;
+    expect(grip.parentElement).toBe(belt);
+    expect(belt.firstElementChild).toBe(grip);
+    // …and the belt's own pills are untouched: the grip is an addition, never a replacement.
+    expect(names()).toContain("Keys");
+    expect(screen.getByRole("group", { name: "Harness shortcuts" })).toBeInTheDocument();
+    await userEvent.click(grip);
+    expect(onClick).toHaveBeenCalledTimes(1);
+
+    unmount();
+    // Without the prop there is no such button anywhere, and that is the whole of the old behaviour.
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
+    expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeInTheDocument();
   });
 });

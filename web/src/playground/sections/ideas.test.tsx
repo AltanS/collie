@@ -3,14 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import { IdeasSection } from "./ideas";
 
-// The eight states this section stages, as the screenshots and any browser case address them:
+// The seven states this section stages, as the screenshots and any browser case address them:
 // `[data-state="…"]`, the playground's one allowed handle (CLAUDE.md → "The selector rule").
 const HANDLES = [
   "handle-today",
   "handle-on-rule",
   "handle-on-rule-peek",
   "handle-belt-pill",
-  "handle-dense-lane",
   "handle-when-needed",
   "handle-when-needed-solo",
   "handle-drag-belt",
@@ -64,7 +63,7 @@ describe("Pull-up handle ideas section", () => {
 
   it("stands the real actions belt under every handle", () => {
     const { container } = render(<IdeasSection />);
-    // One belt per card: seven are the real ActionsRow, the eighth is the pill card's deliberate
+    // One belt per card: six are the real ActionsRow, the seventh is the pill card's deliberate
     // copy of it, and both wear `data-slot="composer-actions"` so the count is the card count.
     const belts = [...container.querySelectorAll('[data-slot="composer-actions"]')];
     expect(belts.length).toBe(HANDLES.length - 1);
@@ -80,10 +79,10 @@ describe("Pull-up handle ideas section", () => {
 
   it("shows the handle only where the idea says it should", () => {
     render(<IdeasSection />);
-    // The shipped 30px band, its `Collapse`-gated twin, the grip on the rule and the dense lane all
-    // answer to the switcher's accessible name; the solo card and the drag-the-belt card have no
-    // handle at all, which is what each of them is claiming.
-    for (const staged of ["handle-today", "handle-on-rule", "handle-dense-lane", "handle-when-needed"]) {
+    // The shipped 30px band, its `Collapse`-gated twin and the grip on the rule all answer to the
+    // switcher's accessible name; the solo card and the drag-the-belt card have no handle at all,
+    // which is what each of them is claiming.
+    for (const staged of ["handle-today", "handle-on-rule", "handle-when-needed"]) {
       expect(within(cardFor(staged)).getByRole("button", { name: "Switch pane" })).toBeInTheDocument();
     }
     for (const bare of ["handle-when-needed-solo", "handle-drag-belt"]) {

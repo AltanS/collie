@@ -1,5 +1,5 @@
-// Pull-up handle ideas: six ways the bottom of the pane screen could offer the switcher sheet, on
-// eight cards — two of the ideas need a second card to show a second state.
+// Pull-up handle ideas: five ways the bottom of the pane screen could offer the switcher sheet, on
+// seven cards — two of the ideas need a second card to show a second state.
 // NONE OF THESE IS SHIPPED except the first, which is the reference. This section is a staging
 // ground for a decision, not a picture of the app — which is why every card but the first says
 // "idea, not shipped" where the rest of the playground says "reach it for real".
@@ -16,8 +16,7 @@
 // each handle is measured AGAINST is never a drawing. The shipped handle is the shipped markup,
 // copied character for character. The fold is the app's own `Collapse`, the peeking sheet is the app's
 // own `BottomSheet` driven through its real `pull`/`pullFrom` props with the real `ThreadSidebar`
-// inside it, and the dense lane's geometry is copied from `components/space-agents-row.tsx`. What is
-// INVENTED is drawn here and nowhere else: the grip on the rule, the switcher pill, the belt copy it
+// inside it. What is INVENTED is drawn here and nowhere else: the grip on the rule, the switcher pill, the belt copy it
 // needs, the drag hint, the mirror slice and the composer's input row. Each card's note says which
 // side of that line it sits on.
 //
@@ -218,7 +217,7 @@ function ShippedHandle({ onOpen }: { onOpen: () => void }) {
  * the rule appears to break around it. It costs NO layout at all: the patch is absolutely positioned
  * over the belt's own border, and the 44px hit box is a `::before` pseudo-element reaching out from
  * it — the same negative-inset trick `ui/labelled-strip.tsx`'s `STRIP_TAP_TARGET` uses to give a 32px
- * pill a 46px answer, and the same "absolute, so it costs no layout" move `space-agents-row.tsx`
+ * pill a 46px answer, and the same "absolute, so it costs no layout" move the lane idea
  * makes with its own handle.
  *
  * `top-1.5` is the belt's `mt-1.5`: the rule sits 6px below this box's top edge, and
@@ -294,33 +293,6 @@ function BeltWithPill({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-// ── Idea 3: the dense layout's lane ──────────────────────────────────────────
-
-/**
- * The dense layout's handle lane, lifted into roomy. The geometry is copied from
- * `components/space-agents-row.tsx`: a `pt-2.5` lane (10px) the handle fills without displacing
- * anything, and an `absolute top-0 left-1/2 h-2.5 w-16 -translate-x-1/2` button centred in it.
- *
- * WHAT THE DENSE LANE ACTUALLY DRAWS IS THE 6px BAR, not a chevron — `agent-chat.tsx`'s comment
- * calls it "the up-chevron centred on the chrome border" and the code paints the same grip the
- * shipped handle wears. This copies the CODE. The card says so.
- */
-function DenseLane({ onOpen }: { onOpen: () => void }) {
-  return (
-    <div className="relative touch-pan-x overscroll-y-none pt-2.5">
-      <button
-        type="button"
-        aria-label="Switch pane"
-        aria-haspopup="dialog"
-        onClick={onOpen}
-        className="absolute top-0 left-1/2 z-10 flex h-2.5 w-16 -translate-x-1/2 touch-manipulation items-center justify-center rounded-md transition-colors select-none active:bg-muted/50"
-      >
-        <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
-      </button>
-    </div>
-  );
-}
-
 // ── The cards ────────────────────────────────────────────────────────────────
 
 /** Every idea card's `reach` line. These are ideas; none of them can be reached. */
@@ -342,7 +314,7 @@ export function IdeasSection() {
           state="handle-today"
           label="today: a 30px band above the belt, tap or drag"
           reach="open any pane."
-          note="Height at rest: 30px, measured — `py-3` (12px + 12px) around a 6px grip, full width. To open the sheet: one tap, or one upward drag that passes useSheetPull's 6px slop and then travels 120px (OPEN_PX) or flings at 0.6px/ms. The risk is the one this round exists for: 30px of permanent chrome, directly above a 48px belt, for one errand. It already stands down while the keyboard is up and in the dense layout, which is the admission that it is expensive."
+          note="Height at rest: 30px, measured — `py-3` (12px + 12px) around a 6px grip, full width. To open the sheet: one tap, or one upward drag that passes useSheetPull's 6px slop and then travels 120px (OPEN_PX) or flings at 0.6px/ms. The risk is the one this round exists for: 30px of permanent chrome, directly above a 48px belt, for one errand. It already stands down while the keyboard is up, which is the admission that it is expensive."
         >
           <PhoneMock>
             <MirrorSlice />
@@ -422,25 +394,7 @@ export function IdeasSection() {
         </Card>
       </Group>
 
-      <Group title="3 · The dense layout's lane, adopted">
-        <Card
-          state="handle-dense-lane"
-          label="a 10px lane above the belt, the handle absolute inside it"
-          reach={`${NOT_SHIPPED} the geometry is copied from space-agents-row.tsx, which is what the dense layout really draws; the belt under it is the real one.`}
-          note="Height at rest: 10px, measured — a `pt-2.5` lane, with the handle `absolute top-0 … h-2.5 w-16`, so the mark costs nothing beyond the lane it sits in. That is 20px handed back against today's 30px. To open the sheet: one tap on a 64×10 target, or the row's own swipe-up. Two things this card is honest about. The dense lane draws the SAME 6px bar the shipped handle wears, not a chevron — agent-chat.tsx's comment calls it an up-chevron and the code does not. And in dense the lane is paid for by the sessions row underneath it, which lists the panes; lifted into roomy with nothing under it, 10px of empty chrome above a rule may read as a gap rather than a control."
-        >
-          <PhoneMock>
-            <MirrorSlice />
-            <ChromeBlock>
-              <DenseLane onOpen={inert} />
-              <Belt />
-              <ComposerMock />
-            </ChromeBlock>
-          </PhoneMock>
-        </Card>
-      </Group>
-
-      <Group title="4 · Only when there is somewhere to go">
+      <Group title="3 · Only when there is somewhere to go">
         <Card
           state="handle-when-needed"
           label="more than one pane in the space: today's handle, unchanged"
@@ -478,12 +432,12 @@ export function IdeasSection() {
         </Card>
       </Group>
 
-      <Group title="5 · The belt itself is the handle">
+      <Group title="4 · The belt itself is the handle">
         <Card
           state="handle-drag-belt"
           label="no mark at all: drag the whole belt upward"
           reach={`${NOT_SHIPPED} the belt is the real ActionsRow; the arrow hint over its ground is drawn here, and it is a stand-in for whatever a real answer to 'nothing says this drags' would be.`}
-          note="Height at rest: 0px — the belt is already there and the gesture is free. To open the sheet: an upward drag anywhere on the 48px band, no tap path at all. The risk is a real conflict, not a stylistic one: the belt is a horizontal scroller (STRIP_SCROLLER, overflow-x-auto), so a drag that starts on it is already claimed by the browser until a direction is decided. space-agents-row.tsx solves the same collision with `touch-pan-x` plus `overscroll-y-none`, handing vertical to the handler and keeping horizontal for the chips — so this is buildable, but every diagonal flick has to be adjudicated, and a thumb aiming for Keys that drifts 7px up would open a sheet instead."
+          note="Height at rest: 0px — the belt is already there and the gesture is free. To open the sheet: an upward drag anywhere on the 48px band, no tap path at all. The risk is a real conflict, not a stylistic one: the belt is a horizontal scroller (STRIP_SCROLLER, overflow-x-auto), so a drag that starts on it is already claimed by the browser until a direction is decided. `touch-pan-x` plus `overscroll-y-none` solves that collision, handing vertical to the handler and keeping horizontal for the chips — so this is buildable, but every diagonal flick has to be adjudicated, and a thumb aiming for Keys that drifts 7px up would open a sheet instead."
         >
           <PhoneMock>
             <MirrorSlice />

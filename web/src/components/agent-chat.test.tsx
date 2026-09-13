@@ -682,7 +682,7 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
     expect(screen.queryByText(/❯/)).toBeNull(); // the input box was stripped off the mirror
   });
 
-  it("docks the pane-switch handle between the statusline and the composer, always", () => {
+  it("rides the actions belt's rule, below the statusline, always", () => {
     // THE OPERATOR'S REPORT, verbatim: "the switch panel up drawer sits above the agent Statusline,
     // it should always be right above the bottom status row."
     //
@@ -702,32 +702,38 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
     // It also puts the statusline back against the mirror it was cut from — that strip is the
     // mirror's own last row, and a 34px grab handle wedged into the seam read as a boundary
     // between the terminal and a piece of chrome that IS the terminal.
+    //
+    // THE BAND IS GONE NOW, and this test moved with it rather than being deleted. The grip is drawn
+    // on the ACTIONS BELT'S own top rule (actions-row.tsx), absolutely positioned, so it costs no
+    // height at all — and it therefore sits INSIDE the composer, below every row the terminal can
+    // print. The claim above is now true by construction, and what is asserted is the construction:
+    // the grip is a child of the belt, the belt is inside the composer, and the statusline is still
+    // above the whole chrome block.
     for (const text of [STATUS_TEXT, MENU_TEXT]) {
       const { container } = renderChat({ text });
       const handle = screen.getByRole("button", { name: "Switch pane" });
+      const belt = container.querySelector('[data-slot="composer-actions"]')!;
       // The composer's own box, reached through the actions belt inside it — the status band this
       // used to reach through is gone (composer.tsx says where it went).
-      const composer = container.querySelector('[data-slot="composer-actions"]')!.parentElement!;
-      // ROW IDENTITY, NOT ELEMENT IDENTITY. The handle now stands inside a `Collapse` — it stands
-      // down while the soft keyboard is up — so its element is two wrappers deep. `Collapse` is a
-      // presence animation and nothing else (it "styles NOTHING", per its header), so the ROW in
-      // this column is the wrapper, and that is what the adjacency claim is about. Asserted through
-      // it rather than around it: the wrapper must be found, so a handle that quietly escaped its
-      // Collapse fails here too.
-      const handleRow = handle.closest('[data-slot="collapse"]')!;
-      expect(handleRow).not.toBeNull();
-      // Same parent, and the handle's row is the sibling immediately before the composer — so
-      // nothing, statusline or otherwise, can ever get between the two.
-      expect(handleRow.parentElement).toBe(composer.parentElement);
-      expect(handleRow.nextElementSibling).toBe(composer);
-      // THAT SHARED PARENT IS THE CHROME BLOCK, and it is what answers the operator's later report
-      // that the drawer was "really hard to distinguish" in dark. The handle used to stand on the
-      // mirror's own black — `--background` IS the mirror's fill in dark (mirror-space.ts) — so a
-      // 6px grip was the only thing on screen saying a control was there. The block gives the handle
-      // and the composer ONE ground and closes it against the terminal with ONE rule, above
-      // everything the thumb operates. Its fill and rule are unconditional; the handle inside it is
-      // not, so the seam is one hairline whether or not there is a pane to switch to (DESIGN.md §4).
-      const block = handleRow.parentElement!;
+      const composer = belt.parentElement!;
+      // THE GRIP IS THE BELT'S OWN FIRST CHILD, and first is load-bearing: the belt's scroller wears
+      // an overflow mask (ui/overflow-edges.tsx), a mask applies to its element's whole subtree, and
+      // a grip inside that wrapper would fade out exactly where the belt overflows. Outside it, and
+      // before it, nothing masks it.
+      expect(handle.parentElement).toBe(belt);
+      expect(belt.firstElementChild).toBe(handle);
+      // No Collapse of its OWN, either: the grip costs 0px, so there is no height for a presence
+      // animation to hand back. Asserted as "the nearest one above the grip is the nearest one above
+      // the belt" — the whole composer region sits inside one, and that one is not the grip's.
+      expect(handle.closest('[data-slot="collapse"]')).toBe(belt.closest('[data-slot="collapse"]'));
+      // THE BLOCK THE COMPOSER STANDS ON is what answered the operator's report that the drawer was
+      // "really hard to distinguish" in dark. The handle used to stand on the mirror's own black —
+      // `--background` IS the mirror's fill in dark (mirror-space.ts) — so a 6px grip was the only
+      // thing on screen saying a control was there. The block gives everything the thumb operates
+      // ONE ground and closes it against the terminal with ONE rule. Its fill and rule are
+      // unconditional; the grip inside it is not, so the seam is one hairline whether or not there
+      // is a pane to switch to (DESIGN.md §4).
+      const block = composer.parentElement!;
       expect(block.getAttribute("data-slot")).toBe("chrome-block");
       // --chrome, and NOT --muted: DESIGN.md §4 forbids --muted behind chrome, and the value it
       // carried in dark (rgb 38, under a rgb 10 terminal) was read as a bright slab. --chrome is the
@@ -737,16 +743,18 @@ describe("AgentChat — block-grammar scoping (an agent with no adapter)", () =>
       expect(block.className).toMatch(/(?:^|\s)border-t border-rule(?=\s|$)/);
       // …and the composer's own dock draws neither, so the two never double the line.
       expect(composer.className).not.toMatch(/(?:^|\s)border/);
-      // …and where a statusline exists it is ABOVE the block, welded to the mirror's bottom edge.
-      // The handle is the FIRST thing inside the block, so it is still the first chrome the thumb
-      // meets coming up from the terminal.
+      // …and where a statusline exists it is ABOVE the block, welded to the mirror's bottom edge —
+      // so the grip, which is inside the composer inside the block, is below it in every state the
+      // terminal can reach. The composer is the FIRST thing inside the block now that the band is
+      // gone, so the belt's rule (with the grip on it) is the first chrome the thumb meets coming up
+      // from the terminal.
       const strip = screen.queryByText("[Opus 4.8] ~/webapp · main")?.closest("div.truncate")
         ?.parentElement;
       if (strip) {
-        // Same reading as above: the statusline stands down with the keyboard too, so its row in
-        // this column is its own Collapse wrapper.
+        // ROW IDENTITY, NOT ELEMENT IDENTITY: the statusline stands down with the keyboard, so its
+        // row in this column is its own Collapse wrapper.
         expect(strip.closest('[data-slot="collapse"]')!.nextElementSibling).toBe(block);
-        expect(block.firstElementChild).toBe(handleRow);
+        expect(block.firstElementChild).toBe(composer);
       }
       cleanup();
     }
@@ -1537,20 +1545,24 @@ describe("the pane fits its viewport", () => {
     };
   }
 
-  it("stands the switcher and the statusline down while the keyboard is up — and NOT the status band", async () => {
+  it("stands the statusline down while the keyboard is up — and NOT the switcher grip", async () => {
     // THE OPERATOR'S OWN SUGGESTION, verbatim: "when the keyboard is open I have a feeling that we
     // could hide the scroll up row and status row could be hidden?" — taken, and half of it
     // declined, which is why this test names both halves.
     //
-    // TAKEN: the 34px grab handle and the 21–112px agent statusline. Both are read BEFORE typing,
-    // not during it. Nobody switches panes mid-sentence, and CTX/CACHE/LIMITS is reference data.
+    // TAKEN: the 21–112px agent statusline. It is read BEFORE typing, not during it: CTX/CACHE/LIMITS
+    // is reference data, and it is the largest block below the mirror.
     //
-    // DECLINED: the status band. It is 14px — the cheapest row on the screen — and it is the only
-    // place the pane's state is spelled as a WORD rather than a coloured dot, which is the whole
-    // reason it exists (WCAG 1.4.1; status-badge.tsx holds the measurement). It is also read at
-    // exactly this moment: it answers "is this agent even waiting for me?" with the thumb over
-    // Send. Hiding it would save 14px and remove the one line telling the operator whether the
-    // message they are typing is wanted yet. The other two are 4–8x the pixels at none of the cost.
+    // THE SWITCHER LEFT THIS LIST, and that is a DECISION, not a regression. The grab handle was once
+    // here too, on the same reasoning — nobody switches panes mid-sentence — but the real argument was
+    // always the 30px it cost at the one moment the screen had none to give. The grip rides the
+    // actions belt's own rule now (actions-row.tsx) and costs 0px in every state, so there is nothing
+    // to buy back by hiding it, and the switcher sheet became reachable mid-sentence into the bargain.
+    //
+    // DECLINED, and still declined: the status band. It was 14px — the cheapest row on the screen —
+    // and the only place the pane's state was spelled as a WORD rather than a coloured dot (WCAG
+    // 1.4.1). It is gone for other reasons entirely (composer.tsx says where it went); it never
+    // stood down for the keyboard, and the belt that replaced it does not either.
     const kb = withSoftKeyboard();
     try {
       const { container } = renderChat({ text: STATUS_TEXT });
@@ -1558,12 +1570,11 @@ describe("the pane fits its viewport", () => {
 
       kb.open(460); // a soft keyboard: -384px, well past the open threshold
 
-      // `Collapse` unmounts at the END of its exit, so both leave the tree — and leaving the tree is
-      // the a11y half of the claim: a control that is not on screen must not still be focusable.
-      await waitFor(() =>
-        expect(screen.queryByRole("button", { name: "Switch pane" })).toBeNull(),
-      );
-      expect(screen.queryByText("[Opus 4.8] ~/webapp · main")).toBeNull();
+      // `Collapse` unmounts at the END of its exit, so the statusline leaves the tree — and leaving
+      // the tree is the a11y half of that claim: what is not on screen must not still be focusable.
+      await waitFor(() => expect(screen.queryByText("[Opus 4.8] ~/webapp · main")).toBeNull());
+      // …and the grip stays, keyboard or no keyboard. It is in no `Collapse` at all.
+      expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeNull();
 
       // THE NAVIGATION ROWS ARE ON A DIFFERENT LIST NOW, and the distinction is the point. They
       // were once declined here outright — "the tab row is how you know where you are, and losing

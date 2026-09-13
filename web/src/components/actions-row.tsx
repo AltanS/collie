@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils";
 // row alone takes it — §4 still governs every other strip of chrome in the app.
 //
 // WHICH fill was measured, not chosen. The belt sits on the composer's chrome block (`--chrome`:
-// rgb 235 light, rgb 23 dark) and BOTH its neighbours are that same ground — the dock/handle above
+// rgb 235 light, rgb 23 dark) and BOTH its neighbours are that same ground — the chrome above it
 // and the input below, which is `bg-transparent` over it. So the ground had to separate from
 // `--chrome` in both themes, and no single token does: `--muted` IS `--chrome` in light (1.00:1,
 // invisible) and `--card` IS `--chrome` in dark (1.00:1, invisible). `bg-muted/40`, the first thing
@@ -163,6 +163,29 @@ export interface ActionsRowProps {
   onRun: (text: string) => Promise<boolean>;
   /** Bound to the composer's `locked`. Greys the harness buttons in place. */
   disabled?: boolean;
+  /**
+   * THE PANE SWITCHER'S GRIP, RIDING THIS BELT'S TOP RULE. Absent by default, and absent is the
+   * whole of the old behaviour: nothing renders and no class on this row changes.
+   *
+   * The belt owns it because the belt owns the rule the grip sits on. It used to be a 30px band of
+   * its own above the composer; the band is gone and the mark moved down onto the hairline, half
+   * above and half below, on a small `bg-chrome` patch that breaks the rule around it. It costs the
+   * chrome block NO height at all — the patch is absolutely positioned, so the belt does not move
+   * and nothing below it does either.
+   *
+   * `ref` goes on the drawn button, which is what {@link import("@/hooks/use-sheet-pull")} measures:
+   * the anchor it reports is now the belt's own top edge, which is where the sheet should peek from.
+   * `onClick` is the tap, and the two live on ONE element on purpose — widening the drag target to
+   * the whole belt later is then one move of this object, not a re-wiring.
+   */
+  handle?: {
+    /** {@link import("@/hooks/use-sheet-pull").useSheetPull}'s ref — the finger-tracked drag. */
+    ref: (node: HTMLElement | null) => void;
+    /** The tap. Opens the same switcher sheet the drag opens. */
+    onClick: () => void;
+    /** ALREADY TRANSLATED. The button's accessible name — "Switch pane". */
+    label: string;
+  };
 }
 
 export function ActionsRow({
@@ -172,6 +195,7 @@ export function ActionsRow({
   mine,
   onRun,
   disabled,
+  handle,
 }: ActionsRowProps) {
   useLocale();
 
@@ -190,10 +214,44 @@ export function ActionsRow({
       // screen edges and read as a wide capsule — the shape this row just stopped being.
       // `mt-1.5` and not `mt-2`, and the 2px is a re-measurement rather than a shave: the 8px was
       // the air between the status band and these buttons, and that band is gone (composer.tsx says
-      // where it went). What the number separates now is the chrome block's swipe handle from the
-      // belt's own top rule, and a rule needs less air than a line of type did.
-      className="-mx-3 mt-1.5 mb-1.5 flex items-center border-y border-border bg-foreground/6"
+      // where it went). What the number separates now is the top of the chrome block from this
+      // belt's own rule, and a rule needs less air than a line of type did. It is also the room the
+      // grip's upper half hangs into, so it may not be cut to nothing.
+      //
+      // `relative` so the grip below can be centred on this element's own top rule. It is here
+      // unconditionally rather than only with a handle: a positioning context changes no pixel,
+      // and a class that appears with a prop is a class nobody remembers is conditional.
+      className="relative -mx-3 mt-1.5 mb-1.5 flex items-center border-y border-border bg-foreground/6"
     >
+      {/* THE GRIP, ON THE RULE — see `handle` above for why it lives on this row at all.
+          It is the FIRST child and a SIBLING of the OverflowEdges wrapper, and both facts are
+          load-bearing. A mask applies to its element's whole subtree (overflow-edges.tsx says so at
+          the middle div), so a grip inside the wrapper would fade out with the pills exactly where
+          the belt overflows; outside it, nothing masks it. `z-10` puts it over the scroller, so a
+          pill that pans under the patch cannot take the tap.
+          THE GEOMETRY. `top-0` resolves against this row's PADDING box, which is one border-width
+          below the rule, and `-translate-y-1/2` then centres the 6px grip on it — half above the
+          hairline, half below, within half a CSS pixel. `px-1` is the 4px of patch either side that
+          makes the rule visibly break around the mark rather than run behind it.
+          THE HIT BOX IS A `::before`, the negative-inset trick from ui/labelled-strip.tsx's
+          STRIP_TAP_TARGET: 6 + 19 + 19 = 44 tall and 56 + 4 + 4 = 64 wide, answered by a patch that
+          draws 56x6 and takes no layout at all. Nothing clips it — this row is not a scroll
+          container, only the scroller inside it is.
+          IT OVERLAPS THE BELT, KNOWINGLY. The top ~16px of the belt over a 64px centre patch belongs
+          to the grip, and `touch-none` means a touch starting there cannot pan the belt sideways.
+          The belt is 48px tall and scrolls from anywhere else on its length, so the trade is one
+          small centre patch against a gesture that used to cost 30px of glass. */}
+      {handle && (
+        <button
+          type="button"
+          ref={handle.ref}
+          aria-label={handle.label}
+          onClick={handle.onClick}
+          className="absolute top-0 left-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center rounded-md bg-chrome px-1 transition-colors select-none before:absolute before:-inset-x-1 before:-inset-y-[19px] before:content-[''] active:bg-muted/50"
+        >
+          <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
+        </button>
+      )}
       {/* OverflowEdges measures this scroller and fades — and chevrons — only the end that still
           hides something. The `px-3` stays on the scroller, paired with the `-mx-3` above: the
           wrapper adds no padding of its own, it only owns the flex sizing the scroller used to

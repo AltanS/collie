@@ -408,14 +408,14 @@ export function AgentChat({
 
   const gone = !agent;
 
-  // Drag the handle above the composer up to bring up the pane switcher, tracked finger-by-finger
-  // so the sheet peeks up under the thumb rather than appearing on release. Tapping is still the
-  // reliable fallback (the button's own onClick below). `pull` is the live upward travel in px, fed
-  // straight to the switcher BottomSheet's `pull` prop; a release past the open threshold buzzes and
-  // opens for real, a release short of it snaps back to 0. `pullFrom` is the handle's own distance
-  // from the viewport bottom, measured once per gesture (useSheetPull's `onAnchor`) — the handle
-  // sits above the composer, so without it the peek would rise from the screen's bottom edge with
-  // the composer sandwiched between the panel and the thumb dragging it.
+  // Drag the grip on the actions belt's rule up to bring up the pane switcher, tracked
+  // finger-by-finger so the sheet peeks up under the thumb rather than appearing on release. Tapping
+  // is still the reliable fallback (the same button's onClick). `pull` is the live upward travel in
+  // px, fed straight to the switcher BottomSheet's `pull` prop; a release past the open threshold
+  // buzzes and opens for real, a release short of it snaps back to 0. `pullFrom` is the grip's own
+  // distance from the viewport bottom, measured once per gesture (useSheetPull's `onAnchor`) — the
+  // grip sits on the belt, with the whole input row below it, so without it the peek would rise from
+  // the screen's bottom edge with the composer sandwiched between the panel and the thumb.
   const [pull, setPull] = useState(0);
   const [pullFrom, setPullFrom] = useState(0);
   const sheetPull = useSheetPull({
@@ -432,6 +432,25 @@ export function AgentChat({
       setPullFrom(0);
     },
   });
+  // THE GRIP ITSELF, handed to the composer, which hands it to the actions belt — the belt owns the
+  // rule it is drawn on, so the belt draws it (actions-row.tsx). `undefined` means no grip at all.
+  //
+  // Shown whenever there is somewhere to go: a pane to switch to, a shell, or a launcher to start.
+  // Launchers count on their own, because a lone pane with launchers still needs a way to reach
+  // them, and the sheet is that way.
+  //
+  // `composing` IS NOT IN THIS CONDITION ANY MORE, and its absence is the decision. The old band
+  // stood down while the soft keyboard was up because it cost 30px at the one moment the screen had
+  // none to give. The grip costs 0px in every state, so there is nothing left to buy back by hiding
+  // it — and the switcher sheet is now reachable mid-sentence, which it never was before.
+  const pullHandle =
+    agents.length + shellPanes.length > 0 || launchers.length > 0
+      ? {
+          ref: sheetPull.ref,
+          onClick: () => setDrawer("switcher"),
+          label: t("chat.switcher.aria"),
+        }
+      : undefined;
   // ── COMPOSING MODE — read ONCE, here, for the whole pane ──────────────────────
   // The soft keyboard takes roughly 45% of a phone. What is left has to hold the header, the tab
   // strip, the agent's statusline, the grab handle, the status band, the controls row and the draft
@@ -1914,35 +1933,37 @@ export function AgentChat({
                 )}
               </Collapse>
 
-              {/* Swipe-up / tap handle for the quick pane switcher — the sheet that switches AND closes
-                  panes (each row has a ✕). A tall, full-width hit area so the swipe is easy to land (and a
-                  tap always works). Shown whenever a pane is open — even the last one, so it stays
-                  closable now that the nav drawer is gone. `touch-none` so the gesture is ours, not a
-                  browser scroll.
+              {/* THE PANE SWITCHER'S GRIP IS NOT A ROW ANY MORE. It was a 30px full-width band here,
+                  directly above the composer: `py-3` around a 6px grip, tap or drag, gated on there
+                  being somewhere to go. The band is gone and the grip rides the ACTIONS BELT'S TOP
+                  RULE instead — a small patch straddling the hairline, half above and half below,
+                  absolutely positioned so it costs NO height at all (actions-row.tsx draws it and
+                  holds the geometry). The chrome block is 30px shorter and nothing else moved, which
+                  is the whole point: the mirror gets a row back for a control that is still there.
 
-                  IT SITS DIRECTLY ABOVE THE COMPOSER, BELOW THE AGENT'S STATUSLINE, AND THAT ORDER IS
-                  THE FIX RATHER THAN A PREFERENCE. It used to render ABOVE the statusline, which made
-                  its position a function of pane state: on a pane whose agent prints a statusline the
-                  handle stood 50px further up than on one that does not, and the same handle moved
-                  again the moment the agent added or dropped a row (the strip is 1–3 rows, re-derived
-                  every poll). A control the thumb reaches for by muscle memory may not move because the
-                  terminal printed something — DESIGN.md §2. Rendered here it is always the last thing
-                  above the composer's status band, on every pane and in every state.
+                  The tap and the finger-tracked drag are unchanged — same `sheetPull.ref`, same
+                  `setDrawer("switcher")`, one element carrying both. What changed is the DRAG ANCHOR:
+                  useSheetPull measures its node's distance from the viewport bottom, and that node is
+                  now on the belt's top edge rather than 30px above it, so the sheet peeks from the
+                  belt. That is the right place — the belt is the top of the chrome block's working
+                  area, and the peek should rise from the chrome, not from behind it.
 
-                  It also puts the statusline back where it belongs: that strip is the mirror's own last
-                  row, cut from the pane tail, and a 34px gap with a grab handle in it read as a seam
-                  between the terminal and a piece of chrome that IS the terminal. */}
-              {/* THE CHROME BLOCK, DRAWN ONCE. Everything the thumb operates — the grab handle, the
-                  status band, the controls, the input — stands on ONE surface, closed against the
-                  terminal above by ONE rule. The handle used to stand OUTSIDE it, on the mirror's own
-                  black: the dock read as chrome and the handle floating above it read as part of the
-                  terminal, a control with no ground. That is what "hard to distinguish" meant in dark,
-                  where `--background` IS the mirror's fill (mirror-space.ts) and a 6px grip at
-                  `bg-muted-foreground/50` was the only thing on screen saying a control was there.
-                  Given the dock's own ground it is a handle ON the chrome, which is what it does.
+                  The old position lesson survives the move by construction. The band used to render
+                  ABOVE the agent's statusline, so its height was a function of what the terminal had
+                  printed (the strip is 1–3 rows, re-derived every poll) and the thumb's target moved
+                  50px between panes — DESIGN.md §2. The grip now lives INSIDE the composer, below
+                  every one of those rows, so nothing the terminal prints can relocate it. */}
+              {/* THE CHROME BLOCK, DRAWN ONCE. Everything the thumb operates — the switcher grip, the
+                  controls, the input — stands on ONE surface, closed against the terminal above by ONE
+                  rule. The handle used to stand OUTSIDE it, on the mirror's own black: the dock read as
+                  chrome and the handle floating above it read as part of the terminal, a control with
+                  no ground. That is what "hard to distinguish" meant in dark, where `--background` IS
+                  the mirror's fill (mirror-space.ts) and a 6px grip at `bg-muted-foreground/50` was the
+                  only thing on screen saying a control was there. The grip is on the chrome now in the
+                  strongest sense there is: it is drawn on the belt's own rule.
 
                   The rule and the fill live HERE rather than on the composer's dock so that boundary
-                  is UNCONDITIONAL: the handle inside is gated on there being a pane to switch to, this
+                  is UNCONDITIONAL: the grip inside is gated on there being a pane to switch to, this
                   block is not, so the mirror is closed by one hairline in every state (DESIGN.md §2,
                   §4). The composer keeps its own `bg-chrome` — the same value, so nothing changes
                   visually — which leaves it self-sufficient wherever it is mounted alone.
@@ -1956,34 +1977,6 @@ export function AgentChat({
                   and unchanged at rgb(235) in light, where --card would be pure white and land
                   1.04:1 against the inverted mirror. index.css states the whole argument. */}
               <div data-slot="chrome-block" className="border-t border-rule bg-chrome">
-                {/* …and stands down while the keyboard is up, for 30px (`py-3` around the 6px
-                    grip, it was py-3.5/34px until the 2026-08-31 shave; the drag is tracked from
-                    the first pixel past useSheetPull's own slop, and the strip is full-width, so the
-                    gesture still lands). Switching panes is a
-                    BEFORE-typing act, so the row costs its height at the one moment it cannot be
-                    wanted. Nothing is stranded: the tab strip above still switches, the sheet is still
-                    reachable the instant the keyboard closes, and `Collapse` unmounts the button at
-                    the end of the exit so it leaves the tab order with the pixels.
-
-                    Also shown whenever launchers are declared, even with a single pane and no
-                    shells: a lone pane with launchers still needs a way to reach them. */}
-                <Collapse
-                  open={
-                    !composing &&
-                    (agents.length + shellPanes.length > 0 || launchers.length > 0)
-                  }
-                >
-                  <button
-                    type="button"
-                    aria-label={t("chat.switcher.aria")}
-                    ref={sheetPull.ref}
-                    onClick={() => setDrawer("switcher")}
-                    className="flex w-full touch-none items-center justify-center py-3 transition-colors active:bg-muted/50"
-                  >
-                    <span className="h-1.5 w-12 rounded-md bg-muted-foreground/50" />
-                  </button>
-                </Collapse>
-
                 <Composer
                   ref={composerRef}
                   paneId={paneId}
@@ -2014,6 +2007,9 @@ export function AgentChat({
                   setTapToFocus={setTapToFocus}
                   setExpandClippedReply={setExpandClippedReply}
                   onSent={onSent}
+                  // The switcher grip, for the actions belt's top rule — see the condition at
+                  // `pullHandle` above, and actions-row.tsx for what it draws.
+                  pullHandle={pullHandle}
                 />
               </div>
             </div>
