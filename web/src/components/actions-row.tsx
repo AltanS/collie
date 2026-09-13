@@ -3,7 +3,7 @@ import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { HarnessBar, useHarnessBarItems } from "@/components/harness-bar";
 import { SectionLabel } from "@/components/ui/section-label";
-import { STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
+import { STRIP_CAPSULE, STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
 import { useLocale } from "@/hooks/use-locale";
 import { t as translate } from "@/lib/i18n";
 import type { OperatorCommand } from "@/lib/types";
@@ -13,27 +13,49 @@ import { cn } from "@/lib/utils";
 // Agent, the display gear — then the running harness's own commands in a segment of their own. It
 // scrolls sideways; nothing wraps and nothing is dropped.
 //
+// TWO CAPSULES OF ONE GEOMETRY, AND THAT IS THE STRUCTURE. Both halves wear STRIP_CAPSULE: the
+// general one is an OUTLINE (a 1px border on the app's border colour, no ground), the harness one is
+// a FILL (the brand tint, no visible border). Outline against fill is what keeps them apart on a
+// Codex pane, where both are neutral, and one shape is what makes them read as siblings rather than
+// as two unrelated things. The gap BETWEEN the capsules (`gap-2.5`, 10px) is wider than the gap
+// inside them (`gap-1`, 4px); that ratio is the only separator, because a vertical rule between two
+// scrolling groups is a line the eye has to step over on every pan.
+//
+// It is here because Altan tested the merged row on his phone and said it "lacks some structure":
+// five identical grey glyphs at equal spacing, no boundary anywhere, then a tinted blob cut off
+// mid-word. Nothing told the eye where one group ended. The behaviour was already right and did not
+// change — only how the row is drawn.
+//
 // It replaced two separate rows. The Controls row and the harness bar sat one above the other, each
 // spending a row of a phone's glass on four or five buttons, and the operator read them as one thing
 // anyway: "what can I press from here". Merged, the composer gets a row back and the harness
 // commands sit at the same height as the keys they were always meant to live beside.
 //
-// WHY THE GENERAL SEGMENT IS FIRST, AND WHY IT IS ICONS. Two measurements decided both:
+// WHY THE GENERAL SEGMENT IS FIRST. It is the half that is ALWAYS there. The harness segment is
+// absent on a bare shell, on grok, on opencode, and whenever the operator has the Settings switch
+// off — so leading with it would make the row's left edge mean a different thing per pane, and the
+// thumb could not learn one position. The left edge is Keys on every pane there is.
 //
-//  1. **General first**, because it is the half that is ALWAYS there. The harness segment is absent
-//     on a bare shell, on grok, on opencode, and whenever the operator has the Settings switch off —
-//     so leading with it would make the row's left edge mean a different thing per pane, and the
-//     thumb could not learn one position. The left edge is Keys on every pane there is.
-//  2. **The general actions are icon-only**, because the words did not fit beside a second segment.
-//     Measured at a 366px content width: five labelled pills (icon + word at text-xs) run about
-//     385px on their own in English, so the harness segment started off-screen and the colour that
-//     identifies it was never seen at rest. Icon-only they run about 244px, which leaves ~120px of
-//     tinted segment showing before a finger moves. Their accessible names are unchanged — Keys,
-//     Type into terminal, Quick, Agent, Display settings are still what a screen reader announces
-//     and still what a test addresses.
+// EVERY PILL IS AN ICON AND A WORD, IN BOTH CAPSULES, AND THE ROW OVERFLOWS BECAUSE OF IT. The
+// general half was icon-only for half a day, and Altan's verdict on it was that it "looks alien to
+// what we've added now for harness specific stuff": two capsules that are meant to read as one
+// family cannot hold two different kinds of pill. So the words came back, and the cost was paid in
+// scroll rather than in shape.
 //
-// The harness segment keeps its words, because its vocabulary is new: Compact and Tree are not ideas
-// a glyph can teach on first sight, and there are at most five of them.
+// The numbers, measured in the playground at a 382px row, deviceScaleFactor 2:
+//
+//  * The general capsule with words is 396px — wider than the row on its own, so the harness
+//    capsule starts at 418px and neither its mark nor Model is visible at rest on a Claude pane.
+//    Icon-only it was 244px and left ~120px of tint showing. That is the trade, made knowingly.
+//  * 20px of that came back by tightening STRIP_ROW_PILL to `px-2` (416px → 396px), which is as far
+//    as padding goes before the pills stop looking like pills. Nothing else was cut: not a label,
+//    not the type size, not the harness mark.
+//  * The row is a scroller by design and the edge mask already says "there is more this way", which
+//    is the answer it was built to give. One thumb-flick reaches the harness half.
+//
+// The general pills DRAW a short word and ANNOUNCE the full one (`word` vs `label` below): the row
+// has one word of room per pill, and "Type into terminal" and "Display settings" are still what a
+// screen reader hears and what a test addresses.
 
 /** The row's "on" look — an open dock, an armed mode. `hover:` is pinned to the same tint: without
  *  it, hovering an already-on control repaints it with the ghost variant's hover background and it
@@ -49,8 +71,16 @@ export interface GeneralAction {
   /** Stable, for React's key. Never shown. */
   id: string;
   icon: LucideIcon;
-  /** ALREADY TRANSLATED. The button's accessible name, and the only name it has. */
+  /** ALREADY TRANSLATED. The button's accessible name — what a reader announces and what a test
+   *  addresses. It is never shortened for the paint. */
   label: string;
+  /** ALREADY TRANSLATED. The word the pill DRAWS, when the accessible name is too long to wear: the
+   *  row shows "Type" and announces "Type into terminal". Defaults to {@link label}.
+   *
+   *  It must be a prefix-or-part of `label` and never a different word — a visible word the
+   *  accessible name does not contain is the WCAG 2.5.3 failure, and it also means a person saying
+   *  "tap Display" and a reader hearing "Display settings" are no longer talking about one button. */
+  word?: string;
   /** Draws the "on" tint: the dock this opens is open, or the mode it arms is armed. */
   on?: boolean;
   /** Set for a control that opens a dock — it becomes `aria-expanded`. */
@@ -88,7 +118,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled }: ActionsRow
       data-slot="composer-actions"
       className="-mx-3 mt-2 mb-1.5 flex items-center"
     >
-      <div className={cn(STRIP_SCROLLER, "px-3")}>
+      {/* gap-2.5 overrides the scroller's own gap-1.5: its children here are the two capsules, and
+          this is the wide half of the gap ratio that groups them. */}
+      <div className={cn(STRIP_SCROLLER, "gap-2.5 px-3")}>
         {general.length > 0 && (
           // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
           // self-labelling buttons and earned nothing, but in the accessibility tree it is the only
@@ -98,7 +130,9 @@ export function ActionsRow({ general, agent, mine, onRun, disabled }: ActionsRow
             data-slot="composer-controls"
             role="group"
             aria-labelledby="composer-controls-label"
-            className="flex shrink-0 items-center gap-1.5"
+            // The OUTLINED capsule: the shared geometry, coloured by a border alone. The harness's
+            // fills the same box instead.
+            className={cn(STRIP_CAPSULE, "border-border")}
           >
             <SectionLabel id="composer-controls-label" className="sr-only">
               {translate("composer.controls.label")}
@@ -114,9 +148,10 @@ export function ActionsRow({ general, agent, mine, onRun, disabled }: ActionsRow
                 aria-expanded={action.expanded}
                 aria-pressed={action.pressed}
                 onClick={action.onSelect}
-                className={cn(STRIP_ROW_PILL, action.on === true ? ON : OFF)}
+                className={cn(`${STRIP_ROW_PILL} gap-1.5 text-xs`, action.on === true ? ON : OFF)}
               >
-                <action.icon className="size-4" />
+                <action.icon className="size-4 shrink-0" />
+                {action.word ?? action.label}
               </Button>
             ))}
           </div>

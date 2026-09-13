@@ -1557,8 +1557,12 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // …stated as ONE utility. `border-b border-t` would paint the same two lines and read as two
     // decisions, and a later `border-b` in the same cn() would silently drop the top one.
     expect(band().className).not.toMatch(/(?:^|\s)border-[bt](?=\s|$)/);
-    // The row below draws nothing at all: no edge of its own, in any direction.
-    expect(row().className).not.toMatch(/(?:^|\s)border/);
+    // The controls group below draws no SEAM: its border is a closed capsule, which is a group's
+    // outline and not a boundary between two chrome regions. A directional edge there would be a
+    // second rule at this seam, which is the fault this case exists to catch.
+    expect(row().className).toMatch(/(?:^|\s)rounded-full(?=\s|$)/);
+    expect(row().className).not.toMatch(/(?:^|\s)border-[bt](?=\s|$)/);
+    expect(row().className).not.toMatch(/(?:^|\s)border-y(?=\s|$)/);
     // …and the dock around them draws no edge either — the chrome block above it does.
     const dock = band().parentElement!;
     expect(dock.className).not.toMatch(/(?:^|\s)border/);
@@ -1715,7 +1719,9 @@ describe("Composer — the machine and the state, on a band of their own", () =>
     // last button scrolls clean off the screen instead of stopping short of it.
     expect(actions().className).toMatch(/(?:^|\s)-mx-3(?=\s|$)/);
     expect(actions().firstElementChild!.className).toMatch(/(?:^|\s)px-3(?=\s|$)/);
-    expect(row().className).not.toMatch(/(?:^|\s)px-/); // the group's inset is the scroller's
+    // The group's GUTTER is still the scroller's: the only horizontal padding it owns is the 4px
+    // that makes its capsule wider than the run of pills inside it (STRIP_CAPSULE).
+    expect(row().className).toMatch(/(?:^|\s)px-1(?=\s|$)/);
   });
 });
 

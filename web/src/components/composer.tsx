@@ -1264,7 +1264,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               {
                 id: "type",
                 icon: Terminal,
+                // Announced in full, drawn short: the pill has one word of room beside its glyph,
+                // and "Type into terminal" is the name a reader must still hear.
                 label: translate("composer.controls.typeAria"),
+                word: translate("composer.controls.type"),
                 on: direct.active,
                 pressed: direct.active,
                 disabled: locked || sending,
@@ -1309,6 +1312,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 id: "display",
                 icon: Settings2,
                 label: translate("composer.controls.displayAria"),
+                word: translate("composer.controls.display"),
                 on: drawer === "display",
                 expanded: drawer === "display",
                 onSelect: () => requestDrawer(drawer === "display" ? null : "display"),

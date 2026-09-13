@@ -61,8 +61,41 @@ export const STRIP_SCROLLER =
  * narrowest. `before:-inset-x-px` reaches the border edges rather than a neighbour, which is what
  * lets these sit at a 6px gap without two hit boxes overlapping. The caller adds its own colour and
  * typography; nothing about the box is a caller's to pick.
+ *
+ * `px-2` and not `px-2.5`: when the actions row's general half took its words back, five labelled
+ * pills measured 416px against a 382px row, and the 10px came off here rather than off a label or
+ * off the type size. It buys 5px a pill — 25px across the general capsule, 20px across a four-button
+ * harness one — and it is ONE number for every pill in every strip on purpose, because the actions
+ * row's two capsules only read as one family while their pills are the same box. The key rail wears
+ * it too; its caps are mono and short, so it lost 5px a key and nothing else.
+ *
+ * `has-[>svg]:px-2` is not decoration and may not be dropped: `ui/button.tsx`'s `sm` size sets
+ * `has-[>svg]:px-2.5`, and tailwind-merge does not read that as conflicting with a bare `px-*` —
+ * different modifier, so both survive and the MODIFIED one wins on every pill that carries an icon,
+ * which is all of them in the actions row. Measured: the bare number alone moved nothing at all.
  */
-export const STRIP_ROW_PILL = `${STRIP_TAP_TARGET} before:-inset-x-px h-8 min-w-11 shrink-0 touch-manipulation px-2.5 select-none`;
+export const STRIP_ROW_PILL = `${STRIP_TAP_TARGET} before:-inset-x-px h-8 min-w-11 shrink-0 touch-manipulation px-2 has-[>svg]:px-2 select-none`;
+
+/**
+ * The capsule a GROUP of {@link STRIP_ROW_PILL}s sits in, so a scrolling row reads as groups rather
+ * than as one run of evenly spaced buttons. The actions row wears two of them: Collie's own controls
+ * and the harness's commands.
+ *
+ * It owns the geometry and NOT the ground: `rounded-full px-1` makes the capsule 8px wider than the
+ * run of pills, whose own 32px faces are untouched, and `gap-1` is the inside gap. The caller adds
+ * the paint — a `border-border` outline, or a tinted background — and the two then differ only in
+ * that, which is the whole device: two like-shaped boxes, one hollow and one filled.
+ *
+ * `border border-transparent` is here rather than at the outlined caller, and it is load-bearing:
+ * without it the outlined capsule draws 2px taller than the filled one and the row's two halves sit
+ * at different heights. It is the §2 recipe (reserve the border, colour it later) applied across two
+ * siblings instead of across two states.
+ *
+ * The gap BETWEEN capsules is the caller's, and it must be wider than this one — that ratio is the
+ * only thing separating the groups, because there is no rule and no divider between them.
+ */
+export const STRIP_CAPSULE =
+  "flex shrink-0 items-center gap-1 rounded-full border border-transparent px-1";
 
 /**
  * Whether the strips in this subtree DRAW their names, or only expose them to a screen reader.

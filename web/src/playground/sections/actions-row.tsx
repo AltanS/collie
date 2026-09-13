@@ -21,7 +21,7 @@ export const DEF: SectionDef = {
   id: "actions-row",
   title: "Actions row",
   intent:
-    "The one row above the keyboard. Collie's own controls first — Keys, Type, Quick, Agent, the display gear — then the running harness's own commands in a tinted segment of the harness's own colour. It scrolls sideways rather than wrapping, and nothing is ever dropped from it. Tapping a harness button really runs it; here that means a stub that says yes, so the checkmark is the real echo.",
+    "The one row above the keyboard, drawn as two capsules of one shape: Collie's own controls — Keys, Type, Quick, Agent, Display — in an outlined one, then the running harness's own commands in a filled one that opens with the harness's mark and takes its colour. Every pill is an icon and a word, in both halves. It scrolls sideways rather than wrapping, and nothing is ever dropped from it. Tapping a harness button really runs it; here that means a stub that says yes, so the checkmark is the real echo.",
 };
 
 /** A stub `send()` that accepted the text, which is what drives the ✓. */
@@ -37,10 +37,10 @@ function useGeneral(): readonly GeneralAction[] {
   const toggle = (id: string) => () => setOpen((was) => (was === id ? null : id));
   return [
     { id: "keys", icon: Keyboard, label: "Keys", on: open === "keys", expanded: open === "keys", onSelect: toggle("keys") },
-    { id: "type", icon: Terminal, label: "Type into terminal", on: typing, pressed: typing, onSelect: () => setTyping((was) => !was) },
+    { id: "type", icon: Terminal, label: "Type into terminal", word: "Type", on: typing, pressed: typing, onSelect: () => setTyping((was) => !was) },
     { id: "quick", icon: Zap, label: "Quick", on: open === "quick", expanded: open === "quick", onSelect: toggle("quick") },
     { id: "agent", icon: Slash, label: "Agent", onSelect: toggle("cmd") },
-    { id: "display", icon: Settings2, label: "Display settings", on: open === "display", expanded: open === "display", onSelect: toggle("display") },
+    { id: "display", icon: Settings2, label: "Display settings", word: "Display", on: open === "display", expanded: open === "display", onSelect: toggle("display") },
   ];
 }
 
@@ -63,7 +63,7 @@ export function ActionsRowSection() {
           state="roomy-claude"
           label="claude code: five controls, then Model, Effort, Compact, Resume"
           reach="open a pane running Claude Code."
-          note="The harness half is tinted with Claude's own #D97757 and its icons are painted in it, so it reads as belonging to Claude Code rather than to Collie. Model sends /model and Claude's own picker takes the screen from there."
+          note="The harness half is FILLED with Claude's own #D97757, opens with Claude's mark and paints its icons in that colour, so it reads as belonging to Claude Code rather than to Collie. The general half is the same capsule, outlined instead. Model sends /model and Claude's own picker takes the screen from there."
           span={2}
         >
           <Roomy agent="claude" />

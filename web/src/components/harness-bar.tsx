@@ -1,9 +1,10 @@
 import { Check, Cpu, Gauge, History, ListTree, Shrink, Slash } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import { AgentIcon } from "@/components/agent-icon";
 import { AGENT_BRANDS } from "@/components/agent-icon-data";
 import { Button } from "@/components/ui/button";
-import { STRIP_ROW_PILL } from "@/components/ui/labelled-strip";
+import { STRIP_CAPSULE, STRIP_ROW_PILL } from "@/components/ui/labelled-strip";
 import { useActionEcho } from "@/hooks/use-action-echo";
 import { useLocale } from "@/hooks/use-locale";
 import { usePendingConfirm } from "@/hooks/use-pending-confirm";
@@ -22,12 +23,19 @@ import { cn } from "@/lib/utils";
 // It exists because Altan drives Claude Code from the phone and wants those four under the thumb
 // rather than three taps down inside the Agent palette.
 //
-// IT IS COLOURED, AND THE COLOUR IS THE POINT. These buttons do not do what their neighbours do: a
-// general action opens one of Collie's own docks, and one of these types into somebody else's
-// program. So the segment carries the harness's own brand tint and draws its icons in that colour,
-// which says "these belong to Claude Code" without a word and without a rule down its side. A brand
-// with no legible accent (Codex, pi — both officially black) falls back to the app's muted ground;
-// see `accent` in agent-icon-data.ts for why absent is a real answer there.
+// IT IS THE FILLED CAPSULE OF THE TWO. These buttons do not do what their neighbours do: a general
+// action opens one of Collie's own docks, and one of these types into somebody else's program. So
+// the segment sits in a capsule of its own — the same box the general half wears (STRIP_CAPSULE),
+// filled rather than outlined — carrying the harness's brand tint and drawing its icons in that
+// colour. A brand with no legible accent (Codex, pi — both officially black) falls back to the app's
+// muted ground; see `accent` in agent-icon-data.ts for why absent is a real answer there. Outline
+// against fill is what keeps the two capsules apart on a Codex pane, where both are neutral.
+//
+// IT OPENS WITH THE HARNESS'S OWN MARK. The first thing inside the capsule is the agent's icon, and
+// it is decoration: no hit box, no name in the accessibility tree, which already names the group.
+// The tint alone said "not Collie's"; the mark says WHOSE, at a glance and before a word is read.
+// Altan asked for exactly that after the two rows were merged into one — the row he tested "lacks
+// some structure", five identical glyphs and then a coloured blob with no owner on it.
 //
 // IT ADDS NO REFUSAL OF ITS OWN. `disabled` (the composer's `locked`) greys every button in place,
 // the way the key rail greys a key the multiplexer refuses rather than removing it. Everything else
@@ -124,12 +132,9 @@ export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
       data-slot="harness-bar"
       role="group"
       aria-label={translate("harnessBar.label")}
-      // A tinted capsule, never a rule down one side. `rounded-full px-1` is the whole device: the
-      // pills keep their own 32px faces, and the capsule is 8px wider than the run of them.
-      className={cn(
-        "flex shrink-0 items-center gap-1 rounded-full px-1",
-        accent === undefined && "bg-muted",
-      )}
+      // A tinted capsule, never a rule down one side. The geometry is STRIP_CAPSULE's, shared with
+      // the general half so the two boxes are one shape; only the paint differs.
+      className={cn(STRIP_CAPSULE, accent === undefined && "bg-muted")}
       style={
         accent === undefined
           ? undefined
@@ -138,6 +143,12 @@ export function HarnessBar({ agent, mine, onRun, disabled }: HarnessBarProps) {
             { backgroundColor: `color-mix(in srgb, ${accent} 14%, transparent)` }
       }
     >
+      {/* The mark, not a button: `aria-hidden` on the wrapper drops AgentIcon's own `role="img"`
+          and its label out of the tree, so a reader hears the group's name once and not a logo
+          before every command. It carries no tap area either — it is the capsule's tag. */}
+      <span aria-hidden="true" className="flex shrink-0 items-center pl-0.5">
+        <AgentIcon agent={agent} className="size-4" />
+      </span>
       {items.map((item) => {
         const phase = echo.phaseOf(item.id);
         const armed = pending === item.id;
