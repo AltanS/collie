@@ -32,17 +32,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
-- **A row of the running agent's own commands, above the keys.** Claude Code panes get Model, Effort, Compact and Resume under the thumb; Codex, pi and omp get their own. Operators add or replace the row with `bar = true` in `commands.toml`. It is visible by default; Settings, Harness shortcuts, hides it per device.
+- **One row of actions above the keyboard, with the running agent's own commands in it.** Keys, Type, Quick, Agent and the display gear share a single scrolling row with the harness's commands, which sit in a segment tinted with that harness's brand colour and carry an icon each. Claude Code panes get Model, Effort, Compact and Resume; Codex, pi and omp get their own. Every button sends its bare command and the harness paints its own picker in the mirror, so the list of models or effort levels never lives in Collie. Operators add or replace the segment with `bar = true` in `commands.toml`; Settings, Harness shortcuts, hides it per device.
 - **A config file carries every setting.** `~/.collie/config.toml` sets any Collie setting in TOML for the whole machine, and a `config.toml` beside your `.env` overrides it for one instance; the environment and your `.env` still win over both, and a broken key never stops the bridge from starting.
 - **Three verbs for that file.** `collie config init` writes a commented file with every setting and its default, `collie config check` validates one, and `collie config show` prints both file paths and every setting with its effective value and where it came from.
 - **Cache rules are dated, sourced claims, and `collie doctor` says when one goes stale.** Every TTL carries the vendor page it was read on and the date it was read; a claim older than 180 days is a doctor warning, and one older than a year fails the build.
 - **`cache-rules.toml` moves a TTL your provider changed.** It sits beside `commands.toml`, overrides one rule id, and must carry the page you read and the date you read it.
 - **Every agent pane shows how long its prompt cache stays warm.** A chip on the dashboard card and in the pane header counts down from the harness's last request, turning amber in the last quarter of the window; a tap on the pane screen opens the rule, its source and the date it was last checked.
-- **The first launch walks you through Collie in three slides.** A sheet on the first
-  snapshot says what Collie mirrors, how to answer a pane, and how to be told when one needs
-  you; it is shown once per device, and Settings has a row to show it again.
+- **The first launch is one screen that says what Collie does and what this install looks like.** It names the multiplexer and the machine it mirrors, counts the panes and the ones blocked on you, says whether this device may type and how many machines are in your crew, offers at most two things to do about it, and closes with the six things you can do here. Shown once per device; Settings shows it again.
 - **A push warns you before a pane's prompt cache goes cold.** Switch it on for one pane from its settings sheet, or for every pane under Settings → Notify when, where the panes you watched one by one are listed. The warning fires once per warm cycle, honours the snooze, and `COLLIE_CACHE_WARN_SECONDS` moves its 300-second window.
-- **Claude's Model button offers opus, sonnet, haiku and default.** One tap on the harness bar sets the model by the alias Claude Code itself accepts, and Pick in Claude still opens the harness's own picker for a model those four names do not cover.
 - **omp's harness bar has a Tree button.** It sits between Compact and Resume, the order pi's bar already uses, and opens omp's own session tree in the mirror. `/tree` joins the omp command palette with it.
 
 ### Changed
@@ -61,13 +58,9 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
   to 1.9.0: a member still on 1.7.0 now shows red on the lead's preflight, naming both versions and
   the remedy, and reads as `incompatible` in `crew status`. The `collie pack` command alias, `collie
   docs pack` and the app's `/pack` address are untouched and stay until 2.0.0.
-- **Push availability copy has one home.** Settings and the tour read the same sentences.
 - **The config schema names the cache warn window.** `COLLIE_CACHE_WARN_SECONDS` has its row, so `collie config show` and `config init` carry it.
 - **The config schema forgets the 1.7.0 pack keys.** The two `COLLIE_PACK_*` timeout aliases left with the crew wire overlap, so `collie config show` no longer lists them.
 - **The agent card drops the relative-time chip.** The prompt-cache countdown next to it says what matters; the extra number read as a session clock and confused.
-- **Model sends `/model` and the pane's own picker takes over.** Every harness button is one tap now: the sheet of model names and effort levels is gone, because that list belongs to the harness, it changes without telling us, and the harness paints its own picker in the mirror anyway.
-- **One row of actions above the keyboard, and the harness has its own colour in it.** Keys, Type, Quick, Agent and the display gear now share a single scrolling row with the running agent's own commands, which sit in a segment tinted with that harness's brand colour and carry an icon each. It replaces the separate controls row and harness bar, so the composer gets a row of the screen back.
-- **The first launch is one screen, not three slides.** It names the multiplexer and the machine it mirrors, counts the panes and the ones blocked on you, says whether this device may type and how many machines are in your crew, offers at most two things to do about it, and closes with the six things you can do here. Settings shows it again.
 
 ### Fixed
 
