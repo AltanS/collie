@@ -20,6 +20,15 @@
 // renders nothing, and the next floor tick retries. A forever-stale countdown is worse than no
 // countdown, because it is confidently wrong.
 //
+// A PROBE THAT FOUND NOTHING IS NOT A FAILED READ, and it keeps the last reading. The 128 KB tail is a
+// window, not the log: `/compact` in a Claude pane writes a summary large enough to push the last
+// assistant turn out of that window, and a Codex or pi turn can do the same. The read succeeded and the
+// window simply holds no turn, so the entry stands on its memo and ages on the clock — which is what
+// `bridge/journal/claude.ts` § claudeCacheProbe has always said it does. Dropping there made a pane's
+// countdown vanish for good after one `/compact`, because nothing ever writes that turn back into the
+// window. A failure is an exception from the seam; an empty window is `null`, and the two are told
+// apart here rather than folded together.
+//
 // STATE IS KEYED BY THE HARNESS SESSION ID, never the pane id. Pane ids churn — a renumbered pane must
 // inherit nothing — and a session id is what both the transcript and the rule catalog are about.
 //
@@ -156,13 +165,7 @@ export class CacheTracker {
     // Unchanged: nothing new has been written, so the memo stands and only the clock has moved. Still
     // re-evaluated, because warm becomes expiring and expiring becomes cold without anybody writing.
     if (unchanged) {
-      this.store(key, at, stat, previous.rule, previous.modelTtl, {
-        rule: previous.rule,
-        memo: previous.memo,
-        modelTtl: previous.modelTtl,
-        override: overrideFor(overrides, previous.rule?.id),
-        now: at,
-      });
+      this.keep(key, at, stat, previous, overrides);
       return;
     }
 
@@ -170,11 +173,14 @@ export class CacheTracker {
     try {
       probe = await adapter.cacheProbe?.(ref);
     } catch {
-      probe = null;
+      // A read that FAILED: drop rather than freeze (Decision 9).
+      drop();
+      return;
     }
     if (probe === null || probe === undefined) {
-      // Nothing readable where there used to be something: drop rather than freeze (Decision 9).
-      drop();
+      // A read that found no turn in the window — see the module header. Keep what the last successful
+      // probe left behind, and let it age; with nothing behind it there is nothing to say (Decision 1).
+      if (previous !== undefined) this.keep(key, at, stat, previous, overrides);
       return;
     }
     const rule = ruleForProbe(harness, probe);
@@ -185,6 +191,29 @@ export class CacheTracker {
       memo: previous?.memo,
       modelTtl,
       override: overrideFor(overrides, rule?.id),
+      now: at,
+    });
+  }
+
+  /**
+   * Re-evaluate an existing entry against the clock alone, with no new probe.
+   *
+   * Two callers, one meaning: nothing new was read, so the rule, the model TTL and the memo the last
+   * successful probe chose all stand, and only `now` has moved. The state still changes under it —
+   * warm becomes expiring and expiring becomes cold without anybody writing a line.
+   */
+  private keep(
+    key: string,
+    at: number,
+    seen: { size: number; mtimeMs: number },
+    previous: Entry,
+    overrides: readonly CacheOverride[],
+  ): void {
+    this.store(key, at, seen, previous.rule, previous.modelTtl, {
+      rule: previous.rule,
+      memo: previous.memo,
+      modelTtl: previous.modelTtl,
+      override: overrideFor(overrides, previous.rule?.id),
       now: at,
     });
   }

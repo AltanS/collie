@@ -259,6 +259,51 @@ describe("a failed read drops the memo, never freezes it", () => {
     expect(tracker.get("ses-1")).toBeUndefined();
   });
 
+  test("a probe that finds no turn in the 128 KB window keeps the last reading", async () => {
+    // `/compact` in a Claude pane writes a summary big enough to push the last assistant turn out of
+    // the tail. The read SUCCEEDED and the window simply holds no turn, so the countdown must stand
+    // rather than vanish for good — nothing ever writes that turn back into the window.
+    const c = clock();
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe();
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
+    const panes = [pane("claude", "ses-1")];
+    await tracker.refresh(panes);
+    const before = tracker.get("ses-1");
+    expect(before?.state).toBe("warm");
+
+    c.advance(2000);
+    state.stat = { size: 99_000, mtimeMs: 999 };
+    state.probe = null;
+    await tracker.refresh(panes);
+    const after = tracker.get("ses-1");
+    expect(after?.state).toBe("warm");
+    expect(after?.ttlSeconds).toBe(before?.ttlSeconds);
+    expect(after?.lastRequestAt).toBe(before?.lastRequestAt);
+    expect(after?.expiresAt).toBe(before?.expiresAt);
+
+    // And it keeps ageing on the clock: past the deadline the same entry reads cold, never warm.
+    c.advance(300_000);
+    state.stat = { size: 120_000, mtimeMs: 1999 };
+    await tracker.refresh(panes);
+    expect(tracker.get("ses-1")?.state).toBe("cold");
+  });
+
+  test("a pane that goes away still drops its kept reading", async () => {
+    const c = clock();
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe();
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
+    await tracker.refresh([pane("claude", "ses-1")]);
+    c.advance(2000);
+    state.stat = { size: 99_000, mtimeMs: 999 };
+    state.probe = null;
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.get("ses-1")).toBeDefined();
+    await tracker.refresh([]);
+    expect(tracker.get("ses-1")).toBeUndefined();
+  });
+
   test("a harness that has written nothing yet simply has no entry", async () => {
     const { adapter } = fakeAdapter("claude");
     const tracker = new CacheTracker({ claude: adapter }, noOverrides, () => NOW);
@@ -342,6 +387,45 @@ describe("the operator override", () => {
     const tracker = new CacheTracker({ claude: adapter }, { overrides: async () => [other] }, () => NOW);
     await tracker.refresh([pane("claude", "ses-1")]);
     expect(tracker.get("ses-1")?.ttlSeconds).toBe(300);
+  });
+});
+
+describe("which rule a measured TTL cites", () => {
+  const measured = (value: number): Partial<CacheProbe> => ({
+    observedTtlSeconds: {
+      value,
+      confidence: "observed",
+      source: { url: "", title: "tokens written", publisher: "local telemetry", retrievedAt: "", kind: "observed" },
+    },
+  });
+
+  test("a measured hour on a tierless claude pane cites the subscription rule, not the API page", async () => {
+    // A Max subscription names no tier in the log, so the tier guess is the pessimistic `claude.api`.
+    // The measurement answers the question that guess was guessing at: one hour is the subscription
+    // rule and nothing else, and the sheet must quote that page.
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe(measured(3600));
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, () => NOW);
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.get("ses-1")?.ruleId).toBe("claude.subscription");
+    expect(tracker.get("ses-1")?.ttlSeconds).toBe(3600);
+  });
+
+  test("a measured five minutes still cites the API rule", async () => {
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe(measured(300));
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, () => NOW);
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.get("ses-1")?.ruleId).toBe("claude.api");
+  });
+
+  test("a measurement no rule carries leaves the tier guess alone", async () => {
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = probe(measured(1234));
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, () => NOW);
+    await tracker.refresh([pane("claude", "ses-1")]);
+    expect(tracker.get("ses-1")?.ruleId).toBe("claude.api");
+    expect(tracker.get("ses-1")?.ttlSeconds).toBe(1234);
   });
 });
 

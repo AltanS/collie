@@ -65,6 +65,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The config schema names the cache warn window.** `COLLIE_CACHE_WARN_SECONDS` has its row, so `collie config show` and `config init` carry it.
 - **The config schema forgets the 1.7.0 pack keys.** The two `COLLIE_PACK_*` timeout aliases left with the crew wire overlap, so `collie config show` no longer lists them.
 
+### Fixed
+
+- **A pane's cache countdown survives a `/compact`.** A transcript probe that finds no turn inside its 128 KB window now keeps the last reading and lets it age, instead of dropping the pane's countdown for good; a read that actually fails still drops it.
+
 ## [1.8.2] - 2026-09-12
 
 ### Fixed
