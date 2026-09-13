@@ -53,13 +53,16 @@ interface CacheRulesDocument {
  * what a valid row is.
  *
  * A row is kept only when `id` names a SHIPPED rule, `ttl_seconds` is an integer from 1 to 86400,
- * `source_url` is a non-empty string and `retrieved` parses as a real `YYYY-MM-DD` date. A later row
- * for the same id replaces the earlier one IN PLACE, so correcting a row does not reorder the file's
- * effect.
+ * `source_url` is a non-empty string and `retrieved` parses as a real `YYYY-MM-DD` date that is not
+ * after today. A later row for the same id replaces the earlier one IN PLACE, so correcting a row
+ * does not reorder the file's effect.
+ *
+ * The clock is a parameter so the grammar stays unit-testable; it is read for one comparison only.
  */
 export function validateOperatorCacheRules(
   doc: CacheRulesDocument | null | undefined,
   warn: (message: string) => void = defaultWarn,
+  now: () => number = Date.now,
 ): CacheOverride[] {
   const rows = doc?.rule;
   if (rows === undefined || rows === null) return [];
@@ -111,6 +114,13 @@ export function validateOperatorCacheRules(
     }
     const retrieved = row.retrieved.trim();
 
+    // A date nobody can have read on yet is a typo, not provenance, so it drops the row like any
+    // other bad field. Both sides are UTC day strings, so the comparison is a string comparison.
+    if (retrieved > utcDay(now())) {
+      warn(`${where}: "retrieved" is in the future`);
+      continue;
+    }
+
     // `note` is optional, and a present-but-wrong one drops the row rather than being ignored: the
     // same fail-closed reading the five sibling validators give an optional field.
     let note: string | undefined;
@@ -142,6 +152,11 @@ function isRealDate(value: string): boolean {
   const at = Date.parse(`${value}T00:00:00Z`);
   if (Number.isNaN(at)) return false;
   return new Date(at).toISOString().slice(0, 10) === value;
+}
+
+/** The `YYYY-MM-DD` day an epoch-ms instant falls on, in UTC — the calendar `retrieved` is written in. */
+function utcDay(at: number): string {
+  return new Date(at).toISOString().slice(0, 10);
 }
 
 function defaultWarn(message: string): void {

@@ -7,10 +7,17 @@ import type { OperatorFileIo } from "./operator-file.ts";
 // point: `collie doctor` runs this very function, so the verb and the bridge can never disagree about
 // which row is valid.
 
+/** The clock every case is judged against, so "in the future" means one thing forever. */
+const NOW = Date.parse("2026-09-13T12:00:00Z");
+
 const parse = (toml: string) => {
   const warnings: string[] = [];
   // SAFETY: the test's own literal TOML. `validateOperatorCacheRules` checks every field it names.
-  const rows = validateOperatorCacheRules(Bun.TOML.parse(toml) as { rule?: unknown }, (m) => warnings.push(m));
+  const rows = validateOperatorCacheRules(
+    Bun.TOML.parse(toml) as { rule?: unknown },
+    (m) => warnings.push(m),
+    () => NOW,
+  );
   return { rows, warnings };
 };
 
@@ -60,6 +67,12 @@ retrieved = "2026-09-13"
     expect(warnings).toEqual([]);
     expect(rows.map((r) => r.ruleId)).toEqual(["opencode.google", "pi.unknown"]);
   });
+
+  test("is still good when it was retrieved today — the bound is after today, not today", () => {
+    const { rows, warnings } = parse(GOOD.replace('retrieved = "2026-09-12"', 'retrieved = "2026-09-13"'));
+    expect(warnings).toEqual([]);
+    expect(rows[0]?.retrieved).toBe("2026-09-13");
+  });
 });
 
 describe("a row is DROPPED, never defaulted, when", () => {
@@ -72,6 +85,8 @@ describe("a row is DROPPED, never defaulted, when", () => {
     ["the source url is empty", 'source_url = ""', '"source_url" is required'],
     ["the retrieved date is prose", 'retrieved = "last tuesday"', "not a YYYY-MM-DD date"],
     ["the retrieved date is not a real day", 'retrieved = "2026-02-31"', "not a YYYY-MM-DD date"],
+    ["the retrieved date has not happened yet", 'retrieved = "2099-01-01"', '"retrieved" is in the future'],
+    ["the retrieved date is tomorrow", 'retrieved = "2026-09-14"', '"retrieved" is in the future'],
     ["the note is present but empty", 'note = ""', '"note" must be a non-empty string'],
   ];
   for (const [what, line, expected] of cases) {

@@ -1,4 +1,5 @@
-# Your own prompt-cache lifetimes. Copy to your plugin config dir, next to `.env`:
+# Your own prompt-cache lifetimes. This file goes next to your `.env`; docs/configure.md, under
+# "Your own slash commands", names that directory for each kind of install. On a Herdr plugin:
 #   cp cache-rules.toml.example "$(herdr plugin config-dir herdr.collie)/cache-rules.toml"
 #
 # This file configures ONE thing: how long Collie believes a harness's prompt cache stays warm. Each
@@ -17,7 +18,8 @@
 # FOUR FIELDS ARE REQUIRED AND ONE IS NOT. `id`, `ttl_seconds`, `source_url` and `retrieved` must all
 # be there, or the row is dropped with a line in the log and in `collie doctor`. You may move a
 # number; you may not remove the page and date it came from — that is the whole contract the rule
-# catalog rests on. `note` is optional and is shown in the pane sheet.
+# catalog rests on. A `retrieved` date later than today is dropped the same way: nobody read a page on
+# a day that has not come. `note` is optional and is shown in the pane sheet.
 #
 # A MEASURED NUMBER STILL WINS. Claude Code writes which cache window it used into its own
 # transcript, so a session it says is on the one-hour TTL stays on the one-hour TTL whatever this

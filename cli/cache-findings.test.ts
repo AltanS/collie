@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 
 import { claimAgeDays } from "../bridge/cache/claims.ts";
 import { allCacheRules } from "../bridge/cache/rules/index.ts";
@@ -16,6 +17,14 @@ const deps = (over: { env?: Record<string, string | undefined>; now?: number; fi
   env: over.env ?? {},
   now: () => over.now ?? Date.parse("2026-09-13T12:00:00Z"),
 });
+
+/**
+ * The shipped example, read off disk rather than retyped.
+ *
+ * The docs tell an operator to copy this file, and every row in it is commented out — so a copy of it
+ * must credit exactly nothing. Reading the real bytes keeps the case honest if the example changes.
+ */
+const EXAMPLE_FILE = readFileSync(`${import.meta.dir}/../cache-rules.toml.example`, "utf8");
 
 const find = (findings: readonly Finding[], check: string): Finding => {
   const hit = findings.find((f) => f.check === check);
@@ -117,7 +126,9 @@ describe("cache-env", () => {
       const f = find(cacheFindings(deps({ env: { [name]: "1" } })), "cache-env");
       expect(f.status).toBe("warn");
       expect(f.detail).toContain(`${name}=1`);
-      expect(f.remedy).toBe("mirror this into cache-rules.toml with the page you read and today's date");
+      expect(f.remedy ?? "").toContain("mirror this into cache-rules.toml");
+      // The nudge must not promise a change on a pane that measured its own window (ADR 0041).
+      expect(f.remedy ?? "").toContain("no measured reading");
     },
   );
 
@@ -125,16 +136,38 @@ describe("cache-env", () => {
     expect(find(cacheFindings(deps({ env: { ENABLE_PROMPT_CACHING_1H: "  " } })), "cache-env").status).toBe("ok");
   });
 
+  const ROW = (id: string, ttl: number): string =>
+    `[[rule]]\nid = "${id}"\nttl_seconds = ${String(ttl)}\nsource_url = "https://x.invalid"\nretrieved = "2026-09-12"\n`;
+
   test("goes quiet once cache-rules.toml names a claude rule", () => {
-    const files = { [CONFIG_FILE]: 'id = "claude.api"\nttl_seconds = 3600\n' };
+    const files = { [CONFIG_FILE]: ROW("claude.api", 3600) };
     const f = find(cacheFindings(deps({ env: { ENABLE_PROMPT_CACHING_1H: "1" }, files })), "cache-env");
     expect(f.status).toBe("ok");
     expect(f.detail).toContain("already moves a claude rule");
   });
 
   test("a file that moves some OTHER harness's rule does not silence the warning", () => {
-    const files = { [CONFIG_FILE]: 'id = "codex.api"\nttl_seconds = 1800\n' };
+    const files = { [CONFIG_FILE]: ROW("codex.api", 1800) };
     expect(find(cacheFindings(deps({ env: { FORCE_PROMPT_CACHING_5M: "1" }, files })), "cache-env").status).toBe("warn");
+  });
+
+  test("the shipped example, copied as the docs say, credits nothing — every row in it is commented out", () => {
+    // The fixture is the example file's own text, so a row uncommented there cannot drift past this.
+    const files = { [CONFIG_FILE]: EXAMPLE_FILE };
+    const f = find(cacheFindings(deps({ env: { ENABLE_PROMPT_CACHING_1H: "1" }, files })), "cache-env");
+    expect(f.status).toBe("warn");
+    expect(f.detail).not.toContain("already moves a claude rule");
+    // And the same file is a file that declares no rows, not a file with a bad row in it.
+    const rows = find(cacheFindings(deps({ files })), "cache-rules");
+    expect(rows.status).toBe("ok");
+    expect(rows.detail).toContain("declares no rows");
+  });
+
+  test("a row whose retrieved date has not happened yet credits nothing either", () => {
+    const files = { [CONFIG_FILE]: ROW("claude.api", 3600).replace("2026-09-12", "2099-01-01") };
+    const f = find(cacheFindings(deps({ env: { ENABLE_PROMPT_CACHING_1H: "1" }, files })), "cache-env");
+    expect(f.status).toBe("warn");
+    expect(find(cacheFindings(deps({ files })), "cache-rules").detail).toContain('row 1: "retrieved" is in the future');
   });
 
   test("the bridge's own environment is never consulted — the env is the one handed in", () => {

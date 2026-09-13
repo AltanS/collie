@@ -1,5 +1,6 @@
 import { allCacheRules } from "../bridge/cache/rules/index.ts";
 import { claimAgeDays, staleClaims } from "../bridge/cache/claims.ts";
+import type { CacheOverride } from "../bridge/cache/engine.ts";
 import { validateOperatorCacheRules } from "../bridge/operator-cache-rules.ts";
 import type { CliContext } from "./context.ts";
 import { ok, warn, type Finding } from "./finding.ts";
@@ -32,7 +33,7 @@ export const CLAIM_WARN_DAYS = 180;
 export const CLAUDE_TTL_VARS: readonly string[] = ["ENABLE_PROMPT_CACHING_1H", "FORCE_PROMPT_CACHING_5M"];
 
 /** The rule ids `cache-env` considers "already mirrored" when an override names one of them. */
-const CLAUDE_RULE_IDS: readonly string[] = ["claude.api", "claude.subscription"];
+const CLAUDE_RULE_IDS: ReadonlySet<string> = new Set(["claude.api", "claude.subscription"]);
 
 /** What this section reaches: the context, one file read, and the shell's own environment. */
 export interface CacheDeps {
@@ -103,24 +104,18 @@ function claims(deps: CacheDeps): Finding {
  */
 function overrides(deps: CacheDeps): Finding {
   const check = "cache-rules";
-  const path = cacheRulesPath(deps.ctx);
-  const text = deps.files.read(path);
+  const read = readOverrides(deps);
+  const path = read.path;
   // No file is the ordinary case of an operator who declared nothing, not a fault.
-  if (text === null) return ok(check, `no ${path} — every TTL is the shipped rule`);
-  const rejected: string[] = [];
-  let kept: ReturnType<typeof validateOperatorCacheRules>;
-  try {
-    // SAFETY: `Bun.TOML.parse` answers a parsed document and `validateOperatorCacheRules` is its only
-    // reader — every field it names is checked before it is believed, so this assertion claims nothing
-    // beyond "a document came back". Exactly the assertion `operator-file.ts` makes.
-    kept = validateOperatorCacheRules(Bun.TOML.parse(text) as { rule?: unknown }, (m) => rejected.push(m));
-  } catch (err) {
+  if (read.absent) return ok(check, `no ${path} — every TTL is the shipped rule`);
+  if (read.parseError !== null) {
     return warn(
       check,
-      `${path} is not valid TOML (${String(err)}) — the bridge is holding the last rows that parsed`,
+      `${path} is not valid TOML (${read.parseError}) — the bridge is holding the last rows that parsed`,
       "fix the file; `collie doctor` reads it again with no restart",
     );
   }
+  const { kept, rejected } = read;
   const applied = `${String(kept.length)} override(s) applied: ${kept.map((r) => `${r.ruleId} → ${String(r.ttlSeconds)}s`).join(", ")}`;
   if (rejected.length === 0) {
     return ok(check, kept.length === 0 ? `${path} declares no rows` : applied);
@@ -129,8 +124,46 @@ function overrides(deps: CacheDeps): Finding {
     check,
     `${kept.length === 0 ? `${path} applies nothing` : applied}; ${rejected.join("; ")}`,
     "every row needs an `id` this build ships, a whole `ttl_seconds` from 1 to 86400, a `source_url`" +
-      " and a `retrieved` date — see cache-rules.toml.example",
+      " and a `retrieved` date at or before today — see cache-rules.toml.example",
   );
+}
+
+/** One reading of `cache-rules.toml`, judged by the grammar the BRIDGE applies. */
+interface OverrideRead {
+  /** Where the file would sit, named whether or not it is there. */
+  readonly path: string;
+  /** True when the operator declared no file at all. */
+  readonly absent: boolean;
+  /** Set when the file is not TOML; the bridge then holds its last good rows. */
+  readonly parseError: string | null;
+  /** The rows that VALIDATE. A commented-out row is not one of them. */
+  readonly kept: readonly CacheOverride[];
+  /** One line per dropped row, in the validator's own words. */
+  readonly rejected: readonly string[];
+}
+
+/**
+ * Read, parse and validate the operator's file once, for both lines that need it.
+ *
+ * `cache-rules` and `cache-env` share this so neither can answer from the file's TEXT. A plain search
+ * for a rule id credits the shipped example, whose rows are all commented out, with an override that
+ * applies to nothing — which is the bug this function exists to make unrepresentable.
+ */
+function readOverrides(deps: CacheDeps): OverrideRead {
+  const path = cacheRulesPath(deps.ctx);
+  const text = deps.files.read(path);
+  if (text === null) return { path, absent: true, parseError: null, kept: [], rejected: [] };
+  const rejected: string[] = [];
+  try {
+    // SAFETY: `Bun.TOML.parse` answers a parsed document and `validateOperatorCacheRules` is its only
+    // reader — every field it names is checked before it is believed, so this assertion claims nothing
+    // beyond "a document came back". Exactly the assertion `operator-file.ts` makes.
+    const doc = Bun.TOML.parse(text) as { rule?: unknown };
+    const kept = validateOperatorCacheRules(doc, (m) => rejected.push(m), deps.now);
+    return { path, absent: false, parseError: null, kept, rejected };
+  } catch (err) {
+    return { path, absent: false, parseError: String(err), kept: [], rejected: [] };
+  }
 }
 
 /**
@@ -151,23 +184,22 @@ function env(deps: CacheDeps): Finding {
     check,
     `${named} is set in this shell, so Claude Code is on a TTL the shipped rule does not describe;` +
       " the bridge cannot read the agent's environment, so the chip still shows the shipped number",
-    "mirror this into cache-rules.toml with the page you read and today's date",
+    "mirror this into cache-rules.toml with the page you read and today's date — it changes the chip" +
+      " only on a Claude pane with no measured reading, because a measurement outranks the file",
   );
 }
 
 /**
  * Does `cache-rules.toml` move a claude rule at all?
  *
- * Deliberately a COARSE read: it asks whether a `claude.api` or `claude.subscription` id appears in the
- * file, not whether the number matches the variable. The grammar that decides a valid row lives in
- * `bridge/operator-cache-rules.ts` and is the bridge's to apply; this line only needs to know whether
- * the operator has said anything about Claude's TTL at all, and a file mid-edit must not flip the
- * finding to a false warning.
+ * It asks the VALIDATOR, not the text: a `claude.api` id in a commented-out row, which is exactly what
+ * the shipped example carries, moves nothing and must not read as an override. The grammar that
+ * decides a valid row lives in `bridge/operator-cache-rules.ts` and is the bridge's to apply; this
+ * line only asks whether a row that survives it names a Claude rule, not whether the number matches
+ * the variable.
  */
 function overrideNamesClaude(deps: CacheDeps): boolean {
-  const text = deps.files.read(cacheRulesPath(deps.ctx));
-  if (text === null) return false;
-  return CLAUDE_RULE_IDS.some((id) => text.includes(`"${id}"`) || text.includes(`'${id}'`));
+  return readOverrides(deps).kept.some((row) => CLAUDE_RULE_IDS.has(row.ruleId));
 }
 
 /** Where the operator's `cache-rules.toml` sits — beside the other five, in their config dir. */

@@ -127,6 +127,7 @@ Put machine-specific commands, such as a Herdr plugin `/fork-in-herdr` or a cust
 | `commands.toml` | optional, per row | `confirm = true` | yes, no restart needed |
 | `keys.toml` | optional, per row | `danger = true` | yes, no restart needed |
 | `quick-replies.toml` | optional, per row | none | yes, no restart needed |
+| `theme.toml` | none, the faces are a device setting | none | yes, on the next page reload |
 | `launchers.toml` | none, matched by exact command instead | none | yes, but an already-open tab re-reads the rows only on its next load |
 | `cache-rules.toml` | none, matched by exact rule id instead | none | yes, no restart needed |
 
@@ -360,8 +361,9 @@ cp cache-rules.toml.example ~/.config/collie/cache-rules.toml
 ```
 
 Collie ships one rule per harness and provider. Collie read each rule from a vendor page on a
-recorded date. A vendor can change that value without notice. A gateway in front of your agent can
-change it too. Use this file to override values until Collie ships an update.
+recorded date. A vendor can change that value without notice. A gateway, a proxy that sits between
+your agent and the vendor, can change it too. Use this file to override values until Collie ships an
+update.
 
 ```toml
 [[rule]]
@@ -374,19 +376,36 @@ note = "our gateway sends ttl 1h on every request"
 
 Collie keeps a row only when all four rules hold. `id` must name a shipped rule. `ttl_seconds` must
 be an integer from 1 to 86400. `source_url` must be a non-empty string. `retrieved` must parse as a
-valid `YYYY-MM-DD` date. Invalid rows are dropped and logged. The rest of the file still applies.
+valid `YYYY-MM-DD` date, and it must not be later than today. Invalid rows are dropped and logged.
+The rest of the file still applies.
+
+Two more rules decide what a file means. Two rows with the same `id` are not an error: the later row
+wins. A `note` you write as an empty string drops the whole row, so leave the field out instead.
+
+A row binds at the tier rule, the one its `id` names. The per-model split under that tier moves with
+it, so one row covers every model on that tier.
 
 > **Note.** You may change a number. You may not remove its source page or retrieval date. The rule
 > catalog requires both fields.
 
 `collie doctor` checks three items. `cache-claims` warns when nobody has re-checked a shipped rule in
-180 days. `cache-rules` lists invalid rows in your file. `cache-env` flags when you set
-`ENABLE_PROMPT_CACHING_1H` or `FORCE_PROMPT_CACHING_5M` in your shell. The bridge runs as a separate
-service and cannot read your agent's environment. Mirror these Claude Code variables here so the
-bridge can read them.
+180 days. `cache-rules` names every dropped row and the reason it was dropped. `cache-env` flags when
+you set `ENABLE_PROMPT_CACHING_1H` or `FORCE_PROMPT_CACHING_5M` in your shell. The bridge runs as a
+separate service and cannot read your agent's environment. Mirror these Claude Code variables here so
+the bridge can read them.
 
-The valid rule ids are `claude.subscription`, `claude.api`, `codex.subscription`, `codex.api`, plus
-`anthropic`, `openai`, `google`, and `unknown` under both `pi.` and `opencode.`.
+These are the rule ids you may write.
+
+| rule id | what it covers |
+| --- | --- |
+| `claude.subscription` | Claude Code on a Claude subscription, Pro or Max |
+| `claude.api` | Claude Code on an API key or a third-party provider |
+| `codex.subscription` | Codex CLI signed in with a ChatGPT plan |
+| `codex.api` | Codex CLI on an OpenAI API key |
+| `pi.anthropic`, `opencode.anthropic` | pi or opencode talking to Anthropic |
+| `pi.openai`, `opencode.openai` | pi or opencode talking to OpenAI |
+| `pi.google`, `opencode.google` | pi or opencode talking to Google |
+| `pi.unknown`, `opencode.unknown` | pi or opencode on an upstream that documents no TTL |
 
 ## The prompt-cache countdown
 
