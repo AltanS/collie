@@ -203,23 +203,31 @@ export function AgentCard({
           <PaneHint hint={agent.hint} />
         </div>
 
-        {/* The trailing meta is a COLUMN, not a tail on the title. Inside the title line the chip
-            was 4px from a truncated word and competed with the discriminator for the same width;
-            here the title takes its natural width, the detail line runs the full width beneath
-            it, and the chip is centred against the whole row by the shell's own `items-center`.
-            Costs no height — the row pitch is unchanged. HostChip self-hides: nothing renders
-            unless the snapshot lists more than one machine (components/host-chip.tsx), so on a solo
-            install this column can collapse to nothing. */}
-        <div className="flex shrink-0 items-center gap-2">
-          {/* The row's ADDRESS, both halves, in the order the address itself reads: which machine,
-              then which session on it. Each self-hides — the host when there is no crew, the session
-              when the row is in the primary one or the list was never widened. */}
-          <HostChip host={agent.host} />
-          <SessionChip session={agent.session} />
-          {/* How long this pane's prompt cache stays warm. Self-hides like the two chips above — a
-              pane whose agent has not taken a turn yet carries no reading, and nothing is guessed
-              before one exists. Not a control here: the card is already one button. */}
-          <CacheChip cache={agent.cache} host={agent.host} />
+        {/* The trailing meta is a COLUMN OF TWO FIXED SLOTS, pinned to the card's right edge, not an
+            inline row. A row let the two positions trade places: a card with no cache reading showed
+            only the host chip, which slid right into the spot the cache chip would have taken on the
+            next card over, so the same corner meant two different things from row to row (Altan's
+            phone feedback, with a screenshot). Each slot now owns a fixed spot and a fixed height —
+            measured off each chip's own rendered box, `21px` for the bordered `AddressTag` pair and
+            `h-4` for the borderless cache chip — and renders that height even when its chip
+            self-hides, so an empty slot is an invisible box rather than a missing one and nothing
+            downstream ever moves. `self-stretch` plus `justify-between` puts the top slot at the top
+            right of the row and the bottom slot at the bottom right; a row with no detail line grows
+            to fit two slots and the gap between them, which is the uniform pitch this trades for. */}
+        <div className="flex shrink-0 flex-col items-end justify-between gap-1 self-stretch">
+          {/* Top slot — the row's ADDRESS, both halves, in the order the address itself reads: which
+              machine, then which session on it. Each self-hides — the host when there is no crew, the
+              session when the row is in the primary one or the list was never widened. */}
+          <div className="flex h-[21px] items-center gap-2">
+            <HostChip host={agent.host} />
+            <SessionChip session={agent.session} />
+          </div>
+          {/* Bottom slot — how long this pane's prompt cache stays warm. Self-hides like the two chips
+              above — a pane whose agent has not taken a turn yet carries no reading, and nothing is
+              guessed before one exists. Not a control here: the card is already one button. */}
+          <div className="flex h-4 items-center">
+            <CacheChip cache={agent.cache} host={agent.host} />
+          </div>
         </div>
 
         {isShell ? (

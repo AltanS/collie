@@ -316,6 +316,9 @@ const working: AgentView[] = [
     lastActiveAt: TS - 40 * SEC,
     lastSeenAt: TS - 40 * SEC,
     readableLines: 400,
+    // Populated bottom slot: a warm reading, so the "Working" section shows one row with a cache
+    // chip beside rows carrying the empty slot the two-slot column reserves for it either way.
+    cache: { state: "warm", expiresAt: TS + 8 * MIN, ttlSeconds: 300, ruleId: "anthropic-claude-sonnet", confidence: "documented" },
   },
   {
     paneId: "w2:p1",
@@ -396,6 +399,9 @@ const resting: AgentView[] = [
     hasSession: true,
     lastActiveAt: TS - 4 * HOUR,
     lastSeenAt: TS - 34 * MIN,
+    // A cold reading needs no `expiresAt` — the bridge's own state is trusted outright
+    // (`lib/cache-view.ts`).
+    cache: { state: "cold", ttlSeconds: 300, ruleId: "anthropic-claude-sonnet", confidence: "documented" },
   },
   {
     paneId: "w1:p3",

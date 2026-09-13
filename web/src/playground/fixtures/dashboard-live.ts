@@ -23,6 +23,11 @@
 
 import type { SnapshotResponse } from "@/lib/types";
 
+// `CacheChip` reads the live page clock, never this module's frozen timestamps above, so a
+// warm/expiring reading below is anchored to THIS module's load time (same pattern as
+// `fixtures.ts`'s `cacheNow`) rather than to the captured snapshot's own `lastActiveAt`/`lastSeenAt`.
+const CACHE_NOW = Date.now();
+
 export const dashboardLive: SnapshotResponse = {
     "bridge": "connected",
     "agents": [
@@ -83,7 +88,16 @@ export const dashboardLive: SnapshotResponse = {
         "lastActiveAt": 1788344851213,
         "lastSeenAt": 1788344117453,
         "hasSession": true,
-        "host": "lodge-04rj6a"
+        "host": "lodge-04rj6a",
+        // Populated bottom slot: a warm reading, so the dashboard card shows one row with a cache
+        // chip beside a row with the empty slot the two-slot column reserves for it either way.
+        "cache": {
+          "state": "warm",
+          "expiresAt": CACHE_NOW + 8 * 60_000,
+          "ttlSeconds": 300,
+          "ruleId": "anthropic-claude-sonnet",
+          "confidence": "documented"
+        }
       },
       {
         "paneId": "w2T:p39",
@@ -141,7 +155,15 @@ export const dashboardLive: SnapshotResponse = {
         "lastActiveAt": 1788343171900,
         "lastSeenAt": 1788294982573,
         "hasSession": true,
-        "host": "lodge-04rj6a"
+        "host": "lodge-04rj6a",
+        // A cold reading needs no `expiresAt` — the bridge's own state is trusted outright
+        // (`lib/cache-view.ts`).
+        "cache": {
+          "state": "cold",
+          "ttlSeconds": 300,
+          "ruleId": "anthropic-claude-sonnet",
+          "confidence": "documented"
+        }
       },
       {
         "paneId": "w2Z:p2",
