@@ -331,11 +331,47 @@ describe("install", () => {
     expect(d.io.stderr.join("\n")).toContain("re-run");
   });
 
-  test("refuses a symlinked parent directory the same way", () => {
+  test("writes through a symlinked parent directory (stow, chezmoi) — install and uninstall both follow it", () => {
     const d = deps();
     d.fs.entries.set(`${HOME}/.claude`, { kind: "symlink", target: "/dotfiles/claude" });
+    d.fs.entries.set("/dotfiles/claude", { kind: "other", what: "a directory" });
+
+    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(d.files.entries.has("/dotfiles/claude/settings.json")).toBe(true);
+    expect(d.files.entries.has(SETTINGS)).toBe(false);
+
+    expect(cmdHooksUninstall(d, ["claude"])).toBe(EXIT.OK);
+    expect(settingsOf(d, "/dotfiles/claude/settings.json")).toEqual({});
+  });
+
+  test("a dangling directory link fails with a worded error, never a raw write error (#190)", () => {
+    const d = deps();
+    d.fs.entries.set(`${HOME}/.claude`, { kind: "symlink", target: "/dotfiles/claude" });
+    // "/dotfiles/claude" is never seeded, so the fake reports it absent — the link's target is gone,
+    // the way an unmounted drive or a home-manager generation nobody built yet would read.
     expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.FAIL);
     expect(d.files.entries.size).toBe(0);
+    const said = d.io.stderr.join("\n");
+    expect(said).toContain(`${HOME}/.claude`);
+    expect(said).toContain("/dotfiles/claude");
+    expect(said).toContain("does not exist");
+    expect(said).toContain("re-run");
+  });
+
+  test("a resolved directory this process cannot write to fails with a worded error (#190)", () => {
+    // Not meaningful against this fake (`writable` is a plain Set, not a real permission bit), but
+    // matches the guard shape used elsewhere in this suite in case that ever changes.
+    if (process.getuid?.() === 0) return;
+    const d = deps();
+    d.fs.entries.set(`${HOME}/.claude`, { kind: "symlink", target: "/dotfiles/claude" });
+    d.fs.entries.set("/dotfiles/claude", { kind: "other", what: "a directory" });
+    d.files.readOnly.add("/dotfiles/claude");
+    expect(cmdHooksInstall(d, ["claude"])).toBe(EXIT.FAIL);
+    expect(d.files.entries.size).toBe(0);
+    const said = d.io.stderr.join("\n");
+    expect(said).toContain(`${HOME}/.claude`);
+    expect(said).toContain("/dotfiles/claude");
+    expect(said).toContain("cannot write");
   });
 
   test("refuses a settings file that is not valid JSON rather than losing it", () => {

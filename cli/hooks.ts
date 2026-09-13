@@ -29,8 +29,15 @@ import { collieBinary } from "./unit.ts";
 //     Every entry we write carries {@link HOOK_MARKER}; an entry without one is never touched, read
 //     or reordered, and `uninstall` removes only marked entries. A marker at a DIFFERENT version is
 //     replaced in place — that is the self-heal, and it is why the version is in the marker at all.
-//  2. REFUSE A SYMLINKED TARGET. Writing through a symlink is how an installer edits a file the
-//     operator did not mean.
+//  2. REFUSE A SYMLINKED SETTINGS FILE; RESOLVE A SYMLINKED SETTINGS DIRECTORY. A rename onto a
+//     symlinked FILE (home-manager's read-only Nix store profile) replaces the link with a plain
+//     file — an installer editing something the operator did not mean — so that still refuses. A
+//     symlinked DIRECTORY (stow, chezmoi pointing the whole `~/.claude` elsewhere) is not the same
+//     shape: every write inside it lands in the real directory, exactly how `open`/`rename` already
+//     resolve every non-final path component, so refusing it bought nothing but a false alarm
+//     (issue #190). {@link realpathVia} resolves it instead, and the write happens at the real path
+//     underneath; only a directory link that resolves to NOTHING, or to somewhere this process
+//     cannot write, is refused — worded in one line, never a raw filesystem error.
 //  3. WRITE ATOMICALLY, AND BACK UP ONCE. Temp file plus rename, and a `.collie-backup` beside the
 //     file before the first modification, so a bad merge is one `mv` from undone.
 //
@@ -370,21 +377,87 @@ export interface HooksDeps {
   readonly fs: LinkReader;
 }
 
-/** The one refusal that is about the PATH rather than the contents: a symlink anywhere on the way in. */
-function symlinkOnPath(deps: HooksDeps, target: HookTarget): string | null {
-  // The file and its config dir, and no further: everything above them is the operator's own home
-  // path, which they gave us. These two are what an attacker — or a dotfile manager — points
-  // elsewhere.
-  for (const candidate of [target.path, target.dir]) {
-    if (deps.fs.probe(candidate).kind === "symlink") return candidate;
+/**
+ * Why {@link resolveTarget} refused this target — named so the message can say the link, where it
+ * points, and the remedy, rather than a raw filesystem error surfacing later out of
+ * {@link writeSettings}.
+ */
+export type TargetRefusal =
+  | { readonly kind: "file-symlink"; readonly path: string }
+  | { readonly kind: "dangling-dir"; readonly link: string; readonly points: string }
+  | { readonly kind: "unwritable-dir"; readonly link: string; readonly points: string };
+
+export type ResolvedTarget =
+  | { readonly kind: "ok"; readonly target: HookTarget }
+  | { readonly kind: "refused"; readonly refusal: TargetRefusal };
+
+/**
+ * `dir`, followed through every symlink on the way ({@link realpathVia}) — stow and chezmoi point
+ * the whole config directory elsewhere, and a write underneath it lands in the real place regardless,
+ * the same as any other path's non-final components. Only two shapes refuse: the link resolves to
+ * nothing (dangling), or it resolves to a directory this process cannot write into (mounted from a
+ * read-only Nix store, say). An ordinary directory that simply does not exist YET — no symlink
+ * anywhere on the path — is left alone; {@link writeSettings} creates it, same as always.
+ */
+function resolveTargetDir(deps: HooksDeps, dir: string): { dir: string } | { refusal: TargetRefusal } {
+  const resolved = realpathVia(deps.fs, dir);
+  if (resolved === dir) return { dir };
+  const probe = deps.fs.probe(resolved);
+  if (probe.kind === "absent") return { refusal: { kind: "dangling-dir", link: dir, points: resolved } };
+  if (deps.files.writable(resolved) === false) {
+    return { refusal: { kind: "unwritable-dir", link: dir, points: resolved } };
   }
-  return null;
+  return { dir: resolved };
 }
 
-function refuseSymlink(deps: HooksDeps, at: string): void {
-  deps.io.err(`error: ${at} is a symlink — refusing to write through it.`);
-  deps.io.err("  Replace it with the real file or directory (or point the profile at the real one),");
-  deps.io.err("  then re-run `collie hooks install claude`.");
+/**
+ * The settings path this target actually reads and writes, every guard applied: the directory
+ * resolved through its own symlinks ({@link resolveTargetDir}), then the settings file inside it
+ * refused if THAT is a symlink — a rename onto a symlinked file replaces the link (home-manager's
+ * read-only profile), which resolving the directory never does.
+ *
+ * The one resolver `cmdHooksInstall`, `cmdHooksUninstall` and `targetState` all call, so `hooks
+ * status` and `collie doctor`'s `beacon-hooks-claude` (M11/05, which already reads straight through
+ * `claudeSettingsTargets`'s path) never disagree about which bytes on disk are "the settings file".
+ */
+function resolveTarget(deps: HooksDeps, target: HookTarget): ResolvedTarget {
+  const dir = resolveTargetDir(deps, target.dir);
+  if ("refusal" in dir) return { kind: "refused", refusal: dir.refusal };
+  const path = join(dir.dir, "settings.json");
+  if (deps.fs.probe(path).kind === "symlink") {
+    return { kind: "refused", refusal: { kind: "file-symlink", path } };
+  }
+  return { kind: "ok", target: { dir: dir.dir, path } };
+}
+
+/** The fact half of a refusal — what `hooks status` prints after "refused — ". */
+function refusalFact(refusal: TargetRefusal): string {
+  switch (refusal.kind) {
+    case "file-symlink":
+      return `${refusal.path} is a symlink`;
+    case "dangling-dir":
+      return `${refusal.link} is a symlink to ${refusal.points}, which does not exist`;
+    case "unwritable-dir":
+      return `${refusal.link} is a symlink to ${refusal.points}, which this process cannot write to`;
+  }
+}
+
+/** The remedy half — always "fix the link or its target, then re-run install". */
+function refusalRemedy(refusal: TargetRefusal): string {
+  switch (refusal.kind) {
+    case "file-symlink":
+      return "Replace it with the real file (or point the profile at the real one), then re-run `collie hooks install claude`.";
+    case "dangling-dir":
+      return `Create ${refusal.points}, or point ${refusal.link} at a directory that exists, then re-run \`collie hooks install claude\`.`;
+    case "unwritable-dir":
+      return `Point ${refusal.link} at a directory this process can write to, then re-run \`collie hooks install claude\`.`;
+  }
+}
+
+/** Prints a refusal the way every other guard here does — the fact, then the remedy, never a stack trace. */
+function printRefusal(deps: HooksDeps, refusal: TargetRefusal): void {
+  deps.io.err(`error: ${refusalFact(refusal)} — refusing to write there.`);
+  deps.io.err(`  ${refusalRemedy(refusal)}`);
 }
 
 /** The file's contents parsed, `null` for an absent file, or a refusal for one we cannot read. */
@@ -431,13 +504,14 @@ export function cmdHooksInstall(deps: HooksDeps, args: readonly string[]): numbe
   const { command, binary, source } = resolveHookCommand(deps.ctx, deps.fs);
   let failed = false;
 
-  for (const target of claudeSettingsTargets(deps.ctx)) {
-    const symlink = symlinkOnPath(deps, target);
-    if (symlink !== null) {
-      refuseSymlink(deps, symlink);
+  for (const rawTarget of claudeSettingsTargets(deps.ctx)) {
+    const resolved = resolveTarget(deps, rawTarget);
+    if (resolved.kind === "refused") {
+      printRefusal(deps, resolved.refusal);
       failed = true;
       continue;
     }
+    const target = resolved.target;
     const settings = readSettings(deps, target);
     if (settings === null) {
       deps.io.err(`error: ${target.path} is not valid JSON — leaving it alone.`);
@@ -479,15 +553,16 @@ export function cmdHooksUninstall(deps: HooksDeps, args: readonly string[]): num
   let failed = false;
   let removed = 0;
 
-  for (const target of claudeSettingsTargets(deps.ctx)) {
-    const settings = readSettings(deps, target);
-    if (settings === null || settings.text === null) continue;
-    const symlink = symlinkOnPath(deps, target);
-    if (symlink !== null) {
-      refuseSymlink(deps, symlink);
+  for (const rawTarget of claudeSettingsTargets(deps.ctx)) {
+    const resolved = resolveTarget(deps, rawTarget);
+    if (resolved.kind === "refused") {
+      printRefusal(deps, resolved.refusal);
       failed = true;
       continue;
     }
+    const target = resolved.target;
+    const settings = readSettings(deps, target);
+    if (settings === null || settings.text === null) continue;
     const outcome = uninstallDocument(settings.value);
     if (outcome.kind === "refuse") continue;
     const text = serializeSettings(outcome.document);
@@ -515,7 +590,7 @@ export function cmdHooksUninstall(deps: HooksDeps, args: readonly string[]): num
  * same rule {@link markedCommandsByEvent} exists for, one level up.
  */
 export type HookTargetState =
-  | { readonly kind: "refused"; readonly symlink: string }
+  | { readonly kind: "refused"; readonly refusal: TargetRefusal }
   | { readonly kind: "unreadable" }
   | { readonly kind: "absent" }
   | { readonly kind: "not-installed" }
@@ -526,9 +601,9 @@ export type HookTargetState =
   | { readonly kind: "installed"; readonly at: string };
 
 function targetState(deps: HooksDeps, target: HookTarget): HookTargetState {
-  const symlink = symlinkOnPath(deps, target);
-  if (symlink !== null) return { kind: "refused", symlink };
-  const settings = readSettings(deps, target);
+  const resolved = resolveTarget(deps, target);
+  if (resolved.kind === "refused") return { kind: "refused", refusal: resolved.refusal };
+  const settings = readSettings(deps, resolved.target);
   if (settings === null) return { kind: "unreadable" };
   if (settings.text === null) return { kind: "absent" };
   const versions = new Set<string>();
@@ -585,7 +660,7 @@ function describeTarget(deps: HooksDeps, target: HookTarget): string {
   const state = targetState(deps, target);
   switch (state.kind) {
     case "refused":
-      return `refused — ${state.symlink} is a symlink`;
+      return `refused — ${refusalFact(state.refusal)}`;
     case "unreadable":
       return "unreadable — not valid JSON";
     case "absent":
