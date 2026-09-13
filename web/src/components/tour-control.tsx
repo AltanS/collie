@@ -9,14 +9,14 @@ import { homePath } from "@/lib/nav";
 import { useScope } from "@/lib/session";
 import { resetTour } from "@/lib/tour";
 
-// "Show the tour again", and the ONLY way back to a tour that was interrupted: the tour is marked
-// seen the moment it opens, so a phone that lost the tab on slide 2 recovers here and nowhere else.
-// The description must therefore never promise the tour will come back on its own.
+// "Show the first screen again", and the ONLY way back to a first run that was interrupted: the
+// screen is marked seen the moment it opens, so a phone that lost the tab half way down recovers
+// here and nowhere else. The description must therefore never promise it will come back on its own.
 //
 // The row ends in a BUTTON, not a Switch, because it is an action and not a state — the same
-// argument `InstallControl` makes for its one-shot offer. The tap navigates home, because the tour
-// host lives at the data root and the operator should watch the slides over the dashboard they
-// describe, not over the settings page.
+// argument `InstallControl` makes for its one-shot offer. The tap navigates home, because the gate
+// lives at the data root and the operator should read the screen over the dashboard it describes,
+// not over the settings page.
 export function TourControl() {
   useLocale();
   const navigate = useNavigate();

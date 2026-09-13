@@ -67,6 +67,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The agent card drops the relative-time chip.** The prompt-cache countdown next to it says what matters; the extra number read as a session clock and confused.
 - **Model sends `/model` and the pane's own picker takes over.** Every harness button is one tap now: the sheet of model names and effort levels is gone, because that list belongs to the harness, it changes without telling us, and the harness paints its own picker in the mirror anyway.
 - **One row of actions above the keyboard, and the harness has its own colour in it.** Keys, Type, Quick, Agent and the display gear now share a single scrolling row with the running agent's own commands, which sit in a segment tinted with that harness's brand colour and carry an icon each. It replaces the separate controls row and harness bar, so the composer gets a row of the screen back.
+- **The first launch is one screen, not three slides.** It names the multiplexer and the machine it mirrors, counts the panes and the ones blocked on you, says whether this device may type and how many machines are in your crew, offers at most two things to do about it, and closes with the six things you can do here. Settings shows it again.
 
 ### Fixed
 

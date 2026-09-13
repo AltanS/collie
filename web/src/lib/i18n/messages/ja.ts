@@ -963,33 +963,64 @@ export const ja: Dictionary = {
   "cache.confidence.observed": "measured",
   "updateRibbon.hideNotice": "この通知を非表示",
 
-  // --- tour (the first-launch sheet) --- ENGLISH, not yet translated.
+  // --- tour (the first-run screen) --- ENGLISH, not yet translated.
   "tour.skip": "Skip",
-  "tour.next": "Next",
-  "tour.start": "Start",
-  // The dot row's per-slide label. {n} is the slide's number, one-based.
-  "tour.dot": "Slide {n}",
-  "tour.slide1.title": "Your agents, on your phone",
-  "tour.slide1.body":
-    "Collie mirrors the agent panes running in your terminal multiplexer, Herdr, tmux or zellij. It shows you what is already on those screens, and it never runs a terminal of its own. The dashboard lists every machine and every workspace, with the panes that are waiting on you at the top under \u201cNeeds you\u201d.",
-  "tour.slide2.title": "Inside a pane",
-  "tour.slide2.body":
-    "Read the live mirror, and answer the agent\u2019s question by tapping one of the cards under it. Type a reply in the box, or open Keys for Esc, Tab and the arrows. Tap Type to send your keystrokes straight to the terminal.",
-  // Shown instead of the line above when device pairing is enforced and this device is not paired.
-  // The first two sentences are the same; only the last one changes, because the rest is still true.
-  "tour.slide2.bodyReadOnly":
-    "Read the live mirror, and answer the agent\u2019s question by tapping one of the cards under it. Type a reply in the box, or open Keys for Esc, Tab and the arrows. Ask the person who runs Collie to pair this device before you can type.",
-  "tour.slide3.title": "Be told when it needs you",
-  "tour.slide3.body":
-    "Collie can push you a notification the moment a pane is blocked on you, or the moment it is done. Turn it on here. Voice input, updates, your crew and this tour again all live in Settings.",
-  "tour.push.enable": "Turn on notifications",
+  "tour.title": "Collie shows the agents in your terminal.",
+  // The claim's second sentence, in the three forms the facts can support. {mux} is the
+  // multiplexer's display name, {host} the lead machine's crew label; a clause whose fact is missing
+  // is dropped rather than filled with a placeholder.
+  "tour.lead":
+    "It mirrors the panes running under {mux} on {host}. It shows what is on those screens, and it never runs a terminal of its own.",
+  "tour.leadNoHost":
+    "It mirrors the panes running under {mux}. It shows what is on those screens, and it never runs a terminal of its own.",
+  "tour.leadNoMux":
+    "It mirrors the panes running in your terminal multiplexer. It shows what is on those screens, and it never runs a terminal of its own.",
+
+  // Your setup. Every row is a fact this snapshot carries, or the row is absent.
+  "tour.setup": "Your setup",
+  "tour.setup.panes.one": "{count} pane",
+  "tour.setup.panes.other": "{count} panes",
+  "tour.setup.needsYou.one": "{count} needs you",
+  "tour.setup.needsYou.other": "{count} need you",
+  "tour.setup.noPanes": "No panes yet",
+  "tour.setup.machines.one": "{count} machine in your crew",
+  "tour.setup.machines.other": "{count} machines in your crew",
+  "tour.setup.canType": "This device can type",
+  "tour.setup.readOnly": "This device can read only",
+  "tour.setup.pushOff": "Notifications are off on this phone",
+
+  // Do this next. At most two cards, first match wins, in this order.
+  "tour.doNext": "Do this next",
+  "tour.pair.title": "Pair this phone",
+  "tour.pair.body": "Run collie pair on the host, then type the code in Settings.",
+  "tour.pair.button": "Pair",
+  "tour.space.title": "Nothing is running yet",
+  "tour.space.body": "Start an agent in your terminal, or make a space here.",
+  "tour.space.button": "New space",
+  "tour.pushCard.title": "Be told when a pane needs you",
+  "tour.pushCard.body": "Collie notifies you when an agent is blocked, or done.",
+  "tour.install.title": "Keep Collie on your home screen",
+  "tour.install.body": "It opens full screen and remembers where you were.",
+  "tour.install.button": "Add",
+  "tour.push.enable": "Turn on",
   "tour.push.enabled": "Notifications are on for this device.",
-  "tour.push.subscribed": "This device already gets notifications.",
-  "tour.push.userDisabled": "You turned notifications off. Settings can turn them back on.",
+
+  // What you can do here. The six lines the site sells and the app never said.
+  "tour.can": "What you can do here",
+  "tour.can.mirror": "Read the live pane, colour and all.",
+  "tour.can.answer": "Answer a prompt by tapping its card.",
+  "tour.can.type": "Type a reply, or send Esc, Tab and Ctrl keys.",
+  "tour.can.harness": "Set model and effort from the actions row.",
+  "tour.can.session": "Read the whole session, past the scrollback.",
+  "tour.can.crew": "Watch every machine in your crew from one URL.",
+
+  // The footer's one button. The first spelling opens the blocked pane; the second closes the sheet.
+  "tour.done.pane": "Open the pane that needs you",
+  "tour.done.dashboard": "Show the dashboard",
 
   // --- settings.tour ---
-  "settings.tour.title": "Show the tour again",
-  "settings.tour.description": "The three slides you saw the first time you opened Collie.",
+  "settings.tour.title": "Show the first screen again",
+  "settings.tour.description": "What Collie does, and what this install looks like.",
   "settings.tour.button": "Show",
 
   // --- updateScreen (M28/01): English until translated. ---
