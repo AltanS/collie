@@ -53,13 +53,12 @@ describe("TabStrip", () => {
     expect(screen.queryByText("Tabs")).toBeNull();
   });
 
-  // THE fault a folder tab ships with. The active tab gains a border on three sides and a fill; if
-  // the inactive ones did not already reserve that box, every label to the right would jump on every
-  // selection. jsdom has no layout, so this pins the mechanism instead of the pixels: the border and
-  // padding classes are in the BASE string and therefore identical in both states, and only colour /
-  // background classes differ. The measured proof is in the browser — a label's left edge, top edge
-  // and width are the same to three decimals in both states at 390px.
-  it("reserves the active tab's box in every state, so no label moves on selection", () => {
+  // GROUND IS THE ONLY MARK, now that the folder shape (and the border box it reserved) is gone: the
+  // open tab takes bg-background and everything else about its box is identical to an inactive tab's,
+  // so a selection can never re-flow a label — there is no border to swap colour on any more, and no
+  // radius either. jsdom has no layout, so this pins the mechanism (no box-affecting class differs)
+  // rather than pixels.
+  it("marks the open tab by ground alone, so no label moves on selection", () => {
     const { rerender } = render(
       <TabStrip
         workspaceId="w1"
@@ -76,7 +75,13 @@ describe("TabStrip", () => {
         .filter((c) => /^(h-|min-w-|px-|py-|p-|border($|-)|rounded)/.test(c))
         .toSorted();
 
-    const inactive = boxClasses(screen.getByRole("button", { name: "tab 2" }));
+    const inactive = screen.getByRole("button", { name: "tab 2" });
+    // No tab draws a border or a radius of its own — the only vertical rule between tabs comes from
+    // the parent group's divide-x, never from the cell.
+    expect(boxClasses(inactive).some((c) => /^(border|rounded)/.test(c))).toBe(false);
+    expect(inactive.className).not.toContain("bg-background");
+    const inactiveBox = boxClasses(inactive);
+
     rerender(
       <TabStrip
         workspaceId="w1"
@@ -89,15 +94,33 @@ describe("TabStrip", () => {
     );
     const active = screen.getByRole("button", { name: "tab 2" });
     expect(active).toHaveAttribute("aria-current", "true");
-    // Every box-affecting class is shared. The only difference is the border COLOUR — tailwind-merge
-    // resolves `border-transparent` against `border-rule`, so exactly one of the two is present in
-    // each state and the 1px border itself is in neither branch.
-    const colour = (c: string) => c === "border-transparent" || c === "border-rule";
-    expect(boxClasses(active).filter((c) => !colour(c))).toEqual(inactive.filter((c) => !colour(c)));
-    expect(inactive.filter(colour)).toEqual(["border-transparent"]);
-    expect(boxClasses(active).filter(colour)).toEqual(["border-rule"]);
+    // Every box-affecting class is shared — ground and text colour are the only differences.
+    expect(boxClasses(active)).toEqual(inactiveBox);
+    expect(active.className).toContain("bg-background");
     // Rule E: state may not change font weight, or the whole row re-flows.
     expect(active.className).toContain("font-medium");
+  });
+
+  // THE ONE RULE THIS ROW DRAWS: a vertical hairline between adjacent tabs, never a horizontal one.
+  // Altan, from the phone, on the row this replaced: "the top tabs area has a lot of weird lines
+  // now. Completely remove horizontal borders and just have vertical ones for tab items."
+  it("draws no horizontal rule of its own, and groups the tabs behind one vertical divider", () => {
+    const { container } = render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={tabs}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+    const nav = container.querySelector("nav")!;
+    expect(nav.className).not.toMatch(/\bborder-[tb]\b/);
+    expect(nav.className).toContain("bg-chrome");
+    const group = nav.querySelector("div > div")!;
+    expect(group.className).toContain("divide-x");
+    expect(group.className).toContain("divide-border");
   });
 
   it("shows All plus only this workspace's tabs, and reports selection", async () => {

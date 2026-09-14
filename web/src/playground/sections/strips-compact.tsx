@@ -147,6 +147,49 @@ function TabsRow({ sizing }: { sizing: TabRowSizing }) {
   );
 }
 
+// ── Option 2's tab row, redrawn to match what actually shipped ───────────────
+//
+// The compact height shipped as option 2 said, but the shape did not stay a folder tab — Altan,
+// from the phone, once he saw it small: "the top tabs area has a lot of weird lines now. Completely
+// remove horizontal borders and just have vertical ones for tab items." `tab-strip.tsx` now draws no
+// border-b/border-t of its own, sits on `bg-chrome`, and separates its cells with one vertical
+// hairline each (`divide-x divide-border`); the open cell is marked by `bg-background` alone. This
+// card is the only one in the section redrawn to match — the others are frozen ideas at their own
+// height, never shipped, and stay as they were when the operator compared them.
+
+function ShippedTabPill({ label, active }: { label: string; active: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "flex h-8 shrink-0 select-none items-center justify-center whitespace-nowrap px-3 text-[11px] font-medium",
+        active ? "bg-background text-foreground" : "text-muted-foreground",
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function ShippedTabsRow() {
+  return (
+    <nav aria-label="Tabs" className="flex shrink-0 items-stretch gap-1 bg-chrome px-4">
+      <div className="flex min-w-0 flex-1 items-start gap-1 overflow-x-auto pt-1.5 pb-1.5 [scrollbar-width:none]">
+        <div className="flex shrink-0 items-stretch divide-x divide-border">
+          <ShippedTabPill label={TAB_ACTIVE} active />
+          <ShippedTabPill label={TAB_OTHER} active={false} />
+        </div>
+        <span className="flex shrink-0 self-center">
+          <NewTabButton />
+        </span>
+      </div>
+      <span className="flex shrink-0 items-center self-center pl-1">
+        <FoldChevron />
+      </span>
+    </nav>
+  );
+}
+
 // ── The pane row, the ordinary shape (options 0, 1, 2, 5) ────────────────────
 
 interface PaneRowSizing {
@@ -285,11 +328,11 @@ export function StripsCompactSection() {
           state="strips-compact-option-2"
           label="Option 2 · Two steps smaller"
           reach="idea, not shipped: the same two files, taken one step further."
-          note="Shipped. Tab row 32px, pane pills 24px. Fonts 11px, the size of the header's path line. Tightest that still reads."
+          note="Shipped. Tab row 32px, pane pills 24px. Fonts 11px, the size of the header's path line. Tightest that still reads. The tab row is redrawn here to match what actually shipped: no horizontal rule, cells separated by a vertical hairline, the open one marked by ground alone."
         >
           <StripsMock>
             <HeaderEdge />
-            <TabsRow sizing={{ rowH: "h-8", text: "text-[11px]" }} />
+            <ShippedTabsRow />
             <PaneRow sizing={{ pad: "py-0.5", text: "text-[11px]" }} />
           </StripsMock>
         </Card>

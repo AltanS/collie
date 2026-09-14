@@ -61,29 +61,33 @@ interface TabStripProps {
   trailing?: ReactNode;
 }
 
-// The selected space's tabs, drawn as TABS — the file-folder kind, not the pill kind.
+// The selected space's tabs, drawn as PLAIN CELLS on the composer's chrome ground — not the
+// file-folder kind this row used to draw.
 //
-// The two rows around this one (Spaces above, Panes below) are pills, and that difference is doing
-// work: rows that navigate different dimensions should not look identical. A pill row says "pick one
-// of these"; a folder tab says "this one is the drawer you are looking into", because the active tab
-// is physically attached to the content beneath it.
+// The folder illusion is gone. It drew a full-width baseline rule under the whole row, bordered the
+// active tab on three sides and covered the baseline under it with an absolutely-positioned strip so
+// the tab and the content below read as one continuous piece. On a phone that geometry read as clutter
+// rather than as a drawer: Altan, on the compact row this became, "the top tabs area has a lot of
+// weird lines now" — and the call was not to tune the lines but to drop them. "Completely remove
+// horizontal borders and just have vertical ones for tab items."
 //
-// The illusion is three things, and all three have to be right or it reads as a button on a line:
+// So this row now draws NO horizontal rule of its own, top or bottom, on the `<nav>` or on the
+// scroller inside it. It sits on the composer's own chrome ground (`bg-chrome`) rather than on a
+// ground of its own, the same fill the header above and the input row below both stand on, so the
+// row reads as part of that block rather than as a bordered strip laid over it. A HEADER above this
+// row keeps its own bottom rule where one exists; that boundary belongs to the header, not to this
+// component, and is unaffected by anything here.
 //
-//  1. A full-width baseline rule in --rule at the bottom of the row. It is the top edge of the
-//     content region below, which is why it belongs to this row and not to that region.
-//  2. The active tab is bordered on top/left/right in the SAME --rule, filled with the content
-//     surface, and OPEN at the bottom — it covers the baseline for its own width, so the tab and
-//     the content read as one continuous piece.
-//  3. Inactive tabs are recessed: a quieter fill, muted text, and their box stops one pixel short,
-//     so the baseline runs unbroken underneath them.
+// The only rule this row draws is a VERTICAL hairline BETWEEN two adjacent tabs (`divide-x
+// divide-border` on the group of tab cells) — one line per seam, never doubled and never touching
+// the "+" control, which sits outside that group with its own gap and keeps its dashed square look
+// untouched.
 //
-// The geometry that buys (2) is measured, not guessed, and the three numbers below are one set:
-// the scroller is pulled one pixel down over the <nav>'s bottom border (`-mb-px`), carries one pixel
-// of bottom padding so that pixel is INSIDE its clip box (`overflow-x` forces `overflow-y: auto`,
-// so anything past the padding box is clipped away), and the active tab covers it with a 1px
-// absolutely-positioned strip in the content colour. Change any one and the baseline shows through
-// under the active tab, which is the whole thing.
+// The open tab is marked by GROUND ALONE: it takes `bg-background`, the page's own surface, while
+// every inactive tab sits on the row's bare chrome ground — no fill, no border, no radius. There is
+// no folder shape left to reserve a box for, so nothing here needs the no-shift border-reservation
+// trick the old shape needed; only the desktop-focus ring (`ring` below) still paints on top, and it
+// does that with an `outline`, which never occupies box space and so can never shift a neighbour.
 //
 // This row draws no name. The shape announces itself — that is the operator's reason for choosing
 // it — so `LabelledStrip` is gone from here and the structure it provided lives inline: the <nav>,
@@ -134,13 +138,12 @@ export function TabStrip({
         aria-label={translate("space.tabStrip.title")}
         // shrink-0: this is a child of a `flex-1 flex-col` scroller, so without it the row shrinks
         // while its tabs overflow and the row below paints over them.
-        // No border-t: SpaceStrip now draws its own border-b, which already closes the seam from
-        // above. A second hairline here would sit on the same line as that one and double it.
-        // border-b is the BASELINE — see the header comment; it is --rule because it cuts between
-        // two regions of chrome rather than around one component.
+        // bg-chrome: the row's own ground — see the header comment above for why this replaces the
+        // baseline rule the folder shape used to draw. No border-t and no border-b: this row draws no
+        // horizontal rule of its own, and a header above it keeps whatever rule it already had.
         // `flex items-stretch` only when something is pinned to the trailing end — otherwise the
         // <nav> stays the plain block it has always been, so a row with no `trailing` is unchanged.
-        className={cn("shrink-0 border-b border-rule px-4", trailing && "flex items-stretch")}
+        className={cn("shrink-0 bg-chrome px-4", trailing && "flex items-stretch")}
       >
         <div
           ref={scrollerRef}
@@ -150,14 +153,11 @@ export function TabStrip({
           // pt-1.5 pb-1.5: the room the compact tab's own STRIP_TAP_TARGET reach needs, the same
           // recipe STRIP_SCROLLER states — a `-inset-y-[7px]` reach off a drawn box gets clipped the
           // instant the clip box (this scroller's padding box) does not extend into it, so the tap
-          // floor has to be bought with real padding, not just the pseudo-element. -mb-px still pulls
-          // the scroller's own bottom edge up over the <nav>'s 1px border by exactly one pixel, so
-          // that pixel stays inside the (now taller) padding box rather than outside it — the active
-          // tab's cover strip below is what actually paints over the seam, sized to reach it (see the
-          // `after:` comment on `Tab`). items-start keeps every tab's TOP on the same line, which is
-          // what makes the row read as tabs rather than as boxes of different sizes.
+          // floor has to be bought with real padding, not just the pseudo-element. items-start keeps
+          // every tab's TOP on the same line, which is what makes the row read as tabs rather than as
+          // boxes of different sizes.
           className={cn(
-            "-mb-px flex items-start gap-1 overflow-x-auto pt-1.5 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "flex items-start gap-1 overflow-x-auto pt-1.5 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             // With a pinned control the right half of the edge-to-edge trick is spent on it: the
             // scroller becomes the flex row's growing child, keeps the LEFT gutter cancellation so
             // the first tab still starts on the route's 16px, and stops at the control instead of at
@@ -165,34 +165,43 @@ export function TabStrip({
             trailing ? "-ml-4 min-w-0 flex-1 pl-4 pr-2" : "-mx-4 px-4",
           )}
         >
-          {allowAll && (
-            <Tab
-              label={translate("space.tabStrip.all")}
-              active={selected === null}
-              onClick={() => onSelect(null)}
-            />
-          )}
-          {wsTabs.map((t) => (
-            <Tab
-              key={t.tabId}
-              label={t.label}
-              active={selected === t.tabId}
-              ring={t.focused}
-              // What's actually going on in there — blocked / ready / working / idle — instead of a
-              // dot that only ever appeared for blocked and left every other state unreadable.
-              status={worstTriage(here.filter((a) => a.tabId === t.tabId))}
-              // WHICH agent is in there. The pane header names ONE agent, and a tab is exactly the
-              // dimension along which that answer changes: `docs` may be Claude and `shell` a bare
-              // terminal, and switching between them used to change the header's mark with no warning
-              // in the row you switched from. Named here, the answer is in the row you choose.
-              agent={soleAgent(here, t.tabId)}
-              onClick={() => onSelect(t.tabId)}
-              // Long-press (and a tap on the already-active tab) opens the actions sheet — only when
-              // the parent wired the actions; otherwise the tabs stay plain tap-to-switch.
-              onLongPress={actionsEnabled ? () => setSheetTab(t) : undefined}
-              onTapActive={actionsEnabled ? () => setSheetTab(t) : undefined}
-            />
-          ))}
+          {/* THE TAB GROUP: every tab cell, touching, with ONE vertical hairline between each pair —
+              `divide-x divide-border` on this wrapper rather than a border on every tab, so the line
+              lives at the seam and never doubles. It is its own flex child of the scroller (not the
+              scroller's own `divide-x`) precisely so the "+" button, a sibling outside this group, is
+              never divided from its neighbour — the scroller's ordinary `gap-1` separates the group
+              from "+" instead, and "+" keeps its own dashed square look untouched. `items-stretch` so
+              a hairline runs the tab's full height rather than stopping short of it. */}
+          <div className="flex shrink-0 items-stretch divide-x divide-border">
+            {allowAll && (
+              <Tab
+                label={translate("space.tabStrip.all")}
+                active={selected === null}
+                onClick={() => onSelect(null)}
+              />
+            )}
+            {wsTabs.map((t) => (
+              <Tab
+                key={t.tabId}
+                label={t.label}
+                active={selected === t.tabId}
+                ring={t.focused}
+                // What's actually going on in there — blocked / ready / working / idle — instead of a
+                // dot that only ever appeared for blocked and left every other state unreadable.
+                status={worstTriage(here.filter((a) => a.tabId === t.tabId))}
+                // WHICH agent is in there. The pane header names ONE agent, and a tab is exactly the
+                // dimension along which that answer changes: `docs` may be Claude and `shell` a bare
+                // terminal, and switching between them used to change the header's mark with no warning
+                // in the row you switched from. Named here, the answer is in the row you choose.
+                agent={soleAgent(here, t.tabId)}
+                onClick={() => onSelect(t.tabId)}
+                // Long-press (and a tap on the already-active tab) opens the actions sheet — only when
+                // the parent wired the actions; otherwise the tabs stay plain tap-to-switch.
+                onLongPress={actionsEnabled ? () => setSheetTab(t) : undefined}
+                onTapActive={actionsEnabled ? () => setSheetTab(t) : undefined}
+              />
+            ))}
+          </div>
           {/* HIDE, don't explain (M10/06). A "+" at the end of the tab row is an affordance, not a
               promise: nobody arrives at Collie needing to know why a particular multiplexer will not
               open a tab, the way they arrive needing to know where their agent's history went. Every
@@ -264,7 +273,7 @@ function soleAgent(here: AgentView[], tabId: string): string | undefined {
 interface TabProps {
   label: string;
   active: boolean;
-  /** Dimmed folder outline marking the tab focused in the desktop TUI. */
+  /** Dimmed dashed outline marking the tab focused in the desktop TUI. */
   ring?: boolean;
   /**
    * The most urgent thing happening inside this tab ({@link worstTriage}) — drawn as a leading dot
@@ -282,7 +291,7 @@ interface TabProps {
   onTapActive?: () => void;
 }
 
-// One folder tab.
+// One plain tab cell.
 function Tab({ label, active, ring, status, agent, onClick, onLongPress, onTapActive }: TabProps) {
   const longPress = useLongPress(onLongPress);
   // A POSITIONAL LABEL IS NOT A NAME (lib/pane-name.ts § tabTitle). Herdr calls an unnamed tab "1"
@@ -321,16 +330,11 @@ function Tab({ label, active, ring, status, agent, onClick, onLongPress, onTapAc
         // callout, whose native long-press gesture otherwise fires pointercancel and kills the hold
         // timer.
         //
-        // THE NO-SHIFT RULE, which a folder tab is the classic place to break. The active tab gains
-        // a border on three sides and a fill; if the inactive ones did not already reserve that box,
-        // every label in the row would jump one pixel on every selection. So the border is in the
-        // BASE string, 1px on top/left/right, transparent at rest, and `border-b-0` in both states —
-        // the box is byte-identical and only the paint changes. `font-medium` is unconditional
-        // (Rule E): bolding the active label re-flows every tab to its right. Measured: a label's
-        // left edge, top edge and width are the same to three decimals in both states.
-        //
-        // Radius: the house 2px on the TOP corners only. A drawer tab does not round where it meets
-        // the drawer, and the bottom of this one is an open edge, not an edge at all.
+        // NO BORDER, NO RADIUS, NO SHAPE OF ITS OWN. The cell is a plain rectangle; the vertical
+        // hairlines between cells come from the parent group's `divide-x` (see the scroller's
+        // comment above), never from this button. `font-medium` is unconditional (Rule E): bolding
+        // only the active label would re-flow every tab to its right, and there is no longer a
+        // border to absorb that shift the way the old folder shape did.
         //
         // COMPACT: `h-8` draws a 32px tab, `text-[11px]` the size of the header's path line — Altan's
         // ask, from the phone: this row "feel[s] too tall and the fonts too large". A tab used to BE
@@ -338,34 +342,28 @@ function Tab({ label, active, ring, status, agent, onClick, onLongPress, onTapAc
         // every other strip pill does, through `STRIP_TAP_TARGET`'s transparent `::before` — the
         // reach it needs lives in the scroller's own `pt-1.5 pb-1.5` (see the scroller's comment
         // above), not in this box, so the drawn tab can shrink without the thumb losing anything.
-        //
-        // The `after` strip is the cover: it now spans the scroller's own bottom padding rather than
-        // the old 1px, so it still reaches the <nav>'s border and paints over the seam (see the
-        // scroller's comment above for the exact pixels); it stays absolutely positioned, so it is
-        // outside layout and can never move anything, and it is present in every state and merely
-        // transparent when inactive.
         STRIP_TAP_TARGET,
-        "relative flex h-8 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap rounded-t-md border border-b-0 border-transparent px-3 text-[11px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring after:absolute after:inset-x-0 after:-bottom-1.5 after:h-1.5 after:content-['']",
-        active
-          ? "border-rule bg-background text-foreground after:bg-background"
-          : "bg-muted/40 text-muted-foreground after:bg-transparent hover:bg-muted/60",
-        // The desktop-focus mark: the SAME folder outline, in the same --rule, but dashed. It used
-        // to be `border-primary/40`, which worked when the active state was a full primary fill and
-        // stopped working the moment the active state became a 1px --rule outline — measured in
-        // dark, primary/40 composites brighter than --rule, so the TUI-focused tab out-shouted the
-        // one that was actually open. Dashed says "this is where the desktop is looking" at exactly
-        // the weight of the thing it is a variant of, and it borrows the vocabulary the "+" button
-        // already uses: dashed is potential, solid is real. A border-STYLE change moves nothing.
-        ring && !active && "border-rule border-dashed",
+        "relative flex h-8 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap px-3 text-[11px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        // GROUND IS THE ONLY MARK. The open tab takes the page's own surface, `bg-background`; every
+        // other tab sits on the row's bare chrome ground and draws no fill of its own at rest — a
+        // quiet hover wash is the one concession, so a tap target still answers a finger hovering
+        // over it on a device that has one.
+        active ? "bg-background text-foreground" : "text-muted-foreground hover:bg-muted/40",
+        // The desktop-focus mark: an OUTLINE, not a border, so it paints on top of the cell without
+        // occupying box space — nothing needs a reserved, transparent border to avoid a shift, the
+        // way the old folder shape did, because `outline` never participates in layout at all. Dashed
+        // says "this is where the desktop is looking"; solid is reserved for what's actually open.
+        ring && !active && "outline outline-1 outline-dashed outline-offset-[-2px] outline-border",
       )}
     >
       {status && (
         <>
           {/* A hollow resting dot is filled with the surface it sits ON, and the two states of this
-              tab are two different surfaces. */}
+              tab are two different surfaces: the open tab's own bg-background, or the row's bare
+              chrome ground everywhere else. */}
           <StatusDot
             status={TRIAGE_STATUS[status]}
-            surface={active ? "bg-background" : "bg-muted/40"}
+            surface={active ? "bg-background" : "bg-chrome"}
             className="size-1.5"
           />
           {/* The dot is colour-only; say it in words for screen readers. */}

@@ -1364,21 +1364,15 @@ describe("AgentChat — a pane on a host the lead can't reach", () => {
   });
 });
 
-// The folder tab opens onto the PAGE, and the mirror draws its own top edge clear of it.
+// The mirror draws its own top edge — `tab-strip.tsx` no longer draws a baseline of any kind (no
+// folder shape, no horizontal rule), so this file's `border-t border-rule` on the mirror wrapper is
+// the only horizontal line between the strips above and the terminal output below.
 //
-// A coupling test in the DESIGN.md §9 sense: the rule spans two files and an edit to either one
-// looks complete on its own. `tab-strip.tsx` owns the baseline the active tab hangs off (a
-// `border-b` in --rule that the tab's 1px cover strip paints over for its own width); this file
-// owns the surface underneath. The terminal ground is byte-identical to `--background` in BOTH
-// themes on purpose (index.css:44-48), so with the mirror flush against that baseline the tab had
-// no floor and read as bleeding into the terminal — and a rule added flush from below would have
-// been a second hairline on the same line, in the one pixel the tab covers.
-//
-// The three values below are one set. The gap is what makes the mirror's rule a second boundary
-// rather than a doubled one; `pt-0` is what pays for it (ChatMessageList's own base is `py-4`, so
-// merely dropping the override lets 16px back in, not 0). Verified to fail in both directions:
-// remove the margin and the doubling assertion trips; restore the scroller's top padding and the
-// last one does.
+// The three values below are one set. The gap is what makes the mirror's rule a clean boundary
+// rather than a doubled one against whatever chrome sits above it; `pt-0` is what pays for it
+// (ChatMessageList's own base is `py-4`, so merely dropping the override lets 16px back in, not 0).
+// Verified to fail in both directions: remove the margin and the doubling assertion trips; restore
+// the scroller's top padding and the last one does.
 describe("AgentChat — the mirror's top edge", () => {
   // `div[role="presentation"]`, not `[role="presentation"]`: the Collie mark's SVG carries the same
   // role, and an SVG's `className` is an SVGAnimatedString rather than a string — the assertion then
@@ -1391,13 +1385,13 @@ describe("AgentChat — the mirror's top edge", () => {
     return { mirror, nav };
   }
 
-  it("draws the mirror's own rule, set clear of the tab strip's baseline", () => {
+  it("draws the mirror's own rule; the tab strip above draws no horizontal rule at all", () => {
     const { container } = renderChat({ tabs: fixtureTabs });
     const { mirror, nav } = mirrorAndTabs(container);
 
-    // The tab strip still owns the baseline, from above, and only that.
-    expect(nav?.className).toMatch(/\bborder-b\b/);
-    expect(nav?.className).not.toMatch(/\bborder-t\b/);
+    // The tab strip draws neither edge — no baseline, no top rule — only its own chrome ground.
+    expect(nav?.className).not.toMatch(/\bborder-[tb]\b/);
+    expect(nav?.className).toMatch(/\bbg-chrome\b/);
 
     // The mirror announces itself with the structural line, not the component line.
     expect(mirror?.className).toMatch(/\bborder-t\b/);
