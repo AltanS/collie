@@ -81,9 +81,16 @@ export function PaneMeta({
   // so centring the two dropped the host run 1.5px and the two glyphs' feet sat on two different
   // lines. Altan, from his phone, with a screenshot of `⊟ lodge · ⧗ 57m`. On the baseline the
   // container synthesises one line for every child — an SVG's baseline is its bottom margin edge —
-  // so both glyphs' feet and both words' baselines are the same y, measured at 0.0px in Chromium in
-  // the app's own face. The descent under that line is the only thing reaching past the 12px box,
-  // and `lodge` / `57m` have no descenders, so nothing is drawn there.
+  // so both glyphs' BOXES and both words' baselines land on the same y. That still was not the whole
+  // fix: a box edge is not ink, and Altan saw the gap a third time from his phone. Measured in real
+  // Chromium at device-pixel resolution, `Server`'s ink foot sat 0.26px and `Hourglass`'s 0.35px
+  // above their neighbouring word's own ink foot even with every box flush — lucide draws its paths a
+  // little inside the glyph's box on every mark it ships. `HostChip` and `CacheChip` each carry their
+  // own small downward nudge on the glyph now (`translate-y-[0.26px]` / `translate-y-[0.35px]`,
+  // their own files' headers), measured against ink rather than against the synthesised baseline
+  // alone, so this row inherits the fix without doing anything itself. The descent under the
+  // baseline is the only thing reaching past the 12px box, and `lodge` / `57m` have no descenders,
+  // so nothing is drawn there.
   if (layout === "inline") {
     return (
       <div

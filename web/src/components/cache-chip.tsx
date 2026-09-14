@@ -36,12 +36,19 @@ import { cn } from "@/lib/utils";
 //
 // ── THE NUMBER STANDS ON THE GLYPH'S BOTTOM EDGE ─────────────────────────────
 // `items-baseline`, not `items-center`. An SVG is a replaced box with no baseline of its own, so CSS
-// synthesises one from its bottom border edge — which makes the hourglass's foot and the number's
-// baseline the same line, exactly, at any font size. Centring put the number's baseline about 2.4px
-// above that foot at 12px, which is the gap Altan saw. The descent space under the baseline is the
-// only thing that now reaches past the glyph, and `12m` / `<1m` / `cold` have no descenders, so
-// nothing is drawn there. Both parents state their own height (`h-3` inline, `h-4` in the column), so
-// no surface moves either way.
+// synthesises one from its bottom border edge — which makes the hourglass's BOX bottom and the
+// number's baseline the same line, at any font size. Centring put the number's baseline about 2.4px
+// above that foot at 12px, which is the gap Altan saw the first time; `items-baseline` closed that.
+//
+// IT IS NOT QUITE FLUSH EVEN SO, because a BOX edge is not INK. Lucide draws every glyph on a 24
+// viewBox with paths that run roughly y=2..22 and a 2px stroke, so at this glyph's rendered 12px the
+// ink foot sits a little inside the box's own bottom edge — never ON it. Measured in real Chromium at
+// device-pixel resolution (3x, `web/measure-ink.mjs` if it still exists, else re-measure the same
+// way): the hourglass's ink foot sat 0.35px ABOVE the digits' own ink foot even with the boxes
+// perfectly flush. Altan, from his phone, a third time: still a visible gap. `translate-y-[0.35px]`
+// below nudges the glyph's ink down onto the digits' ink, not onto their box — the fix this time is
+// measured against ink, never against the synthesised baseline alone. Both parents still state their
+// own height (`h-3` inline, `h-4` in the column), so the nudge moves nothing else on the row.
 //
 // ── ONE FIXED GLYPH, LIKE HostChip'S Server MARK ─────────────────────────────
 // A bare `12m` sitting beside a `HostChip` that carries a `Server` glyph reads as a loose word, not a
@@ -105,8 +112,10 @@ export function CacheChip({ cache, variant = "row", onOpen, className }: CacheCh
     <>
       {/* One fixed mark, in every state — the sibling of HostChip's `Server` glyph, at the same
           `tag`-variant size. It is the one thing here that carries a colour, and its bottom edge is
-          the line the number stands on (this file's header, both sections). */}
-      <Hourglass className={cn("size-3 shrink-0", ink)} aria-hidden />
+          the line the number stands on (this file's header, both sections). `translate-y-[0.35px]`
+          is the ink nudge that header measured — the box edge already sits on the baseline, the INK
+          inside it does not, and 0.35px is what closed that gap in Chromium at device resolution. */}
+      <Hourglass className={cn("size-3 shrink-0 translate-y-[0.35px]", ink)} aria-hidden />
       <span aria-hidden>{view.label}</span>
       {view.overridden && (
         <>

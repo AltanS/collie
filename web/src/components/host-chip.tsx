@@ -155,12 +155,16 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
           "inline-flex min-w-0 gap-1",
           // `bare` STANDS ON ITS BASELINE; `caption` still centres. An SVG has no baseline of its
           // own, so CSS synthesises one from its bottom margin edge — which puts the Server glyph's
-          // foot exactly on the name's baseline, and puts BOTH on the same line as the `CacheChip`
+          // BOX bottom on the name's baseline, and puts BOTH on the same line as the `CacheChip`
           // beside it, which aligns the same way (cache-chip.tsx § THE NUMBER STANDS ON THE
           // GLYPH'S BOTTOM EDGE). Centred, the 10px glyph sat about 1px high of the 11px word and
           // the row's two glyphs sat on two different lines — Altan's screenshot of the path line.
-          // The caption run is alone in a band of chrome type with nothing to line up with, and its
-          // 10px glyph in a 12px box is already flush, so it is left as it is.
+          // A box edge is not ink, though, and lucide's own paths sit a little inside their box —
+          // measured in real Chromium at device resolution, the Server glyph's INK foot still sat
+          // 0.26px above `lodge`'s own ink foot with the boxes flush. The `translate-y-[0.26px]`
+          // below on the glyphs is that ink nudge, `bare` only — the caption run is alone in a band
+          // of chrome type with nothing to line up with, and its 10px glyph in a 12px box reads flush
+          // there regardless, so it is left as it is.
           caption
             ? "items-center text-[10px]/3 font-medium uppercase tracking-wide"
             : "shrink-0 items-baseline font-mono text-[11px]/3",
@@ -172,10 +176,14 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
         )}
       >
         {tone !== "quiet" ? (
-          <ServerOff className="size-2.5 shrink-0" aria-hidden />
+          <ServerOff className={cn("size-2.5 shrink-0", bare && "translate-y-[0.26px]")} aria-hidden />
         ) : (
           <Server
-            className={cn("size-2.5 shrink-0", slot !== null && HOST_TEXT_CLASSES[slot])}
+            className={cn(
+              "size-2.5 shrink-0",
+              bare && "translate-y-[0.26px]",
+              slot !== null && HOST_TEXT_CLASSES[slot],
+            )}
             aria-hidden
           />
         )}
