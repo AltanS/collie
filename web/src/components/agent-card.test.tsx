@@ -154,6 +154,32 @@ describe("AgentCard's unseen marker", () => {
     rerender(<AgentCard agent={agent()} onClick={() => {}} />);
     expect(within(title).queryByRole("img", { name: "unseen" })).not.toBeInTheDocument();
   });
+
+  // Regression: the dot used to land at the FAR end of the row, next to the host chip, because the
+  // name span was `flex-1` and grew to fill the line before the dot ever got a turn. It has to sit
+  // right beside the name it marks, "billing webhooks •" reading as one unit — never off beside the
+  // meta at the other edge.
+  it("sits directly after the name, not after the trailing meta", () => {
+    const { container } = render(
+      <AgentCard
+        agent={agent({ sessionName: "billing webhooks", host: "lodge" })}
+        onClick={() => {}}
+        unseen
+      />,
+    );
+    const title = container.querySelector<HTMLElement>('[data-slot="agent-row-title"]')!;
+    const name = within(title).getByText("billing webhooks");
+    const dot = within(title).getByRole("img", { name: "unseen" });
+    const meta = title.querySelector('[data-slot="pane-meta"]')!;
+    // The dot is the name's very next element sibling…
+    expect(name.nextElementSibling).toBe(dot);
+    // …and the meta comes after the dot, never before it.
+    expect(dot.compareDocumentPosition(meta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The name no longer claims the row's spare width itself — it truncates on its own content,
+    // and `PaneMeta`'s `ml-auto` is what pins the meta to the end instead.
+    expect(name.className).not.toMatch(/flex-1/);
+    expect(meta.className).toMatch(/(?:^|\s)ml-auto(?=\s|$)/);
+  });
 });
 
 // A flat row states its own height whatever scope it's in — the urgent sections of the dashboard

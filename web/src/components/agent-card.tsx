@@ -178,10 +178,9 @@ export function AgentCard({
           // 14px, the same as the card's own padding. A flat row now sits inside a 1px-bordered
           // ListGroup, so its content lands on the same x as a card row's content BY CONSTRUCTION
           // (14 + 1 on both sides) — the hand-computed 15px this replaced was faking exactly that
-          // alignment against a group that had no border to supply the 1px. The rail below is a
-          // box-shadow, which takes no room, so the number still holds.
+          // alignment against a group that had no border to supply the 1px.
           flat
-            ? "flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[inset_2px_0_0_0_transparent]"
+            ? "flex flex-row items-center gap-3 px-3.5 py-2.5"
             : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
           // Every flat row states its own pitch — `py-0` because the height IS the statement, and
           // the flat row's own `py-2.5` around two lines would make it 56px and the number would
@@ -189,16 +188,13 @@ export function AgentCard({
           // row (`scope="herd"`, `density="row"`) gets the same 44px as a workspace-grouped one —
           // the two are meant to read as the SAME kind of row (agent-list.tsx's urgent section).
           flat && "h-11 py-0",
-          // The blocked tint survives both treatments — it's the one cue that reads at a glance.
-          // The EDGE cannot: one class string, two containers. A card sits in a gap list and already
-          // carries a border in every state, so it only recolours. A flat row sits in a divide-y
-          // list, where a four-sided edge would double the hairline — and where a bare colour
-          // utility paints nothing at all, because preflight leaves the width at 0. So the flat row
-          // takes a 2px left rail, reserved transparent above so the box never changes.
-          blocked &&
-            (flat
-              ? "bg-status-blocked/5 shadow-[inset_2px_0_0_0_var(--color-status-blocked)]"
-              : "border-status-blocked/40 bg-status-blocked/5"),
+          // The blocked TINT survives both treatments — it's the one cue that reads at a glance.
+          // A card sits in a gap list and already carries a border in every state, so it only
+          // recolours. A flat row sits in a divide-y list, where a four-sided edge would double the
+          // hairline — it used to take a 2px left rail instead, which read as the thick-left-border
+          // accent the design rules ban (removed 2026-09-14): status on a flat row is carried by the
+          // dot (`cornerDot`) and this tint alone, nothing on the edge.
+          blocked && (flat ? "bg-status-blocked/5" : "border-status-blocked/40 bg-status-blocked/5"),
         )}
       >
         <div className="min-w-0 flex-1">
@@ -235,7 +231,12 @@ export function AgentCard({
             ) : (
               <AgentIcon agent={agent.agent} className="size-4" />
             )}
-            <span className="min-w-0 flex-1 truncate self-baseline font-medium">{primary}</span>
+            {/* No longer `flex-1`: that let the name claim the whole line, which pushed the unseen
+                dot all the way to the far end, beside the meta, instead of beside the NAME. It now
+                sizes to its own text and only `min-w-0` lets it truncate below that — the dot still
+                sits right after whatever survives the truncation. `PaneMeta`'s own `ml-auto` is what
+                claims the row's spare width now, so it still lands at the end. */}
+            <span className="min-w-0 truncate self-baseline font-medium">{primary}</span>
             {unseen && (
               // A finished pane you haven't opened yet (`isUnseen()`, lib/triage.ts). Right after
               // the name, never before it — the name still leads the row — and `shrink-0` so a long
@@ -252,7 +253,7 @@ export function AgentCard({
               host={agent.host}
               cache={agent.cache}
               session={agent.session}
-              className="self-baseline"
+              className="ml-auto self-baseline"
             />
           </div>
 

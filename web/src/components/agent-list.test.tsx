@@ -104,8 +104,10 @@ describe("AgentList — two axes, urgency then workspace", () => {
     expect(detail).toHaveTextContent("fix-auth");
     // The workspace is the heading above; repeating it on the row is what this grouping saves.
     expect(detail).not.toHaveTextContent("moonward_os");
-    // The title still takes line 1's fill and weight — it is the only fact unique to this row.
-    expect(screen.getByText("rewrite the loader").className).toMatch(/flex-1/);
+    // The title still carries line 1's weight and truncates on its own — the spare width is
+    // `PaneMeta`'s `ml-auto` now, not the name's own `flex-1` (2026-09-14, so the unseen dot can
+    // sit right after the name instead of at the far end of the row).
+    expect(screen.getByText("rewrite the loader").className).toMatch(/truncate/);
     expect(screen.getByText("rewrite the loader").closest("[data-slot]")).toHaveAttribute(
       "data-slot",
       "agent-row-title",
