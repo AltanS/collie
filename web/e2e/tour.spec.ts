@@ -40,6 +40,13 @@ test("the footer button closes it, and a reload does not bring it back", async (
   await expect(page.getByRole("dialog")).toBeHidden();
 
   await page.reload();
-  await expect(page.getByRole("main")).toBeVisible();
+  // The reload can land on either screen the footer button sent it to. The dashboard has a
+  // `<main>` landmark; the pane screen has none, so it waits for the composer textbox instead.
+  // Either element only appears once the post-reload snapshot has landed.
+  await expect(
+    page
+      .getByRole("main")
+      .or(page.getByRole("textbox", { name: en["composer.placeholder.reply"] })),
+  ).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
