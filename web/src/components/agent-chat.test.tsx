@@ -429,23 +429,23 @@ describe("AgentChat — the pane header's identity block", () => {
     expect(name + gap + placeBox).toBeLessThan(44);
   });
 
-  it("carries the PLACE on line 2, from the raw tab list, and never the cwd", () => {
-    // The one place rule (lib/pane-name.test.ts pins the rule itself). Here: that the header mounts
-    // it, reads the RAW tab list for it, and no longer spends this line on a directory.
+  it("carries the WORKSPACE on line 2, never the tab crumb or the cwd", () => {
+    // The one place rule (lib/pane-name.test.ts pins the rule itself); the header now takes only the
+    // `space` half of it, because the tab strip directly under the header already names the open tab.
     const base = fixtureAgents[0]!; // workspaceLabel "webapp", tab w1:t1, cwd /home/you/webapp
     const tab = { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "review", focused: false, paneCount: 1 };
     const named = renderChat({ agent: base, agents: [base], tabs: [tab] }).container;
-    expect(slot(named, "place")?.textContent).toBe("webapp › review");
+    expect(slot(named, "place")?.textContent).toBe("webapp");
     cleanup();
-    // A positional tab label is the multiplexer's default, not a name someone chose, so the crumb
-    // reads the tab's POSITION instead of its raw number (lib/pane-name.ts § tabTitle).
+    // A named tab, a positional tab or no tab at all — the tab's title never reaches this line, only
+    // the tab strip below shows it now.
     const numbered = renderChat({ agent: base, agents: [base], tabs: [{ ...tab, label: "2" }] }).container;
-    expect(slot(numbered, "place")?.textContent).toBe("webapp › tab 2");
+    expect(slot(numbered, "place")?.textContent).toBe("webapp");
     cleanup();
     // The path is gone from this line, even for a pane sitting away from its space root.
     const worktree = { ...base, cwd: "/home/you/webapp/worktrees/fix-42" };
     const away = renderChat({ agent: worktree, agents: [worktree], tabs: [tab] }).container;
-    expect(slot(away, "place")?.textContent).toBe("webapp › review");
+    expect(slot(away, "place")?.textContent).toBe("webapp");
     expect(away.textContent).not.toContain("worktrees/fix-42");
   });
 
@@ -962,14 +962,14 @@ describe("AgentChat — status rides the header title slot, not the tab strip", 
   it("shows a live status in place of the title, and the tab strip's + stays usable", () => {
     renderChat({ tabs: fixtureTabs });
 
-    // The title is showing, no status yet. `fixtureTabs` labels w1:t1 "1" — a positional label, so
-    // the place crumb reads its position (lib/pane-name.ts § tabTitle) rather than dropping it.
-    expect(screen.getByText("webapp › tab 1")).toBeInTheDocument();
+    // The title is showing, no status yet. Line 2 now names the workspace alone — the tab crumb
+    // left this line for the tab strip under the header.
+    expect(screen.getByText("webapp")).toBeInTheDocument();
 
     act(() => setStatus("Sent", "success"));
 
     // The title's own text is gone from the header slot — the status replaced it in place.
-    expect(screen.queryByText("webapp › tab 1")).not.toBeInTheDocument();
+    expect(screen.queryByText("webapp")).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Sent");
 
     // The tab strip's "+" never moved and is still enabled — the control the operator just
@@ -987,7 +987,7 @@ describe("AgentChat — status rides the header title slot, not the tab strip", 
     act(() => vi.advanceTimersByTime(2500));
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(screen.getByText("webapp › tab 1")).toBeInTheDocument();
+    expect(screen.getByText("webapp")).toBeInTheDocument();
   });
 });
 

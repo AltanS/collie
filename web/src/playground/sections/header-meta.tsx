@@ -176,7 +176,7 @@ export function HeaderMetaSection() {
           state="header-meta-workspace-today"
           label="Option 1 · Workspace only, meta as today"
           reach={`${IDEA} the path line drops the tab crumb; the trailing meta mounts the real PaneMeta inline, unchanged, host="bluefin".`}
-          note="The tab strip under the header already shows the tab. So the path line drops the tab and keeps only the workspace. Host and cache stay at the end of that line, as today. The line no longer truncates."
+          note="Shipped. The tab strip under the header already shows the tab. So the path line drops the tab and keeps only the workspace. Host and cache stay at the end of that line, as today. The line no longer truncates."
         >
           <Crew servers={ROSTER_WITH_BLUEFIN}>
             <HeaderMock>

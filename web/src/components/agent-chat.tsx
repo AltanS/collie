@@ -70,7 +70,7 @@ import type { PreviewBlockAction } from "@/components/preview-select-block";
 import type { MenuBlockAction } from "@/components/menu-block";
 import { locateReply } from "@/lib/latest-reply";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
-import { paneName, panePlace } from "@/lib/pane-name";
+import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { hasJournalAdapter } from "@/lib/journal-agents";
 import { historyPath, spacePath } from "@/lib/nav";
@@ -220,7 +220,7 @@ export function AgentChat({
   // "collie-workspace › UI work" here: one pane, two names, and the reader had to work out they
   // were the same pane. The address did not vanish, it moved down one line, where an address belongs.
   const name = agent === undefined ? "" : paneName(agent);
-  const place = agent === undefined ? "" : panePlace(agent, tabs);
+  const workspace = agent === undefined ? "" : panePlaceParts(agent, tabs).space;
   // The panes that share this tab (agents + shells), in stable order — the switcher's whole list, and
   // the order the numbers on its pills count in (pane-strip.tsx). Computed here, once: the row is far
   // from the header in this file and the two must not disagree about which panes there are.
@@ -1405,17 +1405,21 @@ export function AgentChat({
                     {name}
                   </span>
                 </div>
-                {/* LINE 2 IS THE PANE'S PLACE, END TO END: where the work sits on the left, which
-                    machine it sits on and how long its prompt cache stays warm on the right. The two
-                    used to be a stack in the corner above; they read as one sentence here and the
-                    corner is the menu's alone (see the rightLead note above).
+                {/* LINE 2 NAMES THE WORKSPACE, END TO END: the workspace on the left, which machine
+                    it sits on and how long its prompt cache stays warm on the right. The two used to
+                    be a stack in the corner above; they read as one sentence here and the corner is
+                    the menu's alone (see the rightLead note above).
 
-                    The PLACE, not the path. `space › tab` is the same second line the dashboard row
-                    and the switcher row carry, so one pane reads the same on all three; the cwd is
-                    gone from this line because it answered a question nobody asked here and it
-                    changed the line's meaning from screen to screen. A pane that sits somewhere
-                    other than its space root still says so in the space view's card, which is the
-                    list already scoped to one tab and therefore the one with room for a path.
+                    The WORKSPACE, not the place. This line used to carry `space › tab`, the same
+                    crumb the dashboard row and the switcher row carry — but the tab strip sits right
+                    under this header and already names the open tab, so the crumb repeated a fact
+                    the screen was already showing one row down, and on a narrow phone it was the
+                    reason the trailing meta crowded the line into truncating. The workspace alone
+                    still answers "where does this pane sit" at the level this header owns; the cwd is
+                    gone from this line for the same old reason, it answered a question nobody asked
+                    here. A pane that sits somewhere other than its space root still says so in the
+                    space view's card, which is the list already scoped to one tab and therefore the
+                    one with room for a path.
 
                     The row is always mounted and its height never depends on its content, at the
                     line's own 12px, so a pane whose cache reading arrives on the next poll keeps the
@@ -1442,7 +1446,7 @@ export function AgentChat({
                     data-slot="pane-place"
                     className="min-w-0 truncate text-[11px] leading-3 text-muted-foreground"
                   >
-                    {place}
+                    {workspace}
                   </span>
                   <PaneMeta
                     layout="inline"
