@@ -168,33 +168,101 @@ isn't in the path at all, [`docs/deployment.md`](./docs/deployment.md) has the r
 
 ## Windows (experimental)
 
-The **bridge** runs on Windows against the Herdr Windows beta; the **launcher** does not. Herdr on
-Windows exposes its control socket as a named pipe derived from the full socket path instead of an
-AF_UNIX socket. Collie connects via `node:net` rather than `Bun.connect` using a single shim,
-[`bridge/dial.ts`](./bridge/dial.ts), which documents the path mapping.
+Collie has two parts. The **bridge** is the program itself, the part that talks to Herdr and serves
+the app to your phone. The **launcher** is everything around it, the `collie start/stop/update`
+verbs and the service that keeps the bridge running.
 
-Operational details:
+The bridge runs on Windows. The launcher is Linux and macOS only. On Windows,
+[`contrib/windows/collie-ctl.ps1`](./contrib/windows/README.md) does its job through Task
+Scheduler: it starts the bridge at logon, restarts it on failure, and provides `build`, `start`,
+`stop`, `restart`, `status`, `url`, `version`, `logs`, `uninstall`, and `update`. The plugin
+manifest lists Linux and macOS only, so there are no Herdr action buttons here; run the script
+directly.
 
-- **Run the bridge directly** with `bun run bridge/index.ts`. There is no systemd unit. Herdr action
-  buttons invoke `bash`, requiring Git Bash on `PATH`. The manifest lists only `linux` and `macos`
-  support to avoid exposing actions that might fail silently.
-- **`tailscale serve` integration is unavailable on Windows.** Follow
-  [Variant C](./docs/deployment.md#variant-c--reverse-proxy-as-the-only-front-door-no-tailscale): bind to
-  loopback, place your own ingress in front, and set `COLLIE_PUBLIC_HOSTS`. The rules in
-  [§Security](./docs/security.md) still apply.
-- **Set `COLLIE_MULTI_SESSION=off`**, as session discovery relies on POSIX paths.
-- The socket path defaults to `%APPDATA%\herdr\herdr.sock`. Override it with `HERDR_SOCKET_PATH`.
-  Explicit `\\.\pipe\…` values pass through directly.
+### Setup
 
-**Lifecycle management:** The bridge added named pipe support in 0.15.0. An unsupported,
-community-maintained Task Scheduler configuration for start, stop, and update routines is available
-in [`contrib/windows/`](./contrib/windows/README.md).
+You need Herdr on Windows, [Bun](https://bun.sh), git, and Tailscale on both devices, with HTTPS
+enabled for your tailnet (admin console, DNS page).
 
-**Verification:** The bridge logs `[events] stream up` on startup. Event streaming runs over the
-pipe, providing real-time updates without falling back to polling.
+1. Clone at a release tag. A checkout away from its tag installs as "Collie (dev)" with an orange
+   icon. `v1.9.0` is current at the time of writing.
 
-`COLLIE_HERDR_DIAL=net` forces the `node:net` dialer on Linux and macOS. This allows testing the
-Windows connection path without a Windows environment; `bridge/dial.test.ts` relies on it.
+   ```powershell
+   git clone --branch v1.9.0 --depth 1 https://github.com/AltanS/collie.git
+   cd collie
+   ```
+
+2. Build.
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File contrib\windows\collie-ctl.ps1 build
+   ```
+
+3. Write `%APPDATA%\herdr\plugins\config\herdr.collie\.env`:
+
+   ```
+   COLLIE_MUX=herdr
+   COLLIE_MULTI_SESSION=off
+   COLLIE_PUBLIC_HOSTS=<machine>.<tailnet>.ts.net
+   COLLIE_ALLOWED_ORIGINS=https://<machine>.<tailnet>.ts.net
+   ```
+
+   `COLLIE_MULTI_SESSION=off` is required on Windows; session discovery uses POSIX paths.
+   `COLLIE_PUBLIC_HOSTS` and `COLLIE_ALLOWED_ORIGINS` name the URL your phone will use; the
+   Windows lifecycle script does not discover the tailnet host for you. Leave `COLLIE_SKIP_SERVE`
+   unset; it is for running behind your own proxy, and it disables the identity gate below.
+
+4. Start and check. The log line `[events] stream up` means the bridge reached Herdr over the
+   Windows named pipe. Event streaming runs over the pipe itself, with no polling fallback.
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File contrib\windows\collie-ctl.ps1 start
+   powershell -NoProfile -ExecutionPolicy Bypass -File contrib\windows\collie-ctl.ps1 logs 25
+   ```
+
+   The app runs at `http://127.0.0.1:8787` on this machine.
+
+5. Publish with serve. Collie does not set up serve on Windows. Run it once in an Administrator
+   PowerShell:
+
+   ```powershell
+   tailscale serve --bg 8787
+   ```
+
+   Open `https://<machine>.<tailnet>.ts.net` in any browser on your tailnet. That includes any
+   phone; on Android, Chrome offers to install the app, and on iOS the Safari share sheet adds it
+   to the Home Screen.
+
+### Lock it to you
+
+`COLLIE_TRUSTED_USER` limits the app to your Tailscale login. serve attaches your identity to
+every request, and the bridge rejects the rest.
+
+The value is your Tailscale login, which is not always an email. It is whichever identity you used
+to join the tailnet: GitHub, Google, Microsoft, or an email address. Read it off the machine:
+
+```powershell
+tailscale ip -4
+tailscale whois <that ip>
+```
+
+The `User` name is the value, for example `user@github`. Once the gate is on, `status` may report
+WARN, because its loopback check carries no identity. The logs are the truth.
+
+### Day to day
+
+- The `herdr.collie` task starts the bridge at logon and restarts it on failure. Herdr must be
+  running; the bridge reconnects on its own.
+- To update, `git fetch --tags`, `git checkout <new tag>`, then `build` and `restart`. The
+  script's `update` verb tracks `main`, which installs as a dev build.
+- Never use `tailscale funnel`. To drop one serve mapping use `tailscale serve --https=443 off`;
+  `tailscale serve reset` drops every mapping on the machine.
+
+The socket path defaults to `%APPDATA%\herdr\herdr.sock`; override it with `HERDR_SOCKET_PATH`.
+Herdr exposes that socket as a named pipe, and Collie dials it with `node:net`; the mapping lives
+in [`bridge/dial.ts`](./bridge/dial.ts). Explicit `\\.\pipe\…` values pass through directly.
+`COLLIE_HERDR_DIAL=net` runs the same dial path on Linux and macOS, which is how it gets tested
+without a Windows box; `bridge/dial.test.ts` relies on it.
 
 ## Architecture
 
