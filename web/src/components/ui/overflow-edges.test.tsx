@@ -23,9 +23,9 @@ function pinMetrics(el: HTMLElement, { scrollWidth, clientWidth }: { scrollWidth
   };
 }
 
-function mount(insetRight?: number, cue?: "soft" | "none") {
+function mount(insetRight?: number, cue?: "soft" | "none", edges?: "both" | "left") {
   const { container } = render(
-    <OverflowEdges insetRight={insetRight} cue={cue}>
+    <OverflowEdges insetRight={insetRight} cue={cue} edges={edges}>
       {(ref) => (
         <div ref={ref}>
           <button type="button">Keys</button>
@@ -120,6 +120,41 @@ describe("OverflowEdges", () => {
       scrollTo(300);
       expect(wrapper.dataset.overflow).toBe("both");
       expect(wrapper.querySelectorAll("svg")).toHaveLength(0);
+    });
+  });
+
+  // `edges="left"` is the actions belt's pick — its pinned Switch block paints its own constant
+  // fade at the right end, so this primitive must never paint a second, scroll-dependent one there.
+  describe("edges", () => {
+    it("never paints the right mask or chevron, however far the row still overflows on that side", () => {
+      const { wrapper, scroller } = mount(undefined, "soft", "left");
+      const masked = scroller.parentElement!;
+
+      // At rest: only the right side hides anything. `edges="left"` must drop that to nothing.
+      pinMetrics(scroller, { scrollWidth: 1000, clientWidth: 400 })(0);
+      // `data-overflow` still reports the real, unrestricted measurement — only the paint is
+      // restricted — so a consumer reading the raw state (the playground's ground selectors) still
+      // sees the truth.
+      expect(wrapper.dataset.overflow).toBe("right");
+      expect(masked.className).not.toContain("black_calc");
+      expect(wrapper.querySelectorAll("svg")).toHaveLength(0);
+    });
+
+    it("keeps the left mask and chevron once the row has scrolled into `both`", () => {
+      const { wrapper, scroller } = mount(undefined, "soft", "left");
+      const masked = scroller.parentElement!;
+      const scrollTo = pinMetrics(scroller, { scrollWidth: 1000, clientWidth: 400 });
+
+      scrollTo(300);
+      expect(wrapper.dataset.overflow).toBe("both");
+      expect(masked.className).toContain("transparent,black_1.5rem)");
+      expect(masked.className).not.toContain("black_calc");
+      expect(wrapper.querySelectorAll("svg")).toHaveLength(1);
+    });
+
+    it("defaults to both edges when unset", () => {
+      const { wrapper } = mount();
+      expect(wrapper).toBeTruthy(); // no throw; `edges` is optional and every existing caller is unaffected
     });
   });
 });

@@ -171,4 +171,34 @@ describe("ActionsRow", () => {
     render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
     expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeInTheDocument();
   });
+
+  it("reserves the scroller's right padding for the pinned Switch block, and draws no right fade of its own", () => {
+    // jsdom has no ResizeObserver (lib/env.ts's hasResizeObserver), so the scroller falls back to
+    // SWITCH_PILL_INSET's first-paint value — the same number a real browser reports for today's
+    // box before its first observation callback lands. What this test pins is the WIRING: the
+    // fallback lands on the scroller as an inline `paddingRight`, and OverflowEdges is told
+    // `edges="left"` so it never paints a second, scroll-dependent fade over the block's own.
+    render(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }}
+      />,
+    );
+    const scroller = document.querySelector<HTMLElement>(".overflow-x-auto")!;
+    expect(scroller.style.paddingRight).toBe("97px");
+    expect(scroller.className).not.toMatch(/(?:^|\s)pr-3(?=\s|$)/);
+    // The masked wrapper one level out never carries a right-hand gradient stop — `edges="left"`
+    // took effect.
+    const masked = scroller.parentElement!;
+    expect(masked.className).not.toContain("black_calc");
+  });
+
+  it("gives the scroller symmetric px-3 padding and OverflowEdges its default edges when there is no handle", () => {
+    render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
+    const scroller = document.querySelector<HTMLElement>(".overflow-x-auto")!;
+    expect(scroller.style.paddingRight).toBe("");
+    expect(scroller.className).toMatch(/(?:^|\s)pr-3(?=\s|$)/);
+  });
 });

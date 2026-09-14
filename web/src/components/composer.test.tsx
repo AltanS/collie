@@ -1496,7 +1496,12 @@ describe("Composer — the machine opens the actions belt, and no band stands ab
     expect(actions().className).not.toMatch(/rounded/);
     // The 12px goes back on the SCROLLER, not on the OverflowEdges wrapper between them: that
     // wrapper owns the flex sizing and the edge cues, and deliberately no padding of its own.
-    expect(actions().querySelector(".overflow-x-auto")!.className).toMatch(/(?:^|\s)px-3(?=\s|$)/);
+    // `pl-3`/`pr-3` rather than one `px-3`: with a pinned Switch block the right half becomes a
+    // dynamic inline `paddingRight` instead (actions-row.tsx's `useSwitchBlockWidth`), so the two
+    // sides are separate classes even though this handle-less render keeps both at 12px.
+    const scrollerClass = actions().querySelector(".overflow-x-auto")!.className;
+    expect(scrollerClass).toMatch(/(?:^|\s)pl-3(?=\s|$)/);
+    expect(scrollerClass).toMatch(/(?:^|\s)pr-3(?=\s|$)/);
     // The group's GUTTER is the scroller's and nothing else: with the capsule gone, Collie's
     // controls stand on the belt's own ground and own no padding at all.
     expect(row().className).not.toMatch(/(?:^|\s)px-/);

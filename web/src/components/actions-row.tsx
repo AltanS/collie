@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Layers } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -7,6 +8,7 @@ import { OverflowEdges } from "@/components/ui/overflow-edges";
 import { SectionLabel } from "@/components/ui/section-label";
 import { STRIP_ROW_PILL, STRIP_SCROLLER } from "@/components/ui/labelled-strip";
 import { useLocale } from "@/hooks/use-locale";
+import { hasResizeObserver } from "@/lib/env";
 import { t as translate } from "@/lib/i18n";
 import type { OperatorCommand } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -122,9 +124,10 @@ const ON = "bg-control-on text-control-on-foreground hover:bg-control-on";
 const OFF = "text-muted-foreground";
 
 /**
- * How much of the belt's right end the pinned Switch control owns, in px, for the scroll cue to step
- * around (`OverflowEdges`'s `insetRight`). It is the whole pinned span: 53px of control, the 12px of
- * `pr-3` that keeps it off the screen edge, and the 32px of `pl-8` its fade leads in over.
+ * The FIRST-PAINT fallback for how much of the belt's right end the pinned Switch block owns, in
+ * px — the scroller's `paddingRight` before a `ResizeObserver` has measured the real thing (below).
+ * It is the whole pinned span: 53px of control, the 12px of `pr-3` that keeps it off the screen
+ * edge, and the 32px of `pl-8` its own fade leads in over.
  *
  * The 53px is the drawn box: `STRIP_ROW_PILL`'s own 44px width floor (`min-w-11`, which every pill
  * on this belt stands on), the 1px hairline on its left, and the 8px between the two. It was 78px
@@ -135,13 +138,69 @@ const OFF = "text-muted-foreground";
  * scroller back. What it ANSWERS is unchanged at 46px — `STRIP_ROW_PILL`'s `::before` reaches past
  * the drawn box, the way every pill on this belt does.
  *
- * The fade's 32px is IN the number, and that was measured rather than assumed when the tag stood
- * here: at the pinned object's own width alone the scroll cue landed inside the fade's lead-in,
- * where the patch is already about 87% opaque, so the one mark that says "there is more this way"
- * was drawn at 13% and read as nothing. Clear of the patch it reads, and the patch's own fade picks
- * the line up from there, which is what makes the two cues read as one.
+ * THIS NUMBER IS NO LONGER THE ANSWER — IT IS THE GUESS BEFORE ONE EXISTS. A constant here drifts
+ * the moment the Switch block's own box changes (a locale with a wider glyph, a future word back on
+ * the pill) and nothing re-measures it, which is exactly how the last pill ended up hidden under the
+ * block: the scroller's padding and the block's real width were two numbers that had to be kept
+ * equal by hand and quietly stopped agreeing. `useSwitchBlockWidth` below measures the block itself
+ * with a `ResizeObserver` and this constant is only its return value's first frame — see there for
+ * why the block, not the belt, is what gets measured.
  */
 const SWITCH_PILL_INSET = 97;
+
+/**
+ * The pinned Switch block's own width, read off its DOM node — the scroller's `paddingRight` must
+ * equal this exactly, or the last pill either stops short of the hairline (padding too wide) or
+ * scrolls in UNDER the block and is hidden by it (padding too narrow, the bug this hook fixes).
+ *
+ * MEASURES THE BLOCK, NOT A FORMULA. {@link SWITCH_PILL_INSET} was a formula — 53 + 12 + 32 — kept
+ * equal to the block's real box by hand, and the two drifted apart in practice (the last pill
+ * ended up hidden under the block, which a formula cannot notice going wrong). A `ResizeObserver` on
+ * the block's own element cannot drift: whatever the block actually draws, at whatever width a
+ * locale or a font gives it, is the number the scroller gets.
+ *
+ * `null` while there is no `handle` (nothing pinned, nothing to measure) or before the browser's
+ * first observation callback — the caller falls back to {@link SWITCH_PILL_INSET} for that one
+ * frame, which is the same value this hook would report for today's box, so nothing visibly shifts.
+ * Guarded for jsdom, which has no `ResizeObserver` (`hasResizeObserver`, `lib/env.ts`).
+ */
+interface SwitchBlockWidth {
+  /** Lands on the pinned Switch block's own outer element — see that element's comment for why. */
+  ref: (node: HTMLSpanElement | null) => void;
+  /** The block's measured width in px, or `null` before the first observation (or with no block
+   *  to observe at all). The caller falls back to {@link SWITCH_PILL_INSET} for `null`. */
+  width: number | null;
+}
+
+function useSwitchBlockWidth(active: boolean): SwitchBlockWidth {
+  const [width, setWidth] = useState<number | null>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
+
+  // useCallback, keyed on `active`: a bare inline function is a NEW ref every render, and React
+  // re-fires a changed ref callback (null, then the node) on every one of those — reconnecting the
+  // observer 60 times a second under a re-rendering belt. Keying it on `active` alone means the ref
+  // is only reattached when there is something new to observe or stop observing.
+  const ref = useCallback(
+    (node: HTMLSpanElement | null) => {
+      observerRef.current?.disconnect();
+      observerRef.current = null;
+      if (!node || !active || !hasResizeObserver()) return;
+      const ro = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (entry) setWidth(entry.contentRect.width);
+      });
+      ro.observe(node);
+      observerRef.current = ro;
+    },
+    [active],
+  );
+
+  useEffect(() => {
+    return () => observerRef.current?.disconnect();
+  }, []);
+
+  return { ref, width: active ? width : null };
+}
 
 /**
  * One of Collie's own actions. The composer owns every one of these — what it does, whether it is
@@ -226,6 +285,8 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
   useLocale();
 
   const harnessItems = useHarnessBarItems(agent, mine);
+  const switchBlock = useSwitchBlockWidth(!!handle);
+  const switchInset = switchBlock.width ?? SWITCH_PILL_INSET;
 
   // Nothing to draw at all. Render nothing rather than an empty scroller, so the row costs no
   // height.
@@ -267,16 +328,31 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           `cue="none"` is this belt's own pick: a chevron was tried here for one commit, but the
           belt's own tint plus the fade already say the row scrolls, and the chevron sat under the
           fixed Switch pill's own hit box (below) and could not be tapped anyway — so the mark is
-          gone and the fade carries the whole of the cue (operator's call, 2026-09-14). The `px-3`
-          stays on the scroller, paired with the `-mx-3` above: the wrapper adds no padding of its
-          own, it only owns the flex sizing the scroller used to carry directly.
+          gone and the fade carries the whole of the cue (operator's call, 2026-09-14).
+          `edges="left"` is the OTHER half of that call: with a handle pinned, the Switch block below
+          paints its OWN 32px fade at the belt's right end, always, whatever the scroll position — so
+          a right mask from THIS primitive would stack a second, scroll-dependent fade on top of it.
+          At rest the two together read as one wide fade; the moment the scroller reaches its end and
+          this primitive's own mask drops out (nothing left to hide), only the Switch block's constant
+          32px remains and the fade visibly SHRINKS — Altan, from the phone: "the fade is longer by
+          default than when I scroll to the very right." `edges="left"` makes the right fade the
+          Switch block's alone, constant in every scroll state, and keeps this primitive's own mask on
+          the left, where it still means something once scrolled. A caller with no handle passes no
+          `edges` at all — the default `"both"` is unchanged.
+          `pl-3` stays fixed (paired with the `-mx-3` above, the route's own gutter); `paddingRight` is
+          inline and DYNAMIC, from {@link useSwitchBlockWidth} — see that hook and the Switch block's
+          own ref below for why a constant here is what hid the last pill.
           The scroller's own `gap-1.5` stands — 6px is the belt's ONE pill gap, between the general
           pills, and between the last of them and the harness section's edge. The old `gap-2.5`
           override is gone with the capsules: a wider gap around a group was the separator when the
           groups were floating boxes, and the section's tint is the separator now. */}
-      <OverflowEdges insetRight={handle ? SWITCH_PILL_INSET : 0} cue="none">
+      <OverflowEdges edges={handle ? "left" : "both"} cue="none">
         {(scrollerRef) => (
-          <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "bg-primary/10 px-3")}>
+          <div
+            ref={scrollerRef}
+            className={cn(STRIP_SCROLLER, "bg-primary/10 pl-3", !handle && "pr-3")}
+            style={handle ? { paddingRight: switchInset } : undefined}
+          >
             {general.length > 0 && (
               // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
               // self-labelling buttons and earned nothing, but in the accessibility tree it is the only
@@ -340,9 +416,16 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           pill scrolled to the belt's end hits the same wall). Pointer events are switched back on
           one element in, on the actual cell (hairline + button below), so the Switch pill answers a
           tap only from ITS OWN drawn cell outward — its reach stops at the hairline, the cell's own
-          left edge, never past it into the scroller. */}
+          left edge, never past it into the scroller.
+          `switchBlock.ref` lands HERE, on this outer span — the whole pinned box, `pr-3` and `pl-8`
+          included, is exactly the width the scroller's `paddingRight` must match (see
+          {@link useSwitchBlockWidth}), so measuring anything narrower (the inner button alone, say)
+          would under-report it and the last pill would scroll in under the fade again. */}
       {handle && (
-        <span className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
+        <span
+          ref={switchBlock.ref}
+          className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8"
+        >
           <span
             aria-hidden
             className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
