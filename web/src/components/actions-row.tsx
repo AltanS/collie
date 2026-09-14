@@ -127,17 +127,19 @@ const OFF = "text-muted-foreground";
 /**
  * The FIRST-PAINT fallback for how much of the belt's right end the pinned Switch block owns, in
  * px — the trailing spacer's width before a `ResizeObserver` has measured the real thing (below).
- * It is the whole pinned span: 53px of control, the 12px of `pr-3` that keeps it off the screen
- * edge, and the 32px of `pl-8` its own fade leads in over.
+ * It is the whole pinned span: 32px of control, the 1px hairline on its left, the 8px between the
+ * two, the 12px of `pr-3` that keeps it off the screen edge, and the 64px of `pl-16` its own fade
+ * leads in over. 32 + 1 + 8 + 12 + 64 = 117.
  *
- * The 53px is the drawn box: `STRIP_ROW_PILL`'s own 44px width floor (`min-w-11`, which every pill
- * on this belt stands on), the 1px hairline on its left, and the 8px between the two. It was 78px
- * while the control was a bordered pill wearing the word "Switch" — 2·8px
- * of `px-2`, the 16px `Layers` mark, the 6px `gap-1.5` and 36px of word, measured at a 390px
- * viewport with deviceScaleFactor 2. Altan, from his phone: "the switch button is taking up too much
- * room for my taste, I'd argue we can just have the icon." So the word went and the belt got 25px of
- * scroller back. What it ANSWERS is unchanged at 46px — `STRIP_ROW_PILL`'s `::before` reaches past
- * the drawn box, the way every pill on this belt does.
+ * The 32px is the drawn box: `STRIP_ROW_PILL`'s own 44px width floor (`min-w-11`) is overridden on
+ * this one pill to `w-8 min-w-8` — the belt's operator-picked shape, "Option 6" of the belt-shade
+ * deck (playground, removed 2026-09-14 once it had served; see git history): the fade doubled to
+ * 64px and the mark narrowed to 32px, so the longer dissolve gets room without the belt growing any
+ * shorter. It was 44px, `STRIP_ROW_PILL`'s unmodified floor, before that pick, and 78px before that
+ * while the control was a bordered pill wearing the word "Switch" — Altan, from his phone: "the
+ * switch button is taking up too much room for my taste, I'd argue we can just have the icon." What
+ * it ANSWERS is unchanged at 46px — `STRIP_ROW_PILL`'s `::before` reaches past the drawn box, the
+ * way every pill on this belt does.
  *
  * THIS NUMBER IS NO LONGER THE ANSWER — IT IS THE GUESS BEFORE ONE EXISTS. A constant here drifts
  * the moment the Switch block's own box changes (a locale with a wider glyph, a future word back on
@@ -147,7 +149,7 @@ const OFF = "text-muted-foreground";
  * `ResizeObserver` and this constant is only its return value's first frame — see there for why the
  * block, not the belt, is what gets measured.
  */
-const SWITCH_PILL_INSET = 97;
+const SWITCH_PILL_INSET = 117;
 
 /**
  * The pinned Switch block's own width, read off its DOM node — the trailing spacer's width must
@@ -306,8 +308,10 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
       // below the first with a strip of empty chrome between them, which is the doubled seam
       // DESIGN.md §4 forbids. Altan, from the phone: "there is now an empty row above the actions
       // belt that we can remove." The 6px was `mt-1.5`, the air the old pull-up grip's upper half
-      // hung into; the grip is gone, and nothing hangs there any more. `mb-1.5` below stands — that
-      // one separates the belt from the input, which has no rule of its own.
+      // hung into; the grip is gone, and nothing hangs there any more. `mb-1` below stands — that
+      // one separates the belt from the input, which has no rule of its own. It was `mb-1.5` until
+      // the belt itself shrank to pill height (below), at which point 6px of air under a 32px band
+      // read wider than the band deserved, so it came down to 4px with the band.
       //
       // `relative` so the pinned span below can be laid over this element's own right end. It is
       // here unconditionally rather than only with a handle: a positioning context changes no pixel,
@@ -321,7 +325,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
       // with no listener behind it would forbid a vertical page gesture and give nothing back.
       ref={handle?.ref}
       className={cn(
-        "relative -mx-3 mb-1.5 flex items-center border-b border-border bg-foreground/6",
+        "relative -mx-3 mb-1 flex items-center border-b border-border bg-foreground/6",
         handle && "touch-pan-x",
       )}
     >
@@ -331,11 +335,11 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           fixed Switch pill's own hit box (below) and could not be tapped anyway — so the mark is
           gone and the fade carries the whole of the cue (operator's call, 2026-09-14).
           `edges="left"` is the OTHER half of that call: with a handle pinned, the Switch block below
-          paints its OWN 32px fade at the belt's right end, always, whatever the scroll position — so
+          paints its OWN 64px fade at the belt's right end, always, whatever the scroll position — so
           a right mask from THIS primitive would stack a second, scroll-dependent fade on top of it.
           At rest the two together read as one wide fade; the moment the scroller reaches its end and
           this primitive's own mask drops out (nothing left to hide), only the Switch block's constant
-          32px remains and the fade visibly SHRINKS — Altan, from the phone: "the fade is longer by
+          64px remains and the fade visibly SHRINKS — Altan, from the phone: "the fade is longer by
           default than when I scroll to the very right." `edges="left"` makes the right fade the
           Switch block's alone, constant in every scroll state, and keeps this primitive's own mask on
           the left, where it still means something once scrolled. A caller with no handle passes no
@@ -347,12 +351,24 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           The scroller's own `gap-1.5` stands — 6px is the belt's ONE pill gap, between the general
           pills, and between the last of them and the harness section's edge. The old `gap-2.5`
           override is gone with the capsules: a wider gap around a group was the separator when the
-          groups were floating boxes, and the section's tint is the separator now. */}
+          groups were floating boxes, and the section's tint is the separator now.
+          `py-0` OVERRIDES `STRIP_SCROLLER`'s OWN `py-1.5` ON THIS SCROLLER ALONE — the operator's
+          pick, "Option 6" of the belt-shade deck (playground, removed 2026-09-14 once it had served;
+          see git history): the belt now stands at the pill's own height, 32px, rather than the 44px
+          `STRIP_TAP_TARGET` answers for. The key rail keeps `STRIP_SCROLLER`'s shipped `py-1.5`
+          unmodified — it is a different scroller, not this one, and nothing here touches it.
+          `overflow-y-hidden` is the fix for a bug that `py-0` alone would reopen: `STRIP_TAP_TARGET`'s
+          `::before` still reaches its full 46px of hit box, and a 32px scroller has only its own
+          height to absorb that reach into, not the 6px `py-1.5` used to spare on each side — so the
+          `::before` overflowed the scroller's box, and `overflow-x: auto` forces `overflow-y` to
+          compute to `auto` too, which turned that overflow into a real vertical scrollbar under a
+          thumb. `STRIP_SCROLLER` keeps forcing `overflow-x-auto`; this belt alone forces the other
+          axis shut. */}
       <OverflowEdges edges={handle ? "left" : "both"} cue="none">
         {(scrollerRef) => (
           <div
             ref={scrollerRef}
-            className={cn(STRIP_SCROLLER, "bg-primary/10 pl-3", !handle && "pr-3")}
+            className={cn(STRIP_SCROLLER, "bg-primary/10 pl-3 py-0 overflow-y-hidden", !handle && "pr-3")}
           >
             {general.length > 0 && (
               // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
@@ -422,28 +438,31 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           reply row and its round Send button sit on below — so the cell reads as ONE surface with the
           composer rather than as a patch cut into the belt (operator's call, from the phone: the
           Switch cell must match the composer row under the belt). The mask fades both layers in over
-          the first 32px, which is what lets a scrolling pill disappear UNDER this one instead of
-          stopping dead against it.
+          the first 64px — twice the drawn box's own old lead-in — which is what lets a scrolling
+          pill disappear UNDER this one instead of stopping dead against it. The 64px is the
+          operator's pick, "Option 6" of the belt-shade deck (playground, removed 2026-09-14 once it
+          had served; see git history): the longest fade offered, taken because the belt reads as a
+          strip that keeps going rather than one that stops.
           THIS OUTER SPAN IS `pointer-events-none`, AND NOT JUST THE FADE LAYERS INSIDE IT. A plain
-          `<span>` sized by flex still hits-tests over its whole box, padding included — so the 32px
-          `pl-8` lead-in, drawn only as a fade, was silently eating taps meant for whatever scrolled
+          `<span>` sized by flex still hits-tests over its whole box, padding included — so the 64px
+          `pl-16` lead-in, drawn only as a fade, was silently eating taps meant for whatever scrolled
           underneath it, the belt's own right chevron among them (that chevron is gone now, but a
           pill scrolled to the belt's end hits the same wall). Pointer events are switched back on
           one element in, on the actual cell (hairline + button below), so the Switch pill answers a
           tap only from ITS OWN drawn cell outward — its reach stops at the hairline, the cell's own
           left edge, never past it into the scroller.
-          `switchBlock.ref` lands HERE, on this outer span — the whole pinned box, `pr-3` and `pl-8`
+          `switchBlock.ref` lands HERE, on this outer span — the whole pinned box, `pr-3` and `pl-16`
           included, is exactly the width the scroller's `paddingRight` must match (see
           {@link useSwitchBlockWidth}), so measuring anything narrower (the inner button alone, say)
           would under-report it and the last pill would scroll in under the fade again. */}
       {handle && (
         <span
           ref={switchBlock.ref}
-          className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8"
+          className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-16"
         >
           <span
             aria-hidden
-            className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
+            className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_4rem)]"
           >
             <span className="absolute inset-0 bg-chrome" />
           </span>
@@ -472,10 +491,13 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
               aria-haspopup="dialog"
               onClick={handle.onClick}
               // No padding and no border: what is left of the pill is `STRIP_ROW_PILL`'s own box,
-              // which is 44 × 32px — `min-w-11` is the floor every pill on this belt stands on and
-              // the mark is centred in it, so dropping the word narrows the control to that floor
-              // and no further.
-              className={cn(`${STRIP_ROW_PILL} relative border-0 px-0 has-[>svg]:px-0`)}
+              // narrowed on this one pill alone. `w-8 min-w-8` drops `min-w-11`'s 44px floor — the
+              // floor every OTHER pill on this belt still stands on — down to 32px, the operator's
+              // pick ("Option 6" of the belt-shade deck; playground, removed 2026-09-14 once it had
+              // served, see git history): the Switch mark is a single centred icon with no label, so
+              // it alone can go narrower than a pill with a word to hold. Both classes are needed —
+              // `min-w-11` would otherwise still win against a bare `w-8`.
+              className={cn(`${STRIP_ROW_PILL} relative w-8 min-w-8 border-0 px-0 has-[>svg]:px-0`)}
             >
               <Layers className="size-4 shrink-0 text-primary" />
             </Button>

@@ -1475,7 +1475,9 @@ describe("Composer — the machine opens the actions belt, and no band stands ab
     // …and the belt has no top margin of its own. It was `mt-2`, the air between the status band and
     // these buttons, then `mt-1.5`, the room the pull-up grip's upper half hung into. Both are gone,
     // so the belt stands flush under the chrome block's rule and there is no empty strip above it.
-    expect(actions().className).toMatch(/(?:^|\s)mb-1\.5(?=\s|$)/);
+    // The bottom margin is `mb-1` now, not `mb-1.5` — it came down 2px with the belt itself when the
+    // belt shrank to pill height (Option 6 of the belt-shade deck).
+    expect(actions().className).toMatch(/(?:^|\s)mb-1(?=\s|$)/);
   });
 
   it("runs the ground and the rules edge to edge, and puts the gutter back on the scroller", () => {
