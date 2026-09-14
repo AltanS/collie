@@ -125,10 +125,10 @@ describe("ActionsRow", () => {
     expect(controls.className).not.toMatch(/rounded|border|bg-/);
   });
 
-  it("pins the switcher's Switch pill at its right end when one is handed down, and nothing when none is", async () => {
+  it("pins the switcher's bare mark at its right end when one is handed down, and nothing when none is", async () => {
     // The grip used to be a 30px band of its own above the composer, then a chevron on this belt's
-    // rule — which stood over whichever pill was in the middle of the band. It is a pill at the
-    // belt's right end now, above Send. The pane decides whether there is one (agent-chat.tsx).
+    // rule — which stood over whichever pill was in the middle of the band. It stands at the belt's
+    // right end now, above Send. The pane decides whether there is one (agent-chat.tsx).
     const onClick = vi.fn();
     const ref = vi.fn();
     const { unmount } = render(
@@ -140,8 +140,11 @@ describe("ActionsRow", () => {
       />,
     );
     const grip = screen.getByRole("button", { name: "Switch pane" });
-    // It draws the short word and announces the full one, the same split every general pill uses.
-    expect(grip.textContent).toBe("Switch");
+    // IT DRAWS NO WORD AT ALL. It wore one — "Switch", beside the mark, inside an accent pill — and
+    // Altan's verdict was that it "is taking up too much room for my taste, I'd argue we can just
+    // have the icon". So the accessible name is the only name it has, which is what a case may
+    // address and what a reader hears; nothing on screen says it.
+    expect(grip.textContent).toBe("");
     // It is INSIDE the belt and NOT inside the scroller's masked wrapper: a mask applies to its
     // whole subtree, so a pinned pill in there would fade out wherever the belt overflows.
     const belt = document.querySelector<HTMLElement>('[data-slot="composer-actions"]')!;

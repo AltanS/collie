@@ -1217,19 +1217,16 @@ export function AgentChat({
           // can never show more than the visible viewport. Offered only when the pane reported an
           // agent session id, so the row never leads to an empty screen. Both gates are now `undefined`
           // callbacks rather than unrendered buttons; the sheet hides a row it was given no callback for.
-          // THE TRAILING META IS THE DASHBOARD ROW'S OWN TWO CORNERS, and now literally so: both
-          // screens render `pane-meta.tsx`, so the column, the order and the two slot heights cannot
-          // drift apart. That file's header holds the geometry and the argument for it.
+          // THE CORNER IS THE ⋮ AND NOTHING ELSE. It held a stack too — the bordered host tag over
+          // the bare cache reading — and Altan, reading his own phone: "the top section with host and
+          // cache stuff is not where it needs to be yet". The fault was weight, not position: a
+          // bordered pill stacked over a bare tinted word, with a third loose glyph beside them, is
+          // three objects in one corner however well they line up. So the pair left the corner
+          // altogether and joined the PATH LINE below the pane's name (see `pane-meta.tsx`'s
+          // `inline` layout, and the line itself further down this file). What is left here is a
+          // menu, which was never part of a pane's address anyway.
           //
-          // THE ⋮ HAS ITS OWN COLUMN, WHICH IS WHAT PUT THE CORNER STRAIGHT. It used to sit in the
-          // top slot beside the host tag, so the tag's bordered box ended 28px left of the cache
-          // reading below it: Altan, from his phone, "the alignment is off". It was. A bordered tag
-          // and a bare glyph cannot share a right edge, and no amount of padding makes them — so the
-          // menu stepped out of the stack entirely. The stack now aligns on its own edge, both slots
-          // ending on one line, and the menu stands beside it with 8px between them. A menu is not
-          // part of a pane's address, which is the same sentence said in layout.
-          //
-          // AND THE TAP BOX IS DRAWN AGAIN, because the column made room for it: `w-11` (44px) wide
+          // THE TAP BOX IS DRAWN, because the column has room for it: `w-11` (44px) wide
           // and `self-stretch` tall against a 44px button, a real target rather than a `size-5` glyph
           // reaching out with a `::before`. A real box can show it was pressed, which is why
           // `active:bg-muted/60` is back. The column is 44px in every state — when there is no pane
@@ -1239,19 +1236,14 @@ export function AgentChat({
           // IT STILL COSTS THE ROW NOTHING. Altan, on the header before all this: the cache button
           // and the host name "are super ugly and increasing header row height". They were, at 69px
           // against a 44px identity block, which pushed the row off its `min-h-15` floor (60px,
-          // app-header.tsx) to 77px. The tallest thing here is now the 44px menu, under the floor, so
+          // app-header.tsx) to 77px. The only thing here now is the 44px menu, under the floor, so
           // the floor is what sets the height and nothing in this corner can raise it.
           //
           // RIGHT EDGES. `pr-3` is the line the corner lands on: the menu column's own edge. The
-          // stack's edges land 52px inside it, which is the width of the column plus the gap — the
-          // price of a menu that is a real button, paid once and in one place.
+          // meta on the path line ends where this column begins, because it lives in the row's centre
+          // region and this is the right cluster; the two never share an edge and never had to.
           rightLead={
             <div className="flex items-stretch gap-2 pr-3">
-              <PaneMeta
-                host={agent?.host}
-                cache={agent?.cache}
-                onOpenCache={() => setCacheSheetOpen(true)}
-              />
               {agent ? (
                 <button
                   type="button"
@@ -1262,7 +1254,7 @@ export function AgentChat({
                   <EllipsisVertical className="size-5" />
                 </button>
               ) : (
-                // The pane is gone. The column stays, empty, so the stack beside it does not slide.
+                // The pane is gone. The column stays, empty, so the title beside it does not slide.
                 <div className="w-11 shrink-0" />
               )}
             </div>
@@ -1277,36 +1269,50 @@ export function AgentChat({
               — see that component's header for the reasoning and what replaced. */}
           <HeaderStatus>
           {agent ? (
-            <button
-              type="button"
-              onClick={() => openSpace(agent.workspaceId)}
-              // The block's TEXT does not reach a screen reader — an aria-label on a button replaces
-              // everything inside it — so the state has to be spelled into the label itself, or moving
-              // the status word in here would have taken the pane's status out of the accessibility
-              // tree entirely. The suffix is a locale string, not a "," glued on in code, because
-              // where the punctuation goes is a translator's decision (host-chip.tsx does the same
-              // with its unreachable suffix).
-              aria-label={t("chat.header.openOverviewAria", {
-                workspace: agent.workspaceLabel,
-                status: t("chat.header.statusAria", {
-                  label: isShell ? t("status.shellBadge") : statusLabel(agent.status),
-                }),
-              })}
-              // The three-line block's geometry is a rule that spans two files — this one states the
-              // line boxes, app-header.tsx states the row floor and the padding that has to hold them —
-              // so it is asserted mechanically in agent-chat.test.tsx. These slots are what that test
-              // reads; renaming one without updating it fails there rather than on a phone.
-              data-slot="pane-identity"
-              // A REAL 44px hit box, stated. This button is the only way off the pane to the space
-              // overview and it measured 39px — under the floor, in the row that states the floor for
-              // everything else. `min-h-11` is 44px and it is now what DRAWS this button: with the
-              // caption line gone the block is 36px of lines (name 20 + gap 4 + cwd 12), or 20px with
-              // no cwd, so the floor catches every case rather than only the short one. No vertical
-              // padding on top of it, for the reason it never had any: lines plus padding must stay
-              // inside the row's 52px content box or the header grows on the pane route alone — the
-              // route-local growth `min-h-15` exists to prevent.
-              className="-mx-1 flex min-h-11 min-w-0 flex-1 items-center rounded-lg px-1 text-left transition-colors active:bg-muted/60"
+            // THE TAP SURFACE IS A SIBLING OF THE LINES, NOT THEIR PARENT, and that is what lets the
+            // meta ride on line 2. The block used to BE the button, so anything with a tap of its own
+            // — the cache reading — could not stand inside it: a button inside a button is invalid
+            // markup and a control no reader can reach. The button is now a box laid over the whole
+            // block (`absolute inset-0`), the lines paint above it and pass their taps straight
+            // through (`pointer-events-none`), and the one thing that wants its own tap takes it back
+            // (`pointer-events-auto`, on the meta). Nothing is lost for a screen reader: an
+            // aria-label on a button replaces everything inside it, so this block's text never
+            // reached one anyway — and now the lines are read as the text they are, beside a button
+            // that still says where it goes.
+            //
+            // A REAL 44px HIT BOX, stated here rather than on the button: this is the only way off
+            // the pane to the space overview and it measured 39px — under the floor, in the row that
+            // states the floor for everything else. `min-h-11` is 44px and the button, covering this
+            // box, is exactly as tall. With the caption line gone the lines are 36px (name 20 + gap 4
+            // + meta line 12), so the floor catches every case rather than only the short one. No
+            // vertical padding on top of it, for the reason it never had any: lines plus padding must
+            // stay inside the row's 52px content box or the header grows on the pane route alone —
+            // the route-local growth `min-h-15` exists to prevent.
+            <div
+              data-slot="pane-identity-block"
+              className="relative -mx-1 flex min-h-11 min-w-0 flex-1 items-center rounded-lg px-1 text-left"
             >
+              <button
+                type="button"
+                onClick={() => openSpace(agent.workspaceId)}
+                // The state has to be spelled into the label itself, or moving the status word into
+                // this block would have taken the pane's status out of the accessibility tree
+                // entirely. The suffix is a locale string, not a "," glued on in code, because where
+                // the punctuation goes is a translator's decision (host-chip.tsx does the same with
+                // its unreachable suffix).
+                aria-label={t("chat.header.openOverviewAria", {
+                  workspace: agent.workspaceLabel,
+                  status: t("chat.header.statusAria", {
+                    label: isShell ? t("status.shellBadge") : statusLabel(agent.status),
+                  }),
+                })}
+                // The block's geometry is a rule that spans two files — this one states the line
+                // boxes, app-header.tsx states the row floor and the padding that has to hold them —
+                // so it is asserted mechanically in agent-chat.test.tsx. These slots are what that
+                // test reads; renaming one without updating it fails there rather than on a phone.
+                data-slot="pane-identity"
+                className="absolute inset-0 rounded-lg transition-colors active:bg-muted/60"
+              />
               {/* TWO lines with 4px between them — see the row's own note in app-header.tsx for why
                   the air moved from outside the block to inside it. Each line states its own height
                   (20 / 12) so the block is a sum of boxes: as bare inline spans they inherit the
@@ -1329,7 +1335,13 @@ export function AgentChat({
                   The row does not shrink for the missing line: `min-h-15` is a FLOOR (app-header.tsx),
                   36px of lines centred in it still measures 60px, and that floor is shared by every
                   route and must not be lowered to fit this one. */}
-              <div data-slot="pane-lines" className="flex min-w-0 flex-1 flex-col gap-1">
+              <div
+                data-slot="pane-lines"
+                // Above the tap surface, and transparent to it: `relative` puts these lines over the
+                // absolutely-positioned button with no z-index to tune, and `pointer-events-none`
+                // hands every tap on them back to it. Exactly one descendant takes its taps back.
+                className="pointer-events-none relative flex min-w-0 flex-1 flex-col gap-1"
+              >
                 {/* Line 1: the agent's own mark, then the name. The mark used to stand OUTSIDE this
                     column, centred against both lines, which spent the block's entire left edge on it
                     and pushed the path in under the name with nothing above it. On line 1 it reads as
@@ -1392,20 +1404,44 @@ export function AgentChat({
                     {paneName}
                   </span>
                 </div>
-                {/* Line 2, conditional: the path, but only when it names a segment line 1 does not
-                    already show — see cwdBeyondName. Gated against the RENDERED NAME rather than
-                    against the project, because a hand-set label ("logs") puts no directory on line 1
-                    at all and the path is then the only thing locating the work. */}
-                {cwd !== null && (
-                  <span
-                    data-slot="pane-cwd"
-                    className="block truncate font-mono text-[11px] leading-3 text-muted-foreground"
-                  >
-                    {cwd}
-                  </span>
-                )}
+                {/* LINE 2 IS THE PANE'S ADDRESS, END TO END: where the work sits on the left, which
+                    machine it sits on and how long its prompt cache stays warm on the right. The two
+                    used to be a stack in the corner above; they read as one sentence here and the
+                    corner is the menu's alone (see the rightLead note above).
+
+                    The ROW is always mounted, the path inside it is not. The path is shown only when
+                    it names a segment line 1 does not already show — see cwdBeyondName, gated against
+                    the RENDERED NAME rather than against the project, because a hand-set label
+                    ("logs") puts no directory on line 1 at all and the path is then the only thing
+                    locating the work. The row around it stands either way, at the line's own 12px, so
+                    a pane with no path and a pane whose cache reading arrives on the next poll both
+                    keep the block at 20 + 4 + 12 = 36px and nothing above or below moves
+                    (DESIGN.md §2).
+
+                    WHO GIVES WAY: the path. It is `min-w-0 truncate` and the meta is `flex-none`, so
+                    a long directory ends in an ellipsis and the machine's name and the countdown are
+                    never cut. Line 1 is untouched by all of it — the meta is inside this row, not
+                    beside the block, so the pane's own name still has the full width. */}
+                <div className="flex min-w-0 items-center gap-2">
+                  {cwd !== null && (
+                    <span
+                      data-slot="pane-cwd"
+                      className="min-w-0 truncate font-mono text-[11px] leading-3 text-muted-foreground"
+                    >
+                      {cwd}
+                    </span>
+                  )}
+                  <PaneMeta
+                    layout="inline"
+                    host={agent.host}
+                    cache={agent.cache}
+                    onOpenCache={() => setCacheSheetOpen(true)}
+                    // The one descendant that takes its taps back from the surface under these lines.
+                    className="pointer-events-auto ml-auto"
+                  />
+                </div>
               </div>
-            </button>
+            </div>
           ) : (
             <div className="min-w-0 flex-1">
               <span className="truncate font-semibold">{t("chat.header.agentGone")}</span>

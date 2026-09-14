@@ -56,9 +56,17 @@ describe("Header corner ideas section", () => {
 
   it("gives every Switch option an accessible name, now that the word is gone", () => {
     render(<HeaderCornerSection />);
-    for (const handle of ["switch-pill-icon", "switch-pill-bare", "switch-pill-chevron"]) {
+    // Option 8 shipped, so its card hands the REAL ActionsRow a handle and the real one announces
+    // "Switch pane" — the app's own string, not this page's. The two ideas beside it are still drawn
+    // here and name themselves.
+    const named = {
+      "switch-pill-icon": "Switch",
+      "switch-pill-bare": "Switch pane",
+      "switch-pill-chevron": "Switch",
+    } as const;
+    for (const [handle, name] of Object.entries(named)) {
       const card = cardFor(handle);
-      const button = card.querySelector('button[aria-label="Switch"]');
+      const button = card.querySelector(`button[aria-label="${name}"]`);
       expect(button, handle).not.toBeNull();
       expect(button?.textContent).toBe("");
     }

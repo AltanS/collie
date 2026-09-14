@@ -4,8 +4,16 @@ import { SessionChip } from "@/components/session-chip";
 import type { PaneCache } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-// A PANE'S TWO CORNERS, drawn once for the two screens that draw them: the dashboard row
-// (`agent-card.tsx`) and the pane header (`agent-chat.tsx`).
+// A PANE'S ADDRESS AND ITS CACHE READING, drawn once for the two screens that carry them: the
+// dashboard row (`agent-card.tsx`) and the pane header (`agent-chat.tsx`).
+//
+// ── TWO LAYOUTS, ONE PAIR ────────────────────────────────────────────────────
+// `column` is the dashboard row's two fixed corners, unchanged to the pixel. `inline` is one row of
+// the same chips for the pane header, which now carries them at the END OF ITS PATH LINE rather
+// than in a stack in the corner: where a pane LIVES and how long its work stays warm are one
+// sentence, so they ride on the line the working directory already owns and the corner keeps the ⋮
+// alone. WHICH chips, and in which order, is stated once below and shared by both — a second list
+// is how the header and the dashboard would start naming a pane two different ways.
 //
 // ── WHY IT IS ONE COMPONENT AND NOT TWO COPIES ───────────────────────────────
 // The header's column was written as a copy of the card's, comment by comment, so a pane's header and
@@ -43,10 +51,69 @@ interface PaneMetaProps {
    * already one button and may not hold a second.
    */
   onOpenCache?: () => void;
+  /**
+   * `column` — the dashboard row's two fixed corners, a slot each. `inline` — one row of the same
+   * chips, at the end of the pane header's path line. See this file's header for why there are two.
+   */
+  layout?: "column" | "inline";
   className?: string;
 }
 
-export function PaneMeta({ host, cache, session, onOpenCache, className }: PaneMetaProps) {
+export function PaneMeta({
+  host,
+  cache,
+  session,
+  onOpenCache,
+  layout = "column",
+  className,
+}: PaneMetaProps) {
+  // ONE ROW, ON A LINE OF OTHER TYPE. It states its own 12px height — the path line's own box — so
+  // line 2 measures the same 12px whatever the two chips have to say, and the header's arithmetic
+  // (20 + 4 + 12 = 36px, under the 44px identity floor) is untouched. Both chips self-hide exactly
+  // as they do in the column; an empty row is an invisible 12px box and nothing around it moves
+  // (DESIGN.md §2).
+  if (layout === "inline") {
+    return (
+      <div
+        data-slot="pane-meta"
+        data-layout="inline"
+        className={cn("flex h-3 shrink-0 items-center gap-1.5", className)}
+      >
+        <HostChip host={host} variant="bare" />
+        <SessionChip session={session} />
+        {/* THE SEPARATOR IS THE CSS'S TO DECIDE, NOT A PREDICATE'S. The dot belongs between the
+            address and the reading and nowhere else, and asking "is the host shown?" here would be a
+            second copy of a hide rule that already lives inside each chip (host-chip.tsx says so in
+            as many words). So the wrapper draws the dot as its own `::before` and takes it back in
+            the two cases where it would be wrong: `first:` — nothing stands to its left, so the
+            reading opens the row — and `empty:` — the chip inside rendered nothing, so there is no
+            row at all. A pseudo-element does not make an element non-`:empty`, which is what lets
+            the two rules sit on one box. */}
+        <span className="flex items-center gap-1.5 before:text-muted-foreground/60 before:content-['·'] first:before:content-none empty:hidden">
+          <CacheChip
+            cache={cache}
+            host={host}
+            // The word stays the meta colour and the hourglass carries the state: this chip is
+            // standing in a line of muted type now, not alone in a corner (cache-chip.tsx, `tint`).
+            tint="glyph"
+            // A control on the header, a plain span anywhere that does not offer the rule behind the
+            // number — the same one difference the column's two callers already have.
+            variant={onOpenCache === undefined ? "row" : "button"}
+            onOpen={onOpenCache}
+            // Reached, not drawn, the same trick the column uses one slot down: 12px of line plus
+            // 16px above and below is 44px. A drawn box would be nearly four times the line and
+            // would set the header row's height on its own.
+            className={cn(
+              "text-[11px]/3",
+              onOpenCache !== undefined &&
+                "relative before:absolute before:inset-x-0 before:-inset-y-4 before:content-['']",
+            )}
+          />
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div
       data-slot="pane-meta"

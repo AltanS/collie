@@ -64,11 +64,27 @@ interface CacheChipProps {
    * one button. `button` — the pane screen's header, where a tap opens the sheet.
    */
   variant?: "row" | "button";
+  /**
+   * Where the ink goes. `all` — the whole chip, which is the corner it was drawn for: the reading
+   * stands on its own there and the tint is the only thing saying whose number it is. `glyph` — the
+   * hourglass alone, with the word left at the meta colour, for a chip standing INSIDE a line of
+   * other type (the pane header's path line): a tinted word in a row of muted words reads as a
+   * different kind of fact rather than as a state, and DESIGN.md's tint-on-glyph rule is the house
+   * answer. Nothing is lost, because the glyph is the mark the eye anchors the reading on.
+   */
+  tint?: "all" | "glyph";
   onOpen?: () => void;
   className?: string;
 }
 
-export function CacheChip({ cache, host, variant = "row", onOpen, className }: CacheChipProps) {
+export function CacheChip({
+  cache,
+  host,
+  variant = "row",
+  tint = "all",
+  onOpen,
+  className,
+}: CacheChipProps) {
   useLocale();
   const { servers } = useCrew();
   // One subscription per chip, one interval for the document. Subscribing unconditionally (rather than
@@ -89,7 +105,7 @@ export function CacheChip({ cache, host, variant = "row", onOpen, className }: C
       {/* One fixed mark, in every state — the sibling of HostChip's `Server` glyph, at the same
           `tag`-variant size. It inherits `currentColor`, so a peer's chip paints it in that
           machine's identity ink with no extra code. */}
-      <Hourglass className="size-3 shrink-0" aria-hidden />
+      <Hourglass className={cn("size-3 shrink-0", tint === "glyph" && ink)} aria-hidden />
       <span aria-hidden>{view.label}</span>
       {view.overridden && (
         <>
@@ -108,7 +124,11 @@ export function CacheChip({ cache, host, variant = "row", onOpen, className }: C
     </>
   );
 
-  const shared = cn("flex shrink-0 items-center gap-1 text-xs tabular-nums", ink, className);
+  const shared = cn(
+    "flex shrink-0 items-center gap-1 text-xs tabular-nums",
+    tint === "glyph" ? "text-muted-foreground" : ink,
+    className,
+  );
 
   if (variant === "button") {
     return (

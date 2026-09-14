@@ -203,8 +203,9 @@ not `true` or `false` drops that one row, the same way a bad `confirm` does.
 The row sends while the agent is busy, the same as the command palette. The checkmark appears only
 when the pane took the text.
 
-A Switch pill sits at the belt's right end and opens the pane switcher. A drag up, anywhere on the
-belt, opens the same switcher. A sideways drag scrolls the belt instead.
+A Switch button sits at the belt's right end and opens the pane switcher. It draws the layers mark
+alone, behind a hairline, and carries no word. A drag up, anywhere on the belt, opens the same
+switcher. A sideways drag scrolls the belt instead.
 
 To verify, open a pane running Claude Code, Codex, pi or omp; the tinted segment sits at the right
 of the row above the keyboard. Turn that segment off per device in **Settings → Harness shortcuts**;
@@ -418,8 +419,9 @@ total session age. Each new request resets the timer.
 The chip turns amber during the final quarter of the window. It shows `cold` when the window expires
 or when a turn pays the full rate. When under one minute remains, it shows `<1m` instead of seconds.
 
-Tap the chip in the pane header to view the underlying rule: the rule id, the vendor source page,
-and the retrieval date.
+The chip sits at the right end of the pane header's second line, after the working directory. On a
+crew the machine's name sits beside it, on the same line. Tap the chip to view the underlying rule:
+the rule id, the vendor source page, and the retrieval date.
 
 > **Note.** Values are vendor claims with recorded dates, not live measurements, unless marked
 > **measured**. Claude Code writes cache windows directly to its transcript, so Claude panes are

@@ -24,8 +24,14 @@ interface HostChipProps {
    * rather than as part of it. Today that is the composer's status strip, above the controls row,
    * where the run takes the slot a section label used to occupy and wears the same 10px uppercase
    * muted type it did. It is also the narrowest form the chip has.
+   *
+   * `bare` — no pill and no uppercase either: the name in the same small mono a path line wears, for
+   * the END of the pane header's path line, where the machine and the working directory are one
+   * address and a bordered pill would read as a second object dropped on the end of it. It shares
+   * `caption`'s drawing rules — the tint on the glyph, the fault in the glyph's SHAPE — and differs
+   * from it only in type, which is why the two are one branch below.
    */
-  variant?: "tag" | "target" | "caption";
+  variant?: "tag" | "target" | "caption" | "bare";
   /**
    * This chip stands ON a write surface, so its accessible name says "sends to <name>" rather than
    * "host: <name>". `target` and `caption` imply it and need not pass it.
@@ -108,6 +114,7 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
   const tone = link === "reconnecting" ? "waiting" : degraded ? "alert" : "quiet";
   const target = variant === "target";
   const caption = variant === "caption";
+  const bare = variant === "bare";
   // The name is decorative repetition for a screen reader if it were bare text, so the WHOLE chip
   // carries one label that says what it MEANS. Every write surface says "sends to": `target` heads a
   // dock or sheet that is about to write, `caption` was the composer's own status band, and `sends`
@@ -133,13 +140,22 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
   // `size-2.5` (10px) rather than the pills' `size-3`, and that is a MEASUREMENT of the band it
   // stands in, not a taste: the band's content box is 12px, so a 12px glyph IS the box and touches
   // both rules. At 10px it clears them and shares the caps' optical centre. composer.tsx holds the
-  // full sum.
-  if (caption) {
+  // full sum, and the path line `bare` stands on is the same 12px box, so the number holds there too.
+  // `bare` IS THE CAPTION'S TWIN, one line of type apart. It stands at the end of the pane header's
+  // path line rather than in a band of chrome, so it wears that line's own register — 11px mono, the
+  // muted meta colour, no uppercase and no tracking — and the machine reads as the outermost part of
+  // the address the path finishes. Everything else is the caption's, deliberately: the same tint on
+  // the same glyph, the same `ServerOff` for a fault, the same one label for the whole run. A second
+  // branch here is how the two would start describing one machine two different ways.
+  if (caption || bare) {
     return (
       <span
         aria-label={label}
         className={cn(
-          "inline-flex min-w-0 items-center gap-1 text-[10px]/3 font-medium uppercase tracking-wide",
+          "inline-flex min-w-0 items-center gap-1",
+          caption
+            ? "text-[10px]/3 font-medium uppercase tracking-wide"
+            : "shrink-0 font-mono text-[11px]/3",
           // Degraded first, always: the run is two hundred pixels from the box being typed into, and
           // "which machine" must never outrank "that machine is not taking writes". The NAME stays
           // this colour either way — only the glyph below carries the identity tint.

@@ -64,14 +64,14 @@ import { cn } from "@/lib/utils";
 // anyway: "what can I press from here". Merged, the composer gets a row back and the harness
 // commands sit at the same height as the keys they were always meant to live beside.
 //
-// THE BELT'S RIGHT END IS THE SWITCH PILL, AND THE MACHINE IS NOT HERE ANY MORE. The write host was
+// THE BELT'S RIGHT END IS THE SWITCH MARK, AND THE MACHINE IS NOT HERE ANY MORE. The write host was
 // pinned at that end for a day. Altan's verdict on the phone, once the pull-up chevron had shipped
 // on the rule: the chevron "is now blocking the Quick action, it's a bad spot". So the chevron went,
-// the pinned slot became the Switch pill — a real target, at the pill register, above the send
-// button — and the machine moved up to the pane header, under the cache reading, in the two-corner
-// layout the dashboard rows already use (agent-chat.tsx draws it). The STATE never moved either: it
-// stays on the pane header's dot (named, so a reader still gets it without paint) and on the
-// dashboard.
+// the pinned slot became the switcher's own control — a real target, at the pill register, above the
+// send button, and now a bare Layers mark behind a hairline rather than a pill with a word on it —
+// and the machine moved up to the pane header, onto the end of the path line beside the cache
+// reading (agent-chat.tsx draws it). The STATE never moved either: it stays on the pane header's dot
+// (named, so a reader still gets it without paint) and on the dashboard.
 //
 // WHY THE GENERAL PART IS FIRST. It is the part that is ALWAYS there. The harness section is
 // absent on a bare shell, on grok, on opencode, and whenever the operator has the Settings switch
@@ -111,14 +111,18 @@ const ON = "bg-control-on text-control-on-foreground hover:bg-control-on";
 const OFF = "text-muted-foreground";
 
 /**
- * How much of the belt's right end the pinned Switch pill owns, in px, for the scroll cue to step
- * around (`OverflowEdges`'s `insetRight`). It is the whole pinned span: 78px of pill, the 12px of
+ * How much of the belt's right end the pinned Switch control owns, in px, for the scroll cue to step
+ * around (`OverflowEdges`'s `insetRight`). It is the whole pinned span: 53px of control, the 12px of
  * `pr-3` that keeps it off the screen edge, and the 32px of `pl-8` its fade leads in over.
  *
- * The pill's 78px is MEASURED, at a 390px viewport with deviceScaleFactor 2: `STRIP_ROW_PILL`'s
- * 2·8px of `px-2`, the 16px `Layers` mark, the 6px `gap-1.5`, and 36px for the word "Switch" at
- * `text-xs`. It is wider than the 44px host tag it replaces, and it may be — the tag was capped at
- * the send button's width because it was only a name; this one is the target the thumb aims at.
+ * The 53px is the drawn box: `STRIP_ROW_PILL`'s own 44px width floor (`min-w-11`, which every pill
+ * on this belt stands on), the 1px hairline on its left, and the 8px between the two. It was 78px
+ * while the control was a bordered pill wearing the word "Switch" — 2·8px
+ * of `px-2`, the 16px `Layers` mark, the 6px `gap-1.5` and 36px of word, measured at a 390px
+ * viewport with deviceScaleFactor 2. Altan, from his phone: "the switch button is taking up too much
+ * room for my taste, I'd argue we can just have the icon." So the word went and the belt got 25px of
+ * scroller back. What it ANSWERS is unchanged at 46px — `STRIP_ROW_PILL`'s `::before` reaches past
+ * the drawn box, the way every pill on this belt does.
  *
  * The fade's 32px is IN the number, and that was measured rather than assumed when the tag stood
  * here: at the pinned object's own width alone the scroll cue landed inside the fade's lead-in,
@@ -126,7 +130,7 @@ const OFF = "text-muted-foreground";
  * was drawn at 13% and read as nothing. Clear of the patch it reads, and the patch's own fade picks
  * the line up from there, which is what makes the two cues read as one.
  */
-const SWITCH_PILL_INSET = 122;
+const SWITCH_PILL_INSET = 97;
 
 /**
  * One of Collie's own actions. The composer owns every one of these — what it does, whether it is
@@ -320,37 +324,39 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           >
             <span className="absolute inset-0 bg-foreground/6" />
           </span>
-          {/* A BELT PILL IN SHAPE AND SIZE, IN A DIFFERENT COLOUR — same `STRIP_ROW_PILL`, same
-              `gap-1.5 text-xs`, an icon and a word, but wearing a light wash of the app accent. It
-              is the one pill on this belt that does not operate the composer: Keys, Type, Quick,
-              Agent and Display all act on the box below, and this one LEAVES the pane. Altan's ask
-              after the pill shipped in muted grey: it "needs a different colour, something subtle".
-              So: a 10% accent ground inside a 30% accent border, the mark at full accent, and the
-              word left at `text-foreground` — the word is the message and a tinted word on a tinted
-              ground is two washes arguing.
-              THE HOVER TINTS ARE PINNED TO THE SAME VALUES, the same way {@link ON} pins its own.
-              `variant="ghost"` carries `hover:bg-accent hover:text-accent-foreground`, and
-              tailwind-merge does not treat a `hover:` utility as conflicting with its bare twin — so
-              without these the pill would repaint itself in the accent's FULL strength under a
-              cursor and read as a different control.
-              It DRAWS "Switch" and ANNOUNCES "Switch pane", the same short-word/full-name split the
-              general pills use — a visible word the accessible name contains, never a different one
-              (WCAG 2.5.3). */}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label={handle.label}
-            aria-haspopup="dialog"
-            onClick={handle.onClick}
-            className={cn(
-              `${STRIP_ROW_PILL} relative gap-1.5 text-xs`,
-              "border-primary/30 bg-primary/10 text-foreground hover:bg-primary/10 hover:text-foreground",
-            )}
-          >
-            <Layers className="size-4 shrink-0 text-primary" />
-            {translate("composer.controls.switch")}
-          </Button>
+          {/* THE MARK ALONE, BEHIND A HAIRLINE. It was a pill for a day: the word "Switch" beside
+              the mark, inside a 30% accent border on a 10% accent ground, because this is the one
+              control on the belt that does not operate the composer — Keys, Type, Quick, Agent and
+              Display all act on the box below, and this one LEAVES the pane. Altan's verdict once it
+              shipped: "the switch button is taking up too much room for my taste, I'd argue we can
+              just have the icon." So the word, the border and the ground are gone, and what says
+              "the scroller ends here" is the hairline on its left — the belt's own rule colour, the
+              one it already draws under itself, never a heavy edge. The mark keeps the accent, which
+              is now the whole of what sets this control apart from the pills it stands beside.
+              THE BOX IS UNCHANGED, and that is the point of keeping `STRIP_ROW_PILL`: 32px drawn,
+              46px answered through its `::before`, exactly like every other pill here. A literally
+              drawn 44px box would set the belt's height on its own and push the composer down.
+              IT DRAWS NOTHING AND ANNOUNCES "Switch pane", so the accessible name is now the only
+              name it has — WCAG 2.5.3 has nothing to reconcile once there is no visible word, and a
+              test addresses that name rather than a glyph. */}
+          <span className="flex items-center self-stretch">
+            <span aria-hidden className="mr-2 h-5 w-px bg-border" />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              aria-label={handle.label}
+              aria-haspopup="dialog"
+              onClick={handle.onClick}
+              // No padding and no border: what is left of the pill is `STRIP_ROW_PILL`'s own box,
+              // which is 44 × 32px — `min-w-11` is the floor every pill on this belt stands on and
+              // the mark is centred in it, so dropping the word narrows the control to that floor
+              // and no further.
+              className={cn(`${STRIP_ROW_PILL} relative border-0 px-0 has-[>svg]:px-0`)}
+            >
+              <Layers className="size-4 shrink-0 text-primary" />
+            </Button>
+          </span>
         </span>
       )}
     </div>

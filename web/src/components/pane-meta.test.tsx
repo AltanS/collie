@@ -7,9 +7,11 @@ import { resetCacheClockForTests } from "@/lib/cache-clock";
 import { fixtureServers } from "@/test/handlers";
 import type { PaneCache, ServerSummary } from "@/lib/types";
 
-// The two corners a pane carries, drawn once for the dashboard row and the pane header. The claims
-// worth a test are the ones the copy kept breaking: the column is the SAME shape on both screens, it
-// keeps its height when both chips self-hide, and the reading is a control on exactly one of them.
+// A pane's address and its cache reading, drawn once for the two screens that carry them: the
+// dashboard row's two corners (`column`) and the pane header's path line (`inline`). The claims worth
+// a test are the ones the copy kept breaking: each layout keeps its height when both chips self-hide,
+// the pair is the same pair either way, and the reading is a control only where the surface offers
+// the rule behind it.
 
 const solo: ServerSummary[] = [fixtureServers[0]!];
 
@@ -65,6 +67,64 @@ describe("the column's shape", () => {
     render(<PaneMeta host="workshop" cache={reading()} />, { wrapper: crew });
     expect(column().className).toMatch(/(?:^|\s)items-end(?=\s|$)/);
     expect(column().querySelector("button")).toBeNull();
+  });
+});
+
+describe("the inline row, at the end of the pane header's path line", () => {
+  it("is ONE box of the path line's own height, whatever either chip has to say", () => {
+    // DESIGN.md §2 again, one layout over. The column's answer was two fixed slots; this one's is a
+    // single 12px row — the box line 2 already draws — so a reading that arrives on the next poll
+    // cannot grow the line under the pane's name.
+    const full = render(<PaneMeta layout="inline" host="workshop" cache={reading()} />, {
+      wrapper: crew,
+    });
+    expect(column().dataset.layout).toBe("inline");
+    expect(column().className).toMatch(/(?:^|\s)h-3(?=\s|$)/);
+    full.unmount();
+
+    render(<PaneMeta layout="inline" host={undefined} cache={undefined} />, { wrapper: one });
+    expect(column().className).toMatch(/(?:^|\s)h-3(?=\s|$)/);
+    expect(document.querySelector('[data-slot="cache-chip"]')).toBeNull();
+    expect(screen.queryByLabelText(/^host: /i)).toBeNull();
+  });
+
+  it("borrows the host's borderless run and leaves the reading's word at the meta colour", () => {
+    // The two decisions that make a line of chrome out of what was a corner: the machine is the
+    // `bare` HostChip — no pill, the path's own mono — and the reading tints its GLYPH alone, so the
+    // only coloured thing on the line is the hourglass (DESIGN.md's tint-on-glyph rule).
+    const withHost = render(<PaneMeta layout="inline" host="workshop" cache={reading()} />, {
+      wrapper: crew,
+    });
+    const host = screen.getByLabelText(/^host: workshop/i);
+    expect(host.className).toMatch(/font-mono/);
+    expect(host.className).not.toMatch(/border/);
+    withHost.unmount();
+
+    // Solo, and a window the bridge calls expiring: the tone is the app's amber, and it may reach
+    // the hourglass and nothing else. (A PEER's reading takes that machine's identity ink instead —
+    // cache-chip.tsx's own rule, unchanged by this layout.)
+    render(<PaneMeta layout="inline" host={undefined} cache={reading({ state: "expiring" })} />, {
+      wrapper: one,
+    });
+    const chip = document.querySelector<HTMLElement>('[data-slot="cache-chip"]')!;
+    expect(chip.className).toMatch(/text-muted-foreground/);
+    expect(chip.className).not.toMatch(/text-status-working/);
+    expect(chip.querySelector("svg")?.getAttribute("class")).toMatch(/text-status-working/);
+  });
+
+  it("reaches a 44px tap box without drawing one, when the surface opens the rule", async () => {
+    const user = userEvent.setup();
+    const onOpenCache = vi.fn();
+    render(<PaneMeta layout="inline" host={undefined} cache={reading()} onOpenCache={onOpenCache} />, {
+      wrapper: one,
+    });
+    const chip = document.querySelector<HTMLElement>('[data-slot="cache-chip"]')!;
+    expect(chip.tagName).toBe("BUTTON");
+    // 12px of line plus 16px above and below is 44px. Drawn, the box would be nearly four times the
+    // line and would set the header row's height on its own.
+    expect(chip.className).toMatch(/before:-inset-y-4/);
+    await user.click(chip);
+    expect(onOpenCache).toHaveBeenCalledTimes(1);
   });
 });
 

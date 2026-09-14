@@ -1,6 +1,8 @@
 // Header corner ideas: nine numbered options for the TOP of the pane screen, and for the one pill at
-// the bottom that got too wide. Every card is an IDEA, not a shipped state — the section exists so
-// Altan can say "option N" and be understood.
+// the bottom that got too wide. The section exists so Altan can say "option N" and be understood,
+// and he did: OPTION 2 AND OPTION 8 ARE SHIPPED. Those two cards now draw the production pieces
+// themselves, so this page stays true as the app moves; the other seven stay as the ideas they were,
+// because a page of options with the losing options deleted cannot be read as a comparison any more.
 //
 // THE TARGET, GROUP A. `agent-chat.tsx`'s header puts a column of two fixed slots at its trailing
 // edge (`components/pane-meta.tsx`): the bordered host tag on top, the bare tinted cache reading
@@ -10,16 +12,19 @@
 // BORDERED pill stacked over a BARE tinted word, with a third loose glyph beside them, reads as
 // three unrelated objects rather than as one corner. Options 1 to 6 each answer that differently.
 //
-// THE TARGET, GROUP B. The belt's trailing pill draws a `Layers` mark and the word "Switch" (78px of
+// THE TARGET, GROUP B. The belt's trailing pill DREW a `Layers` mark and the word "Switch" (78px of
 // pill, `actions-row.tsx`'s SWITCH_PILL_INSET). Altan: "the switch button is taking up too much room
-// for my taste, I'd argue we can just have the icon." Options 7 to 9 drop the word three ways.
+// for my taste, I'd argue we can just have the icon." Options 7 to 9 drop the word three ways, and
+// option 8 is what the belt draws today.
 //
 // WHAT IS REAL HERE AND WHAT IS NOT. `CacheChip`, `HostChip`, `PaneMeta`, `TabStrip`, `AgentIcon` and
 // the belt's `ActionsRow` are the app's own components on every card, inside a real `CrewProvider`
 // over the `rosterFive` fixture, so the hide rules, the identity tint and the countdown are the real
 // ones. What is DRAWN HERE is the header ROW itself — `RouteHeader` is a portal into the one hoisted
 // header shell and cannot be mounted in a card — plus, per option, whatever chrome production has no
-// prop for yet. Each card's note says which side of that line it sits on.
+// prop for yet. Each card's note says which side of that line it sits on. The two shipped cards sit
+// as far on the real side as a card can: option 2 mounts `PaneMeta` in its inline layout and option 8
+// hands `ActionsRow` a handle and lets it draw its own trailing control.
 //
 // THE MACHINE IS `lodge`, the `rosterFive` lead, not the `bluefin` of the screenshot: a host that is
 // not in the roster gets no identity tint and no health, so it would draw a quieter tag than the
@@ -30,7 +35,7 @@
 import type { ReactNode } from "react";
 import { ChevronUp, EllipsisVertical, Layers, Server } from "lucide-react";
 
-import { ActionsRow } from "@/components/actions-row";
+import { ActionsRow, type ActionsRowProps } from "@/components/actions-row";
 import { AgentIcon } from "@/components/agent-icon";
 import { CacheChip } from "@/components/cache-chip";
 import { CrewProvider } from "@/components/crew-provider";
@@ -51,7 +56,7 @@ export const DEF: SectionDef = {
   id: "header-corner",
   title: "Header corner ideas",
   intent:
-    "Nine numbered options, none of them shipped. Options 1 to 6 redraw the pane header's trailing corner, where a bordered host tag stacked over a bare cache reading and a loose ⋮ reads as three objects instead of one. Each of the six is drawn three times — cache cold, cache 58m, cache 62m — so the width variance is on the card rather than in the imagination. Options 7 to 9 take the word off the belt's Switch pill and leave the Layers mark. Say the number.",
+    "Nine numbered options. Two of them shipped — option 2 in the header, option 8 on the belt — and the other seven stay here as the comparison they were made for. Options 1 to 6 redraw the pane header's trailing corner, where a bordered host tag stacked over a bare cache reading and a loose ⋮ reads as three objects instead of one. Each of the six is drawn three times — cache cold, cache 58m, cache 62m — so the width variance is on the card rather than in the imagination. Options 7 to 9 take the word off the belt's Switch pill and leave the Layers mark. Say the number.",
 };
 
 // ── The fixture every card stands on ─────────────────────────────────────────
@@ -159,29 +164,6 @@ function Corner({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * The machine's name WITHOUT the bordered pill — the half of `HostChip` that options 1 and 3 need and
- * that `HostChip` has no variant for: `tag` is always an `AddressTag` (bordered) and `caption` is a
- * 10px uppercase run with its own letter-spacing. It reads the same identity tint from the same
- * `hostSlot`, so the colour is the app's, not this page's. Shipping either option means a real
- * variant on `HostChip`, and this is what that variant would draw.
- */
-function BareHost({ className }: { className?: string }) {
-  const slot = hostSlot(rosterFive, HOST);
-  return (
-    <span
-      aria-label={`Host: ${HOST}`}
-      className={cn("inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground", className)}
-    >
-      <Server
-        className={cn("size-3 shrink-0", slot !== null && HOST_TEXT_CLASSES[slot])}
-        aria-hidden
-      />
-      <span aria-hidden>{HOST}</span>
-    </span>
-  );
-}
-
 /** Three headers, one per reading, with the reading named under each. Every Group-A card is this. */
 function ThreeReadings({ render }: { render: (cache: PaneCache) => ReactNode }) {
   return (
@@ -233,7 +215,7 @@ function KebabMenuMock() {
   return (
     <div className="mt-2 w-56 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <BareHost />
+        <HostChip host={HOST} variant="bare" />
         <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-foreground/70">
           this pane
         </span>
@@ -255,31 +237,40 @@ function KebabMenuMock() {
  * is proposing at the same right end, over the same two-layer fade (the markup is copied from
  * `actions-row.tsx`'s pinned span, which has no prop for a different pill).
  */
-function BeltWithSwitch({ children }: { children: ReactNode }) {
+function BeltWithSwitch({ children, handle }: BeltProps) {
   const general = useRoomyActions();
   return (
     <div className="relative bg-chrome px-3">
-      <ActionsRow general={general} agent="claude" onRun={took} />
-      <span className="absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
-        <span
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
-        >
-          <span className="absolute inset-0 bg-foreground/6" />
+      <ActionsRow general={general} agent="claude" onRun={took} handle={handle} />
+      {children !== undefined && (
+        <span className="absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
+          >
+            <span className="absolute inset-0 bg-foreground/6" />
+          </span>
+          {children}
         </span>
-        {children}
-      </span>
+      )}
     </div>
   );
 }
 
+/** A belt card: either an idea's own pinned object over a copied fade (`children`), or the real
+ *  ActionsRow drawing its own (`handle`). Never both. */
+interface BeltProps {
+  children?: ReactNode;
+  handle?: ActionsRowProps["handle"];
+}
+
 /** A belt card: the belt over a quiet stand-in for the input row, in a phone-width box. */
-function BeltCard({ children }: { children: ReactNode }) {
+function BeltCard({ children, handle }: BeltProps) {
   return (
     <PhoneMock>
       <div className="h-16 bg-background" />
       <ChromeBlock>
-        <BeltWithSwitch>{children}</BeltWithSwitch>
+        <BeltWithSwitch handle={handle}>{children}</BeltWithSwitch>
         <div className="flex items-end gap-3 bg-chrome px-3 pb-2">
           <div className="flex h-9 min-w-0 flex-1 items-center rounded-2xl border border-border bg-background px-3 text-[13px] text-muted-foreground">
             Type a reply…
@@ -293,7 +284,7 @@ function BeltCard({ children }: { children: ReactNode }) {
 
 // ── The cards ────────────────────────────────────────────────────────────────
 
-/** Every card's `reach` line. These are ideas; none of them can be reached. */
+/** The `reach` line of the seven cards that stayed ideas. Options 2 and 8 shipped and say so. */
 const NOT_SHIPPED = "idea, not shipped:";
 
 export function HeaderCornerSection() {
@@ -301,12 +292,12 @@ export function HeaderCornerSection() {
   // anything first, so nothing here toggles and nothing here animates.
   return (
     <Section def={DEF}>
-      <Group title="A · The header corner — today, then options 1 to 6">
+      <Group title="A · The header corner — before, then options 1 to 6 (2 shipped)">
         <Card
           state="header-corner-today"
-          label="shipped: the bordered tag over the bare reading, ⋮ beside them"
-          reach="open any pane on a collie that leads a crew."
-          note="The REAL PaneMeta, in the real two-slot column, with the ⋮ in its own 44px column beside it — this is what the phone draws today and what the six options answer. Read the three readings together: the bordered box on top holds one width while the bare word under it changes, which is the mismatch of weight the options attack."
+          label="before: the bordered tag over the bare reading, ⋮ beside them"
+          reach="the dashboard still draws this column on every row; the pane header drew it until option 2 shipped."
+          note="The REAL PaneMeta, in its two-slot column, with the ⋮ in its own 44px column beside it — this is what the DASHBOARD row draws, and what the pane header drew until option 2 shipped. Read the three readings together: the bordered box on top holds one width while the bare word under it changes, which is the mismatch of weight the options attack. Options 2 and 8 are the picks, and both are live: the header's pair moved onto the path line, and the belt's Switch pill is a bare mark."
         >
           <Crew>
             <ThreeReadings
@@ -340,23 +331,15 @@ export function HeaderCornerSection() {
         <Card
           state="header-corner-path-meta"
           label="Option 2 · the meta joins the path row"
-          reach={`${NOT_SHIPPED} the header row and its two lines are drawn here; the cache reading on line 2 is the real CacheChip.`}
-          note="The corner holds the ⋮ and nothing else. The machine and the reading ride at the right end of line 2, opposite the working directory, in the same small mono the path already wears — where a pane LIVES and where its work SITS are one sentence, so they share one line. The corner loses its whole stack, which is the largest saving on offer. Two risks. Line 2 is a truncating line: a long path and a long reading now compete for one row, and the path is what gets cut. And the real CacheChip tints its WORD as well as its glyph, so on that line the tint-on-glyph rule needs a variant rather than a class."
+          reach="SHIPPED, and this card draws it: open any pane on a collie that leads a crew."
+          note="Altan's pick. The corner holds the ⋮ and nothing else. The machine and the reading ride at the right end of line 2, opposite the working directory, in the same small mono the path already wears — where a pane LIVES and where its work SITS are one sentence, so they share one line. The corner loses its whole stack, which is the largest saving on offer. The two risks it was picked with, and what answers each: line 2 is a truncating line, so the path is what gives way and the meta is never cut; and the reading tints its WORD as well as its glyph, so it now takes tint='glyph' on this line and leaves the word at the meta colour. The pair is the real PaneMeta in its inline layout — the same component the dashboard row's corners use."
         >
           <Crew>
             <ThreeReadings
               render={(cache) => (
                 <HeaderRow
                   pathTrailing={
-                    <span className="flex items-center gap-1.5">
-                      <span className="font-mono text-[11px] leading-3 text-muted-foreground">
-                        {HOST}
-                      </span>
-                      <span aria-hidden className="text-[11px] text-muted-foreground/60">
-                        ·
-                      </span>
-                      <CacheChip cache={cache} host={HOST} className="text-[11px]" />
-                    </span>
+                    <PaneMeta layout="inline" host={HOST} cache={cache} onOpenCache={inert} />
                   }
                   corner={<div className="flex items-stretch"><Kebab /></div>}
                 />
@@ -367,7 +350,7 @@ export function HeaderCornerSection() {
         <Card
           state="header-corner-two-bare"
           label="Option 3 · two bare rows, same weight"
-          reach={`${NOT_SHIPPED} the host row is drawn here (HostChip has no borderless small variant); the cache row is the real CacheChip.`}
+          reach={`${NOT_SHIPPED} both rows are real components now — HostChip's borderless variant, which option 2 put in the app, and the real CacheChip.`}
           note="The mismatch is removed by dropping the BORDER rather than by merging the two facts: two right-aligned rows, same size, same mono register, no box on either. The column keeps its two fixed slot heights, so nothing moves when a reading disappears (DESIGN.md §2). The risk is the opposite of option 1's: with no box at all, the machine's name stops reading as an address and becomes a second loose word beside the ⋮, which is the fault the AddressTag pill was introduced to fix on the dashboard."
         >
           <Crew>
@@ -378,7 +361,7 @@ export function HeaderCornerSection() {
                     <Corner>
                       <div className="flex flex-col items-end justify-between gap-1 self-stretch">
                         <div className="flex h-[21px] items-center">
-                          <BareHost />
+                          <HostChip host={HOST} variant="bare" />
                         </div>
                         <div className="flex h-4 items-center">
                           <CacheChip cache={cache} host={HOST} variant="button" onOpen={inert} />
@@ -493,7 +476,7 @@ export function HeaderCornerSection() {
         </Card>
       </Group>
 
-      <Group title="B · The Switch pill — options 7 to 9">
+      <Group title="B · The Switch pill — options 7 to 9 (8 shipped)">
         <Card
           state="switch-pill-icon"
           label="Option 7 · icon only, same pill chrome"
@@ -520,25 +503,10 @@ export function HeaderCornerSection() {
         <Card
           state="switch-pill-bare"
           label="Option 8 · bare glyph behind a hairline"
-          reach={`${NOT_SHIPPED} the belt is the app's own ActionsRow with no handle; the pinned glyph, its separator and the fade are drawn here.`}
-          note="No border and no ground: the Layers mark alone at the trailing end, with a hairline on its left saying the end of the scroller is here. It is the narrowest of the three and it matches the general pills, which also stand directly on the belt's ground with no outline. The risk is rank: the accent border was what said this one pill LEAVES the composer while the others operate it, and a bare glyph gives that up. Same 32px drawn / 46px answered box as option 7."
+          reach="SHIPPED, and this card draws it: the real ActionsRow, with a handle, so the mark and its hairline are the app's own."
+          note="Altan's pick. No border and no ground: the Layers mark alone at the trailing end, with a hairline on its left saying the end of the scroller is here. It is the narrowest of the three and it matches the general pills, which also stand directly on the belt's ground with no outline. The risk it was picked with is rank: the accent border was what said this one control LEAVES the composer while the others operate it, and a bare mark gives that up — the accent stays on the glyph and carries it alone. The box is unchanged at 44 × 32px drawn and 46px answered, so the belt's height is what it always was."
         >
-          <BeltCard>
-            <span className="flex items-center self-stretch">
-              <span aria-hidden className="mr-2 h-5 w-px bg-border" />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                aria-label="Switch"
-                aria-haspopup="dialog"
-                onClick={inert}
-                className={cn(`${STRIP_ROW_PILL} relative size-8 border-0 px-0 has-[>svg]:px-0`)}
-              >
-                <Layers className="size-4 shrink-0 text-primary" />
-              </Button>
-            </span>
-          </BeltCard>
+          <BeltCard handle={{ ref: inert, onClick: inert, label: "Switch pane" }} />
         </Card>
         <Card
           state="switch-pill-chevron"

@@ -178,14 +178,20 @@ describe("AgentChat — header title block", () => {
 // two permanent, empty sr-only live regions, so a bare `screen.getByRole("status")` is ambiguous in
 // any tree that holds a host, and the failure reads as a missing element rather than a duplicate one.
 describe("AgentChat — the pane header's identity block", () => {
+  /** The TAP SURFACE: the button laid over the block, which carries the accessible name and nothing
+   *  else. It holds no text — the lines are its siblings now, so the cache reading on line 2 can be a
+   *  control of its own (a button inside a button is neither valid nor reachable). */
   const identity = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="pane-identity"]');
+  /** The block the eye sees: both lines and the tap surface under them. */
+  const block = (c: HTMLElement) =>
+    c.querySelector<HTMLElement>('[data-slot="pane-identity-block"]');
   const slot = (c: HTMLElement, name: string) =>
     c.querySelector<HTMLElement>(`[data-slot="pane-${name}"]`);
   /** The composer's actions belt — where the machine went once the status band was removed. */
   const belt = (c: HTMLElement) => c.querySelector<HTMLElement>('[data-slot="composer-actions"]');
   /** Every named mark inside the identity block — the agent's own logo is one too. */
   const names = (c: HTMLElement) =>
-    Array.from(identity(c)?.querySelectorAll('[role="img"]') ?? []).map((e) =>
+    Array.from(block(c)?.querySelectorAll('[role="img"]') ?? []).map((e) =>
       e.getAttribute("aria-label"),
     );
 
@@ -226,7 +232,7 @@ describe("AgentChat — the pane header's identity block", () => {
       // beside it is also a role="img", hence the list rather than a first-match query.)
       expect(names(container)).toContain(word);
       // …and nothing DRAWS it: not the header's text, not the composer's.
-      expect(identity(container)?.textContent).not.toContain(word);
+      expect(block(container)?.textContent).not.toContain(word);
       expect(slot(container, "caption")).toBeNull(); // the caption line is gone, not merely emptied
       expect(container.textContent).not.toContain(word);
       cleanup();
@@ -235,110 +241,111 @@ describe("AgentChat — the pane header's identity block", () => {
     // "shell" instead, which is the same bargain: readable without colour, drawn nowhere.
     const shell = renderChat({ agent: fixtureShellPanes[0]!, agents: [fixtureShellPanes[0]!] });
     expect(names(shell.container)).toEqual([]); // no agent, no status, so no badge to name
-    expect(within(identity(shell.container)!).getByText("shell").className).toContain("sr-only");
+    expect(within(block(shell.container)!).getByText("shell").className).toContain("sr-only");
   });
 
-  it("carries neither the host nor the state — the machine stands on the composer's belt", () => {
+  it("says the state nowhere as a word, and the belt carries neither it nor the machine", () => {
     // THE OTHER HALF, now complete. The caption line led with the machine, which spent the identity
     // block's width on an answer to a question nobody has while READING; the machine left first, the
     // word followed it onto a status band, and when that band was removed the machine came down one
-    // more row onto the actions belt while the word was deleted outright.
+    // more row onto the actions belt while the word was deleted outright. The machine has since come
+    // back UP to this header — onto the end of the path line, which the case below pins.
     //
     // Scoped by data-slot, never by a bare role query: `ui/strip-host.tsx` mounts two permanent
     // sr-only live regions, so `getByRole("status")` is ambiguous in any tree with a host in it and
     // would fail as "missing" rather than "duplicated".
     const { container } = renderCrewChat("workshop"); // a REAL crew — HostChip hides on a solo one
     expect(slot(container, "caption")).toBeNull();
-    const block = identity(container);
-    expect(block?.textContent).not.toMatch(/workshop/i);
-    expect(block?.textContent).not.toContain("needs you");
-    // The belt below carries neither one. It held the machine for a day; the machine has since moved
-    // UP into this header's own trailing column, under the cache reading (the case below pins it).
+    expect(block(container)?.textContent).not.toContain("needs you");
     const row = belt(container);
     expect(row!.querySelector('[aria-label*="host" i]')).toBeNull();
     // The state is not down there either — that was the half Altan asked to be rid of.
     expect(row!.textContent).not.toContain("needs you");
   });
 
-  it("carries the machine in its trailing column, under the cache reading, on a crew only", () => {
-    // THE TWO-CORNER LAYOUT THE DASHBOARD ROWS ALREADY USE (agent-card.tsx): the cache reading in the
-    // top right corner, the machine in the one below it. The belt carried the name for a day and its
-    // right end is the Switch pill's now (actions-row.tsx), so the header is where the name lives.
+  it("carries the machine at the END OF THE PATH LINE, beside the cache reading, on a crew only", () => {
+    // WHERE A PANE LIVES AND HOW LONG ITS WORK STAYS WARM ARE ONE SENTENCE, so they ride on the line
+    // the working directory already owns and the corner keeps the ⋮ alone. The pair stood in a
+    // two-slot column in that corner for a day, and Altan, reading his phone: "the top section with
+    // host and cache stuff is not where it needs to be yet". The nine options went to the playground
+    // and option 2 is this.
     const { container } = renderCrewChat("workshop"); // a REAL crew — HostChip hides on a solo one
-    // The plain `tag`, so it announces "host: …" — this header is ABOUT a pane, it is not the
-    // surface a reply is typed on, which is the whole of what `sends` marks. Unreachable here, so
-    // the tag carries the fault with it.
+    // The borderless `bare` run, and it still announces "host: …" — this header is ABOUT a pane, it
+    // is not the surface a reply is typed on, which is the whole of what `sends` marks. Unreachable
+    // here, so the run carries the fault with it.
     const tag = screen.getByLabelText(/^host: workshop \(unreachable\)$/i);
-    // In the header's trailing column, in its FIRST slot, above the cache reading, and outside the
-    // identity button — a chip inside that button would be a control no reader could reach. The
-    // order is the dashboard row's own (pane-meta.tsx, which both screens render): the address on
-    // top, the cache reading below it.
-    const column = container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
-    // SAFETY: the column's first child is the plain <div> top slot written in pane-meta.tsx, never
-    // an SVG or other non-HTMLElement.
-    const topSlot = column.children[0] as HTMLElement;
-    expect(topSlot.contains(tag)).toBe(true);
-    // THE ⋮ IS NOT IN THE STACK. It stands in a column of its own, beside this one: a bordered tag
-    // and a bare glyph cannot share a right edge, which is what put the corner out of true.
-    expect(column.contains(screen.getByLabelText(/pane actions/i))).toBe(false);
+    // In the meta row, and that row is INSIDE the lines block, on the second line — not in the
+    // trailing corner and not beside the block, either of which would take the width from line 1 and
+    // from the pane's own name.
+    const meta = container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
+    expect(meta.dataset.layout).toBe("inline");
+    expect(meta.contains(tag)).toBe(true);
+    expect(slot(container, "lines")!.contains(meta)).toBe(true);
+    // SAFETY: the lines block's second child is the plain <div> line-2 row written in agent-chat.tsx,
+    // never an SVG or other non-HTMLElement.
+    const line2 = slot(container, "lines")!.children[1] as HTMLElement;
+    expect(line2.contains(meta)).toBe(true);
+    // The PATH is conditional and this fixture has none to add; the ROW is not. It stands either
+    // way, at the line's own height, so a pane with no path keeps the block at 36px and nothing
+    // around it moves when a reading arrives on the next poll.
+    expect(slot(container, "cwd")).toBeNull();
+    // THE CORNER IS THE ⋮ AND NOTHING ELSE, and the tap surface is not this run's parent: a button
+    // inside a button is a control no reader can reach, which is why the surface is a sibling laid
+    // under the lines rather than a box around them.
+    expect(meta.contains(screen.getByLabelText(/pane actions/i))).toBe(false);
     expect(identity(container)!.contains(tag)).toBe(false);
     cleanup();
 
-    // Solo — every install that exists today. Both slots are still drawn, so the header does not
-    // move; the chip inside the lower one renders nothing at all.
+    // Solo — every install that exists today. The row is still drawn, so line 2 keeps its height;
+    // the chip inside it renders nothing at all.
     const solo = renderChat();
     expect(screen.queryByLabelText(/^host: /i)).toBeNull();
-    const soloColumn = solo.container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
-    expect(soloColumn.children).toHaveLength(2);
-    expect(soloColumn.children[0]!.className).toMatch(/h-\[21px\]/);
+    const soloMeta = solo.container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
+    expect(soloMeta.className).toMatch(/(?:^|\s)h-3(?=\s|$)/);
   });
 
-  it("never changes the header's height, whatever the column has to say", () => {
+  it("never changes the header's height, whatever the meta has to say", () => {
     // DESIGN.md §2, and two faults Altan reported from his phone: the header jumped as the host tag
     // arrived, and then the corner it landed in was "increasing header row height". Both are the
-    // same sentence — the column used to be TALLER than everything else in the row, so it set the
-    // height, and it was gated three ways that each took that height away and gave it back: it hung
-    // off `agent`, it sat in HeaderStatus's `children` (which a live status REPLACES outright), and
-    // each chip self-hides on its own.
+    // same sentence — the pair used to stand in a column TALLER than everything else in the row, so
+    // it set the height, and it was gated three ways that each took that height away and gave it
+    // back: it hung off `agent`, it sat in HeaderStatus's `children` (which a live status REPLACES
+    // outright), and each chip self-hides on its own.
     //
-    // TWO CLAIMS, and the second is the one that ends the argument. The column and both of its slots
-    // exist at the same fixed heights in every state — crew, solo, and a pane whose agent is gone.
-    // And those heights sum to 41px (21 + 4 + 16), under the identity block's own 44px, so the row's
-    // `min-h-15` floor is what sets its height and nothing in this corner can raise it: the two tap
-    // targets in here are reached with a `::before`, not drawn.
-    const slotHeights = (c: HTMLElement) => {
-      const column = c.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
-      // SAFETY: every child of the column is a plain <div> written in agent-chat.tsx, never an SVG
-      // or other non-HTMLElement, so each one carries a string className.
-      return [...column.children].map(
-        (box) => /h-(?:4|\[21px\])/.exec((box as HTMLElement).className)?.[0],
-      );
-    };
+    // TWO CLAIMS, and the second is the one that ends the argument. The meta row states the path
+    // line's own 12px in every state — crew, solo, a reading that has not arrived yet — so line 2
+    // never grows and the block stays 20 + 4 + 12 = 36px, under the identity floor's 44px. The row's
+    // `min-h-15` is then what sets the header's height, and nothing on this line can raise it: the
+    // reading's tap target is reached with a `::before`, not drawn.
+    const metaHeight = (c: HTMLElement) =>
+      /(?:^|\s)(h-3)(?=\s|$)/.exec(
+        c.querySelector<HTMLElement>('[data-slot="pane-meta"]')?.className ?? "",
+      )?.[1];
     const crew = renderCrewChat("workshop");
-    const withCrew = slotHeights(crew.container);
-    expect(withCrew).toEqual(["h-[21px]", "h-4"]);
-    // The row still states one floor and no height of its own, and the column is shorter than it.
+    expect(metaHeight(crew.container)).toBe("h-3");
+    // The row still states one floor and no height of its own, and the meta is the path line's own
+    // 12px box, so line 2 measures the same whatever the two chips have to say.
     const row = crew.container.querySelector<HTMLElement>('[data-slot="header-row"]')!;
     expect(row.className).toMatch(/(?:^|\s)min-h-15(?=\s|$)/);
     expect(row.className).not.toMatch(/(?:^|\s)h-\d/);
-    // Nothing in the corner draws a 44px box; both targets are reached with a `::before`.
-    const column = crew.container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
-    // SAFETY: every element inside the column is HTML written in agent-chat.tsx or in the two chip
-    // components it mounts; the `svg` marks inside them are excluded by the selector, so every hit
-    // carries a string className.
-    for (const el of column.querySelectorAll<HTMLElement>("div, button, span")) {
+    // Nothing in the meta draws a 44px box; the reading's target is reached with a `::before`.
+    const meta = crew.container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
+    // SAFETY: every element inside the meta is HTML written in pane-meta.tsx or in the chips it
+    // mounts; the `svg` marks inside them are excluded by the selector, so every hit carries a
+    // string className.
+    for (const el of meta.querySelectorAll<HTMLElement>("div, button, span")) {
       expect(el.className).not.toMatch(/(?:^|\s)(?:size-11|h-11|min-h-11)(?=\s|$)/);
     }
     cleanup();
 
-    // Solo: no tag, and the same two boxes.
+    // Solo: no host run, and the same box.
     const solo = renderChat();
-    expect(slotHeights(solo.container)).toEqual(withCrew);
+    expect(metaHeight(solo.container)).toBe("h-3");
     cleanup();
 
-    // A pane whose agent is gone: no cache chip, no ⋮, no tag — and still the same two boxes.
-    const gone = renderChat({ agent: undefined, agents: [] });
-    expect(slotHeights(gone.container)).toEqual(withCrew);
+    // A pane whose agent is gone: no lines at all, no ⋮ — and the corner column stands empty rather
+    // than collapsing, so the title beside it does not slide.
+    renderChat({ agent: undefined, agents: [] });
     expect(screen.queryByLabelText(/pane actions/i)).toBeNull();
   });
 
@@ -357,10 +364,18 @@ describe("AgentChat — the pane header's identity block", () => {
     // MEASURED, in the playground, at 390px: this button was 39.00px tall. It is the only way off the
     // pane to the space overview, and it sat under the floor in the very row that states the floor
     // for every other control in it. `min-h-11` is 44px, and it is what catches the COMMON case — the
-    // two-line block (caption 12 + gap 4 + name 20) is 36px and would otherwise draw at 36.
+    // two-line block (name 20 + gap 4 + path 12) is 36px and would otherwise draw at 36.
+    //
+    // THE FLOOR IS ON THE BLOCK AND THE BUTTON COVERS IT. The button used to BE the block, and then
+    // the cache reading joined line 2 — a control of its own, which inside a button is neither valid
+    // markup nor reachable. So the surface became a sibling laid over the block (`absolute inset-0`)
+    // and takes the block's height by construction. Both halves are asserted: the box states 44px,
+    // and the button covers exactly it.
     const { container } = renderChat();
-    const cls = identity(container)?.className ?? "";
+    const cls = block(container)?.className ?? "";
     expect(cls).toMatch(/(^|\s)min-h-11(?=\s|$)/);
+    expect(cls).toMatch(/(^|\s)relative(?=\s|$)/);
+    expect(identity(container)?.className).toMatch(/(^|\s)absolute inset-0(?=\s|$)/);
     // And no vertical padding on top of it: 52px of lines plus a `py-0.5` is 56px in the row's 52px
     // content box, which grows the row to 64px on the pane route alone — exactly the route-local jump
     // `min-h-15` was stated to prevent.
