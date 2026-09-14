@@ -72,24 +72,27 @@ export function PaneStrip({
 
   return (
     <>
-      {/* This row has neither a rule of its own nor a tint of its own any more, and both went for the
-          same reason: the tab bar above it is now a FOLDER tab, and the active tab is filled with the
-          surface of the content it is attached to. That content is this row.
-
-          - `border-t` would have doubled. The tab bar draws its own baseline `border-b` in --rule,
-            because a folder tab has to own the line it breaks; two adjacent 1px rules composite into
-            a 2px line, so the cut is drawn once, by the row above.
-          - `bg-muted/20` would have broken the illusion. The active tab is `bg-background`; measured
-            in dark, the tinted band sat at #101010 against the tab's #0A0A0A, so the tab read as a
-            slightly darker box ON the row below rather than as one piece WITH it. The tint is a 2%
-            step that was only ever separating this row from its neighbours, and the tab bar's
-            baseline now does that job properly. The row is bounded above by that baseline and below
-            by the mirror's own top edge.
-
+      {/* THIS ROW SHARES THE TAB BAR'S OWN GROUND, `bg-chrome` — it used to draw none of its own,
+          riding on the tab bar's active cell being filled with the same surface as the content below
+          it (a "folder tab", where the open tab's box visually continued into this row). That folder
+          shape is gone (`tab-strip.tsx`'s header): the open tab is a small outlined PILL now, not a
+          box spanning down to here, so a `<nav>` with no ground of its own fell through to the page's
+          ambient background instead — `--background`, which in dark IS the terminal mirror's own
+          fill (measured #0A0A0A against the tab bar's #171717), so this row read as a BLACK GAP
+          between the tab bar and the mirror's top rule below it. Altan, from the phone, on the
+          composite: "there's a weird black gap followed by a horizontal line." The gap was this row;
+          the line was already correct (see below) and stays.
+          `bg-chrome` closes that gap by matching the tab bar exactly, so the two rows read as one
+          continuous band with the pills sitting inside it — no rule between them (a rule would double
+          against the tab bar's own lack of one), no tint of their own, and the ONE rule that survives
+          is the mirror's own top edge below both rows, which `agent-chat.tsx` draws unconditionally
+          and by design (DESIGN.md §2 — that rule belongs to the content region, not to either strip,
+          and stays).
           Its padding is still the shared one — a tighter row here would have given its pills a
           smaller tap target than the row above. */}
       <LabelledStrip
         label={t("space.paneStrip.title")}
+        className="bg-chrome"
         // No pb-* override: the row's bottom air is LabelledStrip's scroller padding, which is what
         // the pills' tap areas extend into. Overriding it here would clip the 44px floor.
         scrollerRef={scrollerRef}

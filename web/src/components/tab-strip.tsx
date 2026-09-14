@@ -78,16 +78,24 @@ interface TabStripProps {
 // row keeps its own bottom rule where one exists; that boundary belongs to the header, not to this
 // component, and is unaffected by anything here.
 //
-// The only rule this row draws is a VERTICAL hairline BETWEEN two adjacent tabs (`divide-x
-// divide-border` on the group of tab cells) — one line per seam, never doubled and never touching
-// the "+" control, which sits outside that group with its own gap and keeps its dashed square look
-// untouched.
+// THIS ROW DRAWS NO HAIRLINE AT ALL, NOT EVEN A VERTICAL ONE. The vertical `divide-x divide-border`
+// between adjacent tabs is gone: Altan, on the phone, past the horizontal-rule fix above, "the
+// border left is weird, I'd prefer a full border on the item" — a `divide-x` seam sits on ONE side
+// of whichever tab happens to be next to it, which reads as a stray border stuck to that tab's edge
+// rather than as a boundary between two. A group with nothing dividing it needs a real gap instead,
+// so adjacent inactive tabs (both plain, both on the row's own ground) stay legible as separate
+// cells — `gap-1`, the row's own external gap, so the group reads as one spacing rule rather than
+// two.
 //
-// The open tab is marked by GROUND ALONE: it takes `bg-background`, the page's own surface, while
-// every inactive tab sits on the row's bare chrome ground — no fill, no border, no radius. There is
-// no folder shape left to reserve a box for, so nothing here needs the no-shift border-reservation
-// trick the old shape needed; only the desktop-focus ring (`ring` below) still paints on top, and it
-// does that with an `outline`, which never occupies box space and so can never shift a neighbour.
+// THE OPEN TAB IS AN OUTLINED PILL — its own `rounded-md` box, `border border-border`, filled with
+// `bg-background`, the page's own surface. `my-px`: the border must sit fully INSIDE the row rather
+// than touch its top or bottom edge, so it reads as a pill floating in the 32px row rather than as
+// a box that clips against the row's own bounds — 1px in on both sides is enough for the 1px border
+// to paint whole. An inactive tab stays exactly as before: plain on the row's bare chrome ground, no
+// fill, no border, no radius, so only the open tab ever draws a box at all. There is no folder shape
+// to reserve room for, so nothing here needs the no-shift border-reservation trick the old shape
+// needed; only the desktop-focus ring (`ring` below) still paints on top, and it does that with an
+// `outline`, which never occupies box space and so can never shift a neighbour.
 //
 // This row draws no name. The shape announces itself — that is the operator's reason for choosing
 // it — so `LabelledStrip` is gone from here and the structure it provided lives inline: the <nav>,
@@ -165,14 +173,14 @@ export function TabStrip({
             trailing ? "-ml-4 min-w-0 flex-1 pl-4 pr-2" : "-mx-4 px-4",
           )}
         >
-          {/* THE TAB GROUP: every tab cell, touching, with ONE vertical hairline between each pair —
-              `divide-x divide-border` on this wrapper rather than a border on every tab, so the line
-              lives at the seam and never doubles. It is its own flex child of the scroller (not the
-              scroller's own `divide-x`) precisely so the "+" button, a sibling outside this group, is
-              never divided from its neighbour — the scroller's ordinary `gap-1` separates the group
-              from "+" instead, and "+" keeps its own dashed square look untouched. `items-stretch` so
-              a hairline runs the tab's full height rather than stopping short of it. */}
-          <div className="flex shrink-0 items-stretch divide-x divide-border">
+          {/* THE TAB GROUP: every tab cell, separated by a plain GAP rather than a hairline — no
+              `divide-x` any more (the header comment above says why). It is its own flex child of the
+              scroller (not the scroller's own `gap-1`) so the "+" button, a sibling outside this
+              group, keeps its own gap from the group rather than inheriting the tabs' tighter one; the
+              two numbers happen to match today (both `gap-1`) but are two declarations on purpose, so
+              a future change to one never silently moves the other. `items-stretch` so the open tab's
+              border-box runs the tab's full drawn height. */}
+          <div className="flex shrink-0 items-stretch gap-1">
             {allowAll && (
               <Tab
                 label={translate("space.tabStrip.all")}
@@ -330,11 +338,16 @@ function Tab({ label, active, ring, status, agent, onClick, onLongPress, onTapAc
         // callout, whose native long-press gesture otherwise fires pointercancel and kills the hold
         // timer.
         //
-        // NO BORDER, NO RADIUS, NO SHAPE OF ITS OWN. The cell is a plain rectangle; the vertical
-        // hairlines between cells come from the parent group's `divide-x` (see the scroller's
-        // comment above), never from this button. `font-medium` is unconditional (Rule E): bolding
-        // only the active label would re-flow every tab to its right, and there is no longer a
-        // border to absorb that shift the way the old folder shape did.
+        // THE OPEN TAB IS AN OUTLINED PILL; AN INACTIVE ONE IS A PLAIN RECTANGLE. Both carry the
+        // SAME border-box, always — `border` + `rounded-md` + `my-px` are unconditional, and only
+        // the border's COLOUR and the fill flip with `active`. That is the C1 recipe
+        // (`ui/labelled-strip.tsx`'s header): a border reserved as transparent at rest costs the box
+        // nothing, so selecting a tab can never re-flow its neighbours (Rule E) the way a border that
+        // only APPEARS on selection would. `my-px` insets the box 1px off the row's top and bottom —
+        // needed so the open tab's border paints whole rather than clipping against the 32px row's
+        // own edges, and applied to every tab (not only the open one) so the row's height never
+        // shifts by those 2px when a tab is opened or closed. `font-medium` stays unconditional for
+        // the same reason: bolding only the active label would re-flow every tab to its right.
         //
         // COMPACT: `h-8` draws a 32px tab, `text-[11px]` the size of the header's path line — Altan's
         // ask, from the phone: this row "feel[s] too tall and the fonts too large". A tab used to BE
@@ -343,12 +356,15 @@ function Tab({ label, active, ring, status, agent, onClick, onLongPress, onTapAc
         // reach it needs lives in the scroller's own `pt-1.5 pb-1.5` (see the scroller's comment
         // above), not in this box, so the drawn tab can shrink without the thumb losing anything.
         STRIP_TAP_TARGET,
-        "relative flex h-8 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap px-3 text-[11px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-        // GROUND IS THE ONLY MARK. The open tab takes the page's own surface, `bg-background`; every
-        // other tab sits on the row's bare chrome ground and draws no fill of its own at rest — a
-        // quiet hover wash is the one concession, so a tap target still answers a finger hovering
-        // over it on a device that has one.
-        active ? "bg-background text-foreground" : "text-muted-foreground hover:bg-muted/40",
+        "relative flex h-8 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap rounded-md border my-px px-3 text-[11px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        // GROUND IS THE ONLY MARK past the border. The open tab takes the page's own surface,
+        // `bg-background`, boxed by `border-border`; every other tab sits on the row's bare chrome
+        // ground, draws no fill and keeps its reserved border transparent — a quiet hover wash is the
+        // one concession, so a tap target still answers a finger hovering over it on a device that
+        // has one.
+        active
+          ? "border-border bg-background text-foreground"
+          : "border-transparent text-muted-foreground hover:bg-muted/40",
         // The desktop-focus mark: an OUTLINE, not a border, so it paints on top of the cell without
         // occupying box space — nothing needs a reserved, transparent border to avoid a shift, the
         // way the old folder shape did, because `outline` never participates in layout at all. Dashed

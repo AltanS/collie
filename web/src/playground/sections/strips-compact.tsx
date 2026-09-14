@@ -152,18 +152,20 @@ function TabsRow({ sizing }: { sizing: TabRowSizing }) {
 // The compact height shipped as option 2 said, but the shape did not stay a folder tab — Altan,
 // from the phone, once he saw it small: "the top tabs area has a lot of weird lines now. Completely
 // remove horizontal borders and just have vertical ones for tab items." `tab-strip.tsx` now draws no
-// border-b/border-t of its own, sits on `bg-chrome`, and separates its cells with one vertical
-// hairline each (`divide-x divide-border`); the open cell is marked by `bg-background` alone. This
-// card is the only one in the section redrawn to match — the others are frozen ideas at their own
-// height, never shipped, and stay as they were when the operator compared them.
+// border-b/border-t of its own and sits on `bg-chrome`. The vertical hairline that first reply
+// shipped (`divide-x divide-border`) came out again a step later — Altan, once the open cell got its
+// own box: "the border left is weird, I'd prefer a full border on the item" — so cells now separate
+// with a plain gap, and the open cell is an outlined pill: `rounded-md border-border bg-background`.
+// This card is the only one in the section redrawn to match — the others are frozen ideas at their
+// own height, never shipped, and stay as they were when the operator compared them.
 
 function ShippedTabPill({ label, active }: { label: string; active: boolean }) {
   return (
     <span
       aria-hidden
       className={cn(
-        "flex h-8 shrink-0 select-none items-center justify-center whitespace-nowrap px-3 text-[11px] font-medium",
-        active ? "bg-background text-foreground" : "text-muted-foreground",
+        "flex h-8 shrink-0 select-none items-center justify-center whitespace-nowrap rounded-md border my-px px-3 text-[11px] font-medium",
+        active ? "border-border bg-background text-foreground" : "border-transparent text-muted-foreground",
       )}
     >
       {label}
@@ -175,7 +177,7 @@ function ShippedTabsRow() {
   return (
     <nav aria-label="Tabs" className="flex shrink-0 items-stretch gap-1 bg-chrome px-4">
       <div className="flex min-w-0 flex-1 items-start gap-1 overflow-x-auto pt-1.5 pb-1.5 [scrollbar-width:none]">
-        <div className="flex shrink-0 items-stretch divide-x divide-border">
+        <div className="flex shrink-0 items-stretch gap-1">
           <ShippedTabPill label={TAB_ACTIVE} active />
           <ShippedTabPill label={TAB_OTHER} active={false} />
         </div>
