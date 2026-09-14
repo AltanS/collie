@@ -1,4 +1,4 @@
-import { defineConfig } from "@playwright/test";
+import { defineConfig, devices } from "@playwright/test";
 
 // The browser tier (M26). Vitest keeps every unit test; this config owns the ONE runner that opens
 // the app in a real Chromium. Nothing here asserts a pixel: see `web/e2e/README` in the milestone
@@ -16,7 +16,14 @@ import { defineConfig } from "@playwright/test";
 // collects everything else. Neither set of specs can run under the other target: the shipped bundle
 // has no playground, and the playground has no `/api/*`.
 //
-// Only Chromium. One engine, one download, one cache key.
+// Chromium, plus WebKit on the `app` target at phone size. Safari is where a phone actually opens
+// Collie, and it disagrees with Chromium on things a unit test never sees: on 2026-09-14 the
+// composer's belt held 6px of vertical overflow that Chromium clipped and WebKit let a thumb scroll.
+// `app-phone-webkit` collects the same specs as `app-phone` and exists so that class of bug fails in
+// CI. It is OPT-IN off CI: Playwright's WebKit build links against Ubuntu's libraries, so on Fedora
+// (this workspace's host) it cannot launch at all, and a developer's `bun run e2e` must not fail on
+// that. `COLLIE_E2E_WEBKIT=1` turns it on locally; `make e2e-webkit` at the workspace root runs it
+// inside an Ubuntu distrobox for exactly that host. In CI the runner IS Ubuntu, so it is always on.
 
 /** The phone. 390x844 is the iPhone 14/15 CSS size. */
 const PHONE = { width: 390, height: 844 } as const;
@@ -58,6 +65,9 @@ const STATES_TEST_MATCH = [/states\.spec\.ts$/, /handles\.spec\.ts$/];
  *  It needs the live dev lane, so tier 1 never collects it; `make e2e` runs tier 2. */
 const LIVE_TEST_IGNORE = "**/live/**";
 
+/** WebKit runs always in CI and only on request elsewhere; the header says why. */
+const WEBKIT = Boolean(process.env.CI) || process.env.COLLIE_E2E_WEBKIT === "1";
+
 export default defineConfig({
   // Outside `src/`, so `vitest.config.ts:30` (`include: ["src/**/*.{test,spec}.{ts,tsx}"]`) collects
   // none of these and neither runner ever sees the other's files.
@@ -93,6 +103,24 @@ export default defineConfig({
       use: { browserName: "chromium", viewport: TABLET, hasTouch: true, deviceScaleFactor: 2 },
       testIgnore: [...STATES_TEST_MATCH, LIVE_TEST_IGNORE],
     },
+    // The Safari engine, same specs as `app-phone`. Spread so the project is simply absent, not
+    // skipped, when it is off: an absent project never asks for a browser that is not there.
+    // THE DEVICE DESCRIPTOR IS LOAD-BEARING. `devices["iPhone 13"]` sets `isMobile: true`, a
+    // mobile user agent and `hasTouch`, on top of WebKit. A bare `{ browserName: "webkit",
+    // viewport: PHONE }` is WebKit in desktop mode at a phone's width, and on 2026-09-14 that
+    // combination HUNG the app at `/pane/<id>`: `page.evaluate` never returned, the first-run
+    // dialog never appeared. No real phone is a desktop Safari at 390px, so the descriptor is the
+    // honest configuration, and the hang stays a note here until someone wants to chase it. The
+    // viewport is re-stated so both phone projects measure the same 390x844.
+    ...(WEBKIT
+      ? [
+          {
+            name: "app-phone-webkit",
+            use: { ...devices["iPhone 13"], viewport: PHONE },
+            testIgnore: [...STATES_TEST_MATCH, LIVE_TEST_IGNORE],
+          },
+        ]
+      : []),
     {
       name: "states-phone",
       use: {

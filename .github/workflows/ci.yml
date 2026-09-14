@@ -55,7 +55,7 @@ jobs:
   # reason (release.yml:174-176: oxlint's allocator SIGABRTs below roughly 7 GB), and an operator
   # path must never download a browser.
   e2e:
-    name: browser (chromium)
+    name: browser (chromium, webkit)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -74,23 +74,25 @@ jobs:
           test -n "${version}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
-      # The first cache in this workflow. Chromium plus its headless shell is ~170 MB and the
-      # download is the slowest thing in this job by an order of magnitude.
-      - name: Cache Chromium
+      # The first cache in this workflow. Chromium plus its headless shell is ~170 MB, WebKit
+      # another ~90 MB, and the download is the slowest thing in this job by an order of magnitude.
+      - name: Cache Chromium and WebKit
         id: browser-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ms-playwright-chromium-${{ runner.os }}-${{ steps.pw.outputs.version }}
+          key: ms-playwright-chromium-webkit-${{ runner.os }}-${{ steps.pw.outputs.version }}
 
-      # Chromium only. `--with-deps` pulls the system libraries the runner image lacks, and it is
-      # needed on a cache HIT too: the cache carries the browser under $HOME, never the apt packages.
-      - name: Install Chromium
+      # Chromium and WebKit: the Safari engine runs the `app` specs at phone size too
+      # (`web/playwright.config.ts`, `app-phone-webkit`, always on under CI). `--with-deps` pulls the
+      # system libraries the runner image lacks, and it is needed on a cache HIT too: the cache
+      # carries the browsers under $HOME, never the apt packages.
+      - name: Install Chromium and WebKit
         if: steps.browser-cache.outputs.cache-hit != 'true'
-        run: cd web && bunx playwright install --with-deps chromium
-      - name: Install Chromium system dependencies
+        run: cd web && bunx playwright install --with-deps chromium webkit
+      - name: Install browser system dependencies
         if: steps.browser-cache.outputs.cache-hit == 'true'
-        run: cd web && bunx playwright install-deps chromium
+        run: cd web && bunx playwright install-deps chromium webkit
 
       # `e2e` runs `vite build` first: the tier serves the SHIPPED bundle off disk, because the
       # service worker exists only in a real build.

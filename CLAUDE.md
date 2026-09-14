@@ -307,7 +307,12 @@ tests nothing Vitest already covers.
 
 - **Tier 1** runs in CI, on every push. `cd web && bun run e2e` builds the web bundle, serves it,
   and drives Chromium at `phone` (390x844) and `tablet` (820x1180), declared as four projects in
-  `web/playwright.config.ts`: `app-phone`, `app-tablet`, `states-phone`, `states-tablet`. The `app`
+  `web/playwright.config.ts`: `app-phone`, `app-tablet`, `states-phone`, `states-tablet`, plus a
+  fifth, `app-phone-webkit`, the same `app` specs under WebKit, Safari's engine. That one is always
+  on in CI and opt-in elsewhere (`COLLIE_E2E_WEBKIT=1`), because Playwright's WebKit build cannot
+  launch on Fedora; `make e2e-webkit` at the workspace root runs it inside an Ubuntu distrobox
+  there. It exists because Safari disagrees with Chromium on geometry a unit test never sees
+  (`web/e2e/belt.spec.ts` holds the first such case, 2026-09-14). The `app`
   target serves `web/dist` and answers every `/api/*` request from `web/e2e/fixtures/api.ts`; it
   never touches a live bridge. The `states` target runs the playground on port 5199, the way `make
   playground` runs it, and answers no API at all. Cases live under `web/e2e/`: today
