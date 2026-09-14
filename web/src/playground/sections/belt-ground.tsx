@@ -1,44 +1,46 @@
-// Belt scroller ground ideas, round three: FIVE numbered options for the actions belt's own ground.
-// Altan rejected round one's three options outright ("all are bad, try again") — those only changed
-// the SHADE of a DRAWN copy of the belt. Round two changed the affordance instead of the shade, but
-// was still a drawn copy, and the operator caught it: "the band is wider than the PhoneMock and
-// spills past its right edge, the harness Claude pill runs under the Switch glyph instead of the
-// Switch sitting fixed at the far right behind its hairline, and in option 3 the Agent pill is
-// clipped inside the row rather than at the phone's edge. Drawn copies are not faithful enough
-// here." So round three MOUNTS THE REAL `ActionsRow` (`components/actions-row.tsx`) inside a real
-// 390px `PhoneMock`, the way `header-corner.tsx` mounts it for its own Switch-pill options — same
-// fixture (`useRoomyActions`, `agent="claude"`, `onRun={took}`), same width, same real
-// `OverflowEdges` measuring the real scroller. Nothing about the belt's own markup, fade or overflow
-// math is redrawn; every option changes only the ONE thing it proposes, reached from outside through
-// a wrapper `<div>` and Tailwind arbitrary-variant selectors — NO EDIT to `actions-row.tsx` or any
-// other shipped file. The selectors reach the scroller through `[data-overflow]`, the attribute
-// `OverflowEdges` (`ui/overflow-edges.tsx`) already draws on the scroller's own wrapper for real, so
-// `[data-overflow]>div>div` is the real scroller `OverflowEdges` measures — not a guess, not a class
-// added for this section.
+// Belt scroller ground ideas, round four: the operator picked a direction. Round one drew three
+// shades of a hand-copied belt and all three were rejected ("all are bad, try again"). Round two
+// drew five affordances on the same hand-copied belt and was caught as unfaithful: "the band is
+// wider than the PhoneMock and spills past its right edge... Drawn copies are not faithful enough
+// here." Round three mounted the REAL `ActionsRow` and tried five different affordances (a thumb, a
+// track, a cut edge, a pattern, a tint) on it. The operator's verdict on THAT round: option 5,
+// the tint, is the one he likes — scrap the rest. Round four is six numbered variations on that one
+// idea, all on the real `ActionsRow`: colour and strength, nothing else changes.
+//
+// STILL THE REAL ActionsRow (`components/actions-row.tsx`), inside a real 390px `PhoneMock`, the
+// way `header-corner.tsx` mounts it for its own Switch-pill options — same fixture
+// (`useRoomyActions`, `agent="claude"`, `onRun={took}`), same width, same real `OverflowEdges`
+// measuring the real scroller. Every option reaches the scroller from OUTSIDE, through a wrapper
+// `<div>` and a Tailwind arbitrary-variant selector on `[data-overflow]>div>div` — the attribute
+// `OverflowEdges` (`ui/overflow-edges.tsx`) already draws on the scroller's own wrapper for real —
+// never a class added to `actions-row.tsx` itself.
 //
 // THE ONE THING STILL DRAWN: the fixed Switch cell. `ActionsRow` only draws its pinned Switch pill
 // when handed a `handle` (a real drag-to-switch gesture object), which a static mock has none of —
 // so every card here carries a copy of that pill, byte-for-byte the markup `actions-row.tsx` draws
 // in its own `handle` branch, exactly as `header-corner.tsx`'s `BeltWithSwitch` already does for its
-// own Switch-pill options. It is the ONE thing every option in this section holds fixed, so it is
-// the one thing worth a shared, faithful copy rather than five improvised ones.
+// own Switch-pill options.
 //
-// OPTION 3 NEEDS NO DRAWN CUT EITHER. Giving the dock a narrower width than the phone makes
-// `OverflowEdges` genuinely measure a smaller box and genuinely fade and cut a pill at THAT edge —
-// the real fade, the real chevron, working against a real, smaller container, which is what "the row
-// is laid out so the last pill is always cut" means as a design, not a screenshot trick.
+// OPTION 5's ACCENT IS THE REAL ONE. It reads `AGENT_BRANDS` the same way `harness-bar.tsx`'s own
+// `accentFor` does, and hands it to the wrapper as a CSS custom property (`--belt-tint`) that the
+// scroller's own tint utility resolves at paint time — the same shape `overflow-edges.tsx` already
+// uses for `--edge-inset-right`, never a class assembled from a JS string (Tailwind scans source
+// TEXT; a class built at runtime from a variable compiles to no CSS at all).
 //
 // PhoneMock carries no theme toggle (see `shared.tsx`), so every card is drawn once, at the page's
-// current theme, rather than twice — the ground each option proposes is legible in both, and the
-// cards below are the same object under whichever theme the sidebar's own toggle is set to.
+// current theme, rather than twice — every tint here answers a CSS variable or an alpha wash of a
+// themed colour, so it is legible in both, and the cards below are the same object under whichever
+// theme the sidebar's own toggle is set to.
 //
 // DEV-ONLY, unreachable from the app entry.
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Layers } from "lucide-react";
 
 import { ActionsRow } from "@/components/actions-row";
+import { AGENT_BRANDS } from "@/components/agent-icon-data";
 import { STRIP_ROW_PILL } from "@/components/ui/labelled-strip";
+import { canonicalAgent } from "@/lib/operator-scope";
 import { cn } from "@/lib/utils";
 
 import { Card, Group, Section, type SectionDef } from "../harness";
@@ -48,11 +50,22 @@ export const DEF: SectionDef = {
   id: "belt-ground",
   title: "Belt scroller ground",
   intent:
-    "Round three, five numbered options for the actions belt's scrollable ground, this time on the " +
-    "REAL ActionsRow inside a real 390px phone frame rather than a drawn copy — each option changes " +
-    "one thing (a thumb, a track, a cut edge, a pattern, a tint), reached from outside through a " +
-    "wrapper and Tailwind selectors, never a class added to actions-row.tsx itself. Say the number.",
+    "Round four: the operator picked the tint from round three's five affordances. Six numbered " +
+    "variations on it, colour and strength only, all on the REAL ActionsRow inside a real 390px " +
+    "phone frame, reached from outside through a wrapper and a Tailwind selector, never a class " +
+    "added to actions-row.tsx itself. Say the number.",
 };
+
+/** Claude's own brand accent, read the way `harness-bar.tsx`'s own `accentFor` reads it — through
+ *  `AGENT_BRANDS`, keyed by `canonicalAgent`. Every card here mounts on `agent="claude"`, so this is
+ *  computed once rather than re-derived per card. */
+const CLAUDE_ACCENT = AGENT_BRANDS.get(canonicalAgent("claude"))?.accent;
+
+// SAFETY: `--belt-tint` is a custom property, which `CSSProperties` has no key for — the same
+// widening `overflow-edges.tsx` does at its own `maskStyle` for `--edge-inset-right`. The object
+// carries no other key, so nothing but the custom property rides through this cast.
+const OPTION_5_STYLE: (CSSProperties & Record<string, string>) | undefined =
+  CLAUDE_ACCENT !== undefined ? ({ "--belt-tint": CLAUDE_ACCENT } as CSSProperties & Record<string, string>) : undefined;
 
 // ── The Switch cell, the one thing every card draws a copy of ────────────────
 
@@ -63,14 +76,16 @@ export const DEF: SectionDef = {
  * way, and this is that copy, so both sections' Switch cells can never quietly drift apart from
  * `actions-row.tsx`'s real one without a person noticing both places.
  */
-function FixedSwitchCell() {
+function FixedSwitchCell({ groundClassName = "bg-foreground/6" }: { groundClassName?: string }) {
   return (
     <span className="absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
       <span
         aria-hidden
         className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
       >
-        <span className="absolute inset-0 bg-foreground/6" />
+        {/* The belt's own ground, `bg-foreground/6`, by default — option 6 alone drops this to
+            `bg-background` so the fixed cell reads as plain against a tinted, moving track. */}
+        <span className={cn("absolute inset-0", groundClassName)} />
       </span>
       <span className="flex items-center self-stretch">
         <span aria-hidden className="mr-2 h-5 w-px bg-border" />
@@ -84,76 +99,27 @@ function FixedSwitchCell() {
   );
 }
 
-// The Switch cell's own drawn width is 97px — `pr-3`(12) + `pl-8`(32) + the 44px pill, the same
-// number `actions-row.tsx` names `SWITCH_PILL_INSET` for the real fade's own inset. `ScrollThumb`
-// and `DotGrid` below both stop there (`right-[97px]`), written as that literal at each call site
-// rather than composed from a shared constant: Tailwind v4 scans source TEXT for class names, so a
-// class assembled at runtime from a variable compiles to no CSS at all — the same trap
-// `actions-row.tsx` and `overflow-edges.tsx` document at their own literal strings.
-
-// ── The belt itself: the REAL ActionsRow, a wrapper for selectors, the copied Switch cell ───────
+// ── The belt itself: the REAL ActionsRow, a wrapper for the tint selector, the copied Switch cell ──
 
 interface BeltProps {
-  /** Extra classes on the WRAPPER around the real `ActionsRow`. Arbitrary-variant selectors reach
-   *  the real scroller through `[data-overflow]>div>div` — the attribute `OverflowEdges` draws on
-   *  the scroller's own wrapper for real — and its pills through `[data-overflow]>div>div button`.
-   *  No class is ever added to `actions-row.tsx` itself. */
-  className?: string;
-  /** Drawn ON TOP of the scroller's own area only, stopping short of the Switch cell's 97px —
-   *  option 1's thumb, option 4's dot grid. The wrapper is `relative`, so this positions against it. */
-  overlay?: ReactNode;
-  /** Option 3 only: the dock's own width, in px, narrower than the phone — not a drawn cut, a
-   *  smaller real box for the real `OverflowEdges` to measure and genuinely fade and cut against. */
-  dockWidth?: number;
+  /** The tint, as a Tailwind arbitrary-variant class reaching the real scroller through
+   *  `[data-overflow]>div>div` — the attribute `OverflowEdges` draws on the scroller's own wrapper
+   *  for real. No class is ever added to `actions-row.tsx` itself. */
+  className: string;
+  /** Option 5 only: `--belt-tint`, the harness accent the tint class resolves via `var()`. */
+  style?: CSSProperties;
+  /** Option 6 only: the Switch cell's own ground drops to `bg-background`. Every other option
+   *  leaves it at the belt's default, `bg-foreground/6`. */
+  switchCellClassName?: string;
 }
 
-function Belt({ className, overlay, dockWidth }: BeltProps) {
+function Belt({ className, style, switchCellClassName }: BeltProps) {
   const general = useRoomyActions();
   return (
-    <div
-      className={cn("relative bg-chrome px-3", className)}
-      style={dockWidth !== undefined ? { width: dockWidth } : undefined}
-    >
+    <div className={cn("relative bg-chrome px-3", className)} style={style}>
       <ActionsRow general={general} agent="claude" onRun={took} />
-      {overlay}
-      <FixedSwitchCell />
+      <FixedSwitchCell groundClassName={switchCellClassName} />
     </div>
-  );
-}
-
-// ── Option 1: a thumb under the pills ─────────────────────────────────────────
-
-/** A 2px track over the scroller's own area, stopping short of the Switch cell, with a short thumb
- *  showing roughly how much is off screen and where. Held static at the left third — the position a
- *  row at rest with more content to the right would report. */
-function ScrollThumb() {
-  return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute right-[97px] bottom-0.5 left-3 z-10 h-[2px] rounded-full bg-foreground/10"
-    >
-      <span
-        aria-hidden
-        className="absolute inset-y-0 left-[4%] w-[28%] rounded-full bg-foreground/30"
-      />
-    </span>
-  );
-}
-
-// ── Option 4: a faint dot grid on the moving surface ──────────────────────────
-
-/** A dot every 6px, at `foreground/8` — a flat tint cut into dots by a repeating radial mask, so the
- *  colour still answers `bg-foreground/8` (light AND dark) rather than a hard-coded rgba. Drawn over
- *  the scroller's own area, stopping short of the Switch cell. */
-function DotGrid() {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        "pointer-events-none absolute inset-y-0 left-0 right-[97px] z-10 bg-foreground/8",
-        "[mask-image:radial-gradient(circle,black_1px,transparent_1.4px)] [mask-size:6px_6px] [mask-repeat:repeat]",
-      )}
-    />
   );
 }
 
@@ -181,7 +147,7 @@ function BeltCard({ children }: { children: ReactNode }) {
 export function BeltGroundSection() {
   return (
     <Section def={DEF}>
-      <Group title="The belt — as today, then five options for its scroller, round three, on the real ActionsRow">
+      <Group title="The belt — as today, then six tints for its scroller, round four, on the real ActionsRow">
         <Card
           state="belt-ground-today"
           label="As today"
@@ -189,72 +155,79 @@ export function BeltGroundSection() {
           note="One ground for the whole band, `bg-foreground/6`. Nothing marks where the scroller ends and the fixed Switch cell begins."
         >
           <BeltCard>
-            <Belt />
+            <Belt className="" />
           </BeltCard>
         </Card>
 
         <Card
           state="belt-ground-option-1"
-          label="Option 1 · Scroll thumb"
-          reach="idea, not shipped: a 2px track and thumb would sit under actions-row.tsx's scroller."
-          note="A thin thumb under the pills shows how much is off screen and where you are. It moves as you scroll. The Switch cell has no thumb, so it reads as fixed."
+          label="Option 1 · Tint, faint"
+          reach="idea, not shipped: the scroller would take bg-primary/6 over its own ground."
+          note="The scrolling part takes a very faint wash of the brand colour, six percent. It is barely there, a quiet hint rather than a mark."
         >
           <BeltCard>
-            <Belt overlay={<ScrollThumb />} />
+            <Belt className="[&_[data-overflow]>div>div]:bg-primary/6" />
           </BeltCard>
         </Card>
 
         <Card
           state="belt-ground-option-2"
-          label="Option 2 · Pills as cards on a recessed track"
-          reach="idea, not shipped: the scroller would drop to bg-background with an inset shadow, each pill a small card."
-          note="The pills become small cards on a sunken track. Cards on a track read as things you can slide. The Switch stays flat, so it reads as a button, not a card."
+          label="Option 2 · Tint, ten percent"
+          reach="idea, not shipped: the scroller would take bg-primary/10 over its own ground."
+          note="The scrolling part takes the brand colour at ten percent. The tint reads clearly without shouting."
         >
           <BeltCard>
-            <Belt
-              className={cn(
-                "[&_[data-overflow]>div>div]:bg-background",
-                "[&_[data-overflow]>div>div]:shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.15)]",
-                "[&_[data-overflow]>div>div_button]:rounded-md",
-                "[&_[data-overflow]>div>div_button]:border",
-                "[&_[data-overflow]>div>div_button]:border-border",
-                "[&_[data-overflow]>div>div_button]:bg-card",
-                "[&_[data-overflow]>div>div_button]:shadow-sm",
-              )}
-            />
+            <Belt className="[&_[data-overflow]>div>div]:bg-primary/10" />
           </BeltCard>
         </Card>
 
         <Card
           state="belt-ground-option-3"
-          label="Option 3 · Half a pill always peeks"
-          reach="idea, not shipped: the dock itself would be laid out narrower, so the real fade always cuts the last pill."
-          note="The row is laid out so the last pill is always cut in half at the edge. A half pill says there is more. The fade and the chevron stay — they are the real ones, measuring a narrower row."
+          label="Option 3 · Tint, strong"
+          reach="idea, not shipped: the scroller would take bg-primary/16 over its own ground."
+          note="The scrolling part takes a strong wash of the brand colour, sixteen percent. The moving surface is unmistakable."
         >
           <BeltCard>
-            <Belt dockWidth={300} />
+            <Belt className="[&_[data-overflow]>div>div]:bg-primary/16" />
           </BeltCard>
         </Card>
 
         <Card
           state="belt-ground-option-4"
-          label="Option 4 · Dotted track"
-          reach="idea, not shipped: the scroller would carry a faint radial dot grid at foreground/8, 6px pitch."
-          note="The scrolling part has a faint dot pattern under the pills. The fixed Switch cell has none. The pattern says this is a surface that moves."
+          label="Option 4 · Cool blue, not the brand"
+          reach="idea, not shipped: the scroller would take bg-status-info/10, the app's own cool blue, in place of the brand colour."
+          note="The scrolling part takes the app's cool blue instead of the brand colour, at ten percent. Blue marks it as a system surface, not a brand one."
         >
           <BeltCard>
-            <Belt overlay={<DotGrid />} />
+            <Belt className="[&_[data-overflow]>div>div]:bg-status-info/10" />
           </BeltCard>
         </Card>
 
         <Card
           state="belt-ground-option-5"
-          label="Option 5 · Tinted track"
-          reach="idea, not shipped: the scroller would take bg-primary/8, the Switch cell stays on the band."
-          note="The scrolling part takes a faint tint of the brand colour. The Switch cell stays grey. Colour marks the moving part."
+          label="Option 5 · The open pane's own harness colour"
+          reach="idea, not shipped: the scroller would take the open pane's own harness accent at 10%, the same colour the harness segment's brand fill already uses."
+          note="The scrolling part takes the open pane's own harness colour, at ten percent. On a Claude pane, shown here, the track picks up Claude's own orange."
         >
           <BeltCard>
-            <Belt className="[&_[data-overflow]>div>div]:bg-primary/8" />
+            <Belt
+              className="[&_[data-overflow]>div>div]:bg-[color-mix(in_oklab,var(--belt-tint)_10%,transparent)]"
+              style={OPTION_5_STYLE}
+            />
+          </BeltCard>
+        </Card>
+
+        <Card
+          state="belt-ground-option-6"
+          label="Option 6 · Tinted track, plain Switch cell"
+          reach="idea, not shipped: the scroller would take bg-primary/10 and the fixed Switch cell's own ground would drop to bg-background."
+          note="The scrolling part takes the brand colour at ten percent, and the Switch cell drops to plain background. The contrast between the two is the strongest here."
+        >
+          <BeltCard>
+            <Belt
+              className="[&_[data-overflow]>div>div]:bg-primary/10"
+              switchCellClassName="bg-background"
+            />
           </BeltCard>
         </Card>
       </Group>
