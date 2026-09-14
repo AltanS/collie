@@ -76,7 +76,7 @@ describe("TabStrip", () => {
         .filter((c) => /^(h-|min-w-|px-|py-|p-|border($|-)|rounded)/.test(c))
         .toSorted();
 
-    const inactive = boxClasses(screen.getByRole("button", { name: "2" }));
+    const inactive = boxClasses(screen.getByRole("button", { name: "tab 2" }));
     rerender(
       <TabStrip
         workspaceId="w1"
@@ -87,7 +87,7 @@ describe("TabStrip", () => {
         onNewTab={vi.fn()}
       />,
     );
-    const active = screen.getByRole("button", { name: "2" });
+    const active = screen.getByRole("button", { name: "tab 2" });
     expect(active).toHaveAttribute("aria-current", "true");
     // Every box-affecting class is shared. The only difference is the border COLOUR — tailwind-merge
     // resolves `border-transparent` against `border-rule`, so exactly one of the two is present in
@@ -115,9 +115,9 @@ describe("TabStrip", () => {
     );
     expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
     // w2's tab (also labelled "1") must be excluded, so there's exactly one "1".
-    expect(screen.getAllByRole("button", { name: "1" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "tab 1" })).toHaveLength(1);
 
-    await user.click(screen.getByRole("button", { name: "2" }));
+    await user.click(screen.getByRole("button", { name: "tab 2" }));
     expect(onSelect).toHaveBeenCalledWith("w1:t2");
   });
 
@@ -139,9 +139,10 @@ describe("TabStrip", () => {
   });
 });
 
-// A POSITIONAL LABEL IS NOT A NAME (lib/pane-name.ts § isUnnamedTab). Herdr labels an unnamed tab
-// "1" and zellij calls it "Tab #2"; a row of those reads as a row of numbers, and the number says
-// nothing the tab's own position in the row does not already say.
+// A POSITIONAL LABEL IS NOT A NAME (lib/pane-name.ts § tabTitle). Herdr labels an unnamed tab "1"
+// and zellij calls it "Tab #2"; the tab reads its POSITION instead — "tab 1", "tab 3" — in a
+// shade-lighter ink, on every surface alike. Only a tab with no label at all (no name, no digit)
+// keeps the dot.
 describe("TabStrip — a tab with no name of its own", () => {
   const strip = (label: string) =>
     render(
@@ -155,26 +156,32 @@ describe("TabStrip — a tab with no name of its own", () => {
       />,
     );
 
-  it("draws no number, and keeps the label as the button's spoken name", () => {
-    const { container } = strip("1");
-    const tab = screen.getByRole("button", { name: "1" });
-    // Nothing DRAWN reads "1": the only node carrying it is sr-only, for a reader with no row to look at.
-    expect(tab.querySelector(".sr-only")?.textContent).toBe("1");
-    expect(container.querySelector(".rounded-full")).not.toBeNull(); // the dot stands in its place
+  it("draws its position, in the lighter ink, as the button's own spoken name", () => {
+    strip("1");
+    const tab = screen.getByRole("button", { name: "tab 1" });
+    expect(tab.textContent).toBe("tab 1");
+    expect(tab.querySelector(".text-muted-foreground\\/70")?.textContent).toBe("tab 1");
+    expect(tab.querySelector(".sr-only")).toBeNull();
   });
 
   it("treats zellij's own default the same way", () => {
     strip("Tab #3");
-    expect(screen.getByRole("button", { name: "Tab #3" }).querySelector(".sr-only")?.textContent).toBe(
-      "Tab #3",
-    );
+    expect(screen.getByRole("button", { name: "tab 3" }).textContent).toBe("tab 3");
   });
 
-  it("draws a real name as text, with no dot standing in for it", () => {
+  it("draws a real name as text, with no dot and no positional ink standing in for it", () => {
     strip("review");
     const tab = screen.getByRole("button", { name: "review" });
     expect(tab.textContent).toBe("review");
     expect(tab.querySelector(".sr-only")).toBeNull();
+    expect(tab.querySelector(".text-muted-foreground\\/70")).toBeNull();
+  });
+
+  it("keeps the dot only for a tab with no label at all", () => {
+    const { container } = strip("");
+    const tab = screen.getByRole("button", { name: "" });
+    expect(tab.querySelector(".sr-only")?.textContent).toBe("");
+    expect(container.querySelector(".rounded-full")).not.toBeNull(); // the dot stands in its place
   });
 });
 
@@ -195,7 +202,7 @@ describe("TabStrip — long-press actions", () => {
       />,
     );
     expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
-    fireEvent.contextMenu(screen.getByRole("button", { name: "2" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "tab 2" }));
     expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close tab" })).toBeInTheDocument();
   });
@@ -211,7 +218,7 @@ describe("TabStrip — long-press actions", () => {
         onNewTab={vi.fn()}
       />,
     );
-    fireEvent.contextMenu(screen.getByRole("button", { name: "2" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "tab 2" }));
     expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
   });
 
@@ -227,7 +234,7 @@ describe("TabStrip — long-press actions", () => {
         onRenamed={vi.fn()}
       />,
     );
-    fireEvent.contextMenu(screen.getByRole("button", { name: "2" }));
+    fireEvent.contextMenu(screen.getByRole("button", { name: "tab 2" }));
     expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
   });
 
@@ -248,7 +255,7 @@ describe("TabStrip — long-press actions", () => {
         onClosed={vi.fn()}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "1" }));
+    await user.click(screen.getByRole("button", { name: "tab 1" }));
     expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
     expect(onSelect).not.toHaveBeenCalled();
   });
@@ -268,7 +275,7 @@ describe("TabStrip — long-press actions", () => {
         onClosed={vi.fn()}
       />,
     );
-    await user.click(screen.getByRole("button", { name: "2" }));
+    await user.click(screen.getByRole("button", { name: "tab 2" }));
     expect(onSelect).toHaveBeenCalledExactlyOnceWith("w1:t2");
     expect(screen.queryByRole("button", { name: "Rename" })).toBeNull();
   });
@@ -297,7 +304,7 @@ describe("TabStrip — long-press actions", () => {
         onClosed={onClosed}
       />,
     );
-    fireEvent.contextMenu(screen.getByRole("button", { name: "2" })); // w1:t2, paneCount 1
+    fireEvent.contextMenu(screen.getByRole("button", { name: "tab 2" })); // w1:t2, paneCount 1
     await user.click(screen.getByRole("button", { name: "Close tab" }));
     await user.click(screen.getByRole("button", { name: "Tap again to close 1 pane" }));
 
@@ -512,7 +519,7 @@ describe("TabStrip new-tab busy state", () => {
     stubRect(scroller, { left: 0, right: 100 });
     const scrollTo = vi.fn();
     scroller.scrollTo = scrollTo;
-    const newlyActive = screen.getByRole("button", { name: "2" });
+    const newlyActive = screen.getByRole("button", { name: "tab 2" });
     stubRect(newlyActive, { left: 300, right: 340 }); // well past the scroller's right edge
 
     rerender(
@@ -550,7 +557,7 @@ describe("TabStrip new-tab busy state", () => {
     stubRect(scroller, { left: 0, right: 100 });
     const scrollTo = vi.fn();
     scroller.scrollTo = scrollTo;
-    const newlyActive = screen.getByRole("button", { name: "2" });
+    const newlyActive = screen.getByRole("button", { name: "tab 2" });
     stubRect(newlyActive, { left: 20, right: 60 }); // comfortably inside the visible range
 
     rerender(

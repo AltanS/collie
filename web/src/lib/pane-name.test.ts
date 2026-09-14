@@ -2,7 +2,15 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { isUnnamedTab, paneCwdLine, paneName, panePlace, panePlaceParts, PLACE_SEP } from "./pane-name";
+import {
+  isUnnamedTab,
+  paneCwdLine,
+  paneName,
+  panePlace,
+  panePlaceParts,
+  PLACE_SEP,
+  tabTitle,
+} from "./pane-name";
 import type { AgentView, TabView } from "./types";
 
 function pane(over: Partial<AgentView> = {}): AgentView {
@@ -81,7 +89,14 @@ describe("panePlace — the one place rule, on the shared fixtures", () => {
   for (const c of fixtures.places) {
     it(`${c.space} + ${JSON.stringify(c.tab)} reads as ${c.place}`, () => {
       const view = c.tab === null ? pane({ workspaceLabel: c.space }) : pane({ workspaceLabel: c.space, tabLabel: c.tab });
-      expect(panePlace(view)).toBe(c.place);
+      // The fixture's own `place` is the MIRRORED expectation — what `isUnnamedTab`/`placeOf` still
+      // share with the bridge (drop the tab entirely). A positional tab (unnamed, a digit sitting in
+      // the raw label) is the one case web and bridge now disagree on ON PURPOSE: the web's
+      // `panePlace` reads the tab's POSITION (`tabTitle`, web-only) instead of dropping it, so its
+      // expectation here is derived locally rather than taken from the shared fixture.
+      const title = c.tab === null ? null : tabTitle(c.tab);
+      const expected = title?.positional ? `${c.space}${PLACE_SEP}${title.text}` : c.place;
+      expect(panePlace(view)).toBe(expected);
     });
   }
 
@@ -99,32 +114,71 @@ describe("panePlaceParts — the two halves, so the tab survives truncation", ()
   it("keeps the halves apart", () => {
     expect(panePlaceParts(pane({ tabLabel: "fix-auth" }))).toEqual({
       space: "moonward_os",
-      tab: "fix-auth",
+      tab: { text: "fix-auth", positional: false },
     });
   });
 
-  it("reports no tab at all when the tab is unnamed", () => {
-    expect(panePlaceParts(pane({ tabLabel: "1" })).tab).toBeNull();
+  it("reports the tab's position, not its raw number, when the tab is unnamed", () => {
+    expect(panePlaceParts(pane({ tabLabel: "1" })).tab).toEqual({ text: "tab 1", positional: true });
     expect(panePlaceParts(pane()).tab).toBeNull();
   });
 
   it("prefers the RAW tab list when the caller has one — the pane header's path", () => {
     // The header reads `tabs[]`, which is unfiltered: the positional label the bridge already
     // dropped from `tabLabel` is still there, and the SAME rule has to drop it a second time.
-    expect(panePlaceParts(pane(), [tab({ label: "1" })]).tab).toBeNull();
-    expect(panePlaceParts(pane(), [tab({ label: "UI work" })]).tab).toBe("UI work");
+    expect(panePlaceParts(pane(), [tab({ label: "1" })]).tab).toEqual({
+      text: "tab 1",
+      positional: true,
+    });
+    expect(panePlaceParts(pane(), [tab({ label: "UI work" })]).tab).toEqual({
+      text: "UI work",
+      positional: false,
+    });
   });
 
   it("never takes another machine's tab of the same id", () => {
     const mine = pane({ host: "alpha" });
     expect(panePlaceParts(mine, [{ ...tab(), host: "beta", label: "theirs" }]).tab).toBeNull();
-    expect(panePlaceParts(mine, [{ ...tab(), host: "alpha", label: "mine" }]).tab).toBe("mine");
+    expect(panePlaceParts(mine, [{ ...tab(), host: "alpha", label: "mine" }]).tab).toEqual({
+      text: "mine",
+      positional: false,
+    });
     // An untagged tab is ambient, the same rule lib/hosts.ts makes, so a solo snapshot is unchanged.
-    expect(panePlaceParts(mine, [tab({ label: "solo" })]).tab).toBe("solo");
+    expect(panePlaceParts(mine, [tab({ label: "solo" })]).tab).toEqual({
+      text: "solo",
+      positional: false,
+    });
   });
 
   it("trims, so a padded tab name does not render with its padding", () => {
-    expect(panePlaceParts(pane({ tabLabel: "  deploy  " })).tab).toBe("deploy");
+    expect(panePlaceParts(pane({ tabLabel: "  deploy  " })).tab).toEqual({
+      text: "deploy",
+      positional: false,
+    });
+  });
+});
+
+describe("tabTitle — one function for a tab's title, named or positional", () => {
+  it("names a real tab, unchanged", () => {
+    expect(tabTitle("fix-auth")).toEqual({ text: "fix-auth", positional: false });
+  });
+
+  it("trims a real name", () => {
+    expect(tabTitle("  deploy  ")).toEqual({ text: "deploy", positional: false });
+  });
+
+  it("reads a herdr-numbered tab's position off its digit", () => {
+    expect(tabTitle("2")).toEqual({ text: "tab 2", positional: true });
+  });
+
+  it("reads a zellij-numbered tab's position off its digit", () => {
+    expect(tabTitle("Tab #3")).toEqual({ text: "tab 3", positional: true });
+  });
+
+  it("is null for an empty label — no name and no digit to read", () => {
+    expect(tabTitle("")).toBeNull();
+    expect(tabTitle(undefined)).toBeNull();
+    expect(tabTitle(null)).toBeNull();
   });
 });
 

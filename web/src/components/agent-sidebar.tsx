@@ -262,7 +262,16 @@ function PaneRow({
               <span className="shrink-0 text-muted-foreground/60" aria-hidden>
                 ›
               </span>
-              <span className="min-w-0 flex-1 truncate">{tab}</span>
+              {/* A positional tab (`tabTitle`'s `tab 2`) reads a shade lighter, the same ink every
+                  other surface gives it — it is the tab's position, never a name someone chose. */}
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate",
+                  tab.positional && "text-muted-foreground/70",
+                )}
+              >
+                {tab.text}
+              </span>
             </>
           )}
         </div>

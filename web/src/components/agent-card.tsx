@@ -10,7 +10,6 @@ import { paneCwdLine, paneName, panePlaceParts } from "@/lib/pane-name";
 import { statusLabel } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
-import { t } from "@/lib/i18n";
 
 interface AgentCardProps {
   agent: AgentView;
@@ -42,21 +41,6 @@ interface AgentCardProps {
   density?: "card" | "row";
 }
 
-/**
- * Line 2 of a workspace-grouped row (`scope="place"`) when its tab has no name of its own
- * ({@link isUnnamedTab} in `lib/pane-name.ts`) — "position": the tab's position in words
- * (`"tab 2"`), read off the digit already sitting in the multiplexer's own raw tab label
- * (`"2"`, or zellij's own `"Tab #2"` shape), never invented. `null` when that raw label carries
- * no digit at all — the signal that sends the row to the centred treatment instead, the name
- * sitting in the middle of the 44px row. This is THE behaviour; there is no other mode.
- */
-function tabPositionBody(agent: AgentView): string | null {
-  const raw = agent.tabLabel?.trim();
-  if (!raw) return null;
-  const digits = raw.match(/\d+/u)?.[0];
-  return digits ? t("home.row.tabPosition", { n: digits }) : null;
-}
-
 /** The row's text: line 1's name, and line 2's two runs. */
 interface RowLines {
   primary: string;
@@ -66,6 +50,9 @@ interface RowLines {
   detailTail: string | null;
   /** The tail is a path (mono, data) rather than a tab or a space (app face). */
   tailMono: boolean;
+  /** The tail is the tab's POSITION, not its name (`tabTitle`'s `positional`) — drawn a shade
+   *  lighter so it never reads as a name the operator chose. */
+  tailPositional: boolean;
 }
 
 // A pane row, used by the triage home and the space view. Usually an agent; for a bare shell pane
@@ -127,16 +114,33 @@ export function AgentCard({
   // that still tells two panes in one tab apart.
   const place = panePlaceParts(agent);
   const lines: RowLines = inPlace
-    ? { primary: paneName(agent), detailLead: null, detailTail: place.tab, tailMono: false }
+    ? {
+        primary: paneName(agent),
+        detailLead: null,
+        detailTail: place.tab?.text ?? null,
+        tailMono: false,
+        tailPositional: place.tab?.positional ?? false,
+      }
     : inTab
-      ? { primary: paneName(agent), detailLead: null, detailTail: paneCwdLine(agent), tailMono: true }
-      : { primary: paneName(agent), detailLead: place.space, detailTail: place.tab, tailMono: false };
+      ? {
+          primary: paneName(agent),
+          detailLead: null,
+          detailTail: paneCwdLine(agent),
+          tailMono: true,
+          tailPositional: false,
+        }
+      : {
+          primary: paneName(agent),
+          detailLead: place.space,
+          detailTail: place.tab?.text ?? null,
+          tailMono: false,
+          tailPositional: place.tab?.positional ?? false,
+        };
   const { primary, detailLead, detailTail } = lines;
   // A workspace-grouped row whose tab has no name of its own reads its position instead — `tab 2` —
-  // or, when the raw label carries no digit at all, nothing: the slot is then skipped outright.
-  const tabIsBlank = inPlace && detailTail === null;
-  const positionText = tabIsBlank ? tabPositionBody(agent) : null;
-  const skipBlankSlot = tabIsBlank && positionText === null;
+  // via `tabTitle` (`lib/pane-name.ts`) — or, when the raw label carries no digit at all, nothing:
+  // the slot is then skipped outright.
+  const skipBlankSlot = inPlace && detailTail === null;
   // The dot leads line 1, INLINE, ahead of the tile — not on the tile's corner. The corner was
   // right at `size-9`: a 10px badge on a 36px tile is a badge. On a 16px tile it is most of the
   // artwork, and shrinking it to fit kills the one glance cue the row has — the resting states are
@@ -224,17 +228,18 @@ export function AgentCard({
                 inPlace && "h-4 items-center",
               )}
             >
-              {positionText !== null ? (
+              {inPlace && lines.tailPositional && detailTail !== null ? (
                 // The unnamed tab's position, a shade lighter than an ordinary tab name so it never
                 // reads as one.
                 <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
-                  {positionText}
+                  {detailTail}
                 </span>
               ) : (
                 <>
                   {/* Both runs of the address are plainly muted — line 2 is one fact in two parts,
                       and weighting either half turns it back into a competition with line 1. The
-                      space gives up width first; the tab takes the rest. */}
+                      space gives up width first; the tab takes the rest. A positional tail (`tab
+                      2`) takes the same shade-lighter ink here as it does alone above. */}
                   {detailLead !== null && (
                     <span className="min-w-0 shrink truncate">{detailLead}</span>
                   )}
@@ -246,7 +251,13 @@ export function AgentCard({
                     </span>
                   )}
                   {detailTail !== null && (
-                    <span className={cn("min-w-0 flex-1 truncate", lines.tailMono && "font-mono")}>
+                    <span
+                      className={cn(
+                        "min-w-0 flex-1 truncate",
+                        lines.tailMono && "font-mono",
+                        lines.tailPositional && "text-muted-foreground/70",
+                      )}
+                    >
                       {detailTail}
                     </span>
                   )}

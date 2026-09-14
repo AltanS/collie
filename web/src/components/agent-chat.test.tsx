@@ -437,9 +437,10 @@ describe("AgentChat — the pane header's identity block", () => {
     const named = renderChat({ agent: base, agents: [base], tabs: [tab] }).container;
     expect(slot(named, "place")?.textContent).toBe("webapp › review");
     cleanup();
-    // A positional tab label is the multiplexer's default, not a name, so the space stands alone.
+    // A positional tab label is the multiplexer's default, not a name someone chose, so the crumb
+    // reads the tab's POSITION instead of its raw number (lib/pane-name.ts § tabTitle).
     const numbered = renderChat({ agent: base, agents: [base], tabs: [{ ...tab, label: "2" }] }).container;
-    expect(slot(numbered, "place")?.textContent).toBe("webapp");
+    expect(slot(numbered, "place")?.textContent).toBe("webapp › tab 2");
     cleanup();
     // The path is gone from this line, even for a pane sitting away from its space root.
     const worktree = { ...base, cwd: "/home/you/webapp/worktrees/fix-42" };
@@ -961,13 +962,14 @@ describe("AgentChat — status rides the header title slot, not the tab strip", 
   it("shows a live status in place of the title, and the tab strip's + stays usable", () => {
     renderChat({ tabs: fixtureTabs });
 
-    // The title is showing, no status yet.
-    expect(screen.getByText("webapp")).toBeInTheDocument();
+    // The title is showing, no status yet. `fixtureTabs` labels w1:t1 "1" — a positional label, so
+    // the place crumb reads its position (lib/pane-name.ts § tabTitle) rather than dropping it.
+    expect(screen.getByText("webapp › tab 1")).toBeInTheDocument();
 
     act(() => setStatus("Sent", "success"));
 
     // The title's own text is gone from the header slot — the status replaced it in place.
-    expect(screen.queryByText("webapp")).not.toBeInTheDocument();
+    expect(screen.queryByText("webapp › tab 1")).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Sent");
 
     // The tab strip's "+" never moved and is still enabled — the control the operator just
@@ -985,7 +987,7 @@ describe("AgentChat — status rides the header title slot, not the tab strip", 
     act(() => vi.advanceTimersByTime(2500));
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(screen.getByText("webapp")).toBeInTheDocument();
+    expect(screen.getByText("webapp › tab 1")).toBeInTheDocument();
   });
 });
 

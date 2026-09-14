@@ -19,8 +19,11 @@
 // the screens do. The two trees have separate tsconfigs and neither imports the other, so the rule
 // is mirrored rather than shared — and `bridge/pane-name.fixtures.json` is the one set of cases BOTH
 // sides run (pane-name.test.ts here, bridge/pane-name.test.ts there). A rule changed on one side
-// alone turns that file red.
+// alone turns that file red. `tabTitle` below is NOT one of the mirrored three: a push has no
+// "lighter ink" to draw, so it names a tab or says nothing about it, never a position in words —
+// that is display, web-only, and the bridge copy stays untouched by it.
 import { shortCwd } from "./format";
+import { t } from "./i18n";
 import type { AgentView, TabView } from "./types";
 
 /** The separator between a space and its tab, on every surface that joins them into one string. */
@@ -73,6 +76,28 @@ export function placeOf(space: string, tabLabel: string | null | undefined): str
 }
 
 /**
+ * A tab's title, wherever one renders alone: the operator's own name, or — when the multiplexer only
+ * numbered the tab ({@link isUnnamedTab} true AND a digit is sitting in the raw label, `"2"` or
+ * zellij's `"Tab #2"`) — that position in words, `"tab 2"`, read off the digit and never invented.
+ * `positional: true` marks the second case so a caller can draw it a shade lighter, the ink the
+ * dashboard row has always used for it — this is the SAME text on every surface now, not a dot on
+ * some and a number on others. `null` only when the raw label carries no name and no digit at all
+ * (an empty label, the honest "nothing to say" case, unchanged since M24).
+ */
+export interface TabTitle {
+  text: string;
+  positional: boolean;
+}
+
+export function tabTitle(raw: string | null | undefined): TabTitle | null {
+  const trimmed = raw?.trim();
+  if (!isUnnamedTab(raw)) return { text: trimmed!, positional: false };
+  const digits = trimmed?.match(/\d+/u)?.[0];
+  if (digits === undefined) return null;
+  return { text: t("home.row.tabPosition", { n: digits }), positional: true };
+}
+
+/**
  * The place, unjoined — because at 390px the two halves must not truncate as one string.
  *
  * Eight panes in the same project all begin `moonward_os › `, so tail-truncating the joined place
@@ -82,8 +107,8 @@ export function placeOf(space: string, tabLabel: string | null | undefined): str
  */
 export interface PlaceParts {
   space: string;
-  /** The tab's own name, or null when it has none (see {@link isUnnamedTab}). */
-  tab: string | null;
+  /** The tab's title, or null when it has none at all (see {@link tabTitle}). */
+  tab: TabTitle | null;
 }
 
 /**
@@ -91,25 +116,25 @@ export interface PlaceParts {
  *
  * `tabs` is optional and is the RAW tab list when the caller has it (the pane header does). Without
  * it the pane's own denormalised `tabLabel` is used, which the bridge has already filtered. Either
- * way the label goes through {@link isUnnamedTab}, so a positional label is dropped on both paths
- * and the two can never disagree.
+ * way the label goes through {@link tabTitle}, so a positional label reads the same way on both
+ * paths and the two can never disagree.
  */
 export function panePlaceParts(pane: AgentView, tabs?: readonly TabView[]): PlaceParts {
   // Host-qualified, the same "untagged is ambient" rule lib/hosts.ts and lib/spaces.ts make: a tab id
   // (`w1:t1`) is unique only within one machine, so a match by id alone could name this pane's place
   // after another member's tab. A solo snapshot tags nothing and matches exactly as it always did.
-  const known = tabs?.find((t) => t.tabId === pane.tabId && (t.host === undefined || t.host === pane.host));
+  const known = tabs?.find((tv) => tv.tabId === pane.tabId && (tv.host === undefined || tv.host === pane.host));
   const raw = known?.label ?? pane.tabLabel;
   return {
     space: pane.workspaceLabel || pane.workspaceId,
-    tab: isUnnamedTab(raw) ? null : raw!.trim(),
+    tab: tabTitle(raw),
   };
 }
 
 /** The same place, joined — for the surfaces that render it as one run of text. */
 export function panePlace(pane: AgentView, tabs?: readonly TabView[]): string {
   const { space, tab } = panePlaceParts(pane, tabs);
-  return tab === null ? space : `${space}${PLACE_SEP}${tab}`;
+  return tab === null ? space : `${space}${PLACE_SEP}${tab.text}`;
 }
 
 /** The pane's cwd, shortened for a phone row, or null when it has none. Line 2 of a card that is

@@ -125,7 +125,7 @@ const SHELL_SIBLINGS: readonly AgentView[] = SIBLINGS.filter((p) => p.kind === "
 const NAME = paneName(PANE);
 const PLACE = panePlaceParts(PANE);
 /** `collie-workspace › UI work`, joined — the header renders the place as one run of text. */
-const PLACE_LINE = `${PLACE.space} › ${PLACE.tab ?? ""}`;
+const PLACE_LINE = `${PLACE.space} › ${PLACE.tab?.text ?? ""}`;
 
 function Crew({ children }: { children: ReactNode }) {
   return (
@@ -197,7 +197,7 @@ function RowShell({
                 <span className="shrink-0 text-muted-foreground/60" aria-hidden>
                   ›
                 </span>
-                <span className="min-w-0 flex-1 truncate">{PLACE.tab}</span>
+                <span className="min-w-0 flex-1 truncate">{PLACE.tab?.text}</span>
               </>
             )}
           </div>
@@ -376,7 +376,7 @@ export function PaneMarkerSection() {
                       <span className="shrink-0 text-muted-foreground/60" aria-hidden>
                         ›
                       </span>
-                      <span className="min-w-0 shrink truncate">{PLACE.tab}</span>
+                      <span className="min-w-0 shrink truncate">{PLACE.tab?.text}</span>
                       <span className="shrink-0 text-muted-foreground/60" aria-hidden>
                         ›
                       </span>

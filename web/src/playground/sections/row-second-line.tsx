@@ -2,9 +2,10 @@
 //
 // Two unnumbered cards say what ships. "As shipped" mounts the real `AgentList` over a fixture
 // shaped from the herdr-shaped multiplexer, and shows its three row shapes at once: a tab with a
-// real name, a tab the multiplexer only numbered (`tab 2`, in `AgentCard`'s lighter ink — see that
-// file's `tabPositionBody`), and a tab with no number to read at all, whose row centres the pane's
-// name instead. "The same dashboard on each multiplexer" mounts the same list three times, once per
+// real name, a tab the multiplexer only numbered (`tab 2`, in the lighter ink `lib/pane-name.ts`'s
+// `tabTitle` marks `positional` — every surface draws it, not just this row), and a tab with no
+// number to read at all, whose row centres the pane's name instead. "The same dashboard on each
+// multiplexer" mounts the same list three times, once per
 // multiplexer this app supports, so the grouped-by-workspace dashboard can be judged on all three
 // rather than just the one it is usually screenshotted on.
 //
