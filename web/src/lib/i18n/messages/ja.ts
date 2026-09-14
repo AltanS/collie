@@ -386,8 +386,8 @@ export const ja: Dictionary = {
   "home.empty.waiting": "Herdrの応答を待機中...",
   "home.empty.panesHint": "ペインはSpaces内にあります。",
   "home.allClear": "対応が必要な項目はありません",
-  "home.place.paneCount.one": "{count}ペイン",
-  "home.place.paneCount.other": "{count}ペイン",
+  "home.workspace.paneCount.one": "{count}ペイン",
+  "home.workspace.paneCount.other": "{count}ペイン",
   "home.sidebar.shells": "シェル",
   "home.sidebar.paneActionsTitle": "タップしてペイン操作を表示",
 

@@ -82,10 +82,11 @@ describe("AgentCard's two lines", () => {
   });
 });
 
-// A list already grouped by PLACE (lib/pane-groups.ts) has said the place in its heading, and the
-// cwd is the same cwd on every row of one tab — so the row is one line, one stated height, and its
-// address and cache reading ride at the end of that line instead of in the trailing column.
-describe("AgentCard in a place group", () => {
+// A list already grouped by WORKSPACE (lib/pane-groups.ts) has said the workspace in its heading, so
+// the row's line 2 carries the TAB and nothing else — blank when that tab has no name of its own.
+// The row states its own height, and its address and cache reading ride at the end of line 1
+// instead of in the trailing column.
+describe("AgentCard in a workspace group", () => {
   const row = (over: Partial<AgentView> = {}) =>
     render(
       <AgentCard
@@ -97,17 +98,30 @@ describe("AgentCard in a place group", () => {
       />,
     );
 
-  it("keeps line 1 and has no line 2 at all", () => {
+  it("keeps line 1 and puts the tab, alone, on line 2", () => {
     const { container } = row();
     expect(line1(container)).toHaveTextContent("logs");
-    expect(line2(container)).toBeNull();
-    // Not the cwd either: that is the `tab` scope's answer, and it is not this one.
+    expect(line2(container)).toHaveTextContent("review");
+    // Not the workspace: the heading above said it. Not the cwd either — that is `tab`'s answer.
+    expect(line2(container)).not.toHaveTextContent("webapp");
     expect(container.textContent).not.toContain("webapp/api");
   });
 
-  it("states the group's pitch rather than letting the tallest row set it", () => {
-    const { container } = row();
-    expect(container.querySelector("button")!.firstElementChild!.className).toMatch(/min-h-11/);
+  it("leaves line 2 blank, not absent, when the tab carries no name of its own", () => {
+    const { container } = row({ tabLabel: "3" });
+    const detail = line2(container)!;
+    expect(detail).not.toBeNull();
+    expect(detail.textContent).toBe("");
+    expect(detail.className).toMatch(/(?:^|\s)h-4(?=\s|$)/);
+  });
+
+  it("states the row's height rather than letting its contents set it", () => {
+    for (const over of [{}, { tabLabel: "3" }]) {
+      const { container } = row(over);
+      expect(container.querySelector("button")!.firstElementChild!.className).toMatch(
+        /(?:^|\s)h-11(?=\s|$)/,
+      );
+    }
   });
 
   it("withholds the bridge's hint, which is the one fact that would change a row's height", () => {

@@ -24,7 +24,7 @@ until explicitly configured.
 **Features**
 
 - **React Router + Vite** with TypeScript, Tailwind, shadcn, and a Bun bridge
-- **Status dashboard** led by what needs your input; every other pane sits under its own space and tab
+- **Status dashboard** led by what needs your input; every other pane sits under its own workspace, tab on the row
 - **Push notifications** when an agent blocks on user input
 - **Quick actions and slash commands** configured per agent
 - **Keypad for terminal control keys**: `Esc`, `Ctrl+C`, arrows, and modifier combinations
@@ -48,7 +48,7 @@ data without installation.
 
 <table>
   <tr>
-    <td align="center" width="50%"><img src="assets/dashboard.png" alt="Collie dashboard — Needs you, then panes grouped by space and tab, then Spaces" width="250"><br><sub><b>Dashboard</b> — agents needing you float to the top</sub></td>
+    <td align="center" width="50%"><img src="assets/dashboard.png" alt="Collie dashboard — Needs you, then panes grouped by workspace, then Spaces" width="250"><br><sub><b>Dashboard</b> — agents needing you float to the top</sub></td>
     <td align="center" width="50%"><img src="assets/ask-question.png" alt="A Claude permission prompt up-leveled into tappable buttons" width="250"><br><sub><b>Ask</b> — the agent's own prompts become tappable buttons</sub></td>
   </tr>
   <tr>

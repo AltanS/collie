@@ -384,8 +384,8 @@ export const ko: Dictionary = {
   "home.empty.waiting": "Herdr 대기 중",
   "home.empty.panesHint": "창 목록은 Spaces에 있습니다.",
   "home.allClear": "확인 필요한 항목 없음",
-  "home.place.paneCount.one": "창 {count}개",
-  "home.place.paneCount.other": "창 {count}개",
+  "home.workspace.paneCount.one": "창 {count}개",
+  "home.workspace.paneCount.other": "창 {count}개",
   "home.sidebar.shells": "셸",
   "home.sidebar.paneActionsTitle": "창 작업 보기",
 

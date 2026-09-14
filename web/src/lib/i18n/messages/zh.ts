@@ -373,8 +373,8 @@ export const zh: Dictionary = {
   "home.empty.waiting": "等待 Herdr 响应...",
   "home.empty.panesHint": "窗格位于“空间”列表中。",
   "home.allClear": "无待处理项",
-  "home.place.paneCount.one": "{count} 个窗格",
-  "home.place.paneCount.other": "{count} 个窗格",
+  "home.workspace.paneCount.one": "{count} 个窗格",
+  "home.workspace.paneCount.other": "{count} 个窗格",
   "home.sidebar.shells": "终端实例",
   "home.sidebar.paneActionsTitle": "查看窗格操作选项",
 

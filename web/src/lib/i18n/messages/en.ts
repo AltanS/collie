@@ -408,8 +408,8 @@ export const en = {
   "home.empty.waiting": "Waiting for Herdr…",
   "home.empty.panesHint": "Your panes are under Spaces.",
   "home.allClear": "Nothing needs you",
-  "home.place.paneCount.one": "{count} pane",
-  "home.place.paneCount.other": "{count} panes",
+  "home.workspace.paneCount.one": "{count} pane",
+  "home.workspace.paneCount.other": "{count} panes",
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Tap for pane actions",
 

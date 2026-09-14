@@ -1,96 +1,138 @@
-// THE DASHBOARD'S SECOND AXIS: a pane sits under the PLACE it lives in.
+// THE DASHBOARD'S SECOND AXIS: a pane sits under the WORKSPACE it lives in.
 //
 // `lib/triage.ts` answers "what needs me", and that answer stays on top of the dashboard because it
 // is the dashboard's job. Everything it does NOT flag is answered here instead, by grouping: one
-// group per `space › tab`, headed by that place and counted, so a row no longer has to repeat an
-// address eighteen times down the page. Three rows under one tab heading are panes, because a tab is
-// what contains panes — the structure says the KIND, which is the thing no surface used to say.
+// group per workspace, headed by that workspace's name and counted, so a row no longer has to repeat
+// an address eighteen times down the page. The workspace is the level the operator actually thinks
+// in — it is the project — and a tab is a divider inside it, so a group per tab cut one project into
+// three headings that each held two rows. The tab did not disappear: it moved onto the row, on line
+// 2, where it tells two rows of one workspace apart and costs no heading.
 //
 // ── WHAT DECIDES THE ORDER ───────────────────────────────────────────────────
-// Groups run by SPACE NUMBER — the multiplexer's own numbering, the same order the space strip and
-// the space navigator use — and within a space, by the order the tabs were first met in the list the
-// bridge sent. Panes inside a group keep that same order untouched, which is the rule `triage()`
-// already keeps for a bucket: the bridge sends one stable arrangement (status, space, tab, position
-// in the tab) and it is the arrangement the operator made at the desk. A row therefore only ever
-// moves when it changes GROUP, never because a clock ticked.
+// Groups run by MACHINE first, in the order the bridge sent them (the lead leads), then by WORKSPACE
+// NUMBER — the multiplexer's own numbering, the same order the space strip and the space navigator
+// use. A crew's two machines therefore never interleave their workspaces, which numbering alone
+// would do, because both machines number from 1.
+//
+// Inside a group the bridge's own arrangement is kept: the tabs in the order they were first met,
+// and the panes of a tab in the order they arrived. That is the rule `triage()` already keeps for a
+// bucket — the bridge sends one stable arrangement (status, workspace, tab, position in the tab) and
+// it is the arrangement the operator made at the desk. A row therefore only ever moves when it
+// changes GROUP, never because a clock ticked.
 //
 // ── SHELLS SIT WITH THEIR TAB ────────────────────────────────────────────────
-// A bare shell is a pane of the tab it is in, so it lands in that tab's group rather than in a
-// trailing pen of its own — after the agents, because a group is read for its work first. That is
-// the one place the given order is not preserved verbatim, and it is deliberate.
+// A bare shell is a pane of the tab it is in, so it lands after that tab's agents rather than in a
+// trailing pen at the end of the workspace. That is the one place the given order is not preserved
+// verbatim, and it is deliberate.
 //
-// Pure and host-aware, so a crew's two `w1`s are two places (lib/hosts.ts § spaceKey).
+// Pure and host-aware, so a crew's two `w1`s are two workspaces (lib/hosts.ts § spaceKey).
 import { hostKey } from "./hosts";
-import { panePlace } from "./pane-name";
+import { panePlaceParts } from "./pane-name";
 import type { AgentView } from "./types";
 
 /** The same separator `lib/hosts.ts` composes its keys with: a byte no label may contain. */
 const KEY_SEP = "\u0000";
 
-/** One `space › tab` and the panes in it. */
-export interface PlaceGroup {
-  /** `(host, workspaceId, tabId)` — the only triple that names one tab in a merged herd. */
+/** One workspace and the panes of it that this list is showing. */
+export interface WorkspaceGroup {
+  /** `(host, session, workspaceId)` — the only triple that names one workspace in a merged herd. */
   key: string;
-  /** The heading's text: `space › tab`, or the space alone when the tab carries no name. */
+  /** The heading's text: the workspace's own name. */
   label: string;
-  /** Agents in the order they were given, then that tab's bare shells in theirs. */
+  /** Tab by tab in the order they were met, each tab's agents then that tab's bare shells. */
   panes: AgentView[];
 }
 
-interface Bucket {
-  key: string;
-  label: string;
-  /** The multiplexer's own space number — the outer sort key. */
-  workspaceNumber: number;
-  /** Where this tab was first met in the given lists — the inner sort key, i.e. tab order. */
+/** One tab inside a workspace bucket. Never a heading — only an order. */
+interface TabBucket {
+  /** Where this tab was first met in the given lists. */
   seq: number;
   agents: AgentView[];
   shells: AgentView[];
 }
 
-/**
- * `(host, session, workspaceId, tabId)`. A workspace id is unique only within one session on one
- * machine, exactly as a pane id is (`paneRowKey`), so a widened body holds several tabs answering to
- * `w1:t1` and only the full address tells them apart. `hostKey` supplies the untagged-is-ambient
- * half of the rule, so a solo un-widened list keys as a pure prefix extension of the bare ids.
- */
-export function placeKey(pane: AgentView): string {
-  return `${hostKey(pane)}${KEY_SEP}${pane.session ?? ""}${KEY_SEP}${pane.workspaceId}${KEY_SEP}${pane.tabId}`;
+interface Bucket {
+  key: string;
+  label: string;
+  /** Where this pane's machine was first met — the outermost sort key. */
+  hostSeq: number;
+  /** The multiplexer's own workspace number — the sort key within one machine. */
+  workspaceNumber: number;
+  /** Where this workspace was first met, so two workspaces sharing a number still have an order. */
+  seq: number;
+  tabs: Map<string, TabBucket>;
 }
 
 /**
- * Bucket a herd by place. Every pane appears exactly once, empty groups do not exist, and a caller
- * that hands the same two lists twice gets the same groups in the same order.
+ * `(host, session, workspaceId)`. A workspace id is unique only within one session on one machine,
+ * exactly as a pane id is (`paneRowKey`), so a widened body holds several workspaces answering to
+ * `w1` and only the full address tells them apart. `hostKey` supplies the untagged-is-ambient half
+ * of the rule, so a solo un-widened list keys as a pure prefix extension of the bare ids.
  */
-export function groupPanesByPlace(
+export function workspaceGroupKey(pane: AgentView): string {
+  return `${hostKey(pane)}${KEY_SEP}${pane.session ?? ""}${KEY_SEP}${pane.workspaceId}`;
+}
+
+/**
+ * Bucket a herd by workspace. Every pane handed in appears exactly once, empty groups do not exist,
+ * and a caller that hands the same two lists twice gets the same groups in the same order.
+ *
+ * The caller decides what is IN the two lists: the dashboard withholds the panes it has already
+ * listed under "needs you", so a group counts the rows actually under its heading and a workspace
+ * whose every pane is urgent gets no heading at all.
+ */
+export function groupPanesByWorkspace(
   agents: readonly AgentView[],
   shellPanes: readonly AgentView[] = [],
-): PlaceGroup[] {
+): WorkspaceGroup[] {
   const byKey = new Map<string, Bucket>();
-  let seq = 0;
+  const hostSeqs = new Map<string, number>();
+  let workspaceSeq = 0;
+  let tabSeq = 0;
 
-  const bucket = (pane: AgentView): Bucket => {
-    const key = placeKey(pane);
-    const found = byKey.get(key);
-    if (found) return found;
-    const made: Bucket = {
-      key,
-      // The joined form, because a heading is one run of text with the whole width of the page —
-      // the two-span split `agent-card.tsx` uses exists for a 390px ROW, which has to truncate.
-      label: panePlace(pane),
-      workspaceNumber: pane.workspaceNumber,
-      seq: seq++,
-      agents: [],
-      shells: [],
-    };
-    byKey.set(key, made);
-    return made;
+  const tabOf = (pane: AgentView): TabBucket => {
+    const key = workspaceGroupKey(pane);
+    let bucket = byKey.get(key);
+    if (bucket === undefined) {
+      const host = hostKey(pane);
+      let hostSeq = hostSeqs.get(host);
+      if (hostSeq === undefined) {
+        hostSeq = hostSeqs.size;
+        hostSeqs.set(host, hostSeq);
+      }
+      bucket = {
+        key,
+        // The workspace's own name, by the one place rule (lib/pane-name.ts) — the same string the
+        // space strip and the crumb use, so the heading and the strip can never disagree.
+        label: panePlaceParts(pane).space,
+        hostSeq,
+        workspaceNumber: pane.workspaceNumber,
+        seq: workspaceSeq++,
+        tabs: new Map(),
+      };
+      byKey.set(key, bucket);
+    }
+    let tab = bucket.tabs.get(pane.tabId);
+    if (tab === undefined) {
+      tab = { seq: tabSeq++, agents: [], shells: [] };
+      bucket.tabs.set(pane.tabId, tab);
+    }
+    return tab;
   };
 
-  for (const a of agents) bucket(a).agents.push(a);
-  for (const s of shellPanes) bucket(s).shells.push(s);
+  for (const a of agents) tabOf(a).agents.push(a);
+  for (const s of shellPanes) tabOf(s).shells.push(s);
 
   return [...byKey.values()]
-    .toSorted((a, b) => a.workspaceNumber - b.workspaceNumber || a.seq - b.seq)
-    .map((g) => ({ key: g.key, label: g.label, panes: [...g.agents, ...g.shells] }));
+    .toSorted(
+      (a, b) =>
+        a.hostSeq - b.hostSeq || a.workspaceNumber - b.workspaceNumber || a.seq - b.seq,
+    )
+    .map((g) => ({
+      key: g.key,
+      label: g.label,
+      panes: [...g.tabs.values()]
+        .toSorted((a, b) => a.seq - b.seq)
+        .flatMap((tab) => tab.agents.concat(tab.shells)),
+    }));
 }

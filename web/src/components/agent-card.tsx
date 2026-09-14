@@ -18,8 +18,9 @@ interface AgentCardProps {
    * Where the row is being shown. "herd" (default) is a flat list across every space, so line 2
    * carries the place. "tab" is a list already grouped under its space and tab, so line 2 is the
    * path alone. "place" is the dashboard's grouped list, where the heading above already says the
-   * place and the row is ONE LINE: no line 2 at all, and the address and the cache reading ride at
-   * the end of line 1 instead of in the trailing column. Line 1 is the pane's name in all three.
+   * WORKSPACE, so line 2 carries the tab alone — and carries nothing at all when that tab has no
+   * name of its own, in a slot that keeps its height either way. Line 1 is the pane's name in all
+   * three.
    */
   scope?: "herd" | "tab" | "place";
   /**
@@ -83,13 +84,18 @@ export function AgentCard({
   const isShell = agent.kind === "shell";
   const blocked = agent.status === "blocked";
   const inTab = scope === "tab";
-  // ── THE PLACE-GROUPED ROW IS ONE LINE, AND ONE HEIGHT ────────────────────────
-  // Under a `space › tab` heading (lib/pane-groups.ts) line 2 has nothing left to say: the place is
-  // the heading, and the cwd is the same cwd on every row of a tab. So the row drops it — and drops
-  // the bridge's hint with it, which is the one fact that would make two rows of a group different
-  // heights. The group's pitch is therefore STATED, not emergent: `min-h-11`, 44px, the app's touch
-  // floor, which one 20px line inside `py-2.5` already sits under. Every row in a group is that
-  // height whatever it has to say, so nothing in the list can move (DESIGN.md §2).
+  // ── THE WORKSPACE-GROUPED ROW CARRIES ITS TAB, AT ONE HEIGHT ─────────────────
+  // Under a WORKSPACE heading (lib/pane-groups.ts) line 2 has one fact left worth saying: the tab.
+  // The workspace is the heading and the cwd is the same cwd down most of a project, but the tab is
+  // what tells two rows of one workspace apart — so line 2 is the tab's name, and it is BLANK when
+  // the multiplexer only numbered that tab (`isUnnamedTab`), because a number is not a name.
+  //
+  // Blank is not absent. The slot is always rendered and always 16px, and the row STATES its own
+  // height rather than letting its contents set it: `h-11`, 44px, the app's touch floor, holding a
+  // 20px line over a 16px slot with no vertical padding of its own. Every row of every group is that
+  // height whether its tab is named or not, so nothing in the list can move (DESIGN.md §2). The
+  // bridge's hint stays off the row for the same reason — it is a sentence, and a sentence has no
+  // height anyone can state.
   //
   // The trailing meta comes with it. The column's two fixed corners are 41px tall and would set the
   // row's height on their own, so a one-line row takes `PaneMeta`'s `inline` layout instead — the
@@ -103,7 +109,7 @@ export function AgentCard({
   // that still tells two panes in one tab apart.
   const place = panePlaceParts(agent);
   const lines: RowLines = inPlace
-    ? { primary: paneName(agent), detailLead: null, detailTail: null, tailMono: false }
+    ? { primary: paneName(agent), detailLead: null, detailTail: place.tab, tailMono: false }
     : inTab
       ? { primary: paneName(agent), detailLead: null, detailTail: paneCwdLine(agent), tailMono: true }
       : { primary: paneName(agent), detailLead: place.space, detailTail: place.tab, tailMono: false };
@@ -141,8 +147,10 @@ export function AgentCard({
           flat
             ? "flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[inset_2px_0_0_0_transparent]"
             : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
-          // The group's stated pitch, and the reason is a paragraph up at `inPlace`.
-          inPlace && "min-h-11",
+          // The group's stated pitch. `py-0` because the height is the statement here — the flat
+          // row's own `py-2.5` around two lines would make it 56px and the number would stop being
+          // a number. The reason is a paragraph up at `inPlace`.
+          inPlace && "h-11 py-0",
           // The blocked tint survives both treatments — it's the one cue that reads at a glance.
           // The EDGE cannot: one class string, two containers. A card sits in a gap list and already
           // carries a border in every state, so it only recolours. A flat row sits in a divide-y
@@ -181,11 +189,16 @@ export function AgentCard({
           </div>
 
           {/* Only rendered when there's something to say — a pane with neither a tab nor a name of
-              its own is a one-line row. */}
-          {(detailLead !== null || detailTail !== null) && (
+              its own is a one-line row. A workspace-grouped row is the exception: its slot is
+              always there, blank or not, because that is what keeps the group at one pitch. */}
+          {(inPlace || detailLead !== null || detailTail !== null) && (
             <div
               data-slot="agent-row-detail"
-              className="flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground"
+              className={cn(
+                "flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground",
+                // 16px whatever is in it, which is the slot half of the stated height above.
+                inPlace && "h-4 items-center",
+              )}
             >
               {/* Both runs of the address are plainly muted — line 2 is one fact in two parts, and
                   weighting either half turns it back into a competition with line 1. The space
@@ -209,7 +222,7 @@ export function AgentCard({
           {/* The bridge's own sentence about this pane, when it sent one — text, never a branch
               (components/pane-hint.tsx). It changes nothing about the row: a hinted pane is still a
               shell, still sorts where an unknown status sorts, and still opens the same view.
-              Withheld on a place-grouped row, which is one stated line; see `inPlace` above. */}
+              Withheld on a workspace-grouped row, whose height is stated; see `inPlace` above. */}
           {!inPlace && <PaneHint hint={agent.hint} />}
         </div>
 

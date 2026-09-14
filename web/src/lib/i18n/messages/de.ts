@@ -391,8 +391,8 @@ export const de: Dictionary = {
   "home.empty.waiting": "Warten auf Herdr...",
   "home.empty.panesHint": "Panes befinden sich unter Spaces.",
   "home.allClear": "Kein Handlungsbedarf",
-  "home.place.paneCount.one": "{count} Pane",
-  "home.place.paneCount.other": "{count} Panes",
+  "home.workspace.paneCount.one": "{count} Pane",
+  "home.workspace.paneCount.other": "{count} Panes",
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Pane-Aktionen anzeigen",
 

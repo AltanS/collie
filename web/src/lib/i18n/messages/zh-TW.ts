@@ -369,8 +369,8 @@ export const zhTW: Dictionary = {
   "home.empty.waiting": "等待 Herdr 回應...",
   "home.empty.panesHint": "窗格位於「空間」清單中。",
   "home.allClear": "沒有待處理項目",
-  "home.place.paneCount.one": "{count} 個窗格",
-  "home.place.paneCount.other": "{count} 個窗格",
+  "home.workspace.paneCount.one": "{count} 個窗格",
+  "home.workspace.paneCount.other": "{count} 個窗格",
   "home.sidebar.shells": "終端機執行個體",
   "home.sidebar.paneActionsTitle": "查看窗格操作選項",
 

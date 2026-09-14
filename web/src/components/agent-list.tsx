@@ -4,7 +4,7 @@ import { clockTime } from "@/lib/format";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { SectionHeader } from "@/components/section-header";
 import { ListGroup } from "@/components/ui/list-group";
-import { groupPanesByPlace } from "@/lib/pane-groups";
+import { groupPanesByWorkspace } from "@/lib/pane-groups";
 import { bucketOf, sectionHeaderProps, triage, type TriageKey } from "@/lib/triage";
 import type { AgentView, BridgeStatus } from "@/lib/types";
 import { paneRowKey } from "@/lib/hosts";
@@ -15,9 +15,9 @@ import { useLocale } from "@/hooks/use-locale";
 interface AgentListProps {
   agents: AgentView[];
   /**
-   * Bare shell panes. They join their own tab's group, after that tab's agents — a shell is a pane
-   * of the tab it sits in, not a species that deserves a pen of its own (lib/pane-groups.ts). Omit
-   * and the list is agents alone, exactly as it was.
+   * Bare shell panes. They join their own workspace's group, after that tab's agents — a shell is a
+   * pane of the tab it sits in, not a species that deserves a pen of its own (lib/pane-groups.ts).
+   * Omit and the list is agents alone, exactly as it was.
    */
   shellPanes?: AgentView[];
   bridge?: BridgeStatus | undefined;
@@ -50,17 +50,23 @@ const NO_PANES: AgentView[] = [];
 // still carrying its own place on line 2 — those two groups are by URGENCY, so a row in them has to
 // say where it came from. That is the dashboard's job and it does not move.
 //
-// THEN, everything else, BY PLACE. One group per `space › tab`, headed by that place and counted,
-// in space-number and tab order (lib/pane-groups.ts), with the panes inside in the order the bridge
-// sent. What this replaces is the Working and Recent sections, and the argument for replacing them
-// is the complaint they caused: a flat list of eighteen rows, each repeating an address, said
+// THEN, everything else, BY WORKSPACE. One group per workspace, headed by its name and counted, in
+// machine and workspace-number order (lib/pane-groups.ts), with the panes inside in the order the
+// bridge sent. What this replaces is the Working and Recent sections, and the argument for replacing
+// them is the complaint they caused: a flat list of eighteen rows, each repeating an address, said
 // nothing about what KIND of thing a row was, and a status word the row's own dot already carries
-// is a poor heading to spend a group on. Three rows under one tab heading are panes, because a tab
-// is what holds panes. The row then has nothing left to put on line 2, so it does not have one
-// (`AgentCard` at `scope="place"`) and the group reads as one 44px pitch.
+// is a poor heading to spend a group on. Rows under one workspace heading are panes, because that is
+// what a workspace holds. The workspace is the level the operator thinks in, so it is the level the
+// heading names; the tab drops onto line 2 of the row (`AgentCard` at `scope="place"`), where it
+// tells two rows apart without spending a heading, and the group reads as one 44px pitch.
 //
-// The sort toggle and the Recent fold went with those two sections: a group of three under its own
-// tab is not a tail to fold away, and there is no clock left in the order to reverse.
+// A ROW IS LISTED ONCE. An urgent pane is PULLED out of its workspace rather than copied to the top:
+// it is one thing, and two rows for it would mean answering it twice. So the group's count counts
+// the rows actually under the heading, and a workspace whose every pane needs you has no group left
+// at all — it is entirely on top, which is where you are already looking.
+//
+// The sort toggle and the Recent fold went with those two sections: a workspace's handful of rows is
+// not a tail to fold away, and there is no clock left in the order to reverse.
 export function AgentList({
   agents,
   shellPanes = NO_PANES,
@@ -116,11 +122,13 @@ export function AgentList({
   }
 
   // Two passes over one herd. The attention buckets keep `triage()` exactly as they had it; the
-  // rest of the panes leave triage behind entirely and are grouped by place, in the order the
-  // bridge sent them (which is what `filter` preserves here).
+  // rest of the panes leave triage behind entirely and are grouped by workspace, in the order the
+  // bridge sent them (which is what `filter` preserves here). That `filter` is the whole of the
+  // pulled-out rule: a pane listed on top is never handed to the grouper, so it cannot appear a
+  // second time and the group's count never counts it.
   const all = triage(agents);
   const urgent = all.filter((s) => ATTENTION.has(s.key) && s.agents.length > 0);
-  const groups = groupPanesByPlace(
+  const groups = groupPanesByWorkspace(
     agents.filter((a) => !ATTENTION.has(bucketOf(a))),
     shellPanes,
   );
@@ -169,9 +177,9 @@ export function AgentList({
         </section>
       ))}
 
-      {/* Everything else, by place. The heading IS the marker: it names the tab and counts what is
-          inside it, so the rows under it need say neither. Flat rows in ONE bordered group, which
-          gives the run of hairlines a first edge and a last edge for 2px. */}
+      {/* Everything else, by workspace. The heading IS the marker: it names the workspace and counts
+          the rows it actually holds, so a row under it says neither. Flat rows in ONE bordered
+          group, which gives the run of hairlines a first edge and a last edge for 2px. */}
       {groups.map((g) => (
         <section key={g.key} className="flex flex-col gap-2">
           <SectionHeader
@@ -179,9 +187,10 @@ export function AgentList({
             trailing={
               // The count in words rather than in the header's own `(n)` parentheses: this heading
               // is an address, and "3 panes" after it says what the three things ARE — which is the
-              // whole reason the list is grouped this way.
+              // whole reason the list is grouped this way. It counts what is LISTED here, not what
+              // the workspace holds: a pane pulled to the top is answered up there.
               <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                {tn("home.place.paneCount", g.panes.length)}
+                {tn("home.workspace.paneCount", g.panes.length)}
               </span>
             }
           />

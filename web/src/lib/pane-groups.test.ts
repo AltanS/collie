@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { groupPanesByPlace, placeKey } from "./pane-groups";
+import { groupPanesByWorkspace, workspaceGroupKey } from "./pane-groups";
 import type { AgentView } from "./types";
 
 function pane(paneId: string, over: Partial<AgentView> = {}): AgentView {
@@ -19,59 +19,77 @@ function pane(paneId: string, over: Partial<AgentView> = {}): AgentView {
   };
 }
 
-const labels = (gs: ReturnType<typeof groupPanesByPlace>) => gs.map((g) => g.label);
-const ids = (gs: ReturnType<typeof groupPanesByPlace>) => gs.map((g) => g.panes.map((p) => p.paneId));
+const labels = (gs: ReturnType<typeof groupPanesByWorkspace>) => gs.map((g) => g.label);
+const ids = (gs: ReturnType<typeof groupPanesByWorkspace>) =>
+  gs.map((g) => g.panes.map((p) => p.paneId));
 
-describe("groupPanesByPlace — one group per space › tab", () => {
-  it("heads a group with the joined place", () => {
-    expect(labels(groupPanesByPlace([pane("p1")]))).toEqual(["collie-workspace › UI work"]);
+describe("groupPanesByWorkspace — one group per workspace", () => {
+  it("heads a group with the workspace's own name, never with its tab", () => {
+    expect(labels(groupPanesByWorkspace([pane("p1")]))).toEqual(["collie-workspace"]);
   });
 
-  it("heads an unnamed tab's group with the space alone", () => {
-    // Herdr labels an unlabelled tab positionally; that is not a name (lib/pane-name.ts).
-    expect(labels(groupPanesByPlace([pane("p1", { tabLabel: "2" })]))).toEqual(["collie-workspace"]);
-    expect(labels(groupPanesByPlace([pane("p1", { tabLabel: undefined })]))).toEqual([
-      "collie-workspace",
-    ]);
+  it("falls back to the workspace id when the multiplexer gave it no name", () => {
+    expect(labels(groupPanesByWorkspace([pane("p1", { workspaceLabel: "" })]))).toEqual(["w1"]);
   });
 
-  it("puts two tabs of one space in two groups, and keeps each tab's panes together", () => {
-    const groups = groupPanesByPlace([
+  it("keeps two tabs of one workspace in ONE group", () => {
+    const groups = groupPanesByWorkspace([
       pane("a1", { tabId: "w1:t1", tabLabel: "UI work" }),
       pane("b1", { tabId: "w1:t2", tabLabel: "docs" }),
       pane("a2", { tabId: "w1:t1", tabLabel: "UI work" }),
     ]);
-    expect(labels(groups)).toEqual(["collie-workspace › UI work", "collie-workspace › docs"]);
-    expect(ids(groups)).toEqual([["a1", "a2"], ["b1"]]);
+    expect(labels(groups)).toEqual(["collie-workspace"]);
+    // Tab by tab, in the order the tabs were met — not in the order the panes arrived.
+    expect(ids(groups)).toEqual([["a1", "a2", "b1"]]);
   });
 
   it("has no empty group and loses no pane", () => {
-    const groups = groupPanesByPlace([pane("a"), pane("b", { tabId: "w1:t2", tabLabel: "docs" })]);
+    const groups = groupPanesByWorkspace([
+      pane("a"),
+      pane("b", { workspaceId: "w2", workspaceNumber: 2, tabId: "w2:t1" }),
+    ]);
     expect(groups.every((g) => g.panes.length > 0)).toBe(true);
     expect(groups.flatMap((g) => g.panes).length).toBe(2);
   });
+
+  it("groups only what it was handed — a pulled-out pane is in neither a group nor a count", () => {
+    // The dashboard withholds the rows it already listed on top; the count is what is left.
+    const groups = groupPanesByWorkspace([pane("stays"), pane("also")]);
+    expect(groups[0]!.panes).toHaveLength(2);
+    expect(groupPanesByWorkspace([pane("stays")])[0]!.panes).toHaveLength(1);
+  });
 });
 
-describe("groupPanesByPlace — the order", () => {
-  it("runs by space number, whatever order the spaces arrived in", () => {
-    const groups = groupPanesByPlace([
+describe("groupPanesByWorkspace — the order", () => {
+  it("runs by workspace number, whatever order the workspaces arrived in", () => {
+    const groups = groupPanesByWorkspace([
       pane("c", { workspaceId: "w3", workspaceLabel: "three", workspaceNumber: 3, tabId: "w3:t1" }),
       pane("a", { workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1" }),
       pane("b", { workspaceId: "w2", workspaceLabel: "two", workspaceNumber: 2, tabId: "w2:t1" }),
     ]);
-    expect(ids(groups)).toEqual([["a"], ["b"], ["c"]]);
+    expect(labels(groups)).toEqual(["one", "two", "three"]);
   });
 
-  it("runs by tab order inside a space — the order the bridge sent them", () => {
-    const groups = groupPanesByPlace([
+  it("keeps a machine's workspaces together, in the order the bridge sent the machines", () => {
+    // Both machines number from 1, so a sort on the number alone would interleave them.
+    const groups = groupPanesByWorkspace([
+      pane("lead2", { host: "lodge", workspaceId: "w2", workspaceLabel: "lodge-two", workspaceNumber: 2 }),
+      pane("peer1", { host: "attic", workspaceId: "w1", workspaceLabel: "attic-one", workspaceNumber: 1 }),
+      pane("lead1", { host: "lodge", workspaceId: "w1", workspaceLabel: "lodge-one", workspaceNumber: 1 }),
+    ]);
+    expect(labels(groups)).toEqual(["lodge-one", "lodge-two", "attic-one"]);
+  });
+
+  it("runs the tabs inside a workspace in the order the bridge sent them", () => {
+    const groups = groupPanesByWorkspace([
       pane("second", { tabId: "w1:t2", tabLabel: "docs" }),
       pane("first", { tabId: "w1:t1", tabLabel: "UI work" }),
     ]);
-    expect(labels(groups)).toEqual(["collie-workspace › docs", "collie-workspace › UI work"]);
+    expect(ids(groups)).toEqual([["second", "first"]]);
   });
 
-  it("keeps the bridge's order inside a group, and never sorts by a clock", () => {
-    const groups = groupPanesByPlace([
+  it("keeps the bridge's order inside a tab, and never sorts by a clock", () => {
+    const groups = groupPanesByWorkspace([
       pane("p3", { lastActiveAt: 1 }),
       pane("p1", { lastActiveAt: 900 }),
       pane("p2", { lastActiveAt: 500 }),
@@ -81,53 +99,61 @@ describe("groupPanesByPlace — the order", () => {
 
   it("is stable — the same lists twice give the same groups in the same order", () => {
     const herd = [pane("a"), pane("b", { tabId: "w1:t2", tabLabel: "docs" })];
-    expect(groupPanesByPlace(herd).map((g) => g.key)).toEqual(
-      groupPanesByPlace(herd).map((g) => g.key),
+    expect(groupPanesByWorkspace(herd).map((g) => g.key)).toEqual(
+      groupPanesByWorkspace(herd).map((g) => g.key),
     );
   });
 });
 
-describe("groupPanesByPlace — shells", () => {
-  it("puts a shell in its own tab's group, after the agents", () => {
-    const groups = groupPanesByPlace(
-      [pane("a1"), pane("a2")],
+describe("groupPanesByWorkspace — shells", () => {
+  it("puts a shell after its OWN tab's agents, not at the end of the workspace", () => {
+    const groups = groupPanesByWorkspace(
+      [pane("a1"), pane("a2", { tabId: "w1:t2", tabLabel: "docs" })],
       [pane("sh", { kind: "shell", agent: "shell" })],
     );
-    expect(ids(groups)).toEqual([["a1", "a2", "sh"]]);
+    expect(ids(groups)).toEqual([["a1", "sh", "a2"]]);
   });
 
-  it("opens a group for a tab that holds only shells", () => {
-    const groups = groupPanesByPlace(
-      [pane("a1")],
-      [pane("sh", { kind: "shell", tabId: "w1:t2", tabLabel: "logs" })],
+  it("opens a group for a workspace that holds only shells", () => {
+    const groups = groupPanesByWorkspace(
+      [],
+      [pane("sh", { kind: "shell", workspaceLabel: "logs-box", tabLabel: "logs" })],
     );
-    expect(labels(groups)).toEqual(["collie-workspace › UI work", "collie-workspace › logs"]);
+    expect(labels(groups)).toEqual(["logs-box"]);
   });
 
   it("takes no shells at all without complaint", () => {
-    expect(groupPanesByPlace([pane("a")])).toHaveLength(1);
-    expect(groupPanesByPlace([], [])).toEqual([]);
+    expect(groupPanesByWorkspace([pane("a")])).toHaveLength(1);
+    expect(groupPanesByWorkspace([], [])).toEqual([]);
   });
 });
 
-describe("placeKey — a tab id is not an address on its own", () => {
-  it("tells two machines' identically numbered tabs apart", () => {
-    expect(placeKey(pane("p", { host: "lodge" }))).not.toBe(placeKey(pane("p", { host: "attic" })));
+describe("workspaceGroupKey — a workspace id is not an address on its own", () => {
+  it("tells two machines' identically numbered workspaces apart", () => {
+    expect(workspaceGroupKey(pane("p", { host: "lodge" }))).not.toBe(
+      workspaceGroupKey(pane("p", { host: "attic" })),
+    );
   });
 
-  it("tells two sessions' identically numbered tabs apart", () => {
-    expect(placeKey(pane("p", { session: "a" }))).not.toBe(placeKey(pane("p", { session: "b" })));
+  it("tells two sessions' identically numbered workspaces apart", () => {
+    expect(workspaceGroupKey(pane("p", { session: "a" }))).not.toBe(
+      workspaceGroupKey(pane("p", { session: "b" })),
+    );
   });
 
-  it("keeps two machines' same-numbered tabs in two groups", () => {
-    const groups = groupPanesByPlace([
+  it("keeps two machines' same-numbered workspaces in two groups", () => {
+    const groups = groupPanesByWorkspace([
       pane("p", { host: "lodge", workspaceLabel: "lodge-proj" }),
       pane("p", { host: "attic", workspaceLabel: "attic-proj" }),
     ]);
     expect(groups).toHaveLength(2);
   });
 
+  it("ignores the tab — one workspace is one key however many tabs it has", () => {
+    expect(workspaceGroupKey(pane("p", { tabId: "w1:t9" }))).toBe(workspaceGroupKey(pane("p")));
+  });
+
   it("degrades to the bare ids when nothing is tagged", () => {
-    expect(placeKey(pane("p"))).toBe("\u0000\u0000w1\u0000w1:t1");
+    expect(workspaceGroupKey(pane("p"))).toBe("\u0000\u0000w1");
   });
 });

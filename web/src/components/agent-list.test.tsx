@@ -33,7 +33,7 @@ const headings = () =>
 
 
 
-describe("AgentList — two axes, urgency then place", () => {
+describe("AgentList — two axes, urgency then workspace", () => {
   const herd = [
     agent("blocked", "blocked", { lastActiveAt: 500, lastSeenAt: 1 }),
     agent("unseen", "done", { lastActiveAt: 400, lastSeenAt: 1 }),
@@ -41,12 +41,12 @@ describe("AgentList — two axes, urgency then place", () => {
     agent("old", "idle", { lastActiveAt: 1, lastSeenAt: 200, ...UI_WORK }),
   ];
 
-  it("puts the two attention sections on top, then one heading per place", () => {
+  it("puts the two attention sections on top, then one heading per workspace", () => {
     render(<AgentList agents={herd} onOpen={vi.fn()} />);
     expect(headings()).toEqual([
       expect.stringContaining("needs you"),
       expect.stringContaining("ready · unseen"),
-      "collie-workspace › ui work",
+      "collie-workspace",
     ]);
   });
 
@@ -76,7 +76,7 @@ describe("AgentList — two axes, urgency then place", () => {
     expect(screen.getByRole("button", { name: /moonward_os.*fix-auth/ })).toBeInTheDocument();
   });
 
-  it("drops line 2 from a place-grouped row — the heading above already says it", () => {
+  it("puts the TAB on line 2 of a workspace-grouped row — the heading said the workspace", () => {
     render(
       <AgentList
         agents={[
@@ -90,7 +90,10 @@ describe("AgentList — two axes, urgency then place", () => {
       />,
     );
     const row = screen.getByRole("button", { name: /rewrite the loader/ });
-    expect(row.querySelector('[data-slot="agent-row-detail"]')).toBeNull();
+    const detail = row.querySelector('[data-slot="agent-row-detail"]')!;
+    expect(detail).toHaveTextContent("fix-auth");
+    // The workspace is the heading above; repeating it on the row is what this grouping saves.
+    expect(detail).not.toHaveTextContent("moonward_os");
     // The title still takes line 1's fill and weight — it is the only fact unique to this row.
     expect(screen.getByText("rewrite the loader").className).toMatch(/flex-1/);
     expect(screen.getByText("rewrite the loader").closest("[data-slot]")).toHaveAttribute(
@@ -103,16 +106,29 @@ describe("AgentList — two axes, urgency then place", () => {
     render(
       <AgentList
         agents={[
-          agent("a", "idle", { sessionName: "alpha", hint: "a sentence the bridge composed" }),
-          agent("b", "idle", { sessionName: "beta" }),
+          // A named tab, an unnamed one, and a hint: the three things that could differ in height.
+          agent("a", "idle", {
+            sessionName: "alpha",
+            tabLabel: "UI work",
+            hint: "a sentence the bridge composed",
+          }),
+          agent("b", "idle", { sessionName: "beta", tabLabel: "3" }),
         ]}
         onOpen={vi.fn()}
       />,
     );
     for (const name of ["alpha", "beta"]) {
       const row = screen.getByRole("button", { name: new RegExp(name) });
-      expect(row.firstElementChild?.className).toMatch(/min-h-11/);
+      expect(row.firstElementChild?.className).toMatch(/(?:^|\s)h-11(?=\s|$)/);
+      // Line 2 is a slot, not a line that comes and goes: it is there at a stated height whether
+      // the tab named it or not.
+      expect(row.querySelector('[data-slot="agent-row-detail"]')?.className).toMatch(
+        /(?:^|\s)h-4(?=\s|$)/,
+      );
     }
+    // An unnamed tab leaves the slot blank — a positional number is not a name.
+    const beta = screen.getByRole("button", { name: /beta/ });
+    expect(beta.querySelector('[data-slot="agent-row-detail"]')?.textContent).toBe("");
     // The hint is the one fact that would make two rows of a group different heights.
     expect(screen.queryByText(/a sentence the bridge composed/)).not.toBeInTheDocument();
   });
@@ -146,7 +162,7 @@ describe("AgentList — two axes, urgency then place", () => {
   });
 });
 
-describe("AgentList — the place headings", () => {
+describe("AgentList — the workspace headings", () => {
   it("counts what is inside a group, in words, singular and plural", () => {
     const { rerender } = render(
       <AgentList
@@ -165,17 +181,47 @@ describe("AgentList — the place headings", () => {
     expect(screen.getByText("3 panes")).toBeInTheDocument();
   });
 
-  it("heads an unnamed tab with the space alone — a positional label is not a name", () => {
+  it("counts the rows it LISTS, and drops a workspace whose every pane is on top", () => {
     render(
       <AgentList
-        agents={[agent("a", "idle", { workspaceLabel: "collie-workspace", tabLabel: "2" })]}
+        agents={[
+          // Three panes of one workspace, one of them blocked, so it is pulled to "Needs you".
+          agent("calm", "idle", { ...UI_WORK, sessionName: "calm" }),
+          agent("quiet", "idle", { ...UI_WORK, sessionName: "quiet" }),
+          agent("stuck", "blocked", { ...UI_WORK, sessionName: "stuck" }),
+          // A second workspace, entirely urgent: it earns no heading at all.
+          agent("alone", "blocked", {
+            workspaceId: "w9",
+            workspaceLabel: "moonward_os",
+            workspaceNumber: 9,
+            tabId: "w9:t1",
+            sessionName: "alone",
+          }),
+        ]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(headings()).toEqual([expect.stringContaining("needs you"), "collie-workspace"]);
+    // Two, not three: the blocked pane is answered on top and is not listed twice.
+    expect(screen.getByText("2 panes")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /stuck/ })).toHaveLength(1);
+  });
+
+  it("heads a group with the workspace, whatever its tabs are called", () => {
+    render(
+      <AgentList
+        agents={[
+          agent("a", "idle", { workspaceLabel: "collie-workspace", tabLabel: "2" }),
+          agent("b", "idle", { workspaceLabel: "collie-workspace", tabId: "w0:t2", tabLabel: "docs" }),
+        ]}
         onOpen={vi.fn()}
       />,
     );
     expect(headings()).toEqual(["collie-workspace"]);
+    expect(screen.getByText("2 panes")).toBeInTheDocument();
   });
 
-  it("runs the groups by space number, then by the tab order the bridge sent", () => {
+  it("runs the groups by workspace number, with each workspace's tabs inside it", () => {
     render(
       <AgentList
         agents={[
@@ -196,7 +242,14 @@ describe("AgentList — the place headings", () => {
         onOpen={vi.fn()}
       />,
     );
-    expect(headings()).toEqual(["one › second", "one › first", "two › later"]);
+    expect(headings()).toEqual(["one", "two"]);
+    // Both tabs of the first workspace are rows under its one heading, in the bridge's order.
+    const rows = screen.getAllByRole("button");
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("second"),
+      expect.stringContaining("first"),
+      expect.stringContaining("later"),
+    ]);
   });
 });
 
@@ -212,7 +265,7 @@ describe("AgentList — shells sit with their tab", () => {
         onOpen={vi.fn()}
       />,
     );
-    expect(headings()).toEqual(["collie-workspace › ui work"]);
+    expect(headings()).toEqual(["collie-workspace"]);
     expect(screen.getByText("2 panes")).toBeInTheDocument();
     const rows = screen.getAllByRole("button", { name: /work|logs/ });
     expect(rows.map((r) => r.textContent)).toEqual([
@@ -221,7 +274,7 @@ describe("AgentList — shells sit with their tab", () => {
     ]);
   });
 
-  it("opens a group for a tab that holds nothing but shells", () => {
+  it("opens a group for a workspace that holds nothing but shells", () => {
     render(
       <AgentList
         agents={[]}
@@ -231,7 +284,7 @@ describe("AgentList — shells sit with their tab", () => {
         onOpen={vi.fn()}
       />,
     );
-    expect(headings()).toEqual(["collie-workspace › logs"]);
+    expect(headings()).toEqual(["collie-workspace"]);
     expect(screen.queryByText(/no agents running/i)).not.toBeInTheDocument();
   });
 });
