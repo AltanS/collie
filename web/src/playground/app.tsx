@@ -45,18 +45,7 @@ import * as tour from "./sections/tour";
 import * as idle from "./sections/idle";
 import * as dashboard from "./sections/dashboard";
 import * as pane from "./sections/pane";
-import * as ideas from "./sections/ideas";
-import * as hostTag from "./sections/host-tag";
-import * as headerCorner from "./sections/header-corner";
-import * as headerMeta from "./sections/header-meta";
-import * as stripsCompact from "./sections/strips-compact";
-import * as beltGround from "./sections/belt-ground";
-import * as beltEdge from "./sections/belt-edge";
-import * as beltCapsule from "./sections/belt-capsule";
-import * as beltCue from "./sections/belt-cue";
 import * as beltShade from "./sections/belt-shade";
-import * as paneMarker from "./sections/pane-marker";
-import * as rowSecondLine from "./sections/row-second-line";
 import * as actionsRow from "./sections/actions-row";
 import * as crew from "./sections/crew";
 import * as settings from "./sections/settings";
@@ -91,18 +80,7 @@ export interface SectionEntry {
 export const SECTIONS: readonly SectionEntry[] = [
   { def: dashboard.DEF, render: () => <dashboard.DashboardSection /> },
   { def: pane.DEF, render: () => <pane.PaneSection /> },
-  { def: ideas.DEF, render: () => <ideas.IdeasSection /> },
-  { def: hostTag.DEF, render: () => <hostTag.HostTagSection /> },
-  { def: headerCorner.DEF, render: () => <headerCorner.HeaderCornerSection /> },
-  { def: headerMeta.DEF, render: () => <headerMeta.HeaderMetaSection /> },
-  { def: stripsCompact.DEF, render: () => <stripsCompact.StripsCompactSection /> },
-  { def: beltGround.DEF, render: () => <beltGround.BeltGroundSection /> },
-  { def: beltEdge.DEF, render: () => <beltEdge.BeltEdgeSection /> },
-  { def: beltCapsule.DEF, render: () => <beltCapsule.BeltCapsuleSection /> },
-  { def: beltCue.DEF, render: () => <beltCue.BeltCueSection /> },
   { def: beltShade.DEF, render: () => <beltShade.BeltShadeSection /> },
-  { def: paneMarker.DEF, render: () => <paneMarker.PaneMarkerSection /> },
-  { def: rowSecondLine.DEF, render: () => <rowSecondLine.RowSecondLineSection /> },
   { def: actionsRow.DEF, render: () => <actionsRow.ActionsRowSection /> },
   { def: crew.DEF, render: () => <crew.CrewSection /> },
   { def: settings.DEF, render: () => <settings.SettingsSection /> },

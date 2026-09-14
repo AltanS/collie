@@ -55,7 +55,8 @@ import { cn } from "@/lib/utils";
 //
 // THE SCROLLER, WITHIN THAT BAND, NOW CARRIES ITS OWN FAINT BRAND TINT (`bg-primary/10`), and the
 // fixed Switch cell takes the composer's own ground, `bg-chrome` — the operator's call from the
-// phone, on top of playground round four, option 6 (`playground/sections/belt-ground.tsx`). The
+// phone, on top of playground round four, option 6 (the `belt-ground` deck, removed from the
+// playground on 2026-09-14 once it had served; see git history). The
 // band's own ground and its hairline are unchanged; only these two grounds move. The tint marks the
 // part of the belt that PANS: it is the one thing on this row that moves under a thumb, so it earns
 // the one wash that says "brand" rather than "chrome". The Switch cell sits on the composer's

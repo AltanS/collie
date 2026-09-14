@@ -21,8 +21,8 @@ export function PhoneFrameCard({ height, children }: { height?: number; children
 
 /**
  * A stub `send()` that accepted the text, which is what drives the harness echo's ✓. Shared because
- * two sections now mount the real `ActionsRow`: "Actions row", which is about the belt itself, and
- * "Pull-up handle ideas", which puts the belt under every handle it stages.
+ * more than one section mounts the real `ActionsRow`: "Actions row", which is about the belt itself,
+ * and the belt design rounds, which stage the belt inside a phone-width mock.
  */
 export const took = async () => true;
 
@@ -33,11 +33,11 @@ export const took = async () => true;
  *
  * `stage` turns the box into a containing block (`transform`) with its own clip, which is what a
  * `position: fixed` descendant needs to resolve against the card instead of escaping to the page.
- * One card wants it: the peek in "Pull-up handle ideas", which mounts a real `BottomSheet`.
+ * The pull-up handle round wanted it, for a card that mounted a real `BottomSheet`; that round is
+ * gone (2026-09-14 cleanup) and the flag stays for the next one that needs it.
  *
- * Shared because three sections now draw the bottom (or the top) of the pane screen this way —
- * "Pull-up handle ideas", "Host tag ideas" and "Header corner ideas" — and three copies of one box
- * would drift the way two already started to.
+ * Shared because several sections draw the bottom (or the top) of the pane screen this way, and
+ * copies of one box drift the way two already started to.
  */
 export function PhoneMock({ stage = false, children }: { stage?: boolean; children: ReactNode }) {
   return (

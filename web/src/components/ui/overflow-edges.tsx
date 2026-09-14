@@ -171,7 +171,7 @@ interface OverflowEdgesProps {
   /**
    * Whether the fading edge also draws a chevron. `"soft"` (the default) is the original mark —
    * `size-3`, `text-muted-foreground`, no ground of its own — kept as the default so every existing
-   * caller (the playground's frozen mocks in `ideas.tsx` and `host-tag.tsx` among them) is
+   * caller (the playground's frozen mocks among them) is
    * byte-identical unless it opts out.
    *
    * `"none"` draws the fade and nothing else: the actions belt's pick, because the belt's own tint
