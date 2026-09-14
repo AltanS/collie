@@ -1,41 +1,43 @@
-// Belt shade ideas, round eight. The operator picked belt-cue.tsx's option 1 — the compact band
-// with today's shipped 32px chrome fade — over every other cue round seven tried, and asked for
-// "more shade options": more takes on that ONE fade, not a fresh cue. So this round holds the shape
-// belt-cue's option 1 settled (COMPACT, the shipped fade) and varies only the fade itself: its
-// width, its curve, what colour it fades FROM, and two ways of decorating it further (a draining
-// tint, a faint shadow) without replacing it.
+// Belt shade ideas, round two (round one is git history — see `chore(playground): drop the
+// design-pick decks that had served`, commit 60a68c40, and belt-shade round one's own commit
+// before it). The operator picked round one's option 2 (the long 48px fade) and option 6 (the
+// tint draining out) as the two directions worth going deeper on, and asked for two more things
+// on top: "decrease the width of the layers icon/pane switcher button, and the belt is vertically
+// scrollable, fix that."
 //
-// COMPACT CARRIES OVER FROM BELT-CUE.TSX UNCHANGED: every card here drops the scroller's own
-// `py-1.5` (`[&_[data-overflow]>div>div]:py-0`, band is 32px not 44px) and the composer row's own
-// `mb-1.5` shrinks to `mb-1` (`[&_[data-slot=composer-actions]]:mb-1`) — reached the usual way,
-// through a wrapper selector, never a class added to `actions-row.tsx` or `overflow-edges.tsx`
+// THE VERTICAL-SCROLL BUG, AND THE FIX EVERY CARD CARRIES: `STRIP_TAP_TARGET`'s `::before` extends
+// a pill's HIT box to 46px tall so a 32px-drawn pill still answers a 44px tap
+// (`components/ui/labelled-strip.tsx`), and that extension is normally absorbed by the scroller's
+// own `py-1.5` (6px top and bottom, so 32 + 6 + 6 + the `::before`'s own reach = 44, the same
+// number `STRIP_TAP_TARGET`'s own comment measures). COMPACT drops that `py-1.5` to `py-0` — the
+// whole point, a 32px band instead of 44px — but the `::before` still reaches its full 46px, now
+// with nothing to absorb it, so it overflows the scroller's own box. `overflow-x: auto` forces
+// `overflow-y` to compute to `auto` as well (the scroller is a scroll container on BOTH axes, the
+// same fact `STRIP_TAP_TARGET`'s own comment already measures), so that overflow becomes a real
+// vertical scrollbar on the belt. Fixed here per card with `[&_[data-overflow]>div>div]:overflow-y-
+// hidden`; the shipped fix, WHEN THIS ROUND LANDS, is `STRIP_SCROLLER` itself gaining
+// `overflow-y-hidden` — it already forces `overflow-x-auto`, so pairing it with an explicit
+// `overflow-y-hidden` costs nothing today and stops any future compaction from reopening this bug.
+//
+// THE NARROW SWITCH: the copied `FixedSwitchCell` used `STRIP_ROW_PILL` unmodified, which carries a
+// `min-w-11` (44px) floor — the same floor every belt pill stands on. The Switch mark is a single
+// centred icon with no label, so a `switchWidth` prop overrides just that one utility with a
+// narrower pair (`w-<n> min-w-<n>`, both needed since `min-w-11` would otherwise still win against
+// a bare `w-<n>`), while everything else about the pill — the tap-target `::before`, the `mr-2`
+// hairline spacing beside it — is untouched. Default is 36px (`w-9 min-w-9`); options 5 and 6 go
+// further, to 32px (`w-8 min-w-8`). "As today" alone keeps the shipped 44px floor, unmodified, as
+// the width every other card is measured against.
+//
+// COMPACT CARRIES OVER FROM ROUND ONE UNCHANGED: every card drops the scroller's own `py-1.5`
+// (`[&_[data-overflow]>div>div]:py-0`) and the composer row's own `mb-1.5` shrinks to `mb-1`
+// (`[&_[data-slot=composer-actions]]:mb-1`). THE LEFT MASK IS STILL LEFT ALONE ON EVERY CARD — this
+// round, like round one, is about the right end.
+//
+// STILL THE REAL ActionsRow (`components/actions-row.tsx`), mounted with no `handle`
+// (`useRoomyActions`, `agent="claude"`, `onRun={took}`), inside the same `BeltCard` phone mock.
+// Every option reaches the scroller, `OverflowEdges`'s wrapper and the composer row from OUTSIDE,
+// through wrapper selectors — never a class added to `actions-row.tsx` or `overflow-edges.tsx`
 // themselves.
-//
-// THE LEFT MASK IS LEFT ALONE ON EVERY CARD. This round is about the RIGHT end, the fixed Switch
-// cell's own lead-in, and belt-cue's option 1 already kept the shipped left mask untouched — so
-// every card here does too, and none of them clears it. There is no `CLEAR_MASK` constant in this
-// file for that reason.
-//
-// `FixedSwitchCell` IS CARRIED OVER AGAIN, WIDER THIS TIME: `leadIn` now takes the `{ pl, mask }`
-// SHAPE DIRECTLY, an object per card, rather than a named key into a lookup table — this round
-// stages eight distinct widths and curves, so a table of names would just be eight one-off entries
-// standing in the way. `leadInGround` is unchanged, a plain class string, `"bg-chrome"` by default.
-// Option 5 alone needs a FOURTH thing: `cellGroundClassName`, an explicit chrome ground on the cell
-// PROPER (the hairline-and-button span, past the lead-in) — see that card and the prop's own comment
-// for why a translucent `leadInGround` needs it.
-//
-// OPTION 6's DRAINING TINT AND OPTION 8's INSET SHADOW BOTH USE `rgba`/`color-mix` VALUES THAT READ
-// IN BOTH THEMES WITHOUT A `dark:` VARIANT — the shadow is plain black, which only ever darkens a
-// ground lighter than itself (true in both themes here), and the tint drain is `color-mix(in oklab,
-// var(--color-primary) 10%, transparent)`, the exact recipe belt-ground.tsx's own option 5 uses for
-// the harness accent, fading to fully transparent rather than to a flat colour, so it reads correctly
-// against either theme's chrome.
-//
-// STILL THE REAL ActionsRow (`components/actions-row.tsx`), mounted the way belt-cue.tsx mounts it
-// (`useRoomyActions`, `agent="claude"`, `onRun={took}`, no `handle`), inside the same `BeltCard`
-// phone mock. Every option reaches the scroller, `OverflowEdges`'s wrapper and the composer row from
-// OUTSIDE, through wrapper selectors — never a class added to `actions-row.tsx` or
-// `overflow-edges.tsx` themselves.
 //
 // DEV-ONLY, unreachable from the app entry.
 
@@ -53,18 +55,21 @@ export const DEF: SectionDef = {
   id: "belt-shade",
   title: "Belt shade",
   intent:
-    "Round eight: the operator picked belt-cue's option 1, the compact band with today's shipped " +
-    "fade, over every other cue. \"Give more shade options\" — nine cards, all on that one fade, " +
-    "varying its width, curve and colour on the REAL ActionsRow. Say the number.",
+    "Round two: the operator picked round one's long fade and its draining tint to go deeper on, " +
+    "and asked for a narrower Switch mark and a fix for a vertical-scroll bug the compaction " +
+    "introduced. Seven cards, on the REAL ActionsRow. Say the number.",
 };
 
-// ── Shared: compaction, and the fade shape itself ─────────────────────────────
+// ── Shared: compaction, the vertical-scroll fix, and the fade shape ──────────
 
-/** COMPACT, carried over from belt-cue.tsx unchanged — every card in this file carries it,
- *  including "As today", which is belt-cue's own option 1 and already compact. */
+/** COMPACT, carried over from round one unchanged. */
 const COMPACT = "[&_[data-overflow]>div>div]:py-0 [&_[data-slot=composer-actions]]:mb-1";
 
-/** The shipped 32px chrome fade — "As today", option 6 and option 8 all reuse this exact shape
+/** The fix for the bug COMPACT introduces — see this file's header for the mechanism. Every card
+ *  carries this, "As today" included. */
+const FIX_VERTICAL_SCROLL = "[&_[data-overflow]>div>div]:overflow-y-hidden";
+
+/** The shipped 32px chrome fade — "As today" and options 2 and 4 all reuse this exact shape
  *  unchanged, because those three cards vary something OTHER than the fade itself. */
 const FADE_32 = {
   pl: "pl-8",
@@ -72,56 +77,41 @@ const FADE_32 = {
 };
 
 /** The fade shape the fixed Switch cell's lead-in follows: how far it reaches (`pl`) and the
- *  gradient it fades through (`mask`), as a literal pair rather than a named key — see this file's
- *  header for why. */
+ *  gradient it fades through (`mask`), as a literal pair. */
 interface LeadIn {
   pl: string;
   mask: string;
 }
 
 /**
- * belt-cue.tsx's own `FixedSwitchCell`, widened: `leadIn` takes the `{ pl, mask }` shape directly,
- * and a new `cellGroundClassName` prop, option 5 alone.
- *
- * WHY `cellGroundClassName` EXISTS: every layer inside the masked backdrop (`bg-chrome`,
- * `bg-foreground/6`, `leadInGround`) spans the WHOLE cell, lead-in and cell-proper both — the mask
- * is what confines the FADE to the lead-in's own width, not the layers' own boxes. That is fine
- * while `leadInGround` is opaque (the default, `bg-chrome`): once the mask is fully open, an opaque
- * top layer is the only colour that shows, so the cell-proper reads as solid chrome for free.
- * Option 5's `leadInGround` (`bg-foreground/14`) is deliberately NOT opaque — the whole point is a
- * shade the pills read as a shadow — so left alone, that translucency would keep showing past the
- * lead-in too, tinting the hairline and the button. `cellGroundClassName` draws an explicit,
- * OPAQUE ground on the cell-proper's own span instead (`relative`, so it paints in its own stacking
- * position ABOVE the masked backdrop behind it, the same way the real Switch button's own
- * `STRIP_TAP_TARGET` class already does with `relative` for its tap-target `::before`), so the
- * shade stays confined to the lead-in and the button keeps reading as chrome.
+ * Round one's own `FixedSwitchCell`, with one new prop: `switchWidth`, overriding
+ * `STRIP_ROW_PILL`'s own `min-w-11` floor on the Switch mark alone — see this file's header for
+ * why a floor override needs both a `w-<n>` and a `min-w-<n>` class.
  */
 function FixedSwitchCell({
   leadIn,
-  leadInGround = "bg-chrome",
-  cellGroundClassName,
+  switchWidth = "w-9 min-w-9",
 }: {
   leadIn: LeadIn;
-  leadInGround?: string;
-  /** Option 5 only — see this function's own header comment. */
-  cellGroundClassName?: string;
+  /** `"w-11 min-w-11"` is the shipped, unmodified floor — "As today" alone. Every other card
+   *  narrows it: `"w-9 min-w-9"` (36px, the new default) or `"w-8 min-w-8"` (32px, options 5
+   *  and 6). */
+  switchWidth?: "w-11 min-w-11" | "w-9 min-w-9" | "w-8 min-w-8";
 }) {
   return (
     <span className={cn("absolute inset-y-0 right-0 z-10 flex items-center pr-3", leadIn.pl)}>
       <span aria-hidden className={cn("pointer-events-none absolute inset-0 bg-chrome", leadIn.mask)}>
         <span className="absolute inset-0 bg-foreground/6" />
-        {leadInGround !== "none" && <span className={cn("absolute inset-0", leadInGround)} />}
+        <span className="absolute inset-0 bg-chrome" />
       </span>
-      <span
-        className={cn(
-          "flex items-center self-stretch",
-          cellGroundClassName && "relative",
-          cellGroundClassName,
-        )}
-      >
+      <span className="flex items-center self-stretch">
         <span aria-hidden className="mr-2 h-5 w-px bg-border" />
         <span
-          className={cn(`${STRIP_ROW_PILL} relative flex items-center justify-center border-0 px-0`)}
+          className={cn(
+            STRIP_ROW_PILL,
+            switchWidth,
+            "relative flex items-center justify-center border-0 px-0",
+          )}
         >
           <Layers className="size-4 shrink-0 text-primary" />
         </span>
@@ -133,27 +123,26 @@ function FixedSwitchCell({
 // ── The belt itself: the REAL ActionsRow, a wrapper for the wide-band selectors ──────────────────
 
 interface BeltProps {
-  /** The track's own extra look — option 6's draining tint, option 8's inset shadow — reached
-   *  through `[data-overflow]` and its children, never a class added to `actions-row.tsx` or
-   *  `overflow-edges.tsx` themselves. */
+  /** The track's own extra look — the draining-tint gradients — reached through `[data-overflow]`
+   *  and its children, never a class added to `actions-row.tsx` or `overflow-edges.tsx`
+   *  themselves. */
   className?: string;
   leadIn: LeadIn;
-  leadInGround?: string;
-  cellGroundClassName?: string;
+  switchWidth?: "w-11 min-w-11" | "w-9 min-w-9" | "w-8 min-w-8";
 }
 
-function Belt({ className, leadIn, leadInGround, cellGroundClassName }: BeltProps) {
+function Belt({ className, leadIn, switchWidth }: BeltProps) {
   const general = useRoomyActions();
   return (
-    <div className={cn("relative bg-chrome px-3", COMPACT, className)}>
+    <div className={cn("relative bg-chrome px-3", COMPACT, FIX_VERTICAL_SCROLL, className)}>
       <ActionsRow general={general} agent="claude" onRun={took} />
-      <FixedSwitchCell leadIn={leadIn} leadInGround={leadInGround} cellGroundClassName={cellGroundClassName} />
+      <FixedSwitchCell leadIn={leadIn} switchWidth={switchWidth} />
     </div>
   );
 }
 
 /** One card's mock: the belt over a quiet stand-in for the input row, in a phone-width box — the
- *  same shape belt-cue.tsx's own `BeltCard` uses. */
+ *  same shape round one's own `BeltCard` uses. */
 function BeltCard({ children }: { children: ReactNode }) {
   return (
     <PhoneMock>
@@ -173,42 +162,33 @@ function BeltCard({ children }: { children: ReactNode }) {
 
 // ── The cards ────────────────────────────────────────────────────────────────
 
+/** Option 2's own draining-tint gradient — the track's brand tint fades to nothing over its last
+ *  64px, rather than stopping abruptly at the cell. Reused by option 3, at a longer fade. */
+const DRAIN_64PX = cn(
+  "[&_[data-overflow]]:bg-[linear-gradient(to_right,color-mix(in_oklab,var(--color-primary)_10%,transparent)_calc(100%-6rem),transparent_calc(100%-2rem))]",
+  "[&_[data-overflow]>div>div]:bg-transparent",
+);
+
 export function BeltShadeSection() {
   return (
     <Section def={DEF}>
-      <Group title="The belt, compact with today's fade, then eight variations on that one fade, round eight, on the real ActionsRow">
+      <Group title="The belt, as today, then six variations on the long fade and the draining tint, round two, on the real ActionsRow">
         <Card
           state="belt-shade-today"
           label="As today"
-          reach="belt-cue's own option 1: the compact 32px band, with the fixed Switch cell's shipped 32px chrome fade and the scroller's own left mask, both unchanged."
-          note="The reference every other card in this section varies from. Only the fade itself changes below; the band stays this height throughout."
+          reach="belt-cue's own option 1, compacted: the compact 32px band, the fixed Switch cell's shipped 32px chrome fade, and the shipped 44px Switch mark width, all unchanged."
+          note="The reference every other card in this section varies from. This one keeps the old Switch width on purpose, so the narrowing below has something to be measured against."
         >
           <BeltCard>
-            <Belt leadIn={FADE_32} />
+            <Belt leadIn={FADE_32} switchWidth="w-11 min-w-11" />
           </BeltCard>
         </Card>
 
         <Card
           state="belt-shade-option-1"
-          label="Option 1 · Short fade, 16px"
-          reach="idea, not shipped: the fixed cell's own lead-in would shrink to 16px, half the shipped width."
-          note="A tighter dissolve. Less of the last pill is obscured, and the cell reads as a smaller intrusion on the row."
-        >
-          <BeltCard>
-            <Belt
-              leadIn={{
-                pl: "pl-4",
-                mask: "[mask-image:linear-gradient(to_right,transparent,black_1rem)]",
-              }}
-            />
-          </BeltCard>
-        </Card>
-
-        <Card
-          state="belt-shade-option-2"
-          label="Option 2 · Long fade, 48px"
-          reach="idea, not shipped: the fixed cell's own lead-in would grow to 48px, half again the shipped width."
-          note="A slower dissolve. More of the belt reads as transitional rather than as clean track, which may be too much room given up to a fade alone."
+          label="Option 1 · Long fade, 48px, Switch 36px"
+          reach="idea, not shipped: the fixed cell's own lead-in would grow to 48px, and the Switch mark would narrow to 36px."
+          note="Round one's long fade, now paired with the narrower mark. Both changes read together: more room given to the dissolve, less to the control that ends it."
         >
           <BeltCard>
             <Belt
@@ -216,92 +196,89 @@ export function BeltShadeSection() {
                 pl: "pl-12",
                 mask: "[mask-image:linear-gradient(to_right,transparent,black_3rem)]",
               }}
+              switchWidth="w-9 min-w-9"
             />
           </BeltCard>
         </Card>
 
         <Card
+          state="belt-shade-option-2"
+          label="Option 2 · The tint drains out, Switch 36px"
+          reach="idea, not shipped: the fixed cell's own fade would stay exactly as today, the track's own brand tint would fade away to nothing over its last 64px, and the Switch mark would narrow to 36px."
+          note="Round one's draining tint, now paired with the narrower mark. The pills still dissolve into chrome at the cell; the colour underneath them has already drained away before they get there."
+        >
+          <BeltCard>
+            <Belt leadIn={FADE_32} className={DRAIN_64PX} switchWidth="w-9 min-w-9" />
+          </BeltCard>
+        </Card>
+
+        <Card
           state="belt-shade-option-3"
-          label="Option 3 · Eased fade, 32px"
-          reach="idea, not shipped: the same 32px lead-in as today, but the gradient would hold near-transparent for its first half and only finish opaque in the second."
-          note="A slow start and a fast finish, rather than a straight line. A pill stays legible longer before it dissolves, then disappears over a shorter stretch."
+          label="Option 3 · Both, tint drains over 64px, pills fade over 48px"
+          reach="idea, not shipped: option 2's draining tint, plus the fixed cell's own lead-in growing to 48px at the same time."
+          note="The two ideas combined rather than judged apart. The tint is gone before the pills reach the cell, and the pills themselves take longer to dissolve once they do."
         >
           <BeltCard>
             <Belt
               leadIn={{
-                pl: "pl-8",
-                mask:
-                  "[mask-image:linear-gradient(to_right,transparent,rgba(0,0,0,0.25)_45%,black_2rem)]",
+                pl: "pl-12",
+                mask: "[mask-image:linear-gradient(to_right,transparent,black_3rem)]",
               }}
+              className={DRAIN_64PX}
+              switchWidth="w-9 min-w-9"
             />
           </BeltCard>
         </Card>
 
         <Card
           state="belt-shade-option-4"
-          label="Option 4 · Fade into the band, not chrome"
-          reach="idea, not shipped: the same 32px lead-in as today, but its top ground layer would be the belt's own band grey instead of chrome."
-          note="Pills melt into the band's own grey rather than into the composer's chrome. Only the cell past the hairline still reads as chrome."
-        >
-          <BeltCard>
-            <Belt leadIn={FADE_32} leadInGround="bg-foreground/6" />
-          </BeltCard>
-        </Card>
-
-        <Card
-          state="belt-shade-option-5"
-          label="Option 5 · Shade, a darker lead-in"
-          reach="idea, not shipped: the same 32px lead-in as today, but its top ground layer would be a darker wash than the track itself, and the cell past the hairline would carry its own explicit chrome ground."
-          note="The lead-in reads as a shadow cast onto the pills rather than a fade into a surface. The button and hairline stay pure chrome throughout, unaffected by the darker wash beside them."
-        >
-          <BeltCard>
-            <Belt leadIn={FADE_32} leadInGround="bg-foreground/14" cellGroundClassName="bg-chrome" />
-          </BeltCard>
-        </Card>
-
-        <Card
-          state="belt-shade-option-6"
-          label="Option 6 · The tint drains out"
-          reach="idea, not shipped: the fixed cell's own fade would stay exactly as today, but the track's own brand tint would fade away to nothing over its last 64px, rather than stopping abruptly at the cell."
-          note="The pills still dissolve into chrome at the cell, same as today, but the colour underneath them has already drained away before they get there. Two fades agreeing rather than one hard stop."
+          label="Option 4 · Tint drains over 96px, pills fade 32px"
+          reach="idea, not shipped: the track's own brand tint would fade away over its last 96px instead of 64px, while the fixed cell's own lead-in stays the shipped 32px."
+          note="The tint alone announces the belt is ending, well before the pills reach the cell, which keeps its shipped fade unchanged. The two cues no longer start at the same point."
         >
           <BeltCard>
             <Belt
               leadIn={FADE_32}
               className={cn(
-                "[&_[data-overflow]]:bg-[linear-gradient(to_right,color-mix(in_oklab,var(--color-primary)_10%,transparent)_calc(100%-6rem),transparent_calc(100%-2rem))]",
+                "[&_[data-overflow]]:bg-[linear-gradient(to_right,color-mix(in_oklab,var(--color-primary)_10%,transparent)_calc(100%-8rem),transparent_calc(100%-2rem))]",
                 "[&_[data-overflow]>div>div]:bg-transparent",
               )}
+              switchWidth="w-9 min-w-9"
             />
           </BeltCard>
         </Card>
 
         <Card
-          state="belt-shade-option-7"
-          label="Option 7 · Fade that ends before the hairline"
-          reach="idea, not shipped: the fixed cell would keep the shipped 32px width, but the gradient itself would finish at 24px, leaving the last 8px before the hairline solid chrome with no gradient left to cross."
-          note="A short flat margin of solid chrome sits between the dissolve and the hairline, rather than the fade running all the way up to it. The cell reads as having a quiet edge of its own."
+          state="belt-shade-option-5"
+          label="Option 5 · Both, Switch 32px"
+          reach="idea, not shipped: option 3's combination, tint draining over 64px and a 48px fade, but the Switch mark would narrow further, to 32px."
+          note="The same combined cue as option 3, with the narrowest mark in this section. The track keeps most of the belt's own width now that the control at its end asks for less of it."
         >
           <BeltCard>
             <Belt
               leadIn={{
-                pl: "pl-8",
-                mask: "[mask-image:linear-gradient(to_right,transparent,black_1.5rem)]",
+                pl: "pl-12",
+                mask: "[mask-image:linear-gradient(to_right,transparent,black_3rem)]",
               }}
+              className={DRAIN_64PX}
+              switchWidth="w-8 min-w-8"
             />
           </BeltCard>
         </Card>
 
         <Card
-          state="belt-shade-option-8"
-          label="Option 8 · Fade plus a faint inset shadow"
-          reach="idea, not shipped: the fixed cell's own fade would stay exactly as today, and the track's own wrapper would additionally carry a faint inner shadow at its right end."
-          note="The fade does the same work it does today, and a second, quieter shadow sits just inside the track's own edge underneath it. Two weak cues rather than one strong one."
+          state="belt-shade-option-6"
+          label="Option 6 · Long fade 64px, Switch 32px"
+          reach="idea, not shipped: the fixed cell's own lead-in would grow to 64px, twice the shipped width, paired with the narrowest Switch mark, 32px."
+          note="The fade alone, taken further than option 1, with no draining tint alongside it. The narrower mark gives the longer fade room to work in without the belt growing any shorter."
         >
           <BeltCard>
             <Belt
-              leadIn={FADE_32}
-              className="[&_[data-overflow]]:shadow-[inset_-14px_0_12px_-10px_rgba(0,0,0,0.12)]"
+              leadIn={{
+                pl: "pl-16",
+                mask: "[mask-image:linear-gradient(to_right,transparent,black_4rem)]",
+              }}
+              switchWidth="w-8 min-w-8"
             />
           </BeltCard>
         </Card>

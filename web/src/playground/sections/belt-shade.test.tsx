@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { BeltShadeSection } from "./belt-shade";
 
-// The nine cards this section stages: `[data-state="…"]`, the playground's one allowed handle
+// The seven cards this section stages: `[data-state="…"]`, the playground's one allowed handle
 // (CLAUDE.md → "The selector rule").
 const HANDLES = [
   "belt-shade-today",
@@ -13,8 +13,6 @@ const HANDLES = [
   "belt-shade-option-4",
   "belt-shade-option-5",
   "belt-shade-option-6",
-  "belt-shade-option-7",
-  "belt-shade-option-8",
 ] as const;
 
 function cardFor(state: string): HTMLElement {
@@ -46,13 +44,14 @@ function cellFor(state: string): HTMLElement {
   return cell as HTMLElement;
 }
 
-/** The cell's own inner masked span carries `leadIn.mask` — the first child of {@link cellFor}. */
-function maskFor(state: string): HTMLElement {
-  const inner = cellFor(state).querySelector(':scope > span[aria-hidden]');
-  if (!inner) throw new Error(`no masked span under "${state}"`);
-  // SAFETY: `FixedSwitchCell` renders its masked backdrop as a single <span aria-hidden>, the
-  // first child of the cell's outer <span>, so this query always finds an HTMLSpanElement.
-  return inner as HTMLElement;
+/** The Switch mark's own pill, the last of the two spans inside the cell's "self-stretch" wrapper
+ *  (the hairline is the first) — `switchWidth`'s own home. */
+function switchButtonFor(state: string): HTMLElement {
+  const button = cellFor(state).querySelector(":scope > span:last-child > span:last-child");
+  if (!button) throw new Error(`no Switch button under "${state}"`);
+  // SAFETY: `FixedSwitchCell`'s "self-stretch" wrapper (the cell's own last direct child) always
+  // renders exactly two spans, the hairline then the pill, so its last child is always the pill.
+  return button as HTMLElement;
 }
 
 describe("Belt shade section", () => {
@@ -74,32 +73,31 @@ describe("Belt shade section", () => {
     }
   });
 
-  it("options 1, 2, 3 and 7 carry their own distinct fade mask", () => {
+  it("every card fixes the vertical-scroll bug COMPACT introduces", () => {
     render(<BeltShadeSection />);
-    const expected = {
-      "belt-shade-option-1": "[mask-image:linear-gradient(to_right,transparent,black_1rem)]",
-      "belt-shade-option-2": "[mask-image:linear-gradient(to_right,transparent,black_3rem)]",
-      "belt-shade-option-3":
-        "[mask-image:linear-gradient(to_right,transparent,rgba(0,0,0,0.25)_45%,black_2rem)]",
-      "belt-shade-option-7": "[mask-image:linear-gradient(to_right,transparent,black_1.5rem)]",
-    } satisfies Record<string, string>;
-    for (const [state, mask] of Object.entries(expected)) {
-      expect(maskFor(state).className, state).toContain(mask);
-    }
-    // Every one of the four is a genuinely different string from the shipped 32px fade.
-    const shipped = "[mask-image:linear-gradient(to_right,transparent,black_2rem)]";
-    for (const state of Object.keys(expected)) {
-      expect(maskFor(state).className, state).not.toContain(shipped);
+    for (const state of HANDLES) {
+      expect(beltWrapperFor(state).className, state).toContain(
+        "[&_[data-overflow]>div>div]:overflow-y-hidden",
+      );
     }
   });
 
-  it("option 6 alone carries the draining-tint gradient on the track wrapper", () => {
+  it("narrows the Switch mark per card, and leaves today's alone", () => {
     render(<BeltShadeSection />);
-    const GRADIENT =
-      "[&_[data-overflow]]:bg-[linear-gradient(to_right,color-mix(in_oklab,var(--color-primary)_10%,transparent)_calc(100%-6rem),transparent_calc(100%-2rem))]";
-    expect(beltWrapperFor("belt-shade-option-6").className).toContain(GRADIENT);
-    for (const state of HANDLES.filter((h) => h !== "belt-shade-option-6")) {
-      expect(beltWrapperFor(state).className, state).not.toContain(GRADIENT);
+    const expected = {
+      "belt-shade-today": "min-w-11",
+      "belt-shade-option-1": "min-w-9",
+      "belt-shade-option-2": "min-w-9",
+      "belt-shade-option-3": "min-w-9",
+      "belt-shade-option-4": "min-w-9",
+      "belt-shade-option-5": "min-w-8",
+      "belt-shade-option-6": "min-w-8",
+    } satisfies Record<string, string>;
+    for (const [state, floor] of Object.entries(expected)) {
+      expect(switchButtonFor(state).className, state).toContain(floor);
     }
+    // "As today" alone keeps the shipped 44px width, distinct from every narrowed card.
+    expect(switchButtonFor("belt-shade-today").className).not.toContain("min-w-9");
+    expect(switchButtonFor("belt-shade-today").className).not.toContain("min-w-8");
   });
 });
