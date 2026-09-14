@@ -3,18 +3,20 @@ import { describe, expect, it } from "vitest";
 
 import { BeltGroundSection } from "./belt-ground";
 
-// The four cards this section stages, as the screenshots and any browser case address them:
+// The six cards this section stages, as the screenshots and any browser case address them:
 // `[data-state="…"]`, the playground's one allowed handle (CLAUDE.md → "The selector rule").
 const HANDLES = [
   "belt-ground-today",
   "belt-ground-option-1",
   "belt-ground-option-2",
   "belt-ground-option-3",
+  "belt-ground-option-4",
+  "belt-ground-option-5",
 ] as const;
 
-/** Altan picks a card by saying "option N", so the number has to be ON the card. Three of them, one
+/** Altan picks a card by saying "option N", so the number has to be ON the card. Five of them, one
  *  per idea, plus the unnumbered "As today" card they are measured against. */
-const OPTIONS = [1, 2, 3] as const;
+const OPTIONS = [1, 2, 3, 4, 5] as const;
 
 function cardFor(state: string): HTMLElement {
   const el = document.querySelector(`[data-state="${state}"]`);
@@ -37,7 +39,7 @@ describe("Belt scroller ground section", () => {
     for (const h of handles) expect(h).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
   });
 
-  it("numbers every option, once each, from 1 to 3", () => {
+  it("numbers every option, once each, from 1 to 5", () => {
     const { container } = render(<BeltGroundSection />);
     const labels = [...container.querySelectorAll(".pg-grid > * > p")].map(
       (p) => p.textContent ?? "",
