@@ -152,10 +152,10 @@ export function BeltGroundSection() {
           state="belt-ground-today"
           label="As today"
           reach="every pane's composer: the belt above the input row. This card is the real ActionsRow, unmodified."
-          note="One ground for the whole band, `bg-foreground/6`. Nothing marks where the scroller ends and the fixed Switch cell begins."
+          note="Shipped: the band's own ground is bg-foreground/6, the scroller inside it takes a faint brand tint (bg-primary/10), and the fixed Switch cell drops to plain bg-background — the moving part and the fixed part read apart."
         >
           <BeltCard>
-            <Belt className="" />
+            <Belt className="" switchCellClassName="bg-background" />
           </BeltCard>
         </Card>
 
@@ -220,8 +220,8 @@ export function BeltGroundSection() {
         <Card
           state="belt-ground-option-6"
           label="Option 6 · Tinted track, plain Switch cell"
-          reach="idea, not shipped: the scroller would take bg-primary/10 and the fixed Switch cell's own ground would drop to bg-background."
-          note="The scrolling part takes the brand colour at ten percent, and the Switch cell drops to plain background. The contrast between the two is the strongest here."
+          reach="shipped in components/actions-row.tsx: the scroller takes bg-primary/10 and the fixed Switch cell's own ground drops to bg-background."
+          note="Shipped. The scrolling part takes the brand colour at ten percent, and the Switch cell drops to plain background. The contrast between the two is the strongest here."
         >
           <BeltCard>
             <Belt

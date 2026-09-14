@@ -52,6 +52,17 @@ import { cn } from "@/lib/utils";
 // on the belt's ground, against 5.48 / 5.83 on the bare chrome — the belt costs them nothing that
 // matters, and both clear 4.5:1.
 //
+// THE SCROLLER, WITHIN THAT BAND, NOW CARRIES ITS OWN FAINT BRAND TINT (`bg-primary/10`), and the
+// fixed Switch cell drops to plain `bg-background` — the operator's pick, playground round four,
+// option 6 (`playground/sections/belt-ground.tsx`). The band's own ground and its hairline are
+// unchanged; only these two grounds move. The tint marks the part of the belt that PANS: it is the
+// one thing on this row that moves under a thumb, so it earns the one wash that says "brand" rather
+// than "chrome". The Switch cell sits on plain background for the opposite reason — it never
+// scrolls, it is the one control that LEAVES the pane rather than acting on it, and reading as
+// fixed is the point (see the Switch branch below). In light, `bg-primary/10` over the band is
+// closer to black than the other tints tried here, so the wash reads darker than the round's other
+// options measured — shipped as picked regardless; see the playground round's own notes.
+//
 // THE HAIRLINE IS `--border`, NOT `--rule`. The belt's lower neighbour is the same chrome surface it
 // stands on, so that is a component edge inside one surface, which is what `--border` is for — the
 // same reading the status band above it came to. `border-b` alone: the belt stands flush under the
@@ -262,7 +273,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           groups were floating boxes, and the section's tint is the separator now. */}
       <OverflowEdges insetRight={handle ? SWITCH_PILL_INSET : 0}>
         {(scrollerRef) => (
-          <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "px-3")}>
+          <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "bg-primary/10 px-3")}>
             {general.length > 0 && (
               // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
               // self-labelling buttons and earned nothing, but in the accessibility tree it is the only
@@ -310,19 +321,22 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           inside the wrapper would fade out with the scrolling pills exactly where the belt
           overflows — which is always, once a pill is pinned. `z-10` puts it over the scroller, so a
           pill that pans under the fade cannot take the tap.
-          THE FADE IS TWO STACKED LAYERS UNDER ONE MASK, and it has to be two: the belt's ground is
-          `bg-foreground/6` OVER `bg-chrome`, so a single `bg-chrome` patch would read as a lighter
-          hole punched in the band. The mask fades both layers in over the first 32px, which is what
-          lets a scrolling pill disappear UNDER this one instead of stopping dead against it. The
-          fade alone is `pointer-events-none`, so the belt still pans from the 32px of lead-in while
-          the pill itself takes its own taps. */}
+          THE FADE IS TWO STACKED LAYERS UNDER ONE MASK, and it has to be two: the scroller it fades
+          into carries its own brand tint now (`bg-primary/10`, see the header above), so a single
+          `bg-chrome` patch would read as a hole punched in a tinted band. The second layer is the
+          Switch cell's OWN ground, `bg-background` — plain, not the belt's `bg-foreground/6` — so
+          the cell it fades into reads as fixed rather than as more of the moving track (the operator's
+          pick, playground round four, option 6). The mask fades both layers in over the first 32px,
+          which is what lets a scrolling pill disappear UNDER this one instead of stopping dead
+          against it. The fade alone is `pointer-events-none`, so the belt still pans from the 32px
+          of lead-in while the pill itself takes its own taps. */}
       {handle && (
         <span className="absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
           <span
             aria-hidden
             className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
           >
-            <span className="absolute inset-0 bg-foreground/6" />
+            <span className="absolute inset-0 bg-background" />
           </span>
           {/* THE MARK ALONE, BEHIND A HAIRLINE. It was a pill for a day: the word "Switch" beside
               the mark, inside a 30% accent border on a 10% accent ground, because this is the one
