@@ -250,9 +250,10 @@
      purple 302, fuchsia 325, pink 352 — and the SLOT ORDER below interleaves them, so the linear
      probe in `hostSlot` hands neighbouring slots hues from opposite sides of the wheel.
      Two hues sit near a status and are kept deliberately: cyan (9 off `info`) and sky (11 off it).
-     `--status-info` is drawn in exactly one place, the prerelease strip in the header
-     (alpha-bar.tsx), and never beside a host mark. Everything nearer a status than that was
-     dropped: rose and red (blocked), amber and yellow (working), green and emerald (done).
+     `--status-info` is drawn in two places, the prerelease strip in the header (alpha-bar.tsx)
+     and the cache chip's cold glyph (cache-chip.tsx), and never beside a host mark. Everything
+     nearer a status than that was dropped: rose and red (blocked), amber and yellow (working),
+     green and emerald (done).
 
      The light halves are NOT Tailwind's `-600` shades. Tailwind's 600s read 2.4-4.7:1, i.e. most of
      the ramp fails 4.5 outright, and its 700s and 800s fail too for the low-chroma hues. So the

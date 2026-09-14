@@ -107,14 +107,13 @@ describe("which element it is", () => {
 describe("one quiet ink per state, on the glyph alone", () => {
   const glyphClass = () => chip()?.querySelector("svg")?.getAttribute("class") ?? "";
 
-  it("paints warm green, expiring amber and cold red, three states and no shades between", () => {
-    // The same three the `herdr-cache-alert` plugin paints in a status line, in the app's own
-    // lifecycle tokens. Warm and cold are dimmed because the chip is a footnote until the window is
-    // nearly out; expiring is the one state that asks for attention, so it runs at full strength.
+  it("paints warm green, expiring red and cold blue, three states and no shades between", () => {
+    // Cold is blue, not red; expiring is the alarm, so it alone runs at full strength. Warm and
+    // cold are dimmed because the chip is a footnote until the window is nearly out.
     const inks = [
       ["warm", "text-status-done/60"],
-      ["expiring", "text-status-working"],
-      ["cold", "text-status-blocked/70"],
+      ["expiring", "text-status-blocked"],
+      ["cold", "text-status-info/70"],
     ] as const;
     for (const [state, ink] of inks) {
       const view = render(<CacheChip cache={cache({ state })} />, { wrapper: one });

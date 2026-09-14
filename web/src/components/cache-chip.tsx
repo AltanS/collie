@@ -65,17 +65,20 @@ import { cn } from "@/lib/utils";
 // alone — the tint-on-glyph rule (DESIGN.md), kept rather than doubled.
 
 // ONE INK PER STATE, ON THE GLYPH, AND NO GRADIENT BETWEEN THEM. Three states is what the bridge
-// computes and three states is what the eye gets — the same green / amber / red the `herdr-cache-alert`
-// plugin paints in a status line, spelled here in the app's own lifecycle palette rather than in the
-// plugin's hex, so light and dark and the contrast table in index.css all hold. `--status-working` IS
-// the app's amber; `--status-done` and `--status-blocked` are its green and its red. Warm and cold run
-// at reduced opacity because the chip is a footnote until the window is nearly out; expiring is the one
-// state that asks for attention, so it alone runs at full strength. The word never takes any of this:
-// it stays `text-muted-foreground` in both layouts (DESIGN.md, the tint lands on the glyph only).
+// computes and three states is what the eye gets. Altan, from his phone on 2026-09-14: cold reads
+// as blue, not red, and expiring is the alarm, so it wears the app's red at full strength. Warm
+// stays the app's green, run down to a footnote opacity, because it is true for most of the
+// window's life and asks for nothing. Cold takes the app's cool blue (`--status-info` in
+// index.css) at reduced opacity, a footnote too, but a different colour from warm so the two quiet
+// states stay tellable apart at a glance. Expiring alone runs at full strength, because it is the
+// one state that asks for attention. The `herdr-cache-alert` plugin still paints green / amber /
+// red in its own status line; this same change is filed upstream there too, so until that lands the
+// chip and the plugin may briefly disagree on cold's colour. The word never takes any of this: it
+// stays `text-muted-foreground` in both layouts (DESIGN.md, the tint lands on the glyph only).
 const TONE_CLASS = {
   warm: "text-status-done/60",
-  expiring: "text-status-working",
-  cold: "text-status-blocked/70",
+  expiring: "text-status-blocked",
+  cold: "text-status-info/70",
 } as const;
 
 interface CacheChipProps {
