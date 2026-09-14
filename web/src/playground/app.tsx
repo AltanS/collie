@@ -53,6 +53,7 @@ import * as stripsCompact from "./sections/strips-compact";
 import * as beltGround from "./sections/belt-ground";
 import * as beltEdge from "./sections/belt-edge";
 import * as beltCapsule from "./sections/belt-capsule";
+import * as beltCue from "./sections/belt-cue";
 import * as paneMarker from "./sections/pane-marker";
 import * as rowSecondLine from "./sections/row-second-line";
 import * as actionsRow from "./sections/actions-row";
@@ -97,6 +98,7 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: beltGround.DEF, render: () => <beltGround.BeltGroundSection /> },
   { def: beltEdge.DEF, render: () => <beltEdge.BeltEdgeSection /> },
   { def: beltCapsule.DEF, render: () => <beltCapsule.BeltCapsuleSection /> },
+  { def: beltCue.DEF, render: () => <beltCue.BeltCueSection /> },
   { def: paneMarker.DEF, render: () => <paneMarker.PaneMarkerSection /> },
   { def: rowSecondLine.DEF, render: () => <rowSecondLine.RowSecondLineSection /> },
   { def: actionsRow.DEF, render: () => <actionsRow.ActionsRowSection /> },
