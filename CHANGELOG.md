@@ -92,6 +92,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The cache countdown no longer blinks between polls.** A refresh that arrived without a reading unmounted the chip for a frame and put it back on the next poll; the last reading now holds until a new one, or an explicit cold, replaces it, and it is dropped when the pane goes away.
 - **The pane title no longer shows a raw pane id.** A tab with several unnamed panes appended the multiplexer's `p3` to the title and printed it on every pill of the switcher; the title names the tab now, and a pill carries its place in the row only when a pill beside it would otherwise read the same.
 - **A second Herdr session no longer wipes the first one's cache readings.** The bridge's cache tracker forgot every reading a session's poll did not name, including the other session's, so each poll dropped and re-probed every pane; a poll now forgets only its own session's departed panes, and a transient probe failure keeps the last reading.
+- **The cold-cache push now fires for panes on a five-minute cache.** Codex, OpenCode, pi and omp all default to a 300-second TTL, no longer than the configured warn window, so the push skipped them outright; it now warns at half the pane's own cache lifetime whenever that is shorter than the configured window, about two and a half minutes before those panes go cold.
 
 ## [1.8.2] - 2026-09-12
 

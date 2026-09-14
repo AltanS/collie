@@ -114,14 +114,18 @@ describe("cacheWarnings", () => {
     expect(warn([pane({ cache: reading({ expiresAt: undefined }) })]).messages).toEqual([]);
   });
 
-  test("a TTL no longer than the window never warns, at any point in its cycle", () => {
-    // The whole cycle is inside the window, so every poll would qualify — warning here is warning on
-    // every request, which is how a warning becomes wallpaper.
-    const short = reading({ ttlSeconds: 300, expiresAt: NOW + 200_000 });
-    expect(warn([pane({ cache: short })]).messages).toEqual([]);
-    expect(warn([pane({ cache: reading({ ttlSeconds: 120, expiresAt: NOW + 60_000 }) })]).messages).toEqual([]);
-    // One second past the window is enough to qualify again.
-    expect(warn([pane({ cache: reading({ ttlSeconds: 301, expiresAt: NOW + 60_000 }) })]).messages).toHaveLength(1);
+  test("a TTL no longer than the window warns at half its own lifetime, not the fixed window", () => {
+    // A 300 s cache (Codex, OpenCode, pi, omp) never clears the fixed 300 s window, so the halving is
+    // what lets it warn at all: the effective window is 150 s, half the TTL.
+    expect(warn([pane({ cache: reading({ ttlSeconds: 300, expiresAt: NOW + 200_000 }) })]).messages).toEqual([]);
+    expect(warn([pane({ cache: reading({ ttlSeconds: 300, expiresAt: NOW + 150_000 }) })]).messages).toHaveLength(1);
+    expect(warn([pane({ cache: reading({ ttlSeconds: 300, expiresAt: NOW + 100_000 }) })]).messages).toHaveLength(1);
+    // A 180 s Google cache halves to a 90 s window.
+    expect(warn([pane({ cache: reading({ ttlSeconds: 180, expiresAt: NOW + 120_000 }) })]).messages).toEqual([]);
+    expect(warn([pane({ cache: reading({ ttlSeconds: 180, expiresAt: NOW + 90_000 }) })]).messages).toHaveLength(1);
+    // A TTL well past twice the window keeps the fixed window unchanged — the ordinary Claude case.
+    expect(warn([pane({ cache: reading({ ttlSeconds: 3600, expiresAt: NOW + 5 * 60_000 }) })]).messages).toHaveLength(1);
+    expect(warn([pane({ cache: reading({ ttlSeconds: 3600, expiresAt: NOW + 6 * 60_000 }) })]).messages).toEqual([]);
   });
 
   test("outside the window and past the deadline both say nothing", () => {

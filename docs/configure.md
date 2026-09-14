@@ -440,8 +440,11 @@ Collie can also send push alerts to a phone before a cache expires. One variable
 | `COLLIE_CACHE_WARN_SECONDS` | `300` | how many seconds before a watched pane's cache expires the push goes out; floor 30, ceiling 3600 |
 
 This setting controls only the push alert. It does **not** control when the chip turns red. The
-red threshold is fixed at one-quarter of each rule's TTL. To enable warnings for specific panes or
-all panes, see [voice-and-push.md](voice-and-push.md#which-alerts-collie-sends).
+red threshold is fixed at one-quarter of each rule's TTL. The push itself fires at whichever is
+shorter, this setting or half the pane's own cache lifetime, so a five-minute cache (Codex,
+OpenCode, pi, omp) warns about two and a half minutes before it goes cold, even though that is
+less than the configured 300 seconds. To enable warnings for specific panes or all panes, see
+[voice-and-push.md](voice-and-push.md#which-alerts-collie-sends).
 
 ## Attachments
 

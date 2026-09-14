@@ -5,9 +5,13 @@
 // new bridge logic (CLAUDE.md § Tests) and it is what lets `bun test` drive every gate below as data.
 //
 // ── FIVE CONDITIONS, AND THE THIRD IS THE ONE NOBODY EXPECTS ─────────────────
-// A cycle whose whole TTL fits inside the warn window is NEVER outside it, so warning on it would mean
-// warning on every single request. Such a pane is therefore never warned at all — "cold without a
-// warning never warns", written as a comparison rather than as a special case.
+// The configured window was sized for a one-hour cache (Claude's), so a shorter-lived rule gets HALF
+// its own lifetime as its window instead of the fixed one: `effectiveWarn = min(warnSeconds,
+// floor(ttlSeconds / 2))`. A 3600 s pane keeps the 300 s default unchanged; a 300 s pane (Codex,
+// OpenCode, pi, omp — see `bridge/cache/rules/*.ts`) warns at 150 s left, and a 180 s Google pane at
+// 90 s. The old rule skipped any pane whose TTL did not exceed the fixed window outright, which meant
+// the push could never fire for those harnesses at all; halving keeps the same "never warn on every
+// request" guarantee — the window is still well inside the TTL — without silencing them.
 //
 // ── ONE TAG PER WATCHED PANE, WITH `renotify` ────────────────────────────────
 // Two watched panes must never overwrite each other, which is why this does not reuse the herd slot:
@@ -56,7 +60,6 @@ export function warnMinutes(warnSeconds: number): number {
 /** Fold the five conditions over every pane. Returns messages plus the marks that record them. */
 export function cacheWarnings(input: CacheWarnInput): CacheWarnings {
   const { panes, watched, nowMs, warnSeconds, sent } = input;
-  const windowMs = warnSeconds * 1000;
   const messages: PushMessage[] = [];
   const sentPairs: { key: string; expiresAt: number }[] = [];
   for (const pane of panes) {
@@ -65,18 +68,19 @@ export function cacheWarnings(input: CacheWarnInput): CacheWarnings {
     //    is the ordinary case for a pane whose agent has not taken a turn yet (spec 02, Decision 1).
     if (cache === undefined || cache.expiresAt === undefined) continue;
     if (cache.state !== "warm" && cache.state !== "expiring") continue;
-    // 3. See the module header: a TTL inside the window can never be outside it.
-    if (cache.ttlSeconds <= warnSeconds) continue;
+    // 3. See the module header: the window is halved for a cache shorter than twice it.
+    const effectiveWarn = Math.min(warnSeconds, Math.floor(cache.ttlSeconds / 2));
+    const effectiveWindowMs = effectiveWarn * 1000;
     // 4. Inside the window, and not already past the deadline.
     const left = cache.expiresAt - nowMs;
-    if (left <= 0 || left > windowMs) continue;
+    if (left <= 0 || left > effectiveWindowMs) continue;
     // 1. And the operator asked about this one — the global switch or the list.
     if (!watched(pane)) continue;
     // 5. Once per warm cycle. The last outbound request moves `expiresAt`, and only then may it warn
     //    again, which is what makes the pair the unit of suppression rather than the key.
     const mark = sentMarkOf(pane.key, cache.expiresAt);
     if (sent.has(mark)) continue;
-    messages.push(warnMessage(pane, warnSeconds));
+    messages.push(warnMessage(pane, effectiveWarn));
     sentPairs.push({ key: pane.key, expiresAt: cache.expiresAt });
   }
   return { messages, sentPairs };
