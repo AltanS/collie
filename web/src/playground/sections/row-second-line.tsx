@@ -247,7 +247,7 @@ export function RowSecondLineSection() {
           state="row-second-line-option-3"
           label="Option 3 · Show the folder instead"
           reach="idea, not shipped: reads the pane's own cwd, which the bridge already sends."
-          note="The row shows the last folder of the pane's path, for example `herdr-pouch`. No bridge change."
+          note="Shipped. The row shows the last folder of the pane's path, for example `herdr-pouch`."
         >
           <LinePreview lines={[{ text: lastSegment(CWD_A), light: true }]} />
         </Card>

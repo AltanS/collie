@@ -272,6 +272,19 @@ export class FakeTmux implements TmuxExec {
     await Promise.resolve();
   }
 
+  /**
+   * tmux reports no working directory for this pane — `#{pane_current_path}` renders empty.
+   *
+   * Probed as a real, if rare, tmux answer: a pane whose cwd was deleted out from under it. The
+   * folder-label rule (adapter.ts § `windowLabel`) needs a way to put a window into exactly that
+   * state without inventing a directory tmux never reported.
+   */
+  async blankPaneCwd(paneId: string): Promise<void> {
+    const pane = this.panes.find((candidate) => candidate.id === paneId);
+    if (pane !== undefined) pane.cwd = "";
+    await Promise.resolve();
+  }
+
   /** The pane paints another line. What a keystroke landing would have done. */
   async changePane(paneId: string): Promise<void> {
     const pane = this.panes.find((candidate) => candidate.id === paneId);

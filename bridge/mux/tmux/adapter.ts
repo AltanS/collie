@@ -818,7 +818,7 @@ function toSnapshot(listing: TmuxListing, ownLabels: ReadonlyMap<string, string>
       tabId: window.id,
       spaceId: window.sessionId,
       number: window.index,
-      label: window.name,
+      label: windowLabel(window, listing.panes),
       focused: window.active,
       paneCount: window.panes,
     }));
@@ -827,7 +827,7 @@ function toSnapshot(listing: TmuxListing, ownLabels: ReadonlyMap<string, string>
   // are in the snapshot, and a half-listed pane would fail the whole herd's consistency check.
   const panes: MuxPane[] = listing.panes
     .filter((pane) => sessionById.has(pane.sessionId) && windowById.has(pane.windowId))
-    .map((pane) => toMuxPane(pane, sessionById, windowById, numberById, ownLabels));
+    .map((pane) => toMuxPane(pane, sessionById, windowById, numberById, ownLabels, listing.panes));
   return { panes, spaces, tabs };
 }
 
@@ -884,6 +884,7 @@ function toMuxPane(
   windowById: ReadonlyMap<string, TmuxWindow>,
   numberById: ReadonlyMap<string, number>,
   ownLabels: ReadonlyMap<string, string>,
+  panes: readonly TmuxPaneRecord[],
 ): MuxPane {
   const session = sessionById.get(raw.sessionId);
   const window = windowById.get(raw.windowId);
@@ -919,7 +920,7 @@ function toMuxPane(
     const printed = programTitle(raw);
     if (printed !== null) pane.terminalTitle = printed;
   }
-  const tabLabel = meaningfulWindowName(window, session);
+  const tabLabel = meaningfulWindowName(window, panes);
   if (tabLabel !== null) pane.tabLabel = tabLabel;
   // What a `recent` read can yield: the history tmux kept, plus the viewport it sits behind. This is
   // the mirror's only reliable "is there more" signal, and tmux reports both halves exactly.
@@ -947,21 +948,61 @@ function programTitle(raw: TmuxPaneRecord): string | null {
 }
 
 /**
- * A window name worth putting on screen, or null.
+ * The tab strip's own answer to "what is this window called" — tmux's raw `#{window_name}`, made
+ * to say something worth reading.
  *
  * tmux renames a window after whatever runs in it unless the operator turned that off or named it —
- * `#{automatic-rename}` says which. An auto-name in a one-window session says nothing worth showing.
+ * `#{automatic-rename}` says which. An auto-name is the PROGRAM's name, not a fact about the work:
+ * a screenful of tabs all reading `bash` or `claude` tells the operator nothing they did not already
+ * know, and is exactly the noise a name is supposed to cut through. So an auto-name is never shown —
+ * instead this reports the last folder of the window's ACTIVE PANE's current directory, the same
+ * information an operator reads off a desktop taskbar: not what is running, but what it is for. A
+ * window the operator named (or renamed) keeps that name outright, because it was a deliberate
+ * choice and this function never overrides one. Replaces the old "an auto-name in a one-window
+ * session says nothing" rule, which hid the program name only when there was nothing to disambiguate
+ * — this rule now applies at every window count, because the program name was never the problem;
+ * showing it at all was.
  *
- * A PURELY POSITIONAL name is dropped whatever the window count, which is `isUnnamedTab`, the one
- * rule Herdr's `meaningfulTabLabel` and zellij's `meaningfulTabName` also make: a number is a
- * position, and the tab strip already shows position by position.
+ * A PURELY POSITIONAL name — bare digits, `isUnnamedTab`'s one other case — passes through
+ * unfiltered rather than being read as a folder request: the tab strip already shows position by
+ * position, and a name that is only a number carries no folder to substitute in the first place.
+ * The same escape covers the fallback below, when the active pane's directory is empty or unknown:
+ * the window's own index stands in, still a bare number, still read positionally by every caller of
+ * `isUnnamedTab` downstream (`meaningfulWindowName`, `web/src/lib/pane-name.ts`'s `tabTitle`).
  */
-function meaningfulWindowName(window: TmuxWindow | undefined, session: TmuxSession | undefined): string | null {
-  if (window === undefined) return null;
+function windowLabel(window: TmuxWindow, panes: readonly TmuxPaneRecord[]): string {
   const name = window.name.trim();
-  if (isUnnamedTab(name)) return null;
-  if (window.autoNamed && (session?.windows ?? 0) <= 1) return null;
-  return name;
+  if (!window.autoNamed || isUnnamedTab(name)) return window.name;
+  const active = panes.find((pane) => pane.windowId === window.id && pane.active);
+  return lastFolder(active?.cwd ?? "") ?? String(window.index);
+}
+
+/**
+ * The last path segment of a pane's current directory — `/var/home/altan/playground/herdr-pouch` →
+ * `herdr-pouch`, `/var/home/altan` → `altan`, `/` → `/`. `null` when tmux reported no path at all
+ * (an empty `#{pane_current_path}`, tmux's honest "I don't know").
+ */
+function lastFolder(cwd: string): string | null {
+  const trimmed = cwd.trim();
+  if (trimmed.length === 0) return null;
+  if (trimmed === "/") return "/";
+  const segments = trimmed.split("/").filter((segment) => segment.length > 0);
+  return segments.at(-1) ?? null;
+}
+
+/**
+ * A window name worth putting on {@link MuxPane.tabLabel}, or null for a positional default.
+ *
+ * `windowLabel` above is the raw slot tmux's tab strip shows, including the bare-number fallback a
+ * folder-less auto-name falls back to; this is the filtered view the pane's own `tabLabel` carries,
+ * and the contract says a positional default is ABSENT there rather than spelled out (`../types.ts`
+ * § `MuxPane.tabLabel`) — the web side turns absence, or a raw label that is only a number, into the
+ * same `"tab N"` positional text either way, so nothing is lost by dropping it here.
+ */
+function meaningfulWindowName(window: TmuxWindow | undefined, panes: readonly TmuxPaneRecord[]): string | null {
+  if (window === undefined) return null;
+  const label = windowLabel(window, panes);
+  return isUnnamedTab(label) ? null : label;
 }
 
 /**

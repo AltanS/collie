@@ -113,6 +113,83 @@ describe("tmux's one title slot", () => {
   });
 });
 
+describe("an auto-named window shows its folder, not its program", () => {
+  /** The window and pane of a freshly created tab, plus a re-read of both after the fixture moves. */
+  async function tabAndPane(adapter: TmuxMux, tabId: string, paneId: string) {
+    const snapshot = await adapter.snapshot();
+    const tab = snapshot.tabs.find((candidate) => candidate.tabId === tabId);
+    const pane = snapshot.panes.find((candidate) => candidate.paneId === paneId);
+    if (tab === undefined || pane === undefined) throw new Error(`the fake lost ${tabId} or ${paneId}`);
+    return { tab, pane };
+  }
+
+  test("a window the operator named keeps that name", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    const created = await adapter.createTab({ spaceId: "$1", cwd: "/var/home/altan/playground/herdr-pouch" });
+    if (!created.ok) throw new Error("unreachable");
+    const renamed = await adapter.renameTab(created.value.tabId, "notes");
+    expect(renamed.ok).toBe(true);
+
+    const { tab, pane } = await tabAndPane(adapter, created.value.tabId, created.value.paneId);
+    // A deliberate choice, so the folder rule never runs — even though the cwd would say otherwise.
+    expect(tab.label).toBe("notes");
+    expect(pane.tabLabel).toBe("notes");
+  });
+
+  test("an auto-named window with a known path shows its active pane's last folder", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    // No `-n`, so tmux keeps `automatic-rename` on and names the window after the shell it opened.
+    const created = await adapter.createTab({ spaceId: "$1", cwd: "/var/home/altan/playground/herdr-pouch" });
+    if (!created.ok) throw new Error("unreachable");
+
+    const { tab, pane } = await tabAndPane(adapter, created.value.tabId, created.value.paneId);
+    expect(tab.label).toBe("herdr-pouch");
+    expect(pane.tabLabel).toBe("herdr-pouch");
+  });
+
+  test("root is its own last folder", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    const created = await adapter.createTab({ spaceId: "$1", cwd: "/" });
+    if (!created.ok) throw new Error("unreachable");
+
+    const { tab } = await tabAndPane(adapter, created.value.tabId, created.value.paneId);
+    expect(tab.label).toBe("/");
+  });
+
+  test("an auto-named window with no known path falls back to its bare index", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    const created = await adapter.createTab({ spaceId: "$1", cwd: "/var/home/altan/playground/herdr-pouch" });
+    if (!created.ok) throw new Error("unreachable");
+    await fake.blankPaneCwd(created.value.paneId);
+
+    const { tab, pane } = await tabAndPane(adapter, created.value.tabId, created.value.paneId);
+    // A bare number, positional — the tab strip's own read of `isUnnamedTab` renders it `tab N`.
+    // The seeded session already has window index 0 ("agents"), so this one is index 1.
+    expect(tab.number).toBe(1);
+    expect(tab.label).toBe("1");
+    // The pane's own `tabLabel` stays ABSENT for a positional default (`MuxPane.tabLabel`'s contract)
+    // — the bare number is the raw slot's business, not a name this pane carries.
+    expect(pane.tabLabel).toBeUndefined();
+  });
+
+  test("a purely numeric name — the operator's own, or tmux's — passes through as the number", async () => {
+    const fake = new FakeTmux();
+    const adapter = new TmuxMux(fake);
+    // `-n 42` turns `automatic-rename` off (tmux's own behaviour), so this is the operator's choice —
+    // and the rule still reads a bare digit string as positional, never as a name to keep verbatim.
+    const created = await adapter.createTab({ spaceId: "$1", label: "42", cwd: "/var/home/altan/playground/herdr-pouch" });
+    if (!created.ok) throw new Error("unreachable");
+
+    const { tab, pane } = await tabAndPane(adapter, created.value.tabId, created.value.paneId);
+    expect(tab.label).toBe("42");
+    expect(pane.tabLabel).toBeUndefined();
+  });
+});
+
 describe("the #4849 spawn guard", () => {
   test("a create on tmux 3.6b under `window-size manual` is refused, and NOTHING is spawned", async () => {
     const fake = new FakeTmux();

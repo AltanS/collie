@@ -102,6 +102,10 @@ server. Collie blocks window creation in this state and tells you to run
 `tmux set -g window-size latest`; [Requirements](install.md#requirements) lists the tested
 versions.
 
+With `automatic-rename` on, tmux renames a window after whatever program is running in it; Collie
+shows the last folder of that window's active pane instead, since a screenful of tabs named `bash`
+says nothing — a window you named yourself keeps that name.
+
 ### zellij notes
 
 If your distribution lacks zellij packages, download a binary from
