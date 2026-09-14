@@ -417,8 +417,8 @@ cache stays warm. The chip counts down idle time since the agent's last request.
 total session age. Each new request resets the timer.
 
 The chip's hourglass carries the state in one of three colours, and the number beside it stays grey.
-The hourglass is green while the window is wide, amber during the final quarter of it, and red once
-the window expires or a turn pays the full rate. The chip says `cold` in the red state, and `<1m`
+The hourglass is green while the window is wide, red during the final quarter of it, and blue once
+the window expires or a turn pays the full rate. The chip says `cold` in the blue state, and `<1m`
 instead of seconds when under one minute remains.
 
 The chip sits at the right end of the pane header's second line, after the pane's space and tab. On a
@@ -439,8 +439,8 @@ Collie can also send push alerts to a phone before a cache expires. One variable
 | --- | --- | --- |
 | `COLLIE_CACHE_WARN_SECONDS` | `300` | how many seconds before a watched pane's cache expires the push goes out; floor 30, ceiling 3600 |
 
-This setting controls only the push alert. It does **not** control when the chip turns amber. The
-amber threshold is fixed at one-quarter of each rule's TTL. To enable warnings for specific panes or
+This setting controls only the push alert. It does **not** control when the chip turns red. The
+red threshold is fixed at one-quarter of each rule's TTL. To enable warnings for specific panes or
 all panes, see [voice-and-push.md](voice-and-push.md#which-alerts-collie-sends).
 
 ## Attachments

@@ -12,6 +12,10 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    // The playground imports display names for the app's supported multiplexers from a JSON file
+    // OUTSIDE `src/` (web/playground-fixtures/), because the repo guard (scripts/check-mux-names.sh)
+    // forbids those words as string literals anywhere under `src/` — see row-second-line.tsx.
+    "resolveJsonModule": true,
 
     "strict": true,
     "noUnusedLocals": true,
@@ -27,6 +31,6 @@
   // `e2e` and `playwright.config.ts` are in the app project on purpose: the browser cases import the
   // unit layer's fixtures out of `src/test/`, so a fixture that changes shape has to break
   // `bun run typecheck` rather than a browser run five minutes later.
-  "include": ["src", "vite.config.ts", "playwright.config.ts", "e2e"],
+  "include": ["src", "vite.config.ts", "playwright.config.ts", "e2e", "playground-fixtures"],
   "exclude": ["src/sw.ts"]
 }

@@ -107,12 +107,19 @@ describe("AgentCard in a workspace group", () => {
     expect(container.textContent).not.toContain("webapp/api");
   });
 
-  it("leaves line 2 blank, not absent, when the tab carries no name of its own", () => {
+  it("shows the tab's position when it carries no name of its own", () => {
     const { container } = row({ tabLabel: "3" });
     const detail = line2(container)!;
     expect(detail).not.toBeNull();
-    expect(detail.textContent).toBe("");
+    expect(detail.textContent).toBe("tab 3");
     expect(detail.className).toMatch(/(?:^|\s)h-4(?=\s|$)/);
+  });
+
+  it("centres the name when the raw tab label carries no digit at all", () => {
+    const { container } = row({ tabLabel: "" });
+    // No slot at all: the row's own `items-center` puts the name in the middle instead.
+    expect(line2(container)).toBeNull();
+    expect(line1(container)).toHaveTextContent("logs");
   });
 
   it("states the row's height rather than letting its contents set it", () => {

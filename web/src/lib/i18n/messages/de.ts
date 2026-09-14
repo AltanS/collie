@@ -395,6 +395,7 @@ export const de: Dictionary = {
   "home.workspace.paneCount.other": "{count} Panes",
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Pane-Aktionen anzeigen",
+  "home.row.tabPosition": "Tab {n}",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "Eingabe erforderlich",

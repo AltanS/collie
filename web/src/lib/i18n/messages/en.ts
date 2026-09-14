@@ -412,6 +412,7 @@ export const en = {
   "home.workspace.paneCount.other": "{count} panes",
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Tap for pane actions",
+  "home.row.tabPosition": "tab {n}",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "Needs you",

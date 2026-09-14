@@ -388,6 +388,7 @@ export const ko: Dictionary = {
   "home.workspace.paneCount.other": "창 {count}개",
   "home.sidebar.shells": "셸",
   "home.sidebar.paneActionsTitle": "창 작업 보기",
+  "home.row.tabPosition": "탭 {n}",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "입력 대기",

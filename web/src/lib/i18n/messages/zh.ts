@@ -377,6 +377,7 @@ export const zh: Dictionary = {
   "home.workspace.paneCount.other": "{count} 个窗格",
   "home.sidebar.shells": "终端实例",
   "home.sidebar.paneActionsTitle": "查看窗格操作选项",
+  "home.row.tabPosition": "标签页 {n}",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "待处理",

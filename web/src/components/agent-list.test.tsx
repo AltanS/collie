@@ -126,9 +126,10 @@ describe("AgentList — two axes, urgency then workspace", () => {
         /(?:^|\s)h-4(?=\s|$)/,
       );
     }
-    // An unnamed tab leaves the slot blank — a positional number is not a name.
+    // An unnamed tab reads its position instead — a positional number is not a name, but it is
+    // still the fact the multiplexer gave this tab.
     const beta = screen.getByRole("button", { name: /beta/ });
-    expect(beta.querySelector('[data-slot="agent-row-detail"]')?.textContent).toBe("");
+    expect(beta.querySelector('[data-slot="agent-row-detail"]')?.textContent).toBe("tab 3");
     // The hint is the one fact that would make two rows of a group different heights.
     expect(screen.queryByText(/a sentence the bridge composed/)).not.toBeInTheDocument();
   });

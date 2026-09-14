@@ -8,7 +8,7 @@ import { groupPanesByWorkspace } from "@/lib/pane-groups";
 import { bucketOf, sectionHeaderProps, triage, type TriageKey } from "@/lib/triage";
 import type { AgentView, BridgeStatus } from "@/lib/types";
 import { paneRowKey } from "@/lib/hosts";
-import { AgentCard, type BlankTabMode } from "./agent-card";
+import { AgentCard } from "./agent-card";
 import { t, tn } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
 
@@ -36,13 +36,6 @@ interface AgentListProps {
   error?: boolean;
   /** When the stale data was fetched, for the "last seen HH:MM" half of the disconnected placeholder. */
   lastSeenAt?: number;
-  /**
-   * Forwarded to every workspace-grouped row's `AgentCard` as its own `blankTab` prop — see that
-   * component for what each value does. Default `"gap"` is today's shipped behaviour; unset, this
-   * list renders byte-identically to before the prop existed. Never reaches the "needs you" rows,
-   * which stay `scope="herd"` and always carry their own place.
-   */
-  blankTab?: BlankTabMode;
 }
 
 /** The sections that mean "a human is required here" — the only ones that get card chrome, and now
@@ -82,7 +75,6 @@ export function AgentList({
   emptyState = true,
   error = false,
   lastSeenAt,
-  blankTab,
 }: AgentListProps) {
   useLocale();
   // Whether the multiplexer can say which agent a pane holds. Read unconditionally — a hook cannot
@@ -158,7 +150,6 @@ export function AgentList({
       scope={scope}
       statusStyle="dot"
       density={scope === "herd" ? "card" : "row"}
-      {...(scope === "place" ? { blankTab } : {})}
     />
   );
 

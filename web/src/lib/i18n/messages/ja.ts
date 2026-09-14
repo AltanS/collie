@@ -390,6 +390,7 @@ export const ja: Dictionary = {
   "home.workspace.paneCount.other": "{count}ペイン",
   "home.sidebar.shells": "シェル",
   "home.sidebar.paneActionsTitle": "タップしてペイン操作を表示",
+  "home.row.tabPosition": "タブ {n}",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "要対応",

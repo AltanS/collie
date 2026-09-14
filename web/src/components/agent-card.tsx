@@ -6,14 +6,11 @@ import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
 import { PaneMeta } from "@/components/pane-meta";
 import { PaneHint } from "@/components/pane-hint";
-import { paneCwdLine, paneName, panePlaceParts, type PlaceParts } from "@/lib/pane-name";
+import { paneCwdLine, paneName, panePlaceParts } from "@/lib/pane-name";
 import { statusLabel } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
-
-/** {@link AgentCardProps.blankTab}'s values, exported so `AgentList` can forward the same prop
- *  through to a `scope="place"` row without re-typing the union. */
-export type BlankTabMode = "gap" | "center" | "cwd" | "position" | "raw";
+import { t } from "@/lib/i18n";
 
 interface AgentCardProps {
   agent: AgentView;
@@ -43,57 +40,21 @@ interface AgentCardProps {
    * signal — see a card, something wants you; all flat, nothing does.
    */
   density?: "card" | "row";
-  /**
-   * What line 2 of a workspace-grouped row (`scope="place"`) shows when its tab has no name of its
-   * own ({@link isUnnamedTab} in `lib/pane-name.ts`). `"gap"` (default) is what ships today: the
-   * 16px slot renders empty and the name stays pinned to the top of the stated 44px row — nothing
-   * about this prop changes that unless a caller opts into one of the other four. Each of the other
-   * four is a playground idea (`playground/sections/row-second-line.tsx`, "Blank tab line and other
-   * multiplexers"); picking one means shipping it as the new default.
-   *
-   *  - `"center"` — the slot is skipped entirely, so the row's own `items-center` puts the name in
-   *    the middle of the 44px row instead of near its top.
-   *  - `"cwd"` — the last path segment of the pane's cwd, muted, but only when it says more than the
-   *    workspace name the heading above already gives; otherwise falls back to `"center"`.
-   *  - `"position"` — the tab's position in words (`"tab 2"`), muted and a shade lighter than a real
-   *    name, read off the multiplexer's own raw tab label; falls back to `"center"` when that raw
-   *    label carries no digit at all.
-   *  - `"raw"` — the multiplexer's own raw tab label, untouched, in the lighter ink; falls back to
-   *    `"center"` when that raw label is empty.
-   */
-  blankTab?: BlankTabMode;
 }
 
-/** {@link AgentCardProps.blankTab}'s non-"gap" modes, resolved to a body — or `null`, which means
- *  "nothing to show", the signal that sends the row to `"center"`'s treatment instead. Only ever
- *  consulted for a `scope="place"` row whose tab is unnamed; `"gap"` never reaches this function. */
-function blankTabBody(
-  mode: Exclude<BlankTabMode, "gap">,
-  agent: AgentView,
-  place: PlaceParts,
-): { text: string; light: boolean } | null {
-  if (mode === "center") return null;
-  if (mode === "cwd") {
-    const segment = lastCwdSegment(agent.cwd);
-    // Only when the segment says MORE than the workspace name already does — `/…/workspace-kaz`
-    // alone would just repeat the heading above, so that case centres instead.
-    if (segment === null || segment === place.space) return null;
-    return { text: segment, light: false };
-  }
+/**
+ * Line 2 of a workspace-grouped row (`scope="place"`) when its tab has no name of its own
+ * ({@link isUnnamedTab} in `lib/pane-name.ts`) — "position": the tab's position in words
+ * (`"tab 2"`), read off the digit already sitting in the multiplexer's own raw tab label
+ * (`"2"`, or zellij's own `"Tab #2"` shape), never invented. `null` when that raw label carries
+ * no digit at all — the signal that sends the row to the centred treatment instead, the name
+ * sitting in the middle of the 44px row. This is THE behaviour; there is no other mode.
+ */
+function tabPositionBody(agent: AgentView): string | null {
   const raw = agent.tabLabel?.trim();
   if (!raw) return null;
-  if (mode === "raw") return { text: raw, light: true };
-  // "position": the multiplexer's own numeric hint, wherever it sits in the raw label — a bare `"2"`
-  // or zellij's own `"Tab #2"` shape both carry one.
   const digits = raw.match(/\d+/u)?.[0];
-  return digits ? { text: `tab ${digits}`, light: true } : null;
-}
-
-/** The cwd's last path segment, or `null` for a root or an empty cwd. */
-function lastCwdSegment(cwd: string): string | null {
-  const trimmed = cwd.replace(/\/+$/u, "");
-  const parts = trimmed.split("/").filter((p) => p.length > 0);
-  return parts.length > 0 ? parts[parts.length - 1]! : null;
+  return digits ? t("home.row.tabPosition", { n: digits }) : null;
 }
 
 /** The row's text: line 1's name, and line 2's two runs. */
@@ -134,7 +95,6 @@ export function AgentCard({
   scope = "herd",
   statusStyle = "badge",
   density = "card",
-  blankTab = "gap",
 }: AgentCardProps) {
   useLocale();
   const isShell = agent.kind === "shell";
@@ -143,13 +103,15 @@ export function AgentCard({
   // ── THE WORKSPACE-GROUPED ROW CARRIES ITS TAB, AT ONE HEIGHT ─────────────────
   // Under a WORKSPACE heading (lib/pane-groups.ts) line 2 has one fact left worth saying: the tab.
   // The workspace is the heading and the cwd is the same cwd down most of a project, but the tab is
-  // what tells two rows of one workspace apart — so line 2 is the tab's name, and it is BLANK when
-  // the multiplexer only numbered that tab (`isUnnamedTab`), because a number is not a name.
+  // what tells two rows of one workspace apart — so line 2 is the tab's name, and when the
+  // multiplexer only numbered that tab (`isUnnamedTab`), it reads that number instead: `tab 2`, in
+  // the lighter ink. When the raw label carries no number at all, the slot is skipped outright and
+  // the row's own `items-center` puts the name in the middle of the 44px row instead.
   //
-  // Blank is not absent. The slot is always rendered and always 16px, and the row STATES its own
-  // height rather than letting its contents set it: `h-11`, 44px, the app's touch floor, holding a
-  // 20px line over a 16px slot with no vertical padding of its own. Every row of every group is that
-  // height whether its tab is named or not, so nothing in the list can move (DESIGN.md §2). The
+  // The slot is always 16px when it renders, and the row STATES its own height rather than letting
+  // its contents set it: `h-11`, 44px, the app's touch floor, holding a 20px line over a 16px slot
+  // with no vertical padding of its own. Every row of every group is that height whether its tab
+  // carries a name, a position, or neither, so nothing in the list can move (DESIGN.md §2). The
   // bridge's hint stays off the row for the same reason — it is a sentence, and a sentence has no
   // height anyone can state.
   //
@@ -170,13 +132,11 @@ export function AgentCard({
       ? { primary: paneName(agent), detailLead: null, detailTail: paneCwdLine(agent), tailMono: true }
       : { primary: paneName(agent), detailLead: place.space, detailTail: place.tab, tailMono: false };
   const { primary, detailLead, detailTail } = lines;
-  // `blankTab` only ever changes anything for a workspace-grouped row whose tab has no name — every
-  // other row, and "gap" itself, take the ordinary slot below unchanged.
+  // A workspace-grouped row whose tab has no name of its own reads its position instead — `tab 2` —
+  // or, when the raw label carries no digit at all, nothing: the slot is then skipped outright.
   const tabIsBlank = inPlace && detailTail === null;
-  const blankBody = tabIsBlank && blankTab !== "gap" ? blankTabBody(blankTab, agent, place) : null;
-  // No body to show AND the caller opted in to something other than "gap" — skip the slot outright
-  // rather than render it empty, which is what lets the row's own `items-center` centre the name.
-  const skipBlankSlot = tabIsBlank && blankTab !== "gap" && blankBody === null;
+  const positionText = tabIsBlank ? tabPositionBody(agent) : null;
+  const skipBlankSlot = tabIsBlank && positionText === null;
   // The dot leads line 1, INLINE, ahead of the tile — not on the tile's corner. The corner was
   // right at `size-9`: a 10px badge on a 36px tile is a badge. On a 16px tile it is most of the
   // artwork, and shrinking it to fit kills the one glance cue the row has — the resting states are
@@ -253,8 +213,8 @@ export function AgentCard({
 
           {/* Only rendered when there's something to say — a pane with neither a tab nor a name of
               its own is a one-line row. A workspace-grouped row is the exception: its slot is
-              always there, blank or not, because that is what keeps the group at one pitch — UNLESS
-              `blankTab` opted into skipping it, which centres the name in the 44px row instead. */}
+              always there, holding the tab's name or its position — UNLESS neither is available,
+              which skips the slot outright and centres the name in the 44px row instead. */}
           {!skipBlankSlot && (inPlace || detailLead !== null || detailTail !== null) && (
             <div
               data-slot="agent-row-detail"
@@ -264,16 +224,11 @@ export function AgentCard({
                 inPlace && "h-4 items-center",
               )}
             >
-              {blankBody ? (
-                // The blank slot's `blankTab` replacement — position, raw label or cwd tail — a
-                // shade lighter than an ordinary tab name so it never reads as one.
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate",
-                    blankBody.light && "text-muted-foreground/70",
-                  )}
-                >
-                  {blankBody.text}
+              {positionText !== null ? (
+                // The unnamed tab's position, a shade lighter than an ordinary tab name so it never
+                // reads as one.
+                <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
+                  {positionText}
                 </span>
               ) : (
                 <>
