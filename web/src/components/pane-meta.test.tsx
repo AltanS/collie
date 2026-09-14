@@ -100,17 +100,18 @@ describe("the inline row, at the end of the pane header's path line", () => {
     expect(host.className).not.toMatch(/border/);
     withHost.unmount();
 
-    // A window the bridge calls expiring: the state's ink is the app's amber, and it may reach the
-    // hourglass and nothing else. A PEER's reading is drawn in the very same ink — the identity tint
-    // left this chip on 2026-09-14, because a host tint may never be mistaken for a status.
+    // A window the bridge calls expiring: the state's ink is the app's red, the alarm, and it may
+    // reach the hourglass and nothing else. A PEER's reading is drawn in the very same ink — the
+    // identity tint left this chip on 2026-09-14, because a host tint may never be mistaken for a
+    // status.
     render(<PaneMeta layout="inline" host="workshop" cache={reading({ state: "expiring" })} />, {
       wrapper: crew,
     });
     const chip = document.querySelector<HTMLElement>('[data-slot="cache-chip"]')!;
     expect(chip.className).toMatch(/text-muted-foreground/);
-    expect(chip.className).not.toMatch(/text-status-working/);
+    expect(chip.className).not.toMatch(/text-status-blocked/);
     expect(chip.className).not.toMatch(/text-host-/);
-    expect(chip.querySelector("svg")?.getAttribute("class")).toMatch(/text-status-working/);
+    expect(chip.querySelector("svg")?.getAttribute("class")).toMatch(/text-status-blocked/);
   });
 
   it("stands the reading on the hourglass's foot, in the column as well as inline", () => {
