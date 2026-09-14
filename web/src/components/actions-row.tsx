@@ -125,7 +125,7 @@ const OFF = "text-muted-foreground";
 
 /**
  * The FIRST-PAINT fallback for how much of the belt's right end the pinned Switch block owns, in
- * px — the scroller's `paddingRight` before a `ResizeObserver` has measured the real thing (below).
+ * px — the trailing spacer's width before a `ResizeObserver` has measured the real thing (below).
  * It is the whole pinned span: 53px of control, the 12px of `pr-3` that keeps it off the screen
  * edge, and the 32px of `pl-8` its own fade leads in over.
  *
@@ -141,17 +141,17 @@ const OFF = "text-muted-foreground";
  * THIS NUMBER IS NO LONGER THE ANSWER — IT IS THE GUESS BEFORE ONE EXISTS. A constant here drifts
  * the moment the Switch block's own box changes (a locale with a wider glyph, a future word back on
  * the pill) and nothing re-measures it, which is exactly how the last pill ended up hidden under the
- * block: the scroller's padding and the block's real width were two numbers that had to be kept
- * equal by hand and quietly stopped agreeing. `useSwitchBlockWidth` below measures the block itself
- * with a `ResizeObserver` and this constant is only its return value's first frame — see there for
- * why the block, not the belt, is what gets measured.
+ * block: the spacer's width and the block's real width were two numbers that had to be kept equal
+ * by hand and quietly stopped agreeing. `useSwitchBlockWidth` below measures the block itself with a
+ * `ResizeObserver` and this constant is only its return value's first frame — see there for why the
+ * block, not the belt, is what gets measured.
  */
 const SWITCH_PILL_INSET = 97;
 
 /**
- * The pinned Switch block's own width, read off its DOM node — the scroller's `paddingRight` must
- * equal this exactly, or the last pill either stops short of the hairline (padding too wide) or
- * scrolls in UNDER the block and is hidden by it (padding too narrow, the bug this hook fixes).
+ * The pinned Switch block's own width, read off its DOM node — the trailing spacer's width must
+ * equal this exactly, or the last pill either stops short of the hairline (spacer too wide) or
+ * scrolls in UNDER the block and is hidden by it (spacer too narrow, the bug this hook fixes).
  *
  * MEASURES THE BLOCK, NOT A FORMULA. {@link SWITCH_PILL_INSET} was a formula — 53 + 12 + 32 — kept
  * equal to the block's real box by hand, and the two drifted apart in practice (the last pill
@@ -339,9 +339,10 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           Switch block's alone, constant in every scroll state, and keeps this primitive's own mask on
           the left, where it still means something once scrolled. A caller with no handle passes no
           `edges` at all — the default `"both"` is unchanged.
-          `pl-3` stays fixed (paired with the `-mx-3` above, the route's own gutter); `paddingRight` is
-          inline and DYNAMIC, from {@link useSwitchBlockWidth} — see that hook and the Switch block's
-          own ref below for why a constant here is what hid the last pill.
+          `pl-3` stays fixed (paired with the `-mx-3` above, the route's own gutter); the scroller
+          carries no `paddingRight` at all — see the trailing spacer, a sibling of the last pill
+          inside this same scroller, for why the room the Switch block needs is bought with a real
+          flex child rather than padding.
           The scroller's own `gap-1.5` stands — 6px is the belt's ONE pill gap, between the general
           pills, and between the last of them and the harness section's edge. The old `gap-2.5`
           override is gone with the capsules: a wider gap around a group was the separator when the
@@ -351,7 +352,6 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           <div
             ref={scrollerRef}
             className={cn(STRIP_SCROLLER, "bg-primary/10 pl-3", !handle && "pr-3")}
-            style={handle ? { paddingRight: switchInset } : undefined}
           >
             {general.length > 0 && (
               // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of
@@ -390,6 +390,20 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
               </div>
             )}
             <HarnessBar agent={agent} mine={mine} onRun={onRun} disabled={disabled} />
+            {/* THE TRAILING SPACER — a real flex child, not padding. `paddingRight` on this
+                scroller was tried first and measured wrong in Chrome: the scroller is a `flex`
+                row and the harness section is itself a nested `flex` row (`BELT_SECTION`), so the
+                last pill that actually overflows sits two levels down, inside a grandchild of the
+                scroller. Chrome does not reliably fold a scroller's own trailing padding into the
+                scrollable overflow region when the element whose children overflow is not the
+                padded element itself — measured on a Claude pane at 390px: with `paddingRight`
+                set to the Switch block's own measured width, the last pill's right edge still
+                landed ~5px past the hairline's left edge at `scrollLeft` max, i.e. still under the
+                fade. `shrink-0` and an explicit inline width sidestep the whole question — a real
+                child always counts toward `scrollWidth`, at any nesting depth. `aria-hidden`
+                because it draws nothing and answers nothing; the width tracks
+                {@link useSwitchBlockWidth} exactly the way the removed padding used to. */}
+            {handle && <span aria-hidden className="h-full shrink-0" style={{ width: switchInset }} />}
           </div>
         )}
       </OverflowEdges>

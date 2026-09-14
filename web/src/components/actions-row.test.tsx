@@ -172,11 +172,15 @@ describe("ActionsRow", () => {
     expect(screen.queryByRole("button", { name: "Switch pane" })).not.toBeInTheDocument();
   });
 
-  it("reserves the scroller's right padding for the pinned Switch block, and draws no right fade of its own", () => {
+  it("reserves room for the pinned Switch block with a trailing spacer, not padding, and draws no right fade of its own", () => {
     // jsdom has no ResizeObserver (lib/env.ts's hasResizeObserver), so the scroller falls back to
     // SWITCH_PILL_INSET's first-paint value — the same number a real browser reports for today's
-    // box before its first observation callback lands. What this test pins is the WIRING: the
-    // fallback lands on the scroller as an inline `paddingRight`, and OverflowEdges is told
+    // box before its first observation callback lands. A spacer, not `paddingRight`: measured over
+    // CDP on a Claude pane, `paddingRight` on this scroller did not reliably reach the scrollable
+    // overflow in Chrome — the last pill still sat ~5px under the Switch block's fade at
+    // `scrollLeft` max — because the scroller is a `flex` row and the harness section is itself a
+    // nested `flex` row, so the overflowing pill is two levels down from the padded element. A real
+    // flex child always counts toward `scrollWidth`, at any nesting depth. `OverflowEdges` is told
     // `edges="left"` so it never paints a second, scroll-dependent fade over the block's own.
     render(
       <ActionsRow
@@ -187,18 +191,22 @@ describe("ActionsRow", () => {
       />,
     );
     const scroller = document.querySelector<HTMLElement>(".overflow-x-auto")!;
-    expect(scroller.style.paddingRight).toBe("97px");
+    expect(scroller.style.paddingRight).toBe("");
     expect(scroller.className).not.toMatch(/(?:^|\s)pr-3(?=\s|$)/);
+    const spacer = scroller.lastElementChild!;
+    expect(spacer.getAttribute("aria-hidden")).toBe("true");
+    expect(spacer.getAttribute("style")).toBe("width: 97px;");
     // The masked wrapper one level out never carries a right-hand gradient stop — `edges="left"`
     // took effect.
     const masked = scroller.parentElement!;
     expect(masked.className).not.toContain("black_calc");
   });
 
-  it("gives the scroller symmetric px-3 padding and OverflowEdges its default edges when there is no handle", () => {
+  it("gives the scroller symmetric px-3 padding, no trailing spacer, and OverflowEdges its default edges when there is no handle", () => {
     render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
     const scroller = document.querySelector<HTMLElement>(".overflow-x-auto")!;
     expect(scroller.style.paddingRight).toBe("");
     expect(scroller.className).toMatch(/(?:^|\s)pr-3(?=\s|$)/);
+    expect(scroller.lastElementChild?.getAttribute("aria-hidden")).not.toBe("true");
   });
 });
