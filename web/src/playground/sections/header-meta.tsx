@@ -143,8 +143,11 @@ function HeaderMetaRow({
             {nameLeading}
             <span className="block truncate font-semibold leading-5">{TITLE}</span>
           </div>
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="block truncate font-mono text-[11px] leading-3 text-muted-foreground">
+          <div className="flex h-3 min-w-0 items-baseline gap-2">
+            <span
+              data-slot="pane-place"
+              className="min-w-0 truncate text-[11px] leading-3 text-muted-foreground"
+            >
               {path}
             </span>
             {pathTrailing !== undefined && <span className="ml-auto shrink-0">{pathTrailing}</span>}

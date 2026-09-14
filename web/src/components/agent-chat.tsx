@@ -1424,8 +1424,20 @@ export function AgentChat({
                     WHO GIVES WAY: the place. It is `min-w-0 truncate` and the meta is `flex-none`, so
                     a long tab name ends in an ellipsis and the machine's name and the countdown are
                     never cut. Line 1 is untouched by all of it — the meta is inside this row, not
-                    beside the block, so the pane's own name still has the full width. */}
-                <div className="flex min-w-0 items-center gap-2">
+                    beside the block, so the pane's own name still has the full width.
+
+                    THE ROW STANDS ON ONE BASELINE, `items-baseline` and not `items-center`, and it
+                    still states its own `h-3` so the 36px sum above never depends on it. Centring the
+                    two boxes put the place text's ink foot a measured 8px above `PaneMeta`'s own — a
+                    flex container centres CHILDREN as boxes, and `pane-place`'s 12px line box and
+                    `PaneMeta`'s stated 12px box are not the same shape once their ink is accounted
+                    for. On the baseline the place text's own font baseline sets the line, and
+                    `PaneMeta` reports the baseline of its own first baseline-bearing descendant — the
+                    same chain `pane-meta.tsx`'s header already measured ink for. Measured in real
+                    Chromium at device-pixel resolution (3x, on the playground's minibuch mock), the
+                    place text's ink foot lands flush with the host name, the digits, the hourglass
+                    and the server glyph — `items-baseline` alone closes it, no nudge of its own. */}
+                <div className="flex h-3 min-w-0 items-baseline gap-2">
                   <span
                     data-slot="pane-place"
                     className="min-w-0 truncate text-[11px] leading-3 text-muted-foreground"
