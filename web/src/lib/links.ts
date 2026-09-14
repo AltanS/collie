@@ -93,8 +93,9 @@ const HAS_HOST = /^https?:\/\/[a-z0-9]/i;
  * column width and guessing which breaks were soft. A half-URL that opens the right host beats a
  * wrong URL assembled from two unrelated lines.
  *
- * `logicalText` — the same pane read with soft wraps undone (`herdr`'s `recent_unwrapped`) — turns
- * that guess into a check, and the caller that has it should pass it. See `repairWrapped`.
+ * `logicalText` — the same pane read with soft wraps undone by the adapter's unwrapped-read
+ * capability — turns that guess into a check, and the caller that has it should pass it. See
+ * `repairWrapped`.
  */
 export function findLinks(text: string, logicalText?: string): LinkMatch[] {
   const found = scanLinks(text);
