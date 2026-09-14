@@ -49,6 +49,8 @@ import * as ideas from "./sections/ideas";
 import * as hostTag from "./sections/host-tag";
 import * as headerCorner from "./sections/header-corner";
 import * as headerMeta from "./sections/header-meta";
+import * as stripsCompact from "./sections/strips-compact";
+import * as beltGround from "./sections/belt-ground";
 import * as paneMarker from "./sections/pane-marker";
 import * as rowSecondLine from "./sections/row-second-line";
 import * as actionsRow from "./sections/actions-row";
@@ -89,6 +91,8 @@ export const SECTIONS: readonly SectionEntry[] = [
   { def: hostTag.DEF, render: () => <hostTag.HostTagSection /> },
   { def: headerCorner.DEF, render: () => <headerCorner.HeaderCornerSection /> },
   { def: headerMeta.DEF, render: () => <headerMeta.HeaderMetaSection /> },
+  { def: stripsCompact.DEF, render: () => <stripsCompact.StripsCompactSection /> },
+  { def: beltGround.DEF, render: () => <beltGround.BeltGroundSection /> },
   { def: paneMarker.DEF, render: () => <paneMarker.PaneMarkerSection /> },
   { def: rowSecondLine.DEF, render: () => <rowSecondLine.RowSecondLineSection /> },
   { def: actionsRow.DEF, render: () => <actionsRow.ActionsRowSection /> },
