@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { Loader2, Plus } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
-import { STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
+import { STRIP_TAP_TARGET, STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
 import { TabActionsSheet } from "@/components/tab-actions-sheet";
 import { StatusDot } from "@/components/status-badge";
 import { useLongPress } from "@/hooks/use-long-press";
@@ -49,8 +49,9 @@ interface TabStripProps {
    * It is a slot rather than a named prop because this row must not learn what the pane screen is
    * doing with it. Two things follow from "outside the scroller", and both are the point: it does
    * not scroll away with the tabs (a control you can lose by swiping is not an affordance), and it
-   * costs no height at all — the row is already `h-11`, which is a real 44px target, so the control
-   * centres in space the row was spending anyway.
+   * costs no height at all — the row already spends the padding a 44px tap target needs (see the
+   * `h-8` tab's own comment below for where that padding lives), so the control centres in space
+   * the row was reaching into anyway.
    *
    * The cost, stated: with a trailing control the last tab can no longer scroll clean off the screen
    * edge, because the edge now belongs to the control. That is the `-mx-4 px-4` trick below, and it
@@ -146,12 +147,17 @@ export function TabStrip({
           // -mx-4 px-4: the gutter moves onto the scroller and is cancelled by the negative margin,
           // so the last tab scrolls clean off the screen edge while the first still starts on the
           // route's 16px gutter. The two halves are ONE number and must move together.
-          // -mb-px + pb-px: one pixel of the scroller hangs over the <nav>'s bottom border, and that
-          // pixel is inside the scroller's own padding box so it is not clipped. It is the room the
-          // active tab's cover strip lives in. items-start keeps every tab's TOP on the same line,
-          // which is what makes the row read as tabs rather than as boxes of different sizes.
+          // pt-1.5 pb-1.5: the room the compact tab's own STRIP_TAP_TARGET reach needs, the same
+          // recipe STRIP_SCROLLER states — a `-inset-y-[7px]` reach off a drawn box gets clipped the
+          // instant the clip box (this scroller's padding box) does not extend into it, so the tap
+          // floor has to be bought with real padding, not just the pseudo-element. -mb-px still pulls
+          // the scroller's own bottom edge up over the <nav>'s 1px border by exactly one pixel, so
+          // that pixel stays inside the (now taller) padding box rather than outside it — the active
+          // tab's cover strip below is what actually paints over the seam, sized to reach it (see the
+          // `after:` comment on `Tab`). items-start keeps every tab's TOP on the same line, which is
+          // what makes the row read as tabs rather than as boxes of different sizes.
           className={cn(
-            "-mb-px flex items-start gap-1 overflow-x-auto pb-px [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "-mb-px flex items-start gap-1 overflow-x-auto pt-1.5 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             // With a pinned control the right half of the edge-to-edge trick is spent on it: the
             // scroller becomes the flex row's growing child, keeps the LEFT gutter cancellation so
             // the first tab still starts on the route's 16px, and stops at the control instead of at
@@ -326,15 +332,20 @@ function Tab({ label, active, ring, status, agent, onClick, onLongPress, onTapAc
         // Radius: the house 2px on the TOP corners only. A drawer tab does not round where it meets
         // the drawer, and the bottom of this one is an open edge, not an edge at all.
         //
-        // h-11 is a REAL 44px tap target, not a hit area faked over a smaller box. That is a thing a
-        // tab can do and a pill cannot without becoming a slab, and it is why this row needs none of
-        // STRIP_TAP_TARGET's machinery.
+        // COMPACT: `h-8` draws a 32px tab, `text-[11px]` the size of the header's path line — Altan's
+        // ask, from the phone: this row "feel[s] too tall and the fonts too large". A tab used to BE
+        // a real 44px tap target, drawn at that height; now it draws small and answers 44px the way
+        // every other strip pill does, through `STRIP_TAP_TARGET`'s transparent `::before` — the
+        // reach it needs lives in the scroller's own `pt-1.5 pb-1.5` (see the scroller's comment
+        // above), not in this box, so the drawn tab can shrink without the thumb losing anything.
         //
-        // The `after` strip is the cover: 1px tall, one pixel BELOW the tab, in the content surface,
-        // spanning the full border box so the side borders stop where the content begins. It is
-        // absolutely positioned, so it is outside layout and can never move anything; it is present
-        // in every state and merely transparent when inactive.
-        "relative flex h-11 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap rounded-t-md border border-b-0 border-transparent px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring after:absolute after:inset-x-0 after:-bottom-px after:h-px after:content-['']",
+        // The `after` strip is the cover: it now spans the scroller's own bottom padding rather than
+        // the old 1px, so it still reaches the <nav>'s border and paints over the seam (see the
+        // scroller's comment above for the exact pixels); it stays absolutely positioned, so it is
+        // outside layout and can never move anything, and it is present in every state and merely
+        // transparent when inactive.
+        STRIP_TAP_TARGET,
+        "relative flex h-8 min-w-11 shrink-0 select-none items-center justify-center gap-1.5 [-webkit-touch-callout:none] whitespace-nowrap rounded-t-md border border-b-0 border-transparent px-3 text-[11px] font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring after:absolute after:inset-x-0 after:-bottom-1.5 after:h-1.5 after:content-['']",
         active
           ? "border-rule bg-background text-foreground after:bg-background"
           : "bg-muted/40 text-muted-foreground after:bg-transparent hover:bg-muted/60",
@@ -355,7 +366,7 @@ function Tab({ label, active, ring, status, agent, onClick, onLongPress, onTapAc
           <StatusDot
             status={TRIAGE_STATUS[status]}
             surface={active ? "bg-background" : "bg-muted/40"}
-            className="size-2"
+            className="size-1.5"
           />
           {/* The dot is colour-only; say it in words for screen readers. */}
           <span className="sr-only">{statusLabel(TRIAGE_STATUS[status])}</span>
@@ -369,12 +380,12 @@ function Tab({ label, active, ring, status, agent, onClick, onLongPress, onTapAc
           already carries a label and a status announces enough — a third name on the same control is
           noise, not information. The dot keeps its own `sr-only` word, which is the one thing here
           with no visible text.
-          14px rather than 16: the row is `h-11` and unpadded vertically, so the tile must not become
-          the tallest thing in a tab whose height belongs to the tap target, and it may not outweigh
-          the label it introduces. */}
+          12px rather than 14: the row draws at `h-8` now, unpadded vertically, so the tile must not
+          become the tallest thing in a tab whose height belongs to the tap target, and it may not
+          outweigh the label it introduces. The status dot beside it shrank with it, `size-1.5`. */}
       {agent && (
         <span aria-hidden="true" className="flex shrink-0 items-center">
-          <AgentIcon agent={agent} className="size-3.5" />
+          <AgentIcon agent={agent} className="size-3" />
         </span>
       )}
       {title === null ? (

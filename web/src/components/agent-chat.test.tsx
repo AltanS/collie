@@ -1679,9 +1679,10 @@ describe("the pane fits its viewport", () => {
   });
 
   it("keeps a floor under the folder tab — the gap above the mirror may shrink, never close", () => {
-    // THE OPERATOR ASKED FOR A DENSER TAB ROW and chose this gap over shrinking the tab itself,
-    // which was the right call: the tab is `h-11` and that 44px IS the tap target, so every pixel
-    // off the tab is a pixel off the thumb. This gap costs no target at all.
+    // THE OPERATOR ASKED FOR A DENSER TAB ROW and chose this gap rather than shrinking the tab's
+    // own tap area: the tab draws at `h-8` and answers a 44px hit box through the same invisible
+    // `::before` reach the strip pills use (`STRIP_TAP_TARGET`), so every pixel off the drawn tab is
+    // still a pixel the thumb can hit. This gap costs no target at all.
     //
     // It may not go to zero, and the reason is measured (agent-chat.tsx states it in full): the
     // active tab's fill and the terminal's ground are byte-identical under BOTH themes, on purpose

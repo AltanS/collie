@@ -175,8 +175,7 @@ function PanePill({
         //
         // `rounded-md` (2px), not `rounded-full`: this pill carries a name and a tag, so it is far
         // wider than it is tall — a stadium, not a circle. Full-round is reserved for width ===
-        // height. It also has to match the chips in the two strips directly above it, which are the
-        // same control one level up.
+        // height.
         //
         // The border and the focus outline are `ui/chip.tsx`'s, copied rather than reinvented: this
         // pill is the space/tab chip one level down and the two must not answer state differently.
@@ -184,13 +183,15 @@ function PanePill({
         // occupy exactly the same box and only the paint changes. Focus is a separate channel and
         // sits OUTSIDE the box, so it can never move the row either.
         //
-        // Same tap floor as the chips, by the same means: STRIP_TAP_TARGET's transparent ::before
-        // takes the hit box to 46px without drawing a pixel. `py-1.5` (was `py-1`) is the one real
-        // growth in the whole change — 30px to 34px — and it is not for the floor, which the ::before
-        // already clears. It is so this pill and the chips in the two rows above are the SAME height:
-        // they are one control at three levels, and the mis-tap that matters most lands here.
+        // COMPACT: `py-0.5` (was `py-1.5`) and `text-[11px]` (was `text-sm`) draw a 24px pill, the
+        // size of the header's path line just above it — Altan's ask, from the phone: this row and
+        // the tab row above it "feel too tall and the fonts too large". The drawn box shrank; the
+        // TAP FLOOR did not. `STRIP_TAP_TARGET`'s transparent `::before` still answers a real 44px
+        // hit, because the reach it needs lives in `LabelledStrip`'s own scroller padding
+        // (`ui/labelled-strip.tsx`), not in this pill's own box — so the pill draws smaller while the
+        // thumb still finds the same target it always did.
         STRIP_TAP_TARGET,
-        "flex min-w-11 shrink-0 select-none [-webkit-touch-callout:none] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 py-1.5 text-sm font-medium transition-colors active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "flex min-w-11 shrink-0 select-none [-webkit-touch-callout:none] items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-transparent px-2.5 py-0.5 text-[11px] font-medium transition-colors active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
         active
           ? "bg-primary text-primary-foreground"
           : "bg-muted text-muted-foreground hover:bg-muted/70",

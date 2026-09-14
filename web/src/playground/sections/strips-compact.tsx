@@ -285,7 +285,7 @@ export function StripsCompactSection() {
           state="strips-compact-option-2"
           label="Option 2 · Two steps smaller"
           reach="idea, not shipped: the same two files, taken one step further."
-          note="Tab row 32px, pane pills 24px. Fonts 11px, the size of the header's path line. Tightest that still reads."
+          note="Shipped. Tab row 32px, pane pills 24px. Fonts 11px, the size of the header's path line. Tightest that still reads."
         >
           <StripsMock>
             <HeaderEdge />
