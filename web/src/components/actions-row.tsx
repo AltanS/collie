@@ -53,15 +53,16 @@ import { cn } from "@/lib/utils";
 // matters, and both clear 4.5:1.
 //
 // THE SCROLLER, WITHIN THAT BAND, NOW CARRIES ITS OWN FAINT BRAND TINT (`bg-primary/10`), and the
-// fixed Switch cell drops to plain `bg-background` — the operator's pick, playground round four,
-// option 6 (`playground/sections/belt-ground.tsx`). The band's own ground and its hairline are
-// unchanged; only these two grounds move. The tint marks the part of the belt that PANS: it is the
-// one thing on this row that moves under a thumb, so it earns the one wash that says "brand" rather
-// than "chrome". The Switch cell sits on plain background for the opposite reason — it never
-// scrolls, it is the one control that LEAVES the pane rather than acting on it, and reading as
-// fixed is the point (see the Switch branch below). In light, `bg-primary/10` over the band is
-// closer to black than the other tints tried here, so the wash reads darker than the round's other
-// options measured — shipped as picked regardless; see the playground round's own notes.
+// fixed Switch cell takes the composer's own ground, `bg-chrome` — the operator's call from the
+// phone, on top of playground round four, option 6 (`playground/sections/belt-ground.tsx`). The
+// band's own ground and its hairline are unchanged; only these two grounds move. The tint marks the
+// part of the belt that PANS: it is the one thing on this row that moves under a thumb, so it earns
+// the one wash that says "brand" rather than "chrome". The Switch cell sits on the composer's
+// chrome for the opposite reason — it never scrolls, it is the one control that LEAVES the pane
+// rather than acting on it, and reading as ONE surface with the composer row under the belt is the
+// point (see the Switch branch below). In light, `bg-primary/10` over the band is closer to black
+// than the other tints tried here, so the wash reads darker than the round's other options
+// measured — shipped as picked regardless; see the playground round's own notes.
 //
 // THE HAIRLINE IS `--border`, NOT `--rule`. The belt's lower neighbour is the same chrome surface it
 // stands on, so that is a component edge inside one surface, which is what `--border` is for — the
@@ -324,19 +325,20 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           THE FADE IS TWO STACKED LAYERS UNDER ONE MASK, and it has to be two: the scroller it fades
           into carries its own brand tint now (`bg-primary/10`, see the header above), so a single
           `bg-chrome` patch would read as a hole punched in a tinted band. The second layer is the
-          Switch cell's OWN ground, `bg-background` — plain, not the belt's `bg-foreground/6` — so
-          the cell it fades into reads as fixed rather than as more of the moving track (the operator's
-          pick, playground round four, option 6). The mask fades both layers in over the first 32px,
-          which is what lets a scrolling pill disappear UNDER this one instead of stopping dead
-          against it. The fade alone is `pointer-events-none`, so the belt still pans from the 32px
-          of lead-in while the pill itself takes its own taps. */}
+          Switch cell's OWN ground, `bg-chrome` — the composer's own chrome ground, the same fill the
+          reply row and its round Send button sit on below — so the cell reads as ONE surface with the
+          composer rather than as a patch cut into the belt (operator's call, from the phone: the
+          Switch cell must match the composer row under the belt). The mask fades both layers in over
+          the first 32px, which is what lets a scrolling pill disappear UNDER this one instead of
+          stopping dead against it. The fade alone is `pointer-events-none`, so the belt still pans
+          from the 32px of lead-in while the pill itself takes its own taps. */}
       {handle && (
         <span className="absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
           <span
             aria-hidden
             className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
           >
-            <span className="absolute inset-0 bg-background" />
+            <span className="absolute inset-0 bg-chrome" />
           </span>
           {/* THE MARK ALONE, BEHIND A HAIRLINE. It was a pill for a day: the word "Switch" beside
               the mark, inside a 30% accent border on a 10% accent ground, because this is the one

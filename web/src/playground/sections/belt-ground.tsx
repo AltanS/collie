@@ -84,7 +84,8 @@ function FixedSwitchCell({ groundClassName = "bg-foreground/6" }: { groundClassN
         className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
       >
         {/* The belt's own ground, `bg-foreground/6`, by default — option 6 alone drops this to
-            `bg-background` so the fixed cell reads as plain against a tinted, moving track. */}
+            `bg-chrome`, the composer's own ground, so the fixed cell reads as one surface with the
+            composer row under the belt rather than as more of the tinted, moving track. */}
         <span className={cn("absolute inset-0", groundClassName)} />
       </span>
       <span className="flex items-center self-stretch">
@@ -108,8 +109,8 @@ interface BeltProps {
   className: string;
   /** Option 5 only: `--belt-tint`, the harness accent the tint class resolves via `var()`. */
   style?: CSSProperties;
-  /** Option 6 only: the Switch cell's own ground drops to `bg-background`. Every other option
-   *  leaves it at the belt's default, `bg-foreground/6`. */
+  /** Option 6 only: the Switch cell's own ground drops to `bg-chrome`, the composer's own ground.
+   *  Every other option leaves it at the belt's default, `bg-foreground/6`. */
   switchCellClassName?: string;
 }
 
@@ -152,10 +153,10 @@ export function BeltGroundSection() {
           state="belt-ground-today"
           label="As today"
           reach="every pane's composer: the belt above the input row. This card is the real ActionsRow, unmodified."
-          note="Shipped: the band's own ground is bg-foreground/6, the scroller inside it takes a faint brand tint (bg-primary/10), and the fixed Switch cell drops to plain bg-background — the moving part and the fixed part read apart."
+          note="Shipped: the band's own ground is bg-foreground/6, the scroller inside it takes a faint brand tint (bg-primary/10), and the fixed Switch cell takes the composer's own ground, bg-chrome, so the cell and the composer row read as one surface."
         >
           <BeltCard>
-            <Belt className="" switchCellClassName="bg-background" />
+            <Belt className="" switchCellClassName="bg-chrome" />
           </BeltCard>
         </Card>
 
@@ -219,14 +220,14 @@ export function BeltGroundSection() {
 
         <Card
           state="belt-ground-option-6"
-          label="Option 6 · Tinted track, plain Switch cell"
-          reach="shipped in components/actions-row.tsx: the scroller takes bg-primary/10 and the fixed Switch cell's own ground drops to bg-background."
-          note="Shipped. The scrolling part takes the brand colour at ten percent, and the Switch cell drops to plain background. The contrast between the two is the strongest here."
+          label="Option 6 · Tinted track, Switch cell on the composer's ground"
+          reach="shipped in components/actions-row.tsx: the scroller takes bg-primary/10 and the fixed Switch cell takes the composer's own ground, bg-chrome."
+          note="Shipped. The scrolling part takes the brand colour at ten percent, and the Switch cell takes the composer's own ground so the two read as one surface."
         >
           <BeltCard>
             <Belt
               className="[&_[data-overflow]>div>div]:bg-primary/10"
-              switchCellClassName="bg-background"
+              switchCellClassName="bg-chrome"
             />
           </BeltCard>
         </Card>
