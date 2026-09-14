@@ -43,7 +43,7 @@ import { cn } from "@/lib/utils";
 
 import { paneWorking, rosterFive, TS } from "../fixtures";
 import { Card, Group, Section, type SectionDef } from "../harness";
-import { took, useRoomyActions } from "./shared";
+import { ChromeBlock, PhoneMock, took, useRoomyActions } from "./shared";
 
 export const DEF: SectionDef = {
   id: "host-tag",
@@ -101,27 +101,7 @@ function MirrorSlice() {
 
 // ── The phone-width mock ─────────────────────────────────────────────────────
 
-/** One card's phone: 390px wide, or the column's width under the "Phone width" toggle. A BOX, not a
- *  screen, and with no fixed height: these cards differ in where a word sits, and a frame that
- *  pinned the height would only hide how little the chrome changes. */
-function PhoneMock({ children }: { children: ReactNode }) {
-  return (
-    <div className="relative w-[390px] max-w-full overflow-hidden rounded-xl border border-border bg-background">
-      {children}
-    </div>
-  );
-}
-
-/** The chrome block, as `agent-chat.tsx` draws it: ONE surface closed against the terminal above by
- *  ONE rule. The class string is copied from `data-slot="chrome-block"` there, because it is a
- *  `<div>` inside a 2,000-line component and cannot be imported. */
-function ChromeBlock({ children }: { children: ReactNode }) {
-  return (
-    <div data-slot="chrome-block" className="border-t border-rule bg-chrome">
-      {children}
-    </div>
-  );
-}
+// `PhoneMock` and `ChromeBlock` live in `./shared.tsx` — three sections draw this same box now.
 
 /**
  * The REAL actions belt, on Claude, in the roomy layout, inside the composer's own `px-3` dock,

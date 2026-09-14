@@ -46,7 +46,7 @@ import { cn } from "@/lib/utils";
 
 import { allPanes, herd, paneWorking, shells } from "../fixtures";
 import { Card, Group, Section, type SectionDef } from "../harness";
-import { took, useRoomyActions } from "./shared";
+import { ChromeBlock, PhoneMock, took, useRoomyActions } from "./shared";
 
 export const DEF: SectionDef = {
   id: "ideas",
@@ -114,41 +114,8 @@ function MirrorSlice() {
 }
 
 // ── The phone-width mock ─────────────────────────────────────────────────────
-
-/**
- * One card's phone: 390px wide, or the column's width under the "Phone width" toggle, with the
- * mirror on top and whatever chrome the idea puts under it. It is a BOX, not a screen — no fixed
- * height, because the height is what the cards are being compared on and a frame that pinned it
- * would hide the answer.
- *
- * `stage` turns the box into a containing block (`transform`) with its own clip, which is what a
- * `position: fixed` descendant needs to resolve against the card instead of escaping to the page.
- * One card wants it: the peek, which mounts a real `BottomSheet`.
- */
-function PhoneMock({ stage = false, children }: { stage?: boolean; children: ReactNode }) {
-  return (
-    <div
-      className="relative w-[390px] max-w-full overflow-hidden rounded-xl border border-border bg-background"
-      style={stage ? { transform: "translate(0)" } : undefined}
-    >
-      {children}
-    </div>
-  );
-}
-
-/**
- * The chrome block, as `agent-chat.tsx` draws it: ONE surface closed against the terminal above by
- * ONE rule. The class string is copied from `data-slot="chrome-block"` there, because it is not
- * extractable — it is a `<div>` inside a 2,000-line component. Every idea's handle goes inside it,
- * above the belt, which is exactly where the shipped one lives.
- */
-function ChromeBlock({ children }: { children: ReactNode }) {
-  return (
-    <div data-slot="chrome-block" className="border-t border-rule bg-chrome">
-      {children}
-    </div>
-  );
-}
+//
+// `PhoneMock` and `ChromeBlock` live in `./shared.tsx` — three sections draw this same box now.
 
 /**
  * The REAL actions belt, on Claude, in the roomy layout, inside the composer's own `px-3` dock —
