@@ -1,4 +1,4 @@
-// Pane header meta ideas: FIVE numbered options for line 2 of the pane header — where the cache
+// Pane header meta ideas: FOUR numbered options for line 2 of the pane header — where the cache
 // reading and the host name go. Nothing here ships until Altan picks one; this section exists so he
 // can say "option N" and be understood, exactly as `header-corner.tsx` did for the corner before it.
 //
@@ -8,6 +8,12 @@
 // read as clutter. And the host name is usually the OPERATOR'S OWN MACHINE — the one the phone is
 // dialled into — which the app already names elsewhere (the dashboard header). Altan: "the cache and
 // host inside a pane don't look nice, they need more work."
+//
+// A THIRD ROW WAS RULED OUT. An earlier pass tried the meta on its own line under the path — it read
+// as an extra row growing the header, and Altan ruled it out: host and cache MUST stay on the SAME
+// line as the workspace name. Every option below keeps them there; only what shares that line with
+// the path — dropping the tab, hiding your own host, drawing the host as a dot, or going quiet — is
+// what changes from option to option.
 //
 // WHAT IS REAL HERE AND WHAT IS NOT. `PaneMeta`, `HostChip`, `CacheChip`, `AgentIcon` and `StatusDot`
 // are the app's own components, inside a real `CrewProvider`, so the hide rule, the identity tint and
@@ -22,7 +28,6 @@ import type { ReactNode } from "react";
 import { EllipsisVertical } from "lucide-react";
 
 import { AgentIcon } from "@/components/agent-icon";
-import { CacheChip } from "@/components/cache-chip";
 import { CrewProvider } from "@/components/crew-provider";
 import { PaneMeta } from "@/components/pane-meta";
 import { StatusDot } from "@/components/status-badge";
@@ -39,17 +44,20 @@ export const DEF: SectionDef = {
   id: "header-meta",
   title: "Pane header meta ideas",
   intent:
-    "Five numbered options for the pane header's second line, where the cache reading and the host " +
+    "Four numbered options for the pane header's second line, where the cache reading and the host " +
     "name live today. On a 390px phone the meta eats a third of the line and the tab crumb truncates " +
     "to '…'; two coloured glyphs beside a muted path also read as clutter, and the host is usually the " +
-    "operator's own machine, already named elsewhere. Nothing ships from this page until Altan picks " +
-    "one — say the number.",
+    "operator's own machine, already named elsewhere. A third row was ruled out — host and cache stay " +
+    "on the path line in every option. Nothing ships from this page until Altan picks one — say the " +
+    "number.",
 };
 
 // ── The fixture every card stands on ─────────────────────────────────────────
 
 const TITLE = "daily fact checks and fixes";
-const PATH = "workspace-sportsight › work";
+const WORKSPACE = "workspace-sportsight";
+const WORKSPACE_KAZ = "workspace-kaz";
+const PATH_WITH_TAB = "workspace-sportsight › work";
 const MIN = 60_000;
 
 /** The one reading every card shows — the operator's own example, `⧗ 20m`. */
@@ -58,6 +66,10 @@ const CACHE: PaneCache = paneCache({ state: "warm", expiresAt: cacheNow + 20 * M
 const LEAD: ServerSummary = { id: "lodge", name: "lodge", isLead: true, reachable: true, protocol: "ok", lastSeenAt: TS - 2_000 };
 const WORKSHOP: ServerSummary = { id: "workshop", name: "workshop", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 3_000 };
 const MINIBUCH: ServerSummary = { id: "minibuch", name: "minibuch", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 4_000 };
+const BLUEFIN: ServerSummary = { id: "bluefin", name: "bluefin", isLead: false, reachable: true, protocol: "ok", lastSeenAt: TS - 5_000 };
+
+/** A crew that carries `bluefin`, for option 1's "meta as today" mock. */
+const ROSTER_WITH_BLUEFIN: ServerSummary[] = [LEAD, BLUEFIN];
 
 /** A crew that carries `minibuch`, so its tint and its chip both resolve. */
 const ROSTER_WITH_MINIBUCH: ServerSummary[] = [LEAD, MINIBUCH];
@@ -100,20 +112,18 @@ function Kebab() {
  * line 1, the path on line 2), then the trailing corner. Copied from `agent-chat.tsx`'s own class
  * strings — see `header-corner.tsx`'s `HeaderRow` for why this cannot simply import that component.
  *
+ * `path` is line 2's own text — every option changes what shares that line, never the line itself.
  * `nameLeading` sits between the agent mark and the name (option 3's colour dot only). `pathTrailing`
- * sits at the end of line 2 (options 2, 3 and 4). `thirdLine` adds a third row under the path, right
- * aligned (option 1 only). `corner` is the trailing cluster; omitted, it is a bare `Kebab`.
+ * sits at the end of line 2 (every option). There is no third line — Altan ruled that shape out.
  */
 function HeaderMetaRow({
+  path,
   nameLeading,
   pathTrailing,
-  thirdLine,
-  corner,
 }: {
+  path: string;
   nameLeading?: ReactNode;
   pathTrailing?: ReactNode;
-  thirdLine?: ReactNode;
-  corner?: ReactNode;
 }) {
   return (
     <div className="flex min-h-15 items-stretch gap-2 border-b border-rule bg-background px-3 py-2">
@@ -135,16 +145,13 @@ function HeaderMetaRow({
           </div>
           <div className="flex min-w-0 items-center gap-2">
             <span className="block truncate font-mono text-[11px] leading-3 text-muted-foreground">
-              {PATH}
+              {path}
             </span>
             {pathTrailing !== undefined && <span className="ml-auto shrink-0">{pathTrailing}</span>}
           </div>
-          {thirdLine !== undefined && (
-            <div className="flex min-w-0 items-center justify-end gap-2">{thirdLine}</div>
-          )}
         </div>
       </div>
-      {corner ?? <Kebab />}
+      <Kebab />
     </div>
   );
 }
@@ -161,27 +168,28 @@ const IDEA = "idea, not shipped:";
 export function HeaderMetaSection() {
   return (
     <Section def={DEF}>
-      <Group title="Line 2 — five ideas for where the host and the cache reading go">
+      <Group title="Line 2 stays the path line — four ideas for what shares it">
         <Card
-          state="header-meta-third-line"
-          label="Option 1 · A third line"
-          reach={`${IDEA} the third line mounts the real PaneMeta in its "inline" layout, unchanged, one row down.`}
-          note="The meta gets its own line under the path. The path keeps the full width, so the tab name no longer truncates. The header grows by 14px."
+          state="header-meta-workspace-today"
+          label="Option 1 · Workspace only, meta as today"
+          reach={`${IDEA} the path line drops the tab crumb; the trailing meta mounts the real PaneMeta inline, unchanged, host="bluefin".`}
+          note="The tab strip under the header already shows the tab. So the path line drops the tab and keeps only the workspace. Host and cache stay at the end of that line, as today. The line no longer truncates."
         >
-          <Crew servers={ROSTER_WITH_MINIBUCH}>
+          <Crew servers={ROSTER_WITH_BLUEFIN}>
             <HeaderMock>
               <HeaderMetaRow
-                thirdLine={<PaneMeta layout="inline" host="minibuch" cache={CACHE} onOpenCache={inert} />}
+                path={WORKSPACE}
+                pathTrailing={<PaneMeta layout="inline" host="bluefin" cache={CACHE} onOpenCache={inert} />}
               />
             </HeaderMock>
           </Crew>
         </Card>
 
         <Card
-          state="header-meta-host-when-other"
-          label="Option 2 · Host only when it is another machine"
+          state="header-meta-host-other-machine"
+          label="Option 2 · Workspace only, host only for another machine"
           reach={`${IDEA} both rows mount the real PaneMeta inline; the top passes host={undefined} (PaneMeta's own "this one" case), the bottom passes host="minibuch" on a roster that carries it.`}
-          note="Your own machine is not news. The host name shows only when the pane is on another machine. On your own panes the path line ends with the cache reading alone."
+          note="Same as option 1, and your own machine's name goes away. The host shows only when the pane is on another machine."
         >
           <Crew servers={ROSTER_WITH_MINIBUCH}>
             <div className="space-y-3">
@@ -191,6 +199,7 @@ export function HeaderMetaSection() {
                 </p>
                 <HeaderMock>
                   <HeaderMetaRow
+                    path={WORKSPACE}
                     pathTrailing={
                       <PaneMeta layout="inline" host={undefined} cache={CACHE} onOpenCache={inert} />
                     }
@@ -203,6 +212,7 @@ export function HeaderMetaSection() {
                 </p>
                 <HeaderMock>
                   <HeaderMetaRow
+                    path={WORKSPACE_KAZ}
                     pathTrailing={
                       <PaneMeta layout="inline" host="minibuch" cache={CACHE} onOpenCache={inert} />
                     }
@@ -215,13 +225,14 @@ export function HeaderMetaSection() {
 
         <Card
           state="header-meta-host-dot"
-          label="Option 3 · Host as a colour dot"
+          label="Option 3 · Workspace only, host as a colour dot"
           reach={`${IDEA} the dot is drawn here from lib/hosts.ts's own hostSlot()/HOST_TEXT_CLASSES, the same lookup HostChip uses for its glyph; the path line mounts the real PaneMeta with host={undefined} so only the cache reading shows there.`}
-          note="The host becomes a small colour dot before the name. Its colour is the host's own tint, the same as on the dashboard. The path line ends with the cache reading alone."
+          note="Same as option 2, but the host is never a word. A small dot before the name takes the host's colour, the same colour as on the dashboard. The cache reading stands alone at the end of the path line."
         >
           <Crew servers={ROSTER_WITH_MINIBUCH}>
             <HeaderMock>
               <HeaderMetaRow
+                path={WORKSPACE}
                 nameLeading={<HostDot host="minibuch" servers={ROSTER_WITH_MINIBUCH} />}
                 pathTrailing={
                   <PaneMeta layout="inline" host={undefined} cache={CACHE} onOpenCache={inert} />
@@ -232,36 +243,17 @@ export function HeaderMetaSection() {
         </Card>
 
         <Card
-          state="header-meta-quiet"
-          label="Option 4 · One quiet run"
-          reach={`${IDEA} same position as today, the real PaneMeta inline — but mounted on a roster that does not carry "minibuch", so HostChip's real hide-the-tint path (hostSlot() answering null for an id it cannot place) draws the glyph in the row's own muted colour instead of a fake one.`}
-          note="Same place as today, but quiet. The glyphs take the muted grey of the path. Only the cache reading takes a colour, and only when it is expiring or cold."
+          state="header-meta-quiet-tab"
+          label="Option 4 · Keep the tab, shrink the meta"
+          reach={`${IDEA} the tab crumb stays in the path text; the trailing meta mounts the real PaneMeta inline, on a roster that does not carry "minibuch", so HostChip's real hide-the-tint path (hostSlot() answering null for an id it cannot place) draws the glyph in the row's own muted colour instead of a fake one.`}
+          note="The tab stays on the path line. The meta gets as small as it can: no host on your own machine, grey glyphs, colour only when the cache is expiring or cold."
         >
           <Crew servers={ROSTER_WITHOUT_MINIBUCH}>
             <HeaderMock>
               <HeaderMetaRow
+                path={PATH_WITH_TAB}
                 pathTrailing={
                   <PaneMeta layout="inline" host="minibuch" cache={CACHE} onOpenCache={inert} />
-                }
-              />
-            </HeaderMock>
-          </Crew>
-        </Card>
-
-        <Card
-          state="header-meta-under-kebab"
-          label="Option 5 · Under the kebab"
-          reach={`${IDEA} the corner column is drawn here; the cache reading inside it is the real CacheChip.`}
-          note="The cache reading sits under the kebab, in the corner column. The path keeps the full width. The host name shows only for another machine."
-        >
-          <Crew servers={ROSTER_WITH_MINIBUCH}>
-            <HeaderMock>
-              <HeaderMetaRow
-                corner={
-                  <div className="flex flex-col items-end justify-center gap-1">
-                    <Kebab />
-                    <CacheChip cache={CACHE} host={undefined} className="text-[10px]" />
-                  </div>
                 }
               />
             </HeaderMock>

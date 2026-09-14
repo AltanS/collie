@@ -3,19 +3,18 @@ import { describe, expect, it } from "vitest";
 
 import { HeaderMetaSection } from "./header-meta";
 
-// The five cards this section stages, as the screenshots and any browser case address them:
+// The four cards this section stages, as the screenshots and any browser case address them:
 // `[data-state="…"]`, the playground's one allowed handle (CLAUDE.md → "The selector rule").
 const HANDLES = [
-  "header-meta-third-line",
-  "header-meta-host-when-other",
+  "header-meta-workspace-today",
+  "header-meta-host-other-machine",
   "header-meta-host-dot",
-  "header-meta-quiet",
-  "header-meta-under-kebab",
+  "header-meta-quiet-tab",
 ] as const;
 
-/** Altan picks a card by saying "option N", so the number has to be ON the card. Five of them, one
+/** Altan picks a card by saying "option N", so the number has to be ON the card. Four of them, one
  *  per idea — this is the assertion that keeps them that way. */
-const OPTIONS = [1, 2, 3, 4, 5] as const;
+const OPTIONS = [1, 2, 3, 4] as const;
 
 function cardFor(state: string): HTMLElement {
   const el = document.querySelector(`[data-state="${state}"]`);
@@ -38,7 +37,7 @@ describe("Pane header meta ideas section", () => {
     for (const h of handles) expect(h).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
   });
 
-  it("numbers every option, once each, from 1 to 5", () => {
+  it("numbers every option, once each, from 1 to 4", () => {
     const { container } = render(<HeaderMetaSection />);
     const labels = [...container.querySelectorAll(".pg-grid > * > p")].map(
       (p) => p.textContent ?? "",
