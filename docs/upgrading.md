@@ -624,8 +624,9 @@ herdr plugin action invoke uninstall --plugin herdr.collie   # Herdr-managed
 bin/collie uninstall                                         # standalone
 ```
 
-To delete remaining files: run `herdr plugin uninstall herdr.collie` (Herdr-managed), or run
-`bin/collie unlink` and delete `~/.local/share/collie` / `$COLLIE_DIR` (standalone).
+To delete the program and your own files too, follow the three steps under
+[Install → Uninstall](install.md#uninstall), which spells them out per install kind, packages
+included.
 
 ## When collie will not run
 

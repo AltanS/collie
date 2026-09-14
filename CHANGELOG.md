@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Changed
+
+- **The install page opens with Install, Update and Uninstall, each spelled for a Herdr plugin and for a standalone install.** A table at the top says how to tell the two kinds apart, how their verbs are spelled, and where each keeps its config and state. Packages get one line per manager in those three sections and keep their long notes further down. Uninstall is now three steps, service, program, own files, with the paths that stay behind.
+
 ## [1.9.0] - 2026-09-14
 
 ### Added
