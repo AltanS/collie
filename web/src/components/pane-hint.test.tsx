@@ -50,7 +50,9 @@ describe("AgentCard carries the hint", () => {
   it("shows nothing on a pane without one, and the row is otherwise unchanged", () => {
     render(<AgentCard agent={shell()} onClick={() => {}} />);
     expect(screen.queryByText(SENTENCE)).not.toBeInTheDocument();
-    // Still the same row: a shell pane, badged as one, whatever the hint did or did not say.
-    expect(screen.getByText(/shell/i)).toBeInTheDocument();
+    // Still the same row: a shell pane, badged as one, whatever the hint did or did not say. Two
+    // matches now — the badge, and line 1, because a bare shell's NAME is the word "shell" under the
+    // one name rule (lib/pane-name.ts).
+    expect(screen.getAllByText(/shell/i).length).toBeGreaterThan(0);
   });
 });

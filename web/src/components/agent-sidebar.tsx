@@ -3,7 +3,7 @@ import { Loader2, Play, TerminalSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/components/agent-icon";
 import { SectionHeader } from "@/components/section-header";
-import { paneParts } from "@/lib/pane-name";
+import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { shortenHome } from "@/lib/shorten-home";
 import { isAttention, sectionHeaderProps, triage } from "@/lib/triage";
 import type { AgentView, Launcher } from "@/lib/types";
@@ -214,9 +214,14 @@ function PaneRow({
   onSelect: (paneId: string) => void;
 }) {
   const isShell = pane.kind === "shell";
-  // project · tab as separate spans so the TAB survives truncation — see paneParts. The agent's
-  // identity stays in the icon, which is why the title line is free to say where the work is.
-  const { project, tab, secondary } = paneParts(pane);
+  // ONE NAME, ONE PLACE (lib/pane-name.ts), the same way round as every other row in the app: the
+  // pane's name on line 1, where it sits underneath. This row used to be the other way up — the
+  // place bold on line 1, the name muted below — which made the switcher the one list where you
+  // could not find a pane by the name you had just read on the dashboard. The place's two halves
+  // stay separate spans so the TAB survives truncation: eight rows of one project all begin with the
+  // same nine characters, and the tab is the only one of the two that discriminates.
+  const name = paneName(pane);
+  const { space, tab } = panePlaceParts(pane);
   return (
     <button
       type="button"
@@ -248,20 +253,19 @@ function PaneRow({
         <AgentIcon agent={pane.agent} className="size-5" />
       )}
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-baseline gap-1 text-sm">
-          <span className="max-w-[45%] shrink truncate text-muted-foreground">{project}</span>
+        <div className="truncate text-sm font-medium">{name}</div>
+        <div className="flex min-w-0 items-baseline gap-1 text-[11px] text-muted-foreground">
+          <span className="max-w-[45%] shrink truncate">{space}</span>
           {tab && (
             <>
+              {/* The place's own separator (PLACE_SEP), because a space CONTAINS a tab. */}
               <span className="shrink-0 text-muted-foreground/60" aria-hidden>
-                ·
+                ›
               </span>
-              <span className="min-w-0 flex-1 truncate font-medium">{tab}</span>
+              <span className="min-w-0 flex-1 truncate">{tab}</span>
             </>
           )}
         </div>
-        {secondary && (
-          <div className="truncate font-mono text-[11px] text-muted-foreground">{secondary}</div>
-        )}
       </div>
     </button>
   );

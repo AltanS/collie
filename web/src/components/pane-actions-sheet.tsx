@@ -14,7 +14,7 @@ import { t } from "@/lib/i18n";
 import { useMuxCapability, useMuxName } from "@/lib/mux-capability";
 import { setStatus } from "@/lib/status";
 import { stampTopology } from "@/lib/poll-intent";
-import { paneDisplayName } from "@/lib/types";
+import { paneName } from "@/lib/pane-name";
 import type { AgentView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
 
@@ -244,7 +244,7 @@ export function PaneActionsSheet({
           // acting on the wrong one.
           <span className="flex min-w-0 items-center gap-1.5">
             <span data-slot="pane-actions-title-name" className="min-w-0 truncate">
-              {paneDisplayName(pane)}
+              {paneName(pane)}
             </span>
             <HostChip host={pane.host} variant="target" />
           </span>

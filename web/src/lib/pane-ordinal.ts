@@ -1,4 +1,4 @@
-import { paneDisplayName } from "@/lib/types";
+import { paneName } from "@/lib/pane-name";
 import type { AgentView } from "@/lib/types";
 
 /**
@@ -24,12 +24,12 @@ import type { AgentView } from "@/lib/types";
 export function paneOrdinals(panes: readonly AgentView[]): ReadonlyMap<string, number> {
   const seen = new Map<string, number>();
   for (const pane of panes) {
-    const name = paneDisplayName(pane);
+    const name = paneName(pane);
     seen.set(name, (seen.get(name) ?? 0) + 1);
   }
   const out = new Map<string, number>();
   panes.forEach((pane, index) => {
-    if ((seen.get(paneDisplayName(pane)) ?? 0) > 1) out.set(pane.paneId, index + 1);
+    if ((seen.get(paneName(pane)) ?? 0) > 1) out.set(pane.paneId, index + 1);
   });
   return out;
 }

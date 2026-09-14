@@ -6,13 +6,7 @@ import { useMuxCapability } from "@/lib/mux-capability";
 import { SectionHeader } from "@/components/section-header";
 import { ListGroup } from "@/components/ui/list-group";
 import { StatusDot } from "@/components/status-badge";
-import {
-  filterSpaces,
-  nestWorktrees,
-  sortSpacesByRecency,
-  spaceLastSeenMap,
-  spaceTriageMap,
-} from "@/lib/spaces";
+import { filterSpaces, nestWorktrees, spaceLastSeenMap, spaceTriageMap } from "@/lib/spaces";
 import { spaceKey } from "@/lib/hosts";
 import { TRIAGE_STATUS } from "@/lib/triage";
 import { timeAgo } from "@/lib/format";
@@ -44,7 +38,7 @@ interface SpaceOverviewProps {
 
 // The dashboard's navigator, and the LAST section on the page: everything you might act on comes
 // first. It folds to a single line — with 45 spaces that's the difference between a dashboard and a
-// scroll — and expands to a recency-ordered, filterable list.
+// scroll — and expands to a filterable list in the multiplexer's own space order.
 // A module-level empty list, not a `= []` default in the parameter list: a fresh array literal on
 // every render is a new reference, which defeats memoisation downstream for no benefit here.
 const NO_PANES: AgentView[] = [];
@@ -74,7 +68,12 @@ export function SpaceOverview({
   // chip can never mean different things by the same colour (lib/spaces.ts).
   const worstBySpace = spaceTriageMap(agents);
   const blockedSpaces = [...worstBySpace.values()].filter((b) => b === "needs").length;
-  const visible = filterSpaces(sortSpacesByRecency(workspaces, panes, lastSeen, host), query);
+  // SPACE NUMBER ORDER, which is the multiplexer's own, and the SAME order the space strip shows.
+  // This list used to be recency-ordered, so the dashboard and the strip presented one set of spaces
+  // in two different orders and a space you had just used jumped the queue on one of them only. A
+  // list you navigate by memory has to hold still; "what did I touch last" is still on every row, as
+  // its last-seen time.
+  const visible = filterSpaces(workspaces, query);
   // Worktrees sit under the space holding their repo — but NOT while filtering: a filter that
   // matched only the child would indent a row under a parent that is not on screen, which reads as
   // a rendering fault rather than as structure.

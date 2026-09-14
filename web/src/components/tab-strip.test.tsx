@@ -139,6 +139,45 @@ describe("TabStrip", () => {
   });
 });
 
+// A POSITIONAL LABEL IS NOT A NAME (lib/pane-name.ts § isUnnamedTab). Herdr labels an unnamed tab
+// "1" and zellij calls it "Tab #2"; a row of those reads as a row of numbers, and the number says
+// nothing the tab's own position in the row does not already say.
+describe("TabStrip — a tab with no name of its own", () => {
+  const strip = (label: string) =>
+    render(
+      <TabStrip
+        workspaceId="w1"
+        tabs={[{ ...tabs[0]!, label }]}
+        agents={[]}
+        selected={null}
+        onSelect={vi.fn()}
+        onNewTab={vi.fn()}
+      />,
+    );
+
+  it("draws no number, and keeps the label as the button's spoken name", () => {
+    const { container } = strip("1");
+    const tab = screen.getByRole("button", { name: "1" });
+    // Nothing DRAWN reads "1": the only node carrying it is sr-only, for a reader with no row to look at.
+    expect(tab.querySelector(".sr-only")?.textContent).toBe("1");
+    expect(container.querySelector(".rounded-full")).not.toBeNull(); // the dot stands in its place
+  });
+
+  it("treats zellij's own default the same way", () => {
+    strip("Tab #3");
+    expect(screen.getByRole("button", { name: "Tab #3" }).querySelector(".sr-only")?.textContent).toBe(
+      "Tab #3",
+    );
+  });
+
+  it("draws a real name as text, with no dot standing in for it", () => {
+    strip("review");
+    const tab = screen.getByRole("button", { name: "review" });
+    expect(tab.textContent).toBe("review");
+    expect(tab.querySelector(".sr-only")).toBeNull();
+  });
+});
+
 describe("TabStrip — long-press actions", () => {
   // A long-press on a chip reaches the DOM as a `contextmenu` event (Android Chrome / right-click);
   // with both actions wired it opens the actions sheet (rename / close), like the pane strip.

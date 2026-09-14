@@ -71,8 +71,9 @@ export interface AgentView {
   /**
    * The pane's tab label, denormalised from `tab.list` exactly as `workspaceLabel` already is — so
    * every client surface (card, sidebar, palette, space view) gets it without joining `tabs[]`.
-   * Absent when the label carries no information: an unlabelled tab in a single-tab space is named
-   * positionally by Herdr ("1"), which would render as `project · 1`. See `meaningfulTabLabel`.
+   * Absent when the label carries no information: an unlabelled tab is named positionally by Herdr
+   * ("1") and by zellij (`Tab #1`), which would render as `project › 1`. See `meaningfulTabLabel`,
+   * and `isUnnamedTab` in pane-name.ts, which is the one rule underneath it.
    */
   tabLabel?: string;
   /**

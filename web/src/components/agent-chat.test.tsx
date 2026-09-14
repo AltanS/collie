@@ -241,7 +241,11 @@ describe("AgentChat — the pane header's identity block", () => {
     // "shell" instead, which is the same bargain: readable without colour, drawn nowhere.
     const shell = renderChat({ agent: fixtureShellPanes[0]!, agents: [fixtureShellPanes[0]!] });
     expect(names(shell.container)).toEqual([]); // no agent, no status, so no badge to name
-    expect(within(block(shell.container)!).getByText("shell").className).toContain("sr-only");
+    // Two "shell"s now, and deliberately: the tile's sr-only word, and line 1, because a bare shell's
+    // NAME is the word "shell" under the one name rule (lib/pane-name.ts). The claim here is only
+    // about the tile's, which is the one that must not be drawn.
+    const shellWords = within(block(shell.container)!).getAllByText("shell");
+    expect(shellWords.some((e) => e.className.includes("sr-only"))).toBe(true);
   });
 
   it("says the state nowhere as a word, and the belt carries neither it nor the machine", () => {
@@ -408,39 +412,40 @@ describe("AgentChat — the pane header's identity block", () => {
     const pad = spacing(row?.className ?? "", /(?:^|\s)py-(\d+)(?=\s|$)/);
     const gap = spacing(slot(container, "lines")?.className ?? "", /(?:^|\s)gap-(\d+)(?=\s|$)/);
     const name = spacing(slot(container, "name")?.className ?? "", /(?:^|\s)leading-(\d+)(?=\s|$)/);
-    const cwd = slot(container, "cwd");
-    expect(cwd, "the second line must actually be rendered for this to be a two-line test").not.toBeNull();
-    const cwdBox = spacing(cwd?.className ?? "", /(?:^|\s)leading-(\d+)(?=\s|$)/);
+    const place = slot(container, "place");
+    expect(place, "the second line must actually be rendered for this to be a two-line test").not.toBeNull();
+    const placeBox = spacing(place?.className ?? "", /(?:^|\s)leading-(\d+)(?=\s|$)/);
 
     // There is no third line to measure, and that is the first claim: the caption row is REMOVED,
     // not emptied. An empty flex row would still cost its gap and would reappear the moment somebody
     // put something back in it.
     expect(slot(container, "caption")).toBeNull();
     expect(slot(container, "lines")?.children).toHaveLength(2);
-    expect([name, cwdBox, gap, pad, floor]).toEqual([20, 12, 4, 4, 60]);
+    expect([name, placeBox, gap, pad, floor]).toEqual([20, 12, 4, 4, 60]);
     // The lines no longer fill the content box — the FLOOR is what holds the row up, and it must.
-    expect(name + gap + cwdBox + 2 * pad).toBeLessThan(floor);
+    expect(name + gap + placeBox + 2 * pad).toBeLessThan(floor);
     // Which is also why the identity button has to state its own 44px box: 36px of lines would draw
     // a 36px tap target in the row that states the floor for everything else.
-    expect(name + gap + cwdBox).toBeLessThan(44);
+    expect(name + gap + placeBox).toBeLessThan(44);
   });
 
-  it("shows the cwd when it adds a segment and hides it when it only repeats the name", () => {
-    // The gate is `cwdBeyondName`, against the RENDERED NAME — see lib/pane-name.test.ts for the rule
-    // itself. Here: that the header actually mounts it, and mounts it on the right string.
-    const base = fixtureAgents[0]!; // workspaceLabel "webapp", cwd /home/you/webapp
-    // Nothing to add: `~/webapp` under the name `webapp` is the same word twice.
-    expect(slot(renderChat({ agent: base, agents: [base] }).container, "cwd")).toBeNull();
-    // A worktree is exactly the case the line exists for.
+  it("carries the PLACE on line 2, from the raw tab list, and never the cwd", () => {
+    // The one place rule (lib/pane-name.test.ts pins the rule itself). Here: that the header mounts
+    // it, reads the RAW tab list for it, and no longer spends this line on a directory.
+    const base = fixtureAgents[0]!; // workspaceLabel "webapp", tab w1:t1, cwd /home/you/webapp
+    const tab = { tabId: "w1:t1", workspaceId: "w1", number: 1, label: "review", focused: false, paneCount: 1 };
+    const named = renderChat({ agent: base, agents: [base], tabs: [tab] }).container;
+    expect(slot(named, "place")?.textContent).toBe("webapp › review");
+    cleanup();
+    // A positional tab label is the multiplexer's default, not a name, so the space stands alone.
+    const numbered = renderChat({ agent: base, agents: [base], tabs: [{ ...tab, label: "2" }] }).container;
+    expect(slot(numbered, "place")?.textContent).toBe("webapp");
+    cleanup();
+    // The path is gone from this line, even for a pane sitting away from its space root.
     const worktree = { ...base, cwd: "/home/you/webapp/worktrees/fix-42" };
-    expect(slot(renderChat({ agent: worktree, agents: [worktree] }).container, "cwd")?.textContent)
-      .toBe("~/webapp/worktrees/fix-42");
-    // And the case the old PROJECT gate got backwards: a hand-set label names no directory at all, so
-    // suppressing the path would leave the pane with nothing on screen locating the work.
-    const named = { ...base, paneLabel: "logs" };
-    expect(slot(renderChat({ agent: named, agents: [named] }).container, "cwd")?.textContent).toBe(
-      "~/webapp",
-    );
+    const away = renderChat({ agent: worktree, agents: [worktree], tabs: [tab] }).container;
+    expect(slot(away, "place")?.textContent).toBe("webapp › review");
+    expect(away.textContent).not.toContain("worktrees/fix-42");
   });
 
   // THE TITLE NEVER SHOWS A RAW PANE ID. Line 1 used to append the multiplexer's own pane id suffix
@@ -452,13 +457,13 @@ describe("AgentChat — the pane header's identity block", () => {
   // telling panes apart is the switcher's job, and the switcher does it with a position number and
   // only when two pills would otherwise read the same (pane-strip.tsx, lib/pane-ordinal.ts).
   //
-  // `base` has no paneLabel and no sessionName, so its name is the `space › tab` fallback.
+  // `base` has no paneLabel, no sessionName and no title, so its name is its agent word.
   const solo = fixtureAgents[0]!; // w1:p1, workspaceLabel "webapp", tab w1:t1
   const sibling: AgentView = { ...solo, paneId: "w1:p7", status: "working" };
 
   it("never appends a pane id to the title, however many panes the tab holds", () => {
     const { container } = renderChat({ agent: solo, agents: [solo, sibling] });
-    expect(slot(container, "name")?.textContent).toBe("webapp");
+    expect(slot(container, "name")?.textContent).toBe("claude");
     expect(slot(container, "tag")).toBeNull();
     // The pill row below IS on screen in this case — that is where the two panes are told apart.
     expect(screen.getByRole("navigation", { name: "Panes" })).toBeInTheDocument();
@@ -467,7 +472,7 @@ describe("AgentChat — the pane header's identity block", () => {
 
   it("keeps the clean name when the tab holds ONE pane, with no pill row either", () => {
     const { container } = renderChat({ agent: solo, agents: [solo] });
-    expect(slot(container, "name")?.textContent).toBe("webapp");
+    expect(slot(container, "name")?.textContent).toBe("claude");
     expect(slot(container, "tag")).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Panes" })).toBeNull();
   });

@@ -1,7 +1,6 @@
 import {
   filterSpaces,
   groupPanesByTab,
-  sortSpacesByRecency,
   spaceLastSeenMap,
   spaceTriageMap,
 } from "./spaces";
@@ -118,42 +117,6 @@ const ws = (workspaceId: string, label: string, number: number): WorkspaceView =
   paneCount: 1,
 });
 
-describe("sortSpacesByRecency", () => {
-  const spaces = [ws("w1", "alpha", 1), ws("w2", "beta", 2), ws("w3", "gamma", 3)];
-
-  it("floats the space you used most recently to the top", () => {
-    const panes = [
-      agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1", lastSeenAt: 100 }),
-      agent({ paneId: "w3:p1", workspaceId: "w3", tabId: "w3:t1", lastSeenAt: 900 }),
-    ];
-    expect(sortSpacesByRecency(spaces, panes).map((w) => w.workspaceId)).toEqual([
-      "w3",
-      "w1",
-      "w2",
-    ]);
-  });
-
-  it("leaves never-used spaces in Herdr's own order behind the used ones", () => {
-    const panes = [agent({ paneId: "w2:p1", workspaceId: "w2", tabId: "w2:t1", lastSeenAt: 5 })];
-    expect(sortSpacesByRecency(spaces, panes).map((w) => w.workspaceId)).toEqual([
-      "w2",
-      "w1",
-      "w3",
-    ]);
-  });
-
-  it("changes nothing at all on a bridge that reports no timestamps", () => {
-    const panes = [agent({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1" })];
-    expect(sortSpacesByRecency(spaces, panes)).toEqual(spaces);
-  });
-
-  it("does not mutate its input", () => {
-    const panes = [agent({ paneId: "w3:p1", workspaceId: "w3", tabId: "w3:t1", lastSeenAt: 9 })];
-    sortSpacesByRecency(spaces, panes);
-    expect(spaces.map((w) => w.workspaceId)).toEqual(["w1", "w2", "w3"]);
-  });
-});
-
 describe("filterSpaces", () => {
   const spaces = [ws("w1", "moonward_os", 1), ws("w2", "trader", 2), ws("w3", "MOON_probe", 3)];
 
@@ -188,13 +151,6 @@ describe("spaceLastSeenMap", () => {
     expect(spaceLastSeenMap([]).get(spaceKey(undefined, "w1"))).toBeUndefined();
   });
 
-  it("gives the same ordering whether or not the map is passed in", () => {
-    const spaces = [ws("w1", "alpha", 1), ws("w2", "beta", 2)];
-    const panes = [agent({ paneId: "w2:p1", workspaceId: "w2", tabId: "w2:t1", lastSeenAt: 900 })];
-    expect(sortSpacesByRecency(spaces, panes, spaceLastSeenMap(panes))).toEqual(
-      sortSpacesByRecency(spaces, panes),
-    );
-  });
 });
 
 // ── Two machines, one workspace id ───────────────────────────────────────────
@@ -253,18 +209,14 @@ describe("host-qualified space keys", () => {
     expect(last.panes).toEqual([mine]);
   });
 
-  it("sorts a host's spaces by that host's recency, not the other's", () => {
-    const spaces: WorkspaceView[] = [
-      { workspaceId: "w1", number: 1, label: "one", focused: false, activeTabId: "w1:t1", tabCount: 1, paneCount: 1 },
-      { workspaceId: "w2", number: 2, label: "two", focused: false, activeTabId: "w2:t1", tabCount: 1, paneCount: 1 },
-    ];
+  it("reads a host's last-seen times from that host's panes, not the other's", () => {
     const panes = [
       onA({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1", lastSeenAt: 100 }),
-      onA({ paneId: "w2:p1", workspaceId: "w2", tabId: "w2:t1", lastSeenAt: 200 }),
-      // Beta touched its own w1 most recently of all — and it must not reorder alpha's list.
+      // Beta touched its own w1 most recently of all — and it must not land on alpha's row.
       onB({ paneId: "w1:p1", workspaceId: "w1", tabId: "w1:t1", lastSeenAt: 9000 }),
     ];
-    const order = sortSpacesByRecency(spaces, panes, spaceLastSeenMap(panes), "alpha");
-    expect(order.map((w) => w.workspaceId)).toEqual(["w2", "w1"]);
+    const seen = spaceLastSeenMap(panes);
+    expect(seen.get(spaceKey("alpha", "w1"))).toBe(100);
+    expect(seen.get(spaceKey("beta", "w1"))).toBe(9000);
   });
 });

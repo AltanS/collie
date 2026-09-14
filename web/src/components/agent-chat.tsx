@@ -70,7 +70,7 @@ import type { PreviewBlockAction } from "@/components/preview-select-block";
 import type { MenuBlockAction } from "@/components/menu-block";
 import { locateReply } from "@/lib/latest-reply";
 import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
-import { cwdBeyondName } from "@/lib/pane-name";
+import { paneName, panePlace } from "@/lib/pane-name";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { hasJournalAdapter } from "@/lib/journal-agents";
 import { historyPath, spacePath } from "@/lib/nav";
@@ -94,8 +94,6 @@ interface AgentChatProps {
   agents: AgentView[];
   shellPanes: AgentView[];
   tabs: TabView[];
-  /** Label of the pane's tab, shown in the header as "space › tab". */
-  tabLabel?: string;
   /** Pane output from the route loader (refreshed by polling/revalidation). */
   text: string;
   /** The same rows with soft wraps undone, present only when {@link text} splits a URL — frozen
@@ -182,7 +180,6 @@ export function AgentChat({
   agents,
   shellPanes,
   tabs,
-  tabLabel,
   text,
   logicalText,
   requestedLines = 0,
@@ -217,25 +214,29 @@ export function AgentChat({
   // so a mis-detected/mis-rendered dialog can always be driven by hand with the keys pad.
   const grammarsOn = !prefs.rawTerminal;
   const isShell = agent?.kind === "shell";
-  // The header's line 1 — the pane's rendered NAME. Hoisted out of the JSX because line 2 is gated
-  // against it: the cwd shows only when it names a segment this string does not already show.
-  const paneName =
-    agent === undefined
-      ? ""
-      : (agent.paneLabel ??
-        agent.sessionName ??
-        `${agent.workspaceLabel}${tabLabel !== undefined && tabLabel !== "" ? ` › ${tabLabel}` : ""}`);
-  const cwd = agent === undefined ? null : cwdBeyondName(agent.cwd, paneName);
+  // LINE 1 IS THE NAME, LINE 2 IS THE PLACE — the one rule every other surface follows
+  // (lib/pane-name.ts). The header used to lead with the ADDRESS and never consult the terminal
+  // title at all, so a pane the dashboard called "Collie playground sync check" was called
+  // "collie-workspace › UI work" here: one pane, two names, and the reader had to work out they
+  // were the same pane. The address did not vanish, it moved down one line, where an address belongs.
+  const name = agent === undefined ? "" : paneName(agent);
+  const place = agent === undefined ? "" : panePlace(agent, tabs);
   // The panes that share this tab (agents + shells), in stable order — the switcher's whole list, and
   // the order the numbers on its pills count in (pane-strip.tsx). Computed here, once: the row is far
   // from the header in this file and the two must not disagree about which panes there are.
+  // THE BRIDGE'S ORDER, NOT A SECOND ONE. It used to sort by pane id, which is alphabetical order
+  // over an OPAQUE id (identity rule 1): `%10` before `%2`, `pN` before `pC`. Two panes side by side
+  // on the desk therefore reached the phone in an order the desk never showed. The bridge now sends
+  // every pane in the multiplexer's own arrangement — space, then tab, then the pane's position in
+  // that tab (bridge/state-engine.ts) — so the strip only has to keep what it was sent.
+  // Agents come before shells because they arrive in two arrays; within each, position is the mux's.
   const tabPanes = useMemo(
     () =>
       agent === undefined
         ? []
-        : [...agents, ...shellPanes]
-            .filter((p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId)
-            .toSorted((a, b) => a.paneId.localeCompare(b.paneId)),
+        : [...agents, ...shellPanes].filter(
+            (p) => p.workspaceId === agent.workspaceId && p.tabId === agent.tabId,
+          ),
     [agent, agents, shellPanes],
   );
   // This device may not type into agents: the backend rejects every write, so the composer drops to
@@ -1401,36 +1402,36 @@ export function AgentChat({
                     )}
                   </div>
                   <span data-slot="pane-name" className="block truncate font-semibold leading-5">
-                    {paneName}
+                    {name}
                   </span>
                 </div>
-                {/* LINE 2 IS THE PANE'S ADDRESS, END TO END: where the work sits on the left, which
+                {/* LINE 2 IS THE PANE'S PLACE, END TO END: where the work sits on the left, which
                     machine it sits on and how long its prompt cache stays warm on the right. The two
                     used to be a stack in the corner above; they read as one sentence here and the
                     corner is the menu's alone (see the rightLead note above).
 
-                    The ROW is always mounted, the path inside it is not. The path is shown only when
-                    it names a segment line 1 does not already show — see cwdBeyondName, gated against
-                    the RENDERED NAME rather than against the project, because a hand-set label
-                    ("logs") puts no directory on line 1 at all and the path is then the only thing
-                    locating the work. The row around it stands either way, at the line's own 12px, so
-                    a pane with no path and a pane whose cache reading arrives on the next poll both
-                    keep the block at 20 + 4 + 12 = 36px and nothing above or below moves
-                    (DESIGN.md §2).
+                    The PLACE, not the path. `space › tab` is the same second line the dashboard row
+                    and the switcher row carry, so one pane reads the same on all three; the cwd is
+                    gone from this line because it answered a question nobody asked here and it
+                    changed the line's meaning from screen to screen. A pane that sits somewhere
+                    other than its space root still says so in the space view's card, which is the
+                    list already scoped to one tab and therefore the one with room for a path.
 
-                    WHO GIVES WAY: the path. It is `min-w-0 truncate` and the meta is `flex-none`, so
-                    a long directory ends in an ellipsis and the machine's name and the countdown are
+                    The row is always mounted and its height never depends on its content, at the
+                    line's own 12px, so a pane whose cache reading arrives on the next poll keeps the
+                    block at 20 + 4 + 12 = 36px and nothing above or below moves (DESIGN.md §2).
+
+                    WHO GIVES WAY: the place. It is `min-w-0 truncate` and the meta is `flex-none`, so
+                    a long tab name ends in an ellipsis and the machine's name and the countdown are
                     never cut. Line 1 is untouched by all of it — the meta is inside this row, not
                     beside the block, so the pane's own name still has the full width. */}
                 <div className="flex min-w-0 items-center gap-2">
-                  {cwd !== null && (
-                    <span
-                      data-slot="pane-cwd"
-                      className="min-w-0 truncate font-mono text-[11px] leading-3 text-muted-foreground"
-                    >
-                      {cwd}
-                    </span>
-                  )}
+                  <span
+                    data-slot="pane-place"
+                    className="min-w-0 truncate text-[11px] leading-3 text-muted-foreground"
+                  >
+                    {place}
+                  </span>
                   <PaneMeta
                     layout="inline"
                     host={agent.host}

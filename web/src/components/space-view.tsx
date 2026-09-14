@@ -1,4 +1,5 @@
 import { groupPanesByTab } from "@/lib/spaces";
+import { isUnnamedTab } from "@/lib/pane-name";
 import type { AgentView, TabView, WorkspaceView } from "@/lib/types";
 import { AgentCard } from "./agent-card";
 import { t, tn } from "@/lib/i18n";
@@ -40,8 +41,18 @@ export function SpaceView({ workspace, tabs, agents, shellPanes, selectedTab, on
       {groups.map((g) => (
         <section key={g.tabId} className="flex flex-col gap-2">
           {selectedTab === null && (
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {g.label}
+            <h3 className="flex items-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              {/* A positional label is not a name (lib/pane-name.ts § isUnnamedTab), so an unnamed
+                  tab heads its group with the same dot the tab strip gives it rather than with the
+                  multiplexer's number. The label stays the heading's spoken text. */}
+              {isUnnamedTab(g.label) ? (
+                <>
+                  <span aria-hidden="true" className="size-1 rounded-full bg-current opacity-50" />
+                  <span className="sr-only">{g.label}</span>
+                </>
+              ) : (
+                g.label
+              )}
             </h3>
           )}
           {g.panes.length === 0 ? (

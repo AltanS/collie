@@ -10,6 +10,7 @@ import { useRevealActive } from "@/hooks/use-reveal-active";
 import { cn } from "@/lib/utils";
 import { TRIAGE_STATUS, worstTriage, type TriageKey } from "@/lib/triage";
 import { hostKey } from "@/lib/hosts";
+import { isUnnamedTab } from "@/lib/pane-name";
 import { statusLabel } from "@/lib/types";
 import type { AgentView, TabView } from "@/lib/types";
 import { useMuxCapability } from "@/lib/mux-capability";
@@ -278,6 +279,13 @@ interface TabProps {
 // One folder tab.
 function Tab({ label, active, ring, status, agent, onClick, onLongPress, onTapActive }: TabProps) {
   const longPress = useLongPress(onLongPress);
+  // A POSITIONAL LABEL IS NOT A NAME (lib/pane-name.ts § isUnnamedTab). Herdr calls an unnamed tab
+  // "1" and zellij calls it "Tab #2"; printed here, a row of tabs reads as a row of numbers, and the
+  // number says nothing the tab's own position in this row does not already say. So an unnamed tab
+  // shows a dot where its name would be — it keeps its status dot and its brand tile, which are the
+  // two facts about it that are real. The label is still the button's accessible name, because a
+  // screen reader has no row to look at and "1" is better than a glyph it cannot speak.
+  const unnamed = isUnnamedTab(label);
 
   // A long-press already suppresses the ensuing click (via longPress.onClickCapture), so this only
   // ever sees a genuine tap. Tapping the already-active tab opens actions rather than a dead
@@ -368,7 +376,16 @@ function Tab({ label, active, ring, status, agent, onClick, onLongPress, onTapAc
           <AgentIcon agent={agent} className="size-3.5" />
         </span>
       )}
-      {label}
+      {unnamed ? (
+        <>
+          {/* `bg-current`, so the dot takes the tab's own text colour in both states and nothing has
+              to be themed twice. 4px, the smallest mark the row already uses. */}
+          <span aria-hidden="true" className="size-1 shrink-0 rounded-full bg-current opacity-50" />
+          <span className="sr-only">{label}</span>
+        </>
+      ) : (
+        label
+      )}
     </button>
   );
 }

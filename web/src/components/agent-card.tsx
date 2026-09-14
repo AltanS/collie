@@ -6,8 +6,7 @@ import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
 import { PaneMeta } from "@/components/pane-meta";
 import { PaneHint } from "@/components/pane-hint";
-import { paneParts, paneTitleInTab } from "@/lib/pane-name";
-import type { PaneParts } from "@/lib/pane-name";
+import { paneCwdLine, paneName, panePlaceParts } from "@/lib/pane-name";
 import { statusLabel } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
@@ -16,9 +15,9 @@ interface AgentCardProps {
   agent: AgentView;
   onClick: () => void;
   /**
-   * Where the row is being shown. "herd" (default) is a flat list across every space, so line 1
-   * carries the pane's own title and line 2 the address it sits at. "tab" is a list already grouped
-   * under its space and tab, so line 2 is the path alone.
+   * Where the row is being shown. "herd" (default) is a flat list across every space, so line 2
+   * carries the place. "tab" is a list already grouped under its space and tab, so line 2 is the
+   * path alone. Line 1 is the pane's name in both.
    */
   scope?: "herd" | "tab";
   /**
@@ -50,26 +49,16 @@ interface RowLines {
   tailMono: boolean;
 }
 
-/** Which fact lands on which line, for a herd-scoped row. The pane's own name takes line 1, and
- *  line 2 becomes the address it sits at. Each fallback drops the fact it just promoted, so nothing
- *  is ever said twice, and a row with nothing but a space is one line. */
-function herdLines(parts: PaneParts): RowLines {
-  if (parts.secondary !== null)
-    return { primary: parts.secondary, detailLead: parts.project, detailTail: parts.tab, tailMono: false };
-  if (parts.tab !== null)
-    return { primary: parts.tab, detailLead: parts.project, detailTail: null, tailMono: false };
-  return { primary: parts.project, detailLead: null, detailTail: null, tailMono: false };
-}
-
 // A pane row, used by the triage home and the space view. Usually an agent; for a bare shell pane
 // (kind:"shell") it shows a terminal glyph and a muted "shell" tag instead of a status badge.
 //
-// ── THE ROW LEADS WITH THE PANE TITLE, AND THE ADDRESS SITS BENEATH ───────────
-// Line 1 is the pane's own TITLE, in the row's one bold run, taking the whole width. Line 2 is
-// `space · tab`, muted and small. The title is the only fact on the row that is unique to it: the
-// space repeats across every one of an eight-pane project's rows, and the tab name repeats across
-// projects. So the title gets the weight and the width, and the address goes beneath it as context —
-// you read what the work is, then where it lives.
+// ── THE ROW LEADS WITH THE PANE'S NAME, AND THE PLACE SITS BENEATH ───────────
+// Line 1 is the pane's NAME (lib/pane-name.ts), in the row's one bold run, taking the whole width.
+// Line 2 is its PLACE, `space › tab`, muted and small. The name is the only fact on the row that is
+// unique to it: the space repeats across every one of an eight-pane project's rows, and the tab name
+// repeats across projects. So the name gets the weight and the width, and the place goes beneath it
+// as context — you read what the work is, then where it lives. Every other surface answers the same
+// two questions the same way round.
 //
 // The tile shrank with the same argument. At `size-9` it was a 36px column on every row of a list
 // where every row is the same agent, so it carried no information and pushed both lines 44px right.
@@ -93,13 +82,14 @@ export function AgentCard({
   const blocked = agent.status === "blocked";
   const inTab = scope === "tab";
   const flat = density === "row";
-  const parts = paneParts(agent);
-  const tabTitle = paneTitleInTab(agent);
-  // Line 1's name, and line 2's two runs. In a tab-scoped list the space and the tab are already
-  // established by the heading above, so line 2 is the path alone.
+  // ONE NAME, ONE PLACE (lib/pane-name.ts). Line 1 is what the pane is CALLED, on every row of
+  // every list; line 2 is WHERE it sits. In a tab-scoped list the place is already established by
+  // the space heading and the per-tab section above, so line 2 is the path instead — the one fact
+  // that still tells two panes in one tab apart.
+  const place = panePlaceParts(agent);
   const lines: RowLines = inTab
-    ? { primary: tabTitle.primary, detailLead: null, detailTail: tabTitle.secondary, tailMono: true }
-    : herdLines(parts);
+    ? { primary: paneName(agent), detailLead: null, detailTail: paneCwdLine(agent), tailMono: true }
+    : { primary: paneName(agent), detailLead: place.space, detailTail: place.tab, tailMono: false };
   const { primary, detailLead, detailTail } = lines;
   // The dot leads line 1, INLINE, ahead of the tile — not on the tile's corner. The corner was
   // right at `size-9`: a 10px badge on a 36px tile is a badge. On a 16px tile it is most of the
@@ -183,8 +173,10 @@ export function AgentCard({
                   gives up width first; the tab takes the rest. */}
               {detailLead !== null && <span className="min-w-0 shrink truncate">{detailLead}</span>}
               {detailLead !== null && detailTail !== null && (
+                // The place's own separator, the same glyph the joined form uses (PLACE_SEP): a
+                // crumb, because a space CONTAINS a tab. A middot would read as two peers.
                 <span className="shrink-0 text-muted-foreground/60" aria-hidden>
-                  ·
+                  ›
                 </span>
               )}
               {detailTail !== null && (

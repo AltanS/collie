@@ -4,14 +4,11 @@ import { AgentCard } from "./agent-card";
 import { fixtureAgents } from "@/test/handlers";
 import type { AgentView } from "@/lib/types";
 
-// The row's ANATOMY, which is the thing that keeps getting re-argued: line 1 is the pane's own title
-// beside a small agent tile, line 2 is `space · tab` — the address — and line 2 exists only when it
-// has something to say. Addressed through `data-slot` rather than class names: the classes are a
-// layout decision and are meant to move; which line a fact lands on is the contract.
-//
-// The cwd is left matching the space name on purpose in most cases here: `paneParts` drops a path
-// that only repeats the space (lib/pane-name.ts), so that keeps each case carrying exactly the
-// fields it is about.
+// The row's ANATOMY, which is the thing that keeps getting re-argued: line 1 is the pane's NAME
+// beside a small agent tile, line 2 is its PLACE, `space › tab`. One name, one place, the same way
+// round on every surface (lib/pane-name.ts). Addressed through `data-slot` rather than class names:
+// the classes are a layout decision and are meant to move; which line a fact lands on is the
+// contract.
 
 const agent = (over: Partial<AgentView> = {}): AgentView => ({ ...fixtureAgents[0]!, ...over });
 
@@ -34,8 +31,8 @@ describe("AgentCard's two lines", () => {
     expect(top).not.toHaveTextContent("webapp");
     expect(top).not.toHaveTextContent("review");
 
-    // Space first, then the separator, then the tab — in that order, in one line.
-    expect(line2(container)).toHaveTextContent(/^webapp\s*·\s*review$/);
+    // Space first, then the crumb, then the tab — in that order, in one line.
+    expect(line2(container)).toHaveTextContent(/^webapp\s*›\s*review$/);
   });
 
   it("shows the space alone, with no separator, when there is no tab", () => {
@@ -45,22 +42,23 @@ describe("AgentCard's two lines", () => {
 
     expect(line1(container)).toHaveTextContent("rewrite the loader");
     expect(line2(container)).toHaveTextContent("webapp");
-    expect(line2(container)).not.toHaveTextContent("·");
+    expect(line2(container)).not.toHaveTextContent("›");
   });
 
-  it("falls back to the tab on line 1, and leaves the space alone beneath", () => {
+  it("NEVER leads with the place: a pane with no name of its own reads as its agent", () => {
     const { container } = render(<AgentCard agent={agent({ tabLabel: "review" })} onClick={() => {}} />);
 
-    expect(line1(container)).toHaveTextContent("review");
-    expect(line2(container)).toHaveTextContent("webapp");
-    expect(line2(container)).not.toHaveTextContent("·");
+    // The old rule promoted the tab to line 1 here, so one pane was called "review" on this screen
+    // and something else on the next. The agent word is the floor, and the place stays on line 2.
+    expect(line1(container)).toHaveTextContent("claude");
+    expect(line2(container)).toHaveTextContent(/^webapp\s*›\s*review$/);
   });
 
-  it("is a ONE-line row of the space alone when there is neither a tab nor a pane title", () => {
+  it("still shows the place beneath a pane that has neither a tab nor a name", () => {
     const { container } = render(<AgentCard agent={agent()} onClick={() => {}} />);
 
-    expect(line1(container)).toHaveTextContent("webapp");
-    expect(line2(container)).toBeNull();
+    expect(line1(container)).toHaveTextContent("claude");
+    expect(line2(container)).toHaveTextContent("webapp");
   });
 
   // In a list already grouped under its space and tab, repeating them says nothing — so the pane's

@@ -414,8 +414,8 @@ const resting: AgentView[] = [
     status: "idle",
     cwd: "/home/you/src/collie",
     focused: false,
-    // A title the program that printed it has already exited under: it demotes to the muted line and
-    // stops being the pane's NAME (see `paneDisplayName`), which is a state worth being able to see.
+    // A title the program that printed it has already exited under: it stops being the pane's NAME
+    // (see `paneName` in lib/pane-name.ts), which is a state worth being able to see.
     terminalTitle: "pnpm test --watch",
     terminalTitleStale: true,
     lastActiveAt: TS - 6 * HOUR,

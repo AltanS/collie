@@ -23,7 +23,7 @@ export interface AgentView {
   /**
    * Claude's OWN session name (set in-agent via `/rename`), derived bridge-side from the pane text.
    * Claude-only; absent for unnamed sessions and non-claude panes. Shown below an explicit `paneLabel`
-   * — see {@link paneDisplayName}. Render as text only (never markup) — same XSS boundary as paneLabel.
+   * — see `paneName` in lib/pane-name.ts. Render as text only (never markup) — same XSS boundary as paneLabel.
    */
   sessionName?: string;
   /**
@@ -47,9 +47,10 @@ export interface AgentView {
   readableLines?: number;
   /**
    * The pane's tab label, denormalised bridge-side alongside `workspaceLabel`. Absent when it says
-   * nothing: Herdr names an unlabelled tab positionally ("1"), which in a single-tab space would
-   * render as `project · 1` (see `meaningfulTabLabel` in bridge/activity.ts). Render as text only,
-   * never markup — same XSS boundary as `paneLabel`.
+   * nothing: Herdr names an unlabelled tab positionally ("1"), which would render as `project › 1`
+   * (see `meaningfulTabLabel` in bridge/activity.ts, and `isUnnamedTab` in lib/pane-name.ts, which
+   * is the same rule applied to the RAW label). Render as text only, never markup — same XSS
+   * boundary as `paneLabel`.
    */
   tabLabel?: string;
   /**
@@ -65,7 +66,8 @@ export interface AgentView {
    * finished agent's sentence for hours. Derived bridge-side; absent on an older bridge, which reads
    * as "not known to be stale" and renders exactly as it always did.
    *
-   * It demotes, it never hides: a stale title is not the pane's NAME (see {@link paneDisplayName}),
+   * It demotes, it never hides: a stale title is not the pane's NAME (see `paneName` in
+   * lib/pane-name.ts),
    * but it still shows on the muted line, because it is the only trace of what ran here.
    */
   terminalTitleStale?: boolean;
@@ -177,25 +179,6 @@ export interface PaneCache {
   measuredAt?: number;
   /** Present, and always `true`, when the number came from the operator's `cache-rules.toml`. */
   overridden?: true;
-}
-
-/**
- * The name to show for a pane, in priority order: an explicit user label (herdr `pane.rename`) wins,
- * then Claude's own `/rename` session name, then the pane's terminal title, then the agent name (or
- * "shell"). The two hand-set names outrank the title because a name you chose should not be
- * overwritten by one the process is rewriting every turn; the title outranks the agent name because
- * "claude" tells you nothing when four rows say it. All three are rendered only as React text nodes
- * by callers — never markup — so they stay within the pane-output XSS boundary.
- *
- * A STALE title names nothing: the program that wrote it has exited, so it is a fact about the past,
- * and a past task standing in as a live pane's name is the bug this rule exists to stop. Such a pane
- * falls back to what it would be called with no title at all.
- */
-export function paneDisplayName(pane: AgentView): string {
-  if (pane.paneLabel) return pane.paneLabel;
-  if (pane.sessionName) return pane.sessionName;
-  if (pane.terminalTitle && !pane.terminalTitleStale) return pane.terminalTitle;
-  return pane.kind === "shell" ? "shell" : pane.agent;
 }
 
 /** A Herdr workspace ("space") — a project-scoped container of tabs. */

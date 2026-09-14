@@ -140,8 +140,12 @@ describe("SpaceOverview — filtering", () => {
   });
 });
 
-describe("SpaceOverview — recency", () => {
-  it("puts the space you used most recently first, whatever Herdr's order", () => {
+describe("SpaceOverview — order and last-seen times", () => {
+  // THE LIST HOLDS STILL. It used to float the space you touched last to the top, so the dashboard
+  // and the space strip showed one set of spaces in two different orders, and a list you navigate by
+  // memory rearranged itself while you looked away. It is the multiplexer's own space order now, the
+  // strip's order, and "what did I touch last" is still on every row as its time.
+  it("keeps the multiplexer's own space order, whatever you used last", () => {
     const spaces = [ws("w1", "alpha", 1, 1), ws("w2", "beta", 1, 1)];
     render(
       view({
@@ -153,21 +157,21 @@ describe("SpaceOverview — recency", () => {
       }),
     );
     const labels = screen.getAllByRole("button", { name: /alpha|beta/ }).map((b) => b.textContent);
-    expect(labels[0]).toContain("beta");
-    expect(labels[1]).toContain("alpha");
+    expect(labels[0]).toContain("alpha");
+    expect(labels[1]).toContain("beta");
   });
 
-  it("counts a bare shell as having used the space", () => {
+  it("counts a bare shell when it stamps a space's last-seen time", () => {
     const spaces = [ws("w1", "alpha", 1, 1), ws("w2", "beta", 1, 1)];
     render(
       view({
         workspaces: spaces,
-        agents: [pane({ paneId: "w1:p1", workspaceId: "w1", lastSeenAt: 100 })],
+        agents: [],
         shellPanes: [pane({ paneId: "w2:p1", workspaceId: "w2", kind: "shell", lastSeenAt: 900 })],
       }),
     );
-    const labels = screen.getAllByRole("button", { name: /alpha|beta/ }).map((b) => b.textContent);
-    expect(labels[0]).toContain("beta");
+    const beta = screen.getByRole("button", { name: /beta/ });
+    expect(beta.textContent).toMatch(/ago|just now/i);
   });
 
   it("shows no timestamp for a space on a bridge that reports none", () => {

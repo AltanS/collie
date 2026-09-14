@@ -128,7 +128,7 @@ describe("PeerNotifier — a peer's alerts on the lead's phone", () => {
     expect(push.sent).toHaveLength(1);
     expect(push.sent[0]).toEqual({
       title: "claude needs you",
-      body: "laptop · collie · /home/you/collie",
+      body: "laptop · collie",
       tag: "collie:herd@laptop",
       paneId: "p1",
       renotify: true,
@@ -165,15 +165,15 @@ describe("PeerNotifier — a peer's alerts on the lead's phone", () => {
     peer.observe(
       "laptop",
       body([
-        pane("p1", "blocked", "claude", { cwd: "/home/you/api" }),
-        pane("p2", "blocked", "codex", { cwd: "/home/you/web" }),
-        pane("p3", "blocked", "pi", { cwd: "/home/you/worker" }),
+        pane("p1", "blocked", "claude", { terminalTitle: "api" }),
+        pane("p2", "blocked", "codex", { terminalTitle: "web" }),
+        pane("p3", "blocked", "pi", { terminalTitle: "worker" }),
       ]),
     );
     clock.fireAll();
 
     // One slot, and its final state is the digest — the existing "one summary, not three races".
-    // Named by pane (cwd basename), not agent kind — three different repos, three different words.
+    // Named by the one name rule (bridge/pane-name.ts), not by agent kind — three panes, three words.
     expect(new Set(push.tags)).toEqual(new Set(["collie:herd@laptop"]));
     expect(push.sent.at(-1)).toMatchObject({
       title: "3 agents need you",

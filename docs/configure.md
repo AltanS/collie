@@ -419,7 +419,7 @@ total session age. Each new request resets the timer.
 The chip turns amber during the final quarter of the window. It shows `cold` when the window expires
 or when a turn pays the full rate. When under one minute remains, it shows `<1m` instead of seconds.
 
-The chip sits at the right end of the pane header's second line, after the working directory. On a
+The chip sits at the right end of the pane header's second line, after the pane's space and tab. On a
 crew the machine's name sits beside it, on the same line. Tap the chip to view the underlying rule:
 the rule id, the vendor source page, and the retrieval date.
 

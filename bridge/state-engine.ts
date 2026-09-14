@@ -109,6 +109,16 @@ export function terminalTitleIsStale(pane: MuxPane): boolean {
 }
 
 /**
+ * A pane's or a tab's place in the multiplexer's own listing.
+ *
+ * An entry the listing does not hold (a poll caught mid-create) sorts LAST rather than first: an
+ * unplaced pane is never allowed to displace a placed one.
+ */
+function rankOf(order: ReadonlyMap<string, number>, key: string): number {
+  return order.get(key) ?? Number.MAX_SAFE_INTEGER;
+}
+
+/**
  * One pane the multiplexer reported, as the view Collie's clients read.
  *
  * Almost a rename, and that is the point: the port already carries everything a pane IS, so this
@@ -349,21 +359,30 @@ export class StateEngine {
     try {
       const { panes, spaces, tabs } = await this.mux.snapshot();
 
+      // ── ONE STABLE ORDER, AND IT IS THE MULTIPLEXER'S ─────────────────────
+      // Space, then tab, then pane, each read off the arrangement the mux reported: the tab's own
+      // index in `tabs`, and the pane's own index in `panes`. Nothing here sorts by pane id any
+      // more. A pane id is opaque (identity rule 1) and alphabetical order over opaque ids is an
+      // order nobody can see — `%10` before `%2`, `pN` before `pC` — so two panes side by side on
+      // the desk arrived at the phone in an order the desk never showed. Position is what the
+      // operator arranged, and position is what the phone now reads back.
+      const tabRank = new Map(tabs.map((t, i) => [t.tabId, i]));
+      const paneRank = new Map(panes.map((p, i) => [p.paneId, i]));
+      const byPlace = (a: AgentView, b: AgentView) =>
+        a.workspaceNumber - b.workspaceNumber ||
+        rankOf(tabRank, a.tabId) - rankOf(tabRank, b.tabId) ||
+        rankOf(paneRank, a.paneId) - rankOf(paneRank, b.paneId);
+
       const agents: AgentView[] = panes
         .filter((p) => p.agent !== SHELL)
         .map((p) => toView(p, "agent"))
-        .toSorted(
-          (a, b) =>
-            STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
-            a.workspaceNumber - b.workspaceNumber ||
-            a.paneId.localeCompare(b.paneId),
-        );
+        .toSorted((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || byPlace(a, b));
 
-      // Bare shell panes (no agent), ordered by space then pane so a space's panes read top-down.
+      // Bare shell panes (no agent), in the same place order so a space's panes read top-down.
       const shellPanes: AgentView[] = panes
         .filter((p) => p.agent === SHELL)
         .map((p) => toView(p, "shell"))
-        .toSorted((a, b) => a.workspaceNumber - b.workspaceNumber || a.paneId.localeCompare(b.paneId));
+        .toSorted(byPlace);
 
       const workspaceViews: WorkspaceView[] = spaces
         .map((s) => {

@@ -9,7 +9,7 @@ import {
 import { HerdrMux } from "./mux/herdr/adapter.ts";
 import type { HerdrClient, PaneRead } from "./mux/herdr/client.ts";
 import { muxOk } from "./mux/types.ts";
-import type { MuxAdapter, MuxPane } from "./mux/types.ts";
+import type { MuxAdapter, MuxPane, MuxTab } from "./mux/types.ts";
 import { toPaneWire } from "./types.ts";
 import type { AgentStatus } from "./types.ts";
 
@@ -313,6 +313,100 @@ describe("StateEngine — snapshot shaping", () => {
     herdr.sessionSnapshot = () => Promise.reject(new Error("socket down"));
     await poll();
     expect(engine.current().bridge).toBe("disconnected");
+  });
+});
+
+// ── ONE STABLE ORDER, AND IT IS THE MULTIPLEXER'S ────────────────────────────
+// Space, then tab, then the pane's own position in that tab — each read off the arrangement the mux
+// reported. Nothing sorts by pane id any more: an id is opaque (identity rule 1), so alphabetical
+// order over ids put `%10` before `%2` and `pN` before `pC`, and two panes side by side on the desk
+// reached the phone in an order the desk never showed.
+describe("StateEngine — the order panes arrive in", () => {
+  function muxPane(fields: Partial<MuxPane> & { paneId: string }): MuxPane {
+    return {
+      spaceId: "w1",
+      spaceLabel: "collie",
+      spaceNumber: 1,
+      tabId: "w1:t1",
+      cwd: "/home/dev/collie",
+      focused: false,
+      alive: true,
+      agent: "claude",
+      status: "idle",
+      ...fields,
+    };
+  }
+  const muxTab = (tabId: string): MuxTab => ({
+    tabId,
+    spaceId: "w1",
+    number: 1,
+    label: "1",
+    focused: false,
+    paneCount: 2,
+  });
+
+  function engineOf(panes: readonly MuxPane[], tabs: readonly MuxTab[]): StateEngine {
+    // SAFETY: a poll over this herd reaches `snapshot()` and the session-name scrape's guard, and
+    // nothing else — every pane here is idle, so no read is issued. The members left off are
+    // unobservable in this test.
+    const stub: Partial<MuxAdapter> = {
+      reachable: () => Promise.resolve(true),
+      snapshot: () => Promise.resolve({ panes, spaces: [], tabs }),
+    };
+    // SAFETY: see above — every member this poll can reach is present on `stub`.
+    return new StateEngine(stub as MuxAdapter, 1500);
+  }
+
+  test("keeps each tab's panes in the mux's own order, not in pane-id order", async () => {
+    // `pN` sorts before `pC` alphabetically and after it positionally. The mux's array is the truth.
+    const engine = engineOf(
+      [muxPane({ paneId: "pC" }), muxPane({ paneId: "pN" }), muxPane({ paneId: "pA" })],
+      [muxTab("w1:t1")],
+    );
+    await engine["poll"]();
+    expect(engine.current().agents.map((a) => a.paneId)).toEqual(["pC", "pN", "pA"]);
+  });
+
+  test("orders tabs by their place in the mux's tab array, whatever their ids read like", async () => {
+    const engine = engineOf(
+      [
+        muxPane({ paneId: "p1", tabId: "w1:t9" }),
+        muxPane({ paneId: "p2", tabId: "w1:t2" }),
+      ],
+      [muxTab("w1:t9"), muxTab("w1:t2")],
+    );
+    await engine["poll"]();
+    expect(engine.current().agents.map((a) => a.paneId)).toEqual(["p1", "p2"]);
+  });
+
+  test("urgency still comes first — a blocked pane leads, wherever it sits", async () => {
+    const engine = engineOf(
+      [muxPane({ paneId: "p1" }), muxPane({ paneId: "p2", status: "blocked" })],
+      [muxTab("w1:t1")],
+    );
+    await engine["poll"]();
+    expect(engine.current().agents.map((a) => a.paneId)).toEqual(["p2", "p1"]);
+  });
+
+  test("a pane whose tab the listing does not hold sorts LAST, never ahead of a placed one", async () => {
+    const engine = engineOf(
+      [muxPane({ paneId: "fresh", tabId: "w1:t-new" }), muxPane({ paneId: "placed" })],
+      [muxTab("w1:t1")],
+    );
+    await engine["poll"]();
+    expect(engine.current().agents.map((a) => a.paneId)).toEqual(["placed", "fresh"]);
+  });
+
+  test("bare shells take the same order", async () => {
+    const engine = engineOf(
+      [
+        muxPane({ paneId: "pC", agent: "shell", status: "unknown" }),
+        muxPane({ paneId: "pA", agent: "shell", status: "unknown" }),
+      ],
+      [muxTab("w1:t1")],
+    );
+    await engine["poll"]();
+    expect(engine.current().shellPanes.map((a) => a.paneId)).toEqual(["pC", "pA"]);
   });
 });
 

@@ -46,7 +46,7 @@ describe("AgentList — sections", () => {
     ]);
   });
 
-  it("titles rows by project · tab, never by the agent name", () => {
+  it("puts the place on line 2, and leads with the pane's name — the agent word when it has none", () => {
     render(
       <AgentList
         agents={[agent("p", "idle", { workspaceLabel: "moonward_os", tabLabel: "fix-auth" })]}
@@ -58,7 +58,12 @@ describe("AgentList — sections", () => {
     expect(screen.getByText("moonward_os")).toBeInTheDocument();
     expect(screen.getByText("fix-auth")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /moonward_os.*fix-auth/ })).toBeInTheDocument();
-    expect(screen.queryByText("claude")).not.toBeInTheDocument();
+    // A pane with no name of its own reads as its agent, and the place stays beneath it. The place
+    // is NEVER promoted to line 1: that promotion is what made one pane read two ways across screens.
+    expect(screen.getByText("claude").closest("[data-slot]")).toHaveAttribute(
+      "data-slot",
+      "agent-row-title",
+    );
   });
 
   it("gives line 1's width to the pane title, and drops the space and tab to line 2", () => {
@@ -80,7 +85,7 @@ describe("AgentList — sections", () => {
       "data-slot",
       "agent-row-title",
     );
-    // The address — space then tab — sits on the line below.
+    // The place — space then tab — sits on the line below.
     for (const part of ["moonward_os", "fix-auth"])
       expect(screen.getByText(part).closest("[data-slot]")).toHaveAttribute(
         "data-slot",

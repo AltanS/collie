@@ -61,6 +61,7 @@
 
 import { declareCapabilities } from "../capabilities.ts";
 import { ZELLIJ_LOGO_SVG } from "./logo.ts";
+import { isUnnamedTab } from "../../pane-name.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
   muxAck,
@@ -670,7 +671,7 @@ function toSnapshot(
   // half-listed pane would fail the whole herd's consistency check.
   const kept = paneRecords.filter((pane) => tabByNumber.has(pane.tabNumber));
   const panes: MuxPane[] = kept.map((pane) =>
-    toMuxPane(pane, tabByNumber.get(pane.tabNumber), sessionLabel, tabRecords.length, ownLabels),
+    toMuxPane(pane, tabByNumber.get(pane.tabNumber), sessionLabel, ownLabels),
   );
   // EVERY COUNT IS COUNTED HERE, off the panes this snapshot actually carries — never off zellij's
   // own tab listing (MUX_CONTRACT.md § Contract-owned rules, *Counts*). `selectable_tiled_panes_count`
@@ -709,7 +710,6 @@ function toMuxPane(
   raw: ZellijPaneRecord,
   tab: ZellijTabRecord | undefined,
   sessionLabel: string,
-  tabCount: number,
   ownLabels: ReadonlyMap<string, string>,
 ): MuxPane {
   const pane: MutableMuxPane = {
@@ -749,7 +749,7 @@ function toMuxPane(
     const printed = programTitle(raw.title);
     if (printed !== null) pane.terminalTitle = printed;
   }
-  const tabLabel = meaningfulTabName(tab, tabCount);
+  const tabLabel = meaningfulTabName(tab);
   if (tabLabel !== null) pane.tabLabel = tabLabel;
   return pane;
 }
@@ -771,21 +771,18 @@ function programTitle(title: string): string | null {
   return trimmed;
 }
 
-/** zellij's own default name for a tab nobody has named: `Tab #1`, `Tab #2`, … (probed). */
-const DEFAULT_TAB_NAME = /^Tab #\d+$/u;
-
 /**
  * A tab name worth putting on screen, or null.
  *
- * zellij names an unnamed tab positionally, and in a one-tab session that reads as a bug rather than
- * a name — the same call Herdr's `meaningfulTabLabel` and tmux's `meaningfulWindowName` make. With
- * two or more tabs it is kept, because it is the only thing telling them apart.
+ * zellij names an unnamed tab positionally, and that reads as a bug rather than a name — the same
+ * call Herdr's `meaningfulTabLabel` and tmux's `meaningfulWindowName` make, through the one rule
+ * `isUnnamedTab`. The number is dropped whatever the tab count: it is a POSITION, and the tab strip
+ * already shows position by position.
  */
-function meaningfulTabName(tab: ZellijTabRecord | undefined, tabCount: number): string | null {
+function meaningfulTabName(tab: ZellijTabRecord | undefined): string | null {
   if (tab === undefined) return null;
   const name = tab.name.trim();
-  if (name.length === 0) return null;
-  if (DEFAULT_TAB_NAME.test(name) && tabCount <= 1) return null;
+  if (isUnnamedTab(name)) return null;
   return name;
 }
 

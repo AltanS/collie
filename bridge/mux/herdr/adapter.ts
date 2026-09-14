@@ -548,7 +548,7 @@ function toMuxPane(
   // A user-set pane label (herdr pane.rename); omitted when unset.
   if (raw.label !== null && raw.label !== undefined && raw.label.length > 0) pane.paneLabel = raw.label;
   // The tab's label, dropped when it's Herdr's positional default in a single-tab space.
-  const tabLabel = meaningfulTabLabel(tabById.get(raw.tab_id)?.label, space?.tab_count ?? 0);
+  const tabLabel = meaningfulTabLabel(tabById.get(raw.tab_id)?.label);
   if (tabLabel) pane.tabLabel = tabLabel;
   // What the pane says it is doing, dropped when it only repeats the agent name or the space label.
   const terminalTitle = meaningfulTerminalTitle(

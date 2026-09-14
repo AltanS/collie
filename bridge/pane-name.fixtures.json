@@ -1,0 +1,78 @@
+{
+  "comment": "The one set of cases the bridge's pane-name.ts and the web's web/src/lib/pane-name.ts BOTH run. Two mirrored copies of one rule stay honest only while they answer the same fixtures; bridge/pane-name.test.ts and web/src/lib/pane-name.test.ts each read this file. Add a case here, never to one side alone.",
+  "names": [
+    {
+      "case": "a label the operator gave through Collie outranks everything",
+      "pane": {
+        "agent": "claude",
+        "kind": "agent",
+        "paneLabel": "release notes",
+        "sessionName": "workflow-gate-commits",
+        "terminalTitle": "Reviewing the diff"
+      },
+      "name": "release notes"
+    },
+    {
+      "case": "Claude's own /rename name outranks the title it rewrites every turn",
+      "pane": {
+        "agent": "claude",
+        "kind": "agent",
+        "sessionName": "workflow-gate-commits",
+        "terminalTitle": "Reviewing the diff"
+      },
+      "name": "workflow-gate-commits"
+    },
+    {
+      "case": "an auto title is the name when nobody set one",
+      "pane": {
+        "agent": "claude",
+        "kind": "agent",
+        "terminalTitle": "Collie playground sync check"
+      },
+      "name": "Collie playground sync check"
+    },
+    {
+      "case": "a stale title names nothing, so an agent pane falls back to its agent word",
+      "pane": {
+        "agent": "claude",
+        "kind": "agent",
+        "terminalTitle": "Collie playground sync check",
+        "terminalTitleStale": true
+      },
+      "name": "claude"
+    },
+    {
+      "case": "an agent pane with no name of any kind reads as its agent",
+      "pane": { "agent": "codex", "kind": "agent" },
+      "name": "codex"
+    },
+    {
+      "case": "a bare shell reads as shell, whatever its agent field says",
+      "pane": { "agent": "shell", "kind": "shell" },
+      "name": "shell"
+    },
+    {
+      "case": "a labelled shell keeps the operator's label",
+      "pane": { "agent": "shell", "kind": "shell", "paneLabel": "logs" },
+      "name": "logs"
+    }
+  ],
+  "tabs": [
+    { "label": "UI work", "unnamed": false },
+    { "label": "fix-auth", "unnamed": false },
+    { "label": "1", "unnamed": true },
+    { "label": "  2  ", "unnamed": true },
+    { "label": "10", "unnamed": true },
+    { "label": "Tab #3", "unnamed": true },
+    { "label": "", "unnamed": true },
+    { "label": null, "unnamed": true },
+    { "label": "Tab #3 notes", "unnamed": false },
+    { "label": "v2", "unnamed": false }
+  ],
+  "places": [
+    { "space": "collie-workspace", "tab": "UI work", "place": "collie-workspace › UI work" },
+    { "space": "collie-workspace", "tab": "1", "place": "collie-workspace" },
+    { "space": "herdr-cache-alert", "tab": null, "place": "herdr-cache-alert" },
+    { "space": "nixos-configuration", "tab": "Tab #2", "place": "nixos-configuration" }
+  ]
+}

@@ -44,10 +44,10 @@ describe("ThreadSidebar", () => {
   it("marks the current pane with aria-current='page'", () => {
     render(<ThreadSidebar agents={fixtureAgents} currentPaneId="w2:p1" onSelect={vi.fn()} />);
     const current = screen.getByRole("button", { current: "page" });
-    // w2:p1 lives in the "collie" workspace. The row is titled by where the work IS, not by which
-    // agent is doing it — "codex" is carried by the avatar (see paneTitle).
+    // w2:p1 lives in the "collie" workspace and has no name of its own, so line 1 is its agent word
+    // and line 2 is its place. Same way round as every other list in the app (lib/pane-name.ts).
     expect(current).toHaveTextContent("collie");
-    expect(current).not.toHaveTextContent("codex");
+    expect(current).toHaveTextContent("codex");
   });
 
   it("does not mark any pane current when the id matches nothing", () => {

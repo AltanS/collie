@@ -6,7 +6,7 @@ import { LabelledStrip, STRIP_TAP_TARGET } from "@/components/ui/labelled-strip"
 import { StatusDot } from "@/components/status-badge";
 import { PaneActionsSheet } from "@/components/pane-actions-sheet";
 import { useLongPress } from "@/hooks/use-long-press";
-import { paneDisplayName } from "@/lib/types";
+import { paneName } from "@/lib/pane-name";
 import { paneOrdinals } from "@/lib/pane-ordinal";
 import type { AgentView } from "@/lib/types";
 import type { Scope } from "@/lib/scope";
@@ -142,9 +142,10 @@ function PanePill({
   onTapActive?: () => void;
 }) {
   const isShell = pane.kind === "shell";
-  // A user label, then Claude's /rename session name, then the agent/shell name (see paneDisplayName)
-  // — the icon still conveys which agent it is.
-  const name = paneDisplayName(pane);
+  // The one name rule (lib/pane-name.ts) — the same string the dashboard row, the pane header and a
+  // push all lead with. The icon still conveys which agent it is, and the place is NOT repeated
+  // here: this strip is already inside the tab whose place the header above it states.
+  const name = paneName(pane);
   const longPress = useLongPress(onLongPress);
 
   // A long-press already suppresses the ensuing click via longPress.onClickCapture (stops it before

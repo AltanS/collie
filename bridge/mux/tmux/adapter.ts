@@ -49,6 +49,7 @@
 
 import { declareCapabilities } from "../capabilities.ts";
 import { TMUX_LOGO_SVG } from "./logo.ts";
+import { isUnnamedTab } from "../../pane-name.ts";
 import type { MuxAdapterFactory, MuxTarget } from "../registry.ts";
 import {
   muxAck,
@@ -949,14 +950,16 @@ function programTitle(raw: TmuxPaneRecord): string | null {
  * A window name worth putting on screen, or null.
  *
  * tmux renames a window after whatever runs in it unless the operator turned that off or named it —
- * `#{automatic-rename}` says which. An auto-name in a one-window session is the positional default
- * Herdr's `meaningfulTabLabel` drops for the same reason: it reads as a bug rather than a name. With
- * two or more windows it is kept, because it is the only thing telling two tabs apart.
+ * `#{automatic-rename}` says which. An auto-name in a one-window session says nothing worth showing.
+ *
+ * A PURELY POSITIONAL name is dropped whatever the window count, which is `isUnnamedTab`, the one
+ * rule Herdr's `meaningfulTabLabel` and zellij's `meaningfulTabName` also make: a number is a
+ * position, and the tab strip already shows position by position.
  */
 function meaningfulWindowName(window: TmuxWindow | undefined, session: TmuxSession | undefined): string | null {
   if (window === undefined) return null;
   const name = window.name.trim();
-  if (name.length === 0) return null;
+  if (isUnnamedTab(name)) return null;
   if (window.autoNamed && (session?.windows ?? 0) <= 1) return null;
   return name;
 }
