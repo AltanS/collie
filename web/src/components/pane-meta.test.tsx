@@ -100,16 +100,31 @@ describe("the inline row, at the end of the pane header's path line", () => {
     expect(host.className).not.toMatch(/border/);
     withHost.unmount();
 
-    // Solo, and a window the bridge calls expiring: the tone is the app's amber, and it may reach
-    // the hourglass and nothing else. (A PEER's reading takes that machine's identity ink instead —
-    // cache-chip.tsx's own rule, unchanged by this layout.)
-    render(<PaneMeta layout="inline" host={undefined} cache={reading({ state: "expiring" })} />, {
-      wrapper: one,
+    // A window the bridge calls expiring: the state's ink is the app's amber, and it may reach the
+    // hourglass and nothing else. A PEER's reading is drawn in the very same ink — the identity tint
+    // left this chip on 2026-09-14, because a host tint may never be mistaken for a status.
+    render(<PaneMeta layout="inline" host="workshop" cache={reading({ state: "expiring" })} />, {
+      wrapper: crew,
     });
     const chip = document.querySelector<HTMLElement>('[data-slot="cache-chip"]')!;
     expect(chip.className).toMatch(/text-muted-foreground/);
     expect(chip.className).not.toMatch(/text-status-working/);
+    expect(chip.className).not.toMatch(/text-host-/);
     expect(chip.querySelector("svg")?.getAttribute("class")).toMatch(/text-status-working/);
+  });
+
+  it("stands the reading on the hourglass's foot, in the column as well as inline", () => {
+    // One alignment for both layouts, and the state's ink on the glyph in both: the two corners are
+    // one component precisely so they cannot say the same fact two ways (this file's header).
+    for (const layout of ["inline", "column"] as const) {
+      const view = render(<PaneMeta layout={layout} host="workshop" cache={reading()} />, {
+        wrapper: crew,
+      });
+      const chip = document.querySelector<HTMLElement>('[data-slot="cache-chip"]')!;
+      expect(chip.className).toMatch(/(?:^|\s)items-baseline(?=\s|$)/);
+      expect(chip.querySelector("svg")?.getAttribute("class")).toMatch(/text-status-done\/60/);
+      view.unmount();
+    }
   });
 
   it("reaches a 44px tap box without drawing one, when the surface opens the rule", async () => {

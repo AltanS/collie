@@ -416,8 +416,10 @@ Every supported harness caches the current conversation. Harnesses charge lower 
 cache stays warm. The chip counts down idle time since the agent's last request. It does not track
 total session age. Each new request resets the timer.
 
-The chip turns amber during the final quarter of the window. It shows `cold` when the window expires
-or when a turn pays the full rate. When under one minute remains, it shows `<1m` instead of seconds.
+The chip's hourglass carries the state in one of three colours, and the number beside it stays grey.
+The hourglass is green while the window is wide, amber during the final quarter of it, and red once
+the window expires or a turn pays the full rate. The chip says `cold` in the red state, and `<1m`
+instead of seconds when under one minute remains.
 
 The chip sits at the right end of the pane header's second line, after the pane's space and tab. On a
 crew the machine's name sits beside it, on the same line. Tap the chip to view the underlying rule:

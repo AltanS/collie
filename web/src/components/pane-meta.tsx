@@ -93,9 +93,6 @@ export function PaneMeta({
           <CacheChip
             cache={cache}
             host={host}
-            // The word stays the meta colour and the hourglass carries the state: this chip is
-            // standing in a line of muted type now, not alone in a corner (cache-chip.tsx, `tint`).
-            tint="glyph"
             // A control on the header, a plain span anywhere that does not offer the rule behind the
             // number — the same one difference the column's two callers already have.
             variant={onOpenCache === undefined ? "row" : "button"}

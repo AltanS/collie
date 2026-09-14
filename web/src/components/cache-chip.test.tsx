@@ -104,35 +104,77 @@ describe("which element it is", () => {
   });
 });
 
-describe("a peer's number wears that machine's ink", () => {
-  it("takes the host's identity tint on a crew, and adds no second dot", () => {
-    const host = fixtureServers[1]?.id;
-    expect(host).toBeDefined();
-    render(<CacheChip cache={cache()} host={host} />, { wrapper: crew });
-    const slot = hostSlot(fixtureServers, host);
-    expect(slot).not.toBeNull();
-    if (slot !== null) expect(chip()?.className).toContain(HOST_TEXT_CLASSES[slot]);
-    // `crew-formation.tsx:454`: a second coloured mark beside a HostChip says one fact twice.
-    expect(document.querySelector("[data-overridden]")).toBeNull();
+describe("one quiet ink per state, on the glyph alone", () => {
+  const glyphClass = () => chip()?.querySelector("svg")?.getAttribute("class") ?? "";
+
+  it("paints warm green, expiring amber and cold red, three states and no shades between", () => {
+    // The same three the `herdr-cache-alert` plugin paints in a status line, in the app's own
+    // lifecycle tokens. Warm and cold are dimmed because the chip is a footnote until the window is
+    // nearly out; expiring is the one state that asks for attention, so it runs at full strength.
+    const inks = [
+      ["warm", "text-status-done/60"],
+      ["expiring", "text-status-working"],
+      ["cold", "text-status-blocked/70"],
+    ] as const;
+    for (const [state, ink] of inks) {
+      const view = render(<CacheChip cache={cache({ state })} />, { wrapper: one });
+      expect(glyphClass()).toContain(ink);
+      // The word never takes the state's ink: DESIGN.md's tint lands on the glyph only.
+      expect(chip()?.className).toContain("text-muted-foreground");
+      expect(chip()?.className).not.toMatch(/text-status-/);
+      view.unmount();
+    }
   });
 
-  it("keeps the plain tone on a solo install, where there is nothing to tell apart", () => {
-    render(<CacheChip cache={cache()} host="bluefin" />, { wrapper: one });
-    expect(chip()?.className).toContain("text-muted-foreground");
+  it("leaves a peer's number in the same ink — the host tint is not a status", () => {
+    // Until 2026-09-14 the whole chip wore the machine's identity tint, which Altan read as a loud
+    // pink in a line of muted type. DESIGN.md: a host tint may never be mistaken for a status, and
+    // this chip is a status. The `HostChip` beside it still says whose machine it is.
+    const host = fixtureServers[1]?.id;
+    expect(host).toBeDefined();
+    const slot = hostSlot(fixtureServers, host);
+    expect(slot).not.toBeNull();
+    render(<CacheChip cache={cache()} host={host} />, { wrapper: crew });
+    if (slot !== null) {
+      expect(chip()?.className).not.toContain(HOST_TEXT_CLASSES[slot]);
+      expect(glyphClass()).not.toContain(HOST_TEXT_CLASSES[slot]);
+    }
+    expect(glyphClass()).toContain("text-status-done/60");
+    // `crew-formation.tsx:454`: a second coloured mark beside a HostChip says one fact twice.
+    expect(document.querySelector("[data-overridden]")).toBeNull();
   });
 });
 
 describe("one mark, in every state", () => {
   it("is an hourglass, and the same hourglass whether the window is warm, expiring or cold", () => {
-    // The glyph asserts no temperature: the tint alone carries warm/expiring/cold, and a second
-    // encoding of the same fact is what a thermometer was. So the mark may not change with the state.
+    // The glyph asserts no temperature: the ink alone carries warm/expiring/cold, and a second
+    // encoding of the same fact is what a thermometer was. So the SHAPE may not change with the
+    // state, only the colour it is drawn in.
     const marks = (["warm", "expiring", "cold"] as const).map((state) => {
       const view = render(<CacheChip cache={cache({ state })} />, { wrapper: one });
       const glyph = chip()?.querySelector("svg")?.getAttribute("class") ?? "";
       view.unmount();
-      return glyph;
+      return glyph.replace(/text-status-\S+/, "");
     });
     expect(marks[0]).toContain("lucide-hourglass");
     expect(new Set(marks).size).toBe(1);
+  });
+});
+
+describe("the number stands on the glyph's bottom edge", () => {
+  it("aligns on the baseline, not on the centre, in every variant", () => {
+    // An SVG has no baseline of its own, so CSS synthesises one from its bottom border edge: with
+    // `items-baseline` the hourglass's foot and the number's baseline are the same line. Centring put
+    // the number about 2.4px above that foot at 12px, which is the gap Altan saw. `leading-none`
+    // keeps the chip no taller than the glyph plus the font's descent, so neither the header's 12px
+    // line nor the dashboard's 16px slot is asked for more room.
+    const row = render(<CacheChip cache={cache()} />, { wrapper: one });
+    expect(chip()?.className).toMatch(/(?:^|\s)items-baseline(?=\s|$)/);
+    expect(chip()?.className).toMatch(/(?:^|\s)leading-none(?=\s|$)/);
+    expect(chip()?.className).not.toMatch(/items-center/);
+    row.unmount();
+
+    render(<CacheChip cache={cache()} variant="button" onOpen={() => {}} />, { wrapper: one });
+    expect(chip()?.className).toMatch(/(?:^|\s)items-baseline(?=\s|$)/);
   });
 });

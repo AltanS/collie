@@ -2,11 +2,9 @@ import { useSyncExternalStore } from "react";
 
 import { Hourglass } from "lucide-react";
 
-import { useCrew } from "@/components/crew-provider";
 import { useLocale } from "@/hooks/use-locale";
 import { cacheClockNow, subscribeCacheClock } from "@/lib/cache-clock";
 import { cacheChipView } from "@/lib/cache-view";
-import { HOST_TEXT_CLASSES, hostSlot } from "@/lib/hosts";
 import { t } from "@/lib/i18n";
 import type { PaneCache } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -25,12 +23,25 @@ import { cn } from "@/lib/utils";
 // something and says nothing is worse than an empty slot (ADR 0041). The column it sits in collapses
 // the same way it already does with no host and no session.
 //
-// ── A PEER'S NUMBER TAKES THE PEER'S INK, AND ADDS NO SECOND DOT ─────────────
-// The number is computed on the machine the pane lives on, with that machine's own rules, so the chip
-// is true where it is rendered. It takes that machine's identity ink from `hostSlot` — the same tint
-// `HostChip` wears — so a crew dashboard shows at a glance which numbers came from elsewhere. It does
-// NOT get a coloured dot of its own: `crew-formation.tsx` already settled that a second coloured mark
-// beside a `HostChip` says one fact twice.
+// ── THE GLYPH CARRIES THE STATE, AND NOTHING ELSE CARRIES A COLOUR ───────────
+// The chip used to paint the WHOLE chip — glyph, number and dot — in the identity ink of the machine
+// the pane lives on, so a crew dashboard showed at a glance which numbers came from elsewhere. Altan,
+// from his phone on 2026-09-14: that ink is a loud pink standing in a line of muted type, and the one
+// thing the chip is about, how much window is left, wore no colour at all. So the identity ink is
+// gone from here. DESIGN.md says a host tint may never be mistaken for a status, and this chip IS a
+// status now; the `HostChip` on the same line already says whose machine it is, in the tint it owns.
+// The glyph takes the state's ink in both layouts, the word stays at the meta colour everywhere, and
+// the chip keeps no coloured dot of its own — `crew-formation.tsx` settled that a second coloured
+// mark beside a `HostChip` says one fact twice.
+//
+// ── THE NUMBER STANDS ON THE GLYPH'S BOTTOM EDGE ─────────────────────────────
+// `items-baseline`, not `items-center`. An SVG is a replaced box with no baseline of its own, so CSS
+// synthesises one from its bottom border edge — which makes the hourglass's foot and the number's
+// baseline the same line, exactly, at any font size. Centring put the number's baseline about 2.4px
+// above that foot at 12px, which is the gap Altan saw. The descent space under the baseline is the
+// only thing that now reaches past the glyph, and `12m` / `<1m` / `cold` have no descenders, so
+// nothing is drawn there. Both parents state their own height (`h-3` inline, `h-4` in the column), so
+// no surface moves either way.
 //
 // ── ONE FIXED GLYPH, LIKE HostChip'S Server MARK ─────────────────────────────
 // A bare `12m` sitting beside a `HostChip` that carries a `Server` glyph reads as a loose word, not a
@@ -46,47 +57,40 @@ import { cn } from "@/lib/utils";
 // is the one thing true of every state of this chip, and it leaves warm/expiring/cold to the ink
 // alone — the tint-on-glyph rule (DESIGN.md), kept rather than doubled.
 
-// `--status-working` IS the app's amber, measured against both grounds in index.css's contrast table;
-// there is no second amber token and adding one would be a second answer to one question. `warm` and
-// `cold` are deliberately quiet: the chip is a footnote until the window is nearly out.
+// ONE INK PER STATE, ON THE GLYPH, AND NO GRADIENT BETWEEN THEM. Three states is what the bridge
+// computes and three states is what the eye gets — the same green / amber / red the `herdr-cache-alert`
+// plugin paints in a status line, spelled here in the app's own lifecycle palette rather than in the
+// plugin's hex, so light and dark and the contrast table in index.css all hold. `--status-working` IS
+// the app's amber; `--status-done` and `--status-blocked` are its green and its red. Warm and cold run
+// at reduced opacity because the chip is a footnote until the window is nearly out; expiring is the one
+// state that asks for attention, so it alone runs at full strength. The word never takes any of this:
+// it stays `text-muted-foreground` in both layouts (DESIGN.md, the tint lands on the glyph only).
 const TONE_CLASS = {
-  warm: "text-muted-foreground",
+  warm: "text-status-done/60",
   expiring: "text-status-working",
-  cold: "text-muted-foreground/70",
+  cold: "text-status-blocked/70",
 } as const;
 
 interface CacheChipProps {
   cache: PaneCache | undefined;
-  /** Which machine this pane lives on, for the identity ink. Undefined = this one. */
+  /**
+   * Which machine this pane lives on. Stated by every crew call site and read by none: the chip
+   * painted the identity ink until 2026-09-14 and now paints the cache state instead (this file's
+   * header). The prop stays so a caller keeps saying which pane it is describing, and so the ink can
+   * come back on some surface that has no `HostChip` beside it.
+   */
   host?: string | undefined;
   /**
    * `row` — plain type in a list's trailing column, not a control, because the whole card is already
    * one button. `button` — the pane screen's header, where a tap opens the sheet.
    */
   variant?: "row" | "button";
-  /**
-   * Where the ink goes. `all` — the whole chip, which is the corner it was drawn for: the reading
-   * stands on its own there and the tint is the only thing saying whose number it is. `glyph` — the
-   * hourglass alone, with the word left at the meta colour, for a chip standing INSIDE a line of
-   * other type (the pane header's path line): a tinted word in a row of muted words reads as a
-   * different kind of fact rather than as a state, and DESIGN.md's tint-on-glyph rule is the house
-   * answer. Nothing is lost, because the glyph is the mark the eye anchors the reading on.
-   */
-  tint?: "all" | "glyph";
   onOpen?: () => void;
   className?: string;
 }
 
-export function CacheChip({
-  cache,
-  host,
-  variant = "row",
-  tint = "all",
-  onOpen,
-  className,
-}: CacheChipProps) {
+export function CacheChip({ cache, variant = "row", onOpen, className }: CacheChipProps) {
   useLocale();
-  const { servers } = useCrew();
   // One subscription per chip, one interval for the document. Subscribing unconditionally (rather than
   // only when there is something to count down) keeps the hook order fixed — the hide decision below
   // is a render decision, not a reason to skip a hook.
@@ -94,18 +98,15 @@ export function CacheChip({
   const view = cacheChipView(cache, now);
   if (view === null) return null;
 
-  // A PEER's pane wears that machine's ink; this machine's panes wear the tone. `hostSlot` answers
-  // null on a solo install, which is every install until somebody joins a crew.
-  const slot = hostSlot(servers, host);
-  const ink = slot === null ? TONE_CLASS[view.tone] : (HOST_TEXT_CLASSES[slot] ?? TONE_CLASS[view.tone]);
+  const ink = TONE_CLASS[view.tone];
   const label = t(`cache.${cache?.state === "cold" ? "cold" : cache?.state === "expiring" ? "expiring" : "warm"}`);
 
   const body = (
     <>
       {/* One fixed mark, in every state — the sibling of HostChip's `Server` glyph, at the same
-          `tag`-variant size. It inherits `currentColor`, so a peer's chip paints it in that
-          machine's identity ink with no extra code. */}
-      <Hourglass className={cn("size-3 shrink-0", tint === "glyph" && ink)} aria-hidden />
+          `tag`-variant size. It is the one thing here that carries a colour, and its bottom edge is
+          the line the number stands on (this file's header, both sections). */}
+      <Hourglass className={cn("size-3 shrink-0", ink)} aria-hidden />
       <span aria-hidden>{view.label}</span>
       {view.overridden && (
         <>
@@ -124,9 +125,13 @@ export function CacheChip({
     </>
   );
 
+  // `items-baseline` is the alignment, and `leading-none` stops the word's line box adding leading on
+  // top of it. Measured in Chromium at 12px in the app's own face: centred, the number's baseline sat
+  // 3.0px above the hourglass's foot; on the baseline the two are flush to 0.0px. The chip's own box
+  // is then 15px — 12px of glyph above the baseline plus the face's 3px descent, which nothing is
+  // drawn in — against 16px centred. Both callers state their own height, so neither box moves.
   const shared = cn(
-    "flex shrink-0 items-center gap-1 text-xs tabular-nums",
-    tint === "glyph" ? "text-muted-foreground" : ink,
+    "flex shrink-0 items-baseline gap-1 text-xs leading-none tabular-nums text-muted-foreground",
     className,
   );
 
