@@ -81,3 +81,53 @@ describe("AgentCard's two lines", () => {
     expect(line2(container)).not.toHaveTextContent("review");
   });
 });
+
+// A list already grouped by PLACE (lib/pane-groups.ts) has said the place in its heading, and the
+// cwd is the same cwd on every row of one tab — so the row is one line, one stated height, and its
+// address and cache reading ride at the end of that line instead of in the trailing column.
+describe("AgentCard in a place group", () => {
+  const row = (over: Partial<AgentView> = {}) =>
+    render(
+      <AgentCard
+        agent={agent({ tabLabel: "review", paneLabel: "logs", cwd: "/home/you/webapp/api", ...over })}
+        onClick={() => {}}
+        scope="place"
+        statusStyle="dot"
+        density="row"
+      />,
+    );
+
+  it("keeps line 1 and has no line 2 at all", () => {
+    const { container } = row();
+    expect(line1(container)).toHaveTextContent("logs");
+    expect(line2(container)).toBeNull();
+    // Not the cwd either: that is the `tab` scope's answer, and it is not this one.
+    expect(container.textContent).not.toContain("webapp/api");
+  });
+
+  it("states the group's pitch rather than letting the tallest row set it", () => {
+    const { container } = row();
+    expect(container.querySelector("button")!.firstElementChild!.className).toMatch(/min-h-11/);
+  });
+
+  it("withholds the bridge's hint, which is the one fact that would change a row's height", () => {
+    const { container } = row({ hint: "waiting on a build" });
+    expect(container.textContent).not.toContain("waiting on a build");
+  });
+
+  it("takes the meta's inline layout, because the column is 41px and would set the height", () => {
+    const { container } = row();
+    const meta = container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
+    expect(meta.dataset.layout).toBe("inline");
+  });
+
+  it("leaves every other scope on the column", () => {
+    for (const scope of ["herd", "tab"] as const) {
+      const { container } = render(
+        <AgentCard agent={agent()} onClick={() => {}} scope={scope} />,
+      );
+      const meta = container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
+      expect(meta.dataset.layout).toBeUndefined();
+    }
+  });
+});

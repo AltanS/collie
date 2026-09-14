@@ -25,48 +25,58 @@ function agent(
 
 /** Section headings, in the order they render. Queried by role, because "needs you" is also the
  *  blocked STATUS_LABEL on every row's badge — matching on text alone catches both. */
+/** One named tab of one named space — the group heading most of these cases assert on. */
+const UI_WORK = { workspaceLabel: "collie-workspace", tabLabel: "UI work" } as const;
+
 const headings = () =>
   screen.getAllByRole("heading").map((el) => el.textContent?.toLowerCase() ?? "");
 
-describe("AgentList — sections", () => {
+
+
+describe("AgentList — two axes, urgency then place", () => {
   const herd = [
     agent("blocked", "blocked", { lastActiveAt: 500, lastSeenAt: 1 }),
     agent("unseen", "done", { lastActiveAt: 400, lastSeenAt: 1 }),
-    agent("busy", "working", { lastActiveAt: 300, lastSeenAt: 1 }),
-    agent("old", "idle", { lastActiveAt: 1, lastSeenAt: 200 }),
+    agent("busy", "working", { lastActiveAt: 300, lastSeenAt: 1, ...UI_WORK }),
+    agent("old", "idle", { lastActiveAt: 1, lastSeenAt: 200, ...UI_WORK }),
   ];
 
-  it("renders the four sections in triage order, agents first", () => {
+  it("puts the two attention sections on top, then one heading per place", () => {
     render(<AgentList agents={herd} onOpen={vi.fn()} />);
     expect(headings()).toEqual([
       expect.stringContaining("needs you"),
       expect.stringContaining("ready · unseen"),
-      expect.stringContaining("working"),
-      expect.stringContaining("recent"),
+      "collie-workspace › ui work",
     ]);
   });
 
-  it("puts the place on line 2, and leads with the pane's name — the agent word when it has none", () => {
+  it("has no Working and no Recent heading left to fold or to sort", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} />);
+    expect(screen.queryByRole("heading", { name: /^working$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^recent$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /switch to/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { expanded: true })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { expanded: false })).not.toBeInTheDocument();
+  });
+
+  it("keeps the place on line 2 of an urgent row — that group is by urgency, not by place", () => {
     render(
       <AgentList
-        agents={[agent("p", "idle", { workspaceLabel: "moonward_os", tabLabel: "fix-auth" })]}
+        agents={[agent("p", "blocked", { workspaceLabel: "moonward_os", tabLabel: "fix-auth" })]}
         onOpen={vi.fn()}
       />,
     );
     // Rendered as separate spans so the tab survives truncation — assert both parts, and that the
     // row is still announced as one name.
-    expect(screen.getByText("moonward_os")).toBeInTheDocument();
-    expect(screen.getByText("fix-auth")).toBeInTheDocument();
+    for (const part of ["moonward_os", "fix-auth"])
+      expect(screen.getByText(part).closest("[data-slot]")).toHaveAttribute(
+        "data-slot",
+        "agent-row-detail",
+      );
     expect(screen.getByRole("button", { name: /moonward_os.*fix-auth/ })).toBeInTheDocument();
-    // A pane with no name of its own reads as its agent, and the place stays beneath it. The place
-    // is NEVER promoted to line 1: that promotion is what made one pane read two ways across screens.
-    expect(screen.getByText("claude").closest("[data-slot]")).toHaveAttribute(
-      "data-slot",
-      "agent-row-title",
-    );
   });
 
-  it("gives line 1's width to the pane title, and drops the space and tab to line 2", () => {
+  it("drops line 2 from a place-grouped row — the heading above already says it", () => {
     render(
       <AgentList
         agents={[
@@ -79,23 +89,32 @@ describe("AgentList — sections", () => {
         onOpen={vi.fn()}
       />,
     );
-    // The title takes the fill and the weight on line 1 — it is the only fact unique to this row.
+    const row = screen.getByRole("button", { name: /rewrite the loader/ });
+    expect(row.querySelector('[data-slot="agent-row-detail"]')).toBeNull();
+    // The title still takes line 1's fill and weight — it is the only fact unique to this row.
     expect(screen.getByText("rewrite the loader").className).toMatch(/flex-1/);
     expect(screen.getByText("rewrite the loader").closest("[data-slot]")).toHaveAttribute(
       "data-slot",
       "agent-row-title",
     );
-    // The place — space then tab — sits on the line below.
-    for (const part of ["moonward_os", "fix-auth"])
-      expect(screen.getByText(part).closest("[data-slot]")).toHaveAttribute(
-        "data-slot",
-        "agent-row-detail",
-      );
   });
 
-  it("omits a section with no members rather than showing an empty heading", () => {
-    render(<AgentList agents={[agent("only", "working", { lastActiveAt: 1 })]} onOpen={vi.fn()} />);
-    expect(headings()).toEqual([expect.stringContaining("working")]);
+  it("states one height for every row of a group, so nothing in it can shift", () => {
+    render(
+      <AgentList
+        agents={[
+          agent("a", "idle", { sessionName: "alpha", hint: "a sentence the bridge composed" }),
+          agent("b", "idle", { sessionName: "beta" }),
+        ]}
+        onOpen={vi.fn()}
+      />,
+    );
+    for (const name of ["alpha", "beta"]) {
+      const row = screen.getByRole("button", { name: new RegExp(name) });
+      expect(row.firstElementChild?.className).toMatch(/min-h-11/);
+    }
+    // The hint is the one fact that would make two rows of a group different heights.
+    expect(screen.queryByText(/a sentence the bridge composed/)).not.toBeInTheDocument();
   });
 
   it("says so when nothing needs you, rather than leaving an absence to interpret", () => {
@@ -108,7 +127,7 @@ describe("AgentList — sections", () => {
     expect(screen.queryByText(/nothing needs you/i)).not.toBeInTheDocument();
   });
 
-  it("drops the status pill inside triage sections — the heading already says it", () => {
+  it("drops the status pill on every row — the dot and the group say enough", () => {
     render(<AgentList agents={[agent("w", "working", { lastActiveAt: 1 })]} onOpen={vi.fn()} />);
     // The word survives for screen readers, but not as a pill on every row.
     const row = screen.getByRole("button", { name: /w/ });
@@ -125,7 +144,99 @@ describe("AgentList — sections", () => {
     await user.click(screen.getByRole("button", { name: /p1/ }));
     expect(onOpen).toHaveBeenCalledExactlyOnceWith(row);
   });
+});
 
+describe("AgentList — the place headings", () => {
+  it("counts what is inside a group, in words, singular and plural", () => {
+    const { rerender } = render(
+      <AgentList
+        agents={[agent("a", "idle", UI_WORK)]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("1 pane")).toBeInTheDocument();
+
+    rerender(
+      <AgentList
+        agents={["a", "b", "c"].map((id) => agent(id, "idle", UI_WORK))}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("3 panes")).toBeInTheDocument();
+  });
+
+  it("heads an unnamed tab with the space alone — a positional label is not a name", () => {
+    render(
+      <AgentList
+        agents={[agent("a", "idle", { workspaceLabel: "collie-workspace", tabLabel: "2" })]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(headings()).toEqual(["collie-workspace"]);
+  });
+
+  it("runs the groups by space number, then by the tab order the bridge sent", () => {
+    render(
+      <AgentList
+        agents={[
+          agent("c", "idle", {
+            workspaceId: "w2",
+            workspaceLabel: "two",
+            workspaceNumber: 2,
+            tabId: "w2:t1",
+            tabLabel: "later",
+          }),
+          agent("b", "idle", {
+            workspaceLabel: "one",
+            tabId: "w0:t2",
+            tabLabel: "second",
+          }),
+          agent("a", "idle", { workspaceLabel: "one", tabId: "w0:t1", tabLabel: "first" }),
+        ]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(headings()).toEqual(["one › second", "one › first", "two › later"]);
+  });
+});
+
+describe("AgentList — shells sit with their tab", () => {
+  const shell = (paneId: string, over = {}) =>
+    agent(paneId, "unknown", { kind: "shell", agent: "shell", ...over });
+
+  it("puts a shell under its own tab's heading, after that tab's agents", () => {
+    render(
+      <AgentList
+        agents={[agent("work", "idle", { ...UI_WORK, sessionName: "work" })]}
+        shellPanes={[shell("logs", { ...UI_WORK, paneLabel: "logs" })]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(headings()).toEqual(["collie-workspace › ui work"]);
+    expect(screen.getByText("2 panes")).toBeInTheDocument();
+    const rows = screen.getAllByRole("button", { name: /work|logs/ });
+    expect(rows.map((r) => r.textContent)).toEqual([
+      expect.stringContaining("work"),
+      expect.stringContaining("logs"),
+    ]);
+  });
+
+  it("opens a group for a tab that holds nothing but shells", () => {
+    render(
+      <AgentList
+        agents={[]}
+        shellPanes={[
+          shell("sh", { workspaceLabel: "collie-workspace", tabLabel: "logs", paneLabel: "tail -f" }),
+        ]}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(headings()).toEqual(["collie-workspace › logs"]);
+    expect(screen.queryByText(/no agents running/i)).not.toBeInTheDocument();
+  });
+});
+
+describe("AgentList — the empty herd", () => {
   it("shows the herd-empty placeholder, and suppresses it when asked", () => {
     const { rerender } = render(<AgentList agents={[]} bridge="connected" onOpen={vi.fn()} />);
     expect(screen.getByText(/no agents running/i)).toBeInTheDocument();
@@ -159,183 +270,19 @@ describe("AgentList — sections", () => {
   });
 });
 
-describe("AgentList — the attention sections are pinned", () => {
-  it("gives them no fold control at all", () => {
-    render(
-      <AgentList
-        agents={[agent("b", "blocked"), agent("w", "working")]}
-        onOpen={vi.fn()}
-        recentOpen
-        onRecentOpenChange={vi.fn()}
-      />,
-    );
-    // Only Recent may fold — and it isn't rendered here, so nothing is expandable.
-    expect(screen.queryByRole("button", { expanded: true })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { expanded: false })).not.toBeInTheDocument();
-  });
-});
-
-describe("AgentList — Recent folds", () => {
-  const herd = [
-    agent("b", "blocked"),
-    agent("r1", "idle", { lastSeenAt: 900 }),
-    agent("r2", "idle", { lastSeenAt: 100 }),
-  ];
-
-  it("hides its rows when folded but keeps Needs you visible", () => {
-    render(
-      <AgentList agents={herd} onOpen={vi.fn()} recentOpen={false} onRecentOpenChange={vi.fn()} />,
-    );
-    expect(screen.queryByText(/^r1$/)).not.toBeInTheDocument();
-    expect(headings()).toEqual([
-      expect.stringContaining("needs you"),
-      expect.stringContaining("recent"),
-    ]);
-    expect(screen.getByText("b")).toBeInTheDocument();
-  });
-
-  it("reports the fold to its owner", async () => {
-    const user = userEvent.setup();
-    const onRecentOpenChange = vi.fn();
-    render(
-      <AgentList agents={herd} onOpen={vi.fn()} recentOpen onRecentOpenChange={onRecentOpenChange} />,
-    );
-    await user.click(screen.getByRole("button", { name: /recent/i }));
-    expect(onRecentOpenChange).toHaveBeenCalledExactlyOnceWith(false);
-  });
-
-  it("withdraws the sort control while folded — sorting invisible rows does nothing", () => {
-    const { rerender } = render(
-      <AgentList
-        agents={herd}
-        onOpen={vi.fn()}
-        recentOpen
-        onRecentOpenChange={vi.fn()}
-        recentDir="newest"
-        onRecentDirChange={vi.fn()}
-      />,
-    );
-    expect(screen.getByRole("button", { name: /switch to oldest first/i })).toBeInTheDocument();
-
-    rerender(
-      <AgentList
-        agents={herd}
-        onOpen={vi.fn()}
-        recentOpen={false}
-        onRecentOpenChange={vi.fn()}
-        recentDir="newest"
-        onRecentDirChange={vi.fn()}
-      />,
-    );
-    expect(screen.queryByRole("button", { name: /switch to oldest first/i })).not.toBeInTheDocument();
-  });
-});
-
-describe("AgentList — the direction toggle", () => {
-  const herd = [
-    agent("fresh", "idle", { lastSeenAt: 900 }),
-    agent("stale", "idle", { lastSeenAt: 100 }),
-  ];
-
-  it("orders Recent newest-first and flips on tap", async () => {
-    const user = userEvent.setup();
-    const onRecentDirChange = vi.fn();
-    render(
-      <AgentList
-        agents={herd}
-        onOpen={vi.fn()}
-        recentDir="newest"
-        onRecentDirChange={onRecentDirChange}
-      />,
-    );
-    const rows = screen.getAllByRole("button", { name: /fresh|stale/ });
-    expect(rows[0]!.textContent).toContain("fresh");
-
-    await user.click(screen.getByRole("button", { name: /switch to oldest first/i }));
-    expect(onRecentDirChange).toHaveBeenCalledExactlyOnceWith("oldest");
-  });
-
-  it("renders oldest-first when told to", () => {
-    render(
-      <AgentList agents={herd} onOpen={vi.fn()} recentDir="oldest" onRecentDirChange={vi.fn()} />,
-    );
-    const rows = screen.getAllByRole("button", { name: /fresh|stale/ });
-    expect(rows[0]!.textContent).toContain("stale");
-  });
-
-  it("never reorders the pinned sections", () => {
-    const attention = [
-      agent("new", "blocked", { lastActiveAt: 900 }),
-      agent("old", "blocked", { lastActiveAt: 100 }),
-    ];
-    for (const dir of ["newest", "oldest"] as const) {
-      const { unmount } = render(
-        <AgentList agents={attention} onOpen={vi.fn()} recentDir={dir} onRecentDirChange={vi.fn()} />,
-      );
-      const rows = screen.getAllByRole("button", { name: /new|old/ });
-      expect(rows[0]!.textContent).toContain("new");
-      unmount();
-    }
-  });
-
-  it("shows no toggle when the parent doesn't wire one", () => {
-    render(<AgentList agents={herd} onOpen={vi.fn()} />);
-    expect(screen.queryByRole("button", { name: /switch to/i })).not.toBeInTheDocument();
-  });
-});
-
 describe("AgentList — an older bridge with no timestamps", () => {
   it("still renders a coherent dashboard, with Ready·unseen simply absent", () => {
     render(
       <AgentList
-        agents={[agent("b", "blocked"), agent("w", "working"), agent("d", "done")]}
+        agents={[
+          agent("b", "blocked"),
+          agent("w", "working", { workspaceLabel: "collie-workspace" }),
+          agent("d", "done", { workspaceLabel: "collie-workspace" }),
+        ]}
         onOpen={vi.fn()}
       />,
     );
-    expect(headings()).toEqual([
-      expect.stringContaining("needs you"),
-      expect.stringContaining("working"),
-      expect.stringContaining("recent"),
-    ]);
+    expect(headings()).toEqual([expect.stringContaining("needs you"), "collie-workspace"]);
     expect(screen.queryByText(/ready · unseen/i)).not.toBeInTheDocument();
-  });
-});
-
-describe("AgentList — the age column", () => {
-  it("keeps the age off the end of the name when a row has no tab label", () => {
-    // An unlabelled single-tab space returns tab: null. Without a flex filler on line 1 the age
-    // butted against the name and read as part of it ("comm_cli 37m").
-    render(
-      <AgentList
-        agents={[
-          agent("p", "idle", {
-            workspaceLabel: "comm_cli",
-            sessionName: "rewrite the loader",
-            lastSeenAt: Date.now() - 60_000,
-          }),
-        ]}
-        onOpen={vi.fn()}
-      />,
-    );
-    expect(screen.getByText("rewrite the loader").className).toMatch(/flex-1/);
-  });
-
-  it("keeps the filler on the title when the row DOES have a tab", () => {
-    // Same guard as above. The tab no longer competes for line 1's width at all — it is on line 2 —
-    // so the title keeps the filler in both cases and nothing can butt the age.
-    render(
-      <AgentList
-        agents={[
-          agent("p", "idle", {
-            workspaceLabel: "comm_cli",
-            tabLabel: "main",
-            sessionName: "rewrite the loader",
-            lastSeenAt: 1,
-          }),
-        ]}
-        onOpen={vi.fn()}
-      />,
-    );
-    expect(screen.getByText("rewrite the loader").className).toMatch(/flex-1/);
   });
 });

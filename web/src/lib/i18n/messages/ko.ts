@@ -384,10 +384,8 @@ export const ko: Dictionary = {
   "home.empty.waiting": "Herdr 대기 중",
   "home.empty.panesHint": "창 목록은 Spaces에 있습니다.",
   "home.allClear": "확인 필요한 항목 없음",
-  "home.sort.newest": "최신순",
-  "home.sort.oldest": "오래된순",
-  "home.sort.aria.newest": "최근 사용순 정렬, 오래된순으로 전환",
-  "home.sort.aria.oldest": "오래된순 정렬, 최근 사용순으로 전환",
+  "home.place.paneCount.one": "창 {count}개",
+  "home.place.paneCount.other": "창 {count}개",
   "home.sidebar.shells": "셸",
   "home.sidebar.paneActionsTitle": "창 작업 보기",
 

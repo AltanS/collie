@@ -125,6 +125,28 @@ describe("HostChip — Reconnecting says nothing is owed, Attention says somethi
     expect(caption.className).toContain("text-status-working");
     expect(caption.querySelector("svg")).not.toBeNull();
   });
+
+  it("the bare run stands on its baseline; the caption run still centres", () => {
+    // `bare` shares a line with the CacheChip, which aligns the same way (cache-chip.tsx), so its
+    // Server glyph's foot and its name's baseline have to be the line that chip stands on too —
+    // Altan's screenshot of `⊟ lodge · ⧗ 57m` was the two glyphs sitting a pixel apart. The caption
+    // run is alone in a band of chrome type with nothing to line up with, and stays as it was.
+    const baseline = /(?:^|\s)items-baseline(?=\s|$)/;
+    const centre = /(?:^|\s)items-center(?=\s|$)/;
+    const view = render(<HostChip host="workshop" variant="bare" />, { wrapper: crew });
+    const bare = screen.getByLabelText(/^host: workshop/i);
+    expect(bare.className).toMatch(baseline);
+    expect(bare.className).not.toMatch(centre);
+    // Still the path line's own register: 11px mono on a 12px line, no pill.
+    expect(bare.className).toMatch(/font-mono/);
+    expect(bare.className).toMatch(/text-\[11px\]\/3/);
+    view.unmount();
+
+    render(<HostChip host="workshop" variant="caption" />, { wrapper: crew });
+    const caption = screen.getByLabelText(/sends to host: workshop/i);
+    expect(caption.className).toMatch(centre);
+    expect(caption.className).not.toMatch(baseline);
+  });
 });
 
 describe("the herd list — one cross-host 'Needs you', labelled not split", () => {

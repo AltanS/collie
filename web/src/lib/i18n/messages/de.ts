@@ -391,10 +391,8 @@ export const de: Dictionary = {
   "home.empty.waiting": "Warten auf Herdr...",
   "home.empty.panesHint": "Panes befinden sich unter Spaces.",
   "home.allClear": "Kein Handlungsbedarf",
-  "home.sort.newest": "Neueste",
-  "home.sort.oldest": "Älteste",
-  "home.sort.aria.newest": "Sortiert nach letzter Nutzung. Zu älteste zuerst wechseln",
-  "home.sort.aria.oldest": "Sortiert nach älteste zuerst. Zu letzter Nutzung wechseln",
+  "home.place.paneCount.one": "{count} Pane",
+  "home.place.paneCount.other": "{count} Panes",
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Pane-Aktionen anzeigen",
 

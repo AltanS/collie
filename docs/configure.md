@@ -304,8 +304,8 @@ This file is the allowlist. `POST /api/launch` accepts only a `command` that mat
 exactly, so a phone can start nothing that is not in the file. Changes apply immediately without a
 restart, but an already-open tab re-reads the rows only on its next load.
 
-Your rows appear in two places: a **Launch** section on the dashboard, which folds like Spaces and
-Recent, and a **Launch** section in the switcher sheet (swipe up from a pane). A pinned row shows
+Your rows appear in two places: a **Launch** section on the dashboard, which folds like Spaces,
+and a **Launch** section in the switcher sheet (swipe up from a pane). A pinned row shows
 its folder, shortened under home; a cwd-less row says "here" in the switcher (the dashboard already
 implies home, so it says nothing there). Declare no rows and neither section appears.
 

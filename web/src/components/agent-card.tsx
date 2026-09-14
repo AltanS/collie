@@ -17,9 +17,11 @@ interface AgentCardProps {
   /**
    * Where the row is being shown. "herd" (default) is a flat list across every space, so line 2
    * carries the place. "tab" is a list already grouped under its space and tab, so line 2 is the
-   * path alone. Line 1 is the pane's name in both.
+   * path alone. "place" is the dashboard's grouped list, where the heading above already says the
+   * place and the row is ONE LINE: no line 2 at all, and the address and the cache reading ride at
+   * the end of line 1 instead of in the trailing column. Line 1 is the pane's name in all three.
    */
-  scope?: "herd" | "tab";
+  scope?: "herd" | "tab" | "place";
   /**
    * How to show status. "badge" (default) spells it out. "dot" is for a list already GROUPED by
    * status — the section heading says "Working", so eighteen rows repeating it in a pill buys
@@ -81,15 +83,30 @@ export function AgentCard({
   const isShell = agent.kind === "shell";
   const blocked = agent.status === "blocked";
   const inTab = scope === "tab";
+  // ── THE PLACE-GROUPED ROW IS ONE LINE, AND ONE HEIGHT ────────────────────────
+  // Under a `space › tab` heading (lib/pane-groups.ts) line 2 has nothing left to say: the place is
+  // the heading, and the cwd is the same cwd on every row of a tab. So the row drops it — and drops
+  // the bridge's hint with it, which is the one fact that would make two rows of a group different
+  // heights. The group's pitch is therefore STATED, not emergent: `min-h-11`, 44px, the app's touch
+  // floor, which one 20px line inside `py-2.5` already sits under. Every row in a group is that
+  // height whatever it has to say, so nothing in the list can move (DESIGN.md §2).
+  //
+  // The trailing meta comes with it. The column's two fixed corners are 41px tall and would set the
+  // row's height on their own, so a one-line row takes `PaneMeta`'s `inline` layout instead — the
+  // same pair of chips, on the line they now sit beside, at the 12px box the pane header's path line
+  // already gives them. The hint is still on the pane screen, which is where a sentence belongs.
+  const inPlace = scope === "place";
   const flat = density === "row";
   // ONE NAME, ONE PLACE (lib/pane-name.ts). Line 1 is what the pane is CALLED, on every row of
   // every list; line 2 is WHERE it sits. In a tab-scoped list the place is already established by
   // the space heading and the per-tab section above, so line 2 is the path instead — the one fact
   // that still tells two panes in one tab apart.
   const place = panePlaceParts(agent);
-  const lines: RowLines = inTab
-    ? { primary: paneName(agent), detailLead: null, detailTail: paneCwdLine(agent), tailMono: true }
-    : { primary: paneName(agent), detailLead: place.space, detailTail: place.tab, tailMono: false };
+  const lines: RowLines = inPlace
+    ? { primary: paneName(agent), detailLead: null, detailTail: null, tailMono: false }
+    : inTab
+      ? { primary: paneName(agent), detailLead: null, detailTail: paneCwdLine(agent), tailMono: true }
+      : { primary: paneName(agent), detailLead: place.space, detailTail: place.tab, tailMono: false };
   const { primary, detailLead, detailTail } = lines;
   // The dot leads line 1, INLINE, ahead of the tile — not on the tile's corner. The corner was
   // right at `size-9`: a 10px badge on a 36px tile is a badge. On a 16px tile it is most of the
@@ -124,6 +141,8 @@ export function AgentCard({
           flat
             ? "flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[inset_2px_0_0_0_transparent]"
             : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
+          // The group's stated pitch, and the reason is a paragraph up at `inPlace`.
+          inPlace && "min-h-11",
           // The blocked tint survives both treatments — it's the one cue that reads at a glance.
           // The EDGE cannot: one class string, two containers. A card sits in a gap list and already
           // carries a border in every state, so it only recolours. A flat row sits in a divide-y
@@ -189,8 +208,9 @@ export function AgentCard({
 
           {/* The bridge's own sentence about this pane, when it sent one — text, never a branch
               (components/pane-hint.tsx). It changes nothing about the row: a hinted pane is still a
-              shell, still sorts where an unknown status sorts, and still opens the same view. */}
-          <PaneHint hint={agent.hint} />
+              shell, still sorts where an unknown status sorts, and still opens the same view.
+              Withheld on a place-grouped row, which is one stated line; see `inPlace` above. */}
+          {!inPlace && <PaneHint hint={agent.hint} />}
         </div>
 
         {/* The trailing meta is a COLUMN OF TWO FIXED SLOTS, pinned to the card's right edge, not an
@@ -198,8 +218,15 @@ export function AgentCard({
             two screens cannot drift apart. Why the geometry is what it is, and why it never moves,
             sits in that file's header. A row with no detail line grows to fit two slots and the gap
             between them, which is the uniform pitch this trades for. No `onOpenCache` here: the card
-            is already one button and may not hold a second. */}
-        <PaneMeta host={agent.host} cache={agent.cache} session={agent.session} />
+            is already one button and may not hold a second. A place-grouped row takes the INLINE
+            layout of the same component instead, because the column is 41px and would set that
+            row's height on its own — see `inPlace` at the top of this function. */}
+        <PaneMeta
+          host={agent.host}
+          cache={agent.cache}
+          session={agent.session}
+          {...(inPlace ? { layout: "inline" as const } : {})}
+        />
 
         {isShell ? (
           <ShellBadge />

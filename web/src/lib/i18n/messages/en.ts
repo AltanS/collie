@@ -408,10 +408,8 @@ export const en = {
   "home.empty.waiting": "Waiting for Herdr…",
   "home.empty.panesHint": "Your panes are under Spaces.",
   "home.allClear": "Nothing needs you",
-  "home.sort.newest": "Newest",
-  "home.sort.oldest": "Oldest",
-  "home.sort.aria.newest": "Sorted by most recently used first — switch to oldest first",
-  "home.sort.aria.oldest": "Sorted by oldest first — switch to most recently used first",
+  "home.place.paneCount.one": "{count} pane",
+  "home.place.paneCount.other": "{count} panes",
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Tap for pane actions",
 

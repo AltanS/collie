@@ -386,10 +386,8 @@ export const ja: Dictionary = {
   "home.empty.waiting": "Herdrの応答を待機中...",
   "home.empty.panesHint": "ペインはSpaces内にあります。",
   "home.allClear": "対応が必要な項目はありません",
-  "home.sort.newest": "新しい順",
-  "home.sort.oldest": "古い順",
-  "home.sort.aria.newest": "最新順で表示中。古い順に切り替えます。",
-  "home.sort.aria.oldest": "古い順で表示中。最新順に切り替えます。",
+  "home.place.paneCount.one": "{count}ペイン",
+  "home.place.paneCount.other": "{count}ペイン",
   "home.sidebar.shells": "シェル",
   "home.sidebar.paneActionsTitle": "タップしてペイン操作を表示",
 

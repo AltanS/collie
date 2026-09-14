@@ -390,10 +390,8 @@ export const es: Dictionary = {
   "home.empty.waiting": "Esperando a Herdr...",
   "home.empty.panesHint": "Los paneles están en Espacios.",
   "home.allClear": "Sin tareas pendientes",
-  "home.sort.newest": "Más reciente",
-  "home.sort.oldest": "Más antiguo",
-  "home.sort.aria.newest": "Ordenado por uso reciente. Cambiar a más antiguo primero.",
-  "home.sort.aria.oldest": "Ordenado por más antiguo primero. Cambiar a uso reciente.",
+  "home.place.paneCount.one": "{count} panel",
+  "home.place.paneCount.other": "{count} paneles",
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Ver acciones del panel",
 

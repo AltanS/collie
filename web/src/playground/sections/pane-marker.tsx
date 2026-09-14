@@ -17,9 +17,10 @@
 // risk here, and a card that showed one of them would hide it.
 //
 // WHAT IS REAL AND WHAT IS DRAWN. `AgentIcon`, `StatusDot`, `PaneMeta`, `SectionLabel`,
-// `SectionHeader`, `ListGroup`, `PaneStrip`, `CollieHome` and — on options 4 and 6 — the whole
-// `AgentCard` are the app's own components, inside a real `CrewProvider` over `rosterFive`, so the
-// host tint, the cache countdown and the hide rules are the real ones. DRAWN HERE are the two ROWS
+// `ListGroup`, `PaneStrip`, `CollieHome`, the whole `AgentCard` on option 6 and the whole
+// `AgentList` on option 4 — which SHIPPED — are the app's own components, inside a real
+// `CrewProvider` over `rosterFive`, so the host tint, the cache countdown and the hide rules are
+// the real ones. DRAWN HERE are the two ROWS
 // themselves wherever an option adds something INSIDE them: `RouteHeader` portals into the one
 // hoisted header shell (`app-header.tsx`) and cannot be mounted in a card, and `AgentCard` has no
 // prop for an eyebrow, a leading glyph, a third crumb or a trailing chip. Each card's `reach` line
@@ -34,11 +35,11 @@ import { EllipsisVertical, PanelTop } from "lucide-react";
 
 import { AgentCard } from "@/components/agent-card";
 import { AgentIcon } from "@/components/agent-icon";
+import { AgentList } from "@/components/agent-list";
 import { CollieHome } from "@/components/collie-home";
 import { CrewProvider } from "@/components/crew-provider";
 import { PaneMeta } from "@/components/pane-meta";
 import { PaneStrip } from "@/components/pane-strip";
-import { SectionHeader } from "@/components/section-header";
 import { StatusDot } from "@/components/status-badge";
 import { ListGroup } from "@/components/ui/list-group";
 import { SectionLabel } from "@/components/ui/section-label";
@@ -116,6 +117,10 @@ const SIBLINGS: readonly AgentView[] = [
     lastActiveAt: TS - 2 * MIN,
   },
 ];
+
+/** The same three, split the way the dashboard route hands them over: agents, then bare shells. */
+const AGENT_SIBLINGS: readonly AgentView[] = SIBLINGS.filter((p) => p.kind !== "shell");
+const SHELL_SIBLINGS: readonly AgentView[] = SIBLINGS.filter((p) => p.kind === "shell");
 
 const NAME = paneName(PANE);
 const PLACE = panePlaceParts(PANE);
@@ -318,7 +323,7 @@ export function PaneMarkerSection() {
           state="pane-marker-today"
           label="before: a name over a place, on both surfaces"
           reach="open the dashboard, then tap any row."
-          note="The one-name rule as it stands. Line 1 is what the pane is CALLED and line 2 is WHERE it sits, on the row and in the header alike, which is the consistency the rule was built for. Read it as a stranger would: nothing on either surface says the word pane. The row could be a tab, a saved session or a project; the header could be a document. The place is the only hint, and it is a hint only if you already know that a space contains tabs and a tab contains panes. Every option below adds one marker and changes nothing else."
+          note="The one-name rule as it stands. Line 1 is what the pane is CALLED and line 2 is WHERE it sits, on the row and in the header alike, which is the consistency the rule was built for. Read it as a stranger would: nothing on either surface says the word pane. The row could be a tab, a saved session or a project; the header could be a document. The place is the only hint, and it is a hint only if you already know that a space contains tabs and a tab contains panes. Every option below adds one marker and changes nothing else. OPTION 4 SHIPPED: the dashboard now groups by place, so this card is the BEFORE picture for the row, not the list it sits in. The pane header is unchanged and is still today's."
         >
           <Crew>
             <BothSurfaces row={<RowShell />} header={<HeaderRow />} />
@@ -388,34 +393,17 @@ export function PaneMarkerSection() {
         <Card
           state="pane-marker-grouped"
           label="Option 4 · the dashboard groups rows under their place"
-          reach="idea, not shipped: the heading, the group frame and all three rows are the app's own SectionHeader, ListGroup and AgentCard. The header below is today's, drawn."
-          note="No marker on either surface. The rows sit under a heading that names the place and counts what is inside it — `collie-workspace › UI work`, 3 panes — so the level is carried by the STRUCTURE: three things under one tab heading are panes, because that is what a tab contains. It is the only option here that also answers a second question, which is how many siblings this pane has. The rows are the real AgentCard at the `tab` scope, the prop that exists for a list already scoped to one place; note what it actually does — line 2 becomes the working directory, not nothing, so a name-and-status-only row would need a third scope the component does not have. The real cost is the dashboard's own shape: home is sorted by TRIAGE (needs you, ready, working, recent), and grouping by place is a second axis that cannot coexist with it. This is the space view's layout, offered as the dashboard's."
+          reach="SHIPPED — open the dashboard. The list in this card is the REAL AgentList over three real panes, so the heading, the count, the group frame and the rows are the dashboard's own. The header below is today's, drawn."
+          note="ALTAN PICKED THIS ONE, and it is on the dashboard now. No marker on either surface. The rows sit under a heading that names the place and counts what is inside it — `collie-workspace › UI work`, 3 panes — so the level is carried by the STRUCTURE: three things under one tab heading are panes, because that is what a tab contains. It is the only option here that also answers a second question, which is how many siblings this pane has. WHAT SHIPPING IT SETTLED. The two axes do coexist, in one order: what needs you stays on top, by urgency, with each row still carrying its place on line 2; everything else is grouped by place, and the Working and Recent headings are gone with the sort toggle and the fold, because a status word the row's own dot already carries is a poor thing to spend a group on. The rows took a third scope after all — `scope: place` drops line 2 entirely rather than turning it into the working directory, and the group then states one 44px pitch, so nothing inside it can shift. Bare shells join their own tab's group after its agents. The pane header is untouched."
         >
           <Crew>
             <PhoneMock>
               <Surface>dashboard</Surface>
-              <div className="flex flex-col gap-2 px-4 py-3">
-                <SectionHeader
-                  label={PLACE_LINE}
-                  trailing={
-                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                      3 panes
-                    </span>
-                  }
-                />
-                <ListGroup>
-                  {SIBLINGS.map((pane) => (
-                    <AgentCard
-                      key={pane.paneId}
-                      agent={pane}
-                      onClick={inert}
-                      scope="tab"
-                      statusStyle="dot"
-                      density="row"
-                    />
-                  ))}
-                </ListGroup>
-              </div>
+              {/* THE REAL LIST, not a drawing of one: `AgentList` over this card's own three panes,
+                  so the heading, the count, the group frame, the row scope and the 44px pitch are
+                  the dashboard's and cannot drift from it. The shell is handed over separately,
+                  which is how the route hands it over too. */}
+              <AgentList agents={[...AGENT_SIBLINGS]} shellPanes={[...SHELL_SIBLINGS]} onOpen={inert} />
               <Surface>pane screen — unchanged</Surface>
               <HeaderRow />
             </PhoneMock>

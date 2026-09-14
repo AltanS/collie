@@ -127,6 +127,23 @@ describe("the inline row, at the end of the pane header's path line", () => {
     }
   });
 
+  it("stands the WHOLE row on one baseline — both glyphs' feet, both words", () => {
+    // The 2026-09-14 fix aligned the cache chip's own glyph to its own number and the row still
+    // read wrong, because a flex container centres its CHILDREN as boxes: a 12px host run beside a
+    // 15px cache chip put the two glyphs' feet on two different lines. Every box on this row is
+    // baseline-aligned — the row, the bare host chip and the separator span that carries the dot —
+    // so the container synthesises one line for all of them.
+    render(<PaneMeta layout="inline" host="workshop" cache={reading()} />, { wrapper: crew });
+    const baseline = /(?:^|\s)items-baseline(?=\s|$)/;
+    expect(column().className).toMatch(baseline);
+    expect(column().className).not.toMatch(/(?:^|\s)items-center(?=\s|$)/);
+    expect(screen.getByLabelText(/^host: workshop/i).className).toMatch(baseline);
+    const dotted = document.querySelector<HTMLElement>("span[class*=\"before:content-\"]")!;
+    expect(dotted.className).toMatch(baseline);
+    // The row still measures the path line's own 12px box, so line 2 cannot grow.
+    expect(column().className).toMatch(/(?:^|\s)h-3(?=\s|$)/);
+  });
+
   it("reaches a 44px tap box without drawing one, when the surface opens the rule", async () => {
     const user = userEvent.setup();
     const onOpenCache = vi.fn();

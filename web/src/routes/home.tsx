@@ -22,9 +22,9 @@ import { panePath, spacePath } from "@/lib/nav";
 import type { AgentView } from "@/lib/types";
 import { useRootData } from "@/lib/route-data";
 
-// Dashboard home screen. Everything you might ACT on comes first — Needs you → Ready · unseen →
-// Working → Recent (see lib/triage.ts) — and the Spaces navigator sits last, under the thing it
-// navigates to. Recent and Spaces fold; fold both and the page is the triaged herd and nothing else.
+// Dashboard home screen. Everything you might ACT on comes first — Needs you → Ready · unseen (see
+// lib/triage.ts) — then every other pane under the `space › tab` it lives in (lib/pane-groups.ts),
+// and the Spaces navigator sits last, under the thing it navigates to.
 // Launchers sit directly above Spaces: they are one-tap act-on-able actions like the herd above
 // them, but they CREATE rather than triage, so they sit under the triaged herd and above the
 // navigator their new Space will appear in. Tapping an agent opens its pane; tapping a space
@@ -46,7 +46,7 @@ export function HomeRoute() {
         .map((w) => ({ workspaceId: w.workspaceId, repoRoot: w.repoRoot!, label: w.label }))
     : [];
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
-  const { prefs, setSpacesOpen, setLaunchOpen, setRecentOpen, setRecentDir } = useDashPrefs();
+  const { prefs, setSpacesOpen, setLaunchOpen } = useDashPrefs();
   // No stored choice yet? The space count decides — a two-space install shouldn't be handed a
   // mystery collapsed header, and a forty-space one shouldn't be handed a wall.
   const spacesOpen = openForCount(prefs.spacesOpen, data.workspaces.length);
@@ -112,17 +112,15 @@ export function HomeRoute() {
         <ReadOnlyBanner device={data.device} />
 
         <main className="flex-1">
-          {/* One list, every section, in triage order. It used to be split in two so "Needs you"
-              could be hoisted above the spaces overview; with Spaces last there is nothing to
-              straddle. */}
+          {/* One list: what needs you first, then every other pane under the tab it lives in
+              (components/agent-list.tsx). Bare shells go in with the agents — grouped by place they
+              sit beside the work they belong to, which is what stopped them being a pen of their
+              own at the bottom of the sheet. */}
           <AgentList
             agents={data.agents}
+            shellPanes={data.shellPanes}
             bridge={data.bridge}
             onOpen={open}
-            recentDir={prefs.recentDir}
-            onRecentDirChange={setRecentDir}
-            recentOpen={prefs.recentOpen}
-            onRecentOpenChange={setRecentOpen}
             error={data.error}
             lastSeenAt={data.lastSeenAt}
           />

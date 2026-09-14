@@ -152,10 +152,18 @@ export function HostChip({ host, state, variant = "tag", sends, className }: Hos
       <span
         aria-label={label}
         className={cn(
-          "inline-flex min-w-0 items-center gap-1",
+          "inline-flex min-w-0 gap-1",
+          // `bare` STANDS ON ITS BASELINE; `caption` still centres. An SVG has no baseline of its
+          // own, so CSS synthesises one from its bottom margin edge — which puts the Server glyph's
+          // foot exactly on the name's baseline, and puts BOTH on the same line as the `CacheChip`
+          // beside it, which aligns the same way (cache-chip.tsx § THE NUMBER STANDS ON THE
+          // GLYPH'S BOTTOM EDGE). Centred, the 10px glyph sat about 1px high of the 11px word and
+          // the row's two glyphs sat on two different lines — Altan's screenshot of the path line.
+          // The caption run is alone in a band of chrome type with nothing to line up with, and its
+          // 10px glyph in a 12px box is already flush, so it is left as it is.
           caption
-            ? "text-[10px]/3 font-medium uppercase tracking-wide"
-            : "shrink-0 font-mono text-[11px]/3",
+            ? "items-center text-[10px]/3 font-medium uppercase tracking-wide"
+            : "shrink-0 items-baseline font-mono text-[11px]/3",
           // Degraded first, always: the run is two hundred pixels from the box being typed into, and
           // "which machine" must never outrank "that machine is not taking writes". The NAME stays
           // this colour either way — only the glyph below carries the identity tint.

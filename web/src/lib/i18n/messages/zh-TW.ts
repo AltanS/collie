@@ -369,10 +369,8 @@ export const zhTW: Dictionary = {
   "home.empty.waiting": "等待 Herdr 回應...",
   "home.empty.panesHint": "窗格位於「空間」清單中。",
   "home.allClear": "沒有待處理項目",
-  "home.sort.newest": "最新優先",
-  "home.sort.oldest": "最早優先",
-  "home.sort.aria.newest": "依最近活躍排序。點擊可切換為依建立時間正序",
-  "home.sort.aria.oldest": "依建立時間正序排序。點擊可切換為依最近活躍排序",
+  "home.place.paneCount.one": "{count} 個窗格",
+  "home.place.paneCount.other": "{count} 個窗格",
   "home.sidebar.shells": "終端機執行個體",
   "home.sidebar.paneActionsTitle": "查看窗格操作選項",
 

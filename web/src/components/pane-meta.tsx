@@ -72,12 +72,24 @@ export function PaneMeta({
   // (20 + 4 + 12 = 36px, under the 44px identity floor) is untouched. Both chips self-hide exactly
   // as they do in the column; an empty row is an invisible 12px box and nothing around it moves
   // (DESIGN.md §2).
+  //
+  // ── THE WHOLE ROW STANDS ON ONE BASELINE ─────────────────────────────────────
+  // `items-baseline`, not `items-center`, and the same word is on the bare `HostChip` and on the
+  // separator span below. `CacheChip` aligned its own glyph to its own number on 2026-09-14 and the
+  // row stayed wrong, because a flex container centres its CHILDREN as boxes: the host's box is
+  // 12px and the cache chip's is 15px (12px of glyph above the baseline plus the face's descent),
+  // so centring the two dropped the host run 1.5px and the two glyphs' feet sat on two different
+  // lines. Altan, from his phone, with a screenshot of `⊟ lodge · ⧗ 57m`. On the baseline the
+  // container synthesises one line for every child — an SVG's baseline is its bottom margin edge —
+  // so both glyphs' feet and both words' baselines are the same y, measured at 0.0px in Chromium in
+  // the app's own face. The descent under that line is the only thing reaching past the 12px box,
+  // and `lodge` / `57m` have no descenders, so nothing is drawn there.
   if (layout === "inline") {
     return (
       <div
         data-slot="pane-meta"
         data-layout="inline"
-        className={cn("flex h-3 shrink-0 items-center gap-1.5", className)}
+        className={cn("flex h-3 shrink-0 items-baseline gap-1.5", className)}
       >
         <HostChip host={host} variant="bare" />
         <SessionChip session={session} />
@@ -89,7 +101,7 @@ export function PaneMeta({
             reading opens the row — and `empty:` — the chip inside rendered nothing, so there is no
             row at all. A pseudo-element does not make an element non-`:empty`, which is what lets
             the two rules sit on one box. */}
-        <span className="flex items-center gap-1.5 before:text-muted-foreground/60 before:content-['·'] first:before:content-none empty:hidden">
+        <span className="flex items-baseline gap-1.5 before:text-muted-foreground/60 before:content-['·'] first:before:content-none empty:hidden">
           <CacheChip
             cache={cache}
             host={host}
