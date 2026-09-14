@@ -222,6 +222,7 @@ const needsYou: AgentView[] = [
     lastActiveAt: TS - 90 * SEC,
     lastSeenAt: TS - 26 * MIN,
     readableLines: 400,
+    cache: { state: "warm", expiresAt: TS + 41 * MIN, ttlSeconds: 3600, ruleId: "claude.subscription", confidence: "documented" },
   },
   {
     paneId: "w2:p3",
@@ -239,6 +240,8 @@ const needsYou: AgentView[] = [
     lastActiveAt: TS - 7 * MIN,
     lastSeenAt: TS - 55 * MIN,
     readableLines: 400,
+    // Under the warn window: the countdown reads as `expiring`, not `warm`.
+    cache: { state: "expiring", expiresAt: TS + 2 * MIN, ttlSeconds: 300, ruleId: "codex.subscription", confidence: "documented" },
   },
   {
     paneId: "w3:p2",
@@ -279,6 +282,7 @@ const readyUnseen: AgentView[] = [
     lastActiveAt: TS - 11 * MIN,
     lastSeenAt: TS - 2 * HOUR,
     readableLines: 400,
+    cache: { state: "warm", expiresAt: TS + 23 * MIN, ttlSeconds: 3600, ruleId: "claude.subscription", confidence: "documented" },
   },
   {
     paneId: "w4:p2",
@@ -334,6 +338,7 @@ const working: AgentView[] = [
     terminalTitle: "running drizzle-kit generate",
     lastActiveAt: TS - 4 * MIN,
     lastSeenAt: TS - 12 * MIN,
+    cache: { state: "warm", expiresAt: TS + 6 * MIN, ttlSeconds: 300, ruleId: "codex.api", confidence: "documented" },
   },
   {
     paneId: "w3:p1",
@@ -349,6 +354,8 @@ const working: AgentView[] = [
     hasSession: true,
     lastActiveAt: TS - 12 * MIN,
     lastSeenAt: TS - 40 * MIN,
+    // A cold reading needs no `expiresAt` — the bridge's own state is trusted outright.
+    cache: { state: "cold", ttlSeconds: 300, ruleId: "pi.anthropic", confidence: "documented" },
   },
   {
     paneId: "w4:p1",
@@ -364,6 +371,7 @@ const working: AgentView[] = [
     paneLabel: "launch post",
     lastActiveAt: TS - 38 * MIN,
     lastSeenAt: TS - 38 * MIN,
+    cache: { state: "warm", expiresAt: TS + 4 * MIN, ttlSeconds: 300, ruleId: "opencode.google", confidence: "documented" },
   },
   {
     paneId: "w2:p2",
@@ -380,6 +388,7 @@ const working: AgentView[] = [
     terminalTitle: "waiting on CI",
     lastActiveAt: TS - 2 * HOUR - 20 * MIN,
     lastSeenAt: TS - 2 * HOUR - 20 * MIN,
+    cache: { state: "warm", expiresAt: TS + 12 * MIN, ttlSeconds: 3600, ruleId: "claude.subscription", confidence: "documented" },
   },
 ];
 
@@ -420,6 +429,7 @@ const resting: AgentView[] = [
     terminalTitleStale: true,
     lastActiveAt: TS - 6 * HOUR,
     lastSeenAt: TS - 3 * HOUR,
+    cache: { state: "cold", ttlSeconds: 300, ruleId: "codex.api", confidence: "documented" },
   },
   {
     paneId: "w1:p4",
