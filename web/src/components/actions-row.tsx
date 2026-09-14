@@ -265,14 +265,16 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
       )}
     >
       {/* OverflowEdges measures this scroller and fades — and chevrons — only the end that still
-          hides something. The `px-3` stays on the scroller, paired with the `-mx-3` above: the
-          wrapper adds no padding of its own, it only owns the flex sizing the scroller used to
-          carry directly.
+          hides something. `cue="strong"` is this belt's own pick (overflow-edges.tsx's header says
+          why): the bare glyph read too quiet over the belt's own tint and the pills panning under
+          it, so here the chevron is bigger, darker and stands on its own small chrome-coloured
+          patch. The `px-3` stays on the scroller, paired with the `-mx-3` above: the wrapper adds no
+          padding of its own, it only owns the flex sizing the scroller used to carry directly.
           The scroller's own `gap-1.5` stands — 6px is the belt's ONE pill gap, between the general
           pills, and between the last of them and the harness section's edge. The old `gap-2.5`
           override is gone with the capsules: a wider gap around a group was the separator when the
           groups were floating boxes, and the section's tint is the separator now. */}
-      <OverflowEdges insetRight={handle ? SWITCH_PILL_INSET : 0}>
+      <OverflowEdges insetRight={handle ? SWITCH_PILL_INSET : 0} cue="strong">
         {(scrollerRef) => (
           <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "bg-primary/10 px-3")}>
             {general.length > 0 && (

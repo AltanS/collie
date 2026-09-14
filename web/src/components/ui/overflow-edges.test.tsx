@@ -23,9 +23,9 @@ function pinMetrics(el: HTMLElement, { scrollWidth, clientWidth }: { scrollWidth
   };
 }
 
-function mount(insetRight?: number) {
+function mount(insetRight?: number, cue?: "soft" | "strong") {
   const { container } = render(
-    <OverflowEdges insetRight={insetRight}>
+    <OverflowEdges insetRight={insetRight} cue={cue}>
       {(ref) => (
         <div ref={ref}>
           <button type="button">Keys</button>
@@ -86,9 +86,11 @@ describe("OverflowEdges", () => {
       expect(wrapper.dataset.overflow).toBe("right");
       const masked = scroller.parentElement!;
       expect(masked.style.getPropertyValue("--edge-inset-right")).toBe("56px");
-      // The chevron keeps the 4px the LEFT one sits at, measured from its real right edge.
-      const chevron = wrapper.querySelector("svg")!;
-      expect(chevron.getAttribute("style")).toContain("right: 60px");
+      // The chevron keeps the 4px the LEFT one sits at, measured from its real right edge. The
+      // offset lands on the cue's wrapping span (the glyph plus its optional backdrop), not on the
+      // svg directly.
+      const cue = wrapper.querySelector("svg")!.parentElement!;
+      expect(cue.getAttribute("style")).toContain("right: 60px");
     });
 
     it("changes nothing at all when it is absent — no property, no offset", () => {
@@ -96,7 +98,31 @@ describe("OverflowEdges", () => {
       pinMetrics(scroller, { scrollWidth: 1000, clientWidth: 400 })(0);
       const masked = scroller.parentElement!;
       expect(masked.getAttribute("style")).toBeNull();
-      expect(wrapper.querySelector("svg")!.getAttribute("style")).toBeNull();
+      expect(wrapper.querySelector("svg")!.parentElement!.getAttribute("style")).toBeNull();
+    });
+  });
+
+  // "strong" is the belt's own pick, opted into per caller — every other caller keeps the bare
+  // "soft" glyph unless it asks for the other.
+  describe("cue", () => {
+    it("defaults to the bare, muted glyph", () => {
+      const { wrapper, scroller } = mount();
+      pinMetrics(scroller, { scrollWidth: 1000, clientWidth: 400 })(0);
+      const svg = wrapper.querySelector("svg")!;
+      expect(svg.getAttribute("class")).toContain("size-3");
+      expect(svg.getAttribute("class")).toContain("text-muted-foreground");
+      expect(svg.parentElement!.className).not.toContain("bg-chrome");
+    });
+
+    it("grows a bigger glyph on a round chrome patch when asked", () => {
+      const { wrapper, scroller } = mount(undefined, "strong");
+      pinMetrics(scroller, { scrollWidth: 1000, clientWidth: 400 })(0);
+      const svg = wrapper.querySelector("svg")!;
+      expect(svg.getAttribute("class")).toContain("size-4");
+      expect(svg.getAttribute("class")).toContain("text-foreground/70");
+      const backdrop = svg.parentElement!;
+      expect(backdrop.className).toContain("rounded-full");
+      expect(backdrop.className).toContain("bg-chrome/90");
     });
   });
 });
