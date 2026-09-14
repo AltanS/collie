@@ -76,7 +76,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 - **The tab row and the pane row under the header get compact.** Tab row 32px, pane pills 24px, text 11px, the size of the header's path line; every pill still answers a 44px tap. The tab row draws no horizontal rule and no hairlines between tabs; the open tab is an outlined pill on the row's own ground. The tab row and the pane row beneath it are one continuous band, sharing one ground rather than falling through to the page's ambient black.
 - **A tmux window tmux named itself shows its folder, not its program.** With automatic-rename on, the tab's name is the last folder of the window's active pane; a window you named keeps its name.
 - **The dashboard's attention rows are as compact as the workspace rows.** "Needs you" and "Ready · unseen" used to be tall standalone cards above a list of short rows, two shapes for one kind of thing; every row now shares the 44px form in one framed list, and a finished pane you have not opened yet carries a small dot after its name.
-- **The composer's belt is a third shorter, and its scroll fade is twice as long.** The belt now stands at the pill height, 32px instead of 44px, the Switch mark narrows from 44 to 32px, and the fade under it runs over 64px so the belt reads as a strip that keeps going. The belt also no longer scrolls vertically under a thumb.
+- **The composer's belt is a third shorter, and its scroll fade is twice as long.** The belt now stands at the pill height, 32px instead of 44px, the Switch mark narrows from 44 to 32px, and the fade under it runs over 64px so the belt reads as a strip that keeps going. The belt also no longer scrolls vertically under a thumb, in Safari either.
 
 ### Fixed
 

@@ -63,8 +63,25 @@ export const STRIP_SCROLLER =
   "flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto overscroll-x-contain py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 
 /**
- * The 32px face a button wears inside {@link STRIP_SCROLLER}: 32 drawn, 46 answered, 44 wide at its
- * narrowest. `before:-inset-x-px` reaches the border edges rather than a neighbour, which is what
+ * The 32px face a button wears inside {@link STRIP_SCROLLER}, **belt-only** — the actions row and
+ * the harness section import this directly (`actions-row.tsx`, `harness-bar.tsx`) and nothing else
+ * does; the key rail and every other strip keep {@link STRIP_TAP_TARGET} unmodified. That is what
+ * makes the next paragraph safe to do here and nowhere else.
+ *
+ * `before:inset-y-0` CANCELS {@link STRIP_TAP_TARGET}'s `-7px` vertical reach on this pill alone —
+ * the horizontal half (`before:-inset-x-px`, next) stays. The belt's own scroller is `py-0`
+ * (`actions-row.tsx`, "Option 6" of the belt-shade deck): with no padding round the 32px pill to
+ * reach into, the vertical half of the floor had nowhere to go and overflowed the scroller's own
+ * box by 6-7px on the bottom edge — measured with the reach in place and gone: `scrollHeight` 38
+ * against a `clientHeight` of 32, dropping to 38 = 32 the moment the reach was disabled, with every
+ * *visible* child box already reading exactly 32px (`getBoundingClientRect` on each, before and
+ * after — the pseudo-element is what moved). Silent because it paints nothing: `before:content-['']`
+ * is empty, so the only thing this loses is 12px of invisible touch margin round an already-32px
+ * pill, still comfortably past the 24px WCAG AA floor. `cn()` at every call site resolves the two
+ * `before:inset-y-*` utilities as one conflicting group and keeps the LAST one in the merged string —
+ * this one, because it is appended after `${STRIP_TAP_TARGET}` below — so this is not a second,
+ * competing rule left for the cascade to arbitrate; it is the one rule that survives.
+ * `before:-inset-x-px` reaches the border edges rather than a neighbour, which is what
  * lets these sit at a 6px gap without two hit boxes overlapping. The caller adds its own colour and
  * typography; nothing about the box is a caller's to pick.
  *
@@ -80,7 +97,7 @@ export const STRIP_SCROLLER =
  * different modifier, so both survive and the MODIFIED one wins on every pill that carries an icon,
  * which is all of them in the actions row. Measured: the bare number alone moved nothing at all.
  */
-export const STRIP_ROW_PILL = `${STRIP_TAP_TARGET} before:-inset-x-px h-8 min-w-11 shrink-0 touch-manipulation px-2 has-[>svg]:px-2 select-none`;
+export const STRIP_ROW_PILL = `${STRIP_TAP_TARGET} before:-inset-x-px before:inset-y-0 h-8 min-w-11 shrink-0 touch-manipulation px-2 has-[>svg]:px-2 select-none`;
 
 /**
  * A SECTION OF THE BELT — the rectangle a group of {@link STRIP_ROW_PILL}s sits in when it needs a
@@ -91,28 +108,37 @@ export const STRIP_ROW_PILL = `${STRIP_TAP_TARGET} before:-inset-x-px h-8 min-w-
  * it (`components/actions-row.tsx` holds the whole argument). So: SQUARE corners, and the box spans
  * the belt's full inner height instead of floating inside it.
  *
- * Three numbers, and each is measured against {@link STRIP_SCROLLER}:
+ * **`h-8 py-0` is a fixed 32px box — the pill's own height, {@link STRIP_ROW_PILL}'s `h-8` — not a
+ * reach into the scroller's padding.** It used to be `-my-1.5` paired with `py-1.5`: the section
+ * grew 6px past its own flow box on top and bottom, and relied on the scroller's `py-1.5` being
+ * exactly 6px to land back on the scroller's padding box. That broke the moment the belt's own
+ * scroller went to `py-0` (`components/actions-row.tsx`, "Option 6" of the belt-shade deck): the
+ * section still reached 6px past its flow box, but there was no padding left to reach INTO, so it
+ * overflowed the scroller's own border box by 6px on each side — measured as `scrollHeight` 40
+ * against `clientHeight` 34. Chromium hid the resulting scrollbar; WebKit let `scrollTop` settle on
+ * the 6px and a vertical swipe on the belt could nudge it. A fixed 32px box has nothing to reach
+ * into and nothing to overflow: it IS the pill's height, so `scrollHeight === clientHeight` in both
+ * engines. `border-y-0`, folded into `border-x` below, is the other half of the same fix — a real
+ * (if transparent) top/bottom border on an `h-8` box eats into its own content box and pushes a
+ * 32px pill 1px past it on each side, reopening a 2px version of the same overflow.
  *
- *  1. **`-my-1.5` with `py-1.5`** is what makes it full height. The scroller's own `py-1.5` is 6px
- *     the section must reach INTO — and exactly reach, never past: the section's border box then
- *     lands on the scroller's padding box, which is both the clip boundary and the edge of the
- *     scrollable overflow region. One pixel more and `overflow-x: auto` (which forces `overflow-y`
- *     to `auto` too) grows a vertical scrollbar; one pixel less and the section stops short of the
- *     belt's rules and reads as a floating box again. The `py-1.5` puts the same 6px back inside, so
- *     the pills sit exactly where they sat as capsule children and their 44px tap areas are
- *     unchanged (see {@link STRIP_TAP_TARGET}).
- *  2. **`px-1.5` and `gap-1.5` are the belt's own pill gap, 6px**, the same number the scroller uses
+ * Two numbers remain, each measured against {@link STRIP_SCROLLER}:
+ *
+ *  1. **`px-1.5` and `gap-1.5` are the belt's own pill gap, 6px**, the same number the scroller uses
  *     between the general pills and this section. One gap everywhere is what makes the belt read as
  *     one strip: the section is told apart by its TINT, not by a wider gap around it.
- *  3. **`border border-transparent`** is reserved, never drawn by default. It is the §2 recipe — a
+ *  2. **`border-x border-transparent`** is reserved, never drawn by default. It is the §2 recipe — a
  *     section that needs a hairline on one edge (see the black-branded fallback in
  *     `harness-bar.tsx`) colours the reserved width instead of adding one, so the tinted and the
- *     untinted section are the same box to the pixel.
+ *     untinted section are the same box to the pixel. Left and right only, not top and bottom: the
+ *     section has never drawn a top or bottom border (`border-l-border` is the only colour override
+ *     that exists), so dropping that pair's reserved width paints nothing different — it only frees
+ *     the 2px `h-8` needs for the pill's own height.
  *
  * It owns the geometry and NOT the ground. The caller paints it.
  */
 export const BELT_SECTION =
-  "-my-1.5 flex shrink-0 items-center gap-1.5 border border-transparent px-1.5 py-1.5";
+  "flex h-8 shrink-0 items-center gap-1.5 border-x border-transparent px-1.5 py-0";
 
 /**
  * Whether the strips in this subtree DRAW their names, or only expose them to a screen reader.
