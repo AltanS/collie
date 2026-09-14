@@ -102,10 +102,10 @@ export function AgentCard({
   // bridge's hint stays off the row for the same reason — it is a sentence, and a sentence has no
   // height anyone can state.
   //
-  // The trailing meta comes with it. The column's two fixed corners are 41px tall and would set the
-  // row's height on their own, so a one-line row takes `PaneMeta`'s `inline` layout instead — the
-  // same pair of chips, on the line they now sit beside, at the 12px box the pane header's path line
-  // already gives them. The hint is still on the pane screen, which is where a sentence belongs.
+  // The trailing meta rides the name line, same as every other scope — `PaneMeta`, at the end of
+  // line 1, in the 12px box the pane header's workspace line already gives it — so it never adds a
+  // slot of its own and can't set this row's stated height. The hint is still on the pane screen,
+  // which is where a sentence belongs.
   const inPlace = scope === "place";
   const flat = density === "row";
   // ONE NAME, ONE PLACE (lib/pane-name.ts). Line 1 is what the pane is CALLED, on every row of
@@ -191,6 +191,18 @@ export function AgentCard({
         )}
       >
         <div className="min-w-0 flex-1">
+          {/* LINE 1 IS THE NAME, AND THE ADDRESS ENDS IT. The dot and the tile stay centred on the
+              row's own line box — neither has a baseline worth chasing — but the name and the
+              trailing meta share one, via `self-baseline` on each rather than `items-baseline` on
+              the row: CSS computes that baseline group only over the children that ask for it and
+              leaves the icons centred (`pane-meta.tsx`'s header explains the technique it borrows).
+              The meta is `flex-none` by way of `PaneMeta`'s own `shrink-0`, so it never yields
+              width before the name does, and it draws its own 12px box whether or not either chip
+              inside it has anything to say — an empty reading leaves its space rather than pulling
+              the row narrower (DESIGN.md §2). This closes the corner column's old fault: two fixed
+              slots stacked beside a one- or two-line row read as three rows on a phone (Altan's
+              phone feedback), and folding the address onto the name line answers it without losing
+              the "a slot with nothing to say still holds its place" guarantee the column had. */}
           <div data-slot="agent-row-title" className="flex min-w-0 items-center gap-2">
             {cornerDot && (
               <StatusDot
@@ -212,7 +224,13 @@ export function AgentCard({
             ) : (
               <AgentIcon agent={agent.agent} className="size-4" />
             )}
-            <span className="min-w-0 flex-1 truncate font-medium">{primary}</span>
+            <span className="min-w-0 flex-1 truncate self-baseline font-medium">{primary}</span>
+            <PaneMeta
+              host={agent.host}
+              cache={agent.cache}
+              session={agent.session}
+              className="self-baseline"
+            />
           </div>
 
           {/* Only rendered when there's something to say — a pane with neither a tab nor a name of
@@ -272,21 +290,6 @@ export function AgentCard({
               Withheld on a workspace-grouped row, whose height is stated; see `inPlace` above. */}
           {!inPlace && <PaneHint hint={agent.hint} />}
         </div>
-
-        {/* The trailing meta is a COLUMN OF TWO FIXED SLOTS, pinned to the card's right edge, not an
-            inline row — and it is `pane-meta.tsx`, the same component the pane header renders, so the
-            two screens cannot drift apart. Why the geometry is what it is, and why it never moves,
-            sits in that file's header. A row with no detail line grows to fit two slots and the gap
-            between them, which is the uniform pitch this trades for. No `onOpenCache` here: the card
-            is already one button and may not hold a second. A place-grouped row takes the INLINE
-            layout of the same component instead, because the column is 41px and would set that
-            row's height on its own — see `inPlace` at the top of this function. */}
-        <PaneMeta
-          host={agent.host}
-          cache={agent.cache}
-          session={agent.session}
-          {...(inPlace ? { layout: "inline" as const } : {})}
-        />
 
         {isShell ? (
           <ShellBadge />

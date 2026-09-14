@@ -182,7 +182,7 @@ export function HeaderMetaSection() {
             <HeaderMock>
               <HeaderMetaRow
                 path={WORKSPACE}
-                pathTrailing={<PaneMeta layout="inline" host="bluefin" cache={CACHE} onOpenCache={inert} />}
+                pathTrailing={<PaneMeta host="bluefin" cache={CACHE} onOpenCache={inert} />}
               />
             </HeaderMock>
           </Crew>
@@ -204,7 +204,7 @@ export function HeaderMetaSection() {
                   <HeaderMetaRow
                     path={WORKSPACE}
                     pathTrailing={
-                      <PaneMeta layout="inline" host={undefined} cache={CACHE} onOpenCache={inert} />
+                      <PaneMeta host={undefined} cache={CACHE} onOpenCache={inert} />
                     }
                   />
                 </HeaderMock>
@@ -217,7 +217,7 @@ export function HeaderMetaSection() {
                   <HeaderMetaRow
                     path={WORKSPACE_KAZ}
                     pathTrailing={
-                      <PaneMeta layout="inline" host="minibuch" cache={CACHE} onOpenCache={inert} />
+                      <PaneMeta host="minibuch" cache={CACHE} onOpenCache={inert} />
                     }
                   />
                 </HeaderMock>
@@ -238,7 +238,7 @@ export function HeaderMetaSection() {
                 path={WORKSPACE}
                 nameLeading={<HostDot host="minibuch" servers={ROSTER_WITH_MINIBUCH} />}
                 pathTrailing={
-                  <PaneMeta layout="inline" host={undefined} cache={CACHE} onOpenCache={inert} />
+                  <PaneMeta host={undefined} cache={CACHE} onOpenCache={inert} />
                 }
               />
             </HeaderMock>
@@ -256,7 +256,7 @@ export function HeaderMetaSection() {
               <HeaderMetaRow
                 path={PATH_WITH_TAB}
                 pathTrailing={
-                  <PaneMeta layout="inline" host="minibuch" cache={CACHE} onOpenCache={inert} />
+                  <PaneMeta host="minibuch" cache={CACHE} onOpenCache={inert} />
                 }
               />
             </HeaderMock>

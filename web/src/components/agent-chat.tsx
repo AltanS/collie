@@ -1449,7 +1449,6 @@ export function AgentChat({
                     {workspace}
                   </span>
                   <PaneMeta
-                    layout="inline"
                     host={agent.host}
                     cache={agent.cache}
                     onOpenCache={() => setCacheSheetOpen(true)}

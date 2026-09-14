@@ -296,8 +296,8 @@ export function HeaderCornerSection() {
         <Card
           state="header-corner-today"
           label="before: the bordered tag over the bare reading, ⋮ beside them"
-          reach="the dashboard still draws this column on every row; the pane header drew it until option 2 shipped."
-          note="The REAL PaneMeta, in its two-slot column, with the ⋮ in its own 44px column beside it — this is what the DASHBOARD row draws, and what the pane header drew until option 2 shipped. Read the three readings together: the bordered box on top holds one width while the bare word under it changes, which is the mismatch of weight the options attack. Options 2 and 8 are the picks, and both are live: the header's pair moved onto the path line, and the belt's Switch pill is a bare mark."
+          reach="HISTORY ONLY, and no longer reachable as drawn: `PaneMeta` dropped its two-slot column on 2026-09-14, so the call below now renders the same inline pair option 2 does, just sitting in the ⋮'s corner instead of on the path line. Neither the dashboard nor the header draws a column anywhere any more — the dashboard row's own two fixed corners went the same day, folded onto the end of the pane's name line."
+          note="What used to sit here: the REAL PaneMeta, in its two-slot column, with the ⋮ in its own 44px column beside it — this was what the DASHBOARD row drew, and what the pane header drew until option 2 shipped. Read the three readings together: the bordered box on top held one width while the bare word under it changed, which was the mismatch of weight the options attacked. Options 2 and 8 are the picks, and both are live: the header's pair moved onto the path line, and the belt's Switch pill is a bare mark. The dashboard row followed the same argument on 2026-09-14 — its own two-corner column folded onto the end of the pane's name line, the same inline pair, for the same reason: two fixed slots beside a one- or two-line row read as three rows on a phone."
         >
           <Crew>
             <ThreeReadings
@@ -338,9 +338,7 @@ export function HeaderCornerSection() {
             <ThreeReadings
               render={(cache) => (
                 <HeaderRow
-                  pathTrailing={
-                    <PaneMeta layout="inline" host={HOST} cache={cache} onOpenCache={inert} />
-                  }
+                  pathTrailing={<PaneMeta host={HOST} cache={cache} onOpenCache={inert} />}
                   corner={<div className="flex items-stretch"><Kebab /></div>}
                 />
               )}

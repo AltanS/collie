@@ -136,19 +136,30 @@ describe("AgentCard in a workspace group", () => {
     expect(container.textContent).not.toContain("waiting on a build");
   });
 
-  it("takes the meta's inline layout, because the column is 41px and would set the height", () => {
+  it("puts the meta at the end of line 1, not in a slot of its own", () => {
     const { container } = row();
-    const meta = container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
-    expect(meta.dataset.layout).toBe("inline");
+    const title = container.querySelector('[data-slot="agent-row-title"]')!;
+    expect(title.querySelector('[data-slot="pane-meta"]')).not.toBeNull();
+    const detail = line2(container);
+    expect(detail?.querySelector('[data-slot="pane-meta"]')).toBeNull();
   });
+});
 
-  it("leaves every other scope on the column", () => {
-    for (const scope of ["herd", "tab"] as const) {
-      const { container } = render(
-        <AgentCard agent={agent()} onClick={() => {}} scope={scope} />,
-      );
-      const meta = container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
-      expect(meta.dataset.layout).toBeUndefined();
-    }
-  });
+// EVERY SCOPE NOW SHARES ONE SHAPE: the meta rides the end of line 1, baseline-aligned with the
+// name, and line 2 is whatever that scope's own text is — never the meta. The corner column that
+// used to set herd/tab rows apart from a place row is gone (2026-09-14); a herd card and a
+// workspace-grouped row differ only in what line 2 says.
+describe("AgentCard — the meta rides line 1 on every scope", () => {
+  for (const scope of ["herd", "tab", "place"] as const) {
+    it(`scope="${scope}" puts the pane's address and cache reading at the end of line 1`, () => {
+      const { container } = render(<AgentCard agent={agent()} onClick={() => {}} scope={scope} />);
+      const title = container.querySelector('[data-slot="agent-row-title"]')!;
+      const meta = title.querySelector('[data-slot="pane-meta"]');
+      expect(meta).not.toBeNull();
+      // Baseline-aligned with the name, not centred with the dot and the tile.
+      expect(meta?.className).toMatch(/(?:^|\s)self-baseline(?=\s|$)/);
+      const name = title.querySelector("span.font-medium")!;
+      expect(name.className).toMatch(/(?:^|\s)self-baseline(?=\s|$)/);
+    });
+  }
 });

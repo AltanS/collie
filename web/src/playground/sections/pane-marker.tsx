@@ -271,7 +271,6 @@ function HeaderRow({
               {place ?? PLACE_LINE}
             </span>
             <PaneMeta
-              layout="inline"
               host={PANE.host}
               cache={PANE.cache}
               onOpenCache={inert}

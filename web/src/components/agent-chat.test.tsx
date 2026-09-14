@@ -282,7 +282,6 @@ describe("AgentChat — the pane header's identity block", () => {
     // trailing corner and not beside the block, either of which would take the width from line 1 and
     // from the pane's own name.
     const meta = container.querySelector<HTMLElement>('[data-slot="pane-meta"]')!;
-    expect(meta.dataset.layout).toBe("inline");
     expect(meta.contains(tag)).toBe(true);
     expect(slot(container, "lines")!.contains(meta)).toBe(true);
     // SAFETY: the lines block's second child is the plain <div> line-2 row written in agent-chat.tsx,
