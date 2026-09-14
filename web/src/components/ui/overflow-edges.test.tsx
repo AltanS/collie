@@ -23,7 +23,7 @@ function pinMetrics(el: HTMLElement, { scrollWidth, clientWidth }: { scrollWidth
   };
 }
 
-function mount(insetRight?: number, cue?: "soft" | "strong") {
+function mount(insetRight?: number, cue?: "soft" | "none") {
   const { container } = render(
     <OverflowEdges insetRight={insetRight} cue={cue}>
       {(ref) => (
@@ -102,8 +102,8 @@ describe("OverflowEdges", () => {
     });
   });
 
-  // "strong" is the belt's own pick, opted into per caller — every other caller keeps the bare
-  // "soft" glyph unless it asks for the other.
+  // "none" is the actions belt's own pick, opted into per caller — every other caller keeps the
+  // bare "soft" glyph unless it asks for the other.
   describe("cue", () => {
     it("defaults to the bare, muted glyph", () => {
       const { wrapper, scroller } = mount();
@@ -111,18 +111,15 @@ describe("OverflowEdges", () => {
       const svg = wrapper.querySelector("svg")!;
       expect(svg.getAttribute("class")).toContain("size-3");
       expect(svg.getAttribute("class")).toContain("text-muted-foreground");
-      expect(svg.parentElement!.className).not.toContain("bg-chrome");
     });
 
-    it("grows a bigger glyph on a round chrome patch when asked", () => {
-      const { wrapper, scroller } = mount(undefined, "strong");
-      pinMetrics(scroller, { scrollWidth: 1000, clientWidth: 400 })(0);
-      const svg = wrapper.querySelector("svg")!;
-      expect(svg.getAttribute("class")).toContain("size-4");
-      expect(svg.getAttribute("class")).toContain("text-foreground/70");
-      const backdrop = svg.parentElement!;
-      expect(backdrop.className).toContain("rounded-full");
-      expect(backdrop.className).toContain("bg-chrome/90");
+    it("draws the fade and no glyph at all when asked", () => {
+      const { wrapper, scroller } = mount(undefined, "none");
+      const scrollTo = pinMetrics(scroller, { scrollWidth: 1000, clientWidth: 400 });
+      // Both ends hide content at this scroll position, so a chevron-drawing cue would show two.
+      scrollTo(300);
+      expect(wrapper.dataset.overflow).toBe("both");
+      expect(wrapper.querySelectorAll("svg")).toHaveLength(0);
     });
   });
 });

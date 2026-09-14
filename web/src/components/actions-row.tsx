@@ -48,9 +48,8 @@ import { cn } from "@/lib/utils";
 //    bg-background     1.09:1 light            ·  1.11:1 dark   (but rgb 10 in dark IS the terminal
 //                                                                mirror's fill — a hole, not a band)
 //
-// The chevrons keep reading over it: `text-muted-foreground` measures 4.84:1 light and 5.93:1 dark
-// on the belt's ground, against 5.48 / 5.83 on the bare chrome — the belt costs them nothing that
-// matters, and both clear 4.5:1.
+// The belt draws no chevron of its own any more (see `cue="none"` below) — the tint and the fade
+// carry the scroll cue by themselves, so there is no glyph contrast left to measure here.
 //
 // THE SCROLLER, WITHIN THAT BAND, NOW CARRIES ITS OWN FAINT BRAND TINT (`bg-primary/10`), and the
 // fixed Switch cell takes the composer's own ground, `bg-chrome` — the operator's call from the
@@ -264,17 +263,18 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
         handle && "touch-pan-x",
       )}
     >
-      {/* OverflowEdges measures this scroller and fades — and chevrons — only the end that still
-          hides something. `cue="strong"` is this belt's own pick (overflow-edges.tsx's header says
-          why): the bare glyph read too quiet over the belt's own tint and the pills panning under
-          it, so here the chevron is bigger, darker and stands on its own small chrome-coloured
-          patch. The `px-3` stays on the scroller, paired with the `-mx-3` above: the wrapper adds no
-          padding of its own, it only owns the flex sizing the scroller used to carry directly.
+      {/* OverflowEdges measures this scroller and fades only the end that still hides something.
+          `cue="none"` is this belt's own pick: a chevron was tried here for one commit, but the
+          belt's own tint plus the fade already say the row scrolls, and the chevron sat under the
+          fixed Switch pill's own hit box (below) and could not be tapped anyway — so the mark is
+          gone and the fade carries the whole of the cue (operator's call, 2026-09-14). The `px-3`
+          stays on the scroller, paired with the `-mx-3` above: the wrapper adds no padding of its
+          own, it only owns the flex sizing the scroller used to carry directly.
           The scroller's own `gap-1.5` stands — 6px is the belt's ONE pill gap, between the general
           pills, and between the last of them and the harness section's edge. The old `gap-2.5`
           override is gone with the capsules: a wider gap around a group was the separator when the
           groups were floating boxes, and the section's tint is the separator now. */}
-      <OverflowEdges insetRight={handle ? SWITCH_PILL_INSET : 0} cue="strong">
+      <OverflowEdges insetRight={handle ? SWITCH_PILL_INSET : 0} cue="none">
         {(scrollerRef) => (
           <div ref={scrollerRef} className={cn(STRIP_SCROLLER, "bg-primary/10 px-3")}>
             {general.length > 0 && (
@@ -332,10 +332,17 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           composer rather than as a patch cut into the belt (operator's call, from the phone: the
           Switch cell must match the composer row under the belt). The mask fades both layers in over
           the first 32px, which is what lets a scrolling pill disappear UNDER this one instead of
-          stopping dead against it. The fade alone is `pointer-events-none`, so the belt still pans
-          from the 32px of lead-in while the pill itself takes its own taps. */}
+          stopping dead against it.
+          THIS OUTER SPAN IS `pointer-events-none`, AND NOT JUST THE FADE LAYERS INSIDE IT. A plain
+          `<span>` sized by flex still hits-tests over its whole box, padding included — so the 32px
+          `pl-8` lead-in, drawn only as a fade, was silently eating taps meant for whatever scrolled
+          underneath it, the belt's own right chevron among them (that chevron is gone now, but a
+          pill scrolled to the belt's end hits the same wall). Pointer events are switched back on
+          one element in, on the actual cell (hairline + button below), so the Switch pill answers a
+          tap only from ITS OWN drawn cell outward — its reach stops at the hairline, the cell's own
+          left edge, never past it into the scroller. */}
       {handle && (
-        <span className="absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
+        <span className="pointer-events-none absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
           <span
             aria-hidden
             className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
@@ -357,7 +364,7 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
               IT DRAWS NOTHING AND ANNOUNCES "Switch pane", so the accessible name is now the only
               name it has — WCAG 2.5.3 has nothing to reconcile once there is no visible word, and a
               test addresses that name rather than a glyph. */}
-          <span className="flex items-center self-stretch">
+          <span className="pointer-events-auto flex items-center self-stretch">
             <span aria-hidden className="mr-2 h-5 w-px bg-border" />
             <Button
               type="button"

@@ -34,13 +34,13 @@ import { cn } from "@/lib/utils";
 // NOTHING ANIMATES, so there is nothing to gate on `prefers-reduced-motion`: no nudge, no bounce,
 // no sliding chevron. The mask and the chevron appear and disappear, and that is all.
 //
-// TWO READINGS OF THE SAME CUE, via `cue`. The bare glyph shipped first and reads fine over a plain
-// ground — that is `"soft"`, the default, and every caller keeps it unless it asks for the other.
-// The actions belt got its own tint (`bg-primary/10`) and a row of pills to sit over, and against
-// that Altan's verdict, from the phone: "the chevron is barely visible". `"strong"` is the belt's
-// answer — a bigger glyph in a darker ink, on a small round patch of the belt's own chrome so it
-// reads as a fixed mark rather than as one more thing panning underneath it — and `actions-row.tsx`
-// is the one caller that asks for it today.
+// THE CHEVRON IS OPT-OUT, via `cue`. The bare glyph is `"soft"`, the default, and every caller keeps
+// it unless it asks for `"none"`. The actions belt tried a bigger, darker glyph on its own chrome
+// patch (`"strong"`) for one commit, against Altan's verdict from the phone that the bare glyph was
+// "barely visible" over the belt's tint — but the fix Altan actually wanted, on reflection, was no
+// chevron at all: the tint and the fade already say the row scrolls, and a chevron the fixed Switch
+// pill's own hit box then overlapped was unreachable besides. `"none"` draws the fade masks and no
+// glyph; `actions-row.tsx` is the one caller that asks for it.
 
 /** Which side, if either, still hides content. `none` when the row fits. */
 export type OverflowEdge = "none" | "left" | "right" | "both";
@@ -148,26 +148,21 @@ interface OverflowEdgesProps {
    */
   insetRight?: number;
   /**
-   * How hard the chevron reads. `"soft"` (the default) is the original mark — `size-3`,
-   * `text-muted-foreground`, no ground of its own — kept as the default so every existing caller
-   * (the playground's frozen mocks in `ideas.tsx` and `host-tag.tsx` among them) is byte-identical
-   * unless it opts in.
+   * Whether the fading edge also draws a chevron. `"soft"` (the default) is the original mark —
+   * `size-3`, `text-muted-foreground`, no ground of its own — kept as the default so every existing
+   * caller (the playground's frozen mocks in `ideas.tsx` and `host-tag.tsx` among them) is
+   * byte-identical unless it opts out.
    *
-   * `"strong"` is the actions belt's own pick: Altan, from the phone, "the chevron is barely
-   * visible" over the belt's own tint and the pills it overlaps. `size-4`, `text-foreground/70`
-   * rather than the muted ink, and a small round `bg-chrome/90` patch behind it so the mark stands
-   * off whatever it is drawn over instead of blending into it — the belt's ground is a wash over
-   * `--chrome`, so a chrome-coloured patch reads as a plain fixed disc rather than more of the
-   * moving tint. Still `pointer-events-none`, still no animation, still no layout cost: the patch is
-   * sized and centred exactly where the bare glyph used to sit.
+   * `"none"` draws the fade and nothing else: the actions belt's pick, because the belt's own tint
+   * plus the fade already say the row scrolls, and a chevron there sat under the fixed Switch pill's
+   * hit box and could not be tapped anyway (operator's call, 2026-09-14).
    */
-  cue?: "soft" | "strong";
+  cue?: "soft" | "none";
 }
 
 const CUE_GLYPH = {
   soft: "size-3 text-muted-foreground",
-  strong: "size-4 text-foreground/70",
-} satisfies Record<NonNullable<OverflowEdgesProps["cue"]>, string>;
+} satisfies Record<Exclude<NonNullable<OverflowEdgesProps["cue"]>, "none">, string>;
 
 /**
  * The wrapper: three elements, and each of the three is load-bearing.
@@ -178,11 +173,12 @@ const CUE_GLYPH = {
  *  2. The MIDDLE one wears the mask. It cannot be merged into the outer one: a mask applies to an
  *     element's whole subtree, and the chevron sits 4px from an edge the fade has already taken to
  *     ~17% alpha — masked with the pills, it would be invisible exactly where it is needed.
- *  3. The CHEVRONS are absolutely positioned against the outer box, so they take no layout space
- *     and the row's height and the pills' positions are identical in all four states (DESIGN.md §2,
- *     the no-shift rule). `pointer-events-none` keeps them from eating a tap meant for the pill
- *     underneath, and `aria-hidden` keeps them out of the accessibility tree — a screen reader gets
- *     the buttons themselves, which were never hidden from it.
+ *  3. The CHEVRONS, when `cue` draws one, are absolutely positioned against the outer box, so they
+ *     take no layout space and the row's height and the pills' positions are identical in every
+ *     state (DESIGN.md §2, the no-shift rule). `pointer-events-none` keeps them from eating a tap
+ *     meant for the pill underneath, and `aria-hidden` keeps them out of the accessibility tree — a
+ *     screen reader gets the buttons themselves, which were never hidden from it. `cue="none"` skips
+ *     this step entirely: the mask is the whole of the cue.
  */
 export function OverflowEdges({ className, children, insetRight = 0, cue = "soft" }: OverflowEdgesProps) {
   const { ref, edge } = useOverflowEdges<HTMLDivElement>();
@@ -190,12 +186,6 @@ export function OverflowEdges({ className, children, insetRight = 0, cue = "soft
   // than asserted at the call: `style` takes this object as it stands.
   const maskStyle: CSSProperties & Record<string, string> | undefined =
     insetRight > 0 ? { "--edge-inset-right": `${insetRight}px` } : undefined;
-  const glyph = CUE_GLYPH[cue];
-  // Both cues wrap the glyph in a small flex span so it centres the same way in either case; only
-  // "strong" gives that span a size and a ground. `size-5` (20px) so a `size-4` glyph sits centred
-  // with 2px to spare on every side — absolutely positioned like the bare glyph always was, so it
-  // costs no layout either way.
-  const backdrop = cn("flex items-center justify-center", cue === "strong" && "size-5 rounded-full bg-chrome/90");
   return (
     <div data-overflow={edge} className={cn("relative flex min-w-0 flex-1", className)}>
       <div
@@ -207,20 +197,20 @@ export function OverflowEdges({ className, children, insetRight = 0, cue = "soft
       >
         {children(ref)}
       </div>
-      {(edge === "left" || edge === "both") && (
-        <span aria-hidden className={cn("pointer-events-none absolute top-1/2 left-1 -translate-y-1/2", backdrop)}>
-          <ChevronLeft className={glyph} />
+      {cue !== "none" && (edge === "left" || edge === "both") && (
+        <span aria-hidden className="pointer-events-none absolute top-1/2 left-1 flex -translate-y-1/2 items-center justify-center">
+          <ChevronLeft className={CUE_GLYPH[cue]} />
         </span>
       )}
-      {(edge === "right" || edge === "both") && (
+      {cue !== "none" && (edge === "right" || edge === "both") && (
         <span
           aria-hidden
           // `right-1` is the 4px the left cue keeps; the inset is added to it, so the mark lands the
           // same distance from whatever its right edge really is.
           style={insetRight > 0 ? { right: `${insetRight + 4}px` } : undefined}
-          className={cn("pointer-events-none absolute top-1/2 right-1 -translate-y-1/2", backdrop)}
+          className="pointer-events-none absolute top-1/2 right-1 flex -translate-y-1/2 items-center justify-center"
         >
-          <ChevronRight className={glyph} />
+          <ChevronRight className={CUE_GLYPH[cue]} />
         </span>
       )}
     </div>
