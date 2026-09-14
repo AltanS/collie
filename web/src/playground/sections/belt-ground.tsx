@@ -1,23 +1,32 @@
-// Belt scroller ground ideas, round two: FIVE numbered options for the actions belt's own ground.
-// Altan rejected the first round's three options outright ("all are bad, try again") — those three
-// only changed the SHADE of the scroller (darker, inset well, lighter). This round changes the
-// AFFORDANCE instead: something about the scroller's surface itself, or a mark on it, that says
-// "this moves" rather than just "this is a different grey". The goal is unchanged: make it clear the
-// belt's pill row SCROLLS, while the Switch glyph cell at the right is fixed. Say "option N" and be
-// understood, the same pattern `header-corner.tsx`, `header-meta.tsx` and `strips-compact.tsx` use.
+// Belt scroller ground ideas, round three: FIVE numbered options for the actions belt's own ground.
+// Altan rejected round one's three options outright ("all are bad, try again") — those only changed
+// the SHADE of a DRAWN copy of the belt. Round two changed the affordance instead of the shade, but
+// was still a drawn copy, and the operator caught it: "the band is wider than the PhoneMock and
+// spills past its right edge, the harness Claude pill runs under the Switch glyph instead of the
+// Switch sitting fixed at the far right behind its hairline, and in option 3 the Agent pill is
+// clipped inside the row rather than at the phone's edge. Drawn copies are not faithful enough
+// here." So round three MOUNTS THE REAL `ActionsRow` (`components/actions-row.tsx`) inside a real
+// 390px `PhoneMock`, the way `header-corner.tsx` mounts it for its own Switch-pill options — same
+// fixture (`useRoomyActions`, `agent="claude"`, `onRun={took}`), same width, same real
+// `OverflowEdges` measuring the real scroller. Nothing about the belt's own markup, fade or overflow
+// math is redrawn; every option changes only the ONE thing it proposes, reached from outside through
+// a wrapper `<div>` and Tailwind arbitrary-variant selectors — NO EDIT to `actions-row.tsx` or any
+// other shipped file. The selectors reach the scroller through `[data-overflow]`, the attribute
+// `OverflowEdges` (`ui/overflow-edges.tsx`) already draws on the scroller's own wrapper for real, so
+// `[data-overflow]>div>div` is the real scroller `OverflowEdges` measures — not a guess, not a class
+// added for this section.
 //
-// WHAT IS REAL AND WHAT IS DRAWN. `ActionsRow` has no prop for a second ground under its own
-// scroller — the band, the scroller and the pinned Switch cell are one class string apiece in that
-// file — so every card here is DRAWN, copied class for class from `actions-row.tsx` and
-// `components/ui/labelled-strip.tsx` (`STRIP_ROW_PILL`, `BELT_SECTION`). Only the one thing an
-// option proposes changes between cards.
+// THE ONE THING STILL DRAWN: the fixed Switch cell. `ActionsRow` only draws its pinned Switch pill
+// when handed a `handle` (a real drag-to-switch gesture object), which a static mock has none of —
+// so every card here carries a copy of that pill, byte-for-byte the markup `actions-row.tsx` draws
+// in its own `handle` branch, exactly as `header-corner.tsx`'s `BeltWithSwitch` already does for its
+// own Switch-pill options. It is the ONE thing every option in this section holds fixed, so it is
+// the one thing worth a shared, faithful copy rather than five improvised ones.
 //
-// THE FIXTURE. The general pills `Keys`, `Type`, `Quick`, `Agent`, then the harness section
-// (`Claude`, tinted, plus a second pill so the row genuinely overflows a 390px phone), then the
-// pinned Switch glyph behind its hairline. Every card is built so the last visible pill sits partly
-// cut at the edge, with the chevron mark `ui/overflow-edges.tsx` draws for real over the fade — the
-// same "there is more this way" cue, held static here since every card must be readable without a
-// gesture.
+// OPTION 3 NEEDS NO DRAWN CUT EITHER. Giving the dock a narrower width than the phone makes
+// `OverflowEdges` genuinely measure a smaller box and genuinely fade and cut a pill at THAT edge —
+// the real fade, the real chevron, working against a real, smaller container, which is what "the row
+// is laid out so the last pill is always cut" means as a design, not a screenshot trick.
 //
 // PhoneMock carries no theme toggle (see `shared.tsx`), so every card is drawn once, at the page's
 // current theme, rather than twice — the ground each option proposes is legible in both, and the
@@ -26,164 +35,102 @@
 // DEV-ONLY, unreachable from the app entry.
 
 import type { ReactNode } from "react";
-import { ChevronRight, Keyboard, Layers, Slash, Terminal, Zap } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Layers } from "lucide-react";
 
-import { BELT_SECTION, STRIP_ROW_PILL } from "@/components/ui/labelled-strip";
+import { ActionsRow } from "@/components/actions-row";
+import { STRIP_ROW_PILL } from "@/components/ui/labelled-strip";
 import { cn } from "@/lib/utils";
 
 import { Card, Group, Section, type SectionDef } from "../harness";
-import { ChromeBlock, PhoneMock } from "./shared";
+import { ChromeBlock, PhoneMock, took, useRoomyActions } from "./shared";
 
 export const DEF: SectionDef = {
   id: "belt-ground",
   title: "Belt scroller ground",
   intent:
-    "Round two, five numbered options for the actions belt's scrollable ground — each one changes " +
-    "the affordance (a thumb, a track, a cut edge, a pattern, a tint), not just the shade the first " +
-    "round tried. The belt is drawn here, copied class for class from actions-row.tsx, so the part " +
-    "that scrolls reads as clearly different from the fixed Switch cell at its end. Say the number.",
+    "Round three, five numbered options for the actions belt's scrollable ground, this time on the " +
+    "REAL ActionsRow inside a real 390px phone frame rather than a drawn copy — each option changes " +
+    "one thing (a thumb, a track, a cut edge, a pattern, a tint), reached from outside through a " +
+    "wrapper and Tailwind selectors, never a class added to actions-row.tsx itself. Say the number.",
 };
 
-// ── The pills every card carries ─────────────────────────────────────────────
-
-const GENERAL: readonly { label: string; icon: LucideIcon }[] = [
-  { label: "Keys", icon: Keyboard },
-  { label: "Type", icon: Terminal },
-  { label: "Quick", icon: Zap },
-  { label: "Agent", icon: Slash },
-];
-
-function GeneralPill({
-  label,
-  icon: Icon,
-  pillClassName,
-}: {
-  label: string;
-  icon: LucideIcon;
-  pillClassName?: string;
-}) {
-  return (
-    <span
-      aria-hidden
-      className={cn(
-        `${STRIP_ROW_PILL} flex items-center gap-1.5 text-xs text-muted-foreground`,
-        pillClassName,
-      )}
-    >
-      <Icon className="size-4 shrink-0" />
-      {label}
-    </span>
-  );
-}
-
-/** The harness section, `BELT_SECTION`'s own recipe, tinted for Claude — plus a second pill
- *  ("Model") so the row is wider than a 390px phone and genuinely overflows on every card.
- *  `pillClassName` lets an option (option 2's cards) carry the same treatment onto these pills. */
-function HarnessSection({ pillClassName }: { pillClassName?: string }) {
-  return (
-    <div className={cn(BELT_SECTION, "border-l-0 bg-primary/10")}>
-      <span
-        aria-hidden
-        className={cn(
-          "flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-primary",
-          pillClassName,
-        )}
-      >
-        Claude
-      </span>
-      <span
-        aria-hidden
-        className={cn(
-          "flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-xs font-medium text-primary",
-          pillClassName,
-        )}
-      >
-        Model
-      </span>
-    </div>
-  );
-}
-
-/** The scroll cue: a small chevron over the fade, static rather than measured — every card here must
- *  read without a gesture, so this is what `ui/overflow-edges.tsx`'s right-hand cue looks like at
- *  rest, drawn rather than driven by a `ResizeObserver`. */
-function ScrollCue() {
-  return (
-    <span
-      aria-hidden
-      className="pointer-events-none absolute inset-y-0 right-[58px] z-20 flex items-center"
-    >
-      <ChevronRight className="size-3.5 text-muted-foreground/70" />
-    </span>
-  );
-}
-
-// ── The belt itself, parametrised by the one thing each option changes ───────
-
-interface BeltGrounds {
-  /** Extra classes on the SCROLLER — the part that pans. Empty string = the band's own ground. */
-  scroller?: string;
-  /** Extra classes on the fixed Switch cell. Empty string = the band's own ground (today's case). */
-  switchCell?: string;
-  /** Extra classes carried onto every pill (general and harness alike) — option 2's cards. */
-  pillClassName?: string;
-  /** Something drawn ON TOP of the scroller's own area (never under the Switch cell, which is a
-   *  sibling, not a descendant) — option 1's thumb, option 4's dot grid. */
-  overlay?: ReactNode;
-}
+// ── The Switch cell, the one thing every card draws a copy of ────────────────
 
 /**
- * The belt, copied from `actions-row.tsx`'s own markup: the full-bleed band (`bg-foreground/6`), a
- * scroller carrying the general pills and the harness section, and the Switch mark pinned at the
- * right behind a hairline. `grounds` is the only thing that varies between cards.
+ * A byte-for-byte copy of `actions-row.tsx`'s own pinned Switch pill (the `handle` branch), pinned
+ * over the same two-layer fade. `ActionsRow` only draws this when handed a real drag handle, which a
+ * static mock has none of — `header-corner.tsx`'s `BeltWithSwitch` solved the same problem the same
+ * way, and this is that copy, so both sections' Switch cells can never quietly drift apart from
+ * `actions-row.tsx`'s real one without a person noticing both places.
  */
-function Belt({ grounds }: { grounds: BeltGrounds }) {
+function FixedSwitchCell() {
   return (
-    <div className="relative flex items-center overflow-hidden border-b border-border bg-foreground/6">
-      <div className="relative flex min-w-0 flex-1 items-center">
-        <div
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto px-3 py-1.5 pr-16 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-            grounds.scroller,
-          )}
-        >
-          {GENERAL.map((action) => (
-            <GeneralPill key={action.label} {...action} pillClassName={grounds.pillClassName} />
-          ))}
-          <HarnessSection pillClassName={grounds.pillClassName} />
-        </div>
-        {grounds.overlay}
-      </div>
-      <ScrollCue />
-      {/* The fixed Switch cell — a sibling of the scroller, never inside it, exactly as
-          actions-row.tsx's pinned span sits outside the masked subtree. */}
+    <span className="absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-8">
       <span
         aria-hidden
-        className={cn(
-          "absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-3",
-          grounds.switchCell,
-        )}
+        className="pointer-events-none absolute inset-0 bg-chrome [mask-image:linear-gradient(to_right,transparent,black_2rem)]"
       >
+        <span className="absolute inset-0 bg-foreground/6" />
+      </span>
+      <span className="flex items-center self-stretch">
         <span aria-hidden className="mr-2 h-5 w-px bg-border" />
-        <span className={cn(`${STRIP_ROW_PILL} relative flex items-center justify-center border-0 px-0`)}>
+        <span
+          className={cn(`${STRIP_ROW_PILL} relative flex items-center justify-center border-0 px-0`)}
+        >
           <Layers className="size-4 shrink-0 text-primary" />
         </span>
       </span>
+    </span>
+  );
+}
+
+// The Switch cell's own drawn width is 97px — `pr-3`(12) + `pl-8`(32) + the 44px pill, the same
+// number `actions-row.tsx` names `SWITCH_PILL_INSET` for the real fade's own inset. `ScrollThumb`
+// and `DotGrid` below both stop there (`right-[97px]`), written as that literal at each call site
+// rather than composed from a shared constant: Tailwind v4 scans source TEXT for class names, so a
+// class assembled at runtime from a variable compiles to no CSS at all — the same trap
+// `actions-row.tsx` and `overflow-edges.tsx` document at their own literal strings.
+
+// ── The belt itself: the REAL ActionsRow, a wrapper for selectors, the copied Switch cell ───────
+
+interface BeltProps {
+  /** Extra classes on the WRAPPER around the real `ActionsRow`. Arbitrary-variant selectors reach
+   *  the real scroller through `[data-overflow]>div>div` — the attribute `OverflowEdges` draws on
+   *  the scroller's own wrapper for real — and its pills through `[data-overflow]>div>div button`.
+   *  No class is ever added to `actions-row.tsx` itself. */
+  className?: string;
+  /** Drawn ON TOP of the scroller's own area only, stopping short of the Switch cell's 97px —
+   *  option 1's thumb, option 4's dot grid. The wrapper is `relative`, so this positions against it. */
+  overlay?: ReactNode;
+  /** Option 3 only: the dock's own width, in px, narrower than the phone — not a drawn cut, a
+   *  smaller real box for the real `OverflowEdges` to measure and genuinely fade and cut against. */
+  dockWidth?: number;
+}
+
+function Belt({ className, overlay, dockWidth }: BeltProps) {
+  const general = useRoomyActions();
+  return (
+    <div
+      className={cn("relative bg-chrome px-3", className)}
+      style={dockWidth !== undefined ? { width: dockWidth } : undefined}
+    >
+      <ActionsRow general={general} agent="claude" onRun={took} />
+      {overlay}
+      <FixedSwitchCell />
     </div>
   );
 }
 
 // ── Option 1: a thumb under the pills ─────────────────────────────────────────
 
-/** A 2px track the full width of the scroller's own area, with a short thumb showing roughly how
- *  much is off screen and where. Held static at the left third — the position a row at rest with
- *  more content to the right would report. */
+/** A 2px track over the scroller's own area, stopping short of the Switch cell, with a short thumb
+ *  showing roughly how much is off screen and where. Held static at the left third — the position a
+ *  row at rest with more content to the right would report. */
 function ScrollThumb() {
   return (
     <span
       aria-hidden
-      className="pointer-events-none absolute inset-x-3 bottom-0.5 h-[2px] rounded-full bg-foreground/10"
+      className="pointer-events-none absolute right-[97px] bottom-0.5 left-3 z-10 h-[2px] rounded-full bg-foreground/10"
     >
       <span
         aria-hidden
@@ -193,66 +140,17 @@ function ScrollThumb() {
   );
 }
 
-// ── Option 3: a pill capped so it always reads as cut in half ────────────────
-
-/** `Agent`'s own box, deliberately narrower than its content — the icon plus the full word "Agent"
- *  clip inside a fixed 40px box, so the cut is guaranteed by the box itself rather than by however
- *  the rest of the row happens to measure. `ml-auto` holds it flush against the fade, every time. */
-function CutAgentPill() {
-  return (
-    <span
-      aria-hidden
-      className="ml-auto flex h-8 w-10 shrink-0 items-center gap-1.5 overflow-hidden px-2 text-xs text-muted-foreground"
-    >
-      <Slash className="size-4 shrink-0" />
-      Agent
-    </span>
-  );
-}
-
-/** Option 3's own belt: it does not route through {@link Belt} because the cut is a LAYOUT change
- *  (a capped pill flush against the edge, a stronger fade), not a ground swap. The harness section
- *  still has to reach the DOM — the section's own test checks every card for "Claude" — so it renders
- *  in an `sr-only` box that draws nothing, since option 3's whole point is that nothing past `Agent`
- *  is meant to be visible here. */
-function Option3Belt() {
-  return (
-    <div className="relative flex items-center overflow-hidden border-b border-border bg-foreground/6">
-      <div className="relative flex min-w-0 flex-1 items-center">
-        <div
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden px-3 py-1.5 pr-16",
-            "[mask-image:linear-gradient(to_right,black_calc(100%-40px),transparent)]",
-          )}
-        >
-          <GeneralPill label="Keys" icon={Keyboard} />
-          <GeneralPill label="Type" icon={Terminal} />
-          <GeneralPill label="Quick" icon={Zap} />
-          <CutAgentPill />
-        </div>
-        <span className="sr-only">Claude Model</span>
-      </div>
-      <ScrollCue />
-      <span aria-hidden className="absolute inset-y-0 right-0 z-10 flex items-center pr-3 pl-3">
-        <span aria-hidden className="mr-2 h-5 w-px bg-border" />
-        <span className={cn(`${STRIP_ROW_PILL} relative flex items-center justify-center border-0 px-0`)}>
-          <Layers className="size-4 shrink-0 text-primary" />
-        </span>
-      </span>
-    </div>
-  );
-}
-
 // ── Option 4: a faint dot grid on the moving surface ──────────────────────────
 
 /** A dot every 6px, at `foreground/8` — a flat tint cut into dots by a repeating radial mask, so the
- *  colour still answers `bg-foreground/8` (light AND dark) rather than a hard-coded rgba. */
+ *  colour still answers `bg-foreground/8` (light AND dark) rather than a hard-coded rgba. Drawn over
+ *  the scroller's own area, stopping short of the Switch cell. */
 function DotGrid() {
   return (
     <span
       aria-hidden
       className={cn(
-        "pointer-events-none absolute inset-0 bg-foreground/8",
+        "pointer-events-none absolute inset-y-0 left-0 right-[97px] z-10 bg-foreground/8",
         "[mask-image:radial-gradient(circle,black_1px,transparent_1.4px)] [mask-size:6px_6px] [mask-repeat:repeat]",
       )}
     />
@@ -266,7 +164,7 @@ function BeltCard({ children }: { children: ReactNode }) {
     <PhoneMock>
       <div className="h-16 bg-background" />
       <ChromeBlock>
-        <div className="bg-chrome px-3">{children}</div>
+        {children}
         <div className="flex items-end gap-3 bg-chrome px-3 pb-2 pt-1.5">
           <div className="flex h-9 min-w-0 flex-1 items-center rounded-2xl border border-border bg-background px-3 text-[13px] text-muted-foreground">
             Type a reply…
@@ -283,26 +181,26 @@ function BeltCard({ children }: { children: ReactNode }) {
 export function BeltGroundSection() {
   return (
     <Section def={DEF}>
-      <Group title="The belt — as today, then five options for its scroller, round two">
+      <Group title="The belt — as today, then five options for its scroller, round three, on the real ActionsRow">
         <Card
           state="belt-ground-today"
           label="As today"
-          reach="every pane's composer: the belt above the input row."
+          reach="every pane's composer: the belt above the input row. This card is the real ActionsRow, unmodified."
           note="One ground for the whole band, `bg-foreground/6`. Nothing marks where the scroller ends and the fixed Switch cell begins."
         >
           <BeltCard>
-            <Belt grounds={{}} />
+            <Belt />
           </BeltCard>
         </Card>
 
         <Card
           state="belt-ground-option-1"
           label="Option 1 · Scroll thumb"
-          reach="idea, not shipped: a 2px track and thumb drawn under actions-row.tsx's scroller."
+          reach="idea, not shipped: a 2px track and thumb would sit under actions-row.tsx's scroller."
           note="A thin thumb under the pills shows how much is off screen and where you are. It moves as you scroll. The Switch cell has no thumb, so it reads as fixed."
         >
           <BeltCard>
-            <Belt grounds={{ overlay: <ScrollThumb /> }} />
+            <Belt overlay={<ScrollThumb />} />
           </BeltCard>
         </Card>
 
@@ -314,10 +212,15 @@ export function BeltGroundSection() {
         >
           <BeltCard>
             <Belt
-              grounds={{
-                scroller: "bg-background shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.15)]",
-                pillClassName: "rounded-md border border-border bg-card shadow-sm",
-              }}
+              className={cn(
+                "[&_[data-overflow]>div>div]:bg-background",
+                "[&_[data-overflow]>div>div]:shadow-[inset_0_1px_2px_0_rgba(0,0,0,0.15)]",
+                "[&_[data-overflow]>div>div_button]:rounded-md",
+                "[&_[data-overflow]>div>div_button]:border",
+                "[&_[data-overflow]>div>div_button]:border-border",
+                "[&_[data-overflow]>div>div_button]:bg-card",
+                "[&_[data-overflow]>div>div_button]:shadow-sm",
+              )}
             />
           </BeltCard>
         </Card>
@@ -325,11 +228,11 @@ export function BeltGroundSection() {
         <Card
           state="belt-ground-option-3"
           label="Option 3 · Half a pill always peeks"
-          reach="idea, not shipped: the scroller's layout would cap its last pill flush against the edge mask."
-          note="The row is laid out so the last pill is always cut in half at the edge. A half pill says there is more. The fade and the chevron stay."
+          reach="idea, not shipped: the dock itself would be laid out narrower, so the real fade always cuts the last pill."
+          note="The row is laid out so the last pill is always cut in half at the edge. A half pill says there is more. The fade and the chevron stay — they are the real ones, measuring a narrower row."
         >
           <BeltCard>
-            <Option3Belt />
+            <Belt dockWidth={300} />
           </BeltCard>
         </Card>
 
@@ -340,7 +243,7 @@ export function BeltGroundSection() {
           note="The scrolling part has a faint dot pattern under the pills. The fixed Switch cell has none. The pattern says this is a surface that moves."
         >
           <BeltCard>
-            <Belt grounds={{ overlay: <DotGrid /> }} />
+            <Belt overlay={<DotGrid />} />
           </BeltCard>
         </Card>
 
@@ -351,7 +254,7 @@ export function BeltGroundSection() {
           note="The scrolling part takes a faint tint of the brand colour. The Switch cell stays grey. Colour marks the moving part."
         >
           <BeltCard>
-            <Belt grounds={{ scroller: "bg-primary/8" }} />
+            <Belt className="[&_[data-overflow]>div>div]:bg-primary/8" />
           </BeltCard>
         </Card>
       </Group>

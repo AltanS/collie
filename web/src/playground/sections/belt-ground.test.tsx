@@ -52,7 +52,7 @@ describe("Belt scroller ground section", () => {
     expect(labels).toContain("As today");
   });
 
-  it("carries the general pills and the harness section on every card", () => {
+  it("carries the general pills and the harness section on every card, from the real ActionsRow", () => {
     render(<BeltGroundSection />);
     for (const handle of HANDLES) {
       const card = cardFor(handle);
@@ -60,7 +60,16 @@ describe("Belt scroller ground section", () => {
       expect(card.textContent).toContain("Type");
       expect(card.textContent).toContain("Quick");
       expect(card.textContent).toContain("Agent");
-      expect(card.textContent).toContain("Claude");
+      // The harness bar's own item for Claude Code — "Model" — rather than a drawn "Claude" label:
+      // the real HarnessBar names its brand through an aria-hidden icon, never visible text.
+      expect(card.textContent).toContain("Model");
     }
+  });
+
+  it("mounts the real ActionsRow, not a drawn copy, on every card", () => {
+    const { container } = render(<BeltGroundSection />);
+    // The real component's own marker, `data-slot="composer-actions"` — one per card.
+    const rows = container.querySelectorAll('[data-slot="composer-actions"]');
+    expect(rows).toHaveLength(HANDLES.length);
   });
 });
