@@ -241,7 +241,7 @@ only then can the same pane warn again. The quiet hours apply: a snoozed bridge 
 snooze that ends inside the window still warns.
 
 `COLLIE_CACHE_WARN_SECONDS` moves the window, default 300 seconds
-([configure.md](configure.md#prompt-cache)).
+([configure.md](configure.md#the-prompt-cache-countdown)).
 
 > **Note.** This alert needs the prompt-cache reading, so it covers the panes that show a cache
 > countdown and no others: the harness has to keep a transcript Collie can read, and the agent has to
