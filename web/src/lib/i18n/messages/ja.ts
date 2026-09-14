@@ -391,6 +391,7 @@ export const ja: Dictionary = {
   "home.sidebar.shells": "シェル",
   "home.sidebar.paneActionsTitle": "タップしてペイン操作を表示",
   "home.row.tabPosition": "タブ {n}",
+  "home.row.unseen": "未読",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "要対応",

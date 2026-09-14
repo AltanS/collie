@@ -413,6 +413,7 @@ export const en = {
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Tap for pane actions",
   "home.row.tabPosition": "tab {n}",
+  "home.row.unseen": "unseen",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "Needs you",

@@ -10,6 +10,7 @@ import { paneCwdLine, paneName, panePlaceParts } from "@/lib/pane-name";
 import { statusLabel } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 
 interface AgentCardProps {
   agent: AgentView;
@@ -39,6 +40,13 @@ interface AgentCardProps {
    * signal — see a card, something wants you; all flat, nothing does.
    */
   density?: "card" | "row";
+  /**
+   * A finished pane the operator hasn't opened yet — see `isUnseen()` (lib/triage.ts). Only the
+   * "Ready · unseen" section passes it; every other row leaves it at the default. Draws a small
+   * filled dot right after the name, on line 1, so a glance at a compact row still tells it apart
+   * from an ordinary finished pane sitting in its workspace group.
+   */
+  unseen?: boolean;
 }
 
 /** The row's text: line 1's name, and line 2's two runs. */
@@ -82,6 +90,7 @@ export function AgentCard({
   scope = "herd",
   statusStyle = "badge",
   density = "card",
+  unseen = false,
 }: AgentCardProps) {
   useLocale();
   const isShell = agent.kind === "shell";
@@ -174,10 +183,12 @@ export function AgentCard({
           flat
             ? "flex flex-row items-center gap-3 px-3.5 py-2.5 shadow-[inset_2px_0_0_0_transparent]"
             : "flex-row items-center gap-3 rounded-xl px-3.5 py-3 shadow-sm",
-          // The group's stated pitch. `py-0` because the height is the statement here — the flat
-          // row's own `py-2.5` around two lines would make it 56px and the number would stop being
-          // a number. The reason is a paragraph up at `inPlace`.
-          inPlace && "h-11 py-0",
+          // Every flat row states its own pitch — `py-0` because the height IS the statement, and
+          // the flat row's own `py-2.5` around two lines would make it 56px and the number would
+          // stop being a number. Was `inPlace`-only; keyed on `flat` now (2026-09-14) so an urgent
+          // row (`scope="herd"`, `density="row"`) gets the same 44px as a workspace-grouped one —
+          // the two are meant to read as the SAME kind of row (agent-list.tsx's urgent section).
+          flat && "h-11 py-0",
           // The blocked tint survives both treatments — it's the one cue that reads at a glance.
           // The EDGE cannot: one class string, two containers. A card sits in a gap list and already
           // carries a border in every state, so it only recolours. A flat row sits in a divide-y
@@ -225,6 +236,18 @@ export function AgentCard({
               <AgentIcon agent={agent.agent} className="size-4" />
             )}
             <span className="min-w-0 flex-1 truncate self-baseline font-medium">{primary}</span>
+            {unseen && (
+              // A finished pane you haven't opened yet (`isUnseen()`, lib/triage.ts). Right after
+              // the name, never before it — the name still leads the row — and `shrink-0` so a long
+              // name truncates before this ever does. `self-center` because it has no baseline worth
+              // sharing with the text; `ml-1.5` gives it its own gap without widening the row's gap
+              // for every other sibling.
+              <span
+                role="img"
+                aria-label={t("home.row.unseen")}
+                className="ml-1.5 size-1.5 shrink-0 self-center rounded-full bg-primary"
+              />
+            )}
             <PaneMeta
               host={agent.host}
               cache={agent.cache}
@@ -242,8 +265,9 @@ export function AgentCard({
               data-slot="agent-row-detail"
               className={cn(
                 "flex min-w-0 items-baseline gap-1 text-xs text-muted-foreground",
-                // 16px whatever is in it, which is the slot half of the stated height above.
-                inPlace && "h-4 items-center",
+                // 16px whatever is in it, which is the slot half of the stated height above —
+                // keyed on `flat` for the same reason the height above is.
+                flat && "h-4 items-center",
               )}
             >
               {inPlace && lines.tailPositional && detailTail !== null ? (
@@ -287,8 +311,8 @@ export function AgentCard({
           {/* The bridge's own sentence about this pane, when it sent one — text, never a branch
               (components/pane-hint.tsx). It changes nothing about the row: a hinted pane is still a
               shell, still sorts where an unknown status sorts, and still opens the same view.
-              Withheld on a workspace-grouped row, whose height is stated; see `inPlace` above. */}
-          {!inPlace && <PaneHint hint={agent.hint} />}
+              Withheld on any flat row, whose height is stated; see `flat` above. */}
+          {!flat && <PaneHint hint={agent.hint} />}
         </div>
 
         {isShell ? (

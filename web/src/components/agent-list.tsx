@@ -38,17 +38,17 @@ interface AgentListProps {
   lastSeenAt?: number;
 }
 
-/** The sections that mean "a human is required here" — the only ones that get card chrome, and now
- *  the only ones the dashboard sorts by URGENCY at all. */
+/** The sections that mean "a human is required here" — pulled to the top and given the accented
+ *  header, and now the only ones the dashboard sorts by URGENCY at all. */
 const ATTENTION: ReadonlySet<TriageKey> = new Set<TriageKey>(["needs", "ready"]);
 
 /** A module-level empty list: a fresh `[]` default per render is a new reference for nothing. */
 const NO_PANES: AgentView[] = [];
 
 // ── THE DASHBOARD ASKS TWO QUESTIONS, IN THIS ORDER ──────────────────────────
-// FIRST, what needs you. Needs you → Ready · unseen, pinned to the top, card chrome, and each row
-// still carrying its own place on line 2 — those two groups are by URGENCY, so a row in them has to
-// say where it came from. That is the dashboard's job and it does not move.
+// FIRST, what needs you. Needs you → Ready · unseen, pinned to the top under an accented header,
+// and each row still carrying its own place on line 2 — those two groups are by URGENCY, so a row
+// in them has to say where it came from. That is the dashboard's job and it does not move.
 //
 // THEN, everything else, BY WORKSPACE. One group per workspace, headed by its name and counted, in
 // machine and workspace-number order (lib/pane-groups.ts), with the panes inside in the order the
@@ -142,14 +142,15 @@ export function AgentList({
   // keyed by the id alone React recycles one row's element for another's between polls, and the
   // card you are looking at acquires a different row's `onClick`. On this list, that is a tap
   // landing in another terminal.
-  const row = (a: AgentView, scope: "herd" | "place") => (
+  const row = (a: AgentView, scope: "herd" | "place", unseen = false) => (
     <AgentCard
       key={paneRowKey(a)}
       agent={a}
       onClick={() => onOpen(a)}
       scope={scope}
       statusStyle="dot"
-      density={scope === "herd" ? "card" : "row"}
+      density="row"
+      unseen={unseen}
     />
   );
 
@@ -165,15 +166,21 @@ export function AgentList({
       )}
 
       {/* What needs you, by urgency. statusStyle="dot": the heading already says the status, so a
-          pill on every row restates it and costs the width the title needs. An attention section is
-          a GAP LIST — every row is already a bordered object, so it gets NO group frame. Wrapping
-          it would be a box inside a box. Do not "fix" this to a ListGroup later. */}
+          pill on every row restates it and costs the width the title needs. An attention section
+          USED to be a gap list of full `Card`s, one bordered box per row with air between them —
+          reversed 2026-09-14 on the operator's own phone feedback: the tall cards cost too much
+          screen, and next to the workspace groups' flat rows the two kinds of row read as two
+          different languages. So every section, urgent or not, now renders its rows at
+          `density="row"` inside ONE framed `ListGroup`, the same wrapper the workspace groups use
+          below — the header still carries the accent and the urgency, the rows just look like every
+          other row in the list. `scope="herd"` keeps the row's own place (`workspace › tab`) on
+          line 2, because the section header names a STATUS, never a workspace. */}
       {urgent.map((s) => (
         <section key={s.key} className="flex flex-col gap-2">
           <SectionHeader {...sectionHeaderProps(s)} />
-          <div id={`agent-section-${s.key}`} className="flex flex-col gap-2">
-            {s.agents.map((a) => row(a, "herd"))}
-          </div>
+          <ListGroup id={`agent-section-${s.key}`}>
+            {s.agents.map((a) => row(a, "herd", s.key === "ready"))}
+          </ListGroup>
         </section>
       ))}
 

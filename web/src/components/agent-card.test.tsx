@@ -145,6 +145,43 @@ describe("AgentCard in a workspace group", () => {
   });
 });
 
+describe("AgentCard's unseen marker", () => {
+  it("renders a labelled dot right after the name when unseen, and nothing when it isn't", () => {
+    const { container, rerender } = render(<AgentCard agent={agent()} onClick={() => {}} unseen />);
+    const title = container.querySelector<HTMLElement>('[data-slot="agent-row-title"]')!;
+    expect(within(title).getByRole("img", { name: "unseen" })).toBeInTheDocument();
+
+    rerender(<AgentCard agent={agent()} onClick={() => {}} />);
+    expect(within(title).queryByRole("img", { name: "unseen" })).not.toBeInTheDocument();
+  });
+});
+
+// A flat row states its own height whatever scope it's in — the urgent sections of the dashboard
+// (agent-list.tsx) render at `scope="herd"`, `density="row"`, and must match the 44px of a
+// workspace-grouped row (`scope="place"`) exactly, or the two kinds of row stop reading as one list.
+describe("AgentCard — a flat row states its height on every scope, not just \"place\"", () => {
+  it("states h-11 for scope=\"herd\" once density is \"row\"", () => {
+    const { container } = render(
+      <AgentCard agent={agent()} onClick={() => {}} scope="herd" density="row" />,
+    );
+    expect(container.querySelector("button")!.firstElementChild!.className).toMatch(
+      /(?:^|\s)h-11(?=\s|$)/,
+    );
+  });
+
+  it("withholds the bridge's hint on that same flat row", () => {
+    const { container } = render(
+      <AgentCard
+        agent={agent({ hint: "waiting on a build" })}
+        onClick={() => {}}
+        scope="herd"
+        density="row"
+      />,
+    );
+    expect(container.textContent).not.toContain("waiting on a build");
+  });
+});
+
 // EVERY SCOPE NOW SHARES ONE SHAPE: the meta rides the end of line 1, baseline-aligned with the
 // name, and line 2 is whatever that scope's own text is — never the meta. The corner column that
 // used to set herd/tab rows apart from a place row is gone (2026-09-14); a herd card and a

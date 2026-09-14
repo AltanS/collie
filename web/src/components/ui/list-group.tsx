@@ -25,8 +25,10 @@ import { cn } from "@/lib/utils";
  * breaking it: those are control boxes, not region boundaries.
  *
  * NOT for a gap list. Where the rows are already bordered objects with air between them — the
- * attention/"needs you" cards, the pane-switcher rows — the row IS the container, and wrapping
- * them would be a box inside a box. A gap list gets no group border, ever.
+ * pane-switcher's `Card` rows — the row IS the container, and wrapping them would be a box inside
+ * a box. A gap list gets no group border, ever. The dashboard's "Needs you" and "Ready · unseen"
+ * sections used to be a gap list of `Card`s too; that changed 2026-09-14 (agent-list.tsx) — their
+ * rows are flat now, so they use this wrapper the same as every workspace group.
  */
 function ListGroup({
   className,

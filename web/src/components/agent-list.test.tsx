@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AgentList } from "./agent-list";
@@ -48,6 +48,16 @@ describe("AgentList — two axes, urgency then workspace", () => {
       expect.stringContaining("ready · unseen"),
       "collie-workspace",
     ]);
+  });
+
+  it("marks only the Ready·unseen row with the unread dot", () => {
+    render(<AgentList agents={herd} onOpen={vi.fn()} />);
+    const unseenRow = screen.getByRole("button", { name: /unseen/ });
+    expect(within(unseenRow).getByRole("img", { name: /unseen/i })).toBeInTheDocument();
+    // The blocked ("Needs you") row is just as urgent, but it isn't a finished pane, so it never
+    // gets the dot — the marker means "finished while you weren't looking", not "urgent".
+    const blockedRow = screen.getByRole("button", { name: /blocked/ });
+    expect(within(blockedRow).queryByRole("img", { name: /unseen/i })).not.toBeInTheDocument();
   });
 
   it("has no Working and no Recent heading left to fold or to sort", () => {

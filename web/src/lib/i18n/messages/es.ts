@@ -395,6 +395,7 @@ export const es: Dictionary = {
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Ver acciones del panel",
   "home.row.tabPosition": "pestaña {n}",
+  "home.row.unseen": "sin ver",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "Requiere atención",

@@ -389,6 +389,7 @@ export const ko: Dictionary = {
   "home.sidebar.shells": "셸",
   "home.sidebar.paneActionsTitle": "창 작업 보기",
   "home.row.tabPosition": "탭 {n}",
+  "home.row.unseen": "읽지 않음",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "입력 대기",

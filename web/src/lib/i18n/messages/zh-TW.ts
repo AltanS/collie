@@ -374,6 +374,7 @@ export const zhTW: Dictionary = {
   "home.sidebar.shells": "終端機執行個體",
   "home.sidebar.paneActionsTitle": "查看窗格操作選項",
   "home.row.tabPosition": "分頁 {n}",
+  "home.row.unseen": "未讀",
 
   // --- status (triage sections, status labels, counts) ---
   "status.section.needsYou": "待處理",
