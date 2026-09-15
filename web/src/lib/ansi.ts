@@ -30,7 +30,7 @@ export interface AnsiSegment {
   /** Adapter-owned presentation hint: this foreground is unreadable on a light ground, so a
    *  native (non-inverted) light mirror must render it dark. Muse uses this for bright
    *  truecolor foregrounds, which are the one tone its raw-on-white rendering would lose
-   *  (.adr/0046). The renderer resolves it through a custom property the light theme sets,
+   *  (.adr/0047). The renderer resolves it through a custom property the light theme sets,
    *  so dark rendering keeps the emitted colour untouched. */
   lightDarkFg?: true;
 }

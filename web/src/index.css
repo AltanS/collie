@@ -19,7 +19,7 @@
   }
 }
 
-/* Native-mirror bright foregrounds (Muse, .adr/0046). A marked span keeps its emitted colour as
+/* Native-mirror bright foregrounds (Muse, .adr/0047). A marked span keeps its emitted colour as
    the var() fallback and reads --terminal-light-dark-fg only when the app is light: pinned
    light, or System following an OS in light. Dark (pinned or System) defines nothing, so the
    emitted colour stands untouched. The value is --foreground's light half, written literally to
@@ -35,7 +35,7 @@
   }
 }
 
-/* Native-mirror muted chrome (Muse, .adr/0046). Same mechanism as above: muted spans keep the
+/* Native-mirror muted chrome (Muse, .adr/0047). Same mechanism as above: muted spans keep the
    dark-space grey as their var() fallback and read --terminal-muted-fg only in a light native
    mirror. The value is --muted-foreground's light half, written literally (#5d5d5d is oklch(0.48);
    use-theme.ts re-measures if it moves) — ~6:1 on the page ground, the parity of what inversion

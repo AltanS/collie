@@ -67,7 +67,7 @@ describe("terminal mirror colour space", () => {
   });
 });
 
-// Native mirrors (Muse, .adr/0046) skip the light-theme inversion: their mid-tone palette reads
+// Native mirrors (Muse, .adr/0047) skip the light-theme inversion: their mid-tone palette reads
 // raw on either ground, while inversion drops body text to ~2:1 on white. The <pre> carries the
 // page ground in light and dark-space halves under `dark:`, and only bright foregrounds —
 // unreadable on white — resolve dark through a light-gated custom property.

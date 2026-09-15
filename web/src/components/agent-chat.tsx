@@ -1837,7 +1837,7 @@ export function AgentChat({
                     // Native-mirror agents keep their identity with raw-terminal on: the pref
                     // bypasses block GRAMMARS, and native rendering is display faithfulness, not
                     // a grammar — muse has no adapter, so dropping the agent here would only
-                    // re-invert the pane (.adr/0046) while bypassing nothing.
+                    // re-invert the pane (.adr/0047) while bypassing nothing.
                     agent={
                       grammarsOn || rendersNativeMirror(agent?.agent) ? agent?.agent : undefined
                     }

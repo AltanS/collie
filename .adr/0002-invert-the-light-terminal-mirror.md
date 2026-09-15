@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-07-28 (revised 2026-07-29)
 - **Shipped in:** _(set at the release commit)_
-- **Amended in scope by:** [ADR 0046](./0046-muse-panes-render-natively.md) — Muse panes are the
+- **Amended in scope by:** [ADR 0047](./0047-muse-panes-render-natively.md) — Muse panes are the
   per-agent exception 0002 reserves: they render natively instead of inverting.
 - **Trail:** every figure is measured. Colour-form counts come from live panes read through the
   production path (`pane.read` → `/api/pane/:id`); contrast is rasterized through a canvas to

@@ -16,7 +16,7 @@ import { decorateMuseDisplay, rendersNativeMirror } from "./muse/display";
  *
  * Muse's display pass runs here, gated by the shared native-mirror predicate rather than the
  * registry: it is presentation-only (bright-foreground marks for the native light mirror,
- * .adr/0046), and registering an adapter would also flip the reply path off one-shot sends — a
+ * .adr/0047), and registering an adapter would also flip the reply path off one-shot sends — a
  * behavioural change a display fix must not smuggle in. Dialog blocks are never decorated: only
  * raw blocks reach the mirror.
  */

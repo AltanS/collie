@@ -1,6 +1,6 @@
 import type { StyledLine } from "../../blocks";
 
-/** Agents whose panes render natively — no light-theme inversion (.adr/0046). This is the "one
+/** Agents whose panes render natively — no light-theme inversion (.adr/0047). This is the "one
  *  bit" ADR 0002 reserves for per-harness knowledge, and the single spelling of it: the block
  *  pipeline, the mirror ground, and the raw-terminal escape hatch all consume this predicate,
  *  so a second agent joins by adding one row here. Exact strings, like the registry. */
@@ -60,7 +60,7 @@ function isBrightFg(fg: string): boolean {
 
 /** Presentation-only pass over Muse's raw lines: mark bright foregrounds the native light mirror
  *  must render dark. Everything else — dark and mid-tone spans, bare spans, explicit fg+bg pairs —
- *  renders raw on the light ground, exactly as a light terminal shows the same bytes (.adr/0046).
+ *  renders raw on the light ground, exactly as a light terminal shows the same bytes (.adr/0047).
  *  Not one byte of visible text changes. The input array is returned as-is when nothing matched,
  *  so a screen without a bright foreground stays identical, object for object.
  *

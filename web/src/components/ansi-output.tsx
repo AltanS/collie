@@ -501,7 +501,7 @@ export const AnsiOutput = memo(function AnsiOutput({
             // See .adr/0002 — "cancel the filter only on an element that fully specifies both its
             // foreground and its background".
             //
-            // Native mirrors (Muse, .adr/0046) invert nothing, so the current match takes its
+            // Native mirrors (Muse, .adr/0047) invert nothing, so the current match takes its
             // fully-specified yellow as-is: re-applying the filter there would blue-shift it in
             // light and no-op in dark. Correct in both themes without a theme branch.
             isCurrent

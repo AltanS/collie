@@ -68,7 +68,7 @@ export function segmentClassName(s: AnsiSegment): string | undefined {
 
 /** Honor the adapter-owned hints: `mobileTransparentBg` keeps its fill in a custom property
  *  so phone CSS can drop it, and `lightDarkFg` keeps its colour behind a var() the light theme
- *  overrides (.adr/0046). */
+ *  overrides (.adr/0047). */
 export function segmentStyle(s: AnsiSegment): CSSProperties {
   let style = styleFor(s);
   if (s.mobileTransparentBg) {

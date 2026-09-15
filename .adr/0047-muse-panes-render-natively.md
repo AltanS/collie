@@ -1,4 +1,4 @@
-# 0046 — Muse panes render natively: no light-theme inversion
+# 0047 — Muse panes render natively: no light-theme inversion
 
 - **Status:** Accepted (2026-09-14)
 - **Date:** 2026-09-14
@@ -7,8 +7,8 @@
   light" with the per-agent exception 0002 reserves ("one bit is all the mirror needs").
 - **Trail:** every figure is WCAG relative luminance against the `#f5f5f5` light ground,
   computed from live PTY captures of `muse` 1.2.1 (issue #220). Palette values below are
-  observed, all three background answers plus the no-answer fallback Herdr panes carry
-  (Herdr answers neither OSC 10 nor OSC 11 — HERDR_API.md, live-probed 2026-07-29).
+  observed, all three background answers — including the no-answer fallback an older Herdr
+  leaves, since 0.9.0 answers OSC 10/11 from its theme (Context, below).
 
 ## Context
 
