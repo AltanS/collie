@@ -67,7 +67,10 @@ therefore accepts **`idle` or `done`**, still gated by `activeAt > seenAt` and e
 The ownership decision is unchanged: Collie's ledger supplies the read receipt, first sightings
 remain seen, and opening the pane in Herdr does not clear its Collie alert. When an observed agent
 exits to a shell, `bridge/activity-tracking.ts` forgets its activity before reseeding that shell;
-a new idle agent in the same terminal must not inherit unread work from the previous one.
+a new idle agent in the same terminal must not inherit unread work from the previous one. For a
+settled pane only a turn that ends counts as new activity (`working` or `blocked` → `idle` or
+`done`), so Herdr's own acknowledgement (`done` → `idle`) and detection flicker (`unknown` → `idle`)
+leave `activeAt` where it was.
 
 ### What would justify revisiting
 
