@@ -52,8 +52,19 @@ describe("isUnseen", () => {
     expect(isUnseen(agent("p", "done", { active: 100, seen: 100 }))).toBe(false);
   });
 
-  it("only ever applies to done agents", () => {
-    for (const s of ["working", "idle", "blocked", "unknown"] satisfies AgentStatus[]) {
+  it("recognises an idle completion from Herdr 0.9 without guessing on first sight", () => {
+    expect(isUnseen(agent("p", "idle", { active: 200, seen: 100 }))).toBe(true);
+    expect(isUnseen(agent("p", "idle", { active: 200, seen: 200 }))).toBe(false);
+    expect(isUnseen(agent("p", "idle", { active: 200, seen: 300 }))).toBe(false);
+    expect(isUnseen(agent("p", "idle"))).toBe(false);
+  });
+
+  it("never marks a bare shell as an unread completion", () => {
+    expect(isUnseen({ ...agent("p", "idle", { active: 200, seen: 100 }), kind: "shell" })).toBe(false);
+  });
+
+  it("only ever applies to settled agents", () => {
+    for (const s of ["working", "blocked", "unknown"] satisfies AgentStatus[]) {
       expect(isUnseen(agent("p", s, { active: 200, seen: 100 }))).toBe(false);
     }
   });
@@ -71,6 +82,7 @@ describe("triage — bucketing", () => {
       agent("working", "working", { active: 300, seen: 100 }),
       agent("seen-done", "done", { active: 100, seen: 400 }),
       agent("idle", "idle", { active: 100, seen: 200 }),
+      agent("unseen-idle", "idle", { active: 300, seen: 200 }),
       agent("unknown", "unknown", { active: 100, seen: 200 }),
     ]);
 
@@ -79,6 +91,7 @@ describe("triage — bucketing", () => {
     expect(sectionOf(s, "working")).toBe("working");
     expect(sectionOf(s, "seen-done")).toBe("recent");
     expect(sectionOf(s, "idle")).toBe("recent");
+    expect(sectionOf(s, "unseen-idle")).toBe("ready");
     expect(sectionOf(s, "unknown")).toBe("recent");
   });
 

@@ -8,6 +8,7 @@ import { realLinkFs } from "../cli/link.ts";
 import { packageCommand } from "../cli/package-command.ts";
 import { realExec, realFiles } from "../cli/sys.ts";
 import { ActivityLedger } from "./activity.ts";
+import { trackActivity } from "./activity-tracking.ts";
 import { CacheTracker } from "./cache/tracker.ts";
 import { CacheWarden } from "./cache/warden.ts";
 import { CacheWatchStore } from "./cache/watch.ts";
@@ -1017,10 +1018,7 @@ const makeSession: SessionFactory = (name, socketPath, isPrimary) => {
   // read as unseen); every successful poll reconciles the ledger against the panes that exist, which
   // seeds first sightings as already-seen and reaps closed ones. Reconciling covers bare shells too,
   // which the engine's agent-derived removal event never reports.
-  engine.onTransition((agent) => activity.noteActive(name, agent.paneId));
-  engine.onUpdate((s) =>
-    activity.reconcile(name, [...s.agents, ...s.shellPanes].map((p) => p.paneId)),
-  );
+  trackActivity(engine, activity, name);
 
   // The prompt-cache probe rides the same poll, and for the reason the tracker's header gives:
   // `localSnapshot` is synchronous, so the disk read cannot happen at serialise time. It is fired and

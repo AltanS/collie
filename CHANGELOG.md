@@ -42,6 +42,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Fixed
 
+- **A finished agent that Herdr reports as `idle` reaches Ready · unseen again.** Herdr 0.9 says `idle` on its API for an agent whose turn ended, and only its own client turns that into `done`, so a completion could sit in Recent with no mark. Collie now counts a settled pane, `idle` or `done`, as unseen when its last turn ended after you last opened it, shells excluded. Only a turn that ends counts as new work, so Herdr's own acknowledgement and detection flicker do not re-mark a pane you have read, and an agent that exits takes its unread history with it. Thanks @magoz (#222).
 - **Muse panes render natively in light mode.** The mirror no longer inverts Muse's mid-tone palette into a 2:1 grey-on-white; the pane sits on the page ground with only bright foregrounds resolved dark, and dark rendering is unchanged. Thanks @jpcarranza94 (#220, ADR 0047).
 
 ## [1.9.0] - 2026-09-14

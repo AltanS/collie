@@ -60,6 +60,18 @@ describe("AgentList — two axes, urgency then workspace", () => {
     expect(within(blockedRow).queryByRole("img", { name: /unseen/i })).not.toBeInTheDocument();
   });
 
+  it("pulls an unread idle completion out of its workspace until it is seen", () => {
+    const finished = agent("finished", "idle", { lastActiveAt: 200, lastSeenAt: 100, ...UI_WORK });
+    const { rerender } = render(<AgentList agents={[finished]} onOpen={vi.fn()} />);
+    expect(headings()).toEqual([expect.stringContaining("ready · unseen")]);
+    expect(screen.getAllByRole("button")).toHaveLength(1);
+    expect(screen.getByRole("img", { name: "unseen" })).toBeInTheDocument();
+
+    rerender(<AgentList agents={[{ ...finished, lastSeenAt: 300 }]} onOpen={vi.fn()} />);
+    expect(headings()).toEqual(["collie-workspace"]);
+    expect(screen.queryByRole("img", { name: "unseen" })).not.toBeInTheDocument();
+  });
+
   it("has no Working and no Recent heading left to fold or to sort", () => {
     render(<AgentList agents={herd} onOpen={vi.fn()} />);
     expect(screen.queryByRole("heading", { name: /^working$/i })).not.toBeInTheDocument();
