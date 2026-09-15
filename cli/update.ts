@@ -1847,6 +1847,11 @@ async function updateStagedCheckout(
     if (stagedCurrent(deps, layout)?.complete === true) {
       deps.io.out(`already current — ${dir} is staged and \`current\` points at it.`);
       announceMajor(deps, higher);
+      // The window opened at `beginStaging`, and this is the one exit inside it that is not a
+      // failure — so `withStagingRecord` does not close it. Left open, the record says `staging`
+      // under a pid that has exited, and the phone reads that as "interrupted" about an install
+      // that is exactly what it should be.
+      abandonStaging(deps, ALREADY_STAGED);
       return EXIT.OK;
     }
     deps.io.err(`error: ${dir} is what \`current\` points at, and it is incomplete — re-staging it`);
@@ -2108,11 +2113,11 @@ async function withStagingRecord(deps: UpdateDeps, arm: () => Promise<number>): 
 }
 
 /** Return this process's own `staging` record to `idle`. Another process's record is never touched. */
-function abandonStaging(deps: UpdateDeps): void {
+function abandonStaging(deps: UpdateDeps, reason: string = STAGING_GAVE_UP): void {
   try {
     const run = currentRun(deps);
     if (run === null || run.state !== "staging" || run.pid !== deps.pid) return;
-    writeRun(deps.files, deps.ctx.stateDir, reduce(run, { kind: "abort", reason: STAGING_GAVE_UP }, deps.now()));
+    writeRun(deps.files, deps.ctx.stateDir, reduce(run, { kind: "abort", reason }, deps.now()));
   } catch {
     /* see `beginStaging`: nothing about the record may fail an update, and this one has failed already */
   }
@@ -2120,6 +2125,8 @@ function abandonStaging(deps: UpdateDeps): void {
 
 /** What an aborted staging record says. The terminal above it has already said which step and why. */
 const STAGING_GAVE_UP = "staging stopped before the new version was laid down";
+/** The abort reason when the target was already `current`: nothing was staged because nothing needed to be. */
+const ALREADY_STAGED = "already current — the target was staged and live before this run began";
 
 /**
  * THE STAGING WINDOW, REPORTING ITSELF (M20/10).
