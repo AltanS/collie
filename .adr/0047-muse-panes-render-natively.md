@@ -8,7 +8,9 @@
 - **Trail:** every figure is WCAG relative luminance against the `#f5f5f5` light ground,
   computed from live PTY captures of `muse` 1.2.1 (issue #220). Palette values below are
   observed, all three background answers — including the no-answer fallback an older Herdr
-  leaves, since 0.9.0 answers OSC 10/11 from its theme (Context, below).
+  leaves, since 0.9.0 answers OSC 10/11 from its theme (Context, below). The 2026-09-15
+  amendment moves the native ground to the probed reference (`#fffbf8`) and re-states its
+  figures there.
 
 ## Context
 
@@ -131,3 +133,15 @@ row (exact-2-space styled lead, trailing background-less whitespace), so hard br
 read exactly like soft wraps. Fills (prompt, diff) keep their padding — only
 background-less spans go — and wider or bare leads stay byte-faithful. Gated to Muse
 panes like the marks: other agents' grammars may depend on exact row text.
+
+## Amendment (2026-09-15) — ground matches the probed reference
+
+Herdr 0.9.0's light background, probed live via OSC 11 on a scratch pane
+(`rgb:ffff/fbfb/f8f8`), is `#fffbf8` — 10 steps above the page ground first chosen.
+Page ground compressed Muse's authored fills past visibility (the 236 prompt fill at
+1.08:1, measured; the prompt block melted into the page on the phone). The native
+light ground is now the probed reference, so every tone renders at authored contrast —
+pixel-identical to the agent's own screen. Revised native figures: body 11.0,
+secondary 4.2, hints 2.1, near-white mark 19.2, muted 6.4, prompt-fill edge 1.15. The
+whisper seam against the page is deliberate (fidelity beats seamlessness); dark is
+untouched.
