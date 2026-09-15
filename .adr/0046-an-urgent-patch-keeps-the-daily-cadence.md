@@ -109,10 +109,14 @@ the delta puts the whole delta on the DAILY digest window. The version is untouc
   what a new record argues with, and this one is reopened rather than amended.
 - **A marker that has to reach an install that is not updating.** The sidecar is read by the update
   check. A fact that must arrive without one is a different transport and a different decision.
+
+### Declined (2026-09-15)
+
 - **Marking a release urgent after the fact.** The sidecar is written once, at the tag, and a
-  published release's document never changes. A fault found in a release a week later would need a
-  mutable advisory document, read on its own schedule, which is a second record with a second set of
-  failure modes. That is a new decision, not an amendment to this one.
-- **A translated category word.** The label is translated; the reason is the release's own English,
-  quoted. If an operator population ever needs the reason itself in their language, translation of a
-  sentence written minutes before a tag is the problem to argue, and it reopens this record.
+  published release's document never changes. A fault found in a release a week later does not need
+  a mutable advisory document read on its own schedule, which would be a second record with a second
+  set of failure modes. The cheap answer is an empty re-cut patch that carries the `**Urgent.**` line,
+  and that is the answer.
+- **A translated category word next to the reason.** The label is translated; the reason is the
+  release's own English sentence, quoted. That sentence is the source of truth, exactly as every
+  other Collie string is, and it is not translated.
