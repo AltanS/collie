@@ -1705,6 +1705,25 @@ describe("the staged checkout path", () => {
     expect(h.link.ops).toEqual([]);
   });
 
+  test("an update that finds its target already staged closes the record it opened", async () => {
+    // The `current` branch above is decided from the manifest of the version we are RUNNING. This
+    // one is reached when that manifest reads behind while `current` already points at the target —
+    // an operator running the old binary by hand right after the phone's update flipped `current`
+    // (2026-09-16, a 1.9.0 `bin/collie update` beside a live 1.9.1). `beginStaging` has already
+    // written `staging` by then, the branch returns EXIT.OK, and `withStagingRecord` only aborts
+    // on failure — so the record sat at `staging` with a pid that had exited, and the phone read
+    // "interrupted" about an install that was fine.
+    const h = stagedHarness({ answers: [[`git -C ${WT("v1.0.0")} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }]] });
+    h.files.write(`${WT("v1.0.0")}/herdr-plugin.toml`, `id = "herdr.collie"\nversion = "0.32.0"\n`);
+    expect(await cmdUpdate(h.deps, ["--major"])).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain("already current — v1.0.0 is staged");
+    const run = parseUpdateRun(h.files.read(RUN_FILE));
+    // `idle` with a reason, never `staging`: nothing is coming later to close it.
+    expect(run?.state).toBe("idle");
+    expect(run?.reason).toContain("already");
+    expect(h.exec.calls.join("\n")).not.toContain("worktree add");
+  });
+
   test("retention keeps `current` plus the two newest previous versions", () => {
     const h = stagedHarness({
       versions: { "v0.7.0": "0.7.0", "v0.8.0": "0.8.0", "v0.9.0": "0.9.0", "v1.0.0": "1.0.0" },
