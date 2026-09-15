@@ -7,21 +7,22 @@
 
 import type { Block, StyledLine } from "../blocks";
 import { adapterFor, hasBlockGrammar } from "./registry";
-import { decorateMuseDisplay } from "./muse/display";
+import { decorateMuseDisplay, rendersNativeMirror } from "./muse/display";
 
 /**
  * Group lines into semantic blocks by routing through the agent's adapter. With no `ctx` (or an agent
  * that has no adapter) this is the trivial single-raw-block wrap it always was — conservative gating
  * lives entirely in the registry, so a non-adapter pane is never mis-parsed.
  *
- * Muse's display pass runs here, gated on the exact agent string rather than the registry: it is
- * presentation-only (bright-foreground marks for the native light mirror, .adr/0046), and registering
- * an adapter would also flip the reply path off one-shot sends — a behavioural change a display fix
- * must not smuggle in. Dialog blocks are never decorated: only raw blocks reach the mirror.
+ * Muse's display pass runs here, gated by the shared native-mirror predicate rather than the
+ * registry: it is presentation-only (bright-foreground marks for the native light mirror,
+ * .adr/0046), and registering an adapter would also flip the reply path off one-shot sends — a
+ * behavioural change a display fix must not smuggle in. Dialog blocks are never decorated: only
+ * raw blocks reach the mirror.
  */
 export function buildBlocks(lines: StyledLine[], ctx?: { agent?: string }): Block[] {
   const blocks = adapterFor(ctx?.agent)?.buildBlocks(lines) ?? [{ kind: "raw", lines }];
-  if (ctx?.agent !== "muse") return blocks;
+  if (!rendersNativeMirror(ctx?.agent)) return blocks;
   let changed = false;
   const decorated = blocks.map((block) => {
     if (block.kind !== "raw") return block;
@@ -34,4 +35,5 @@ export function buildBlocks(lines: StyledLine[], ctx?: { agent?: string }): Bloc
 }
 
 export { adapterFor, hasBlockGrammar };
+export { rendersNativeMirror } from "./muse/display";
 export type { HarnessAdapter } from "./types";

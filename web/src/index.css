@@ -35,6 +35,21 @@
   }
 }
 
+/* Native-mirror muted chrome (Muse, .adr/0046). Same mechanism as above: muted spans keep the
+   dark-space grey as their var() fallback and read --terminal-muted-fg only in a light native
+   mirror. The value is --muted-foreground's light half, written literally (#5d5d5d is oklch(0.48);
+   use-theme.ts re-measures if it moves) — ~6:1 on the page ground, the parity of what inversion
+   gives the same spans elsewhere. */
+:root.light pre.terminal-muse .terminal-muted {
+  --terminal-muted-fg: #5d5d5d;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) pre.terminal-muse .terminal-muted {
+    --terminal-muted-fg: #5d5d5d;
+  }
+}
+
 /* `dark:` must fire for BOTH an explicitly-pinned dark root and a system-dark root the user hasn't
    pinned to light — otherwise the handful of literal `dark:` utilities silently stop working for
    everyone on System (the default). Token-driven colors don't need this; these are the literals. */

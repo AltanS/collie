@@ -38,7 +38,7 @@ import { MIRROR_SPACE, MIRROR_INVERT, segmentStyle } from "@/components/mirror-s
 import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
-import { adapterFor } from "@/lib/harness";
+import { adapterFor, rendersNativeMirror } from "@/lib/harness";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
@@ -1834,7 +1834,13 @@ export function AgentChat({
                     query={findOpen ? findQuery : ""}
                     currentMatch={findOpen ? currentMatch : -1}
                     onMatchCount={findOpen ? handleMatchCount : undefined}
-                    agent={grammarsOn ? agent?.agent : undefined}
+                    // Native-mirror agents keep their identity with raw-terminal on: the pref
+                    // bypasses block GRAMMARS, and native rendering is display faithfulness, not
+                    // a grammar — muse has no adapter, so dropping the agent here would only
+                    // re-invert the pane (.adr/0046) while bypassing nothing.
+                    agent={
+                      grammarsOn || rendersNativeMirror(agent?.agent) ? agent?.agent : undefined
+                    }
                     onPromptAction={handlePromptAction}
                     onWizardAction={handleWizardAction}
                     onPreviewAction={handlePreviewAction}

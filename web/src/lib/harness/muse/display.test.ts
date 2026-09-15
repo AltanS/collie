@@ -1,8 +1,10 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { lineText, splitLines, type StyledLine } from "../../blocks";
-import { decorateMuseDisplay } from "./display";
+import { BRIGHT_FG_LUMINANCE, decorateMuseDisplay, luminance } from "./display";
 
 const ESC = String.fromCharCode(27);
 
@@ -79,5 +81,52 @@ describe("decorateMuseDisplay", () => {
   it("returns the same array when a screen carries no bright foreground", () => {
     const lines = linesOf([fg(FALLBACK_BODY, "body"), fg(ACCENT_ORANGE, "link"), "bare"].join("\n"));
     expect(decorateMuseDisplay(lines)).toBe(lines);
+  });
+
+  it("marks bright 256-colour ramp entries, which the parser emits as rgb()", () => {
+    const ansi = `${ESC}[38;5;231mnear white${ESC}[0m`;
+    expect(marked(decorateMuseDisplay(linesOf(ansi)))).toHaveLength(1);
+  });
+
+  it.each([
+    ["bright white 97m", "97"],
+    ["white 37m", "37"],
+    ["bright yellow 93m", "93"],
+    ["yellow 33m", "33"],
+    ["38;5;15", "38;5;15"],
+  ])("marks indexed %s: its dark slot value is unreadable on white", (_label, code) => {
+    const ansi = `${ESC}[${code}mbright${ESC}[0m`;
+    expect(marked(decorateMuseDisplay(linesOf(ansi)))).toHaveLength(1);
+  });
+
+  it.each([
+    ["red 31m", "31"],
+    ["bright black 90m", "90"],
+    ["bright red 91m", "91"],
+    ["38;5;1", "38;5;1"],
+  ])("leaves indexed %s alone: dark slots render raw", (_label, code) => {
+    const ansi = `${ESC}[${code}mdark${ESC}[0m`;
+    expect(marked(decorateMuseDisplay(linesOf(ansi)))).toHaveLength(0);
+  });
+
+  // The pinned slot set in display.ts names MEMBERSHIP, not values: the values live in index.css,
+  // and a retune that moved a slot across the luminance line must fail here, loudly, rather than
+  // silently whitening (or needlessly darkening) indexed spans in native mirrors.
+  it("pins the bright indexed set against the stylesheet's slot values", () => {
+    const css = readFileSync(join(import.meta.dirname, "..", "..", "..", "index.css"), "utf8");
+    const slots = [...css.matchAll(/--ansi-(\d+):\s*#([0-9a-fA-F]{3,8});/g)].map((m) => ({
+      slot: Number(m[1]),
+      hex: m[2]!.length <= 4 ? m[2]!.split("").map((c) => c + c).join("") : m[2]!,
+    }));
+    expect(slots).toHaveLength(16);
+    const bright = new Set(
+      slots
+        .filter(({ hex }) => {
+          const [r, g, b] = [0, 2, 4].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
+          return luminance(r, g, b) > BRIGHT_FG_LUMINANCE;
+        })
+        .map(({ slot }) => slot),
+    );
+    expect(bright).toEqual(new Set([3, 7, 11, 15]));
   });
 });

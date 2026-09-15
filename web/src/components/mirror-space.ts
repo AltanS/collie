@@ -33,15 +33,6 @@ import type { AnsiSegment } from "@/lib/ansi";
 export const MIRROR_SPACE = "[color-scheme:dark] bg-[#0a0a0a] text-[#fafafa]";
 export const MIRROR_INVERT = "[filter:invert(1)_hue-rotate(180deg)] dark:[filter:none]";
 
-/** Agents whose panes render natively — no light-theme inversion (.adr/0046). Muse's mid-tone
- *  palette reads raw on either ground, while inversion drops its body text to ~2:1 on white.
- *  This is the "one bit" ADR 0002 reserves for per-harness knowledge: authored-for-dark/light is
- *  not carried, only whether this pane inverts. Gated on the exact agent string, like the
- *  registry — and deliberately NOT the registry, which would also flip the reply path. */
-export function rendersNativeMirror(agent?: string): boolean {
-  return agent === "muse";
-}
-
 /** The native mirror's ground: the page colour in light (no slab — ADR 0002 rejected a dark one
  *  for the same reason), MIRROR_SPACE's halves in dark. Literals matching --background /
  *  --foreground's halves, one spelling per the convention above (#f5f5f5 is oklch(0.97), #0a0a0a
@@ -57,9 +48,22 @@ export const MUSE_MIRROR =
 /** A segment's inline style. `muted` marks decorative TUI chrome rather than an ANSI colour: drop
  *  the ANSI dim opacity so box-drawing and rule glyphs stay visible (var(--border) + dim was nearly
  *  invisible on mobile) and resolve it to #a1a1a1 — --muted-foreground's dark half, written literally
- *  to match MIRROR_SPACE, since everything on these surfaces is dark-space. */
+ *  to match MIRROR_SPACE, since everything on these surfaces is dark-space. It stays the var()
+ *  FALLBACK: only a native light mirror defines --terminal-muted-fg, so inverted mirrors keep
+ *  resolving #a1a1a1 (then inverting it, as today) and dark rendering is untouched. */
 export function styleFor(s: AnsiSegment): CSSProperties {
-  return s.muted ? { ...s.style, color: "#a1a1a1", fontWeight: 400, opacity: 1 } : s.style;
+  if (!s.muted) return s.style;
+  return { ...s.style, color: "var(--terminal-muted-fg, #a1a1a1)", fontWeight: 400, opacity: 1 };
+}
+
+/** Marker classes for the light-gated custom properties above. Plain string building, not cn():
+ *  these custom classes can never conflict, so twMerge buys nothing on this per-segment hot path. */
+export function segmentClassName(s: AnsiSegment): string | undefined {
+  let out = "";
+  if (s.mobileTransparentBg) out += "terminal-mobile-transparent-bg ";
+  if (s.lightDarkFg) out += "terminal-light-dark-fg ";
+  if (s.muted) out += "terminal-muted ";
+  return out === "" ? undefined : out.trimEnd();
 }
 
 /** Honor the adapter-owned hints: `mobileTransparentBg` keeps its fill in a custom property

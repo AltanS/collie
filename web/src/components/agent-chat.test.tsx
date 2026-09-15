@@ -586,6 +586,16 @@ describe("AgentChat — raw-terminal escape hatch", () => {
     expect(screen.getByText(/1\. Parser/)).toBeInTheDocument();
     expect(screen.getByText(/☐ Focus area/)).toBeInTheDocument();
   });
+
+  it("keeps native rendering for muse with raw terminal on — the pref bypasses grammars, not display", () => {
+    localStorage.setItem(
+      "collie:display-prefs:v4",
+      JSON.stringify({ wrap: true, fontSize: 11, rawTerminal: true }),
+    );
+    const muse = { ...fixtureAgents[0]!, agent: "muse" };
+    const { container } = renderChat({ agent: muse, agents: [muse], text: "body\n" });
+    expect(container.querySelector("pre")!.className).toContain("terminal-muse");
+  });
 });
 
 // A minimal permission dialog at the buffer tail — enough for the REAL detector (not a mock) to

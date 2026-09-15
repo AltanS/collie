@@ -1,8 +1,10 @@
 # 0046 — Muse panes render natively: no light-theme inversion
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-09-14)
 - **Date:** 2026-09-14
 - **Shipped in:** _(set at the release commit)_
+- **Amends:** [0002](0002-invert-the-light-terminal-mirror.md) — narrows "every mirror inverts in
+  light" with the per-agent exception 0002 reserves ("one bit is all the mirror needs").
 - **Trail:** every figure is WCAG relative luminance against the `#f5f5f5` light ground,
   computed from live PTY captures of `muse` 1.2.1 (issue #220). Palette values below are
   observed, all three background answers plus the no-answer fallback Herdr panes carry
@@ -50,15 +52,23 @@ untouched (dark-space halves, no filter — identical pixels to today).
 
 - The `<pre>` takes the page ground and a dark default in light
   (`bg-[#f5f5f5] text-[#0a0a0a]`, the `--background`/`--foreground` light halves, one
-  spelling per the mirror convention) and drops `MIRROR_INVERT`, gated on the exact
-  agent string. The `dark:` halves on that element are correct — it follows the root
-  theme like any uninverted surface — where 0002's NEVER rule still governs every
-  inverted mirror.
+  spelling per the mirror convention) and drops `MIRROR_INVERT`, gated by the shared
+  native-mirror predicate (`rendersNativeMirror`, one exact-strings set). The `dark:`
+  halves on that element are correct — it follows the root theme like any uninverted
+  surface — where 0002's NEVER rule still governs every inverted mirror.
 - The one tone raw rendering would lose — bright foregrounds, near-white at luminance
   0.85+ against an observed non-white ceiling of 0.44 — is marked by a display pass
   (`harness/muse/display.ts`, threshold 0.6, gamma-correct) and resolved dark through a
   custom property only the light theme defines. Dark keeps the emitted colour untouched.
   Bare spans inherit the dark default; explicit fg+bg pairs render as authored.
+  Palette-indexed spellings (`37m`, `97m`, `38;5;15`) join the same rule through the
+  pinned slot set {3, 7, 11, 15} — the slots above 0.6 as the stylesheet stands, with a
+  test re-resolving every slot from index.css so a retune fails loudly.
+- Muted chrome resolves through the same mechanism with its own property: `styleFor`
+  keeps the dark-space grey as the var() fallback, and the light theme defines
+  `--terminal-muted-fg` to `--muted-foreground`'s light half (`#5d5d5d`, oklch(0.48)).
+  Inverted mirrors never define the property, so their muted spans resolve exactly as
+  today.
 - The find highlight's current match drops its cancelling re-inversion on these panes:
   with no outer filter there is nothing to cancel, and re-applying it would blue-shift
   the yellow in light.
@@ -73,6 +83,7 @@ Same bytes, Muse pane, light theme, before → after:
 | secondary `94,97,104` | 2.4 | 5.7 |
 | hints `75,77,82` | 1.9 | 7.8 |
 | near-white (marked → `#0a0a0a`) | ~15 | 18.2 |
+| muted `#a1a1a1` (rule → `#5d5d5d`) | 5.95 | 6.0 |
 
 What it costs:
 
@@ -80,21 +91,24 @@ What it costs:
   The NEVER rule exists because `dark:` is backwards in inverted space; this surface is
   never inverted. The comment on `MUSE_MIRROR` says so, and the className tests pin both
   halves.
-- **Indexed brights are uncovered.** The mark reads `rgb()` literals only; a bright
-  `var(--ansi-7/15)` would render raw white on white. Muse emits no indexed foregrounds
-  in the observed corpus (cube/ramp `38;5` arrive as `rgb()`), so this is a documented
-  edge, not a live one.
 - **Light-palette bytes stay dark-on-dark in Collie's dark theme** — the pre-existing
   0002 limitation class (agent-on-light unreadable in dark). Out of scope: the Herdr
   path carries the dark fallback, and nobody has measured the light palette in a pane.
-- **The 0.6 threshold is pinned to observed values.** If Muse retunes past it, the
-  display tests (which pin the captured ramps) fail loudly rather than washing out
-  silently.
+- **The 0.6 threshold is pinned to observed values — and each pin names its failure.**
+  If Muse retunes a ramp past the line, the display tests fail naming the colour; if a
+  stylesheet retune moves a slot across it, the slot test fails naming the slot; if the
+  light-gated rules are deleted, the stylesheet tests fail naming the selector. Nothing
+  in this mechanism can wash out silently.
+- **An OS reporting no colour-scheme preference falls back to raw brights.** The
+  light-gated rules need `prefers-color-scheme: light` (or a pinned light root); on
+  `no-preference` the ground still follows the app's own light default while bright
+  spans keep their emitted colour. Every current phone and desktop OS reports light or
+  dark, so this is a documented corner, not a supported configuration.
 
 What would justify revisiting:
 
-- **A second agent wanting the bit** — generalise `rendersNativeMirror` into the list
-  it already is, one exact string per row, with that agent's own measurements.
+- **A second agent wanting the bit** — add one exact string to `NATIVE_MIRROR_AGENTS`,
+  with that agent's own measurements justifying it.
 - **A real Muse adapter** — if one registers, its statusline strip (which stays
   inverted) and this display pass need one decision between them; the pass applies to
   raw blocks already, so the strip is the only open half.

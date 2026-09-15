@@ -28,7 +28,7 @@ describe("buildBlocks muse display pass", () => {
     if (block!.kind === "raw") expect(block.lines).toBe(lines);
   });
 
-  it.each([["shell"], [undefined]])("leaves %s panes identical", (agent) => {
+  it.each([["shell"], ["Muse"], ["muse-code"], [undefined]])("leaves %s panes identical", (agent) => {
     const lines = linesOf(BRIGHT);
     const [block] = buildBlocks(lines, agent === undefined ? undefined : { agent });
     expect(block!.kind).toBe("raw");

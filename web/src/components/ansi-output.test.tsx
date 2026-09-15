@@ -5,7 +5,7 @@ import type { ComponentProps } from "react";
 import { AnsiOutput } from "./ansi-output";
 
 const ESC = "\x1b";
-const MUTED_RULE_COLOUR = "rgb(161, 161, 161)"; // #a1a1a1, --muted-foreground's dark half
+const MUTED_RULE_COLOUR = "var(--terminal-muted-fg, #a1a1a1)"; // dark half as the fallback
 
 // The mirror renders in DARK space under every theme, and the light theme inverts it wholesale
 // (.adr/0002). These guard the two ways that arrangement silently breaks.
@@ -88,11 +88,19 @@ describe("native mirror (muse)", () => {
   });
 
   it("keeps inverting every other agent", () => {
-    for (const agent of [undefined, "shell", "codex"]) {
+    // "Muse" and "muse-code" pin the exactness: near-miss strings must not engage (#99).
+    for (const agent of [undefined, "shell", "codex", "Muse", "muse-code"]) {
       const pre = musePre("hello", agent);
       expect(pre.className).not.toContain("terminal-muse");
       expect(pre.className).toContain("[filter:invert(1)_hue-rotate(180deg)]");
     }
+  });
+
+  it("marks muted spans for the light-gated chrome rule", () => {
+    const pre = musePre("─".repeat(12), "muse");
+    const span = [...pre.querySelectorAll("span")].find((s) => s.textContent!.includes("─"));
+    expect(span!.className).toContain("terminal-muted");
+    expect(span!.style.color).toBe(MUTED_RULE_COLOUR);
   });
 
   it("resolves bright foregrounds through the light-gated property, dark untouched", () => {

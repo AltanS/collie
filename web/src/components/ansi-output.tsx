@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
-import { buildBlocks } from "@/lib/harness";
+import { buildBlocks, rendersNativeMirror } from "@/lib/harness";
 import {
   dropLeadingLines,
   lineText,
@@ -30,7 +30,7 @@ import {
   MIRROR_SPACE,
   MIRROR_INVERT,
   MUSE_MIRROR,
-  rendersNativeMirror,
+  segmentClassName,
   segmentStyle,
 } from "@/components/mirror-space";
 import { findMatches, splitSegment, type FindMatch } from "@/lib/find";
@@ -552,16 +552,7 @@ export const AnsiOutput = memo(function AnsiOutput({
       const segStart = offset;
       offset += s.text.length;
       return (
-        <span
-          key={si}
-          style={segmentStyle(s)}
-          className={
-            cn(
-              s.mobileTransparentBg ? "terminal-mobile-transparent-bg" : null,
-              s.lightDarkFg ? "terminal-light-dark-fg" : null,
-            ) || undefined
-          }
-        >
+        <span key={si} style={segmentStyle(s)} className={segmentClassName(s)}>
           {renderSegment(s.text, segStart)}
         </span>
       );
