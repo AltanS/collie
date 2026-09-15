@@ -57,6 +57,25 @@ write it as the sentence an operator reads there. Do not touch the three version
      use Collie: a QR printed beside the pairing code, an extra column in `devices list`, a new
      flag with a safe default. The phone folds a patch-only delta into its weekly update digest
      (`DIGEST_PATCH_WINDOW_MS` in `bridge/update.ts`); the in-app band shows it at once.
+
+     **An urgent patch keeps the daily cadence.** A patch the operator must take today, data loss, a
+     security fix, a broken update path, may carry ONE line directly under the release heading in
+     `CHANGELOG.md`, above the first `###` group, in the same bold-lead style as a bullet:
+     `**Urgent.** <one sentence, present tense, why this must reach operators today.>` The release
+     job copies that line into the `collie-release.json` sidecar and onto the release page, and the
+     phone then keeps the daily digest window for that release instead of folding it into the weekly
+     patch one. **The axis stays patch**: urgency changes the delivery, never the number. Use it
+     rarely, at most one release in a quarter in normal operation, and a release that is merely good
+     is not urgent ([ADR 0046](./.adr/0046-an-urgent-patch-keeps-the-daily-cadence.md)).
+
+     **Write the sentence for the operator, not for the diff.** Name the impact, never the code path.
+     No version numbers, no links, no backticks, under 140 characters, ending in a period. The
+     release fails if the line is nearly right, so copy the shape of one of these:
+
+     - `**Urgent.** A pane closed from the phone can delete the wrong pane.`
+     - `**Urgent.** A paired device stays paired after you revoke it.`
+     - `**Urgent.** Updating from 1.9.0 leaves the service stopped.`
+
    - **MINOR** (`0.2.0 → 0.3.0`): something to learn, or worth hearing about today. A new verb,
      a new page, a new crew capability, a changed default, anything that earns its own section
      in `docs/`. The phone nudges within a day.

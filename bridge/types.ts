@@ -462,6 +462,18 @@ export interface UpdateLinkChange {
 }
 
 /**
+ * A release in the delta that asked to reach operators today (ADR 0046).
+ *
+ * `version` is the NEWEST release in the delta that carried the marker, and `reason` is that
+ * release's own sentence, written by the person who cut it and read from its `collie-release.json`.
+ * The reason is the release's English and is never translated: it is a quotation, not a label.
+ */
+export interface UpdateUrgent {
+  version: string;
+  reason: string;
+}
+
+/**
  * GET /api/snapshot `update` — whether the running plugin is behind (see bridge/update.ts). Both a
  * newer upstream RELEASE (`releaseAvailable` + `latest`) and a rebuilt-but-not-restarted bridge
  * PROCESS (`bridgeStale`) surface here; the client shows one banner, `bridgeStale` taking precedence.
@@ -544,7 +556,9 @@ export interface UpdateStatus {
    *
    * The update card lists them so the operator can see WHAT they are about to fold in, rather than
    * only the top of the pile. Versions and nothing else: the phone never fetches release notes from
-   * GitHub, so what is not already on this wire is not shown (M15/05).
+   * GitHub. The HOST reads each release's small `collie-release.json` sidecar — that is where
+   * {@link linkChange} and {@link urgent} come from — and what is not already on this wire is not
+   * shown (M15/05, ADR 0046).
    */
   newerVersions?: string[];
   /**
@@ -571,6 +585,17 @@ export interface UpdateStatus {
    * (`bridge/solo-baseline.test.ts`), and a solo instance never has a link change.
    */
   linkChange?: UpdateLinkChange | null;
+  /**
+   * The newest release in the delta that called itself urgent, and why (ADR 0046).
+   *
+   * An urgent release is an ordinary release on every axis but one: it keeps the DAILY digest
+   * cadence even when the delta is patches only. The surfaces print a short label and the sentence,
+   * so the operator reads why before they decide.
+   *
+   * OPTIONAL and ABSENT when there is nothing to say, the rule `run` and `linkChange` follow: no
+   * release in the delta carried the marker, the sidecars could not be read, or no check has run.
+   */
+  urgent?: UpdateUrgent;
 }
 
 /** GET /api/pane/:id — recent terminal output for one agent (ANSI/SGR, rendered colored). */

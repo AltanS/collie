@@ -1247,6 +1247,41 @@ describe("a running update proves it is running", () => {
 // members after. The card says so before the confirm, and says nothing at all when the reading
 // carries no link change.
 
+// ── THE URGENT LABEL (ADR 0046) ─────────────────────────────────────────────────────────────────
+//
+// A release may ask to reach operators today. The card prints the label and the release's OWN
+// sentence beside the versions, so the reason is on screen before the operator decides to tap.
+
+describe("update card — the urgent label", () => {
+  const REASON = "The cache reaper deletes live entries, take this today.";
+
+  it("prints the label and the release's own sentence", async () => {
+    const urgent = info({ urgent: { version: "1.4.0", reason: REASON } });
+    serveCheck(urgent, GREEN);
+    renderCard(urgent);
+    expect(await screen.findByText("Urgent")).toBeInTheDocument();
+    expect(screen.getByText(REASON, { exact: false })).toBeInTheDocument();
+    // The button's wording is untouched: urgency changes the delivery, never the act.
+    expect(await screen.findByRole("button", { name: "Update to 1.4.0" })).toBeInTheDocument();
+  });
+
+  it("names the version when the urgent release is not the one on offer", async () => {
+    // An urgent 1.3.9 under a quiet 1.4.0: a bare "Urgent" beside "Update to 1.4.0" would read as a
+    // claim about 1.4.0, so the label says which release asked.
+    const urgent = info({ urgent: { version: "1.3.9", reason: REASON } });
+    serveCheck(urgent, GREEN);
+    renderCard(urgent);
+    expect(await screen.findByText("Urgent since 1.3.9")).toBeInTheDocument();
+    expect(screen.queryByText("Urgent", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("says nothing when no release asked for it", async () => {
+    renderCard(info());
+    expect(await screen.findByRole("button", { name: "Update to 1.4.0" })).toBeInTheDocument();
+    expect(screen.queryByText("Urgent")).not.toBeInTheDocument();
+  });
+});
+
 describe("update card — the crew link sentence", () => {
   const LINE = "Changes the crew link. Update the lead first, members follow.";
 

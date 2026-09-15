@@ -10,6 +10,7 @@ import {
   REASON_BUDGET,
   linkChangeBandNote,
   linkChangeNote,
+  urgentBandNote,
   managerOf,
   ribbonText,
   CREW_PATIENCE_MS,
@@ -462,6 +463,42 @@ describe("legs come from the live status, not from a record the caller was holdi
 // The bridge decides whether there is one. The band's job is to print it after the offer, and to
 // print nothing at all when the field is absent — which is a solo install, an ordinary release and
 // every release published before the asset existed.
+
+// ── THE URGENT LABEL (ADR 0046) ─────────────────────────────────────────────────────────────────
+//
+// A release may ask to reach operators today. The band says THAT it did; the card says why, because
+// the reason is the release's own prose and the row is forty characters.
+
+describe("the urgent label", () => {
+  const URGENT = { version: "1.5.0", reason: "The cache reaper deletes live entries." };
+
+  it("appends the label to the offer, and never the reason", () => {
+    const view = read({ update: info({ urgent: URGENT }) });
+    expect(ribbonText(view, null, URGENT)).toBe("Collie 1.5.0 available. Urgent.");
+    expect(ribbonText(view, null, URGENT)).not.toContain("cache reaper");
+  });
+
+  it("goes before the crew link note when a release carries both", () => {
+    const view = read({ update: info({ urgent: URGENT, linkChange: { from: 1, to: 2 } }) });
+    expect(ribbonText(view, { from: 1, to: 2 }, URGENT)).toBe(
+      "Collie 1.5.0 available. Urgent. Changes the crew link.",
+    );
+  });
+
+  it("is absent when no release asked for it", () => {
+    const view = read();
+    expect(ribbonText(view)).toBe("Collie 1.5.0 available.");
+    expect(ribbonText(view, null, null)).not.toContain("Urgent");
+    expect(urgentBandNote(null)).toBeNull();
+    expect(urgentBandNote(undefined)).toBeNull();
+  });
+
+  it("says nothing on a state that is not an offer — a bundle row is a different subject", () => {
+    const bundle = read({ update: info({ urgent: URGENT }), bundleStale: true });
+    expect(bundle.kind).toBe("bundle");
+    expect(ribbonText(bundle, null, URGENT)).not.toContain("Urgent");
+  });
+});
 
 describe("the crew link sentence", () => {
   /** What the CARD and the push say. */

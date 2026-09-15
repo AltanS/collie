@@ -142,7 +142,12 @@ a newer release and a fresh window.
 **How often you are told.** Update pushes are a digest, at most one a day, and never before 09:00
 host local time. A delta that is only patch releases waits for a weekly window instead, so a patch
 train arrives as one push rather than four; a minor or a major keeps the daily cadence and carries
-the waiting patches with it. Held releases are folded, never dropped. The card always shows the
+the waiting patches with it. Held releases are folded, never dropped. A patch can also ask for the
+daily cadence: a fix you must take today is marked urgent when it is cut, and the update card then
+shows an **Urgent** label with the one sentence saying why. You are told at the release, or at the
+next 09:00 after it. One urgent release makes the whole waiting train daily, and the version is still
+an ordinary patch. An install that predates this feature keeps the weekly window for an urgent
+patch until it has updated once. The card always shows the
 current state regardless of the window. The `updates` notification preference, under Settings →
 notifications ([Web Push](voice-and-push.md#web-push-optional)), is the single off switch.
 

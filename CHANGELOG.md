@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **An urgent patch keeps the daily update cadence.** A fix operators must take today, data loss, a security hole, a broken update path, carries one `**Urgent.**` line under its changelog heading. The release publishes that line in its `collie-release.json` sidecar and on its release page, and the phone then tells you at the release or at the next 09:00 after it, instead of folding the fix into the weekly patch digest. The push opens with the release's own sentence, the update card prints it beside a short Urgent label, and the band carries the label. One urgent release makes the whole waiting train daily; the version stays an ordinary patch.
+
 ### Changed
 
 - **The actions belt stands at 40px, and the reply field's focus ring has room to breathe.** The belt under the pane read as a thin strip on the phone at the pill's own 32px; it now carries 4px above and below the pills, and the harness section's tint still runs from rule to rule. The reply field's focus ring used to land on the belt's bottom edge; the field row now keeps 4px above the field, so the ring clears the belt above and the chrome below by the same margin.

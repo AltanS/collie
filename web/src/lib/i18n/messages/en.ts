@@ -892,6 +892,16 @@ export const en = {
   //
   // Generic on purpose: it is printed off a wire-version DIFFERENCE, never off a release name, so
   // the release after the next one carries it with no string edited.
+  // THE URGENT LABEL (ADR 0046). A label and nothing more: the sentence beside it is the release's
+  // own English, read from its `collie-release.json`, so it is printed as it was written and is
+  // never translated. An urgent release keeps the DAILY digest cadence even when the delta is
+  // patches only; the label is how the operator sees that on the card.
+  "settings.updateCard.urgent": "Urgent",
+  // THE SAME LABEL WHEN THE URGENT RELEASE IS NOT THE ONE ON OFFER (ADR 0046). An urgent 1.9.1 with
+  // a quiet 1.9.2 above it offers 1.9.2, and a bare "Urgent" would read as a claim about that
+  // release. Naming the version says what is true: the fix is in the pile, and taking the offer
+  // takes it.
+  "settings.updateCard.urgentSince": "Urgent since {version}",
   "settings.updateCard.linkChange": "Changes the crew link. Update the lead first, members follow.",
   "settings.updateCard.confirmAction": "Yes, update",
   "settings.updateCard.majorConfirmTitle": "Cross the major to {version}?",
@@ -986,6 +996,9 @@ export const en = {
   // THE BAND'S OWN CUT OF IT. One truncating row is about forty characters wide, which the whole
   // sentence is not, so the band states WHAT changes and the tap lands on the card, where the rest
   // of it sits above the confirm. Held to the budget like every other band string.
+  // THE BAND'S HALF OF IT (ADR 0046). The label alone, because the release's sentence is prose of
+  // unbounded length and this row is forty characters. The tap lands on the card, which prints it.
+  "updateRibbon.urgent": "Urgent.",
   "updateRibbon.linkChangeShort": "Changes the crew link.",
   "updateRibbon.available": "Collie {version} available.",
   // A packaged host cannot take the tap — its updates come from its package manager (ADR 0035) — so

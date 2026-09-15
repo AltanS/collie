@@ -7,6 +7,7 @@ import type {
   UpdatePeerLegState,
   UpdateRun,
   UpdateRunState,
+  UpdateUrgent,
 } from "./types";
 
 /** What a close sends: the scope it was closed in, and the version it was keyed to. */
@@ -441,17 +442,33 @@ export function linkChangeBandNote(linkChange: UpdateLinkChange | null | undefin
 }
 
 /**
+ * THE BAND'S URGENT LABEL, or null when no release in the delta asked for it (ADR 0046).
+ *
+ * The LABEL only. The release's own sentence is unbounded prose, and the band is one truncating row
+ * held to forty characters, so the row says that there is a reason and the tap lands on the Updates
+ * card, which prints the sentence whole. Same split the crew-link note takes, for the same reason.
+ */
+export function urgentBandNote(urgent: UpdateUrgent | null | undefined): string | null {
+  return urgent === null || urgent === undefined ? null : t("updateRibbon.urgent");
+}
+
+/**
  * The band's one line. Separate from the component so the phrasing is testable without a DOM.
  *
- * `linkChange` adds ONE sentence, and only to the offer states: those are the two the operator
- * reads before they confirm, which is the only moment the sentence can change what they do. A run
- * already in flight is past being told.
+ * `linkChange` and `urgent` each add ONE short note, and only to the offer states: those are the two
+ * the operator reads before they confirm, which is the only moment a note can change what they do. A
+ * run already in flight is past being told. Urgent goes first, because it is the reason to read the
+ * row at all.
  */
-export function ribbonText(view: RibbonView, linkChange: UpdateLinkChange | null = null): string {
+export function ribbonText(
+  view: RibbonView,
+  linkChange: UpdateLinkChange | null = null,
+  urgent: UpdateUrgent | null = null,
+): string {
   const line = ribbonLine(view);
   if (view.kind !== "available" && view.kind !== "available-packaged") return line;
-  const note = linkChangeBandNote(linkChange);
-  return note === null ? line : `${line} ${note}`;
+  const notes = [urgentBandNote(urgent), linkChangeBandNote(linkChange)].filter((n) => n !== null);
+  return notes.length === 0 ? line : `${line} ${notes.join(" ")}`;
 }
 
 function ribbonLine(view: RibbonView): string {

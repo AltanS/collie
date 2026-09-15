@@ -47,6 +47,11 @@ const DIGEST_WINDOW_MS = 24 * 60 * 60 * 1000;
 // week. A minor or major keeps the daily cadence, because it is the kind of release worth reading
 // notes for; a patch train is not, until enough of it has piled up to be worth one interruption.
 const DIGEST_PATCH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// How many of the newest releases in the delta are asked whether they are urgent. A machine that has
+// been off for a year can be a hundred releases behind, and the check's budget is the tag list, not a
+// hundred small GETs. Ten is the newest ten: an urgent fix older than that has been superseded by
+// every release above it, and the operator is being nudged about the pile, not about that one.
+const URGENT_READING_CAP = 10;
 // The earliest HOST-LOCAL hour a digest may be pushed. A release published at 03:00 waits for morning;
 // the update banner is already showing it, so nothing is lost by not buzzing a phone at night.
 const DIGEST_EARLIEST_HOUR = 9;
@@ -294,6 +299,12 @@ export type NotifyVerdict = { send: false } | { send: true; versions: string[] }
  *     since the last push, not 24 h, so a patch train folds into a weekly digest. It is a wait, not a
  *     mute: with no push on record it goes out at once, and a minor or major arriving meanwhile carries
  *     the waiting patches with it. Releases held back this way are folded, never dropped;
+ *   • an URGENT release breaks the window once — `urgent` names a release in the delta that asked to
+ *     reach operators today (ADR 0046). While that version has NOT been announced yet, the window is
+ *     not consulted at all, so an urgent fix published after this morning's digest still goes out
+ *     this morning. The 09:00 floor still holds, so the worst case is the next 09:00 host-local after
+ *     the release. Once that version HAS been announced, the ordinary windows are back, and the
+ *     urgent marker then only keeps the delta on the daily one rather than the weekly patch one;
  *   • the payload is every version newer than what we last announced, so the operator can tell a patch
  *     train from a feature release without opening the app.
  */
@@ -304,6 +315,13 @@ export function shouldNotify(a: {
   lastNotified: string | null;
   lastPushedAt: string | null;
   now: Date;
+  /**
+   * The newest release in the delta that marked itself urgent in its own `collie-release.json`
+   * (ADR 0046), or absent when none did — which is every ordinary release and every read that
+   * failed. The RECORD, not a flag: the version is what tells a fix nobody has been told about yet
+   * from one this install already pushed, and it is the same object the snapshot shows.
+   */
+  urgent?: UpdateUrgentReading;
 }): NotifyVerdict {
   if (!a.latest) return { send: false };
   if (compareSemver(a.latest, a.current) <= 0) return { send: false };
@@ -312,11 +330,26 @@ export function shouldNotify(a: {
   const candidates = a.newerVersions.length > 0 ? [...a.newerVersions] : [a.latest];
   const patchOnly = candidates.every((v) => isPatchOnlyDelta(a.current, v));
 
+  // THE ONE CASE THAT SKIPS THE WINDOW (ADR 0046): an urgent release this install has not announced
+  // yet. A fix for data loss published at 11:00 must not wait for tomorrow because a digest went out
+  // at 09:00, and the window is the only thing that would make it wait. It is spent ONCE: after that
+  // version is announced, `lastNotified` is no longer below it and the ordinary windows are back.
+  const unannouncedUrgent =
+    a.urgent !== undefined &&
+    (a.lastNotified === null || compareSemver(a.lastNotified, a.urgent.version) < 0);
+
   const pushedAt = a.lastPushedAt === null ? Number.NaN : Date.parse(a.lastPushedAt);
   // An unreadable stamp reads as "no push yet" — the same fail-open a legacy record gets, and the one
   // that lets a first-ever patch digest go out instead of waiting a week for a push that never was.
-  const window = patchOnly ? DIGEST_PATCH_WINDOW_MS : DIGEST_WINDOW_MS;
-  if (!Number.isNaN(pushedAt) && a.now.getTime() - pushedAt < window) return { send: false };
+  // An urgent delta that has already been announced is a patch train on the DAILY window: the
+  // interruption was spent, and what is left is the ordinary cadence for the kind of release it is.
+  const window = patchOnly && a.urgent === undefined ? DIGEST_PATCH_WINDOW_MS : DIGEST_WINDOW_MS;
+  if (!unannouncedUrgent && !Number.isNaN(pushedAt) && a.now.getTime() - pushedAt < window) {
+    return { send: false };
+  }
+  // THE FLOOR IS NEVER SKIPPED, not even by an urgent release. "Today" is what urgent asks for, not
+  // "now", and a phone buzzing at 03:00 about a fix nobody can take until morning is the trade this
+  // whole mechanism exists to avoid making.
   if (a.now.getHours() < DIGEST_EARLIEST_HOUR) return { send: false };
 
   const announced = a.lastNotified;
@@ -330,18 +363,25 @@ export function shouldNotify(a: {
  *
  *  A release that moves the CREW WIRE adds one sentence (M27/06), and adds it here rather than in
  *  the sender, so the push says what the band and the card say. Without a link change the body is
- *  byte-identical to what it always was. */
+ *  byte-identical to what it always was.
+ *
+ *  An URGENT release puts its own sentence FIRST (ADR 0046), because that sentence is why the phone
+ *  buzzed at all. It is the release's own English, quoted, never translated — the push has no locale
+ *  to read, which is the same reason {@link LINK_CHANGE_SENTENCE} is written here. The TITLE does not
+ *  move: the notification is still "Collie update available", and the urgency is in what it says. */
 export function updateDigestBody(
   current: string,
   versions: readonly string[],
   linkChange: UpdateLinkChange | null = null,
+  urgent: UpdateUrgentReading | null = null,
 ): string {
   const first = versions[0];
   const body =
     versions.length <= 1
       ? `Collie ${first ?? current} is available`
       : `${versions.length} updates since ${current}: ${versions.join(", ")}`;
-  return linkChange === null ? body : `${body}. ${LINK_CHANGE_SENTENCE}`;
+  const withLink = linkChange === null ? body : `${body}. ${LINK_CHANGE_SENTENCE}`;
+  return urgent === null ? withLink : `${urgent.reason} ${withLink}`;
 }
 
 /** A stable, comparable stamp of source files by (path, mtime, size). Order-independent. Equality is
@@ -452,6 +492,21 @@ export interface ReleaseReading {
   version: string;
   /** The crew wire version that release speaks — see `CREW_PROTOCOL_VERSION`. */
   crewProtocol: number;
+  /**
+   * The release asked to reach operators today (ADR 0046). Present only when the person who cut it
+   * put an `**Urgent.**` line under the heading in `CHANGELOG.md`, and `reason` is that line's own
+   * sentence, in the release's English.
+   *
+   * ABSENT is the ordinary release, and absent is also what a malformed field reads as: urgency is a
+   * courtesy on the cadence, never a gate, so nothing here may turn a bad document into an error.
+   */
+  urgent?: { reason: string };
+}
+
+/** The newest urgent release in a delta, and why — the shape the snapshot carries. */
+export interface UpdateUrgentReading {
+  version: string;
+  reason: string;
 }
 
 /** Where the asset sits. Constructed from (repo, version), never taken from a document, for the
@@ -468,23 +523,66 @@ export function parseReleaseReading(data: JsonValue): ReleaseReading | null {
   const { version, crewProtocol } = data;
   if (typeof version !== "string" || version === "") return null;
   if (typeof crewProtocol !== "number" || !Number.isInteger(crewProtocol)) return null;
-  return { version, crewProtocol };
+  const reading: ReleaseReading = { version, crewProtocol };
+  // The urgent marker is read LAST and can only add. Anything that is not an object with a non-empty
+  // `reason` string is dropped on the floor, and the reading is still the reading — a release that
+  // wrote the field badly is an ordinary release, never an unreadable one.
+  const urgent = data.urgent;
+  if (urgent !== null && typeof urgent === "object" && !Array.isArray(urgent)) {
+    const reason = urgent.reason;
+    if (typeof reason === "string" && reason.trim() !== "") reading.urgent = { reason: reason.trim() };
+  }
+  return reading;
 }
+
+/** The newest release in a delta that called itself urgent, or null when none did. `readings` is one
+ *  entry per version asked about, in any order; a version with no reading simply cannot be urgent. */
+export function newestUrgent(
+  readings: readonly { version: string; reading: ReleaseReading | null }[],
+): UpdateUrgentReading | null {
+  let found: UpdateUrgentReading | null = null;
+  for (const { version, reading } of readings) {
+    const urgent = reading?.urgent;
+    if (urgent === undefined) continue;
+    if (found !== null && compareSemver(version, found.version) <= 0) continue;
+    found = { version, reason: urgent.reason };
+  }
+  return found;
+}
+
+/**
+ * What one read of a release's sidecar came back with.
+ *
+ * THREE ANSWERS, NOT TWO, and the third is the one that can be remembered: a reading, a definite
+ * ABSENCE (the release published no such asset — GitHub says 404, which is every release before
+ * 1.8.0), and a failure (a timeout, a 5xx, a body that is not the document). An absence is a fact
+ * about a published release and never changes; a failure is a fact about this minute. The monitor
+ * caches the first two for its lifetime and asks again after the third.
+ */
+export type ReleaseReadingResult = ReleaseReading | "absent" | null;
 
 /** Fetch one release's reading. Never throws and never waits long: the caller is a check whose
  *  answer is the tag list, and this is a footnote on it. */
-export function releaseReadingFetcher(repo: string): (version: string) => Promise<ReleaseReading | null> {
+export function releaseReadingFetcher(
+  repo: string,
+): (version: string) => Promise<ReleaseReadingResult> {
   return async (version) => {
     try {
       const res = await fetch(releaseReadingUrl(repo, version), {
         headers: { accept: "application/json", "user-agent": "collie-update-check" },
         signal: AbortSignal.timeout(RELEASE_READING_TIMEOUT_MS),
       });
-      if (!res.ok) return null; // 404 is the ordinary answer for every release before 1.8.0
+      // 404 is the ordinary answer for every release before 1.8.0, and it is DEFINITE: that release
+      // is published and will never grow the asset. Every other bad status is this minute's problem.
+      if (res.status === 404) return "absent";
+      if (!res.ok) return null;
       // SAFETY: `Response.json()` output IS a JsonValue by construction; the parser checks it.
-      return parseReleaseReading((await res.json()) as JsonValue);
+      const parsed = parseReleaseReading((await res.json()) as JsonValue);
+      // A body that is not the document is a FAILURE, not an absence: a proxy's error page and a
+      // truncated download both land here, and neither is a claim about the release.
+      return parsed;
     } catch {
-      return null; // timeout, DNS, unparseable body — all of it reads as "says nothing"
+      return null; // timeout, DNS, unparseable body — all of it reads as "ask again next time"
     }
   };
 }
@@ -787,8 +885,13 @@ export interface UpdateMonitorDeps {
   updatesEnabled: () => boolean;
   /** Fire the update-available push for the digest — every version folded into it, oldest first.
    *  Never empty; the last element is the newest available version. The link change rides along so
-   *  the body can name it (M27/06); null is the ordinary release. */
-  notify: (versions: string[], linkChange: UpdateLinkChange | null) => void;
+   *  the body can name it (M27/06), and so does the urgent record, whose sentence opens the body
+   *  (ADR 0046); null is the ordinary release for both. */
+  notify: (
+    versions: string[],
+    linkChange: UpdateLinkChange | null,
+    urgent: UpdateUrgentReading | null,
+  ) => void;
   /** This build's own crew wire version (`CREW_PROTOCOL_VERSION`). Injected rather than imported so
    *  the monitor resolves nothing for itself and a test can name both ends of a difference. */
   crewProtocol: number;
@@ -799,10 +902,15 @@ export interface UpdateMonitorDeps {
    */
   crewMode: () => CrewMode;
   /**
-   * Read the newest release's own `collie-release.json` (M27/06). Never throws: null is "the release
-   * says nothing", which is every release before 1.8.0 and every failed read.
+   * Read one release's own `collie-release.json` (M27/06). Never throws, and answers one of three
+   * things — see {@link ReleaseReadingResult}: the reading, `"absent"` for a release that published
+   * none (every release before 1.8.0), and null for a read that failed.
+   *
+   * Called for the newest release, and for each of the newest few in the delta when the monitor asks
+   * whether any of them is urgent (ADR 0046). The monitor remembers a reading and an absence for its
+   * lifetime, so a published release is asked about once; a failure is asked again next check.
    */
-  fetchReleaseReading: (version: string) => Promise<ReleaseReading | null>;
+  fetchReleaseReading: (version: string) => Promise<ReleaseReadingResult>;
   /**
    * The detached updater's run record, read from disk (M15/04). Injected rather than read here so
    * the monitor stays a pure poller over seams — and read PER CALL, never cached, because the file
@@ -823,6 +931,19 @@ export class UpdateMonitor {
   // CACHED WITH THE READING, never in a store of its own (M27/06): it is a fact about the release
   // the last check found, so it lives and dies with `latest`.
   private linkChange: UpdateLinkChange | null = null;
+  // THE NEWEST URGENT RELEASE IN THE DELTA, or null (ADR 0046). Cached beside `linkChange` and for
+  // the same reason: it is a fact about the releases the last check found.
+  private urgent: UpdateUrgentReading | null = null;
+  // One reading per version, for this process's lifetime. A published release's sidecar never
+  // changes, so a second read of the same version would spend a request to learn what we know. Only
+  // an ANSWER is kept: a failed or absent read stays out, so tomorrow's check asks again rather than
+  // remembering a timeout forever.
+  private readonly readings = new Map<string, ReleaseReading | "absent">();
+  // The answers of THIS check, failures included, cleared when the next one starts. The link-change
+  // read and the urgency sweep both ask about the newest release, and a failed read is not kept in
+  // the map above — without this, one check would spend two requests on one version to learn the
+  // same "could not read it" twice.
+  private checkReadings = new Map<string, ReleaseReading | null>();
   private staleAt = Number.NEGATIVE_INFINITY;
   private staleValue = false;
   private swappedAt = Number.NEGATIVE_INFINITY;
@@ -871,6 +992,8 @@ export class UpdateMonitor {
     this.majorAvailable = major === null ? null : latestReleaseAboveMajor(tags, major);
     // The whole list, not just its top: a digest has to be able to NAME the releases it folded.
     this.newerVersions = updatesNewerThan(tags, this.deps.current);
+    // A fresh page of "what did this check learn", so a read that failed last time is tried again.
+    this.checkReadings = new Map();
     this.checkedAt = this.deps.now();
     // ONE SMALL GET INSIDE THIS CHECK'S BUDGET (M27/06), and only when there is a release to ask
     // about. It cannot fail the check: the fetcher answers null for everything that is not the
@@ -881,8 +1004,13 @@ export class UpdateMonitor {
         : linkChangeOf({
             mode: this.deps.crewMode(),
             own: this.deps.crewProtocol,
-            reading: await this.deps.fetchReleaseReading(this.latest),
+            reading: await this.reading(this.latest),
           });
+    // URGENCY IS A PROPERTY OF THE WHOLE DELTA, NOT OF ITS TOP (ADR 0046). An urgent 1.9.1 with a
+    // quiet 1.9.2 above it is still an urgent train, so every version in the delta is asked — the
+    // newest URGENT_READING_CAP of them, through the same cache, and all at once so the wait is one
+    // timeout rather than ten. It cannot fail the check: every read answers null or a reading.
+    this.urgent = await this.urgencyOf(this.newerVersions);
 
     const { current, store } = this.deps;
     // The snapshot above is already updated — suppressing a push must never suppress state.
@@ -894,10 +1022,39 @@ export class UpdateMonitor {
       lastNotified: store.lastNotified(),
       lastPushedAt: store.lastPushedAt(),
       now: new Date(this.deps.now()),
+      urgent: this.urgent ?? undefined,
     });
     if (!verdict.send) return;
     await store.setLastNotified(verdict.versions[verdict.versions.length - 1] ?? current, this.nowIso());
-    this.deps.notify(verdict.versions, this.linkChange);
+    this.deps.notify(verdict.versions, this.linkChange, this.urgent);
+  }
+
+  /**
+   * One release's `collie-release.json`, memoised. Never throws. A reading and a definite absence are
+   * both kept; a FAILED read is kept out of the map, so a network blip is never remembered as "this
+   * release says nothing" and the next check asks again.
+   */
+  private async reading(version: string): Promise<ReleaseReading | null> {
+    const held = this.readings.get(version);
+    if (held !== undefined) return held === "absent" ? null : held;
+    const thisCheck = this.checkReadings.get(version);
+    if (thisCheck !== undefined) return thisCheck;
+    const fetched = await this.deps.fetchReleaseReading(version);
+    this.checkReadings.set(version, fetched === "absent" ? null : fetched);
+    // A reading and an ABSENCE are both facts about a published release, and a published release does
+    // not change. A failure is a fact about this minute, so it is not remembered.
+    if (fetched !== null) this.readings.set(version, fetched);
+    return fetched === "absent" ? null : fetched;
+  }
+
+  /** The newest urgent release among the newest {@link URGENT_READING_CAP} of `versions`, or null. */
+  private async urgencyOf(versions: readonly string[]): Promise<UpdateUrgentReading | null> {
+    const asked = versions.slice(-URGENT_READING_CAP);
+    if (asked.length === 0) return null;
+    const readings = await Promise.all(
+      asked.map(async (version) => ({ version, reading: await this.reading(version) })),
+    );
+    return newestUrgent(readings);
   }
 
   private nowIso(): string {
@@ -1011,6 +1168,9 @@ export class UpdateMonitor {
     // The link change (M27/06), on the same rule: absent when there is nothing to say, which is
     // every solo install, every ordinary release and every check that has not run yet.
     if (this.linkChange !== null) status.linkChange = this.linkChange;
+    // The urgent marker (ADR 0046), on the same rule: absent when no release in the delta asked for
+    // the daily cadence, which is every ordinary release and every check that has not run yet.
+    if (this.urgent !== null) status.urgent = this.urgent;
     if (this.deps.packageCommand !== null) status.packageCommand = this.deps.packageCommand;
     if (status.restartNeeded) status.restartCommand = restartCommandFor(this.deps.installKind, this.deps.instance);
     return status;
