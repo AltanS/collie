@@ -9,9 +9,10 @@ import { BRIGHT_FG_LUMINANCE, decorateMuseDisplay, luminance } from "./display";
 const ESC = String.fromCharCode(27);
 
 // Palette values below are observed, not invented: captured from a live `muse` TUI under a pty
-// (issue #220). Herdr answers no OSC 10/11 query, so Herdr panes carry the no-answer fallback
-// ramp: body rgb(111,114,122), secondary rgb(94,97,104), hints rgb(75,77,82). The dark-terminal
-// and light-terminal answers are pinned too, so the decorator stays correct under any mux.
+// (issue #220), plus the live pane.read bytes. Herdr 0.9.0 answers OSC 10/11 from its theme, so
+// a light Herdr theme yields the light row and a dark one the dark row; older Herdr answered
+// neither and yields the fallback ramp. All three rows are pinned, so the decorator stays
+// correct under any theme and any mux.
 const FALLBACK_BODY = "111;114;122";
 const FALLBACK_SECONDARY = "94;97;104";
 const FALLBACK_HINT = "75;77;82";

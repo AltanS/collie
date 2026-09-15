@@ -21,20 +21,25 @@ Muse adapts its palette to the background it probes, but every answer is mid-ton
 
 | background answer | body | secondary | hints |
 | --- | --- | --- | --- |
-| none (Herdr) | `111,114,122` | `94,97,104` | `75,77,82` |
+| light (live: Herdr 0.9.0, light theme) | `56,58,66` | `121,122,128` | `175,176,180` |
 | dark | `117,120,129` | `100,103,110` | `82,84,90` |
-| light | `56,58,66` | `121,122,128` | `175,176,180` |
+| none (older Herdr) | `111,114,122` | `94,97,104` | `75,77,82` |
 
-No-answer ≈ dark, as HERDR_API.md predicts for a harness that falls back. Accents in all
-three sit beside the greys (pink `189,72,186`, orange `193,132,1`); backgrounds are
-transparent throughout.
+The live row is confirmed by pane.read, not inferred: Herdr 0.9.0 wires write_pty, so it
+answers OSC 10/11 from its theme — HERDR_API.md's "answers neither" probe (2026-07-29)
+predates the wiring and is stale at 0.9.0. A dark Herdr theme yields the dark row; only
+older Herdr yields the no-answer fallback. Accents in all three sit beside the greys
+(pink, orange); backgrounds are transparent throughout.
 
-Inversion maps the Herdr-fallback ramp to ~3.0 / ~2.4 / ~1.9 : 1 on white. The same bytes
-rendered raw — as any light terminal shows them — resolve to ~4.4 / ~5.7 / ~7.8 : 1. So
-unlike the bright truecolor 0002 measured (white at 1.07:1 raw), Muse's tones are readable
-raw and broken inverted: the inversion is not preserving this agent's contrast, it is
-spending it. Saturated accents survive either way (hue-rotate), which is why only the
-grey body text looks wrong.
+Inversion maps the live ramp to ~1.6 / ~3.4 / ~7.4 : 1 on white — note the order: the
+hints land readable while the body vanishes, an inverted hierarchy. The same bytes
+rendered raw — as any light terminal shows them — resolve to ~10.4 / ~3.9 / ~2.0 : 1,
+the authored weights (body first, hints a whisper, exactly as the desktop TUI shows).
+So unlike the bright truecolor 0002 measured (white at 1.07:1 raw), Muse's tones are
+readable raw and broken inverted: the inversion is not preserving this agent's
+contrast, it is spending it. Saturated accents survive either way (hue-rotate), which
+is why only the grey body text looks wrong. The dark rows behave the same direction:
+3.0→4.4, 2.4→5.7, 1.9→7.8.
 
 Three exits are already closed, two by 0002 itself: clamping absolute colours to a
 luminance floor ("an arbitrary mapping that misrepresents what the program emitted"),
@@ -77,11 +82,11 @@ untouched (dark-space halves, no filter — identical pixels to today).
 
 Same bytes, Muse pane, light theme, before → after:
 
-| span | inverted (now) | native (new) |
+| span (live light palette) | inverted (now) | native (new) |
 | --- | --- | --- |
-| body `111,114,122` | 3.0 | 4.4 |
-| secondary `94,97,104` | 2.4 | 5.7 |
-| hints `75,77,82` | 1.9 | 7.8 |
+| body `56,58,66` | 1.6 | 10.4 |
+| secondary `121,122,128` | 3.4 | 3.9 |
+| hints `175,176,180` | 7.4 | 2.0 — authored subtlety, MBP-identical |
 | near-white (marked → `#0a0a0a`) | ~15 | 18.2 |
 | muted `#a1a1a1` (rule → `#5d5d5d`) | 5.95 | 6.0 |
 
@@ -91,9 +96,11 @@ What it costs:
   The NEVER rule exists because `dark:` is backwards in inverted space; this surface is
   never inverted. The comment on `MUSE_MIRROR` says so, and the className tests pin both
   halves.
-- **Light-palette bytes stay dark-on-dark in Collie's dark theme** — the pre-existing
-  0002 limitation class (agent-on-light unreadable in dark). Out of scope: the Herdr
-  path carries the dark fallback, and nobody has measured the light palette in a pane.
+- **Light-palette bytes stay dim in Collie's dark theme** — the pre-existing 0002
+  limitation class (agent-on-light is dim on dark). Verified terminal-faithful in a
+  headless render: dark shows exactly what a dark terminal shows for these bytes, pixel
+  for pixel with the old path. Fixing that class (a light ground in dark mode) is out
+  of scope.
 - **The 0.6 threshold is pinned to observed values — and each pin names its failure.**
   If Muse retunes a ramp past the line, the display tests fail naming the colour; if a
   stylesheet retune moves a slot across it, the slot test fails naming the slot; if the

@@ -12,11 +12,15 @@ export function rendersNativeMirror(agent?: string): boolean {
 
 // Muse's palette, observed from live PTY captures (issue #220), per background answer:
 //
-//   no answer (Herdr: it answers neither OSC 10 nor OSC 11) — body rgb(111,114,122),
-//     secondary rgb(94,97,104), hints rgb(75,77,82)
-//   dark — body rgb(117,120,129), secondary rgb(100,103,110), hints rgb(82,84,90)
-//   light — body rgb(56,58,66), secondary rgb(121,122,128), hints rgb(175,176,180)
+//   light — body rgb(56,58,66), secondary rgb(121,122,128), hints rgb(175,176,180).
+//     This is the live row: Herdr 0.9.0 answers OSC 10/11 from its theme (write_pty is
+//     wired), so a light Herdr theme yields the light palette — confirmed by pane.read.
+//   dark — body rgb(117,120,129), secondary rgb(100,103,110), hints rgb(82,84,90).
+//   none — body rgb(111,114,122), secondary rgb(94,97,104), hints rgb(75,77,82).
+//     Older Herdr answered neither query (HERDR_API.md's 2026-07-29 probe predates the
+//     write_pty wiring); its panes carry this dark fallback instead.
 //
+
 // Every tone but near-white sits at relative luminance 0.44 or below, while near-white starts
 // at 0.85 — so a 0.6 threshold splits the observed corpus with margin on both sides. The
 // luminance is WCAG relative (gamma-correct), not a channel average: rgb(175,176,180) averages
