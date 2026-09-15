@@ -17,6 +17,7 @@ import {
 	changelogAnchor,
 	checkUnreleased,
 	parseSection,
+	parseUrgent,
 	renderBody,
 } from "./release-notes.ts";
 
@@ -255,6 +256,98 @@ HTTPS and the pinned github.com host carry that.
 		expect(body).not.toContain("**Fixed**");
 		expect(body).not.toContain("**Packaging**");
 		expect(body).not.toContain("**Docs**");
+	});
+});
+
+// ── The urgent line (ADR 0046) ──────────────────────────────────────────────────────────────────
+
+const URGENT = `# Changelog
+
+## [1.9.1] - 2026-09-20
+
+**Urgent.** The cache reaper deletes live entries, take this today.
+
+### Fixed
+
+- **The cache reaper keeps live entries.** It read the window backwards. ([abc1234](https://github.com/AltanS/collie/commit/abc1234))
+`;
+
+describe("parseUrgent", () => {
+	test("reads the line directly under the heading", () => {
+		expect(parseUrgent(URGENT, "1.9.1")).toEqual({
+			reason: "The cache reaper deletes live entries, take this today.",
+		});
+	});
+
+	test("an ordinary release says nothing", () => {
+		expect(parseUrgent(FULL, "2.1.0")).toBeNull();
+		expect(parseUrgent(SMALL, "1.0.0")).toBeNull();
+	});
+
+	test("ONLY that position counts — a line inside a group is prose", () => {
+		const inside = URGENT.replace(
+			"**Urgent.** The cache reaper deletes live entries, take this today.\n\n",
+			"",
+		).replace(
+			"### Fixed\n",
+			"### Fixed\n\n**Urgent.** This one is below the first group heading.\n",
+		);
+		expect(parseUrgent(inside, "1.9.1")).toBeNull();
+	});
+
+	// A NEAR MISS STOPS THE RELEASE. Reading one of these as prose would publish a fix on the weekly
+	// window while its author believed they had put it on the daily one.
+	test("a near miss throws instead of reading as prose", () => {
+		const withLine = (line: string) =>
+			URGENT.replace("**Urgent.** The cache reaper deletes live entries, take this today.", line);
+		for (const line of [
+			"**Urgent.**",
+			"**urgent** The cache reaper deletes live entries.",
+			"**Urgent** The cache reaper deletes live entries.",
+			"**URGENT.** The cache reaper deletes live entries.",
+			"Urgent: the cache reaper deletes live entries.",
+			"Urgent. The cache reaper deletes live entries.",
+			"** Urgent.** The cache reaper deletes live entries.",
+		]) {
+			expect(() => parseUrgent(withLine(line), "1.9.1")).toThrow(/Expected exactly/);
+		}
+	});
+
+	test("the sentence is checked, and a bad one stops the release", () => {
+		const withReason = (reason: string) =>
+			URGENT.replace("The cache reaper deletes live entries, take this today.", reason);
+		// Too long: a reason nobody finishes reading is a reason nobody acts on.
+		expect(() => parseUrgent(withReason(`${"a".repeat(140)}.`), "1.9.1")).toThrow(/141 characters/);
+		// Exactly at the limit is fine.
+		expect(parseUrgent(withReason(`${"a".repeat(139)}.`), "1.9.1")).toEqual({
+			reason: `${"a".repeat(139)}.`,
+		});
+		// No markup: neither the push body nor the card renders any.
+		expect(() => parseUrgent(withReason("Run `collie update` today."), "1.9.1")).toThrow(/backtick/);
+		expect(() => parseUrgent(withReason("See [the notes](https://x.dev) today."), "1.9.1")).toThrow(
+			/markdown link/,
+		);
+		// One sentence, and a sentence ends.
+		expect(() => parseUrgent(withReason("The cache reaper deletes live entries"), "1.9.1")).toThrow(
+			/period/,
+		);
+	});
+
+	test("the release page keeps the line as it was written, at the top of the body", () => {
+		const body = renderBody(URGENT, "1.9.1", REPO, "v1.9.1");
+		expect(body.startsWith("**Urgent.** The cache reaper deletes live entries, take this today.\n")).toBe(true);
+		expect(body.indexOf("**Urgent.**")).toBeLessThan(body.indexOf("## Update"));
+		// The rest of the page is what it always was — the line adds, it replaces nothing.
+		expect(body).toContain("## What changed");
+		expect(body).toContain("**Fixed**");
+		// An ordinary release's page does not start with it.
+		expect(renderBody(FULL, "2.1.0", REPO, "v2.1.0")).not.toContain("**Urgent.**");
+	});
+
+	test("the section still parses with the line in it", () => {
+		const section = parseSection(URGENT, "1.9.1");
+		expect(section.groups).toHaveLength(1);
+		expect(section.groups[0]?.leads).toEqual(["The cache reaper keeps live entries."]);
 	});
 });
 

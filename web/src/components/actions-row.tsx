@@ -352,23 +352,25 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
           pills, and between the last of them and the harness section's edge. The old `gap-2.5`
           override is gone with the capsules: a wider gap around a group was the separator when the
           groups were floating boxes, and the section's tint is the separator now.
-          `py-0` OVERRIDES `STRIP_SCROLLER`'s OWN `py-1.5` ON THIS SCROLLER ALONE — the operator's
+          `py-1` OVERRIDES `STRIP_SCROLLER`'s OWN `py-1.5` ON THIS SCROLLER ALONE — the operator's
           pick, "Option 6" of the belt-shade deck (playground, removed 2026-09-14 once it had served;
-          see git history): the belt now stands at the pill's own height, 32px, rather than the 44px
-          `STRIP_TAP_TARGET` answers for. The key rail keeps `STRIP_SCROLLER`'s shipped `py-1.5`
-          unmodified — it is a different scroller, not this one, and nothing here touches it.
-          `overflow-y-hidden` is the fix for a bug that `py-0` alone would reopen: `STRIP_TAP_TARGET`'s
-          `::before` still reaches its full 46px of hit box, and a 32px scroller has only its own
-          height to absorb that reach into, not the 6px `py-1.5` used to spare on each side — so the
-          `::before` overflowed the scroller's box, and `overflow-x: auto` forces `overflow-y` to
-          compute to `auto` too, which turned that overflow into a real vertical scrollbar under a
-          thumb. `STRIP_SCROLLER` keeps forcing `overflow-x-auto`; this belt alone forces the other
-          axis shut. */}
+          see git history) shrank it further, to `py-0`, the pill's own height alone, 32px; the phone
+          read that as too thin, so it came back up to `py-1`, 40px — the pill's 32px plus 4px above
+          and below, still short of the 44px `STRIP_TAP_TARGET` answers for and short of `py-1.5`'s
+          44px too. The key rail keeps `STRIP_SCROLLER`'s shipped `py-1.5` unmodified — it is a
+          different scroller, not this one, and nothing here touches it.
+          `overflow-y-hidden` is the fix for a bug that `py-0` reopened and `py-1` does not retire:
+          `STRIP_TAP_TARGET`'s `::before` still reaches its full 46px of hit box, and even a 40px
+          scroller has only 4px of padding to spare on each side, not the 6px `py-1.5` used to — so
+          the `::before` still overflows the scroller's box, and `overflow-x: auto` forces
+          `overflow-y` to compute to `auto` too, which turns that overflow into a real vertical
+          scrollbar under a thumb. `STRIP_SCROLLER` keeps forcing `overflow-x-auto`; this belt alone
+          forces the other axis shut. */}
       <OverflowEdges edges={handle ? "left" : "both"} cue="none">
         {(scrollerRef) => (
           <div
             ref={scrollerRef}
-            className={cn(STRIP_SCROLLER, "bg-primary/10 pl-3 py-0 overflow-y-hidden", !handle && "pr-3")}
+            className={cn(STRIP_SCROLLER, "bg-primary/10 pl-3 py-1 overflow-y-hidden", !handle && "pr-3")}
           >
             {general.length > 0 && (
               // The word "Controls" is `sr-only` and load-bearing: sighted it labelled a run of

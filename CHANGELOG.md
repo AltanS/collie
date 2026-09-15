@@ -30,9 +30,19 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **An urgent patch keeps the daily update cadence.** A fix operators must take today, data loss, a security hole, a broken update path, carries one `**Urgent.**` line under its changelog heading. The release publishes that line in its `collie-release.json` sidecar and on its release page, and the phone then tells you at the release or at the next 09:00 after it, instead of folding the fix into the weekly patch digest. The push opens with the release's own sentence, the update card prints it beside a short Urgent label, and the band carries the label. One urgent release makes the whole waiting train daily; the version stays an ordinary patch.
+
 ### Changed
 
+- **The actions belt stands at 40px, and the reply field's focus ring has room to breathe.** The belt under the pane read as a thin strip on the phone at the pill's own 32px; it now carries 4px above and below the pills, and the harness section's tint still runs from rule to rule. The reply field's focus ring used to land on the belt's bottom edge; the field row now keeps 4px above the field, so the ring clears the belt above and the chrome below by the same margin.
+
 - **The install page opens with Install, Update and Uninstall, each spelled for a Herdr plugin and for a standalone install.** A table at the top says how to tell the two kinds apart, how their verbs are spelled, and where each keeps its config and state. Packages get one line per manager in those three sections and keep their long notes further down. Uninstall is now three steps, service, program, own files, with the paths that stay behind.
+
+### Fixed
+
+- **Muse panes render natively in light mode.** The mirror no longer inverts Muse's mid-tone palette into a 2:1 grey-on-white; the pane sits on the page ground with only bright foregrounds resolved dark, and dark rendering is unchanged. Thanks @jpcarranza94 (#220, ADR 0047).
 
 ## [1.9.0] - 2026-09-14
 

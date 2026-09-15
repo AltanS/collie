@@ -15,8 +15,10 @@ import {
   latestReleaseAboveMajor,
   latestReleaseInMajor,
   latestReleaseTag,
+  LINK_CHANGE_SENTENCE,
   majorOf,
   parsePrereleaseTag,
+  newestUrgent,
   parseReleaseManifest,
   parseReleaseReading,
   parseSemverTag,
@@ -195,6 +197,18 @@ describe("updateDigestBody", () => {
     expect(updateDigestBody("1.3.0", ["1.3.1"])).toBe("Collie 1.3.1 is available");
     expect(updateDigestBody("1.3.0", ["1.3.1", "1.3.2"])).toBe("2 updates since 1.3.0: 1.3.1, 1.3.2");
   });
+
+  it("an urgent release opens the body with its own sentence, ahead of the link change", () => {
+    const urgent = { version: "1.3.1", reason: "The reaper deletes live entries." };
+    expect(updateDigestBody("1.3.0", ["1.3.1"], null, urgent)).toBe(
+      "The reaper deletes live entries. Collie 1.3.1 is available",
+    );
+    expect(updateDigestBody("1.3.0", ["1.3.1"], { from: 1, to: 2 }, urgent)).toBe(
+      `The reaper deletes live entries. Collie 1.3.1 is available. ${LINK_CHANGE_SENTENCE}`,
+    );
+    // Without one, the body is byte-identical to what it always was.
+    expect(updateDigestBody("1.3.0", ["1.3.1"], null, null)).toBe("Collie 1.3.1 is available");
+  });
 });
 
 describe("shouldNotify", () => {
@@ -265,6 +279,77 @@ describe("shouldNotify", () => {
     expect(gate({ ...mixed, lastPushedAt: hoursAgo(AT_10AM, 30) })).toEqual({
       send: true,
       versions: ["1.3.1", "1.3.2", "1.4.0"],
+    });
+  });
+
+  it("an urgent patch keeps the DAILY window", () => {
+    const patches = { current: "1.3.0", latest: "1.3.1", newerVersions: ["1.3.1"] };
+    const urgent = { version: "1.3.1", reason: "The reaper deletes live entries." };
+    // Not urgent: the weekly window holds it, 30 h after the last push.
+    expect(gate({ ...patches, lastPushedAt: hoursAgo(AT_10AM, 30) })).toEqual({ send: false });
+    // Urgent: the same delta, the same clock, and it goes.
+    expect(gate({ ...patches, lastPushedAt: hoursAgo(AT_10AM, 30), urgent })).toEqual({
+      send: true,
+      versions: ["1.3.1"],
+    });
+    // The 09:00 floor is never skipped, not even by an urgent release.
+    expect(
+      gate({ ...patches, lastPushedAt: hoursAgo(AT_10AM, 30), urgent, now: new Date(2026, 0, 15, 3, 0, 0) }),
+    ).toEqual({ send: false });
+  });
+
+  it("an urgent patch pushes today even after this morning's digest", () => {
+    // THE WINDOW IS SKIPPED, NOT SHORTENED. A fix for data loss published at 11:00 must not wait for
+    // tomorrow because an ordinary digest went out at 09:00.
+    const patches = { current: "1.3.0", latest: "1.3.1", newerVersions: ["1.3.1"] };
+    const urgent = { version: "1.3.1", reason: "The reaper deletes live entries." };
+    const thisMorning = { lastPushedAt: hoursAgo(AT_10AM, 1), lastNotified: "1.3.0" };
+    // Without the marker, one hour after a push is far inside every window.
+    expect(gate({ ...patches, ...thisMorning })).toEqual({ send: false });
+    expect(gate({ ...patches, ...thisMorning, urgent })).toEqual({ send: true, versions: ["1.3.1"] });
+    // A MINOR one hour after a push still waits: the skip belongs to the urgent release, not to the
+    // clock, and nothing else was given the right to interrupt.
+    expect(
+      gate({ current: "1.3.0", latest: "1.4.0", newerVersions: ["1.4.0"], ...thisMorning }),
+    ).toEqual({ send: false });
+    // The floor still holds over the skip.
+    expect(gate({ ...patches, ...thisMorning, urgent, now: new Date(2026, 0, 15, 3, 0, 0) })).toEqual({
+      send: false,
+    });
+  });
+
+  it("an urgent version already announced does not re-push", () => {
+    // IT IS SPENT ONCE. Having been told about 1.3.1, the operator is back on the ordinary cadence:
+    // 1.3.2 lands above it and takes the DAILY window, not another interruption.
+    const urgent = { version: "1.3.1", reason: "The reaper deletes live entries." };
+    const after = {
+      current: "1.3.0",
+      latest: "1.3.2",
+      newerVersions: ["1.3.1", "1.3.2"],
+      lastNotified: "1.3.1",
+      urgent,
+    };
+    expect(gate({ ...after, lastPushedAt: hoursAgo(AT_10AM, 3) })).toEqual({ send: false });
+    expect(gate({ ...after, lastPushedAt: hoursAgo(AT_10AM, 30) })).toEqual({
+      send: true,
+      versions: ["1.3.2"],
+    });
+    // And the release itself is never announced twice: the same version, already the top of the
+    // delta, is refused before any window is looked at.
+    expect(
+      gate({ current: "1.3.0", latest: "1.3.1", newerVersions: ["1.3.1"], lastNotified: "1.3.1", urgent }),
+    ).toEqual({ send: false });
+  });
+
+  it("an urgent patch earlier in the delta makes the whole train daily", () => {
+    // 1.3.1 is urgent, 1.3.2 is an ordinary patch above it. The delta is still urgent, and the push
+    // names both — a release held back is folded, never dropped.
+    const train = { current: "1.3.0", latest: "1.3.2", newerVersions: ["1.3.1", "1.3.2"] };
+    const urgent = { version: "1.3.1", reason: "The reaper deletes live entries." };
+    expect(gate({ ...train, lastPushedAt: hoursAgo(AT_10AM, 30) })).toEqual({ send: false });
+    expect(gate({ ...train, lastPushedAt: hoursAgo(AT_10AM, 30), urgent })).toEqual({
+      send: true,
+      versions: ["1.3.1", "1.3.2"],
     });
   });
 
@@ -456,8 +541,13 @@ const apiTags = (...names: string[]): ApiTag[] => names.map((name) => ({ name, s
 
 function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
   const notified: string[] = [];
-  /** Every push, with the link change it carried — the digest body is built from the pair. */
-  const pushes: { versions: string[]; linkChange: { from: number; to: number } | null }[] = [];
+  /** Every push, with the link change and the urgent record it carried — the digest body is built
+   *  from the three. */
+  const pushes: {
+    versions: string[];
+    linkChange: { from: number; to: number } | null;
+    urgent: { version: string; reason: string } | null;
+  }[] = [];
   const store = fakeStore();
   // 10:00 on a fixed LOCAL day: past the digest's earliest hour, so these tests exercise the monitor
   // rather than the clock. `tick` moves it forward within the same morning unless a test says otherwise.
@@ -485,9 +575,9 @@ function makeMonitor(over: Partial<UpdateMonitorDeps> = {}) {
     runState: () => null,
     now: () => clock,
     updatesEnabled: () => true,
-    notify: (versions, linkChange) => {
+    notify: (versions, linkChange, urgent) => {
       notified.push(...versions);
-      pushes.push({ versions, linkChange });
+      pushes.push({ versions, linkChange, urgent });
     },
     ...over,
   });
@@ -964,6 +1054,174 @@ describe("the release reading", () => {
     expect(parseReleaseReading({ version: "1.8.0", crewProtocol: "2" })).toBeNull();
     expect(parseReleaseReading({ version: "1.8.0", crewProtocol: 2.5 })).toBeNull();
   });
+
+  it("reads the urgent marker when it is there, and ignores a malformed one (ADR 0046)", () => {
+    const reason = "The cache reaper deletes live entries, take this today.";
+    expect(parseReleaseReading({ version: "1.9.1", crewProtocol: 2, urgent: { reason } })).toEqual({
+      version: "1.9.1",
+      crewProtocol: 2,
+      urgent: { reason },
+    });
+    // ABSENT is the ordinary release, and it carries no key at all.
+    expect(parseReleaseReading({ version: "1.9.1", crewProtocol: 2 })).toEqual({
+      version: "1.9.1",
+      crewProtocol: 2,
+    });
+    // MALFORMED, every way it can be — each one reads as "not urgent", never as an unreadable
+    // document: urgency is a courtesy on the cadence, so a bad field may not lose the reading.
+    for (const urgent of [null, "today", 3, [], {}, { reason: "" }, { reason: "   " }, { reason: 7 }]) {
+      expect(parseReleaseReading({ version: "1.9.1", crewProtocol: 2, urgent })).toEqual({
+        version: "1.9.1",
+        crewProtocol: 2,
+      });
+    }
+  });
+
+  it("newestUrgent picks the NEWEST marked release in the delta, or null", () => {
+    const at = (version: string, reason: string | null) => ({
+      version,
+      reading:
+        reason === null
+          ? { version, crewProtocol: 2 }
+          : { version, crewProtocol: 2, urgent: { reason } },
+    });
+    expect(
+      newestUrgent([at("1.9.1", "first"), at("1.9.2", null), at("1.9.3", "second")]),
+    ).toEqual({ version: "1.9.3", reason: "second" });
+    // Order in is not order out: the newest marked one wins whichever way the list arrived.
+    expect(newestUrgent([at("1.9.3", "second"), at("1.9.1", "first")])).toEqual({
+      version: "1.9.3",
+      reason: "second",
+    });
+    // An urgent release BELOW an ordinary one still makes the delta urgent.
+    expect(newestUrgent([at("1.9.1", "first"), at("1.9.2", null)])).toEqual({
+      version: "1.9.1",
+      reason: "first",
+    });
+    // Nothing marked, nothing read at all, and an empty delta all answer the same way.
+    expect(newestUrgent([at("1.9.1", null), at("1.9.2", null)])).toBeNull();
+    expect(newestUrgent([{ version: "1.9.1", reading: null }])).toBeNull();
+    expect(newestUrgent([])).toBeNull();
+  });
+});
+
+describe("UpdateMonitor — the urgent marker (ADR 0046)", () => {
+  const REASON = "The cache reaper deletes live entries, take this today.";
+
+  it("reads the WHOLE delta, not only the newest release, and caches each sidecar", async () => {
+    const asked: string[] = [];
+    const { monitor, pushes, store } = makeMonitor({
+      current: "1.9.0",
+      // 1.9.1 is urgent; 1.9.2 above it is an ordinary patch. The delta is urgent either way.
+      fetchTags: async () => apiTags("v1.9.1", "v1.9.2"),
+      fetchReleaseReading: async (version) => {
+        asked.push(version);
+        return version === "1.9.1"
+          ? { version, crewProtocol: 2, urgent: { reason: REASON } }
+          : { version, crewProtocol: 2 };
+      },
+    });
+    // A push a day ago: the weekly patch window would hold this, the daily one does not.
+    await store.setLastNotified("1.9.0", new Date(new Date(2026, 0, 15, 10, 0, 0).getTime() - 30 * 3600_000).toISOString());
+    await monitor.checkRelease();
+
+    expect(monitor.status().urgent).toEqual({ version: "1.9.1", reason: REASON });
+    expect(pushes).toEqual([
+      { versions: ["1.9.1", "1.9.2"], linkChange: null, urgent: { version: "1.9.1", reason: REASON } },
+    ]);
+    // THE PUSH SAYS WHY, and says it first — the reason is what made the phone buzz today.
+    expect(updateDigestBody("1.9.0", ["1.9.1", "1.9.2"], null, { version: "1.9.1", reason: REASON })).toBe(
+      `${REASON} 2 updates since 1.9.0: 1.9.1, 1.9.2`,
+    );
+    expect(asked.toSorted()).toEqual(["1.9.1", "1.9.2"]);
+
+    // A SECOND CHECK ASKS NOTHING AGAIN: a published release's sidecar never changes.
+    asked.length = 0;
+    await monitor.checkRelease();
+    expect(asked).toEqual([]);
+    expect(monitor.status().urgent).toEqual({ version: "1.9.1", reason: REASON });
+  });
+
+  it("is absent when no release says it, and a failed read is never urgent", async () => {
+    const quiet = makeMonitor({
+      current: "1.9.0",
+      fetchTags: async () => apiTags("v1.9.1"),
+      fetchReleaseReading: async (version) => ({ version, crewProtocol: 2 }),
+    });
+    await quiet.monitor.checkRelease();
+    expect(quiet.monitor.status().urgent).toBeUndefined();
+
+    const unreadable = makeMonitor({
+      current: "1.9.0",
+      fetchTags: async () => apiTags("v1.9.1"),
+      fetchReleaseReading: async () => null, // a timeout, a 404, a foreign document
+    });
+    await unreadable.monitor.checkRelease();
+    expect(unreadable.monitor.status().urgent).toBeUndefined();
+  });
+
+  it("asks the newest ten releases and no more", async () => {
+    const asked: string[] = [];
+    const tags = Array.from({ length: 14 }, (_, i) => `v1.9.${i + 1}`);
+    const { monitor } = makeMonitor({
+      current: "1.9.0",
+      fetchTags: async () => apiTags(...tags),
+      fetchReleaseReading: async (version) => {
+        asked.push(version);
+        return { version, crewProtocol: 2 };
+      },
+    });
+    await monitor.checkRelease();
+    // The newest ten of the delta, plus nothing: 1.9.14 is the newest and is asked once, through the
+    // same cache the link-change read uses.
+    expect(asked.toSorted()).toEqual(
+      ["1.9.10", "1.9.11", "1.9.12", "1.9.13", "1.9.14", "1.9.5", "1.9.6", "1.9.7", "1.9.8", "1.9.9"],
+    );
+  });
+});
+
+describe("UpdateMonitor — reading a sidecar, and remembering the answer", () => {
+  it("asks about a 404 once, and asks again after a failure", async () => {
+    const asked: string[] = [];
+    // 1.9.1 published no sidecar (a 404, definite); 1.9.2's read fails (a timeout, this minute only).
+    const { monitor } = makeMonitor({
+      current: "1.9.0",
+      fetchTags: async () => apiTags("v1.9.1", "v1.9.2"),
+      fetchReleaseReading: async (version) => {
+        asked.push(version);
+        return version === "1.9.1" ? "absent" : null;
+      },
+    });
+    await monitor.checkRelease();
+    expect(asked.toSorted()).toEqual(["1.9.1", "1.9.2"]);
+
+    asked.length = 0;
+    await monitor.checkRelease();
+    // The absence was a fact about a published release and is remembered; the failure was not.
+    expect(asked).toEqual(["1.9.2"]);
+  });
+
+  it("survives every read failing — the delta still reports, and nothing is urgent", async () => {
+    const { monitor, pushes } = makeMonitor({
+      current: "1.9.0",
+      crewMode: () => "lead",
+      crewProtocol: 1,
+      fetchTags: async () => apiTags("v1.9.1", "v1.9.2", "v1.10.0"),
+      fetchReleaseReading: async () => null, // every one of them times out
+    });
+    await monitor.checkRelease();
+    const status = monitor.status();
+    // The tag list is the answer; the sidecar is a footnote on it, and a footnote may not fail it.
+    expect(status.latest).toBe("1.10.0");
+    expect(status.releaseAvailable).toBe(true);
+    expect(status.newerVersions).toEqual(["1.9.1", "1.9.2", "1.10.0"]);
+    expect(status.checkedAt).not.toBeNull();
+    expect(status.urgent).toBeUndefined();
+    expect(status.linkChange).toBeUndefined();
+    expect(pushes).toEqual([
+      { versions: ["1.9.1", "1.9.2", "1.10.0"], linkChange: null, urgent: null },
+    ]);
+  });
 });
 
 describe("UpdateMonitor — the link change", () => {
@@ -980,7 +1238,7 @@ describe("UpdateMonitor — the link change", () => {
     await monitor.checkRelease();
     expect(monitor.status().linkChange).toEqual({ from: 1, to: 2 });
     // The push says it too, appended to a body that is otherwise what it always was.
-    expect(pushes).toEqual([{ versions: ["1.8.0"], linkChange: { from: 1, to: 2 } }]);
+    expect(pushes).toEqual([{ versions: ["1.8.0"], linkChange: { from: 1, to: 2 }, urgent: null }]);
     expect(updateDigestBody("1.7.0", ["1.8.0"], { from: 1, to: 2 })).toBe(
       "Collie 1.8.0 is available. Changes the crew link. Update the lead first, members follow.",
     );

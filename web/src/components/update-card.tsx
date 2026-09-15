@@ -172,6 +172,9 @@ export function UpdateCard() {
   // The one sentence about the crew wire (M27/06), or null. Off the SNAPSHOT first and the card's
   // own check second, the way every other field on this card is read — never re-derived here.
   const linkChange = linkChangeNote(snapshot?.linkChange ?? check?.linkChange ?? null);
+  // THE URGENT MARKER (ADR 0046), or null. Read exactly as every other field on this card is read:
+  // off the snapshot first, off the card's own check second, and never re-derived here.
+  const urgent = snapshot?.urgent ?? check?.urgent ?? null;
   const preflight = check?.preflight ?? null;
   const runState = run?.state;
   const running = runInFlight(run);
@@ -383,6 +386,23 @@ export function UpdateCard() {
                 <p className="text-sm text-muted-foreground">{t("settings.updateCard.unknownLatest")}</p>
               )}
             </>
+          )}
+          {/* URGENT, ONCE, AND WHERE THE VERSIONS ARE (ADR 0046). The label says the release asked to
+              reach today, the sentence beside it is the release's OWN English and is not translated:
+              it is a quotation, and a quotation nobody wrote in this locale is better read than
+              guessed. It sits above the fold-in line because it is the reason to read the rest. */}
+          {urgent !== null && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {/* THE LABEL NAMES THE VERSION when it is not the one on offer: an urgent 1.9.1 under
+                    a quiet 1.9.2 is still what the operator is being told about, and a bare "Urgent"
+                    beside "Update to 1.9.2" would read as a claim about 1.9.2. */}
+                {urgent.version === latest
+                  ? t("settings.updateCard.urgent")
+                  : t("settings.updateCard.urgentSince", { version: urgent.version })}
+              </span>{" "}
+              {urgent.reason}
+            </p>
           )}
           {newerVersions.length > 1 && (
             <p className="mt-1 text-xs text-muted-foreground">

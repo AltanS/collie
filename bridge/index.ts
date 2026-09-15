@@ -741,14 +741,16 @@ const updateMonitor = new UpdateMonitor({
   // saying nothing happened.
   runState: () => readUpdateRun(cfg.stateDir),
   // One push a DAY, naming every release folded into it — the digest decides that; this only renders it.
-  notify: (versions, linkChange) =>
+  notify: (versions, linkChange, urgent) =>
     void push.send({
       type: "update",
       tag: "collie:update",
       // No command in the body — the tap opens Settings (target below), and the update banner / linked
       // release page carry the location-independent Herdr actions. Keeps this off the cwd-dependent path.
+      // The TITLE never moves, not even for an urgent release (ADR 0046): the notification is the same
+      // kind of thing it always was, and what makes it urgent is the first sentence of the body.
       title: "Collie update available",
-      body: updateDigestBody(currentVersion, versions, linkChange),
+      body: updateDigestBody(currentVersion, versions, linkChange, urgent),
       target: "settings",
     }),
 });

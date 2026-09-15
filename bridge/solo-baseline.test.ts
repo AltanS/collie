@@ -345,6 +345,9 @@ const UPDATE_STATUS_KEYS = {
   // The release ahead changes the crew wire (M27/06). Optional, and ABSENT on a solo instance by
   // construction: there is no link to change, so the golden bodies below carry no such key.
   linkChange: true,
+  // The newest urgent release in the delta (ADR 0046). Optional, and absent on every ordinary
+  // release — an urgent one is rare by construction, so the golden bodies below carry no such key.
+  urgent: true,
 } satisfies Record<keyof UpdateStatus, true>;
 
 const WORKSPACE_KEYS = {
@@ -466,6 +469,9 @@ describe("solo zero-tax — wire shapes carry no crew dimension", () => {
       // The detached updater's run record (M15/04) — optional, so an install that has never run one
       // sends no such key at all.
       "run",
+      // The newest urgent release in the delta (ADR 0046) — optional, and absent unless a release
+      // asked for the daily cadence.
+      "urgent",
     ]);
     expect(Object.keys(WORKSPACE_KEYS).toSorted()).toEqual([
       "activeTabId",

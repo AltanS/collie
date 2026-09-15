@@ -143,6 +143,79 @@ function groupsOf(lines: string[], where: string): Group[] {
 	return groups;
 }
 
+/** The longest an urgent sentence may be. A push notification and a phone card both read it, and a
+ *  reason nobody finishes reading is a reason nobody acts on. */
+export const URGENT_REASON_MAX = 140;
+
+/** A line that was TRYING to be the urgent marker. Anything matching this must match the exact form
+ *  below or the release stops: a near miss that is silently read as prose ships a release nobody is
+ *  told about, which is the one failure this whole mechanism exists to prevent. */
+const URGENT_NEAR_MISS = /^(\*\*\s*urgent|urgent[.:])/i;
+
+/** The exact form. One bold lead, a space, then the sentence. */
+const URGENT_EXACT = /^\*\*Urgent\.\*\* (\S.*)$/;
+
+const URGENT_EXPECTED_LINE =
+	"Expected exactly: **Urgent.** One sentence, present tense, why this must reach operators today.";
+
+/**
+ * The sentence, checked. Throws with the reason when it is one an operator should not be sent.
+ *
+ * The rules are the ones a push body and a phone card impose, and nothing more: it is one plain
+ * sentence, short enough to be read at a glance, and it carries no markup, because neither surface
+ * renders any. A backtick or a link in a push body is printed as the characters themselves.
+ */
+function checkUrgentReason(reason: string): string {
+	const fail = (why: string): never => {
+		throw new Error(`CHANGELOG: the **Urgent.** sentence ${why}.\n  ${reason}\n  ${URGENT_EXPECTED_LINE}`);
+	};
+	if (reason.length === 0) fail("is empty");
+	if (reason.length > URGENT_REASON_MAX) {
+		fail(`is ${reason.length} characters, and the limit is ${URGENT_REASON_MAX}`);
+	}
+	if (reason.includes("`")) fail("holds a backtick, and neither the push nor the card renders code");
+	if (/\[[^\]]*\]\([^)]*\)/.test(reason)) fail("holds a markdown link, which no surface renders");
+	if (!reason.endsWith(".")) fail("does not end with a period");
+	return reason;
+}
+
+/**
+ * THE URGENT MARKER, or null (ADR 0046).
+ *
+ * The person cutting the release may put ONE line directly under the release heading, above the
+ * first `###` group, in the same bold-lead style as a bullet:
+ *
+ *   **Urgent.** The 1.9.1 cache reaper deletes live entries, take this today.
+ *
+ * That position and no other. A line further down the section is part of a group and is read as
+ * prose, exactly as it was before this existed. An absent line is the ordinary release.
+ *
+ * The line changes the DELIVERY of the release, never its number: the phone keeps the daily digest
+ * cadence for it instead of folding it into the weekly patch window.
+ *
+ * A NEAR MISS STOPS THE RELEASE. `**urgent**`, `Urgent:` and a bold lead with no sentence after it
+ * are all somebody trying to mark a release urgent, and reading one of them as prose would publish
+ * a fix on the weekly window while its author believed it was on the daily one. There is no silent
+ * arm of this function: it returns the marker, returns null, or throws.
+ */
+export function parseUrgent(changelog: string, version: string): { reason: string } | null {
+	const { lines } = sectionLines(changelog, version);
+	for (const raw of lines) {
+		if (raw.startsWith("### ")) return null; // the groups have started; nothing above them said it
+		const line = raw.trim();
+		if (!URGENT_NEAR_MISS.test(line)) continue;
+		const match = URGENT_EXACT.exec(line);
+		if (!match) {
+			throw new Error(
+				`CHANGELOG [${version}]: this line looks like the urgent marker and is not it.\n  ${line}\n` +
+					`  ${URGENT_EXPECTED_LINE}`,
+			);
+		}
+		return { reason: checkUrgentReason((match[1] ?? "").trim()) };
+	}
+	return null;
+}
+
 /** Reads one version's section into its groups. Throws with the reason when the shape is wrong. */
 export function parseSection(changelog: string, version: string): Section {
 	const { date, lines } = sectionLines(changelog, version);
@@ -250,7 +323,13 @@ export function renderBody(
 ): string {
 	const section = parseSection(changelog, version);
 	const anchor = changelogAnchor(version, section.date);
-	const lines: string[] = [...updateBlock(repo, tag), "", "## What changed", ""];
+	// THE URGENT LINE STAYS AS IT WAS WRITTEN, AND IT GOES FIRST (ADR 0046). It is the one sentence a
+	// reader has to see before the update command, so it sits above the block a phone came here to
+	// copy from. One line, the author's own, with no wrapper around it.
+	const urgent = parseUrgent(changelog, version);
+	const lines: string[] = [];
+	if (urgent) lines.push(`**Urgent.** ${urgent.reason}`, "");
+	lines.push(...updateBlock(repo, tag), "", "## What changed", "");
 
 	for (const group of section.groups) {
 		if (group.leads.length === 0) continue;

@@ -444,6 +444,18 @@ export interface UpdateLinkChange {
   to: number;
 }
 
+/**
+ * A release in the delta that asked to reach operators today (mirrors `UpdateUrgent` in
+ * `bridge/types.ts`, ADR 0046).
+ *
+ * `reason` is that release's own sentence, in the release's English. It is a quotation and is never
+ * translated; only the label beside it is.
+ */
+export interface UpdateUrgent {
+  version: string;
+  reason: string;
+}
+
 export interface UpdateInfo {
   /** The version this bridge is running, e.g. "0.11.0". */
   current: string;
@@ -491,6 +503,11 @@ export interface UpdateInfo {
    * that failed). The three read the same way on screen: no sentence.
    */
   linkChange?: UpdateLinkChange | null;
+  /**
+   * The newest release in the delta that called itself urgent, and why — absent when none did
+   * (ADR 0046). Absent on an older bridge too, which reads the same way: no label, no sentence.
+   */
+  urgent?: UpdateUrgent;
   /** The running bridge PROCESS is behind the on-disk code — a `systemctl restart` picks it up. */
   bridgeStale: boolean;
   /**
@@ -504,7 +521,8 @@ export interface UpdateInfo {
   /** When the upstream check last ran (epoch ms), or null if it hasn't. */
   checkedAt: number | null;
   /** Every release newer than `current`, oldest first — what one update folds in. Absent on an
-   *  older bridge, which the card reads as "nothing to list". */
+   *  older bridge, which the card reads as "nothing to list". The phone never fetches release notes:
+   *  the host reads each release's small sidecar, and this is the whole of what it sends on. */
   newerVersions?: string[];
   /** The detached updater's run record. Absent when this install has never run one. */
   run?: UpdateRun;

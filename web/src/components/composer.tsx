@@ -1347,8 +1347,25 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </p>
         </Collapse>
         {/* gap-3, not gap-2: with the attach button moved inside the field this row is only the
-            field and Send, and the old spacing left them looking joined. */}
-        <div className="flex items-end gap-3">
+            field and Send, and the old spacing left them looking joined.
+
+            `pt-1` ONLY, not `py-1`, and it is not a top-alignment nicety: the focus ring on the
+            field (chat-input.tsx: `outline-2 outline-offset-2`) reaches 4px past the field's own
+            border on every side, measured. The belt above already carries `mb-1` for its own
+            reason (actions-row.tsx), but that 4px sits OUTSIDE this row and the ring bleeds
+            straight through it — without this padding the ring's top edge lands exactly on the
+            belt's bottom edge, touching. `pt-1` absorbs the ring's 4px reach INSIDE the row instead,
+            so the belt's existing `mb-1` is what remains as clearance. The bottom needs no match:
+            the chrome container's own `pb-2` / safe-area padding below this row is already 8px,
+            twice the ring's 4px reach, so the ring already clears the chrome edge by 4px without
+            help. Adding `pb-1` here would only push that to 8px clear — don't; it is not the
+            fix, it is padding a place that was never touching.
+
+            RE-CHECKED after the belt grew from 32px to 40px (its scroller's own `py-1`,
+            actions-row.tsx): that growth is INSIDE the belt's border box, below the belt's own
+            top/bottom rules, and `mb-1` is measured from those rules outward — so it changes
+            nothing here. This row's `pt-1` still supplies exactly 4px of clearance, no more. */}
+        <div className="flex items-end gap-3 pt-1">
           {/* The input and its attach button share one box: the button is positioned INSIDE the
               field, messenger-style, rather than sitting beside it as a third control in the row.
               It used to occupy a full-height slot to the left, which spent the widest part of the

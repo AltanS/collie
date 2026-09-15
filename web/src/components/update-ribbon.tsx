@@ -142,7 +142,7 @@ export function UpdateRibbon() {
     variant: "strip",
     announce: "status",
     icon: <skin.Icon className={skin.spin ? "animate-spin" : undefined} />,
-    children: ribbonText(view, update?.linkChange ?? null),
+    children: ribbonText(view, update?.linkChange ?? null, update?.urgent ?? null),
   } as const;
 
   // THE DOWNLOAD ROW: A CLOSE AND NOTHING ELSE (2026-09-12). It carries no action button and no

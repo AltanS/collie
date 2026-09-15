@@ -202,14 +202,16 @@ describe("ActionsRow", () => {
     expect(masked.className).not.toContain("black_calc");
   });
 
-  it("stands the belt's scroller at pill height, with no vertical scroll under a thumb", () => {
-    // Option 6 of the belt-shade deck (playground, removed 2026-09-14 once it had served): the
-    // scroller drops STRIP_SCROLLER's own `py-1.5` to `py-0`, and pairs it with `overflow-y-hidden`
-    // so STRIP_TAP_TARGET's 46px `::before` reach — no longer absorbed by 6px of padding on each
-    // side — cannot force a vertical scrollbar the way it did in the playground.
+  it("stands the belt's scroller at py-1 (40px), with no vertical scroll under a thumb", () => {
+    // Option 6 of the belt-shade deck (playground, removed 2026-09-14 once it had served) first
+    // dropped STRIP_SCROLLER's own `py-1.5` to `py-0`, the pill's own 32px. The phone read that as
+    // too thin, so it came back up to `py-1` — 40px, 4px above and below the 32px pills — and
+    // `overflow-y-hidden` stays paired with it so STRIP_TAP_TARGET's 46px `::before` reach, still
+    // wider than the 4px of padding on each side, cannot force a vertical scrollbar the way it did
+    // in the playground.
     render(<ActionsRow general={[general()]} agent="claude" onRun={took} />);
     const scroller = document.querySelector<HTMLElement>(".overflow-x-auto")!;
-    expect(scroller.className).toMatch(/(?:^|\s)py-0(?=\s|$)/);
+    expect(scroller.className).toMatch(/(?:^|\s)py-1(?=\s|$)/);
     expect(scroller.className).toMatch(/(?:^|\s)overflow-y-hidden(?=\s|$)/);
   });
 

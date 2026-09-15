@@ -151,6 +151,9 @@ const UPDATE_INFO_KEYS = {
   // Whether the release ahead changes the crew wire (M27/06). Optional and ABSENT on a solo
   // install, for the same reason: a machine with no crew has no link to change.
   linkChange: true,
+  // The newest urgent release in the delta (ADR 0046). Optional, and absent on every ordinary
+  // release, so a solo payload is byte-identical to what it was.
+  urgent: true,
 } satisfies Record<keyof UpdateInfo, true>;
 
 describe("solo zero-tax — the client's mirror types carry no crew dimension", () => {
@@ -245,6 +248,9 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       "restartNeeded",
       "run",
       "settledAt",
+      // The newest urgent release in the delta (ADR 0046) — optional, and absent unless a release
+      // asked for the daily cadence.
+      "urgent",
     ]);
   });
 
