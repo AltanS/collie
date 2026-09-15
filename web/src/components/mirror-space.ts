@@ -33,6 +33,27 @@ import type { AnsiSegment } from "@/lib/ansi";
 export const MIRROR_SPACE = "[color-scheme:dark] bg-[#0a0a0a] text-[#fafafa]";
 export const MIRROR_INVERT = "[filter:invert(1)_hue-rotate(180deg)] dark:[filter:none]";
 
+/** Agents whose panes render natively — no light-theme inversion (.adr/0046). Muse's mid-tone
+ *  palette reads raw on either ground, while inversion drops its body text to ~2:1 on white.
+ *  This is the "one bit" ADR 0002 reserves for per-harness knowledge: authored-for-dark/light is
+ *  not carried, only whether this pane inverts. Gated on the exact agent string, like the
+ *  registry — and deliberately NOT the registry, which would also flip the reply path. */
+export function rendersNativeMirror(agent?: string): boolean {
+  return agent === "muse";
+}
+
+/** The native mirror's ground: the page colour in light (no slab — ADR 0002 rejected a dark one
+ *  for the same reason), MIRROR_SPACE's halves in dark. Literals matching --background /
+ *  --foreground's halves, one spelling per the convention above (#f5f5f5 is oklch(0.97), #0a0a0a
+ *  is oklch(0.145); use-theme.ts re-measures if those move).
+ *
+ *  The `dark:` variants here are CORRECT, which deserves a sentence because the NEVER rule above
+ *  forbids them inside inverted mirrors: this surface is not inverted, so it follows the root
+ *  theme like any other element instead of backwards. `color-scheme` is inherited (light dark),
+ *  so native UI inside (scrollbar, selection) follows too. */
+export const MUSE_MIRROR =
+  "terminal-muse bg-[#f5f5f5] text-[#0a0a0a] dark:bg-[#0a0a0a] dark:text-[#fafafa]";
+
 /** A segment's inline style. `muted` marks decorative TUI chrome rather than an ANSI colour: drop
  *  the ANSI dim opacity so box-drawing and rule glyphs stay visible (var(--border) + dim was nearly
  *  invisible on mobile) and resolve it to #a1a1a1 — --muted-foreground's dark half, written literally
@@ -41,13 +62,26 @@ export function styleFor(s: AnsiSegment): CSSProperties {
   return s.muted ? { ...s.style, color: "#a1a1a1", fontWeight: 400, opacity: 1 } : s.style;
 }
 
-/** Honor `mobileTransparentBg`: keep the fill in a custom property so phone CSS can drop it. */
+/** Honor the adapter-owned hints: `mobileTransparentBg` keeps its fill in a custom property
+ *  so phone CSS can drop it, and `lightDarkFg` keeps its colour behind a var() the light theme
+ *  overrides (.adr/0046). */
 export function segmentStyle(s: AnsiSegment): CSSProperties {
-  const style = styleFor(s);
-  if (!s.mobileTransparentBg) return style;
-  const { backgroundColor, ...rest } = style;
-  // SAFETY: a CSS custom property is a valid style key at runtime; React passes any `--*` key
-  // straight to the CSSOM. CSSProperties has no index signature for it, so the cast is the only
-  // spelling. The value is the backgroundColor just removed from the same object.
-  return { ...rest, "--terminal-seg-bg": backgroundColor } as CSSProperties;
+  let style = styleFor(s);
+  if (s.mobileTransparentBg) {
+    const { backgroundColor, ...rest } = style;
+    // SAFETY: a CSS custom property is a valid style key at runtime; React passes any `--*` key
+    // straight to the CSSOM. CSSProperties has no index signature for it, so the cast is the only
+    // spelling. The value is the backgroundColor just removed from the same object.
+    style = { ...rest, "--terminal-seg-bg": backgroundColor } as CSSProperties;
+  }
+  // The decorator marks explicit-fg spans only, so s.fg IS the emitted colour here — branch
+  // on that domain value rather than re-inspecting the style object. It stays the var()
+  // FALLBACK, so dark rendering is untouched: only the light theme defines
+  // --terminal-light-dark-fg (index.css, scoped to pre.terminal-muse). A stylesheet rule cannot
+  // override an inline `color`, which is why the indirection exists at all — the same reason the
+  // fill above lives in a custom property.
+  if (s.lightDarkFg && s.fg !== undefined) {
+    return { ...style, color: `var(--terminal-light-dark-fg, ${s.fg})` };
+  }
+  return style;
 }

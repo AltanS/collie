@@ -19,6 +19,22 @@
   }
 }
 
+/* Native-mirror bright foregrounds (Muse, .adr/0046). A marked span keeps its emitted colour as
+   the var() fallback and reads --terminal-light-dark-fg only when the app is light: pinned
+   light, or System following an OS in light. Dark (pinned or System) defines nothing, so the
+   emitted colour stands untouched. The value is --foreground's light half, written literally to
+   match the mirror's one-spelling convention (#0a0a0a is oklch(0.145); use-theme.ts re-measures
+   if it moves). Scoped to pre.terminal-muse so no other surface can inherit the override. */
+:root.light pre.terminal-muse .terminal-light-dark-fg {
+  --terminal-light-dark-fg: #0a0a0a;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not(.dark) pre.terminal-muse .terminal-light-dark-fg {
+    --terminal-light-dark-fg: #0a0a0a;
+  }
+}
+
 /* `dark:` must fire for BOTH an explicitly-pinned dark root and a system-dark root the user hasn't
    pinned to light — otherwise the handful of literal `dark:` utilities silently stop working for
    everyone on System (the default). Token-driven colors don't need this; these are the literals. */
