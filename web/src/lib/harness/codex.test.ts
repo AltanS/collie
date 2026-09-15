@@ -46,6 +46,7 @@ const PINNED = [
   "codex--v0150-nogit-idle.txt",
   "codex--v0150-paste-placeholder.txt",
   "codex--v0151-draft-indented-line.txt",
+  "codex--v0154-submitted-fill.txt",
   "codex--working.txt",
 ];
 
@@ -593,8 +594,10 @@ describe("codexBuildBlocks", () => {
 
 describe("Codex mobile display cleanup", () => {
   // The fixture carries both rows as real ESC bytes, so a change in the parser fails here rather
-  // than silently un-fixing the phone. It is RECONSTRUCTED from PR #144's report, not captured.
-  // fixtures/panes/README.md says so, and says to replace it with a capture when one is reachable.
+  // than silently un-fixing the phone. It is RECONSTRUCTED from PR #144's report, not captured;
+  // fixtures/panes/README.md says so. It stays because it is still the only file carrying a
+  // `─ Worked for … ───` row and the fill-painted diff rows Codex used to emit — 0.154.0's real
+  // capture below prints its diffs as plain text.
   const FIXTURE = "codex--submitted-fill-labelled-rule.txt";
 
   function decoratedFixture() {
@@ -610,7 +613,7 @@ describe("Codex mobile display cleanup", () => {
 
     const diffBackgrounds = decoratedFixture()
       .flatMap((line) => line.segments)
-      .filter((segment) => segment.bg && segment.bg !== "rgb(240,240,240)")
+      .filter((segment) => segment.bg && !segment.mobileTransparentBg)
       .map((segment) => segment.bg);
     expect(diffBackgrounds).toEqual(["rgb(33,58,43)", "rgb(74,34,34)"]);
   });
@@ -631,15 +634,40 @@ describe("Codex mobile display cleanup", () => {
     expect(decorateCodexDisplay(lines)).toBe(lines);
   });
 
-  it("marks only Codex's observed user-message fill for mobile transparency", () => {
-    const user = `${String.fromCharCode(27)}[48;2;240;240;240m\u203a submitted message${" ".repeat(40)}${String.fromCharCode(27)}[0m`;
+  // THE REGRESSION. Codex's submitted-message fill was rgb(240,240,240) when the black bar was
+  // first reported (#144) and the transform matched that literal. A pane running Codex 0.154.0
+  // paints rgb(244,244,244) instead — four levels apart, and the old exact match saw nothing at
+  // all, so the whole band inverted to a black bar again. Both values are asserted here so the
+  // rule can never narrow back to one observed palette.
+  it.each([
+    ["the fill first reported in #144", "240;240;240", "rgb(240,240,240)"],
+    ["the fill a live 0.154.0 pane paints", "244;244;244", "rgb(244,244,244)"],
+  ])("marks %s, and leaves a dark diff fill alone", (_name, sgr, parsed) => {
+    const user = `${String.fromCharCode(27)}[48;2;${sgr}m\u203a submitted message${" ".repeat(40)}${String.fromCharCode(27)}[0m`;
     const diff = `${String.fromCharCode(27)}[48;2;33;58;43m+ semantic diff${String.fromCharCode(27)}[0m`;
     const [userLine, diffLine] = decorateCodexDisplay(splitLines(parseAnsi(`${user}\n${diff}`)));
 
-    expect(userLine!.segments[0]!.bg).toBe("rgb(240,240,240)");
-    expect(userLine!.segments[0]!.style.backgroundColor).toBe("rgb(240,240,240)");
+    expect(userLine!.segments[0]!.bg).toBe(parsed);
+    expect(userLine!.segments[0]!.style.backgroundColor).toBe(parsed);
     expect(userLine!.segments[0]!.mobileTransparentBg).toBe(true);
     expect(diffLine!.segments[0]!.bg).toBe("rgb(33,58,43)");
     expect(diffLine!.segments[0]!.mobileTransparentBg).toBeUndefined();
+  });
+
+  // A real capture, not a reconstruction: Codex 0.154.0 in a sandbox pane, one submitted message
+  // and the composer box beneath it. It pins the SHAPE the transform has to survive — a fill that
+  // runs to the terminal edge on a row whose text is the operator's own.
+  it("marks the submitted-message band and the composer box of a real 0.154.0 capture", () => {
+    const lines = fixtureLines("codex--v0154-submitted-fill.txt");
+    const decorated = decorateCodexDisplay(lines);
+    const marked = decorated.filter((line) =>
+      line.segments.some((segment) => segment.mobileTransparentBg),
+    );
+
+    expect(marked.length).toBeGreaterThan(0);
+    expect(marked.map(lineText).join("\n")).toContain("reply with exactly the word: ok");
+    expect(marked.map(lineText).join("\n")).toContain("Ask Codex to do anything");
+    // Presentation only: the mirror text is byte-identical to what the bridge returned.
+    expect(decorated.map(lineText)).toEqual(lines.map(lineText));
   });
 });
