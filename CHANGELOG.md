@@ -32,6 +32,8 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Changed
 
+- **The actions belt stands at 40px, and the reply field's focus ring has room to breathe.** The belt under the pane read as a thin strip on the phone at the pill's own 32px; it now carries 4px above and below the pills, and the harness section's tint still runs from rule to rule. The reply field's focus ring used to land on the belt's bottom edge; the field row now keeps 4px above the field, so the ring clears the belt above and the chrome below by the same margin.
+
 - **The install page opens with Install, Update and Uninstall, each spelled for a Herdr plugin and for a standalone install.** A table at the top says how to tell the two kinds apart, how their verbs are spelled, and where each keeps its config and state. Packages get one line per manager in those three sections and keep their long notes further down. Uninstall is now three steps, service, program, own files, with the paths that stay behind.
 
 ## [1.9.0] - 2026-09-14
