@@ -4,7 +4,12 @@ import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../../ansi";
 import { lineText, splitLines, type StyledLine } from "../../blocks";
-import { BRIGHT_FG_LUMINANCE, decorateMuseDisplay, luminance } from "./display";
+import {
+  BRIGHT_FG_LUMINANCE,
+  decorateMuseDisplay,
+  luminance,
+  trimMuseRowChrome,
+} from "./display";
 
 const ESC = String.fromCharCode(27);
 
@@ -129,5 +134,86 @@ describe("decorateMuseDisplay", () => {
         .map(({ slot }) => slot),
     );
     expect(bright).toEqual(new Set([3, 7, 11, 15]));
+  });
+});
+
+const GREY = "170;171;175";
+const BODY = "56;58;66";
+const GUTTER = `${ESC}[38;2;${GREY}m  ${ESC}[0m`;
+
+function textOf(lines: StyledLine[]): string[] {
+  return lines.map(lineText);
+}
+
+describe("trimMuseRowChrome", () => {
+  it("strips the gutter and trailing padding off a prose row (the photo's bytes)", () => {
+    const row = `${GUTTER}${fg(BODY, "auto-closed, and it shipped")}${" ".repeat(6)}`;
+    const [line] = trimMuseRowChrome(linesOf(row));
+    expect(line!.segments).toHaveLength(1);
+    expect(textOf([line!])).toEqual(["auto-closed, and it shipped"]);
+  });
+
+  it("strips a bold gutter: emphasized continuations indent in the running style", () => {
+    const row = `${ESC}[1m${ESC}[38;2;${BODY}m  ${ESC}[0m${fg(BODY, "mini.")}`;
+    const [line] = trimMuseRowChrome(linesOf(row));
+    expect(textOf([line!])).toEqual(["mini."]);
+  });
+
+  it("keeps a wider grey lead: alignment is content, not chrome", () => {
+    const row = `${ESC}[38;2;${GREY}m       ${ESC}[0m${fg(BODY, "a red preflight")}`;
+    const [line] = trimMuseRowChrome(linesOf(row));
+    expect(line!.segments[0]).toMatchObject({ text: "       " });
+  });
+
+  it("keeps a bare 2-space lead: without a foreground it reads as code indent", () => {
+    const row = `${ESC}[0m  ${ESC}[0m${fg(BODY, "indented")}`;
+    const [line] = trimMuseRowChrome(linesOf(row));
+    expect(line!.segments[0]).toMatchObject({ text: "  ", fg: undefined });
+  });
+
+  it("keeps a leading span with a background: fills are visible", () => {
+    const row = `${ESC}[48;2;236;236;236m  ${ESC}[0m${fg(BODY, "filled")}`;
+    const [line] = trimMuseRowChrome(linesOf(row));
+    expect(line!.segments).toHaveLength(2);
+  });
+
+  it("keeps underlined leading spaces: the line inks them", () => {
+    const row = `${ESC}[4m${ESC}[38;2;${GREY}m  ${ESC}[0m${fg(BODY, "ruled")}`;
+    const [line] = trimMuseRowChrome(linesOf(row));
+    expect(line!.segments).toHaveLength(2);
+  });
+
+  it("trims every trailing padding span, tinted or bare", () => {
+    const row = `${fg(BODY, "done")}${ESC}[38;2;${GREY}m   ${ESC}[0m${" ".repeat(4)}`;
+    const [line] = trimMuseRowChrome(linesOf(row));
+    expect(textOf([line!])).toEqual(["done"]);
+  });
+
+  it("keeps trailing padding with a background: prompt and diff fills stay full-width", () => {
+    const row = `${ESC}[38;2;${BODY}m${ESC}[48;2;236;236;236mhello${ESC}[0m${ESC}[48;2;236;236;236m     ${ESC}[0m`;
+    const [line] = trimMuseRowChrome(linesOf(row));
+    expect(line!.segments).toHaveLength(2);
+  });
+
+  it("keeps trailing underlined spaces: the line inks them", () => {
+    const row = `${fg(BODY, "done")}${ESC}[4m   ${ESC}[0m`;
+    const [line] = trimMuseRowChrome(linesOf(row));
+    expect(line!.segments).toHaveLength(2);
+  });
+
+  it("empties gutter-plus-padding rows to zero segments", () => {
+    const [line] = trimMuseRowChrome(linesOf(`${GUTTER}${" ".repeat(20)}`));
+    expect(line!.segments).toHaveLength(0);
+  });
+
+  it("keeps a table row's interior spacing and borders, minus the gutter", () => {
+    const row = `${GUTTER}${fg(BODY, "│ cell  │")}${" ".repeat(4)}`;
+    const [line] = trimMuseRowChrome(linesOf(row));
+    expect(textOf([line!])).toEqual(["│ cell  │"]);
+  });
+
+  it("returns the same array when no row carries chrome", () => {
+    const lines = linesOf([fg(BODY, "body"), "bare"].join("\n"));
+    expect(trimMuseRowChrome(lines)).toBe(lines);
   });
 });
