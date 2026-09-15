@@ -1363,7 +1363,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   direct.activate();
                 },
               },
-              ])}
+              ]),
               {
                 id: "quick",
                 icon: Zap,
