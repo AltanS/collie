@@ -40,6 +40,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 - **The install page opens with Install, Update and Uninstall, each spelled for a Herdr plugin and for a standalone install.** A table at the top says how to tell the two kinds apart, how their verbs are spelled, and where each keeps its config and state. Packages get one line per manager in those three sections and keep their long notes further down. Uninstall is now three steps, service, program, own files, with the paths that stay behind.
 
+### Fixed
+
+- **Muse panes render natively in light mode.** The mirror no longer inverts Muse's mid-tone palette into a 2:1 grey-on-white; the pane sits on the page ground with only bright foregrounds resolved dark, and dark rendering is unchanged. Thanks @jpcarranza94 (#220, ADR 0047).
+
 ## [1.9.0] - 2026-09-14
 
 ### Added

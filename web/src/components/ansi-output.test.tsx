@@ -5,7 +5,7 @@ import type { ComponentProps } from "react";
 import { AnsiOutput } from "./ansi-output";
 
 const ESC = "\x1b";
-const MUTED_RULE_COLOUR = "rgb(161, 161, 161)"; // #a1a1a1, --muted-foreground's dark half
+const MUTED_RULE_COLOUR = "var(--terminal-muted-fg, #a1a1a1)"; // dark half as the fallback
 
 // The mirror renders in DARK space under every theme, and the light theme inverts it wholesale
 // (.adr/0002). These guard the two ways that arrangement silently breaks.
@@ -64,6 +64,76 @@ describe("terminal mirror colour space", () => {
     const pre = mirror(`${ESC}[31mred${ESC}[0m`);
     const span = [...pre.querySelectorAll("span")].find((s) => s.textContent === "red");
     expect(span!.style.color).toBe("var(--ansi-1)");
+  });
+});
+
+// Native mirrors (Muse, .adr/0047) skip the light-theme inversion: their mid-tone palette reads
+// raw on either ground, while inversion drops body text to ~2:1 on white. The <pre> carries the
+// page ground in light and dark-space halves under `dark:`, and only bright foregrounds —
+// unreadable on white — resolve dark through a light-gated custom property.
+describe("native mirror (muse)", () => {
+  function musePre(text: string, agent?: string) {
+    const { container } = render(<AnsiOutput text={text} agent={agent} />);
+    return container.querySelector("pre")!;
+  }
+
+  it("renders on the page ground with no inversion filter", () => {
+    const pre = musePre("hello", "muse");
+    expect(pre.className).toContain("terminal-muse");
+    expect(pre.className).toContain("bg-[#f5f5f5]");
+    expect(pre.className).toContain("text-[#0a0a0a]");
+    expect(pre.className).toContain("dark:bg-[#0a0a0a]");
+    expect(pre.className).toContain("dark:text-[#fafafa]");
+    expect(pre.className).not.toContain("invert(1)");
+  });
+
+  it("keeps inverting every other agent", () => {
+    // "Muse" and "muse-code" pin the exactness: near-miss strings must not engage (#99).
+    for (const agent of [undefined, "shell", "codex", "Muse", "muse-code"]) {
+      const pre = musePre("hello", agent);
+      expect(pre.className).not.toContain("terminal-muse");
+      expect(pre.className).toContain("[filter:invert(1)_hue-rotate(180deg)]");
+    }
+  });
+
+  it("marks muted spans for the light-gated chrome rule", () => {
+    const pre = musePre("─".repeat(12), "muse");
+    const span = [...pre.querySelectorAll("span")].find((s) => s.textContent!.includes("─"));
+    expect(span!.className).toContain("terminal-muted");
+    expect(span!.style.color).toBe(MUTED_RULE_COLOUR);
+  });
+
+  it("resolves bright foregrounds through the light-gated property, dark untouched", () => {
+    const pre = musePre(`${ESC}[38;2;250;250;249mbright${ESC}[0m`, "muse");
+    const span = [...pre.querySelectorAll("span")].find((s) => s.textContent === "bright");
+    expect(span!.className).toContain("terminal-light-dark-fg");
+    // Emitted colour stays the fallback: dark defines nothing, so it stands. (jsdom keeps
+    // the parser's spaceless rgb() inside var(); browsers parse either spelling.)
+    expect(span!.style.color).toBe("var(--terminal-light-dark-fg, rgb(250,250,249))");
+  });
+
+  it("leaves Muse's dark body tones raw", () => {
+    const pre = musePre(`${ESC}[38;2;111;114;122mbody${ESC}[0m`, "muse");
+    const span = [...pre.querySelectorAll("span")].find((s) => s.textContent === "body");
+    expect(span!.className).not.toContain("terminal-light-dark-fg");
+    expect(span!.style.color).toBe("rgb(111, 114, 122)");
+  });
+
+  it("paints the current find match without the cancelling filter", () => {
+    const text = `${ESC}[38;2;111;114;122mfind the needle${ESC}[0m`;
+    const { container } = render(
+      <AnsiOutput text={text} query="needle" currentMatch={0} agent="muse" />,
+    );
+    const match = container.querySelector('[data-find-match="current"]')!;
+    expect(match.className).toContain("bg-yellow-400");
+    expect(match.className).toContain("text-black");
+    expect(match.className).not.toContain("invert(1)");
+  });
+
+  it("keeps the cancelling filter on current matches elsewhere", () => {
+    const { container } = render(<AnsiOutput text="find the needle" query="needle" currentMatch={0} />);
+    const match = container.querySelector('[data-find-match="current"]')!;
+    expect(match.className).toContain("[filter:invert(1)_hue-rotate(180deg)]");
   });
 });
 
