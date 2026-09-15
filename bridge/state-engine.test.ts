@@ -1,4 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ActivityLedger } from "./activity.ts";
+import { trackActivity } from "./activity-tracking.ts";
 
 import {
   ATTENTION_WINDOW_MS,
@@ -180,6 +185,51 @@ describe("StateEngine — transition detection", () => {
     herdr.panes = [pane("w1:p1", "w1", "blocked", "claude")];
     await poll(); // reappears — must be treated as new, not a transition
     expect(transitions).toEqual([]);
+  });
+});
+
+describe("StateEngine — activity ledger binding", () => {
+  test("seeds idle agents, tracks completions, and resets unread activity on agent exit", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    const dir = mkdtempSync(join(tmpdir(), "collie-activity-lifecycle-"));
+    let now = 100;
+    const activity = new ActivityLedger({ stateDir: dir }, () => now);
+    trackActivity(engine, activity, "default");
+    try {
+      herdr.panes = [pane("w1:p1", "w1", "idle", "pi")];
+      await poll();
+      expect(activity.get("default", "w1:p1")).toEqual({ activeAt: 100, seenAt: 100 });
+      now = 200;
+      herdr.panes = [pane("w1:p1", "w1", "working", "pi")];
+      await poll();
+      now = 300;
+      herdr.panes = [pane("w1:p1", "w1", "idle", "pi")];
+      await poll();
+      expect(activity.get("default", "w1:p1")).toEqual({ activeAt: 300, seenAt: 100 });
+      now = 400;
+      activity.noteSeen("default", "w1:p1");
+      expect(activity.get("default", "w1:p1")).toEqual({ activeAt: 300, seenAt: 400 });
+
+      now = 500;
+      herdr.panes = [pane("w1:p1", "w1", "working", "pi")];
+      await poll();
+      now = 600;
+      herdr.panes = [pane("w1:p1", "w1", "unknown", null)];
+      await poll();
+      expect(activity.get("default", "w1:p1")).toEqual({ activeAt: 600, seenAt: 600 });
+      now = 700;
+      herdr.panes = [pane("w1:p1", "w1", "idle", "pi")];
+      await poll();
+      expect(activity.get("default", "w1:p1")).toEqual({ activeAt: 600, seenAt: 600 });
+
+      herdr.panes = [];
+      await poll();
+      expect(activity.get("default", "w1:p1")).toBeUndefined();
+    } finally {
+      activity.stop();
+      engine.stop();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

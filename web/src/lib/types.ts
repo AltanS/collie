@@ -89,7 +89,7 @@ export interface AgentView {
   /**
    * Epoch ms you last opened or drove this pane through Collie. Absent as above.
    *
-   * There is no "seen" flag anywhere: a `done` agent is unseen precisely when
+   * There is no "seen" flag anywhere: a settled (`idle` or `done`) agent is unseen precisely when
    * `lastActiveAt > lastSeenAt`, so opening the pane clears it by construction.
    */
   lastSeenAt?: number;

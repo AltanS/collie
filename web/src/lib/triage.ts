@@ -7,7 +7,7 @@
 // The two timestamps the bridge keeps per pane (bridge/activity.ts) still decide one bucket:
 //   lastActiveAt — when the agent last changed status
 //   lastSeenAt   — when you last opened or drove it through Collie
-// "done since you last looked" is `lastActiveAt > lastSeenAt`, which is the Ready·unseen bucket.
+// "settled since you last looked" is `lastActiveAt > lastSeenAt`, which is the Ready·unseen bucket.
 import type { AgentStatus, AgentView } from "./types";
 import { t } from "./i18n";
 
@@ -35,10 +35,15 @@ export interface TriageSection {
  * is why opening the pane clears it with no bookkeeping: the read bumps `lastSeenAt` past
  * `lastActiveAt` and the agent falls into Recent on the next poll.
  *
+ * Herdr 0.9 reports a completion as `idle`; its TUI derives `done` from its own read receipts.
+ * Collie owns separate receipts, so both settled statuses must use OUR timestamps. First sightings
+ * are seeded with equal timestamps by the ledger; an idle pane is not unread just because it exists.
  * Both timestamps absent (an older bridge) yields `false`, so the section is simply empty there.
  */
 export function isUnseen(a: AgentView): boolean {
-  return a.status === "done" && (a.lastActiveAt ?? 0) > (a.lastSeenAt ?? 0);
+  return a.kind !== "shell" &&
+    (a.status === "done" || a.status === "idle") &&
+    (a.lastActiveAt ?? 0) > (a.lastSeenAt ?? 0);
 }
 
 /** Which section an agent belongs to. The single classifier — {@link triage} and
