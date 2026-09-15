@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { AnsiSegment } from "@/lib/ansi";
-import { segmentClassName, segmentStyle, styleFor } from "./mirror-space";
+import { MUSE_MIRROR, segmentClassName, segmentStyle, styleFor } from "./mirror-space";
 
 function seg(over: Partial<AnsiSegment>): AnsiSegment {
   return { text: "x", style: {}, muted: false, ...over };
@@ -31,6 +31,17 @@ describe("segmentStyle", () => {
   it("passes non-muted spans through styleFor by reference", () => {
     const s = seg({ style: { color: "rgb(1,2,3)" } });
     expect(styleFor(s)).toBe(s.style);
+  });
+});
+
+describe("MUSE_MIRROR", () => {
+  it("grounds light on the probed reference bg, not the page", () => {
+    // #fffbf8 is Herdr 0.9.0's light background, probed live via OSC 11 — the ground Muse's
+    // light palette was authored against. Page ground (#f5f5f5) compressed authored fills
+    // past visibility (prompt fill at 1.08:1); the reference restores the authored 1.15 edge.
+    expect(MUSE_MIRROR).toContain("bg-[#fffbf8]");
+    expect(MUSE_MIRROR).not.toContain("bg-[#f5f5f5]");
+    expect(MUSE_MIRROR).toContain("dark:bg-[#0a0a0a]");
   });
 });
 

@@ -69,7 +69,7 @@ describe("terminal mirror colour space", () => {
 
 // Native mirrors (Muse, .adr/0047) skip the light-theme inversion: their mid-tone palette reads
 // raw on either ground, while inversion drops body text to ~2:1 on white. The <pre> carries the
-// page ground in light and dark-space halves under `dark:`, and only bright foregrounds —
+// reference ground in light and dark-space halves under `dark:`, and only bright foregrounds —
 // unreadable on white — resolve dark through a light-gated custom property.
 describe("native mirror (muse)", () => {
   function musePre(text: string, agent?: string) {
@@ -77,10 +77,10 @@ describe("native mirror (muse)", () => {
     return container.querySelector("pre")!;
   }
 
-  it("renders on the page ground with no inversion filter", () => {
+  it("renders on the reference ground with no inversion filter", () => {
     const pre = musePre("hello", "muse");
     expect(pre.className).toContain("terminal-muse");
-    expect(pre.className).toContain("bg-[#f5f5f5]");
+    expect(pre.className).toContain("bg-[#fffbf8]");
     expect(pre.className).toContain("text-[#0a0a0a]");
     expect(pre.className).toContain("dark:bg-[#0a0a0a]");
     expect(pre.className).toContain("dark:text-[#fafafa]");

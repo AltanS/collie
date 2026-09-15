@@ -33,17 +33,22 @@ import type { AnsiSegment } from "@/lib/ansi";
 export const MIRROR_SPACE = "[color-scheme:dark] bg-[#0a0a0a] text-[#fafafa]";
 export const MIRROR_INVERT = "[filter:invert(1)_hue-rotate(180deg)] dark:[filter:none]";
 
-/** The native mirror's ground: the page colour in light (no slab — ADR 0002 rejected a dark one
- *  for the same reason), MIRROR_SPACE's halves in dark. Literals matching --background /
- *  --foreground's halves, one spelling per the convention above (#f5f5f5 is oklch(0.97), #0a0a0a
- *  is oklch(0.145); use-theme.ts re-measures if those move).
+/** The native mirror's ground in light: Herdr 0.9.0's own light background (#fffbf8, probed
+ *  live via OSC 11 on a scratch pane) — the ground Muse's light palette was authored against.
+ *  Page ground (#f5f5f5) sat 10 steps below it and compressed authored fills past visibility
+ *  (Muse's 236 prompt fill at 1.08:1); matching the reference restores the authored 1.15 edge
+ *  and lifts every tone with it (body 10.4→11.0). The whisper seam against the page is the
+ *  price, and deliberate: fidelity to the agent's own screen beats seamlessness. This half is
+ *  pinned to the probe, not to a token; the other three halves stay literals matching
+ *  --background / --foreground, one spelling per the convention above (#0a0a0a is oklch(0.145);
+ *  use-theme.ts re-measures if those move). MIRROR_SPACE's halves in dark.
  *
  *  The `dark:` variants here are CORRECT, which deserves a sentence because the NEVER rule above
  *  forbids them inside inverted mirrors: this surface is not inverted, so it follows the root
  *  theme like any other element instead of backwards. `color-scheme` is inherited (light dark),
  *  so native UI inside (scrollbar, selection) follows too. */
 export const MUSE_MIRROR =
-  "terminal-muse bg-[#f5f5f5] text-[#0a0a0a] dark:bg-[#0a0a0a] dark:text-[#fafafa]";
+  "terminal-muse bg-[#fffbf8] text-[#0a0a0a] dark:bg-[#0a0a0a] dark:text-[#fafafa]";
 
 /** A segment's inline style. `muted` marks decorative TUI chrome rather than an ANSI colour: drop
  *  the ANSI dim opacity so box-drawing and rule glyphs stay visible (var(--border) + dim was nearly
