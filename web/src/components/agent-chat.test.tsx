@@ -3651,10 +3651,13 @@ describe("AgentChat — Conversation mode", () => {
   });
 
   it("uploads an attachment from Conversation through the existing path", async () => {
-    const uploads: FormData[] = [];
+    const uploads: string[] = [];
     server.use(
       http.post(/\/api\/pane\/[^/]+\/upload$/, async ({ request }) => {
-        uploads.push(await request.formData());
+        // Read the RAW multipart body rather than `request.formData()`: undici's multipart parser
+        // (Node 24) rejects MSW's rebuilt body with an assertion failure, and the form-data round
+        // trip buys nothing this test needs. The boundary-framed body carries the mime type as text.
+        uploads.push(new TextDecoder().decode(await request.arrayBuffer()));
         return HttpResponse.json({ ok: true, path: "/tmp/notes.txt" });
       }),
     );
@@ -3671,9 +3674,9 @@ describe("AgentChat — Conversation mode", () => {
     // SAFETY: the assertion above proved the query found the composer's file input.
     await user.upload(input as HTMLInputElement, new File(["png"], "shot.png", { type: "image/png" }));
     await waitFor(() => expect(uploads).toHaveLength(1));
-    // MSW's `request.formData()` rebuilds the multipart body with its OWN File class, so the
-    // identity check is the mime type, not the constructor.
-    expect(uploads[0]!.get("file")).toHaveProperty("type", "image/png");
+    // The mime type is asserted on the raw multipart body: the boundary-framed file part must name
+    // image/png, which is the identity check the bridge actually performs.
+    expect(uploads[0]).toContain('Content-Type: image/png');
     expect(conversationSurface(container)).toBeInTheDocument();
   });
 });
