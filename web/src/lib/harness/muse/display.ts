@@ -1,3 +1,4 @@
+import type { AnsiSegment } from "../../ansi";
 import type { StyledLine } from "../../blocks";
 
 /** Agents whose panes render natively — no light-theme inversion (.adr/0047). This is the "one
@@ -68,6 +69,62 @@ function isBrightFg(fg: string): boolean {
  *  `rgb()`. Palette-indexed spellings (`37m`, `97m`, `38;5;15`) arrive as `var(--ansi-N)` and are
  *  covered by the pinned slot set above.
  */
+// Muse pads every PTY row to full width and opens content rows with a 2-column gutter
+// (prose: grey; emphasized continuations: the running style, e.g. bold body). On a desktop
+// terminal both are invisible structure; on a ~55-column phone each hard row soft-wraps and
+// the gutter lands mid-paragraph as a stray indent while the padding becomes blank stub
+// lines — the "terminal didn't resize" look (issue #220 follow-up). Strip both, gated to
+// Muse panes only: no other agent's rows carry this shape, and their grammars may depend
+// on exact row text (a Codex wrapped card is recognised BY its wrap).
+//
+// Both signatures are narrow on purpose. The gutter is exactly two ASCII spaces with a
+// foreground, no background, and no underline/strike (which would ink the spaces
+// visibly); bare 2-space leads are likelier code indent than chrome, and wider grey
+// leads (a 7-wide table field was observed) stay byte-faithful — stripping 2 columns
+// off content alignment would be the worse lie. Trailing padding is any run of
+// whitespace-only, background-less, unlined spans: spaces carry no ink, so only a
+// background (prompt fills, diff fills) or a line makes one visible, and those stay.
+
+/** True when this span is trailing padding: invisible whitespace the row-width fill leaves. */
+function isPaddingSpan(segment: AnsiSegment): boolean {
+  return (
+    segment.bg === undefined &&
+    !segment.underline &&
+    !segment.strike &&
+    segment.text !== "" &&
+    segment.text.trim() === ""
+  );
+}
+
+/** True when this span is Muse's row gutter: the 2-column chrome indent, not content. */
+function isGutterSpan(segment: AnsiSegment): boolean {
+  return (
+    segment.fg !== undefined &&
+    segment.text === "  " &&
+    segment.bg === undefined &&
+    !segment.underline &&
+    !segment.strike
+  );
+}
+
+/** Presentation-only row-chrome trim for Muse's raw lines: drop the gutter span and the
+ *  trailing padding spans. Text that carries ink is untouched, and a screen without chrome
+ *  comes back identical, object for object. Runs before the bright-foreground marks so
+ *  dropped spans are never marked. */
+export function trimMuseRowChrome(lines: StyledLine[]): StyledLine[] {
+  let changedLines = false;
+  const trimmed = lines.map((line) => {
+    const segments = line.segments;
+    const start = segments.length > 0 && isGutterSpan(segments[0]!) ? 1 : 0;
+    let end = segments.length;
+    while (end > start && isPaddingSpan(segments[end - 1]!)) end -= 1;
+    if (start === 0 && end === segments.length) return line;
+    changedLines = true;
+    return { ...line, segments: segments.slice(start, end) };
+  });
+  return changedLines ? trimmed : lines;
+}
+
 export function decorateMuseDisplay(lines: StyledLine[]): StyledLine[] {
   let changedLines = false;
   const decorated = lines.map((line) => {

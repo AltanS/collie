@@ -48,4 +48,21 @@ describe("buildBlocks muse display pass", () => {
       ).toBe(false);
     }
   });
+
+  it("trims Muse row chrome on muse panes", () => {
+    const gutter = `${ESC}[38;2;170;171;175m  ${ESC}[0m`;
+    const [block] = buildBlocks(linesOf(`${gutter}${DARK_BODY}   `), { agent: "muse" });
+    expect(block!.kind).toBe("raw");
+    if (block!.kind === "raw") {
+      expect(block.lines[0]!.segments.map((s) => s.text)).toEqual(["body"]);
+    }
+  });
+
+  it("trims nothing on non-muse panes: row text stays byte-faithful", () => {
+    const gutter = `${ESC}[38;2;170;171;175m  ${ESC}[0m`;
+    const lines = linesOf(`${gutter}${DARK_BODY}   `);
+    const [block] = buildBlocks(lines, { agent: "codex" });
+    expect(block!.kind).toBe("raw");
+    if (block!.kind === "raw") expect(block.lines).toBe(lines);
+  });
 });
