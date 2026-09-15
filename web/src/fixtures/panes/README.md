@@ -83,14 +83,16 @@ row. That is an ordinary draft, not a dialog.
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `codex--v0151-draft-indented-line.txt` | Two-line draft: the `› ` row, then a hard line break whose text starts with two spaces, painted as a four-space-indented continuation above the two-field status row. `composerReady` must be TRUE — `/^ {2}\S/` refused it, `locateComposer` returned null, and the pane refused every send with "the agent's input box isn't on screen" until the draft was cleared | `idle` |
+| `codex--v0154-submitted-fill.txt` | Codex 0.154.0, sandbox pane on 2026-09-15: one submitted user message, an assistant turn, a file edit with its unified diff, and the composer box. The message band and the composer are painted `rgb(240,240,240)` and run to the terminal edge; 0.154.0 paints its diff rows as plain text, with no fill at all. See *Codex light fills* below | `idle` |
 
 ## Codex mobile chrome (reconstructed 2026-09-03)
 
 **Not a capture.** This one file is RECONSTRUCTED from the two rows reported in
 [PR #144](https://github.com/AltanS/collie/pull/144), which were seen on a live Codex pane the
 contributor could reach and this repo's capture hosts could not. It carries real ESC bytes in the
-shape the report describes, and it is the ground truth for `codex/display.ts` only. Replace it with
-a real `format:ansi` capture the next time a Codex pane paints these rows, and delete this note.
+shape the report describes, and it is the ground truth for the labelled-rule clip only. It is still
+the only file carrying a `─ Worked for … ───` row and Codex's old fill-painted diff rows, so it
+stays until a capture shows both.
 
 Two rows matter, and both are 100 columns wide:
 
@@ -106,6 +108,21 @@ Two rows matter, and both are 100 columns wide:
 | Fixture | State / what's in it | Herdr status |
 |---|---|---|
 | `codex--submitted-fill-labelled-rule.txt` | Finished turn: the near-white submitted-message row, an assistant line, two coloured diff rows, the labelled `Worked for` rule, then the idle composer and the two-field status row | `idle` |
+
+## Codex light fills (why the rule is luminance, not a value)
+
+`codex--v0154-submitted-fill.txt` was captured to answer PR #144's open ask for a real buffer, and
+it answered a second question on the way. The fill in it is `rgb(240,240,240)`, the value #144
+reported — but a Codex 0.154.0 pane on the same host, same version, same `tui.theme`, same
+workspace, paints `rgb(244,244,244)` on exactly these rows. That buffer is a real work session and
+is not committed here; the four-level difference is pinned as a byte string in
+[`codex.test.ts`](../../lib/harness/codex.test.ts) instead.
+
+What makes one pane light on 240 and another on 244 is not established. That is the point: an exact
+match is a list of the fills someone happened to see, and it fails silently. `lib/harness/light-fill.ts`
+matches by luminance instead, and Codex's floor sits at 220 — every fill in this whole corpus is
+either Codex's 240 band or 188 and below, so 220 stands in a 52-point gap. A capture that ever lands
+inside that gap is the signal to argue the number again.
 
 ## Pi 0.85 working editor (reconstructed 2026-09-05)
 
