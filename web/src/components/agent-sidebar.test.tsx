@@ -33,6 +33,20 @@ describe("ThreadSidebar", () => {
     expect(screen.getByText("Recent")).toBeInTheDocument();
   });
 
+  it("lists Recent by latest status change, not workspace position or last opened", () => {
+    const older = { ...idleAgent, paneId: "old", paneLabel: "Older completion", lastActiveAt: 100, lastSeenAt: 900 };
+    const newer = { ...idleAgent, paneId: "new", paneLabel: "Newer completion", lastActiveAt: 500, lastSeenAt: 600 };
+    const props = { currentPaneId: "", onSelect: vi.fn() };
+    const { rerender } = render(<ThreadSidebar {...props} agents={[older, newer]} />);
+    const rows = () => screen.getAllByRole("button").map((b) => b.textContent);
+    expect(rows()).toEqual([
+      expect.stringContaining("Newer completion"),
+      expect.stringContaining("Older completion"),
+    ]);
+    rerender(<ThreadSidebar {...props} agents={[{ ...older, lastSeenAt: 1000 }, newer]} />);
+    expect(rows()[0]).toContain("Newer completion");
+  });
+
   it("omits groups that have no members", () => {
     // Only a blocked agent → no Working / Recent headers.
     render(<ThreadSidebar agents={[fixtureAgents[0]!]} currentPaneId="" onSelect={vi.fn()} />);

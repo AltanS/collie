@@ -3,7 +3,7 @@
 // — kept in one place so those three can't drift apart (which is the job the module this replaces,
 // agent-groups.ts, was written to do).
 //
-// It puts each pane in a BUCKET and keeps the order the bridge sent inside it (see {@link triage}).
+// It puts each pane in a BUCKET and orders it by its last status transition (see {@link triage}).
 // The two timestamps the bridge keeps per pane (bridge/activity.ts) still decide one bucket:
 //   lastActiveAt — when the agent last changed status
 //   lastSeenAt   — when you last opened or drove it through Collie
@@ -89,6 +89,11 @@ function sectionMeta() {
   } satisfies Record<TriageKey, Omit<TriageSection, "agents">>;
 }
 
+/** The bridge-observed equivalent of descending state-change sequence; ties stay positional. */
+function newestFirst(a: AgentView, b: AgentView): number {
+  return (b.lastActiveAt ?? 0) - (a.lastActiveAt ?? 0);
+}
+
 /**
  * Bucket and order a herd. Returns every section (including empty ones) in fixed display order —
  * callers drop the empties, which keeps "which sections exist" a property of this module rather
@@ -96,17 +101,15 @@ function sectionMeta() {
  *
  * The first three sections are pinned: they never move and never invert. `dir` reaches Recent only.
  *
- * ── A BUCKET KEEPS THE ORDER IT WAS SENT ─────────────────────────────────────
- * This buckets and it no longer SORTS. Each section used to be re-sorted by `lastActiveAt` (and
- * Recent by `lastSeenAt`), so a row moved under your thumb every time an agent took a turn: the pane
- * you were reaching for was somewhere else by the time you got there, and the list you learned this
- * morning was a different list this afternoon. The bridge already sends one stable order — status,
- * then space, then tab, then the pane's position in its tab (bridge/state-engine.ts) — and that is
- * the multiplexer's own arrangement, the one the operator made. Within a bucket, panes therefore
- * read in the order they sit on the desk, and a row only ever moves when it changes BUCKET.
+ * A triage list is a work queue, not workspace navigation: newest status changes come first inside
+ * each bucket. Herdr's priority list likewise orders by attention then descending state-change
+ * sequence. Collie's equivalent is `lastActiveAt`, observed by the bridge; opening a pane must not
+ * promote it just because `lastSeenAt` changed. This does not change the bridge's positional order
+ * or the workspace/tab lists that consume it directly.
  *
- * `dir` still reverses Recent, because that one is the operator asking, not the clock deciding.
- * "When did I last touch this" has not gone anywhere: it is on the row, as its time.
+ * Missing timestamps sort as zero; ties retain the bridge's stable order. Recent alone can invert
+ * its time order. The bridge's clock cannot distinguish transitions observed in the same millisecond
+ * or recover ordering before it started, so exact ties with Herdr's sequence are not promised.
  */
 export function triage(agents: readonly AgentView[], dir: RecentDir = "newest"): TriageSection[] {
   const needs: AgentView[] = [];
@@ -117,7 +120,10 @@ export function triage(agents: readonly AgentView[], dir: RecentDir = "newest"):
   const into = { needs, ready, working, recent };
   for (const a of agents) into[bucketOf(a)].push(a);
 
-  if (dir === "oldest") recent.reverse();
+  needs.sort(newestFirst);
+  ready.sort(newestFirst);
+  working.sort(newestFirst);
+  recent.sort(dir === "oldest" ? (a, b) => newestFirst(b, a) : newestFirst);
 
   const meta = sectionMeta();
   return [

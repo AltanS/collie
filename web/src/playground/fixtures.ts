@@ -200,7 +200,8 @@ export const manyTabs: TabView[] = [
 //  • `blocked` is "needs you"; a `done` pane whose `lastActiveAt > lastSeenAt` is "ready · unseen";
 //    a `done` pane you have already opened falls to Recent.
 //  • `lastActiveAt` is the last status transition — what a Working row's "since" counts from.
-//  • `lastSeenAt` is when YOU last drove the pane through Collie — what Recent is ordered on.
+//  • `lastSeenAt` is when YOU last drove the pane through Collie — it clears unread state, not rank.
+//    Triage orders each section by `lastActiveAt`; workspace navigation keeps the bridge's order.
 
 /** Three panes waiting on the operator, each stuck on a different kind of question. */
 const needsYou: AgentView[] = [
