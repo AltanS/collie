@@ -1741,21 +1741,16 @@ describe("the staged checkout path", () => {
     // written `staging` by then, the branch returns EXIT.OK, and `withStagingRecord` only aborts
     // on failure — so the record sat at `staging` with a pid that had exited, and the phone read
     // "interrupted" about an install that was fine.
-    // #232 proves Bun runs before staging begins, which is before this branch, so the harness answers
-    // the probe the way a working install does.
-    const h = stagedHarness({
-      answers: [
-        [`git -C ${WT("v1.0.0")} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
-        ["/fake/bun --version", { stdout: "1.4.0\n" }],
-      ],
-    });
+    // Decided before the Bun probe and before the record opens: the harness answers no probe, and a
+    // probe that ran would fail this run.
+    const h = stagedHarness({ answers: [[`git -C ${WT("v1.0.0")} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }]] });
     h.files.write(`${WT("v1.0.0")}/herdr-plugin.toml`, `id = "herdr.collie"\nversion = "0.32.0"\n`);
     expect(await cmdUpdate(h.deps, ["--major"])).toBe(EXIT.OK);
     expect(h.io.stdout.join("\n")).toContain("already current — v1.0.0 is staged");
-    const run = parseUpdateRun(h.files.read(RUN_FILE));
-    // `idle` with a reason, never `staging`: nothing is coming later to close it.
-    expect(run?.state).toBe("idle");
-    expect(run?.reason).toContain("already");
+    // No record at all: nothing was staged, so there is nothing for a phone to read as failed or
+    // interrupted, and no Bun was asked for.
+    expect(h.files.read(RUN_FILE)).toBeNull();
+    expect(h.exec.calls.join("\n")).not.toContain("--version");
     expect(h.exec.calls.join("\n")).not.toContain("worktree add");
   });
 

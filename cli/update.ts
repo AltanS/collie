@@ -1845,6 +1845,26 @@ async function updateStagedCheckout(
   const higher =
     plan.kind === "unknown-version" || (plan.kind === "advance" && plan.crossesMajor) ? null : plan.higher;
 
+  const dir = target.tag;
+  const at = join(layout.versionsDir, dir);
+  // DECIDED BEFORE BUN AND BEFORE THE RECORD (#231, #232). This check needs neither a compiler nor a
+  // fetch, so it runs ahead of both: an install whose target is already live must not be refused
+  // for a broken Bun it will never use, and must not open a `staging` record it would then have to
+  // close as an abort, which a waiting phone reads as "failed" about an install that is fine.
+  if (currentVersionDir(deps, layout) === dir) {
+    // The target is already live. This is not the `plan.kind === "current"` case above — that one is
+    // decided from the manifest of the version we are RUNNING, and an install whose root still
+    // names the pre-flip tree (a stale `COLLIE_PLUGIN_ROOT`, an operator running the old binary by
+    // hand) reads as behind while `current` is not. Re-staging it would remove the running install.
+    if (stagedCurrent(deps, layout)?.complete === true) {
+      deps.io.out(`already current — ${dir} is staged and \`current\` points at it.`);
+      announceMajor(deps, higher);
+      return EXIT.OK;
+    }
+    deps.io.err(`error: ${dir} is what \`current\` points at, and it is incomplete — re-staging it`);
+    deps.io.err("       would remove the running install. Roll back first, or remove it by hand.");
+    return EXIT.FAIL;
+  }
   const bun = requireRunnableBun(deps, "staging a version cannot build it; nothing was changed");
   if (bun === null) return EXIT.FAIL;
   deps.io.out(
@@ -1875,27 +1895,6 @@ async function updateStagedCheckout(
 
   // 2. The worktree. A leftover directory of the same name is removed first: it is either a killed
   //    stage or the version we are re-staging after a failed build, and neither is `current`.
-  const dir = target.tag;
-  const at = join(layout.versionsDir, dir);
-  if (currentVersionDir(deps, layout) === dir) {
-    // The target is already live. This is not the `plan.kind === "current"` case above — that one is
-    // decided from the manifest of the version we are RUNNING, and an install whose root still
-    // names the pre-flip tree (a stale `COLLIE_PLUGIN_ROOT`, an operator running the old binary by
-    // hand) reads as behind while `current` is not. Re-staging it would remove the running install.
-    if (stagedCurrent(deps, layout)?.complete === true) {
-      deps.io.out(`already current — ${dir} is staged and \`current\` points at it.`);
-      announceMajor(deps, higher);
-      // The window opened at `beginStaging`, and this is the one exit inside it that is not a
-      // failure — so `withStagingRecord` does not close it. Left open, the record says `staging`
-      // under a pid that has exited, and the phone reads that as "interrupted" about an install
-      // that is exactly what it should be.
-      abandonStaging(deps, ALREADY_STAGED);
-      return EXIT.OK;
-    }
-    deps.io.err(`error: ${dir} is what \`current\` points at, and it is incomplete — re-staging it`);
-    deps.io.err("       would remove the running install. Roll back first, or remove it by hand.");
-    return EXIT.FAIL;
-  }
   if (deps.files.exists(at)) removeStagedVersion(deps, layout, dir, git);
   deps.files.mkdirp(layout.versionsDir);
   const added = deps.exec.runIn(
@@ -2164,7 +2163,6 @@ function abandonStaging(deps: UpdateDeps, reason: string = STAGING_GAVE_UP): voi
 /** What an aborted staging record says. The terminal above it has already said which step and why. */
 const STAGING_GAVE_UP = "staging stopped before the new version was laid down";
 /** The abort reason when the target was already `current`: nothing was staged because nothing needed to be. */
-const ALREADY_STAGED = "already current — the target was staged and live before this run began";
 
 /**
  * THE STAGING WINDOW, REPORTING ITSELF (M20/10).
