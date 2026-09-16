@@ -873,7 +873,7 @@ the concrete failure recorded in [ADR 0001](./.adr/0001-one-managed-front-door.m
   literal form warns.
 - At rest, crew material follows the discipline `push-subscriptions.json` already uses: atomic
   temp-file-then-rename, **file 0600, directory 0700** (`bridge/push.ts:187-192`), under `stateDir`
-  (`bridge/config.ts:200-203`: `HERDR_PLUGIN_STATE_DIR` ?? `COLLIE_STATE_DIR` ?? the user state dir).
+  (`bridge/config.ts` `resolveStateDir`: `COLLIE_STATE_DIR` ?? the user state dir).
 
 ### 8.4 Rotation — `collie crew rotate`
 

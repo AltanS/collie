@@ -444,7 +444,15 @@ export function defaultSocketPath(
 
 /**
  * Where runtime state lives: uploads, `audit.log`, `push-subscriptions.json`, `snooze.json` — and the
- * crew trust store. Herdr's injected dir wins, then the explicit override, then the user state dir.
+ * crew trust store. The explicit override, then the user state dir.
+ *
+ * `HERDR_PLUGIN_STATE_DIR` is IGNORED, on purpose (#226). Herdr injects it into a plugin ACTION, but
+ * the bridge never runs as one: it runs as a systemd or launchd service, whose environment
+ * (`cli/unit.ts` `bridgeEnvironment`) has never carried it. So honouring it split one install in two:
+ * `herdr plugin action invoke push-test` read `~/.local/state/herdr/plugins/herdr.collie`, found no
+ * subscriptions, and failed, while the service kept them under `~/.local/state/collie`. The same split
+ * reached every verb that reads or writes state through an action: pairing, devices, crew, update
+ * runs. The service's answer is the one that has always held the data, so it is the only answer.
  *
  * Pure and exported because the CLI resolves the same directory from its own `.env`-merged
  * environment (`cli/context.ts`): the crew verbs write the trust store the bridge reads, so the two
@@ -455,7 +463,7 @@ export function resolveStateDir(
   env: Environment = process.env,
   home: string = homedir(),
 ): string {
-  return env.HERDR_PLUGIN_STATE_DIR ?? env.COLLIE_STATE_DIR ?? join(home, ".local", "state", "collie");
+  return env.COLLIE_STATE_DIR ?? join(home, ".local", "state", "collie");
 }
 
 /**

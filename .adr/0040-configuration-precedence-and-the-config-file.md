@@ -113,7 +113,7 @@ has all three ladders in one place.
 | Resolver | Answers | Ladder |
 | --- | --- | --- |
 | `resolveConfigDir` (`cli/context.ts`, `bridge/config.ts`) | where the `.env`, the operator TOMLs and the instance `config.toml` live | `HERDR_PLUGIN_CONFIG_DIR`, then the instance plugin dir, then Herdr's own answer, then the conventional plugin dir, then `~/.config/collie` |
-| `resolveStateDir` (`bridge/config.ts`) | where push subscriptions, `notify-prefs.json`, `snooze.json` and `stt.json` live | `HERDR_PLUGIN_STATE_DIR`, then `COLLIE_STATE_DIR`, then `~/.local/state/collie` |
+| `resolveStateDir` (`bridge/config.ts`) | where push subscriptions, `notify-prefs.json`, `snooze.json` and `stt.json` live | `COLLIE_STATE_DIR`, then `~/.local/state/collie` (`HERDR_PLUGIN_STATE_DIR` is ignored since #226: the service never received it) |
 | `configFilePaths` (`bridge/config-source.ts`) | which two config files are read, in order | `COLLIE_CONFIG` or `~/.collie/config.toml`, then `<config-dir>/config.toml` |
 
 **What would justify revisiting this.** A demonstrated need for per-project settings, which would be

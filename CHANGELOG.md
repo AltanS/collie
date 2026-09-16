@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Herdr plugin action reads the same state as the running service.** Herdr puts its own plugin state directory into every action it runs, and Collie used it, so `push-test` found no subscriptions and pairing, devices and crew verbs run as actions read and wrote a directory the service never uses. Collie now ignores that directory; `COLLIE_STATE_DIR` still moves the state. Thanks @lighcen (#226).
+
 ## [1.9.1] - 2026-09-15
 
 ### Added

@@ -651,7 +651,7 @@ rm -f "${L_CONFIG}/.env"
 BRIDGE_STATE="${TMP_ROOT}/bridge-state"
 mkdir -p "$BRIDGE_STATE"
 env -i HOME="$L_HOME" HERDR_PLUGIN_CONFIG_DIR="$L_CONFIG" PATH="$L_BIN" \
-  COLLIE_PORT="$BRIDGE_PORT" HERDR_PLUGIN_STATE_DIR="$BRIDGE_STATE" \
+  COLLIE_PORT="$BRIDGE_PORT" COLLIE_STATE_DIR="$BRIDGE_STATE" \
   HERDR_SOCKET_PATH="${TMP_ROOT}/absent.sock" \
   "$BIN" _exec-bridge > "${TMP_ROOT}/bridge.out" 2>&1 &
 BRIDGE_PID=$!
@@ -1601,12 +1601,12 @@ CREW_CALLS="${TMP_ROOT}/calls"
 # writes NOTHING. No trust store, no key, no directory materialised by asking a question. The `crew`
 # spelling is driven too, and its stdout must be byte-identical: the alias is one code path, and a
 # script that reads the status output must not be able to tell which word it typed.
-run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$CREW_STATE" \
   PATH="$BIN_DIR" "$BIN" crew status \
   || fail "\`collie crew status\` failed on a solo machine: ${STDERR}"
 assert_contains "$STDOUT" "mode: solo"
 CREW_STATUS_STDOUT="$STDOUT"
-run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$CREW_STATE" \
   PATH="$BIN_DIR" "$BIN" crew status \
   || fail "\`collie crew status\` failed on a solo machine: ${STDERR}"
 assert_eq "$STDOUT" "$CREW_STATUS_STDOUT"
@@ -1614,7 +1614,7 @@ assert_eq "$STDOUT" "$CREW_STATUS_STDOUT"
 
 # `crew` with no subcommand, and with a wrong one, are usage errors that name the real subcommands.
 set +e
-env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$CREW_STATE" \
   PATH="$BIN_DIR" "$BIN" crew nonsense >/dev/null 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
@@ -1631,7 +1631,7 @@ done
 for spelling in "join" "crew join"; do
   set +e
   # shellcheck disable=SC2086
-  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
+  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$CREW_STATE" \
     PATH="$BIN_DIR" "$BIN" $spelling </dev/null >/dev/null 2>"${TMP_ROOT}/err"
   rc=$?
   set -e
@@ -1642,7 +1642,7 @@ done
 
 # An address with no token, with no terminal to ask at, is the same usage error — and still no dial.
 set +e
-env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$CREW_STATE" \
   PATH="$BIN_DIR" "$BIN" crew join example.invalid </dev/null >/dev/null 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
@@ -1655,7 +1655,7 @@ assert_contains "$(cat "${TMP_ROOT}/err")" "collie crew join example.invalid -"
 # this lead's own trust store, so a solo root must get the refusal and keep an empty state dir —
 # nothing to rename means nothing to materialise.
 set +e
-env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$CREW_STATE" \
   PATH="$BIN_DIR" "$BIN" crew rename "the shed" </dev/null >/dev/null 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
@@ -1668,7 +1668,7 @@ assert_contains "$(cat "${TMP_ROOT}/err")" "no crew to rename"
 for spelling in "leave" "crew leave"; do
   set +e
   # shellcheck disable=SC2086
-  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$CREW_STATE" \
+  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$CREW_STATE" \
     PATH="$BIN_DIR" "$BIN" $spelling </dev/null >/dev/null 2>"${TMP_ROOT}/err"
   rc=$?
   set -e
@@ -1687,7 +1687,7 @@ assert_eq "$(cat "$CREW_CALLS")" ""
 DOCTOR_STATE="${TMP_ROOT}/doctor-state"
 mkdir -p "$DOCTOR_STATE"
 set +e
-env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$DOCTOR_STATE" \
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$DOCTOR_STATE" \
   COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" PATH="$BIN_DIR" COLLIE_MUX=herdr "$BIN" doctor --json \
   >"${TMP_ROOT}/doctor.json" 2>"${TMP_ROOT}/err"
 rc=$?
@@ -1710,7 +1710,7 @@ assert_contains "$DOCTOR_JSON" 'herdr — see herdr-socket · set by COLLIE_MUX'
 
 # The human form is one line per check, and every non-✓ line carries its remedy arrow.
 rc=0
-run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$DOCTOR_STATE" \
+run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$DOCTOR_STATE" \
   COLLIE_PLUGIN_ROOT="$EMPTY_ROOT" PATH="$BIN_DIR" "$BIN" doctor || rc=$?
 assert_eq "$rc" "1"
 assert_contains "$STDOUT" "error:"
@@ -1721,7 +1721,7 @@ assert_contains "$STDOUT" "crew: none"
 # `pair` and `devices` are the only verbs that write a CREDENTIAL to disk, and they are the two an
 # operator runs from wherever they happen to be — including a Herdr action, with no login shell. So
 # what this section proves is what `bun test` cannot: that under `env -i` the code really lands in the
-# state dir the BRIDGE resolves (`HERDR_PLUGIN_STATE_DIR`), owner-only, with no restart, and that the
+# state dir the BRIDGE resolves (`COLLIE_STATE_DIR`), owner-only, with no restart, and that the
 # only tool either verb reaches for is the read-only tailnet probe behind `pair`'s QR — pinned below,
 # so it cannot quietly grow.
 PAIR_STATE="${TMP_ROOT}/pair-state"
@@ -1731,7 +1731,7 @@ mkdir -p "$PAIR_STATE"
 PAIR_CALLS="${TMP_ROOT}/calls"
 : > "$PAIR_CALLS"
 pair_env() {
-  run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PAIR_STATE" \
+  run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$PAIR_STATE" \
     PATH="$BIN_DIR" "$BIN" "$@"
 }
 
@@ -1801,7 +1801,7 @@ assert_contains "$(cat "${PAIR_STATE}/paired-devices.json")" "ipad"
 
 # An unknown label is an operational failure (1) that names what does exist — not a silent success.
 set +e
-env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PAIR_STATE" \
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$PAIR_STATE" \
   PATH="$BIN_DIR" "$BIN" devices revoke pixel >/dev/null 2>"${TMP_ROOT}/err"
 rc=$?
 set -e
@@ -1813,7 +1813,7 @@ assert_contains "$(cat "${TMP_ROOT}/err")" "ipad"
 for args in "devices" "devices nonsense" "devices revoke"; do
   set +e
   # shellcheck disable=SC2086
-  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PAIR_STATE" \
+  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$PAIR_STATE" \
     PATH="$BIN_DIR" "$BIN" $args >/dev/null 2>"${TMP_ROOT}/err"
   rc=$?
   set -e
@@ -1843,7 +1843,7 @@ exit 0
 EOF
 chmod +x "${BIN_DIR}/codex"
 stt_env() {
-  run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$STT_STATE" \
+  run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$STT_STATE" \
     PATH="$BIN_DIR" "$@"
 }
 
@@ -1887,7 +1887,7 @@ assert_contains "$STDOUT" "(COLLIE_STT_MODEL)"
 # The codex provider refuses BEFORE it runs anything when the risks cannot be accepted: no terminal
 # and no `--accept-risk` means no probe, no file, and a message naming the flag a script would use.
 set +e
-env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$STT_STATE" \
+env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$STT_STATE" \
   PATH="$BIN_DIR" "$BIN" stt setup --provider codex >"${TMP_ROOT}/out" 2>"${TMP_ROOT}/err" </dev/null
 rc=$?
 set -e
@@ -1921,7 +1921,7 @@ assert_contains "$STDOUT" "COLLIE_STT_URL"
 for args in "stt" "stt nonsense"; do
   set +e
   # shellcheck disable=SC2086
-  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$STT_STATE" \
+  env -i HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$STT_STATE" \
     PATH="$BIN_DIR" "$BIN" $args >/dev/null 2>"${TMP_ROOT}/err"
   rc=$?
   set -e
@@ -1942,7 +1942,7 @@ PUSH_STATE="${TMP_ROOT}/push-state"
 mkdir -p "$PUSH_STATE"
 : > "$PAIR_CALLS"
 push_env() {
-  run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$PUSH_STATE" \
+  run_stripped HOME="$HOME_DIR" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$PUSH_STATE" \
     PATH="$BIN_DIR" "$BIN" "$@"
 }
 
@@ -2182,7 +2182,7 @@ DOCTOR_LINK_STATE="${TMP_ROOT}/doctor-link-state"
 mkdir -p "$DOCTOR_LINK_STATE"
 doctor_link() {
   set +e
-  env -i HOME="$LINK_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" HERDR_PLUGIN_STATE_DIR="$DOCTOR_LINK_STATE" \
+  env -i HOME="$LINK_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_STATE_DIR="$DOCTOR_LINK_STATE" \
     COLLIE_PLUGIN_ROOT="$1" PATH="$BIN_DIR" "$BIN" doctor --json 2>/dev/null
   set -e
 }
@@ -2213,7 +2213,7 @@ printf '#!/bin/sh\n' > "${BEACON_ROOT}/bin/collie"
 
 beacon_env() {
   run_stripped HOME="$BEACON_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_PLUGIN_ROOT="$BEACON_ROOT" \
-    HERDR_PLUGIN_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" "$BIN" "$@"
+    COLLIE_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" "$BIN" "$@"
 }
 
 # A settings file the operator already owns. Every assertion below is about it surviving.
@@ -2283,7 +2283,7 @@ assert_eq "$STDOUT" ""
 # here would BLOCK the operator's prompt, and anything on stdout would be injected into it.
 set +e
 printf 'not json' | env -i HOME="$BEACON_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" \
-  COLLIE_PLUGIN_ROOT="$BEACON_ROOT" HERDR_PLUGIN_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" \
+  COLLIE_PLUGIN_ROOT="$BEACON_ROOT" COLLIE_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" \
   TMUX_PANE="%7" TMUX="/tmp/tmux-1000/default,1,0" "$BIN" beacon emit > "${TMP_ROOT}/emit.out" 2>&1
 rc=$?
 set -e
@@ -2295,7 +2295,7 @@ assert_eq "$(cat "${TMP_ROOT}/emit.out")" ""
 set +e
 printf '{"session_id":"ff2dd3c2-e3d5-40db-9474-eea02e606c6c","hook_event_name":"UserPromptSubmit","cwd":"/tmp"}' \
   | env -i HOME="$BEACON_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_PLUGIN_ROOT="$BEACON_ROOT" \
-    HERDR_PLUGIN_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" TMUX_PANE="%7" TMUX="/tmp/tmux-1000/default,1,0" \
+    COLLIE_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" TMUX_PANE="%7" TMUX="/tmp/tmux-1000/default,1,0" \
     "$BIN" beacon emit > "${TMP_ROOT}/emit.out" 2>&1
 rc=$?
 set -e
@@ -2323,7 +2323,7 @@ cp "${BEACON_STATE}/beacons/${BEACON_FILE}" "${TMP_ROOT}/beacon.before"
 set +e
 printf '{"session_id":"other-session","agent_id":"sub-1","hook_event_name":"Stop"}' \
   | env -i HOME="$BEACON_HOME" HERDR_PLUGIN_CONFIG_DIR="$CONFIG_DIR" COLLIE_PLUGIN_ROOT="$BEACON_ROOT" \
-    HERDR_PLUGIN_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" TMUX_PANE="%7" TMUX="/tmp/tmux-1000/default,1,0" \
+    COLLIE_STATE_DIR="$BEACON_STATE" PATH="$BIN_DIR" TMUX_PANE="%7" TMUX="/tmp/tmux-1000/default,1,0" \
     "$BIN" beacon emit >/dev/null 2>&1
 rc=$?
 set -e
