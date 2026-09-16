@@ -415,12 +415,24 @@ export class StateEngine {
         paneCount: t.paneCount,
       }));
 
-      // Each pane learns how many panes share its tab, so the name rule can let a named one-pane tab
-      // name its pane. Assigned only where the listing knows the tab.
+      // Each pane learns its position in its tab and, when it is alone in a tab the operator named,
+      // that name (types.ts § soleTabName). Position is the pane's index in the mux listing among the
+      // panes of its tab, the same arrangement `byPlace` reads.
       const tabPanes = new Map(tabs.map((t) => [t.tabId, t.paneCount]));
+      const source = new Map(panes.map((p) => [p.paneId, p]));
+      const position = new Map<string, number>();
+      const perTab = new Map<string, number>();
+      for (const p of panes) {
+        const i = perTab.get(p.tabId) ?? 0;
+        perTab.set(p.tabId, i + 1);
+        position.set(p.paneId, i);
+      }
       for (const v of [...agents, ...shellPanes]) {
-        const n = tabPanes.get(v.tabId);
-        if (n !== undefined) v.tabPaneCount = n;
+        const pos = position.get(v.paneId);
+        if (pos !== undefined) v.tabPosition = pos;
+        const raw = source.get(v.paneId);
+        const label = raw?.tabLabel?.trim();
+        if (tabPanes.get(v.tabId) === 1 && raw?.tabNamed === true && label) v.soleTabName = label;
       }
 
       // Detect transitions against the previous poll. First sighting of a pane never fires a

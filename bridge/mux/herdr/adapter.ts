@@ -23,6 +23,7 @@
 // the list is that the NEXT adapter's is shorter.
 
 import { meaningfulTabLabel, meaningfulTerminalTitle } from "../../activity.ts";
+import { isUnnamedTab } from "../../pane-name.ts";
 import type { DialMode } from "../../dial.ts";
 import { declareCapabilities } from "../capabilities.ts";
 import { herdrMachineCandidates } from "./machine-list.ts";
@@ -549,7 +550,11 @@ function toMuxPane(
   if (raw.label !== null && raw.label !== undefined && raw.label.length > 0) pane.paneLabel = raw.label;
   // The tab's label, dropped when it's Herdr's positional default in a single-tab space.
   const tabLabel = meaningfulTabLabel(tabById.get(raw.tab_id)?.label);
-  if (tabLabel) pane.tabLabel = tabLabel;
+  if (tabLabel) {
+    pane.tabLabel = tabLabel;
+    // Herdr labels an unnamed tab by position, so any other label is one the operator gave it.
+    if (!isUnnamedTab(tabLabel)) pane.tabNamed = true;
+  }
   // What the pane says it is doing, dropped when it only repeats the agent name or the space label.
   const terminalTitle = meaningfulTerminalTitle(
     raw.terminal_title,

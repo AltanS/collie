@@ -921,7 +921,11 @@ function toMuxPane(
     if (printed !== null) pane.terminalTitle = printed;
   }
   const tabLabel = meaningfulWindowName(window, panes);
-  if (tabLabel !== null) pane.tabLabel = tabLabel;
+  if (tabLabel !== null) {
+    pane.tabLabel = tabLabel;
+    // An automatic window name is reported as the pane's folder, which is not a name anyone chose.
+    if (window !== undefined && !window.autoNamed) pane.tabNamed = true;
+  }
   // What a `recent` read can yield: the history tmux kept, plus the viewport it sits behind. This is
   // the mirror's only reliable "is there more" signal, and tmux reports both halves exactly.
   pane.readableLines = raw.historySize + raw.height;

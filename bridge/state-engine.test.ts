@@ -1206,3 +1206,31 @@ describe("StateEngine — an expired agent's pane", () => {
     expect(wire.hasSession).toBeUndefined();
   });
 });
+
+// A one-pane tab the operator NAMED gives the pane its name (pane-name.ts § soleTabName); the bridge
+// decides, because only the adapter knows a chosen label (`MuxPane.tabNamed`) from a positional one.
+describe("soleTabName and tabPosition", () => {
+  test("a named tab holding one pane names it; a positional or shared tab does not", async () => {
+    const { herdr, engine, poll } = makeEngine();
+    herdr.panes = [
+      { ...pane("p1", "w1", "idle", "claude"), tab_id: "w1:t1" },
+      { ...pane("p2", "w1", "idle", "claude"), tab_id: "w1:t2" },
+      { ...pane("p3", "w1", "idle", "claude"), tab_id: "w1:t2" },
+      { ...pane("p4", "w1", "idle", "claude"), tab_id: "w1:t3" },
+    ];
+    herdr.tabs = [
+      { tab_id: "w1:t1", workspace_id: "w1", number: 1, label: "Ui fixes", focused: false, pane_count: 1, agent_status: "idle" },
+      { tab_id: "w1:t2", workspace_id: "w1", number: 2, label: "work", focused: false, pane_count: 2, agent_status: "idle" },
+      { tab_id: "w1:t3", workspace_id: "w1", number: 3, label: "3", focused: false, pane_count: 1, agent_status: "idle" },
+    ];
+    await poll();
+    const byId = new Map(engine.current().agents.map((a) => [a.paneId, a]));
+    expect(byId.get("p1")?.soleTabName).toBe("Ui fixes");
+    expect(byId.get("p2")?.soleTabName).toBeUndefined();
+    expect(byId.get("p4")?.soleTabName).toBeUndefined();
+    // Position inside the tab follows the listing, not the id.
+    expect(byId.get("p2")?.tabPosition).toBe(0);
+    expect(byId.get("p3")?.tabPosition).toBe(1);
+    expect(byId.get("p1")?.tabPosition).toBe(0);
+  });
+});

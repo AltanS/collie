@@ -2,7 +2,8 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AgentList } from "./agent-list";
-import { workspaceGroupKey } from "@/lib/pane-groups";
+import { groupPanesByWorkspace } from "@/lib/pane-groups";
+import { workspacePrefKey } from "./agent-list";
 import type { AgentStatus, AgentView } from "@/lib/types";
 
 function agent(
@@ -428,6 +429,9 @@ describe("AgentList — an older bridge with no timestamps", () => {
   });
 });
 
+// The key a device remembers a workspace by: machine, session and NAME, never Herdr's restart-unstable id.
+const prefKeyOf = (p: AgentView) => workspacePrefKey(groupPanesByWorkspace([p])[0]!);
+
 describe("AgentList — the Spaces filter strip", () => {
   const two = [
     agent("a", "idle", { workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1" }),
@@ -441,10 +445,17 @@ describe("AgentList — the Spaces filter strip", () => {
       name: new RegExp(label),
     });
 
+  it("keeps a hidden workspace hidden when Herdr renumbers its id", () => {
+    const key = prefKeyOf(two[0]!);
+    const renumbered = two.map((p, i) => (i === 0 ? { ...p, workspaceId: `${p.workspaceId}x`, tabId: `${p.workspaceId}x:t1` } : p));
+    render(<AgentList agents={renumbered} onOpen={vi.fn()} hidden={[key]} />);
+    expect(headings()).not.toContain("one");
+  });
+
   it("isolates a workspace on a chip tap; tapping it again returns to all", async () => {
     const user = userEvent.setup();
     const onIsolate = vi.fn();
-    const key = workspaceGroupKey(two[0]!);
+    const key = prefKeyOf(two[0]!);
     const { rerender } = render(<AgentList agents={two} onOpen={vi.fn()} onIsolate={onIsolate} />);
     await user.click(chip("one"));
     expect(onIsolate).toHaveBeenCalledExactlyOnceWith(key);
@@ -464,11 +475,11 @@ describe("AgentList — the Spaces filter strip", () => {
     // A long-press reaches the DOM as a `contextmenu` event (Android Chrome / right-click) —
     // components/ui/chip.tsx wires it through `useLongPress`.
     fireEvent.contextMenu(chip("one"));
-    expect(onToggleHidden).toHaveBeenCalledExactlyOnceWith(workspaceGroupKey(two[0]!));
+    expect(onToggleHidden).toHaveBeenCalledExactlyOnceWith(prefKeyOf(two[0]!));
   });
 
   it("keeps a hidden chip in the strip, dimmed and marked hidden — the group itself drops", () => {
-    const key = workspaceGroupKey(two[0]!);
+    const key = prefKeyOf(two[0]!);
     render(<AgentList agents={two} onOpen={vi.fn()} hidden={[key]} />);
     // "one" no longer has a heading — its rows are gone from the list.
     expect(headings()).toEqual(["two"]);

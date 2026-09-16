@@ -46,7 +46,7 @@ interface AgentListProps {
    * The workspace filter the strip on top drives, per device (hooks/use-dash-prefs.ts). `isolated`
    * shows one workspace alone; `hidden` drops workspaces from the list while their chips stay in
    * the strip, dimmed, still carrying their status dot, so a hidden workspace that needs you is
-   * never silent. Group keys (`workspaceGroupKey`). Omit both and the list shows everything.
+   * never silent. Keys from `workspacePrefKey` (machine, session, workspace name). Omit both and the list shows everything.
    */
   isolated?: string | null;
   hidden?: readonly string[];
@@ -73,6 +73,16 @@ function urgentDot(g: WorkspaceGroup): string | undefined {
 
 function urgentCount(g: WorkspaceGroup): number {
   return g.panes.filter((p) => ATTENTION.has(bucketOf(p))).length;
+}
+
+/**
+ * The key a device REMEMBERS a workspace by, for hide and isolate: its machine, session and NAME.
+ * The group key carries Herdr's workspace id, which is opaque and can change when Herdr restarts, so
+ * a preference keyed on it would quietly stop applying. The name is the project folder and stays.
+ */
+export function workspacePrefKey(g: WorkspaceGroup): string {
+  const cut = g.key.lastIndexOf("\u0000");
+  return `${cut === -1 ? "" : g.key.slice(0, cut)}\u0000${g.label}`;
 }
 
 /** A DOM id for a workspace group, so the summary line can scroll to it. */
@@ -172,15 +182,15 @@ export function AgentList({
   const groups = groupPanesByWorkspace(agents, shellPanes, { order: "fixed", tabs });
   if (groups.length === 0) return null;
   // A stale key (a workspace since closed) filters nothing: an isolation nobody can see is dropped.
-  const isolatedGroup = isolated === null ? undefined : groups.find((g) => g.key === isolated);
+  const isolatedGroup = isolated === null ? undefined : groups.find((g) => workspacePrefKey(g) === isolated);
   const hiddenSet = new Set(hidden);
-  const shown = isolatedGroup ? [isolatedGroup] : groups.filter((g) => !hiddenSet.has(g.key));
+  const shown = isolatedGroup ? [isolatedGroup] : groups.filter((g) => !hiddenSet.has(workspacePrefKey(g)));
   const allClear = attention.length === 0;
   const firstUrgent = groups.find((g) => urgentCount(g) > 0);
   const jumpTo = (g: WorkspaceGroup) => {
     // The target may be filtered out: isolate it, which is also the scroll.
     if (!shown.includes(g)) {
-      onIsolate?.(g.key);
+      onIsolate?.(workspacePrefKey(g));
       return;
     }
     document.getElementById(groupDomId(g.key))?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -219,10 +229,10 @@ export function AgentList({
               key={g.key}
               label={g.label}
               active={isolatedGroup?.key === g.key}
-              dimmed={!isolatedGroup && hiddenSet.has(g.key)}
+              dimmed={!isolatedGroup && hiddenSet.has(workspacePrefKey(g))}
               status={worstTriage(g.panes)}
-              onClick={() => onIsolate?.(isolatedGroup?.key === g.key ? null : g.key)}
-              onLongPress={onToggleHidden ? () => onToggleHidden(g.key) : undefined}
+              onClick={() => onIsolate?.(isolatedGroup?.key === g.key ? null : workspacePrefKey(g))}
+              onLongPress={onToggleHidden ? () => onToggleHidden(workspacePrefKey(g)) : undefined}
             />
           ))}
         </div>

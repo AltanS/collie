@@ -55,11 +55,13 @@ export function paneName(pane: AgentView): string {
  * Renaming a one-pane tab is how an operator names a pane (the belt's long-press, or the desktop),
  * and before this rule that name reached no line 1 anywhere: the title Claude writes itself won, so
  * `Ui fixes` read as `Tabs/spaces naming adjustment`. Hand-set names still come first, the title
- * after. A tab of several panes is a group, and its name names the group, not any one of them.
+ * after. The bridge decides whether the tab was NAMED and whether the pane is ALONE in it
+ * (state-engine.ts), because only the adapter knows a chosen label from tmux's automatic one; this
+ * reads the answer.
  */
-export function soleTabName(pane: { tabLabel?: string | undefined; tabPaneCount?: number | undefined }): string | null {
-  if (pane.tabPaneCount !== 1 || isUnnamedTab(pane.tabLabel)) return null;
-  return pane.tabLabel!.trim();
+export function soleTabName(pane: { soleTabName?: string | undefined }): string | null {
+  const name = pane.soleTabName?.trim();
+  return name ? name : null;
 }
 
 /** zellij's own default name for a tab nobody has named: `Tab #1`, `Tab #2`, … (probed). */

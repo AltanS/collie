@@ -81,8 +81,13 @@ interface Bucket {
  * `w1` and only the full address tells them apart. `hostKey` supplies the untagged-is-ambient half
  * of the rule, so a solo un-widened list keys as a pure prefix extension of the bare ids.
  */
-/** Pane id order: the bridge's own tiebreak inside a tab, and the one thing a status change never alters. */
-const byId = (a: AgentView, b: AgentView) => a.paneId.localeCompare(b.paneId);
+/**
+ * A pane's place inside its tab: the multiplexer's own position (`tabPosition`, from the bridge), with
+ * the pane id only as a tiebreak for an older peer that sends no position. Neither changes with status.
+ */
+const byId = (a: AgentView, b: AgentView) =>
+  (a.tabPosition ?? Number.MAX_SAFE_INTEGER) - (b.tabPosition ?? Number.MAX_SAFE_INTEGER) ||
+  a.paneId.localeCompare(b.paneId);
 
 export function workspaceGroupKey(pane: AgentView): string {
   return `${hostKey(pane)}${KEY_SEP}${pane.session ?? ""}${KEY_SEP}${pane.workspaceId}`;

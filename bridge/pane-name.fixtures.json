@@ -27,9 +27,8 @@
       "pane": {
         "agent": "claude",
         "kind": "agent",
-        "tabLabel": "Ui fixes",
-        "tabPaneCount": 1,
-        "terminalTitle": "Tabs/spaces naming adjustment"
+        "terminalTitle": "Tabs/spaces naming adjustment",
+        "soleTabName": "Ui fixes"
       },
       "name": "Ui fixes"
     },
@@ -39,39 +38,15 @@
         "agent": "claude",
         "kind": "agent",
         "sessionName": "plumbing",
-        "tabLabel": "work",
-        "tabPaneCount": 1
+        "soleTabName": "work"
       },
       "name": "plumbing"
     },
     {
-      "case": "a tab of several panes names the group, not the pane",
+      "case": "an older peer that sends no tab name keeps the title",
       "pane": {
         "agent": "claude",
         "kind": "agent",
-        "tabLabel": "work",
-        "tabPaneCount": 2,
-        "terminalTitle": "Fact check ritual"
-      },
-      "name": "Fact check ritual"
-    },
-    {
-      "case": "a positional tab label names nothing, even alone",
-      "pane": {
-        "agent": "claude",
-        "kind": "agent",
-        "tabLabel": "3",
-        "tabPaneCount": 1,
-        "terminalTitle": "Fact check ritual"
-      },
-      "name": "Fact check ritual"
-    },
-    {
-      "case": "an older peer that sends no tab count keeps the title",
-      "pane": {
-        "agent": "claude",
-        "kind": "agent",
-        "tabLabel": "work",
         "terminalTitle": "Fact check ritual"
       },
       "name": "Fact check ritual"

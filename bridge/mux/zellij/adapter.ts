@@ -750,7 +750,11 @@ function toMuxPane(
     if (printed !== null) pane.terminalTitle = printed;
   }
   const tabLabel = meaningfulTabName(tab);
-  if (tabLabel !== null) pane.tabLabel = tabLabel;
+  if (tabLabel !== null) {
+    pane.tabLabel = tabLabel;
+    // meaningfulTabName already dropped zellij's `Tab #N`, so what is left was named by the operator.
+    pane.tabNamed = true;
+  }
   return pane;
 }
 

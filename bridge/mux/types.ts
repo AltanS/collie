@@ -134,6 +134,12 @@ export interface MuxPane extends MuxIdentity {
   readonly tabId: string;
   /** The tab's label, when it carries information. Absent for a positional default. */
   readonly tabLabel?: string;
+  /**
+   * True when `tabLabel` is a name the OPERATOR set, not the multiplexer's own: never a positional
+   * default, and never tmux's automatic window name (which the adapter reports as the pane's folder).
+   * Only such a name may name a pane (bridge/state-engine.ts, `soleTabName`). Absent otherwise.
+   */
+  readonly tabNamed?: true;
   /** The pane's working directory. Empty when the multiplexer does not report one. */
   readonly cwd: string;
   /**

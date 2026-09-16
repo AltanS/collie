@@ -135,6 +135,8 @@ describe("an auto-named window shows its folder, not its program", () => {
     // A deliberate choice, so the folder rule never runs — even though the cwd would say otherwise.
     expect(tab.label).toBe("notes");
     expect(pane.tabLabel).toBe("notes");
+    // A window the operator named is a name, so it may name a pane that is alone in it.
+    expect(pane.tabNamed).toBe(true);
   });
 
   test("an auto-named window with a known path shows its active pane's last folder", async () => {
@@ -147,6 +149,8 @@ describe("an auto-named window shows its folder, not its program", () => {
     const { tab, pane } = await tabAndPane(adapter, created.value.tabId, created.value.paneId);
     expect(tab.label).toBe("herdr-pouch");
     expect(pane.tabLabel).toBe("herdr-pouch");
+    // The folder stands in for tmux's automatic name; nobody chose it, so it never names the pane.
+    expect(pane.tabNamed).toBeUndefined();
   });
 
   test("root is its own last folder", async () => {
