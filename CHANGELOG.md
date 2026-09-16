@@ -41,6 +41,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Fixed
 
 - **A Herdr plugin action reads the same state as the running service.** Herdr puts its own plugin state directory into every action it runs, and Collie used it, so `push-test` found no subscriptions and pairing, devices and crew verbs run as actions read and wrote a directory the service never uses. Collie now ignores that directory; `COLLIE_STATE_DIR` still moves the state. Thanks @lighcen (#226).
+- **An update that finds its target already staged closes the record it opened.** The update record no longer stays at `staging` after such a run, so the phone stops reporting it as interrupted. Thanks @foreverrrree (#231).
+- **A Muse pane's hard line breaks read as soft wraps on the phone.** The 2-column row gutter and the full-width row padding Muse draws are trimmed from its native mirror, so paragraphs no longer show a stray indent or blank stub lines. Detectors still read the untrimmed screen. Thanks @jpcarranza94 (#230).
+- **A Muse pane's light mirror stands on Herdr's own light background.** The native ground moves from the page grey to `#fffbf8`, so Muse's prompt fill and other authored tones keep their contrast. Thanks @jpcarranza94 (#229).
+- **An update checks Bun can run before it touches the checkout.** A managed or staged update now asks `bun --version` first and stops with the checkout unchanged when Bun cannot answer, and the update check shows red rather than amber for a Bun that fails or takes over 5 seconds. The compile step runs in a private folder under `bin/`, so Bun's scratch file no longer lands in the checkout root; `bin/` must be a real directory, not a symlink. Thanks @en-ver (#232).
 
 ## [1.9.1] - 2026-09-15
 
