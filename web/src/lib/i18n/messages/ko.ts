@@ -291,6 +291,7 @@ export const ko: Dictionary = {
   "chat.fullReply.showingTerminal": "터미널 표시 중",
   "chat.output.empty": "(최근 출력 없음)",
   "chat.switcher.aria": "창 전환",
+  "chat.switcher.ariaNeedsYou": "창 전환, 다른 창이 응답을 기다립니다",
   "chat.switcher.title": "창 전환",
   "chat.switcher.launch.here": "여기",
   "chat.status.feedbackSent": "피드백 전송 완료",

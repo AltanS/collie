@@ -237,3 +237,26 @@ describe("ActionsRow", () => {
     expect(scroller.lastElementChild?.getAttribute("aria-hidden")).not.toBe("true");
   });
 });
+
+// ANOTHER PANE NEEDS YOU: the switcher mark wears a red dot, and its name says why. Red only, so the
+// caller passes `alert` only for a blocked pane elsewhere (agent-chat.tsx).
+describe("ActionsRow — the switcher mark's alert", () => {
+  const dotOf = (el: HTMLElement) => el.querySelector(".bg-status-blocked");
+
+  it("draws the red dot only when alerted", () => {
+    const { rerender } = render(
+      <ActionsRow general={[general()]} agent="claude" onRun={took} handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane" }} />,
+    );
+    expect(dotOf(screen.getByRole("button", { name: "Switch pane" }))).toBeNull();
+    rerender(
+      <ActionsRow
+        general={[general()]}
+        agent="claude"
+        onRun={took}
+        handle={{ ref: vi.fn(), onClick: vi.fn(), label: "Switch pane, another pane needs you", alert: true }}
+      />,
+    );
+    expect(dotOf(screen.getByRole("button", { name: "Switch pane, another pane needs you" }))).not.toBeNull();
+  });
+});
+

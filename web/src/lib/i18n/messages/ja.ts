@@ -293,6 +293,7 @@ export const ja: Dictionary = {
   "chat.fullReply.showingTerminal": "ターミナルを表示中",
   "chat.output.empty": "(直近の出力なし)",
   "chat.switcher.aria": "ペインを切り替え",
+  "chat.switcher.ariaNeedsYou": "ペインを切り替え、別のペインが対応を待っています",
   "chat.switcher.title": "ペインを切り替え",
   "chat.switcher.launch.here": "ここ",
   "chat.status.feedbackSent": "フィードバックを送信しました",

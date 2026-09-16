@@ -73,6 +73,7 @@ import { canGrowRequestedLines, growRequestedLines } from "@/lib/loaders";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { useMuxCapability } from "@/lib/mux-capability";
 import { hasJournalAdapter } from "@/lib/journal-agents";
+import { paneRowKey } from "@/lib/hosts";
 import { historyPath, spacePath } from "@/lib/nav";
 import { isReadOnly, statusLabel } from "@/lib/types";
 import { usePairing } from "@/lib/pairing";
@@ -425,12 +426,18 @@ export function AgentChat({
   // stood down while the soft keyboard was up because it cost 30px at the one moment the screen had
   // none to give. The mark costs 0px in every state, so there is nothing left to buy back by hiding
   // it — and the switcher sheet is now reachable mid-sentence, which it never was before.
+  // ANOTHER PANE NEEDS YOU: a red dot on the switcher mark when any pane but this one is blocked.
+  // Red only, on purpose: an unseen reply or a working pane is not worth pulling the eye off the
+  // pane you are in, and the pane on screen already shows its own state.
+  const hereKey = agent ? paneRowKey(agent) : null;
+  const elsewhereNeedsYou = agents.some((a) => a.status === "blocked" && paneRowKey(a) !== hereKey);
   const pullHandle =
     agents.length + shellPanes.length > 0 || launchers.length > 0
       ? {
           ref: sheetPull.ref,
           onClick: () => setDrawer("switcher"),
-          label: t("chat.switcher.aria"),
+          label: t(elsewhereNeedsYou ? "chat.switcher.ariaNeedsYou" : "chat.switcher.aria"),
+          alert: elsewhereNeedsYou,
         }
       : undefined;
   // ── COMPOSING MODE — read ONCE, here, for the whole pane ──────────────────────

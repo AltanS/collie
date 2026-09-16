@@ -280,6 +280,7 @@ export const zh: Dictionary = {
   "chat.fullReply.showingTerminal": "正在显示终端",
   "chat.output.empty": "（暂无近期输出）",
   "chat.switcher.aria": "切换窗格",
+  "chat.switcher.ariaNeedsYou": "切换窗格，另一个窗格需要你",
   "chat.switcher.title": "切换窗格",
   "chat.switcher.launch.here": "当前位置",
   "chat.status.feedbackSent": "反馈已发送",

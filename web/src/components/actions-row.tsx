@@ -281,6 +281,8 @@ export interface ActionsRowProps {
     onClick: () => void;
     /** ALREADY TRANSLATED. The button's accessible name — "Switch pane". */
     label: string;
+    /** Another pane needs you: a red dot on the mark's corner. The label says so in words. */
+    alert?: boolean;
   };
 }
 
@@ -502,6 +504,14 @@ export function ActionsRow({ general, agent, mine, onRun, disabled, handle }: Ac
               className={cn(`${STRIP_ROW_PILL} relative w-8 min-w-8 border-0 px-0 has-[>svg]:px-0`)}
             >
               <Layers className="size-4 shrink-0 text-primary" />
+              {/* The red dot, on the mark's top-right corner, absolutely placed so it never moves the
+                  belt. `ring-chrome` cuts it out of the glyph it overlaps. */}
+              {handle.alert === true && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute top-1 right-1 size-2 rounded-full bg-status-blocked ring-2 ring-chrome"
+                />
+              )}
             </Button>
           </span>
         </span>

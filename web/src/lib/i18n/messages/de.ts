@@ -298,6 +298,7 @@ export const de: Dictionary = {
   "chat.fullReply.showingTerminal": "Terminal wird gezeigt",
   "chat.output.empty": "(keine neue Ausgabe)",
   "chat.switcher.aria": "Pane wechseln",
+  "chat.switcher.ariaNeedsYou": "Pane wechseln, ein anderes Pane braucht dich",
   "chat.switcher.title": "Pane wechseln",
   "chat.switcher.launch.here": "hier",
   "chat.status.feedbackSent": "Feedback gesendet",

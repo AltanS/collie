@@ -317,6 +317,7 @@ export const en = {
   "chat.fullReply.showingTerminal": "showing the terminal",
   "chat.output.empty": "(no recent output)",
   "chat.switcher.aria": "Switch pane",
+  "chat.switcher.ariaNeedsYou": "Switch pane, another pane needs you",
   "chat.switcher.title": "Switch pane",
   "chat.switcher.launch.here": "here",
   "chat.status.feedbackSent": "Feedback sent",
