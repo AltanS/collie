@@ -9,6 +9,9 @@ import {
   readdirSync,
   readFileSync,
   readlinkSync,
+  lstatSync,
+  mkdtempSync,
+  realpathSync,
   renameSync,
   rmSync,
   statSync,
@@ -138,11 +141,24 @@ export interface Files {
   /** File contents, or null when missing/unreadable. */
   read(p: string): string | null;
   /**
+   * The entry's own type, without following a symlink, or null when it cannot be read.
+   *
+   * Build scratch setup uses this rather than `stat`: the checkout's `bin` must itself be a real
+   * directory, never a link or another redirected object.
+   */
+  entryType(p: string): "file" | "directory" | "symlink" | "other" | null;
+  /**
    * Entry names directly under `p`, or `[]` when it is not a readable directory. The only directory
    * listing any verb does: `join` clears the herd notification slots of the sessions this machine
    * runs, and those are discovered from the herdr config root exactly as the bridge discovers them.
    */
   list(p: string): string[];
+  /** Entry names directly under `p`, throwing when the directory cannot be read. */
+  listStrict(p: string): string[];
+  /** The canonical absolute path after resolving every symlink, or null when it cannot be read. */
+  realpath(p: string): string | null;
+  /** Atomically create and return a new directory whose path starts with `prefix`. */
+  mkdtemp(prefix: string): string;
   /** Write `text`, creating the parent directory. `mode` is applied to the file. */
   write(p: string, text: string, mode?: number): void;
   mkdirp(p: string, mode?: number): void;
@@ -323,10 +339,16 @@ export function realExec(env: Environment, home: string): Exec {
       // `env` (this Exec's own) is spread LAST so a name it already carries always wins over the
       // caller-supplied default — see the seam's doc comment.
       const spawnEnv = envAdd === undefined ? env : { ...envAdd, ...env };
-      const r = Bun.spawnSync([bin, ...args], { env: spawnEnv, timeout: timeoutMs });
+      const r = Bun.spawnSync([bin, ...args], {
+        env: spawnEnv,
+        timeout: timeoutMs,
+        // This bounds the direct probe even when the candidate ignores SIGTERM.
+        killSignal: "SIGKILL",
+      });
+      const timedOut = r.exitedDueToTimeout === true;
       return {
-        // A timed-out child has no exit code — it was killed. 124 keeps the seam's "number" contract.
-        code: r.exitCode ?? 124,
+        // Check Bun's timeout fact before its exit code: a timed-out child has no successful answer.
+        code: timedOut ? 124 : (r.exitCode ?? 124),
         stdout: r.stdout.toString(),
         stderr: r.stderr.toString(),
         found: true,
@@ -434,6 +456,17 @@ export const realFiles: Files = {
       return null;
     }
   },
+  entryType(p) {
+    try {
+      const entry = lstatSync(p);
+      if (entry.isFile()) return "file";
+      if (entry.isDirectory()) return "directory";
+      if (entry.isSymbolicLink()) return "symlink";
+      return "other";
+    } catch {
+      return null;
+    }
+  },
   list(p) {
     try {
       return readdirSync(p);
@@ -441,6 +474,15 @@ export const realFiles: Files = {
       return [];
     }
   },
+  listStrict: (p) => readdirSync(p),
+  realpath(p) {
+    try {
+      return realpathSync(p);
+    } catch {
+      return null;
+    }
+  },
+  mkdtemp: (prefix) => mkdtempSync(prefix),
   write(p, text, mode) {
     mkdirSync(dirname(p), { recursive: true });
     writeFileSync(p, text, mode === undefined ? undefined : { mode });
@@ -555,6 +597,20 @@ export interface ResolvedTool {
   readonly onPath: boolean;
 }
 
+/** A Bun that both resolved to an absolute path and answered a bounded version probe. */
+export interface RunnableBun extends ResolvedTool {
+  readonly version: string;
+}
+
+/** The three answers a source build needs before it may rely on Bun. */
+export type BunReadiness =
+  | { readonly kind: "missing" }
+  | { readonly kind: "unrunnable"; readonly tool: ResolvedTool }
+  | { readonly kind: "ready"; readonly bun: RunnableBun };
+
+/** A compiler probe must never leave an update waiting on a broken executable. */
+export const BUN_PROBE_TIMEOUT_MS = 5_000;
+
 /**
  * Walk {@link toolCandidates} for `tool`: PATH first, then each candidate that is EXECUTABLE — the
  * shells' `[ -x ]`, never a bare "is there a file here".
@@ -576,6 +632,31 @@ export function resolveTool(
     if (files.executable(candidate)) return { path: candidate, onPath: false };
   }
   return null;
+}
+
+/**
+ * Resolve Bun exactly once, then probe THAT absolute path before a source update changes a
+ * checkout. A non-empty first version line proves only that the resolved candidate answers the
+ * bounded probe successfully; it intentionally neither identifies the program as Bun nor makes a
+ * policy decision about how old a runnable Bun is.
+ */
+export function resolveRunnableBun(
+  exec: Pick<Exec, "which" | "capture">,
+  files: Pick<Files, "executable">,
+  env: Environment,
+  home: string,
+): BunReadiness {
+  const tool = resolveTool(exec, files, env, home, "bun");
+  if (tool === null) return { kind: "missing" };
+  try {
+    const result = exec.capture(tool.path, ["--version"], BUN_PROBE_TIMEOUT_MS);
+    const version = result.stdout.trim().split("\n")[0]?.trim() ?? "";
+    return result.found && result.code === 0 && version !== ""
+      ? { kind: "ready", bun: { ...tool, version } }
+      : { kind: "unrunnable", tool };
+  } catch {
+    return { kind: "unrunnable", tool };
+  }
 }
 
 // ── Readiness ────────────────────────────────────────────────────────────────

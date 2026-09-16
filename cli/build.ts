@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 
 import type { CliContext } from "./context.ts";
 import { EXIT, type Io } from "./io.ts";
@@ -33,6 +33,25 @@ export interface BuildDeps {
   files: Files;
 }
 
+/** The narrow seam shared by the full build and `bun run build:cli`. */
+export interface CliCompileDeps {
+  /** The checkout that owns both the binary and its private compiler sandbox. */
+  root: string;
+  io: Io;
+  exec: Exec;
+  files: Files;
+}
+
+/** Optional release inputs; ordinary source builds use the local Bun, target and live binary. */
+export interface CliCompileOptions {
+  /** The Bun executable that becomes the compiled binary's embedded runtime. */
+  bun?: string;
+  /** Bun's executable target. */
+  target?: string;
+  /** Where the compiled binary is written. */
+  outfile?: string;
+}
+
 /** The checkout-relative locations `build` writes. */
 export const webDist = (root: string): string => join(root, "web", "dist");
 export const webStaging = (root: string): string => join(root, "web", "dist-staging");
@@ -44,6 +63,104 @@ export const webStaging = (root: string): string => join(root, "web", "dist-stag
  * executable carries its payload INSIDE the file.
  */
 export const collieBinaryStaging = (root: string): string => `${collieBinary(root)}.new`;
+
+/** Prefixes for private, atomically-created directories under the checkout's real `bin`. */
+export const bunCompileSandboxPrefix = (root: string): string => join(root, "bin", ".bun-compile-");
+export const cliOutputStagingPrefix = (root: string): string => join(root, "bin", ".collie-cli-");
+
+interface CompilePaths {
+  readonly root: string;
+  readonly bin: string;
+}
+
+/** Resolve the checkout once and refuse a linked or redirected `bin` before creating scratch there. */
+function compilePaths(deps: CliCompileDeps): CompilePaths | null {
+  const requestedRoot = resolve(deps.root);
+  const root = deps.files.realpath(requestedRoot);
+  if (root === null) {
+    deps.io.err(`error: could not resolve the checkout root at ${requestedRoot}`);
+    return null;
+  }
+
+  const bin = join(root, "bin");
+  if (deps.files.entryType(bin) === null) {
+    try {
+      deps.files.mkdirp(bin);
+    } catch (err) {
+      deps.io.err(`error: could not create the checkout bin directory at ${bin} (${String(err)})`);
+      return null;
+    }
+  }
+  if (deps.files.entryType(bin) !== "directory") {
+    deps.io.err(`error: checkout bin directory at ${bin} is not a real directory`);
+    return null;
+  }
+  const realBin = deps.files.realpath(bin);
+  if (realBin !== bin) {
+    deps.io.err(`error: checkout bin directory at ${bin} resolves outside its canonical path`);
+    return null;
+  }
+  return { root, bin };
+}
+
+/** Atomically claim one direct child of the validated `bin`; only this returned path is ours to remove. */
+function createOwnedDirectory(
+  deps: CliCompileDeps,
+  bin: string,
+  prefix: string,
+  label: string,
+): string | null {
+  try {
+    const directory = deps.files.mkdtemp(prefix);
+    if (dirname(directory) !== bin || !basename(directory).startsWith(basename(prefix))) {
+      deps.io.err(`error: ${label} was not created under ${bin}`);
+      return null;
+    }
+    return directory;
+  } catch (err) {
+    deps.io.err(`error: could not create ${label} (${String(err)})`);
+    return null;
+  }
+}
+
+/** Remove only an atomically-created directory belonging to this invocation, and prove it went away. */
+function cleanOwnedDirectory(deps: CliCompileDeps, directory: string, label: string): boolean {
+  try {
+    deps.files.removeTree(directory);
+  } catch (err) {
+    deps.io.err(`error: could not clean ${label} (${String(err)})`);
+    return false;
+  }
+  if (deps.files.exists(directory)) {
+    deps.io.err(`error: could not clean ${label} at ${directory}`);
+    return false;
+  }
+  return true;
+}
+
+/** A listing failure is not evidence that the source root has no compiler residue. */
+function rootSidecars(deps: CliCompileDeps, root: string): Set<string> | null {
+  try {
+    return new Set(deps.files.listStrict(root).filter((name) => name.endsWith(".bun-build")));
+  } catch (err) {
+    deps.io.err(`error: could not list the checkout root for Bun sidecars (${String(err)})`);
+    return null;
+  }
+}
+
+/** Existing sidecars are legacy residue; only a sidecar newly escaping this compiler is a failure. */
+function verifyNewRootSidecars(
+  deps: CliCompileDeps,
+  root: string,
+  before: ReadonlySet<string>,
+): boolean {
+  const after = rootSidecars(deps, root);
+  if (after === null) return false;
+  const escaped = [...after].filter((name) => !before.has(name));
+  if (escaped.length === 0) return true;
+  deps.io.err(`error: new root-level Bun sidecar escaped: ${escaped.join(", ")}`);
+  return false;
+}
 
 /**
  * Bun is a hard requirement of `build` — it compiles the CLI and runs Vite — and the ONLY place the
@@ -61,7 +178,7 @@ function requireBun(deps: BuildDeps): string | null {
 
 /** Run one build step, naming it if it fails. `set -e` in the shell; an early return here. */
 function step(
-  deps: BuildDeps,
+  deps: Pick<CliCompileDeps, "io" | "exec">,
   label: string,
   tool: string,
   args: readonly string[],
@@ -75,6 +192,95 @@ function step(
   if (r.code !== 0) {
     deps.io.err(`error: ${label} failed (exit ${r.code})`);
     return false;
+  }
+  return true;
+}
+
+/**
+ * Compile the CLI from an atomically-created private sandbox. This is the one compiler invocation
+ * shared by the operator's CLI-only remedy and the full build; it always passes absolute input and
+ * output paths so changing Bun's cwd cannot change either identity.
+ */
+export function compileCli(deps: CliCompileDeps, options: CliCompileOptions = {}): boolean {
+  const paths = compilePaths(deps);
+  if (paths === null) return false;
+  const before = rootSidecars(deps, paths.root);
+  if (before === null) return false;
+
+  const sandbox = createOwnedDirectory(
+    deps,
+    paths.bin,
+    bunCompileSandboxPrefix(paths.root),
+    "Bun's compile sandbox",
+  );
+  if (sandbox === null) return false;
+
+  const bun = options.bun ?? "bun";
+  const target = options.target ?? "bun";
+  const output = resolve(options.outfile ?? collieBinary(paths.root));
+  let compiled = false;
+  try {
+    compiled = step(
+      deps,
+      "compiling the collie binary",
+      bun,
+      ["build", "--compile", `--target=${target}`, join(paths.root, "cli", "main.ts"), "--outfile", output],
+      sandbox,
+    );
+  } catch (err) {
+    deps.io.err(`error: compiling the collie binary failed (${String(err)})`);
+  }
+
+  // Bun may leave a sidecar on success or failure, so the owned sandbox is always torn down before
+  // anything else observes the checkout. Legacy root sidecars remain in place; only new residue is
+  // unsafe because it was created while this compiler was running.
+  const cleaned = cleanOwnedDirectory(deps, sandbox, "Bun's compile sandbox");
+  const rootClean = verifyNewRootSidecars(deps, paths.root, before);
+  return compiled && cleaned && rootClean;
+}
+
+/**
+ * Compile the ordinary `build:cli` output in a private staging directory, then publish it only after
+ * {@link compileCli} has cleaned and verified its compiler sandbox. Explicit `--outfile` callers use
+ * {@link compileCli} directly because their artifact path is not the live checkout binary.
+ */
+export function compileCliToLive(
+  deps: CliCompileDeps,
+  options: Omit<CliCompileOptions, "outfile"> = {},
+): boolean {
+  const paths = compilePaths(deps);
+  if (paths === null) return false;
+  const staging = createOwnedDirectory(
+    deps,
+    paths.bin,
+    cliOutputStagingPrefix(paths.root),
+    "CLI output staging directory",
+  );
+  if (staging === null) return false;
+
+  const output = join(staging, "collie");
+  if (!compileCli({ ...deps, root: paths.root }, { ...options, outfile: output })) {
+    cleanOwnedDirectory(deps, staging, "CLI output staging directory");
+    return false;
+  }
+
+  try {
+    deps.files.rename(output, collieBinary(paths.root));
+  } catch (err) {
+    deps.io.err(`error: could not publish the compiled collie binary (${String(err)})`);
+    cleanOwnedDirectory(deps, staging, "CLI output staging directory");
+    return false;
+  }
+
+  // Publication has already succeeded. A leftover empty, invocation-owned staging directory is a
+  // warning, not a retroactive build failure that would misreport the live binary's state.
+  try {
+    deps.files.removeTree(staging);
+    if (deps.files.exists(staging)) {
+      deps.io.err(`warn: published collie binary but could not remove ${staging}`);
+    }
+  } catch (err) {
+    deps.io.err(`warn: published collie binary but could not remove ${staging} (${String(err)})`);
   }
   return true;
 }
@@ -119,19 +325,11 @@ export function cmdBuild(deps: BuildDeps): number {
     }
   }
 
-  // 4. The CLI, into its staging path. Compiled BEFORE the web bundle so the cheaper failure
-  // (a broken binary) is found first, but swapped in only at the end with everything else.
+  // 4. The CLI, into its staging path. `compileCli` also serves `bun run build:cli`, so neither
+  // supported route can run Bun from the checkout root before Vite samples its Git identity.
   const binaryStaging = collieBinaryStaging(root);
   deps.files.remove(binaryStaging);
-  deps.files.mkdirp(join(root, "bin"));
-  const compiled = step(
-    deps,
-    "compiling the collie binary",
-    "bun",
-    ["build", "--compile", "--target=bun", "./cli/main.ts", "--outfile", binaryStaging],
-    root,
-  );
-  if (!compiled) {
+  if (!compileCli({ root, io: deps.io, exec: deps.exec, files: deps.files }, { outfile: binaryStaging })) {
     deps.files.remove(binaryStaging);
     return EXIT.FAIL;
   }

@@ -17,7 +17,7 @@
 # knew. To prove what THIS tree answers from the packaged root, compile the CLI and point
 # COLLIE_LOCAL_BINARY at it:
 #
-#   bun build --compile --target=bun ./cli/main.ts --outfile /tmp/collie-local
+#   bun run scripts/build-cli.ts --target bun --outfile /tmp/collie-local
 #   COLLIE_LOCAL_BINARY=/tmp/collie-local bash packaging/aur/vm-install.test.sh
 #
 # That binary replaces /opt/collie/bin/collie inside the throwaway container only, and the run then

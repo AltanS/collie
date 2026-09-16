@@ -333,13 +333,21 @@ describe("preflight — the bun check", () => {
     expect(bunCheck(h.deps).reason).toContain(bun);
   });
 
-  test("`bun is not installed` keeps today's red, sentence for sentence", () => {
+  test("a missing Bun is red before a managed checkout could advance", () => {
     const check = bunCheck(harness({ absent: ["bun"] }).deps);
     expect(check.verdict).toBe("red");
     expect(check.reason).toBe(
-      "bun is not installed, and this install rebuilds from source — the update would stop after the fetch",
+      "bun is not installed, and this install rebuilds from source — the update will not advance the checkout",
     );
     expect(check.remedy).toBe("install Bun from https://bun.sh, then re-run this check");
+  });
+
+  test("a resolved Bun that cannot answer is red, not an advisory version warning", () => {
+    const check = bunCheck(harness({ answers: [["/fake/bun --version", { code: 124 }]] }).deps);
+    expect(check.verdict).toBe("red");
+    expect(check.reason).toContain("/fake/bun");
+    expect(check.reason).toContain("not runnable");
+    expect(check.remedy).toContain("repair or reinstall Bun");
   });
 
   test("a binary install is never asked about bun", async () => {

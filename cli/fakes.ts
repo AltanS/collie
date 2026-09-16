@@ -176,6 +176,14 @@ export interface FakeFiles extends Files {
   stats: Map<string, { inode: number; mtimeMs: number }>;
   /** Symlink targets by path — `/proc/<pid>/exe` above all. */
   links: Map<string, string>;
+  /** Explicit non-file entry types, for safety checks that must not follow a symlink. */
+  entryTypes: Map<string, "directory" | "symlink" | "other">;
+  /** Canonical paths for entries whose realpath differs from their lexical path. */
+  realPaths: Map<string, string>;
+  /** Directories a strict listing cannot read. */
+  unlistable: Set<string>;
+  /** Rename destinations or sources that fail, for publication failure paths. */
+  unrenamable: Set<string>;
   /** Destructive filesystem operations in order: `rm -rf <p>` / `mv <from> <to>`. Ordering is the assertion `build` lives or dies by. */
   ops: string[];
 }
@@ -189,11 +197,16 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
   const notExecutable = new Set<string>();
   const stats = new Map<string, { inode: number; mtimeMs: number }>();
   const links = new Map<string, string>();
+  const entryTypes = new Map<string, "directory" | "symlink" | "other">();
+  const realPaths = new Map<string, string>();
+  const unlistable = new Set<string>();
+  const unrenamable = new Set<string>();
   const ops: string[] = [];
+  let tempDirs = 0;
   // Paths are a flat set, so a "directory" is whatever entries sit under it — enough to model the
   // staging swap, whose whole content is `web/dist/**`.
   const under = (p: string): string[] =>
-    [...entries.keys()].filter((k) => k === p || k.startsWith(`${p}/`));
+    [...new Set([...entries.keys(), ...entryTypes.keys()])].filter((k) => k === p || k.startsWith(`${p}/`));
   return {
     entries,
     undeletable,
@@ -202,37 +215,68 @@ export function fakeFiles(seed: SeededFiles = {}): FakeFiles {
     notExecutable,
     stats,
     links,
+    entryTypes,
+    realPaths,
+    unlistable,
+    unrenamable,
     ops,
     ownerUid: (p) => (rootOwned.has(p) ? 0 : 1000),
     writable: (p) => !readOnly.has(p),
     exists: (p) => under(p).length > 0,
     executable: (p) => under(p).length > 0 && !notExecutable.has(p),
     read: (p) => entries.get(p)?.text ?? null,
+    entryType: (p) =>
+      entryTypes.get(p) ?? (entries.has(p) ? "file" : under(p).some((k) => k !== p) ? "directory" : null),
     list: (p) => [
       ...new Set(
-        [...entries.keys()]
+        [...entries.keys(), ...entryTypes.keys()]
           .filter((k) => k.startsWith(`${p}/`))
           .map((k) => k.slice(p.length + 1).split("/")[0]!),
       ),
     ],
+    listStrict(p) {
+      if (unlistable.has(p)) throw new Error(`EACCES: cannot read ${p}`);
+      return [
+        ...new Set(
+          [...entries.keys(), ...entryTypes.keys()]
+            .filter((k) => k.startsWith(`${p}/`))
+            .map((k) => k.slice(p.length + 1).split("/")[0]!),
+        ),
+      ];
+    },
+    realpath: (p) => realPaths.get(p) ?? (under(p).length > 0 ? p : null),
+    mkdtemp(prefix) {
+      const p = `${prefix}${++tempDirs}`;
+      entryTypes.set(p, "directory");
+      return p;
+    },
     write: (p, text, mode) => void entries.set(p, { text, mode }),
-    mkdirp: () => {},
+    mkdirp: (p) => void entryTypes.set(p, "directory"),
     remove: (p) => {
       if (undeletable.has(p)) return;
       entries.delete(p);
+      entryTypes.delete(p);
     },
     removeTree: (p) => {
       ops.push(`rm -rf ${p}`);
-      for (const k of under(p)) if (!undeletable.has(k)) entries.delete(k);
+      for (const k of under(p)) {
+        if (undeletable.has(k)) continue;
+        entries.delete(k);
+        entryTypes.delete(k);
+      }
     },
     stat: (p) => stats.get(p) ?? (under(p).length > 0 ? { inode: 1, mtimeMs: 0 } : null),
     readlink: (p) => links.get(p) ?? null,
     rename: (from, to) => {
       ops.push(`mv ${from} ${to}`);
+      if (unrenamable.has(from) || unrenamable.has(to)) throw new Error("EACCES: rename refused");
       for (const k of under(from)) {
-        const value = entries.get(k)!;
+        const value = entries.get(k);
+        const type = entryTypes.get(k);
         entries.delete(k);
-        entries.set(to + k.slice(from.length), value);
+        entryTypes.delete(k);
+        if (value !== undefined) entries.set(to + k.slice(from.length), value);
+        if (type !== undefined) entryTypes.set(to + k.slice(from.length), type);
       }
     },
   };

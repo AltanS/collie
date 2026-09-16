@@ -10,7 +10,7 @@
     "dev": "bun --watch bridge/index.ts",
     "build": "bun run cli/main.ts build",
     "build:web": "cd web && bun run build",
-    "build:cli": "bun build --compile --target=bun ./cli/main.ts --outfile bin/collie",
+    "build:cli": "bun run scripts/build-cli.ts",
     "web:dev": "cd web && bun run dev",
     "lint": "oxlint --max-warnings 0",
     "lint:fix": "oxlint --fix --max-warnings 0",

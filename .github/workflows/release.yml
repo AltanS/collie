@@ -179,7 +179,10 @@ jobs:
           # patches its own copy into the Nix store (#184). scripts/upstream-bun.sh realises the
           # archive `flake.nix` pins and prints its bun; its header carries the whole argument.
           upstream_bun="$(FLAKE_ROOT="$GITHUB_WORKSPACE" bash scripts/upstream-bun.sh)"
-          "$upstream_bun" build --compile --target="$BUN_TARGET" ./cli/main.ts --outfile "$stage/bin/collie"
+          bun run scripts/build-cli.ts \
+            --bun "$upstream_bun" \
+            --target "$BUN_TARGET" \
+            --outfile "$stage/bin/collie"
           chmod 0755 "$stage/bin/collie"
 
           # Ad-hoc codesign makes the binary RUNNABLE on Apple Silicon. It makes no claim about who
