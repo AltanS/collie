@@ -59,16 +59,6 @@ function isBrightFg(fg: string): boolean {
   return slot !== null && BRIGHT_INDEXED_SLOTS.has(Number(slot[1]));
 }
 
-/** Presentation-only pass over Muse's raw lines: mark bright foregrounds the native light mirror
- *  must render dark. Everything else — dark and mid-tone spans, bare spans, explicit fg+bg pairs —
- *  renders raw on the light ground, exactly as a light terminal shows the same bytes (.adr/0047).
- *  Not one byte of visible text changes. The input array is returned as-is when nothing matched,
- *  so a screen without a bright foreground stays identical, object for object.
- *
- *  A bright `38;5` cube/ramp colour routes through the same rule — the parser emits those as
- *  `rgb()`. Palette-indexed spellings (`37m`, `97m`, `38;5;15`) arrive as `var(--ansi-N)` and are
- *  covered by the pinned slot set above.
- */
 // Muse pads every PTY row to full width and opens content rows with a 2-column gutter
 // (prose: grey; emphasized continuations: the running style, e.g. bold body). On a desktop
 // terminal both are invisible structure; on a ~55-column phone each hard row soft-wraps and
@@ -125,6 +115,16 @@ export function trimMuseRowChrome(lines: StyledLine[]): StyledLine[] {
   return changedLines ? trimmed : lines;
 }
 
+/** Presentation-only pass over Muse's raw lines: mark bright foregrounds the native light mirror
+ *  must render dark. Everything else — dark and mid-tone spans, bare spans, explicit fg+bg pairs —
+ *  renders raw on the light ground, exactly as a light terminal shows the same bytes (.adr/0047).
+ *  Not one byte of visible text changes. The input array is returned as-is when nothing matched,
+ *  so a screen without a bright foreground stays identical, object for object.
+ *
+ *  A bright `38;5` cube/ramp colour routes through the same rule — the parser emits those as
+ *  `rgb()`. Palette-indexed spellings (`37m`, `97m`, `38;5;15`) arrive as `var(--ansi-N)` and are
+ *  covered by the pinned slot set above.
+ */
 export function decorateMuseDisplay(lines: StyledLine[]): StyledLine[] {
   let changedLines = false;
   const decorated = lines.map((line) => {
