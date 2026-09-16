@@ -393,6 +393,7 @@ export const de: Dictionary = {
   "home.allClear": "Kein Handlungsbedarf",
   "home.workspace.paneCount.one": "{count} Pane",
   "home.workspace.paneCount.other": "{count} Panes",
+  "home.workspace.hidden": "ausgeblendet",
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Pane-Aktionen anzeigen",
   "home.row.tabPosition": "Tab {n}",

@@ -46,7 +46,7 @@ export function HomeRoute() {
         .map((w) => ({ workspaceId: w.workspaceId, repoRoot: w.repoRoot!, label: w.label }))
     : [];
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
-  const { prefs, setSpacesOpen, setLaunchOpen } = useDashPrefs();
+  const { prefs, setSpacesOpen, setLaunchOpen, setIsolatedSpace, toggleHiddenSpace } = useDashPrefs();
   // No stored choice yet? The space count decides — a two-space install shouldn't be handed a
   // mystery collapsed header, and a forty-space one shouldn't be handed a wall.
   const spacesOpen = openForCount(prefs.spacesOpen, data.workspaces.length);
@@ -123,6 +123,11 @@ export function HomeRoute() {
             onOpen={open}
             error={data.error}
             lastSeenAt={data.lastSeenAt}
+            tabs={data.tabs}
+            isolated={prefs.isolatedSpace}
+            hidden={prefs.hiddenSpaces}
+            onIsolate={setIsolatedSpace}
+            onToggleHidden={toggleHiddenSpace}
           />
           <LaunchStrip open={launchOpen} onOpenChange={setLaunchOpen} scope={data.scope} />
           <SpaceOverview

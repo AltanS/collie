@@ -6,7 +6,8 @@
 //
 // The rule is here, once:
 //
-//   NAME  — paneLabel, else sessionName, else a non-stale terminalTitle, else the agent word
+//   NAME  — paneLabel, else sessionName, else a named one-pane tab's label, else a non-stale
+//           terminalTitle, else the agent word
 //           ("claude", "codex") for an agent pane and "shell" for a bare shell.
 //   PLACE — `space › tab`, or the space alone when the tab carries no name of its own.
 //
@@ -42,8 +43,23 @@ export const PLACE_SEP = " › ";
 export function paneName(pane: AgentView): string {
   if (pane.paneLabel) return pane.paneLabel;
   if (pane.sessionName) return pane.sessionName;
+  const tab = soleTabName(pane);
+  if (tab !== null) return tab;
   if (pane.terminalTitle && pane.terminalTitleStale !== true) return pane.terminalTitle;
   return pane.kind === "shell" ? "shell" : pane.agent;
+}
+
+/**
+ * The tab's own name, when the operator named the tab and the pane is alone in it; else null.
+ *
+ * Renaming a one-pane tab is how an operator names a pane (the belt's long-press, or the desktop),
+ * and before this rule that name reached no line 1 anywhere: the title Claude writes itself won, so
+ * `Ui fixes` read as `Tabs/spaces naming adjustment`. Hand-set names still come first, the title
+ * after. A tab of several panes is a group, and its name names the group, not any one of them.
+ */
+export function soleTabName(pane: { tabLabel?: string | undefined; tabPaneCount?: number | undefined }): string | null {
+  if (pane.tabPaneCount !== 1 || isUnnamedTab(pane.tabLabel)) return null;
+  return pane.tabLabel!.trim();
 }
 
 /** zellij's own default name for a tab nobody has named: `Tab #1`, `Tab #2`, … (probed). */
@@ -95,6 +111,36 @@ export function tabTitle(raw: string | null | undefined): TabTitle | null {
   const digits = trimmed?.match(/\d+/u)?.[0];
   if (digits === undefined) return null;
   return { text: t("home.row.tabPosition", { n: digits }), positional: true };
+}
+
+/**
+ * True when the pane carries a name somebody or something gave it: an operator label, a `/rename`,
+ * or a live terminal title. False when {@link paneName} would fall back to the agent word or
+ * "shell", which is a kind, not a name.
+ */
+export function paneHasOwnName(pane: AgentView): boolean {
+  if (pane.paneLabel) return true;
+  if (pane.sessionName) return true;
+  if (soleTabName(pane) !== null) return true;
+  return !!pane.terminalTitle && pane.terminalTitleStale !== true;
+}
+
+/**
+ * What a belt cell says for one tab.
+ *
+ * A tab that holds ONE pane is that pane, and the cell names the pane the way the header does
+ * ({@link paneName}), so the open cell and the header line above it read the same word. Before this
+ * the header said `plumbing` (Claude's `/rename`), the open cell said `work` (the Herdr tab), and
+ * nothing on the screen tied the two: the belt read as a row of agents that did not include the one
+ * on screen. The tab's own label stays for a tab that holds several panes (the label then names a
+ * real group), for a tab with no pane, and for a sole pane with nothing but a kind to its name
+ * ({@link paneHasOwnName} false), where the operator's `docs` beats a cell that says `shell`.
+ */
+export function tabCellTitle(raw: string | null | undefined, panes: readonly AgentView[]): TabTitle | null {
+  if (panes.length === 1 && paneHasOwnName(panes[0]!)) {
+    return { text: paneName(panes[0]!), positional: false };
+  }
+  return tabTitle(raw);
 }
 
 /**

@@ -371,6 +371,7 @@ export const zhTW: Dictionary = {
   "home.allClear": "沒有待處理項目",
   "home.workspace.paneCount.one": "{count} 個窗格",
   "home.workspace.paneCount.other": "{count} 個窗格",
+  "home.workspace.hidden": "已隱藏",
   "home.sidebar.shells": "終端機執行個體",
   "home.sidebar.paneActionsTitle": "查看窗格操作選項",
   "home.row.tabPosition": "分頁 {n}",

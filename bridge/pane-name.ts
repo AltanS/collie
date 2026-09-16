@@ -6,7 +6,8 @@
 //
 // The rule is here, once:
 //
-//   NAME  — paneLabel, else sessionName, else a non-stale terminalTitle, else the agent word
+//   NAME  — paneLabel, else sessionName, else a named one-pane tab's label, else a non-stale
+//           terminalTitle, else the agent word
 //           ("claude", "codex") for an agent pane and "shell" for a bare shell.
 //   PLACE — `space › tab`, or the space alone when the tab carries no name of its own.
 //
@@ -22,7 +23,7 @@ import type { AgentView } from "./types.ts";
 
 /** The fields the name rule reads. A `Pick` so a caller holding half a pane can still ask. */
 export type NameableP = Pick<AgentView, "agent"> &
-  Partial<Pick<AgentView, "paneLabel" | "sessionName" | "terminalTitle" | "terminalTitleStale" | "kind">>;
+  Partial<Pick<AgentView, "paneLabel" | "sessionName" | "terminalTitle" | "terminalTitleStale" | "kind" | "tabLabel" | "tabPaneCount">>;
 
 /**
  * Line 1 on every surface: what this pane is called.
@@ -36,8 +37,23 @@ export type NameableP = Pick<AgentView, "agent"> &
 export function paneName(pane: NameableP): string {
   if (pane.paneLabel) return pane.paneLabel;
   if (pane.sessionName) return pane.sessionName;
+  const tab = soleTabName(pane);
+  if (tab !== null) return tab;
   if (pane.terminalTitle && pane.terminalTitleStale !== true) return pane.terminalTitle;
   return pane.kind === "shell" ? "shell" : pane.agent;
+}
+
+/**
+ * The tab's own name, when the operator named the tab and the pane is alone in it; else null.
+ *
+ * Renaming a one-pane tab is how an operator names a pane (the belt's long-press, or the desktop),
+ * and before this rule that name reached no line 1 anywhere: the title Claude writes itself won, so
+ * `Ui fixes` read as `Tabs/spaces naming adjustment`. Hand-set names still come first, the title
+ * after. A tab of several panes is a group, and its name names the group, not any one of them.
+ */
+export function soleTabName(pane: { tabLabel?: string | undefined; tabPaneCount?: number | undefined }): string | null {
+  if (pane.tabPaneCount !== 1 || isUnnamedTab(pane.tabLabel)) return null;
+  return pane.tabLabel!.trim();
 }
 
 /** zellij's own default name for a tab nobody has named: `Tab #1`, `Tab #2`, … (probed). */

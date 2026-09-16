@@ -94,18 +94,21 @@ describe("Motion section", () => {
       fireEvent.click(await within(card).findByRole("button", { name: /collie.+pane/i }, SLOW));
       await waitFor(() => expect(routeLine()).toContain("route: /space/"), SLOW);
 
-      // A tab chip filters the space in place, so the route must NOT move off the space.
+      // A tab chip filters the space in place, so the route must NOT move off the space. The chip
+      // of a one-pane tab carries the pane's own name, not the tab's (lib/pane-name.ts § tabCellTitle).
       const tabs = await within(card).findByRole("navigation", { name: "Tabs" }, SLOW);
-      fireEvent.click(within(tabs).getByRole("button", { name: /docs/i }));
-      await waitFor(
-        () => expect(within(card).getByText(/ARCHITECTURE/)).toBeInTheDocument(),
-        SLOW,
-      );
+      fireEvent.click(within(tabs).getByRole("button", { name: /ARCHITECTURE/i }));
+      // The pane's row appears below the belt, so its name is now on screen twice: the chip and the row.
+      const paneRow = () =>
+        within(card)
+          .getAllByRole("button", { name: /ARCHITECTURE/ })
+          .filter((b) => !tabs.contains(b));
+      await waitFor(() => expect(paneRow()).toHaveLength(1), SLOW);
       expect(routeLine()).toContain("route: /space/");
 
       // A pane row in the space opens that pane. It resolves in the snapshot, so the route STAYS on
       // the pane: an unresolvable pane is what used to bounce the walk back to the dashboard.
-      fireEvent.click(within(card).getByRole("button", { name: /ARCHITECTURE/ }));
+      fireEvent.click(paneRow()[0]!);
       await waitFor(() => expect(routeLine()).toContain("route: /pane/"), SLOW);
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(routeLine()).toContain("route: /pane/");

@@ -1,16 +1,16 @@
 import { TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { UnseenMark } from "@/components/ui/unseen-mark";
 import { Card } from "@/components/ui/card";
 import { ShellBadge, StatusBadge, StatusDot } from "@/components/status-badge";
 import { AgentIcon } from "@/components/agent-icon";
 import { PaneMeta } from "@/components/pane-meta";
 import { PaneHint } from "@/components/pane-hint";
-import { paneCwdLine, paneName, panePlaceParts } from "@/lib/pane-name";
+import { paneCwdLine, paneName, panePlaceParts, soleTabName } from "@/lib/pane-name";
 import { statusLabel } from "@/lib/types";
 import type { AgentView } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
-import { t } from "@/lib/i18n";
 
 interface AgentCardProps {
   agent: AgentView;
@@ -47,6 +47,12 @@ interface AgentCardProps {
    * from an ordinary finished pane sitting in its workspace group.
    */
   unseen?: boolean;
+  /**
+   * The dashboard trial's louder in-place mark (variant 5): a flat row that needs you, or is
+   * finished and unseen, takes a full-row wash in its status colour, 10 percent, in place of the
+   * 5 percent blocked tint alone. The row is the mark; nothing on its edge and nothing moves.
+   */
+  tint?: boolean;
 }
 
 /** The row's text: line 1's name, and line 2's two runs. */
@@ -91,6 +97,7 @@ export function AgentCard({
   statusStyle = "badge",
   density = "card",
   unseen = false,
+  tint = false,
 }: AgentCardProps) {
   useLocale();
   const isShell = agent.kind === "shell";
@@ -122,13 +129,17 @@ export function AgentCard({
   // the space heading and the per-tab section above, so line 2 is the path instead — the one fact
   // that still tells two panes in one tab apart.
   const place = panePlaceParts(agent);
+  // When the tab's own name IS the pane's name (a named one-pane tab, pane-name.ts § soleTabName),
+  // line 2 would repeat it; it carries the title Claude writes instead, so that stays in sight.
+  const nameIsTab = soleTabName(agent) !== null && paneName(agent) === soleTabName(agent);
+  const liveTitle = agent.terminalTitle && agent.terminalTitleStale !== true ? agent.terminalTitle : null;
   const lines: RowLines = inPlace
     ? {
         primary: paneName(agent),
         detailLead: null,
-        detailTail: place.tab?.text ?? null,
+        detailTail: nameIsTab ? liveTitle : (place.tab?.text ?? null),
         tailMono: false,
-        tailPositional: place.tab?.positional ?? false,
+        tailPositional: nameIsTab ? false : (place.tab?.positional ?? false),
       }
     : inTab
       ? {
@@ -195,6 +206,7 @@ export function AgentCard({
           // accent the design rules ban (removed 2026-09-14): status on a flat row is carried by the
           // dot (`cornerDot`) and this tint alone, nothing on the edge.
           blocked && (flat ? "bg-status-blocked/5" : "border-status-blocked/40 bg-status-blocked/5"),
+          tint && flat && blocked && "bg-status-blocked/10",
         )}
       >
         <div className="min-w-0 flex-1">
@@ -237,18 +249,10 @@ export function AgentCard({
                 sits right after whatever survives the truncation. `PaneMeta`'s own `ml-auto` is what
                 claims the row's spare width now, so it still lands at the end. */}
             <span className="min-w-0 truncate self-baseline font-medium">{primary}</span>
-            {unseen && (
-              // A finished pane you haven't opened yet (`isUnseen()`, lib/triage.ts). Right after
-              // the name, never before it — the name still leads the row — and `shrink-0` so a long
-              // name truncates before this ever does. `self-center` because it has no baseline worth
-              // sharing with the text; `ml-1.5` gives it its own gap without widening the row's gap
-              // for every other sibling.
-              <span
-                role="img"
-                aria-label={t("home.row.unseen")}
-                className="ml-1.5 size-1.5 shrink-0 self-center rounded-full bg-primary"
-              />
-            )}
+            {/* A finished pane you haven't opened yet: the square (ui/unseen-mark.tsx). Right after
+                the name, never before it, and its slot is reserved on a flat row so the name
+                truncates at one width whether the mark is drawn or not. */}
+            <UnseenMark on={unseen} reserve={flat} className="ml-2" />
             <PaneMeta
               host={agent.host}
               cache={agent.cache}

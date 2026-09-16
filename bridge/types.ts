@@ -77,6 +77,13 @@ export interface AgentView {
    */
   tabLabel?: string;
   /**
+   * How many panes the pane's own tab holds, shells included, read off `tab.list`. Set by the state
+   * engine, absent from an older peer. The name rule reads it: a tab the operator NAMED that holds
+   * this pane alone names the pane too (pane-name.ts, `paneName`), because a one-pane tab is how
+   * most operators name a pane, and that name must outrank the title Claude rewrites every turn.
+   */
+  tabPaneCount?: number;
+  /**
    * What the pane's own process says it is doing — its OSC title, glyph-stripped and dropped when
    * uninformative (see `meaningfulTerminalTitle`). Claude rewrites this per turn, so unlike
    * `paneLabel` and `sessionName` — both set once, by hand — it tracks the work as it moves, which

@@ -115,7 +115,8 @@ describe("SpaceRoute on a crew", () => {
   it("lists a peer space's own panes instead of drawing every tab empty", async () => {
     renderSpace("wA", PEER);
 
-    expect(await screen.findByText("peer pane")).toBeInTheDocument();
+    // Twice: the pane's own row, and the belt cell of its one-pane tab, which names the pane too.
+    expect(await screen.findAllByText("peer pane")).toHaveLength(2);
     expect(screen.queryByText("(empty tab)")).not.toBeInTheDocument();
   });
 

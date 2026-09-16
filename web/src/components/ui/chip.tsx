@@ -1,10 +1,12 @@
 import { cn } from "@/lib/utils";
+import { UnseenMark } from "@/components/ui/unseen-mark";
 import { STRIP_TAP_TARGET } from "@/components/ui/labelled-strip";
 import { useLongPress } from "@/hooks/use-long-press";
 import { StatusDot } from "@/components/status-badge";
 import { TRIAGE_STATUS, type TriageKey } from "@/lib/triage";
 import { statusLabel } from "@/lib/types";
 import { useLocale } from "@/hooks/use-locale";
+import { t } from "@/lib/i18n";
 
 interface ChipProps {
   label: string;
@@ -18,6 +20,8 @@ interface ChipProps {
    * same as idle, and a resting dot would claim otherwise.
    */
   status?: TriageKey | null;
+  /** Drawn at half strength: a hidden workspace on the dashboard's filter strip. The dot stays full. */
+  dimmed?: boolean;
   onClick: () => void;
   /**
    * Long-press (or right-click / Android contextmenu) opens actions for this chip — e.g. the tab
@@ -39,7 +43,7 @@ interface ChipProps {
 // The dot leads the label rather than riding the corner as a badge: a corner badge needs a ring in
 // the chip's own fill, and the chip has two fills (active/inactive). Inline, it just works, and it
 // matches how the space rows and section headings already read.
-export function Chip({ label, active, ring, status, onClick, onLongPress, onTapActive }: ChipProps) {
+export function Chip({ label, active, ring, status, dimmed, onClick, onLongPress, onTapActive }: ChipProps) {
   useLocale();
   const longPress = useLongPress(onLongPress);
 
@@ -84,9 +88,11 @@ export function Chip({ label, active, ring, status, onClick, onLongPress, onTapA
           ? "bg-primary text-primary-foreground"
           : "bg-muted text-muted-foreground hover:bg-muted/70",
         ring && !active && "border-primary/40",
+        dimmed && !active && "bg-transparent border-dashed border-border text-muted-foreground/60 line-through",
       )}
     >
-      {status && (
+      {status === "ready" && <UnseenMark size="sm" />}
+      {status && status !== "ready" && (
         <>
           {/* A hollow resting dot is filled with the chip's own fill, which differs when active. */}
           <StatusDot
@@ -99,6 +105,7 @@ export function Chip({ label, active, ring, status, onClick, onLongPress, onTapA
         </>
       )}
       {label}
+      {dimmed && <span className="sr-only">{t("home.workspace.hidden")}</span>}
     </button>
   );
 }

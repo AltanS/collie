@@ -410,6 +410,7 @@ export const en = {
   "home.allClear": "Nothing needs you",
   "home.workspace.paneCount.one": "{count} pane",
   "home.workspace.paneCount.other": "{count} panes",
+  "home.workspace.hidden": "hidden",
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Tap for pane actions",
   "home.row.tabPosition": "tab {n}",

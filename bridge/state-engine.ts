@@ -415,6 +415,14 @@ export class StateEngine {
         paneCount: t.paneCount,
       }));
 
+      // Each pane learns how many panes share its tab, so the name rule can let a named one-pane tab
+      // name its pane. Assigned only where the listing knows the tab.
+      const tabPanes = new Map(tabs.map((t) => [t.tabId, t.paneCount]));
+      for (const v of [...agents, ...shellPanes]) {
+        const n = tabPanes.get(v.tabId);
+        if (n !== undefined) v.tabPaneCount = n;
+      }
+
       // Detect transitions against the previous poll. First sighting of a pane never fires a
       // transition (so we don't notify for agents already blocked when the bridge starts).
       for (const a of agents) {

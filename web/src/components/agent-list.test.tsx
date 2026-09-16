@@ -1,7 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { AgentList } from "./agent-list";
+import { workspaceGroupKey } from "@/lib/pane-groups";
 import type { AgentStatus, AgentView } from "@/lib/types";
 
 function agent(
@@ -31,44 +32,68 @@ const UI_WORK = { workspaceLabel: "collie-workspace", tabLabel: "UI work" } as c
 const headings = () =>
   screen.getAllByRole("heading").map((el) => el.textContent?.toLowerCase() ?? "");
 
+/** Every PANE row button — never a Spaces filter chip (a button, in `<nav>`, sharing the workspace's
+ *  own name) and never the one summary button on top (which can echo a row's own status words, e.g.
+ *  "unseen"). Both are excluded by requiring a `<section>` ancestor: only a workspace group's rows
+ *  have one (agent-list.tsx). */
+const rowButtons = () => screen.getAllByRole("button").filter((b) => b.closest("section") !== null);
 
+/** The `<section>` a workspace heading owns, so a query can be scoped away from the Spaces strip
+ *  (whose chips share the heading's own text) without weakening what it asserts. */
+const groupSection = (label: string) => screen.getByRole("heading", { name: label }).closest("section")!;
 
 describe("AgentList — two axes, urgency then workspace", () => {
   const herd = [
-    agent("blocked", "blocked", { lastActiveAt: 500, lastSeenAt: 1 }),
-    agent("unseen", "done", { lastActiveAt: 400, lastSeenAt: 1 }),
-    agent("busy", "working", { lastActiveAt: 300, lastSeenAt: 1, ...UI_WORK }),
-    agent("old", "idle", { lastActiveAt: 1, lastSeenAt: 200, ...UI_WORK }),
+    agent("blocked", "blocked", { lastActiveAt: 500, lastSeenAt: 1, sessionName: "blocked", ...UI_WORK }),
+    agent("unseen", "done", { lastActiveAt: 400, lastSeenAt: 1, sessionName: "unseen", ...UI_WORK }),
+    agent("busy", "working", { lastActiveAt: 300, lastSeenAt: 1, sessionName: "busy", ...UI_WORK }),
+    agent("old", "idle", { lastActiveAt: 1, lastSeenAt: 200, sessionName: "old", ...UI_WORK }),
   ];
 
-  it("puts the two attention sections on top, then one heading per workspace", () => {
+  // A blocked pane and an unseen one used to be pulled into their own "Needs you" / "Ready · unseen"
+  // sections, out of their workspace. Today's redesign keeps every pane where it sits — urgency is a
+  // MARK on the row and the heading, never a move (agent-list.tsx header comment).
+  it("keeps every pane under its workspace heading — urgency marks a row, it never moves one", () => {
     render(<AgentList agents={herd} onOpen={vi.fn()} />);
-    expect(headings()).toEqual([
-      expect.stringContaining("needs you"),
-      expect.stringContaining("ready · unseen"),
-      "collie-workspace",
-    ]);
+    expect(headings()).toEqual(["collie-workspace"]);
+    const section = groupSection("collie-workspace");
+    // All four panes, blocked and unseen included, sit under that one heading.
+    expect(within(section).getAllByRole("button")).toHaveLength(4);
+    // The heading counts each state separately, as a bare number with an accessible name — never a
+    // merged "needs you" count.
+    expect(within(section).getByLabelText("1 needs you")).toBeInTheDocument();
+    expect(within(section).getByLabelText("1 unseen")).toBeInTheDocument();
   });
 
   it("marks only the Ready·unseen row with the unread dot", () => {
     render(<AgentList agents={herd} onOpen={vi.fn()} />);
-    const unseenRow = screen.getByRole("button", { name: /unseen/ });
+    // Scoped to the group: the top summary line also says "ready · unseen" in its own count.
+    const section = groupSection("collie-workspace");
+    const unseenRow = within(section).getByRole("button", { name: /unseen/ });
     expect(within(unseenRow).getByRole("img", { name: /unseen/i })).toBeInTheDocument();
     // The blocked ("Needs you") row is just as urgent, but it isn't a finished pane, so it never
     // gets the dot — the marker means "finished while you weren't looking", not "urgent".
-    const blockedRow = screen.getByRole("button", { name: /blocked/ });
+    const blockedRow = within(section).getByRole("button", { name: /blocked/ });
     expect(within(blockedRow).queryByRole("img", { name: /unseen/i })).not.toBeInTheDocument();
   });
 
-  it("pulls an unread idle completion out of its workspace until it is seen", () => {
+  // What used to be "pulled out until seen" now simply carries the mark, or doesn't — the pane's
+  // position in its workspace group never changes either way.
+  it("stays in its workspace group whether unseen or seen — the summary marks it, not a move", () => {
     const finished = agent("finished", "idle", { lastActiveAt: 200, lastSeenAt: 100, ...UI_WORK });
     const { rerender } = render(<AgentList agents={[finished]} onOpen={vi.fn()} />);
-    expect(headings()).toEqual([expect.stringContaining("ready · unseen")]);
-    expect(screen.getAllByRole("button")).toHaveLength(1);
-    expect(screen.getByRole("img", { name: "unseen" })).toBeInTheDocument();
+    expect(headings()).toEqual(["collie-workspace"]);
+    // The summary spells it in words; the heading names the same count for a screen reader, with the
+    // square drawn (but decorative) beside the number; the row carries the one square a screen reader
+    // announces on its own.
+    expect(screen.getByRole("button", { name: /1 unseen/i })).toBeInTheDocument();
+    const section = groupSection("collie-workspace");
+    expect(within(section).getByLabelText("1 unseen")).toBeInTheDocument();
+    expect(within(section).getByRole("img", { name: "unseen" })).toBeInTheDocument();
 
     rerender(<AgentList agents={[{ ...finished, lastSeenAt: 300 }]} onOpen={vi.fn()} />);
     expect(headings()).toEqual(["collie-workspace"]);
+    expect(screen.getByText(/nothing needs you/i)).toBeInTheDocument();
     expect(screen.queryByRole("img", { name: "unseen" })).not.toBeInTheDocument();
   });
 
@@ -81,21 +106,26 @@ describe("AgentList — two axes, urgency then workspace", () => {
     expect(screen.queryByRole("button", { expanded: false })).not.toBeInTheDocument();
   });
 
-  it("keeps the place on line 2 of an urgent row — that group is by urgency, not by place", () => {
+  // The old "urgent section" carried a different `scope` than the workspace groups; now there is
+  // only one list, so a blocked pane's own group carries both the row AND the mark.
+  it("a blocked pane stays in its workspace group, with the heading lit and the summary counting it", () => {
     render(
       <AgentList
         agents={[agent("p", "blocked", { workspaceLabel: "moonward_os", tabLabel: "fix-auth" })]}
         onOpen={vi.fn()}
       />,
     );
-    // Rendered as separate spans so the tab survives truncation — assert both parts, and that the
-    // row is still announced as one name.
-    for (const part of ["moonward_os", "fix-auth"])
-      expect(screen.getByText(part).closest("[data-slot]")).toHaveAttribute(
-        "data-slot",
-        "agent-row-detail",
-      );
-    expect(screen.getByRole("button", { name: /moonward_os.*fix-auth/ })).toBeInTheDocument();
+    expect(headings()).toEqual(["moonward_os"]);
+    const section = groupSection("moonward_os");
+    const rows = within(section).getAllByRole("button");
+    expect(rows).toHaveLength(1);
+    // Line 2 is still the tab alone — the heading above already said the workspace.
+    expect(rows[0]).toHaveTextContent("fix-auth");
+    // The heading lights up with the worst status inside and counts it, as a number with an
+    // accessible name...
+    expect(within(section).getByLabelText("1 needs you")).toBeInTheDocument();
+    // ...and the one summary slot at the top spells the same count in words.
+    expect(screen.getByRole("button", { name: "1 needs you" })).toBeInTheDocument();
   });
 
   it("puts the TAB on line 2 of a workspace-grouped row — the heading said the workspace", () => {
@@ -170,8 +200,9 @@ describe("AgentList — two axes, urgency then workspace", () => {
 
   it("drops the status pill on every row — the dot and the group say enough", () => {
     render(<AgentList agents={[agent("w", "working", { lastActiveAt: 1 })]} onOpen={vi.fn()} />);
-    // The word survives for screen readers, but not as a pill on every row.
-    const row = screen.getByRole("button", { name: /w/ });
+    // The word survives for screen readers, but not as a pill on every row. Scoped to the row
+    // buttons: the workspace filter chip carries the same status dot and would otherwise match too.
+    const row = rowButtons()[0]!;
     expect(row.querySelector(".sr-only")?.textContent).toBe("working");
   });
 
@@ -182,39 +213,57 @@ describe("AgentList — two axes, urgency then workspace", () => {
     // crew, and this list is one herd across all of them.
     const row = agent("p1", "blocked");
     render(<AgentList agents={[row]} onOpen={onOpen} />);
-    await user.click(screen.getByRole("button", { name: /p1/ }));
+    // Scoped to the row buttons: the Spaces strip also carries a chip named "p1" now.
+    await user.click(rowButtons()[0]!);
     expect(onOpen).toHaveBeenCalledExactlyOnceWith(row);
   });
 });
 
 describe("AgentList — the workspace headings", () => {
-  it("counts what is inside a group, in words, singular and plural", () => {
+  it("shows the heading's counts as bare numbers with an accessible name, while the summary spells the words", () => {
     const { rerender } = render(
-      <AgentList
-        agents={[agent("a", "idle", UI_WORK)]}
-        onOpen={vi.fn()}
-      />,
+      <AgentList agents={[agent("a", "idle", UI_WORK)]} onOpen={vi.fn()} />,
     );
-    expect(screen.getByText("1 pane")).toBeInTheDocument();
+    // The header row: the `<h2>` and its trailing counts, never the rows below it — a row carries
+    // its own sr-only status word ("idle"), which would otherwise look like a heading count too.
+    const headerRow = () => screen.getByRole("heading", { name: "collie-workspace" }).parentElement!;
+    // The heading shows the number alone...
+    expect(within(headerRow()).getByText("1")).toBeInTheDocument();
+    // ...but names it for a screen reader.
+    expect(within(headerRow()).getByLabelText("1 idle")).toBeInTheDocument();
+    // Nothing needs attention, so the summary leads with the all-clear check instead of a word.
+    expect(screen.getByText(/nothing needs you/i)).toBeInTheDocument();
 
     rerender(
       <AgentList
-        agents={["a", "b", "c"].map((id) => agent(id, "idle", UI_WORK))}
+        agents={[
+          agent("a", "blocked", UI_WORK),
+          agent("b", "idle", UI_WORK),
+          agent("c", "idle", UI_WORK),
+        ]}
         onOpen={vi.fn()}
       />,
     );
-    expect(screen.getByText("3 panes")).toBeInTheDocument();
+    // The heading counts each state separately, still as bare numbers.
+    expect(within(headerRow()).getByLabelText("1 needs you")).toBeInTheDocument();
+    expect(within(headerRow()).getByLabelText("2 idle")).toBeInTheDocument();
+    expect(within(headerRow()).queryByText(/needs you|idle/)).not.toBeInTheDocument();
+    // The one summary slot at the top spells the very same counts in words.
+    expect(screen.getByText("1 needs you")).toBeInTheDocument();
+    expect(screen.getByText("2 idle")).toBeInTheDocument();
   });
 
-  it("counts the rows it LISTS, and drops a workspace whose every pane is on top", () => {
+  // A workspace whose every pane is blocked used to earn no heading at all — the group WAS the
+  // urgency section. Today it still gets a heading, lit and counted like any other.
+  it("keeps a blocked pane in its own group, whether it shares the workspace or fills it alone", () => {
     render(
       <AgentList
         agents={[
-          // Three panes of one workspace, one of them blocked, so it is pulled to "Needs you".
+          // Three panes of one workspace, one of them blocked.
           agent("calm", "idle", { ...UI_WORK, sessionName: "calm" }),
           agent("quiet", "idle", { ...UI_WORK, sessionName: "quiet" }),
           agent("stuck", "blocked", { ...UI_WORK, sessionName: "stuck" }),
-          // A second workspace, entirely urgent: it earns no heading at all.
+          // A second workspace with nothing but a blocked pane — it still gets its own heading.
           agent("alone", "blocked", {
             workspaceId: "w9",
             workspaceLabel: "moonward_os",
@@ -226,10 +275,14 @@ describe("AgentList — the workspace headings", () => {
         onOpen={vi.fn()}
       />,
     );
-    expect(headings()).toEqual([expect.stringContaining("needs you"), "collie-workspace"]);
-    // Two, not three: the blocked pane is answered on top and is not listed twice.
-    expect(screen.getByText("2 panes")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /stuck/ })).toHaveLength(1);
+    expect(headings()).toEqual(["collie-workspace", "moonward_os"]);
+    // One blocked plus two idle, not two blocked: the pane is counted where it sits, never pulled
+    // out and counted twice.
+    expect(within(groupSection("collie-workspace")).getByLabelText("1 needs you")).toBeInTheDocument();
+    expect(within(groupSection("collie-workspace")).getByLabelText("2 idle")).toBeInTheDocument();
+    expect(within(groupSection("moonward_os")).getByLabelText("1 needs you")).toBeInTheDocument();
+    expect(within(groupSection("collie-workspace")).getAllByRole("button", { name: /stuck/ })).toHaveLength(1);
+    expect(within(groupSection("moonward_os")).getAllByRole("button")).toHaveLength(1);
   });
 
   it("heads a group with the workspace, whatever its tabs are called", () => {
@@ -243,7 +296,7 @@ describe("AgentList — the workspace headings", () => {
       />,
     );
     expect(headings()).toEqual(["collie-workspace"]);
-    expect(screen.getByText("2 panes")).toBeInTheDocument();
+    expect(within(groupSection("collie-workspace")).getByLabelText("2 idle")).toBeInTheDocument();
   });
 
   it("runs the groups by workspace number, with each workspace's tabs inside it", () => {
@@ -269,7 +322,8 @@ describe("AgentList — the workspace headings", () => {
     );
     expect(headings()).toEqual(["one", "two"]);
     // Both tabs of the first workspace are rows under its one heading, in the bridge's order.
-    const rows = screen.getAllByRole("button");
+    // Scoped away from the Spaces strip, whose "one"/"two" chips are buttons too.
+    const rows = rowButtons();
     expect(rows.map((r) => r.textContent)).toEqual([
       expect.stringContaining("second"),
       expect.stringContaining("first"),
@@ -291,8 +345,10 @@ describe("AgentList — shells sit with their tab", () => {
       />,
     );
     expect(headings()).toEqual(["collie-workspace"]);
-    expect(screen.getByText("2 panes")).toBeInTheDocument();
-    const rows = screen.getAllByRole("button", { name: /work|logs/ });
+    // Only the one agent counts — a shell is a row here, never a tally in the state count.
+    expect(within(groupSection("collie-workspace")).getByLabelText("1 idle")).toBeInTheDocument();
+    // Scoped away from the Spaces strip: its "collie-workspace" chip contains the substring "work".
+    const rows = rowButtons();
     expect(rows.map((r) => r.textContent)).toEqual([
       expect.stringContaining("work"),
       expect.stringContaining("logs"),
@@ -353,14 +409,90 @@ describe("AgentList — an older bridge with no timestamps", () => {
     render(
       <AgentList
         agents={[
-          agent("b", "blocked"),
-          agent("w", "working", { workspaceLabel: "collie-workspace" }),
-          agent("d", "done", { workspaceLabel: "collie-workspace" }),
+          agent("b", "blocked", { workspaceLabel: "collie-workspace", sessionName: "b" }),
+          agent("w", "working", { workspaceLabel: "collie-workspace", sessionName: "w" }),
+          agent("d", "done", { workspaceLabel: "collie-workspace", sessionName: "d" }),
         ]}
         onOpen={vi.fn()}
       />,
     );
-    expect(headings()).toEqual([expect.stringContaining("needs you"), "collie-workspace"]);
-    expect(screen.queryByText(/ready · unseen/i)).not.toBeInTheDocument();
+    // One workspace heading — with no timestamps `isUnseen` can never be true, so the "done" pane
+    // never earns the unread mark; it is still just a pane in this group.
+    expect(headings()).toEqual(["collie-workspace"]);
+    expect(screen.queryByRole("img", { name: /unseen/i })).not.toBeInTheDocument();
+    // The heading still lights up for the blocked pane, and counts the other two states too.
+    const section = groupSection("collie-workspace");
+    expect(within(section).getByLabelText("1 needs you")).toBeInTheDocument();
+    expect(within(section).getByLabelText("1 working")).toBeInTheDocument();
+    expect(within(section).getByLabelText("1 done")).toBeInTheDocument();
+  });
+});
+
+describe("AgentList — the Spaces filter strip", () => {
+  const two = [
+    agent("a", "idle", { workspaceId: "w1", workspaceLabel: "one", workspaceNumber: 1, tabId: "w1:t1" }),
+    agent("b", "idle", { workspaceId: "w2", workspaceLabel: "two", workspaceNumber: 2, tabId: "w2:t1" }),
+  ];
+
+  // A chip's accessible name is its status word run straight into its label ("idleone", no space) —
+  // never an exact "one" — so every chip lookup below is a Spaces-strip-scoped substring match.
+  const chip = (label: string) =>
+    within(screen.getByRole("navigation", { name: /spaces/i })).getByRole("button", {
+      name: new RegExp(label),
+    });
+
+  it("isolates a workspace on a chip tap; tapping it again returns to all", async () => {
+    const user = userEvent.setup();
+    const onIsolate = vi.fn();
+    const key = workspaceGroupKey(two[0]!);
+    const { rerender } = render(<AgentList agents={two} onOpen={vi.fn()} onIsolate={onIsolate} />);
+    await user.click(chip("one"));
+    expect(onIsolate).toHaveBeenCalledExactlyOnceWith(key);
+
+    rerender(<AgentList agents={two} onOpen={vi.fn()} isolated={key} onIsolate={onIsolate} />);
+    // Isolated: only "one"'s group is left on screen.
+    expect(headings()).toEqual(["one"]);
+    expect(chip("one")).toHaveAttribute("aria-current", "true");
+
+    await user.click(chip("one"));
+    expect(onIsolate).toHaveBeenLastCalledWith(null);
+  });
+
+  it("hides a workspace via long-press (contextmenu), calling onToggleHidden with its key", () => {
+    const onToggleHidden = vi.fn();
+    render(<AgentList agents={two} onOpen={vi.fn()} onToggleHidden={onToggleHidden} />);
+    // A long-press reaches the DOM as a `contextmenu` event (Android Chrome / right-click) —
+    // components/ui/chip.tsx wires it through `useLongPress`.
+    fireEvent.contextMenu(chip("one"));
+    expect(onToggleHidden).toHaveBeenCalledExactlyOnceWith(workspaceGroupKey(two[0]!));
+  });
+
+  it("keeps a hidden chip in the strip, dimmed and marked hidden — the group itself drops", () => {
+    const key = workspaceGroupKey(two[0]!);
+    render(<AgentList agents={two} onOpen={vi.fn()} hidden={[key]} />);
+    // "one" no longer has a heading — its rows are gone from the list.
+    expect(headings()).toEqual(["two"]);
+    // Its chip is still in the strip, and says so for screen readers.
+    const hiddenChip = screen.getByRole("button", { name: /one/ });
+    expect(within(hiddenChip).getByText(/hidden/i)).toBeInTheDocument();
+  });
+
+  it("keeps the fixed order when a pane's status changes", () => {
+    const panes = [
+      agent("a", "idle", { workspaceLabel: "one", tabId: "w0:t1", sessionName: "first" }),
+      agent("b", "idle", { workspaceLabel: "one", tabId: "w0:t1", sessionName: "second" }),
+    ];
+    const { rerender } = render(<AgentList agents={panes} onOpen={vi.fn()} />);
+    // Identity, not raw text — a status change rewords the row's own sr-only status word, which
+    // would otherwise look like a reorder to a plain textContent comparison.
+    const order = () => rowButtons().map((r) => (within(r).queryByText("first") ? "first" : "second"));
+    expect(order()).toEqual(["first", "second"]);
+
+    rerender(
+      <AgentList agents={[{ ...panes[0]!, status: "blocked" }, panes[1]!]} onOpen={vi.fn()} />,
+    );
+    // A status change marks the row (a tint, a dot) — it never reorders it. Pane id is the only
+    // tiebreak `order: "fixed"` uses (lib/pane-groups.ts).
+    expect(order()).toEqual(["first", "second"]);
   });
 });

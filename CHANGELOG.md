@@ -30,6 +30,14 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Changed
+
+- **The dashboard keeps every pane where it sits.** Panes stay in their workspace group in the multiplexer's own order, whatever their status; a pane that needs you or finished unseen is no longer pulled to the top. Urgency shows in place instead: a wash on the row, a lit workspace heading, and one summary line that counts every state in words while each heading shows the same counts as numbers.
+- **A strip of workspace chips filters the dashboard.** Tap a workspace to see it alone, tap it or All to see everything; long-press to hide a workspace, and its chip stays in the strip, dimmed, still showing its status. The choice is kept per device.
+- **An unseen reply is marked with a square.** A finished pane you have not opened carries a small square after its name, on the summary line, on its workspace heading and on its chip, instead of a white dot and a green wash that read as one more status.
+- **A named tab that holds one pane names that pane.** The header, the belt, the dashboard and a push now say the tab name you gave, ahead of the title Claude writes itself, which moves to the dashboard row's second line. A `/rename` and a pane label still come first.
+- **The tab belt names the pane and underlines the open tab.** A tab that holds one pane shows that pane's name, so the open tab and the header read the same word. The open tab is underlined, every other tab reads in near full ink, and the brand tile and the dashed desktop-focus ring are gone from the cells.
+
 ### Fixed
 
 - **A Herdr plugin action reads the same state as the running service.** Herdr puts its own plugin state directory into every action it runs, and Collie used it, so `push-test` found no subscriptions and pairing, devices and crew verbs run as actions read and wrote a directory the service never uses. Collie now ignores that directory; `COLLIE_STATE_DIR` still moves the state. Thanks @lighcen (#226).

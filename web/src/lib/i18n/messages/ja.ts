@@ -388,6 +388,7 @@ export const ja: Dictionary = {
   "home.allClear": "対応が必要な項目はありません",
   "home.workspace.paneCount.one": "{count}ペイン",
   "home.workspace.paneCount.other": "{count}ペイン",
+  "home.workspace.hidden": "非表示",
   "home.sidebar.shells": "シェル",
   "home.sidebar.paneActionsTitle": "タップしてペイン操作を表示",
   "home.row.tabPosition": "タブ {n}",

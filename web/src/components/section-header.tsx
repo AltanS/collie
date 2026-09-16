@@ -33,6 +33,12 @@ interface SectionHeaderProps {
   trailing?: ReactNode;
   /** Heading level. 2 on a page; 3 inside the pane-switcher sheet, whose own title is the h2. */
   level?: 2 | 3;
+  /**
+   * "muted" (default) is the small uppercase caption every section has always worn. "strong" is the
+   * dashboard trial's louder workspace heading: foreground ink, 13px, the name in its own case, for a
+   * heading that IS the address the operator scans for (agent-list.tsx, `headingTone`).
+   */
+  tone?: "muted" | "strong";
   className?: string;
 }
 
@@ -52,6 +58,7 @@ export function SectionHeader({
   controls,
   trailing,
   level = 2,
+  tone: toneName = "muted",
   className,
 }: SectionHeaderProps) {
   const foldable = open !== undefined && onToggle !== undefined;
@@ -76,12 +83,17 @@ export function SectionHeader({
   // disclosure pattern) instead of being replaced by one.
   const tone = accent
     ? "text-status-blocked"
-    : cn("text-muted-foreground", foldable && "hover:text-foreground");
+    : toneName === "strong"
+      ? "text-foreground"
+      : cn("text-muted-foreground", foldable && "hover:text-foreground");
   // Set explicitly on BOTH branches, never inherited from the heading: a <button> does not inherit
   // text-transform or font-size (the UA sheet resets form controls), so leaving these on the
   // <h2> rendered pinned sections as small-caps "WORKING" and foldable ones as larger, sentence-case
   // "Recent" — making the low-priority tail the loudest heading on the page.
-  const type = "text-xs font-semibold uppercase tracking-wide";
+  const type =
+    toneName === "strong" && !accent
+      ? "text-[13px] font-semibold tracking-normal"
+      : "text-xs font-semibold uppercase tracking-wide";
 
   return (
     // No horizontal inset of its own: R2 — a section label begins on the page gutter, on the same

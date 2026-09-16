@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { asJsonBoolean, asJsonObject, type JsonValue } from "@/lib/json";
+import { asJsonBoolean, asJsonObject, asJsonString, type JsonValue } from "@/lib/json";
 
 import type { RecentDir } from "@/lib/triage";
 
@@ -29,6 +29,10 @@ export interface DashPrefs {
   recentOpen: boolean;
   /** Which way Recent runs. Attention sections are never affected. */
   recentDir: RecentDir;
+  /** The dashboard's workspace filter: the one workspace shown alone, or null for all of them. */
+  isolatedSpace: string | null;
+  /** Workspaces hidden from the dashboard list (long-press a chip); their chips stay, dimmed. */
+  hiddenSpaces: string[];
 }
 
 const STORAGE_KEY = "collie:dash-prefs:v1";
@@ -42,6 +46,8 @@ const DEFAULTS: DashPrefs = {
   launchOpen: null,
   recentOpen: true,
   recentDir: "newest",
+  isolatedSpace: null,
+  hiddenSpaces: [],
 };
 
 /**
@@ -68,6 +74,13 @@ export function coerceDashPrefs(raw: JsonValue | undefined): DashPrefs {
     launchOpen: asJsonBoolean(p.launchOpen) ?? DEFAULTS.launchOpen,
     recentOpen: asJsonBoolean(p.recentOpen) ?? DEFAULTS.recentOpen,
     recentDir: p.recentDir === "oldest" || p.recentDir === "newest" ? p.recentDir : DEFAULTS.recentDir,
+    isolatedSpace: asJsonString(p.isolatedSpace) ?? DEFAULTS.isolatedSpace,
+    hiddenSpaces: Array.isArray(p.hiddenSpaces)
+      ? p.hiddenSpaces.flatMap((k) => {
+          const key = asJsonString(k);
+          return key === undefined ? [] : [key];
+        })
+      : [],
   };
 }
 
@@ -98,6 +111,8 @@ export interface UseDashPrefsReturn {
   setLaunchOpen: (open: boolean) => void;
   setRecentOpen: (open: boolean) => void;
   setRecentDir: (dir: RecentDir) => void;
+  setIsolatedSpace: (key: string | null) => void;
+  toggleHiddenSpace: (key: string) => void;
 }
 
 export function useDashPrefs(): UseDashPrefsReturn {
@@ -117,5 +132,26 @@ export function useDashPrefs(): UseDashPrefsReturn {
   const setRecentOpen = useCallback((recentOpen: boolean) => update({ recentOpen }), [update]);
   const setRecentDir = useCallback((recentDir: RecentDir) => update({ recentDir }), [update]);
 
-  return { prefs, setSpacesOpen, setShellsOpen, setLaunchOpen, setRecentOpen, setRecentDir };
+  const setIsolatedSpace = useCallback((isolatedSpace: string | null) => update({ isolatedSpace }), [update]);
+  const toggleHiddenSpace = useCallback((key: string) => {
+    setPrefs((p) => {
+      const hiddenSpaces = p.hiddenSpaces.includes(key)
+        ? p.hiddenSpaces.filter((k) => k !== key)
+        : [...p.hiddenSpaces, key];
+      const next: DashPrefs = { ...p, hiddenSpaces };
+      savePrefs(next);
+      return next;
+    });
+  }, []);
+
+  return {
+    prefs,
+    setSpacesOpen,
+    setShellsOpen,
+    setLaunchOpen,
+    setRecentOpen,
+    setRecentDir,
+    setIsolatedSpace,
+    toggleHiddenSpace,
+  };
 }

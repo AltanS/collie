@@ -23,6 +23,60 @@
       "name": "workflow-gate-commits"
     },
     {
+      "case": "a named tab that holds the pane alone names it, above the title Claude writes",
+      "pane": {
+        "agent": "claude",
+        "kind": "agent",
+        "tabLabel": "Ui fixes",
+        "tabPaneCount": 1,
+        "terminalTitle": "Tabs/spaces naming adjustment"
+      },
+      "name": "Ui fixes"
+    },
+    {
+      "case": "a /rename still outranks the one-pane tab's name",
+      "pane": {
+        "agent": "claude",
+        "kind": "agent",
+        "sessionName": "plumbing",
+        "tabLabel": "work",
+        "tabPaneCount": 1
+      },
+      "name": "plumbing"
+    },
+    {
+      "case": "a tab of several panes names the group, not the pane",
+      "pane": {
+        "agent": "claude",
+        "kind": "agent",
+        "tabLabel": "work",
+        "tabPaneCount": 2,
+        "terminalTitle": "Fact check ritual"
+      },
+      "name": "Fact check ritual"
+    },
+    {
+      "case": "a positional tab label names nothing, even alone",
+      "pane": {
+        "agent": "claude",
+        "kind": "agent",
+        "tabLabel": "3",
+        "tabPaneCount": 1,
+        "terminalTitle": "Fact check ritual"
+      },
+      "name": "Fact check ritual"
+    },
+    {
+      "case": "an older peer that sends no tab count keeps the title",
+      "pane": {
+        "agent": "claude",
+        "kind": "agent",
+        "tabLabel": "work",
+        "terminalTitle": "Fact check ritual"
+      },
+      "name": "Fact check ritual"
+    },
+    {
       "case": "an auto title is the name when nobody set one",
       "pane": {
         "agent": "claude",
@@ -43,36 +97,92 @@
     },
     {
       "case": "an agent pane with no name of any kind reads as its agent",
-      "pane": { "agent": "codex", "kind": "agent" },
+      "pane": {
+        "agent": "codex",
+        "kind": "agent"
+      },
       "name": "codex"
     },
     {
       "case": "a bare shell reads as shell, whatever its agent field says",
-      "pane": { "agent": "shell", "kind": "shell" },
+      "pane": {
+        "agent": "shell",
+        "kind": "shell"
+      },
       "name": "shell"
     },
     {
       "case": "a labelled shell keeps the operator's label",
-      "pane": { "agent": "shell", "kind": "shell", "paneLabel": "logs" },
+      "pane": {
+        "agent": "shell",
+        "kind": "shell",
+        "paneLabel": "logs"
+      },
       "name": "logs"
     }
   ],
   "tabs": [
-    { "label": "UI work", "unnamed": false },
-    { "label": "fix-auth", "unnamed": false },
-    { "label": "1", "unnamed": true },
-    { "label": "  2  ", "unnamed": true },
-    { "label": "10", "unnamed": true },
-    { "label": "Tab #3", "unnamed": true },
-    { "label": "", "unnamed": true },
-    { "label": null, "unnamed": true },
-    { "label": "Tab #3 notes", "unnamed": false },
-    { "label": "v2", "unnamed": false }
+    {
+      "label": "UI work",
+      "unnamed": false
+    },
+    {
+      "label": "fix-auth",
+      "unnamed": false
+    },
+    {
+      "label": "1",
+      "unnamed": true
+    },
+    {
+      "label": "  2  ",
+      "unnamed": true
+    },
+    {
+      "label": "10",
+      "unnamed": true
+    },
+    {
+      "label": "Tab #3",
+      "unnamed": true
+    },
+    {
+      "label": "",
+      "unnamed": true
+    },
+    {
+      "label": null,
+      "unnamed": true
+    },
+    {
+      "label": "Tab #3 notes",
+      "unnamed": false
+    },
+    {
+      "label": "v2",
+      "unnamed": false
+    }
   ],
   "places": [
-    { "space": "collie-workspace", "tab": "UI work", "place": "collie-workspace › UI work" },
-    { "space": "collie-workspace", "tab": "1", "place": "collie-workspace" },
-    { "space": "herdr-cache-alert", "tab": null, "place": "herdr-cache-alert" },
-    { "space": "nixos-configuration", "tab": "Tab #2", "place": "nixos-configuration" }
+    {
+      "space": "collie-workspace",
+      "tab": "UI work",
+      "place": "collie-workspace › UI work"
+    },
+    {
+      "space": "collie-workspace",
+      "tab": "1",
+      "place": "collie-workspace"
+    },
+    {
+      "space": "herdr-cache-alert",
+      "tab": null,
+      "place": "herdr-cache-alert"
+    },
+    {
+      "space": "nixos-configuration",
+      "tab": "Tab #2",
+      "place": "nixos-configuration"
+    }
   ]
 }

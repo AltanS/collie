@@ -386,6 +386,7 @@ export const ko: Dictionary = {
   "home.allClear": "확인 필요한 항목 없음",
   "home.workspace.paneCount.one": "창 {count}개",
   "home.workspace.paneCount.other": "창 {count}개",
+  "home.workspace.hidden": "숨김",
   "home.sidebar.shells": "셸",
   "home.sidebar.paneActionsTitle": "창 작업 보기",
   "home.row.tabPosition": "탭 {n}",

@@ -53,13 +53,13 @@ describe("TabStrip", () => {
     expect(screen.queryByText("Tabs")).toBeNull();
   });
 
-  // GROUND, BORDER AND RADIUS ARE ONE MARK NOW: the open tab is an outlined pill — `border-border`
-  // + `bg-background` + `rounded-md` — while an inactive tab keeps the SAME border-box (a reserved
-  // transparent border, per the C1 recipe) and draws no fill. Every box-affecting class besides the
-  // border's colour and the fill is identical between the two states, so a selection can never
-  // re-flow a label. jsdom has no layout, so this pins the mechanism (which classes differ) rather
-  // than pixels.
-  it("marks the open tab as an outlined pill, with the rest of the box unchanged on selection", () => {
+  // GROUND IS THE ONE MARK: the open tab is an INVERTED pill — `bg-primary` + `text-primary-
+  // foreground` + `rounded-md`, the open pane pill's own paint — while an inactive tab keeps the
+  // SAME border-box (a reserved transparent border, per the C1 recipe) and draws no fill. Every
+  // box-affecting class besides the border's colour and the fill is identical between the two
+  // states, so a selection can never re-flow a label. jsdom has no layout, so this pins the
+  // mechanism (which classes differ) rather than pixels.
+  it("marks the open tab with an underline, with the rest of the box unchanged on selection", () => {
     const { rerender } = render(
       <TabStrip
         workspaceId="w1"
@@ -73,15 +73,14 @@ describe("TabStrip", () => {
     const boxClasses = (el: Element) =>
       el.className
         .split(/\s+/)
-        .filter((c) => /^(h-|min-w-|px-|py-|p-|my-|rounded)/.test(c) || c === "border")
+        .filter((c) => /^(h-|min-w-|px-|py-|p-|my-|rounded)/.test(c) || c === "border-b-2")
         .toSorted();
 
     const inactive = screen.getByRole("button", { name: "tab 2" });
     // Every tab reserves the same border and radius box; an inactive one keeps the border transparent
     // and draws no fill.
     expect(inactive.className).toContain("border-transparent");
-    expect(inactive.className).not.toContain("border-border");
-    expect(inactive.className).not.toContain("bg-background");
+    expect(inactive.className).not.toContain("border-foreground");
     const inactiveBox = boxClasses(inactive);
 
     rerender(
@@ -98,8 +97,10 @@ describe("TabStrip", () => {
     expect(active).toHaveAttribute("aria-current", "true");
     // Every box-affecting class is shared — the border's colour and the fill are the only differences.
     expect(boxClasses(active)).toEqual(inactiveBox);
-    expect(active.className).toContain("border-border");
-    expect(active.className).toContain("bg-background");
+    expect(active.className).toContain("border-b-2");
+    expect(active.className).toContain("border-foreground");
+    // No dashed desktop-focus ring on any cell any more: the fill is the only "open" mark.
+    expect(active.className).not.toContain("outline-dashed");
     // Rule E: state may not change font weight, or the whole row re-flows.
     expect(active.className).toContain("font-medium");
   });
@@ -129,8 +130,7 @@ describe("TabStrip", () => {
     expect(group.className).not.toContain("divide-border");
     expect(group.className).toContain("gap-1");
     const open = screen.getByRole("button", { name: "tab 1" });
-    expect(open.className).toContain("rounded-md");
-    expect(open.className).toContain("border-border");
+    expect(open.className).toContain("border-foreground");
   });
 
   it("shows All plus only this workspace's tabs, and reports selection", async () => {
@@ -193,7 +193,7 @@ describe("TabStrip — a tab with no name of its own", () => {
     strip("1");
     const tab = screen.getByRole("button", { name: "tab 1" });
     expect(tab.textContent).toBe("tab 1");
-    expect(tab.querySelector(".text-muted-foreground\\/70")?.textContent).toBe("tab 1");
+    expect(tab.querySelector(".text-muted-foreground")?.textContent).toBe("tab 1");
     expect(tab.querySelector(".sr-only")).toBeNull();
   });
 
@@ -207,7 +207,7 @@ describe("TabStrip — a tab with no name of its own", () => {
     const tab = screen.getByRole("button", { name: "review" });
     expect(tab.textContent).toBe("review");
     expect(tab.querySelector(".sr-only")).toBeNull();
-    expect(tab.querySelector(".text-muted-foreground\\/70")).toBeNull();
+    expect(tab.querySelector(".text-muted-foreground")).toBeNull();
   });
 
   it("keeps the dot only for a tab with no label at all", () => {
@@ -404,8 +404,9 @@ describe("TabStrip — status on the chips", () => {
   });
 
   it("distinguishes a finished-but-unseen tab from a working one", () => {
+    // An unseen tab carries the square, not a done dot: the square speaks "unseen".
     const { unmount } = strip([pane("w1:t1", "done", { lastActiveAt: 9, lastSeenAt: 1 })]);
-    expect(screen.getByRole("button", { name: /code/ })).toHaveTextContent("done");
+    expect(screen.getByRole("button", { name: /code/ })).toHaveAccessibleName(/unseen/);
     unmount();
     strip([pane("w1:t1", "working")]);
     expect(screen.getByRole("button", { name: /code/ })).toHaveTextContent("working");
@@ -424,35 +425,39 @@ describe("TabStrip — status on the chips", () => {
     }
   });
 
-  // WHICH AGENT IS IN THERE — the operator's ask, and the reason it belongs on the tab rather than
-  // only in the pane header: a space's tabs are exactly the dimension along which the answer changes,
-  // so the header names one agent and switching tabs changes it with no warning in the row you came
-  // from. The tile is drawn only when the tab's panes agree on ONE brand. Silence is the honest
-  // answer in the other two cases and both are pinned below, because a mark is a claim about the
-  // whole tab that only one pane in it would support.
-  //
-  // Read through the LOGO's own accessible name, not a class: AgentIcon labels itself "<agent> logo"
-  // and the wrapper hides it from the tab's own name, so the query has to reach inside the button.
+  // A CELL NAMES WHAT THE HEADER NAMES (lib/pane-name.ts § tabCellTitle). A one-pane tab reads its
+  // pane's name, the word the pane header shows, so the open cell and the header agree. The tab's
+  // own label stays where the tab is a real group, where it holds no pane, and where its sole pane
+  // has only a kind to its name. And no brand tile any more: the header carries the agent's mark
+  // once, and a tile on every cell made the belt read as a list of agents.
   const logos = (el: HTMLElement) =>
     Array.from(el.querySelectorAll('[role="img"]')).map((n) => n.getAttribute("aria-label"));
 
-  it("marks a tab with the agent it runs, when its panes agree on one", () => {
-    strip([pane("w1:t1", "idle"), { ...pane("w1:t1", "working"), paneId: "w1:t1:p2" }]);
-    expect(logos(screen.getByRole("button", { name: /code/ }))).toEqual(["claude logo"]);
-    // …and it is not announced a second time: the tab already says its label and its status.
-    expect(screen.getByRole("button", { name: /code/ }).getAttribute("aria-label")).toBeNull();
+  it("names a one-pane tab after its pane, the way the header does", () => {
+    strip([pane("w1:t1", "working", { sessionName: "plumbing", terminalTitle: "plumbing" })]);
+    const cell = screen.getByRole("button", { name: /plumbing/ });
+    expect(cell).toHaveTextContent("plumbing");
+    expect(cell).not.toHaveTextContent("code");
+    expect(screen.queryByRole("button", { name: /code/ })).toBeNull();
+  });
+
+  it("keeps the tab label when the sole pane has only a kind to its name", () => {
+    strip([pane("w1:t1", "idle")]);
     expect(screen.getByRole("button", { name: /code/ })).not.toHaveTextContent("claude");
   });
 
-  it("marks nothing when a tab runs two different agents", () => {
-    strip([pane("w1:t1", "idle"), { ...pane("w1:t1", "idle"), paneId: "w1:t1:p2", agent: "codex" }]);
-    expect(logos(screen.getByRole("button", { name: /code/ }))).toEqual([]);
-    // The status is still counted over both panes — only the BRAND claim is withheld.
-    expect(screen.getByRole("button", { name: /code/ })).toHaveTextContent("idle");
+  it("keeps the tab label when the tab holds several panes", () => {
+    strip([
+      pane("w1:t1", "idle", { terminalTitle: "one" }),
+      { ...pane("w1:t1", "working", { terminalTitle: "two" }), paneId: "w1:t1:p2" },
+    ]);
+    expect(screen.getByRole("button", { name: /code/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /one|two/ })).toBeNull();
   });
 
-  it("marks nothing on a tab with no agents at all", () => {
-    strip([pane("w1:t1", "idle")]);
+  it("draws no brand tile on any cell", () => {
+    strip([pane("w1:t1", "idle", { terminalTitle: "one" })]);
+    expect(logos(screen.getByRole("button", { name: /one/ }))).toEqual([]);
     expect(logos(screen.getByRole("button", { name: /empty/ }))).toEqual([]);
   });
 });

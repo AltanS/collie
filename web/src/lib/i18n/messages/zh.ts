@@ -375,6 +375,7 @@ export const zh: Dictionary = {
   "home.allClear": "无待处理项",
   "home.workspace.paneCount.one": "{count} 个窗格",
   "home.workspace.paneCount.other": "{count} 个窗格",
+  "home.workspace.hidden": "已隐藏",
   "home.sidebar.shells": "终端实例",
   "home.sidebar.paneActionsTitle": "查看窗格操作选项",
   "home.row.tabPosition": "标签页 {n}",

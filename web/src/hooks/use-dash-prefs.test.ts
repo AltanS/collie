@@ -33,6 +33,8 @@ describe("coerceDashPrefs", () => {
       launchOpen: null,
       recentOpen: true,
       recentDir: "newest",
+      isolatedSpace: null,
+      hiddenSpaces: [],
     });
   });
 
@@ -44,6 +46,8 @@ describe("coerceDashPrefs", () => {
         launchOpen: false,
         recentOpen: false,
         recentDir: "oldest",
+        isolatedSpace: "k1",
+        hiddenSpaces: ["k2", 3, "k3"],
       }),
     ).toEqual({
       spacesOpen: false,
@@ -51,6 +55,8 @@ describe("coerceDashPrefs", () => {
       launchOpen: false,
       recentOpen: false,
       recentDir: "oldest",
+      isolatedSpace: "k1",
+      hiddenSpaces: ["k2", "k3"],
     });
   });
 
@@ -77,6 +83,8 @@ describe("useDashPrefs", () => {
       launchOpen: null,
       recentOpen: true,
       recentDir: "newest",
+      isolatedSpace: null,
+      hiddenSpaces: [],
     });
   });
 
@@ -87,6 +95,10 @@ describe("useDashPrefs", () => {
     act(() => first.result.current.setLaunchOpen(false));
     act(() => first.result.current.setRecentOpen(false));
     act(() => first.result.current.setRecentDir("oldest"));
+    act(() => first.result.current.setIsolatedSpace("k1"));
+    act(() => first.result.current.toggleHiddenSpace("k2"));
+    act(() => first.result.current.toggleHiddenSpace("k3"));
+    act(() => first.result.current.toggleHiddenSpace("k2"));
 
     const second = renderHook(() => useDashPrefs());
     expect(second.result.current.prefs).toEqual({
@@ -95,6 +107,8 @@ describe("useDashPrefs", () => {
       launchOpen: false,
       recentOpen: false,
       recentDir: "oldest",
+      isolatedSpace: "k1",
+      hiddenSpaces: ["k3"],
     });
   });
 

@@ -392,6 +392,7 @@ export const es: Dictionary = {
   "home.allClear": "Sin tareas pendientes",
   "home.workspace.paneCount.one": "{count} panel",
   "home.workspace.paneCount.other": "{count} paneles",
+  "home.workspace.hidden": "oculto",
   "home.sidebar.shells": "Shells",
   "home.sidebar.paneActionsTitle": "Ver acciones del panel",
   "home.row.tabPosition": "pestaña {n}",

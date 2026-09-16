@@ -149,22 +149,26 @@ describe("HostChip — Reconnecting says nothing is owed, Attention says somethi
   });
 });
 
-describe("the herd list — one cross-host 'Needs you', labelled not split", () => {
+describe("the herd list — blocked agents keep their own workspace, wherever the host", () => {
   it("a one-host install renders zero host chrome in any row", () => {
     render(<AgentList agents={fixtureAgents} onOpen={vi.fn()} />, { wrapper: one });
     expect(chips()).toHaveLength(0);
   });
 
-  it("keeps blocked agents from BOTH machines in the same 'Needs you' section", () => {
+  // There is no shared "Needs you" section any more — a blocked agent stays in its OWN workspace
+  // group (agent-list.tsx). Two machines, each with a blocked agent, therefore light up TWO
+  // headings, not one — the point that survives is that neither is dropped or silently merged, and
+  // both still carry their machine's label.
+  it("keeps blocked agents from both machines visible, each in its own workspace, labelled", () => {
     render(<AgentList agents={fixtureCrewAgents} onOpen={vi.fn()} />, { wrapper: crew });
-    // One section, two machines. A per-host split would let a blocked agent hide under a collapsed
-    // heading — the failure triage.ts already refuses for its own sections.
-    const needs = screen.getAllByRole("heading").filter((h) => /needs you/i.test(h.textContent ?? ""));
-    expect(needs).toHaveLength(1);
-    const rows = screen.getAllByRole("button").filter((b) => within(b).queryByLabelText(/^host:/i));
-    expect(rows.length).toBeGreaterThanOrEqual(2);
-    expect(screen.getAllByLabelText("Host: bluefin").length).toBeGreaterThan(0);
-    expect(screen.getAllByLabelText("Host: workshop").length).toBeGreaterThan(0);
+    const webapp = screen.getByRole("heading", { name: "webapp" }).closest("section")!;
+    const moonward = screen.getByRole("heading", { name: "moonward" }).closest("section")!;
+    expect(within(webapp).getByLabelText("1 needs you")).toBeInTheDocument();
+    expect(within(moonward).getByLabelText("1 needs you")).toBeInTheDocument();
+    expect(within(webapp).getByLabelText("Host: bluefin")).toBeInTheDocument();
+    expect(within(moonward).getByLabelText("Host: workshop")).toBeInTheDocument();
+    // The one summary slot at the top still counts both of them together, in words.
+    expect(screen.getByText("2 needs you")).toBeInTheDocument();
   });
 
   it("triage itself stays host-blind — the same rows bucket the same way, host or no host", () => {
