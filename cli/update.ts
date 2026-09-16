@@ -34,7 +34,15 @@ import { packageCommand } from "./package-command.ts";
 import { herdrActionCommand, type Environment, type EnvVars } from "./context.ts";
 import { EXIT } from "./io.ts";
 import { cmdLink, isCollieBinaryPath, type LinkReader, linkPath, type LinkWriter } from "./link.ts";
-import { type Exec, type Files, type Net, type NetFailure, type ResolvedTool, resolveTool } from "./sys.ts";
+import {
+  type BunReadiness,
+  type Exec,
+  type Files,
+  type Net,
+  type NetFailure,
+  type RunnableBun,
+  resolveRunnableBun,
+} from "./sys.ts";
 import { tagRemote } from "./update-remote.ts";
 import { collieBinary, unitName } from "./unit.ts";
 import {
@@ -119,8 +127,24 @@ export { isManagedCheckout };
  * Callers spawn `path` and pass its `dirname` as the child's PATH prefix: `bun cli/main.ts build`
  * spawns `bun` again by name for the two installs and the Vite build.
  */
-function resolveBun(deps: UpdateDeps): ResolvedTool | null {
-  return resolveTool(deps.exec, deps.files, deps.ctx.env, deps.ctx.home, "bun");
+function bunReadiness(deps: UpdateDeps): BunReadiness {
+  return resolveRunnableBun(deps.exec, deps.files, deps.ctx.env, deps.ctx.home);
+}
+
+/**
+ * Resolve and prove Bun before the path that needs it. `--version` is bounded in `cli/sys.ts`, so
+ * a malformed executable cannot advance a managed checkout and then leave it unable to rebuild.
+ */
+function requireRunnableBun(deps: UpdateDeps, need: string): RunnableBun | null {
+  const readiness = bunReadiness(deps);
+  if (readiness.kind === "ready") return readiness.bun;
+  const reason =
+    readiness.kind === "missing"
+      ? "bun is not installed"
+      : `bun at ${readiness.tool.path} is not runnable — \`bun --version\` did not return a readable version`;
+  deps.io.err(`error: ${reason} — ${need}.`);
+  deps.io.err("       Install or repair Bun from https://bun.sh, then re-run update.");
+  return null;
 }
 
 /**
@@ -519,6 +543,11 @@ export interface CheckoutOutcome {
    * END of the transcript, which is the part the operator reads.
    */
   higher: ReleaseTag | null;
+  /**
+   * The exact Bun proven runnable before this managed checkout moved. It is optional because no-op
+   * and refusal paths deliberately never probe Bun, and linked checkouts do not hand off this way.
+   */
+  bun?: RunnableBun;
 }
 
 /**
@@ -661,11 +690,13 @@ function updateManaged(
       deps.io.err("error: no release tags on origin — cannot pin an unversioned checkout.");
       return { code: EXIT.FAIL, moved: false, to: null, higher: null };
     }
+    const bun = requireRunnableBun(deps, "this update cannot rebuild the selected release; the checkout is unchanged");
+    if (bun === null) return { code: EXIT.FAIL, moved: false, to: null, higher: null };
     deps.io.out(
       `updating Collie (Herdr-managed checkout: no readable version — pinning to newest release tag ${plan.newest.tag})…`,
     );
     const pinned = detachOnto(deps, git, plan.newest.tag);
-    return { code: pinned, moved: pinned === EXIT.OK, to: plan.newest.version, higher: null };
+    return { code: pinned, moved: pinned === EXIT.OK, to: plan.newest.version, higher: null, bun };
   }
   if (plan.kind === "no-higher-major") {
     printNoHigherMajor(deps, plan.major);
@@ -681,6 +712,11 @@ function updateManaged(
     announceMajor(deps, plan.higher);
     return { code: EXIT.OK, moved: false, to: null, higher: plan.higher };
   }
+  // Target selection above is read-only. Prove the exact Bun that will run the fetched source
+  // before `detachOnto` reaches its first mutation (`git fetch`), so a bad compiler leaves this
+  // managed checkout exactly where it was.
+  const bun = requireRunnableBun(deps, "this update cannot rebuild the selected release; the checkout is unchanged");
+  if (bun === null) return { code: EXIT.FAIL, moved: false, to: null, higher: null };
   deps.io.out(
     plan.crossesMajor
       ? `crossing to Collie ${plan.target.version} (--major given: consented)…`
@@ -690,7 +726,13 @@ function updateManaged(
   if (code === EXIT.OK && !plan.crossesMajor) announceMajor(deps, plan.higher);
   // A crossing just TOOK `higher`; naming it again at the end of the transcript would advertise the
   // release the operator is now standing on.
-  return { code, moved: code === EXIT.OK, to: plan.target.version, higher: plan.crossesMajor ? null : plan.higher };
+  return {
+    code,
+    moved: code === EXIT.OK,
+    to: plan.target.version,
+    higher: plan.crossesMajor ? null : plan.higher,
+    bun,
+  };
 }
 
 /** Fetch the release tag `tag` and re-detach onto it, the way Herdr got this checkout here. */
@@ -1041,12 +1083,12 @@ export async function cmdUpdate(deps: UpdateDeps, args: readonly string[] = []):
     closeWithMajor(deps, advanced.higher);
     return EXIT.OK;
   }
-  const bun = resolveBun(deps);
-  if (bun === null) {
-    deps.io.err("error: bun not found — the checkout advanced, but rebuilding needs Bun.");
-    deps.io.err("       Install it from https://bun.sh and re-run update.");
-    return EXIT.FAIL;
-  }
+  // A managed advance already proved and carried this exact Bun before its fetch. A repair of an
+  // incomplete, already-current checkout still needs the same proof, but intact no-ops above remain
+  // Bun-free.
+  const bun =
+    advanced.bun ?? requireRunnableBun(deps, "this update cannot rebuild the current checkout");
+  if (bun === null) return EXIT.FAIL;
   const r = deps.exec.runIn(
     bun.path,
     [join(deps.ctx.root, "cli", "main.ts"), "_apply-update"],
@@ -1803,12 +1845,8 @@ async function updateStagedCheckout(
   const higher =
     plan.kind === "unknown-version" || (plan.kind === "advance" && plan.crossesMajor) ? null : plan.higher;
 
-  const bun = resolveBun(deps);
-  if (bun === null) {
-    deps.io.err("error: bun not found — staging a version builds it, and that needs Bun.");
-    deps.io.err("       Install it from https://bun.sh and re-run update. Nothing was changed.");
-    return EXIT.FAIL;
-  }
+  const bun = requireRunnableBun(deps, "staging a version cannot build it; nothing was changed");
+  if (bun === null) return EXIT.FAIL;
   deps.io.out(
     plan.kind === "advance" && plan.crossesMajor
       ? `crossing to Collie ${target.version} (--major given: consented)…`

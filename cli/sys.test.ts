@@ -3,8 +3,15 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { fakeFiles, HOME } from "./fakes.ts";
-import { realExec, resolveTool, toolCandidates, withPathPrefix } from "./sys.ts";
+import { fakeExec, fakeFiles, HOME } from "./fakes.ts";
+import {
+  BUN_PROBE_TIMEOUT_MS,
+  realExec,
+  resolveRunnableBun,
+  resolveTool,
+  toolCandidates,
+  withPathPrefix,
+} from "./sys.ts";
 
 // The one place Collie looks for Bun, and the proof that the two shell copies of it agree.
 //
@@ -83,6 +90,30 @@ describe("resolveTool", () => {
 
   test("nothing anywhere is null, never a guess", () => {
     expect(resolveTool(whichIs(null), fakeFiles(), {}, HOME, "bun")).toBeNull();
+  });
+});
+
+describe("a runnable Bun", () => {
+  test("proves the resolved absolute path with a bounded version probe", () => {
+    const bun = "/opt/bun/bin/bun";
+    const exec = fakeExec({ absent: ["bun"], answers: [[`${bun} --version`, { stdout: "1.1.0\n" }]] });
+    const readiness = resolveRunnableBun(exec, fakeFiles({ [bun]: "" }), { BUN_INSTALL: "/opt/bun" }, HOME);
+    expect(readiness).toEqual({ kind: "ready", bun: { path: bun, onPath: false, version: "1.1.0" } });
+    expect(exec.calls).toContain(`${bun} --version`);
+    expect(exec.timeouts).toContainEqual({ call: `${bun} --version`, ms: BUN_PROBE_TIMEOUT_MS });
+  });
+
+  test("rejects a resolved Bun that fails or does not answer a readable version", () => {
+    const bun = "/fake/bun";
+    for (const answer of [{ code: 1 }, { code: 124 }, { stdout: "\n" }]) {
+      const readiness = resolveRunnableBun(
+        fakeExec({ answers: [[`${bun} --version`, answer]] }),
+        fakeFiles(),
+        {},
+        HOME,
+      );
+      expect(readiness).toEqual({ kind: "unrunnable", tool: { path: bun, onPath: true } });
+    }
   });
 });
 
@@ -182,6 +213,27 @@ describe("bun lookup parity", () => {
   test("both shell sources take `command -v` only when the answer is absolute", async () => {
     expect(await shim).toContain("case \"$candidate\" in");
     expect(await remote).toContain("/*) printf '%s' \"$_p\"; return 0 ;;");
+  });
+});
+
+describe("realExec.capture timeout", () => {
+  const shell = { PATH: process.env.PATH ?? "" };
+
+  test("reports 124 after SIGKILL stops a direct child that ignores SIGTERM", () => {
+    const dir = mkdtempSync(join(tmpdir(), "collie-capture-"));
+    try {
+      const started = performance.now();
+      const result = realExec(shell, dir).capture(
+        "sh",
+        ["-c", "trap '' TERM; while :; do :; done"],
+        200,
+      );
+      expect(result.found).toBe(true);
+      expect(result.code).toBe(124);
+      expect(performance.now() - started).toBeLessThan(2_000);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

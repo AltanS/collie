@@ -33,7 +33,7 @@ import {
   shqPath,
   sshRunner,
 } from "./remote.ts";
-import { realExec, realFiles, realNet, resolveTool, type Exec, type Files, type Net } from "./sys.ts";
+import { realExec, realFiles, realNet, resolveRunnableBun, type Exec, type Files, type Net } from "./sys.ts";
 import { tagRemote } from "./update-remote.ts";
 import {
   majorAction,
@@ -330,43 +330,34 @@ export function diskCheck(deps: UpdateCheckDeps, install: InstallKind): Prefligh
 }
 
 /**
- * `bun --version`'s first line, or null when it did not answer one.
- *
- * `bun` is the RESOLVED ABSOLUTE path, never the bare name: a bare name here would re-introduce the
- * PATH dependence one layer down, and answer for a different Bun than the one the update will run.
- */
-function bunVersion(exec: Exec, bun: string): string | null {
-  const r = exec.capture(bun, ["--version"]);
-  if (!r.found || r.code !== 0) return null;
-  const line = r.stdout.trim().split("\n")[0]?.trim();
-  return line === undefined || line === "" ? null : line;
-}
-
-/**
  * Bun's presence and version — asked ONLY of an install that rebuilds from source.
  *
- * Resolved through `cli/sys.ts`'s canonical candidate list, not through PATH alone. PATH alone is
- * what made this check red on hosts the shim builds on happily: the shim has always looked past
- * PATH, and a preflight that refuses an update the build would complete is worse than no preflight
- * (#169). A Bun found off PATH is GREEN and the reason names the absolute path, because the
- * operator should know which Bun runs — an interactive shell will not show them that one.
+ * Resolution and the bounded `--version` proof are shared with the updater: a red here must name
+ * the same Bun that would refuse before a managed checkout changes. A runnable older Bun remains
+ * advisory; this check only proves that the compiler can start.
  */
 export function bunCheck(deps: UpdateCheckDeps): PreflightCheck {
-  const bun = resolveTool(deps.exec, deps.files, deps.ctx.env, deps.ctx.home, "bun");
-  if (bun === null) {
+  const readiness = resolveRunnableBun(deps.exec, deps.files, deps.ctx.env, deps.ctx.home);
+  if (readiness.kind === "missing") {
     return red(
       "bun",
-      "bun is not installed, and this install rebuilds from source — the update would stop after the fetch",
+      "bun is not installed, and this install rebuilds from source — the update will not advance the checkout",
       "install Bun from https://bun.sh, then re-run this check",
     );
   }
-  const version = bunVersion(deps.exec, bun.path);
-  if (version === null) return amber("bun", "bun is installed but `bun --version` said nothing readable");
-  if (compareSemver(version, MIN_BUN) < 0) {
-    return amber("bun", `bun ${version} is older than the ${MIN_BUN} this build was measured on`);
+  if (readiness.kind === "unrunnable") {
+    return red(
+      "bun",
+      `bun at ${readiness.tool.path} is not runnable — \`bun --version\` did not return a readable version`,
+      "repair or reinstall Bun, then re-run this check",
+    );
   }
-  if (bun.onPath) return green("bun", `bun ${version}`);
-  return green("bun", `bun ${version} at ${bun.path} — off this PATH, and that is the one an update runs`);
+  const { bun } = readiness;
+  if (compareSemver(bun.version, MIN_BUN) < 0) {
+    return amber("bun", `bun ${bun.version} is older than the ${MIN_BUN} this build was measured on`);
+  }
+  if (bun.onPath) return green("bun", `bun ${bun.version}`);
+  return green("bun", `bun ${bun.version} at ${bun.path} — off this PATH, and that is the one an update runs`);
 }
 
 /**

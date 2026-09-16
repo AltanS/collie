@@ -155,7 +155,10 @@ function harness(
   > = {},
 ): Harness {
   const io = capture();
-  const exec = fakeExec({ ...over, answers: [...(over.answers ?? []), ...ORIGIN] });
+  const exec = fakeExec({
+    ...over,
+    answers: [...(over.answers ?? []), ["/fake/bun --version", { stdout: "1.4.0\n" }], ...ORIGIN],
+  });
   const seed: SeededFiles = { [`${DIST}/index.html`]: "OLD", [BINARY]: "OLD BINARY" };
   if (over.installed !== undefined) {
     seed[`${ROOT}/herdr-plugin.toml`] = `id = "herdr.collie"\nversion = "${over.installed}"\n`;
@@ -491,6 +494,24 @@ describe("updateCheckout", () => {
     expect(h.io.stdout.join("\n")).toContain("Collie 1.0.0 is out — a NEW MAJOR");
   });
 
+  test("a managed checkout proves Bun after target selection and before its first mutation", () => {
+    const h = managed();
+    expect(updateCheckout(h.deps).code).toBe(EXIT.OK);
+    const listed = h.exec.calls.indexOf(`${GIT} ls-remote --tags ${TAG_REMOTE}`);
+    const proved = h.exec.calls.indexOf("/fake/bun --version");
+    const fetched = h.exec.calls.findIndex((call) => call.startsWith(`${ROOT}$ ${GIT} fetch`));
+    expect(listed).toBeGreaterThanOrEqual(0);
+    expect(proved).toBeGreaterThan(listed);
+    expect(fetched).toBeGreaterThan(proved);
+  });
+
+  test("a managed checkout with an unrunnable Bun stays put after target selection", () => {
+    const h = managed([["/fake/bun --version", { code: 124 }]]);
+    expect(updateCheckout(h.deps).code).toBe(EXIT.FAIL);
+    expect(h.io.stderr.join("\n")).toContain("the checkout is unchanged");
+    expect(gitRuns(h.exec)).toEqual([]);
+  });
+
   test("a managed checkout already on the newest tag of its major moves nothing", () => {
     const h = harness({
       installed: "0.32.0",
@@ -749,6 +770,7 @@ describe("update", () => {
       installed: "0.31.1",
       absent: ["bun"],
       answers: [
+        ["/opt/bun/bin/bun --version", { stdout: "1.4.0\n" }],
         ...MANAGED,
         [`${GIT} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
         [`${GIT} rev-parse HEAD`, { stdout: "a1a1a1a1\n" }],
@@ -758,6 +780,7 @@ describe("update", () => {
     h.files.entries.set("/opt/bun/bin/bun", { text: "" });
     h.deps.ctx.env.BUN_INSTALL = "/opt/bun";
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls).toContain("/opt/bun/bin/bun --version");
     expect(h.exec.calls).toContain(
       `${ROOT}$ PATH=/opt/bun/bin:$PATH /opt/bun/bin/bun ${ROOT}/cli/main.ts _apply-update`,
     );
@@ -835,7 +858,7 @@ describe("update", () => {
     expect(h.exec.calls.some((c) => c.includes("_apply-update"))).toBe(false);
   });
 
-  test("no Bun: the checkout advanced, and the failure says exactly that", async () => {
+  test("no Bun: the managed checkout stays put, and the failure says exactly that", async () => {
     const h = harness({
       absent: ["bun"],
       installed: "0.31.1",
@@ -847,7 +870,8 @@ describe("update", () => {
       ],
     });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
-    expect(h.io.stderr.join("\n")).toContain("the checkout advanced, but rebuilding needs Bun");
+    expect(h.io.stderr.join("\n")).toContain("the checkout is unchanged");
+    expect(gitRuns(h.exec)).toEqual([]);
   });
 
   // ── Nothing to take + an intact install ⇒ no build, no restart ────────────
@@ -880,6 +904,7 @@ describe("update", () => {
     expect(built(h)).toBe(false);
     expect(h.restarts).toBe(0);
     expect(h.io.stdout.join("\n")).toContain("already current");
+    expect(h.exec.calls.some((call) => call.endsWith("bun --version"))).toBe(false);
     // …and the transcript never claims otherwise.
     expect(h.io.stdout.join("\n")).not.toContain("update complete");
   });
@@ -1659,7 +1684,10 @@ describe("the staged checkout path", () => {
     // #169's other half. The preflight already resolves Bun through the candidate list, so a Herdr
     // action with no login shell reports GREEN — and the verb has to run the SAME Bun, or the
     // operator is told the update can proceed by a check the update then contradicts.
-    const h = legacyClone({ absent: ["bun"] });
+    const h = legacyClone({
+      absent: ["bun"],
+      answers: [[`${HOME}/.bun/bin/bun --version`, { stdout: "1.4.0\n" }]],
+    });
     h.files.entries.set(`${HOME}/.bun/bin/bun`, { text: "" });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.OK);
     // The directory rides along at the FRONT of the child's PATH, and that half is not decoration.
@@ -1677,8 +1705,8 @@ describe("the staged checkout path", () => {
     // a bare `which` that a candidate would have answered.
     const h = legacyClone({ absent: ["bun"] });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
-    expect(h.io.stderr.join("\n")).toContain("bun not found");
-    expect(h.io.stderr.join("\n")).toContain("Nothing was changed.");
+    expect(h.io.stderr.join("\n")).toContain("bun is not installed");
+    expect(h.io.stderr.join("\n")).toContain("nothing was changed");
     expect(gitRuns(h.exec).join("\n")).not.toContain("worktree add");
   });
 

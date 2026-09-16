@@ -10,6 +10,8 @@ out/
 target/
 # The compiled `collie` binary — built from the checkout, never committed.
 /bin/
+# Bun's macOS compiler fallback can spill this exact root-level scratch executable.
+/.[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f].bun-build
 
 # Logs
 *.log
