@@ -52,6 +52,9 @@ export function countStates(panes: readonly AgentView[]): StateCounts {
  * inside one `items-center` row, so a square, a dot and a digit share a centre line. The unseen count
  * used to sit a pixel high because its mark and its text were centred in an inline-flex that sat on
  * the parent's text baseline.
+ *
+ * ONE COUNT, ONE PIECE: a count never breaks inside itself. When all five states will not fit a
+ * phone's width, whole counts move to a second line.
  */
 export function StatusCounts({
   panes,
@@ -67,14 +70,14 @@ export function StatusCounts({
   const shown = ORDER.filter((c) => n[keyOf(c)] > 0);
   if (shown.length === 0) return null;
   return (
-    <span className={cn("flex items-center gap-3 leading-none tabular-nums", className)}>
+    <span className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5 leading-none tabular-nums", className)}>
       {shown.map((c) => {
         const k = keyOf(c);
         const word = c.kind === "unseen" ? t("home.row.unseen") : statusLabel(c.status);
         return (
           <span
             key={k}
-            className={cn("flex items-center gap-1.5", k === "blocked" && "text-status-blocked")}
+            className={cn("flex items-center gap-1.5 whitespace-nowrap", k === "blocked" && "text-status-blocked")}
             // Numbers alone still say what they count to a screen reader.
             aria-label={labelled ? undefined : `${n[k]} ${word}`}
           >

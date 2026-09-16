@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+
+- **The dashboard summary no longer splits a count across two lines.** On a phone with all five states, each count stays in one piece, and whole counts move to a second line when the row is too wide.
+
 ## [1.10.0] - 2026-09-16
 
 ### Changed
