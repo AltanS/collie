@@ -1741,7 +1741,14 @@ describe("the staged checkout path", () => {
     // written `staging` by then, the branch returns EXIT.OK, and `withStagingRecord` only aborts
     // on failure — so the record sat at `staging` with a pid that had exited, and the phone read
     // "interrupted" about an install that was fine.
-    const h = stagedHarness({ answers: [[`git -C ${WT("v1.0.0")} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }]] });
+    // #232 proves Bun runs before staging begins, which is before this branch, so the harness answers
+    // the probe the way a working install does.
+    const h = stagedHarness({
+      answers: [
+        [`git -C ${WT("v1.0.0")} ls-remote --tags ${TAG_REMOTE}`, { stdout: LS_REMOTE }],
+        ["/fake/bun --version", { stdout: "1.4.0\n" }],
+      ],
+    });
     h.files.write(`${WT("v1.0.0")}/herdr-plugin.toml`, `id = "herdr.collie"\nversion = "0.32.0"\n`);
     expect(await cmdUpdate(h.deps, ["--major"])).toBe(EXIT.OK);
     expect(h.io.stdout.join("\n")).toContain("already current — v1.0.0 is staged");
