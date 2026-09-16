@@ -467,6 +467,7 @@ assert_contains "$UNIT" "StartLimitIntervalSec=0"
 # The Host gate fails closed, so the allowlist this node answers on is DISCOVERED and baked in —
 # otherwise a normal tailnet install would refuse every request until the operator typed it.
 assert_contains "$UNIT" "Environment=COLLIE_TAILSCALE_HOSTS=host.example"
+case "$UNIT" in *bun*) fail "the generated unit still names an interpreter" ;; esac
 # The banner: `start` and `status` render it from one function, so they can never disagree.
 assert_contains "$STDOUT" "bridge started (systemd --user: collie)"
 assert_contains "$STDOUT" "✓ Collie is running"
@@ -1398,7 +1399,7 @@ while [ \$# -gt 0 ]; do
     *) break ;;
   esac
 done
-# `runnerEnv` deliberately drops these Git controls before the real systemd boundary. The fixture
+# runnerEnv deliberately drops these Git controls before the real systemd boundary. The fixture
 # owns the detached runner, so it supplies the same isolated Git environment explicitly here rather
 # than widening production's whitelist.
 exec env HOME="$UPDATE_HOME" XDG_CONFIG_HOME="$UPDATE_GIT_XDG" \
