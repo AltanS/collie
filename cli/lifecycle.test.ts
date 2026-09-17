@@ -393,24 +393,42 @@ describe("start, on launchd", () => {
     expect(h.io.stdout).toContain("bridge started (launchd: herdr.collie)");
   });
 
-  test("degrades to unsupervised after three failures instead of leaving no bridge at all", async () => {
+  test("degrades to unsupervised after bootstrap and load both fail instead of leaving no bridge at all", async () => {
     // EIO is also how launchd reports "gui/<uid> doesn't exist" — every Mac administered purely
     // over SSH. Giving up would take a working host to NO bridge, since stop already killed the
     // unsupervised one on the way in.
+    const h = darwin({
+      answers: [
+        ["launchctl bootstrap", { code: 5, stderr: "Bootstrap failed: 5" }],
+        ["launchctl load", { code: 1, stderr: "Load failed" }],
+      ],
+    });
+    expect(await cmdStart(h.deps)).toBe(EXIT.OK);
+    expect(h.exec.calls.filter((c) => c.startsWith("launchctl bootstrap")).length).toBe(3);
+    expect(h.exec.calls.filter((c) => c.startsWith("launchctl load")).length).toBe(1);
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain("warn: launchctl bootstrap and load both failed");
+    expect(err).toContain("gui/501 does not exist");
+    expect(err).toContain("unsupervised");
+    // It must NOT claim the agent is running — the operator has to know supervision is absent.
+    expect(h.io.stdout.join("\n")).not.toContain("bridge started (launchd");
+    expect(h.io.stdout.join("\n")).toContain("unsupervised)");
+    // …and it must leave a pidfile, or there is nothing to stop later.
+    expect(h.files.read(`${CONFIG}/collie.pid`)).toBe("4242\n");
+  });
+
+  test("falls back to launchctl load when bootstrap persistently fails", async () => {
+    // On some macOS installs `bootstrap` fails persistently with EIO even though the plist is
+    // valid and the binary is runnable, while the legacy `load -w` succeeds. The start path
+    // should keep the service under launchd rather than drop to unsupervised.
     const h = darwin({
       answers: [["launchctl bootstrap", { code: 5, stderr: "Bootstrap failed: 5" }]],
     });
     expect(await cmdStart(h.deps)).toBe(EXIT.OK);
     expect(h.exec.calls.filter((c) => c.startsWith("launchctl bootstrap")).length).toBe(3);
-    const err = h.io.stderr.join("\n");
-    expect(err).toContain("warn: launchctl bootstrap failed after 3 attempts");
-    expect(err).toContain("gui/501 does not exist");
-    expect(err).toContain("unsupervised");
-    // It must NOT claim the agent is running — the operator has to know supervision is absent.
-    expect(h.io.stdout.join("\n")).not.toContain("bridge started (launchd:");
-    expect(h.io.stdout.join("\n")).toContain("unsupervised)");
-    // …and it must leave a pidfile, or there is nothing to stop later.
-    expect(h.files.read(`${CONFIG}/collie.pid`)).toBe("4242\n");
+    expect(h.exec.calls.filter((c) => c.startsWith("launchctl load -w")).length).toBe(1);
+    expect(h.io.stdout.join("\n")).toContain("bridge started (launchd/load: herdr.collie)");
+    expect(h.io.stderr.join("\n")).not.toContain("unsupervised");
   });
 });
 

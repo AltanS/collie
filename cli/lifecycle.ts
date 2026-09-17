@@ -367,13 +367,23 @@ async function startLaunchd(deps: LifecycleDeps): Promise<number> {
       return EXIT.OK;
     }
     if (attempt === 3) {
-      // Out of retries. The likeliest cause is not a race at all: `gui/<uid>` exists only with a
+      // Out of bootstrap retries. Before degrading to unsupervised, try the legacy
+      // `launchctl load -w` path: on some macOS installs `bootstrap` fails persistently
+      // with "Bootstrap failed: 5: Input/output error" even though the plist is valid and
+      // the binary is runnable, while `load` succeeds. Trying it here keeps the service
+      // under launchd (KeepAlive, RunAtLoad) instead of dropping to a no-supervision bridge.
+      const loadR = deps.exec.capture("launchctl", ["load", "-w", plist]);
+      if (loadR.found && loadR.code === 0) {
+        deps.io.out(`bridge started (launchd/load: ${agentLabel(deps.ctx.instance)})`);
+        return EXIT.OK;
+      }
+      // The likeliest cause is not a race at all: `gui/<uid>` exists only with a
       // console session, so a Mac administered purely over SSH has no domain to bootstrap into and
       // never will. Exiting here would leave that host with NO bridge — `stop` already killed the
       // unsupervised one on the way in — and 0.20.x served it fine. So degrade to the unsupervised
       // path instead: no restart-on-crash and nothing at login, but a running bridge, and `start`
       // after a console login upgrades it to the agent.
-      deps.io.err("warn: launchctl bootstrap failed after 3 attempts — falling back to an unsupervised");
+      deps.io.err("warn: launchctl bootstrap and load both failed — falling back to an unsupervised");
       deps.io.err(`      bridge. If this Mac has no console login, gui/${uid} does not exist; log in`);
       deps.io.err("      once and re-run start to get login-start and restart-on-failure.");
       return startUnsupervised(deps);
