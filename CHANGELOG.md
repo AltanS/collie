@@ -30,11 +30,13 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+## [1.10.1] - 2026-09-17
+
 ### Fixed
 
-- **The dashboard summary no longer splits a count across two lines.** On a phone with all five states, each count stays in one piece, and whole counts move to a second line when the row is too wide.
-- **A send no longer stalls when Claude's slash menu cuts a command name.** On a narrow pane Claude shortens a long command name with a leading `…`, and Collie then lost sight of the input box, typed the text and held back Enter, so the message needed a second send. Collie now finds the input box by its own frame and reads the shortened names; rows under the box that it cannot name stay visible on the mirror. Names cut onto a hyphen and names that print an alias in brackets are read too.
-- **A send can no longer land on Claude's background-agents screen.** That screen has a typing field of its own, and Collie read it as the ordinary message box: a send from the phone pressed Enter there and started an agent task. Collie now recognises the screen and holds the send until you leave it.
+- **The dashboard summary no longer splits a count across two lines.** On a phone with all five states, each count stays in one piece, and whole counts move to a second line when the row is too wide. ([45084e9e](https://github.com/AltanS/collie/commit/45084e9e))
+- **A send no longer stalls when Claude's slash menu cuts a command name.** On a narrow pane Claude shortens a long command name with a leading `…`, and Collie then lost sight of the input box, typed the text and held back Enter, so the message needed a second send. Collie now finds the input box by its own frame and reads the shortened names; rows under the box that it cannot name stay visible on the mirror. Names cut onto a hyphen and names that print an alias in brackets are read too. ([67387a7e](https://github.com/AltanS/collie/commit/67387a7e), [56f2846b](https://github.com/AltanS/collie/commit/56f2846b))
+- **A send can no longer land on Claude's background-agents screen.** That screen has a typing field of its own, and Collie read it as the ordinary message box: a send from the phone pressed Enter there and started an agent task. Collie now recognises the screen and holds the send until you leave it. ([67387a7e](https://github.com/AltanS/collie/commit/67387a7e), [56f2846b](https://github.com/AltanS/collie/commit/56f2846b))
 
 ## [1.10.0] - 2026-09-16
 
