@@ -318,13 +318,20 @@ const MAX_TAIL_LINES = MAX_AUTOCOMPLETE_LINES;
  *     it must come within MAX_TAIL_LINES rows. So the box is the lowest box-shaped triple on screen,
  *     and its tail holds no border, no rule shaped like a top border and no "❯" prompt line — a
  *     select dialog's "❯ 1. Yes" row, or a second box, stops the walk before any border is reached.
+ *     One exception, for a statusline that draws such a row itself (a starship-style "❯ ~/src on
+ *     main", a "─ main ───" separator): an un-numbered "❯"-led row or a labelled rule is stepped over
+ *     (isStatuslineFrameMark), but the box is then kept only when every such row sits inside a
+ *     `statusline` tail's run, at most MAX_STATUS_LINES rows under the border, and no labelled rule
+ *     sits directly on a "❯" row (a second box's top border and prompt).
  *  2. THE FRAME CLOSES: a "❯" line above the bottom border and a top border above that, inside the
  *     shared MAX_DRAFT_LINES budget.
  *  3. THE TAIL IS ACCOUNTED FOR (classifyTail): a statusline run, a completion popup, or `unknown`.
  *  4. NO MODAL IS ON SCREEN: every specific dialog grammar runs over the WHOLE screen, and none may
- *     claim it; no tail row may carry a dialog footer; an `unknown` tail may carry nothing a modal
- *     paints (tailLooksModal). An echoed box higher up with a live dialog below it is refused here,
- *     by the dialog, whatever the tail's height.
+ *     claim it; no tail row may carry a dialog footer; no `statusline` or `unknown` tail row may carry
+ *     a numbered option or a "<key> to <verb>" hint (tailNamesAMenu); an `unknown` tail may also carry
+ *     no pointer glyph, rule or stepper header (tailLooksModal). An echoed box higher up with a live
+ *     dialog below it is refused when the dialog paints one of those marks in the tail, or a grammar
+ *     claims it. A dialog with none of them under a stale box is not refused (ADR 0048).
  *
  * Why the frame and not the old bottom-up walk: that walk had to CROSS the tail to reach the border,
  * with a row budget (MAX_STATUS_LINES), so anything below the box it could not name (a completion
@@ -333,18 +340,28 @@ const MAX_TAIL_LINES = MAX_AUTOCOMPLETE_LINES;
  * exists (ADR 0048, amending ADR 0004).
  *
  * The generic menu grammar (menu.ts) cannot run here, because it asks this function first. What it
- * claims is covered instead: its screens draw a full-width rule under the region's top (step 1 stops
- * there when the rule is a border, and tailLooksModal refuses any other rule in an `unknown` tail),
- * and its footer names keys (tailLooksModal again).
+ * claims is covered by its footer instead: the grammar claims a screen only when a footer row names
+ * keys, and tailNamesAMenu refuses that row in a `statusline` or `unknown` tail. Its rule under the
+ * region's top adds a second refusal: step 1 stops there when the rule is a bare border, and
+ * tailLooksModal refuses any other rule in an `unknown` tail (a `statusline` tail is exempt from it).
+ * A popup tail is not checked, but a popup is only named under a slash-command draft.
  */
 function locateInputBox(lines: StyledLine[], texts: string[], end: number): InputBox | null {
-  // 1. The lowest frame mark, within the tail bound.
+  // 1. The lowest frame mark, within the tail bound. A mark a statusline may draw is stepped over and
+  //    remembered; it is judged once the tail is labelled (below).
   let b = end - 1;
-  while (b >= 0 && !isFrameMark(texts[b]!)) {
+  const stepped: number[] = [];
+  while (b >= 0) {
+    const text = texts[b]!;
+    if (isFrameMark(text)) {
+      if (isBareBoxBorder(text)) break;
+      if (!isStatuslineFrameMark(text)) return null;
+      stepped.push(b);
+    }
     if (end - 1 - b >= MAX_TAIL_LINES) return null;
     b--;
   }
-  if (b < 0 || !isBareBoxBorder(texts[b]!)) return null;
+  if (b < 0) return null;
 
   // 2. The frame closes above it.
   const frame = walkFrame(texts, b);
@@ -352,10 +369,12 @@ function locateInputBox(lines: StyledLine[], texts: string[], end: number): Inpu
 
   // 3. The tail is accounted for.
   const { tail, statusEnd } = classifyTail(texts, { prompt: frame.prompt, bottomBorder: b }, end);
+  if (!steppedMarksAreStatusline(texts, stepped, tail, b, statusEnd)) return null;
 
   // 4. No modal on screen.
   for (let j = b + 1; j < end; j++) {
     if (classifyFooter(texts[j]!) !== null) return null;
+    if (tail !== "autocomplete" && tailNamesAMenu(texts[j]!)) return null;
     if (tail === "unknown" && tailLooksModal(texts[j]!)) return null;
   }
   if (dialogOnScreen(lines)) return null;
@@ -363,8 +382,8 @@ function locateInputBox(lines: StyledLine[], texts: string[], end: number): Inpu
   return { top: frame.top, prompt: frame.prompt, bottomBorder: b, tail, statusEnd };
 }
 
-/** A row that can only belong to a box or a dialog's frame: a border, a top-border-shaped rule, or a
- *  "❯"-led line (a prompt, or a select dialog's pointer row). */
+/** A row that belongs to a box or a dialog's frame, unless a statusline drew it (isStatuslineFrameMark):
+ *  a border, a top-border-shaped rule, or a "❯"-led line (a prompt, or a select dialog's pointer row). */
 function isFrameMark(text: string): boolean {
   const head = text.trimStart();
   // Every border shape opens with U+2500, so the display-width measurement is only paid for rows that do.
@@ -374,21 +393,55 @@ function isFrameMark(text: string): boolean {
 // An option row the way Claude's dialogs number them ("1. Yes", "❯ 2. No, and tell Claude…").
 const NUMBERED_OPTION_ROW = /^\s*(?:❯\s*)?\d+\.\s+\S/;
 
+/** A frame mark a statusline may draw itself: a "❯"-led row that is not a numbered option (a
+ *  starship-style prompt), or a labelled rule (a "─ main ───" separator). Never a bare border. */
+function isStatuslineFrameMark(text: string): boolean {
+  if (text.trimStart().startsWith("❯")) return !NUMBERED_OPTION_ROW.test(text);
+  return !isBareBoxBorder(text) && isInputBoxTopBorder(text);
+}
+
 /**
- * Whether a row of an `unknown` tail carries something a modal paints: a pointer glyph anywhere, a
- * rule, a stepper header, a numbered option, or a "<key> to <verb>" hint (a single "Esc to cancel"
- * counts). A statusline or popup tail is exempt, because its grammar already named every row; an
- * `unknown` tail is trusted only when it looks like nothing a dialog draws. False refusals here cost
- * a stalled send, which is this module's designed failure mode; a false accept types into a modal.
+ * Whether the marks step 1 stepped over (`stepped`, bottom-up) all belong to the statusline run: the
+ * tail is `statusline`, each mark sits inside its run (`bottomBorder + 1` to `statusEnd`) and at most
+ * MAX_STATUS_LINES rows under the border, and no labelled rule sits directly on a "❯" row, the shape
+ * of a second box's top border and prompt. True when nothing was stepped over.
+ */
+function steppedMarksAreStatusline(
+  texts: string[],
+  stepped: number[],
+  tail: InputBoxTail,
+  bottomBorder: number,
+  statusEnd: number,
+): boolean {
+  if (stepped.length === 0) return true;
+  if (tail !== "statusline") return false;
+  for (const j of stepped) {
+    if (j >= statusEnd || j - bottomBorder > MAX_STATUS_LINES) return false;
+    const below = texts[j + 1];
+    if (!texts[j]!.trimStart().startsWith("❯") && below !== undefined && below.trimStart().startsWith("❯")) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Whether a tail row names a menu: a numbered option or a "<key> to <verb>" hint. Checked over a
+ *  `statusline` tail as well as an `unknown` one: a dialog under a stale box can fit the statusline
+ *  walk (its footer split off by a blank, like the background-agents footer), and only these rows
+ *  tell it apart. A popup tail is exempt, because its grammar named every row. */
+function tailNamesAMenu(text: string): boolean {
+  return NUMBERED_OPTION_ROW.test(text) || namesAMenuKey(text);
+}
+
+/**
+ * Whether a row of an `unknown` tail carries something else a modal paints: a pointer glyph anywhere,
+ * a rule, or a stepper header (tailNamesAMenu covers numbered options and key hints for it too). A
+ * statusline tail is exempt from these marks, because a statusline may draw a "❯" or a rule itself;
+ * an `unknown` tail is trusted only when it looks like nothing a dialog draws. False refusals here
+ * cost a stalled send, which is this module's designed failure mode; a false accept types into a modal.
  */
 function tailLooksModal(text: string): boolean {
-  return (
-    text.includes("❯") ||
-    isHorizontalRule(text) ||
-    isMultiStepHeader(text) ||
-    NUMBERED_OPTION_ROW.test(text) ||
-    namesAMenuKey(text)
-  );
+  return text.includes("❯") || isHorizontalRule(text) || isMultiStepHeader(text);
 }
 
 /** Whether any of Claude's specific dialog grammars claims the screen. Each is tail-anchored on its

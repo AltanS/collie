@@ -1,0 +1,156 @@
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
+[0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
+
+  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime
+  with [0m[38;5;153m/model[0m.
+  [0m[38;5;246m+1 more · /status[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                                [0m
+
+  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+
+[0m[38;5;231m● [0mThis is a throwaway lab project used for screen captures.
+
+[0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mrun the shell command: wc -l README.mdREADME.md and reply with one short [0m[48;5;237m       [0m
+[0m[48;5;237m  [0m[38;5;231m[48;5;237msentence[0m[48;5;237m                                                                        [0m
+
+  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+
+[0m[38;5;231m● [0mThat file doesn't exist — the filename [0m[38;5;153mREADME.mdREADME.md [0m(likely a typo of
+[0m[38;5;231m● [0mThis is a throwaway lab project used for screen captures.
+
+[0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mrun the shell command: wc -l README.mdREADME.md and reply with one short sentenc[0m
+[0m[38;5;231m[48;5;237me[0m[48;5;237m                                                                                 [0m
+[0m[48;5;237m                                    [0m
+
+  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+
+[0m[38;5;231m● [0mThat file doesn't exist — the filename [0m[38;5;153mREADME.mdREADME.md [0m(likely a typo of [0m[38;5;153mREAD[0m
+[0m[38;5;153mME.md[0m) wasn't found in the project directory.
+
+[0m[38;5;246m✻ Cogitated for 4s · done 12:23 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mrun wc -l on README.md with the Bash tool[0m[48;5;237m                                       [0m
+[0m[48;5;237m                                                                                  [0m
+[0m[48;5;237m                                    [0m
+
+  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+
+[0m[38;5;231m● [0mREADME.md has 3 lines.
+
+[0m[38;5;246m✻ Cooked for 2s · done 12:24 PM[0m
+
+
+
+                                                                        [0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237muse the [0m
+[0m[38;5;231m[48;5;237mBash tool to run: date +%s[0m[48;5;237m                                                        [0m
+[0m[48;5;237m                                                                                  [0m
+[0m[48;5;237m                          [0m
+
+[0m[38;5;114m● [0m[1mBash[0m(date +%s)
+[0m[38;5;231m● [0mREADME.md has 3 lines.
+
+[0m[38;5;246m✻ Cooked for 2s · done 12:24 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237muse the Bash tool to run: date +%s[0m[48;5;237m                                              [0m
+
+[0m[38;5;114m● [0m[1mBash[0m(date +%s)
+[0m[38;5;246m  ⎿  [0m1789640690
+
+[0m[38;5;231m● [0mThe current Unix timestamp is 1789640690.
+
+[0m[38;5;246m✻ Churned for 3s · done 12:24 PM[0m
+
+[0m[48;5;237m  [0m[38;5;231m[48;5;237mtool[0m[48;5;237m                                  [0m
+[0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+                                        [0m[38;5;231m● [0mREADME.md has 3 lines.
+                                      [0m[38;5;246m✻ Cooked for 2s · done 12:24 PM         [0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mus[0m
+[0m[38;5;231m[48;5;237me the Bash tool to run: date +%s[0m[48;5;237m    [0m
+                                        [0m[38;5;114m● [0m[1mBash[0m(date +%s)                        [0m[38;5;246m [0m
+[0m[38;5;246m⎿  [0m1789640690
+
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mrun the shell command: wc -l README.mdREADME.md and reply with one short [0m[48;5;237m       [0m
+[0m[48;5;237m  [0m[38;5;231m[48;5;237msentence[0m[48;5;237m                                                                        [0m
+
+  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+
+[0m[38;5;231m● [0mThat file doesn't exist — the filename [0m[38;5;153mREADME.mdREADME.md [0m(likely a typo of
+  [0m[38;5;153mREADME.md[0m) wasn't found in the project directory.
+
+[0m[38;5;246m✻ Cogitated for 4s · done 12:23 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mrun wc -l on README.md with the Bash tool[0m[48;5;237m                                       [0m
+
+  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+
+[0m[38;5;231m● [0mREADME.md has 3 lines.
+
+[0m[38;5;246m✻ Cooked for 2s · done 12:24 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237muse the Bash tool to run: date +%s[0m[48;5;237m                                              [0m
+
+[0m[38;5;114m● [0m[1mBash[0m(date +%s)
+[0m[38;5;246m  ⎿  [0m1789640690
+
+[0m[38;5;231m● [0mThe current Unix timestamp is 1789640690.
+
+[0m[38;5;246m✻ Churned for 3s · done 12:24 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237muse the Bash tool to run exactly: touch /tmp/claude-lab/project/scratch-one.txt[0m[48;5;237m [0m
+  [0m[38;5;153mREADME.md[0m) wasn't found in the project
+  directory.                            [0m[38;5;246m✻ Cogitated for 4s · done 12:23 PM[0m
+  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+
+[0m[38;5;231m● [0mREADME.md has 3 lines.
+
+[0m[38;5;246m✻ Cooked for 2s · done 12:24 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237muse the Bash tool to run: date +%s[0m[48;5;237m                                              [0m
+
+[0m[38;5;114m● [0m[1mBash[0m(date +%s)
+[0m[38;5;246m  ⎿  [0m1789640690
+
+[0m[38;5;231m● [0mThe current Unix timestamp is 1789640690.
+
+[0m[38;5;246m✻ Churned for 3s · done 12:24 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237muse the Bash tool to run exactly: touch /tmp/claude-lab/project/scratch-one.txt[0m[48;5;237m [0m
+
+[0m[38;5;114m● [0m[1mBash[0m(touch /tmp/claude-lab/project/scratch-one.txt)
+[0m[38;5;246m  ⎿  Done[0m
+
+[0m[38;5;231m● [0mDone — created [0m[38;5;153m/tmp/claude-lab/project/scratch-one.txt[0m.
+
+[0m[38;5;246m✻ Worked for 2s · done 12:26 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mcreate a new file docs/lab-notes.md with three short lines about this lab [0m[48;5;237m      [0m
+[0m[48;5;237m  [0m[38;5;231m[48;5;237mproject[0m[48;5;237m                                                                         [0m
+
+  [0m[38;5;246mListed [0m[1m[38;5;246m1[0m[38;5;246m directory (ctrl+o to expand)[0m
+
+[0m[38;5;246m● [0m[1mWrite[0m(docs/lab-notes.md)
+
+[0m[38;5;153m──────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;5;153mCreate file[0m
+ [0m[38;5;246mdocs/lab-notes.md[0m
+[0m[38;5;239m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ [0m[2m[38;5;231m 1 [0m[38;5;231m# Lab Notes[0m
+ [0m[2m[38;5;231m 2[0m
+ [0m[2m[38;5;231m 3 [0m[38;5;231mThis is a throwaway project used for screen captures.[0m
+ [0m[2m[38;5;231m 4 [0m[38;5;231mIt has no real application code, only sample files.[0m
+ [0m[2m[38;5;231m 5 [0m[38;5;231mChanges here are safe to discard at any time.[0m
+[0m[38;5;239m╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌[0m
+ Do you want to create [0m[1mlab-notes.md[0m?
+ [0m[38;5;153m❯ [0m[38;5;246m1. [0m[38;5;153mYes[0m
+   [0m[38;5;246m2. [0mYes, and switch to [0m[1maccept edits (auto-approve file edits and common file[0m
+      [0m[1mcommands) [0mfor this session [0m[1m(shift+tab)[0m
+   [0m[38;5;246m3. [0mNo
+
+ [0m[38;5;246mEsc to cancel · Tab to amend[0m

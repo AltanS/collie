@@ -45,9 +45,21 @@ export function classifyFooter(text: string): PromptFamily | null {
   return null;
 }
 
+// The name markers that say "this buffer belongs to another agent". Each one is a PHRASE Claude
+// paints itself, never the bare word: an agy pane whose conversation merely mentions Claude, with
+// neither "agy" nor "Antigravity" on the visible screen, must not be read as alien — its dialog
+// would stall.
+//
+// "tell Claude" is the phrase a permission dialog paints in its own option row ("No, and tell Claude
+// what to do differently"), and it is the only Claude name on a permission screen whose welcome
+// banner has scrolled off. The capture lab (2026-09-17) showed how thin that cover is: every older
+// Claude capture cleared this guard on the banner alone, and the lab's 82-column Edit-permission
+// screens name Claude NOWHERE — not in a banner, and not in an option row, because their third
+// option is a bare "No". agy's prompt-select lifts their numbered options, and no wider name list
+// fixes it. Those two captures are therefore not in fixtures/panes; see its README for the record.
 export function isAlienBuffer(texts: string[]): boolean {
   for (const text of texts) {
-    if (/Claude Code|\.claude\/|Claude Sonnet|Claude Opus|Claude Max|AskUserQuestion/i.test(text)) {
+    if (/Claude Code|\.claude\/|Claude Sonnet|Claude Opus|Claude Max|tell Claude|AskUserQuestion/i.test(text)) {
       const full = texts.join(" ");
       if (!/Antigravity CLI|\.antigravity|agy/i.test(full)) return true;
     }

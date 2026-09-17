@@ -1,0 +1,81 @@
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m ▐[0m[38;5;174m[48;5;16m▛███▛█   [0m[1mClaude Code [0m[38;5;246mv2.1.274[0m
+[0m[38;5;174m▝▜[0m[38;5;174m[48;5;16m█████[0m[38;5;174m█▀  [0m[38;5;246mSonnet 5 with xhigh effort · Claude Max[0m
+[0m[38;5;174m  ▝▝ ▝▝    [0m[38;5;246m/tmp/claude-lab/project[0m
+
+  Fable 5.1 writes better code and reports progress on long tasks. Switch anytime
+  with [0m[38;5;153m/model[0m.
+  [0m[38;5;246m+1 more · /status[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread README.md and reply with one short sentence[0m[48;5;237m                                [0m
+
+  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+
+[0m[38;5;231m● [0mThis is a throwaway lab project used for screen captures.
+
+[0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mrun the shell command: wc -l README.mdREADME.md and reply with one short [0m[48;5;237m       [0m
+[0m[48;5;237m  [0m[38;5;231m[48;5;237msentence[0m[48;5;237m                                                                        [0m
+
+  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+
+[0m[38;5;231m● [0mThat file doesn't exist — the filename [0m[38;5;153mREADME.mdREADME.md [0m(likely a typo of
+  [0m[38;5;153mREADME.md[0m) wasn't found in the project directory.
+
+[0m[38;5;246m✻ Cogitated for 4s · done 12:23 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mrun wc -l on README.md with the Bash tool[0m[48;5;237m                                     [0m[38;5;231m●[0m
+This is a throwaway lab project used
+  for screen captures.
+
+[0m[38;5;246m✻ Cogitated for 2s · done 12:17 PM[0m
+
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mrun the shell command: wc -l README.mdREADME.md and reply with one short [0m[48;5;237m       [0m
+[0m[48;5;237m  [0m[38;5;231m[48;5;237msentence[0m[48;5;237m                                                                        [0m
+
+  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+
+[0m[38;5;231m● [0mThat file doesn't exist — the filename [0m[38;5;153mREADME.mdREADME.md [0m(likely a typo of
+  [0m[38;5;153mREADME.md[0m) wasn't found in the project directory.
+
+[0m[38;5;246m✻ Cogitated for 4s · done 12:23 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mrun wc -l on README.md with the Bash tool[0m[48;5;237m                                       [0m
+
+  [0m[38;5;246mRead [0m[1m[38;5;246m1[0m[38;5;246m file (ctrl+o to expand)[0m
+
+[0m[38;5;231m● [0mREADME.md has 3 lines.
+
+[0m[38;5;246m✻ Cooked for 2s · done 12:24 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237muse the Bash tool to run: date +%s[0m[48;5;237m                                              [0m
+
+[0m[38;5;114m● [0m[1mBash[0m(date +%s)
+[0m[38;5;246m  ⎿  [0m1789640690
+
+[0m[38;5;231m● [0mThe current Unix timestamp is 1789640690.
+
+[0m[38;5;246m✻ Churned for 3s · done 12:24 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237muse the Bash tool to run exactly: touch /tmp/claude-lab/project/scratch-one.txt[0m[48;5;237m [0m
+
+[0m[38;5;246m● [0m[1mBash[0m(touch /tmp/claude-lab/project/scratch-one.txt)
+[0m[38;5;246m  ⎿  Waiting…[0m
+
+[0m[38;5;153m──────────────────────────────────────────────────────────────────────────────────[0m
+ [0m[1m[38;5;153mBash command[0m
+ [0m[1mTip: auto mode handles these prompts for you — choose "switch to auto mode"[0m
+ [0m[1mbelow[0m
+
+   touch /tmp/claude-lab/project/scratch-one.txt
+   [0m[38;5;246mCreate empty file scratch-one.txt[0m
+
+ Do you want to proceed?
+ [0m[38;5;153m❯ [0m[38;5;246m1. [0m[38;5;153mYes[0m
+   [0m[38;5;246m2. [0mYes, and always allow access to [0m[1m/tmp/claude-lab/project [0mfrom this project
+   [0m[38;5;246m3. [0mYes, and switch to auto mode[0m[38;5;246m · auto mode handles these prompts for you[0m
+   [0m[38;5;246m4. [0mNo
+
+ [0m[38;5;246mEsc to cancel · Tab to amend[0m

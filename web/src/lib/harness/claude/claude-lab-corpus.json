@@ -1,0 +1,893 @@
+{
+  "$comment": "Generated from the capture lab's manifest (spec 04) for the 66 promoted captures, then checked against the locator. Edit by hand when behaviour changes on purpose; see claude-lab-corpus.test.ts for what each field means.",
+  "claudeCodeVersion": "2.1.274",
+  "captured": "2026-09-17",
+  "entries": [
+    {
+      "fixture": "claude-lab--agents-screen--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "agents-screen",
+      "notes": "background agents screen (← from the composer): a typeable box whose Enter starts an agent task, key-hint footer under the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "unknown",
+        "dialogLive": true
+      },
+      "knownStall": "The background-agents screen is a modal that carries its OWN typeable box, so the truth table calls the box real. The locator refuses it, and that refusal is the safe read: a live dialog owns the keyboard. Pinned here so the critical rule (no box while a dialog is live) keeps covering this screen.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
+      }
+    },
+    {
+      "fixture": "claude-lab--agents-screen--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "agents-screen",
+      "notes": "background agents screen (← from the composer): a typeable box whose Enter starts an agent task, key-hint footer under the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "unknown",
+        "dialogLive": true
+      },
+      "knownStall": "The background-agents screen is a modal that carries its OWN typeable box, so the truth table calls the box real. The locator refuses it, and that refusal is the safe read: a live dialog owns the keyboard. Pinned here so the critical rule (no box while a dialog is live) keeps covering this screen.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
+      }
+    },
+    {
+      "fixture": "claude-lab--compacting--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "compacting",
+      "notes": "/compact running: progress bar row above a live empty box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--draft-adversarial--w120.txt",
+      "cols": 120,
+      "rows": 49,
+      "state": "draft-adversarial",
+      "notes": "multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
+        "tail": "statusline",
+        "dialogLive": false
+      },
+      "knownStall": "A wrapped draft whose continuation row starts with the prompt glyph. walkFrame reads that row as the prompt line, so the frame never closes on the real one. Pre-existing, outside M31's scope.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
+      }
+    },
+    {
+      "fixture": "claude-lab--draft-adversarial--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "draft-adversarial",
+      "notes": "multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
+        "tail": "statusline",
+        "dialogLive": false
+      },
+      "knownStall": "A wrapped draft whose continuation row starts with the prompt glyph. walkFrame reads that row as the prompt line, so the frame never closes on the real one. Pre-existing, outside M31's scope.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
+      }
+    },
+    {
+      "fixture": "claude-lab--draft-adversarial--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "draft-adversarial",
+      "notes": "multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "compare these two lines: ❯ 1. keep the old name ────────────────── 2. rename it",
+        "tail": "statusline",
+        "dialogLive": false
+      },
+      "knownStall": "A wrapped draft whose continuation row starts with the prompt glyph. walkFrame reads that row as the prompt line, so the frame never closes on the real one. Pre-existing, outside M31's scope.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
+      }
+    },
+    {
+      "fixture": "claude-lab--draft-long-wrapped--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "draft-long-wrapped",
+      "notes": "long draft wrapped over several rows in the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "please read the README file and the notes under docs, then tell me in three short bullet points what this lab project contains, without changing any file at all",
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--draft-long-wrapped--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "draft-long-wrapped",
+      "notes": "long draft wrapped over several rows in the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "please read the README file and the notes under docs, then tell me in three short bullet points what this lab project contains, without changing any file at all",
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--draft-paste-placeholder--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "draft-paste-placeholder",
+      "notes": "pasted block collapsed to a placeholder token in the box; hint row reads 'paste again to expand'",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "[Pasted text #1 +29 lines]",
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--draft-paste-plus-text--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "draft-paste-plus-text",
+      "notes": "paste placeholder followed by typed text",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "[Pasted text #1 +29 lines] summarise this",
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--draft-short--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "draft-short",
+      "notes": "one-line draft after a turn",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "list the files in src",
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--draft-short--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "draft-short",
+      "notes": "one-line draft after a turn",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "list the files in src",
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--history-search-match--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "history-search-match",
+      "notes": "ctrl+r search with a match filled into the box; the box text is a recalled prompt, not typed",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "read README.md and reply with one short sentence",
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--idle-after-turn--w200.txt",
+      "cols": 200,
+      "rows": 49,
+      "state": "idle-after-turn",
+      "notes": "box after a finished turn, transcript above, ghost suggestion in box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--idle-after-turn--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "idle-after-turn",
+      "notes": "box after a finished turn, transcript above, ghost suggestion in box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--idle-after-turn--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "idle-after-turn",
+      "notes": "box after a finished turn, transcript above, ghost suggestion in box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--idle-fresh--w200.txt",
+      "cols": 200,
+      "rows": 49,
+      "state": "idle-fresh",
+      "notes": "fresh session, empty box with ghost suggestion, statusline + mode hint",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--idle-fresh--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "idle-fresh",
+      "notes": "fresh session, empty box with ghost suggestion, statusline + mode hint",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--idle-fresh--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "idle-fresh",
+      "notes": "fresh session, empty box with ghost suggestion, statusline + mode hint",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--idle-ghost-suggestion--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "idle-ghost-suggestion",
+      "notes": "empty box painted with a faint ghost suggestion; draft must read null",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--idle-labelled-top-border--w41.txt",
+      "cols": 41,
+      "rows": 49,
+      "state": "idle-labelled-top-border",
+      "notes": "top border carries the session label ('─── Read README.md ─'); at narrow widths the label crowds the flank",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--idle-labelled-top-border--w83.txt",
+      "cols": 83,
+      "rows": 49,
+      "state": "idle-labelled-top-border",
+      "notes": "top border carries the session label ('─── Read README.md ─'); at narrow widths the label crowds the flank",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--interrupted--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "interrupted",
+      "notes": "after Esc: 'Interrupted · What should Claude do instead?' row above a live empty box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--menu-config-panel--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "menu-config-panel",
+      "notes": "/config settings panel: tab row, rounded ╭─╮ search box, scrolling list, key-hint footer",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--menu-effort-slider--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "menu-effort-slider",
+      "notes": "/effort picker: a ─── slider row with ▲ marker, no numbered options, key-hint footer",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--menu-model-picker--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "menu-model-picker",
+      "notes": "/model picker: numbered options, effort row, 'Enter to set as default · s … · Esc to cancel' footer",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--menu-resume-picker--w83.txt",
+      "cols": 83,
+      "rows": 49,
+      "state": "menu-resume-picker",
+      "notes": "/resume session picker: ▔ top rule, rounded search box, ❯ pointer row, two-row key-hint footer",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--menu-rewind--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "menu-rewind",
+      "notes": "esc-esc Rewind picker: ▔ top rule, ❯ pointer, 'Enter to continue · Esc to cancel' footer",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--menu-status-screen--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "menu-status-screen",
+      "notes": "/status screen: tab row, key/value rows, 'Esc to cancel' footer (contains account identity — sanitized)",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--mode-bash--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "mode-bash",
+      "notes": "shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "ls -1 src | head -3",
+        "tail": "statusline",
+        "dialogLive": false
+      },
+      "knownStall": "Shell mode (!) paints '!' on the prompt row instead of the prompt glyph, so walkFrame finds no prompt line. Pre-existing, outside M31's scope.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
+      }
+    },
+    {
+      "fixture": "claude-lab--mode-bash--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "mode-bash",
+      "notes": "shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "ls -1 src | head -3",
+        "tail": "statusline",
+        "dialogLive": false
+      },
+      "knownStall": "Shell mode (!) paints '!' on the prompt row instead of the prompt glyph, so walkFrame finds no prompt line. Pre-existing, outside M31's scope.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
+      }
+    },
+    {
+      "fixture": "claude-lab--mode-memory--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "mode-memory",
+      "notes": "memory (#) draft in the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "# remember the lab uses fake commands",
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-bash--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "permission-bash",
+      "notes": "Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-bash--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "permission-bash",
+      "notes": "Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-webfetch--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "permission-webfetch",
+      "notes": "WebFetch permission dialog; last option ends with '(esc)' and there is no separate footer row",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--permission-write--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "permission-write",
+      "notes": "Create-file permission dialog with a numbered new-file preview between ╌ rules",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--plan-approval--w82--h30.txt",
+      "cols": 82,
+      "rows": 30,
+      "state": "plan-approval",
+      "notes": "plan approval on a 30-row pane",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--plan-approval--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "plan-approval",
+      "notes": "plan approval dialog: plan body between ╌ rules, three numbered options, path footer",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--plan-approval-feedback-typed--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "plan-approval-feedback-typed",
+      "notes": "plan approval with feedback text typed into option 3",
+      "expected": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null,
+        "dialogLive": true
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-at-file--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "popup-at-file",
+      "notes": "@-file mention popup ('+ path' rows) under the box; no popup grammar exists for it",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "@doc",
+        "tail": "unknown",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-at-file--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "popup-at-file",
+      "notes": "@-file mention popup ('+ path' rows) under the box; no popup grammar exists for it",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "@doc",
+        "tail": "unknown",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-slash-all--w40.txt",
+      "cols": 40,
+      "rows": 49,
+      "state": "popup-slash-all",
+      "notes": "'/' alone: full command list popup under the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/",
+        "tail": "autocomplete",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-slash-all--w82--h30.txt",
+      "cols": 82,
+      "rows": 30,
+      "state": "popup-slash-all",
+      "notes": "'/' alone on a 30-row pane: popup taller than the pane, clipped",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/",
+        "tail": "autocomplete",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-slash-all--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "popup-slash-all",
+      "notes": "'/' alone: full command list popup under the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/",
+        "tail": "autocomplete",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-slash-all-clipped--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "popup-slash-all-clipped",
+      "notes": "'/packages': every visible name left-clipped with '…'",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/packages",
+        "tail": "autocomplete",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-slash-clipped--w120.txt",
+      "cols": 120,
+      "rows": 49,
+      "state": "popup-slash-clipped",
+      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/refactor",
+        "tail": "autocomplete",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-slash-clipped--w200.txt",
+      "cols": 200,
+      "rows": 49,
+      "state": "popup-slash-clipped",
+      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/refactor",
+        "tail": "autocomplete",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-slash-clipped--w60.txt",
+      "cols": 60,
+      "rows": 49,
+      "state": "popup-slash-clipped",
+      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/refactor",
+        "tail": "autocomplete",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-slash-clipped--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "popup-slash-clipped",
+      "notes": "'/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/refactor",
+        "tail": "autocomplete",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-slash-mo--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "popup-slash-mo",
+      "notes": "'/mo' prefix popup; contains a left-clipped name '…nthropic-skills:import-memory'",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/mo",
+        "tail": "autocomplete",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-slash-model-exact--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "popup-slash-model-exact",
+      "notes": "'/model' typed exactly, fuzzy popup still open",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/model",
+        "tail": "autocomplete",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--popup-slash-nomatch--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "popup-slash-nomatch",
+      "notes": "popup with a single 'No commands match' row and no statusline; truth is a popup, a statusline reading is tolerable",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/zzzznomatch",
+        "tail": "autocomplete",
+        "dialogLive": false
+      },
+      "knownTailGap": "The empty popup paints one message row ('No commands match …'), not entry rows, so the popup grammar has nothing to read and the row falls to the bounded statusline run. The box and the draft are read correctly; only the tail label differs.",
+      "actualToday": {
+        "hasInputBox": true,
+        "draft": "/zzzznomatch",
+        "tail": "statusline"
+      }
+    },
+    {
+      "fixture": "claude-lab--post-compact--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "post-compact",
+      "notes": "screen right after /compact finished: compacted summary rows above a live empty box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--statusline-10row--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "statusline-10row",
+      "notes": "10-row statusline + hint: taller than MAX_STATUS_LINES, so the tail cannot be a statusline; box is live",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "unknown",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--statusline-3row--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "statusline-3row",
+      "notes": "3-row statusline plus the mode hint row (4 rows under the box)",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--statusline-none--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "statusline-none",
+      "notes": "no statusline at all: only the mode hint row under the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--statusline-numbered-rows--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "statusline-numbered-rows",
+      "notes": "statusline rows holding '1. ' items and the words 'Esc to'; still a statusline, box is live",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      },
+      "knownStall": "A statusline that prints numbered rows ('1. build ok  2. tests ok') under an 'Esc to interrupt' row. Step 4 of ADR 0048 refuses a numbered row in a statusline-shaped tail because it cannot be told from a live menu. DELIBERATE: keep the refusal, this entry is the record of the tradeoff.",
+      "actualToday": {
+        "hasInputBox": false,
+        "draft": null,
+        "tail": null
+      }
+    },
+    {
+      "fixture": "claude-lab--statusline-prompt-row--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "statusline-prompt-row",
+      "notes": "statusline whose first row starts with '❯ ' — a frame mark below the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--statusline-rule-row--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "statusline-rule-row",
+      "notes": "statusline whose first row is '─ main ─────' — a rule below the box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--survey-rating-above-box--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "survey-rating-above-box",
+      "notes": "session rating prompt ('1: Bad 2: Fine 3: Good 0: Dismiss') sits ABOVE a live box; digits go to the survey",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--transcript-dialog-lookalike--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "transcript-dialog-lookalike",
+      "notes": "the transcript above the box holds '1. Yes / 2. No / Enter to select' rows: a dialog lookalike that must not refuse the live box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--working-popup-open--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "working-popup-open",
+      "notes": "slash popup with clipped names painted ABOVE the box while a tool runs; the tail under the box is the statusline",
+      "expected": {
+        "hasInputBox": true,
+        "draft": "/refactor",
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--working-queued-message--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "working-queued-message",
+      "notes": "queued '❯ …' row above the box while working; box holds the 'Press up to edit queued messages' placeholder (draft must read null)",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    },
+    {
+      "fixture": "claude-lab--working-spinner--w82.txt",
+      "cols": 82,
+      "rows": 49,
+      "state": "working-spinner",
+      "notes": "tool running, spinner line above a live empty box",
+      "expected": {
+        "hasInputBox": true,
+        "draft": null,
+        "tail": "statusline",
+        "dialogLive": false
+      }
+    }
+  ]
+}

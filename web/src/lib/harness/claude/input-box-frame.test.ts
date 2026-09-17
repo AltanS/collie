@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { detectAutocompleteRegion } from "./autocomplete";
-import { extractInputDraft, hasInputBox, inputBoxTail } from "./chrome";
+import { namesAMenuKey } from "../menu-hints";
+import { extractInputDraft, extractStatusLines, hasInputBox, inputBoxTail } from "./chrome";
 import { claudeBuildBlocks } from "./index";
 import { lineText } from "./markers";
 import { detectMenuRegion } from "./menu";
@@ -123,11 +124,11 @@ describe("the box is the lowest frame on screen, and its tail holds no frame mar
   });
 
   it.each([
-    ["a bare border", RULE],
-    ["a labelled, top-border-shaped rule", `${"─".repeat(20)} session ${"─".repeat(4)}`],
-    ["a ❯ prompt line", "❯ 1. Yes"],
-  ])("a tail holding %s refuses the box", (_label, row) => {
-    expect(hasInputBox(fromTexts([...box("draft"), "status", row, "more"]))).toBe(false);
+    ["a bare border", [RULE]],
+    ["a second box's labelled top border and prompt", [`${"─".repeat(20)} session ${"─".repeat(4)}`, "❯ next"]],
+    ["a ❯ prompt line", ["❯ 1. Yes"]],
+  ])("a tail holding %s refuses the box", (_label, rows) => {
+    expect(hasInputBox(fromTexts([...box("draft"), "status", ...rows, "more"]))).toBe(false);
   });
 
   it.each([
@@ -142,6 +143,79 @@ describe("the box is the lowest frame on screen, and its tail holds no frame mar
     expect(hasInputBox(fromTexts([...box("draft"), ...filler, row]))).toBe(false);
     // Control: the same tail without that row is an ordinary unknown tail, and the box is found.
     expect(hasInputBox(fromTexts([...box("draft"), ...filler]))).toBe(true);
+  });
+});
+
+describe("a statusline row shaped like a frame mark", () => {
+  // A statusline is a user command's output. A starship-style prompt opens with "❯", and a separator
+  // can look like a labelled rule. Inside a bounded statusline run under a bare border, neither is a
+  // frame mark.
+  it.each([
+    ["a ❯-led starship row", "❯ ~/src on main [Opus 5] 3%"],
+    ["a labelled-rule row", "─ main ─────"],
+  ])("%s under the box: the box and its draft are found", (_label, row) => {
+    const lines = fromTexts(["● earlier", ...box("draft"), row, "  ← for agents"]);
+    expect(hasInputBox(lines)).toBe(true);
+    expect(inputBoxTail(lines)).toBe("statusline");
+    expect(extractInputDraft(lines)).toBe("draft");
+  });
+
+  it("a select dialog's numbered ❯ pointer under an old box refuses", () => {
+    expect(hasInputBox(fromTexts([...box("old"), "❯ 1. Yes", "  2. No"]))).toBe(false);
+  });
+
+  it("a stale box above a permission dialog refuses", () => {
+    const lines = fromTexts([
+      ...box("old"),
+      "",
+      "Do you want to proceed?",
+      "❯ 1. Yes",
+      "  2. Yes, and don't ask again this session",
+      "  3. No, and tell Claude what to do differently (esc)",
+      "",
+      "Esc to cancel",
+    ]);
+    expect(hasInputBox(lines)).toBe(false);
+  });
+
+  it("a ❯-led row in an unknown tail refuses", () => {
+    const filler = Array.from({ length: 9 }, (_, i) => `row ${i} of something`);
+    expect(hasInputBox(fromTexts([...box("draft"), "❯ ~/src on main", ...filler]))).toBe(false);
+  });
+
+  it("a ❯-led row further than the statusline bound below the border refuses", () => {
+    const filler = Array.from({ length: 8 }, (_, i) => `row ${i}`);
+    expect(hasInputBox(fromTexts([...box("draft"), ...filler, "❯ ~/src on main"]))).toBe(false);
+  });
+});
+
+describe("a statusline-shaped tail still carries no menu", () => {
+  it("a select dialog under an old box, split by a blank above its footer, refuses", () => {
+    const lines = fromTexts([
+      ...box("old"),
+      "▔".repeat(40),
+      " Select model",
+      "   1. Opus",
+      "   2. Sonnet",
+      "",
+      " Enter to set as default · Esc to cancel",
+    ]);
+    expect(hasInputBox(lines)).toBe(false);
+    expect(extractInputDraft(lines)).toBeNull();
+  });
+
+  it("no statusline row in the Claude corpus names a menu key or a numbered option", () => {
+    let rows = 0;
+    for (const name of CLAUDE_FIXTURES) {
+      const lines = load(name);
+      if (inputBoxTail(lines) !== "statusline") continue;
+      for (const row of extractStatusLines(lines).map(lineText)) {
+        rows++;
+        expect(namesAMenuKey(row), `${name}: ${row}`).toBe(false);
+        expect(/^\s*(?:❯\s*)?\d+\.\s+\S/.test(row), `${name}: ${row}`).toBe(false);
+      }
+    }
+    expect(rows).toBeGreaterThan(10);
   });
 });
 

@@ -1,0 +1,21 @@
+
+[0m[38;5;246m  ⎿  [0mResume cancelled
+[0m[38;5;153m▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔[0m
+   [0m[1m[38;5;153mSettings [0m[1m[38;5;16m[48;5;153m Status   [0mConfig   Usage   Stats
+
+   [0m[1mVersion:          [0m2.1.274
+   [0m[1mSession name:     [0mRead README.md
+   [0m[1mSession ID:       [0m00000000-0000-4000-8000-000000000000
+   [0m[1mSession kind:     [0mbackground job · attached
+   [0m[1mPeer address:     [0muds:/run/user/1000/cc-socks/0000000.sock
+   [0m[1mcwd:              [0m/tmp/claude-lab/project
+   [0m[1mLogin method:     [0mClaude Max account
+   [0m[1mOrganization:     [0malice@exampleco.dev's Organization
+   [0m[1mEmail:            [0malice@exampleco.dev
+   [0m[1mCloud sessions:   [0mGitHub connected
+   [0m[1m [0m
+   [0m[1mModel:            [0msonnet (claude-sonnet-5)
+   [0m[1mMCP servers:      [0m[38;5;114m2 connected[0m, [0m[38;5;220m1 need auth [0m[38;5;246m· /mcp[0m
+   [0m[1mSetting sources:  [0mUser settings, Shared project settings
+
+   [0m[38;5;246mEsc to cancel[0m

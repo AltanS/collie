@@ -286,6 +286,115 @@ hostname, home path, email, session id or credential-shaped string appears in th
 `model` key in `~/.claude/settings.json` really moved. Put it back by hand after capturing, or capture
 with an isolated `CLAUDE_CONFIG_DIR`.
 
+## Capture lab corpus (captured 2026-09-17, Claude Code 2.1.274, throwaway Herdr session)
+
+64 byte-faithful `pane.read format:ansi` captures from ONE real Claude Code session, driven through
+a throwaway Herdr session (`--session claude-lab`) in a `/tmp` git project seeded with fake
+commands and skills, at seven pane widths from 40 to 200 columns. Taken for tracker M31 to prove the
+box-anchored locator ([ADR 0048](../../../../.adr/0048-the-input-box-is-found-by-its-own-frame.md))
+against real screens instead of hand-built ones. **Width is a recorded fact here**: it is in the
+file name (`--w<cols>`, plus `--h<rows>` where the pane was short), and it is in the table below.
+The renderer was the classic TUI, the config directory was isolated, and no user plugins, hooks or
+skills were loaded.
+
+`claude-lab-corpus.json` beside
+[`harness/claude/claude-lab-corpus.test.ts`](../../lib/harness/claude/claude-lab-corpus.test.ts)
+carries the reading a CORRECT locator would produce for every file here, written from the screen
+rather than from the code, and the test asserts it. The critical line it holds: on every capture
+with a live dialog the locator reports **no** box. Four screens are pinned as known gaps, each with
+its reason in the table entry — the background-agents screen, a wrapped draft whose continuation row
+opens with `❯`, shell (`!`) mode, and a statusline printing numbered rows. Deleting a gap's fields
+when a fix lands is how the table signals the fix.
+
+**Two captures the lab recommended are deliberately NOT here:** its 82-column Edit-permission
+screens, at 49 and at 30 rows. Every other Claude capture in this directory names Claude somewhere
+on screen — usually in the welcome banner, sometimes in a `No, and tell Claude what to do
+differently` option row — and that name is what `harness/agy/markers.ts` `isAlienBuffer` reads to
+keep the agy adapter off a foreign buffer. On those two screens the banner has scrolled away and the
+third option is a bare `No`, so the word never appears, and agy's prompt-select then lifts Claude's
+numbered options. The cross-adapter fail-closed contract in `harness/agy/agy.test.ts` covers every
+`.txt` in this directory, so it cannot hold while those two files are on disk. The older corpus
+passed that guard by luck, not by design. Promoting them needs an agy-side fix first, not a wider
+name list: the screens carry no Claude-specific phrase to match.
+
+**The prefix is `claude-lab--`, not `claude--`, on purpose.** Six suites glob `claude--*.txt` and
+check the whole Claude corpus against a hand-curated per-fixture table. Adding 66 captures to all of
+them in one mechanical edit would bury the signals those tables exist to raise. These files are
+ordinary Claude captures all the same; promote one into `claude--` by hand when a suite there wants
+it.
+
+**One sanitization pass, LENGTH-PRESERVING.** Only the `/status` screen carried identity (an email
+address, an organisation name and a session id); those became `alice@exampleco.dev` and zeroes. No
+username, hostname, home path or real project path appears in any file: the session ran from
+`/tmp/claude-lab/project` and every command and skill name in the popups is a lab invention.
+
+| Fixture | Cols × rows | State / what's in it |
+|---|---|---|
+| `claude-lab--agents-screen--w40.txt` | 40 × 49 | background agents screen (← from the composer): a typeable box whose Enter starts an agent task, key-hint footer under the box |
+| `claude-lab--agents-screen--w82.txt` | 82 × 49 | background agents screen (← from the composer): a typeable box whose Enter starts an agent task, key-hint footer under the box |
+| `claude-lab--compacting--w82.txt` | 82 × 49 | /compact running: progress bar row above a live empty box |
+| `claude-lab--draft-adversarial--w120.txt` | 120 × 49 | multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box |
+| `claude-lab--draft-adversarial--w40.txt` | 40 × 49 | multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box |
+| `claude-lab--draft-adversarial--w82.txt` | 82 × 49 | multiline draft holding a ❯ row, numbered rows and a ─── rule inside the box |
+| `claude-lab--draft-long-wrapped--w40.txt` | 40 × 49 | long draft wrapped over several rows in the box |
+| `claude-lab--draft-long-wrapped--w82.txt` | 82 × 49 | long draft wrapped over several rows in the box |
+| `claude-lab--draft-paste-placeholder--w82.txt` | 82 × 49 | pasted block collapsed to a placeholder token in the box; hint row reads 'paste again to expand' |
+| `claude-lab--draft-paste-plus-text--w82.txt` | 82 × 49 | paste placeholder followed by typed text |
+| `claude-lab--draft-short--w40.txt` | 40 × 49 | one-line draft after a turn |
+| `claude-lab--draft-short--w82.txt` | 82 × 49 | one-line draft after a turn |
+| `claude-lab--history-search-match--w82.txt` | 82 × 49 | ctrl+r search with a match filled into the box; the box text is a recalled prompt, not typed |
+| `claude-lab--idle-after-turn--w200.txt` | 200 × 49 | box after a finished turn, transcript above, ghost suggestion in box |
+| `claude-lab--idle-after-turn--w40.txt` | 40 × 49 | box after a finished turn, transcript above, ghost suggestion in box |
+| `claude-lab--idle-after-turn--w82.txt` | 82 × 49 | box after a finished turn, transcript above, ghost suggestion in box |
+| `claude-lab--idle-fresh--w200.txt` | 200 × 49 | fresh session, empty box with ghost suggestion, statusline + mode hint |
+| `claude-lab--idle-fresh--w40.txt` | 40 × 49 | fresh session, empty box with ghost suggestion, statusline + mode hint |
+| `claude-lab--idle-fresh--w82.txt` | 82 × 49 | fresh session, empty box with ghost suggestion, statusline + mode hint |
+| `claude-lab--idle-ghost-suggestion--w82.txt` | 82 × 49 | empty box painted with a faint ghost suggestion; draft must read null |
+| `claude-lab--idle-labelled-top-border--w41.txt` | 41 × 49 | top border carries the session label ('─── Read README.md ─'); at narrow widths the label crowds the flank |
+| `claude-lab--idle-labelled-top-border--w83.txt` | 83 × 49 | top border carries the session label ('─── Read README.md ─'); at narrow widths the label crowds the flank |
+| `claude-lab--interrupted--w82.txt` | 82 × 49 | after Esc: 'Interrupted · What should Claude do instead?' row above a live empty box |
+| `claude-lab--menu-config-panel--w82.txt` | 82 × 49 | /config settings panel: tab row, rounded ╭─╮ search box, scrolling list, key-hint footer |
+| `claude-lab--menu-effort-slider--w82.txt` | 82 × 49 | /effort picker: a ─── slider row with ▲ marker, no numbered options, key-hint footer |
+| `claude-lab--menu-model-picker--w82.txt` | 82 × 49 | /model picker: numbered options, effort row, 'Enter to set as default · s … · Esc to cancel' footer |
+| `claude-lab--menu-resume-picker--w83.txt` | 83 × 49 | /resume session picker: ▔ top rule, rounded search box, ❯ pointer row, two-row key-hint footer |
+| `claude-lab--menu-rewind--w82.txt` | 82 × 49 | esc-esc Rewind picker: ▔ top rule, ❯ pointer, 'Enter to continue · Esc to cancel' footer |
+| `claude-lab--menu-status-screen--w82.txt` | 82 × 49 | /status screen: tab row, key/value rows, 'Esc to cancel' footer (contains account identity — sanitized) |
+| `claude-lab--mode-bash--w40.txt` | 40 × 49 | shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live |
+| `claude-lab--mode-bash--w82.txt` | 82 × 49 | shell (!) mode: prompt line starts with '!' and carries no ❯ marker; box is live |
+| `claude-lab--mode-memory--w82.txt` | 82 × 49 | memory (#) draft in the box |
+| `claude-lab--permission-bash--w40.txt` | 40 × 49 | Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer |
+| `claude-lab--permission-bash--w82.txt` | 82 × 49 | Bash command permission dialog, 4 numbered options, 'Esc to cancel · Tab to amend' footer |
+| `claude-lab--permission-webfetch--w82.txt` | 82 × 49 | WebFetch permission dialog; last option ends with '(esc)' and there is no separate footer row |
+| `claude-lab--permission-write--w82.txt` | 82 × 49 | Create-file permission dialog with a numbered new-file preview between ╌ rules |
+| `claude-lab--plan-approval--w82--h30.txt` | 82 × 30 | plan approval on a 30-row pane |
+| `claude-lab--plan-approval--w82.txt` | 82 × 49 | plan approval dialog: plan body between ╌ rules, three numbered options, path footer |
+| `claude-lab--plan-approval-feedback-typed--w82.txt` | 82 × 49 | plan approval with feedback text typed into option 3 |
+| `claude-lab--popup-at-file--w40.txt` | 40 × 49 | @-file mention popup ('+ path' rows) under the box; no popup grammar exists for it |
+| `claude-lab--popup-at-file--w82.txt` | 82 × 49 | @-file mention popup ('+ path' rows) under the box; no popup grammar exists for it |
+| `claude-lab--popup-slash-all--w40.txt` | 40 × 49 | '/' alone: full command list popup under the box |
+| `claude-lab--popup-slash-all--w82--h30.txt` | 82 × 30 | '/' alone on a 30-row pane: popup taller than the pane, clipped |
+| `claude-lab--popup-slash-all--w82.txt` | 82 × 49 | '/' alone: full command list popup under the box |
+| `claude-lab--popup-slash-all-clipped--w82.txt` | 82 × 49 | '/packages': every visible name left-clipped with '…' |
+| `claude-lab--popup-slash-clipped--w120.txt` | 120 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape |
+| `claude-lab--popup-slash-clipped--w200.txt` | 200 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape |
+| `claude-lab--popup-slash-clipped--w60.txt` | 60 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape |
+| `claude-lab--popup-slash-clipped--w82.txt` | 82 × 49 | '/refactor': three left-clipped '…' command names incl. a project namespaced one — the ADR 0048 regression shape |
+| `claude-lab--popup-slash-mo--w82.txt` | 82 × 49 | '/mo' prefix popup; contains a left-clipped name '…nthropic-skills:import-memory' |
+| `claude-lab--popup-slash-model-exact--w82.txt` | 82 × 49 | '/model' typed exactly, fuzzy popup still open |
+| `claude-lab--popup-slash-nomatch--w82.txt` | 82 × 49 | popup with a single 'No commands match' row and no statusline; truth is a popup, a statusline reading is tolerable |
+| `claude-lab--post-compact--w82.txt` | 82 × 49 | screen right after /compact finished: compacted summary rows above a live empty box |
+| `claude-lab--statusline-10row--w82.txt` | 82 × 49 | 10-row statusline + hint: taller than MAX_STATUS_LINES, so the tail cannot be a statusline; box is live |
+| `claude-lab--statusline-3row--w82.txt` | 82 × 49 | 3-row statusline plus the mode hint row (4 rows under the box) |
+| `claude-lab--statusline-none--w82.txt` | 82 × 49 | no statusline at all: only the mode hint row under the box |
+| `claude-lab--statusline-numbered-rows--w82.txt` | 82 × 49 | statusline rows holding '1. ' items and the words 'Esc to'; still a statusline, box is live |
+| `claude-lab--statusline-prompt-row--w82.txt` | 82 × 49 | statusline whose first row starts with '❯ ' — a frame mark below the box |
+| `claude-lab--statusline-rule-row--w82.txt` | 82 × 49 | statusline whose first row is '─ main ─────' — a rule below the box |
+| `claude-lab--survey-rating-above-box--w82.txt` | 82 × 49 | session rating prompt ('1: Bad 2: Fine 3: Good 0: Dismiss') sits ABOVE a live box; digits go to the survey |
+| `claude-lab--transcript-dialog-lookalike--w82.txt` | 82 × 49 | the transcript above the box holds '1. Yes / 2. No / Enter to select' rows: a dialog lookalike that must not refuse the live box |
+| `claude-lab--working-popup-open--w82.txt` | 82 × 49 | slash popup with clipped names painted ABOVE the box while a tool runs; the tail under the box is the statusline |
+| `claude-lab--working-queued-message--w82.txt` | 82 × 49 | queued '❯ …' row above the box while working; box holds the 'Press up to edit queued messages' placeholder (draft must read null) |
+| `claude-lab--working-spinner--w82.txt` | 82 × 49 | tool running, spinner line above a live empty box |
+
 ## Wizard corpus (captured 2026-07-05, sandbox pane; choreography in `../../lib/grammar/WIZARD_NOTES.md`)
 
 | Fixture | State / what's in it |

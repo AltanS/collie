@@ -183,5 +183,40 @@
     "fixture": "claude--wizard-submit.txt",
     "detector": "wizard",
     "region": "←  ☒ Focus area  ☒ Scope  ☒ Workflow  ✔ Submit  →\n\nReview your answers\n\n ● Which focus area should we work on?\n   → UI\n ● What scope should this work have?\n   → Medium\n ● How should we approach the work?\n   → Plan first\n  \nReady to submit your answers?\n\n❯ 1. Submit answers\n  2. Cancel"
+  },
+  {
+    "fixture": "claude-lab--menu-config-panel--w82.txt",
+    "detector": "menu",
+    "region": "  ╰────────────────────────────────────────────────────────────────────────────╯\n\n    Auto-compact                               true\n    Continue automatically at usage limit      true\n    Switch models when a message is flagged    Not asked yet\n    Show tips                                  true\n    Claude-drafted feedback                    off\n    Reduce motion                              false\n    Thinking mode                              true\n    Prompt suggestions                         true\n    Session recap                              true\n    Rewind code (checkpoints)                  true\n    Dynamic workflows                          true\n    Ultracode keyword trigger                  true\n    Dynamic workflow size                      medium (default)\n    Artifacts                                  true\n    Verbose output                             false\n    Terminal progress bar                      true\n    Show turn duration                         true\n    Time format                                auto\n    Default permission mode                    Manual\n    Worktree base ref                          fresh\n  ↓ 22 more below\n\n  Type to filter · Enter/↓ to select · ↑ to tabs · Esc to clear"
+  },
+  {
+    "fixture": "claude-lab--menu-model-picker--w82.txt",
+    "detector": "menu",
+    "region": "──────────────────────────────────────────────────────────────────────────────────\n  Select model\n  Switch between Claude models. Your pick becomes the default for new sessions.\n  For other/previous model names, specify with --model.\n\n    1. Default (recommended)  Opus 5 with 1M context · Best for everyday,\n                              complex tasks\n    2. Opus (1M context)      Opus 5 with 1M context · Best for everyday,\n                              complex tasks\n    3. Fable                  Fable 5.1 · Most capable for your hardest and\n                              longest-running tasks\n  ❯ 4. Sonnet ✔               Sonnet 5 · Efficient for routine tasks\n    5. Haiku                  Haiku 4.5 · Fastest for quick answers\n\n  ◉ xHigh effort ←/→ to adjust\n\n  Enter to set as default · s to use this session only · Esc to cancel"
+  },
+  {
+    "fixture": "claude-lab--menu-resume-picker--w83.txt",
+    "detector": "menu",
+    "region": "   ╰───────────────────────────────────────────────────────────────────────────╯\n     project\n\n   ❯ Read README.md\n     1 minute ago · main · 539.1KB\n\n     README review\n     26 minutes ago · main · 244.4KB\n\n     Ctrl+A to show all projects · Ctrl+B to only show current branch · Space to\n     preview · Ctrl+R to rename · Type to search · Esc to cancel"
+  },
+  {
+    "fixture": "claude-lab--menu-rewind--w82.txt",
+    "detector": "menu",
+    "region": "▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔\n   Rewind\n\n   Restore the code and/or conversation to the point before…\n\n     /compact\n     ⚠ No code restore\n\n   ❯ (current)\n\n\n\n   Enter to continue · Esc to cancel"
+  },
+  {
+    "fixture": "claude-lab--permission-bash--w40.txt",
+    "detector": "prompt-select",
+    "region": "✻ Cogitated for 4s · done 12:23 PM\n\n❯ run wc -l on README.md with the Bash  \n  tool                                  \n\n  Read 1 file (ctrl+o to expand)\n\n● README.md has 3 lines.\n\n✻ Cooked for 2s · done 12:24 PM\n\n❯ use the Bash tool to run: date +%s    \n\n● Bash(date +%s)\n  ⎿  1789640690\n\n● The current Unix timestamp is\n  1789640690.\n\n✻ Churned for 3s · done 12:24 PM\n\n❯ use the Bash tool to run exactly:     \n  touch /tmp/claude-lab/project/scratch \n  -one.txt                              \n\n● Bash(touch /tmp/claude-lab/project/scr\n      atch-one.txt)\n  ⎿  Waiting…\n\n────────────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts\n for you — choose \"switch to auto mode\"\n below\n\n   touch /tmp/claude-lab/project/scra\n   tch-one.txt\n   Create empty file scratch-one.txt\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow access to\n      /tmp/claude-lab/project from this\n      project\n   3. Yes, and switch to auto mode ·\n      auto mode handles these prompts\n   4. Nor you\n\n Esc to cancel · Tab to amend"
+  },
+  {
+    "fixture": "claude-lab--permission-bash--w82.txt",
+    "detector": "prompt-select",
+    "region": "  sentence                                                                        \n\n  Read 1 file (ctrl+o to expand)\n\n● That file doesn't exist — the filename README.mdREADME.md (likely a typo of\n  README.md) wasn't found in the project directory.\n\n✻ Cogitated for 4s · done 12:23 PM\n\n❯ run wc -l on README.md with the Bash tool                                       \n\n  Read 1 file (ctrl+o to expand)\n\n● README.md has 3 lines.\n\n✻ Cooked for 2s · done 12:24 PM\n\n❯ use the Bash tool to run: date +%s                                              \n\n● Bash(date +%s)\n  ⎿  1789640690\n\n● The current Unix timestamp is 1789640690.\n\n✻ Churned for 3s · done 12:24 PM\n\n❯ use the Bash tool to run exactly: touch /tmp/claude-lab/project/scratch-one.txt \n\n● Bash(touch /tmp/claude-lab/project/scratch-one.txt)\n  ⎿  Waiting…\n\n──────────────────────────────────────────────────────────────────────────────────\n Bash command\n Tip: auto mode handles these prompts for you — choose \"switch to auto mode\"\n below\n\n   touch /tmp/claude-lab/project/scratch-one.txt\n   Create empty file scratch-one.txt\n\n Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and always allow access to /tmp/claude-lab/project from this project\n   3. Yes, and switch to auto mode · auto mode handles these prompts for you\n   4. No\n\n Esc to cancel · Tab to amend"
+  },
+  {
+    "fixture": "claude-lab--permission-write--w82.txt",
+    "detector": "prompt-select",
+    "region": "● README.md has 3 lines.\n\n✻ Cooked for 2s · done 12:24 PM\n\n❯ use the Bash tool to run: date +%s                                              \n\n● Bash(date +%s)\n  ⎿  1789640690\n\n● The current Unix timestamp is 1789640690.\n\n✻ Churned for 3s · done 12:24 PM\n\n❯ use the Bash tool to run exactly: touch /tmp/claude-lab/project/scratch-one.txt \n\n● Bash(touch /tmp/claude-lab/project/scratch-one.txt)\n  ⎿  Done\n\n● Done — created /tmp/claude-lab/project/scratch-one.txt.\n\n✻ Worked for 2s · done 12:26 PM\n\n❯ create a new file docs/lab-notes.md with three short lines about this lab       \n  project                                                                         \n\n  Listed 1 directory (ctrl+o to expand)\n\n● Write(docs/lab-notes.md)\n\n──────────────────────────────────────────────────────────────────────────────────\n Create file\n docs/lab-notes.md\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n  1 # Lab Notes\n  2\n  3 This is a throwaway project used for screen captures.\n  4 It has no real application code, only sample files.\n  5 Changes here are safe to discard at any time.\n╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌\n Do you want to create lab-notes.md?\n ❯ 1. Yes\n   2. Yes, and switch to accept edits (auto-approve file edits and common file\n      commands) for this session (shift+tab)\n   3. No\n\n Esc to cancel · Tab to amend"
   }
 ]

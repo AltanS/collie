@@ -54,11 +54,26 @@ import { isBlank, isBoxBorder, lineText } from "./markers";
 // like every other entry, so the column agreement below stays the discriminator. Claude's `@` file
 // popup is NOT admitted: no capture of it exists in fixtures/panes, and a grammar for a shape nobody
 // has seen is a guess.
-const ENTRY_ROW = /^ {2}((?:\/|\u2026)[A-Za-z0-9][A-Za-z0-9:_-]*)( {2,})(\S.*)$/;
+//
+// TWO SHAPES THE CAPTURE LAB FOUND (Claude Code 2.1.274, 2026-09-17), both real, both previously
+// unread, so the whole popup fell to an `unknown` tail and stayed on the raw mirror:
+//
+//   1. THE CLIP CAN LAND ON A HYPHEN. The cut is by column, not by token, so the first character
+//      after the "…" is whatever happened to be there: "  …-dependencies-across-packages  Refactor…"
+//      (claude-lab--popup-slash-clipped--w82.txt). Only the clipped form may open on "-", "_" or
+//      ":" — a real "/" command id always starts with a letter or a digit, so the "/" arm keeps its
+//      stricter first character.
+//   2. A NAME COLUMN CAN CARRY A PARENTHESISED ALIAS. A skill that declares a short name prints
+//      both: "  …opic-skills:morning (morning)  Render…" (claude-lab--popup-slash-mo--w82.txt). The
+//      single space before the bracket is inside the NAME column, not the two-space column gap, so
+//      the alias is part of the name and the gap rule is untouched.
+const NAME = String.raw`(?:\/[A-Za-z0-9]|\u2026[A-Za-z0-9:_-])[A-Za-z0-9:_-]*(?: \([A-Za-z0-9:_-]+\))?`;
+
+const ENTRY_ROW = new RegExp(String.raw`^ {2}(${NAME})( {2,})(\S.*)$`);
 
 // The same row with no description at all — a bare completion. Accepted so a popup whose entries
 // carry no blurb still matches; it contributes no description column.
-const BARE_ENTRY_ROW = /^ {2}((?:\/|\u2026)[A-Za-z0-9][A-Za-z0-9:_-]*) *$/;
+const BARE_ENTRY_ROW = new RegExp(String.raw`^ {2}(${NAME}) *$`);
 
 // A CONTINUATION row: whitespace, then text. Its indent is checked against the run's derived
 // description column, so this pattern only has to say "indented, non-empty" — the column does the

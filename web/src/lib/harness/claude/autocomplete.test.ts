@@ -137,6 +137,76 @@ describe("a command name Claude clipped with a leading ellipsis", () => {
     expect(detectAutocompleteRegion(screen("/re", ["  /rename      Rename it", "  \u2026ugin:rename"]))).not.toBeNull();
     expect(detectAutocompleteRegion(screen("/re", ["  /rename      Rename it", "  \u2026ugin:rename   Rename"]))).toBeNull();
   });
+
+  // The capture lab (Claude Code 2.1.274, 2026-09-17) found the clip landing on a hyphen. The cut is
+  // by column, not by token, so the character after the "\u2026" is whatever was at that column.
+  // `entry` pads every name to the same description column, exactly as Claude lays the popup out.
+  const COLUMN = 34;
+  const entry = (name: string, description: string) => `  ${name.padEnd(COLUMN - 2)}${description}`;
+
+  it("reads a name clipped onto a hyphen", () => {
+    const rows = [
+      entry("/refactor-module-boundaries", "Move code between modules"),
+      entry("\u2026-dependencies-across-packages", "Refactor shared dependencies"),
+    ];
+    const region = detectAutocompleteRegion(screen("/refactor", rows));
+    expect(region).not.toBeNull();
+    expect(region!.model.entries.map((e) => e.name)).toEqual([
+      "/refactor-module-boundaries",
+      "\u2026-dependencies-across-packages",
+    ]);
+    expect(inputBoxTail(screen("/refactor", rows))).toBe("autocomplete");
+  });
+
+  it("a clipped name may open on an underscore or a colon, a real /command may not", () => {
+    const pair = (name: string) => [entry("/model", "Set the model"), entry(name, "Does the thing")];
+    for (const name of ["\u2026_private-helper", "\u2026:deps:refactor-one"]) {
+      expect(detectAutocompleteRegion(screen("/m", pair(name))), name).not.toBeNull();
+    }
+    // A "/" name still has to start with a letter or a digit, so a hyphen-led row stays out.
+    expect(detectAutocompleteRegion(screen("/m", pair("/-not-a-command")))).toBeNull();
+  });
+});
+
+describe("a name column carrying a parenthesised alias", () => {
+  // Also from the capture lab: a skill that declares a short name prints both. The single space
+  // before the bracket sits INSIDE the name column, so it must not be read as the column gap.
+  const COLUMN = 34;
+  const entry = (name: string, description: string) => `  ${name.padEnd(COLUMN - 2)}${description}`;
+
+  it("keeps the alias with the name and still reads the description", () => {
+    const rows = [
+      entry("/model", "Set the AI model"),
+      entry("\u2026opic-skills:morning (morning)", "Render the morning brief"),
+    ];
+    const region = detectAutocompleteRegion(screen("/mo", rows));
+    expect(region).not.toBeNull();
+    expect(region!.model.entries).toEqual([
+      { name: "/model", description: "Set the AI model" },
+      { name: "\u2026opic-skills:morning (morning)", description: "Render the morning brief" },
+    ]);
+  });
+
+  it("an unclipped command with an alias reads too", () => {
+    const rows = [entry("/morning (mo)", "Render the brief"), entry("/model", "Set the model")];
+    expect(detectAutocompleteRegion(screen("/m", rows))!.model.entries.map((e) => e.name)).toEqual([
+      "/morning (mo)",
+      "/model",
+    ]);
+  });
+
+  it("the column rule is untouched: two rows that disagree are not a popup", () => {
+    const rows = [entry("/morning (mo)", "Render the brief"), `  ${"/model".padEnd(40)}Set the model`];
+    expect(detectAutocompleteRegion(screen("/m", rows))).toBeNull();
+  });
+
+  it("the bracket has to look like an alias, not like prose", () => {
+    // "(a long note)" carries a space, so it is not an alias, and "/morning" alone is then followed
+    // by a single space rather than the two-space column gap. The row matches nothing and the run
+    // is refused — the alias arm buys no extra looseness.
+    const rows = [entry("/model", "Set the AI model"), entry("/morning (a long note)", "Render the brief")];
+    expect(detectAutocompleteRegion(screen("/m", rows))).toBeNull();
+  });
 });
 
 describe("the input box survives the popup", () => {

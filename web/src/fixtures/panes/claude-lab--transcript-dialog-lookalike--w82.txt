@@ -1,0 +1,49 @@
+
+[0m[38;5;246m  ⎿  [0mResume cancelled
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mrun the bash command: ls -la src | head -5[0m[48;5;237m                                      [0m
+
+  [0m[38;5;246mListed [0m[1m[38;5;246m1[0m[38;5;246m directory [0m
+
+[0m[38;5;231m● [0mFirst 5 entries of [0m[38;5;153msrc[0m: [0m[38;5;153mmodule-1.ts [0mthrough [0m[38;5;153mmodule-5.ts[0m, each 25 bytes.
+
+[0m[38;5;246m✻ Cooked for 7s · done 12:43 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mread each of the twelve src files with a separate Read call and describe each[0m[48;5;237m   [0m
+
+  [0m[38;5;246mRead [0m[1m[38;5;246m12[0m[38;5;246m files [0m
+
+[0m[38;5;231m● [0mAll twelve read. Descriptions:
+
+  1. [0m[38;5;153mmodule-1.ts [0m— exports [0m[38;5;153mvalue1 = 1[0m.
+  2. [0m[38;5;153mmodule-2.ts [0m— exports [0m[38;5;153mvalue2 = 2[0m.
+  3. [0m[38;5;153mmodule-3.ts [0m— exports [0m[38;5;153mvalue3 = 3[0m.
+  4. [0m[38;5;153mmodule-4.ts [0m— exports [0m[38;5;153mvalue4 = 4[0m.
+  5. [0m[38;5;153mmodule-5.ts [0m— exports [0m[38;5;153mvalue5 = 5[0m.
+  6. [0m[38;5;153mmodule-6.ts [0m— exports [0m[38;5;153mvalue6 = 6[0m.
+  7. [0m[38;5;153mmodule-7.ts [0m— exports [0m[38;5;153mvalue7 = 7[0m.
+  8. [0m[38;5;153mmodule-8.ts [0m— exports [0m[38;5;153mvalue8 = 8[0m.
+  9. [0m[38;5;153mmodule-9.ts [0m— exports [0m[38;5;153mvalue9 = 9[0m.
+  10. [0m[38;5;153mmodule-10.ts [0m— exports [0m[38;5;153mvalue10 = 10[0m.
+  11. [0m[38;5;153mmodule-11.ts [0m— exports [0m[38;5;153mvalue11 = 11[0m.
+  12. [0m[38;5;153mmodule-12.ts [0m— exports [0m[38;5;153mvalue12 = 12[0m.
+
+  Each file is a single-line TS module exporting an incrementing numeric constant.
+
+[0m[38;5;246m✻ Worked for 13s · done 12:44 PM[0m
+
+[0m[38;5;239m[48;5;237m❯ [0m[38;5;231m[48;5;237mecho back exactly these four lines and nothing else: ---- then 1. Yes then 2. [0m[48;5;237m  [0m
+[0m[48;5;237m  [0m[38;5;231m[48;5;237mNo then Enter to select[0m[48;5;237m                                                         [0m
+
+[0m[38;5;231m● [0m---
+  1. Yes
+  2. No
+     Enter to select
+
+[0m[38;5;246m✻ Cogitated for 5s · done 12:44 PM[0m
+
+[0m[38;5;244m───────────────────────────────────────────────────────────────── Read README.md ─[0m
+❯ [0m[2madd a fourth line to docs/lab-notes.md[0m
+[0m[38;5;244m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;5;246msonnet · lab-project · main · ctx 12%[0m
+  [0m[38;5;246m⏸ manual mode on · ← for agents[0m

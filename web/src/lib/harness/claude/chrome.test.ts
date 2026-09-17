@@ -728,12 +728,16 @@ describe("the row bound only decides what is stripped as a statusline", () => {
 describe("scrollback echo — a known limitation, pinned on purpose", () => {
   const SENT = "please run the database migration now";
 
-  it.each([3, 8])("reads an echo of our own send back as a draft at %i dialog rows", (rows) => {
-    expect(extractInputDraft(echoedSendAboveDialog(SENT, rows))).toBe(SENT);
+  it.each([3, 8, 9])("refuses an echo above a dialog of %i numbered rows and a key hint", (rows) => {
+    // Until ADR 0048's statusline check, 3 and 8 rows fit the statusline walk and read as a draft.
+    // A statusline tail is now checked for numbered options and key hints too.
+    expect(extractInputDraft(echoedSendAboveDialog(SENT, rows))).toBeNull();
   });
 
-  it("stops reading the echo once the run passes the bound: the dialog's key hint refuses it", () => {
-    expect(extractInputDraft(echoedSendAboveDialog(SENT, 9))).toBeNull();
+  it("still reads an echo as a draft when the rows under it name no menu", () => {
+    const rule = "─".repeat(40);
+    const lines = splitLines(parseAnsi(["earlier output", rule, `❯ ${SENT}`, rule, "  some row", "  another row"].join("\n")));
+    expect(extractInputDraft(lines)).toBe(SENT);
   });
 
   it.each(["claude--select-menu.txt", "claude--select-multi.txt"])(
