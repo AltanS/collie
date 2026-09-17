@@ -244,16 +244,18 @@ is why a composer send used to be typed straight into it. Claimed by the last-re
 Claude Code's **command-completion popup** — the run of rows it paints directly under the input
 box's bottom border while the draft is still a partial slash command. It is the picker's opposite
 number: the input box is **live** underneath it, so this is composer chrome plus a list, never a
-modal. Read by `harness/claude/autocomplete.ts` and peeled off the tail by `locateInputBox` before
-its own walk, because the run is far taller than `MAX_STATUS_LINES` and used to hide the box behind
-it — `composerReady` false, every send stalled, the whole 220-column grid soft-wrapped onto the
-phone. Selection inside the popup is **SGR-only** (the highlighted row is byte-identical to its
+modal. Read by `harness/claude/autocomplete.ts` and classified as the input box's tail by
+`locateInputBox`, because the run is far taller than `MAX_STATUS_LINES` and used to hide the box
+behind it — `composerReady` false, every send stalled, the whole 220-column grid soft-wrapped onto
+the phone. Since ADR 0048 the box is found by its own frame first, so a popup row the grammar cannot
+read no longer hides it. Selection inside the popup is **SGR-only** (the highlighted row is byte-identical to its
 neighbours), so the grammar matches on shape and never on colour.
 
 | Fixture | State / what's in it |
 |---|---|
 | `claude--autocomplete-slash-long.txt` | `/model` typed on a machine with many skills: 23 popup rows — 17 entries at a description column of 43, six of whose blurbs wrap onto a continuation row. **No statusline and no key-hint footer**: while the popup is open the run reaches the last line of the screen. The capture the bug was diagnosed from |
 | `claude--autocomplete-slash-short.txt` | The 3-row shape (`/re` → `/rename`, `/resume`, `/release-notes`) at a description column of 23, first row highlighted. **Derived**: written to the same layout and SGR palette as the long capture, at a width that fits the page |
+| `claude--autocomplete-slash-clipped.txt` | `/model` typed on an **82-column** pane: 27 popup rows, 19 entries at a description column of 31, descriptions wrapped to two rows and clipped with a trailing `…`. One plugin command's name is clipped from the left to `…ugin:refactor-dependencies`, the row that used to end the run early, hide the box and stall the send. **Hand-built** from a live 82-column observation (2026-09-17): the layout is the observed one, the session label (`demo-session`), transcript and command names are neutral stand-ins, none from the operator's workspace |
 
 ## Model-alias capture (2026-09-13, Claude Code v2.1.270, throwaway Herdr pane)
 

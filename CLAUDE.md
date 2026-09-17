@@ -568,11 +568,14 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   confirm on the drawer transition, not the ✕). Don't lift or persist it: a queue surviving into a
   later open would let Send fire a stale sequence into a pane that has moved on
   ([ADR 0005](./.adr/0005-a-composed-key-queue-never-outlives-its-dock.md)).
-- **The statusline-run bound in `chrome.ts` guards less than it looks** — a dialog below the box is
-  refused by the border/prompt checks and by the blank line Claude paints above its footer hint, never
-  by the row count. Size it up if a real statusline needs more rows; don't delete it, and don't credit
-  it with protection it doesn't provide
-  ([ADR 0004](./.adr/0004-the-statusline-run-is-bounded.md)). `chrome.test.ts` pins both halves.
+- **The Claude input box is found by its own frame, not by walking the rows under it** — the lowest
+  bare bottom border, a `❯` line and a top border, then every row below labelled (statusline, popup
+  or unknown) and no modal on screen. The statusline-run bound in `chrome.ts` bounds only what the
+  view strips; it never guards the send. Size it up if a real statusline needs more rows; don't
+  delete it, and don't credit it with protection it doesn't provide
+  ([ADR 0004](./.adr/0004-the-statusline-run-is-bounded.md), amended by
+  [ADR 0048](./.adr/0048-the-input-box-is-found-by-its-own-frame.md)). `chrome.test.ts` and
+  `input-box-frame.test.ts` pin both halves.
 - **The Herdr socket is never dialled across a machine boundary, and no Herdr vocabulary crosses a
   crew link** — the lead consumes a peer's Collie API, never its Herdr socket
   ([ADR 0011](./.adr/0011-the-pack-protocol-is-the-mux-driver-seam.md)).

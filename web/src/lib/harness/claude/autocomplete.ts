@@ -9,7 +9,9 @@
 // raw mirror with `composerReady` false, so every send stalled. Raising the cap is the wrong fix and
 // .adr/0004 says why: the row count is not what protects that walk (the blank line above a dialog's
 // footer is), and a taller blind window admits MORE screens it should refuse. So the popup is matched
-// POSITIVELY, by its own shape, and peeled before the walk starts.
+// POSITIVELY, by its own shape. Since ADR 0048 the box is found by its own frame and this grammar only
+// LABELS the rows under it (chrome.ts classifyTail): a popup it cannot read no longer hides the box,
+// it just stays on the raw mirror instead of becoming a list.
 //
 // The shape, and nothing about colour:
 //
@@ -44,11 +46,19 @@ import { isBlank, isBoxBorder, lineText } from "./markers";
 // — letters, digits, `-`, `_`, and the `:` that namespaces a plugin command (`/typescript:fix-types`).
 // It deliberately admits NO further "/", which is what keeps an ordinary path-carrying statusline row
 // ("  /home/altan/project   main") out of the run.
-const ENTRY_ROW = /^ {2}(\/[A-Za-z0-9][A-Za-z0-9:_-]*)( {2,})(\S.*)$/;
+//
+// A name may also START WITH "…" (U+2026) instead of "/": on a narrow pane Claude caps the name column
+// and clips a long plugin command from the LEFT, so the slash and the head of the namespace are gone
+// ("  …ugin:refactor-dependencies   (plugin) Applies…", observed live at 82 columns). The clipped row
+// carries the same charset after the ellipsis, and it must still land on the run's description column
+// like every other entry, so the column agreement below stays the discriminator. Claude's `@` file
+// popup is NOT admitted: no capture of it exists in fixtures/panes, and a grammar for a shape nobody
+// has seen is a guess.
+const ENTRY_ROW = /^ {2}((?:\/|\u2026)[A-Za-z0-9][A-Za-z0-9:_-]*)( {2,})(\S.*)$/;
 
 // The same row with no description at all — a bare completion. Accepted so a popup whose entries
 // carry no blurb still matches; it contributes no description column.
-const BARE_ENTRY_ROW = /^ {2}(\/[A-Za-z0-9][A-Za-z0-9:_-]*) *$/;
+const BARE_ENTRY_ROW = /^ {2}((?:\/|\u2026)[A-Za-z0-9][A-Za-z0-9:_-]*) *$/;
 
 // A CONTINUATION row: whitespace, then text. Its indent is checked against the run's derived
 // description column, so this pattern only has to say "indented, non-empty" — the column does the
@@ -62,7 +72,7 @@ const CONTINUATION_ROW = /^( {4,})(\S.*)$/;
 // still a real popup. A tight cap here would simply re-create the bug this module exists to fix (23
 // rows observed for `/model` alone, and the list grows with the operator's skills). The cap remains
 // only so a pathological buffer can't be walked without bound.
-const MAX_AUTOCOMPLETE_LINES = 60;
+export const MAX_AUTOCOMPLETE_LINES = 60;
 
 /** Where the popup sits, and what it listed. `start` is the index of its FIRST row — the line
  *  immediately below the input box's bottom border, and the exclusive end of everything above. */
@@ -151,9 +161,9 @@ export interface AutocompleteRegion {
  * pads the viewport), exactly as every other tail-anchored grammar does.
  *
  * Deliberately does NOT check that the input box is really there — that is the caller's to pair with
- * (`claudeBuildBlocks` gates on `hasInputBox`), which keeps this module free of any dependency on
- * chrome.ts and therefore free of the import cycle that would otherwise form: chrome.ts is the one
- * that peels this run before its own walk.
+ * (`claudeBuildBlocks` gates on `inputBoxTail` answering `autocomplete`), which keeps this module free
+ * of any dependency on chrome.ts and therefore free of the import cycle that would otherwise form:
+ * chrome.ts is the one that classifies this run as the box's tail.
  */
 export function detectAutocompleteRegion(lines: StyledLine[]): AutocompleteRegion | null {
   const texts = lines.map(lineText);

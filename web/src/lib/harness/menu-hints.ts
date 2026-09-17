@@ -99,3 +99,20 @@ export function parseKeyHintFooter(text: string): MenuAction[] {
   }
   return actions;
 }
+
+/**
+ * Whether ANY `·`-separated segment of `text` is a "<key> to <verb>" hint naming a sendable key — a
+ * single "Esc to cancel" included, which `parseKeyHintFooter` deliberately refuses (it needs two
+ * segments to claim a footer). This is the loose test, for the opposite job: not claiming a menu,
+ * but REFUSING to call a screen safe to type into when one of its rows names a key the way a modal's
+ * footer does.
+ */
+export function namesAMenuKey(text: string): boolean {
+  return text
+    .trim()
+    .split(SEGMENT_SPLIT)
+    .some((segment) => {
+      const m = HINT.exec(segment.trim());
+      return m !== null && menuKeyFor(m[1]!) !== null;
+    });
+}

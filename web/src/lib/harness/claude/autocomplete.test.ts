@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { detectAutocompleteRegion } from "./autocomplete";
-import { extractInputDraft, extractStatusLines, hasInputBox } from "./chrome";
+import { extractInputDraft, extractStatusLines, hasInputBox, inputBoxTail, stripChrome } from "./chrome";
 import { claudeBuildBlocks } from "./index";
 
 // The slash-autocomplete grammar and, more importantly, what it must NOT cost: the input box under
@@ -25,6 +25,9 @@ function lines(text: string): StyledLine[] {
 const RULE = "─".repeat(40);
 const LONG = "claude--autocomplete-slash-long.txt";
 const SHORT = "claude--autocomplete-slash-short.txt";
+// Hand-built from a live 82-column observation (fixtures/panes/README.md): Claude clipped a plugin
+// command's name from the left, and the "…"-led row used to end the popup run early and hide the box.
+const CLIPPED = "claude--autocomplete-slash-clipped.txt";
 
 /** A screen with `entries` popup rows under a complete input box holding `draft`. */
 function screen(draft: string, rows: string[]): StyledLine[] {
@@ -104,6 +107,38 @@ describe("detectAutocompleteRegion", () => {
   });
 });
 
+describe("a command name Claude clipped with a leading ellipsis", () => {
+  it("reads the 82-column capture: every entry, the clipped one included", () => {
+    const region = detectAutocompleteRegion(load(CLIPPED));
+    expect(region).not.toBeNull();
+    expect(region!.startLine).toBe(7); // directly under the box's bottom border
+    const entries = region!.model.entries;
+    expect(entries).toHaveLength(19);
+    expect(entries[0]).toEqual({
+      name: "/model",
+      description: "Set the AI model for Claude Code (currently Opus 5 (1M context))",
+    });
+    expect(entries.find((e) => e.name.startsWith("\u2026"))).toEqual({
+      name: "\u2026ugin:refactor-dependencies",
+      description:
+        "(plugin) Applies dependency injection and inversion patterns to improve testability and modularity.",
+    });
+    expect(entries.at(-1)!.name).toBe("/init");
+  });
+
+  it("finds the input box and the /model draft under it", () => {
+    expect(hasInputBox(load(CLIPPED))).toBe(true);
+    expect(inputBoxTail(load(CLIPPED))).toBe("autocomplete");
+    expect(extractInputDraft(load(CLIPPED))).toBe("/model");
+    expect(extractStatusLines(load(CLIPPED))).toEqual([]);
+  });
+
+  it("accepts a clipped bare entry, and still needs the clipped row on the description column", () => {
+    expect(detectAutocompleteRegion(screen("/re", ["  /rename      Rename it", "  \u2026ugin:rename"]))).not.toBeNull();
+    expect(detectAutocompleteRegion(screen("/re", ["  /rename      Rename it", "  \u2026ugin:rename   Rename"]))).toBeNull();
+  });
+});
+
 describe("the input box survives the popup", () => {
   it("hasInputBox is true for both captures, at 23 rows and at 3", () => {
     expect(hasInputBox(load(LONG))).toBe(true);
@@ -132,15 +167,21 @@ describe("the input box survives the popup", () => {
 
   it("only peels a popup off a box whose draft is a slash command", () => {
     // The gate that keeps the peel honest. Rows shaped like entries under a box holding ordinary
-    // prose are not a completion popup, so the walk runs unchanged and finds no box behind 12 rows.
+    // prose are not a completion popup: they are an `unknown` tail. The box is still found by its own
+    // frame (ADR 0048), but the rows are neither lifted into a popup block nor stripped.
     const rows = Array.from({ length: 12 }, (_, i) => `  ${`/cmd${i}`.padEnd(16)}Does the thing`);
-    expect(hasInputBox(screen("write the tests", rows))).toBe(false);
+    const prose = screen("write the tests", rows);
+    expect(hasInputBox(prose)).toBe(true);
+    expect(inputBoxTail(prose)).toBe("unknown");
+    expect(claudeBuildBlocks(prose).map((b) => b.kind)).toEqual(["raw"]);
+    expect(stripChrome(prose).length).toBe(1 + rows.length);
+    expect(inputBoxTail(screen("/c", rows))).toBe("autocomplete");
   });
 });
 
 describe("claudeBuildBlocks", () => {
   it("yields the transcript plus an autocomplete block — never the raw fallback", () => {
-    for (const name of [LONG, SHORT]) {
+    for (const name of [LONG, SHORT, CLIPPED]) {
       const blocks = claudeBuildBlocks(load(name));
       expect(blocks.map((b) => b.kind), name).toEqual(["raw", "autocomplete"]);
       // The raw block is the transcript ABOVE the box: the box, the popup and the whole 220-column

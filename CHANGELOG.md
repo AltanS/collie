@@ -33,6 +33,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Fixed
 
 - **The dashboard summary no longer splits a count across two lines.** On a phone with all five states, each count stays in one piece, and whole counts move to a second line when the row is too wide.
+- **A send no longer stalls when Claude's slash menu cuts a command name.** On a narrow pane Claude shortens a long command name with a leading `…`, and Collie then lost sight of the input box, typed the text and held back Enter, so the message needed a second send. Collie now finds the input box by its own frame and reads the shortened names; rows under the box that it cannot name stay visible on the mirror.
 
 ## [1.10.0] - 2026-09-16
 

@@ -16,7 +16,7 @@ import { detectMultiSelectRegion } from "./multi-select";
 import { detectPromptSelectRegion } from "./prompt-select";
 import { detectMenuRegion } from "./menu";
 import { detectAutocompleteRegion } from "./autocomplete";
-import { stripChrome, extractStatusLines, extractInputDraft, hasInputBox } from "./chrome";
+import { stripChrome, extractStatusLines, extractInputDraft, hasInputBox, inputBoxTail } from "./chrome";
 import { isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
 
 /**
@@ -90,14 +90,17 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
   }
 
   // The COMPLETION POPUP (autocomplete.ts) — the one non-raw block that is not a dialog. It runs last
-  // because it is the least specific tail shape, and it is gated on `hasInputBox` because that is what
-  // separates a live composer with a popup under it from a modal: `stripChrome` below has already had
-  // to find the same box (it peels this very run to reach it), so the two answers cannot disagree.
+  // because it is the least specific tail shape, and it is gated on the input box's tail being
+  // CLASSIFIED as the popup (chrome.ts), because that is what separates a live composer with a popup
+  // under it from a modal, and from popup-shaped rows under a box whose draft is not a slash command.
+  // `stripChrome` below has already had to find the same box and the same tail, so the two answers
+  // cannot disagree.
   //
   // The transcript above stays raw and the box stays stripped, exactly as on any other idle screen —
   // the popup is simply lifted out of the mirror, where a 220-column list soft-wrapped into an
-  // unreadable wall on a phone, and rendered as a list.
-  if (hasInputBox(lines)) {
+  // unreadable wall on a phone, and rendered as a list. An `unknown` tail gets no block of its own: it
+  // is left on the raw mirror by stripChrome, below the transcript.
+  if (inputBoxTail(lines) === "autocomplete") {
     const autoRegion = detectAutocompleteRegion(lines);
     if (autoRegion) {
       const before = trimTrailingBlank(stripChrome(lines));

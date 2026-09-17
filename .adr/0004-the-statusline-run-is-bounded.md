@@ -2,6 +2,8 @@
 
 Status: Accepted · 2026-07-30
 
+Amended in scope by: [ADR 0048](./0048-the-input-box-is-found-by-its-own-frame.md) — the bound now limits only what the view strips as a statusline; the box is found by its own frame.
+
 ## Context
 
 `locateInputBox` (`web/src/lib/harness/claude/chrome.ts`) walks up from the buffer tail and accepts at

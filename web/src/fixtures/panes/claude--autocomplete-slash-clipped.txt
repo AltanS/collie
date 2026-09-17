@@ -1,0 +1,34 @@
+● The tests pass. The parser change is in src/parse.ts.
+
+  Want me to open a pull request?
+
+[38;2;136;136;136m────────────────────────────────────────────────────────────────── demo-session ──[0m
+❯ [38;2;177;185;249m/model[0m
+[38;2;136;136;136m──────────────────────────────────────────────────────────────────────────────────[0m
+  [0m[38;2;177;185;249m/model                       Set the AI model for Claude Code (currently Opus 5[0m
+                               [0m[38;2;177;185;249m(1M context))[0m
+  [0m[38;2;153;153;153m/clear                       Clear conversation history and free up context[0m
+  [0m[38;2;153;153;153m/compact                     Clear conversation history but keep a summary in[0m
+                               [0m[38;2;153;153;153mcontext. Optional: /compact [instructions for…[0m
+  [0m[38;2;153;153;153m/loop                        Run a prompt or slash command on a recurring[0m
+                               [0m[38;2;153;153;153minterval (e.g. /loop 5m /foo). Omit the interval t…[0m
+  [0m[38;2;153;153;153m/voice                       Toggle voice mode[0m
+  [0m[38;2;153;153;153m/review                      Review a pull request[0m
+  [0m[38;2;153;153;153m/status                      Show Claude Code status including version, model,[0m
+                               [0m[38;2;153;153;153maccount, API connectivity, and tool statuses[0m
+  [0m[38;2;153;153;153m/effort                      Set effort level for model usage[0m
+  [0m[38;2;153;153;153m/advisor                     Let Claude consult a stronger model at key moments[0m
+  [0m[38;2;153;153;153m/example:tidy-imports        (example) Sorts and groups import statements[0m
+  [0m[38;2;153;153;153m…ugin:refactor-dependencies  (plugin) Applies dependency injection and inversion[0m
+                               [0m[38;2;153;153;153mpatterns to improve testability and modularity.[0m
+  [0m[38;2;153;153;153m/fast                        Toggle fast mode (Opus 5)[0m
+  [0m[38;2;153;153;153m/plan                        Enable plan mode or view the current session plan[0m
+  [0m[38;2;153;153;153m/doctor                      Diagnose and verify your Claude Code installation[0m
+                               [0m[38;2;153;153;153mand settings[0m
+  [0m[38;2;153;153;153m/help                        Show help and available commands[0m
+  [0m[38;2;153;153;153m/config                      Open the settings panel[0m
+  [0m[38;2;153;153;153m/cost                        Show the total cost and duration of the current[0m
+                               [0m[38;2;153;153;153msession[0m
+  [0m[38;2;153;153;153m/memory                      Edit Claude memory files[0m
+  [0m[38;2;153;153;153m/init                        Initialize a new CLAUDE.md file with codebase[0m
+                               [0m[38;2;153;153;153mdocumentation[0m

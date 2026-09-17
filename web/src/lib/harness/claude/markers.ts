@@ -103,6 +103,16 @@ export function isBoxBorder(text: string): boolean {
   return !RULE_OR_SPACE_ONLY.test(m[1]!); // label must hold a real (non-rule, non-blank) character
 }
 
+/**
+ * True when the line is a BARE input-box border: U+2500 only, no label, at least BARE_BORDER_MIN
+ * display cells. Claude splices a session label into the TOP border only, so this is the test for
+ * the BOTTOM border — the anchor `locateInputBox` (chrome.ts) looks for first.
+ */
+export function isBareBoxBorder(text: string): boolean {
+  const trimmed = text.trim();
+  return displayWidth(trimmed) >= BARE_BORDER_MIN && BARE_BORDER.test(trimmed);
+}
+
 // The LOOSER labelled-border shape a Claude input-box TOP border can actually take, per the bundled
 // renderer's own label-placement math (traced from the shipped binary): it picks a left offset `a`
 // clamped `Math.max(1, Math.min(a, borderWidth - labelWidth - 1))` and draws `a` rule glyphs, the
