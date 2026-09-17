@@ -26,12 +26,13 @@
 }:
 
 let
-  # Nix system → the platform key `sources.json` uses. Three rows, because the release workflow
-  # ships three payloads; macOS Intel is not built, so it is not listed here either.
+  # Nix system → the platform key `sources.json` uses. Four rows, because the release workflow
+  # ships four payloads.
   platformKeys = {
     "x86_64-linux" = "linux-x64";
     "aarch64-linux" = "linux-arm64";
     "aarch64-darwin" = "darwin-arm64";
+    "x86_64-darwin" = "darwin-x64";
   };
 
   system = stdenv.hostPlatform.system;
@@ -40,7 +41,12 @@ let
     platformKeys.${system}
       or (throw "collie: no release payload is published for ${system}; build from source instead");
 
-  payload = sources.platforms.${key};
+  # A key the table names but `sources.json` does not yet carry is a payload the release workflow
+  # started shipping after the version recorded there. The refusal names it rather than failing on
+  # a missing attribute.
+  payload =
+    sources.platforms.${key}
+      or (throw "collie: release ${sources.version} in sources.json carries no ${key} payload; a newer release does");
 in
 stdenv.mkDerivation {
   pname = "collie";

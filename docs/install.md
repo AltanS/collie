@@ -390,8 +390,8 @@ To restrict access, set `COLLIE_TRUSTED_USER=you@example.com` in `.env` and run 
 The `PKGBUILD`, the Nix expression and their notes live in `packaging/` in this repository. Every
 package carries the compiled binary the release already publishes, so nothing is built on your
 machine: no Bun, no `git`, no compilation. The whole release folder lands under one prefix, with
-`collie` on your PATH as a symlink into it. macOS has no package yet; the `aarch64-darwin` flake
-output is the closest thing.
+`collie` on your PATH as a symlink into it. macOS has no package yet; the `aarch64-darwin` and
+`x86_64-darwin` flake outputs are the closest thing.
 
 #### Arch
 
@@ -474,11 +474,11 @@ nix profile install github:AltanS/collie#collie
 collie start
 ```
 
-The flake exports `packages.<system>.collie` for `x86_64-linux`, `aarch64-linux` and
-`aarch64-darwin`. It fetches that platform's release tarball by the sha256 in the release's own
-integrity manifest, patches the binary's interpreter on Linux, and installs the release tree to
-`<store-path>/lib/collie` with `bin/collie` as a symlink into it. Run it once without installing
-with `nix run github:AltanS/collie#collie -- doctor`.
+The flake exports `packages.<system>.collie` for `x86_64-linux`, `aarch64-linux`,
+`aarch64-darwin` and `x86_64-darwin`. It fetches that platform's release tarball by the sha256 in
+the release's own integrity manifest, patches the binary's interpreter on Linux, and installs the
+release tree to `<store-path>/lib/collie` with `bin/collie` as a symlink into it. Run it once
+without installing with `nix run github:AltanS/collie#collie -- doctor`.
 
 There is no source build, on purpose: installing the dependencies needs the network and a Nix
 derivation has none, so the package wraps the binary the release already publishes and checksums.
