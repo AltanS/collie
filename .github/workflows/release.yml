@@ -118,9 +118,13 @@ jobs:
   #     with SIGILL on older hardware, which is exactly the hardware a self-hosted tool lives on.
   #     Collie is I/O-bound (a Unix socket and static files), so the baseline penalty is not
   #     observable here.
-  # The matrix is written for the full four-target set and SHIPS three; a user on a fast-follow
-  # platform gets `collie update`'s honest "no artifact for your platform, build from source"
-  # rather than a wrong binary. Uncomment a row to publish it.
+  #   * macos-x64 rides GitHub's NEWEST Intel image, `macos-26-intel`, a standard runner and so free
+  #     on a public repository. macOS 26 is the last macOS Apple ships for Intel, so this label is
+  #     the last one GitHub will offer; `macos-13` was retired in December 2025 and `macos-15-intel`
+  #     is announced to follow in 2027. When this row starts failing at job start, comment it out
+  #     again; an Intel Mac then gets `collie update`'s honest "no artifact for your platform, build
+  #     from source" rather than a wrong binary. The default x64 target is used, not the baseline
+  #     one: every Intel Mac that runs macOS 26 has AVX2.
   payload:
     needs: gate
     strategy:
@@ -136,15 +140,15 @@ jobs:
           - platform: linux-arm64
             runs-on: ubuntu-24.04-arm
             bun-target: bun-linux-arm64
-          # - platform: macos-x64
-          #   runs-on: macos-13
-          #   bun-target: bun-darwin-x64
+          - platform: macos-x64
+            runs-on: macos-26-intel
+            bun-target: bun-darwin-x64
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       # The build environment is `flake.nix`, not whatever Bun a setup action resolved on the day.
-      # This installer is the one that covers all three shipped runners — Linux x86_64, Linux
-      # aarch64 and macOS aarch64 — and it turns flakes on out of the box.
+      # This installer is the one that covers all four shipped runners — Linux x86_64, Linux
+      # aarch64, macOS aarch64 and macOS x86_64 — and it turns flakes on out of the box.
       - uses: DeterminateSystems/nix-installer-action@v22
 
       - name: Build the payload
