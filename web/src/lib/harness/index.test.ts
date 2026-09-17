@@ -12,7 +12,7 @@ function linesOf(ansi: string): StyledLine[] {
   return splitLines(parseAnsi(ansi));
 }
 
-describe("buildBlocks muse display pass", () => {
+describe("buildBlocks native display pass", () => {
   it("marks bright foregrounds on muse panes", () => {
     const [block] = buildBlocks(linesOf(`${DARK_BODY}\n${BRIGHT}`), { agent: "muse" });
     expect(block!.kind).toBe("raw");
@@ -38,7 +38,7 @@ describe("buildBlocks muse display pass", () => {
     }
   });
 
-  it("marks nothing on adapter panes: the pass is muse-only", () => {
+  it("marks nothing on adapter panes: adapters keep the inverted mirror", () => {
     const lines = linesOf(BRIGHT);
     const [block] = buildBlocks(lines, { agent: "codex" });
     expect(block!.kind).toBe("raw");
@@ -58,11 +58,26 @@ describe("buildBlocks muse display pass", () => {
     }
   });
 
-  it("trims nothing on non-muse panes: row text stays byte-faithful", () => {
+  it.each([["codex"], ["opencode"]])(
+    "trims nothing on %s panes: row text stays byte-faithful",
+    (agent) => {
+      const gutter = `${ESC}[38;2;170;171;175m  ${ESC}[0m`;
+      const lines = linesOf(`${gutter}${DARK_BODY}   `);
+      const [block] = buildBlocks(lines, { agent });
+      expect(block!.kind).toBe("raw");
+      if (block!.kind === "raw") expect(block.lines).toBe(lines);
+    },
+  );
+
+  it("marks bright foregrounds on opencode panes without trimming row chrome", () => {
+    // A styled 2-space lead is likelier code indent than chrome outside Muse: it stays,
+    // while the bare bright foreground still resolves dark for the native light ground.
     const gutter = `${ESC}[38;2;170;171;175m  ${ESC}[0m`;
-    const lines = linesOf(`${gutter}${DARK_BODY}   `);
-    const [block] = buildBlocks(lines, { agent: "codex" });
+    const [block] = buildBlocks(linesOf(`${gutter}${BRIGHT}`), { agent: "opencode" });
     expect(block!.kind).toBe("raw");
-    if (block!.kind === "raw") expect(block.lines).toBe(lines);
+    if (block!.kind === "raw") {
+      expect(block.lines[0]!.segments.map((s) => s.text)).toEqual(["  ", "bright"]);
+      expect(block.lines[0]!.segments[1]).toHaveProperty("lightDarkFg", true);
+    }
   });
 });
