@@ -8,7 +8,9 @@ import {
   BRIGHT_FG_LUMINANCE,
   decorateMuseDisplay,
   luminance,
+  rendersNativeMirror,
   trimMuseRowChrome,
+  trimsRowChrome,
 } from "./display";
 
 const ESC = String.fromCharCode(27);
@@ -39,6 +41,39 @@ function linesOf(ansi: string): StyledLine[] {
 function marked(lines: StyledLine[]): StyledLine[] {
   return lines.filter((line) => line.segments.some((segment) => segment.lightDarkFg));
 }
+
+describe("rendersNativeMirror", () => {
+  it.each([["muse"], ["opencode"]])("renders %s natively: no light-theme inversion", (agent) => {
+    expect(rendersNativeMirror(agent)).toBe(true);
+  });
+
+  it.each([
+    ["absent agent", undefined],
+    ["shell pane", "shell"],
+    ["codex", "codex"],
+    ["claude", "claude"],
+    // Near-miss strings must not engage, same exactness as the adapter registry.
+    ["capitalised Muse", "Muse"],
+    ["suffixed muse-code", "muse-code"],
+    ["capitalised Opencode", "Opencode"],
+    ["trailing space", "opencode "],
+  ])("keeps inverting %s", (_label, agent) => {
+    expect(rendersNativeMirror(agent)).toBe(false);
+  });
+});
+
+describe("trimsRowChrome", () => {
+  it("trims Muse panes: the gutter shape was measured there", () => {
+    expect(trimsRowChrome("muse")).toBe(true);
+  });
+
+  it.each([[undefined], ["opencode"], ["codex"], ["shell"]])(
+    "leaves %s rows byte-faithful: a styled lead elsewhere is content, not chrome",
+    (agent) => {
+      expect(trimsRowChrome(agent)).toBe(false);
+    },
+  );
+});
 
 describe("decorateMuseDisplay", () => {
   it("marks near-white foregrounds, which a native light mirror would lose on white", () => {

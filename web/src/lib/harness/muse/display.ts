@@ -5,10 +5,19 @@ import type { StyledLine } from "../../blocks";
  *  bit" ADR 0002 reserves for per-harness knowledge, and the single spelling of it: the block
  *  pipeline, the mirror ground, and the raw-terminal escape hatch all consume this predicate,
  *  so a second agent joins by adding one row here. Exact strings, like the registry. */
-const NATIVE_MIRROR_AGENTS: ReadonlySet<string> = new Set(["muse"]);
+const NATIVE_MIRROR_AGENTS: ReadonlySet<string> = new Set(["muse", "opencode"]);
 
 export function rendersNativeMirror(agent?: string): boolean {
   return agent !== undefined && NATIVE_MIRROR_AGENTS.has(agent);
+}
+
+/** Row-chrome trim is Muse's grammar, not the mirror's: only Muse pads every row to full
+ *  width and opens content rows with a 2-column gutter, so only Muse panes run the trim.
+ *  Any other native agent keeps byte-faithful rows and shares only the bright-foreground
+ *  decoration: a styled 2-space lead elsewhere is likelier code indent than chrome, and
+ *  stripping it would remove visible text in either theme. */
+export function trimsRowChrome(agent?: string): boolean {
+  return agent === "muse";
 }
 
 // Muse's palette, observed from live PTY captures (issue #220), per background answer:
@@ -20,6 +29,19 @@ export function rendersNativeMirror(agent?: string): boolean {
 //   none — body rgb(111,114,122), secondary rgb(94,97,104), hints rgb(75,77,82).
 //     Older Herdr answered neither query (HERDR_API.md's 2026-07-29 probe predates the
 //     write_pty wiring); its panes carry this dark fallback instead.
+//
+// OpenCode's palette, observed from a live pane.read capture (opencode 1.18.31
+// with a light-authored theme under a light Herdr theme, 706 SGR sequences, 100% truecolor,
+// zero palette slots): grounds rgb(255,255,255), rgb(246,248,250) and rgb(234,238,242),
+// all within 1.13:1 of the native #fffbf8 ground, so they melt into it; body rgb(31,35,40)
+// at 15.35:1, muted rgb(89,99,110) at 5.94:1, link rgb(9,105,218) at 5.05:1, all readable
+// raw. The only bright tone is rgb(255,255,255) foreground, and every non-blank span carrying
+// it also carries an explicit background (badges and chips), so the decorator's fg+bg
+// exemption keeps those pairs as authored while bare spans inherit the native dark default.
+// Inverted, that same white ground renders black, which is the reported bug. Row chrome:
+// no styled 2-space lead was observed in 60 live rows, but absence there does not prove
+// opencode can never emit one, so the trim stays Muse-only and opencode rows keep every
+// byte: trailing full-width padding included, the pre-existing raw-mirror behaviour.
 //
 
 // Every tone but near-white sits at relative luminance 0.44 or below, while near-white starts

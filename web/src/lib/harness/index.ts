@@ -7,26 +7,35 @@
 
 import type { Block, StyledLine } from "../blocks";
 import { adapterFor, hasBlockGrammar } from "./registry";
-import { decorateMuseDisplay, rendersNativeMirror, trimMuseRowChrome } from "./muse/display";
+import {
+  decorateMuseDisplay,
+  rendersNativeMirror,
+  trimMuseRowChrome,
+  trimsRowChrome,
+} from "./muse/display";
 
 /**
  * Group lines into semantic blocks by routing through the agent's adapter. With no `ctx` (or an agent
  * that has no adapter) this is the trivial single-raw-block wrap it always was — conservative gating
  * lives entirely in the registry, so a non-adapter pane is never mis-parsed.
  *
- * Muse's display passes run here, gated by the shared native-mirror predicate rather than
- * the registry: they are presentation-only (row-chrome trim, then bright-foreground marks
- * for the native light mirror, .adr/0047), and registering an adapter would also flip the
- * reply path off one-shot sends — a behavioural change a display fix must not smuggle in.
- * Dialog blocks are never touched: only raw blocks reach the mirror.
+ * Native display passes run here, gated by the shared native-mirror predicate rather than
+ * the registry: they are presentation-only (bright-foreground marks for the native light
+ * mirror, .adr/0047), and registering an adapter would also flip the reply path off
+ * one-shot sends — a behavioural change a display fix must not smuggle in. The row-chrome
+ * trim is the exception: it removes visible bytes by design, so it stays gated on Muse,
+ * whose gutter shape it was measured against. Dialog blocks are never touched: only raw
+ * blocks reach the mirror.
  */
 export function buildBlocks(lines: StyledLine[], ctx?: { agent?: string }): Block[] {
   const blocks = adapterFor(ctx?.agent)?.buildBlocks(lines) ?? [{ kind: "raw", lines }];
   if (!rendersNativeMirror(ctx?.agent)) return blocks;
+  const trim = trimsRowChrome(ctx?.agent);
   let changed = false;
   const decorated = blocks.map((block) => {
     if (block.kind !== "raw") return block;
-    const next = decorateMuseDisplay(trimMuseRowChrome(block.lines));
+    const trimmed = trim ? trimMuseRowChrome(block.lines) : block.lines;
+    const next = decorateMuseDisplay(trimmed);
     if (next === block.lines) return block;
     changed = true;
     return { ...block, lines: next };
