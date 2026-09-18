@@ -1,0 +1,42 @@
+
+[0m[1m[38;5;6m/private/tmp/collie-muse-sandbox[0m on [0m[1m[38;5;4m☁️  operator@example.test000[0m 
+[0m[1m[38;5;2m❯[0m muse
+[0m[38;2;175;177;179m  [0m                                                                                                
+[0m[38;2;175;177;179m  [0m[1m[38;2;31;35;40mMuse Code[0m[38;2;31;35;40m 1.3.0[0m                                                                                 
+                                                                                                  
+
+[0m[1m[38;5;6m/private/tmp/collie-muse-sandbox[0m on [0m[1m[38;5;4m☁️  operator@example.test000[0m took [0m[1m[38;5;3m1m19s[0m 
+[0m[1m[38;5;2m❯[0m muse --approval-mode untrusted --approval-judge off
+[0m[38;2;175;177;179m  [0m                                                                                                
+[0m[38;2;175;177;179m  [0m[1m[38;2;31;35;40mMuse Code[0m[38;2;31;35;40m 1.3.0[0m                                                                                 
+                                                                                                  
+[0m[38;2;205;39;48m[48;2;241;241;241m❯ [0m[38;2;31;35;40m[48;2;241;241;241mrun ls on this workspace directory and tell me what files you see[0m[48;2;241;241;241m                               [0m
+                                                                                                  
+[0m[38;2;17;99;41m◆ [0m[1m[38;2;31;35;40mRan command[0m[38;2;31;35;40m [0m[38;2;205;39;48m· List workspace directory contents[0m[38;2;175;177;179m · ✓ · 47s[0m[2m[38;2;175;177;179m · ctrl+o[0m                              
+                                                                                                  
+[0m[1m[38;2;31;35;40m◆ [0m[38;2;31;35;40mThe workspace directory is empty — [0m[38;2;129;82;220mls -la[0m[38;2;31;35;40m shows only [0m[38;2;129;82;220m.[0m[38;2;31;35;40m and [0m[38;2;129;82;220m..[0m[38;2;31;35;40m, no files.[0m                        
+                                                                                                  
+[0m[38;2;175;177;179m◆ Worked for 1m 06s · 4:18 PM[0m                                                                     
+                                                                                                  
+[0m[38;2;205;39;48m[48;2;241;241;241m❯ [0m[38;2;31;35;40m[48;2;241;241;241mAsk me a question with three options (red, green, blue) using your interactive question prompt,[0m[48;2;241;241;241m [0m
+[0m[38;2;205;39;48m[48;2;241;241;241m  [0m[38;2;31;35;40m[48;2;241;241;241mand wait for my answer[0m[48;2;241;241;241m                                                                          [0m
+                                                                                                  
+[0m[38;2;175;177;179m  [0m[38;2;111;114;118mStructured user input answered — Color: Blue[0m                                                    
+                                                                                                  
+[0m[1m[38;2;31;35;40m◆ [0m[38;2;31;35;40mYou picked Blue.[0m                                                                                
+                                                                                                  
+[0m[38;2;175;177;179m◆ Worked for 2m 27s · 4:21 PM[0m                                                                     
+                                                                                                  
+[0m[38;2;205;39;48m[48;2;241;241;241m❯ [0m[38;2;31;35;40m[48;2;241;241;241mAsk me a multi-select question with three topping options (cheese, pepperoni, mushrooms) where I[0m
+[0m[38;2;205;39;48m[48;2;241;241;241m  [0m[38;2;31;35;40m[48;2;241;241;241mcan choose more than one, using your interactive question prompt[0m[48;2;241;241;241m                                [0m
+                                                                                                  
+[0m[38;2;175;177;179m  [0m[38;2;111;114;118mStructured user input answered — Toppings: Pepperoni[0m                                            
+                                                                                                  
+[0m[1m[38;2;31;35;40m◆ [0m[38;2;31;35;40mYou picked: Pepperoni.[0m                                                                          
+                                                                                                  
+[0m[38;2;175;177;179m◆ Worked for 2m 57s · 4:24 PM[0m                                                                     
+                                                                                                  
+[0m[2m[38;2;221;222;223m── [0m[38;2;111;114;118mVoice input (⌥ + v to start)[0m[2m[38;2;221;222;223m ──────────────────────────────────────────────────────────────────[0m
+[0m[38;2;236;177;0m❯ [0m
+[0m[2m[38;2;221;222;223m──────────────────────────────────────────────────────────────────────────────────────────────────[0m
+[0m[38;2;175;177;179m  [0m[38;2;205;39;48mmuse-spark-1.3[0m[38;2;111;114;118m · [0m[38;2;205;39;48mmax[0m[38;2;111;114;118m · /private/tmp/collie-muse-sandbox · [0m[38;2;205;39;48mLaunch overrides[0m

@@ -568,3 +568,65 @@ AGY renders a framed input box bounded by horizontal rules (`─`), with status 
   text rather than answering ([`PLAN_FEEDBACK_NOTES.md`](../../lib/grammar/PLAN_FEEDBACK_NOTES.md)).
   The row's DIGIT is install-dependent too (3 or 4), so it is read off the screen, never assumed.
 
+## Muse corpus (captured 2026-09-18, Muse Code 1.3.0, sandbox pane)
+
+Byte-faithful `format:ansi` captures from a throwaway Herdr pane in
+`/tmp/collie-muse-sandbox`, taken through the tailnet front door (the sanctioned
+`scripts/capture-fixture.sh` speaks loopback, which this host's bridge 403s —
+same endpoint, same `jq -j '.text'` treatment). The session ran
+`muse --approval-mode untrusted --approval-judge off` so every eligible approval
+stopped on screen instead of auto-resolving (the paste-token capture ran in a second scratch pane
+under default approvals — composer behavior only, no tool calls). All 18 files are CRLF throughout
+with no trailing newline.
+
+**One sanitization pass, LENGTH-PRESERVING.** The shell prompt names the
+operator's cloud account, so all 34 occurrences of `juan.carranza@ergeon.com`
+became `operator@example.test000` (24 chars either way, SGR untouched). Nothing
+else needed it: no username, hostname, home path, session id, credential-shaped
+string or UUID appears, and the cwd is the generic sandbox dir. Verified with
+an email/path/UUID/secret-shape sweep, which returns only the fabricated token.
+
+**The headline: Muse's questions are digit-MOVES, not digit-answers, and its
+checkbox/review phases need pointer choreography.** A digit jumps the `›`
+pointer; `Enter` selects (single), toggles (checkbox), or submits (review).
+The approval and trust prompts are the opposite — digit alone. Every recipe
+below was probed live, keystroke by keystroke; the full probe log is
+[`MUSE_DIALOG_NOTES.md`](../../lib/grammar/MUSE_DIALOG_NOTES.md).
+
+Three more things the captures pin. Muse pads every PTY row to full width and
+opens content rows with a 2-column grey gutter, so detectors match rstripped
+text and never colour (the palette answers OSC 10/11 — light, dark and none
+responders paint different SGR). The composer tail — `── Voice input … ──`
+rule, `❯` row, full-width `─` rule, `muse-spark-1.3 · …` statusline — stays on
+screen UNDER question dialogs (only approval replaces the box, and trust is
+pre-session), so `composerReady` is "box present AND no dialog claims the
+screen". And the `Request user input` header carries a live `(Ns)` timer plus
+spinner frames (`◇/◆/◈`), which anchors detection but must never enter a
+signature.
+
+| Fixture | State / what's in it | Herdr status |
+|---|---|---|
+| `muse--trust-prompt.txt` | Pre-session workspace trust: `Do you trust this workspace?`, `> 1  Trust and continue` / `  2  Quit` (two spaces, NO period — unlike every other Muse dialog), `Use Up/Down or 1/2, then Enter. Esc quits.` footer. Digit `1` live-probed: submits immediately | `blocked` |
+| `muse--fresh-idle.txt` | Post-trust idle: banner, Voice rule, bare `❯`, bottom rule, `muse-spark-1.3 · max · <cwd> · Launch overrides` statusline | `idle` |
+| `muse--draft-single.txt` | Stranded one-line draft on the `❯` row | `idle` |
+| `muse--draft-wrapped.txt` | Long draft soft-wrapped onto a 2-space-indented continuation row (breaks at the hyphen in `soft-wrap`) | `idle` |
+| `muse--draft-paste-token.txt` | A 3003-char single line collapsed to `[Pasted Content 3003 chars]` — per-LINE collapse (a 3300-char burst of short lines stayed literal), N in code points, threshold in (1000, 1200] | `idle` |
+| `muse--working.txt` | Mid-turn: `◇ Double checking (2m 40s · esc to interrupt)` above the live composer | `working` |
+| `muse--done.txt` | Completed turn: `◆ Ran command …`, `◆` summary, `◆ Worked for 1m 06s`, idle composer holding the `Start a message with ! to run a shell command yourself` placeholder (grey, not a draft) | `idle` |
+| `muse--approval-ls.txt` | `Would you like to run the following command?`, `$` + `Stage 1/1` + `Current argv:` subject, `› 1. Allow this stage once (y)` / `2. Always allow … (p)` / `3. Abort … (esc)`. No footer row. Digit `1` live-probed: approves alone | `blocked` |
+| `muse--approval-ls-moved.txt` | Same dialog after one `Down` (`›` on option 2) | `blocked` |
+| `muse--ask-color.txt` | Single-select: `Request user input` header, question, `› 1. Red (Recommended)` / `2.` / `3.` / auto-added `4. None of the above`, `Enter to select · ↑/↓ to move · Tab for an optional note · Esc to interrupt` footer | `blocked` |
+| `muse--ask-color-moved.txt` | Same dialog after one `Down` (`›` on option 2) | `blocked` |
+| `muse--ask-color-notes-open.txt` | After `Tab`: inline `Note (optional): ▌` row under the pointed option, footer unchanged. The lift must decline: the note owns the keyboard | `blocked` |
+| `muse--ask-color-notes-typed.txt` | After typing `x` into it (`Note (optional): x▌`) — the proof a digit would land there too | `blocked` |
+| `muse--ask-toppings.txt` | Multi-select: `› 1. [ ] Cheese (Recommended)` … `4. [ ] None of the above` … `5. Submit answer (0 checked)`, footer wrapping mid-phrase (`Esc to` / `interrupt`) | `blocked` |
+| `muse--ask-toppings-checked.txt` | After `Enter` on row 2: `[x] Pepperoni`, `Submit answer (1 checked)` | `blocked` |
+| `muse--ask-toppings-notes-open.txt` | The same `Note (optional)` row on a checkbox dialog — declines the lift the same way | `blocked` |
+| `muse--ask-toppings-review.txt` | Review phase: `Review answers before submit · Enter to edit or submit · …` lead, `Toppings: Pepperoni` summary, unnumbered `> Submit answers` / `Interrupt turn` rows. Digit `1` live-probed: swallowed; `Enter` on Submit submits | `blocked` |
+| `muse--ask-drinks.txt` | The 2-option geometry (options + None + Submit are rows 1–4): nothing may key on a fixed option count or Submit digit. `None of the above` live-probed as a plain checkbox (`[x]`, counted) | `blocked` |
+
+**Nothing was approved blindly.** The one approved command was `ls -la` on the
+empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`
+dir; every question was answered with the sandbox's own test data. The dialogs
+left open at the end were dismissed with `Escape`.
+

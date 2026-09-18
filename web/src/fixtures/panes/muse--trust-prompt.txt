@@ -1,0 +1,16 @@
+
+[0m[1m[38;5;6m/private/tmp/collie-muse-sandbox[0m on [0m[1m[38;5;4m☁️  operator@example.test000[0m 
+[0m[1m[38;5;2m❯[0m muse
+[0m[1m[38;2;31;35;40mDo you trust this workspace?[0m
+[0m[1m[38;2;111;114;118mWorkspace: [0m[38;2;205;39;48m/private/tmp/collie-muse-sandbox[0m
+
+[0m[38;2;31;35;40mTrusting allows project-local skills, rules, hooks, and plugin config to load before the model[0m
+[0m[38;2;31;35;40mruns.[0m
+[0m[38;2;130;7;30mOnly trust this workspace when you trust its contents.[0m
+
+
+
+[0m[1m[38;2;205;39;48m>[0m[38;2;175;177;179m [0m[1m[38;2;205;39;48m1[0m[1m[38;2;31;35;40m  Trust and continue[0m
+[0m[38;2;175;177;179m  [0m[1m[38;2;129;82;220m2[0m[38;2;111;114;118m  Quit[0m
+
+[0m[38;2;175;177;179mUse Up/Down or 1/2, then Enter. Esc quits.[0m

@@ -289,6 +289,8 @@ function detectCheckboxPhase(
       steps: stepper.steps,
       advanceLabel,
       pointer: pointerAt(texts, firstOpt, fi, advanceIdx),
+      pointerRow: null, // digit mode never reads it — the digit toggles pointer-independently
+      toggle: "digit",
       // Signature ends at the LAST menu row, NOT the footer: Claude's footer gains/loses a
       // "· ctrl+g to edit in nano" hint depending on which row the ❯ sits on (present on the
       // free-text/Submit/chat rows, absent on the checkbox rows). Since the Submit macro walks the
@@ -348,6 +350,8 @@ function detectReviewPhase(
     model: {
       phase: "review",
       incomplete,
+      pointer: null, // digit mode never reads it — review confirms on constant 1/2
+      submit: "digit",
       signature: coreSignature(texts, stepperIdx, fi),
       regionSignature: texts.slice(stepperIdx, fi + 1).join("\n"),
     },
