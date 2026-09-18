@@ -311,17 +311,20 @@ function emittableKeys(block: Block): string[] | null {
       return [...digits, ...controls];
     }
     case "multi-select":
-      // checkbox: a digit toggles each option (and the "Chat about this" escape), Up/Down move the
-      // pointer, Enter activates it. review: the confirm screen's `1. Submit answers / 2. Cancel`.
-      return block.multi.phase === "checkbox"
-        ? [
-            ...block.multi.options.map((o) => String(o.n)),
-            ...(block.multi.escape ? [String(block.multi.escape.n)] : []),
-            "Up",
-            "Down",
-            "Enter",
-          ]
-        : ["1", "2"];
+      // checkbox: a digit toggles each option (and the "Chat about this" escape) in digit mode, or
+      // jumps the pointer there in pointer mode — either way the digits ride plus Up/Down/Enter.
+      // review: the confirm screen's `1. Submit answers / 2. Cancel` in digit mode, or a pointer
+      // walk + Enter in pointer mode.
+      if (block.multi.phase === "checkbox") {
+        return [
+          ...block.multi.options.map((o) => String(o.n)),
+          ...(block.multi.escape ? [String(block.multi.escape.n)] : []),
+          "Up",
+          "Down",
+          "Enter",
+        ];
+      }
+      return block.multi.submit === "pointer" ? ["Up", "Down", "Enter"] : ["1", "2"];
     case "menu":
       // The generic grammar emits ONLY the keys the screen's own footer named, plus the arrows it
       // advertised. Walking `actions` here is what pins .adr/0009's ban in CI: a digit can only

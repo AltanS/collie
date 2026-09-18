@@ -16,8 +16,8 @@ export interface MultiSelectBlockProps {
   /**
    * Injected send handler (from AgentChat). Presentational contract: this component NEVER touches
    * the network — it maps taps to intents while the handler runs the race-guarded choreography
-   * (toggle = one digit; submit = the closed-loop Down→Up→verify→Enter macro). Returning/throwing
-   * simply clears the busy state.
+   * (toggle = one digit, or digit-jump + verified Enter in pointer mode; submit = the closed-loop
+   * Down→Up→verify→Enter macro). Returning/throwing simply clears the busy state.
    */
   onAction: (action: MultiSelectIntent) => void | Promise<void>;
   /** Read-only device or a gone pane: everything renders (for context) but can't be pressed. */
