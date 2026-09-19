@@ -344,7 +344,7 @@ function sessions(verdicts: readonly PaneVerdict[] | null, read: SnapshotRead): 
         `the bridge refused this check's own read of \`/api/snapshot\` (${String(read.status)}) — it is up and` +
           " serving, and no pane can be checked from here",
         "name your tailnet login in `COLLIE_TRUSTED_USER` for this instance (`collie config` shows what" +
-          " is set), then re-run `collie doctor`",
+          " is set), restart the bridge so it reads the change, then re-run `collie doctor`",
       );
     }
     return skipped(

@@ -124,7 +124,8 @@ jobs:
   #     is announced to follow in 2027. When this row starts failing at job start, comment it out
   #     again; an Intel Mac then gets `collie update`'s honest "no artifact for your platform, build
   #     from source" rather than a wrong binary. The default x64 target is used, not the baseline
-  #     one: every Intel Mac that runs macOS 26 has AVX2.
+  #     one: Apple's macOS 26 compatibility list (https://support.apple.com/en-us/122867) carries no
+  #     Intel model older than 2019, and every Mac since Haswell (2013) has AVX2.
   payload:
     needs: gate
     strategy:
