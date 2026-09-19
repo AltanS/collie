@@ -587,13 +587,13 @@ describe("AgentChat — raw-terminal escape hatch", () => {
     expect(screen.getByText(/☐ Focus area/)).toBeInTheDocument();
   });
 
-  it("keeps native rendering for muse with raw terminal on — the pref bypasses grammars, not display", () => {
+  it.each([["muse"], ["opencode"]])("keeps native rendering for %s with raw terminal on — the pref bypasses grammars, not display", (agentName) => {
     localStorage.setItem(
       "collie:display-prefs:v4",
       JSON.stringify({ wrap: true, fontSize: 11, rawTerminal: true }),
     );
-    const muse = { ...fixtureAgents[0]!, agent: "muse" };
-    const { container } = renderChat({ agent: muse, agents: [muse], text: "body\n" });
+    const agent = { ...fixtureAgents[0]!, agent: agentName };
+    const { container } = renderChat({ agent, agents: [agent], text: "body\n" });
     expect(container.querySelector("pre")!.className).toContain("terminal-muse");
   });
 });
