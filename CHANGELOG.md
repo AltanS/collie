@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+
+- **Claude's background agents show on the phone again.** The list Claude draws under its statusline (`● main` and one row per agent) left the mirror with the input box, and nothing showed it anywhere. It now sits under the statusline as its own row: the first agent and a count of the rest, and a tap shows every row. Reported by [@leiyangyou](https://github.com/leiyangyou) ([#242](https://github.com/AltanS/collie/issues/242))
+
 ## [1.10.2] - 2026-09-19
 
 ### Fixed

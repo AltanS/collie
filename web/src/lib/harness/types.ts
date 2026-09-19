@@ -28,6 +28,11 @@ export interface HarnessAdapter {
    *  readable at a glance. Empty = no box at the tail (a menu is up, or a foreign/torn buffer), so
    *  nothing to surface. */
   extractStatusLines(lines: StyledLine[]): StyledLine[];
+  /** Re-surface a block of rows the harness paints UNDER its statusline about work running beside
+   *  the main session (Claude's background-agents footer: "● main" plus one row per agent). Stripped
+   *  off the mirror with the rest of the tail, so this is its only surface. STYLED rows, top to
+   *  bottom, verbatim. OPTIONAL: a harness without such a block omits it, and `[]` means none now. */
+  extractAgentsFooter?(lines: StyledLine[]): StyledLine[];
   /** Re-surface a user draft stranded on the input box's prompt line (null = no box / empty / a
    *  known placeholder). */
   extractInputDraft(lines: StyledLine[]): string | null;

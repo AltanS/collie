@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../../ansi";
 import { splitLines, type StyledLine } from "../../blocks";
 import { draftCarriesSend } from "../../reply-action";
-import { extractInputDraft, extractStatusLines, hasInputBox, stripChrome } from "./chrome";
+import { extractAgentsFooter, extractInputDraft, extractStatusLines, hasInputBox, stripChrome } from "./chrome";
 import { lineText } from "./markers";
 
 /** The statusline run as plain text. extractStatusLines returns STYLED lines — a statusline tells
@@ -270,6 +270,44 @@ describe("extractStatusLines — recovers the stripped statusline run", () => {
 // extractInputDraft recovers a user draft stranded on the "❯" prompt line (a queued-then-recalled
 // message that stripChrome would otherwise hide) — the marker + separator stripped, trimmed; null
 // for an empty box, a TUI placeholder, or no box at the tail.
+// Issue #242: the footer used to be peeled off the mirror and surfaced nowhere. Every row the strip
+// takes off the tail now has a home, and this one is its own chrome element.
+describe("extractAgentsFooter — the background-agents block under the statusline", () => {
+  const footerText = (lines: StyledLine[]) => extractAgentsFooter(lines).map((l) => lineText(l).trim());
+
+  it.each(["claude--draft-footer-empty.txt", "claude--draft-footer-single.txt", "claude--draft-footer-wrapped.txt"])(
+    "%s: returns the header and the agent row, and nothing from the statusline",
+    (name) => {
+      const rows = footerText(fixtureLines(name));
+      expect(rows).toHaveLength(2);
+      expect(rows[0]).toBe("● main");
+      expect(rows[1]).toContain("worker:scout");
+      expect(rows[1]).toContain("Reviewing the test suite");
+      expect(rows.join("\n")).not.toContain("ctx:33%");
+      expect(rows.join("\n")).not.toContain("bypass permissions");
+    },
+  );
+
+  it("keeps each row styled, as the pane painted it", () => {
+    const [header] = extractAgentsFooter(fixtureLines("claude--draft-footer-single.txt"));
+    expect(header!.segments.some((s) => s.bold)).toBe(true);
+  });
+
+  it("is empty when the statusline has no footer under it", () => {
+    const lines = boxWithStatusRows("❯\u00A0", ["  [Opus] ~/repo on main", "  ⏵⏵ bypass permissions on"]);
+    expect(extractAgentsFooter(lines)).toEqual([]);
+  });
+
+  it("is empty when the rows under the blank are a statusline's own, not Claude's agent block", () => {
+    const lines = boxWithStatusRows("❯\u00A0", ["  [Opus] ~/repo on main", "", "  second part of my statusline"]);
+    expect(extractAgentsFooter(lines)).toEqual([]);
+  });
+
+  it("is empty when there is no input box at the tail", () => {
+    expect(extractAgentsFooter(splitLines(parseAnsi("hello\nworld")))).toEqual([]);
+  });
+});
+
 describe("extractInputDraft — recovers a stranded prompt-line draft", () => {
   it("draft-footer-single: returns the draft left in the input box (the text stripChrome hides)", () => {
     // A fixture whose draft stripChrome removes as chrome — here we surface it instead. Not

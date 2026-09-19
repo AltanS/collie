@@ -35,6 +35,7 @@ import { RouteHeader } from "@/components/app-header";
 import { HeaderStatus } from "@/components/header-status";
 import { AnsiOutput } from "@/components/ansi-output";
 import { MIRROR_SPACE, MIRROR_INVERT, segmentStyle } from "@/components/mirror-space";
+import { AgentsFooter } from "@/components/agents-footer";
 import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
@@ -600,6 +601,17 @@ export function AgentChat({
   const statusLines = useMemo(
     () =>
       grammarsOn ? adapterFor(agent?.agent)?.extractStatusLines(splitLines(parseAnsi(display))) ?? [] : [],
+    [display, agent?.agent, grammarsOn],
+  );
+
+  // The background-agents block the harness paints under its statusline (issue #242). stripChrome
+  // peels it off the mirror with the box, and the strip stops above it, so this is its one surface.
+  // Same adapter and same parse source as the strip, so the two cannot disagree on where it starts.
+  const agentsFooter = useMemo(
+    () =>
+      grammarsOn
+        ? adapterFor(agent?.agent)?.extractAgentsFooter?.(splitLines(parseAnsi(display))) ?? []
+        : [],
     [display, agent?.agent, grammarsOn],
   );
 
@@ -1962,6 +1974,13 @@ export function AgentChat({
                   ))}
                 </div>
                 )}
+              </Collapse>
+
+              {/* Background agents, under the statusline as the TUI drew them. Its own element and its
+                  own budget, one row until tapped (agents-footer.tsx). Stands down with the strip
+                  while the keyboard is up, through `Collapse` for the same DESIGN.md reason. */}
+              <Collapse open={!composing && agentsFooter.length > 0}>
+                {agentsFooter.length > 0 && <AgentsFooter rows={agentsFooter} face={mirrorFace} />}
               </Collapse>
 
               {/* THE PANE SWITCHER'S MARK IS NOT A ROW ANY MORE. It was a 30px full-width band here,

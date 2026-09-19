@@ -16,7 +16,14 @@ import { detectMultiSelectRegion } from "./multi-select";
 import { detectPromptSelectRegion } from "./prompt-select";
 import { detectMenuRegion } from "./menu";
 import { detectAutocompleteRegion } from "./autocomplete";
-import { stripChrome, extractStatusLines, extractInputDraft, hasInputBox, inputBoxTail } from "./chrome";
+import {
+  stripChrome,
+  extractStatusLines,
+  extractAgentsFooter,
+  extractInputDraft,
+  hasInputBox,
+  inputBoxTail,
+} from "./chrome";
 import { isPastePlaceholderOnly, pasteCarriesSend } from "./paste";
 
 /**
@@ -118,12 +125,13 @@ export function claudeBuildBlocks(lines: StyledLine[]): Block[] {
   return [{ kind: "raw", lines: stripChrome(lines) }];
 }
 
-export { extractStatusLines, extractInputDraft };
+export { extractStatusLines, extractAgentsFooter, extractInputDraft };
 
 export const claudeAdapter: HarnessAdapter = {
   agent: "claude",
   buildBlocks: claudeBuildBlocks,
   extractStatusLines,
+  extractAgentsFooter,
   extractInputDraft,
   // The reply path's pre-flight: Claude's input box is exactly what `hasInputBox` finds, and its
   // absence is exactly the condition under which typing lands in a modal instead (#34's shape).
