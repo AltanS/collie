@@ -60,13 +60,10 @@ export function isManagedCheckout(exec: Exec, root: string): boolean {
  * happens inside git with both sides already symlink-resolved — which keeps a checkout reached
  * through a symlinked root (the dev lane's shape) a checkout.
  *
- * KNOWN LIMIT: `GIT_DIR` exported in the operator's environment. Collie's `Exec` hands its whole
- * environment to every child, so an exported `GIT_DIR` makes git answer about THAT repository from
- * any directory, and this probe then reports a checkout where there is none. `--git-dir` answered
- * the same way, so nothing here moved, and the failure is the SAFE direction: `update` takes the
- * git path, `assertOrigin` reads the foreign remote and refuses before any fetch. The real repair
- * is to strip `GIT_DIR`/`GIT_WORK_TREE`/`GIT_INDEX_FILE` from the environment of every git child
- * rather than to patch one predicate, which is a change to the `Exec` seam and not to this module.
+ * This question is only answerable because no child of Collie's inherits a variable that relocates
+ * a repository — `withoutGitRelocators` in `cli/sys.ts`, ADR 0049. An exported `GIT_DIR` otherwise
+ * answers every git question here about somebody else's repository, from any directory, and `-C`
+ * does not override it.
  */
 export function isGitCheckout(exec: Exec, root: string): boolean {
   const r = exec.capture("git", gitArgsOf(root, ["rev-parse", "--show-prefix"]));

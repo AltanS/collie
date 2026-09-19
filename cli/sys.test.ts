@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,6 +10,7 @@ import {
   resolveRunnableBun,
   resolveTool,
   toolCandidates,
+  withoutGitRelocators,
   withPathPrefix,
 } from "./sys.ts";
 
@@ -297,6 +298,94 @@ describe("the bounded, logged client call the handoff waits for", () => {
       expect(missing.timedOut).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ── No child inherits a redirected repository (ADR 0049) ─────────────────────
+// Git obeys `GIT_DIR` from any working directory, `-C` included. That is how a hook-run `git -C
+// <sandbox> init` once re-initialised the CALLER'S repository and wrote `bare = true` into a shared
+// config (the lesson `scripts/collie-cli.test.sh` records at its top, and defends itself with
+// `unset "${!GIT_@}"`). The shipped CLI runs in the same place — a pre-push hook that calls collie
+// hands it the same variables — so the seam strips them for every child.
+
+describe("withoutGitRelocators", () => {
+  test("an environment carrying none is returned unchanged, by identity", () => {
+    // Identity, not equality: this is the every-call case, and it must allocate nothing.
+    const env = { PATH: "/usr/bin", HOME: "/home/x", GIT_CEILING_DIRECTORIES: "/home/x" };
+    expect(withoutGitRelocators(env)).toBe(env);
+  });
+
+  test("every relocating name is removed and nothing else is touched", () => {
+    const env = {
+      PATH: "/usr/bin",
+      GIT_DIR: "/elsewhere/.git",
+      GIT_WORK_TREE: "/elsewhere",
+      GIT_COMMON_DIR: "/elsewhere/.git",
+      GIT_INDEX_FILE: "/elsewhere/.git/index",
+      GIT_OBJECT_DIRECTORY: "/elsewhere/.git/objects",
+      GIT_ALTERNATE_OBJECT_DIRECTORIES: "/other/objects",
+      GIT_NAMESPACE: "ns",
+      GIT_PREFIX: "sub/",
+      // Kept on purpose: these decide how git AUTHENTICATES or how far it walks UP, not which
+      // repository it is looking at, and the hermetic test paths set the config ones deliberately.
+      GIT_CEILING_DIRECTORIES: "/home/x",
+      GIT_CONFIG_GLOBAL: "/tmp/g",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_SSH_COMMAND: "ssh -i /k",
+    };
+    expect(withoutGitRelocators(env)).toEqual({
+      PATH: "/usr/bin",
+      GIT_CEILING_DIRECTORIES: "/home/x",
+      GIT_CONFIG_GLOBAL: "/tmp/g",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_SSH_COMMAND: "ssh -i /k",
+    });
+    // The caller's own object is never mutated — `ctx.env` is read by everything else.
+    expect(env.GIT_DIR).toBe("/elsewhere/.git");
+  });
+});
+
+describe("realExec strips them from the child it actually starts", () => {
+  const dir = () => mkdtempSync(join(tmpdir(), "collie-gitenv-"));
+
+  test("a hostile GIT_DIR does not reach the child, and `-C` decides alone", () => {
+    const d = dir();
+    try {
+      // The real shape: `git -C <sandbox> init` while `GIT_DIR` points somewhere else. Unstripped,
+      // git initialises the directory GIT_DIR names and the sandbox stays empty.
+      const victim = join(d, "victim");
+      const sandbox = join(d, "sandbox");
+      mkdirSync(victim, { recursive: true });
+      mkdirSync(sandbox, { recursive: true });
+      const exec = realExec(
+        { PATH: process.env.PATH ?? "", GIT_DIR: join(victim, ".git"), GIT_WORK_TREE: victim },
+        d,
+      );
+      const r = exec.capture("git", ["-C", sandbox, "init", "-q"]);
+      expect(r.found).toBe(true);
+      expect(r.code).toBe(0);
+      // It landed where `-C` aimed it, and the victim was never touched.
+      expect(readFileSync(join(sandbox, ".git", "HEAD"), "utf8").length).toBeGreaterThan(0);
+      expect(() => readFileSync(join(victim, ".git", "HEAD"), "utf8")).toThrow();
+    } finally {
+      rmSync(d, { recursive: true, force: true });
+    }
+  });
+
+  test("`envAdd` cannot put one back — the seam's own env is spread last", () => {
+    const d = dir();
+    try {
+      const exec = realExec({ PATH: process.env.PATH ?? "" }, d);
+      const r = exec.capture("sh", ["-c", "echo \"[${GIT_DIR:-unset}]\""], undefined, {
+        GIT_DIR: "/elsewhere/.git",
+      });
+      // `envAdd` layers UNDER the Exec's env, and the Exec's env no longer carries the name, so
+      // without the post-merge filter this one WOULD reach the child. No caller passes a git name
+      // today; the invariant is not allowed to depend on that staying true.
+      expect(r.stdout.trim()).toBe("[unset]");
+    } finally {
+      rmSync(d, { recursive: true, force: true });
     }
   });
 });
