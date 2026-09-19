@@ -62,24 +62,37 @@ function decode(raw: string | null): Decision | undefined {
   return { at, native };
 }
 
-/** Every stored decision with its key, for the prune. An entry we cannot decode is dropped here. */
-function decisionKeys(store: Storage): { key: string; at: number }[] {
-  const out: { key: string; at: number }[] = [];
+/** Every key this module owns, decodable or not — enumerated up front because removing while
+ *  walking `store.key(i)` reindexes the store underneath the loop. */
+function ownedKeys(store: Storage): string[] {
+  const out: string[] = [];
   for (let i = 0; i < store.length; i++) {
     const key = store.key(i);
-    if (!key?.startsWith(PREFIX)) continue;
-    const decision = decode(store.getItem(key));
-    if (decision) out.push({ key, at: decision.at });
+    if (key?.startsWith(PREFIX)) out.push(key);
   }
   return out;
 }
 
-/** Keep only the MAX newest decisions. */
+/**
+ * Keep only the MAX newest decisions, and drop anything unreadable on the way past.
+ *
+ * Undecodable entries are removed rather than skipped. Skipping them looks harmless — they already
+ * read as "no override" — but it makes them immortal: they never decode, so they never sort into the
+ * prune, so they sit in storage forever and count against the browser's quota. Removing them is also
+ * self-healing, since the pane simply falls back to the agent bit next time.
+ */
 function prune(store: Storage): void {
   try {
-    const keys = decisionKeys(store);
-    if (keys.length <= MAX) return;
-    for (const { key } of keys.toSorted((a, b) => b.at - a.at).slice(MAX)) store.removeItem(key);
+    const decisions: { key: string; at: number }[] = [];
+    for (const key of ownedKeys(store)) {
+      const decision = decode(store.getItem(key));
+      if (decision) decisions.push({ key, at: decision.at });
+      else store.removeItem(key);
+    }
+    if (decisions.length <= MAX) return;
+    for (const { key } of decisions.toSorted((a, b) => b.at - a.at).slice(MAX)) {
+      store.removeItem(key);
+    }
   } catch {
     // A store we cannot enumerate simply does not get pruned.
   }
@@ -140,12 +153,13 @@ export function setPaneMirrorOverride(
   }
 }
 
-/** Test seam: drop every decision. */
+/** Test seam: drop every entry this module owns, INCLUDING ones it cannot decode. Going through the
+ *  decodable set would leave a corrupt entry behind for the next test to trip over. */
 export function __clearMirrorOverrides(): void {
   const store = storage();
   if (!store) return;
   try {
-    for (const { key } of decisionKeys(store)) store.removeItem(key);
+    for (const key of ownedKeys(store)) store.removeItem(key);
   } catch {
     // same reasoning as above
   }

@@ -205,7 +205,9 @@ export function AgentChat({
   const connecting = isConnecting({ bridge, error, stalled });
   const { newTab, launch, launching, creatingTab } = useSpaceActions();
   // The pane's light-theme inversion override (lib/mirror-invert.ts). Read once at mount, which is
-  // enough: this component is keyed by paneId, so switching pane remounts it and re-reads.
+  // enough: DetailRoute keys this component by `paneScopeKey(scope, paneId)` — the full address, not
+  // the id, for the reason that file records — so a walk to another pane, session or host remounts it
+  // and re-reads. Both halves of the stored key therefore change with the mount.
   const [mirrorOverride, setMirrorOverride] = useState<boolean | undefined>(() =>
     paneMirrorOverride(scope, paneId),
   );
@@ -1881,10 +1883,17 @@ export function AgentChat({
                     // bypasses block GRAMMARS, and native rendering is display faithfulness, not
                     // a grammar. Dropping the agent here would re-invert a Muse pane (.adr/0047),
                     // so the agent stays and `grammars` is what turns its adapter off.
+                    //
+                    // The AGENT bit only, deliberately, NOT `mirrorOverride`. The override does not
+                    // need to travel this way: `nativeMirror` carries it to the mirror directly and
+                    // AnsiOutput resolves the pair itself, so identity here keeps tracking the agent
+                    // rather than an operator's display choice. Before `grammars` existed this gate
+                    // was also the only thing stopping an opted-in codex pane from getting its
+                    // adapter back under raw terminal (chrome stripped, dialogs lifted) as a side
+                    // effect of a display choice. `grammars` holds that line now; this stays
+                    // agent-only because the two axes are still separate.
                     agent={
-                      grammarsOn || rendersNativeMirror(agent?.agent, mirrorOverride)
-                        ? agent?.agent
-                        : undefined
+                      grammarsOn || rendersNativeMirror(agent?.agent) ? agent?.agent : undefined
                     }
                     grammars={grammarsOn}
                     nativeMirror={mirrorOverride}

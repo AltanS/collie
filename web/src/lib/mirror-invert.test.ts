@@ -61,6 +61,29 @@ describe("paneMirrorOverride", () => {
     expect(paneMirrorOverride(A, "w1:p1")).toBeUndefined();
   });
 
+  it("clears an entry it cannot decode, which the decodable-only sweep left behind", () => {
+    // Regression: __clearMirrorOverrides used to go through the DECODABLE set, so a corrupt entry
+    // survived the clear and leaked into the next test.
+    setPaneMirrorOverride(A, "w1:p1", true);
+    const key = Object.keys(localStorage).find((k) => k.startsWith("collie:mirror-native:"));
+    expect(key).toBeDefined();
+    localStorage.setItem(key!, "{not json");
+
+    __clearMirrorOverrides();
+    expect(localStorage.getItem(key!)).toBeNull();
+  });
+
+  it("drops an undecodable entry on the next write instead of letting it live forever", () => {
+    // Skipping junk in the prune looks harmless (it already reads as no override) but makes it
+    // immortal: it never decodes, so it never sorts into the prune, so it never leaves.
+    setPaneMirrorOverride(A, "w1:p1", true);
+    const key = Object.keys(localStorage).find((k) => k.startsWith("collie:mirror-native:"));
+    localStorage.setItem(key!, "{not json");
+
+    setPaneMirrorOverride(A, "w9:p9", true);
+    expect(localStorage.getItem(key!)).toBeNull();
+  });
+
   it("ignores an entry whose shape it cannot trust", () => {
     // The key is DERIVED, not guessed: a hardcoded one would let this pass even if the shape
     // validation did nothing, because a key that does not match reads undefined anyway.

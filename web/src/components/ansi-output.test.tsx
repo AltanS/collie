@@ -89,6 +89,24 @@ describe("native mirror (muse)", () => {
     expect(pre.className).not.toContain("invert(1)");
   });
 
+  // The per-pane override (lib/mirror-invert.ts) is the seam ADR 0002 reserved, and it is what
+  // actually serves a light-themed opencode or codex pane. It wins in BOTH directions.
+  it("renders natively when the pane opts in, against the agent bit", () => {
+    for (const agent of ["opencode", "codex", undefined]) {
+      const { container } = render(<AnsiOutput text="hello" agent={agent} nativeMirror />);
+      const pre = container.querySelector("pre")!;
+      expect(pre.className).toContain("bg-[#fffbf8]");
+      expect(pre.className).not.toContain("invert(1)");
+    }
+  });
+
+  it("inverts when the pane opts out, even for a native agent", () => {
+    const { container } = render(<AnsiOutput text="hello" agent="muse" nativeMirror={false} />);
+    const pre = container.querySelector("pre")!;
+    expect(pre.className).toContain("[filter:invert(1)_hue-rotate(180deg)]");
+    expect(pre.className).not.toContain("bg-[#fffbf8]");
+  });
+
   it("keeps inverting every other agent", () => {
     // "Muse" and "muse-code" pin the exactness: near-miss strings must not engage (#99).
     for (const agent of [undefined, "shell", "codex", "opencode", "Muse", "muse-code"]) {
