@@ -196,15 +196,15 @@ export function menuRowsContiguous<T extends { index: number }>(menu: T[]): bool
 // know. (Observed: one row on single-select, two on checkbox.)
 const MAX_FOOTER_ROWS = 3;
 
-/** The footer run directly above the tail chrome (`chromeTop` = voice ?? prompt ?? rule): its start
+/** The footer run directly above the tail chrome (`top` = voice ?? prompt ?? rule): its start
  *  and end rows plus the rows joined with a space (a wrap seam is a word space). Null when no
  *  non-blank run sits there, or when the run is unbounded above (it swallowed option rows through a
  *  torn frame — the join would match a fragment). Callers classify the join by their lead string. */
 export function footerAboveChrome(
   texts: string[],
-  chromeTop: number,
+  top: number,
 ): { start: number; end: number; joined: string } | null {
-  let fi = chromeTop - 1;
+  let fi = top - 1;
   while (fi >= 0 && texts[fi]!.trim() === "") fi--;
   if (fi < 0) return null;
   let start = fi;

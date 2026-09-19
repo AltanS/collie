@@ -73,6 +73,12 @@ disk (`~/.local/share/muse/sessions/…/*.jsonl`) but their schema is unstudied.
 - Signatures run question → dialog end with no transcript lookback (live spinner timers would churn
   it): two consecutive byte-identical dialogs share one signature, so a tap may land on the
   successor — the same command/answer already consented to. Stated, accepted, tested.
+- The checkbox region runs question → footer end, not question → Submit: the bridge only binds a
+  match ending within 6 non-blank rows of the tail, and ending at Submit strands 6 rows below the
+  match, so every first write 409s. Caught by a live toggle tap during acceptance (two
+  `not_in_tail` 409s); Muse's footer is static so it is safe inside the identity span, unlike
+  Claude's pointer-reactive one. Conformance now pins the tail-window leg on every dialog region,
+  not just the composer prompt.
 - The neutral multi-select model gains a `digit | pointer` choreography: Muse digits move the
   pointer (verified) where Claude digits toggle. Claude's detector fills `digit`; no behavior
   changes there.

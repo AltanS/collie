@@ -173,11 +173,16 @@ function detectCheckboxPhase(lines: StyledLine[]): CheckboxRegion | null {
     pointer = "other";
   }
 
-  // Signature: question → Submit row, pointer + checkbox state + count normalised out (the Submit
-  // macro moves the pointer by design; flips are compared separately via options[]). The footer is
-  // excluded per the house rule (ends at the last menu row). The live header is excluded — timer.
+  // Signature: question → footer end. The footer is STATIC here — no pointer, no count (unlike
+  // Claude's, which gains/loses its nano hint as the pointer walks) — so it is safe inside both the
+  // identity signature and the bound region, and REQUIRED in the region: the bridge only binds a
+  // match ending within 6 non-blank rows of the tail, and ending at the Submit row strands 6 rows
+  // below the match (2 footer + Voice + ❯ + rule + statusline), so every first write 409s. Caught
+  // live 2026-09-18: two toggle taps, both `not_in_tail`, on a screen that never moved. Pointer +
+  // checkbox state + count are normalised out of the identity half (the macros move the pointer by
+  // design; flips compare via options[]). The live header stays excluded — timer.
   const signature = texts
-    .slice(hq.questionAt, last.index + 1)
+    .slice(hq.questionAt, footer.end + 1)
     .map((t) =>
       t
         .replaceAll("›", " ")
@@ -185,7 +190,7 @@ function detectCheckboxPhase(lines: StyledLine[]): CheckboxRegion | null {
         .replace(/Submit answer \(\d+ checked\)/, "Submit answer (checked)"),
     )
     .join("\n");
-  const regionSignatureText = regionSignature(texts, hq.questionAt, last.index);
+  const regionSignatureText = regionSignature(texts, hq.questionAt, footer.end);
   return {
     model: {
       phase: "checkbox",
