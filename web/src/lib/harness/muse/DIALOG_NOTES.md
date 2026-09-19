@@ -4,7 +4,7 @@ Verified keystroke recipes for the four dialogs `harness/muse/` lifts, probed
 keystroke-by-keystroke against Muse Code 1.3.0 (1.3.0-R3401.1) in a scratch
 Herdr pane (`/tmp/collie-muse-sandbox`, `--approval-mode untrusted
 --approval-judge off`) on 2026-09-18. Fixtures:
-`web/src/fixtures/panes/muse--*.txt` (17 files, all CRLF, one
+`web/src/fixtures/panes/muse--*.txt` (18 files, all CRLF, one
 length-preserving email sanitization).
 
 Every probe below names the key sent and the screen observed after it. Nothing
@@ -199,10 +199,35 @@ rather than keys.
 Probed recipe — digit alone (family `trust`): `1` submitted immediately
 (session started, no Enter). `keys: ["1"]` / `["2"]`.
 
+## Decisions the adapter rests on
+
+- **The guarded reply path.** Registering the adapter moves Muse panes off one-shot sends onto
+  type-then-verify against the `❯` box, with a paste-token supplement for the per-line
+  `[Pasted Content N chars]` collapse (probed: N in code points, threshold in (1000, 1200]).
+- **No transcript lookback in a signature.** The rows above a dialog carry live spinner timers, so
+  a signature runs question to dialog end. Two consecutive byte-identical dialogs therefore share
+  one, and a tap on the first may land on the second: the same command or answer already
+  consented to.
+- **The checkbox region ends at the footer, not at Submit.** The bridge binds a match only when it
+  ends within 6 non-blank rows of the tail, and ending at Submit left 6 rows below it, so every
+  first write returned 409 (`not_in_tail`, caught live). Muse's footer is static, so it is safe
+  inside the identity span. Conformance pins the tail-window leg on every dialog region.
+- **`digit | pointer` choreography in the shared multi-select model.** Muse digits move the pointer
+  where Claude's toggle, so the model names the recipe. Claude's detector fills `digit`.
+- **A lift needs a live dialog (added at merge, 2026-09-19).** A dialog quoted in the transcript
+  can match a detector. So a question, checkbox or review lift also needs the box under it empty,
+  and the review screen needs the live `Request user input … — running` header directly above it.
+  A screen that fails stays raw. The detectors themselves stay broad, because `composerReady`
+  refuses a send through them: a quote above a draft stalls a reply, it never types into a dialog.
+- **Every lift keeps the rows above it (added at merge).** The prompt panel shows neither the
+  approval's command nor the trust prompt's folder, so those rows stay on screen as raw text.
+- **The review cancel button says `Interrupt turn` (added at merge).** That row ends the whole
+  turn, and the button carries the terminal's own words rather than "Cancel".
+
 ## What was deliberately NOT lifted
 
 - The command palette, `/resume` picker, `/tasks` drawer and `/workflows`
-  control room: out of the D5 scope, no captures, no detectors.
+  control room: out of this file's scope, no captures, no detectors.
 - Network/peer approval variants: no capture showed them; they ride along only
   if a future capture shows the approval shape above.
 - Plan approval: Muse 1.3.0 showed no plan-approval dialog shape to lift.

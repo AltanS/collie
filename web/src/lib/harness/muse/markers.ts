@@ -299,3 +299,50 @@ export function trailingMenuRows<T extends { n: number }>(rows: T[]): T[] {
   while (s > 0 && rows[s - 1]!.n === rows[s]!.n - 1) s--;
   return rows[s]!.n === 1 ? rows.slice(s) : [];
 }
+
+// Text Muse draws on the "❯" prompt line that is NOT a real user draft — the tip it paints when the
+// box is otherwise empty (observed after the first turn; a fresh box is bare). Must never be
+// surfaced as a recoverable draft. Kept as a set so more variants can be added without touching the
+// extraction logic.
+//
+// A tip we have not seen reads as a stranded draft: a phantom preview chip plus a pre-clear sweep
+// whose keys no-op against non-editable text (Claude's ghost finding, same bargain). Sends still
+// verify — typing replaces the tip, so the guard compares against real text either way.
+export const INPUT_PLACEHOLDERS: ReadonlySet<string> = new Set([
+  "Start a message with ! to run a shell command yourself",
+]);
+
+/**
+ * True when the composer box at the tail is there and holds no draft: a bare `❯` or the tip, and
+ * nothing between it and the bottom rule.
+ *
+ * A LIFT'S LIVENESS CHECK. A live question or review dialog leaves the bare `❯` under it and owns
+ * the keyboard. A dialog only QUOTED in the transcript sits above a box that is still live, and the
+ * Enter a lifted button sends would submit whatever the operator typed there. So every question,
+ * checkbox and review lift requires this, and a screen that fails it stays raw.
+ *
+ * It narrows what is LIFTED, never what is REFUSED: `composerReady` still consults the detectors
+ * themselves, so a quote above a draft stalls replies rather than letting them type into a dialog.
+ */
+export function boxHoldsNoDraft(lines: StyledLine[]): boolean {
+  const tail = locateTail(lines);
+  if (tail === null || tail.prompt === null) return false;
+  const texts = lines.map((l) => rstrip(lineText(l)));
+  const prompt = promptRowText(texts[tail.prompt]!)?.trim() ?? "";
+  if (prompt !== "" && !INPUT_PLACEHOLDERS.has(prompt)) return false;
+  for (let i = tail.prompt + 1; i < tail.rule; i++) {
+    if (texts[i]!.trim() !== "") return false;
+  }
+  return true;
+}
+
+/**
+ * True when the nearest non-blank row above `row` is a live `Request user input … — running`
+ * header. The review screen's lift requires it: its own rows (`> Submit answers`, `Interrupt turn`)
+ * are short, fixed and easy to quote, and the header's `— running` is what only a live dialog shows.
+ */
+export function askHeaderDirectlyAbove(texts: string[], row: number): boolean {
+  let i = row - 1;
+  while (i >= 0 && texts[i]!.trim() === "") i--;
+  return i >= 0 && isAskHeader(texts[i]!);
+}

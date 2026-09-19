@@ -34,7 +34,7 @@ import { Collapse, CollapseSwap } from "@/components/ui/collapse";
 import { RouteHeader } from "@/components/app-header";
 import { HeaderStatus } from "@/components/header-status";
 import { AnsiOutput } from "@/components/ansi-output";
-import { MIRROR_SPACE, MIRROR_INVERT, segmentStyle } from "@/components/mirror-space";
+import { MIRROR_SPACE, MIRROR_INVERT, MUSE_MIRROR, segmentStyle } from "@/components/mirror-space";
 import { AgentsFooter } from "@/components/agents-footer";
 import { cn } from "@/lib/utils";
 import { parseAnsi } from "@/lib/ansi";
@@ -1855,11 +1855,12 @@ export function AgentChat({
                     onMatchCount={findOpen ? handleMatchCount : undefined}
                     // Native-mirror agents keep their identity with raw-terminal on: the pref
                     // bypasses block GRAMMARS, and native rendering is display faithfulness, not
-                    // a grammar — muse has no adapter, so dropping the agent here would only
-                    // re-invert the pane (.adr/0047) while bypassing nothing.
+                    // a grammar. Dropping the agent here would re-invert a Muse pane (.adr/0047),
+                    // so the agent stays and `grammars` is what turns its adapter off.
                     agent={
                       grammarsOn || rendersNativeMirror(agent?.agent) ? agent?.agent : undefined
                     }
+                    grammars={grammarsOn}
                     onPromptAction={handlePromptAction}
                     onWizardAction={handleWizardAction}
                     onPreviewAction={handlePreviewAction}
@@ -1948,9 +1949,10 @@ export function AgentChat({
                     // dark space and inverts in light with it (ADR 0002) — a bright statusline colour is
                     // chosen against a near-black background and is illegible re-themed onto app chrome.
                     // It also makes the strip read as the bottom of the pane it was cut from, which is
-                    // where the TUI drew it.
-                    MIRROR_SPACE,
-                    MIRROR_INVERT,
+                    // where the TUI drew it. So it follows the mirror all the way: a native-mirror
+                    // agent's strip stands on the native ground and is not inverted (.adr/0047).
+                    rendersNativeMirror(agent?.agent) ? MUSE_MIRROR : MIRROR_SPACE,
+                    rendersNativeMirror(agent?.agent) ? null : MIRROR_INVERT,
                     mirrorFace.className,
                   )}
                   style={mirrorFace.style}

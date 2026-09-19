@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **Muse panes get their own adapter, so you can answer Muse from the phone.** Muse's command approval, its single-choice and multi-choice questions (with the review screen), and its workspace trust prompt show as buttons, and the command or folder they concern stays on screen above them. Collie also takes Muse's input box and status row off the mirror, shows a draft left in the box, and checks each reply against the box before it sends. A dialog quoted in the transcript, or one above a box that holds a draft, stays text, so a tap can never send a draft. Contributed by [@jpcarranza94](https://github.com/jpcarranza94) ([#244](https://github.com/AltanS/collie/pull/244))
+
 ### Fixed
 
 - **Claude's background agents show on the phone again.** The list Claude draws under its statusline (`● main` and one row per agent) left the mirror with the input box, and nothing showed it anywhere. It now sits under the statusline as its own row: the first agent and a count of the rest, and a tap shows every row. Reported by [@leiyangyou](https://github.com/leiyangyou) ([#242](https://github.com/AltanS/collie/issues/242))

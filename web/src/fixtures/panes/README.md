@@ -712,7 +712,7 @@ checkbox/review phases need pointer choreography.** A digit jumps the `›`
 pointer; `Enter` selects (single), toggles (checkbox), or submits (review).
 The approval and trust prompts are the opposite — digit alone. Every recipe
 below was probed live, keystroke by keystroke; the full probe log is
-[`MUSE_DIALOG_NOTES.md`](../../lib/grammar/MUSE_DIALOG_NOTES.md).
+[`DIALOG_NOTES.md`](../../lib/harness/muse/DIALOG_NOTES.md).
 
 Three more things the captures pin. Muse pads every PTY row to full width and
 opens content rows with a 2-column grey gutter, so detectors match rstripped

@@ -147,3 +147,12 @@ another Herdr theme gets the same ground, which matches its own screen only appr
 secondary 4.2, hints 2.1, near-white mark 19.2, muted 6.4, prompt-fill edge 1.15. The
 whisper seam against the page is deliberate (fidelity beats seamlessness); dark is
 untouched.
+
+## Follow-up (2026-09-19) — a real Muse adapter
+
+PR #244 registered one, which answers the open half named above. The statusline strip follows the
+mirror: a native-mirror agent's strip stands on the native ground and is not inverted, so the
+decision here reaches every surface that carries Muse's own colours. The raw-terminal pref turns the
+adapter off (`buildBlocks` takes `grammars: false`) and keeps this display pass, since native
+rendering is display faithfulness, not a grammar. The adapter's own decisions live beside its code,
+in `web/src/lib/harness/muse/DIALOG_NOTES.md`.

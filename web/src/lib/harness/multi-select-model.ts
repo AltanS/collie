@@ -132,6 +132,13 @@ export type MultiSelectModel =
        * legs of both comparators.
        */
       submit: MultiSelectChoreography;
+      /**
+       * The terminal's own words for the cancel row, shown verbatim on its button; absent ⇒ the
+       * translated "Cancel". Muse's cancel row is `Interrupt turn`, which ends the whole turn, and
+       * a button that said "Cancel" would promise less than the key does. Static per adapter, so
+       * no comparator reads it.
+       */
+      cancelLabel?: string;
       signature: string;
       /**
        * Literal contiguous text over the same stepper-to-tail span as `signature` — lead through

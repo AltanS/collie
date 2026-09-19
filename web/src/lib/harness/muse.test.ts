@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseAnsi } from "../ansi";
-import { splitLines } from "../blocks";
+import { lineText, splitLines, type Block, type StyledLine } from "../blocks";
+import { buildBlocks } from "./index";
 import { museAdapter } from "./muse";
 import { describeAdapterConformance } from "./conformance";
 
@@ -239,3 +240,85 @@ describe("museBuildBlocks", () => {
     expect(museAdapter.composerReady!(lines)).toBe(true);
   });
 });
+
+// ── What a lift keeps and requires (PR #244, maintainer changes at merge) ──────────────────────
+
+describe("muse: a lift shows its subject and needs a live dialog", () => {
+  const load = (name: string): StyledLine[] =>
+    splitLines(parseAnsi(readFileSync(join(PANES_DIR, name), "utf8")));
+  const row = (text: string): StyledLine => splitLines(parseAnsi(text))[0]!;
+  const rawText = (block: Block): string => (block.kind === "raw" ? block.lines.map(lineText).join("\n") : "");
+  /** `lines` with the LAST row matching `match` replaced by plain `text`. */
+  const replaceLast = (lines: StyledLine[], match: RegExp, text: string): StyledLine[] => {
+    const i = lines.findLastIndex((l) => match.test(lineText(l)));
+    if (i < 0) throw new Error(`no row matches ${match}`);
+    return [...lines.slice(0, i), row(text), ...lines.slice(i + 1)];
+  };
+  const DRAFT = /^❯\s*$/;
+
+  it("an approval keeps its question and command on screen above the buttons, without the Voice rule", () => {
+    const blocks = museAdapter.buildBlocks(load("muse--approval-ls.txt"));
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
+    const above = rawText(blocks[0]!);
+    expect(above).toContain("Would you like to run the following command?");
+    expect(above).toContain("$ ls -la /private/tmp/collie-muse-sandbox");
+    expect(above).toContain('Current argv: ["ls","-la","/private/tmp/collie-muse-sandbox"]');
+    expect(above).not.toContain("Voice input");
+  });
+
+  it("a trust prompt keeps the folder it asks about on screen", () => {
+    const blocks = museAdapter.buildBlocks(load("muse--trust-prompt.txt"));
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
+    expect(rawText(blocks[0]!)).toContain("Workspace: /private/tmp/collie-muse-sandbox");
+  });
+
+  it("a question keeps its header and question text above the buttons", () => {
+    const blocks = museAdapter.buildBlocks(load("muse--ask-color.txt"));
+    expect(blocks.map((b) => b.kind)).toEqual(["raw", "prompt-select"]);
+    expect(rawText(blocks[0]!)).toContain("Which color do you prefer?");
+  });
+
+  it("the review screen's cancel row carries its own label, Interrupt turn", () => {
+    const blocks = museAdapter.buildBlocks(load("muse--ask-toppings-review.txt"));
+    const multi = blocks.find((b) => b.kind === "multi-select");
+    expect(multi?.kind === "multi-select" && multi.multi.phase === "review" && multi.multi.cancelLabel).toBe(
+      "Interrupt turn",
+    );
+  });
+
+  // A draft in the box means the dialog above it is not the one with the keyboard: a quote, or a
+  // screen this adapter cannot vouch for. Enter would submit the draft, so nothing is lifted, and
+  // the detectors still refuse a send there (a stall, never a keystroke into a dialog).
+  it.each(["muse--ask-color.txt", "muse--ask-toppings.txt", "muse--ask-toppings-review.txt"])(
+    "%s with a draft in the box stays raw, and a reply is still refused",
+    (name) => {
+      const live = load(name);
+      expect(museAdapter.buildBlocks(live).some((b) => b.kind !== "raw")).toBe(true);
+      const drafted = replaceLast(live, DRAFT, "❯ ship it");
+      expect(museAdapter.buildBlocks(drafted).every((b) => b.kind === "raw")).toBe(true);
+      expect(museAdapter.composerReady!(drafted)).toBe(false);
+    },
+  );
+
+  // The review rows are short and fixed, so a transcript can quote them word for word. Only a live
+  // dialog shows the `— running` header right above them.
+  it("a review screen without the live header above it stays raw", () => {
+    const quoted = replaceLast(
+      load("muse--ask-toppings-review.txt"),
+      /Request user input Toppings — running/,
+      "◆ Here is what the review screen looks like:",
+    );
+    expect(museAdapter.buildBlocks(quoted).every((b) => b.kind === "raw")).toBe(true);
+  });
+
+  it("with grammars off (the raw-terminal pref) no Muse dialog is lifted and no chrome is stripped", () => {
+    for (const name of ["muse--approval-ls.txt", "muse--ask-color.txt", "muse--ask-toppings-review.txt"]) {
+      const lines = load(name);
+      const blocks = buildBlocks(lines, { agent: "muse", grammars: false });
+      expect(blocks.every((b) => b.kind === "raw")).toBe(true);
+      expect(blocks.map(rawText).join("\n")).toContain("muse-spark-1.3");
+      expect(buildBlocks(lines, { agent: "muse" }).some((b) => b.kind !== "raw")).toBe(true);
+    }
+  });
+});
+

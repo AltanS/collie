@@ -1,7 +1,7 @@
 // The Muse harness adapter — Tier 1 chrome + Tier-2 approval / single-select / multi-select /
 // trust lifts for Muse Code 1.3.0 (agent string "muse").
 //
-// The TUI this reads (see grammar/MUSE_DIALOG_NOTES.md for the full probe log):
+// The TUI this reads (see DIALOG_NOTES.md beside this file for the full probe log):
 //
 //     <transcript: ❯ echoes, ◆/◇/◈ status rows with live (Ns) timers>
 //     <dialog — one of the four below, or nothing>
@@ -23,7 +23,7 @@
 //   - Trust is pre-session (no chrome at all): `Do you trust this workspace?` + period-less `N  Label`
 //     options. Digit alone (family `trust`).
 //
-// Registering this adapter flips Muse panes off one-shot sends onto the guarded reply path (D3):
+// Registering this adapter flips Muse panes off one-shot sends onto the guarded reply path:
 // type-then-verify against `extractInputDraft`, with the paste-token supplement (paste.ts) for the
 // per-line `[Pasted Content N chars]` collapse. Three accepted tradeoffs are stated here because
 // they are load-bearing for review:
@@ -33,14 +33,14 @@
 //      tap. Cost: two consecutive byte-identical dialogs share one signature, so a tap on the first
 //      may land on the second — the same command/answer the user consented to. Same bargain on all
 //      four dialogs.
-//   2. The palette, `/resume` picker, `/tasks` drawer and `/workflows` room are unmeasured (D5
-//      scope): if one leaves a live ❯ below it, the pre-flight types into it and type-then-verify
+//   2. The palette, `/resume` picker, `/tasks` drawer and `/workflows` room are unmeasured (outside
+//      the dialog notes' scope): if one leaves a live ❯ below it, the pre-flight types into it and type-then-verify
 //      withholds the submit key (a stall, not a misfire — the backstop holds where the pre-flight
 //      cannot see). See composerReady.
 //   3. An open `Note (optional):` row declines its dialog to raw (it owns the keyboard — probed) and
 //      fails the composer gate, so the phone shows the mirror and the keys pad, never buttons.
 
-import type { Block, StyledLine } from "../../blocks";
+import { lineText, trimTrailingBlank, type Block, type StyledLine } from "../../blocks";
 import type { HarnessAdapter } from "../types";
 import { detectApprovalRegion } from "./approval";
 import { detectCheckboxRegion } from "./checkbox";
@@ -51,38 +51,87 @@ import {
   extractStatusLines,
   stripChrome,
 } from "./chrome";
+import { askHeaderDirectlyAbove, boxHoldsNoDraft, isVoiceRule, rstrip } from "./markers";
 import { museDraftIsOpaque, musePasteCarriesSend } from "./paste";
 import { detectQuestionRegion } from "./question";
 import { detectTrustRegion } from "./trust";
 
 /**
- * Muse's pane → blocks. The four dialog arms run in D5 build order (approval → single → multi →
- * trust); the shapes are disjoint (exact questions, checkbox prefixes, period-less trust options),
- * so order is documentation, not disambiguation. Nothing matches → one raw block with the composer
- * chrome stripped, ready for the native-mirror decoration passes in harness/index.
+ * Muse's pane → blocks. The four dialog arms run in the build order of the dialog notes (approval →
+ * single → multi → trust); the shapes are disjoint (exact questions, checkbox prefixes, period-less
+ * trust options), so order is documentation, not disambiguation. Nothing matches → one raw block
+ * with the composer chrome stripped, ready for the native-mirror decoration passes in harness/index.
+ *
+ * EVERY LIFT KEEPS THE ROWS ABOVE ITS REGION as their own raw block, as Claude and Codex do. The
+ * command an approval runs and the folder a trust prompt names sit there, and the prompt panel
+ * shows neither itself: without them a button asks consent to something the operator cannot see.
+ *
+ * QUESTION, CHECKBOX AND REVIEW LIFTS ALSO NEED A LIVE DIALOG, not one quoted in the transcript:
+ * an empty box under it ({@link boxHoldsNoDraft}), and on the review screen the live header right
+ * above it ({@link askHeaderDirectlyAbove}). A screen that fails stays raw, and `composerReady`
+ * still refuses it through the detectors, so nothing is typed or pressed. Approval and trust need
+ * no such check: an approval replaces the box, and trust's footer must be the pane's last row.
  */
 export function museBuildBlocks(lines: StyledLine[]): Block[] {
   const approval = detectApprovalRegion(lines);
   if (approval !== null) {
-    return [
-      { kind: "prompt-select", prompt: approval.model, lines: lines.slice(approval.startLine) },
-    ];
+    return lift(lines, approval.startLine, {
+      kind: "prompt-select",
+      prompt: approval.model,
+      lines: lines.slice(approval.startLine),
+    });
   }
   const question = detectQuestionRegion(lines);
   if (question !== null) {
-    return [
-      { kind: "prompt-select", prompt: question.model, lines: lines.slice(question.startLine) },
-    ];
+    if (!boxHoldsNoDraft(lines)) return unlifted(lines);
+    return lift(lines, question.startLine, {
+      kind: "prompt-select",
+      prompt: question.model,
+      lines: lines.slice(question.startLine),
+    });
   }
   const checkbox = detectCheckboxRegion(lines);
   if (checkbox !== null) {
-    return [{ kind: "multi-select", multi: checkbox.model, lines: lines.slice(checkbox.startLine) }];
+    const texts = lines.map((l) => rstrip(lineText(l)));
+    const live =
+      boxHoldsNoDraft(lines) &&
+      (checkbox.model.phase !== "review" || askHeaderDirectlyAbove(texts, checkbox.startLine));
+    if (!live) return unlifted(lines);
+    return lift(lines, checkbox.startLine, {
+      kind: "multi-select",
+      multi: checkbox.model,
+      lines: lines.slice(checkbox.startLine),
+    });
   }
   const trust = detectTrustRegion(lines);
   if (trust !== null) {
-    return [{ kind: "prompt-select", prompt: trust.model, lines: lines.slice(trust.startLine) }];
+    return lift(lines, trust.startLine, { kind: "prompt-select", prompt: trust.model, lines: lines.slice(trust.startLine) });
   }
+  return unlifted(lines);
+}
+
+/** No lift: the screen as a raw block, composer chrome stripped. */
+function unlifted(lines: StyledLine[]): Block[] {
   return [{ kind: "raw", lines: stripChrome(lines) }];
+}
+
+// How far above a region the Voice rule that frames it may sit: an approval draws it over its
+// question, `$` subject, stage and argv rows, about seven rows up.
+const FRAME_SCAN_ROWS = 12;
+
+/** The rows above `startLine` as a raw block, then the lifted dialog. The Voice rule an approval
+ *  draws above its question is the composer's frame, not the dialog's subject, so the last one in
+ *  reach is dropped from that block. */
+function lift(lines: StyledLine[], startLine: number, dialog: Block): Block[] {
+  let before = lines.slice(0, startLine);
+  for (let i = before.length - 1; i >= 0 && before.length - 1 - i < FRAME_SCAN_ROWS; i--) {
+    if (isVoiceRule(rstrip(lineText(before[i]!)))) {
+      before = [...before.slice(0, i), ...before.slice(i + 1)];
+      break;
+    }
+  }
+  before = trimTrailingBlank(before);
+  return before.length > 0 ? [{ kind: "raw", lines: before }, dialog] : [dialog];
 }
 
 /**

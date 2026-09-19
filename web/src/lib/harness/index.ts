@@ -20,8 +20,11 @@ import { decorateMuseDisplay, rendersNativeMirror, trimMuseRowChrome } from "./m
  * reply path off one-shot sends — a behavioural change a display fix must not smuggle in.
  * Dialog blocks are never touched: only raw blocks reach the mirror.
  */
-export function buildBlocks(lines: StyledLine[], ctx?: { agent?: string }): Block[] {
-  const blocks = adapterFor(ctx?.agent)?.buildBlocks(lines) ?? [{ kind: "raw", lines }];
+export function buildBlocks(lines: StyledLine[], ctx?: { agent?: string; grammars?: boolean }): Block[] {
+  // `grammars: false` is the raw-terminal pref: no adapter runs, so no chrome is stripped and no
+  // dialog is lifted, but a native-mirror agent still keeps its display passes below.
+  const adapter = ctx?.grammars === false ? undefined : adapterFor(ctx?.agent);
+  const blocks = adapter?.buildBlocks(lines) ?? [{ kind: "raw", lines }];
   if (!rendersNativeMirror(ctx?.agent)) return blocks;
   let changed = false;
   const decorated = blocks.map((block) => {

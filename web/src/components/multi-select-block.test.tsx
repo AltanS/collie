@@ -90,6 +90,16 @@ describe("MultiSelectBlock — review screen", () => {
     await user.click(screen.getByRole("button", { name: /^Cancel$/ }));
     expect(onAction).toHaveBeenLastCalledWith({ kind: "cancel" });
   });
+
+  // Muse's cancel row ends the whole turn. The button carries the terminal's own words, so it never
+  // promises less than the key does.
+  it("labels the cancel button with the terminal's own words when the model carries them", () => {
+    const model = fixtureModel("claude--select-multiselect-review.txt");
+    if (model.phase !== "review") throw new Error("fixture is not a review screen");
+    render(<MultiSelectBlock multi={{ ...model, cancelLabel: "Interrupt turn" }} onAction={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /^Interrupt turn$/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Cancel$/ })).not.toBeInTheDocument();
+  });
 });
 
 // A checkbox question that is one STEP of a wizard. Everything the parser lifts for this shape —

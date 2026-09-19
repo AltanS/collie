@@ -30,7 +30,7 @@
 // (with transcript below it) simply doesn't match — the false-positive guard.
 //
 // Muse's choreography is pointer-driven, not digit-driven (probed live — see
-// grammar/MUSE_DIALOG_NOTES.md): digits MOVE the `›` pointer, Enter toggles (checkbox) or submits
+// DIALOG_NOTES.md): digits MOVE the `›` pointer, Enter toggles (checkbox) or submits
 // (review), and review swallows digits entirely. The model carries that explicitly (`toggle` /
 // `submit`: `"pointer"`), and the core macros in lib/multi-select-action.ts branch on it. An open
 // `Note (optional):` row declines the checkbox lift the same way it declines single-select: while
@@ -263,6 +263,7 @@ function detectReviewPhase(lines: StyledLine[]): CheckboxRegion | null {
       incomplete: false, // Muse shows no incompleteness state — false is the honest reading
       pointer,
       submit: "pointer",
+      cancelLabel: REVIEW_CANCEL_LABEL,
       signature,
       regionSignature: regionSignature(texts, li, ci),
     },

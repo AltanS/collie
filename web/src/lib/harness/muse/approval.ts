@@ -19,7 +19,7 @@
 // is the backbone: the options must sit directly above the bottom rule, so an approval that has
 // scrolled up (with transcript below it) simply doesn't match — the false-positive guard.
 //
-// Only the COMMAND shape above is lifted (D5): file/network/peer approval variants ride along only
+// Only the COMMAND shape above is lifted (DIALOG_NOTES.md, scope): file/network/peer approval variants ride along only
 // when a capture shows them sharing it. Anything else answers null and stays raw.
 
 import { lineText, type StyledLine } from "../../blocks";

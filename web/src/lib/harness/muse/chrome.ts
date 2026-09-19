@@ -26,22 +26,13 @@ import { detectCheckboxRegion } from "./checkbox";
 import { detectQuestionRegion } from "./question";
 import { detectTrustRegion } from "./trust";
 import {
+  INPUT_PLACEHOLDERS,
   isContinuationRow,
   isNoteRow,
   locateTail,
   promptRowText,
   rstrip,
 } from "./markers";
-
-// Text Muse draws on the "❯" prompt line that is NOT a real user draft — the tip it paints when the
-// box is otherwise empty (observed after the first turn; a fresh box is bare). Must never be
-// surfaced as a recoverable draft. Kept as a set so more variants can be added without touching the
-// extraction logic.
-//
-// A tip we have not seen reads as a stranded draft: a phantom preview chip plus a pre-clear sweep
-// whose keys no-op against non-editable text (Claude's ghost finding, same bargain). Sends still
-// verify — typing replaces the tip, so the guard compares against real text either way.
-const INPUT_PLACEHOLDERS = new Set(["Start a message with ! to run a shell command yourself"]);
 
 // How far above the composer to scan for an open note row. The dialog sits directly above the box
 // (~15 rows); 40 has margin for wider layouts. A `Note (optional):` row anywhere in that window is a
@@ -150,7 +141,7 @@ export function hasComposer(lines: StyledLine[]): boolean {
  * silently re-open them.
  *
  * Known limitation, documented rather than guessed at: the command palette, `/resume` picker,
- * `/tasks` drawer and `/workflows` room are unmeasured (D5 scope). If one of them leaves a live
+ * `/tasks` drawer and `/workflows` room are unmeasured (outside DIALOG_NOTES.md's scope). If one of them leaves a live
  * `❯` below it, this answers true and the pre-flight types into it — and type-then-verify still
  * withholds the submit key, because the typed text never lands in the box it reads. A stall, not a
  * misfire: the backstop holds where the pre-flight cannot see.

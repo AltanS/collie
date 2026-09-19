@@ -84,6 +84,9 @@ export interface AnsiOutputProps {
    *  registered adapter contributes its own: claude lifts dialogs and strips chrome, omp strips chrome
    *  only. An absent/unregistered agent renders pure raw output. */
   agent?: string;
+  /** False when the operator turned block grammars off (the raw-terminal pref): the adapter does not
+   *  run, while `agent` still picks the native-mirror rendering. Default true. */
+  grammars?: boolean;
   /**
    * The pane's journal images, oldest-first, for the terminal-graphics placeholders on screen.
    *
@@ -305,6 +308,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   currentMatch = -1,
   onMatchCount,
   agent,
+  grammars = true,
   onPromptAction,
   onWizardAction,
   onPreviewAction,
@@ -319,7 +323,10 @@ export const AnsiOutput = memo(function AnsiOutput({
   // renders are Collie's own words, so this subscribes for the same reason every t() caller does.
   useLocale();
   const segments = useMemo(() => parseAnsi(text), [text]);
-  const blocks = useMemo(() => buildBlocks(splitLines(segments), { agent }), [segments, agent]);
+  const blocks = useMemo(
+    () => buildBlocks(splitLines(segments), { agent, grammars }),
+    [segments, agent, grammars],
+  );
 
   const rawBlocks = useMemo(
     () =>
