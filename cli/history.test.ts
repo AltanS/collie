@@ -12,6 +12,7 @@ import {
   readJournalRoots,
   silentPanes,
   type SnapshotPane,
+  type SnapshotRead,
 } from "./history.ts";
 
 // `collie doctor`'s history section (issue #137) — the chain that decides whether a pane's
@@ -156,6 +157,8 @@ async function run(
     env?: Record<string, string | undefined>;
     absent?: string[];
     snapshot?: string | null;
+    /** A read that is not a body: the bridge answered, and refused (issue #238). */
+    refused?: number;
   } = {},
 ): Promise<Map<string, Finding>> {
   const answers: Scripted["answers"] = [
@@ -166,7 +169,11 @@ async function run(
     ctx: context(over.env ?? {}),
     exec: fakeExec({ answers, absent: over.absent }),
     files: fakeFiles(over.files ?? { [`${CLAUDE_ROOT}/-home-pat-repo/9f3c.jsonl`]: "{}" }),
-    snapshot: async () => (over.snapshot === undefined ? snapshotOf([]) : over.snapshot),
+    snapshot: async (): Promise<SnapshotRead> => {
+      if (over.refused !== undefined) return { kind: "refused", status: over.refused };
+      if (over.snapshot === null) return { kind: "silent" };
+      return { kind: "body", text: over.snapshot ?? snapshotOf([]) };
+    },
   });
   return new Map(findings.map((f) => [f.check, f]));
 }
@@ -230,6 +237,20 @@ describe("the history section", () => {
     const byCheck = await run({ snapshot: null });
     expect(byCheck.get("agent-sessions")?.status).toBe("skipped");
     expect(byCheck.get("integration-claude")?.status).toBe("ok");
+  });
+
+  // Issue #238: `tailscale serve` in front plus COLLIE_TRUSTED_USER, and the bridge fails closed on a
+  // read carrying no identity. It is up and serving the PWA, so "then `collie start` if it is down"
+  // sent the operator after a machine that was already running.
+  test("a bridge that REFUSES the read says so, and does not read as a bridge that is down", async () => {
+    const byCheck = await run({ refused: 403 });
+    const finding = byCheck.get("agent-sessions");
+    expect(finding?.status).toBe("skipped");
+    expect(finding?.detail).toContain("refused");
+    expect(finding?.detail).toContain("403");
+    expect(finding?.detail).toContain("up and serving");
+    expect(finding?.remedy).toContain("COLLIE_TRUSTED_USER");
+    expect(finding?.remedy).not.toContain("collie start");
   });
 
   test("`herdr integration status` that says nothing leaves every agent skipped, never ok", async () => {

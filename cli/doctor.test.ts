@@ -128,6 +128,8 @@ interface Harness {
   io: ReturnType<typeof capture>;
   files: ReturnType<typeof fakeFiles>;
   requests: string[];
+  /** Every request with the headers it carried — the identity `doctor` shows its own bridge (#238). */
+  sent: { url: string; headers: Record<string, string> }[];
   /** Every `<tool> <args…>` this run spawned — how the mux probe's ONE invocation is pinned. */
   calls: string[];
 }
@@ -198,6 +200,7 @@ function harness(
   const files = fakeFiles(over.files ?? healthyFiles());
   const exec = fakeExec({ answers: over.answers ?? HEALTHY_ANSWERS, absent: over.absent });
   const requests: string[] = [];
+  const sent: { url: string; headers: Record<string, string> }[] = [];
   let n = 0;
   return {
     deps: {
@@ -209,8 +212,9 @@ function harness(
       files,
       link: fakeLinkFs(over.link),
       store: new TrustStore(STATE, io),
-      fetch: async (url) => {
+      fetch: async (url, init) => {
         requests.push(url);
+        sent.push({ url, headers: Object.fromEntries(new Headers(init?.headers)) });
         const reply = replies[n++];
         if (reply === undefined) return hello();
         if (reply instanceof Error) throw reply;
@@ -224,6 +228,7 @@ function harness(
     io: out,
     files,
     requests,
+    sent,
     calls: exec.calls,
   };
 }
@@ -946,6 +951,33 @@ describe("collie doctor — the crew checks", () => {
       // The history section's one GET of THIS bridge's own snapshot (issue #137), on the same seam.
       "http://127.0.0.1:8787/api/snapshot",
     ]);
+  });
+
+  // Issue #238: with `tailscale serve` in front, `checkAccess` fails closed on a read that carries no
+  // `Tailscale-User-Login`, so this verb could not read its OWN snapshot and called a healthy bridge
+  // one that had not answered. It shows the login it is configured with; the header is an identity
+  // rather than a secret, and the bridge already takes it from any caller that reaches the port.
+  test("the bridge's own snapshot is read with the configured tailnet login", async () => {
+    const h = harness(LEAD, [hello(), hello()], {
+      env: { COLLIE_TRUSTED_USER: "pat@example.com" },
+      files: { ...healthyFiles(), ...markerFile(LEAD) },
+    });
+    await findings(h);
+    const own = h.sent.filter((r) => r.url === "http://127.0.0.1:8787/api/snapshot");
+    expect(own).toHaveLength(1);
+    // `Headers` lower-cases what it is given; the wire name is case-insensitive either way.
+    expect(own[0]?.headers["tailscale-user-login"]).toBe("pat@example.com");
+    // And never on a crew leg: those go to another machine, where this login is not ours to claim.
+    for (const r of h.sent.filter((x) => x.url.startsWith("https://"))) {
+      expect(r.headers["tailscale-user-login"]).toBeUndefined();
+    }
+  });
+
+  test("no configured login means no invented header, and the refusal reads as a refusal", async () => {
+    const h = harness(LEAD, [hello(), hello()], { files: { ...healthyFiles(), ...markerFile(LEAD) } });
+    await findings(h);
+    const own = h.sent.find((r) => r.url === "http://127.0.0.1:8787/api/snapshot");
+    expect(own?.headers["tailscale-user-login"]).toBeUndefined();
   });
 
   test("member-versions: skew WARNS naming both versions — §7.1 refuses nothing, so nor does this", async () => {

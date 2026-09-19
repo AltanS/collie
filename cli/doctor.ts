@@ -42,7 +42,7 @@ import { collieVersionBare, type CliContext } from "./context.ts";
 import { bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { cacheFindings } from "./cache-findings.ts";
-import { historyFindings } from "./history.ts";
+import { historyFindings, type SnapshotRead } from "./history.ts";
 import { EXIT, type Io } from "./io.ts";
 import {
   binaryLayout,
@@ -930,18 +930,43 @@ function liveServeStatus(deps: DoctorDeps): ReturnType<typeof parseServeStatus> 
  * `doctor` is run when something is already wrong, and a hung diagnostic is a worse answer than
  * "it did not answer".
  */
-async function ownSnapshot(deps: DoctorDeps): Promise<string | null> {
+async function ownSnapshot(deps: DoctorDeps): Promise<SnapshotRead> {
   const host = resolvedBind(deps);
   const dialled = bindIsWildcard(host) ? "127.0.0.1" : host;
   const bracketed = dialled.includes(":") && !dialled.startsWith("[") ? `[${dialled}]` : dialled;
   try {
     const answer = await deps.fetch(`http://${bracketed}:${String(deps.ctx.port)}/api/snapshot`, {
       signal: AbortSignal.timeout(SNAPSHOT_BUDGET_MS),
+      headers: identityHeader(deps),
     });
-    return answer.ok ? await answer.text() : null;
+    if (answer.ok) return { kind: "body", text: await answer.text() };
+    return { kind: "refused", status: answer.status };
   } catch {
-    return null;
+    return { kind: "silent" };
   }
+}
+
+/**
+ * The identity this verb shows its own bridge, or nothing when none is configured (issue #238).
+ *
+ * `checkAccess` (bridge/server.ts) fails closed on a request with no `Tailscale-User-Login` while
+ * `tailscale serve` is in front, because an absent header is not evidence of a local caller: a TAGGED
+ * node arrives without one too. So this verb could not read its own snapshot, and reported a healthy
+ * bridge as one that had not answered.
+ *
+ * Sending the configured login GRANTS NOTHING THAT WAS NOT ALREADY THERE. The login is an identity,
+ * not a secret, and the bridge already accepts the header from any caller that reaches its port —
+ * `curl -H 'Tailscale-User-Login: …' http://127.0.0.1:<port>/api/snapshot` answers 200 today, which is
+ * how the reporter demonstrated the bug. The alternative, a loopback exemption, is the one thing that
+ * must NOT be done: `tailscale serve` dials the bridge from loopback itself, so every tailnet request
+ * would take it.
+ *
+ * With no login configured the header is omitted rather than invented: the bridge is then either open
+ * to the tailnet (it warns about that itself at boot) or it refuses, and a refusal reads as a refusal.
+ */
+function identityHeader(deps: DoctorDeps): Record<string, string> | undefined {
+  const login = deps.ctx.env.COLLIE_TRUSTED_USER ?? "";
+  return login === "" ? undefined : { "Tailscale-User-Login": login };
 }
 
 /** Long enough for a busy loopback bridge, short enough that a wedged one does not hold the verb. */

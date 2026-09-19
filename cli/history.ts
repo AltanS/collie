@@ -170,24 +170,38 @@ export interface HistoryDeps {
   readonly ctx: CliContext;
   readonly exec: Pick<Exec, "which" | "capture">;
   readonly files: Pick<Files, "exists" | "list">;
-  /** The bridge's own `/api/snapshot`, as text — `null` when nothing answered there. */
-  readonly snapshot: () => Promise<string | null>;
+  /** The bridge's own `/api/snapshot`: its body, its refusal, or silence. */
+  readonly snapshot: () => Promise<SnapshotRead>;
 }
 
 const INSTALL_NOTE = "then start a new session of that agent in the pane (hooks load at session start)";
+
+/**
+ * What one GET of this bridge's own `/api/snapshot` came back as.
+ *
+ * "Refused" and "silent" are DIFFERENT facts and the operator is owed the difference (issue #238): a
+ * bridge that answers 403 is up, serving the PWA, and merely declining to identify this caller, while
+ * a bridge that answers nothing may be down. Telling the first one to run `collie start` sends the
+ * operator after a machine that is already running.
+ */
+export type SnapshotRead =
+  | { readonly kind: "body"; readonly text: string }
+  | { readonly kind: "refused"; readonly status: number }
+  | { readonly kind: "silent" };
 
 /** Every line of the history section, in the order an operator would walk the chain. */
 export async function historyFindings(deps: HistoryDeps): Promise<Finding[]> {
   const herdr = herdrVersion(deps);
   const status = integrationStatus(deps);
-  const body = await deps.snapshot();
+  const read = await deps.snapshot();
+  const body = read.kind === "body" ? read.text : null;
   const panes = body === null ? null : parseSnapshotPanes(body);
   const verdicts = panes === null ? null : paneVerdicts(panes);
   return [
     herdr,
     ...JOURNAL_AGENTS.map((agent) => integration(agent, status, verdicts)),
     python(deps),
-    sessions(verdicts, body !== null),
+    sessions(verdicts, read),
     journalRoots(deps),
   ];
 }
@@ -316,12 +330,26 @@ function python(deps: HistoryDeps): Finding {
  * observed consequence. A journalled agent pane without `hasSession` is precisely the pane whose
  * History link the phone will not draw.
  */
-function sessions(verdicts: readonly PaneVerdict[] | null, answered: boolean): Finding {
+function sessions(verdicts: readonly PaneVerdict[] | null, read: SnapshotRead): Finding {
   const check = "agent-sessions";
   if (verdicts === null) {
+    // A REFUSAL IS NOT A SILENCE (issue #238). The bridge fails closed on a request carrying no
+    // identity when `tailscale serve` is in front, and an absent header cannot be read as "a local
+    // caller" — a tagged node arrives without one too (`checkAccess`, bridge/server.ts). This verb
+    // sends the login it is configured with (`ownSnapshot`, doctor.ts), so a 403 here says that
+    // login is empty or is not the one the bridge was given, NOT that the bridge is down.
+    if (read.kind === "refused") {
+      return skipped(
+        check,
+        `the bridge refused this check's own read of \`/api/snapshot\` (${String(read.status)}) — it is up and` +
+          " serving, and no pane can be checked from here",
+        "name your tailnet login in `COLLIE_TRUSTED_USER` for this instance (`collie config` shows what" +
+          " is set), then re-run `collie doctor`",
+      );
+    }
     return skipped(
       check,
-      answered
+      read.kind === "body"
         ? "the bridge answered `/api/snapshot` with something that is not a snapshot"
         : "the bridge did not answer `/api/snapshot`, so no pane can be checked",
       "`collie status`, then `collie start` if it is down; re-run `collie doctor` once it answers",
