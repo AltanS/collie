@@ -54,11 +54,11 @@ describe("flake.nix and MIN_BUN", () => {
   });
 
   test("the archive URLs the flake fetches carry the pinned version", () => {
-    // The version and the three sources are one pin. A `version` bumped without new hashes would
+    // The version and the four sources are one pin. A `version` bumped without new hashes would
     // fetch the old archives under the new name, and every claim above it would be a lie.
     const source = readFileSync(join(ROOT, "flake.nix"), "utf8");
     const urls = [...source.matchAll(/url = "([^"]*oven-sh\/bun[^"]*)";/g)].map((m) => m[1]!);
-    expect(urls).toHaveLength(3);
+    expect(urls).toHaveLength(4);
     for (const url of urls) {
       expect(url).toContain("bun-v${finalAttrs.version}");
     }
