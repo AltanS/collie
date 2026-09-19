@@ -67,18 +67,19 @@ describe("terminal mirror colour space", () => {
   });
 });
 
-// Native mirrors (muse in .adr/0047, opencode in #240) skip the light-theme inversion: their
-// palettes read raw on the reference ground, while inversion drops a light-authored ground to
-// black (opencode white) or body text to ~2:1 (muse). The <pre> carries the
+// Native mirrors (muse in .adr/0047) skip the light-theme inversion: the palette reads raw on
+// the reference ground, while inversion drops body text to ~2:1. opencode is NOT one: on its
+// dark background answer the body is rgb(238,238,238), 1.13:1 raw against 17.32:1 inverted.
+// The <pre> carries the
 // reference ground in light and dark-space halves under `dark:`, and only bright foregrounds —
 // unreadable on white — resolve dark through a light-gated custom property.
-describe("native mirror (muse, opencode)", () => {
+describe("native mirror (muse)", () => {
   function nativePre(text: string, agent?: string) {
     const { container } = render(<AnsiOutput text={text} agent={agent} />);
     return container.querySelector("pre")!;
   }
 
-  it.each([["muse"], ["opencode"]])("renders %s on the reference ground with no inversion filter", (agent) => {
+  it.each([["muse"]])("renders %s on the reference ground with no inversion filter", (agent) => {
     const pre = nativePre("hello", agent);
     expect(pre.className).toContain("terminal-muse");
     expect(pre.className).toContain("bg-[#fffbf8]");
@@ -90,7 +91,7 @@ describe("native mirror (muse, opencode)", () => {
 
   it("keeps inverting every other agent", () => {
     // "Muse" and "muse-code" pin the exactness: near-miss strings must not engage (#99).
-    for (const agent of [undefined, "shell", "codex", "Muse", "muse-code"]) {
+    for (const agent of [undefined, "shell", "codex", "opencode", "Muse", "muse-code"]) {
       const pre = nativePre("hello", agent);
       expect(pre.className).not.toContain("terminal-muse");
       expect(pre.className).toContain("[filter:invert(1)_hue-rotate(180deg)]");
@@ -120,25 +121,7 @@ describe("native mirror (muse, opencode)", () => {
     expect(span!.style.color).toBe("rgb(111, 114, 122)");
   });
 
-  it("leaves opencode's observed light-corpus shapes raw", () => {
-    // The live capture's only bright tone is white foreground, and every non-blank span
-    // carrying it also carries an explicit background (badges and chips): the pair is
-    // self-sufficient on any ground, so nothing is marked.
-    const chip = `${ESC}[38;2;255;255;255m${ESC}[48;2;31;35;40msonnet${ESC}[0m`;
-    const chipSpan = [...nativePre(chip, "opencode").querySelectorAll("span")].find(
-      (s) => s.textContent === "sonnet",
-    );
-    expect(chipSpan!.className).not.toContain("terminal-light-dark-fg");
-    // Body text carries the dark tone the light theme authored for a white ground.
-    const body = `${ESC}[38;2;31;35;40mGive me a summary${ESC}[0m`;
-    const bodySpan = [...nativePre(body, "opencode").querySelectorAll("span")].find(
-      (s) => s.textContent === "Give me a summary",
-    );
-    expect(bodySpan!.className).not.toContain("terminal-light-dark-fg");
-    expect(bodySpan!.style.color).toBe("rgb(31, 35, 40)");
-  });
-
-  it.each([["muse"], ["opencode"]])("paints the current find match for %s without the cancelling filter", (agent) => {
+  it.each([["muse"]])("paints the current find match for %s without the cancelling filter", (agent) => {
     const text = `${ESC}[38;2;111;114;122mfind the needle${ESC}[0m`;
     const { container } = render(
       <AnsiOutput text={text} query="needle" currentMatch={0} agent={agent} />,

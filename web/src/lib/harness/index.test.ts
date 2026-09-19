@@ -69,15 +69,17 @@ describe("buildBlocks native display pass", () => {
     },
   );
 
-  it("marks bright foregrounds on opencode panes without trimming row chrome", () => {
-    // A styled 2-space lead is likelier code indent than chrome outside Muse: it stays,
-    // while the bare bright foreground still resolves dark for the native light ground.
+  it("leaves an opencode pane to the inverting mirror: no trim, no marks", () => {
+    // opencode is not a native mirror (see display.ts): on its dark background answer the
+    // body is rgb(238,238,238), 1.13:1 raw on the native ground against 17.32:1 inverted.
+    // So its lines come back untouched and the inversion filter does the work.
     const gutter = `${ESC}[38;2;170;171;175m  ${ESC}[0m`;
-    const [block] = buildBlocks(linesOf(`${gutter}${BRIGHT}`), { agent: "opencode" });
+    const lines = linesOf(`${gutter}${BRIGHT}`);
+    const [block] = buildBlocks(lines, { agent: "opencode" });
     expect(block!.kind).toBe("raw");
     if (block!.kind === "raw") {
-      expect(block.lines[0]!.segments.map((s) => s.text)).toEqual(["  ", "bright"]);
-      expect(block.lines[0]!.segments[1]).toHaveProperty("lightDarkFg", true);
+      expect(block.lines).toBe(lines);
+      expect(block.lines[0]!.segments[1]).not.toHaveProperty("lightDarkFg", true);
     }
   });
 });

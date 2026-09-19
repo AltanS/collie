@@ -389,8 +389,8 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.kind).toBe("raw");
     expect(blocks.some((b) => b.kind === "prompt-select")).toBe(false); // NO menu lifting without an adapter
-    // Native display passes (opencode renders natively) may mark spans for the light
-    // ground, but they lift no blocks and change not one byte of visible text.
+    // opencode is not a native mirror, so no display pass runs here either: the lines come
+    // back exactly as they went in, and the light-theme inversion does the work downstream.
     expect(blocks[0]!.lines.map(lineText)).toEqual(lines.map(lineText));
   });
 

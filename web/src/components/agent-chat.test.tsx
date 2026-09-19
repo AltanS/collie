@@ -587,7 +587,7 @@ describe("AgentChat — raw-terminal escape hatch", () => {
     expect(screen.getByText(/☐ Focus area/)).toBeInTheDocument();
   });
 
-  it.each([["muse"], ["opencode"]])("keeps native rendering for %s with raw terminal on — the pref bypasses grammars, not display", (agentName) => {
+  it.each([["muse"]])("keeps native rendering for %s with raw terminal on — the pref bypasses grammars, not display", (agentName) => {
     localStorage.setItem(
       "collie:display-prefs:v4",
       JSON.stringify({ wrap: true, fontSize: 11, rawTerminal: true }),
