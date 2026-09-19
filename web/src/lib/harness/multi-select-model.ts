@@ -104,10 +104,16 @@ export type MultiSelectModel =
       toggle: MultiSelectChoreography;
       signature: string;
       /**
-       * Literal contiguous text over the same stepper-to-last-menu-row span as `signature`. It ends
-       * before the footer because pointer moves change that footer during the macro. The bridge must
-       * find this text in its fresh pane.read, while `signature` remains the pointer- and
-       * checkbox-independent identity used by client comparisons.
+       * Literal contiguous text over the same span as `signature`. Two constraints pick that span,
+       * and they cut in opposite directions: the span must be IDENTITY-STABLE across macro steps
+       * (nothing the macros mutate — pointer, checkbox glyphs, counts, footers that react to the
+       * pointer), and it must END inside the bridge's tail window (`verifyExpectedPrompt` only
+       * binds a match ending within 6 non-blank rows of the read — conformance pins this per
+       * dialog). Claude ends at its last menu row because its footer mutates mid-macro; Muse runs
+       * through its static footer because ending at Submit strands 6 rows below the match and 409s
+       * every first write. The bridge must find this text in its fresh pane.read, while
+       * `signature` remains the pointer- and checkbox-independent identity used by client
+       * comparisons.
        */
       regionSignature: string;
     }
@@ -128,10 +134,10 @@ export type MultiSelectModel =
       submit: MultiSelectChoreography;
       signature: string;
       /**
-       * Literal contiguous text over the same stepper-to-tail span as `signature`. The checkbox
-       * phase uses the same rule and stops at its last menu row rather than its mutable footer. The
-       * bridge must find this text in its fresh pane.read, while `signature` remains the pointer- and
-       * checkbox-independent identity used by client comparisons.
+       * Literal contiguous text over the same stepper-to-tail span as `signature` — lead through
+       * the last action row, which sits directly above the tail chrome on every harness so far. The
+       * bridge must find this text in its fresh pane.read, while `signature` remains the pointer-
+       * independent identity used by client comparisons.
        */
       regionSignature: string;
     };

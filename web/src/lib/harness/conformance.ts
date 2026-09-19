@@ -557,6 +557,27 @@ export function describeAdapterConformance(
             }
           });
 
+          it(`${name}: the ${kind} bound region ends inside the bridge's ${BRIDGE_PROMPT_TAIL_LINES}-row tail window`, () => {
+            // The first write of every choreography binds `region` as the bridge's expected prompt,
+            // and `verifyExpectedPrompt` (bridge/prompt-binding.ts) only accepts a match ENDING
+            // within the last 6 non-blank rows of the fresh read. A region ending higher 409s every
+            // tap on a screen that never moved — Muse's checkbox shipped exactly that (question →
+            // Submit left 6 rows below the match) until a live toggle caught it. Same normalisation
+            // as the composerPrompt leg above: trailing whitespace off, blanks dropped.
+            const lines = loadLines(name);
+            const fresh = normalizeRegion(lines.map(lineText).join("\n"));
+            for (const model of modelsOf(adapter, name, kind)) {
+              const expected = normalizeRegion(contract.region(model));
+              const matchEnd = lastMatchEnd(fresh, expected);
+              expect(matchEnd, `${name}: the ${kind} region is not on its own screen`).toBeGreaterThan(-1);
+              expect(
+                fresh.length - 1 - matchEnd,
+                `${name}: ${fresh.length - 1 - matchEnd} non-blank rows sit below the ${kind} region — ` +
+                  `the bridge can only bind within the last ${BRIDGE_PROMPT_TAIL_LINES}`,
+              ).toBeLessThan(BRIDGE_PROMPT_TAIL_LINES);
+            }
+          });
+
           it(`${name}: re-deriving the same screen is the same ${kind}`, () => {
             // Two independent derivations of the same bytes (a fresh parse each time — what the guard
             // does on every tap). Both the identity and the committing comparison must hold, or a

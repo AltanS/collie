@@ -95,6 +95,21 @@ describe("moved twins — the pointer moves the signature, not the identity", ()
   });
 });
 
+describe("checkbox region span — through the static footer", () => {
+  it("ends at the footer, not the Submit row (the bridge only binds inside its tail window)", () => {
+    // Live 409 regression: ending at Submit stranded 6 rows below the match (2 footer + Voice +
+    // ❯ + rule + statusline) and every first write came back `not_in_tail`.
+    const m = detectCheckbox(lines("muse--ask-toppings.txt"))!;
+    expect(m.phase).toBe("checkbox");
+    if (m.phase !== "checkbox") return;
+    const regionRows = m.regionSignature.split("\n");
+    expect(regionRows.at(-2)).toMatch(/^  Enter to toggle/);
+    expect(regionRows.at(-1)).toBe("  interrupt");
+    // The identity half spans the same rows, pointer + flips normalised out.
+    expect(m.signature.split("\n").length).toBe(regionRows.length);
+  });
+});
+
 describe("checkbox pointer reporting", () => {
   it("reports advance on the Submit row via a synthetic move", () => {
     const raw = readFileSync(join(PANES_DIR, "muse--ask-toppings.txt"), "utf8");
