@@ -877,8 +877,13 @@ export function memberBehind(member: LevelMember, current: string): boolean {
  */
 export function legStillFailed(leg: LevelLeg, crew: readonly LevelMember[], current: string): boolean {
   if (!LEG_FAILED.has(leg.state)) return false;
+  const member = crew.find((candidate) => candidate.name === leg.name);
+  // A packaged member is never a reason to start a run, and its leg is no exception (ADR 0035): a
+  // packaged member that has gone quiet reads `unreachable` rather than `package-managed` (`legOf`,
+  // crew/follow.ts), and no run from here can ever clear that leg. Twin of the phone's rule.
+  if (member?.installKind === "packaged") return false;
   if (current === "") return true;
-  const version = crew.find((member) => member.name === leg.name)?.version ?? null;
+  const version = member?.version ?? null;
   if (version === null) return true;
   return compareSemver(version, current) < 0;
 }

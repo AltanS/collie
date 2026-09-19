@@ -478,6 +478,7 @@ const census = (minibuch: string | null): UpdateCrewMember[] => [
 type CrewPhase =
   | "begun"
   | "in flight"
+  | "in flight, no clock"
   | "stalled"
   | "escaped"
   | "failed"
@@ -488,6 +489,13 @@ const PHASE = {
   // The beat after this device's own confirm: the run is begun and no sweep has folded it yet.
   begun: { crewRun: crewRun([]), crew: census("1.9.0") },
   "in flight": { crewRun: crewRun(MOVING), crew: census("1.9.0") },
+  // Legs with no stamp on them. The bridge backfills one on every leg (crew/follow.ts, M20/12), so
+  // this cannot happen today — and the stall, the only way out of the takeover, is measured on those
+  // stamps. The sheet shows, the app stays live: no invariant of another module can trap a phone.
+  "in flight, no clock": {
+    crewRun: crewRun(MOVING.map(({ updatedAt: _drop, ...leg }) => leg)),
+    crew: census("1.9.0"),
+  },
   stalled: { crewRun: crewRun(STALLED), crew: census("1.9.0") },
   escaped: { crewRun: crewRun(STALLED), crew: census("1.9.0"), leadReleased: true },
   failed: { crewRun: crewRun(FAILED, NOW - 8_000), crew: census("1.9.0") },
@@ -505,6 +513,8 @@ const CREW_TABLE: readonly CrewRow[] = [
   ["begun", false, "collapsed", true, "none", "crew"],
   ["in flight", true, "expanded", false, "none", "crew"],
   ["in flight", false, "collapsed", true, "none", "crew"],
+  ["in flight, no clock", true, "expanded", true, "none", "crew"],
+  ["in flight, no clock", false, "collapsed", true, "none", "crew"],
   ["stalled", true, "expanded", false, "none", "crew"],
   ["stalled", false, "collapsed", true, "none", "crew"],
   ["escaped", true, "collapsed", true, "none", "crew"],

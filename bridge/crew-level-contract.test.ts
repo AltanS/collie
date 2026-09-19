@@ -115,6 +115,15 @@ describe("legStillFailed: a failed leg counts until the census shows its member 
       counts: true,
     },
     {
+      // A packaged member that has gone quiet reads `unreachable`, not `package-managed` (`legOf`,
+      // crew/follow.ts), and nothing the phone can start would ever clear it. A sleeping laptop must
+      // not leave "Retry crew update" standing for good.
+      case: "a failed leg on a PACKAGED member, whose version no run from here can move",
+      leg: { name: "minibuch", state: "unreachable" },
+      crew: [member("minibuch", "1.9.0", { installKind: "packaged" })],
+      counts: false,
+    },
+    {
       case: "a leg that arrived is not a failed leg",
       leg: { name: "minibuch", state: "done" },
       crew: [member("minibuch", "1.9.0")],

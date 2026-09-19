@@ -530,8 +530,15 @@ function crewOnlyView(input: UpdateScreenInput, crew: UpdateScreenCrewRun): Upda
   const stalled = active && movedAt !== null && input.now - movedAt >= LEAD_STALLED_MS;
   const escaped = stalled && input.leadReleased;
 
+  // A RUN WITH LEGS AND NO CLOCK NEVER TAKES THE APP AWAY. The stall above is the only way out of the
+  // takeover, and it needs a stamp; `updatedAt` is backfilled on every leg before it reaches the wire
+  // (crew/follow.ts, M20/12) and is optional only in the type. If that invariant ever broke, this
+  // device would sit inert with no way back, so the reducer does not rest on it: unstamped legs still
+  // show the sheet and the rows, but the app behind stays live.
+  const unclocked = crew.legs.length > 0 && stamps.length === 0;
+
   // THE ONE SENTENCE, as in the lead's reading.
-  const dismissible = !(active && input.startedHere && !escaped);
+  const dismissible = !(active && input.startedHere && !escaped && !unclocked);
 
   // A failed member is judged by the same rule as the button (`lib/crew-level.ts`): a leg whose
   // member the census now shows level is not a failure any more.

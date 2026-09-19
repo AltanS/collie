@@ -63,8 +63,15 @@ export function memberBehind(member: Member, current: string): boolean {
  */
 export function legStillFailed(leg: Leg, crew: readonly Member[], current: string): boolean {
   if (!LEG_FAILED.has(leg.state)) return false;
+  const member = crew.find((candidate) => candidate.name === leg.name);
+  // A PACKAGED MEMBER IS NEVER A REASON TO OFFER A RUN, and its leg is no exception (ADR 0035). A
+  // packaged member that has gone quiet reads `unreachable`, not `package-managed`
+  // (`legOf` in `bridge/crew/follow.ts`, pinned there) — so a laptop that sleeps overnight would
+  // otherwise leave a failed leg nothing can clear, and the button would stand over a machine the
+  // phone cannot move. That is the bug this whole rule closes, left open for one member type.
+  if (member?.installKind === "packaged") return false;
   if (current === "") return true;
-  const version = crew.find((member) => member.name === leg.name)?.version ?? null;
+  const version = member?.version ?? null;
   if (version === null) return true;
   return compareSemver(version, current) < 0;
 }
