@@ -25,7 +25,7 @@ import { TourHost } from "@/components/tour-sheet";
 import { describeThrownError } from "@/lib/api-error-message";
 import { homePath } from "@/lib/nav";
 import { scopeFromUrl } from "@/lib/session";
-import { noteLeadName, noteSnapshotRun } from "@/lib/update-run-store";
+import { noteLeadName, noteSnapshotCrew, noteSnapshotRun } from "@/lib/update-run-store";
 import { PANE_ROUTE_ID, type HomeData, type PaneData } from "@/lib/loaders";
 import { t } from "@/lib/i18n";
 import { useLocale } from "@/hooks/use-locale";
@@ -106,6 +106,13 @@ export function RootLayout() {
   useEffect(() => {
     noteSnapshotRun(snapshotRun);
   }, [snapshotRun]);
+  // And a THIRD, since M32: the legs that ride the status. A peers-only run writes no record, so the
+  // run above says nothing about it, and the screen learns of it from these. The store stamps each
+  // one on receipt and tells its readers only when what the crew says has changed.
+  const snapshotUpdate = data.update;
+  useEffect(() => {
+    noteSnapshotCrew(snapshotUpdate);
+  }, [snapshotUpdate]);
 
   // A viewport-height flex column: the top banners (when shown) are in-flow rows at the top and the
   // active route fills the rest (each route root is `min-h-0 flex-1`). This is what keeps a banner

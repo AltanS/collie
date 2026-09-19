@@ -1198,7 +1198,16 @@ export function startServer(opts: {
     // reader: `peerLegsOf` in `web/src/lib/update-ribbon.ts` is where both surfaces ask. Sending
     // them at the top level unconditionally would be a second copy of a field already shipped on
     // `run`, and a phone older than this change would then have two places to disagree about.
-    if (status.run === undefined || status.run === null) return { ...status, ...crewState };
+    //
+    // AND WHERE THEY RIDE THE STATUS, THEY SAY WHERE THEY ARE GOING (M32). `peersTo` is the version
+    // the run levels the members to. A peers-only run levels them to this lead's own version, which
+    // is how the phone knows the lead is not part of the run and says so on its rows; a full run
+    // begins its queue before its own record lands, and there the target is the release above
+    // `current`. Additive and optional: absent from a bridge that predates it, and never on the run
+    // record, whose own `to` already says it.
+    const legsTo = opts.crewLead?.updateLegsTo() ?? null;
+    const statusState = legsTo === null ? crewState : { ...crewState, peersTo: legsTo };
+    if (status.run === undefined || status.run === null) return { ...status, ...statusState };
     // AND THEY RIDE THEIR OWN RUN, NEVER THE NEXT ONE. The legs outlive the run that made them, so
     // the outcome stays on the screen the operator confirmed on — which means a later run would
     // otherwise carry the previous run's peer rows, and its failures, as if they were its own.
@@ -1209,7 +1218,7 @@ export function startServer(opts: {
     // `done` record behind, the operator then taps "Retry crew update", and that peers-only run has
     // a different run id and no record of its own. The legs would be discarded for the whole run and
     // the phone would learn nothing, which is the very bug this composer exists to fix.
-    if (opts.crewLead?.updateLegsRun() !== status.run.runId) return { ...status, ...crewState };
+    if (opts.crewLead?.updateLegsRun() !== status.run.runId) return { ...status, ...statusState };
     return { ...status, run: { ...status.run, ...crewState } };
   }
 

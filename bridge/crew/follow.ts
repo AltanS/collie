@@ -531,6 +531,16 @@ export class UpdateTurns {
    * readable; naming their run is what keeps that from becoming a claim about a different one.
    */
   private legsRunId: string | null = null;
+  /**
+   * The version those legs were being levelled TO, kept for exactly as long as {@link legsRunId}.
+   *
+   * The phone reads it to tell a run that moves only the members from one whose lead is about to
+   * move too. A peers-only run levels the members to the lead's own version, so its target equals
+   * the lead's `current`. A full run begins its queue before the lead's own record exists, so for a
+   * while its legs ride the status beside an older record, and only this target, the release above
+   * `current`, says that the lead is part of it.
+   */
+  private legsTarget: string | null = null;
   /** When each leg last CHANGED state. The wall clock below reads this, never the run's own start. */
   private readonly legChangedAt = new Map<string, number>();
   /**
@@ -575,6 +585,7 @@ export class UpdateTurns {
     this.settled = null;
     this.progressAt = 0;
     this.legsRunId = runId;
+    this.legsTarget = this.run.target;
   }
 
   /**
@@ -607,6 +618,11 @@ export class UpdateTurns {
   /** The run the legs describe, live or over, or null when this queue has never run. */
   legsRun(): string | null {
     return this.legsRunId;
+  }
+
+  /** The version the legs' run levels the members to, live or over, or null when it never ran. */
+  legsTo(): string | null {
+    return this.legsTarget;
   }
 
   /** Every member's leg, as the sweep banked it. The route that reads this dials nobody. */

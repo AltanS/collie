@@ -631,6 +631,20 @@ describe("the lead's turn queue", () => {
     expect(turns.legsRun()).toBe("run-two");
   });
 
+  test("legs that outlive their run still say what they levelled the members TO", () => {
+    // The phone tells a peers-only run (target = the lead's own version) from a full run whose record
+    // has not landed yet by this target alone (M32), so it lives exactly as long as the legs do.
+    const turns = new UpdateTurns(() => {});
+    expect(turns.legsTo()).toBeNull();
+    turns.begin(RUN_ID, "v1.4.1+ab12cd3");
+    expect(turns.legsTo()).toBe("1.4.1");
+    turns.observe([member({ memberId: "attic" })], NOW);
+    turns.end();
+    expect(turns.legsTo()).toBe("1.4.1");
+    turns.begin("run-two", "1.4.2");
+    expect(turns.legsTo()).toBe("1.4.2");
+  });
+
   test("no second timer: the queue arms nothing and moves only when a sweep folds it", async () => {
     const text = await Bun.file(new URL("./follow.ts", import.meta.url)).text();
     expect(text).not.toContain("setInterval");

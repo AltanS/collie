@@ -25,10 +25,11 @@ import {
   PEER_UNREACHABLE_MS,
   endSentence,
   updateScreenView,
+  type UpdateScreenCrewRun,
   type UpdateScreenInput,
 } from "@/lib/update-screen";
 import type { UpdateScreen as UpdateScreenState } from "@/hooks/use-update-screen";
-import type { UpdateRun, UpdateRunState } from "@/lib/types";
+import type { UpdatePeerLeg, UpdateRun, UpdateRunState } from "@/lib/types";
 
 import { Card, Group, Section, Stage, type SectionDef } from "../harness";
 
@@ -74,7 +75,7 @@ const BASE: UpdateScreenInput = {
  * The sheet's own state object, as `App.tsx` hands it over — the real reading plus the four things a
  * component holds. The callbacks are no-ops here: what each of them DOES is a state of its own, and
  * each of those states has its own card below rather than being reachable by a tap nobody can see the
- * result of on a page with thirteen sheets on it.
+ * result of on a page with sixteen sheets on it.
  */
 function sheet(over: Partial<UpdateScreenInput>): UpdateScreenState {
   const view = updateScreenView({ ...BASE, ...over });
@@ -121,6 +122,11 @@ export function UpdateScreenSection(): ReactNode {
         <StuckCard />
         <DoneToastCard />
         <DoneToastSoloCard />
+      </Group>
+      <Group title="A run that moves only the members">
+        <CrewOnlyExpandedCard />
+        <CrewOnlyFailedCard />
+        <CrewOnlyDoneToastCard />
       </Group>
     </Section>
   );
@@ -445,6 +451,80 @@ function DoneToastSoloCard(): ReactNode {
       reach="the same moment on a machine with no crew at all."
       note="It names the MACHINE, never a crew. A toast saying 'Crew updated' on a one-machine install is the screen inventing company, and an operator who reads it starts looking for the other machine."
       screen={sheet({ run: run("done"), controllerChangedAt: NOW - 1_000 })}
+    />
+  );
+}
+
+// ── 14-16. A run that moves only the members (M32) ──────────────────────────
+
+/** A lead already on the newest release, levelling its members to it. No record on the lead. */
+const LEAD_CURRENT = "1.9.0";
+
+function crewOnly(legs: UpdatePeerLeg[], settledAt: number | null = null): UpdateScreenCrewRun {
+  return { legs, settledAt, to: LEAD_CURRENT, current: LEAD_CURRENT };
+}
+
+function CrewOnlyExpandedCard(): ReactNode {
+  return (
+    <Card
+      state="crew-only-expanded"
+      label="a run that moves only the members, on the device that tapped it"
+      reach="the lead already runs the newest release and a member is a release back: tap Retry crew update on /settings/updates. The run writes no record on the lead, and its legs ride the status."
+      note="The same takeover as a full update: expanded, no ✕, the app behind inert. The lead's row says it is already on the version and is not part of the run, never an old record's state. There is no device row, because the lead serves the same bundle before and after."
+      span={2}
+    >
+      <SheetStage
+        screen={sheet({
+          crewRun: crewOnly([
+            { name: "minibuch", state: "updating", version: "1.8.2", updatedAt: NOW - 6_000 },
+            { name: "cellar", state: "waiting", version: "1.8.2", updatedAt: NOW - 6_000 },
+          ]),
+        })}
+      />
+    </Card>
+  );
+}
+
+function CrewOnlyFailedCard(): ReactNode {
+  return (
+    <Card
+      state="crew-only-failed"
+      label="a run that moves only the members, and one did not arrive"
+      reach="a member's health gate fails after its swap and it puts its old version back. Only the device that started the run gets this sheet; every other device reads the same sentence on the band."
+      note="The sentence is the band's own, word for word, so the sheet and the band never read as two facts about one member. Dismissible, because the run is over."
+      span={2}
+    >
+      <SheetStage
+        screen={sheet({
+          crewRun: crewOnly(
+            [
+              {
+                name: "minibuch",
+                state: "rolled-back",
+                version: "1.8.2",
+                reason: "health gate timed out",
+                updatedAt: NOW - 20_000,
+              },
+              { name: "cellar", state: "done", version: LEAD_CURRENT, updatedAt: NOW - 40_000 },
+            ],
+            NOW - 20_000,
+          ),
+        })}
+      />
+    </Card>
+  );
+}
+
+function CrewOnlyDoneToastCard(): ReactNode {
+  return (
+    <EndToastCard
+      state="crew-only-done-toast"
+      label="the end of a run that moved only the members"
+      reach="every member reports the lead's version and the lead stamps the run settled."
+      note="It names the MEMBERS. The lead did not move, so 'Crew updated' would claim it did. Announced once per run on the device that started it, keyed by the settle stamp, since every such run levels to the same version."
+      screen={sheet({
+        crewRun: crewOnly([{ name: "minibuch", state: "done", version: LEAD_CURRENT, updatedAt: NOW - 2_000 }], NOW - 2_000),
+      })}
     />
   );
 }

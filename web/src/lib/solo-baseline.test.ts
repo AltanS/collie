@@ -152,6 +152,9 @@ const UPDATE_INFO_KEYS = {
   // so the solo payload is byte-identical to what it was.
   peers: true,
   settledAt: true,
+  // Where those legs' run levels the members to (M32). Optional, and absent on a solo install with
+  // the legs it travels beside.
+  peersTo: true,
   // Whether the release ahead changes the crew wire (M27/06). Optional and ABSENT on a solo
   // install, for the same reason: a machine with no crew has no link to change.
   linkChange: true,
@@ -248,6 +251,8 @@ describe("solo zero-tax — the client's mirror types carry no crew dimension", 
       // The peers-only run's legs and its settle stamp (M20/09, M20/01). Optional, and a solo
       // install never carries either.
       "peers",
+      // Where those legs' run levels the members to (M32). Optional, absent with the legs.
+      "peersTo",
       "releaseAvailable",
       // The command that clears the restart, optional beside the flag that raises it (M17/02).
       "restartCommand",

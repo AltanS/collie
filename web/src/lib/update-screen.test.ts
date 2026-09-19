@@ -4,8 +4,11 @@ import {
   DOWNLOAD_HUNG_MS,
   LEAD_STALLED_MS,
   PEER_UNREACHABLE_MS,
+  endKey,
   endSentence,
   updateScreenView,
+  type UpdateScreenCrewRun,
+  type UpdateScreenEnd,
   type UpdateScreenInput,
   type UpdateScreenMode,
 } from "./update-screen";
@@ -427,6 +430,232 @@ describe("the end announces itself once, in the right words", () => {
     expect(view.end).toMatchObject({ kind: "failed" });
     // SAFETY: asserted one line above — the narrowing is what the field access below needs.
     expect((view.end as { sentence: string }).sentence).toMatch(/stuck: \S/);
+  });
+});
+
+// ── A RUN THAT MOVES ONLY THE MEMBERS (M32, decided 2026-09-19) ──────────────────────────────────
+//
+// "Retry crew update", or levelling members while the lead is already current, writes no run record
+// on the lead. Its legs ride the status, and the store hands them over as `crewRun`. The same screen
+// is owed: the takeover on the device that tapped, the badge on every other device, the failed sheet
+// when a member did not arrive, the toast when every member did. The table below is the crew-only
+// half of the cross-product, written out for the same reason the one above is.
+
+const LEAD_VERSION = "1.9.1";
+
+/** A crew-only run: the members are levelled to the lead's own version. */
+const crewRun = (legs: UpdatePeerLeg[], settledAt: number | null = null): UpdateScreenCrewRun => ({
+  legs,
+  settledAt,
+  to: LEAD_VERSION,
+  current: LEAD_VERSION,
+});
+
+const MOVING: UpdatePeerLeg[] = [
+  { name: "minibuch", state: "updating", version: "1.9.0", updatedAt: NOW - 3_000 },
+  { name: "attic", state: "waiting", version: "1.9.0", updatedAt: NOW - 5_000 },
+];
+
+/** Every stamp older than the stall threshold: the run has held its state too long. */
+const STALLED: UpdatePeerLeg[] = MOVING.map((leg) => ({ ...leg, updatedAt: NOW - LEAD_STALLED_MS - 1_000 }));
+
+const FAILED: UpdatePeerLeg[] = [
+  { name: "minibuch", state: "rolled-back", version: "1.9.0", reason: "health gate timed out", updatedAt: NOW - 9_000 },
+  { name: "attic", state: "done", version: LEAD_VERSION, updatedAt: NOW - 9_000 },
+];
+
+const DONE: UpdatePeerLeg[] = [
+  { name: "minibuch", state: "done", version: LEAD_VERSION, updatedAt: NOW - 9_000 },
+  { name: "attic", state: "done", version: LEAD_VERSION, updatedAt: NOW - 9_000 },
+];
+
+/** The census, as `GET /api/update/check` reports it. */
+const census = (minibuch: string | null): UpdateCrewMember[] => [
+  { name: "minibuch", version: minibuch, verdict: "green", reasons: [], asOf: NOW - 2_000 },
+  { name: "attic", version: LEAD_VERSION, verdict: "green", reasons: [], asOf: NOW - 2_000 },
+];
+
+type CrewPhase =
+  | "begun"
+  | "in flight"
+  | "stalled"
+  | "escaped"
+  | "failed"
+  | "failed, member since levelled"
+  | "done";
+
+const PHASE = {
+  // The beat after this device's own confirm: the run is begun and no sweep has folded it yet.
+  begun: { crewRun: crewRun([]), crew: census("1.9.0") },
+  "in flight": { crewRun: crewRun(MOVING), crew: census("1.9.0") },
+  stalled: { crewRun: crewRun(STALLED), crew: census("1.9.0") },
+  escaped: { crewRun: crewRun(STALLED), crew: census("1.9.0"), leadReleased: true },
+  failed: { crewRun: crewRun(FAILED, NOW - 8_000), crew: census("1.9.0") },
+  // The part-1 rule, inside the sheet: a failed leg whose member the census shows level is not a
+  // failure, so this run ended well.
+  "failed, member since levelled": { crewRun: crewRun(FAILED, NOW - 8_000), crew: census(LEAD_VERSION) },
+  done: { crewRun: crewRun(DONE, NOW - 8_000), crew: census(LEAD_VERSION) },
+} satisfies Record<CrewPhase, Partial<UpdateScreenInput>>;
+
+type CrewRow = readonly [CrewPhase, boolean, UpdateScreenMode, boolean, UpdateScreenEnd["kind"], "crew" | null];
+
+const CREW_TABLE: readonly CrewRow[] = [
+  // phase, startedHere, mode, dismissible, end, inFlight
+  ["begun", true, "expanded", false, "none", "crew"],
+  ["begun", false, "collapsed", true, "none", "crew"],
+  ["in flight", true, "expanded", false, "none", "crew"],
+  ["in flight", false, "collapsed", true, "none", "crew"],
+  ["stalled", true, "expanded", false, "none", "crew"],
+  ["stalled", false, "collapsed", true, "none", "crew"],
+  ["escaped", true, "collapsed", true, "none", "crew"],
+  ["escaped", false, "collapsed", true, "none", "crew"],
+  ["failed", true, "expanded", true, "failed", null],
+  // Every other device: the lead's own reading, which has no run here. The band names the member.
+  ["failed", false, "hidden", true, "none", null],
+  ["failed, member since levelled", true, "hidden", true, "members", null],
+  ["failed, member since levelled", false, "hidden", true, "none", null],
+  ["done", true, "hidden", true, "members", null],
+  ["done", false, "hidden", true, "none", null],
+];
+
+describe("a crew-only run: tapped here or elsewhere, in flight, failed, done, escaped", () => {
+  it("has a row for every phase on both kinds of device", () => {
+    expect(CREW_TABLE).toHaveLength(Object.keys(PHASE).length * 2);
+    expect(new Set(CREW_TABLE.map(([phase, here]) => `${phase}|${here}`)).size).toBe(CREW_TABLE.length);
+  });
+
+  it.each(CREW_TABLE)(
+    "%s, startedHere=%s is %s (dismissible=%s, end=%s, inFlight=%s)",
+    (phase, startedHere, mode, dismissible, end, inFlight) => {
+      const view = read({ ...PHASE[phase], startedHere });
+      expect(view.mode).toBe(mode);
+      expect(view.dismissible).toBe(dismissible);
+      expect(view.end.kind).toBe(end);
+      expect(view.inFlight).toBe(inFlight);
+    },
+  );
+
+  it("blocks the app ONLY on the device that tapped, and only while the run is in flight", () => {
+    for (const [phase, startedHere, mode, dismissible] of CREW_TABLE) {
+      const blocking = mode === "expanded" && !dismissible;
+      const inFlight = phase === "begun" || phase === "in flight" || phase === "stalled";
+      expect(blocking, `${phase}, startedHere=${startedHere}`).toBe(startedHere && inFlight);
+    }
+  });
+
+  it("marks the stall on the run's newest leg, with the lead's own threshold, and offers the same way out", () => {
+    const at = (ago: number) =>
+      read({
+        startedHere: true,
+        crew: census("1.9.0"),
+        crewRun: crewRun(MOVING.map((leg) => ({ ...leg, updatedAt: NOW - ago }))),
+      });
+    expect(at(LEAD_STALLED_MS - 1).leadStalled).toBe(false);
+    expect(at(LEAD_STALLED_MS).leadStalled).toBe(true);
+    // No leg has spoken yet: nothing to measure, so nothing is stalled.
+    expect(read({ startedHere: true, crewRun: crewRun([]) }).leadStalled).toBe(false);
+  });
+
+  it("is honest about the lead: already on the version, not updating, and it restarts nothing", () => {
+    const view = read({ ...PHASE["in flight"], startedHere: true });
+    expect(view.rows[0]).toMatchObject({
+      name: "bluefin",
+      lead: true,
+      version: LEAD_VERSION,
+      word: "already up to date",
+      moving: false,
+      settled: true,
+    });
+    expect(view.rows[0]?.detail).toMatch(/only the members/);
+    expect(view.rows.map((r) => r.name)).toEqual(["bluefin", "minibuch", "attic"]);
+    expect(view.rows[1]).toMatchObject({ moving: true, word: "updating" });
+  });
+
+  it("never shows an OLD lead record's state on a crew-only run", () => {
+    // The record on disk is from some earlier run. A rolled-back one would otherwise put last week's
+    // failure on the screen of a run that is going perfectly well.
+    const view = read({
+      ...PHASE["in flight"],
+      startedHere: true,
+      run: run("rolled-back", { updatedAt: NOW - 7 * 86_400_000 }),
+    });
+    expect(view).toMatchObject({ mode: "expanded", dismissible: false, inFlight: "crew" });
+    expect(view.rows[0]?.word).toBe("already up to date");
+    expect(view.end.kind).toBe("none");
+  });
+
+  it("in the beat before the first sweep, says a member already level is up to date, not waiting", () => {
+    const view = read({ ...PHASE.begun, startedHere: true });
+    const byName = new Map(view.rows.map((row) => [row.name, row]));
+    expect(byName.get("minibuch")).toMatchObject({ word: "waiting", settled: false });
+    expect(byName.get("attic")).toMatchObject({ word: "already up to date", settled: true });
+  });
+
+  it("draws no device row: the lead serves the same bundle, so a download here is not this run's", () => {
+    const view = read({
+      ...PHASE["in flight"],
+      startedHere: true,
+      stage: "installing",
+      installingSince: NOW - DOWNLOAD_HUNG_MS - 1_000,
+      progress: { done: 3, total: 28, at: NOW - DOWNLOAD_HUNG_MS - 1_000 },
+    });
+    expect(view.device).toBeNull();
+    expect(view.recheckDownload).toBe(false);
+  });
+
+  it("names the failed member in the band's own words, and the key tells one failure from the next", () => {
+    const view = read({ ...PHASE.failed, startedHere: true });
+    expect(view.end).toMatchObject({
+      kind: "failed",
+      sentence: "Could not update minibuch: health gate timed out.",
+      key: `crew:${NOW - 8_000}`,
+    });
+  });
+
+  it("keeps a failed leg a failure when the member's version is unknown", () => {
+    const view = read({ ...PHASE.failed, crew: census(null), startedHere: true });
+    expect(view.end.kind).toBe("failed");
+  });
+
+  it("toasts the MEMBERS, never the crew: the lead did not move", () => {
+    const view = read({ ...PHASE.done, startedHere: true });
+    expect(view.end).toEqual({ kind: "members", version: LEAD_VERSION, settledAt: NOW - 8_000 });
+    expect(endSentence(view.end)).toBe("Members updated to 1.9.1");
+    // Two crew-only runs level to the same version, so the announcement is keyed by the settle.
+    expect(endKey(view.end)).toBe(`members:${NOW - 8_000}`);
+    expect(endKey(read({ ...PHASE.done, crewRun: crewRun(DONE, NOW - 1_000), startedHere: true }).end)).toBe(
+      `members:${NOW - 1_000}`,
+    );
+  });
+
+  it("leaves a FULL run's legs to the lead's reading: their target is the release above the lead", () => {
+    // A full run begins its queue before its own record lands, so for a while its legs ride the
+    // status beside an older record. Those are not a crew-only run, and the lead row must not say the
+    // lead is sitting this one out.
+    const view = read({
+      startedHere: true,
+      run: run("done", { to: "1.9.0", updatedAt: NOW - 3 * 86_400_000 }),
+      crewRun: { legs: MOVING, settledAt: null, to: "1.9.2", current: LEAD_VERSION },
+    });
+    expect(view.inFlight).toBeNull();
+    expect(view.rows.some((r) => r.word === "already up to date")).toBe(false);
+    // And a bridge that did not say where the legs are going is not read as crew-only either.
+    expect(read({ startedHere: true, crewRun: { ...crewRun(MOVING), to: null } }).inFlight).toBeNull();
+  });
+
+  it("gives way to a run the lead takes part in", () => {
+    const view = read({ startedHere: true, run: run("staging"), crewRun: crewRun(MOVING) });
+    expect(view.inFlight).toBe("lead");
+    expect(view.rows[0]?.word).toBe("building");
+  });
+
+  it("NEVER leaves the sheet expanded and undismissible once the crew-only run has settled", () => {
+    for (const phase of ["failed", "failed, member since levelled", "done"] as const) {
+      for (const startedHere of [true, false]) {
+        const view = read({ ...PHASE[phase], startedHere });
+        expect(view.mode === "expanded" && !view.dismissible, `${phase} must not trap the operator`).toBe(false);
+      }
+    }
   });
 });
 

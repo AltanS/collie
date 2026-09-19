@@ -1151,6 +1151,7 @@ export const en = {
   "updateScreen.state.updating": "updating",
   "updateScreen.state.unreachable": "no answer",
   "updateScreen.state.packageManaged": "package-managed",
+  "updateScreen.state.current": "already up to date",
   "updateScreen.peer.lastSeen": "last seen {ago} ago",
   "updateScreen.peer.packageManagedNote": "Its package manager owns this machine, so the run leaves it alone.",
   // The run ended and it did not arrive. The sentence names what happened and the reason the host gave.
@@ -1160,6 +1161,7 @@ export const en = {
   // The lead has held one state longer than a whole build, restart and verify takes. Keep waiting, with
   // the app back in your hands — never a cancel, and never a forced reload.
   "updateScreen.lead.stalled": "Still working. Nothing is wrong yet, and waiting is the whole job.",
+  "updateScreen.lead.crewOnly": "This run updates only the members. This machine stays as it is and does not restart.",
   // THIS device, which is not a machine in the crew: it is the phone fetching the bundle the machines
   // now serve. Counted in FILES, because per-file is the only thing the service worker reports.
   "updateScreen.device.title": "This device",
@@ -1173,6 +1175,7 @@ export const en = {
   // because there is no crew to name.
   "updateScreen.done.crew": "Crew updated to {version}",
   "updateScreen.done.solo": "{machine} updated to {version}",
+  "updateScreen.done.members": "Members updated to {version}",
 } as const;
 
 /** Every key that exists, as a union of string literals. The completeness contract. */

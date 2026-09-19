@@ -6,9 +6,9 @@ import { UpdateScreenSection } from "./update-screen";
 
 // The Update screen tab of the playground. Altan reviews UI here, so the cards have to be real: the
 // real component, the real reducer, and a stable `data-state` handle per state. This file proves all
-// thirteen render, that each one carries its handle, and that the handles are unique and flat-kebab —
-// the same three rules `app.test.tsx` applies across every section, asserted here against the count
-// the milestone names.
+// sixteen render (M28's thirteen, and M32's three for a run that moves only the members), that each
+// one carries its handle, and that the handles are unique and flat-kebab — the same three rules
+// `app.test.tsx` applies across every section.
 
 /** Every state the milestone asks for, in the order the section shows them. */
 const HANDLES = [
@@ -25,6 +25,10 @@ const HANDLES = [
   "stuck",
   "done-toast",
   "done-toast-solo",
+  // A run that moves only the members (M32).
+  "crew-only-expanded",
+  "crew-only-failed",
+  "crew-only-done-toast",
 ] as const;
 
 afterEach(() => clearStatus());

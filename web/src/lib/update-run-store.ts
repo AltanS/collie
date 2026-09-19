@@ -2,7 +2,8 @@ import { useSyncExternalStore } from "react";
 
 import { fetchStandbyRun, fetchUpdateState } from "./api";
 import { runInFlight } from "./update-ribbon";
-import type { UpdateCheckResponse, UpdateCrewMember, UpdateRun } from "./types";
+import type { UpdateScreenCrewRun } from "./update-screen";
+import type { UpdateCheckResponse, UpdateCrewMember, UpdateInfo, UpdateRun } from "./types";
 
 // ── ONE POLL FOR THE WHOLE UPDATE SUBJECT ───────────────────────────────────────────────────────
 //
@@ -31,6 +32,28 @@ import type { UpdateCheckResponse, UpdateCrewMember, UpdateRun } from "./types";
 // A failed read changes nothing on screen and is tried again. The bridge is genuinely gone during
 // `restarting` — that is the update working — and `GET /standby/update` (CREW_PROTOCOL.md §18.15) is
 // the one reader that still answers in that window.
+//
+// ── A RUN THAT MOVES ONLY THE MEMBERS RIDES THE STATUS, NOT A RECORD (M32) ───
+// A peers-only run writes no record on the lead, so none of the three run sources above carries it.
+// Its legs ride the status instead (`peers`, `settledAt`, `peersTo`), and both the snapshot poll and
+// this store's own `GET /api/update/check` read that status. So the store takes the legs from BOTH
+// and keeps the LATER reading: the two are one composer on the bridge, read at two moments, so the
+// later reading is simply the later reading. "Later" is when the snapshot ARRIVED, and when this
+// store's own read was ASKED: that read is fetched once when the first reader subscribes and answers
+// whenever it answers, and an answer to a question asked before the crew moved must never overwrite
+// a poll that has already seen it move.
+//
+// Nothing new polls for it. The snapshot poll already goes hot while the crew moves
+// (`hooks/use-polling.ts`), and `routes/root.tsx` hands every snapshot over. Which of those legs are
+// a crew-only run is the reducer's decision, not this file's.
+//
+// ONE BEAT IS NOBODY'S, and this store fills it. The confirm's 202 comes back before the lead's first
+// sweep has folded the run it just began, and the bridge sends no legs at all until then. A device
+// that has just asked for a peers-only run would see the PREVIOUS run's settled legs, or nothing, and
+// the takeover would arrive one poll late, or flash last run's failure first. So the card calls
+// {@link noteCrewRunBegun}, and until the first legs of the NEW run arrive, for at most
+// {@link CREW_BEGUN_MS}, the store answers "a crew run with no legs yet" and sets aside the reading it
+// held at the tap. That reading is the old run's, and the bridge's own `begin` just cleared it.
 
 /**
  * How often the standby door is asked while a run is in flight (M20/08).
@@ -50,6 +73,15 @@ export const STANDBY_POLL_MS = 2000;
  */
 export const FRONT_POLL_MS = 4000;
 
+/**
+ * How long the beat after this device's own peers-only confirm may last with no legs (M32).
+ *
+ * The lead's first sweep folds the run within a second or two, and the snapshot poll is at most one
+ * idle gap behind it. Twenty seconds is three of those gaps with room to spare. Past it, a run that
+ * never produced a leg stops holding the screen: the takeover must never outlive the thing it shows.
+ */
+export const CREW_BEGUN_MS = 20_000;
+
 export interface UpdateRunSnapshot {
   /** `GET /api/update/check` in full — versions, preflight, census. Undefined before the first read. */
   readonly check: UpdateCheckResponse | undefined;
@@ -67,6 +99,11 @@ export interface UpdateRunSnapshot {
    * crew that does not exist.
    */
   readonly leadName: string | null;
+  /**
+   * The legs that ride the STATUS rather than a run record, or null when it carries none (M32). On a
+   * peers-only run they are the whole run; see the header. The reducer decides what they are.
+   */
+  readonly crewRun: UpdateScreenCrewRun | null;
 }
 
 const EMPTY: UpdateRunSnapshot = {
@@ -75,6 +112,7 @@ const EMPTY: UpdateRunSnapshot = {
   crew: [],
   checked: false,
   leadName: null,
+  crewRun: null,
 };
 
 let snapshot: UpdateRunSnapshot = EMPTY;
@@ -82,6 +120,58 @@ let checkRun: UpdateRun | undefined;
 let pollRun: UpdateRun | undefined;
 let standbyRun: UpdateRun | undefined;
 const listeners = new Set<() => void>();
+
+/** One reading of the status legs, and when it was taken: a snapshot when it arrived, this store's
+ *  own read when it was asked. See the header. */
+interface CrewReading {
+  readonly crew: UpdateScreenCrewRun | null;
+  readonly at: number;
+}
+
+let snapshotCrew: CrewReading | undefined;
+let checkCrew: CrewReading | undefined;
+/** This device's own peers-only confirm, while no leg of the run it began has arrived. */
+let begun: { readonly at: number; readonly current: string } | null = null;
+/** The reading held at that confirm: the PREVIOUS run's legs, set aside until the new run's arrive. */
+let setAside: string | null = null;
+let begunTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * The legs a status carries at the top level, or null when it carries none.
+ *
+ * Only the top level: legs the lead's own record owns ride `run.peers` and belong to that run's own
+ * reading. Exported for the test, which pins what a status with and without `peersTo` becomes.
+ */
+export function crewRunOf(update: UpdateInfo | undefined): UpdateScreenCrewRun | null {
+  const legs = update?.peers;
+  if (update === undefined || legs === undefined) return null;
+  return { legs, settledAt: update.settledAt ?? null, to: update.peersTo ?? null, current: update.current };
+}
+
+/** What one reading SAYS, for comparing two of them. The receipt time is not part of it. */
+function crewKey(crew: UpdateScreenCrewRun | null): string | null {
+  return crew === null ? null : JSON.stringify(crew);
+}
+
+/** The status legs, reconciled: the later of the two readings, then the beat after a confirm. */
+function reconcileCrew(now: number): UpdateScreenCrewRun | null {
+  const newest =
+    snapshotCrew === undefined || (checkCrew !== undefined && checkCrew.at > snapshotCrew.at) ? checkCrew : snapshotCrew;
+  let crew = newest?.crew ?? null;
+  // The old run's legs, still in a reading (a poll that left before the confirm and landed after it).
+  // Not the run this device just began, so it says nothing.
+  if (crew !== null && setAside !== null && crewKey(crew) === setAside) crew = null;
+  if (crew !== null) {
+    // The new run has spoken. The beat is over, and so is the setting aside.
+    setAside = null;
+    begun = null;
+  }
+  if (begun !== null) {
+    if (now - begun.at < CREW_BEGUN_MS) return { legs: [], settledAt: null, to: begun.current, current: begun.current };
+    begun = null;
+  }
+  return crew;
+}
 
 /** The freshest of the records the app can hold. `updatedAt` decides — the standby door and the
  *  front door are two readers of ONE file, so the newer reading is simply the newer reading.
@@ -100,12 +190,16 @@ export function freshest(...runs: (UpdateRun | undefined)[]): UpdateRun | undefi
 
 function recompute(): void {
   const run = freshest(standbyRun, pollRun, checkRun);
+  const crewRun = reconcileCrew(Date.now());
   const next: UpdateRunSnapshot = {
     check: snapshot.check,
     run,
     crew: snapshot.check?.crew ?? [],
     checked: snapshot.checked,
     leadName: snapshot.leadName,
+    // The same object while it says the same thing, so a poll that changed nothing about the crew
+    // does not hand every reader a new one.
+    crewRun: crewKey(crewRun) === crewKey(snapshot.crewRun) ? snapshot.crewRun : crewRun,
   };
   snapshot = next;
   for (const listener of listeners) listener();
@@ -118,6 +212,35 @@ function recompute(): void {
 export function noteSnapshotRun(run: UpdateRun | undefined): void {
   if (run === pollRun) return;
   pollRun = run;
+  recompute();
+}
+
+/**
+ * The snapshot poll's own status, handed over by whatever reads the router, for its top-level legs
+ * (M32). Stamped on receipt; the store tells listeners only when what the crew says has changed.
+ */
+export function noteSnapshotCrew(update: UpdateInfo | undefined): void {
+  const crew = crewRunOf(update);
+  const before = snapshot.crewRun;
+  snapshotCrew = { crew, at: Date.now() };
+  if (crewKey(reconcileCrew(Date.now())) !== crewKey(before)) recompute();
+}
+
+/**
+ * This device's own peers-only confirm was accepted (M32). The run it began has no legs yet, and the
+ * legs on screen are the previous run's: see the header. `current` is the lead's version, which is
+ * what a peers-only run levels every member to.
+ */
+export function noteCrewRunBegun(current: string): void {
+  begun = { at: Date.now(), current };
+  setAside = crewKey(snapshot.crewRun);
+  // The beat ends on its own even if nothing else changes, so a run that never produced a leg can
+  // never hold the screen past it.
+  if (begunTimer !== undefined) clearTimeout(begunTimer);
+  begunTimer = setTimeout(() => {
+    begunTimer = undefined;
+    recompute();
+  }, CREW_BEGUN_MS);
   recompute();
 }
 
@@ -142,9 +265,11 @@ export function getUpdateRunSnapshot(): UpdateRunSnapshot {
 /** Ask the front door now. Used on mount and on every settle — the preflight's answer after an
  *  update is a different answer from the one before it. */
 export async function readUpdateState(signal?: AbortSignal): Promise<void> {
+  const askedAt = Date.now();
   try {
     const check = await fetchUpdateState(signal);
     checkRun = check.run;
+    checkCrew = { crew: crewRunOf(check), at: askedAt };
     snapshot = { ...snapshot, check, checked: true };
   } catch {
     // A failed read is not an error to render: the versions come from the snapshot anyway, and the
@@ -212,4 +337,10 @@ export function __resetUpdateRunStore(): void {
   checkRun = undefined;
   pollRun = undefined;
   standbyRun = undefined;
+  snapshotCrew = undefined;
+  checkCrew = undefined;
+  begun = null;
+  setAside = null;
+  if (begunTimer !== undefined) clearTimeout(begunTimer);
+  begunTimer = undefined;
 }

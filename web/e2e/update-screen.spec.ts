@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { en } from "@/lib/i18n/messages/en";
 import { SERVER_BUILD_HEADER } from "@/lib/server-build";
 import { fixtureSnapshot } from "@/test/handlers";
-import type { UpdateRun, UpdateRunState } from "@/lib/types";
+import type { UpdateInfo, UpdatePeerLeg, UpdateRun, UpdateRunState } from "@/lib/types";
 
 import { fill, installApiStub } from "./fixtures/api";
 import {
@@ -49,6 +49,9 @@ const CONFIRM = en["settings.updateCard.confirmAction"];
 const DIALOG = en["updateScreen.dialogAria"];
 const TRUTH = en["updateScreen.truth"];
 const DONE_SOLO = fill(en["updateScreen.done.solo"], { machine: "bluefin", version: "1.9.0" });
+/** The crew-only case's button and its confirm (M32). */
+const RETRY_CREW = en["settings.updateCard.retryCrew"];
+const RETRY_CONFIRM = en["settings.updateCard.retryConfirmAction"];
 
 /** Where the reload counter lives. Read back after a navigation, so `sessionStorage`. */
 const RELOADS_KEY = "e2e:reloads";
@@ -63,6 +66,16 @@ test.describe.configure({ mode: "serial" });
 let currentRun: UpdateRun | null = null;
 /** The build id stamped on every snapshot response. One assignment is one deploy. */
 let stampedBuildId = "";
+/**
+ * Which lead this "bridge" is (M32). `behind` has a release to take, the case the first two tests
+ * walk. `current` already runs the newest release and has one member a release back, which is where
+ * "Retry crew update" is the page's one action and a run moves only the members.
+ */
+let lead: "behind" | "current" = "behind";
+/** The legs of a crew-only run, riding the STATUS as the bridge sends them, or null for none. */
+let crewLegs: UpdatePeerLeg[] | null = null;
+/** When the lead stamped that run settled, or null while a leg is open. */
+let crewSettledAt: number | null = null;
 
 function runAt(state: UpdateRunState): UpdateRun {
   return {
@@ -96,6 +109,9 @@ test.beforeEach(async ({ page }, testInfo) => {
   serveBuild("a");
   stampedBuildId = readBuildStamp("a").id;
   currentRun = null;
+  lead = "behind";
+  crewLegs = null;
+  crewSettledAt = null;
 
   await installBridge(page);
   await installReloadCounter(page);
@@ -149,6 +165,11 @@ async function installBridge(page: Page): Promise<void> {
             verdict: "green",
             checks: [{ id: "disk", verdict: "green", reason: "4.2 GB free" }],
           },
+          // The census. On the current lead, one member a release back: the retry's reason to exist.
+          crew:
+            lead === "current"
+              ? [{ name: "minibuch", version: "1.8.2", verdict: "green", reasons: [], asOf: Date.now() }]
+              : [],
         }),
       }),
   );
@@ -169,6 +190,17 @@ async function installBridge(page: Page): Promise<void> {
   await page.route(
     (url) => url.pathname === "/api/update",
     (route) => {
+      // A peers-only start writes no record here, and the real bridge's `begin` clears the last
+      // run's legs, so the status carries none until the first sweep folds the new run (M32).
+      if (lead === "current") {
+        crewLegs = null;
+        crewSettledAt = null;
+        return route.fulfill({
+          status: 202,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true, to: "1.9.0", major: false, run: null }),
+        });
+      }
       step("preflight");
       return route.fulfill({
         status: 202,
@@ -185,7 +217,27 @@ test.afterEach(() => {
   clearFail();
 });
 
-function updateInfo() {
+function updateInfo(): UpdateInfo {
+  if (lead === "current") {
+    const info: UpdateInfo = {
+      current: "1.9.0",
+      latest: "1.9.0",
+      latestUrl: null,
+      releaseAvailable: false,
+      majorAvailable: null,
+      majorUrl: null,
+      bridgeStale: false,
+      checkedAt: Date.now(),
+    };
+    // The legs of a run this lead has no record of ride the status, with where they are going. The
+    // settle stamp is absent while a leg is open, exactly as the bridge sends it.
+    if (crewLegs !== null) {
+      info.peers = crewLegs;
+      info.peersTo = "1.9.0";
+      if (crewSettledAt !== null) info.settledAt = crewSettledAt;
+    }
+    return info;
+  }
   return {
     current: "1.8.2",
     latest: "1.9.0",
@@ -343,6 +395,37 @@ test("a device that did not start the run gets a badge, never a dialog", async (
   await expect(opened).toBeVisible();
   await expect(opened.getByRole("button", { name: en["updateScreen.close"] })).toBeVisible();
   await other.close();
+});
+
+test("a run that moves only the members takes the screen on the device that tapped it (M32)", async ({
+  page,
+}) => {
+  // The lead already runs the newest release; one member is a release back. "Retry crew update" is
+  // the one action, and the run it starts writes no record on the lead.
+  lead = "current";
+  await page.goto("/settings/updates");
+
+  await page.getByRole("button", { name: RETRY_CREW }).click();
+  await page.getByRole("button", { name: RETRY_CONFIRM }).click();
+
+  // THE SAME TAP TAKES THE SCREEN, before any sweep has folded the run, and the app is out of reach.
+  const sheet = page.getByRole("dialog", { name: DIALOG });
+  await expect(sheet).toBeVisible({ timeout: 15_000 });
+  expect(await appIsInert(page), "the wrapper in App.tsx is inert while the crew run is in flight").toBe(true);
+  await expect(sheet.getByRole("button", { name: en["updateScreen.close"] })).toHaveCount(0);
+  // The lead is honest about itself: already on the version, and not part of this run.
+  await expect(sheet.getByText(en["updateScreen.state.current"])).toBeVisible();
+
+  // The first sweep folds the run: the member is moving, and the app stays blocked.
+  crewLegs = [{ name: "minibuch", state: "updating", version: "1.8.2", updatedAt: Date.now() }];
+  await expect(sheet.getByText(en["updateScreen.state.updating"])).toBeVisible({ timeout: 15_000 });
+  expect(await appIsInert(page)).toBe(true);
+
+  // The member arrives and the lead stamps the run settled. The sheet goes, and the app is back.
+  crewLegs = [{ name: "minibuch", state: "done", version: "1.9.0", updatedAt: Date.now() }];
+  crewSettledAt = Date.now();
+  await expect(page.getByRole("dialog", { name: DIALOG })).toHaveCount(0, { timeout: 15_000 });
+  await expect.poll(() => appIsInert(page), { timeout: 10_000 }).toBe(false);
 });
 
 /** Is a worker on its way in right now — installing, or installed and waiting? */

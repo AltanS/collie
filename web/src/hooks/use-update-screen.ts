@@ -17,6 +17,7 @@ import { setStatus } from "@/lib/status";
 import { useUpdateRun } from "@/lib/update-run-store";
 import { clearUpdateStarted, getUpdateStarted, subscribeUpdateStarted } from "@/lib/update-ribbon";
 import {
+  endKey,
   endSentence,
   updateScreenView,
   type UpdateScreenMode,
@@ -64,7 +65,7 @@ export interface UpdateScreen {
 
 export function useUpdateScreen(): UpdateScreen {
   useLocale();
-  const { run, crew, leadName } = useUpdateRun();
+  const { run, crew, leadName, crewRun } = useUpdateRun();
   const stage = useSyncExternalStore(subscribeUpdateStage, getUpdateStage, getUpdateStage);
   const progress = useSyncExternalStore(
     subscribePrecacheProgress,
@@ -81,9 +82,13 @@ export function useUpdateScreen(): UpdateScreen {
   const [downloadReleased, setDownloadReleased] = useState(false);
   const [leadReleased, setLeadReleased] = useState(false);
   const [expandedHere, setExpandedHere] = useState(false);
+  /** The failed end the operator closed, by its key. Spent on that failure; the next one shows. */
+  const [closedEnd, setClosedEnd] = useState<string | null>(null);
 
   const runState = run?.state;
-  const live = (runState !== undefined && runState !== "idle") || stage === "installing";
+  // A crew-only run is live too (M32), and it has no record here: its stall is counted on this clock.
+  const crewLive = crewRun !== null && crewRun.settledAt === null;
+  const live = (runState !== undefined && runState !== "idle") || stage === "installing" || crewLive;
   // The phone's own clock, so the elapsed numbers keep moving while the bridge is deliberately away.
   // Only while there is something to count — a second tick for the app's whole life would be a timer
   // nobody is reading.
@@ -112,6 +117,7 @@ export function useUpdateScreen(): UpdateScreen {
     controllerChangedAt,
     downloadReleased,
     leadReleased,
+    crewRun,
     now: Math.max(now, wokeAt),
   });
 
@@ -125,6 +131,15 @@ export function useUpdateScreen(): UpdateScreen {
       setExpandedHere(false);
     }
   }, [runState]);
+  // A CREW-ONLY RUN IS MARKED BY NO RECORD (M32), so the lead's state above never moves for it and
+  // the rule has to read the run itself. It starts and ends on `inFlight`, and each edge is a fresh
+  // decision: a "keep waiting" taken over one run, or a badge opened on it, is not a choice about the
+  // next.
+  const crewInFlight = view.inFlight === "crew";
+  useEffect(() => {
+    setLeadReleased(false);
+    setExpandedHere(false);
+  }, [crewInFlight]);
 
   // (s) IS OVER WHEN THE SHEET IS, not when the run first speaks and not the instant the run ends.
   //
@@ -138,8 +153,20 @@ export function useUpdateScreen(): UpdateScreen {
   //
   // The timer re-arms on every stage change and refuses to fire while a download is in progress, so a
   // slow precache holds the claim for as long as it takes rather than for a number chosen here.
-  const spoke = runState !== undefined && runState !== "idle";
-  const over = spoke && view.mode === "hidden";
+  //
+  // A crew-only run speaks through its legs rather than a record (M32), so the claim is also over once
+  // the legs it produced have gone quiet on screen.
+  const failedKey = view.end.kind === "failed" ? view.end.key : null;
+  // A FAILED SHEET THE OPERATOR CLOSED IS CLOSED. The reading says a failed end is expanded and
+  // dismissible; this document's close is what spends it, on this failure only.
+  const closedHere = failedKey !== null && failedKey === closedEnd && view.mode === "expanded" && view.dismissible;
+  const mode: UpdateScreenMode = closedHere
+    ? "hidden"
+    : view.mode === "collapsed" && expandedHere
+      ? "expanded"
+      : view.mode;
+  const spoke = (runState !== undefined && runState !== "idle") || crewRun !== null;
+  const over = spoke && mode === "hidden";
   useEffect(() => {
     if (!over) return;
     const timer = setTimeout(() => {
@@ -163,22 +190,22 @@ export function useUpdateScreen(): UpdateScreen {
   }, [view.recheckDownload]);
 
   // THE END ANNOUNCES ITSELF ONCE, through the status channel every other confirmation uses. Keyed by
-  // the version, so a second run to a second version is a second toast and a re-render is not.
-  const announced = useRef<string | null>(null);
+  // `endKey`: the version for a run the lead took part in, so a second run to a second version is a
+  // second toast and a re-render is not; the settle stamp for a crew-only run, whose every run levels
+  // to the same version (M32). Every key announced is remembered, not only the last, so a crew-only
+  // end cannot hand the lead's earlier end a second toast when the reading falls back to it.
+  const announced = useRef(new Set<string>());
   const end = view.end;
   useEffect(() => {
-    if (end.kind !== "crew" && end.kind !== "solo") return;
-    if (announced.current === end.version) return;
-    announced.current = end.version;
+    const key = endKey(end);
+    if (key === null || announced.current.has(key)) return;
+    announced.current.add(key);
     const sentence = endSentence(end);
     // A LONGER TTL THAN A SEND CONFIRMATION, and for a plain reason: this one arrives on a page that
     // has just reloaded itself onto a new bundle, so the operator may be looking at the boot rather
     // than at the pill. `lib/status.ts`'s own default is 2.5 s, which is right for a send.
     if (sentence !== null) setStatus(sentence, "success", END_TOAST_MS);
   }, [end]);
-
-  const mode: UpdateScreenMode =
-    view.mode === "collapsed" && expandedHere ? "expanded" : view.mode;
 
   // A WAY OUT FOLDS THE SHEET. The reducer answers `collapsed` once a release is taken, and this
   // document's own expand would otherwise hold the panel open over the decision to let go of it.
@@ -190,7 +217,15 @@ export function useUpdateScreen(): UpdateScreen {
     setLeadReleased(true);
     setExpandedHere(false);
   }, []);
-  const setExpanded = useCallback((open: boolean) => setExpandedHere(open), []);
+  // Folding an expanded badge back, and closing a failed sheet, are the same tap on the same ✕. The
+  // second is spent on the failure on screen, by its key.
+  const setExpanded = useCallback(
+    (open: boolean) => {
+      setExpandedHere(open);
+      if (!open && failedKey !== null) setClosedEnd(failedKey);
+    },
+    [failedKey],
+  );
 
   return {
     view,

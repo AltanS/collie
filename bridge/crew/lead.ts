@@ -963,6 +963,15 @@ export class CrewLead {
   }
 
   /**
+   * The version those legs' run levels the members to, live or over, or null. The composer sends it
+   * beside legs that ride the status, so the phone can tell a peers-only run (target = this lead's
+   * own version) from a full run whose own record has not landed yet. It dials nobody.
+   */
+  updateLegsTo(): string | null {
+    return this.deps.follow?.turns.legsTo() ?? null;
+  }
+
+  /**
    * When the run this lead drove last reached a terminal state on every leg, or null while one is
    * still open (M20/01).
    *

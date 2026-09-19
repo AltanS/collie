@@ -183,6 +183,11 @@ When every machine is done and the phone is running the new app, the sheet close
 message names the version. On a crew it reads `Crew updated to <version>`; on one machine it names
 that machine instead.
 
+A run that updates only the members, such as **Retry crew update**, takes the screen the same way.
+The lead's row reads `already up to date`, because the lead is not part of that run and does not
+restart. The end reads `Members updated to <version>`, and a member that could not update leaves the
+sheet open on the phone that started the run, with its reason.
+
 Three states can stall, and each one has a way out. None of them cancels the update, and none of them
 reloads the app.
 
@@ -190,7 +195,7 @@ reloads the app.
 | --- | --- | --- |
 | `last seen <time> ago` on a machine | That machine has stopped answering the lead. | **See Updates** for the reason, or leave it. |
 | *Still downloading. Keep using the app you have…* | The phone's own download has made no progress for two minutes. | **Keep using the app.** The download carries on. |
-| *Still working. Nothing is wrong yet…* | The lead has held one state for three minutes. | **Keep waiting.** The run carries on. |
+| *Still working. Nothing is wrong yet…* | The run has held one state for three minutes. | **Keep waiting.** The run carries on. |
 
 > **Note.** "Still downloading, keep using the app" is about the app on your phone and never about the
 > machine. The machines have finished; only the new app has not arrived yet. The app you are holding

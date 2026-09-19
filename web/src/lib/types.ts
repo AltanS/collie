@@ -575,6 +575,16 @@ export interface UpdateInfo {
    * reader, {@link crewSettledAt}.
    */
   settledAt?: number;
+  /**
+   * The version the run behind those top-level {@link peers} levels the members TO (M32). Sent only
+   * beside them, never on `run`, whose own `to` says it. Absent on a bridge that predates it.
+   *
+   * It is what tells a run that moves only the members from one whose lead moves too. A peers-only
+   * run levels them to this machine's own version, so `peersTo` equals {@link current}. A full run
+   * begins its queue before its own record lands, and for that while its legs ride here with the
+   * release above `current` as their target. `lib/update-screen.ts` is the reader.
+   */
+  peersTo?: string;
 }
 
 /**
