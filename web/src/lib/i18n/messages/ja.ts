@@ -817,6 +817,7 @@ export const ja: Dictionary = {
   "apiError.update.major_confirm_required": "{version} はメジャー更新です。個別の確認が必要です。",
   "apiError.update.target_mismatch": "画面上の対象は {asked} ですが、この collie にインストールされるのは {would} です。再読み込みして確認してください。",
   "apiError.update.none_available": "利用可能な新しいリリースはありません。",
+  "apiError.update.peers_packaged": "{name} はパッケージ版です。更新はそのマシンのパッケージマネージャーから提供されます。",
   "apiError.update.packaged": "更新はパッケージマネージャーから行われます。Collie はこのインストールのファイルを置換しません。",
   "apiError.update.start_failed": "更新を開始できませんでした: {reason}",
   // --- settings.updateCard (the update card, M15/05) ---

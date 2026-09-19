@@ -809,6 +809,7 @@ export const ko: Dictionary = {
   "apiError.update.major_confirm_required": "{version} 버전은 메이저 업데이트이므로 별도 승인이 필요합니다.",
   "apiError.update.target_mismatch": "화면에는 {asked} 버전이 표시되었으나 실제로는 {would} 버전이 설치됩니다. 화면을 새로고침하십시오.",
   "apiError.update.none_available": "설치할 최신 릴리스가 없습니다.",
+  "apiError.update.peers_packaged": "{name}은(는) 패키지 설치본입니다. 업데이트는 해당 머신의 패키지 관리자에서 받습니다.",
   "apiError.update.packaged": "업데이트는 패키지 관리자를 통해 제공됩니다. Collie는 이 설치본의 파일을 덮어쓰지 않습니다.",
   "apiError.update.start_failed": "업데이트를 시작하지 못했습니다: {reason}",
   // --- settings.updateCard (the update card, M15/05) ---

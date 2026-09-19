@@ -857,6 +857,7 @@ export const en = {
   "apiError.update.major_confirm_required": "{version} crosses a major, and a major needs its own confirm.",
   "apiError.update.target_mismatch": "This screen offered {asked}, but this collie would install {would}. Reload and read it again.",
   "apiError.update.none_available": "There is no newer release to take.",
+  "apiError.update.peers_packaged": "{name} is a packaged install. Its updates come from its own package manager.",
   "apiError.update.packaged": "Updates come from your package manager. Collie won't replace this install's files.",
   "apiError.update.start_failed": "The update couldn't be started: {reason}",
   // --- settings.updateCard (the update card, M15/05) ---

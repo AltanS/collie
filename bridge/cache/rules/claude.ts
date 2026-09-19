@@ -132,7 +132,7 @@ export const CLAUDE_RESET_RULES: readonly ResetRule[] = [
         quote:
           "Each model has its own cache. Switching with `/model` means the next request reads the entire conversation history with no cache hits, even though the content is identical.",
       },
-      note: "28 of 28 `/model` switches to a different model were followed by a cold turn. A `/model` that keeps the model keeps the cache, so only a DIFFERENT model counts. A model change with no command behind it (a fallback, a skill that names its own model) is seen on the turns themselves, so it explains a cold turn but cannot warn before one.",
+      note: "28 of 28 `/model` switches to a different model were followed by a cold turn. A `/model` that keeps the model keeps the cache, so only a DIFFERENT model counts. A model change with no command behind it (a fallback, a skill that names its own model) is seen on the turns themselves, so it explains a cold turn but cannot warn before one. A name that does not reduce to a known family and version (a family newer than this build, or \"Default (recommended)\") is read as no switch at all, so a `/model` onto a brand-new family warns nothing and the observed cold mark catches the miss one turn later.",
     },
   },
   {

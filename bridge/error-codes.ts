@@ -189,6 +189,12 @@ export const ERROR_CODES = {
   /** Nothing newer to take. */
   "update.none_available": "there is no newer release to take",
   /**
+   * A peers-only start where the only member behind runs a packaged install (ADR 0035). Its own
+   * package manager owns it, so no run from here can move it — which is a different answer from
+   * "the crew is level", and the operator is owed the difference.
+   */
+  "update.peers_packaged": "{name} is a packaged install, so its updates come from its own package manager",
+  /**
    * A package manager owns this install's folder (ADR 0035). Its own preflight is GREEN, so nothing
    * else on this gate would stop the start — which is exactly why this refusal exists here and not
    * only in the client, whose disabled button this file's own contract calls a courtesy.

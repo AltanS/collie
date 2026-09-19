@@ -780,7 +780,13 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
         reason: blocked.reason ?? "the crew preflight could not be read",
       });
     }
-    return peersNeedLevelling(state) ? { kind: "peers", to: state.current } : refuse(409, "update.none_available");
+    if (peersNeedLevelling(state)) return { kind: "peers", to: state.current };
+    // "Nothing to do" and "nothing THIS route may do" are different answers, and only one of them is
+    // true when the member behind is packaged: `memberBehind` leaves it out (ADR 0035), so without
+    // this line the operator is told there is no release to take while one is sitting there.
+    const held = (state.crew ?? []).find((m) => packagedAndBehind(m, state.current));
+    if (held !== undefined) return refuse(409, "update.peers_packaged", { name: held.name });
+    return refuse(409, "update.none_available");
   }
 
   // ── A PACKAGED INSTALL MOVES NOTHING OF ITS OWN (ADR 0035) ─────────────────
@@ -875,6 +881,16 @@ export function legStillFailed(leg: LevelLeg, crew: readonly LevelMember[], curr
   const version = crew.find((member) => member.name === leg.name)?.version ?? null;
   if (version === null) return true;
   return compareSemver(version, current) < 0;
+}
+
+/**
+ * A member a run from here can never move: package-managed, and a version below this lead's. The
+ * twin of nothing on the phone — the phone never offers the button for it, and this names it in the
+ * refusal when a stale card, a second tab or a plain POST asks anyway.
+ */
+function packagedAndBehind(member: LevelMember, current: string): boolean {
+  if (current === "" || member.version === null || member.installKind !== "packaged") return false;
+  return compareSemver(member.version, current) < 0;
 }
 
 /**

@@ -802,6 +802,16 @@ describe("updateStartVerdict — a peers-only start over a crew that may already
     expect(v).toMatchObject({ kind: "refuse", status: 409 });
   });
 
+  test("a packaged member left behind is named, not reported as nothing to take", () => {
+    const packaged: CrewUpdateRow = { ...row("minibuch", "1.4.0"), installKind: "packaged" };
+    const v = updateStartVerdict(ask({ peersOnly: true }), lead({ crew: [packaged] }));
+    expect(v).toMatchObject({
+      kind: "refuse",
+      status: 409,
+      body: { code: "update.peers_packaged", detail: { name: "minibuch" } },
+    });
+  });
+
   test("a failed leg whose member's version nobody could learn still starts the retry", () => {
     const v = updateStartVerdict(
       ask({ peersOnly: true }),

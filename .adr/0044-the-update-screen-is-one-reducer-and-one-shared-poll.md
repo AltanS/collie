@@ -89,3 +89,26 @@ in files.**
 - **Every tab of the origin still reloads on the controller swap.** That is unchanged by this record
   and remains the decision in `web/src/lib/pwa.ts`: choosing which tab reloads would be a
   BroadcastChannel design and belongs in that file, not here.
+
+## Follow-up (2026-09-20) — the run the lead takes no part in
+
+A run that levels only the members writes no run record on the lead: its legs ride the status
+(`peers`, `settledAt`, and since this change `peersTo`, the version the queue levels them to). So
+"the run" the reducer read said nothing about such a run, the sheet stayed hidden, and the app
+stayed live on the very phone that had asked for it (M32, decided by the operator on 2026-09-19).
+
+The screen now covers it, and the shape of this record holds:
+
+- **Still one reducer.** `updateScreenView` gained a second source, `crewRun`, and answers for it
+  first when the lead's own run is not in flight. The crew-only reading is the same sentence as the
+  lead's, `dismissible = !(active && startedHere && !escaped)`, so the takeover, the badge
+  everywhere else, and the ways out stay one rule rather than two screens.
+- **Still one shared poll.** Those legs come from the two readings `update-run-store.ts` already
+  holds, the snapshot and the store's own check, reconciled by the later stamp. No third fetch.
+- **One thing this record did not have: a start with nothing to show yet.** A peers-only start is
+  accepted with a 202 before any sweep has folded a leg, so for that beat there is no evidence the
+  run exists. The store holds "a crew run with no legs yet" for at most `CREW_BEGUN_MS` (20 s) so
+  the takeover opens in the same tap, and sets the previous run's legs aside so a finished failure
+  cannot flash in its place. It is bounded, it is one place, and it expires on its own — but it IS a
+  second piece of state beside the polls, and a third one would be the signal that this record's
+  "one reducer and one shared poll" has stopped describing the screen.
