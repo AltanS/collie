@@ -9,9 +9,10 @@ import {
   observedClaim,
   staleClaims,
   type CacheRule,
+  type ResetRule,
   type Source,
 } from "./claims.ts";
-import { allCacheRules } from "./rules/index.ts";
+import { allCacheRules, allResetRules, resetRulesFor } from "./rules/index.ts";
 
 // The claim contract is the whole value of this feature: the numbers can be trusted because each one
 // carries where it came from and when it was checked. Ported from herdr-cache-alert's
@@ -165,6 +166,70 @@ describe("every shipped rule", () => {
   });
 });
 
+// ── reset rules: actions that drop the cache between turns (issue #236) ──────
+
+describe("every shipped reset rule", () => {
+  test("has a unique id scoped to its harness as `<harness>.reset.<action>`", () => {
+    const ids = allResetRules().map((r) => r.id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const r of allResetRules()) expect(r.id.startsWith(`${r.harness}.reset.`)).toBe(true);
+  });
+
+  test("is sourced like a TTL: a url, a quote and a real date", () => {
+    for (const r of allResetRules()) {
+      expect(r.resets.source.url).not.toBe("");
+      expect(r.resets.source.quote ?? "").not.toBe("");
+      expect(r.resets.source.retrievedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    }
+  });
+
+  test("says what could not be confirmed when it is below `documented`, and is never `observed`", () => {
+    for (const r of allResetRules()) {
+      expect(r.resets.confidence).not.toBe("observed");
+      if (r.resets.confidence !== "documented") expect(r.resets.note ?? "").not.toBe("");
+    }
+  });
+
+  test("carries a label the sheet can print, with no dash for a sentence to trip on", () => {
+    for (const r of allResetRules()) {
+      expect(r.label.trim()).not.toBe("");
+      expect(r.label).not.toMatch(/[—–]/);
+    }
+  });
+
+  test("plain /reload-plugins ships as a documented NON-reset, because the operator will ask", () => {
+    const plain = allResetRules().find((r) => r.id === "claude.reset.reload-plugins");
+    expect(plain?.resets.value).toBe(false);
+    expect(plain?.resets.confidence).toBe("documented");
+  });
+
+  test("the Codex gap is a rule anyone can read, not a code comment", () => {
+    const codex = resetRulesFor("codex");
+    expect(codex.map((r) => r.id)).toEqual(["codex.reset.model"]);
+    expect(codex.every((r) => r.detection === "none" && r.resets.note !== undefined)).toBe(true);
+  });
+
+  test("resolves through the alias its transcript does, and pi ships none", () => {
+    expect(resetRulesFor("omp")).toEqual([]);
+    expect(resetRulesFor("pi")).toEqual([]);
+    expect(resetRulesFor("claude").length).toBe(5);
+    expect(resetRulesFor("opencode").map((r) => r.resets.confidence)).toEqual(["inferred", "inferred"]);
+  });
+
+  test("staleClaims reaches a reset rule's source, so its quote rots as loudly as a TTL", () => {
+    const old: ResetRule = {
+      id: "x.reset.model",
+      harness: "x",
+      label: "The model changed",
+      detection: "before-turn",
+      resets: { value: true, confidence: "documented", source: source({ retrievedAt: "2020-01-01" }) },
+    };
+    const stale = staleClaims([], 30, AT, [old]);
+    expect(stale.map((s) => `${s.ruleId} ${s.field}`)).toEqual(["x.reset.model resets"]);
+  });
+});
+
 // ── the year gate ────────────────────────────────────────────────────────────
 
 describe("newestReleaseDate", () => {
@@ -186,6 +251,6 @@ test("no shipped claim is more than a year older than this release", () => {
   const releasedAt = newestReleaseDate(changelog);
   expect(releasedAt).toBeDefined();
   if (releasedAt === undefined) return;
-  const stale = staleClaims(allCacheRules(), 365, releasedAt);
+  const stale = staleClaims(allCacheRules(), 365, releasedAt, allResetRules());
   expect(stale.map((s) => `${s.ruleId} ${s.field} is ${String(s.ageDays)} days old`)).toEqual([]);
 });

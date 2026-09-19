@@ -66,6 +66,8 @@ export function cacheWarnings(input: CacheWarnInput): CacheWarnings {
     const cache = pane.cache;
     // 2. A reading with a deadline, and a state that still has one ahead of it. An absent `cache` key
     //    is the ordinary case for a pane whose agent has not taken a turn yet (spec 02, Decision 1).
+    //    A pane cold from a pending reset (a `/model` switch, issue #236) still has a deadline ahead,
+    //    but no cache behind it, so "goes cold in about 5 min" would be false twice: it stays silent.
     if (cache === undefined || cache.expiresAt === undefined) continue;
     if (cache.state !== "warm" && cache.state !== "expiring") continue;
     // 3. See the module header: the window is halved for a cache shorter than twice it.

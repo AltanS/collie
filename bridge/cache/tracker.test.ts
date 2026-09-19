@@ -217,6 +217,57 @@ describe("the read gate", () => {
   });
 });
 
+describe("a pending reset (issue #236)", () => {
+  // A `/model` switch is written once. Every poll after it finds the file unchanged and reads nothing,
+  // so the tracker must hold the events the way it holds the rule, or the chip warms up again five
+  // seconds after it went cold.
+  const pendingModel = (lastRequestAt: number) =>
+    probe({
+      lastRequestAt,
+      resets: [{ ruleId: "claude.reset.model", at: lastRequestAt + 1000, evidence: "a transcript" }],
+    });
+
+  test("stays cold across an unchanged poll, because the events are held beside the rule", async () => {
+    const c = clock();
+    const { adapter, calls, state } = fakeAdapter("claude");
+    state.probe = pendingModel(NOW - 60_000);
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
+    const panes = [pane("claude", "ses-1")];
+    await tracker.refresh(panes);
+    expect(tracker.get("ses-1")?.coldReason).toBe("reset");
+    expect(tracker.get("ses-1")?.reset?.label).toBe("The model changed");
+
+    c.advance(2000);
+    await tracker.refresh(panes);
+    expect(calls.probe).toBe(1);
+    expect(tracker.get("ses-1")?.state).toBe("cold");
+    expect(tracker.get("ses-1")?.coldReason).toBe("reset");
+  });
+
+  test("is cleared by the next turn, with nothing to reset by hand", async () => {
+    const c = clock();
+    const { adapter, state } = fakeAdapter("claude");
+    state.probe = pendingModel(NOW - 60_000);
+    const tracker = new CacheTracker({ claude: adapter }, noOverrides, c.now, { floorMs: 1000 });
+    const panes = [pane("claude", "ses-1")];
+    await tracker.refresh(panes);
+    c.advance(2000);
+    state.stat = { size: 20, mtimeMs: 200 };
+    state.probe = probe({ lastRequestAt: NOW + 1000, turnId: "turn-2" });
+    await tracker.refresh(panes);
+    expect(tracker.get("ses-1")?.state).toBe("warm");
+    expect(tracker.get("ses-1")?.reset).toBeUndefined();
+  });
+
+  test("reads the pane's own harness's rules, so another harness's id changes nothing", async () => {
+    const { adapter, state } = fakeAdapter("codex");
+    state.probe = pendingModel(NOW - 60_000);
+    const tracker = new CacheTracker({ codex: adapter }, noOverrides, () => NOW);
+    await tracker.refresh([pane("codex", "ses-cx")]);
+    expect(tracker.get("ses-cx")?.state).toBe("warm");
+  });
+});
+
 describe("a failed read keeps the last reading and lets it age", () => {
   test("a stat that throws keeps the reading, and a stat that comes back re-reads", async () => {
     const c = clock();

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { CacheRule, Sourced } from "./claims.ts";
+import type { CacheRule, ResetEvent, ResetRule, Sourced } from "./claims.ts";
 import {
   evaluate,
   isColdTurn,
@@ -249,4 +249,113 @@ test("the returned memo is new — evaluate mutates nothing it was handed", () =
   expect(memo).toEqual(frozen);
   expect(out?.memo.observedTtlSeconds).toBe(3600);
   expect(out?.memo.lastTurnId).toBe("turn-2");
+});
+
+// ── actions that drop the cache between turns (issue #236) ──────────────────
+//
+// The chip used to count down over a `/model` switch, and the next turn was billed as a full rebuild.
+// Each case names the misreading it prevents.
+
+describe("reset events", () => {
+  const claude = rule("claude.subscription", 3600);
+  const claim = (value: boolean): Sourced<boolean> => ({ ...sourced(0), value });
+  const RESETS: ResetRule = {
+    id: "claude.reset.model",
+    harness: "claude",
+    label: "The model changed",
+    detection: "before-turn",
+    resets: claim(true),
+  };
+  const KEEPS: ResetRule = { ...RESETS, id: "claude.reset.reload-plugins", label: "Plugins were reloaded", resets: claim(false) };
+  const resetRules = [RESETS, KEEPS];
+  const turnAt = NOW - 60_000;
+  const event = (ruleId: string, at: number): ResetEvent => ({ ruleId, at, evidence: "a transcript" });
+
+  test("an action after the last turn turns a warm pane cold, with time still on the clock", () => {
+    const out = evaluate({ rule: claude, probe: probe({ lastRequestAt: turnAt, resets: [event(RESETS.id, turnAt + 1000)] }), resetRules, now: NOW });
+    expect(out?.cache.state).toBe("cold");
+    expect(out?.cache.coldReason).toBe("reset");
+    expect(out?.cache.reset).toEqual({ ruleId: RESETS.id, label: "The model changed", at: turnAt + 1000 });
+    // The clock still runs, which is exactly why the reason needs saying.
+    expect((out?.cache.expiresAt ?? 0) > NOW).toBe(true);
+  });
+
+  test("puts nothing in the memo: the next turn clears the reset by being newer than it", () => {
+    const first = evaluate({ rule: claude, probe: probe({ lastRequestAt: turnAt, resets: [event(RESETS.id, turnAt + 1000)] }), resetRules, now: NOW });
+    expect(first?.memo).toEqual({ lastTurnId: "turn-1", lastRequestAt: turnAt, lastColdAt: 0, observedTtlSeconds: 0 });
+    const next = probe({ lastRequestAt: NOW, turnId: "turn-2", cacheReadTokens: 9000, cacheCreationTokens: 10, resets: [event(RESETS.id, turnAt + 1000)] });
+    const after = evaluate({ rule: claude, probe: next, memo: first?.memo, resetRules, now: NOW + 1000 });
+    expect(after?.cache.state).toBe("warm");
+    expect(after?.cache.coldReason).toBeUndefined();
+    expect(after?.cache.reset).toBeUndefined();
+  });
+
+  test("a poll with no probe reads the held events, so a pending reset stays pending", () => {
+    const memo: CacheMemo = { lastTurnId: "turn-1", lastRequestAt: turnAt, lastColdAt: 0, observedTtlSeconds: 0 };
+    const out = evaluate({ rule: claude, memo, resetRules, heldResets: [event(RESETS.id, turnAt + 1000)], now: NOW });
+    expect(out?.cache.coldReason).toBe("reset");
+  });
+
+  test("a probe's own list wins over a held one, even an empty one", () => {
+    const out = evaluate({ rule: claude, probe: probe({ lastRequestAt: turnAt }), resetRules, heldResets: [event(RESETS.id, turnAt + 1000)], now: NOW });
+    expect(out?.cache.state).toBe("warm");
+  });
+
+  test("an action BEFORE the last turn is history, not a warning: that turn already rebuilt", () => {
+    const out = evaluate({ rule: claude, probe: probe({ lastRequestAt: turnAt, cacheReadTokens: 9000, cacheCreationTokens: 10, resets: [event(RESETS.id, turnAt - 1000)] }), resetRules, now: NOW });
+    expect(out?.cache.state).toBe("warm");
+    expect(out?.cache.reset).toBeUndefined();
+  });
+
+  test("a documented NON-reset never changes the state", () => {
+    const out = evaluate({ rule: claude, probe: probe({ lastRequestAt: turnAt, resets: [event(KEEPS.id, turnAt + 1000)] }), resetRules, now: NOW });
+    expect(out?.cache.state).toBe("warm");
+  });
+
+  test("an event naming a rule the harness does not ship is dropped, because it has no source", () => {
+    const out = evaluate({ rule: claude, probe: probe({ lastRequestAt: turnAt, resets: [event("claude.reset.invented", turnAt + 1000)] }), resetRules, now: NOW });
+    expect(out?.cache.state).toBe("warm");
+  });
+
+  test("with no reset rules handed in, every event is unsourced and nothing changes", () => {
+    const out = evaluate({ rule: claude, probe: probe({ lastRequestAt: turnAt, resets: [event(RESETS.id, turnAt + 1000)] }), now: NOW });
+    expect(out?.cache.state).toBe("warm");
+  });
+
+  test("an expired clock outranks a pending reset, so a cache that timed out is not blamed on the action", () => {
+    const old = NOW - 4_000_000;
+    const out = evaluate({ rule: claude, probe: probe({ lastRequestAt: old, resets: [event(RESETS.id, old + 1000)] }), resetRules, now: NOW });
+    expect(out?.cache.coldReason).toBe("expired");
+    expect(out?.cache.reset).toBeUndefined();
+  });
+
+  test("the observed cold mark outranks a pending reset", () => {
+    const cold = probe({ lastRequestAt: turnAt, cacheReadTokens: 0, cacheCreationTokens: 9000, resets: [event(RESETS.id, turnAt + 1000)] });
+    const out = evaluate({ rule: claude, probe: cold, resetRules, now: NOW });
+    expect(out?.cache.coldReason).toBe("observed");
+    expect(out?.cache.reset).toBeUndefined();
+  });
+
+  test("a cold turn after an action names that action as its cause", () => {
+    const cold = probe({ lastRequestAt: turnAt, cacheReadTokens: 0, cacheCreationTokens: 9000, resets: [event(RESETS.id, turnAt - 1000)] });
+    const out = evaluate({ rule: claude, probe: cold, resetRules, now: NOW });
+    expect(out?.cache.coldReason).toBe("observed");
+    expect(out?.cache.reset?.ruleId).toBe(RESETS.id);
+  });
+
+  test("a cold mark left from an OLDER turn names no cause from this turn's window", () => {
+    const cold = probe({ lastRequestAt: turnAt - 5000, turnId: "turn-9", cacheReadTokens: 0, cacheCreationTokens: 9000 });
+    const first = evaluate({ rule: claude, probe: cold, resetRules, now: NOW });
+    // A newer turn with no telemetry leaves the mark standing; the action before it did not cause it.
+    const blind = probe({ lastRequestAt: turnAt, turnId: "turn-10", resets: [event(RESETS.id, turnAt - 1000)] });
+    const out = evaluate({ rule: claude, probe: blind, memo: first?.memo, resetRules, now: NOW });
+    expect(out?.cache.coldReason).toBe("observed");
+    expect(out?.cache.reset).toBeUndefined();
+  });
+
+  test("a warm or expiring reading carries no cold reason at all", () => {
+    const out = evaluate({ rule: claude, probe: probe({ lastRequestAt: turnAt }), resetRules, now: NOW });
+    expect("coldReason" in (out?.cache ?? {})).toBe(false);
+    expect("reset" in (out?.cache ?? {})).toBe(false);
+  });
 });

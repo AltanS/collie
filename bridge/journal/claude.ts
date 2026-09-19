@@ -29,7 +29,8 @@ import { dirname, join } from "node:path";
 import { observedClaim, type Sourced } from "../cache/claims.ts";
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
-import { asRecord, asText, probeTail, tokenCount, walkBack } from "./cache-probe.ts";
+import { asRecord, asText, probeTail, tokenCount } from "./cache-probe.ts";
+import { claudeResets, lastTwoTurns } from "./claude-resets.ts";
 import { containedRealpath, exists, head, loadTail, rootList, statFile } from "./files.ts";
 import { clamp, type Clamped, MAX_RESULT_CHARS, MAX_TEXT_CHARS, stripAnsi, summarizeToolInput } from "./text.ts";
 import type {
@@ -440,35 +441,39 @@ function ttlFromUsage(usage: JsonObject, path: string): Sourced<number> | undefi
   return undefined;
 }
 
+/**
+ * The newest turn's reading, plus every reset event around it.
+ *
+ * One walk of the same 128 KB tail finds the newest turn and the turn before it
+ * (`claude-resets.ts` § lastTwoTurns). The newest answers the clock and the telemetry, as it always
+ * has; the two stretches around it answer "did an action drop the cache" (issue #236). A subagent's
+ * record and a `<synthetic>` notice are not turns, because neither is a request on this cache.
+ */
 async function claudeCacheProbe(
   source: ClaudeTranscriptSource,
   ref: AgentSessionRef,
 ): Promise<CacheProbe | null> {
   const tail = await probeTail(source, ref);
   if (tail === null) return null;
-  const found = walkBack(tail.lines, (raw): CacheProbe | undefined => {
-    const entry = asRecord(raw);
-    if (entry === null || entry.type !== "assistant") return undefined;
-    const message = asRecord(entry.message);
-    if (message === null) return undefined;
-    const at = Date.parse(asText(entry.timestamp) ?? "");
-    if (Number.isNaN(at)) return undefined;
-    const usage = asRecord(message.usage) ?? {};
-    const probe: CacheProbe = {
-      lastRequestAt: at,
-      turnId: asText(message.id) ?? asText(entry.uuid) ?? String(at),
-      cacheReadTokens: tokenCount(usage.cache_read_input_tokens) ?? 0,
-      cacheCreationTokens: tokenCount(usage.cache_creation_input_tokens) ?? 0,
-      measuredAt: tail.mtimeMs,
-      evidence: `${tail.path} (${asText(entry.timestamp) ?? "no timestamp"})`,
-    };
-    const observed = ttlFromUsage(usage, tail.path);
-    if (observed !== undefined) probe.observedTtlSeconds = observed;
-    const model = asText(message.model);
-    if (model !== undefined) probe.model = model;
-    return probe;
-  });
+  const turns = lastTwoTurns(tail.lines);
   // The tail held no assistant turn at all — a session that has only just started, or one turn larger
   // than the window. The tracker keeps whatever the last successful probe left behind.
-  return found ?? null;
+  if (turns === null) return null;
+  const { entry, message, at, stamp } = turns.newest;
+  const usage = asRecord(message.usage) ?? {};
+  const probe: CacheProbe = {
+    lastRequestAt: at,
+    turnId: asText(message.id) ?? asText(entry.uuid) ?? String(at),
+    cacheReadTokens: tokenCount(usage.cache_read_input_tokens) ?? 0,
+    cacheCreationTokens: tokenCount(usage.cache_creation_input_tokens) ?? 0,
+    measuredAt: tail.mtimeMs,
+    evidence: `${tail.path} (${stamp})`,
+  };
+  const observed = ttlFromUsage(usage, tail.path);
+  if (observed !== undefined) probe.observedTtlSeconds = observed;
+  const model = asText(message.model);
+  if (model !== undefined) probe.model = model;
+  const resets = claudeResets(turns, tail.path);
+  if (resets.length > 0) probe.resets = resets;
+  return probe;
 }

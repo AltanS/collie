@@ -7,11 +7,11 @@
 // sourced-claim rule exists to prevent. Those panes read `unknown`, which renders as nothing.
 
 import { AGENT_ALIASES } from "../../journal/registry.ts";
-import type { CacheRule, Sourced } from "../claims.ts";
+import type { CacheRule, ResetRule, Sourced } from "../claims.ts";
 import type { CacheProbe } from "../engine.ts";
-import { claudeRuleFor, CLAUDE_RULES } from "./claude.ts";
-import { codexRuleFor, CODEX_RULES } from "./codex.ts";
-import { OPENCODE_RULES } from "./opencode.ts";
+import { claudeRuleFor, CLAUDE_RESET_RULES, CLAUDE_RULES } from "./claude.ts";
+import { codexRuleFor, CODEX_RESET_RULES, CODEX_RULES } from "./codex.ts";
+import { OPENCODE_RESET_RULES, OPENCODE_RULES } from "./opencode.ts";
 import { PI_RULES } from "./pi.ts";
 import { openaiCacheRegime, OPENAI_REGIMES, providerModelTtl, providerRuleIdFor } from "./providers.ts";
 
@@ -32,6 +32,24 @@ const BY_ID: ReadonlyMap<string, CacheRule> = new Map(ALL.map((rule) => [rule.id
 
 export function cacheRuleById(id: string): CacheRule | undefined {
   return BY_ID.get(id);
+}
+
+/**
+ * Every shipped reset rule, the documented non-resets and the undetected gaps included.
+ *
+ * pi ships none: its journal was not checked for reset records (issue #236 leaves it out), and a rule
+ * with nothing behind it would be the bare claim ADR 0041 forbids.
+ */
+export function allResetRules(): readonly ResetRule[] {
+  return ALL_RESETS;
+}
+
+const ALL_RESETS: readonly ResetRule[] = [...CLAUDE_RESET_RULES, ...CODEX_RESET_RULES, ...OPENCODE_RESET_RULES];
+
+/** The reset rules a pane's harness ships, through the same alias its transcript resolves by. */
+export function resetRulesFor(harness: string): readonly ResetRule[] {
+  const name = canonicalHarness(harness);
+  return ALL_RESETS.filter((rule) => rule.harness === name);
 }
 
 /** The canonical harness name — `omp` resolves to `pi`, as everywhere else. */

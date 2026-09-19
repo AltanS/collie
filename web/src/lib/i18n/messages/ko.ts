@@ -950,6 +950,8 @@ export const ko: Dictionary = {
   "cache.sheet.overridden": "Moved by cache-rules.toml",
   "cache.sheet.thisMachine": "This machine",
   "cache.sheet.onPeer": "Read on {host}. Its rule catalog is not forwarded, so the source is not quoted here.",
+  "cache.sheet.reset.pending": "마지막 턴 이후: {action}. 다음 턴에서 캐시를 다시 만듭니다.",
+  "cache.sheet.reset.cause": "마지막 턴 이전: {action}. 그 턴에서 캐시를 다시 만들었습니다.",
   "cache.sheet.state": "State",
   "cache.sheet.state.warm": "Warm",
   "cache.sheet.state.expiring": "Expiring",

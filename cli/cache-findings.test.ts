@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 import { claimAgeDays } from "../bridge/cache/claims.ts";
-import { allCacheRules } from "../bridge/cache/rules/index.ts";
+import { allCacheRules, allResetRules } from "../bridge/cache/rules/index.ts";
 import { cacheFindings, CLAIM_WARN_DAYS, cacheRulesPath, type CacheDeps } from "./cache-findings.ts";
 import { context, fakeFiles, type SeededFiles } from "./fakes.ts";
 import type { Finding } from "./finding.ts";
@@ -57,6 +57,18 @@ describe("cache-claims", () => {
     expect(f.detail).toContain("cache rule claude.subscription last checked 2026-08-24");
     expect(f.detail).toMatch(/\d+ days ago/);
     expect(f.remedy ?? "").toContain("cache-rules.toml");
+  });
+
+  test("counts the reset rules, and names one whose page has not been re-read in 180 days", () => {
+    expect(find(cacheFindings(deps()), "cache-claims").detail).toContain(
+      `${String(allResetRules().length)} reset rules`,
+    );
+    const model = allResetRules().find((r) => r.id === "claude.reset.model");
+    expect(model).toBeDefined();
+    const at = Date.parse(`${model?.resets.source.retrievedAt ?? ""}T00:00:00Z`) + (CLAIM_WARN_DAYS + 1) * 86_400_000;
+    const f = find(cacheFindings(deps({ now: at })), "cache-claims");
+    expect(f.status).toBe("warn");
+    expect(f.detail).toContain(`cache rule claude.reset.model last checked ${model?.resets.source.retrievedAt ?? ""}`);
   });
 
   test("is still ok one day before the threshold — the warning is strictly past it", () => {

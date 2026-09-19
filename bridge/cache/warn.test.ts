@@ -69,6 +69,17 @@ describe("cacheWarnings", () => {
     expect(out.sentPairs).toEqual([{ key: p.key, expiresAt: p.cache!.expiresAt! }]);
   });
 
+  test("a pane cold from a pending reset never warns, however much clock is left (issue #236)", () => {
+    // After `/model` the deadline is still four minutes out, inside the window. "Goes cold in about
+    // 5 min" would be wrong twice: it is already cold, and waiting will not save it.
+    const reset = reading({
+      state: "cold",
+      coldReason: "reset",
+      reset: { ruleId: "claude.reset.model", label: "The model changed", at: NOW - 1000 },
+    });
+    expect(warn([pane({ cache: reset })]).messages).toHaveLength(0);
+  });
+
   test("the tag is one per watched pane, and carries no ref and no control byte", () => {
     const tag = warn([pane()]).messages[0]!.tag!;
     expect(tag).toMatch(/^collie:cache:[0-9a-f]{8}$/);

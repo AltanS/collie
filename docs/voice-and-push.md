@@ -238,7 +238,8 @@ pane is on that list, so turning the global switch off does not silence a pane y
 
 A watched pane is warned **once per warm cycle**. The agent's next request moves the deadline, and
 only then can the same pane warn again. The quiet hours apply: a snoozed bridge sends nothing, and a
-snooze that ends inside the window still warns.
+snooze that ends inside the window still warns. A pane that is already cold is never warned, and that
+includes one a `/model` switch made cold with time still left.
 
 `COLLIE_CACHE_WARN_SECONDS` moves the window, default 300 seconds
 ([configure.md](configure.md#the-prompt-cache-countdown)).

@@ -7,7 +7,9 @@ import { join } from "node:path";
 import {
   isOpencodeSessionId,
   OpencodeTranscriptSource,
+  opencodeJournal,
   opencodeKey,
+  opencodeResets,
   parseOpencodeTranscript,
   splitOpencodeKey,
 } from "./opencode.ts";
@@ -461,5 +463,83 @@ describe("OpencodeTranscriptSource — several data dirs", () => {
     const src = new OpencodeTranscriptSource(first);
     expect(await src.resolve({ kind: "id", value: OTHER_SID })).toBeNull();
     await rm(base, { recursive: true, force: true });
+  });
+});
+
+// Actions that drop the cache between turns (issue #236), from STRUCTURED fields only: a user
+// message's `model`, and an assistant message's `mode: "compaction"` / `summary: true`. The shapes are
+// the ones a live `opencode.db` carries; the values are made up.
+describe("opencodeResets", () => {
+  type Message = { [key: string]: JsonValue | undefined };
+  const assistant = (at: number, providerID: string, modelID: string, over: Message = {}): Message => ({
+    role: "assistant",
+    providerID,
+    modelID,
+    time: { created: at - 10, completed: at },
+    tokens: { input: 10, cache: { read: 900, write: 0 } },
+    ...over,
+  });
+  const user = (at: number, providerID: string, modelID: string): Message => ({
+    role: "user",
+    time: { created: at },
+    model: { providerID, modelID },
+    // A USER message's `summary` is an object, so it must never read as a compaction.
+    summary: { diffs: [] },
+  });
+  const ids = (events: readonly { ruleId: string }[]) => events.map((e) => e.ruleId);
+
+  test("a user message on another model is a pending reset, newer than the turn", () => {
+    const events = opencodeResets([user(3000, "x-ai", "grok-4.5"), assistant(2000, "google", "gemini-3.5-flash-lite")], 1);
+    expect(ids(events)).toEqual(["opencode.reset.model"]);
+    expect((events[0]?.at ?? 0) > 2000).toBe(true);
+  });
+
+  test("a user message on the SAME model is nothing", () => {
+    expect(opencodeResets([user(3000, "google", "gemini-3.5-flash-lite"), assistant(2000, "google", "gemini-3.5-flash-lite")], 1)).toEqual([]);
+  });
+
+  test("a model change between two turns is the cause, not a warning", () => {
+    const events = opencodeResets(
+      [assistant(3000, "x-ai", "grok-4.5"), user(2500, "x-ai", "grok-4.5"), assistant(2000, "google", "gemini-3.5-flash-lite")],
+      0,
+    );
+    expect(ids(events)).toEqual(["opencode.reset.model"]);
+    expect((events[0]?.at ?? Infinity) <= 3000).toBe(true);
+  });
+
+  test("a compaction summary warns about the turn after it", () => {
+    const events = opencodeResets([assistant(2000, "google", "gemini-3.5-flash-lite", { mode: "compaction", summary: true })], 0);
+    expect(ids(events)).toEqual(["opencode.reset.compaction"]);
+    expect((events[0]?.at ?? 0) > 2000).toBe(true);
+  });
+
+  test("a compaction before this turn explains it", () => {
+    const events = opencodeResets(
+      [assistant(3000, "google", "gemini-3.5-flash-lite"), assistant(2000, "google", "gemini-3.5-flash-lite", { mode: "compaction", summary: true })],
+      0,
+    );
+    expect(ids(events)).toEqual(["opencode.reset.compaction"]);
+    expect(events[0]?.at).toBe(2000);
+  });
+
+  test("a half-known model claims nothing", () => {
+    expect(opencodeResets([user(3000, "x-ai", "grok-4.5"), assistant(2000, "google", "")], 1)).toEqual([]);
+  });
+
+  test("the probe carries them, off the one query it already runs", async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), "collie-opencode-resets-")));
+    const db = new Database(join(base, "opencode.db"));
+    db.run("create table session (id text primary key)");
+    db.run("create table message (id text primary key, session_id text, time_created integer, time_updated integer, data text)");
+    db.run("insert into session values (?)", [SID]);
+    const msg = (id: string, created: number, data: Message) =>
+      db.run("insert into message values (?, ?, ?, ?, ?)", [id, SID, created, created, JSON.stringify(data)]);
+    msg("msg_a", 1990, assistant(2000, "google", "gemini-3.5-flash-lite"));
+    msg("msg_b", 3000, user(3000, "x-ai", "grok-4.5"));
+    db.close();
+    const probe = await opencodeJournal(base).cacheProbe?.({ kind: "id", value: SID });
+    await rm(base, { recursive: true, force: true });
+    expect(probe?.lastRequestAt).toBe(2000);
+    expect(ids(probe?.resets ?? [])).toEqual(["opencode.reset.model"]);
   });
 });

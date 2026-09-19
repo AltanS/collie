@@ -83,6 +83,50 @@ describe("this machine's pane", () => {
   });
 });
 
+// An action that dropped the prefix (issue #236): the chip is cold like any other cold, and the sheet
+// names the action in ONE line, from the rule label that rode the wire.
+describe("a cold reading with an action behind it", () => {
+  const model = { ruleId: "claude.reset.model", label: "The model changed", at: Date.now() - 60_000 };
+
+  it("names a pending action, and says the next turn rebuilds", async () => {
+    render(<CacheSheet open onClose={() => {}} cache={cache({ state: "cold", coldReason: "reset", reset: model })} />, {
+      wrapper: one,
+    });
+    expect(screen.getByText("Cold")).toBeInTheDocument();
+    expect(
+      screen.getByText("The model changed after the last turn, so the next turn rebuilds the cache."),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("link")).toBeInTheDocument());
+  });
+
+  it("names the action that made the last turn miss", async () => {
+    render(<CacheSheet open onClose={() => {}} cache={cache({ state: "cold", coldReason: "observed", reset: model })} />, {
+      wrapper: one,
+    });
+    expect(
+      screen.getByText("The model changed before the last turn, so that turn rebuilt the cache."),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("link")).toBeInTheDocument());
+  });
+
+  it("says nothing extra for a cold with no action named, which is every older bridge", async () => {
+    render(<CacheSheet open onClose={() => {}} cache={cache({ state: "cold", coldReason: "expired" })} />, { wrapper: one });
+    render(<CacheSheet open onClose={() => {}} cache={cache({ state: "cold" })} />, { wrapper: one });
+    expect(screen.queryByText(/turn rebuil/)).toBeNull();
+    await waitFor(() => expect(screen.getAllByRole("link")).toHaveLength(2));
+  });
+
+  it("reads the label off the wire on a peer's pane, with no catalog behind it", async () => {
+    const host = fixtureServers[1]?.id;
+    render(
+      <CacheSheet open onClose={() => {}} cache={cache({ state: "cold", coldReason: "reset", reset: model })} host={host} />,
+      { wrapper: crew },
+    );
+    expect(screen.getByText(/^The model changed after the last turn/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("link")).toBeNull());
+  });
+});
+
 describe("a peer's pane", () => {
   it("shows what rides the wire and says where the number was read", async () => {
     const host = fixtureServers[1]?.id;

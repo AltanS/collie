@@ -930,6 +930,8 @@ export const zhTW: Dictionary = {
   "cache.sheet.overridden": "Moved by cache-rules.toml",
   "cache.sheet.thisMachine": "This machine",
   "cache.sheet.onPeer": "Read on {host}. Its rule catalog is not forwarded, so the source is not quoted here.",
+  "cache.sheet.reset.pending": "上一輪之後：{action}。下一輪將重建快取。",
+  "cache.sheet.reset.cause": "上一輪之前：{action}。那一輪重建了快取。",
   "cache.sheet.state": "State",
   "cache.sheet.state.warm": "Warm",
   "cache.sheet.state.expiring": "Expiring",

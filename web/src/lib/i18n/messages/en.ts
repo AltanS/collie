@@ -1040,6 +1040,8 @@ export const en = {
   "cache.sheet.overridden": "Moved by cache-rules.toml",
   "cache.sheet.thisMachine": "This machine",
   "cache.sheet.onPeer": "Read on {host}. Its rule catalog is not forwarded, so the source is not quoted here.",
+  "cache.sheet.reset.pending": "{action} after the last turn, so the next turn rebuilds the cache.",
+  "cache.sheet.reset.cause": "{action} before the last turn, so that turn rebuilt the cache.",
   "cache.sheet.state": "State",
   "cache.sheet.state.warm": "Warm",
   "cache.sheet.state.expiring": "Expiring",

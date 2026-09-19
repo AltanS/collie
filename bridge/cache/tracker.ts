@@ -47,15 +47,21 @@
 // whether this poll managed to name its session — otherwise one unlucky poll reaped a live pane's
 // reading and the next poll re-probed the transcript to learn it again.
 //
+// A PENDING RESET IS HELD LIKE THE RULE, NOT IN THE MEMO. A `/model` switch is written once, and the
+// polls after it find the file unchanged and read nothing. So the reset events the last probe reported
+// sit on the entry beside the rule and the model TTL it chose, and an unchanged poll hands them back to
+// the engine. The next probe replaces the list whole; its turn is newer than the action, so the action
+// stops being pending without anything clearing it.
+//
 // NOTHING IS PERSISTED. A restart costs one poll, and a memo that survived a restart would be a
 // countdown for a process that is gone.
 
 import { adapterFor } from "../journal/registry.ts";
 import type { JournalAdapter } from "../journal/types.ts";
 import { journalAgentOf, type AgentView } from "../types.ts";
-import type { CacheRule, Sourced } from "./claims.ts";
+import type { CacheRule, ResetEvent, ResetRule, Sourced } from "./claims.ts";
 import { evaluate, type CacheMemo, type CacheOverride, type EvaluateInput, type PaneCache } from "./engine.ts";
-import { modelRuleFor, ruleForProbe } from "./rules/index.ts";
+import { modelRuleFor, resetRulesFor, ruleForProbe } from "./rules/index.ts";
 
 /** Where the operator's overrides come from. One method, so the reader can be faked in a test. */
 export interface CacheRuleSource {
@@ -95,23 +101,29 @@ interface Owner {
   paneId: string;
 }
 
+/**
+ * What the last PROBE chose, kept so an unchanged poll re-evaluates against the same answers.
+ *
+ * Re-deriving the rule and the model TTL from the memo is not possible — a memo carries no model and
+ * no tier — and falling back to the harness's pessimistic rule would make the chip drop from 30
+ * minutes to 5 on the first poll where nothing was written, which is precisely the flicker the memo
+ * exists to prevent. The reset events are held for the same reason (see the module header).
+ */
+interface Chosen {
+  rule: CacheRule | undefined;
+  modelTtl: Sourced<number> | undefined;
+  resets: readonly ResetEvent[];
+  resetRules: readonly ResetRule[];
+}
+
 /** What the tracker remembers per session. None of it survives a restart. */
-interface Entry extends Owner {
+interface Entry extends Owner, Chosen {
   /** When this session was last looked at — the floor's own clock. */
   lastProbedAt: number;
   /** The `stat` the current memo was derived from. */
   seen: { size: number; mtimeMs: number };
   memo: CacheMemo;
   cache: PaneCache;
-  /**
-   * The rule and model TTL the last PROBE chose, kept so an unchanged poll re-evaluates against the
-   * same ones. Re-deriving them from the memo is not possible — a memo carries no model and no tier —
-   * and falling back to the harness's pessimistic rule would make the chip drop from 30 minutes to 5
-   * on the first poll where nothing was written, which is precisely the flicker the memo exists to
-   * prevent.
-   */
-  rule: CacheRule | undefined;
-  modelTtl: Sourced<number> | undefined;
 }
 
 export class CacheTracker {
@@ -226,14 +238,19 @@ export class CacheTracker {
       if (previous !== undefined) this.keep(key, at, stat, previous, overrides, owner);
       return;
     }
-    const rule = ruleForProbe(harness, probe);
-    const modelTtl = modelRuleFor(harness, probe.model);
-    this.store(key, at, stat, rule, modelTtl, owner, {
-      rule,
+    const chosen: Chosen = {
+      rule: ruleForProbe(harness, probe),
+      modelTtl: modelRuleFor(harness, probe.model),
+      resets: probe.resets ?? [],
+      resetRules: resetRulesFor(harness),
+    };
+    this.store(key, at, stat, chosen, owner, {
+      rule: chosen.rule,
       probe,
       memo: previous?.memo,
-      modelTtl,
-      override: overrideFor(overrides, rule?.id),
+      modelTtl: chosen.modelTtl,
+      resetRules: chosen.resetRules,
+      override: overrideFor(overrides, chosen.rule?.id),
       now: at,
     });
   }
@@ -241,9 +258,9 @@ export class CacheTracker {
   /**
    * Re-evaluate an existing entry against the clock alone, with no new probe.
    *
-   * Two callers, one meaning: nothing new was read, so the rule, the model TTL and the memo the last
-   * successful probe chose all stand, and only `now` has moved. The state still changes under it —
-   * warm becomes expiring and expiring becomes cold without anybody writing a line.
+   * Two callers, one meaning: nothing new was read, so the rule, the model TTL, the reset events and
+   * the memo the last successful probe chose all stand, and only `now` has moved. The state still
+   * changes under it — warm becomes expiring and expiring becomes cold without anybody writing a line.
    */
   private keep(
     key: string,
@@ -253,10 +270,12 @@ export class CacheTracker {
     overrides: readonly CacheOverride[],
     owner: Owner,
   ): void {
-    this.store(key, at, seen, previous.rule, previous.modelTtl, owner, {
+    this.store(key, at, seen, previous, owner, {
       rule: previous.rule,
       memo: previous.memo,
       modelTtl: previous.modelTtl,
+      resetRules: previous.resetRules,
+      heldResets: previous.resets,
       override: overrideFor(overrides, previous.rule?.id),
       now: at,
     });
@@ -267,8 +286,7 @@ export class CacheTracker {
     key: string,
     at: number,
     seen: { size: number; mtimeMs: number },
-    rule: CacheRule | undefined,
-    modelTtl: Sourced<number> | undefined,
+    chosen: Chosen,
     owner: Owner,
     input: EvaluateInput,
   ): void {
@@ -282,8 +300,10 @@ export class CacheTracker {
       seen,
       memo: out.memo,
       cache: out.cache,
-      rule,
-      modelTtl,
+      rule: chosen.rule,
+      modelTtl: chosen.modelTtl,
+      resets: chosen.resets,
+      resetRules: chosen.resetRules,
       session: owner.session,
       paneId: owner.paneId,
     });

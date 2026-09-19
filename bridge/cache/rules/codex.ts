@@ -8,7 +8,7 @@
 // not known: an early poll, a tail with no `turn_context` in it. Be pessimistic there, and let
 // `modelRuleFor` raise it to 30 minutes once a turn names a GPT-5.6-or-later model.
 
-import type { CacheRule, Source } from "../claims.ts";
+import type { CacheRule, ResetRule, Source } from "../claims.ts";
 import { OPENAI_AUTOMATIC_SOURCE, OPENAI_MIN_TOKENS, OPENAI_REGIMES } from "./providers.ts";
 
 /**
@@ -64,3 +64,31 @@ export const CODEX_RULES: readonly CacheRule[] = [
 export function codexRuleFor(tier: string | undefined): CacheRule | undefined {
   return tier === "subscription" ? CODEX_RULES[0] : CODEX_RULES[1];
 }
+
+/**
+ * The Codex reset rules are a GAP, shipped as one so the catalog shows it.
+ *
+ * Carried over from AltanS/herdr-cache-alert `src/harness/codex.ts` (commit 17fb2af). Nothing here is
+ * detected, and the note says why in terms of what was actually looked at.
+ */
+export const CODEX_RESET_RULES: readonly ResetRule[] = [
+  {
+    id: "codex.reset.model",
+    harness: "codex",
+    label: "The model changed",
+    detection: "none",
+    resets: {
+      value: true,
+      confidence: "inferred",
+      source: {
+        url: "https://code.claude.com/docs/en/prompt-caching",
+        title: "How Claude Code uses prompt caching",
+        publisher: "Anthropic",
+        retrievedAt: "2026-09-17",
+        kind: "vendor-doc",
+        quote: "Each model has its own cache.",
+      },
+      note: "OpenAI publishes no model-switch rule for Codex; inferred from Anthropic's. NOT DETECTED: the Codex rollouts checked write one `turn_context` per session and no record for a switch between turns, so there is nothing to compare, and the chip cannot warn about one.",
+    },
+  },
+];

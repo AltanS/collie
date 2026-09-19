@@ -88,6 +88,47 @@ export interface CacheRule {
   notes?: string[];
 }
 
+/**
+ * An action that drops the cached prefix while the TTL still runs.
+ *
+ * The clock is not the only way a cache dies. A model switch, an effort change or a compaction changes
+ * the prefix, so the next turn rebuilds it however much time is left, and the chip used to show a warm
+ * countdown over exactly that. Ported from AltanS/herdr-cache-alert `src/claims.ts` (commit 17fb2af).
+ *
+ * `resets` is SOURCED like a TTL, and it may be `false`. A documented NON-reset ships too: plain
+ * `/reload-plugins` looks as if it should throw the cache away and does not, and saying so is the
+ * answer an operator who suspects it needs.
+ */
+export interface ResetRule {
+  /** Stable id, `<harness>.reset.<action>`. What a journal reports and the pane wire carries. */
+  id: string;
+  harness: string;
+  /**
+   * What happened, as the pane sheet names it: a clause that reads on its own, "The model changed".
+   * Collie's words rather than a vendor's, and still not translated: it rides the pane wire from the
+   * machine that detected it, and the phone slots it into a translated sentence.
+   */
+  label: string;
+  resets: Sourced<boolean>;
+  /**
+   * When Collie can SEE the action. `before-turn`: it lands on disk as it happens, so the chip turns
+   * cold before the operator pays for the rebuild. `after-turn`: only the next turn reveals it, so it
+   * can explain a miss but never prevent one. `none`: the harness writes nothing Collie reads. That
+   * is a gap, and it ships as a rule so the gap is visible.
+   */
+  detection: "before-turn" | "after-turn" | "none";
+}
+
+/** One sighting of a reset rule in a harness's transcript. Journals report these; the engine judges them. */
+export interface ResetEvent {
+  /** The {@link ResetRule.id} this matched. */
+  ruleId: string;
+  /** Epoch ms the action happened. Newer than the last request means it acts on the NEXT turn. */
+  at: number;
+  /** What was seen and where, for a log. Never transcript content. */
+  evidence: string;
+}
+
 /** Days between `retrievedAt` and now. Infinity when the date is unparseable, so a bad date is stale. */
 export function claimAgeDays(source: Source, now: Date = new Date()): number {
   const at = Date.parse(source.retrievedAt);
@@ -102,11 +143,15 @@ export interface StaleClaim {
   source: Source;
 }
 
-/** Every claim in `rules` older than `maxDays`. Feeds `collie doctor`'s `cache-claims` finding. */
+/**
+ * Every claim in `rules` and `resetRules` older than `maxDays`. Feeds `collie doctor`'s `cache-claims`
+ * finding and the year gate, so a reset rule's quote rots as loudly as a TTL's.
+ */
 export function staleClaims(
   rules: readonly CacheRule[],
   maxDays: number,
   now: Date = new Date(),
+  resetRules: readonly ResetRule[] = [],
 ): StaleClaim[] {
   const out: StaleClaim[] = [];
   const check = (ruleId: string, field: string, source: Source) => {
@@ -120,6 +165,7 @@ export function staleClaims(
     if (rule.minTokens) check(rule.id, "minTokens", rule.minTokens.source);
     rule.sources.forEach((source, i) => check(rule.id, `sources[${i}]`, source));
   }
+  for (const rule of resetRules) check(rule.id, "resets", rule.resets.source);
   return out;
 }
 

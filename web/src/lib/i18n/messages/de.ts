@@ -971,6 +971,8 @@ export const de: Dictionary = {
   "cache.sheet.overridden": "Moved by cache-rules.toml",
   "cache.sheet.thisMachine": "This machine",
   "cache.sheet.onPeer": "Read on {host}. Its rule catalog is not forwarded, so the source is not quoted here.",
+  "cache.sheet.reset.pending": "Nach dem letzten Durchgang: {action}. Der nächste Durchgang baut den Cache neu auf.",
+  "cache.sheet.reset.cause": "Vor dem letzten Durchgang: {action}. Dieser Durchgang hat den Cache neu aufgebaut.",
   "cache.sheet.state": "State",
   "cache.sheet.state.warm": "Warm",
   "cache.sheet.state.expiring": "Expiring",

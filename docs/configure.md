@@ -421,6 +421,11 @@ The hourglass is green while the window is wide, red during the final quarter of
 the window expires or a turn pays the full rate. The chip says `cold` in the blue state, and `<1m`
 instead of seconds when under one minute remains.
 
+Some actions drop the cache while time is still left: a `/model` switch to another model, an effort
+change, a compaction, and `/reload-plugins --force`. The chip turns blue as soon as Claude Code writes
+the action to its transcript, and the sheet names the action. opencode reports a compaction and a
+model change the same way.
+
 The chip sits at the right end of the pane header's second line, after the pane's workspace. On a
 crew the machine's name sits beside it, on the same line. Tap the chip to view the underlying rule:
 the rule id, the vendor source page, and the retrieval date.

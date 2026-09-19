@@ -9,7 +9,7 @@
 // `lastRequestAt` also carries `cache_creation.ephemeral_1h_input_tokens`, so the first reading is
 // already measured — see `bridge/journal/claude.ts` § cacheProbe.
 
-import type { CacheRule, Source, Sourced } from "../claims.ts";
+import type { CacheRule, ResetRule, Source, Sourced } from "../claims.ts";
 
 const CACHING_DOC = {
   url: "https://code.claude.com/docs/en/prompt-caching",
@@ -105,3 +105,98 @@ export const CLAUDE_RULES: readonly CacheRule[] = [
 export function claudeRuleFor(tier: string | undefined): CacheRule | undefined {
   return tier === "subscription" ? CLAUDE_RULES[0] : CLAUDE_RULES[1];
 }
+
+// ── Actions that drop the cache between turns ───────────────────────────────
+//
+// Copied from AltanS/herdr-cache-alert `src/harness/claude-resets.ts` (commit 17fb2af), every quote
+// and its `retrievedAt`, and the quotes re-read against the live page on 2026-09-19. The labels are
+// Collie's own, because the pane sheet slots them into a sentence. The counts in each `note` come from
+// that commit: 160 Claude Code transcripts, main chain only, each case a turn less than 50 minutes after
+// the one before, so an expired one-hour TTL cannot explain the miss.
+//
+// Detection lives beside the transcript it reads, in `bridge/journal/claude-resets.ts`.
+
+const RESETS_DOC = { ...CACHING_DOC, retrievedAt: "2026-09-17" } as const satisfies Source;
+
+export const CLAUDE_RESET_RULES: readonly ResetRule[] = [
+  {
+    id: "claude.reset.model",
+    harness: "claude",
+    label: "The model changed",
+    detection: "before-turn",
+    resets: {
+      value: true,
+      confidence: "documented",
+      source: {
+        ...RESETS_DOC,
+        quote:
+          "Each model has its own cache. Switching with `/model` means the next request reads the entire conversation history with no cache hits, even though the content is identical.",
+      },
+      note: "28 of 28 `/model` switches to a different model were followed by a cold turn. A `/model` that keeps the model keeps the cache, so only a DIFFERENT model counts. A model change with no command behind it (a fallback, a skill that names its own model) is seen on the turns themselves, so it explains a cold turn but cannot warn before one.",
+    },
+  },
+  {
+    id: "claude.reset.effort",
+    harness: "claude",
+    label: "The effort level changed",
+    detection: "before-turn",
+    resets: {
+      value: true,
+      confidence: "documented",
+      source: {
+        ...RESETS_DOC,
+        quote:
+          "On most models, changing the effort level mid-session means the next request reads the entire conversation history with no cache hits.",
+      },
+      note: "Not on Fable 5.1 from Claude Code 2.1.260: \"Before v2.1.260, changing effort on Fable 5.1 with an API key or a Claude subscription also invalidated the cache.\" 10 of 11 `/effort` changes were cold. Two gaps: a `/model` that keeps the model but changes effort is not detected, because nothing on disk records the effort it replaced; and Fable 5.1 on Bedrock, Agent Platform or a gateway still resets, which Collie cannot see because it does not read the agent's environment (ADR 0041).",
+    },
+  },
+  {
+    id: "claude.reset.compaction",
+    harness: "claude",
+    label: "The conversation was compacted",
+    detection: "before-turn",
+    resets: {
+      value: true,
+      confidence: "documented",
+      source: {
+        ...RESETS_DOC,
+        quote:
+          "By design, this invalidates the conversation layer, since the next request has a new, shorter history that doesn't share a prefix with the old one.",
+      },
+      note: "123 of 123 compactions were followed by a cold turn. The system prompt layer survives, so the rebuild is the summary, not the whole context. A compaction whose summary pushes the boundary record out of the probe's 128 KB tail is not seen until the next turn.",
+    },
+  },
+  {
+    id: "claude.reset.reload-plugins-force",
+    harness: "claude",
+    label: "Plugins were reloaded with --force",
+    detection: "before-turn",
+    resets: {
+      value: true,
+      confidence: "documented",
+      source: {
+        ...RESETS_DOC,
+        quote:
+          "When `/reload-plugins` runs and the reload would trigger a full re-read, Claude Code shows a warning and doesn't apply the reload. Run `/reload-plugins --force` to apply it anyway.",
+      },
+      note: "Pessimistic: `--force` only rebuilds when the reload changes tools in the prefix, and nothing on disk says whether it did.",
+    },
+  },
+  {
+    id: "claude.reset.reload-plugins",
+    harness: "claude",
+    label: "Plugins were reloaded without --force",
+    detection: "before-turn",
+    resets: {
+      value: false,
+      confidence: "documented",
+      source: {
+        ...RESETS_DOC,
+        quote:
+          "Claude Code never invalidates the cache for a plugin's skills, commands, agents, hooks, monitors, or themes.",
+      },
+      note: "A plain reload that WOULD re-read everything is refused with a warning, so it keeps the cache either way. 3 of 3 plain reloads stayed warm.",
+    },
+  },
+];

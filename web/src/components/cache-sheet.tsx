@@ -17,6 +17,12 @@ import type { CacheRuleWire, PaneCache } from "@/lib/types";
 // in `GET /api/cache-rules`, asked for once per boot the first time a sheet opens. Forty panes on a
 // dashboard therefore do not each carry a vendor url.
 //
+// ── A RESET NAMES ITS ACTION, IN ONE LINE ────────────────────────────────────
+// A `/model` switch turns the chip cold with time still on the clock, which is the one cold a reader
+// would doubt. So when the bridge names the action behind a cold reading, the sheet says it: the
+// rule's own label in a translated sentence. The label rides the wire, so a peer's pane gets the same
+// line with no catalog behind it.
+//
 // ── ON A PEER'S PANE THE SHEET IS SHORTER, AND SAYS SO ───────────────────────
 // The state, the TTL, the confidence and the rule id all ride the wire, so they are shown. The SOURCE
 // is not: the peer may hold its own override, and quoting the lead's catalog for the peer's number
@@ -69,6 +75,7 @@ export function CacheSheet({ open, onClose, cache, host }: CacheSheetProps) {
   const onPeer = multi && host !== undefined;
   const rule = onPeer ? undefined : rules?.find((r) => r.id === cache.ruleId);
   const measured = cache.confidence === "observed";
+  const reset = resetLine(cache);
 
   return (
     <BottomSheet open={open} onClose={onClose} title={t("cache.sheet.title")}>
@@ -109,6 +116,7 @@ export function CacheSheet({ open, onClose, cache, host }: CacheSheetProps) {
           </>
         )}
       </dl>
+      {reset !== null && <p className="px-4 pb-3 text-sm">{reset}</p>}
       {cache.overridden === true && (
         <p className="px-4 pb-3 text-xs text-muted-foreground">
           {t("cache.sheet.overridden")}
@@ -125,6 +133,14 @@ export function CacheSheet({ open, onClose, cache, host }: CacheSheetProps) {
       )}
     </BottomSheet>
   );
+}
+
+/** The line naming the action behind a cold reading, or null when the bridge named none. */
+function resetLine(cache: PaneCache): string | null {
+  if (cache.state !== "cold" || cache.reset === undefined) return null;
+  if (cache.coldReason === "reset") return t("cache.sheet.reset.pending", { action: cache.reset.label });
+  if (cache.coldReason === "observed") return t("cache.sheet.reset.cause", { action: cache.reset.label });
+  return null;
 }
 
 function stateWord(state: PaneCache["state"]): string {

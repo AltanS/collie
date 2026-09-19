@@ -1,4 +1,4 @@
-import { allCacheRules } from "../bridge/cache/rules/index.ts";
+import { allCacheRules, allResetRules } from "../bridge/cache/rules/index.ts";
 import { claimAgeDays, staleClaims } from "../bridge/cache/claims.ts";
 import type { CacheOverride } from "../bridge/cache/engine.ts";
 import { validateOperatorCacheRules } from "../bridge/operator-cache-rules.ts";
@@ -53,25 +53,32 @@ export function cacheFindings(deps: CacheDeps): Finding[] {
   return [claims(deps), overrides(deps), env(deps)];
 }
 
+/** A claim below `documented` must say what could not be confirmed. */
+function unnoted(claim: { confidence: string; note?: string }): boolean {
+  return claim.confidence !== "documented" && claim.confidence !== "observed" && (claim.note ?? "") === "";
+}
+
 /**
- * `cache-claims` — every shipped TTL's date, and every honest hole's note.
+ * `cache-claims` — every shipped TTL's date, every reset rule's date, and every honest hole's note.
  *
  * The note check is folded in here rather than living in its own line so that `doctor` and the unit
  * test say the same thing about the same claim: a rule below `documented` that records no note is a
- * number nobody can audit, whichever of the two notices it first.
+ * number nobody can audit, whichever of the two notices it first. A reset rule (an action that drops the
+ * cache, issue #236) is a claim of the same kind and is judged the same way.
  */
 function claims(deps: CacheDeps): Finding {
   const check = "cache-claims";
   const rules = allCacheRules();
+  const resetRules = allResetRules();
   const at = new Date(deps.now());
-  const stale = staleClaims(rules, CLAIM_WARN_DAYS, at);
-  const unexplained = rules.filter(
-    (r) =>
-      r.ttlSeconds.confidence !== "documented" &&
-      r.ttlSeconds.confidence !== "observed" &&
-      (r.ttlSeconds.note ?? "") === "",
-  );
-  const summary = `${String(rules.length)} cache rules, every TTL carrying the page it was read on`;
+  const stale = staleClaims(rules, CLAIM_WARN_DAYS, at, resetRules);
+  const unexplained = [
+    ...rules.filter((r) => unnoted(r.ttlSeconds)).map((r) => ({ id: r.id, confidence: r.ttlSeconds.confidence })),
+    ...resetRules.filter((r) => unnoted(r.resets)).map((r) => ({ id: r.id, confidence: r.resets.confidence })),
+  ];
+  const summary =
+    `${String(rules.length)} cache rules and ${String(resetRules.length)} reset rules, ` +
+    "every claim carrying the page it was read on";
   if (stale.length === 0 && unexplained.length === 0) {
     const oldest = rules
       .map((r) => claimAgeDays(r.ttlSeconds.source, at))
@@ -84,7 +91,7 @@ function claims(deps: CacheDeps): Finding {
         `cache rule ${s.ruleId} last checked ${s.source.retrievedAt === "" ? "never" : s.source.retrievedAt}, ` +
         `${String(s.ageDays)} days ago`,
     ),
-    ...unexplained.map((r) => `cache rule ${r.id} is "${r.ttlSeconds.confidence}" and carries no note`),
+    ...unexplained.map((r) => `cache rule ${r.id} is "${r.confidence}" and carries no note`),
   ];
   return warn(
     check,

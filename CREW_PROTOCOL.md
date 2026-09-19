@@ -574,6 +574,17 @@ updated machines, so build skew is the steady state (§7), and this section is t
   sheet says where the number was read instead. Forwarding it is a follow-up spec, not a bullet on
   this one. `CREW_PROTOCOL_VERSION` stays `1`, no new route, no new verb and no new header.
 
+- **A pane's `cache` gained two optional keys, `coldReason` and `reset`** (added 2026-09-19, issue
+  #236). `coldReason` is `observed`, `expired` or `reset`, and `reset` is `{ruleId, label, at}`: the
+  action that dropped the cached prefix, pending or the cause of the last cold turn. Both ride a
+  `cold` reading only. Additive-optional with the closed reading this section requires: **absent means
+  no reason was named**, which renders the plain cold chip every build already draws. A pending reset
+  is carried as `state: "cold"` rather than as a new state word, so a lead or a phone older than the
+  keys shows it as cold and never as warm, and the cache watch, which warns only a `warm` or
+  `expiring` pane, stays quiet on it on either side of the link. The label rides whole because the
+  rule catalog is not forwarded (the bullet above). `CREW_PROTOCOL_VERSION` stays `1`, no new route,
+  no new verb and no new header.
+
 - **An addition a lead has no reader for is INERT, not merely tolerated — measured, not assumed**
   (2026-09-08, §16's version-skew leg). This section's promise used to rest on a unit test with a
   stand-in field. It has now been walked with the two real builds: a **1.6.0** lead binary, leading

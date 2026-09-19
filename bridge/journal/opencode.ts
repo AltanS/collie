@@ -39,6 +39,7 @@
 import { Database } from "bun:sqlite";
 import { join } from "node:path";
 
+import type { ResetEvent } from "../cache/claims.ts";
 import type { CacheProbe } from "../cache/engine.ts";
 import type { JsonObject, JsonValue } from "../json.ts";
 import { asRecord, asText, tokenCount } from "./cache-probe.ts";
@@ -425,6 +426,100 @@ interface ProbeRow {
   time_created: number;
 }
 
+// ── Actions that drop the cache between turns ────────────────────────────────
+//
+// Ported from herdr-cache-alert `src/harness/opencode.ts` (commit 17fb2af). STRUCTURED FIELDS ONLY,
+// never message text, and all three live on the same `data` json the probe already parses (checked
+// against a live `opencode.db` on 2026-09-19):
+//
+//   a USER message's `model: {providerID, modelID}`   the model picked for the turn it starts
+//   an ASSISTANT message's `mode: "compaction"`       the summary a compaction writes, together with
+//     and `summary: true`                             `summary: true` (a user message's `summary` is an
+//                                                     object, so only the boolean counts)
+
+/** The ids this module reports. Each is a shipped rule (`bridge/cache/rules/opencode.ts`). */
+const OPENCODE_RESET_IDS = {
+  model: "opencode.reset.model",
+  compaction: "opencode.reset.compaction",
+} as const;
+
+/** A compaction summary: the assistant message a compaction writes in place of the history. */
+function isCompaction(message: JsonObject): boolean {
+  return message.mode === "compaction" || message.summary === true;
+}
+
+/** `provider/model`, or null when either half is missing. A half-known model claims nothing. */
+function modelKey(provider: JsonValue | undefined, model: JsonValue | undefined): string | null {
+  const p = asText(provider);
+  const m = asText(model);
+  return p !== undefined && m !== undefined ? `${p}/${m}` : null;
+}
+
+/** An epoch-ms instant as the evidence line prints it. */
+function when(ms: number): string {
+  return new Date(ms).toISOString();
+}
+
+/** When a message happened: finished if it finished, else started, else `fallback`. */
+function messageAt(message: JsonObject, fallback: number): number {
+  const time = asRecord(message.time);
+  return tokenCount(time?.completed) ?? tokenCount(time?.created) ?? fallback;
+}
+
+/**
+ * Reset events around the newest assistant turn, oldest first.
+ *
+ * `messages` runs NEWEST FIRST, as the probe's query returns them, and `newest` indexes the assistant
+ * turn the probe chose. Three cases, and the engine sorts them by the turn's own time:
+ *
+ *  - the turn IS a compaction summary: the next request builds on the summary, so the reset is
+ *    reported just after the turn and reads as pending;
+ *  - a user message newer than the turn picked another model: pending, the newest such message only;
+ *  - the assistant turn before this one was a compaction, or ran on another model: history, which
+ *    explains a cold turn.
+ */
+export function opencodeResets(messages: ReadonlyArray<JsonObject | null>, newest: number): ResetEvent[] {
+  const turn = messages[newest];
+  if (turn === undefined || turn === null) return [];
+  const at = messageAt(turn, 0);
+  const current = modelKey(turn.providerID, turn.modelID);
+  const events: ResetEvent[] = [];
+
+  if (isCompaction(turn)) {
+    events.push({ ruleId: OPENCODE_RESET_IDS.compaction, at: at + 1, evidence: `compaction summary at ${when(at)}` });
+  }
+
+  // Newest first, so the first user message found is the newest one.
+  for (let i = 0; i < newest; i++) {
+    const message = messages[i];
+    if (message === undefined || message === null || message.role !== "user") continue;
+    const model = asRecord(message.model);
+    const picked = modelKey(model?.providerID, model?.modelID);
+    if (current !== null && picked !== null && picked !== current) {
+      const pickedAt = Math.max(messageAt(message, at + 1), at + 1);
+      events.push({ ruleId: OPENCODE_RESET_IDS.model, at: pickedAt, evidence: `model ${current} → ${picked}` });
+    }
+    break;
+  }
+
+  for (let i = newest + 1; i < messages.length; i++) {
+    const message = messages[i];
+    if (message === undefined || message === null) continue;
+    if (message.role !== "assistant" || asRecord(message.tokens) === null) continue;
+    if (isCompaction(message)) {
+      const was = messageAt(message, at);
+      events.push({ ruleId: OPENCODE_RESET_IDS.compaction, at: was, evidence: `compaction at ${when(was)}` });
+      break;
+    }
+    const before = modelKey(message.providerID, message.modelID);
+    if (before !== null && current !== null && before !== current) {
+      events.push({ ruleId: OPENCODE_RESET_IDS.model, at, evidence: `model ${before} → ${current}` });
+    }
+    break;
+  }
+  return events.toSorted((a, b) => a.at - b.at);
+}
+
 async function opencodeCacheProbe(
   source: OpencodeTranscriptSource,
   ref: AgentSessionRef,
@@ -442,9 +537,9 @@ async function opencodeCacheProbe(
         .all(split.sessionId),
     ) ?? [];
 
-  for (const row of rows) {
-    const data = parseData(row.data);
-    const message = asRecord(data);
+  const messages = rows.map((row) => asRecord(parseData(row.data)));
+  for (const [index, row] of rows.entries()) {
+    const message = messages[index] ?? null;
     if (message === null || message.role !== "assistant") continue;
     const tokens = asRecord(message.tokens);
     if (tokens === null) continue;
@@ -471,6 +566,8 @@ async function opencodeCacheProbe(
     if (cacheReadTokens !== undefined) probe.cacheReadTokens = cacheReadTokens;
     if (cacheCreationTokens !== undefined) probe.cacheCreationTokens = cacheCreationTokens;
     if (pair !== undefined) probe.model = pair;
+    const resets = opencodeResets(messages, index);
+    if (resets.length > 0) probe.resets = resets;
     return probe;
   }
   return null;
