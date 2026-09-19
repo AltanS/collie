@@ -24,6 +24,32 @@ in `harness/` allowed to touch the network (it re-fetches the pane before a guar
 **capability fence** (see below) enforces that every other harness module stays I/O-pure, because a
 socket call types into a live terminal.
 
+## Which side parses a pane
+
+**The phone parses what the phone draws. The bridge parses only what the bridge must act on without
+a phone attached.** Every grammar in this document is client-side for that reason, and a pull
+request that moves one into the bridge, or that adds a parsed field to `/api/snapshot` so the client
+does not have to look, will be declined.
+
+The bridge holds exactly one pane grammar today, `extractClaudeSessionName` in
+[`bridge/state-engine.ts`](./bridge/state-engine.ts). It is there because the BRIDGE consumes it: the
+name lands on `AgentView` and labels a pane for push notifications and the dashboard, which have to
+work when nobody has the app open. That is the whole test, and it is a narrow one.
+
+Three things follow, and they are why the seam sits here rather than the other way round:
+
+- **A wire field cannot carry what the client needs.** `extractStatusLines` returns `StyledLine[]`,
+  because a statusline separates its fields by colour and flattening it to text loses what makes it
+  readable at a glance. Publishing it means inventing a styled wire format nobody else needs.
+- **An older bridge sends nothing.** A crew member runs whatever release it is on. A client that
+  trusted a new field would go blank against a peer one version behind, so it needs the local parse
+  anyway — and then there are two parsers for one screen, which will drift.
+- **"Parse once" is not at stake.** The client already walks the pane's tail once per poll. A new
+  region found in that same walk costs nothing extra.
+
+If you need something on screen that the client cannot reach, the answer is a new probe on
+`HarnessAdapter`, not a new field on the snapshot.
+
 ## Fixtures-first workflow
 
 Detectors are developed and gated entirely against **byte-faithful pane captures** — never guessed

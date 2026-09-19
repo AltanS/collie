@@ -10,6 +10,10 @@ import type { UpdateCrewMember, UpdatePeerLeg, UpdatePeerLegState, UpdateRun } f
 // and a way out of every state that can stall. WHICH of those the operator sees is decided here and
 // nowhere else, so the precedence is pinned by a table rather than by pulling a DOM apart.
 //
+// WHY ONE READING, and not three: `.adr/0044`. Three readers of the same run is what shipped the
+// 2026-09-07 and 2026-09-12 incidents, and that ADR carries their dates and what each one looked
+// like on a phone. This header says what the rule IS; go there for what it cost.
+//
 // ── DISMISSIBILITY IS DECIDED HERE, AND BY ONE SENTENCE ──────────────────────
 // `dismissible` is false while a run THIS DEVICE STARTED is IN FLIGHT, and true otherwise. That is
 // the whole rule. It is written as one expression below rather than as a branch inside each mode,

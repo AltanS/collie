@@ -6,6 +6,9 @@ import type { UpdateCheckResponse, UpdateCrewMember, UpdateRun } from "./types";
 
 // ── ONE POLL FOR THE WHOLE UPDATE SUBJECT ───────────────────────────────────────────────────────
 //
+// ONE poll for that subject, and not one per surface: `.adr/0044`, which carries the dated
+// incidents the split produced.
+//
 // The Updates card and the update screen both need the same three things: the run record, the crew
 // census and the preflight. The card used to own all of it — a mount read of `GET /api/update/check`,
 // a re-read on every settle, and a `setInterval` on the standby door — and the sheet cannot own any

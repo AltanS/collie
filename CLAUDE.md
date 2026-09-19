@@ -558,6 +558,14 @@ lint guard, the crew-wire guard or the `flake.lock` guard.
   Feedback is sent as a verified sequence, never a keystroke — the ground truth for every state is
   [`PLAN_FEEDBACK_NOTES.md`](./web/src/lib/grammar/PLAN_FEEDBACK_NOTES.md); re-walk it before touching
   `harness/claude/prompt-select.ts` or `lib/prompt-action.ts`.
+- **The phone parses what the phone draws; the bridge parses only what it must act on alone.** Every
+  pane grammar is client-side, under `web/src/lib/harness/`. The bridge holds one,
+  `extractClaudeSessionName`, and only because the bridge itself consumes it, for a label that must
+  exist when no app is open. Do not move a grammar into the bridge and do not add a parsed field to
+  `/api/snapshot` to save the client a walk: a styled row has no wire form, a peer one release behind
+  sends nothing so the client needs the parse regardless, and the client already walks that tail once
+  per poll. Need something new off the screen? Add a probe to `HarnessAdapter`
+  ([HARNESS_CONTRIBUTING.md](./HARNESS_CONTRIBUTING.md) → *Which side parses a pane*).
 - **A generically-detected menu emits only the keys the screen printed** — the footer's
   `<key> to <verb>` hints plus the arrows it advertised. Never synthesise a digit from a numbered row:
   in the `/model` picker a digit confirms *and* persists the user's default. The generic grammar
