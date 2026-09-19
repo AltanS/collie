@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-09-19
+- **Shipped in:** 1.10.2
 - **Trail:** `cli/sys.ts` (`GIT_RELOCATORS`, `withoutGitRelocators`, `realExec`) ·
   `cli/sys.test.ts` · `cli/remote.ts` (`git bundle create`) ·
   `cli/install-kind.ts` (`isGitCheckout`) · issue
