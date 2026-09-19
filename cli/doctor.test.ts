@@ -692,7 +692,7 @@ describe("collie doctor — the local checks", () => {
 
   test("install: an install it cannot name warns and points at the docs", async () => {
     const h = harness(null, [], {
-      answers: [...HEALTHY_ANSWERS, [`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }]],
+      answers: [...HEALTHY_ANSWERS, [`git -C ${ROOT} rev-parse --show-prefix`, { code: 128 }]],
     });
     const { byCheck, code } = await findings(h);
     expect(byCheck.get("install")?.status).toBe("warn");
@@ -1451,7 +1451,7 @@ describe("collie doctor — a packaged install", () => {
   function systemOwned(link: Record<string, LinkProbe> = {}, answers: Scripted["answers"] = []) {
     const h = harness(null, [], {
       link,
-      answers: [...answers, [`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }], ...(HEALTHY_ANSWERS ?? [])],
+      answers: [...answers, [`git -C ${ROOT} rev-parse --show-prefix`, { code: 128 }], ...(HEALTHY_ANSWERS ?? [])],
       // The manifest is what makes this a Collie at all — `hasMarker` is asked before ownership, so
       // without it the tree classifies `no-marker` and none of these findings would be exercised.
       files: { ...healthyFiles(), [`${ROOT}/herdr-plugin.toml`]: 'id = "herdr.collie"\nversion = "1.5.2"\n' },

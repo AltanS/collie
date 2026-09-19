@@ -68,7 +68,7 @@ const df = (availableKb: number): string =>
 
 /** A checkout that is healthy in every respect: clean, current, supervised, roomy, with Bun. */
 const HEALTHY: NonNullable<Scripted["answers"]> = [
-  [`${GIT} rev-parse --git-dir`, { stdout: ".git\n" }],
+  [`${GIT} rev-parse --show-prefix`, { stdout: "" }],
   [`${GIT} symbolic-ref -q HEAD`, { code: 1 }],
   [`${GIT} remote get-url origin`, { stdout: "https://github.com/AltanS/collie.git\n" }],
   [`${GIT} status --porcelain --untracked-files=no`, { stdout: "" }],
@@ -352,7 +352,7 @@ describe("preflight — the bun check", () => {
 
   test("a binary install is never asked about bun", async () => {
     // No `.git` and a `versions/<x.y.z>` root with a `current` symlink beside it = the binary kind.
-    const h = harness({ answers: [[`git -C /opt/app/versions/1.0.0 rev-parse --git-dir`, { code: 128 }]] });
+    const h = harness({ answers: [[`git -C /opt/app/versions/1.0.0 rev-parse --show-prefix`, { code: 128 }]] });
     const link = fakeLinkFs({ "/opt/app/current": { kind: "symlink", target: "versions/1.0.0" } });
     const deps: UpdateCheckDeps = {
       ...h.deps,
@@ -921,7 +921,7 @@ describe("preflight — a folder a package manager owns", () => {
   /** A Collie in a folder a package manager owns, with a release listing that answers. */
   function packaged(over: Parameters<typeof harness>[0] = {}) {
     const h = harness({
-      answers: [[`${GIT} rev-parse --git-dir`, { code: 128 }]],
+      answers: [[`${GIT} rev-parse --show-prefix`, { code: 128 }]],
       net: {
         ...deadNet,
         getJson: () => Promise.resolve({ ok: true, value: [{ name: "v1.0.0", commit: { sha: "cccccccc" } }] }),
@@ -957,7 +957,7 @@ describe("preflight — a folder a package manager owns", () => {
     // The other half of the same rule: an unrecognised prefix costs the operator a command, never a
     // wrong kind, and Collie never invents one it cannot run.
     const NAMELESS = "/srv/collie";
-    const h = packaged({ answers: [[`git -C ${NAMELESS} rev-parse --git-dir`, { code: 128 }]] });
+    const h = packaged({ answers: [[`git -C ${NAMELESS} rev-parse --show-prefix`, { code: 128 }]] });
     h.files.entries.set(`${NAMELESS}/herdr-plugin.toml`, { text: 'id = "herdr.collie"\nversion = "1.0.0"\n' });
     const check = byId(await preflight({ ...h.deps, ctx: { ...h.deps.ctx, root: NAMELESS } }), "package");
     expect(check.verdict).toBe("green");
@@ -975,7 +975,7 @@ describe("preflight — a folder a package manager owns", () => {
     const AUR = "/usr/lib/collie";
     const h = packaged({
       installed: "1.0.0",
-      answers: [[`git -C ${AUR} rev-parse --git-dir`, { code: 128 }]],
+      answers: [[`git -C ${AUR} rev-parse --show-prefix`, { code: 128 }]],
       net: {
         ...deadNet,
         getJson: () =>

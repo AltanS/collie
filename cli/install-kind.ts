@@ -44,9 +44,25 @@ export function isManagedCheckout(exec: Exec, root: string): boolean {
   return !r.found || r.code !== 0;
 }
 
+/**
+ * True when `root` is the top level of a git working tree — the repository OWNS this directory,
+ * rather than merely containing it.
+ *
+ * `--show-prefix`, NOT `--git-dir`. Git's discovery walks UP, so `--git-dir` answers "some
+ * repository contains this path" and exits 0 from any depth. That is not the shape this module
+ * promises: a binary install at `~/.local/share/collie/versions/1.10.0` reported `linked-clone`
+ * on every host whose `$HOME` is itself a repository — the ordinary dotfiles worktree — and
+ * `update` then read the DOTFILES remote, refused the release, and told the operator to set
+ * `COLLIE_UPDATE_REPO` to their own dotfiles (issue #243).
+ *
+ * `--show-prefix` prints the path of the working directory RELATIVE to the top level, so it is
+ * empty exactly at the top and non-empty at every depth below it. One call, and the comparison
+ * happens inside git with both sides already symlink-resolved — which keeps a checkout reached
+ * through a symlinked root (the dev lane's shape) a checkout.
+ */
 export function isGitCheckout(exec: Exec, root: string): boolean {
-  const r = exec.capture("git", gitArgsOf(root, ["rev-parse", "--git-dir"]));
-  return r.found && r.code === 0;
+  const r = exec.capture("git", gitArgsOf(root, ["rev-parse", "--show-prefix"]));
+  return r.found && r.code === 0 && r.stdout.trim() === "";
 }
 
 // ── The pure core ────────────────────────────────────────────────────────────

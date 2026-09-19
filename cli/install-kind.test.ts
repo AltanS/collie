@@ -5,10 +5,11 @@ import { join } from "node:path";
 
 import { resolvePluginRoot } from "../bridge/root.ts";
 import { fakeExec, fakeFiles, fakeLinkFs, HOME } from "./fakes.ts";
-import { realFiles } from "./sys.ts";
+import { realExec, realFiles } from "./sys.ts";
 import {
   classifyInstall,
   detectInstall,
+  isGitCheckout,
   type InstallProbe,
   originMatches,
   originOf,
@@ -92,7 +93,7 @@ describe("probeInstall / detectInstall", () => {
   test("reads the layout off the `current` symlink and git off the checkout", () => {
     const deps = {
       ctx: context({}, { root: ROOT }),
-      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 1 }]] }),
+      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --show-prefix`, { code: 1 }]] }),
       files: fakeFiles({ [`${ROOT}/herdr-plugin.toml`]: 'version = "1.1.0"\n' }),
       link: fakeLinkFs({ "/inst/current": { kind: "symlink", target: ROOT } }),
     };
@@ -113,7 +114,7 @@ describe("probeInstall / detectInstall", () => {
   test("a `current` pointing outside the layout is not this install's", () => {
     const deps = {
       ctx: context({}, { root: ROOT }),
-      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 1 }]] }),
+      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --show-prefix`, { code: 1 }]] }),
       files: fakeFiles({}),
       link: fakeLinkFs({ "/inst/current": { kind: "symlink", target: "/somewhere/else" } }),
     };
@@ -208,6 +209,77 @@ describe("process.execPath is realpath-resolved", () => {
   });
 });
 
+// ── The predicate against REAL git ───────────────────────────────────────────
+// `isGitCheckout` is the one probe here whose answer comes from another program, so the contract
+// that matters is git's, not a fake's. These four run the real binary: git discovery walks UP, and
+// the whole point of `--show-prefix` is that it reports how far up it walked.
+
+describe("isGitCheckout — the repository must OWN the root (issue #243)", () => {
+  // PATH alone: git must not read the running operator's config, only find its own binary.
+  const exec = realExec({ PATH: process.env.PATH }, tmpdir());
+  const initRepo = (dir: string): void => {
+    mkdirSync(dir, { recursive: true });
+    for (const args of [["init", "-q", "."], ["config", "user.email", "t@t"], ["config", "user.name", "t"]]) {
+      expect(Bun.spawnSync(["git", "-C", dir, ...args]).exitCode).toBe(0);
+    }
+  };
+
+  test("a binary install under a repository $HOME is NOT a checkout", () => {
+    // THE BUG. A dotfiles worktree at `~` makes `rev-parse --git-dir` succeed from every directory
+    // below it, so the install was classified `linked-clone` and `update` read the dotfiles remote.
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "collie-home-repo-")));
+    try {
+      initRepo(home);
+      const root = join(home, ".local", "share", "collie", "versions", "1.10.0");
+      mkdirSync(root, { recursive: true });
+      expect(isGitCheckout(exec, root)).toBe(false);
+      // …and the layout below it is then read for what it is.
+      expect(
+        classifyInstall({ ...probe(), parentIsVersions: true, currentIsSymlink: true, currentResolvesHere: true }),
+      ).toEqual({ kind: "binary" });
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("a real checkout at the top level IS a checkout", () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "collie-checkout-")));
+    try {
+      initRepo(dir);
+      expect(isGitCheckout(exec, dir)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a checkout reached through a symlinked root is still a checkout", () => {
+    // The dev lane's shape. git resolves the working directory before it compares, so both sides of
+    // the prefix are already canonical — this is why the predicate needs no realpath of its own.
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "collie-symlinked-")));
+    try {
+      const real = join(base, "real");
+      initRepo(real);
+      const link = join(base, "link");
+      symlinkSync(real, link);
+      expect(isGitCheckout(exec, link)).toBe(true);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  test("a directory in no repository at all is not a checkout", () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "collie-bare-dir-")));
+    try {
+      // `$TMPDIR` is not under a repository on any host this runs on; assert that, so a failure here
+      // reads as "the assumption broke" rather than as the predicate being wrong.
+      expect(Bun.spawnSync(["git", "-C", dir, "rev-parse", "--show-prefix"]).exitCode).not.toBe(0);
+      expect(isGitCheckout(exec, dir)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ── The install nobody here can update ───────────────────────────────────────
 // A package manager lays Collie down in a folder it owns, and updates that folder itself. The
 // predicate has four clauses and the fourth is a DISJUNCTION of three probed facts, because no one
@@ -287,7 +359,7 @@ describe("classifyInstall — a folder a package manager owns", () => {
     files.readOnly.add(ROOT);
     const deps = {
       ctx: context({}, { root: ROOT }),
-      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }]] }),
+      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --show-prefix`, { code: 128 }]] }),
       files,
       link: fakeLinkFs(),
     };
@@ -308,7 +380,7 @@ describe("classifyInstall — a folder a package manager owns", () => {
     files.readOnly.add(ROOT);
     const deps = {
       ctx: context({}, { root: ROOT }),
-      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }]] }),
+      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --show-prefix`, { code: 128 }]] }),
       files,
       link: fakeLinkFs(),
     };
@@ -326,7 +398,7 @@ describe("classifyInstall — a folder a package manager owns", () => {
     const files = fakeFiles({ [`${ROOT}/herdr-plugin.toml`]: 'version = "1.5.3"\n' });
     const deps = {
       ctx: context({}, { root: ROOT }),
-      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }]] }),
+      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --show-prefix`, { code: 128 }]] }),
       files,
       link: fakeLinkFs(),
     };
@@ -342,7 +414,7 @@ describe("classifyInstall — a folder a package manager owns", () => {
     const files = fakeFiles({ [`${ROOT}/herdr-plugin.toml`]: 'version = "1.5.3"\n' });
     const deps = {
       ctx: context({}, { root: ROOT }),
-      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --git-dir`, { code: 128 }]] }),
+      exec: fakeExec({ answers: [[`git -C ${ROOT} rev-parse --show-prefix`, { code: 128 }]] }),
       files,
       link: fakeLinkFs(),
     };
