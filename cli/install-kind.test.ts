@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -27,6 +27,7 @@ import { context } from "./fakes.ts";
 const probe = (over: Partial<InstallProbe> = {}): InstallProbe => ({
   isGitCheckout: false,
   isDetached: false,
+  hasGitEntry: false,
   parentIsVersions: false,
   currentIsSymlink: false,
   currentResolvesHere: false,
@@ -85,6 +86,22 @@ describe("classifyInstall", () => {
     expect(classifyInstall(probe())).toEqual({ kind: "unknown", why: "loose-binary" });
     expect(classifyInstall(probe({ hasMarker: false }))).toEqual({ kind: "unknown", why: "no-marker" });
   });
+
+  test("a `.git` git would not confirm stops the walk — it never becomes another kind", () => {
+    const layout = { parentIsVersions: true, currentIsSymlink: true, currentResolvesHere: true };
+    // Without the guard this exact probe answers `binary`, and `update` trashes the directory.
+    expect(classifyInstall(probe({ hasGitEntry: true, ...layout }))).toEqual({
+      kind: "unknown",
+      why: "broken-checkout",
+    });
+    // A healthy checkout is unaffected: git confirmed it, so the first clause already answered.
+    expect(classifyInstall(probe({ isGitCheckout: true, isDetached: true, hasGitEntry: true, ...layout }))).toEqual({
+      kind: "detached-checkout",
+      alsoLayout: true,
+    });
+    // And issue #243's install has no `.git` of its OWN, which is why the guard leaves it alone.
+    expect(classifyInstall(probe({ hasGitEntry: false, ...layout }))).toEqual({ kind: "binary" });
+  });
 });
 
 describe("probeInstall / detectInstall", () => {
@@ -100,6 +117,7 @@ describe("probeInstall / detectInstall", () => {
     expect(probeInstall(deps, ROOT)).toEqual({
       isGitCheckout: false,
       isDetached: false,
+      hasGitEntry: false,
       parentIsVersions: true,
       currentIsSymlink: true,
       currentResolvesHere: true,
@@ -262,6 +280,117 @@ describe("isGitCheckout — the repository must OWN the root (issue #243)", () =
       const link = join(base, "link");
       symlinkSync(real, link);
       expect(isGitCheckout(exec, link)).toBe(true);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  // The three shapes a REAL checkout can take that must survive the tightening. Reporting any of
+  // them as "not a checkout" is the dangerous direction: the binary path renames a version
+  // directory into `.trash/`, and doing that to a working tree with uncommitted work is
+  // unrecoverable. `--show-prefix` is empty at the top of each, so all three still win.
+
+  test("a detached HEAD at the top IS a checkout — the Herdr-managed shape", () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "collie-detached-")));
+    try {
+      initRepo(dir);
+      expect(Bun.spawnSync(["git", "-C", dir, "commit", "-q", "--allow-empty", "-m", "x"]).exitCode).toBe(0);
+      expect(Bun.spawnSync(["git", "-C", dir, "checkout", "-q", "--detach", "HEAD"]).exitCode).toBe(0);
+      expect(isGitCheckout(exec, dir)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("a linked worktree root IS a checkout", () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "collie-worktree-")));
+    try {
+      const main = join(base, "main");
+      initRepo(main);
+      expect(Bun.spawnSync(["git", "-C", main, "commit", "-q", "--allow-empty", "-m", "x"]).exitCode).toBe(0);
+      const linked = join(base, "linked");
+      expect(Bun.spawnSync(["git", "-C", main, "worktree", "add", "-q", "--detach", linked, "HEAD"]).exitCode).toBe(0);
+      // Its `.git` is a FILE pointing into the main repository, not a directory.
+      expect(isGitCheckout(exec, linked)).toBe(true);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  test("a submodule root IS a checkout", () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "collie-submodule-")));
+    try {
+      const inner = join(base, "inner");
+      initRepo(inner);
+      expect(Bun.spawnSync(["git", "-C", inner, "commit", "-q", "--allow-empty", "-m", "x"]).exitCode).toBe(0);
+      const outer = join(base, "outer");
+      initRepo(outer);
+      const add = Bun.spawnSync([
+        "git", "-C", outer, "-c", "protocol.file.allow=always", "submodule", "add", "-q", inner, "mod",
+      ]);
+      expect(add.exitCode).toBe(0);
+      expect(isGitCheckout(exec, join(outer, "mod"))).toBe(true);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  test("core.worktree pointing elsewhere leaves the repository directory a checkout", () => {
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "collie-coreworktree-")));
+    try {
+      const repo = join(base, "repo");
+      const tree = join(base, "tree");
+      initRepo(repo);
+      mkdirSync(tree, { recursive: true });
+      expect(Bun.spawnSync(["git", "-C", repo, "config", "core.worktree", tree]).exitCode).toBe(0);
+      expect(isGitCheckout(exec, repo)).toBe(true);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  test("a bare repository answers empty, and stays a checkout as it always did", () => {
+    // Not a Collie install shape, and not the dangerous direction either. Pinned so the answer is
+    // known rather than assumed: `--git-dir` accepted it too, so nothing here moved.
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "collie-bare-")));
+    try {
+      const bare = join(base, "x.git");
+      expect(Bun.spawnSync(["git", "init", "-q", "--bare", bare]).exitCode).toBe(0);
+      expect(isGitCheckout(exec, bare)).toBe(true);
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  });
+
+  test("a root that does not exist is not a checkout, and does not throw", () => {
+    // `git -C` cannot chdir, so it exits 128 before it discovers anything. The probe has to read
+    // that as an ordinary "no", because `doctor` asks this question about a path it did not create.
+    expect(isGitCheckout(exec, join(tmpdir(), "collie-absent-3f9c2e1a", "versions", "1.10.0"))).toBe(false);
+  });
+
+  test("a BROKEN checkout in a versions/ layout is unknown, never binary", () => {
+    // The fall-through this guard exists to stop. git answers 128 for "no repository" and for
+    // "repository I cannot read" alike, so without the `.git` probe a working tree with a
+    // half-written HEAD reads as a binary install — and the binary path renames it into `.trash/`.
+    const base = realpathSync(mkdtempSync(join(tmpdir(), "collie-brokenwt-")));
+    try {
+      const root = join(base, "versions", "1.10.0");
+      initRepo(root);
+      Bun.spawnSync(["git", "-C", root, "commit", "-q", "--allow-empty", "-m", "x"]);
+      writeFileSync(join(root, ".git", "HEAD"), "garbage\n");
+      expect(isGitCheckout(exec, root)).toBe(false);
+
+      const deps = {
+        ctx: context({}, { root }),
+        exec,
+        files: realFiles,
+        link: fakeLinkFs({ [join(base, "current")]: { kind: "symlink", target: root } }),
+      };
+      const probed = probeInstall(deps, root);
+      expect(probed.isGitCheckout).toBe(false);
+      expect(probed.hasGitEntry).toBe(true);
+      expect(probed.parentIsVersions).toBe(true);
+      expect(classifyInstall(probed)).toEqual({ kind: "unknown", why: "broken-checkout" });
     } finally {
       rmSync(base, { recursive: true, force: true });
     }

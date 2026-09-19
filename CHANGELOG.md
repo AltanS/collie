@@ -33,6 +33,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Fixed
 
 - **`collie update` works again when your home directory is a git repository.** A dotfiles repository whose working tree sits at `~` made Collie read a binary install as a source checkout. `collie update` then refused to run and pointed you at your own dotfiles remote. Collie now counts a directory as a checkout only when the repository starts there. Reported by [@krishkumar](https://github.com/krishkumar) ([#243](https://github.com/AltanS/collie/issues/243)).
+- **A checkout whose git data is unreadable is never mistaken for a binary install.** A corrupt or unreadable `.git` made git refuse to answer, and Collie then read the folder as a binary install, which `collie update` moves aside. Collie now stops, says the git data cannot be read, and tells you to repair it.
 
 ## [1.10.1] - 2026-09-17
 
