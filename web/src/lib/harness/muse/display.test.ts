@@ -66,6 +66,25 @@ describe("rendersNativeMirror", () => {
   ])("keeps inverting %s", (_label, agent) => {
     expect(rendersNativeMirror(agent)).toBe(false);
   });
+
+  // The per-pane override (lib/mirror-invert.ts) is what serves an agent whose colours point the
+  // other way from its agent-wide answer — opencode on a light theme, and the same symptom reported
+  // on codex. It wins in BOTH directions, because only the operator can see which way a given pane
+  // actually points.
+  it("lets a pane opt IN to native rendering against the agent bit", () => {
+    expect(rendersNativeMirror("opencode", true)).toBe(true);
+    expect(rendersNativeMirror("codex", true)).toBe(true);
+    expect(rendersNativeMirror(undefined, true)).toBe(true);
+  });
+
+  it("lets a pane opt OUT of native rendering, even for a native agent", () => {
+    expect(rendersNativeMirror("muse", false)).toBe(false);
+  });
+
+  it("falls back to the agent bit when the pane has no opinion", () => {
+    expect(rendersNativeMirror("muse", undefined)).toBe(true);
+    expect(rendersNativeMirror("opencode", undefined)).toBe(false);
+  });
 });
 
 describe("trimsRowChrome", () => {

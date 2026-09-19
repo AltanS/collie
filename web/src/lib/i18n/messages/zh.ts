@@ -180,6 +180,9 @@ export const zh: Dictionary = {
   "settings.display.rawTerminal.label": "原始终端",
   "settings.display.rawTerminal.hint":
     "仅显示纯终端镜像，隐藏提示按钮与状态栏。适用于对话框渲染异常时通过按键手动操作。",
+  "settings.display.noInvert.label": "以原始配色显示此面板",
+  "settings.display.noInvert.hint":
+    "仅对此面板跳过浅色主题的反色。当代理使用浅色主题而镜像显示为深色时开启；显示正常时保持关闭。",
   "settings.display.textSize.label": "字号大小",
   "settings.display.textSize.decrease": "缩小字号",
   "settings.display.textSize.increase": "放大字号",

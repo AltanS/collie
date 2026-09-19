@@ -86,6 +86,7 @@ import type {
   PromptModel,
   WizardModel,
 } from "@/lib/blocks";
+import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import type { Scope } from "@/lib/scope";
 
 interface AgentChatProps {
@@ -203,6 +204,29 @@ export function AgentChat({
   // together — dimming only one of them would leave a frozen reading looking half live.
   const connecting = isConnecting({ bridge, error, stalled });
   const { newTab, launch, launching, creatingTab } = useSpaceActions();
+  // The pane's light-theme inversion override (lib/mirror-invert.ts). Read once at mount, which is
+  // enough: this component is keyed by paneId, so switching pane remounts it and re-reads.
+  const [mirrorOverride, setMirrorOverride] = useState<boolean | undefined>(() =>
+    paneMirrorOverride(scope, paneId),
+  );
+  const chooseMirrorOverride = useCallback(
+    (next: boolean | undefined) => {
+      setMirrorOverride(next);
+      setPaneMirrorOverride(scope, paneId, next);
+    },
+    [scope, paneId],
+  );
+  const agentNative = rendersNativeMirror(agent?.agent);
+  const mirrorNative = rendersNativeMirror(agent?.agent, mirrorOverride);
+  const setMirrorNative = useCallback(
+    (next: boolean) => {
+      // Choosing the agent's own answer CLEARS the override instead of pinning it, so a pane does
+      // not freeze on today's answer if .adr/0047's set changes under it later.
+      chooseMirrorOverride(next === agentNative ? undefined : next);
+    },
+    [chooseMirrorOverride, agentNative],
+  );
+
   const { launchers, home: launchersHome } = useLaunchers(scope);
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply } =
@@ -1858,9 +1882,12 @@ export function AgentChat({
                     // a grammar. Dropping the agent here would re-invert a Muse pane (.adr/0047),
                     // so the agent stays and `grammars` is what turns its adapter off.
                     agent={
-                      grammarsOn || rendersNativeMirror(agent?.agent) ? agent?.agent : undefined
+                      grammarsOn || rendersNativeMirror(agent?.agent, mirrorOverride)
+                        ? agent?.agent
+                        : undefined
                     }
                     grammars={grammarsOn}
+                    nativeMirror={mirrorOverride}
                     onPromptAction={handlePromptAction}
                     onWizardAction={handleWizardAction}
                     onPreviewAction={handlePreviewAction}
@@ -2062,6 +2089,8 @@ export function AgentChat({
                   stepFontSize={stepFontSize}
                   setRawTerminal={setRawTerminal}
                   setTapToFocus={setTapToFocus}
+                  mirrorNative={mirrorNative}
+                  setMirrorNative={setMirrorNative}
                   setExpandClippedReply={setExpandClippedReply}
                   onSent={onSent}
                   // The switcher mark, for the actions belt's top rule — see the condition at

@@ -27,12 +27,15 @@ import {
  * whose gutter shape it was measured against. Dialog blocks are never touched: only raw
  * blocks reach the mirror.
  */
-export function buildBlocks(lines: StyledLine[], ctx?: { agent?: string; grammars?: boolean }): Block[] {
+export function buildBlocks(
+  lines: StyledLine[],
+  ctx?: { agent?: string; grammars?: boolean; nativeMirror?: boolean },
+): Block[] {
   // `grammars: false` is the raw-terminal pref: no adapter runs, so no chrome is stripped and no
   // dialog is lifted, but a native-mirror agent still keeps its display passes below.
   const adapter = ctx?.grammars === false ? undefined : adapterFor(ctx?.agent);
   const blocks = adapter?.buildBlocks(lines) ?? [{ kind: "raw", lines }];
-  if (!rendersNativeMirror(ctx?.agent)) return blocks;
+  if (!rendersNativeMirror(ctx?.agent, ctx?.nativeMirror)) return blocks;
   const trim = trimsRowChrome(ctx?.agent);
   let changed = false;
   const decorated = blocks.map((block) => {

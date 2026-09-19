@@ -7,7 +7,13 @@ import type { StyledLine } from "../../blocks";
  *  so a second agent joins by adding one row here. Exact strings, like the registry. */
 const NATIVE_MIRROR_AGENTS: ReadonlySet<string> = new Set(["muse"]);
 
-export function rendersNativeMirror(agent?: string): boolean {
+export function rendersNativeMirror(agent?: string, paneOverride?: boolean): boolean {
+  // The per-pane override wins in BOTH directions, which is the point of ADR 0002's "don't invert
+  // this one": an operator looking at the pane can always see which way its colours point, and this
+  // predicate cannot. `false` therefore forces the inverting mirror back on even for a native agent
+  // (a Muse pane on some future light theme), and `undefined` — the normal case — leaves the agent
+  // bit to decide. lib/mirror-invert.ts owns where the value is stored; this stays pure.
+  if (paneOverride !== undefined) return paneOverride;
   return agent !== undefined && NATIVE_MIRROR_AGENTS.has(agent);
 }
 
