@@ -1,10 +1,20 @@
 // Codex's chrome is boxless: a `› ` prompt row (wrapping onto two-space-indented continuation
-// rows) with the dot-separated status row directly beneath, sitting at the buffer tail. The
-// dialogs (trust / approval / ask) REPLACE that pair entirely — their own footer becomes the
-// tail — so locating the composer is also the composer-vs-modal discriminator. A submitted
-// message echoes into the transcript with the same `› ` prefix, which is why the walk anchors
-// on the STATUS row at the tail and only then looks up for the prompt row: an echo higher in
-// the transcript never has the status row directly beneath it. Pure; no pane access.
+// rows) with the dot-separated status row beneath, sitting at the buffer tail. The dialogs
+// (trust / approval / ask) REPLACE that pair entirely — their own footer becomes the tail — so
+// locating the composer is also the composer-vs-modal discriminator. Pure; no pane access.
+//
+// THE COMPOSER IS FOUND BY ITS OWN MARKS, NOT BY COUNTING THE ROWS BETWEEN THEM (the rule ADR 0048
+// set for Claude's box, applied here). The two marks are the status row as the last non-blank row,
+// and the LOWEST column-0 `› ` row above it. A status row at the tail already proves a live
+// composer, because every dialog replaces it. A submitted message echoes into the transcript with
+// the same `› ` prefix, but an echo always sits ABOVE the live prompt, so the lowest one is the
+// prompt. The walk used to refuse on the first blank or non-continuation row between the marks, and
+// Astra's starfield (issue #245) paints exactly such rows: a refused composer refuses every send
+// from the phone. Now a blank row, an indented row and a sparkle row all pass. One row refuses: a
+// row with text at column 0 (or a second status row). Codex's own output (`• Ran …`, a rule) starts
+// at column 0 and a draft or sparkle row never does, so this is what keeps the walk from reaching
+// an echo if the live prompt row is ever missing. MAX_DRAFT_ROWS is a defence bound on how far the
+// walk reaches, not the thing that decides whether the composer exists.
 
 import type { StyledLine } from "../../blocks";
 import {
@@ -12,13 +22,16 @@ import {
   isStatusRow,
   lastNonBlankIndex,
   lineText,
+  isSparkle,
   PLACEHOLDER,
   promptText,
   rstrip,
-  skipBlanksUp,
+  withoutSparkles,
 } from "./markers";
 
 export interface ComposerBox {
+  /** First row of the composer band: the prompt row, or the starfield rows directly above it. */
+  top: number;
   /** The `› ` prompt row. */
   promptRow: number;
   /** The status row under it (last non-blank row of the frame). */
@@ -28,7 +41,8 @@ export interface ComposerBox {
 // A draft wraps onto indented continuation rows between the prompt row and the status row.
 // Captured drafts show one; the bound is slack for longer phone-typed messages. 8 stranded a
 // wrap (locateComposer returned null and the app reported a dialog). Same 100 as omp/Grok/
-// Claude. A run deeper than this is not a composer (fail closed — locateComposer returns null).
+// Claude. A defence bound (see the header): a prompt row further up than this is not searched for,
+// and locateComposer fails closed.
 const MAX_DRAFT_ROWS = 100;
 
 // A continuation row is the composer's TWO-SPACE GUTTER followed by the draft's own text — and
@@ -70,44 +84,57 @@ function isEmptyPlaceholder(line: StyledLine): boolean {
 
 /** The composer at the buffer tail, or null (a dialog owns the screen, or the frame is torn). */
 export function locateComposer(lines: StyledLine[]): ComposerBox | null {
-  const texts = lines.map((l) => rstrip(lineText(l)));
+  const clean = lines.map(withoutSparkles);
+  const texts = clean.map((l) => rstrip(lineText(l)));
   const statusRow = lastNonBlankIndex(texts);
-  if (statusRow < 0 || !isStatusRow(texts[statusRow]!, lines[statusRow])) return null;
+  if (statusRow < 0 || !isStatusRow(texts[statusRow]!, clean[statusRow])) return null;
 
-  // One blank row separates the prompt/draft run from the status row (every capture); above the
-  // gap the run is CONTIGUOUS non-blank rows — wrapped-draft continuations under the `› ` prompt.
-  const top = skipBlanksUp(texts, statusRow - 1);
-  if (top < 0) return null;
-  for (let i = top; i >= 0 && top - i < MAX_DRAFT_ROWS; i--) {
+  for (let i = statusRow - 1; i >= 0 && statusRow - 1 - i <= MAX_DRAFT_ROWS; i--) {
     const t = texts[i]!;
-    if (promptText(t) !== null) return { promptRow: i, statusRow };
-    // A blank or foreign-shaped row inside the run means this status row is not under a composer.
-    if (isBlank(t) || !CONTINUATION.test(t) || isStatusRow(t, lines[i])) return null;
+    if (promptText(t) !== null) return { top: bandTop(lines, texts, i), promptRow: i, statusRow };
+    // Transcript at column 0, or a second status row: the walk has left this frame.
+    if (/^\S/.test(t) || isStatusRow(t, clean[i])) return null;
   }
   return null;
 }
 
+/** The starfield rows directly above the prompt belong to the composer band, and leave the mirror
+ *  with it. Only a row that holds sparkles and nothing else: such a row is never transcript. */
+function bandTop(lines: StyledLine[], texts: string[], promptRow: number): number {
+  let top = promptRow;
+  while (
+    top > 0 &&
+    promptRow - top < MAX_DRAFT_ROWS &&
+    isBlank(texts[top - 1]!) &&
+    lines[top - 1]!.segments.some(isSparkle)
+  ) {
+    top--;
+  }
+  return top;
+}
+
 /**
- * Return `lines` with the composer (prompt row through status row) removed from the tail.
+ * Return `lines` with the composer (its band through the status row) removed from the tail.
  * Unchanged input is the SAME REFERENCE, so callers can treat `result === lines` as "no chrome".
  */
 export function stripChrome(lines: StyledLine[]): StyledLine[] {
   const box = locateComposer(lines);
   if (box === null) return lines;
-  return lines.slice(0, box.promptRow);
+  return lines.slice(0, box.top);
 }
 
 /** The status row, styled, for the strip above the phone composer. Empty when no composer. */
 export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
   const box = locateComposer(lines);
   if (box === null) return [];
-  return [lines[box.statusRow]!];
+  return [withoutSparkles(lines[box.statusRow]!)];
 }
 
 /**
  * The user's draft stranded in the composer: the `› ` row's text plus wrapped continuation
  * rows, joined with single spaces (Codex word-wraps — verified against the typed original on
  * the draft-wrapped capture). The placeholder is not a draft. Null = no composer / empty.
+ * Sparkles are painted over first, and a blank row between the prompt and the status row is skipped.
  *
  * Load-bearing: registering this adapter switches Codex panes from one-shot send to
  * type-then-verify, and THIS is the verify half.
@@ -115,14 +142,15 @@ export function extractStatusLines(lines: StyledLine[]): StyledLine[] {
 export function extractInputDraft(lines: StyledLine[]): string | null {
   const box = locateComposer(lines);
   if (box === null) return null;
-  const texts = lines.map((l) => rstrip(lineText(l)));
+  const clean = lines.map(withoutSparkles);
+  const texts = clean.map((l) => rstrip(lineText(l)));
   const first = promptText(texts[box.promptRow]!) ?? "";
   const parts = [first.trim()];
   for (let i = box.promptRow + 1; i < box.statusRow; i++) {
-    parts.push(texts[i]!.trim());
+    if (CONTINUATION.test(texts[i]!)) parts.push(texts[i]!.trim());
   }
   const draft = parts.filter((p) => p !== "").join(" ");
-  if (draft === "" || (draft === PLACEHOLDER && isEmptyPlaceholder(lines[box.promptRow]!))) {
+  if (draft === "" || (draft === PLACEHOLDER && isEmptyPlaceholder(clean[box.promptRow]!))) {
     return null;
   }
   return draft;
@@ -135,10 +163,16 @@ export function composerReady(lines: StyledLine[]): boolean {
 
 /** The literal on-screen prompt/draft run a destructive write is bound to. Ending at the last draft
  * continuation keeps a wrapped message inside the bridge's bounded tail window; naming only the
- * first `›` row would permanently 409 once six or more non-blank wrap rows sat beneath it. */
+ * first `›` row would permanently 409 once six or more non-blank wrap rows sat beneath it.
+ * Null while the starfield is on those rows: the bridge compares the rows literally, and a
+ * starfield repaints between the phone's read and the bridge's, so a bound sweep could never pass.
+ * Null leaves the sweep unbound, which is the documented fallback (HarnessAdapter.composerPrompt). */
 export function composerPrompt(lines: StyledLine[]): string | null {
   const box = locateComposer(lines);
   if (box === null) return null;
+  for (let i = box.promptRow; i < box.statusRow; i++) {
+    if (lines[i]!.segments.some(isSparkle)) return null;
+  }
   let end = box.statusRow;
   while (end > box.promptRow + 1 && isBlank(lineText(lines[end - 1]!))) end--;
   return lines

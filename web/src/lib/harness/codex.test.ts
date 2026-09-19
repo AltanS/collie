@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { parseAnsi } from "../ansi";
 import { splitLines } from "../blocks";
 import { codexAdapter } from "./codex";
-import { locateComposer, stripChrome } from "./codex/chrome";
+import { composerPrompt, extractInputDraft, locateComposer, stripChrome } from "./codex/chrome";
 import { isStatusRow, lineText, PLACEHOLDER } from "./codex/markers";
 import { detectApprovalRegion } from "./codex/approval";
 import { detectAskRegion } from "./codex/ask";
@@ -68,6 +68,9 @@ describeAdapterConformance(codexAdapter, {
   ownFixtures,
   foreignFixtures: [...allClaudeFixtures, ...allOmpFixtures, ...allGrokFixtures],
   neutralFixtures,
+  // Astra's starfield repaints the prompt row every frame, so the bridge's literal re-read could
+  // never match a region (codex/chrome.ts, composerPrompt).
+  unboundComposerFixtures: ["codex--v0154-submitted-fill.txt"],
 });
 
 describe("the codex corpus", () => {
@@ -269,6 +272,83 @@ describe("chrome", () => {
     expect(
       locateComposer(splitLines(parseAnsi(["› start", ...cont.slice(1), "", status].join("\n")))),
     ).not.toBeNull();
+  });
+});
+
+// Issue #245. Codex's Astra models paint a starfield over the composer band: braille glyphs, each in
+// its own grey foreground, on the row above the prompt, after the draft, and on rows under it. The
+// locator finds the composer by its two marks and lets any row between them pass; the draft reader
+// paints the sparkles over and skips rows that are not continuations.
+describe("the Astra starfield (issue #245)", () => {
+  const ESC = "\x1b";
+  const spark = (glyph: string) => `${ESC}[38;2;150;151;155m${glyph}${ESC}[0m`;
+  const STATUS = "  gpt-6-astra medium · /tmp/sandbox · master · Context 3% used";
+  const starRow = (lead: string) => `${lead}${spark("⠁")}      ${spark("⠈")}    ${spark("⡀")}`;
+  const screen = (rows: string[]) => splitLines(parseAnsi(rows.join("\n")));
+
+  it("the real 0.154.0 capture: an idle composer, not a stranded draft of sparkles", () => {
+    const lines = fixtureLines("codex--v0154-submitted-fill.txt");
+    expect(locateComposer(lines)).not.toBeNull();
+    expect(extractInputDraft(lines)).toBeNull();
+    // The sparkle row above the prompt belongs to the band and leaves the mirror with it.
+    const kept = stripChrome(lines).map(lineText);
+    expect(kept.some((t) => /[⠀-⣿]/u.test(t))).toBe(false);
+    expect(kept.join("\n")).toContain("docs live here");
+    // The prompt row repaints every frame, so no region can bind the sweep.
+    expect(composerPrompt(lines)).toBeNull();
+  });
+
+  it("finds the composer with six starfield and blank rows between the prompt and the status row", () => {
+    const lines = screen([
+      "• Done.",
+      "",
+      starRow(""),
+      `› fix the login bug${spark("⠂")}   ${spark("⠄")}`,
+      starRow("  "),
+      "",
+      starRow("   "),
+      starRow(""),
+      "",
+      starRow("    "),
+      "",
+      STATUS,
+    ]);
+    const box = locateComposer(lines);
+    expect(box).not.toBeNull();
+    expect(box!.promptRow).toBe(3);
+    expect(box!.top).toBe(2);
+    expect(extractInputDraft(lines)).toBe("fix the login bug");
+    expect(stripChrome(lines).map(lineText)).toEqual(["• Done.", ""]);
+  });
+
+  it("keeps a wrapped draft's continuation rows across a blank row", () => {
+    const lines = screen(["› please move the images across to", "  the new blog folder", "", "", STATUS]);
+    expect(extractInputDraft(lines)).toBe("please move the images across to the new blog folder");
+  });
+
+  // If the live prompt row were ever missing, the lowest `› ` row would be an ECHO in the transcript.
+  // Codex's own output under an echo starts at column 0, and a draft or sparkle row never does.
+  it("refuses rather than reach an echo when the live prompt row is missing", () => {
+    const lines = screen(["› the message I sent earlier", "", "• Ran git status", "  └ clean", "", STATUS]);
+    expect(locateComposer(lines)).toBeNull();
+    expect(stripChrome(lines)).toBe(lines);
+  });
+
+  it("keeps braille the operator typed: it has no colour of its own", () => {
+    const lines = screen(["› braille ⠁⠈ test", "", STATUS]);
+    expect(extractInputDraft(lines)).toBe("braille ⠁⠈ test");
+    expect(composerPrompt(lines)).toBe("› braille ⠁⠈ test");
+  });
+
+  it("takes the LOWEST prompt row, so an echo above it is never the composer", () => {
+    const lines = screen(["› the message I sent earlier", "", "• Working on it.", "", "› Ask Codex to do anything", "", STATUS]);
+    expect(locateComposer(lines)!.promptRow).toBe(4);
+    expect(stripChrome(lines).map(lineText)).toContain("› the message I sent earlier");
+  });
+
+  it("refuses when a second status row sits between the tail and the prompt", () => {
+    const lines = screen(["› old", "", STATUS, "", "• something", "", STATUS]);
+    expect(locateComposer(lines)).toBeNull();
   });
 });
 

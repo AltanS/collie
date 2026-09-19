@@ -33,6 +33,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 ### Fixed
 
 - **Claude's background agents show on the phone again.** The list Claude draws under its statusline (`● main` and one row per agent) left the mirror with the input box, and nothing showed it anywhere. It now sits under the statusline as its own row: the first agent and a count of the rest, and a tap shows every row. Reported by [@leiyangyou](https://github.com/leiyangyou) ([#242](https://github.com/AltanS/collie/issues/242))
+- **Codex Astra's starfield no longer blocks sends or poses as a draft.** Astra models paint sparkles around Codex's input line. Rows of sparkles between the input line and the status row made the phone think a dialog was up, and it refused to send. Sparkles on an empty input line showed up as a stranded draft. Collie now finds the input line by its own marks and reads past the sparkles. Reported by [@dondiegorivera](https://github.com/dondiegorivera) ([#245](https://github.com/AltanS/collie/issues/245))
 
 ## [1.10.2] - 2026-09-19
 

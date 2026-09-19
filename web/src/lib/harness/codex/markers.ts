@@ -230,3 +230,27 @@ export function regionSignature(lines: StyledLine[], from: number, to: number): 
     .map((l) => rstrip(lineText(l)))
     .join("\n");
 }
+
+// Codex's Astra models paint a starfield over the composer band: braille glyphs (U+2800 to U+28FF)
+// scattered across the row above the prompt, the prompt row after the draft, and the rows under it,
+// repainted every frame (issue #245, and codex--v0154-submitted-fill.txt, captured on gpt-6-astra).
+// Each sparkle is ONE glyph in its own segment with its own grey foreground. A typed draft is painted
+// in the default foreground, so the colour is what tells a sparkle from a braille character someone
+// typed, the same renderer-evidence rule isEmptyPlaceholder uses in chrome.ts.
+const BRAILLE = /^[⠀-⣿]$/u;
+
+/** One starfield sparkle: a single braille glyph carrying its own foreground colour. */
+export function isSparkle(segment: AnsiSegment): boolean {
+  return segment.fg !== undefined && BRAILLE.test(segment.text);
+}
+
+/** The line with every sparkle painted over by a space. Columns are kept, so the prompt prefix and
+ *  the continuation gutter still sit where the grammar looks for them. The SAME reference when the
+ *  line has no sparkle. */
+export function withoutSparkles(line: StyledLine): StyledLine {
+  if (!line.segments.some(isSparkle)) return line;
+  return {
+    ...line,
+    segments: line.segments.map((s) => (isSparkle(s) ? { ...s, text: " ", fg: undefined } : s)),
+  };
+}

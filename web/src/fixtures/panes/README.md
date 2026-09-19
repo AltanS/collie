@@ -109,6 +109,16 @@ Two rows matter, and both are 100 columns wide:
 |---|---|---|
 | `codex--submitted-fill-labelled-rule.txt` | Finished turn: the near-white submitted-message row, an assistant line, two coloured diff rows, the labelled `Worked for` rule, then the idle composer and the two-field status row | `idle` |
 
+## Codex's Astra starfield
+
+The same capture carries a second thing nobody asked it for: the model was `gpt-6-astra`, and Astra
+paints a starfield over the composer band. It is braille glyphs (U+2800 to U+28FF), each one its own
+segment with its own grey foreground, on the row above the prompt, after the placeholder, and on the
+row under it. Before issue #245 the draft reader took those glyphs for typed text, so this idle
+composer reported a stranded draft. The Codex chrome now paints any single braille glyph with its
+own colour over with a space before it reads the composer; see `withoutSparkles` in
+`lib/harness/codex/markers.ts`.
+
 ## Codex light fills (why the rule is luminance, not a value)
 
 `codex--v0154-submitted-fill.txt` was captured to answer PR #144's open ask for a real buffer, and
