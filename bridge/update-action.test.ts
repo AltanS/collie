@@ -767,3 +767,46 @@ describe("updateStartVerdict — a packaged install", () => {
     expect(v.kind).not.toBe("refuse");
   });
 });
+
+// ── "IS THERE ANYTHING FOR A CREW RUN TO DO?" — THE ROUTE'S HALF OF THE ONE RULE ──
+// The phone offers "Update crew" / "Retry crew update" on the rule in `web/src/lib/crew-level.ts`;
+// this route accepts or refuses the peers-only start on its twin. Both halves are pinned against one
+// list of cases in `crew-level-contract.test.ts`; these cases pin what the route DOES with the answer.
+
+describe("updateStartVerdict — a peers-only start over a crew that may already be level", () => {
+  const lead = (over: Partial<UpdateStartState>) => state({ current: "1.5.0", latest: "1.5.0", ...over });
+  const row = (name: string, version: string | null): CrewUpdateRow => ({
+    name,
+    version,
+    verdict: "green",
+    reasons: [],
+    asOf: 1,
+  });
+
+  test("a member AHEAD of the lead is not behind it: nothing to start", () => {
+    const v = updateStartVerdict(ask({ peersOnly: true }), lead({ crew: [row("minibuch", "1.5.1")] }));
+    expect(v).toMatchObject({ kind: "refuse", status: 409 });
+    expect(JSON.stringify(v)).toContain("update.none_available");
+  });
+
+  test("a member on the lead's own version is not behind it either", () => {
+    const v = updateStartVerdict(ask({ peersOnly: true }), lead({ crew: [row("minibuch", "1.5.0")] }));
+    expect(v).toMatchObject({ kind: "refuse", status: 409 });
+  });
+
+  test("a STALE failed leg whose member has since levelled itself starts nothing", () => {
+    const v = updateStartVerdict(
+      ask({ peersOnly: true }),
+      lead({ crew: [row("minibuch", "1.5.0")], peers: [{ name: "minibuch", state: "rolled-back" }] }),
+    );
+    expect(v).toMatchObject({ kind: "refuse", status: 409 });
+  });
+
+  test("a failed leg whose member's version nobody could learn still starts the retry", () => {
+    const v = updateStartVerdict(
+      ask({ peersOnly: true }),
+      lead({ crew: [row("minibuch", null)], peers: [{ name: "minibuch", state: "unreachable" }] }),
+    );
+    expect(v).toEqual({ kind: "peers", to: "1.5.0" });
+  });
+});

@@ -1,6 +1,8 @@
+import { legStillFailed } from "./crew-level";
 import { t, tn } from "./i18n";
 import type {
   DismissScope,
+  UpdateCrewMember,
   UpdateInfo,
   UpdateLinkChange,
   UpdatePeerLeg,
@@ -137,6 +139,12 @@ export interface RibbonInput {
   /** The version whose quiet CREW notice was closed (`update.dismissedCrewVersion`). A separate
    *  decision, so a separate input — see {@link DismissScope}. */
   dismissedCrewVersion: string | null;
+  /**
+   * The crew census (`GET /api/update/check`'s `crew`, held by `lib/update-run-store.ts`). Read for
+   * ONE thing: a failed leg whose member the census now shows level stops being named here (see
+   * {@link readRun}). Absent reads as no census, and every failed leg then counts, as before.
+   */
+  crew?: readonly UpdateCrewMember[];
   now: number;
 }
 
@@ -246,7 +254,12 @@ export interface RunReading {
   readonly moving: boolean;
   /** The legs still moving, in the order the lead reported them. */
   readonly movingLegs: readonly UpdatePeerLeg[];
-  /** The first leg that went wrong, or null. `rolled-back` and its siblings. */
+  /**
+   * The first leg that went wrong, or null. `rolled-back` and its siblings — minus a leg whose member
+   * the census now shows at or above this machine's version. The legs outlive their run, so a member
+   * that rolled back and then levelled itself would otherwise be named as failed until the next run.
+   * The rule is `legStillFailed` in `lib/crew-level.ts`, the same one the button count reads.
+   */
   readonly failed: UpdatePeerLeg | null;
   /** The legs a package manager owns. Terminal, and never a failure (ADR 0035). */
   readonly managed: readonly UpdatePeerLeg[];
@@ -268,8 +281,14 @@ export function legElapsedMs(leg: UpdatePeerLeg, now: number): number | null {
   return since < 0 ? 0 : since;
 }
 
-/** Read one run, once. The ONLY place a run record is interpreted for the UI (M20/04). */
-export function readRun(input: { update: UpdateInfo | undefined; run?: UpdateRun; now: number }): RunReading {
+/** Read one run, once. The ONLY place a run record is interpreted for the UI (M20/04). `crew` is
+ *  the census, read only to retire a failed leg its member has since outgrown. */
+export function readRun(input: {
+  update: UpdateInfo | undefined;
+  run?: UpdateRun;
+  crew?: readonly UpdateCrewMember[];
+  now: number;
+}): RunReading {
   const legs = peerLegsOf(input.update, input.run);
   const settledAt = crewSettledAt(input.update, input.run);
   const moving = crewMoving(input.update, input.run);
@@ -282,7 +301,7 @@ export function readRun(input: { update: UpdateInfo | undefined; run?: UpdateRun
     settledAt,
     moving,
     movingLegs,
-    failed: legs.find((leg) => PEER_FAILED.has(leg.state)) ?? null,
+    failed: legs.find((leg) => legStillFailed(leg, input.crew ?? [], input.update?.current ?? "")) ?? null,
     managed: legs.filter((leg) => leg.state === "package-managed"),
     elapsedMs,
     slow: elapsedMs !== null && elapsedMs >= CREW_PATIENCE_MS,
@@ -384,8 +403,12 @@ export function ribbonView(input: RibbonInput): RibbonView {
   // (f) — a terminal leg, named with its reason. No time window and no `finished` gate (M20/04): what
   // ends this branch is `settledAt`, the lead's own answer, stamped when the last leg went terminal.
   // A leg still MOVING is the update screen's business now, and no longer this row's.
+  //
+  // ONLY WHILE THE MEMBER IS STILL BEHIND. A leg's member that the census now shows level, typically
+  // because it levelled itself after the run gave up on it, is not a machine the operator can do
+  // anything about, so the sentence goes when the census says so (`readRun`'s `failed`).
   {
-    const reading = readRun({ update: input.update, now: input.now });
+    const reading = readRun({ update: input.update, crew: input.crew, now: input.now });
     if (reading.failed !== null) {
       const reason = reading.failed.reason ?? t("settings.updateCard.peer.unknownReason");
       return {

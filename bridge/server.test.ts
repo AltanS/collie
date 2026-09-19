@@ -2956,13 +2956,24 @@ describe("update status peers — the legs of a crew-wide run", () => {
       updateStartVerdict({ confirm: true, target: null, major: false, peersOnly: true }, { ...state, crew: [levelled] }),
     ).toMatchObject({ kind: "refuse", status: 409 });
 
-    // A member that rolled back is the other half of the case, read off the legs.
+    // A member that rolled back is the other half of the case, read off the legs, for as long as the
+    // census does not show it level. `attic` has no census row, so nobody knows its version.
+    expect(
+      updateStartVerdict(
+        { confirm: true, target: null, major: false, peersOnly: true },
+        { ...state, crew: [levelled], peers: [{ name: "attic", state: "rolled-back" }] },
+      ),
+    ).toEqual({ kind: "peers", to: current });
+
+    // And once the census shows the member that rolled back at the lead's version, its old leg is
+    // no longer something to retry: the legs outlive their run, and a member that levelled itself
+    // afterwards must not keep a retry alive.
     expect(
       updateStartVerdict(
         { confirm: true, target: null, major: false, peersOnly: true },
         { ...state, crew: [levelled], peers: [{ name: "minibuch", state: "rolled-back" }] },
       ),
-    ).toEqual({ kind: "peers", to: current });
+    ).toMatchObject({ kind: "refuse", status: 409 });
   });
 
   test("retry crew update: one confirm still covers the crew, so a red member refuses it", () => {

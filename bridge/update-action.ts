@@ -832,17 +832,61 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   return { kind: "start", to: would, major: req.major };
 }
 
+// ── IS THERE ANYTHING FOR A CREW RUN TO DO? THE ONE RULE ─────────────────────
+// The phone decides whether to OFFER "Update crew" / "Retry crew update" and this bridge decides
+// whether to ACCEPT the peers-only start that button sends. Two answers to one question is how the
+// button stayed up over a crew that was already level, so both sides read ONE rule, written twice
+// because the two trees cannot import one another. The twin of each function below is the function
+// of the same name in `web/src/lib/crew-level.ts`, and `crew-level-contract.test.ts` runs one list of
+// cases through both, so a change to one side alone fails there.
+
+/** The leg states that are a leg having gone wrong. This bridge's own legs only reach the first two;
+ *  the other two are what a bridge from before the leg states split sent. Same set as the phone's. */
+export const LEG_FAILED: ReadonlySet<string> = new Set(["rolled-back", "unreachable", "stuck", "interrupted"]);
+
+type LevelMember = Pick<CrewUpdateRow, "name" | "version" | "installKind">;
+type LevelLeg = { readonly name: string; readonly state: string };
+
 /**
- * Is there anything for a retry to do — a member behind this lead's own version, or one that fell
- * back?
+ * Is this member a version BEHIND the lead? Known, strictly lower by semver, and not packaged.
  *
- * A member whose version nobody could learn is NOT counted behind: an unknown is reported as unknown
- * on its own row, and starting a run over it would send the operator to an action that cannot help.
+ * Unknown is not behind: "we could not learn its version" is reported on its own row, and a run over
+ * it would send the operator to an action that cannot help. Ahead is not behind either: no run can
+ * move a member past its lead downwards (`legOf` in `crew/follow.ts` answers `done` for it). A
+ * packaged member waits for its package manager, and a turn it receives is refused there (ADR 0035).
  */
+export function memberBehind(member: LevelMember, current: string): boolean {
+  if (current === "" || member.version === null) return false;
+  if (member.installKind === "packaged") return false;
+  return compareSemver(member.version, current) < 0;
+}
+
+/**
+ * Does this leg still count as a member the last run failed? Only a failed leg can, and it stops the
+ * moment the census shows that member at or above the lead's version.
+ *
+ * The legs outlive their run (`UpdateTurns.end` keeps them), so a member that rolled back and then
+ * levelled itself on its own follow kept counting until the next run replaced the legs. An UNKNOWN
+ * version keeps the leg counting: "we could not learn it" is not "it is level".
+ */
+export function legStillFailed(leg: LevelLeg, crew: readonly LevelMember[], current: string): boolean {
+  if (!LEG_FAILED.has(leg.state)) return false;
+  if (current === "") return true;
+  const version = crew.find((member) => member.name === leg.name)?.version ?? null;
+  if (version === null) return true;
+  return compareSemver(version, current) < 0;
+}
+
+/**
+ * Is there anything for a retry to do — a member behind this lead's own version, or one the last run
+ * failed that has not levelled since? The twin of `crewNeedsLevelling` on the phone.
+ */
+export function crewNeedsLevelling(crew: readonly LevelMember[], legs: readonly LevelLeg[], current: string): boolean {
+  return crew.some((member) => memberBehind(member, current)) || legs.some((leg) => legStillFailed(leg, crew, current));
+}
+
 function peersNeedLevelling(state: UpdateStartState): boolean {
-  const behind = (state.crew ?? []).some((m) => m.version !== null && compareSemver(m.version, state.current) < 0);
-  const fellBack = (state.peers ?? []).some((leg) => leg.state === "rolled-back" || leg.state === "unreachable");
-  return behind || fellBack;
+  return crewNeedsLevelling(state.crew ?? [], state.peers ?? [], state.current);
 }
 
 // ── The handoff ──────────────────────────────────────────────────────────────

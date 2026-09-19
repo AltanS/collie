@@ -91,6 +91,17 @@ describe("peersBehind", () => {
     expect(peersBehind(crew, "")).toBe(0);
     expect(peersBehind([], "1.4.0")).toBe(0);
   });
+
+  it("counts a member only when it is strictly LOWER by semver, never one that is ahead", () => {
+    // The reported symptom: every member current, one of them a patch AHEAD of the lead after its
+    // own follow, and "Update crew" still on screen. "Not equal" counted it; no run can move it.
+    expect(peersBehind([member({ name: "a", version: "1.4.1" })], "1.4.0")).toBe(0);
+    expect(peersBehind([member({ name: "a", version: "1.4.0" })], "1.4.0")).toBe(0);
+    expect(peersBehind([member({ name: "a", version: "1.10.0" })], "1.9.3")).toBe(0);
+    // Semver, not string order: 1.9.3 is behind 1.10.0, and a prerelease is behind its release.
+    expect(peersBehind([member({ name: "a", version: "1.9.3" })], "1.10.0")).toBe(1);
+    expect(peersBehind([member({ name: "a", version: "1.4.0-rc.1" })], "1.4.0")).toBe(1);
+  });
 });
 
 describe("a packaged member", () => {
@@ -130,6 +141,56 @@ describe("peersRolledBack", () => {
     ];
     expect(peersRolledBack(legs)).toBe(3);
     expect(peersRolledBack()).toBe(0);
+  });
+
+  it("stops counting a failed leg once the census shows that member at or above the lead", () => {
+    // The legs outlive their run. A member that rolled back and then levelled itself kept "Retry
+    // crew update" on screen until the next run replaced the legs.
+    const legs: UpdatePeerLeg[] = [{ name: "a", state: "rolled-back", version: "1.3.0" }];
+    expect(peersRolledBack(legs, [member({ name: "a", version: "1.4.0" })], "1.4.0")).toBe(0);
+    expect(peersRolledBack(legs, [member({ name: "a", version: "1.4.1" })], "1.4.0")).toBe(0);
+    // Still behind: still the case the button is for.
+    expect(peersRolledBack(legs, [member({ name: "a", version: "1.3.0" })], "1.4.0")).toBe(1);
+  });
+
+  it("keeps counting a failed leg whose member's version nobody could learn", () => {
+    const legs: UpdatePeerLeg[] = [{ name: "a", state: "unreachable" }];
+    expect(peersRolledBack(legs, [member({ name: "a", version: null, verdict: "unknown" })], "1.4.0")).toBe(1);
+    // And one with no census row at all.
+    expect(peersRolledBack(legs, [], "1.4.0")).toBe(1);
+  });
+});
+
+describe("the button, over a crew that is already level", () => {
+  it("offers nothing when one member is ahead and the last run's failed leg has since levelled", () => {
+    const crew = [member({ name: "a", version: "1.4.1" }), member({ name: "b", version: "1.4.0" })];
+    const legs: UpdatePeerLeg[] = [{ name: "b", state: "rolled-back", reason: "health gate timed out" }];
+    const behind = peersBehind(crew, "1.4.0");
+    const rolledBack = peersRolledBack(legs, crew, "1.4.0");
+    expect(crewAction({ releaseAvailable: false, hasPeers: true, behind, rolledBack })).toBe("none");
+  });
+
+  it("still offers the retry for a failed leg whose member's version is unknown", () => {
+    const crew = [member({ name: "b", version: null, verdict: "unknown" })];
+    const legs: UpdatePeerLeg[] = [{ name: "b", state: "rolled-back" }];
+    const rolledBack = peersRolledBack(legs, crew, "1.4.0");
+    expect(crewAction({ releaseAvailable: false, hasPeers: true, behind: 0, rolledBack })).toBe("retry-crew");
+  });
+});
+
+describe("peerRows, once a failed leg is overtaken", () => {
+  it("shows the census row, not a red 'rolled back' at the old version, for a member now level", () => {
+    const crew = [member({ name: "b", version: "1.4.0" })];
+    const legs: UpdatePeerLeg[] = [{ name: "b", state: "rolled-back", version: "1.3.0", reason: "gate" }];
+    const [row] = peerRows(crew, legs, "1.4.0");
+    expect(row).toMatchObject({ name: "b", version: "1.4.0", reason: null });
+    expect(row?.word).not.toBe(peerRows([], legs)[0]?.word);
+  });
+
+  it("keeps the failed row while the member is still behind, or its version is unknown", () => {
+    const legs: UpdatePeerLeg[] = [{ name: "b", state: "rolled-back", version: "1.3.0", reason: "gate" }];
+    expect(peerRows([member({ name: "b", version: "1.3.0" })], legs, "1.4.0")[0]?.reason).toBe("gate");
+    expect(peerRows([member({ name: "b", version: null })], legs, "1.4.0")[0]?.reason).toBe("gate");
   });
 });
 

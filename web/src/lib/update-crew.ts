@@ -1,3 +1,4 @@
+import { LEG_FAILED, legStillFailed, memberBehind } from "./crew-level";
 import { t } from "./i18n";
 import type {
   UpdateCrewMember,
@@ -28,13 +29,9 @@ const IN_FLIGHT: ReadonlySet<UpdatePeerLegState> = new Set<UpdatePeerLegState>([
   "verifying",
 ]);
 
-/** The leg states that are a leg having gone wrong. `rolled-back` must carry its reason. */
-const FAILED: ReadonlySet<UpdatePeerLegState> = new Set<UpdatePeerLegState>([
-  "rolled-back",
-  "unreachable",
-  "stuck",
-  "interrupted",
-]);
+/** The leg states that are a leg having gone wrong. `rolled-back` must carry its reason. The one
+ *  set lives in `lib/crew-level.ts`, beside the rule that reads it. */
+const FAILED = LEG_FAILED;
 
 /** One line in the card's peer list: name · version · verdict-or-state · reason when it is bad. */
 export interface PeerRow {
@@ -122,8 +119,13 @@ export function peerVerdictWord(verdict: UpdateCrewVerdict): string {
  * true third column and its six-hour-old preflight verdict is not. A name that appears only as a
  * leg still gets a row — a peer the census missed but the run is driving is exactly the row nobody
  * may lose.
+ *
+ * ONE EXCEPTION, and it is the rule in `lib/crew-level.ts`: a FAILED leg the census has overtaken.
+ * The legs outlive their run, so a member that rolled back and then levelled itself would otherwise
+ * keep a red "rolled back" row, at its old version, over a census row that says it is level. Once
+ * the census shows that member at or above `current`, the census row is the fresher fact and wins.
  */
-export function peerRows(crew: UpdateCrewMember[] = [], legs: UpdatePeerLeg[] = []): PeerRow[] {
+export function peerRows(crew: UpdateCrewMember[] = [], legs: UpdatePeerLeg[] = [], current = ""): PeerRow[] {
   const byName = new Map<string, PeerRow>();
 
   for (const member of crew) {
@@ -148,6 +150,8 @@ export function peerRows(crew: UpdateCrewMember[] = [], legs: UpdatePeerLeg[] = 
   for (const leg of legs) {
     const census = byName.get(leg.name);
     const failed = FAILED.has(leg.state);
+    // Overtaken by the census (see above): the census row already in the map stays.
+    if (failed && census !== undefined && !legStillFailed(leg, crew, current)) continue;
     byName.set(leg.name, {
       name: leg.name,
       version: leg.version ?? census?.version ?? null,
@@ -163,21 +167,29 @@ export function peerRows(crew: UpdateCrewMember[] = [], legs: UpdatePeerLeg[] = 
 }
 
 /**
- * How many peers are not on the version this lead runs. A peer whose version nobody could learn is
- * NOT counted behind — an unknown is reported as unknown on its own row, and inflating a count with
- * it would send the operator to a button that cannot help.
+ * How many peers are a version BEHIND this lead, by semver. A peer whose version nobody could learn
+ * is NOT counted — an unknown is reported as unknown on its own row, and inflating a count with it
+ * would send the operator to a button that cannot help. A peer AHEAD of the lead is not counted
+ * either: no run can move it, and counting it kept "Update crew" up over a crew that was level.
+ * Packaged members are left out too. The whole rule is `memberBehind` in `lib/crew-level.ts`, the
+ * twin of the bridge's own.
  */
 export function peersBehind(crew: UpdateCrewMember[] = [], current: string): number {
-  if (current === "") return 0;
-  // A packaged member is left out for the same reason an unknown is: the operator cannot clear it
-  // from here. The tap the count sends them to refuses on that machine (ADR 0035), so counting it
-  // would be a nag with no button behind it. Its row still says what it is waiting on.
-  return crew.filter((m) => m.installKind !== "packaged" && m.version !== null && m.version !== current).length;
+  return crew.filter((m) => memberBehind(m, current)).length;
 }
 
-/** A peer that tried and rolled back is the case "Retry crew update" exists for. */
-export function peersRolledBack(legs: UpdatePeerLeg[] = []): number {
-  return legs.filter((leg) => FAILED.has(leg.state)).length;
+/**
+ * A peer that tried and failed is the case "Retry crew update" exists for — until the census shows it
+ * level after all. The failed legs outlive their run, so without the census a member that rolled back
+ * and then levelled itself kept the button up until the next run. `legStillFailed` in
+ * `lib/crew-level.ts` is the rule, the twin of the bridge's own.
+ */
+export function peersRolledBack(
+  legs: UpdatePeerLeg[] = [],
+  crew: readonly UpdateCrewMember[] = [],
+  current = "",
+): number {
+  return legs.filter((leg) => legStillFailed(leg, crew, current)).length;
 }
 
 /** Which of the three labels the page's one action button carries. */

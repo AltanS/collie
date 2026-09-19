@@ -205,6 +205,26 @@ describe("rolled back peer on the band", () => {
     expect(ribbonText(view)).toMatch(/^Could not update minibuch: \S/);
   });
 
+  it("goes quiet once the census shows that member at or above this machine's version", () => {
+    // The legs outlive their run. A member that rolled back and then levelled itself on its own
+    // follow kept this sentence on every screen until another run replaced the legs.
+    const levelled: UpdateInfo = info({
+      current: "1.5.0",
+      run: run("done", { peers: [{ name: "minibuch", state: "rolled-back", reason: "gate" }] }),
+      releaseAvailable: false,
+    });
+    const census = (version: string | null) => [
+      { name: "minibuch", version, verdict: "green" as const, reasons: [], asOf: NOW - 5_000 },
+    ];
+    expect(read({ update: levelled, crew: census("1.5.0") })).toEqual({ kind: "silent" });
+    expect(read({ update: levelled, crew: census("1.5.1") })).toEqual({ kind: "silent" });
+    // Still behind, or nobody knows: the sentence stays, because it is still true.
+    expect(read({ update: levelled, crew: census("1.4.1") })).toMatchObject({ kind: "peer-failed" });
+    expect(read({ update: levelled, crew: census(null) })).toMatchObject({ kind: "peer-failed" });
+    // And with no census at all, as before.
+    expect(read({ update: levelled })).toMatchObject({ kind: "peer-failed" });
+  });
+
   it("outranks a peer that is merely still moving", () => {
     const peers: UpdatePeerLeg[] = [
       { name: "cellar", state: "restarting" },

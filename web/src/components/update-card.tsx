@@ -196,12 +196,15 @@ export function UpdateCard() {
   // still list a moving peer?" while the band asked "did the run finish under ten minutes ago?", so
   // on 2026-09-07 the band went quiet while this card kept the same peer moving for five more
   // minutes. Neither surface interprets a record any more.
-  const reading = readRun({ update: snapshot ?? check, run, now: Date.now() });
+  //
+  // The census rides along for one rule (`lib/crew-level.ts`): a failed leg whose member the census
+  // now shows level is not a failure any more, on the button, on the row, or in the sentence.
+  const reading = readRun({ update: snapshot ?? check, run, crew: census, now: Date.now() });
   const legs = [...reading.legs];
-  const rows = peerRows(census, legs);
+  const rows = peerRows(census, legs, current);
   const hasPeers = rows.length > 0 || crewLead;
   const behind = peersBehind(census, current);
-  const rolledBack = peersRolledBack(legs);
+  const rolledBack = peersRolledBack(legs, census, current);
   // A packaged install never takes an update from here (ADR 0035): the root is not writable, the CLI
   // refuses, and `POST /api/update` would do nothing but relay that refusal. Read HERE, above the
   // action, because it is one of the facts that decides which action there is — not merely whether

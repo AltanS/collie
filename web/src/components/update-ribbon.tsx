@@ -14,6 +14,7 @@ import { checkForUpdate, getUpdateStage, subscribeUpdateStage } from "@/lib/pwa"
 import { useOptionalRootData } from "@/lib/route-data";
 import { useScope } from "@/lib/session";
 import { useSelfUpdate } from "@/lib/self-update";
+import { useUpdateRun } from "@/lib/update-run-store";
 import {
   type Dismissal,
   dismissesLocally,
@@ -99,6 +100,11 @@ export function UpdateRibbon() {
   const [downloadHidden, setDownloadHidden] = useState(false);
 
   const update = data?.update;
+  // THE CENSUS, from the one store that owns the update subject (ADR 0044). The snapshot does not
+  // carry it, and the band needs it for one decision: a failed leg whose member has since levelled
+  // itself is no longer a sentence worth a row (`lib/crew-level.ts`). The store is already subscribed
+  // by the update screen in `App.tsx`, so reading it here adds no request.
+  const { crew } = useUpdateRun();
 
   // A CLOSE COVERS ONE DOWNLOAD, NOT EVERY FUTURE ONE. The stage leaving `installing` is the end of
   // the worker that was closed over, so the next `updatefound` raises the row again rather than
@@ -113,6 +119,7 @@ export function UpdateRibbon() {
     bundleInstalling: stage === "installing",
     dismissedVersion: dismissedIn("offer", justDismissed, update?.dismissedVersion),
     dismissedCrewVersion: dismissedIn("crew", justDismissed, update?.dismissedCrewVersion),
+    crew,
     now: Date.now(),
   });
   if (view.kind === "silent") return null;
