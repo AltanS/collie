@@ -59,6 +59,15 @@ target lists the hosts your ssh config and Herdr already know, merged on the hos
 to, so pick from that list rather than typing the host a second way
 ([below](#herdr-machines-and-the-crew)).
 
+`crew add` and the terminal `collie crew update` push the lead's own git commit, so both need a lead
+that runs from a git checkout, as the Herdr plugin install does. A lead from the
+[standalone install](install.md#standalone) or from a package has no commit to push. It adds a member
+by the manual path below: first install the lead's release on that machine with install.sh and
+`COLLIE_TAG=v<version>`, then invite and join. It levels its members from the phone's Updates page.
+The phone levels to strict releases only, so a lead on a prerelease levels its members by hand. Both
+commands print the exact lines on such a lead, with `COLLIE_UPDATE_REPO` for a lead that follows a
+fork.
+
 The manual path is four commands. The lead is the instance your phone already reaches, and the
 joining machine must have Collie installed and running.
 

@@ -22,11 +22,13 @@ import {
 } from "./fakes.ts";
 import { sshResolveArgs } from "./candidates.ts";
 import type { Environment } from "./context.ts";
+import type { InstallKind } from "./install-kind.ts";
 import { EXIT } from "./io.ts";
 import { cmdCrew, type CrewDeps } from "./crew.ts";
 import {
   bindOverwriteConfirmation,
   cmdCrewAdd,
+  commitlessLeadLines,
   composeStdin,
   configureScript,
   enrollScript,
@@ -146,6 +148,8 @@ interface HarnessOptions {
   machines?: string;
   /** `ssh -G <target>` output per target. Absent ⇒ there is no `ssh` to resolve with. */
   resolve?: Readonly<Record<string, string>>;
+  /** This lead's install kind. Absent ⇒ a linked clone, the kind every earlier test assumed. */
+  installKind?: InstallKind;
 }
 
 function harness(opts: HarnessOptions = {}): Harness {
@@ -245,6 +249,7 @@ function harness(opts: HarnessOptions = {}): Harness {
     confirm: () => (opts.confirm === undefined ? true : opts.confirm),
     prompt: () => opts.prompt ?? null,
     gitBundle: () => Promise.resolve("QkFTRTY0LWJ1bmRsZQ=="),
+    installKind: () => opts.installKind ?? { kind: "linked-clone", alsoLayout: false },
     reload: () =>
       Promise.resolve(
         opts.after === undefined
@@ -469,6 +474,59 @@ describe("parseMembership", () => {
 
 // ── The verb ─────────────────────────────────────────────────────────────────
 
+describe("commitlessLeadLines (#248)", () => {
+  const LEAD = { root: "/root", version: "1.2.3", repo: "AltanS/collie" };
+  const at = (kind: InstallKind, asking: Parameters<typeof commitlessLeadLines>[2], over: Partial<typeof LEAD> = {}) =>
+    commitlessLeadLines(kind, { ...LEAD, ...over }, asking);
+
+  test("a checkout has a commit, and so does every unknown root: its git error is the right one", () => {
+    for (const kind of [
+      { kind: "linked-clone", alsoLayout: false },
+      { kind: "detached-checkout", alsoLayout: true },
+      { kind: "unknown", why: "broken-checkout" },
+      { kind: "unknown", why: "orphan-layout" },
+      { kind: "unknown", why: "no-marker" },
+      { kind: "unknown", why: "loose-binary" },
+    ] as const) {
+      expect(at(kind, { verb: "add", host: "nas" })).toBeNull();
+      expect(at(kind, { verb: "update" })).toBeNull();
+    }
+  });
+
+  test("a binary lead on a release: crew update names the phone and the pinned self-update", () => {
+    const lines = at({ kind: "binary" }, { verb: "update" })!.join("\n");
+    expect(lines).toContain("/root is a binary install, so it has no commit to push.");
+    expect(lines).toContain("phone's Updates page");
+    expect(lines).toContain("`collie update --to-tag v1.2.3` on each member");
+    expect(lines).not.toContain("install.sh");
+  });
+
+  // The phone's lead states nothing on a prerelease, and `--to-tag` refuses one, so neither may be
+  // offered. install.sh takes any tag.
+  test("a binary lead on a prerelease: crew update names install.sh, never the phone or --to-tag", () => {
+    const lines = at({ kind: "binary" }, { verb: "update" }, { version: "1.3.0-beta.2" })!.join("\n");
+    expect(lines).toContain("COLLIE_TAG=v1.3.0-beta.2 sh");
+    expect(lines).not.toContain("Updates page instead");
+    expect(lines).not.toContain("`collie update --to-tag v");
+  });
+
+  test("a lead whose version cannot be read names the command that says it, not a tag of `vunknown`", () => {
+    for (const asking of [{ verb: "update" }, { verb: "add", host: "nas" }] as const) {
+      const lines = at({ kind: "binary" }, asking, { version: "unknown" })!.join("\n");
+      expect(lines).toContain("COLLIE_TAG=v<version> sh");
+      expect(lines).toContain("`collie version` names it");
+      expect(lines).not.toContain("vunknown");
+    }
+  });
+
+  test("a lead on a fork passes its repo on, or the member would install upstream", () => {
+    const lines = at({ kind: "binary" }, { verb: "add", host: "nas" }, { repo: "me/collie" })!.join("\n");
+    expect(lines).toContain("| COLLIE_UPDATE_REPO=me/collie COLLIE_TAG=v1.2.3 sh");
+    const upstream = at({ kind: "binary" }, { verb: "add", host: "nas" })!.join("\n");
+    expect(upstream).not.toContain("COLLIE_UPDATE_REPO");
+  });
+});
+
 describe("collie crew add", () => {
   test("no host is a usage error", async () => {
     const h = harness();
@@ -616,6 +674,42 @@ describe("collie crew add", () => {
     const h = harness({ store: leadStore({ lead: member({ memberId: "desk", role: "lead" }) }) });
     expect(await run(h)).toBe(EXIT.STATE);
     expect(text(h.io)).toContain("peers are added from the lead");
+  });
+
+  // #248: a lead installed by install.sh has no commit to push. It used to probe the far machine in
+  // full and then fail on its own `rev-parse HEAD` with "is not a git checkout". It is now told the
+  // manual path, pinned to the release it runs, before a single ssh byte.
+  test("a binary lead is told the manual path at its own release, and nothing is sent", async () => {
+    const h = harness({
+      installKind: { kind: "binary" },
+      extraFiles: { [`${ROOT}/herdr-plugin.toml`]: `id = "herdr.collie"\nversion = "${VERSION}"\n` },
+    });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    const rendered = text(h.io);
+    expect(rendered).toContain(`${ROOT} is a binary install, so it has no commit to push.`);
+    expect(rendered).toContain(`COLLIE_TAG=v${VERSION} sh`);
+    expect(rendered).toContain("`collie crew invite` here, and the `collie crew join` line it prints on nas.example");
+    expect(rendered).not.toContain("is not a git checkout");
+    expect(h.calls).toEqual([]);
+    expect(h.closed).toBe(0);
+  });
+
+  test("a packaged lead is told the same manual path, not a git error", async () => {
+    const h = harness({ installKind: { kind: "packaged" } });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    const rendered = text(h.io);
+    expect(rendered).toContain(`${ROOT} is a packaged install, so it has no commit to push.`);
+    expect(rendered).not.toContain("is not a git checkout");
+    expect(h.calls).toEqual([]);
+  });
+
+  test("a peer is told it is a peer before it is told what kind of install it is", async () => {
+    const h = harness({
+      store: leadStore({ lead: member({ memberId: "desk", role: "lead" }) }),
+      installKind: { kind: "binary" },
+    });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(text(h.io)).not.toContain("binary install");
   });
 
   test("green-field: four legs, in order, and a non-provisional member at the end", async () => {

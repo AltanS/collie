@@ -9,6 +9,7 @@ import { commitCrewChange, mintInvite } from "../bridge/crew/enrollment.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { parseUpdateRun, type UpdateRun } from "../bridge/update-run.ts";
+import { parsePrereleaseTag } from "../bridge/update.ts";
 import {
   CANDIDATE_QUESTION,
   markCandidates,
@@ -21,8 +22,11 @@ import {
   type RosterEntry,
   type SourcedCandidates,
 } from "./candidates.ts";
-import { collieVersion, INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
+import { collieVersion, collieVersionBare, INSTANCE_PATTERN, PLUGIN_ID } from "./context.ts";
+import { DEFAULT_UPDATE_REPO, detectInstall, updateRepoOf, type InstallKind } from "./install-kind.ts";
 import { EXIT, type Io } from "./io.ts";
+import { realLinkFs } from "./link.ts";
+import { packagedReason } from "./package-command.ts";
 import { ensureStore, parseCrewArgs, probeMembers, resolveSelfAddress, type CrewDeps } from "./crew.ts";
 import { plainAdd, type AddEvent } from "./render.ts";
 import { sshConfigCandidates } from "./ssh-config.ts";
@@ -719,6 +723,11 @@ export interface CrewAddDeps extends CrewDeps {
    * which is what every existing caller and every golden gets.
    */
   emit?(event: AddEvent): void;
+  /**
+   * THIS lead's own install kind, the same `classifyInstall` answer `crew update` reads. Absent ⇒
+   * detected from the filesystem. Read for one question: does this lead have a commit to push.
+   */
+  installKind?(): InstallKind;
 }
 
 /** `CrewAddDeps` after {@link cmdCrewAdd} has resolved the sink — the shape every step below takes. */
@@ -922,6 +931,23 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
   if (existing !== null && existing.lead !== null) {
     deps.io.err(`error: this collie is a peer of "${existing.lead.memberId}" — peers are added from the lead.`);
     return EXIT.STATE;
+  }
+
+  // A LEAD WITH NO COMMIT IS TOLD THE MANUAL PATH before the first ssh byte (#248). Leg 2 would
+  // otherwise probe the far machine in full and then fail on this machine's own `rev-parse HEAD`.
+  const kind = deps.installKind?.() ?? detectInstall({ ...deps, link: realLinkFs });
+  const commitless = commitlessLeadLines(
+    kind,
+    {
+      root: deps.ctx.root,
+      version: collieVersionBare(deps.ctx.root, (p) => deps.files.read(p)),
+      repo: updateRepoOf(deps.ctx.env),
+    },
+    { verb: "add", host },
+  );
+  if (commitless !== null) {
+    for (const line of commitless) deps.io.err(line);
+    return EXIT.FAIL;
   }
 
   const runner = deps.remote(host);
@@ -1721,6 +1747,78 @@ export function manifestVersionAt(deps: Pick<CrewDeps, "ctx" | "exec">, commit: 
   const manifest = gitOut(deps, ["show", `${commit}:herdr-plugin.toml`]);
   if (manifest === null) return null;
   return /^version[ \t]*=[ \t]*"([^"]*)"/m.exec(manifest)?.[1] ?? null;
+}
+
+/** Which verb is asking {@link commitlessLeadLines}, and for `crew add`, which host it names. */
+export type CommitlessVerb = { readonly verb: "add"; readonly host: string } | { readonly verb: "update" };
+
+/** What {@link commitlessLeadLines} needs to know about this lead. */
+export interface CommitlessLead {
+  readonly root: string;
+  /** The bare version this lead runs (`collieVersionBare`), `unknown` when it could not be read. */
+  readonly version: string;
+  /** The `owner/repo` this lead takes its releases from (`updateRepoOf`). */
+  readonly repo: string;
+}
+
+/**
+ * What a lead with no commit to push is told, or null when it has one (#248).
+ *
+ * `crew add` and the terminal `crew update` both push THIS checkout's commit as a `git bundle`
+ * (ADR 0015), so both need a git checkout here. A `binary` install (install.sh) and a `packaged`
+ * one (ADR 0035) have none, and "is not a git checkout" reads as a broken install when nothing is
+ * broken. So each is told the route that works for it: the manual path for `crew add`, the phone's
+ * Updates page for `crew update`, which levels members with no commit at all (ADR 0016 addendum).
+ *
+ * The phone and `--to-tag` both take strict releases only, so a lead on a prerelease, or one whose
+ * version cannot be read, is sent to install.sh instead, which takes any tag. The install line
+ * carries the lead's `COLLIE_UPDATE_REPO` when it follows a fork, or the member would get upstream.
+ *
+ * The two checkout kinds pass. So does `unknown`: its git error is the right one for a broken or
+ * missing checkout.
+ */
+export function commitlessLeadLines(kind: InstallKind, lead: CommitlessLead, asking: CommitlessVerb): string[] | null {
+  if (kind.kind !== "binary" && kind.kind !== "packaged") return null;
+  const parsed = parsePrereleaseTag(`v${lead.version}`);
+  const strict = parsed !== null && parsed.prerelease === null;
+  const fork = lead.repo === DEFAULT_UPDATE_REPO ? "" : `COLLIE_UPDATE_REPO=${lead.repo} `;
+  const tag = parsed === null ? "v<version>" : `v${lead.version}`;
+  const install = `         curl -fsSL https://colliepwa.dev/install.sh | ${fork}COLLIE_TAG=${tag} sh`;
+  const itsRelease = parsed === null ? "the release this lead runs (`collie version` names it)" : "the release this lead runs";
+  if (asking.verb === "update") {
+    if (kind.kind === "packaged") {
+      return [
+        `error: ${lead.root} is a packaged install — ${packagedReason(lead.root)}.`,
+        "       The terminal crew update pushes THIS checkout's commit to the members, and a",
+        "       packaged install has none. Level the crew from the phone's Updates page instead.",
+      ];
+    }
+    const head = [
+      `error: ${lead.root} is a binary install, so it has no commit to push.`,
+      "       The terminal crew update pushes THIS checkout's commit to the members.",
+    ];
+    if (strict) {
+      return [
+        ...head,
+        "       Level the crew from the phone's Updates page instead, or run",
+        `       \`collie update --to-tag v${lead.version}\` on each member.`,
+      ];
+    }
+    return [
+      ...head,
+      "       The phone levels members to a strict release only, and so does `collie update --to-tag`.",
+      `       On each member, install ${itsRelease} by hand:`,
+      install,
+    ];
+  }
+  const { host } = asking;
+  return [
+    `error: ${lead.root} is a ${kind.kind} install, so it has no commit to push.`,
+    `       \`crew add\` installs a member by pushing THIS checkout's commit. Add ${host} by hand instead.`,
+    `       On ${host}, install ${itsRelease}:`,
+    install,
+    `       Then run \`collie crew invite\` here, and the \`collie crew join\` line it prints on ${host}.`,
+  ];
 }
 
 // ── Production wiring ────────────────────────────────────────────────────────

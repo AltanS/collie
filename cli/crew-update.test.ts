@@ -358,6 +358,19 @@ describe("crew update is a lead's verb, over named members", () => {
     expect(h.calls).toEqual([]);
   });
 
+  // #248: install.sh's layout has no commit either, and got the raw git error the packaged lead
+  // got before 187a0dd. The phone levels its members with no commit at all, so it is named first.
+  test("a binary lead is told the phone and the pinned self-update, not a git error", async () => {
+    const h = harness({ installKind: { kind: "binary" } });
+    expect(await cmdCrewUpdate(h.deps, ["--all"])).toBe(EXIT.FAIL);
+    const rendered = text(h.io);
+    expect(rendered).toContain("is a binary install, so it has no commit to push.");
+    expect(rendered).toContain("phone's Updates page");
+    expect(rendered).toContain(`\`collie update --to-tag v${VERSION}\` on each member`);
+    expect(rendered).not.toContain("is not a git checkout");
+    expect(h.calls).toEqual([]);
+  });
+
   test("a route override describes one machine, so it refuses a multi-member run", async () => {
     const h = harness({ store: twoPeers(), ops: { nas: opsRecord("nas.example"), pi: opsRecord("pi.example") } });
     expect(await cmdCrewUpdate(h.deps, ["--all", "--host", "elsewhere"])).toBe(EXIT.USAGE);

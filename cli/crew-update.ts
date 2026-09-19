@@ -8,12 +8,12 @@ import { STALE_AFTER_MS, type UpdateRun } from "../bridge/update-run.ts";
 import { answersThisBuild } from "../bridge/version.ts";
 import { collieVersionBare } from "./context.ts";
 import { updateDeps } from "./deps.ts";
-import { detectInstall, PACKAGED_SENTENCE, type InstallKind } from "./install-kind.ts";
+import { detectInstall, PACKAGED_SENTENCE, updateRepoOf, type InstallKind } from "./install-kind.ts";
 import { realLinkFs } from "./link.ts";
-import { packagedReason } from "./package-command.ts";
 import { EXIT, type Io } from "./io.ts";
 import { parseCrewArgs, probeMembers } from "./crew.ts";
 import {
+  commitlessLeadLines,
   errorLine,
   firstLine,
   gitOut,
@@ -124,7 +124,7 @@ export interface CrewUpdateDeps extends CrewAddDeps {
    *
    * A seam and not a second probe: one detection, one answer (`cli/install-kind.ts`). It is read
    * for one question only — may this checkout's commit be pushed to the members — and a packaged
-   * root has no commit to push.
+   * root and a binary (install.sh) root have no commit to push.
    */
   installKind?(): InstallKind;
 }
@@ -258,17 +258,22 @@ async function updateRun(deps: Wired, args: readonly string[]): Promise<number> 
   const targets = await resolveTargets(deps, data, roster, { positional, flags, bare, port });
   if (!Array.isArray(targets)) return targets;
 
-  // A PACKAGED LEAD HAS NO COMMIT TO PUSH, and it is told that rather than shown a git error.
-  //
-  // Above the git read on purpose: `rev-parse HEAD` in /opt/collie fails, and "is not a git
-  // checkout" reads as a broken install when nothing is broken. The refusal is `collie update`'s
-  // boundary (ADR 0035) in the one spelling every surface shares, and it exits with that verb's
-  // code. It refuses only the TERMINAL route: the phone still levels the members to the version
-  // this lead is running, which is why the second line names the Updates page.
-  if (deps.installKind().kind === "packaged") {
-    deps.io.err(`error: ${deps.ctx.root} is a packaged install — ${packagedReason(deps.ctx.root)}.`);
-    deps.io.err("       The terminal crew update pushes THIS checkout's commit to the members, and a");
-    deps.io.err("       packaged install has none. Level the crew from the phone's Updates page instead.");
+  // A PACKAGED OR BINARY LEAD HAS NO COMMIT TO PUSH, and it is told that rather than shown a git
+  // error (#248). Above the git read on purpose: `rev-parse HEAD` there fails, and "is not a git
+  // checkout" reads as a broken install when nothing is broken. It refuses only the TERMINAL route:
+  // the phone still levels the members to the version this lead is running, which is why the lines
+  // name the Updates page. `crew add` asks the same question through the same function.
+  const commitless = commitlessLeadLines(
+    deps.installKind(),
+    {
+      root: deps.ctx.root,
+      version: collieVersionBare(deps.ctx.root, (p) => deps.files.read(p)),
+      repo: updateRepoOf(deps.ctx.env),
+    },
+    { verb: "update" },
+  );
+  if (commitless !== null) {
+    for (const l of commitless) deps.io.err(l);
     return EXIT.FAIL;
   }
 
