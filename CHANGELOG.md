@@ -32,6 +32,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ### Added
 
+- **The pane switcher now shows each row's cache time.** The Layers sheet already named the pane and its place; the same warm, expiring or cold reading that rides the dashboard row now trails the name here too, so you can tell a warm pane from a cold one without leaving the sheet.
 - **Muse panes get their own adapter, so you can answer Muse from the phone.** Muse's command approval, its single-choice and multi-choice questions (with the review screen), and its workspace trust prompt show as buttons, and the command or folder they concern stays on screen above them. Collie also takes Muse's input box and status row off the mirror, shows a draft left in the box, and checks each reply against the box before it sends. A dialog quoted in the transcript, or one above a box that holds a draft, stays text, so a tap can never send a draft. Contributed by [@jpcarranza94](https://github.com/jpcarranza94) ([#244](https://github.com/AltanS/collie/pull/244))
 
 ### Fixed

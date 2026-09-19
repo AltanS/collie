@@ -2,6 +2,7 @@ import { Loader2, Play, TerminalSquare } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { AgentIcon } from "@/components/agent-icon";
+import { CacheChip } from "@/components/cache-chip";
 import { SectionHeader } from "@/components/section-header";
 import { paneName, panePlaceParts } from "@/lib/pane-name";
 import { shortenHome } from "@/lib/shorten-home";
@@ -253,7 +254,14 @@ function PaneRow({
         <AgentIcon agent={pane.agent} className="size-5" />
       )}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{name}</div>
+        <div className="flex min-w-0 items-baseline gap-1">
+          <span className="min-w-0 truncate text-sm font-medium">{name}</span>
+          {/* The cache reading trails the name, same corner as the dashboard row (agent-card.tsx,
+              via PaneMeta), but without PaneMeta's host and session chips: this sheet asked for the
+              cache reading alone, and a crew-wide switcher row is a separate call. `row`, not
+              `button` — the whole row is already a `<button>`, and a button cannot nest inside one. */}
+          <CacheChip cache={pane.cache} variant="row" className="ml-auto shrink-0" />
+        </div>
         <div className="flex min-w-0 items-baseline gap-1 text-[11px] text-muted-foreground">
           <span className="max-w-[45%] shrink truncate">{space}</span>
           {tab && (

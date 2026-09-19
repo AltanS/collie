@@ -138,6 +138,41 @@ describe("ThreadSidebar", () => {
   });
 });
 
+// The cache reading trails the pane's name in the switcher, same as it does on the dashboard row —
+// but on its own, with no host chip and no session chip beside it (the row already says the pane's
+// place on line 2).
+describe("ThreadSidebar — the cache reading on each row", () => {
+  const warmAgent: AgentView = {
+    ...fixtureAgents[1]!,
+    cache: {
+      state: "warm",
+      expiresAt: Date.now() + 12 * 60_000,
+      ttlSeconds: 3600,
+      ruleId: "claude.subscription",
+      confidence: "documented",
+    },
+  };
+
+  it("shows the cache chip's remaining time on a pane with a warm cache", () => {
+    render(<ThreadSidebar agents={[warmAgent]} currentPaneId="" onSelect={vi.fn()} />);
+    expect(document.querySelector('[data-slot="cache-chip"]')).toHaveTextContent("12m");
+  });
+
+  it("shows no chip on a pane with no cache reading", () => {
+    render(<ThreadSidebar agents={fixtureAgents} currentPaneId="" onSelect={vi.fn()} />);
+    expect(document.querySelector('[data-slot="cache-chip"]')).toBeNull();
+  });
+
+  it("never nests a button inside the row's own button", () => {
+    const { container } = render(
+      <ThreadSidebar agents={[warmAgent]} currentPaneId="" onSelect={vi.fn()} />,
+    );
+    for (const row of container.querySelectorAll("button")) {
+      expect(row.querySelector("button")).toBeNull();
+    }
+  });
+});
+
 // The "Switch pane" sheet sees the WHOLE herd, so it has the dashboard's original problem: the two
 // long tails (Recent, and the bare shells) bury the handful of agents you opened it to reach.
 describe("ThreadSidebar — folding the long tails", () => {
