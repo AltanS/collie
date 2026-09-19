@@ -18,6 +18,8 @@ import { useLaunchers } from "@/lib/launchers";
 import { buzz } from "@/lib/haptics";
 import { mirrorFont, useDisplayPrefs } from "@/hooks/use-display-prefs";
 import { useLatestReply } from "@/hooks/use-latest-reply";
+import { useConversation } from "@/hooks/use-conversation";
+import { usePaneViewMode, setPaneViewMode } from "@/lib/pane-view-mode";
 import { useMirrorImages } from "@/hooks/use-mirror-images";
 import { useStableTerminalDraft } from "@/hooks/use-terminal-draft";
 import { useLocale } from "@/hooks/use-locale";
@@ -40,8 +42,11 @@ import { parseAnsi } from "@/lib/ansi";
 import { splitLines } from "@/lib/blocks";
 import { adapterFor, rendersNativeMirror } from "@/lib/harness";
 import { blockOwnsKeyboard } from "@/lib/harness/dialog-contract";
+import { canRenderInline } from "@/components/typed-blocks";
 import { FindBar } from "@/components/find-bar";
 import { LatestReply } from "@/components/latest-reply";
+import { ConversationMessageList } from "@/components/conversation-message-list";
+import { ConversationView, ConversationThread } from "@/components/conversation-view";
 import { Composer, type ComposerHandle } from "@/components/composer";
 import { ThreadSidebar } from "@/components/agent-sidebar";
 import { AgentIcon } from "@/components/agent-icon";
@@ -55,7 +60,7 @@ import { PaneSettingsSheet } from "@/components/pane-settings-sheet";
 import { CompactStripLabels, STRIP_TAP_TARGET_SQUARE } from "@/components/ui/labelled-strip";
 import { ReadOnlyBanner } from "@/components/read-only-banner";
 import { HostStaleBanner } from "@/components/host-stale-banner";
-import { useHostHealth } from "@/components/crew-provider";
+import { useCrew, useHostHealth } from "@/components/crew-provider";
 import { writeRefusal } from "@/lib/host-health";
 import { StatusArea } from "@/components/status-area";
 import { ToastViewport } from "@/components/ui/toast-viewport";
@@ -665,6 +670,7 @@ export function AgentChat({
     setCurrentMatch((c) => (c + delta + matchCount) % matchCount);
   }
   function openFind() {
+    if (conversationActive) return;
     setFollowing(false); // freeze the buffer so the search target is stable while you type
     setFindOpen(true);
   }
@@ -685,6 +691,103 @@ export function AgentChat({
   // loud. Hiding it is what leaves someone wondering whether Collie is broken.
   const sessionLog = useMuxCapability("agentSessionRef", scope);
   const historyAvailable = Boolean(agent?.hasSession) && sessionLog.capable;
+  // ── CONVERSATION MODE — the opt-in, per-device reading surface ───────────────────────
+  // The pane keeps TWO reading surfaces on ONE route: the terminal mirror (existing, default) and
+  // the persisted conversation thread (opt-in). The mode is a device-local preference
+  // (lib/pane-view-mode.ts): the choice never leaves this device, and the DEFAULT is Terminal, so
+  // an existing user's pane view does not change until they opt in on that device.
+  //
+  // The route NEVER remounts for a mode change — only the reading surface below swaps — so the
+  // composer above stays mounted with its draft, no input is submitted, no desktop focus action is
+  // called (the "Show in terminal" action is a different control in the actions sheet and this
+  // switch must never run it), and the backing pane and its polling are untouched. Pane polling
+  // continues exactly as before because Conversation needs the pane text for prompt and draft
+  // detection, pending-send acknowledgement, and the fresh action guards.
+  //
+  // SUPPORTED JOURNAL GATE. A pane with no supported journal (no reported session, no journal
+  // adapter, or a multiplexer without agent session logs) cannot show a transcript, so it renders
+  // Terminal for that pane WITHOUT erasing the stored preference — another pane on this device can
+  // still open in Conversation. Inside a supported pane, per-fetch unavailability (no-log yet,
+  // disabled transcript, bridge error) renders as its own distinguishable state card with the same
+  // one-tap way back to Terminal.
+  const viewMode = usePaneViewMode();
+  const conversationWanted = viewMode === "conversation";
+  const transcriptSupported = historyAvailable && !isShell;
+  const { servers, sessions } = useCrew();
+  // Only observable identity fields belong here, not health, counts, timestamps or array identity.
+  // An invisible same-pane journal replacement remains unsupported by the web-only contract.
+  const conversationSource = JSON.stringify([
+    agent?.agent,
+    servers.map(server => [server.id, server.isLead]).toSorted(),
+    sessions.map(session => [session.host, session.name, session.isPrimary]).toSorted(),
+  ]);
+  const setViewMode = setPaneViewMode;
+  const openTerminal = () => setViewMode("terminal");
+
+  // The bounded transcript behind the thread. Fetches on entry, after settled output, after a send,
+  // on foreground resume and on explicit refresh — coalesced, never per poll. Disabled (and
+  // unmounted work-free) while Terminal owns the surface or the pane has no journal.
+  const conversation = useConversation({
+    paneId,
+    scope,
+    enabled: transcriptSupported,
+    active: conversationWanted,
+    sourceKey: conversationSource,
+    mirrorText: text,
+  });
+  // A confirmed missing journal falls back for this pane only. Keep the source enabled so its
+  // bounded retry, live-output triggers and explicit refresh can recover without changing the
+  // device preference. A disabled journal or transport error retains its distinct Conversation UI.
+  const journalMissing = conversation.state === "no-log" || conversation.state === "no-session";
+  const conversationActive = conversationWanted && transcriptSupported && !journalMissing;
+  const conversationFallback = conversationWanted && transcriptSupported && journalMissing;
+  // Find belongs to the Terminal mirror. Discard its session on entry, including journal recovery,
+  // so returning to Terminal cannot restore a stale query, count or selected match. Entry also
+  // re-adopts the live pane pair: the mirror may have been left frozen by a scroll-up in Terminal,
+  // and the inline prompts' freshness binding (shown.revision) must be the revision of what the
+  // thread actually renders.
+  useEffect(() => {
+    if (!conversationActive) return;
+    setFollowing(true);
+    setFindOpen(false);
+    setFindQuery("");
+    setMatchCount(0);
+    setCurrentMatch(0);
+  }, [conversationActive]);
+  // The pane's typed blocks, derived LIVE from the pane text — the same source as the attention
+  // check below, so what renders inline and what the attention card says can never disagree. They
+  // are consumed verbatim: the supported non-raw tail block renders inline in the thread through
+  // TypedBlocks with the UNCHANGED handlers, so no grammar, no fresh rederivation and no guard is
+  // duplicated. The tap's freshness binding is the frozen {text, revision} pair the guards already
+  // use (`shown.revision`, the revision of what the user is LOOKING AT): if the pane changes after
+  // the render, the guard's fresh read no longer matches the binding and the action refuses — the
+  // same stale-refusal contract the mirror's controls have always had. Conversation forces
+  // tail-follow on entry (below), so the shown pair is the live pair while reading.
+  const conversationBlocks = useMemo(
+    // Raw Terminal is a mirror display preference, never a Conversation detection switch.
+    () => adapterFor(agent?.agent)?.buildBlocks(splitLines(parseAnsi(text))) ?? [],
+    [text, agent?.agent],
+  );
+  // Attention is live state, not the frozen Terminal mirror or its Raw display preference.
+  // Readiness refusal covers unsupported dialogs without inventing controls for raw blocks.
+  // FAIL CLOSED: only a SUPPORTED typed tail block renders inline. A keyboard-owning screen with no
+  // typed model — unknown, stale, malformed, password-like — and a not-ready composer have NO
+  // Conversation action; they surface the Terminal-required card instead. `autocomplete` is the one
+  // non-raw kind that owns no keyboard: it renders inline as pure presentation, which TypedBlocks
+  // already models, and the composer stays live over it exactly as in Terminal.
+  const conversationAttention = useMemo(() => {
+    const adapter = adapterFor(agent?.agent);
+    if (!text || !adapter) return { dialogPresent: false, requiresTerminal: false };
+    const lines = splitLines(parseAnsi(text));
+    const ownsKeyboard = conversationBlocks.some(blockOwnsKeyboard);
+    const supportedTail = canRenderInline(conversationBlocks);
+    return {
+      dialogPresent: ownsKeyboard,
+      requiresTerminal: supportedTail
+        ? false
+        : ownsKeyboard || adapter.composerReady?.(lines) === false,
+    };
+  }, [conversationBlocks, text, agent?.agent]);
   // A FOURTH state, and the per-pane sibling of the third (#137). `hasSession` folds two facts into
   // one flag bridge-side — "this pane named a session" AND "this agent has a journal adapter" — so
   // its absence alone cannot say which half failed, and the two want opposite words. On an agent
@@ -729,7 +832,9 @@ export function AgentChat({
   const latestReply = useLatestReply({
     paneId,
     scope,
-    enabled: historyAvailable && prefs.expandClippedReply,
+    // Disabled while Conversation owns the transcript: both read the same journal, and the card
+    // would duplicate the thread's fetches (the Conversation hook owns that cadence now).
+    enabled: historyAvailable && prefs.expandClippedReply && !conversationWanted,
     mirrorText: display,
   });
   const placement = useMemo(
@@ -807,10 +912,15 @@ export function AgentChat({
   }, []);
 
   // After a successful send, snap the mirror back to the live tail so the reply's result is visible.
+  // In Conversation mode the same moment refreshes the bounded transcript instead — the thread is
+  // the surface being read, so a send must make it current (one coalesced fetch, not a second
+  // journal request racing the settle pass). Both paths also revalidate the pane route; neither
+  // writes to the terminal.
   const onSent = () => {
     setFollowing(true);
     revalidator.revalidate();
     listRef.current?.scrollToBottom();
+    if (conversationActive) conversation.bump();
   };
 
   // Tap a prompt-select option. This can type into a real terminal, so it runs the revision-based
@@ -1175,7 +1285,7 @@ export function AgentChat({
           // for what survives (the element, its safe-area inset, its reserved rule) and why.
           hidden={zen}
           override={
-            findOpen ? (
+            findOpen && !conversationActive ? (
               <FindBar
                 query={findQuery}
                 onQueryChange={setFindQuery}
@@ -1668,6 +1778,15 @@ export function AgentChat({
             )}
           </Collapse>
 
+          {conversationWanted && transcriptSupported && (
+            <ConversationView
+              state={conversation.state}
+              dialogPresent={conversationActive && conversationAttention.requiresTerminal}
+              onRefresh={conversation.refresh}
+              onOpenTerminal={openTerminal}
+            />
+          )}
+
           {/* Terminal mirror — tapping it focuses the composer so you can start typing right away
               (unless you're selecting text to copy, which the tap must not collapse). */}
           {/* min-w-0 only — do NOT set overflow-x-hidden here: that forces overflow-y to `auto` (CSS
@@ -1737,11 +1856,37 @@ export function AgentChat({
             className={cn(
               mirrorGap,
               "min-h-0 min-w-0 flex-1 border-t border-rule",
-              mirrorFace.className,
+              // The terminal font belongs to the terminal surface only. Conversation is app chrome
+              // reading prose, so it keeps the app's own face (the boundary MIRROR_SPACE draws).
+              !conversationActive && mirrorFace.className,
             )}
-            style={mirrorFace.style}
+            style={!conversationActive ? mirrorFace.style : undefined}
             onClick={focusFromMirror}
           >
+            {conversationActive ? (
+              /* The header above remains mounted across journal fallback/recovery so notices
+                 animate through Collapse. Only the thread scrolls, inside the pane's height. */
+              <div data-slot="conversation-surface" className="flex h-full min-h-0 flex-col">
+                <div className="min-h-0 flex-1">
+                  <ConversationMessageList ref={listRef} entries={conversation.entries}>
+                    <ConversationThread
+                      entries={conversation.entries}
+                      state={conversation.state}
+                      working={!isShell && agent?.status === "working"}
+                      agent={agent?.agent}
+                      scope={scope}
+                      blocks={conversationBlocks}
+                      onPromptAction={handlePromptAction}
+                      onWizardAction={handleWizardAction}
+                      onPreviewAction={handlePreviewAction}
+                      onMultiSelectAction={handleMultiSelectAction}
+                      onMenuAction={handleMenuAction}
+                      promptDisabled={readOnly || gone}
+                    />
+                  </ConversationMessageList>
+                </div>
+              </div>
+            ) : (
             <ChatMessageList
               ref={listRef}
               dep={display}
@@ -1865,6 +2010,7 @@ export function AgentChat({
                 </div>
               )}
             </ChatMessageList>
+            )}
           </div>
 
           {/* Bottom region, in the order it paints: the agent's own statusline (the mirror's last row),
@@ -2032,7 +2178,13 @@ export function AgentChat({
                   // composer must not invite a reply it already knows the lead will refuse, and "which
                   // machine am I typing into" has to be answerable without tapping Send to find out.
                   hostBlock={hostBlock}
-                  dialogPresent={dialogPresent}
+                  dialogPresent={conversationActive ? conversationAttention.dialogPresent : dialogPresent}
+                  // Conversation's own fail-closed gate (see Composer): the same live knowledge the
+                  // thread used to render the Terminal-required card, handed to the send path so an
+                  // ordinary free-text Send refuses BEFORE any terminal write instead of betting on
+                  // the guarded reply's transient fresh read. Terminal mode leaves it undefined and
+                  // keeps its deliberate fail-open-for-text behavior.
+                  requiresTerminal={conversationActive && conversationAttention.requiresTerminal}
                   text={text}
                   terminalDraft={terminalDraft}
                   rawTerminalDraft={rawTerminalDraft}
@@ -2046,6 +2198,11 @@ export function AgentChat({
                   // The switcher mark, for the actions belt's top rule — see the condition at
                   // `pullHandle` above, and actions-row.tsx for what it draws.
                   pullHandle={pullHandle}
+                  // Terminal-only controls are ABSENT while Conversation owns the surface — the
+                  // PRD's chat-only contract. Keys, direct typing and the terminal-draft preview
+                  // stay available the moment the operator swaps back to Terminal.
+                  chatOnly={conversationActive}
+                  onOpenTerminal={openTerminal}
                 />
               </div>
             </div>
@@ -2136,8 +2293,13 @@ export function AgentChat({
           readOnly={readOnly}
           onRenamed={() => revalidator.revalidate()}
           onClosed={(id) => (id === paneId ? onBack() : revalidator.revalidate())}
-          onFind={display ? openFind : undefined}
+          onFind={!conversationActive && display ? openFind : undefined}
           onHistory={historyAvailable ? () => navigate(historyPath(paneId, scope)) : undefined}
+          // Conversation mode's re-entry point, while Terminal owns the surface. Gated on a
+          // supported journal (a pane without one renders Terminal whatever the preference says)
+          // and hidden while Conversation is already showing — its surface carries the one-tap way
+          // back. The switch is a reading-surface swap on THIS route: it must never call
+          // focusPane, and it does not.
           // ZEN'S ONE ENTRY POINT, and the absence of this callback IS the gate — the sheet hides a
           // row it was given nothing for, exactly as it does for find and history. Gated twice: the
           // Settings toggle decides whether this phone offers zen at all, and `display` keeps it off
@@ -2150,6 +2312,10 @@ export function AgentChat({
           // flexible element the budget protects. Zen is also the same FAMILY as the two rows it
           // joins — "look at the output differently" — so the menu it belongs in already existed.
           onZen={zenAvailable && display ? enterZen : undefined}
+          onConversation={transcriptSupported && !conversationActive ? () => {
+            setViewMode("conversation");
+            if (conversationFallback) conversation.refresh();
+          } : undefined}
           // The settings row, opened from the ⋮ for the reason zen is: the header's Action slot is
           // already spent. It hands over to the sheet below in one React event, so the actions sheet
           // unmounts in the same commit the settings sheet mounts.

@@ -51,7 +51,15 @@ interface ReplyBody {
 async function answer(route: Route, path: string): Promise<void> {
   const method = route.request().method();
 
-  if (path === "/api/snapshot") return fulfillJson(route, fixtureSnapshot);
+  // Conversation mode needs a pane with a reported agent session (`hasSession`), which the shared
+  // fixture does not assert. The e2e tree adds it shallowly rather than mutating the fixture the
+  // unit layer reads, so the 194 vitest files keep exactly the world they were written against.
+  if (path === "/api/snapshot") {
+    return fulfillJson(route, {
+      ...fixtureSnapshot,
+      agents: fixtureSnapshot.agents.map((a) => Object.assign({}, a, { hasSession: true })),
+    });
+  }
 
   if (/^\/api\/pane\/[^/]+\/history$/.test(path)) {
     return fulfillJson(route, {

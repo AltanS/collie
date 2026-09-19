@@ -71,7 +71,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
  * host the pane belongs to, or inline bytes, and nothing else. A journal is an agent's own output,
  * so a reference it refuses renders nothing rather than a broken image.
  */
-function JournalImage({
+export function JournalImage({
   ref_,
   alt,
   scope,
@@ -99,7 +99,7 @@ function JournalImage({
  * thread is mostly tool traffic (705 of 914 turns in a real session) and expanding it all would bury
  * the prose you opened the history to read.
  */
-function ToolPart({
+export function ToolPart({
   part,
   query,
   scope,

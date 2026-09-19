@@ -47,6 +47,7 @@ import { RecordingStrip } from "@/components/recording-strip";
 import { useSttRecorder } from "@/hooks/use-stt-recorder";
 import { useHandsFree, useSttCapability } from "@/lib/stt";
 import { NoEchoNotice } from "@/components/no-echo-notice";
+import { Notice } from "@/components/ui/notice";
 
 export interface ComposerHandle {
   /** Focus the input and put the caret at the end — used by the mirror-tap-to-focus in AgentChat. */
@@ -94,6 +95,12 @@ interface ComposerProps {
   /** A dialog (prompt/wizard/preview/multi-select) is on screen, so the TUI's keyboard belongs to it.
    * Free-text sending is refused while true — see send(). Answer it with its own buttons instead. */
   dialogPresent: boolean;
+  /** Conversation-only fail-closed gate: the mode's own rendered Terminal-required state
+   * (unsupported keyboard-owning dialog or a composer the adapter says is not ready). Unlike the
+   * guarded reply path's deliberate fail-open-for-text after a transient read failure, this is
+   * knowledge Conversation already rendered — ordinary free-text Send must refuse BEFORE any
+   * terminal write, present the Terminal-required recovery, and keep the draft. */
+  requiresTerminal?: boolean;
   /** Latest pane text — clears the pending-send preview once the mirror echoes the send back. */
   text: string;
   /** A user draft stranded on the terminal's "❯" input line (extractInputDraft), STABILISED across
@@ -131,6 +138,16 @@ interface ComposerProps {
     /** Another pane needs you: the switcher mark wears a red dot. */
     alert?: boolean;
   };
+  /**
+   * Conversation mode is showing: the terminal-only controls are ABSENT, not disabled — Keys, the
+   * direct-typing toggle, the terminal-draft preview, and the mirror-family display rows. This is
+   * the PRD's chat-only contract, and absence is deliberate over greying out: a disabled Keys
+   * button on a chat surface still advertises the terminal as a mode of this composer. The upload,
+   * quick actions, slash commands and the reply send all remain — they are chat actions.
+   */
+  chatOnly?: boolean;
+  /** Local reading-mode recovery only; never types or clears the draft. */
+  onOpenTerminal?: () => void;
 }
 
 // The composer cluster at the bottom of the pane view — everything a phone keyboard can't do on its
@@ -209,7 +226,7 @@ function ComposerDock({
 const ATTACH_PRESS_MS = 220;
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply, onSent, pullHandle },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, requiresTerminal, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply, onSent, pullHandle, chatOnly = false, onOpenTerminal },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -260,6 +277,42 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // or funnelled through `pressKeys`, which is synchronous with its own check.
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
+  // Read at dispatch, including callbacks retained by in-flight raw-key batches.
+  const chatOnlyRef = useRef(chatOnly);
+  // Same snapshotted-prop caveat as chatOnlyRef: send() reads this before its own round trips, so
+  // the ref is what a queued burst must re-read, not the closure's prop.
+  const requiresTerminalRef = useRef(requiresTerminal ?? false);
+  const dialogPresentRef = useRef(dialogPresent);
+  // The in-flight send's withdrawal latch. A Conversation-started operation that sees its live
+  // safety state change is withdrawn PERMANENTLY — not re-evaluated at the next boundary — so later
+  // recovery (a dialog answered, the adapter re-reporting a composer, automatic journal fallback
+  // resolving, the operator switching back) cannot revive it. The latch is recorded HERE, in the
+  // render body, comparing each prop against the PREVIOUS render's value while a send is in
+  // flight: every transition in reading mode (chatOnly), Terminal-required state, or keyboard
+  // ownership (a supported inline prompt sets dialogPresent just as an unsupported screen sets
+  // requiresTerminal) latches before any pre-write boundary gets the chance to read a state that
+  // has since recovered. Scoping: sendActiveRef/startedChatOnlyRef are armed only by send() for a
+  // Conversation-started operation, so idle state changes — which the click-time gates already
+  // handle — never latch anything, and Terminal-started sends keep their deliberate
+  // fail-open-for-text behavior untouched. withdrawalRef is cleared at the start of each send, so
+  // the latch is scoped to exactly one operation; a fresh explicit send after returning to a valid
+  // composer-ready state latches anew and works normally.
+  const withdrawalRef = useRef<string | null>(null);
+  const sendActiveRef = useRef(false);
+  const startedChatOnlyRef = useRef(false);
+  if (sendActiveRef.current && startedChatOnlyRef.current && withdrawalRef.current === null) {
+    if (chatOnly !== chatOnlyRef.current) {
+      withdrawalRef.current = translate("chat.conversation.requiresTerminal");
+    } else if ((requiresTerminal ?? false) && !requiresTerminalRef.current) {
+      withdrawalRef.current = translate("chat.conversation.requiresTerminal");
+    } else if (dialogPresent && !dialogPresentRef.current) {
+      withdrawalRef.current = translate("chat.conversation.requiresTerminal");
+    }
+  }
+  chatOnlyRef.current = chatOnly;
+  requiresTerminalRef.current = requiresTerminal ?? false;
+  dialogPresentRef.current = dialogPresent;
+  const [terminalRecovery, setTerminalRecovery] = useState(false);
 
   // The phone-owned draft, restored from (and written through to) the per-pane draft store — the
   // pane view is keyed by paneId, so without this, stepping over to another tab mid-reply ate the
@@ -379,6 +432,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // a longer window than the 3s default: unlike "Really send?", this one asks you to read a sentence
   // explaining WHY nothing was typed before deciding to overrule it.
   const forceConfirm = usePendingConfirm(10_000);
+  // Entering Conversation permanently withdraws an in-flight override, including if the user
+  // returns to Terminal before its pane read resolves.
+  const forceGeneration = useRef(0);
 
   // The password prompt the last refused send was looking at, if it was one (#103). Set from the
   // guard's own live read — never re-derived from `display`, which is a snapshot — and cleared by the
@@ -418,12 +474,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     inputRef,
     // The ref, not `input`: the password-prompt handoff clears the draft and arms in one tick.
     replyDraft: () => inputValueRef.current,
-    canActivate: () => !(locked || sending || uploading),
+    // Conversation mode is a CHAT surface: direct typing writes raw keys to the terminal, so it
+    // must not be armable here at all (review finding F1) — the launcher row already hides it.
+    canActivate: () => !(locked || sending || uploading || chatOnly),
     // `locked` covers a gone pane, a read-only device, and the idle pause. A LOST CONNECTION is
     // deliberately not added here: the mode already disarms on a failed batch, which is the same
     // event observed directly rather than inferred from a timer, and it fires whether or not any
     // banner has decided the connection counts as lost yet.
-    suspended: locked,
+    suspended: locked || chatOnly,
     sendKeys: pressKeys,
     onActivate: () => {
       sendConfirm.reset();
@@ -432,6 +490,22 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     },
     focusInput: focusInputEnd,
   });
+
+  // Entering Conversation mode disarms every terminal-only write path that outlives the launcher
+  // row (review finding F1): an armed Type session is DISCARDED (never paused — half a batch is a
+  // write nobody reviewed), and an open Keys tray is CLOSED, which unmounts NavTray and destroys
+  // the composed queue with it. Neither is restored on the way back: returning to Terminal starts
+  // from an empty, disarmed composer with the reply draft untouched. One effect, edge-triggered on
+  // the mode itself, so merely re-rendering in Conversation can never re-discard.
+  useEffect(() => {
+    setTerminalRecovery(false);
+    if (!chatOnly) return;
+    direct.discard();
+    forceGeneration.current += 1;
+    forceConfirm.reset();
+    setDrawer((d) => (d === "keys" ? null : d));
+    setQueuedKeys(0);
+  }, [chatOnly]); // eslint-disable-line react-hooks/exhaustive-deps -- edge-triggered on the mode; the rest are stable setters
 
   // ── VOICE (ADR 0029) ──────────────────────────────────────────────────────────────────────────
   //
@@ -627,7 +701,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // or sent, not a fresh one to re-show. Not gated on `locked`: read-only devices get the preview +
   // Take over (a local text copy); only the actual Send stays gated.
   const showPreview =
-    !gone && previewLatched && effectiveRaw !== null && normalizeDraft(effectiveRaw) !== handledKey;
+    !chatOnly && !gone && previewLatched && effectiveRaw !== null && normalizeDraft(effectiveRaw) !== handledKey;
 
   // Take over: the explicit "I'll handle this on mobile now" action. One-shot COPY of the current raw
   // draft into the composer (set on an empty input, else appended on a new line so mobile-typed work
@@ -711,7 +785,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // whether to close its dock, so every early return below has to answer honestly.
   async function send(value: string, isDraft: boolean, force = false): Promise<boolean> {
     const t = value.trim();
-    if (!t || locked || sending) return false;
+    if (!t || locked || sending || (force && chatOnlyRef.current)) return false;
+    // Conversation's own fail-closed gate, BEFORE anything touches the pane — not even a read, and
+    // certainly not the pre-clear sweep or reply text. The thread is already rendering the
+    // Terminal-required card because the live adapter said this screen cannot be represented safely
+    // (a keyboard-owning dialog with no typed model, or a composer it reports as not ready); letting
+    // the guarded reply run would hand that same screen the text anyway, betting on its transient
+    // fresh read. Terminal mode keeps its deliberate fail-open-for-text behavior — this gate only
+    // exists under chatOnly. The draft stays, the recovery card below offers the one-tap Terminal,
+    // and no desktop focus is involved.
+    if (chatOnlyRef.current && requiresTerminalRef.current) {
+      setTerminalRecovery(true);
+      setStatus(translate("chat.conversation.requiresTerminal"), "error");
+      return false;
+    }
     // A dialog on screen owns the TUI's keyboard: our text is swallowed and the submit key ANSWERS
     // the dialog, approving whatever option was highlighted (#34). Refuse BEFORE the destructive
     // pre-clear sweep below — those ctrl+k/Backspaces would land in the dialog too. The input is
@@ -722,6 +809,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       setStatus(translate("composer.status.dialogWaiting"), "error");
       return false;
     }
+    const startedGeneration = forceGeneration.current;
+    // A Conversation-started send owns a fresh latch: any later transition latches only THIS
+    // operation. Set only after the click-time gates, so a send refused up front latches nothing.
+    startedChatOnlyRef.current = chatOnlyRef.current;
+    withdrawalRef.current = null;
+    sendActiveRef.current = startedChatOnlyRef.current;
+    setTerminalRecovery(false);
     setSending(true);
     // The operator has just acted on this pane, so the poller should watch it land. Stamped HERE —
     // after the refusals above, before the round trip — because the burst is about the operator's
@@ -737,6 +831,30 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         agent,
         scope,
         force,
+        // The pre-write refusal callback, handed to EVERY send now, not only forced ones. The
+        // click-time gate above cannot close the race it left open: an ordinary send that starts
+        // composer-ready spends the guarded reply's round trips with its safety state unchanged in
+        // this closure, and the pane can go unsafe inside that window — an unsupported dialog up,
+        // a supported inline prompt appearing, the adapter reporting no composer, or the reading
+        // mode itself moving (operator switch or automatic journal fallback).
+        //
+        // The withdrawal itself is LATCHED in the render body (see withdrawalRef): the first
+        // transition permanently withdraws this operation, so a later return to composer-ready,
+        // automatic Terminal fallback, or user-selected Terminal cannot revive it. This callback
+        // answers the latch — re-read immediately before every terminal-driving write (the
+        // pre-clear sweep keys, each reply chunk, the submit) — and the "error" branch below
+        // reports honestly when a refusal arrives after a write was already dispatched: the earlier
+        // write is NOT recalled, only everything after it is withheld, and the partial-delivery
+        // message says so. Terminal mode keeps its deliberate fail-open-for-text behavior: only a
+        // Conversation-started send latches, and a forced retry (armed in Terminal, the only place
+        // it can be) stays withdrawn the moment it would be running against Conversation or a
+        // stale burst.
+        writeRefusal: () => {
+          if (withdrawalRef.current !== null) return withdrawalRef.current;
+          if (force && (chatOnlyRef.current || forceGeneration.current !== startedGeneration))
+            return translate("chat.conversation.requiresTerminal");
+          return null;
+        },
         // Clear a stranded draft on the terminal's "❯" line before pane.send_text appends at cursor —
         // ctrl+k kills cursor→end, Backspace sweep kills the head (preview-action.ts pattern). Skip
         // when there's no draft: a blind sweep races the TUI and Enter can fire before the PTY
@@ -843,11 +961,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // but the adapter can only report what it can see, so the user gets a deliberate override —
         // the same two-tap shape as the destructive-send confirm. The second tap skips the pre-flight
         // ONLY; the type-then-verify guard still runs, so Enter is never fired blind either way.
-        forceConfirm.confirm("force");
+        if (chatOnlyRef.current) {
+          forceConfirm.reset();
+          setTerminalRecovery(true);
+        } else {
+          forceConfirm.confirm("force");
+        }
         // A password prompt gets the notice AND keeps the override: the notice explains the screen and
         // offers the control that works, the override stays for the case where the detection is wrong.
         noticeNoEcho(res.noEcho !== undefined ? { prompt: res.noEcho, typed: false } : null);
-        setStatus(translate("composer.status.tapAgainToType", { error: res.error }), "error");
+        setStatus(
+          chatOnlyRef.current ? res.error : translate("composer.status.tapAgainToType", { error: res.error }),
+          "error",
+        );
         return false;
       } else {
         // "stalled" = the text never reached the input box, so NO submit key was sent (a dialog was
@@ -855,6 +981,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         // submit failed. Either way the draft stays put: the user checks the pane rather than
         // double-sending, and on a stall their message is still here to re-send once the dialog is
         // answered.
+        //
+        // A Conversation-started withdrawal arrives here even after leaving Conversation. It
+        // is not an ordinary failure: the pane's safety state changed mid-flight, so the same local
+        // recovery the click-time gate presents comes up here. The draft stays in the input — but
+        // honesty about WHAT was typed matters: a withdrawal at a later boundary (after a reply
+        // chunk already went out) cannot recall that write, so the partial-delivery message says an
+        // earlier write stands rather than claiming nothing was typed. Nothing past the withdrawn
+        // boundary was sent either way, and no desktop focus is involved.
         //
         // Except at a password prompt, where the draft staying put is the wrong call and the notice
         // says so: the text is already IN the pane (unsubmitted), so a re-send types a second copy of
@@ -864,7 +998,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ? { prompt: res.noEcho, typed: true }
             : null,
         );
-        setStatus(res.error, "error");
+        const withdrawnRefusal = res.status === "error" && res.writeRefused === true &&
+          (startedChatOnlyRef.current || chatOnlyRef.current);
+        if (withdrawnRefusal) {
+          setTerminalRecovery(true);
+        }
+        // Acknowledged sweep keys count as an earlier write, not as delivered reply text.
+        setStatus(
+          withdrawnRefusal && (res.textDelivered === true || res.keysDelivered === true)
+            ? translate("chat.conversation.withdrawnPartial")
+            : res.error,
+          "error",
+        );
         return false;
       }
     } catch (e) {
@@ -872,6 +1017,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       return false;
     } finally {
       setSending(false);
+      sendActiveRef.current = false;
     }
   }
 
@@ -881,7 +1027,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   function onSendClick() {
     // An armed override takes precedence: this tap IS the deliberate "type anyway", so it skips the
     // destructive re-confirm (already answered on the tap that got blocked) and the pre-flight.
-    if (forceConfirm.pending === "force") {
+    if (!chatOnlyRef.current && forceConfirm.pending === "force") {
       forceConfirm.reset();
       send(input, true, true);
       return;
@@ -903,7 +1049,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     send(input, true);
   }
   const confirmingSend = sendConfirm.pending === "send";
-  const forcingSend = forceConfirm.pending === "force";
+  const forcingSend = !chatOnly && forceConfirm.pending === "force";
 
   // Coalesce revalidations from a burst of key presses, LEADING edge first: the first press in a
   // burst refetches immediately, and only presses that arrive inside the window collapse into one
@@ -933,7 +1079,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   // path used to be silent on success, so a press looked like it went nowhere. Errors still go to
   // the status channel; the echo just falls back to idle.
   async function pressKeys(k: string[]): Promise<boolean> {
-    if (locked) return false;
+    if (lockedRef.current || chatOnlyRef.current) return false;
     // Every raw key reaches the pane through here — the Keys dock (NavTray's `onSend`), the direct
     // typing mode (useDirectTyping's `sendKeys`) and the prompt buttons that hand keys to the tray —
     // so one stamp covers the lot.
@@ -1112,6 +1258,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               setRawTerminal={setRawTerminal}
               setTapToFocus={setTapToFocus}
               setExpandClippedReply={setExpandClippedReply}
+              chatOnly={chatOnly}
             />
           </ComposerDock>
         )}
@@ -1163,6 +1310,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   */}
         <ActionsRow
           general={[
+              // Terminal-only controls are ABSENT while Conversation owns the surface — the
+              // PRD's chat-only contract, applied to the two terminal actions on this belt. Keys,
+              // direct typing and the terminal-draft preview all come back the moment the
+              // operator swaps back to Terminal.
+              ...(chatOnly
+                ? []
+                : [
               // Keys and Quick are TOGGLES for the in-flow dock above (not overlays): tap to
               // open, tap again to close. `expanded` ties each to the dock; the "on" tint marks
               // it pressed while open. Both share the single-valued `drawer`, so opening one
@@ -1211,6 +1365,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   direct.activate();
                 },
               },
+              ]),
               {
                 id: "quick",
                 icon: Zap,
@@ -1289,8 +1444,22 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         {/* The password-prompt notice (#103). Sits here, in the same in-flow slot as the other two
             strips, because that is where the eye already is when a send is refused — and it is a
             NOTICE beside the unchanged "Type anyway?" override, never a replacement for it. */}
-        <Collapse open={noEcho !== null && !direct.active}>
-          {noEcho !== null && !direct.active && (
+        <Collapse open={terminalRecovery || (chatOnly && noEcho !== null)}>
+          {(terminalRecovery || (chatOnly && noEcho !== null)) && (
+            <Notice tone="caution" variant="box" announce="status" className="mb-2">
+              <p>{translate(noEcho ? "composer.noEcho.title" : "chat.conversation.requiresTerminal")}</p>
+              {noEcho && <p className="font-mono">{noEcho.prompt}</p>}
+              <p>{translate("chat.conversation.requiresTerminalBody")}</p>
+              {onOpenTerminal && (
+                <Button variant="outline" className="mt-2 min-h-11 self-start" onClick={onOpenTerminal}>
+                  {translate("chat.conversation.openTerminal")}
+                </Button>
+              )}
+            </Notice>
+          )}
+        </Collapse>
+        <Collapse open={!chatOnly && noEcho !== null && !direct.active}>
+          {!chatOnly && noEcho !== null && !direct.active && (
             <NoEchoNotice
               prompt={noEcho.prompt}
               typed={noEcho.typed}
@@ -1298,7 +1467,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               // read-only device, the idle pause. Offering a control that would refuse is worse
               // than offering none.
               onUseType={
-                locked
+                locked || chatOnly
                   ? null
                   : () => {
                       // The draft is a password we know the pane never accepted, and it is already
@@ -1306,6 +1475,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       // 48h store is the leak this issue asked about, and because `activate` refuses
                       // while any draft is present, which would make the offered remedy fail on the
                       // spot.
+                      if (chatOnlyRef.current) return;
                       updateInput("");
                       requestDrawer(null);
                       direct.activate();

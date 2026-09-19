@@ -302,6 +302,23 @@ export const en = {
   "chat.strips.show.panes": "Show panes. {panes} hidden.",
   "chat.find.label": "Find in output",
   "chat.history.label": "Conversation history",
+  // Conversation mode — the opt-in, per-device reading surface (Variant B thread). Terminal-only
+  // controls are absent here; the one-tap fallback goes to the in-app terminal mirror and never
+  // calls the desktop focus action.
+  "chat.conversation.label": "Conversation view",
+  "chat.conversation.title": "Conversation",
+  "chat.conversation.updated": "Conversation updated. Jump to latest",
+  "chat.conversation.openTerminal": "Terminal",
+  "chat.conversation.openTerminalAria": "Open the terminal view for this pane",
+  "chat.conversation.refreshAria": "Refresh conversation",
+  "chat.conversation.loading": "Loading conversation…",
+  "chat.conversation.empty": "No messages yet in this session.",
+  "chat.conversation.working": "Working…",
+  "chat.conversation.requiresTerminal": "This screen needs the terminal",
+  "chat.conversation.requiresTerminalBody":
+    "The agent is showing a screen Collie can't answer safely from the chat. Open the terminal to act on it.",
+  "chat.conversation.withdrawnPartial":
+    "This screen needs the terminal. An earlier write already reached the pane and is not recalled — nothing further was sent. Check the terminal.",
   // The header's ⋮ — the glyph names nothing, so the accessible name has to say what it OPENS.
   "chat.paneMenu.aria": "Pane actions",
   "chat.header.openOverviewAria": "Open {workspace} overview{status}",

@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { useState } from "react";
 import type { ComponentProps } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -143,6 +145,555 @@ function renderComposerWithStatus(
   render(<RouterProvider router={router} />);
   return props;
 }
+
+describe("Composer Conversation recovery", () => {
+  describe.each([
+    { mode: "Conversation dialog", startChatOnly: true, endChatOnly: true, dialogPresent: true, withdraws: true },
+    { mode: "Conversation to Terminal", startChatOnly: true, endChatOnly: false, dialogPresent: true, withdraws: true },
+    { mode: "unchanged Conversation", startChatOnly: true, endChatOnly: true, dialogPresent: false, withdraws: false },
+    { mode: "Terminal-started dialog", startChatOnly: false, endChatOnly: false, dialogPresent: true, withdraws: false },
+  ])("pending submit response in $mode", ({ startChatOnly, endChatOnly, dialogPresent, withdraws }) => {
+    it.each(["acknowledged", "prompt changed", "HTTP failure", "network failure"] as const)("handles %s without repeating the dispatched submit", async (response) => {
+      let transition!: () => void;
+      const openTerminal = vi.fn();
+      const onSent = vi.fn();
+      function Harness() {
+        const [safety, setSafety] = useState({ chatOnly: startChatOnly, dialogPresent: false });
+        transition = () => setSafety({ chatOnly: endChatOnly, dialogPresent });
+        return <CrewProvider servers={undefined}>
+          <StatusSentinel />
+          <Composer
+            paneId="w1:p1" agent="omp" isShell={false} gone={false} readOnly={false}
+            {...safety} text="pane output" terminalDraft={null} rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+            setWrap={vi.fn()} stepFontSize={vi.fn()} setRawTerminal={vi.fn()} setTapToFocus={vi.fn()}
+            setExpandClippedReply={vi.fn()} onSent={onSent} onOpenTerminal={openTerminal}
+          />
+        </CrewProvider>;
+      }
+      const text = "check the submit boundary";
+      let draft = "";
+      let reads = 0;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      const wire: string[] = [];
+      const acknowledgements: string[] = [];
+      server.use(
+        http.get(/\/api\/pane\/[^/]+$/, () => {
+          reads++;
+          return HttpResponse.json({ paneId: "w1:p1", text: `some output\n╭── statusline ───╮\n╰─ ${draft}   ─╯`, truncated: false, revision: reads });
+        }),
+        http.post<never, { text: string; submit?: boolean; expected_prompt?: string }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+          const body = await request.json();
+          wire.push(body.submit ? "submit dispatched" : "text dispatched");
+          if (!body.submit) {
+            draft = body.text;
+            acknowledgements.push("text acknowledged");
+            return HttpResponse.json({ ok: true });
+          }
+          expect(body).toEqual({ text: "", submit: true, expected_prompt: `╰─ ${text}   ─╯` });
+          await held;
+          // A binding refusal establishes no submit keys were sent. Transport failures do not.
+          if (response === "prompt changed") return HttpResponse.json({ ok: false, code: "prompt_changed", error: "prompt changed" }, { status: 409 });
+          if (response === "HTTP failure") return HttpResponse.json({ error: "injected submit failure" }, { status: 500 });
+          if (response === "network failure") return HttpResponse.error();
+          acknowledgements.push("submit acknowledged");
+          return HttpResponse.json({ ok: true });
+        }),
+        http.post(/\/api\/pane\/[^/]+\/(keys|focus)$/, ({ request }) => {
+          wire.push(request.url.endsWith("/keys") ? "keys" : "focus");
+          return HttpResponse.json({ ok: true });
+        }),
+      );
+      render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Harness /> }])} />);
+      const box = screen.getByPlaceholderText(/type a reply/i);
+      fireEvent.change(box, { target: { value: text } });
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(wire).toEqual(["text dispatched", "submit dispatched"]));
+      expect(acknowledgements).toEqual(["text acknowledged"]);
+      expect(reads).toBe(2);
+      // Submit is already in flight before the committed safety transition.
+      act(() => transition());
+      release();
+      await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+      expect(wire).toEqual(["text dispatched", "submit dispatched"]);
+      expect(reads).toBe(2);
+      const status = screen.getByTestId("status");
+      if (response === "acknowledged") {
+        expect(acknowledgements).toEqual(["text acknowledged", "submit acknowledged"]);
+        expect(box).toHaveValue("");
+        expect(onSent).toHaveBeenCalledTimes(1);
+        expect(status).toHaveTextContent("Sent");
+        expect(screen.queryByRole("button", { name: "Terminal" })).not.toBeInTheDocument();
+      } else {
+        expect(acknowledgements).toEqual(["text acknowledged"]);
+        expect(box).toHaveValue(text);
+        expect(onSent).not.toHaveBeenCalled();
+        if (withdraws) {
+          expect(status).toHaveTextContent(/An earlier write already reached the pane and is not recalled/);
+          await user.click(screen.getByRole("button", { name: "Terminal" }));
+          expect(openTerminal).toHaveBeenCalledTimes(1);
+          expect(box).toHaveValue(text);
+          expect(wire).toEqual(["text dispatched", "submit dispatched"]);
+          expect(reads).toBe(2);
+        } else {
+          const error = response === "prompt changed" ? /The screen changed before that could be sent/
+            : response === "HTTP failure" ? /injected submit failure/ : /Failed to fetch/;
+          expect(status).toHaveTextContent(error);
+          expect(status).not.toHaveTextContent(/not recalled/);
+          expect(screen.queryByRole("button", { name: "Terminal" })).not.toBeInTheDocument();
+          expect(openTerminal).not.toHaveBeenCalled();
+        }
+      }
+    });
+  });
+
+  it.each([
+    ["HTTP failure", false], ["network failure", false],
+    ["HTTP failure", true], ["network failure", true],
+  ] as const)("keeps withdrawal recovery after a pending final chunk's %s, Terminal=%s", async (response, leaveConversation) => {
+    let transition!: () => void;
+    const openTerminal = vi.fn();
+    const onSent = vi.fn();
+    function Harness() {
+      const [safety, setSafety] = useState({ chatOnly: true, dialogPresent: false });
+      transition = () => setSafety({ chatOnly: !leaveConversation, dialogPresent: true });
+      return <CrewProvider servers={undefined}>
+        <StatusSentinel />
+        <Composer
+          paneId="w1:p1" agent="omp" isShell={false} gone={false} readOnly={false}
+          {...safety} text="pane output" terminalDraft={null} rawTerminalDraft={null}
+          prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+          setWrap={vi.fn()} stepFontSize={vi.fn()} setRawTerminal={vi.fn()} setTapToFocus={vi.fn()}
+          setExpandClippedReply={vi.fn()} onSent={onSent} onOpenTerminal={openTerminal}
+        />
+      </CrewProvider>;
+    }
+    const head = "x".repeat(512);
+    const text = head + "tail";
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const wire: string[] = [];
+    let reads = 0;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        reads++;
+        return HttpResponse.json({ paneId: "w1:p1", text: `some output\n╭── statusline ───╮\n╰─ ${wire.length ? head : ""}   ─╯`, truncated: false, revision: reads });
+      }),
+      http.post<never, { text: string; submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = await request.json();
+        wire.push(body.submit ? "submit" : `type:${body.text.length}`);
+        if (wire.length === 2) {
+          await held;
+          return response === "HTTP failure"
+            ? HttpResponse.json({ error: "injected write response failure" }, { status: 500 })
+            : HttpResponse.error();
+        }
+        return HttpResponse.json({ ok: true });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/keys$/, () => {
+        wire.push("keys");
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Harness /> }])} />);
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    fireEvent.change(box, { target: { value: text } });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    // Chunk 1 is acknowledged and verified. Chunk 2 was dispatched before withdrawal;
+    // its failed response cannot establish whether those last four characters arrived.
+    await waitFor(() => expect(wire).toEqual(["type:512", "type:4"]));
+    expect(reads).toBe(3);
+    act(() => transition());
+    release();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+    expect(reads).toBe(3);
+    expect(wire).toEqual(["type:512", "type:4"]);
+    expect(box).toHaveValue(text);
+    expect(onSent).not.toHaveBeenCalled();
+    expect(screen.getByTestId("status")).toHaveTextContent(/An earlier write already reached the pane and is not recalled/);
+    await user.click(screen.getByRole("button", { name: "Terminal" }));
+    expect(openTerminal).toHaveBeenCalledTimes(1);
+    expect(wire).toEqual(["type:512", "type:4"]);
+    expect(box).toHaveValue(text);
+  });
+
+  // Hold reads after an acknowledged write, not merely while the POST is pending.
+  describe.each(["pre-type keys", "intermediate chunk", "final chunk"])("withdrawal after %s", (boundary) => {
+    it.each([
+      ["ready", false], ["unsafe", false], ["failed", false],
+      ["ready", true], ["unsafe", true], ["failed", true],
+    ] as const)("keeps prior-write evidence and recovery with a %s read, Terminal=%s", async (readResult, leaveConversation) => {
+      let transition!: (chatOnly: boolean) => void;
+      const openTerminal = vi.fn();
+      function Harness() {
+        const [safety, setSafety] = useState({ chatOnly: true, dialogPresent: false });
+        transition = (chatOnly) => setSafety({ chatOnly, dialogPresent: true });
+        return <CrewProvider servers={undefined}>
+          <StatusSentinel />
+          <Composer
+            paneId="w1:p1" agent={boundary === "intermediate chunk" ? "omp" : "claude"}
+            isShell={false} gone={false} readOnly={false} {...safety} text="pane output"
+            terminalDraft={boundary === "pre-type keys" ? "old draft" : null}
+            rawTerminalDraft={boundary === "pre-type keys" ? "old draft" : null}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+            setWrap={vi.fn()} stepFontSize={vi.fn()} setRawTerminal={vi.fn()} setTapToFocus={vi.fn()}
+            setExpandClippedReply={vi.fn()} onSent={vi.fn()} onOpenTerminal={openTerminal}
+          />
+        </CrewProvider>;
+      }
+      const text = boundary === "intermediate chunk" ? "x".repeat(512) + "tail" : "keep this reply";
+      const heldRead = boundary === "intermediate chunk" ? 3 : 2;
+      let reads = 0;
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      const wire: string[] = [];
+      server.use(
+        http.get(/\/api\/pane\/[^/]+$/, async () => {
+          const read = ++reads;
+          if (read === heldRead) await held;
+          if (read >= heldRead && readResult === "failed") return HttpResponse.error();
+          const draft = boundary === "pre-type keys" ? (read === 1 ? "old draft" : "") :
+            (wire.length ? text.slice(0, 512) : "");
+          const ready = boundary === "intermediate chunk" ? `some output\n╭── statusline ───╮\n╰─ ${draft}   ─╯` :
+            `some output\n${"─".repeat(40)}\n❯ ${draft}\n${"─".repeat(40)}`;
+          return HttpResponse.json({ paneId: "w1:p1", text: read >= heldRead && readResult === "unsafe" ? "unsupported screen" : ready, truncated: false, revision: read });
+        }),
+        http.post(/\/api\/pane\/[^/]+\/keys$/, () => {
+          wire.push("keys");
+          return HttpResponse.json({ ok: true });
+        }),
+        http.post<never, { text: string; submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+          const body = await request.json();
+          wire.push(body.submit ? "submit" : `type:${body.text.length}`);
+          return HttpResponse.json({ ok: true });
+        }),
+      );
+      render(<RouterProvider router={createMemoryRouter([{ path: "/", element: <Harness /> }])} />);
+      const box = screen.getByPlaceholderText(/type a reply/i);
+      fireEvent.change(box, { target: { value: text } });
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "Send" }));
+      await waitFor(() => expect(reads).toBe(heldRead));
+      const expectedWire = [boundary === "pre-type keys" ? "keys" : `type:${Math.min(text.length, 512)}`];
+      expect(wire).toEqual(expectedWire);
+      act(() => transition(!leaveConversation));
+      release();
+      await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+      expect(reads).toBe(heldRead);
+      expect(wire).toEqual(expectedWire);
+      expect(box).toHaveValue(text);
+      expect(screen.getByTestId("status")).toHaveTextContent(/An earlier write already reached the pane and is not recalled/);
+      await user.click(screen.getByRole("button", { name: "Terminal" }));
+      expect(openTerminal).toHaveBeenCalledTimes(1);
+      expect(wire).toEqual(expectedWire);
+    });
+  });
+
+  it.each([
+    ["unsupported modal", readFileSync(join(process.cwd(), "src/fixtures/panes/omp--menu-model.txt"), "utf8"), "omp"],
+    ["password", "$ sudo command\n[sudo] password for altan:", "claude"],
+  ])("routes a %s refusal to Terminal without forcing or clearing the draft", async (_name, text, agent) => {
+    const user = userEvent.setup();
+    const writes = vi.fn();
+    const openTerminal = vi.fn();
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => HttpResponse.json({ paneId: "w1:p1", text, truncated: false, revision: 2 })),
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposerWithStatus({ chatOnly: true, agent, onOpenTerminal: openTerminal });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "keep this draft");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    const recovery = await screen.findByRole("button", { name: "Terminal" });
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /use type/i })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+    await user.click(recovery);
+    expect(openTerminal).toHaveBeenCalledTimes(1);
+    expect(writes).not.toHaveBeenCalled();
+    expect(box).toHaveValue("keep this draft");
+    expect(screen.queryByPlaceholderText("Type into the terminal…")).toBeNull();
+    if (_name === "password") expect(loadDraft(undefined, "w1:p1")).toBeNull();
+  });
+
+  it("refuses an unsupported Terminal-required state before any write, even with failed fresh reads", async () => {
+    const user = userEvent.setup();
+    const writes = vi.fn();
+    const openTerminal = vi.fn();
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () => {
+        return HttpResponse.json({ error: "injected pane read failure" }, { status: 500 });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    renderComposerWithStatus({ chatOnly: true, requiresTerminal: true, agent: "codex", onOpenTerminal: openTerminal });
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "keep this draft");
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    // Conversation already KNOWS the screen cannot be represented safely — the refusal does not
+    // wait for (or need) a fresh read, and it offers the local Terminal recovery instead of the
+    // "Type anyway?" override Terminal mode would offer.
+    expect(await screen.findByTestId("status")).toHaveTextContent(/This screen needs the terminal/i);
+    expect(screen.queryByRole("button", { name: "Type anyway?" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Terminal" }));
+    expect(openTerminal).toHaveBeenCalledTimes(1);
+    expect(writes).not.toHaveBeenCalled();
+    expect(box).toHaveValue("keep this draft");
+  });
+
+  // The in-flight race the click-time gate cannot close: the send starts composer-ready
+  // (`requiresTerminal` false at the tap), the guarded reply's pre-flight read is HELD, and the live
+  // Conversation state turns Terminal-required inside that window. The withdrawal must come from
+  // the pre-write refusal callback re-reading the live prop — even when the held read then FAILS.
+  it("withdraws an in-flight send whose Conversation state goes Terminal-required while the preflight read is held, then fails", async () => {
+    const user = userEvent.setup();
+    const writes = vi.fn();
+    const openTerminal = vi.fn();
+    let reads = 0;
+    let holdReads = false;
+    let failReads = false;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let goTerminal!: (value: boolean) => void;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, async () => {
+        reads++;
+        if (holdReads) await held;
+        if (failReads) return HttpResponse.json({ error: "injected pane read failure" }, { status: 500 });
+        return HttpResponse.json({ paneId: "w1:p1", text: "pane output", truncated: false, revision: 2 });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    function Harness() {
+      const [requiresTerminal, setRequiresTerminal] = useState(false);
+      goTerminal = setRequiresTerminal;
+      return (
+        <CrewProvider servers={undefined}>
+          <StatusSentinel />
+          <Composer
+            paneId="w1:p1"
+            agent="codex"
+            isShell={false}
+            gone={false}
+            readOnly={false}
+            dialogPresent={false}
+            chatOnly
+            requiresTerminal={requiresTerminal}
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+            setWrap={vi.fn()}
+            stepFontSize={vi.fn()}
+            setRawTerminal={vi.fn()}
+            setTapToFocus={vi.fn()}
+            setExpandClippedReply={vi.fn()}
+            onSent={vi.fn()}
+            onOpenTerminal={openTerminal}
+          />
+        </CrewProvider>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "started ready");
+    // Hold the pre-flight read so the send is mid-flight while the state turns.
+    holdReads = true;
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(reads).toBeGreaterThan(0));
+    act(() => goTerminal(true));
+    // Release the held read as a failure: the refusal reads the LIVE condition, not the read.
+    failReads = true;
+    release();
+    expect(await screen.findByTestId("status")).toHaveTextContent(/This screen needs the terminal/i);
+    expect(screen.getByRole("button", { name: "Terminal" })).toBeVisible();
+    expect(openTerminal).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+    expect(box).toHaveValue("started ready");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled());
+  });
+
+  // S4: supported dialogs are the OTHER form of keyboard ownership, and the pre-write refusal used
+  // to check only `requiresTerminal` — a supported inline prompt sets `dialogPresent` true while
+  // deliberately leaving `requiresTerminal` false, so a send that started composer-ready could
+  // deliver ordinary text unsubmitted into the dialog when its held preflight read resolved. The
+  // withdrawal must come from the same live pre-write callback, for BOTH ownership forms.
+  //
+  // It is also a LATCH: the supported dialog appears and is ANSWERED while the read is held, i.e.
+  // the send's live state later returns to composer-ready. A later recovery must not revive the
+  // already-started operation — only a brand-new explicit send after this one ends may run.
+  it("withdraws an in-flight send when a supported dialog appears while the preflight read is held, and its later recovery cannot revive it", async () => {
+    const user = userEvent.setup();
+    const writes = vi.fn();
+    const openTerminal = vi.fn();
+    let holdReads = false;
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let goDialog!: (value: boolean) => void;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, async () => {
+        if (holdReads) await held;
+        // A composer-ready pane, so the held read (when released) succeeds and the send would be
+        // cleared to type unless the latched withdrawal refuses it first.
+        const rule = "─".repeat(40);
+        return HttpResponse.json({ paneId: "w1:p1", text: `some output\n${rule}\n❯ \n${rule}`, truncated: false, revision: 2 });
+      }),
+      http.post(/\/api\/pane\/[^/]+\/(keys|reply)$/, () => {
+        writes();
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    function Harness() {
+      const [dialogPresent, setDialogPresent] = useState(false);
+      goDialog = setDialogPresent;
+      return (
+        <CrewProvider servers={undefined}>
+          <StatusSentinel />
+          <Composer
+            paneId="w1:p1"
+            agent="claude"
+            isShell={false}
+            gone={false}
+            readOnly={false}
+            dialogPresent={dialogPresent}
+            chatOnly
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+            setWrap={vi.fn()}
+            stepFontSize={vi.fn()}
+            setRawTerminal={vi.fn()}
+            setTapToFocus={vi.fn()}
+            setExpandClippedReply={vi.fn()}
+            onSent={vi.fn()}
+            onOpenTerminal={openTerminal}
+          />
+        </CrewProvider>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, "started ready");
+    // Hold the pre-flight read so the send is mid-flight while the supported prompt goes up.
+    holdReads = true;
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeDisabled());
+    // A SUPPORTED inline prompt appears — keyboard ownership changes without requiresTerminal.
+    act(() => goDialog(true));
+    // …and it is answered again before the held read resolves. Recovery must not revive the send.
+    act(() => goDialog(false));
+    release();
+    expect(await screen.findByTestId("status")).toHaveTextContent(/This screen needs the terminal/i);
+    expect(screen.getByRole("button", { name: "Terminal" })).toBeVisible();
+    expect(openTerminal).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+    expect(box).toHaveValue("started ready");
+  });
+
+  // S5's later boundary, at the UI layer: a MULTI-CHUNK send where one chunk was already
+  // acknowledged when Conversation turns unsafe. Collie cannot recall the acknowledged write — the
+  // UI must withhold every subsequent chunk and the submit, keep the draft, present the local
+  // Terminal recovery, and NOT claim the earlier write was recalled (that is the
+  // `withdrawnPartial` message, distinct from the ordinary zero-writes refusal).
+  it("withdraws a multi-chunk send at the later boundary after a chunk was acknowledged, and reports the partial delivery honestly", async () => {
+    const user = userEvent.setup();
+    const wire: string[] = [];
+    const openTerminal = vi.fn();
+    const ompComposer = (draft: string) => `some output\n╭── statusline ───╮\n╰─ ${draft}   ─╯`;
+    // omp chunks at 512 UTF-16 units: exactly two chunks, the first one verifiable on screen.
+    const head = "x".repeat(512);
+    const text = `${head}tail of a long message`;
+    let chunkAcked = false;
+    let releaseChunkAck!: () => void;
+    const chunkAck = new Promise<void>((resolve) => { releaseChunkAck = resolve; });
+    let goDialog!: (value: boolean) => void;
+    server.use(
+      http.get(/\/api\/pane\/[^/]+$/, () =>
+        HttpResponse.json({
+          paneId: "w1:p1",
+          // Before the first chunk lands the composer line is empty; the verification reads after
+          // it see exactly the acknowledged chunk, so the multi-chunk guard verifies normally.
+          text: ompComposer(wire.length > 0 ? head : ""),
+          truncated: false,
+          revision: 2,
+        }),
+      ),
+      http.post<never, { text: string; submit?: boolean }>(/\/api\/pane\/[^/]+\/reply$/, async ({ request }) => {
+        const body = await request.json();
+        if (body.submit) {
+          wire.push("submit");
+        } else {
+          wire.push(`type:${body.text.length}`);
+          if (!chunkAcked) {
+            chunkAcked = true;
+            await chunkAck;
+          }
+        }
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    function Harness() {
+      const [dialogPresent, setDialogPresent] = useState(false);
+      goDialog = setDialogPresent;
+      return (
+        <CrewProvider servers={undefined}>
+          <StatusSentinel />
+          <Composer
+            paneId="w1:p1"
+            agent="omp"
+            isShell={false}
+            gone={false}
+            readOnly={false}
+            dialogPresent={dialogPresent}
+            chatOnly
+            text="pane output"
+            terminalDraft={null}
+            rawTerminalDraft={null}
+            prefs={{ wrap: true, fontSize: 11, draftFontSize: 14, fontFamily: "system", rawTerminal: false, tapToFocus: true, expandClippedReply: true }}
+            setWrap={vi.fn()}
+            stepFontSize={vi.fn()}
+            setRawTerminal={vi.fn()}
+            setTapToFocus={vi.fn()}
+            setExpandClippedReply={vi.fn()}
+            onSent={vi.fn()}
+            onOpenTerminal={openTerminal}
+          />
+        </CrewProvider>
+      );
+    }
+    const router = createMemoryRouter([{ path: "/", element: <Harness /> }]);
+    render(<RouterProvider router={router} />);
+    const box = screen.getByPlaceholderText(/type a reply/i);
+    await user.type(box, text);
+    await user.click(screen.getByRole("button", { name: "Send" }));
+    // The first chunk is on the wire and being acknowledged while Conversation turns unsafe.
+    await waitFor(() => expect(wire).toContain("type:512"));
+    act(() => goDialog(true));
+    releaseChunkAck();
+    // The acknowledged chunk is NOT claimed as recalled; everything after it was withheld.
+    expect(await screen.findByTestId("status")).toHaveTextContent(/An earlier write already reached the pane and is not recalled/i);
+    expect(screen.getByRole("button", { name: "Terminal" })).toBeVisible();
+    expect(openTerminal).not.toHaveBeenCalled();
+    expect(wire).toEqual(["type:512"]); // no second chunk, no submit
+    expect(box).toHaveValue(text);
+  });
+});
 
 describe("Composer — send", () => {
   // #34: a dialog owns the TUI's keyboard. Sending free text at one loses the message AND makes the
