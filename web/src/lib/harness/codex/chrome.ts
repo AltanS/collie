@@ -16,7 +16,7 @@
 // an echo if the live prompt row is ever missing. MAX_DRAFT_ROWS is a defence bound on how far the
 // walk reaches, not the thing that decides whether the composer exists.
 
-import type { StyledLine } from "../../blocks";
+import { trimTrailingBlank, type StyledLine } from "../../blocks";
 import {
   isBlank,
   isStatusRow,
@@ -120,7 +120,8 @@ function bandTop(lines: StyledLine[], texts: string[], promptRow: number): numbe
 export function stripChrome(lines: StyledLine[]): StyledLine[] {
   const box = locateComposer(lines);
   if (box === null) return lines;
-  return lines.slice(0, box.top);
+  // Shared mirror padding owns the gap above the status strip, as in Claude.
+  return trimTrailingBlank(lines.slice(0, box.top));
 }
 
 /** The status row, styled, for the strip above the phone composer. Empty when no composer. */

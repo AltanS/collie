@@ -318,7 +318,7 @@ describe("the Astra starfield (issue #245)", () => {
     expect(box!.promptRow).toBe(3);
     expect(box!.top).toBe(2);
     expect(extractInputDraft(lines)).toBe("fix the login bug");
-    expect(stripChrome(lines).map(lineText)).toEqual(["• Done.", ""]);
+    expect(stripChrome(lines).map(lineText)).toEqual(["• Done."]);
   });
 
   it("keeps a wrapped draft's continuation rows across a blank row", () => {
