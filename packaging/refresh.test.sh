@@ -29,7 +29,6 @@ sourced() { bash -c 'source "$1"; printf "%s" "${!2}"' bash "$1" "$2"; }
 X64_SHA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 ARM_SHA="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 MAC_SHA="cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-MAC_X64_SHA="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
 X64_SHA2="dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 
 # $1 destination, $2 version, $3 x86_64 sha
@@ -45,8 +44,7 @@ write_manifest() {
   "artifacts": [
     { "name": "collie-$2-linux-x64.tar.gz",   "platform": "linux-x64",   "sha256": "$3" },
     { "name": "collie-$2-linux-arm64.tar.gz", "platform": "linux-arm64", "sha256": "$ARM_SHA" },
-    { "name": "collie-$2-macos-arm64.tar.gz", "platform": "macos-arm64", "sha256": "$MAC_SHA" },
-    { "name": "collie-$2-macos-x64.tar.gz",   "platform": "macos-x64",   "sha256": "$MAC_X64_SHA" }
+    { "name": "collie-$2-macos-arm64.tar.gz", "platform": "macos-arm64", "sha256": "$MAC_SHA" }
   ],
   "extras": []
 }
@@ -203,7 +201,6 @@ cat > "$tmp/extra.json" <<JSON
     { "name": "collie-9.9.9-linux-x64.tar.gz",   "platform": "linux-x64",   "sha256": "$X64_SHA" },
     { "name": "collie-9.9.9-linux-arm64.tar.gz", "platform": "linux-arm64", "sha256": "$ARM_SHA" },
     { "name": "collie-9.9.9-macos-arm64.tar.gz", "platform": "macos-arm64", "sha256": "$MAC_SHA" },
-    { "name": "collie-9.9.9-macos-x64.tar.gz",   "platform": "macos-x64",   "sha256": "$MAC_X64_SHA" },
     { "name": "collie-9.9.9-linux-riscv.tar.gz", "platform": "linux-riscv", "sha256": "$MAC_SHA" }
   ]
 }

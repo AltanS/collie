@@ -65,14 +65,13 @@ const AUR_ARCHES = [
 
 /**
  * `sources.json`'s platform keys, and the manifest platform each one reads. The names differ on
- * the two macOS rows: the release workflow's matrix says `macos-*`, Nix says `darwin`, and this
- * table is where that translation lives so neither file has to know about the other's spelling.
+ * one row: the release workflow's matrix says `macos-arm64`, Nix says `darwin`, and this table is
+ * where that translation lives so neither file has to know about the other's spelling.
  */
 const NIX_PLATFORMS = [
   { key: "linux-x64", platform: "linux-x64" },
   { key: "linux-arm64", platform: "linux-arm64" },
   { key: "darwin-arm64", platform: "macos-arm64" },
-  { key: "darwin-x64", platform: "macos-x64" },
 ] as const;
 
 interface NixPlatform {

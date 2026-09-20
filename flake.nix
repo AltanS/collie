@@ -9,14 +9,13 @@
   outputs =
     { self, nixpkgs }:
     let
-      # The four shipped release targets, and nothing else. `.github/workflows/release.yml`'s
-      # `payload` matrix is the list this mirrors. `x86_64-darwin` rides GitHub's last Intel runner
-      # image, `macos-26-intel`; when that matrix row goes, this entry goes with it.
+      # The three shipped release targets, and nothing else. `.github/workflows/release.yml`'s
+      # `payload` matrix is the list this mirrors; a fourth row there is commented out and stays out
+      # here too.
       systems = [
         "x86_64-linux"
         "aarch64-linux"
         "aarch64-darwin"
-        "x86_64-darwin"
       ];
 
       # The pinned Bun. It must be at least `MIN_BUN` in cli/update-check.ts — the two are one fact
@@ -52,10 +51,6 @@
                 "x86_64-linux" = pkgs.fetchurl {
                   url = "https://github.com/oven-sh/bun/releases/download/bun-v${finalAttrs.version}/bun-linux-x64-baseline.zip";
                   hash = "sha256-qMnGc4IC4vztVV3YYKlTxWwM0Fn3UEHnAQroGjKAJkY=";
-                };
-                "x86_64-darwin" = pkgs.fetchurl {
-                  url = "https://github.com/oven-sh/bun/releases/download/bun-v${finalAttrs.version}/bun-darwin-x64.zip";
-                  hash = "sha256-jzQjnydqPw0nv80f/s/l0hJ+dPsKpMCXGgzex7IlyWU=";
                 };
               };
             };
