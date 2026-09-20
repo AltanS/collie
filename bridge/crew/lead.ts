@@ -482,7 +482,7 @@ export class CrewLead {
       // — the link's `runAtStart`. See {@link CrewLead.dialGenerations}.
       const dialled = new Map(due.map((link) => [link.memberId, this.nextDialGeneration(link.memberId)]));
       const outcomes = await sweepPeers(due, (link) =>
-        this.deps.snapshot(link, SWEEP_VIEW, opts.freshPreflight === true, {
+        this.deps.snapshot(link, SWEEP_VIEW, opts.freshPreflight === true || this.verdictMissing(link.memberId, follow), {
           leadRelease,
           turn: follow?.turns.turnFor(link.memberId) ?? null,
         }),
@@ -617,6 +617,31 @@ export class CrewLead {
       return kind === undefined ? turnMember : { ...turnMember, installKind: kind };
     });
     if (follow.turns.observe(members, this.now()).released) this.resweep();
+  }
+
+  /**
+   * Whether this dial must carry `X-Crew-Preflight: fresh` because the RUN is blocked without it.
+   *
+   * ── THE STALL THIS CLOSES (2026-09-20) ──────────────────────────────────────
+   * {@link import("./follow.ts").UpdateTurns} hands a member the turn only on a green or amber
+   * verdict, and unknown is refused. This lead banks that verdict from the member's snapshot body,
+   * and the member serves whatever its own six-hourly cache happens to hold — so a lead that has just
+   * RESTARTED, which is every lead that has just updated itself, holds nothing for anybody.
+   *
+   * Until now the only thing that re-read it was a phone on `GET /api/update/check`, which fires the
+   * fresh sweep. On the 1.11.0 run the lead's own record reached `done` in six seconds, the phone
+   * stopped asking there, and the member sat on `waiting` for two minutes twenty five seconds. It
+   * then took the release in four. A run must not need a phone watching it to finish.
+   *
+   * So the run asks for itself, and only when it is actually stuck on the answer: an OPEN leg with no
+   * banked verdict at all. A red or amber one is a real answer and is left alone. The cost is bounded
+   * on the member's side, not here, by its own `PREFLIGHT_TTL_MS` gate, so a sweep at 1.5 s cannot
+   * make a peer shell out to git more than once a minute.
+   */
+  private verdictMissing(memberId: string, follow: CrewLeadDeps["follow"]): boolean {
+    if (follow === undefined) return false;
+    if (!follow.turns.hasOpenLeg(memberId)) return false;
+    return this.deps.registry.state(memberId).preflight === null;
   }
 
   /**

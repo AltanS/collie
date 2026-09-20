@@ -18,6 +18,8 @@ import { useEffect, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { StatusArea } from "@/components/status-area";
 import { UpdateScreen } from "@/components/update-screen";
+import { UpdateRunStrip } from "@/components/update-run-strip";
+import { StripHost } from "@/components/ui/strip-host";
 import { clearStatus, setStatus } from "@/lib/status";
 import {
   DOWNLOAD_HUNG_MS,
@@ -89,6 +91,19 @@ function sheet(over: Partial<UpdateScreenInput>): UpdateScreenState {
   };
 }
 
+/** The collapsed form, in the band it actually lives in. `StripHost` is not decoration here: the
+ *  strip registers a SLOT and draws nothing without a host, which is the same arrangement
+ *  `routes/root.tsx` gives it. */
+function BandStage({ screen }: { screen: UpdateScreenState }): ReactNode {
+  return (
+    <Stage height={420}>
+      <StripHost>
+        <UpdateRunStrip screen={screen} />
+      </StripHost>
+    </Stage>
+  );
+}
+
 /** One sheet in a box. `Stage` is the containing block for the sheet's `position: fixed`, so the
  *  panel renders at the card's size rather than over the whole page. */
 function SheetStage({ screen }: { screen: UpdateScreenState }): ReactNode {
@@ -140,9 +155,9 @@ function CollapsedCard(): ReactNode {
       state="collapsed"
       label="the badge, on a device that did not start the run"
       reach="confirm an update on your phone, then look at the tablet. A takeover nobody asked for reads as hijacked, so every other device gets one line it can open."
-      note="`startedHere` is false here, which is the ONLY thing that differs from the card below it. The reducer answers `collapsed` plus `dismissible: true`, and nothing behind it goes inert."
+      note="`startedHere` is false here, which is the ONLY thing that differs from the card below it. The reducer answers `collapsed`, nothing behind it goes inert, and since 2026-09-20 the badge is a strip in the band above the header rather than a bar over the composer."
     >
-      <SheetStage screen={sheet({ startedHere: false, run: run("staging") })} />
+      <BandStage screen={sheet({ startedHere: false, run: run("staging") })} />
     </Card>
   );
 }

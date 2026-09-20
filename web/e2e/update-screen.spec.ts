@@ -287,8 +287,21 @@ async function reloadCount(page: Page): Promise<number> {
 
 /** Is the wrapper in `App.tsx` inert right now? Asked of the DOM rather than of a class name: `inert`
  *  is the thing that closes the keyboard path, and a test for a class would not notice it going away. */
+/**
+ * Is the APP behind the sheet inert? Asked of `App.tsx`'s own wrapper and of nothing else.
+ *
+ * It used to count every `[inert]` in the document, which was only ever right by luck: `ui/one-of.tsx`
+ * marks a losing strip inert and `ui/collapse.tsx` marks a closed one, so the band above the header
+ * puts `[inert]` in the page whenever it is showing anything at all. That went unnoticed until the
+ * collapsed update badge moved INTO that band (2026-09-20) and this helper started calling a device
+ * blocked because it was displaying the very row that proves it is not.
+ *
+ * `#root`'s direct children are exactly the three `App.tsx` renders — the `display: contents` wrapper
+ * whose `inert` is `screen.blocking`, the idle lock, and the sheet — so the child selector names the
+ * one element this question is about.
+ */
 async function appIsInert(page: Page): Promise<boolean> {
-  return page.evaluate(() => document.querySelectorAll("[inert]").length > 0);
+  return page.evaluate(() => document.querySelectorAll("#root > [inert]").length > 0);
 }
 
 test("the sheet takes the screen for a run this device started, and the end names the version", async ({

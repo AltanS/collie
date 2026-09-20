@@ -218,9 +218,23 @@ export function crewSettledAt(update: UpdateInfo | undefined, run?: UpdateRun): 
  * same way `isMoving` does: a leg state this client has never heard of counts as moving.
  */
 export function crewMoving(update: UpdateInfo | undefined, run?: UpdateRun): boolean {
-  const legs = peerLegsOf(update, run);
+  return legsStillMoving(peerLegsOf(update, run), crewSettledAt(update, run));
+}
+
+/**
+ * The same question asked of legs already in hand, rather than of an `UpdateInfo` to read them from.
+ *
+ * `lib/update-run-store.ts` holds the crew's legs RECONCILED from two readings and has no
+ * `UpdateInfo` to hand back, so without this it could only ask about the lead's own run — which is
+ * exactly the half that is already over while the crew is still moving. Both callers land here, so
+ * "is the crew still moving" stays one answer (M20/04) rather than becoming two.
+ */
+export function legsStillMoving(
+  legs: readonly UpdatePeerLeg[],
+  settledAt: number | null,
+): boolean {
   if (legs.length === 0) return false;
-  if (crewSettledAt(update, run) !== null) return false;
+  if (settledAt !== null) return false;
   return legs.some(isMoving);
 }
 

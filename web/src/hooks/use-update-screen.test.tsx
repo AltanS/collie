@@ -4,6 +4,8 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { UpdateScreen } from "@/components/update-screen";
+import { UpdateRunStrip } from "@/components/update-run-strip";
+import { StripHost } from "@/components/ui/strip-host";
 import { clearStatus, useStatus } from "@/lib/status";
 import {
   __resetUpdateRunStore,
@@ -30,7 +32,13 @@ function Harness() {
   return (
     <>
       <div style={{ display: "contents" }} inert={updateScreen.blocking}>
-        <button type="button">The app behind</button>
+        {/* The band is inside the router in the real app, so it is inside the wrapper here too —
+            which is also what proves the strip goes inert with everything else while a run this
+            device started is blocking. */}
+        <StripHost>
+          <UpdateRunStrip screen={updateScreen} />
+          <button type="button">The app behind</button>
+        </StripHost>
       </div>
       <UpdateScreen screen={updateScreen} onOpenUpdates={() => {}} />
       <p>{status?.text ?? ""}</p>

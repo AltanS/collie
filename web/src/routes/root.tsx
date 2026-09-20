@@ -15,6 +15,8 @@ import { useAgentTransitions } from "@/hooks/use-transitions";
 import { usePushSetup } from "@/hooks/use-push";
 import { useConnectionLost } from "@/hooks/use-connection-lost";
 import { UpdateRibbon } from "@/components/update-ribbon";
+import { UpdateRunStrip } from "@/components/update-run-strip";
+import { useOptionalUpdateScreen } from "@/components/update-screen-provider";
 import { ConnectionBanner } from "@/components/connection-banner";
 import { AppHeaderHost } from "@/components/app-header";
 import { StripHost } from "@/components/ui/strip-host";
@@ -58,6 +60,9 @@ export function RootLayout() {
   // pairs with it — returns `HomeData`. React Router types `useLoaderData()` as `unknown` in data
   // mode; the element does not mount until its own loader has resolved.
   const data = useLoaderData() as HomeData;
+  // The update reading, owned above the router (`components/update-screen-provider.tsx`). Read here
+  // rather than inside the strip so the band's children stay a plain list of facts.
+  const updateScreen = useOptionalUpdateScreen();
   // useParams accumulates params from matched child routes, so `paneId` is set when the
   // `/pane/:paneId` child is active. useAgentTransitions uses it to suppress a notification for the
   // pane you're already looking at.
@@ -153,6 +158,13 @@ export function RootLayout() {
               controller runs (and can auto-update) for the app's lifetime; it registers no slot when
               it has nothing to say. */}
           <UpdateRibbon />
+          {/* A RUN THIS DEVICE DID NOT ASK FOR, as one line. The sheet that takes the screen is
+              mounted in `App.tsx`, outside the router; only its collapsed form belongs in the band,
+              and `useOptionalUpdateScreen` is how the one reading reaches across that boundary. It
+              was a bar pinned to the bottom of the viewport until 2026-09-20, which on a pane screen
+              is where the composer's input row is. `null` here is a tree with no App above it — a
+              unit test, or the playground — and that renders no strip, which is correct. */}
+          {updateScreen !== null && <UpdateRunStrip screen={updateScreen} />}
           {/* The app's ONE connection surface: a thin bar that stays hidden while healthy, appears
               amber "reconnecting…" only after ≥4s of sustained trouble (the flicker fix), escalates to a
               red "not connected" cause + Retry/Reload at ≥15s, and flashes green on recovery. Reads the

@@ -1061,3 +1061,62 @@ describe("a leg the wall clock failed stays failed", () => {
     expect(turns.peerLegs().find((l) => l.name === "attic")?.state).toBe("done");
   });
 });
+
+describe("a turn nobody can be handed says why, once", () => {
+  // 2026-09-20. On the 1.11.0 run the lead granted nothing for two minutes twenty five seconds and
+  // wrote not one line about it: the member's leg read `waiting`, the phone showed a spinner, and
+  // the cause — this lead held no preflight verdict for that machine — was nowhere on either box.
+  const member = (over: Partial<TurnMember> & { memberId: string }): TurnMember => ({
+    enrolledAt: 1,
+    version: "1.4.0",
+    verdict: "green",
+    answered: true,
+    run: null,
+    ...over,
+  });
+
+  test("an unknown verdict is named, and named once however many sweeps pass", () => {
+    const journal: string[] = [];
+    const turns = new UpdateTurns((line) => journal.push(line));
+    turns.begin(RUN_ID, "1.4.1");
+    const unchecked = member({ memberId: "attic", verdict: null });
+    turns.observe([unchecked], NOW);
+    turns.observe([unchecked], NOW + 1500);
+    turns.observe([unchecked], NOW + 3000);
+    expect(journal.filter((l) => l.includes("not being handed the turn"))).toEqual([
+      "[crew] update r-abc: attic is not being handed the turn — this lead holds no preflight verdict for it, and unknown is not green",
+    ]);
+  });
+
+  test("a red verdict is named as itself, so the two causes are never one sentence", () => {
+    const journal: string[] = [];
+    const turns = new UpdateTurns((line) => journal.push(line));
+    turns.begin(RUN_ID, "1.4.1");
+    turns.observe([member({ memberId: "attic", verdict: "red" })], NOW);
+    expect(journal.filter((l) => l.includes("not being handed the turn"))).toEqual([
+      "[crew] update r-abc: attic is not being handed the turn — its own preflight is red",
+    ]);
+  });
+
+  test("a sweep that DOES grant a turn says nothing, and clears what it said before", () => {
+    const journal: string[] = [];
+    const turns = new UpdateTurns((line) => journal.push(line));
+    turns.begin(RUN_ID, "1.4.1");
+    turns.observe([member({ memberId: "attic", verdict: null })], NOW);
+    expect(journal.filter((l) => l.includes("not being handed the turn"))).toHaveLength(1);
+    // The verdict arrived. The turn is granted and the block is spent, so a later block on the same
+    // member in the same run is a new fact and is reported again.
+    turns.observe([member({ memberId: "attic", verdict: "green" })], NOW + 1500);
+    expect(turns.turnFor("attic")).not.toBeNull();
+    expect(journal.filter((l) => l.includes("not being handed the turn"))).toHaveLength(1);
+  });
+
+  test("a member already holding the turn is never reported as blocked", () => {
+    const journal: string[] = [];
+    const turns = new UpdateTurns((line) => journal.push(line));
+    turns.begin(RUN_ID, "1.4.1");
+    turns.observe([member({ memberId: "attic" })], NOW);
+    turns.observe([member({ memberId: "attic" })], NOW + 1500);
+    expect(journal.filter((l) => l.includes("not being handed the turn"))).toEqual([]);
+  });
+});

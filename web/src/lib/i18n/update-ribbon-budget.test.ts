@@ -39,8 +39,13 @@ const LOCALES: readonly (readonly [string, Dictionary])[] = [
   ["zh-TW", zhTW],
 ];
 
-/** Every key the band can print, plus the aria-label on its dismiss. */
-const BAND_PREFIX = "updateRibbon.";
+/** Every key the band can print, plus the aria-label on its dismiss.
+ *
+ *  `updateScreen.badge.` joined the list on 2026-09-20, when the collapsed update badge stopped
+ *  being a bar pinned over the composer and became a strip in this band. It prints in the same
+ *  truncating row and is held to the same budget; the REST of `updateScreen.` is the sheet's, which
+ *  is a full screen and wraps, so it is deliberately not here. */
+const BAND_PREFIXES = ["updateRibbon.", "updateScreen.badge."] as const;
 
 /** One representative value per slot. See the header for why `reason` is empty. */
 const SAMPLE = {
@@ -68,7 +73,26 @@ function fill(template: string): string {
 function bandKeys(): MessageKey[] {
   // SAFETY: `MessageKey` is `keyof typeof en` by construction, so every own key of `en` is one.
   const keys = Object.keys(en) as MessageKey[];
-  return keys.filter((key) => key.startsWith(BAND_PREFIX));
+  return keys.filter((key) => BAND_PREFIXES.some((prefix) => key.startsWith(prefix)));
+}
+
+/**
+ * The `{word}` the badge prints, taken PER LOCALE as that locale's longest state word.
+ *
+ * The other slots take one representative value because their content is a name or a number and
+ * does not translate. This one is a translated string picked from `updateScreen.state.*` at render
+ * time, so a fixed English sample would measure the budget against text that never reaches a German
+ * screen. Measuring the worst word each dictionary actually holds is the honest reading.
+ */
+function longestStateWord(dictionary: Dictionary): string {
+  // SAFETY: same construction as `bandKeys` — every own key of `en` is a `MessageKey`.
+  const keys = (Object.keys(en) as MessageKey[]).filter((key) => key.startsWith("updateScreen.state."));
+  let longest = "";
+  for (const key of keys) {
+    const value = fill(dictionary[key]);
+    if (value.length > longest.length) longest = value;
+  }
+  return longest;
 }
 
 describe("i18n — the update band", () => {
@@ -78,8 +102,9 @@ describe("i18n — the update band", () => {
 
     const over: string[] = [];
     for (const [locale, dictionary] of LOCALES) {
+      const word = longestStateWord(dictionary);
       for (const key of keys) {
-        const line = fill(dictionary[key]);
+        const line = fill(dictionary[key]).split("{word}").join(word);
         if (line.length > BUDGET) over.push(`${locale} ${key}: ${line.length} — "${line}"`);
       }
     }
@@ -102,6 +127,8 @@ describe("i18n — the update band", () => {
     for (const [, dictionary] of LOCALES) {
       for (const key of bandKeys()) {
         for (const slot of dictionary[key].matchAll(/\{(\w+)\}/g)) {
+          // `word` is filled per locale by `longestStateWord`, not from the table above.
+          if (slot[1] === "word") continue;
           if (!Object.hasOwn(SAMPLE, slot[1])) unknown.add(slot[1]);
         }
       }

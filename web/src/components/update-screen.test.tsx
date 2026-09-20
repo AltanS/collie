@@ -85,14 +85,14 @@ describe("accessible in every mode it renders at all", () => {
     await vi.waitFor(() => expect(document.activeElement).toBe(panel));
   });
 
-  it("the badge is a real button, and tapping it asks to expand", async () => {
-    const user = userEvent.setup();
-    const { spies } = mount({ startedHere: false, run: run("staging") });
-    // No dialog on a device that did not ask for this: a takeover nobody asked for reads as hijacked.
+  it("draws nothing at all on a device that did not ask for this", () => {
+    const { container } = mount({ startedHere: false, run: run("staging") });
+    // No dialog: a takeover nobody asked for reads as hijacked. And no badge either, since
+    // 2026-09-20 — the collapsed form is a strip in the band above the header now
+    // (`components/update-run-strip.test.tsx`), because at the bottom of the screen it lay on the
+    // composer's input row.
     expect(screen.queryByRole("dialog")).toBeNull();
-    const badge = screen.getByRole("button");
-    await user.click(badge);
-    expect(spies.setExpanded).toHaveBeenCalledWith(true);
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("the machine list is a named list, and the progress bar reports its own numbers", () => {

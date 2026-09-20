@@ -4,12 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "@/test/setup";
 import {
   CREW_BEGUN_MS,
+  FRONT_POLL_MS,
   __resetUpdateRunStore,
   crewRunOf,
   getUpdateRunSnapshot,
   noteCrewRunBegun,
   noteSnapshotCrew,
+  noteSnapshotRun,
   readUpdateState,
+  subscribeUpdateRun,
 } from "./update-run-store";
 import type { UpdateInfo, UpdatePeerLeg } from "./types";
 
@@ -140,5 +143,65 @@ describe("two readings of one status", () => {
     answer?.();
     await read;
     expect(getUpdateRunSnapshot().crewRun?.legs).toEqual(NEW_MOVING);
+  });
+});
+
+describe("the poll follows the whole update subject, not just the lead's own run", () => {
+  // 2026-09-20. A crew update is TWO phases and `arm` watched only the first. On the real 1.11.0 run
+  // the lead's own record reached `done` in six seconds, this store stopped polling there, and the
+  // member sat on `waiting` for two minutes twenty five seconds before anything told it to move —
+  // because `GET /api/update/check` is what makes the lead sweep carrying `X-Crew-Preflight: fresh`,
+  // and a member whose verdict the lead does not hold is refused its turn.
+  const DONE = {
+    schema: 2 as const,
+    state: "done" as const,
+    from: "1.9.0",
+    to: "1.9.1",
+    startedAt: NOW - 6_000,
+    updatedAt: NOW - 1_000,
+    attempt: 0,
+    pid: 4242,
+  };
+
+  const drive = async (legs: UpdatePeerLeg[], settledAt?: number) => {
+    vi.useFakeTimers({
+      now: NOW,
+      toFake: ["Date", "setTimeout", "clearTimeout", "setInterval", "clearInterval"],
+    });
+    let checks = 0;
+    server.use(
+      http.get("*/api/update/check", () => {
+        checks += 1;
+        return HttpResponse.json(status({ peers: legs, peersTo: "1.9.1" }));
+      }),
+      http.get("*/standby/update", () => HttpResponse.json(DONE)),
+    );
+    const stop = subscribeUpdateRun(() => {});
+    noteSnapshotRun(DONE);
+    noteSnapshotCrew(status(settledAt === undefined ? { peers: legs, peersTo: "1.9.1" } : { peers: legs, peersTo: "1.9.1", settledAt }));
+    // Let the ONE read a first subscriber always makes land, then count only what the intervals do.
+    await vi.advanceTimersByTimeAsync(FRONT_POLL_MS / 2);
+    checks = 0;
+    await vi.advanceTimersByTimeAsync(FRONT_POLL_MS * 3);
+    stop();
+    return checks;
+  };
+
+  it("keeps reading while a member is still moving under a run the lead has finished", async () => {
+    // `NEW_MOVING` is a leg in state `waiting`, which is the exact word the 1.11.0 run froze on. A
+    // queued member is MOVING for this purpose: the run is waiting on it, and the read this arms is
+    // what unblocks it.
+    expect(NEW_MOVING[0]!.state).toBe("waiting");
+    // And the legs arrive AFTER the lead's own record has gone `done`, which is the real ordering:
+    // `arm` is re-taken on every change rather than decided once, so a later leg re-arms it.
+    expect(await drive(NEW_MOVING)).toBeGreaterThan(0);
+  });
+
+  it("stops once the lead has stamped the crew settled", async () => {
+    expect(await drive(NEW_MOVING, NOW - 1)).toBe(0);
+  });
+
+  it("stops when every leg is terminal, even with no settle stamp from an older bridge", async () => {
+    expect(await drive([{ name: "minibuch", state: "done", version: "1.9.1", updatedAt: NOW - 1 }])).toBe(0);
   });
 });

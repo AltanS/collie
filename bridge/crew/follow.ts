@@ -562,6 +562,17 @@ export class UpdateTurns {
    * fault of its own, and its own clock would fail it while it answered every sweep on time.
    */
   private progressAt = 0;
+  /**
+   * Why each member could not be handed the turn, so the journal says it once rather than every sweep.
+   *
+   * A withheld turn used to be the one thing in this queue that happened in total silence. On the
+   * 1.11.0 run the lead granted nothing for two minutes twenty five seconds while the leg read
+   * `waiting`, and there was no line on the lead, no line on the member, and nothing on the phone but
+   * a spinner. The cause is nearly always `eligible`'s verdict gate, and the cause is the part an
+   * operator reads. Cleared the moment a turn is granted, so a member that was blocked and then moved
+   * can be reported again in a later run.
+   */
+  private readonly blocked = new Map<string, string>();
   /** When every leg first reached a terminal state, or null while the run is still moving. */
   private settled: number | null = null;
 
@@ -601,6 +612,7 @@ export class UpdateTurns {
     this.run = null;
     this.held = null;
     this.missed.clear();
+    this.blocked.clear();
     this.swept = false;
   }
 
@@ -734,9 +746,33 @@ export class UpdateTurns {
       if (this.held !== null) {
         this.legChangedAt.set(this.held, now);
         this.progressAt = now;
+        this.blocked.clear();
+      } else {
+        this.reportBlocked(runId, ordered);
       }
     }
     return { released };
+  }
+
+  /**
+   * Name every member that is queued and cannot be handed the turn, once per member per reason.
+   *
+   * It runs only on a sweep that granted nothing at all, which is the shape of a run that looks
+   * frozen from the phone. `null` is the reading that matters: it means this lead holds NO verdict
+   * for that machine, which {@link eligible} refuses exactly as it refuses a red one, and which the
+   * lead can fix by asking for a fresh one on its next dial (`crew/lead.ts`).
+   */
+  private reportBlocked(runId: string, ordered: readonly TurnMember[]): void {
+    for (const m of ordered) {
+      if (this.legs.get(m.memberId)?.state !== "waiting") continue;
+      const why =
+        m.verdict === null
+          ? "this lead holds no preflight verdict for it, and unknown is not green"
+          : `its own preflight is ${m.verdict}`;
+      if (this.blocked.get(m.memberId) === why) continue;
+      this.blocked.set(m.memberId, why);
+      this.log(`[crew] update ${shortRunId(runId)}: ${m.memberId} is not being handed the turn — ${why}`);
+    }
   }
 
   /**

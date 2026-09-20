@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import { fetchStandbyRun, fetchUpdateState } from "./api";
-import { runInFlight } from "./update-ribbon";
+import { legsStillMoving, runInFlight } from "./update-ribbon";
 import type { UpdateScreenCrewRun } from "./update-screen";
 import type { UpdateCheckResponse, UpdateCrewMember, UpdateInfo, UpdateRun } from "./types";
 
@@ -291,7 +291,7 @@ function stopTimers(): void {
 /** Start or stop the two intervals, so they exist exactly while a run is in flight and somebody is
  *  looking. Called after every change, and idempotent. */
 function arm(): void {
-  const wanted = listeners.size > 0 && runInFlight(snapshot.run);
+  const wanted = listeners.size > 0 && (runInFlight(snapshot.run) || crewStillMoving());
   if (wanted === driving) return;
   if (!wanted) {
     stopTimers();
@@ -311,6 +311,31 @@ function arm(): void {
     }, STANDBY_POLL_MS),
     setInterval(() => void readUpdateState(), FRONT_POLL_MS),
   ];
+}
+
+/**
+ * Whether the CREW half of the subject is still moving, asked of the reconciled legs (M32).
+ *
+ * ── WHY THE LEAD'S OWN RUN IS NOT THE WHOLE QUESTION (2026-09-20) ────────────
+ * A crew update is two phases, and `arm` used to watch only the first. The lead updates itself,
+ * writes `done`, and the members are levelled AFTER that — so on the 1.11.0 run the lead's record
+ * reached `done` in six seconds and this store stopped polling before the crew phase had begun.
+ *
+ * That is not only a stale screen. `GET /api/update/check` is what makes the lead sweep carrying
+ * `X-Crew-Preflight: fresh`, and a member whose banked verdict is unknown is refused its turn
+ * (`bridge/crew/follow.ts`, `eligible`). So a phone that stops asking can leave a member sitting on
+ * `waiting` with nothing on either machine saying why. Measured on the real crew: the lead granted
+ * at 13:50:23, minibuch was told at 13:52:48, and did the work in four seconds.
+ *
+ * `hooks/use-polling.ts` already reads the subject this way (`runInFlight(...) || crewMoving(...)`).
+ * This is the same question, asked of the legs this store has already reconciled — and it must be
+ * asked of THOSE, not of `snapshot.check`, because `check` is refreshed by the very poll this
+ * decides to run. The legs come from the snapshot poll, which is hot on its own account, so the
+ * condition can never latch itself off.
+ */
+function crewStillMoving(): boolean {
+  const crew = snapshot.crewRun;
+  return crew !== null && legsStillMoving(crew.legs, crew.settledAt);
 }
 
 export function subscribeUpdateRun(listener: () => void): () => void {

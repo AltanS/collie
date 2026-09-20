@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { ChevronUp, Loader2, Package, TriangleAlert, X } from "lucide-react";
+import { Loader2, Package, TriangleAlert, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { useDialogFocus } from "@/components/ui/sheet";
@@ -57,26 +57,10 @@ export function UpdateScreen({
   const { view, mode } = screen;
   useDialogFocus(mode === "expanded", panelRef);
 
-  if (mode === "hidden") return null;
-
-  if (mode === "collapsed") {
-    // THE BADGE. One line and a chevron, on a device that did not ask for this. A takeover nobody
-    // asked for reads as hijacked, so the other devices get a fact they can open rather than a panel
-    // they have to close.
-    return (
-      <div className="fixed inset-x-0 bottom-0 z-50 flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom)_+_0.75rem)]">
-        <button
-          type="button"
-          onClick={() => screen.setExpanded(true)}
-          className="flex w-full max-w-screen-sm items-center gap-2 rounded-md border border-rule bg-card px-3 py-2 text-left text-sm shadow-2xl"
-        >
-          <Loader2 aria-hidden="true" className="size-4 shrink-0 animate-spin text-status-working" />
-          <span className="min-w-0 flex-1 truncate">{badgeLine(view.rows, view.device)}</span>
-          <ChevronUp aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-        </button>
-      </div>
-    );
-  }
+  // `hidden` and `collapsed` both draw nothing HERE. The badge is a strip in the band above the
+  // header now (`components/update-run-strip.tsx`), for the reason written in that file's header:
+  // at the bottom of the screen it sat on the composer's input row.
+  if (mode !== "expanded") return null;
 
   return (
     <div
@@ -152,14 +136,6 @@ export function UpdateScreen({
       </div>
     </div>
   );
-}
-
-/** The collapsed badge's one line: whoever is still moving, or this device's own download. */
-function badgeLine(rows: readonly UpdateScreenRow[], device: UpdateScreenDevice | null): string {
-  const moving = rows.find((row) => row.moving);
-  if (moving !== undefined) return t("updateScreen.badge.moving", { name: moving.name, word: moving.word });
-  if (device !== null) return t("updateScreen.badge.downloading");
-  return t("updateScreen.badge.generic");
 }
 
 /** One machine. Name, version, the state's own word, and — on a row that has gone quiet — when it was
