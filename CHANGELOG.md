@@ -30,7 +30,7 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
-## [1.11.0-rc.1] - 2026-09-20
+## [1.11.0] - 2026-09-20
 
 ### Added
 
