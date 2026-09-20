@@ -634,6 +634,71 @@ describe("the merged verdict — one function, three surfaces", () => {
     });
   });
 
+  // ── ADR 0050 AT THE SECOND GATE ───────────────────────────────────────────
+  // Decision 1 stopped a sleeping laptop DISABLING the button. This is what stops it REFUSING the
+  // tap. The banked peer reports live in memory, so the lead's own update, which restarts it, leaves
+  // every member `unknown` — and without this the fix would last exactly one release.
+  describe("an unknown member that the lead knows is absent", () => {
+    const absent = crewUpdateRows([{ name: "attic", version: null, preflight: null, health: "unreachable" }]);
+    const silent = crewUpdateRows([{ name: "attic", version: null, preflight: null }]);
+
+    test("does not refuse the lead's own start", () => {
+      expect(mergedUpdateVerdict(GREEN, absent, undefined, { tolerateAbsent: true })).toEqual({
+        verdict: "unknown",
+        member: "attic",
+        reason: "we could not check attic",
+        blocks: false,
+      });
+    });
+
+    test("still refuses a peers-only run, where the members are the whole request", () => {
+      expect(mergedUpdateVerdict(GREEN, absent).blocks).toBe(true);
+    });
+
+    test("an unknown member with no health is uninspected, not absent, and still blocks", () => {
+      expect(mergedUpdateVerdict(GREEN, silent, undefined, { tolerateAbsent: true })).toEqual({
+        verdict: "unknown",
+        member: "attic",
+        reason: "we could not check attic",
+        blocks: true,
+      });
+    });
+
+    test("one absent member does not carry a second member that is merely unknown", () => {
+      const nas = crewUpdateRows([{ name: "nas", version: null, preflight: null }]);
+      const both = [...absent, ...nas];
+      const merged = mergedUpdateVerdict(GREEN, both, undefined, { tolerateAbsent: true });
+      expect(merged.blocks).toBe(true);
+      expect(merged.member).toBe("nas");
+    });
+
+    // The predicate is an exact match on ONE state. A later "simplify" to `health !== "reachable"`
+    // would swallow these three silently, and each of them is a member that ANSWERED: a protocol
+    // mismatch, a refusal with a reason, and a member following someone else's lead.
+    test("answers that are not absence keep refusing: incompatible, refused, conflicted", () => {
+      for (const health of ["incompatible", "refused", "conflicted"] as const) {
+        const rows = crewUpdateRows([{ name: "attic", version: null, preflight: null, health }]);
+        expect(mergedUpdateVerdict(GREEN, rows, undefined, { tolerateAbsent: true }).blocks, health).toBe(true);
+      }
+    });
+
+    test("a red member still refuses, absent or not — red is read before unknown", () => {
+      const red = crewUpdateRows([
+        {
+          name: "nas",
+          version: "1.4.1",
+          preflight: { verdict: "red", asOf: 5, checks: [CHECK("disk", "red", "no space left")] },
+        },
+      ]);
+      const merged = mergedUpdateVerdict(GREEN, [...absent, ...red], undefined, { tolerateAbsent: true });
+      expect(merged).toEqual({ verdict: "red", member: "nas", reason: "no space left", blocks: true });
+    });
+
+    test("the lead's own missing preflight still refuses: it carries no health and never will", () => {
+      expect(mergedUpdateVerdict(null, absent, undefined, { tolerateAbsent: true }).blocks).toBe(true);
+    });
+  });
+
   test("unknown beats amber and blocks; amber never blocks; all green names nobody", () => {
     const amber = crewUpdateRows([
       {

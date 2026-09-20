@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Fixed
+
+- **A crew member that is asleep no longer stops this machine updating.** `collie doctor` reports the crew's health as well as this machine's, and the update preflight treated every one of its errors alike, so a laptop that had gone to sleep turned the update button off on a healthy desktop that had the disk, the bun and a clean tree. The preflight asks whether THIS machine can take a new version, so only a fault on this machine makes it red now, and a crew fault is amber and names the check that raised it. A member levels itself to its lead's release when it comes back, which is what this was blocking. The same rule now covers the tap as well as the button: a member the lead knows it cannot reach no longer refuses the lead's own update, which matters because the lead banks what it knows in memory and its own update restarts it. A crew-only run, where the members are the whole request, still refuses. A member that the update would strand rather than merely outrun still blocks the confirm in the terminal.
+
 ## [1.11.1] - 2026-09-20
 
 ### Fixed

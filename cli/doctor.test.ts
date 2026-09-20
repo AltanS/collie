@@ -399,7 +399,11 @@ describe("collie doctor — the contract", () => {
     const parsed = JSON.parse(h.io.stdout.join("\n")) as Finding[];
     expect(Array.isArray(parsed)).toBe(true);
     for (const f of parsed) {
-      expect(Object.keys(f).toSorted()).toEqual(["check", "detail", "remedy", "status"]);
+      // Four keys on every finding, plus `scope` on a crew one and ONLY on a crew one (ADR 0050).
+      // Absent is the local answer, so a script written before the field keeps reading correctly.
+      const keys = Object.keys(f).toSorted();
+      expect(keys.filter((k) => k !== "scope")).toEqual(["check", "detail", "remedy", "status"]);
+      if (keys.includes("scope")) expect(f.scope).toBe("crew");
       expect(["ok", "warn", "error", "skipped"]).toContain(f.status);
     }
   });
@@ -440,6 +444,56 @@ describe("collie doctor — the section sets", () => {
     );
     expect(asPeer.byCheck.has("lead-reach")).toBe(true);
     expect(asPeer.byCheck.has("member-reach")).toBe(false);
+  });
+
+  // ── ADR 0050 ──────────────────────────────────────────────────────────────
+  // The renderer has always drawn these as two sections; the stamp is what lets a READER make the
+  // same split. `collie update --check` is the reader that needs it: a fault on another machine is
+  // not an answer to "can this machine take a new version".
+  test("every crew finding is stamped `scope: crew`, and every local one is not", async () => {
+    const lead = await findings(harness(LEAD, [hello()], { files: { ...healthyFiles(), ...markerFile(LEAD) } }));
+    const scopeOf = (check: string) => lead.byCheck.get(check)?.scope;
+    for (const check of ["member-reach", "secret-generation", "member-versions"]) {
+      if (lead.byCheck.has(check)) expect(scopeOf(check), check).toBe("crew");
+    }
+    // Absent, not `"local"`: absent is what every check answered before the field existed, and a
+    // reader that does not know the field must keep reading those as this machine's.
+    expect(scopeOf("collie")).toBeUndefined();
+    expect(scopeOf("web-dist")).toBeUndefined();
+  });
+
+  // ADR 0050 rests on a claim about which crew checks can be errors AT ALL, and a claim that only a
+  // comment holds is a claim that rots. This reads the source and fails the moment one of the two
+  // warn-only checks grows a `bad(` — which is the point where ADR 0050 asks for a fresh argument,
+  // not a silent downgrade to amber. The positive half keeps it from passing by extracting nothing.
+  test("`secret-generation` and `member-versions` cannot return an error", async () => {
+    const source = await Bun.file(new URL("./doctor.ts", import.meta.url)).text();
+    const bodyOf = (name: string): string => {
+      const start = source.indexOf(`function ${name}(`);
+      expect(start, `${name} not found`).toBeGreaterThan(-1);
+      const end = source.indexOf("\n}\n", start);
+      expect(end, `${name} body not closed`).toBeGreaterThan(start);
+      return source.slice(start, end);
+    };
+    for (const name of ["secretGeneration", "memberVersions"]) {
+      const body = bodyOf(name);
+      expect(body, `${name} may not raise an error`).not.toContain("bad(");
+      expect(body, `${name} may not raise an error`).not.toContain('status: "error"');
+    }
+    // The control: the two that CAN be errors still are, so the extraction above is reading bodies.
+    for (const name of ["storeDrift", "reach"]) {
+      expect(bodyOf(name), `${name} should still be able to raise an error`).toContain("bad(");
+    }
+  });
+
+  // `store-drift` is RENDERED in the crew section and is NOT a crew fact. It compares this machine's
+  // running bridge to this machine's own trust store, needs no answer from anywhere else, and its
+  // remedy is `collie restart` here. Stamping it `crew` would make the preflight amber on a fault
+  // that is entirely local, and would print "the crew reports: store-drift" when nothing did.
+  test("`store-drift` is rendered with the crew and is not stamped as one", async () => {
+    const lead = await findings(harness(LEAD, [hello()], { files: { ...healthyFiles(), ...markerFile(LEAD) } }));
+    expect(lead.byCheck.has("store-drift")).toBe(true);
+    expect(lead.byCheck.get("store-drift")?.scope).toBeUndefined();
   });
 });
 
@@ -851,6 +905,10 @@ describe("collie doctor — the clock (§8.6's ±5m window)", () => {
       expect(byCheck.get("clock")?.status).toBe("error");
       expect(byCheck.get("clock")?.detail).toContain("401");
       expect(code).toBe(EXIT.FAIL);
+      // And it is stamped `crew` (ADR 0050), because the machine at fault may be the far one: this
+      // check's own remedy says "whichever machine is off". A laptop waking six minutes out before
+      // NTP resyncs must not turn this machine's update button off.
+      expect(byCheck.get("clock")?.scope).toBe("crew");
     }
   });
 
@@ -858,6 +916,12 @@ describe("collie doctor — the clock (§8.6's ±5m window)", () => {
     const h = harness(LEAD, [hello({ date: null })], { files: { ...healthyFiles(), ...markerFile(LEAD) } });
     const { byCheck } = await findings(h);
     expect(byCheck.get("clock")?.status).toBe("skipped");
+  });
+
+  test("solo, it is skipped and about nobody, so it carries no crew stamp", async () => {
+    const { byCheck } = await findings(harness(null));
+    expect(byCheck.get("clock")?.status).toBe("skipped");
+    expect(byCheck.get("clock")?.scope).toBeUndefined();
   });
 });
 

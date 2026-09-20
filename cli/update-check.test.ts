@@ -254,6 +254,93 @@ describe("preflight — the doctor check", () => {
     expect(report.verdict).toBe("amber");
     expect(await cmdUpdateCheck(h.deps, ["--json"])).toBe(EXIT.OK);
   });
+
+  // ── ADR 0050 ──────────────────────────────────────────────────────────────
+  // 2026-09-20: a laptop slept, `member-reach` went red, and a healthy desktop could not take a
+  // release. This check asks whether THIS machine can update; another machine's fault is not an
+  // answer to it, and the crew is built for a member that is away (it levels itself on return).
+  test("a crew error is amber, so a sleeping member never blocks this machine", async () => {
+    const h = harness({
+      installed: "1.11.1",
+      findings: [
+        {
+          check: "member-reach",
+          status: "error",
+          detail: "1 of 1 did not answer: minibuch at minibuch:8788 — unreachable",
+          remedy: "collie restart on that machine",
+          scope: "crew",
+        },
+      ],
+    });
+    const report = await preflight(h.deps);
+    const check = byId(report, "doctor");
+    expect(check.verdict).toBe("amber");
+    expect(report.verdict).toBe("amber");
+    expect(check.reason).toContain("member-reach");
+    expect(check.reason).toContain("this machine can still update");
+    expect(await cmdUpdateCheck(h.deps, ["--json"])).toBe(EXIT.OK);
+  });
+
+  // The reason is built from the check ID, and the finding's own `detail` never reaches it. That
+  // detail is prose for a terminal and carries a real host and port; this reason is rendered
+  // verbatim in the update card's preflight list on the phone, beside translated text.
+  test("the amber reason carries no host, no port and no free text from the finding", async () => {
+    const h = harness({
+      installed: "1.11.1",
+      findings: [
+        {
+          check: "member-reach",
+          status: "error",
+          detail: "1 of 1 did not answer: minibuch at minibuch:8788 — hello: timed out after 5000ms",
+          remedy: "collie restart on that machine",
+          scope: "crew",
+        },
+      ],
+    });
+    const check = byId(await preflight(h.deps), "doctor");
+    expect(check.reason).not.toContain("minibuch");
+    expect(check.reason).not.toContain("8788");
+    expect(check.reason).not.toContain("timed out");
+  });
+
+  // Two at once is an ordinary state: a member that slept through a rotation is both unreachable and
+  // enrolled-but-inactive. Reporting one would hide a fault the operator then cannot see.
+  test("every crew error is named, never just the first", async () => {
+    const h = harness({
+      installed: "1.11.1",
+      findings: [
+        { check: "member-reach", status: "error", detail: "minibuch did not answer", remedy: "…", scope: "crew" },
+        { check: "secret-generation", status: "error", detail: "behind generation 4", remedy: "…", scope: "crew" },
+      ],
+    });
+    const check = byId(await preflight(h.deps), "doctor");
+    expect(check.verdict).toBe("amber");
+    expect(check.reason).toContain("member-reach");
+    expect(check.reason).toContain("secret-generation");
+  });
+
+
+  test("a local error still blocks, and a crew error beside it does not soften it", async () => {
+    const h = harness({
+      findings: [
+        { check: "web-dist", status: "error", detail: "missing", remedy: "collie build" },
+        { check: "member-reach", status: "error", detail: "minibuch did not answer", remedy: "…", scope: "crew" },
+      ],
+    });
+    const report = await preflight(h.deps);
+    const check = byId(report, "doctor");
+    expect(check.verdict).toBe("red");
+    expect(check.reason).toContain("web-dist");
+    // The red names the local fault ALONE. Listing the crew one beside it would send the operator
+    // to wake a laptop that has nothing to do with why this machine cannot build.
+    expect(check.reason).not.toContain("member-reach");
+    expect(check.reason).toContain("1 problem");
+  });
+
+  test("a finding with no scope is local, which is what every check answered before the field", async () => {
+    const h = harness({ findings: [{ check: "bind", status: "error", detail: "wildcard", remedy: "set COLLIE_HOST" }] });
+    expect(byId(await preflight(h.deps), "doctor").verdict).toBe("red");
+  });
 });
 
 describe("preflight — the disk check", () => {

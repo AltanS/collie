@@ -1,5 +1,6 @@
 import type { JsonObject, JsonValue } from "./json.ts";
 import type { UpdateStatus } from "./types.ts";
+import type { PeerHealth } from "./crew/registry.ts";
 import { apiError, type ApiErrorBody, type ApiErrorDetail, type ErrorCode } from "./error-codes.ts";
 import { compareSemver } from "./update.ts";
 import { inFlight, type UpdateRun, type UpdateRunState } from "./update-run.ts";
@@ -415,6 +416,15 @@ export interface CrewUpdateRow {
    * the phone is a nag, and the tap it would send them to refuses on that machine (ADR 0035).
    */
   readonly installKind?: UpdateStatus["installKind"];
+  /**
+   * The lead's own health for this member, when it has one (`bridge/crew/registry.ts`). Absent on a
+   * row built by anything that does not track health, and absent counts as "no idea why".
+   *
+   * It exists so that {@link mergedUpdateVerdict} can tell an `unknown` member that is ABSENT from
+   * one that is merely uninspected. ADR 0050's rule is that absence does not block, and without this
+   * field every `unknown` reads the same and the rule cannot be applied.
+   */
+  readonly health?: PeerHealth;
 }
 
 /** What the lead knows about one member when it composes a row. All of it banked by the sweep. */
@@ -422,6 +432,8 @@ export interface CrewMemberFacts {
   readonly name: string;
   readonly version: string | null;
   readonly preflight: PeerPreflight | null;
+  /** The lead's own health for this member, when it has one. See {@link CrewUpdateRow.health}. */
+  readonly health?: PeerHealth;
 }
 
 /** The reason strings a report contributes: its non-green checks, worst first. */
@@ -446,7 +458,14 @@ export function unknownReason(name: string): string {
 export function crewUpdateRows(members: readonly CrewMemberFacts[]): CrewUpdateRow[] {
   return members.map((m) => {
     if (m.preflight === null) {
-      return { name: m.name, version: m.version, verdict: "unknown", reasons: [unknownReason(m.name)], asOf: null };
+      const row: CrewUpdateRow = {
+        name: m.name,
+        version: m.version,
+        verdict: "unknown",
+        reasons: [unknownReason(m.name)],
+        asOf: null,
+      };
+      return m.health === undefined ? row : { ...row, health: m.health };
     }
     const reasons = reasonsOf(m.preflight.checks);
     const row: CrewUpdateRow = {
@@ -520,12 +539,23 @@ export interface MergedUpdateVerdict {
  * without a member beside it is a dead end for the operator holding the phone.
  *
  * `unknown` is decided AFTER red and BEFORE amber. A member nobody could check is not a reason to
- * hide a member that is actually red, and it is not a shade of amber either — it blocks.
+ * hide a member that is actually red, and it is not a shade of amber either.
+ *
+ * WHETHER AN UNKNOWN MEMBER BLOCKS DEPENDS ON WHAT IS BEING ASKED (ADR 0050). `tolerateAbsent` is
+ * set by the LEAD'S OWN START, and it says: a member whose health is `unreachable` is ABSENT, not
+ * uninspected, and absence does not block this machine's own move. It is left false for a
+ * PEERS-ONLY run, where the members are the whole point of the request.
+ *
+ * Without it the ADR's rule holds only until the lead's next restart, WHICH THE UPDATE ITSELF
+ * PERFORMS: the banked peer reports live in memory (`bridge/crew/registry.ts`), so a restart leaves
+ * every enrolled member `unknown`, and the card's button, which reads only the lead's own red, goes
+ * live over a tap that then returns 412. A live button that refuses is worse than a disabled one.
  */
 export function mergedUpdateVerdict(
   lead: PreflightReport | null,
   crew: readonly CrewUpdateRow[],
   selfName = "this collie",
+  opts: { readonly tolerateAbsent?: boolean } = {},
 ): MergedUpdateVerdict {
   const leadRow: CrewUpdateRow =
     lead === null
@@ -536,7 +566,24 @@ export function mergedUpdateVerdict(
   if (red !== undefined) return { verdict: "red", member: red.name, reason: red.reasons[0] ?? null, blocks: true };
   const unknown = rows.find((r) => r.verdict === "unknown");
   if (unknown !== undefined) {
-    return { verdict: "unknown", member: unknown.name, reason: unknown.reasons[0] ?? null, blocks: true };
+    // EXACT EQUALITY AGAINST ONE STATE, deliberately, never `!== "reachable"`. `incompatible`,
+    // `refused` and `conflicted` all mean the member ANSWERED and said something, which is not
+    // absence and must keep blocking. The lead's own row carries no health at all, so a lead with no
+    // report of its own blocks too.
+    //
+    // One thing this cannot see: `unreachable` also covers a bare 401, a rotated secret or a dropped
+    // pin (`peer-client.ts`'s `authRefused`), which is a present refusal rather than a machine that
+    // is away. §10.2 keeps calling it `unreachable` on the wire and the row carries only that word,
+    // so it is tolerated here as well. That is the same answer `secret-generation` already gets: the
+    // member is stranded already, and this lead taking a release neither causes nor deepens it.
+    const absent = (r: CrewUpdateRow): boolean => opts.tolerateAbsent === true && r.health === "unreachable";
+    const blocking = rows.find((r) => r.verdict === "unknown" && !absent(r));
+    if (blocking !== undefined) {
+      return { verdict: "unknown", member: blocking.name, reason: blocking.reasons[0] ?? null, blocks: true };
+    }
+    // Every unknown left is a member the lead knows it cannot reach. The verdict still SAYS unknown,
+    // so the card can name the machine and say it will be skipped; it just stops refusing the tap.
+    return { verdict: "unknown", member: unknown.name, reason: unknown.reasons[0] ?? null, blocks: false };
   }
   // Everything left is green or amber, which is exactly `worstVerdict`'s domain.
   const verdict = worstVerdict(rows.map((r) => (r.verdict === "amber" ? "amber" : "green")));
@@ -815,7 +862,9 @@ export function updateStartVerdict(req: UpdateStartRequest, state: UpdateStartSt
   // read (M16/03). The lead's own red is refused above and names its CHECK; a member's is named by
   // MACHINE, because that is the only handle the operator holding a phone has on it. An unknown
   // member blocks here too — "we could not check attic" is not "attic is fine".
-  const merged = mergedUpdateVerdict(state.preflight, state.crew ?? []);
+  // `tolerateAbsent` here and NOT at the peers-only gate above: this request is this machine's own
+  // move, and a member the lead cannot reach levels itself when it comes back (ADR 0016/0050).
+  const merged = mergedUpdateVerdict(state.preflight, state.crew ?? [], undefined, { tolerateAbsent: true });
   if (merged.blocks) {
     return refuse(412, "update.preflight_red", {
       check: merged.member ?? "the crew",

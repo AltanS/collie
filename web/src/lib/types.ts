@@ -669,6 +669,15 @@ export interface UpdateCrewMember {
    *  reported is dated. */
   asOf: number | null;
   /**
+   * The lead's own health for this member, when it sent one. Absent from an older bridge, and absent
+   * means "no idea why".
+   *
+   * Nothing on the phone reads it yet. It is mirrored so this type does not quietly lag the wire,
+   * and because it is the fact ADR 0050's last point needs: the update card is to name the members
+   * already not answering BEFORE the crew tap, and this is what says which those are.
+   */
+  health?: "reachable" | "unreachable" | "incompatible" | "refused" | "conflicted";
+  /**
    * How that member is installed, when its own report named a kind. Absent means unknown, and
    * unknown counts as NOT packaged — an older bridge sends nothing and the page behaves as it did.
    *

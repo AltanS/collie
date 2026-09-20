@@ -980,7 +980,17 @@ describe("CrewLead — each member's update preflight (§19)", () => {
     const h = lead([member({ memberId: "laptop" })], () => ok(body));
     await h.lead.sweep();
     expect(h.lead.updateRows()).toEqual([
-      { name: "laptop", version: null, verdict: "unknown", reasons: ["we could not check laptop"], asOf: null },
+      // `health` rides along so the update gate can tell an ABSENT member from one that answered and
+      // simply carried no report (ADR 0050). This member answered, so it is `reachable`, and an
+      // unknown row that is reachable still refuses the tap.
+      {
+        name: "laptop",
+        version: null,
+        verdict: "unknown",
+        reasons: ["we could not check laptop"],
+        asOf: null,
+        health: "reachable",
+      },
     ]);
   });
 
@@ -1085,6 +1095,7 @@ describe("CrewLead — each member's running version (§5, §19)", () => {
       verdict: "unknown",
       reasons: ["we could not check laptop"],
       asOf: null,
+      health: "reachable",
     });
   });
 

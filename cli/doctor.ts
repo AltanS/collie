@@ -39,7 +39,7 @@ import type { HelloResult, CrewFetch, PeerOutcome } from "../bridge/crew/peer-cl
 import { crewRuntimePath, parseMarker, rosterDrift, type CrewRuntimeMarker } from "../bridge/crew/staleness.ts";
 import { enrollmentOf, TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { collieVersionBare, type CliContext } from "./context.ts";
-import { bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
+import { aboutCrew, bad, ok, skipped, warn, type DoctorStatus, type Finding } from "./finding.ts";
 import { explicitMux, probeMuxes, refusedMux, type MuxSighting } from "./mux.ts";
 import { cacheFindings } from "./cache-findings.ts";
 import { historyFindings, type SnapshotRead } from "./history.ts";
@@ -211,15 +211,61 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
     // reason `historyFindings` is one — a section, not a check.
     ...cacheFindings({ ctx: deps.ctx, files: deps.files, env: deps.ctx.env, now: () => Date.now() }),
     restartPending(deps, install, runtimeMarker),
-    clock(inCrew, probes),
+    // STAMPED `crew` when it is a comparison at all (ADR 0050), while still PRINTING here, where it
+    // always has. `clock` measures this machine against a member's `Date` header and its own remedy
+    // says "enable NTP on whichever machine is off", so the machine at fault may be entirely the far
+    // one: a laptop that wakes six minutes out before NTP resyncs would otherwise turn this desktop's
+    // update button off, which is the exact incident ADR 0050 exists to end. Solo it is `skipped`,
+    // about nobody, and carries no stamp. Together with `store-drift` below this is the rule: these
+    // two arrays are RENDER SECTIONS, and `aboutCrew` is applied per finding on its own merit.
+    inCrew ? aboutCrew(clock(inCrew, probes)) : clock(inCrew, probes),
   ].filter((f) => appliesToMux(f.check, chosen.name));
+  // STAMPED `scope: "crew"`, every one of them (ADR 0050). These four describe the crew's health,
+  // never this machine's readiness to take a new version, and `collie update --check` is the reader
+  // that must not confuse the two: a laptop asleep in another room is not a reason this desktop
+  // cannot update. The stamp rides the finding into `--json` as well, so a script gets the same
+  // split the renderer below already draws as two sections.
+  //
+  // THE STAMP IS NOT A GROUP PASS, AND IT IS NOT THE RENDER SECTION EITHER. ADR 0050's rule is that
+  // a crew fault stops an update only when the update would make it worse, and that is asked of each
+  // check on its own terms. Taken one at a time:
+  //
+  //   `reach`           — CAN be an error, and IS a crew fact. A member that did not answer is
+  //                       already out of contact and levels itself to its lead when it returns
+  //                       (ADR 0016). Stamped, so it is amber.
+  //   `clock`           — CAN be an error, and IS a crew fact, though it prints in the LOCAL section
+  //                       above. Its own remedy says "whichever machine is off", so the machine at
+  //                       fault may be the far one. Stamped there, at its line.
+  //   `store-drift`     — CAN be an error, and is NOT a crew fact. It compares this machine's running
+  //                       bridge to this machine's own store, so it is local and stays red, exactly
+  //                       as it was before ADR 0050. Not stamped; see the note at the list below.
+  //   `secret-generation` — `warn` at worst, so it never reaches the preflight's error filter and the
+  //                       stamp changes nothing for it. A rotation a member slept through does strand
+  //                       that member, which is why it is reported at all, but the strand is already
+  //                       done and an update neither causes nor deepens it. The remedy is a fresh
+  //                       invite, not a held-back release.
+  //   `member-versions` — `warn` at worst, for the same reason: §7.1 makes build skew refuse nothing
+  //                       on the wire, so it is never an error to begin with.
+  //
+  // `cli/doctor.test.ts` holds that last pair to `warn` by reading this file, so a future `bad(` in
+  // either is a failing test rather than a silent downgrade to amber. Two checks can therefore turn
+  // the preflight amber: `reach` and `clock`. Stamping anything else means re-arguing it here.
   const crew: Finding[] =
     inCrew && data !== null
       ? [
+          // RENDERED in the crew section, NOT stamped as a crew fact. `store-drift` compares this
+          // machine's running bridge to this machine's own trust store; it needs no answer from
+          // anywhere else, and its remedy is `collie restart` HERE. `scope` says which machine a
+          // finding is about (`cli/finding.ts`), so stamping this one `crew` would be the group pass
+          // ADR 0050 refuses, and it would read on the phone as "the crew reports: store-drift" when
+          // no other machine reported anything. Left local, it also stays red on a PACKAGED install,
+          // where `collie update` refuses outright, so no update is ever going to restart anything.
           storeDrift(deps, data),
-          secretGeneration(data, members),
-          reach(data, members, reaches),
-          memberVersions(deps, members, probes),
+          ...[
+            secretGeneration(data, members),
+            reach(data, members, reaches),
+            memberVersions(deps, members, probes),
+          ].map(aboutCrew),
         ]
       : [];
 

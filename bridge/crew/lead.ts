@@ -1056,7 +1056,15 @@ export class CrewLead {
 
   updateRows(): CrewUpdateRow[] {
     return crewUpdateRows(
-      this.contributions().map((c) => ({ name: c.name, version: c.state.version, preflight: c.state.preflight })),
+      // `health` rides along so `mergedUpdateVerdict` can tell an ABSENT member from a merely
+      // uninspected one: the bank is in memory, so after any restart every member is `unknown`, and
+      // only the health says which of them the lead simply cannot reach (ADR 0050).
+      this.contributions().map((c) => ({
+        name: c.name,
+        version: c.state.version,
+        preflight: c.state.preflight,
+        health: c.state.health,
+      })),
     );
   }
 
