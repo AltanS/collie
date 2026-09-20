@@ -189,9 +189,9 @@ export const ko: Dictionary = {
   "settings.display.rawTerminal.label": "원시 터미널",
   "settings.display.rawTerminal.hint":
     "프롬프트 버튼, UI 장식, 상태 바 없이 순수 화면만 표시합니다. 대화상자가 깨져서 직접 키를 입력해야 할 때 유용합니다.",
-  "settings.display.noInvert.label": "이 패널을 원본 그대로 표시",
+  "settings.display.noInvert.label": "이 창을 원본 그대로 표시",
   "settings.display.noInvert.hint":
-    "이 패널에만 라이트 테마 반전을 적용하지 않습니다. 에이전트가 라이트 테마인데 미러가 어둡게 표시될 때 켜세요. 표시가 정상이면 꺼두세요.",
+    "이 창에만 라이트 테마 반전을 적용하지 않습니다. 에이전트가 라이트 테마인데 미러가 어둡게 표시될 때 켜세요. 표시가 정상이면 꺼두세요.",
   "settings.display.textSize.label": "글꼴 크기",
   "settings.display.textSize.decrease": "글꼴 축소",
   "settings.display.textSize.increase": "글꼴 확대",

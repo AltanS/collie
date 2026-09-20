@@ -30,6 +30,10 @@ PATH. Details and rollback: [`docs/upgrading.md`](./docs/upgrading.md) → *Upgr
 
 ## [Unreleased]
 
+### Added
+
+- **A pane can be told to render natively instead of inverting.** Collie's light theme mirrors a terminal by inverting it, which is right for the dark themes most agents ship and wrong for a light-authored one: an opencode or codex pane on a light theme came out dark and hard to read. The display sheet now carries a per-pane switch that overrides the inversion in both directions, so the operator can point their own pane the right way without Collie having to know every agent's palette. Picking the agent's own answer clears the override rather than pinning it, so a pane does not freeze on today's answer if the native-mirror set changes under it later. (#241)
+
 ## [1.11.1] - 2026-09-20
 
 ### Fixed
