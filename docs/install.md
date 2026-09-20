@@ -33,6 +33,10 @@ a Herdr plugin can mirror tmux.
 Supported hosts: Linux and macOS. Windows is experimental; see
 [Windows](../README.md#windows-experimental).
 
+The published Mac binary is Apple Silicon only, and it needs **macOS 13 or newer**, which is the
+minimum its Bun build was linked against. An Intel Mac builds from source; `collie update` says so
+rather than handing you a binary that cannot run.
+
 | Tool | Needed for | Purpose |
 | --- | --- | --- |
 | `curl`, `tar`, sha256 tool (`sha256sum`/`shasum`) | Binary install script and updates | Download and verify release archives. |
