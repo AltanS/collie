@@ -125,6 +125,7 @@ the pointer, it was a supersede.
 | [0048](./0048-the-input-box-is-found-by-its-own-frame.md) | The input box is found by its own frame; the statusline bound only bounds what is stripped (amends 0004) | Accepted |
 | [0049](./0049-no-child-inherits-a-relocated-repository.md) | No child of Collie inherits a variable that relocates a git repository | Accepted |
 | [0050](./0050-a-crew-fault-blocks-an-update-only-when-the-update-makes-it-worse.md) | A crew fault blocks an update only when the update would make it worse (distinguishes 0045) | Accepted |
+| [0051](./0051-the-phone-app-runs-react-router-in-library-mode.md) | The phone app runs React Router in library mode; four build seams framework mode would take | Accepted |
 
 Numbers are claimed across **both** branches: 0011–0016 were accepted here on `v1` while `main` was
 still at 0010, so a new ADR continues from the highest number in use anywhere, not the highest one on
