@@ -1983,6 +1983,27 @@ describe("Composer — quick keys / image attach", () => {
       expect(screen.queryByRole("button", { name: d })).not.toBeInTheDocument();
     }
   });
+
+  // The photos input carries `multiple`, so the picker can return several files in one change;
+  // onPickFile must upload every one, not just the first.
+  it("uploads every photo when several are selected at once", async () => {
+    let uploadCalls = 0;
+    server.use(
+      http.post(/\/api\/pane\/[^/]+\/upload$/, () => {
+        uploadCalls++;
+        return HttpResponse.json({ ok: true, path: `/tmp/shot-${uploadCalls}.png` });
+      }),
+    );
+    renderComposer();
+
+    const a = new File(["a"], "a.png", { type: "image/png" });
+    const b = new File(["b"], "b.png", { type: "image/png" });
+    // SAFETY: `getByTestId` throws when the element is absent, and this id is on an `<input>`.
+    const photos = screen.getByTestId("attach-photos") as HTMLInputElement;
+    fireEvent.change(photos, { target: { files: [a, b] } });
+
+    await waitFor(() => expect(uploadCalls).toBe(2));
+  });
 });
 
 // The picker's own refusal (lib/attachments.ts), driven by what THIS bridge published on

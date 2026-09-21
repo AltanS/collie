@@ -1001,10 +1001,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   async function onPickFile(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file
-    if (!file) return;
-    await uploadFile(file);
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = ""; // allow re-picking the same file(s)
+    for (const file of files) {
+      await uploadFile(file);
+    }
   }
 
   // Paste a file straight from the clipboard (e.g. a screenshot) the same way the picker does.
@@ -1068,7 +1069,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             both Android and iOS — the attach button opened the file browser and nothing else.
             `PHOTO_ACCEPT` is the first input's whole answer; the second keeps the full list. Which
             one fires is the sheet's question, and both land in the same `onPickFile`. */}
-        <input ref={photoRef} data-testid="attach-photos" type="file" accept={PHOTO_ACCEPT} hidden onChange={onPickFile} />
+        <input ref={photoRef} data-testid="attach-photos" type="file" accept={PHOTO_ACCEPT} multiple hidden onChange={onPickFile} />
         <input ref={fileRef} data-testid="attach-files" type="file" accept={accept} hidden onChange={onPickFile} />
 
         {/* Keys / Quick / Display dock — a single in-flow site ABOVE the Controls row (so the toggle
