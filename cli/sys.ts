@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { githubHeaders, type GithubCredential } from "../bridge/update.ts";
 import {
   accessSync,
   closeSync,
@@ -258,57 +259,64 @@ const NET_TIMEOUT_MS = 20_000;
  */
 const netFailure = (message: string): NetFailure => ({ status: null, message });
 
-export const realNet: Net = {
-  async getJson(url) {
-    try {
-      const res = await fetch(url, {
-        headers: { accept: "application/json", "user-agent": "collie-update" },
-        signal: AbortSignal.timeout(NET_TIMEOUT_MS),
-      });
-      if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
-      return { ok: true, value: await res.json() };
-    } catch (err) {
-      return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
-    }
-  },
-  async probe(url, header) {
-    try {
-      const res = await fetch(url, {
-        headers: { accept: "application/json", "user-agent": "collie-update" },
-        signal: AbortSignal.timeout(NET_TIMEOUT_MS),
-      });
-      // The body is best effort and the status is not: a door that answered at all is a door that is
-      // up, and an unreadable body is one field missing from an answer that already arrived.
-      const body = await res.json().catch(() => null);
-      return { ok: true, status: res.status, header: res.headers.get(header), body };
-    } catch (err) {
-      return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
-    }
-  },
-  async download(url, dest) {
-    try {
-      const res = await fetch(url, {
-        headers: { "user-agent": "collie-update" },
-        signal: AbortSignal.timeout(NET_TIMEOUT_MS),
-      });
-      if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
-      if (res.body === null) return { ok: false, failure: { status: res.status, message: "empty response" } };
-      mkdirSync(dirname(dest), { recursive: true });
-      const hasher = new Bun.CryptoHasher("sha256");
-      const sink = Bun.file(dest).writer();
-      let size = 0;
-      for await (const chunk of res.body) {
-        hasher.update(chunk);
-        size += chunk.byteLength;
-        sink.write(chunk);
+/**
+ * The real {@link Net}. `credential` is the operator's GitHub token when the env holds one (#254),
+ * and `githubHeaders` sends it to `api.github.com` alone: `download` and `probe` never carry it,
+ * because neither ever addresses the API.
+ */
+export function realNet(credential: GithubCredential | null = null): Net {
+  return {
+    async getJson(url) {
+      try {
+        const res = await fetch(url, {
+          headers: githubHeaders(url, credential, { accept: "application/json", "user-agent": "collie-update" }),
+          signal: AbortSignal.timeout(NET_TIMEOUT_MS),
+        });
+        if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
+        return { ok: true, value: await res.json() };
+      } catch (err) {
+        return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
       }
-      await sink.end();
-      return { ok: true, sha256: hasher.digest("hex"), size };
-    } catch (err) {
-      return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
-    }
-  },
-};
+    },
+    async probe(url, header) {
+      try {
+        const res = await fetch(url, {
+          headers: { accept: "application/json", "user-agent": "collie-update" },
+          signal: AbortSignal.timeout(NET_TIMEOUT_MS),
+        });
+        // The body is best effort and the status is not: a door that answered at all is a door that is
+        // up, and an unreadable body is one field missing from an answer that already arrived.
+        const body = await res.json().catch(() => null);
+        return { ok: true, status: res.status, header: res.headers.get(header), body };
+      } catch (err) {
+        return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
+      }
+    },
+    async download(url, dest) {
+      try {
+        const res = await fetch(url, {
+          headers: { "user-agent": "collie-update" },
+          signal: AbortSignal.timeout(NET_TIMEOUT_MS),
+        });
+        if (!res.ok) return { ok: false, failure: { status: res.status, message: `HTTP ${res.status}` } };
+        if (res.body === null) return { ok: false, failure: { status: res.status, message: "empty response" } };
+        mkdirSync(dirname(dest), { recursive: true });
+        const hasher = new Bun.CryptoHasher("sha256");
+        const sink = Bun.file(dest).writer();
+        let size = 0;
+        for await (const chunk of res.body) {
+          hasher.update(chunk);
+          size += chunk.byteLength;
+          sink.write(chunk);
+        }
+        await sink.end();
+        return { ok: true, sha256: hasher.digest("hex"), size };
+      } catch (err) {
+        return { ok: false, failure: netFailure(err instanceof Error ? err.message : String(err)) };
+      }
+    },
+  };
+}
 
 /**
  * `env` with `dir` at the FRONT of `PATH`, or `env` unchanged when there is nothing to add.

@@ -1358,7 +1358,39 @@ describe("collie update on a binary install", () => {
     const h = binaryHarness({ tagsFailure: { status: 403, message: "HTTP 403" } });
     expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
     expect(h.io.stderr.join("\n")).toContain("rate-limited");
+    expect(h.io.stderr.join("\n")).toContain("set GH_TOKEN");
     expect(h.link.ops).toEqual([]);
+  });
+
+  test("a rate limit despite a token names the variable it came from, and never the value (#254)", async () => {
+    const h = binaryHarness({
+      env: { GITHUB_TOKEN: "ghp_secret_value" },
+      tagsFailure: { status: 403, message: "HTTP 403" },
+    });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain("even with the token in");
+    expect(err).toContain("GITHUB_TOKEN");
+    expect(err).not.toContain("set GH_TOKEN");
+    expect(err).not.toContain("ghp_secret_value");
+  });
+
+  test("a refused token is a 401 that names the variable — not a rate limit, not a network fault", async () => {
+    const h = binaryHarness({ env: { GH_TOKEN: "ghp_bad" }, tagsFailure: { status: 401, message: "HTTP 401" } });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain("refused the token in GH_TOKEN");
+    expect(err).not.toContain("rate-limited");
+    expect(err).not.toContain("ghp_bad");
+    expect(h.link.ops).toEqual([]);
+  });
+
+  test("a 401 with no token in the env is the plain HTTP failure — there is no credential to blame", async () => {
+    const h = binaryHarness({ tagsFailure: { status: 401, message: "HTTP 401" } });
+    expect(await cmdUpdate(h.deps)).toBe(EXIT.FAIL);
+    const err = h.io.stderr.join("\n");
+    expect(err).toContain("the release check failed (HTTP 401)");
+    expect(err).not.toContain("token");
   });
 
   test("already current reads exactly as it does on a checkout — the paths are indistinguishable", async () => {

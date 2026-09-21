@@ -6,6 +6,7 @@ import { cmdServe } from "./serve.ts";
 import { realLinkFs } from "./link.ts";
 import { realExec, realFiles, realNet, waitReady } from "./sys.ts";
 import type { UpdateDeps } from "./update.ts";
+import { githubCredential } from "../bridge/update.ts";
 
 // The dependency sets a verb is handed, built from the real seams. They live HERE, and not in the
 // dispatcher, because `cli/main.ts` — the bootstrap that must run on a checkout whose `node_modules`
@@ -56,7 +57,7 @@ export function updateDeps(io: Io): UpdateDeps {
     // same one `collie link` publishes the PATH name through), the two anonymous HTTPS GETs, and the
     // running platform the artifact is chosen by.
     link: realLinkFs,
-    net: realNet,
+    net: realNet(githubCredential(deps.ctx.env)),
     platform: process.platform,
     arch: process.arch,
     // The detached updater's clock, wait and identity (M15/04). Real here; `cli/update.test.ts`

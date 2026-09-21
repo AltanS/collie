@@ -591,6 +591,14 @@ export const CONFIG_SETTINGS: readonly ConfigSetting[] = [
     doc: "The owner/repo releases are taken from. Set it only when you run a fork on purpose.",
   },
   {
+    key: "github_token",
+    env: "COLLIE_GITHUB_TOKEN",
+    section: "update",
+    kind: "secret",
+    default: "",
+    doc: "A GitHub token for the release check, so the API rate limit is yours and not your network's. No scopes are needed. GH_TOKEN and GITHUB_TOKEN are read too.",
+  },
+  {
     key: "keep_versions",
     env: "COLLIE_KEEP_VERSIONS",
     section: "update",

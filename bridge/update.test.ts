@@ -9,7 +9,11 @@ import {
   type ApiTag,
   compareSemver,
   followsTrain,
+  githubCredential,
+  githubHeaders,
+  GITHUB_TOKEN_ENVS,
   githubReleaseUrl,
+  isGithubApiUrl,
   isPrereleaseVersion,
   latestUpdateInMajor,
   latestReleaseAboveMajor,
@@ -1297,5 +1301,37 @@ describe("UpdateMonitor — the link change", () => {
     });
     await monitor.checkRelease();
     expect(monitor.status().linkChange).toBeUndefined();
+  });
+});
+
+describe("the GitHub credential (#254)", () => {
+  it("reads the three names in their order, trimmed, and skips a blank one", () => {
+    expect(GITHUB_TOKEN_ENVS).toEqual(["COLLIE_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"]);
+    expect(githubCredential({})).toBeNull();
+    expect(githubCredential({ GH_TOKEN: "   " })).toBeNull();
+    expect(githubCredential({ GITHUB_TOKEN: " ghp_x " })).toEqual({ token: "ghp_x", source: "GITHUB_TOKEN" });
+    expect(githubCredential({ GH_TOKEN: "a", GITHUB_TOKEN: "b" })).toEqual({ token: "a", source: "GH_TOKEN" });
+    expect(githubCredential({ COLLIE_GITHUB_TOKEN: "c", GH_TOKEN: "a" })).toEqual({
+      token: "c",
+      source: "COLLIE_GITHUB_TOKEN",
+    });
+    // A blank first name does not shadow a set second one.
+    expect(githubCredential({ COLLIE_GITHUB_TOKEN: "", GH_TOKEN: "a" })?.source).toBe("GH_TOKEN");
+  });
+
+  it("sends the token to api.github.com alone — never to a release asset, a look-alike host, or a bad url", () => {
+    const credential = { token: "t", source: "GH_TOKEN" as const };
+    const base = { accept: "application/json" };
+    expect(githubHeaders("https://api.github.com/repos/a/b/tags?per_page=100", credential, base)).toEqual({
+      accept: "application/json",
+      authorization: "Bearer t",
+    });
+    expect(githubHeaders("https://github.com/a/b/releases/download/v1.0.0/x.json", credential, base)).toBe(base);
+    expect(githubHeaders("https://api.github.com.evil.example/x", credential, base)).toBe(base);
+    expect(githubHeaders("https://evil.example/api.github.com/x", credential, base)).toBe(base);
+    expect(githubHeaders("not a url", credential, base)).toBe(base);
+    expect(githubHeaders("https://api.github.com/x", null, base)).toBe(base);
+    expect(isGithubApiUrl("https://api.github.com:443/x")).toBe(true);
+    expect(isGithubApiUrl("http://api.github.com:8080/x")).toBe(false);
   });
 });

@@ -327,6 +327,53 @@ still take a minute to show up, because GitHub itself needs a moment to catch up
 `collie doctor` next. If that does not explain it, see
 [When collie will not run](#when-collie-will-not-run).
 
+### If GitHub rate-limits the release check
+
+`collie update` on a binary install lists the releases through GitHub's API, and so do the phone's
+update banner and `install.sh`. GitHub allows an anonymous caller 60 API calls an hour, counted per
+network address, so every machine behind one router shares that budget. When it is spent, the check
+fails closed and changes nothing:
+
+```text
+error: GitHub rate-limited the release check (HTTP 403). Wait an hour, or set GH_TOKEN
+       to a GitHub token with no scopes, so the limit is yours (docs/upgrading.md).
+       Nothing was changed.
+```
+
+A token makes the limit your own. Collie reads one from the environment and never asks for one:
+
+| Name | Who sets it |
+| --- | --- |
+| `COLLIE_GITHUB_TOKEN` | you, for the service: the instance's `.env`, or `github_token` under `[update]` in `config.toml` |
+| `GH_TOKEN` | the `gh` CLI's own name |
+| `GITHUB_TOKEN` | GitHub Actions |
+
+The first one set wins. The tag list is public, so the token needs **no permissions at all**: a
+fine-grained personal access token with repository access set to *Public repositories (read-only)*
+and no permission selected, or a classic token with no scope ticked. Do not use a token that can
+write anything.
+
+For one run in a terminal, borrow the `gh` CLI's credential. The value never lands on the command
+line or in the shell history:
+
+```bash
+GH_TOKEN=$(gh auth token) collie update
+```
+
+For the service, put it in the instance `.env`, which Collie holds at mode 600, or in `config.toml`
+under `[update]`, and restart: the bridge reads the token when it starts, so the phone's banner uses
+a new or changed token only after `collie restart`. `collie config` shows it as `set` or `unset` and
+never prints the value. The token goes to `api.github.com` alone: the release download comes from
+`github.com`, which has no such limit, and never carries it. A message that mentions the token names
+the variable it came from, never the value. A token GitHub refuses fails the check with `HTTP 401`
+and that name, so a wrong token is not mistaken for a rate limit. The bridge says the same once in
+its log and then keeps the last release it saw, so a banner that stops moving after a token expired
+is that log line; `collie update --check` names it any time you ask.
+
+`collie update --check` reports the same three cases under `upstream`. A checkout lists the tags
+with `git ls-remote` instead, which the API limit does not count. In a crew, every machine reads its
+own token: a member updates by running its own `collie update`, from its own `.env`.
+
 ### Cross a major
 
 `update` never crosses a major version automatically.

@@ -5,7 +5,7 @@ import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import { CrewOpsStore } from "../bridge/crew/ops-store.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
 import { CREW_PROTOCOL_VERSION } from "../bridge/crew/enrollment.ts";
-import { compareSemver, githubTagsUrl, parseTagsResponse } from "../bridge/update.ts";
+import { compareSemver, githubCredential, githubTagsUrl, parseTagsResponse } from "../bridge/update.ts";
 import { collieVersionBare, manifestVersionFrom } from "../bridge/version.ts";
 import { loadContext, type CliContext } from "./context.ts";
 import { cmdDoctor, doctorDeps } from "./doctor.ts";
@@ -578,16 +578,37 @@ async function listTags(deps: UpdateCheckDeps, install: InstallKind, repo: strin
     }
     return { ok: true, tags: parseRemoteTags(ls.stdout) };
   }
+  const credential = githubCredential(deps.ctx.env);
   const response = await deps.net.getJson(githubTagsUrl(repo));
   if (!response.ok) {
     const status = response.failure.status;
+    // The token is named by the variable it came from, never by value (#254). A 401 without one is
+    // not a credential problem and reads as the generic failure below.
+    if (status === 401 && credential !== null) {
+      return {
+        ok: false,
+        reason: `GitHub refused the token in ${credential.source} (HTTP 401)`,
+        remedy: `fix ${credential.source}, or unset it`,
+      };
+    }
+    if (status === 403 || status === 429) {
+      if (credential === null) {
+        return {
+          ok: false,
+          reason: `github.com rate-limited the release check (HTTP ${status})`,
+          remedy: "wait an hour, or set GH_TOKEN to a GitHub token with no scopes, then re-run this check",
+        };
+      }
+      return {
+        ok: false,
+        reason: `github.com rate-limited the release check (HTTP ${status}), even with the token in ${credential.source}`,
+        remedy: "wait an hour, then re-run this check",
+      };
+    }
     return {
       ok: false,
-      reason:
-        status === 403 || status === 429
-          ? `github.com rate-limited the release check (HTTP ${status})`
-          : `could not reach github.com for the release check (${response.failure.message})`,
-      remedy: status === 403 || status === 429 ? "wait an hour, then re-run this check" : "check this machine's network",
+      reason: `could not reach github.com for the release check (${response.failure.message})`,
+      remedy: "check this machine's network",
     };
   }
   // SAFETY: `Net.getJson` hands back what `Response.json()` produced, which IS a JsonValue by
@@ -1028,7 +1049,7 @@ export function updateCheckDeps(io: Io): UpdateCheckDeps {
     exec,
     files: realFiles,
     link: realLinkFs,
-    net: realNet,
+    net: realNet(githubCredential(ctx.env)),
     platform: process.platform,
     store: new TrustStore(ctx.stateDir),
     ops: new CrewOpsStore(ctx.stateDir),

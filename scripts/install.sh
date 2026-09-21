@@ -113,15 +113,43 @@ trap 'rm -rf "$TMP"' EXIT INT HUP TERM
 # Default: the newest STRICT release. `--beta` widens it to prerelease tags, which is the opt-in a
 # tester makes deliberately — installing a prerelease is what joins its train. COLLIE_TAG replaces
 # the whole question, so a pinned run never asks GitHub anything.
+#
+# A GitHub token, when the caller has one, goes with this ONE call and never with a download: it makes
+# the rate limit the caller's own instead of the network's, and a public repository's tags need no
+# scope at all. The same three names `collie update` reads, in the same order. The token is never
+# printed, and never on a command line either: `ps` shows every argument of a running curl to every
+# user of the machine, and `sh -x` would echo it, so the header travels in a curl config file under
+# the swept scratch directory, mode 600. A message names the variable it came from.
+if [ -n "${COLLIE_GITHUB_TOKEN:-}" ]; then TOKEN="$COLLIE_GITHUB_TOKEN"; TOKEN_SRC="COLLIE_GITHUB_TOKEN"
+elif [ -n "${GH_TOKEN:-}" ]; then TOKEN="$GH_TOKEN"; TOKEN_SRC="GH_TOKEN"
+elif [ -n "${GITHUB_TOKEN:-}" ]; then TOKEN="$GITHUB_TOKEN"; TOKEN_SRC="GITHUB_TOKEN"
+else TOKEN=""; TOKEN_SRC=""
+fi
+tags_api() {
+  if [ -n "$TOKEN" ]; then
+    ( umask 077; printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" > "$TMP/auth.curlrc" ) ||
+      die "could not write $TMP/auth.curlrc."
+    curl -sSL -o "$TMP/tags.json" -w '%{http_code}' -H 'Accept: application/vnd.github+json' \
+      -K "$TMP/auth.curlrc" "$1"
+  else
+    curl -sSL -o "$TMP/tags.json" -w '%{http_code}' -H 'Accept: application/vnd.github+json' "$1"
+  fi
+}
 if [ -n "$PIN" ]; then
   TAG="$PIN"
 else
-  CODE=$(curl -sSL -o "$TMP/tags.json" -w '%{http_code}' -H 'Accept: application/vnd.github+json' \
-    "https://api.github.com/repos/${REPO}/tags?per_page=100") ||
+  CODE=$(tags_api "https://api.github.com/repos/${REPO}/tags?per_page=100") ||
     die "could not reach api.github.com to list the releases. Check your network and try again."
   case "$CODE" in
     200) ;;
-    403|429) die "GitHub's API rate limit says no (HTTP ${CODE}). Without a token GitHub allows 60 calls an hour, counted per network address, so everyone behind your router shares one budget. Wait an hour, or name the version you want and skip this call entirely:  COLLIE_TAG=vX.Y.Z  (the tags are listed at https://github.com/${REPO}/releases)." ;;
+    401) if [ -n "$TOKEN" ]; then
+           die "GitHub refused the token in ${TOKEN_SRC} (HTTP 401). Fix it or unset it, then run this again."
+         fi
+         die "api.github.com answered HTTP 401 when asked for the tags of ${REPO}. Try again later, or name the version you want and skip this call:  COLLIE_TAG=vX.Y.Z" ;;
+    403|429) if [ -n "$TOKEN" ]; then
+           die "GitHub's API rate limit says no (HTTP ${CODE}), even with the token in ${TOKEN_SRC}. Wait an hour, or name the version you want and skip this call entirely:  COLLIE_TAG=vX.Y.Z  (the tags are listed at https://github.com/${REPO}/releases)."
+         fi
+         die "GitHub's API rate limit says no (HTTP ${CODE}). Without a token GitHub allows 60 calls an hour, counted per network address, so everyone behind your router shares one budget. Set GH_TOKEN to a GitHub token with no scopes and run this again, wait an hour, or name the version you want and skip this call entirely:  COLLIE_TAG=vX.Y.Z  (the tags are listed at https://github.com/${REPO}/releases)." ;;
     *) die "api.github.com answered HTTP ${CODE} when asked for the tags of ${REPO}. Try again later, or name the version you want and skip this call:  COLLIE_TAG=vX.Y.Z" ;;
   esac
   # One `"name"` per tag object, and no other key in that payload is called `name` — so this is a

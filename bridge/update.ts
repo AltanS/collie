@@ -3,6 +3,7 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "./config.ts";
+import type { Environment } from "./config-source.ts";
 import { herdrActionCommand } from "./front-door.ts";
 import type { CrewMode, UpdateLinkChange, UpdateStatus } from "./types.ts";
 import type { UpdateRun } from "./update-run.ts";
@@ -440,6 +441,51 @@ export function githubTagsUrl(repo: string): string {
   return `https://api.github.com/repos/${repo}/tags?per_page=100`;
 }
 
+// ── The GitHub credential (#254) ─────────────────────────────────────────────
+// GitHub allows an anonymous caller 60 API calls an hour, counted per network address, so every
+// machine behind one router shares a budget the release check can exhaust. A token makes the limit
+// the caller's own. Collie READS one and never asks for one: the tag list is public, so a token
+// with no scopes at all is enough. It is sent to `api.github.com` alone — a release asset lives on
+// github.com, which counts nothing, and redirects to a storage host that must never see it.
+
+/** The names read for a GitHub token, in the order they win. `GH_TOKEN` and `GITHUB_TOKEN` are the
+ *  two the `gh` CLI and Actions already set; the first is Collie's own, for a service's `.env`. */
+export const GITHUB_TOKEN_ENVS = ["COLLIE_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"] as const;
+
+/** A token and the NAME it was read from. A message names the variable and never the value. */
+export interface GithubCredential {
+  token: string;
+  source: (typeof GITHUB_TOKEN_ENVS)[number];
+}
+
+/** The first of {@link GITHUB_TOKEN_ENVS} with a non-blank value, or null: anonymous, as before. */
+export function githubCredential(env: Environment): GithubCredential | null {
+  for (const source of GITHUB_TOKEN_ENVS) {
+    const token = env[source]?.trim();
+    if (token !== undefined && token !== "") return { token, source };
+  }
+  return null;
+}
+
+/** Whether `url` is one the credential may go to: GitHub's API host, by exact host match. */
+export function isGithubApiUrl(url: string): boolean {
+  try {
+    return new URL(url).host === "api.github.com";
+  } catch {
+    return false;
+  }
+}
+
+/** `base`, plus the bearer header when there is a credential AND `url` is the API. */
+export function githubHeaders(
+  url: string,
+  credential: GithubCredential | null,
+  base: Record<string, string>,
+) {
+  if (credential === null || !isGithubApiUrl(url)) return base;
+  return { ...base, authorization: `Bearer ${credential.token}` };
+}
+
 /**
  * GitHub's `/tags` payload → {@link ApiTag}[]. The ONE parser of that document: the bridge's banner
  * fetches it over `fetch`, and `collie update`'s binary path fetches it through the CLI's `net`
@@ -462,15 +508,32 @@ export function parseTagsResponse(data: JsonValue): ApiTag[] {
   });
 }
 
-/** Anonymous HTTPS fetch of a GitHub repo's tags. Throws on a non-OK response or timeout so the
- *  caller keeps its previous result and retries next tick. */
-export function githubTagsFetcher(repo: string): () => Promise<ApiTag[]> {
+/** HTTPS fetch of a GitHub repo's tags, with the credential when there is one. Throws on a non-OK
+ *  response or timeout so the caller keeps its previous result and retries next tick. A refused
+ *  token is said ONCE in the log, because the banner would otherwise stall in silence on it. */
+export function githubTagsFetcher(
+  repo: string,
+  credential: GithubCredential | null = null,
+): () => Promise<ApiTag[]> {
   const url = githubTagsUrl(repo);
+  let refusedSaid = false;
   return async () => {
     const res = await fetch(url, {
-      headers: { accept: "application/vnd.github+json", "user-agent": "collie-update-check" },
+      headers: githubHeaders(url, credential, {
+        accept: "application/vnd.github+json",
+        "user-agent": "collie-update-check",
+      }),
       signal: AbortSignal.timeout(TAGS_TIMEOUT_MS),
     });
+    // Once, not every tick: the check runs for the life of the process, and a line an hour is the
+    // sort of log nobody reads. The price is that a token revoked later is said once and then only
+    // shows as a banner that stops moving; `collie update --check` names it any time it is asked.
+    if (res.status === 401 && credential !== null && !refusedSaid) {
+      refusedSaid = true;
+      console.warn(
+        `[update] GitHub refused the token in ${credential.source} (HTTP 401); the release check fails until it is fixed or unset`,
+      );
+    }
     if (!res.ok) throw new Error(`github tags: HTTP ${res.status}`);
     // SAFETY: `Response.json()` output IS a JsonValue by construction; every field below is checked
     // before it is kept.

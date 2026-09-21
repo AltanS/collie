@@ -143,6 +143,7 @@ import { Snooze } from "./snooze.ts";
 import { StateEngine } from "./state-engine.ts";
 import {
   bridgeStampSync,
+  githubCredential,
   githubTagsFetcher,
   releaseReadingFetcher,
   UpdateMonitor,
@@ -722,7 +723,9 @@ const updateMonitor = new UpdateMonitor({
   // version string (M17/02, the Arch pkgrel rebuild).
   exeReplaced: selfExeReplaced,
   startupStamp: bridgeStampSync(bridgeDir, rootDir),
-  fetchTags: githubTagsFetcher(updateRepo),
+  // With the operator's GitHub token when the env holds one (#254): the same three names, in the
+  // same order, that `collie update` reads, so the banner and the verb share one budget.
+  fetchTags: githubTagsFetcher(updateRepo, githubCredential(process.env)),
   // The newest release's own reading (M27/06) — one small GET beside the tag list, from the same
   // repo the release links point at. It answers null for every release that published none.
   fetchReleaseReading: releaseReadingFetcher(updateRepo),

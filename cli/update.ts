@@ -5,7 +5,9 @@ import {
   type ApiTag,
   compareSemver,
   followsTrain,
+  githubCredential,
   githubTagsUrl,
+  isGithubApiUrl,
   majorOf,
   MANIFEST_SCHEMA_VERSION,
   parsePrereleaseTag,
@@ -1183,11 +1185,31 @@ function unknownEvidence(
   }
 }
 
-/** One sentence for a failed HTTPS GET, with the rate limit named because it is the likely one. */
-function netError(deps: UpdateDeps, what: string, failure: NetFailure): void {
+/**
+ * One sentence for a failed HTTPS GET, with the rate limit named because it is the likely one, and
+ * the token named when the request carried one (#254). Only a request to `api.github.com` carries
+ * it, so only that one can be refused for it or be rate-limited despite it. The token is named by the
+ * VARIABLE it came from, never by value: this line reaches a terminal, a log and a bug report.
+ */
+function netError(deps: UpdateDeps, what: string, url: string, failure: NetFailure): void {
+  const credential = isGithubApiUrl(url) ? githubCredential(deps.ctx.env) : null;
+  if (failure.status === 401 && credential !== null) {
+    deps.io.err(`error: GitHub refused the token in ${credential.source} (HTTP 401). Fix it or unset it.`);
+    deps.io.err("       Nothing was changed.");
+    return;
+  }
   if (failure.status === 403 || failure.status === 429) {
-    deps.io.err(`error: GitHub rate-limited ${what} (HTTP ${failure.status}). Wait an hour, or follow`);
-    deps.io.err("       docs/upgrading.md. Nothing was changed.");
+    if (credential !== null) {
+      deps.io.err(`error: GitHub rate-limited ${what} (HTTP ${failure.status}), even with the token in`);
+      deps.io.err(`       ${credential.source}. Wait an hour, or follow docs/upgrading.md. Nothing was changed.`);
+    } else if (isGithubApiUrl(url)) {
+      deps.io.err(`error: GitHub rate-limited ${what} (HTTP ${failure.status}). Wait an hour, or set GH_TOKEN`);
+      deps.io.err("       to a GitHub token with no scopes, so the limit is yours (docs/upgrading.md).");
+      deps.io.err("       Nothing was changed.");
+    } else {
+      deps.io.err(`error: GitHub rate-limited ${what} (HTTP ${failure.status}). Wait an hour, or follow`);
+      deps.io.err("       docs/upgrading.md. Nothing was changed.");
+    }
     return;
   }
   if (failure.status !== null) {
@@ -1289,9 +1311,10 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   sweepScratch(deps, layout);
 
   // 3. One HTTPS GET. Never a second endpoint, never a guessed version.
-  const tagsResponse = await deps.net.getJson(githubTagsUrl(repo));
+  const tagsUrl = githubTagsUrl(repo);
+  const tagsResponse = await deps.net.getJson(tagsUrl);
   if (!tagsResponse.ok) {
-    netError(deps, "the release check", tagsResponse.failure);
+    netError(deps, "the release check", tagsUrl, tagsResponse.failure);
     return EXIT.FAIL;
   }
   // SAFETY: `Net.getJson` hands back what `Response.json()` produced, which IS a JsonValue by
@@ -1355,7 +1378,7 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   const manifestUrl = releaseAssetUrl(repo, target.tag, manifestAssetName(target.version));
   const manifestResponse = await deps.net.getJson(manifestUrl);
   if (!manifestResponse.ok) {
-    netError(deps, `the release manifest for ${target.version}`, manifestResponse.failure);
+    netError(deps, `the release manifest for ${target.version}`, manifestUrl, manifestResponse.failure);
     return EXIT.FAIL;
   }
   // SAFETY: as above — a parsed JSON document, and `parseReleaseManifest` checks every field.
@@ -1382,10 +1405,11 @@ async function updateBinary(deps: UpdateDeps, args: readonly string[]): Promise<
   // 6. Download into scratch — same filesystem as `versions/`, so every rename below is a real one.
   const tarball = join(layout.stagingDir, artifact.name);
   deps.files.mkdirp(layout.stagingDir);
-  const got = await deps.net.download(releaseAssetUrl(repo, target.tag, artifact.name), tarball);
+  const tarballUrl = releaseAssetUrl(repo, target.tag, artifact.name);
+  const got = await deps.net.download(tarballUrl, tarball);
   if (!got.ok) {
     deps.files.removeTree(layout.stagingDir);
-    netError(deps, `downloading ${artifact.name}`, got.failure);
+    netError(deps, `downloading ${artifact.name}`, tarballUrl, got.failure);
     return EXIT.FAIL;
   }
   // 7. Verify. Hard fail, and there is no flag to skip it.

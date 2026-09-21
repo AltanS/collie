@@ -8,6 +8,7 @@ import {
   readFileSync,
   readlinkSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -42,6 +43,11 @@ interface Run {
    *  reason as `installed`. It is how "a pinned run never asks GitHub anything" is an assertion
    *  about traffic rather than about output. */
   curl: string;
+  /** Every header the fake `curl` was handed, one per line. It is how "the token goes with the
+   *  tags call and with no download" is an assertion about traffic (#254). */
+  headers: string;
+  /** The octal mode of the curl config file the token travelled in, when there was one. */
+  curlrcMode: string;
   /** Whether a payload landed — read BEFORE the scratch tree is thrown away, so "nothing was
    *  installed" is an assertion about the run rather than about the cleanup. */
   installed: boolean;
@@ -114,7 +120,9 @@ out=""; url=""; w=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -o) out="$2"; shift 2 ;;
-    -H) shift 2 ;;
+    -H) if [ -n "\${COLLIE_TEST_HEADER_LOG:-}" ]; then echo "$2" >> "$COLLIE_TEST_HEADER_LOG"; fi; shift 2 ;;
+    -K) if [ -n "\${COLLIE_TEST_HEADER_LOG:-}" ]; then sed -n 's/^header = "\\(.*\\)"$/\\1/p' "$2" >> "$COLLIE_TEST_HEADER_LOG"; fi
+        if [ -n "\${COLLIE_TEST_CURLRC_COPY:-}" ]; then cp -p "$2" "$COLLIE_TEST_CURLRC_COPY"; fi; shift 2 ;;
     -w) w="$2"; shift 2 ;;
     -*) shift ;;
     *) url="$1"; shift ;;
@@ -227,6 +235,8 @@ function run(opts: Options = {}): Run {
     }))(release);
     opts.seed?.(dir);
     const curlLog = join(root, "curl.log");
+    const headerLog = join(root, "headers.log");
+    const curlrcCopy = join(root, "auth.curlrc");
     const proc = Bun.spawnSync(["/bin/sh", SCRIPT, ...(opts.args ?? [])], {
       cwd: root,
       env: {
@@ -235,6 +245,8 @@ function run(opts: Options = {}): Run {
         COLLIE_DIR: dir,
         COLLIE_TEST_RELEASE: release,
         COLLIE_TEST_CURL_LOG: curlLog,
+        COLLIE_TEST_HEADER_LOG: headerLog,
+        COLLIE_TEST_CURLRC_COPY: curlrcCopy,
         ...opts.env,
       },
     });
@@ -244,6 +256,8 @@ function run(opts: Options = {}): Run {
       dir,
       home,
       curl: existsSync(curlLog) ? readFileSync(curlLog, "utf8") : "",
+      headers: existsSync(headerLog) ? readFileSync(headerLog, "utf8") : "",
+      curlrcMode: existsSync(curlrcCopy) ? (statSync(curlrcCopy).mode & 0o777).toString(8) : "",
       installed: existsSync(join(dir, "versions")),
     };
   } finally {
@@ -254,7 +268,7 @@ function run(opts: Options = {}): Run {
 }
 
 /** The layout cases need the tree to still exist, so they run the script themselves and inspect. */
-function runKeeping(opts: Options, inspect: (r: Omit<Run, "installed">) => void): void {
+function runKeeping(opts: Options, inspect: (r: Omit<Run, "installed" | "headers" | "curlrcMode">) => void): void {
   const root = mkdtempSync(join(tmpdir(), "collie-install-"));
   try {
     const home = join(root, "home");
@@ -502,8 +516,33 @@ describe("scripts/install.sh", () => {
     expect(r.code).toBe(1);
     expect(r.out).toContain("rate limit");
     expect(r.out).toContain("60 calls an hour");
+    expect(r.out).toContain("Set GH_TOKEN");
     expect(r.out).toContain("COLLIE_TAG=vX.Y.Z");
+    expect(r.headers).not.toContain("Authorization");
     expect(r.installed).toBe(false);
+  });
+
+  test("a GitHub token in the env goes with the tags call alone, and a message names the variable, never the value (#254)", () => {
+    const ok = run({ env: { GH_TOKEN: "ghp_secret" } });
+    expect(ok.code).toBe(0);
+    // One bearer header for the whole run: the tags call. The three downloads carry none. It travels
+    // in a curl config file at mode 600, never as a `-H` argument `ps` would show.
+    expect(ok.headers.split("\n").filter((line) => line.startsWith("Authorization: "))).toEqual([
+      "Authorization: Bearer ghp_secret",
+    ]);
+    expect(ok.curlrcMode).toBe("600");
+    const limited = run({ env: { COLLIE_TEST_API_CODE: "403", GITHUB_TOKEN: "ghp_secret" } });
+    expect(limited.code).toBe(1);
+    expect(limited.out).toContain("even with the token in GITHUB_TOKEN");
+    expect(limited.out).not.toContain("Set GH_TOKEN");
+    expect(limited.out).not.toContain("ghp_secret");
+    const refused = run({
+      env: { COLLIE_TEST_API_CODE: "401", COLLIE_GITHUB_TOKEN: "ghp_bad", GH_TOKEN: "ghp_second" },
+    });
+    expect(refused.code).toBe(1);
+    expect(refused.out).toContain("refused the token in COLLIE_GITHUB_TOKEN");
+    expect(refused.out).not.toContain("ghp_bad");
+    expect(refused.installed).toBe(false);
   });
 
   test("refuses a target directory that holds something else", () => {

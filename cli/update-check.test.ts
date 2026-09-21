@@ -1135,4 +1135,32 @@ describe("preflight — a folder a package manager owns", () => {
     const check = byId(await preflight(h.deps), "upstream");
     expect(check.remedy).toContain("wait an hour");
   });
+
+  test("the rate-limit remedy names GH_TOKEN when none was sent, and the variable when one was (#254)", async () => {
+    const limited: Net = {
+      ...deadNet,
+      getJson: () => Promise.resolve({ ok: false, failure: { status: 403, message: "HTTP 403" } }),
+    };
+    const anonymous = byId(await preflight(packaged({ net: limited }).deps), "upstream");
+    expect(anonymous.remedy).toContain("set GH_TOKEN");
+    const withToken = byId(
+      await preflight(packaged({ net: limited, env: { COLLIE_GITHUB_TOKEN: "ghp_value" } }).deps),
+      "upstream",
+    );
+    expect(withToken.reason).toContain("even with the token in COLLIE_GITHUB_TOKEN");
+    expect(withToken.reason).not.toContain("ghp_value");
+    expect(withToken.remedy).toBe("wait an hour, then re-run this check");
+  });
+
+  test("a refused token is red, named by its variable, and never by its value", async () => {
+    const refused: Net = {
+      ...deadNet,
+      getJson: () => Promise.resolve({ ok: false, failure: { status: 401, message: "HTTP 401" } }),
+    };
+    const check = byId(await preflight(packaged({ net: refused, env: { GH_TOKEN: "ghp_bad" } }).deps), "upstream");
+    expect(check.verdict).toBe("red");
+    expect(check.reason).toContain("refused the token in GH_TOKEN");
+    expect(check.remedy).toContain("unset");
+    expect(`${check.reason} ${check.remedy}`).not.toContain("ghp_bad");
+  });
 });
