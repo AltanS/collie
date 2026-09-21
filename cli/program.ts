@@ -36,6 +36,7 @@ import {
   type LifecycleDeps,
 } from "./lifecycle.ts";
 import { cmdLink, cmdUnlink, type LinkDeps, realLinkFs } from "./link.ts";
+import { cmdMuxProbe } from "./mux-probe.ts";
 import {
   cmdJoin,
   cmdLeave,
@@ -420,6 +421,18 @@ export const COMMANDS: readonly Command[] = [
     summary: "internal: the second half of `update`, run post-pull",
     internal: true,
     run: (args, s) => cmdApplyUpdate(updateDeps(s.io), args),
+  },
+  // Declared beside `_apply-update` because it is the same kind of verb: plumbing another Collie
+  // spells, never an operator. `crew add` runs it on the member it has just installed, to learn
+  // which multiplexer that machine should drive (`cli/mux-probe.ts`).
+  {
+    name: "_mux-probe",
+    summary: "internal: which multiplexers are running here, as one JSON line",
+    internal: true,
+    run: (_args, s) => {
+      const deps = lifecycleDeps(s.io);
+      return cmdMuxProbe({ ctx: deps.ctx, io: s.io, exec: deps.exec, files: deps.files });
+    },
   },
   lifecycleCommand(
     "_exec-bridge",

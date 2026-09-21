@@ -32,6 +32,10 @@ const SHELL_VERBS = [
   "uninstall",
   "update",
   "_apply-update",
+  // `_mux-probe` has no shell ancestor either. It is declared beside `_apply-update` because it is
+  // the same kind of verb — plumbing another Collie spells, never an operator — and `crew add` runs
+  // it on the member it has just installed (cli/mux-probe.ts).
+  "_mux-probe",
   "_exec-bridge",
   "build",
   "serve",
@@ -112,6 +116,7 @@ describe("the verb table", () => {
   test("hides exactly the shell's internal verbs from the usage line", () => {
     expect(COMMANDS.filter((c) => c.internal === true).map((c) => c.name)).toEqual([
       "_apply-update",
+      "_mux-probe",
       "_exec-bridge",
       // The emitter is spelled by a hook, never typed — see cli/beacon.ts.
       "beacon",
@@ -344,6 +349,9 @@ describe("exit codes", () => {
       "uninstall",
       "update",
       "_apply-update",
+      // It probes THIS machine's multiplexers — `tmux list-sessions` and `zellij list-sessions`
+      // against the developer's own servers. cli/mux.test.ts drives it against fakes.
+      "_mux-probe",
       "_exec-bridge",
       "build",
       "serve",

@@ -139,6 +139,13 @@ The crew protocol, which is the wire between the machines, contains no multiplex
 Note that peers have only been tested with Herdr in v1
 ([`CREW_PROTOCOL.md` §16](../CREW_PROTOCOL.md)).
 
+`crew add` settles that value for a new member, because the member cannot always settle it itself. A
+member that runs exactly one multiplexer is left alone, and picks that one at its own first start. A
+member that runs several is a question the lead asks you, and your answer is written as `COLLIE_MUX`
+in that member's `.env`. A member that already names one is left alone too. Pass `--mux <name>` to
+answer ahead of time, or to replace a name the member already carries. A member with no multiplexer
+running gets a warning and nothing written, because its first start refuses until one runs.
+
 ## Herdr machines and the crew
 
 Herdr's saved machines and a Collie crew are two separate lists, and neither feeds the other.

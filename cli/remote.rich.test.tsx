@@ -47,6 +47,9 @@ const PROBE_DEFAULTS = {
   configdir: "/home/pat/.config/herdr/plugins/config/herdr.collie",
   envhost: "",
   envport: "",
+  // The member has already chosen its multiplexer, so leg 3 reads its machine for nothing — the
+  // decision itself is covered in cli/remote.test.ts (#248).
+  envmux: "herdr",
   checkout: "",
   commit: "",
   branch: "",

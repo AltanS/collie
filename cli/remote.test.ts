@@ -36,6 +36,8 @@ import {
   routeOf,
   installScript,
   membershipScript,
+  muxChoice,
+  muxProbeScript,
   crewAddDeps,
   parseMembership,
   parseProbe,
@@ -49,6 +51,7 @@ import {
   type RemoteResult,
 } from "./remote.ts";
 import { INSTALLER_SH } from "./installer-embed.ts";
+import type { MuxProbeReport } from "./mux-probe.ts";
 import { realExec } from "./sys.ts";
 
 // `collie crew add` against fakes for every seam. **NOTHING here spawns `ssh` or reaches a network**:
@@ -60,7 +63,7 @@ import { realExec } from "./sys.ts";
 
 // ── The fake transport ───────────────────────────────────────────────────────
 
-type Leg = "probe" | "install" | "configure" | "membership" | "enroll" | "restart";
+type Leg = "probe" | "install" | "configure" | "membership" | "enroll" | "restart" | "mux-probe";
 
 /** Which leg a script is, read off the script itself — so a test never depends on call ordering. */
 function legOf(script: string): Leg {
@@ -68,6 +71,7 @@ function legOf(script: string): Leg {
   if (script.includes("collie-install:")) return "install";
   if (script.includes("collie-configure:")) return "configure";
   if (script.includes("crew status --no-probe")) return "membership";
+  if (script.includes("_mux-probe")) return "mux-probe";
   if (script.includes('"$ROOT/bin/collie" restart')) return "restart";
   if (script.includes("'join'")) return "enroll";
   throw new Error(`unrecognised leg script:\n${script}`);
@@ -93,6 +97,11 @@ const PROBE_DEFAULTS = {
   configdir: "/home/pat/.config/herdr/plugins/config/herdr.collie",
   envhost: "",
   envport: "",
+  // A machine whose Collie has been started once: `collie start` writes `COLLIE_MUX` into the
+  // config-dir `.env` and a solo collie leaves `COLLIE_HOST` unset (`cli/mux.ts`, F23). So the
+  // default member has already chosen, and leg 3 asks its machine nothing — the cases that DO ask
+  // seed `envmux: ""` themselves.
+  envmux: "herdr",
   checkout: "",
   checkoutgit: "",
   installroot: "",
@@ -113,6 +122,17 @@ function probeOut(over: Record<string, string> = {}): string {
   const all = { ...PROBE_DEFAULTS, ...over };
   const lines = Object.entries(all).map(([k, v]) => `collie-probe:${k}=${v}`);
   return [...lines, "collie-probe:probe=ok", ""].join("\n");
+}
+
+/**
+ * What the member's own `collie _mux-probe` prints — the same JSON `cli/mux-probe.ts` writes.
+ *
+ * Built from the names rather than hand-typed, so a case says "two multiplexers run there" and
+ * nothing else about the format.
+ */
+function muxProbeOut(names: readonly string[], explicit: string | null = null): string {
+  const found = names.map((mux) => ({ mux, evidence: `a ${mux} thing` }));
+  return `${JSON.stringify({ explicit, found })}\n`;
 }
 
 const SOLO_STATUS = [
@@ -245,11 +265,13 @@ function harness(opts: HarnessOptions = {}): Harness {
         const stdout =
           leg === "probe"
             ? probeOut()
-            : leg === "membership"
-              ? SOLO_STATUS
-              : leg === "install"
-                ? `collie-install:root=${REMOTE_CHECKOUT}\ncollie-install:version=${VERSION}`
-                : "";
+            : leg === "mux-probe"
+              ? muxProbeOut(["herdr"])
+              : leg === "membership"
+                ? SOLO_STATUS
+                : leg === "install"
+                  ? `collie-install:root=${REMOTE_CHECKOUT}\ncollie-install:version=${VERSION}`
+                  : "";
         const fallback: RemoteResult = { code: 0, stdout, stderr: "", spawned: true };
         return { ...fallback, ...canned };
       },
@@ -332,11 +354,19 @@ const GOLDEN: [file: string, script: string][] = [
       version: "1.2.3",
     }),
   ],
-  ["leg3-configure.sh", configureScript({ configDir: "/cfg", host: "100.1.2.3", port: 8787, instance: null })],
+  [
+    "leg3-configure.sh",
+    configureScript({ configDir: "/cfg", host: "100.1.2.3", port: 8787, mux: null, instance: null }),
+  ],
   [
     "leg3-configure-instance.sh",
-    configureScript({ configDir: "/cfg", host: "100.1.2.3", port: 9000, instance: "v1" }),
+    configureScript({ configDir: "/cfg", host: "100.1.2.3", port: 9000, mux: null, instance: "v1" }),
   ],
+  [
+    "leg3-configure-mux.sh",
+    configureScript({ configDir: "/cfg", host: "100.1.2.3", port: 8787, mux: "tmux", instance: null }),
+  ],
+  ["leg3-mux-probe.sh", muxProbeScript("/home/pat/.collie")],
   ["leg4-membership.sh", membershipScript("/home/pat/.collie")],
   // Not one of `crew add`'s legs — `crew update` drives it, and it is pinned here with the rest
   // because it is the same kind of thing: a program this machine writes and another one runs.
@@ -407,7 +437,7 @@ describe("the leg scripts", () => {
     expect(install).not.toContain('"$GIT" bundle verify "$WORK/bundle.part" >/dev/null 2>&1');
     expect(install).toContain("did not verify: $VMSG");
     expect(install).toContain('mv "$WORK/bundle.part" "$WORK/bundle"');
-    const configure = configureScript({ configDir: "/cfg", host: "h", port: 1, instance: null });
+    const configure = configureScript({ configDir: "/cfg", host: "h", port: 1, mux: null, instance: null });
     expect(configure).toContain('[ -s "$TMP" ]');
     expect(configure).toContain('mv "$TMP" "$ENVFILE"');
   });
@@ -445,7 +475,7 @@ describe("the leg scripts", () => {
   });
 
   test("configure preserves values Collie did not set, and publishes no front door", () => {
-    const script = configureScript({ configDir: "/cfg", host: "h", port: 1, instance: null });
+    const script = configureScript({ configDir: "/cfg", host: "h", port: 1, mux: null, instance: null });
     expect(script).toContain("grep -v -E");
     expect(script).not.toContain("tailscale");
     expect(script).not.toContain("serve");
@@ -1134,6 +1164,173 @@ describe("prompts", () => {
     const h = harness({ prompt: "10.0.0.4", answers: { probe: { stdout: probeOut({ address: "" }) } } });
     expect(await run(h)).toBe(EXIT.OK);
     expect(h.calls[2]!.script).toContain("'10.0.0.4'");
+  });
+});
+
+// ── Which multiplexer the member drives (#248) ───────────────────────────────
+// A member that ran two multiplexers could not restart itself: `collie join` ends in a
+// `collie restart` there, and `chooseMux` refuses a non-interactive run with two sightings. The
+// operator at a terminal is the LEAD's operator, so leg 3 decides and writes `COLLIE_MUX`.
+
+describe("the mux decision", () => {
+  const report = (names: readonly string[]): MuxProbeReport => ({
+    explicit: null,
+    found: names.map((mux) => ({ mux, evidence: `a ${mux} thing` })),
+  });
+
+  test("the pure decision, branch by branch", () => {
+    // `--mux` wins outright: over a name the member already carries, and over what runs there.
+    expect(muxChoice({ flag: "tmux", envmux: "herdr", answer: report(["zellij"]), leadMux: "herdr" })).toEqual({
+      kind: "flag",
+      mux: "tmux",
+    });
+    // A member that already named one is left alone, and its machine is never read.
+    expect(muxChoice({ flag: null, envmux: "zellij", answer: null, leadMux: "herdr" })).toEqual({
+      kind: "kept",
+      mux: "zellij",
+    });
+    // Nothing on the lead settles it, so the member has to be asked.
+    expect(muxChoice({ flag: null, envmux: "", answer: null, leadMux: "herdr" })).toEqual({ kind: "unread" });
+    expect(muxChoice({ flag: null, envmux: "", answer: report([]), leadMux: null })).toEqual({ kind: "none" });
+    expect(muxChoice({ flag: null, envmux: "", answer: report(["tmux"]), leadMux: "herdr" })).toEqual({
+      kind: "auto",
+      mux: "tmux",
+    });
+    // Two is the standoff. The lead's own multiplexer is carried only when it is one of them.
+    expect(muxChoice({ flag: null, envmux: "", answer: report(["herdr", "tmux"]), leadMux: "herdr" })).toEqual({
+      kind: "ask",
+      found: report(["herdr", "tmux"]).found,
+      leadDrives: "herdr",
+    });
+    expect(muxChoice({ flag: null, envmux: "", answer: report(["herdr", "tmux"]), leadMux: "zellij" })).toEqual({
+      kind: "ask",
+      found: report(["herdr", "tmux"]).found,
+      leadDrives: null,
+    });
+  });
+
+  test("a --mux this build cannot drive is refused BEFORE any ssh runs", async () => {
+    const h = harness();
+    expect(await run(h, ["nas.example", "--mux", "screen"])).toBe(EXIT.USAGE);
+    expect(h.calls).toHaveLength(0);
+    expect(h.restarts).toBe(0);
+    expect(text(h.io)).toContain("--mux screen is not a multiplexer this build drives");
+    expect(text(h.io)).toContain("herdr, tmux, zellij");
+  });
+
+  test("--mux writes the name, over one the member already carries, without reading its machine", async () => {
+    const h = harness();
+    expect(await run(h, ["nas.example", "--mux", "tmux"])).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).not.toContain("mux-probe");
+    const configure = h.calls.find((c) => c.leg === "configure")!;
+    expect(configure.script).toContain("printf 'COLLIE_MUX=%s\\n' 'tmux'");
+    // The name that goes away is named: replacing somebody's value is the case they have to see.
+    expect(text(h.io)).toContain("mux        tmux (named with --mux, replaces herdr already set there)");
+  });
+
+  test("--mux that restates the member's own value does not read as a change", async () => {
+    const h = harness();
+    expect(await run(h, ["nas.example", "--mux", "herdr"])).toBe(EXIT.OK);
+    expect(text(h.io)).toContain("mux        herdr (named with --mux, already set there)");
+  });
+
+  test("--mux on a member that named none says only what it named", async () => {
+    const h = harness({ answers: { probe: { stdout: probeOut({ envmux: "" }) } } });
+    expect(await run(h, ["nas.example", "--mux", "zellij"])).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).not.toContain("mux-probe");
+    expect(text(h.io)).toContain("mux        zellij (named with --mux)");
+  });
+
+  test("a member that already names one is left alone — nothing read, nothing written", async () => {
+    const h = harness();
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).not.toContain("mux-probe");
+    expect(h.calls.find((c) => c.leg === "configure")!.script).not.toContain("COLLIE_MUX");
+    expect(text(h.io)).toContain("mux        herdr (already set there)");
+  });
+
+  test("exactly one running multiplexer is named and left for the member's own first start", async () => {
+    const h = harness({
+      answers: { probe: { stdout: probeOut({ envmux: "" }) }, "mux-probe": { stdout: muxProbeOut(["tmux"]) } },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.calls.map((c) => c.leg)).toContain("mux-probe");
+    expect(h.calls.find((c) => c.leg === "configure")!.script).not.toContain("COLLIE_MUX");
+    expect(text(h.io)).toContain("mux        tmux (the only one running there)");
+  });
+
+  test("none running is a warning on stdout, not a stop", async () => {
+    const h = harness({
+      answers: { probe: { stdout: probeOut({ envmux: "" }) }, "mux-probe": { stdout: muxProbeOut([]) } },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    expect(h.io.stdout.join("\n")).toContain(
+      "warn: no multiplexer is running on nas.example. The restart that ends this run will refuse" +
+        " there until one runs, or until `--mux <name>` names one; the member is enrolled either way.",
+    );
+    expect(h.calls.find((c) => c.leg === "configure")!.script).not.toContain("COLLIE_MUX");
+  });
+
+  test("two running is asked at the lead's terminal, and the pick is written", async () => {
+    const h = harness({
+      prompt: "2",
+      env: { COLLIE_MUX: "herdr" },
+      answers: {
+        probe: { stdout: probeOut({ envmux: "" }) },
+        "mux-probe": { stdout: muxProbeOut(["herdr", "tmux"]) },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.OK);
+    const said = text(h.io);
+    expect(said).toContain("nas.example runs 2 multiplexers:");
+    expect(said).toContain("1) herdr");
+    // The lead's own multiplexer is stated as a fact before the question; it is never a default.
+    expect(said).toContain("This lead drives herdr. The member does not have to match.");
+    expect(h.calls.find((c) => c.leg === "configure")!.script).toContain("printf 'COLLIE_MUX=%s\\n' 'tmux'");
+  });
+
+  test("two running with nowhere to ask is STATE, and nothing is written", async () => {
+    const h = harness({
+      prompt: null,
+      answers: {
+        probe: { stdout: probeOut({ envmux: "" }) },
+        "mux-probe": { stdout: muxProbeOut(["herdr", "tmux"]) },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.STATE);
+    expect(h.calls.map((c) => c.leg)).not.toContain("configure");
+    const said = text(h.io);
+    expect(said).toContain("runs 2 multiplexers (herdr, tmux), and this run is not interactive");
+    expect(said).toContain("collie crew add nas.example --mux <name>");
+    expect(said).toContain("The member is installed and unchanged otherwise.");
+  });
+
+  test("an unreadable answer is the third error family — never a guess", async () => {
+    const h = harness({
+      answers: {
+        probe: { stdout: probeOut({ envmux: "" }) },
+        "mux-probe": { stdout: "Traceback: not json at all", stderr: "bad verb" },
+      },
+    });
+    expect(await run(h)).toBe(EXIT.FAIL);
+    expect(h.calls.map((c) => c.leg)).not.toContain("configure");
+    expect(text(h.io)).toContain("could not read which multiplexers run on nas.example");
+  });
+
+  // The bind short-circuit used to skip the whole leg, which would now skip a COLLIE_MUX the
+  // operator has just named on the command line.
+  test("a bind that is already right still gets the mux written", async () => {
+    const h = harness({
+      answers: {
+        probe: {
+          stdout: probeOut({ checkout: REMOTE_CHECKOUT, commit: COMMIT, envhost: "100.64.0.9", envport: "8787" }),
+        },
+      },
+    });
+    expect(await run(h, ["nas.example", "--mux", "zellij"])).toBe(EXIT.OK);
+    const configure = h.calls.find((c) => c.leg === "configure")!;
+    expect(configure.script).toContain("printf 'COLLIE_MUX=%s\\n' 'zellij'");
+    expect(text(h.io)).toContain("✓ bind       COLLIE_MUX=zellij written to");
   });
 });
 

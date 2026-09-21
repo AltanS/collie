@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { DEFAULT_PORT } from "../bridge/config.ts";
 import type { HostProbe } from "../bridge/mux/host-candidates.ts";
-import { muxHostCandidates } from "../bridge/mux/registry.ts";
+import { buildMuxRegistry, muxHostCandidates, muxNames } from "../bridge/mux/registry.ts";
 import { commitCrewChange, mintInvite } from "../bridge/crew/enrollment.ts";
 import type { OpsRecord } from "../bridge/crew/ops-store.ts";
 import { TrustStore, type TrustedMember, type TrustStoreData } from "../bridge/crew/trust-store.ts";
@@ -28,6 +28,8 @@ import { INSTALLER_SH } from "./installer-embed.ts";
 import { EXIT, type Io } from "./io.ts";
 import { realLinkFs } from "./link.ts";
 import { ensureStore, parseCrewArgs, probeMembers, resolveSelfAddress, type CrewDeps } from "./crew.ts";
+import { explicitMux } from "./mux.ts";
+import { parseMuxProbe, type MuxProbeReport, type MuxProbeSighting } from "./mux-probe.ts";
 import { plainAdd, type AddEvent } from "./render.ts";
 import { sshConfigCandidates } from "./ssh-config.ts";
 import { withoutGitRelocators } from "./sys.ts";
@@ -250,6 +252,14 @@ export interface Probe {
   readonly configdir: string;
   readonly envhost: string;
   readonly envport: string;
+  /**
+   * `COLLIE_MUX` as the member's own `$CFG/.env` carries it. `""` when nobody has chosen there.
+   *
+   * Read for one reason: a member that has ALREADY named a multiplexer is left alone — no probe of
+   * its machine, no question, nothing written. Everything else about the mux decision hangs off
+   * this field being empty (leg 3, {@link muxChoice}).
+   */
+  readonly envmux: string;
   readonly checkout: string;
   /**
    * `yes` when the checkout carries a `.git`, `no` when it does not, `""` when there is no checkout.
@@ -306,6 +316,7 @@ export function parseProbe(stdout: string): Probe | null {
     configdir: said("configdir"),
     envhost: said("envhost"),
     envport: said("envport"),
+    envmux: said("envmux"),
     checkout: said("checkout"),
     checkoutgit: said("checkoutgit"),
     installroot: said("installroot"),
@@ -382,13 +393,18 @@ export function probeScript(opts: { readonly path: string | null; readonly port:
     'CFG=""',
     `if [ -n "$HERDR" ]; then CFG=$("$HERDR" plugin config-dir ${shq(PLUGIN_ID)} 2>/dev/null | head -n 1 | tr -d '\\r') || CFG=""; fi`,
     'say configdir "$CFG"',
-    'ENVHOST=""; ENVPORT=""',
+    // `COLLIE_MUX` is read exactly as the bind is, and from the same file: it is the value a
+    // SUPERVISED bridge there reads (`EnvironmentFile=`), so a member that already names one is one
+    // this verb has nothing to decide about.
+    'ENVHOST=""; ENVPORT=""; ENVMUX=""',
     'if [ -n "$CFG" ] && [ -f "$CFG/.env" ]; then',
     '  ENVHOST=$(sed -n "s/^[[:space:]]*\\(export[[:space:]][[:space:]]*\\)\\{0,1\\}COLLIE_HOST=//p" "$CFG/.env" | tail -n 1 | tr -d "\\"\'\\r")',
     '  ENVPORT=$(sed -n "s/^[[:space:]]*\\(export[[:space:]][[:space:]]*\\)\\{0,1\\}COLLIE_PORT=//p" "$CFG/.env" | tail -n 1 | tr -d "\\"\'\\r")',
+    '  ENVMUX=$(sed -n "s/^[[:space:]]*\\(export[[:space:]][[:space:]]*\\)\\{0,1\\}COLLIE_MUX=//p" "$CFG/.env" | tail -n 1 | tr -d "\\"\'\\r")',
     "fi",
     'say envhost "$ENVHOST"',
     'say envport "$ENVPORT"',
+    'say envmux "$ENVMUX"',
     // An existing checkout, by the only marker that proves it is one of ours.
     'CHECKOUT=""',
     `for _d in ${candidates}; do`,
@@ -723,9 +739,22 @@ export function configureScript(opts: {
   readonly configDir: string;
   readonly host: string;
   readonly port: number;
+  /**
+   * The multiplexer the LEAD decided this member should drive, or null to write none.
+   *
+   * Null is the ordinary case and the script is then byte-identical to the one before this option
+   * existed: a member that already names one, or that runs exactly one and will pick it itself at
+   * first start, has nothing to be written here (leg 3, {@link muxChoice}).
+   */
+  readonly mux: string | null;
   readonly instance: string | null;
 }): string {
-  const keys = ["COLLIE_HOST", "COLLIE_PORT", ...(opts.instance === null ? [] : ["COLLIE_INSTANCE"])];
+  const keys = [
+    "COLLIE_HOST",
+    "COLLIE_PORT",
+    ...(opts.mux === null ? [] : ["COLLIE_MUX"]),
+    ...(opts.instance === null ? [] : ["COLLIE_INSTANCE"]),
+  ];
   return [
     "set -eu",
     "umask 077",
@@ -742,6 +771,7 @@ export function configureScript(opts: {
     "fi",
     `printf 'COLLIE_HOST=%s\\n' ${shq(opts.host)} >> "$TMP"`,
     `printf 'COLLIE_PORT=%s\\n' ${shq(String(opts.port))} >> "$TMP"`,
+    ...(opts.mux === null ? [] : [`printf 'COLLIE_MUX=%s\\n' ${shq(opts.mux)} >> "$TMP"`]),
     ...(opts.instance === null
       ? []
       : [`printf 'COLLIE_INSTANCE=%s\\n' ${shq(opts.instance)} >> "$TMP"`]),
@@ -749,6 +779,25 @@ export function configureScript(opts: {
     '[ -s "$TMP" ] || { echo "error: refusing to write an empty .env" >&2; exit 30; }',
     'mv "$TMP" "$ENVFILE"',
     `printf 'collie-configure:env=%s\\n' "$ENVFILE"`,
+    "",
+  ].join("\n");
+}
+
+/**
+ * Ask the member which multiplexers are running on it — with the member's OWN binary.
+ *
+ * The same shape {@link membershipScript} has, and for the same reason: leg 2 has just installed
+ * this very build there, so the far side knows the verb and answers in a format this build wrote.
+ * A POSIX copy of the probe would be a second answer to the question `cli/mux.ts` already owns, and
+ * it would go stale the first time a fourth multiplexer is registered (`cli/mux-probe.ts`).
+ *
+ * Read-only on the far machine: `_mux-probe` starts nothing and writes nothing.
+ */
+export function muxProbeScript(root: string): string {
+  return [
+    "set -eu",
+    `ROOT=${shqPath(root)}`,
+    '"$ROOT/bin/collie" _mux-probe',
     "",
   ].join("\n");
 }
@@ -872,6 +921,7 @@ const USAGE = [
   // the first of the five places that said "address" while meaning "host" (F8).
   "                      [--peer-address <bare-host>] [--address <lead-address>]",
   "                      [--label <name>] [--name <crew>] [--instance <name>]",
+  "                      [--mux <name>]",
 ];
 
 /** Prompt copy shared by the abort path, so the non-interactive message names the real question. */
@@ -1046,6 +1096,16 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
   // checked after an 8 MB bundle push, a remote build, an `.env` write and two lead restarts, so a
   // typo cost a rebuilt member and left it half-configured. Nothing below this block is cheap; a
   // check that CAN be made from the lead's own argv belongs above it.
+  // A multiplexer name this build cannot drive is refused from the lead's own argv: the member
+  // would take it, write it, and then refuse to start with "unknown multiplexer" — after the
+  // install, the `.env` write and the join.
+  const mux = flags.mux ?? null;
+  const known = muxNames(buildMuxRegistry());
+  if (mux !== null && !known.includes(mux)) {
+    deps.io.err(`error: --mux ${mux === "" ? "(empty)" : mux} is not a multiplexer this build drives.`);
+    deps.io.err(`       Name one of: ${known.join(", ")}.`);
+    return EXIT.USAGE;
+  }
   const peerAddress = flags["peer-address"];
   if (peerAddress !== undefined) {
     const refusal = peerHostRefusal(peerAddress);
@@ -1093,6 +1153,7 @@ async function crewAddRun(deps: Wired, args: readonly string[]): Promise<number>
       host,
       port,
       instance,
+      mux,
       flags,
       route,
       leadVersion,
@@ -1124,6 +1185,8 @@ interface AddOptions {
   readonly host: string;
   readonly port: number;
   readonly instance: string | null;
+  /** `--mux <name>`, already checked against this build's registry. Null when it was not given. */
+  readonly mux: string | null;
   readonly flags: Readonly<Record<string, string>>;
   readonly route: Route;
   /** The release this lead runs, bare (`1.11.1`). Read by the release route; `v`-prefixed it is the tag. */
@@ -1282,10 +1345,12 @@ async function addOverSsh(deps: Wired, runner: RemoteRunner, opts: AddOptions): 
   deps.emit({ kind: "leg-start", leg: "configure", text: "" });
   const configured = await configureLeg(deps, runner, {
     host,
+    root,
     configDir,
     peerHost,
     port,
     instance: opts.instance,
+    mux: opts.mux,
     probe,
   });
   if (configured !== null) return configured;
@@ -1560,6 +1625,87 @@ function bindIsCurrent(probe: Probe, peerHost: string, port: number): boolean {
 }
 
 /**
+ * Which multiplexer the MEMBER should drive, and how that was settled.
+ *
+ * ── WHY THE LEAD DECIDES THIS AT ALL ────────────────────────────────────────
+ * Leg 4 ends in `collie join` on the member, and every membership verb restarts the machine it ran
+ * on. That restart runs `chooseMux` (`cli/mux.ts`) with nobody at a terminal, so a member running
+ * two multiplexers refused to start: the trust store was updated, the old bridge kept running, and
+ * the operator had to set `COLLIE_MUX` there by hand (#248). The operator at a terminal is the
+ * LEAD'S operator, so the lead asks the question while they are still standing there.
+ *
+ * ── THE ORDER, AND WHY EACH STEP IS WHERE IT IS ─────────────────────────────
+ *  • `--mux` wins outright. It is the operator's own sentence, typed on this command line, and it
+ *    is written even over a name the member already carries — that is the whole point of a flag
+ *    that exists to correct one.
+ *  • A member that already names one is LEFT ALONE, and its machine is not even read. `.env` is
+ *    what a supervised bridge there reads, so a name in it is already the answer.
+ *  • Otherwise the member's own binary is asked, and the answer decides: one sighting needs no
+ *    write at all (the member's first `start` records it itself), none is a warning and not a stop,
+ *    and several is the standoff — which only a person can end.
+ *
+ * `answer` is null until that question has been asked, which is what `unread` reports: nothing on
+ * the lead settles it, so the member has to be read. Pure, and the only decision site — the leg
+ * below words it and writes it, and decides nothing.
+ */
+export type MuxChoice =
+  | { readonly kind: "flag"; readonly mux: string }
+  | { readonly kind: "kept"; readonly mux: string }
+  | { readonly kind: "auto"; readonly mux: string }
+  | { readonly kind: "picked"; readonly mux: string }
+  | { readonly kind: "none" }
+  | {
+      readonly kind: "ask";
+      readonly found: readonly MuxProbeSighting[];
+      /** The lead's own multiplexer, when it is one of `found` — said out loud before the question. */
+      readonly leadDrives: string | null;
+    }
+  | { readonly kind: "unread" };
+
+export function muxChoice(opts: {
+  readonly flag: string | null;
+  readonly envmux: string;
+  readonly answer: MuxProbeReport | null;
+  readonly leadMux: string | null;
+}): MuxChoice {
+  if (opts.flag !== null) return { kind: "flag", mux: opts.flag };
+  if (opts.envmux !== "") return { kind: "kept", mux: opts.envmux };
+  if (opts.answer === null) return { kind: "unread" };
+  const found = opts.answer.found;
+  if (found.length === 0) return { kind: "none" };
+  const only = found.length === 1 ? found[0] : undefined;
+  if (only !== undefined) return { kind: "auto", mux: only.mux };
+  const leadDrives = found.some((sighting) => sighting.mux === opts.leadMux) ? opts.leadMux : null;
+  return { kind: "ask", found, leadDrives };
+}
+
+/**
+ * How a `--mux` write reads, given what the member's own `.env` already said.
+ *
+ * A flag that REPLACES a name somebody put there is the one case an operator has to see, so the
+ * row says which name went away. A flag that merely restates the file's own value is not a change
+ * and does not pretend to be one.
+ */
+function flagHow(mux: string, envmux: string): string {
+  if (envmux === "") return "named with --mux";
+  return envmux === mux
+    ? "named with --mux, already set there"
+    : `named with --mux, replaces ${envmux} already set there`;
+}
+
+/** How many typos the member's picker forgives, matching `cli/mux.ts`'s own bound. */
+const MUX_PICKER_ATTEMPTS = 3;
+
+/** A row number, or the multiplexer's own name — both are on the screen, as in `cli/mux.ts`. */
+function matchMuxAnswer(
+  found: readonly MuxProbeSighting[],
+  answer: string,
+): MuxProbeSighting | undefined {
+  if (/^\d+$/.test(answer)) return found[Number(answer) - 1];
+  return found.find((sighting) => sighting.mux === answer.toLowerCase());
+}
+
+/**
  * The bind this run would OVERWRITE, when overwriting it is a decision the operator has to take —
  * `null` when it is not, and the write may just happen.
  *
@@ -1588,21 +1734,142 @@ export function bindOverwriteConfirmation(probe: Probe, peerHost: string, port: 
   return `${probe.envhost === "" ? peerHost : probe.envhost}:${probe.envport === "" ? port : probe.envport}`;
 }
 
-/** Leg 3, as its own step: skip, prompt, or write the peer's `.env`. */
+/**
+ * The mux half of leg 3: decide, say so, and hand back the name to write (null writes none).
+ *
+ * It runs BEFORE the bind confirmation because it is the half that can stop the run, and a run that
+ * is going to stop must not first ask about the bind. `{ code }` is that stop.
+ */
+async function decideMux(
+  deps: Wired,
+  runner: RemoteRunner,
+  o: { host: string; root: string; mux: string | null; probe: Probe },
+): Promise<{ readonly code: number } | { readonly write: string | null }> {
+  const leadMux = explicitMux(deps.ctx.env);
+  const asked = { flag: o.mux, envmux: o.probe.envmux, leadMux };
+  const known = muxChoice({ ...asked, answer: null });
+  let decision = known;
+  if (known.kind === "unread") {
+    const answered = await runner.run(muxProbeScript(o.root));
+    const transport = transportFailure(deps.io, o.host, answered);
+    if (transport !== null) return { code: transport };
+    const report = answered.code === 0 ? parseMuxProbe(answered.stdout) : null;
+    if (report === null) {
+      // The third error family. A member whose multiplexers cannot be read is one nobody may pick
+      // for, so this refuses rather than writing a guess into its `.env`.
+      deps.io.err(`error: could not read which multiplexers run on ${o.host}.`);
+      deps.io.err(`       asked:  ${o.root}/bin/collie _mux-probe`);
+      deps.io.err(
+        answered.stderr.trim() === "" ? "       got:    (nothing)" : `       got:    ${firstLine(answered.stderr)}`,
+      );
+      deps.io.err(`       Name it instead: \`collie crew add ${o.host} --mux <name>\`.`);
+      return { code: EXIT.FAIL };
+    }
+    decision = muxChoice({ ...asked, answer: report });
+  }
+  const say = (mux: string, how: string): void => {
+    deps.emit({ kind: "fact", name: "mux", value: `${mux} (${how})` });
+  };
+  switch (decision.kind) {
+    case "flag":
+      say(decision.mux, flagHow(decision.mux, o.probe.envmux));
+      return { write: decision.mux };
+    case "kept":
+      say(decision.mux, "already set there");
+      return { write: null };
+    case "auto":
+      // Nothing is written: `start` on the member records the one it found itself, endpoint and all
+      // (`muxVars`), which is a stronger write than a bare name from here.
+      say(decision.mux, "the only one running there");
+      return { write: null };
+    case "none":
+      deps.emit({
+        kind: "line",
+        // On stdout and as a caveat, exactly as the unprobeable port above it: the member is
+        // installed and will be enrolled, and this is a thing to fix there, not a failure here.
+        stream: "out",
+        tone: "warn",
+        text:
+          `warn: no multiplexer is running on ${o.host}. The restart that ends this run will refuse` +
+          " there until one runs, or until `--mux <name>` names one; the member is enrolled either way.",
+      });
+      return { write: null };
+    case "ask":
+      return await pickMux(deps, o.host, decision.found, decision.leadDrives, say);
+    default:
+      // `picked` is this leg's own answer to `ask`, and `unread` was resolved above. Neither is
+      // reachable, and neither may quietly become "write nothing".
+      throw new Error(`unreachable mux decision: ${decision.kind}`);
+  }
+}
+
+/** The standoff, ended by the operator at the lead's terminal — or refused when nobody is there. */
+async function pickMux(
+  deps: Wired,
+  host: string,
+  found: readonly MuxProbeSighting[],
+  leadDrives: string | null,
+  say: (mux: string, how: string) => void,
+): Promise<{ readonly code: number } | { readonly write: string | null }> {
+  const names = found.map((sighting) => sighting.mux).join(", ");
+  deps.io.out(`${host} runs ${String(found.length)} multiplexers:`);
+  deps.io.out("");
+  for (const [index, sighting] of found.entries()) {
+    deps.io.out(`  ${String(index + 1)}) ${sighting.mux.padEnd(7)} ${sighting.evidence}`);
+  }
+  deps.io.out("");
+  // A fact, not a default: the operator still types. A lead and a member that drive the same
+  // multiplexer is the ordinary case, and it is the one thing the lead knows that they may not.
+  if (leadDrives !== null) deps.io.out(`This lead drives ${leadDrives}. The member does not have to match.`);
+  for (let attempt = 1; attempt <= MUX_PICKER_ATTEMPTS; attempt++) {
+    const answer = await deps.prompt(`which one should Collie drive on ${host}? [1-${String(found.length)}] `);
+    if (answer === null) {
+      deps.io.err(
+        `error: ${host} runs ${String(found.length)} multiplexers (${names}), and this run is not` +
+          " interactive, so nobody can pick one.",
+      );
+      deps.io.err(
+        `       Re-run from a terminal, or name it: \`collie crew add ${host} --mux <name>\`.` +
+          " The member is installed and unchanged otherwise.",
+      );
+      return { code: EXIT.STATE };
+    }
+    const chosen = matchMuxAnswer(found, answer.trim());
+    if (chosen !== undefined) {
+      say(chosen.mux, "you picked it");
+      return { write: chosen.mux };
+    }
+    if (attempt < MUX_PICKER_ATTEMPTS) deps.io.err(`"${answer.trim()}" is not one of them.`);
+  }
+  deps.io.err(`error: no multiplexer was picked for ${host}, so its .env was not written.`);
+  deps.io.err(`       Re-run, or name it: \`collie crew add ${host} --mux <name>\`.`);
+  return { code: EXIT.STATE };
+}
+
+/** Leg 3, as its own step: decide the multiplexer, then skip, prompt, or write the peer's `.env`. */
 async function configureLeg(
   deps: Wired,
   runner: RemoteRunner,
   o: {
     host: string;
+    root: string;
     configDir: string;
     peerHost: string;
     port: number;
     instance: string | null;
+    mux: string | null;
     probe: Probe;
   },
 ): Promise<number | null> {
   const { probe } = o;
-  if (bindIsCurrent(probe, o.peerHost, o.port)) {
+  // The mux decision FIRST: it is the half that can stop the run.
+  const decided = await decideMux(deps, runner, { host: o.host, root: o.root, mux: o.mux, probe });
+  if ("code" in decided) return decided.code;
+  const writeMux = decided.write;
+  const bindCurrent = bindIsCurrent(probe, o.peerHost, o.port);
+  // The leg writes when EITHER half has something to write. A bind that is already right used to
+  // skip the whole leg, which would now skip a `COLLIE_MUX` the operator has just chosen.
+  if (bindCurrent && writeMux === null) {
     deps.emit({ kind: "leg-done", leg: "configure", ok: true, detail: `already ${o.peerHost}:${o.port}` });
     return null;
   }
@@ -1627,7 +1894,13 @@ async function configureLeg(
     });
   }
   const written = await runner.run(
-    configureScript({ configDir: o.configDir, host: o.peerHost, port: o.port, instance: o.instance }),
+    configureScript({
+      configDir: o.configDir,
+      host: o.peerHost,
+      port: o.port,
+      mux: writeMux,
+      instance: o.instance,
+    }),
   );
   const transport = transportFailure(deps.io, o.host, written);
   if (transport !== null) return transport;
@@ -1635,11 +1908,17 @@ async function configureLeg(
     deps.io.err(`error: could not write the peer's .env — ${firstLine(written.stderr)}`);
     return EXIT.FAIL;
   }
+  // What was WRITTEN, named: the leg now has two halves, and a re-run that only moved the
+  // multiplexer must not report a bind it left alone.
+  const wrote = [
+    ...(bindCurrent ? [] : [`${o.peerHost}:${o.port}`]),
+    ...(writeMux === null ? [] : [`COLLIE_MUX=${writeMux}`]),
+  ];
   deps.emit({
     kind: "leg-done",
     leg: "configure",
     ok: true,
-    detail: `${o.peerHost}:${o.port} written to ${o.configDir}/.env`,
+    detail: `${wrote.join(" and ")} written to ${o.configDir}/.env`,
   });
   // ADR 0013: a peer publishes nothing. Said out loud, because the absence of a step is invisible.
   deps.emit({

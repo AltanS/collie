@@ -31,13 +31,15 @@ say sha256 "$SHA"
 CFG=""
 if [ -n "$HERDR" ]; then CFG=$("$HERDR" plugin config-dir 'herdr.collie' 2>/dev/null | head -n 1 | tr -d '\r') || CFG=""; fi
 say configdir "$CFG"
-ENVHOST=""; ENVPORT=""
+ENVHOST=""; ENVPORT=""; ENVMUX=""
 if [ -n "$CFG" ] && [ -f "$CFG/.env" ]; then
   ENVHOST=$(sed -n "s/^[[:space:]]*\(export[[:space:]][[:space:]]*\)\{0,1\}COLLIE_HOST=//p" "$CFG/.env" | tail -n 1 | tr -d "\"'\r")
   ENVPORT=$(sed -n "s/^[[:space:]]*\(export[[:space:]][[:space:]]*\)\{0,1\}COLLIE_PORT=//p" "$CFG/.env" | tail -n 1 | tr -d "\"'\r")
+  ENVMUX=$(sed -n "s/^[[:space:]]*\(export[[:space:]][[:space:]]*\)\{0,1\}COLLIE_MUX=//p" "$CFG/.env" | tail -n 1 | tr -d "\"'\r")
 fi
 say envhost "$ENVHOST"
 say envport "$ENVPORT"
+say envmux "$ENVMUX"
 CHECKOUT=""
 for _d in '/srv/collie' '/srv/collie/current'; do
   _d=${_d%/}

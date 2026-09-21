@@ -4,6 +4,7 @@ import { parseEnvFile } from "./context.ts";
 import { capture, context, CONFIG, fakeExec, fakeFiles, HOME, type Scripted } from "./fakes.ts";
 import { EXIT } from "./io.ts";
 import { chooseMux, ensureMuxChosen, probeMuxes, type MuxSettleDeps } from "./mux.ts";
+import { cmdMuxProbe, muxProbeReport, parseMuxProbe } from "./mux-probe.ts";
 
 // The first-run multiplexer question (M14/03), driven against the same two fakes every verb suite
 // uses. Two properties are worth stating before the cases:
@@ -310,5 +311,65 @@ describe("the picker", () => {
     const written = h.dotenv() ?? "";
     expect(written).toContain("# mine");
     expect(parseEnvFile(written)).toEqual({ COLLIE_PORT: "8788", COLLIE_MUX: "herdr" });
+  });
+});
+
+// ── `collie _mux-probe` (#248) ───────────────────────────────────────────────
+// The hidden verb `crew add` runs on a member it has just installed, to learn what runs there
+// without re-implementing this probe in POSIX shell (`cli/mux-probe.ts`).
+
+describe("the _mux-probe verb", () => {
+  test("no multiplexer running is an empty list and exit 0, never a refusal", () => {
+    const h = host();
+    expect(cmdMuxProbe({ ...h.deps, io: h.io })).toBe(EXIT.OK);
+    expect(parseMuxProbe(h.io.stdout.join("\n"))).toEqual({ explicit: null, found: [] });
+  });
+
+  test("one sighting carries the adapter's own evidence, and no endpoint", () => {
+    const h = host({ files: { [SOCKET]: "" } });
+    expect(cmdMuxProbe({ ...h.deps, io: h.io })).toBe(EXIT.OK);
+    expect(parseMuxProbe(h.io.stdout.join("\n"))).toEqual({
+      explicit: null,
+      found: [{ mux: "herdr", evidence: `a Herdr socket at ${SOCKET}` }],
+    });
+  });
+
+  test("two sightings come back in registry order — the standoff the lead has to end", () => {
+    const h = host({ files: { [SOCKET]: "", [TMUX_BIN]: "" }, answers: TMUX_RUNNING });
+    expect(cmdMuxProbe({ ...h.deps, io: h.io })).toBe(EXIT.OK);
+    expect(muxProbeReport(h.deps).found.map((sighting) => sighting.mux)).toEqual(["herdr", "tmux"]);
+  });
+
+  test("an explicit COLLIE_MUX is REPORTED, and the probe still runs beside it", () => {
+    const h = host({ env: { COLLIE_MUX: "tmux" }, files: { [SOCKET]: "" } });
+    expect(cmdMuxProbe({ ...h.deps, io: h.io })).toBe(EXIT.OK);
+    expect(parseMuxProbe(h.io.stdout.join("\n"))).toEqual({
+      explicit: "tmux",
+      found: [{ mux: "herdr", evidence: `a Herdr socket at ${SOCKET}` }],
+    });
+  });
+
+  test("the verb prints ONE line, and that line is the whole document", () => {
+    const h = host({ files: { [SOCKET]: "" } });
+    cmdMuxProbe({ ...h.deps, io: h.io });
+    expect(h.io.stdout).toHaveLength(1);
+    expect(h.io.stderr).toEqual([]);
+  });
+
+  test("a reader refuses a document it cannot read whole, rather than half-reading it", () => {
+    expect(parseMuxProbe("")).toBeNull();
+    expect(parseMuxProbe("command not found: _mux-probe")).toBeNull();
+    expect(parseMuxProbe('{"explicit":null}')).toBeNull();
+    // A row with no name is not a sighting with a missing field.
+    expect(parseMuxProbe('{"explicit":null,"found":[{"evidence":"x"}]}')).toBeNull();
+    expect(parseMuxProbe('{"explicit":null,"found":[{"mux":"tmux"}]}')).toEqual({
+      explicit: null,
+      found: [{ mux: "tmux", evidence: "" }],
+    });
+    // Noise around the object is ignored: the far side's own shell may have said something first.
+    expect(parseMuxProbe('warning: something\n{"explicit":"herdr","found":[]}\n')).toEqual({
+      explicit: "herdr",
+      found: [],
+    });
   });
 });
