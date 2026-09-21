@@ -23,6 +23,7 @@ import { clearStatus, setStatus } from "@/lib/status";
 import { setAutoZenEnabled, setZenEnabled, __resetZen } from "@/lib/zen";
 import { setStripsCollapsed, __resetStripsCollapsed } from "@/lib/strips-collapsed";
 import { __resetOperatorCommands } from "@/lib/operator-config";
+import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import { submitPromptOption } from "@/lib/prompt-action";
 import { submitWizardKeys } from "@/lib/wizard-action";
 import { fixtureAgents, fixtureShellPanes, fixtureTabs } from "@/test/handlers";
@@ -587,19 +588,81 @@ describe("AgentChat — raw-terminal escape hatch", () => {
     expect(screen.getByText(/☐ Focus area/)).toBeInTheDocument();
   });
 
-  it("keeps native rendering for muse with raw terminal on — the pref bypasses grammars, not display", () => {
+  // The per-pane override reaches agents that DO have adapters — codex is the one #241 was opened
+  // about — so the escape hatch has to keep the two axes apart. Opting a pane out of inversion is a
+  // DISPLAY choice; it must not hand the pane's grammars back after raw terminal turned them off.
+  // The control case first, so the assertion below is not vacuous: with grammars on, codex's Tier-1
+  // chrome strip eats the composer and status rows.
+  it("strips codex chrome from the mirror by default (grammars on)", () => {
+    const agent = { ...fixtureAgents[0]!, agent: "codex" };
+    const { container } = renderChat({ agent, agents: [agent], text: CODEX_CHROME_TEXT });
+    // Scoped to the MIRROR: the status row is re-surfaced natively in the strip, so a document-wide
+    // query would find it either way and prove nothing.
+    expect(container.querySelector("pre")!.textContent).not.toContain("Context 90% left");
+  });
+
+  it("opting a codex pane into native rendering does not re-enable its grammars under raw terminal", () => {
     localStorage.setItem(
       "collie:display-prefs:v4",
       JSON.stringify({ wrap: true, fontSize: 11, rawTerminal: true }),
     );
-    const muse = { ...fixtureAgents[0]!, agent: "muse" };
-    const { container } = renderChat({ agent: muse, agents: [muse], text: "body\n" });
+    const agent = { ...fixtureAgents[0]!, agent: "codex" };
+    // renderChat passes no scope, so the override is stored under the undefined scope this mounts in.
+    setPaneMirrorOverride(undefined, agent.paneId, true);
+    const { container } = renderChat({ agent, agents: [agent], text: CODEX_CHROME_TEXT });
+
+    // Raw terminal still means raw: the chrome is mirrored verbatim…
+    expect(container.querySelector("pre")!.textContent).toContain("Context 90% left");
+    // …while the pane still honours the override and renders on the native ground.
+    expect(container.querySelector("pre")!.className).toContain("bg-[#fffbf8]");
+  });
+
+  // The switch writes through `setMirrorNative`, which CLEARS rather than pins when the operator
+  // picks the agent's own answer. That is what keeps the 32-entry bound meaningful (only real
+  // decisions are stored) and stops a Muse pane freezing on today's answer if .adr/0047's set
+  // changes under it later.
+  it("stores an override that contradicts the agent, and clears it when the agent's own answer is picked back", async () => {
+    const user = userEvent.setup();
+    const agent = { ...fixtureAgents[0]!, agent: "muse" };
+    renderChat({ agent, agents: [agent], text: "body\n" });
+
+    await user.click(screen.getByRole("button", { name: "Display settings" }));
+    const toggle = screen.getByRole("switch", { name: "Render this pane natively" });
+    // Muse renders natively already, so the switch starts on with nothing stored.
+    expect(toggle).toBeChecked();
+    expect(paneMirrorOverride(undefined, agent.paneId)).toBeUndefined();
+
+    await user.click(toggle);
+    expect(paneMirrorOverride(undefined, agent.paneId)).toBe(false);
+
+    await user.click(toggle);
+    expect(paneMirrorOverride(undefined, agent.paneId)).toBeUndefined();
+  });
+
+  it.each([["muse"]])("keeps native rendering for %s with raw terminal on — the pref bypasses grammars, not display", (agentName) => {
+    localStorage.setItem(
+      "collie:display-prefs:v4",
+      JSON.stringify({ wrap: true, fontSize: 11, rawTerminal: true }),
+    );
+    const agent = { ...fixtureAgents[0]!, agent: agentName };
+    const { container } = renderChat({ agent, agents: [agent], text: "body\n" });
     expect(container.querySelector("pre")!.className).toContain("terminal-muse");
   });
 });
 
 // A minimal permission dialog at the buffer tail — enough for the REAL detector (not a mock) to
 // lift it into prompt-select buttons inside AgentChat's mirror.
+// Codex's Tier-1 chrome: the `\u203a ` composer row and the dot-separated status row at the tail.
+// Plain text on purpose — STATUS_ROW's text acceptor matches a row carrying `Context N% left`, so
+// this needs no SGR to be recognised as chrome.
+const CODEX_CHROME_TEXT = [
+  "some codex output",
+  "",
+  "\u203a a half typed draft",
+  "",
+  "  gpt-5 \u00b7 ~/code/collie \u00b7 Context 90% left",
+].join("\n");
+
 const MENU_TEXT = [
   "Do you want to create hello.txt?",
   " ❯ 1. Yes",

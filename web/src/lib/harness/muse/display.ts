@@ -7,8 +7,23 @@ import type { StyledLine } from "../../blocks";
  *  so a second agent joins by adding one row here. Exact strings, like the registry. */
 const NATIVE_MIRROR_AGENTS: ReadonlySet<string> = new Set(["muse"]);
 
-export function rendersNativeMirror(agent?: string): boolean {
+export function rendersNativeMirror(agent?: string, paneOverride?: boolean): boolean {
+  // The per-pane override wins in BOTH directions, which is the point of ADR 0002's "don't invert
+  // this one": an operator looking at the pane can always see which way its colours point, and this
+  // predicate cannot. `false` therefore forces the inverting mirror back on even for a native agent
+  // (a Muse pane on some future light theme), and `undefined` — the normal case — leaves the agent
+  // bit to decide. lib/mirror-invert.ts owns where the value is stored; this stays pure.
+  if (paneOverride !== undefined) return paneOverride;
   return agent !== undefined && NATIVE_MIRROR_AGENTS.has(agent);
+}
+
+/** Row-chrome trim is Muse's grammar, not the mirror's: only Muse pads every row to full
+ *  width and opens content rows with a 2-column gutter, so only Muse panes run the trim.
+ *  Any other native agent keeps byte-faithful rows and shares only the bright-foreground
+ *  decoration: a styled 2-space lead elsewhere is likelier code indent than chrome, and
+ *  stripping it would remove visible text in either theme. */
+export function trimsRowChrome(agent?: string): boolean {
+  return agent === "muse";
 }
 
 // Muse's palette, observed from live PTY captures (issue #220), per background answer:
@@ -20,6 +35,32 @@ export function rendersNativeMirror(agent?: string): boolean {
 //   none — body rgb(111,114,122), secondary rgb(94,97,104), hints rgb(75,77,82).
 //     Older Herdr answered neither query (HERDR_API.md's 2026-07-29 probe predates the
 //     write_pty wiring); its panes carry this dark fallback instead.
+//
+// OpenCode does NOT get the native-mirror bit, measured both background answers as 0047
+// requires. Its default theme (`opencode`, the TUI's own fallback: `theme ?? "opencode"`)
+// carries dark AND light variants and picks by the background the terminal reports, so the
+// answer that decides this is the DARK one: that is what a dark Herdr pane emits while
+// Collie is light, and the two themes are independent.
+//
+// Captured from opencode 1.18.31 under a pty answering OSC 10/11, with isolated XDG dirs so
+// no persisted theme applies, 100 SGR truecolor sequences per answer. WCAG against the
+// native #fffbf8 ground, raw versus what inversion renders today:
+//
+//   dark answer  — body  rgb(238,238,238)  1.13:1 raw / 17.32:1 inverted
+//                  white rgb(255,255,255)  1.03:1 raw / 19.26:1 inverted
+//                  link  rgb(92,156,245)   2.71:1 raw /  4.43:1 inverted
+//                  muted rgb(128,128,128)  3.84:1 raw /  3.67:1 inverted
+//   light answer — body  rgb(26,26,26)    16.91:1 raw /  1.16:1 inverted
+//
+// So opencode is Muse's inverse. 0047 could grant Muse the bit because every Muse answer is
+// mid-tone and reads raw in all three (dark row 3.0→4.4, 2.4→5.7, 1.9→7.8). opencode's dark
+// answer is a conventional near-white-on-near-black theme: raw on a light ground its body
+// vanishes at 1.13:1, while today's inversion carries it at 17.32:1. Here the inversion is
+// preserving this agent's contrast, not spending it.
+//
+// Membership in this set is a fact about the AGENT, so it cannot say "only when this pane
+// happens to be light". The seam that can is the per-pane "don't invert this one" ADR 0002
+// reserves; that is where an opencode user on a light theme should be served.
 //
 
 // Every tone but near-white sits at relative luminance 0.44 or below, while near-white starts

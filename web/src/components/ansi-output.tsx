@@ -123,6 +123,13 @@ export interface AnsiOutputProps {
   /** Disable the prompt-select/wizard/preview/multi-select/menu buttons (read-only / gone pane). */
   promptDisabled?: boolean;
   /**
+   * Per-pane override of the light-theme inversion (lib/mirror-invert.ts), resolved by the caller
+   * because this component is presentational and never reads storage. `true` renders natively even
+   * for an inverting agent, `false` forces the inverting mirror back on, and `undefined` — the
+   * normal case — leaves the agent bit from .adr/0047 to decide.
+   */
+  nativeMirror?: boolean;
+  /**
    * Hide this many screen rows off the TOP of the mirror. Default 0.
    *
    * Purely presentational and applied AFTER the grammars have run over the whole screen, so no
@@ -173,8 +180,13 @@ const NO_BLOCK_RUNS: readonly (readonly TableRun[])[] = Object.freeze([]);
 const LINK_CLASS =
   "underline decoration-1 underline-offset-2 break-all cursor-pointer py-[0.35em]";
 
-function preClass(wrap: boolean, className?: string, agent?: string): string {
-  const native = rendersNativeMirror(agent);
+function preClass(
+  wrap: boolean,
+  className?: string,
+  agent?: string,
+  nativeMirror?: boolean,
+): string {
+  const native = rendersNativeMirror(agent, nativeMirror);
   return cn(
     "m-0 font-mono leading-[1.25] tracking-normal text-foreground [font-variant-ligatures:none]",
     native ? MUSE_MIRROR : MIRROR_SPACE,
@@ -309,6 +321,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   onMatchCount,
   agent,
   grammars = true,
+  nativeMirror,
   onPromptAction,
   onWizardAction,
   onPreviewAction,
@@ -324,8 +337,8 @@ export const AnsiOutput = memo(function AnsiOutput({
   useLocale();
   const segments = useMemo(() => parseAnsi(text), [text]);
   const blocks = useMemo(
-    () => buildBlocks(splitLines(segments), { agent, grammars }),
-    [segments, agent, grammars],
+    () => buildBlocks(splitLines(segments), { agent, grammars, nativeMirror }),
+    [segments, agent, grammars, nativeMirror],
   );
 
   const rawBlocks = useMemo(
@@ -512,7 +525,7 @@ export const AnsiOutput = memo(function AnsiOutput({
             // fully-specified yellow as-is: re-applying the filter there would blue-shift it in
             // light and no-op in dark. Correct in both themes without a theme branch.
             isCurrent
-              ? cn(rendersNativeMirror(agent) ? null : MIRROR_INVERT, "bg-yellow-400 text-black")
+              ? cn(rendersNativeMirror(agent, nativeMirror) ? null : MIRROR_INVERT, "bg-yellow-400 text-black")
               : "bg-yellow-400/30",
           )}
         >
@@ -647,7 +660,7 @@ export const AnsiOutput = memo(function AnsiOutput({
   return (
     <>
       {rawBlocks.length > 0 && (
-        <pre className={preClass(wrap, className, agent)} style={{ fontSize: `${fontSize}px` }}>
+        <pre className={preClass(wrap, className, agent, nativeMirror)} style={{ fontSize: `${fontSize}px` }}>
           {rawBlocks.map(renderBlock)}
         </pre>
       )}

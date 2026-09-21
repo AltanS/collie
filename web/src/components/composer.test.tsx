@@ -73,6 +73,8 @@ function renderComposer(overrides: Partial<ComponentProps<typeof Composer>> = {}
     stepFontSize: vi.fn(),
     setRawTerminal: vi.fn(),
     setTapToFocus: vi.fn(),
+    mirrorNative: false,
+    setMirrorNative: vi.fn(),
     setExpandClippedReply: vi.fn(),
     onSent: vi.fn(),
     ...overrides,
@@ -125,6 +127,8 @@ function renderComposerWithStatus(
     stepFontSize: vi.fn(),
     setRawTerminal: vi.fn(),
     setTapToFocus: vi.fn(),
+    mirrorNative: false,
+    setMirrorNative: vi.fn(),
     setExpandClippedReply: vi.fn(),
     onSent: vi.fn(),
     ...overrides,
@@ -501,6 +505,8 @@ describe("Composer — send", () => {
               stepFontSize={vi.fn()}
               setRawTerminal={vi.fn()}
               setTapToFocus={vi.fn()}
+              mirrorNative={false}
+              setMirrorNative={vi.fn()}
               setExpandClippedReply={vi.fn()}
               onSent={vi.fn()}
             />
@@ -595,6 +601,8 @@ describe("Composer — send", () => {
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),
       setTapToFocus: vi.fn(),
+    mirrorNative: false,
+    setMirrorNative: vi.fn(),
       setExpandClippedReply: vi.fn(),
       onSent: vi.fn(),
     };
@@ -692,6 +700,8 @@ describe("Composer — typing into the terminal", () => {
             stepFontSize={vi.fn()}
             setRawTerminal={vi.fn()}
             setTapToFocus={vi.fn()}
+              mirrorNative={false}
+              setMirrorNative={vi.fn()}
             setExpandClippedReply={vi.fn()}
             onSent={vi.fn()}
           />
@@ -825,6 +835,8 @@ describe("Composer — typing into the terminal", () => {
             stepFontSize={vi.fn()}
             setRawTerminal={vi.fn()}
             setTapToFocus={vi.fn()}
+              mirrorNative={false}
+              setMirrorNative={vi.fn()}
             setExpandClippedReply={vi.fn()}
             onSent={vi.fn()}
           />
@@ -1017,6 +1029,8 @@ describe("Composer — typing into the terminal", () => {
             stepFontSize={vi.fn()}
             setRawTerminal={vi.fn()}
             setTapToFocus={vi.fn()}
+              mirrorNative={false}
+              setMirrorNative={vi.fn()}
             setExpandClippedReply={vi.fn()}
             onSent={vi.fn()}
           />
@@ -1533,6 +1547,8 @@ function renderDraftHarness(overrides: Partial<ComponentProps<typeof Composer>> 
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),
       setTapToFocus: vi.fn(),
+    mirrorNative: false,
+    setMirrorNative: vi.fn(),
       setExpandClippedReply: vi.fn(),
       onSent: vi.fn(),
       ...rest,
@@ -1805,6 +1821,8 @@ describe("Composer — in-flight echo suppression (match-last-sent)", () => {
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),
       setTapToFocus: vi.fn(),
+    mirrorNative: false,
+    setMirrorNative: vi.fn(),
       setExpandClippedReply: vi.fn(),
       onSent: vi.fn(),
     };
@@ -2444,6 +2462,8 @@ describe("Composer — draft persistence", () => {
       stepFontSize: vi.fn(),
       setRawTerminal: vi.fn(),
       setTapToFocus: vi.fn(),
+    mirrorNative: false,
+    setMirrorNative: vi.fn(),
       setExpandClippedReply: vi.fn(),
       onSent: vi.fn(),
       ...overrides,

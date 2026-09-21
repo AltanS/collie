@@ -389,7 +389,9 @@ describe("buildBlocks — Claude grammars (ctx.agent === 'claude')", () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0]!.kind).toBe("raw");
     expect(blocks.some((b) => b.kind === "prompt-select")).toBe(false); // NO menu lifting without an adapter
-    expect(blocks[0]!.lines).toBe(lines); // untouched — same reference
+    // opencode is not a native mirror, so no display pass runs here either: the lines come
+    // back exactly as they went in, and the light-theme inversion does the work downstream.
+    expect(blocks[0]!.lines.map(lineText)).toEqual(lines.map(lineText));
   });
 
   // The hasBlockGrammar gate is provably per-adapter: the SAME menu-shaped buffer that Claude lifts

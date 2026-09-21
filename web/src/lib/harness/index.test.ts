@@ -12,7 +12,7 @@ function linesOf(ansi: string): StyledLine[] {
   return splitLines(parseAnsi(ansi));
 }
 
-describe("buildBlocks muse display pass", () => {
+describe("buildBlocks native display pass", () => {
   it("marks bright foregrounds on muse panes", () => {
     const [block] = buildBlocks(linesOf(`${DARK_BODY}\n${BRIGHT}`), { agent: "muse" });
     expect(block!.kind).toBe("raw");
@@ -38,7 +38,7 @@ describe("buildBlocks muse display pass", () => {
     }
   });
 
-  it("marks nothing on adapter panes: the pass is muse-only", () => {
+  it("marks nothing on adapter panes: adapters keep the inverted mirror", () => {
     const lines = linesOf(BRIGHT);
     const [block] = buildBlocks(lines, { agent: "codex" });
     expect(block!.kind).toBe("raw");
@@ -58,11 +58,28 @@ describe("buildBlocks muse display pass", () => {
     }
   });
 
-  it("trims nothing on non-muse panes: row text stays byte-faithful", () => {
+  it.each([["codex"], ["opencode"]])(
+    "trims nothing on %s panes: row text stays byte-faithful",
+    (agent) => {
+      const gutter = `${ESC}[38;2;170;171;175m  ${ESC}[0m`;
+      const lines = linesOf(`${gutter}${DARK_BODY}   `);
+      const [block] = buildBlocks(lines, { agent });
+      expect(block!.kind).toBe("raw");
+      if (block!.kind === "raw") expect(block.lines).toBe(lines);
+    },
+  );
+
+  it("leaves an opencode pane to the inverting mirror: no trim, no marks", () => {
+    // opencode is not a native mirror (see display.ts): on its dark background answer the
+    // body is rgb(238,238,238), 1.13:1 raw on the native ground against 17.32:1 inverted.
+    // So its lines come back untouched and the inversion filter does the work.
     const gutter = `${ESC}[38;2;170;171;175m  ${ESC}[0m`;
-    const lines = linesOf(`${gutter}${DARK_BODY}   `);
-    const [block] = buildBlocks(lines, { agent: "codex" });
+    const lines = linesOf(`${gutter}${BRIGHT}`);
+    const [block] = buildBlocks(lines, { agent: "opencode" });
     expect(block!.kind).toBe("raw");
-    if (block!.kind === "raw") expect(block.lines).toBe(lines);
+    if (block!.kind === "raw") {
+      expect(block.lines).toBe(lines);
+      expect(block.lines[0]!.segments[1]).not.toHaveProperty("lightDarkFg", true);
+    }
   });
 });

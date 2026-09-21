@@ -26,6 +26,12 @@ interface DisplayPrefsContentProps {
   stepFontSize: (delta: number) => void;
   setRawTerminal: (raw: boolean) => void;
   setTapToFocus: (tapToFocus: boolean) => void;
+  /** Effective native rendering for THIS pane: the agent bit from .adr/0047 as overridden by the
+   *  operator (lib/mirror-invert.ts). */
+  mirrorNative: boolean;
+  /** Choose native rendering for this pane. Setting it back to the agent's own answer clears the
+   *  override rather than pinning it, so a later change to that answer is still followed. */
+  setMirrorNative: (native: boolean) => void;
   setExpandClippedReply: (expandClippedReply: boolean) => void;
 }
 
@@ -61,6 +67,8 @@ export function DisplayPrefsContent({
   stepFontSize,
   setRawTerminal,
   setTapToFocus,
+  mirrorNative,
+  setMirrorNative,
   setExpandClippedReply,
 }: DisplayPrefsContentProps) {
   useLocale();
@@ -115,6 +123,19 @@ export function DisplayPrefsContent({
             checked={prefs.rawTerminal}
             onCheckedChange={setRawTerminal}
             aria-label={t("settings.display.rawTerminal.label")}
+          />
+        }
+      />
+      <Row
+        label={t("settings.display.noInvert.label")}
+        hint={t("settings.display.noInvert.hint")}
+        htmlFor="pref-no-invert"
+        control={
+          <Switch
+            id="pref-no-invert"
+            checked={mirrorNative}
+            onCheckedChange={setMirrorNative}
+            aria-label={t("settings.display.noInvert.label")}
           />
         }
       />

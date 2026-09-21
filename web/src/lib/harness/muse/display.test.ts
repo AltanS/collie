@@ -8,7 +8,9 @@ import {
   BRIGHT_FG_LUMINANCE,
   decorateMuseDisplay,
   luminance,
+  rendersNativeMirror,
   trimMuseRowChrome,
+  trimsRowChrome,
 } from "./display";
 
 const ESC = String.fromCharCode(27);
@@ -39,6 +41,64 @@ function linesOf(ansi: string): StyledLine[] {
 function marked(lines: StyledLine[]): StyledLine[] {
   return lines.filter((line) => line.segments.some((segment) => segment.lightDarkFg));
 }
+
+describe("rendersNativeMirror", () => {
+  it.each([["muse"]])("renders %s natively: no light-theme inversion", (agent) => {
+    expect(rendersNativeMirror(agent)).toBe(true);
+  });
+
+  it.each([
+    ["absent agent", undefined],
+    ["shell pane", "shell"],
+    ["codex", "codex"],
+    ["claude", "claude"],
+    // opencode keeps inverting. Its default theme answers the terminal background, and on the
+    // dark answer (a dark Herdr pane viewed in a light Collie) the body is rgb(238,238,238):
+    // 1.13:1 raw on the native ground against 17.32:1 inverted. Unlike Muse, inversion is
+    // preserving this agent's contrast, not spending it. A light-themed opencode belongs
+    // behind the per-pane override ADR 0002 reserves, not in an agent-wide set.
+    ["opencode", "opencode"],
+    // Near-miss strings must not engage, same exactness as the adapter registry.
+    ["capitalised Muse", "Muse"],
+    ["suffixed muse-code", "muse-code"],
+    ["capitalised Opencode", "Opencode"],
+    ["trailing space", "opencode "],
+  ])("keeps inverting %s", (_label, agent) => {
+    expect(rendersNativeMirror(agent)).toBe(false);
+  });
+
+  // The per-pane override (lib/mirror-invert.ts) is what serves an agent whose colours point the
+  // other way from its agent-wide answer — opencode on a light theme, and the same symptom reported
+  // on codex. It wins in BOTH directions, because only the operator can see which way a given pane
+  // actually points.
+  it("lets a pane opt IN to native rendering against the agent bit", () => {
+    expect(rendersNativeMirror("opencode", true)).toBe(true);
+    expect(rendersNativeMirror("codex", true)).toBe(true);
+    expect(rendersNativeMirror(undefined, true)).toBe(true);
+  });
+
+  it("lets a pane opt OUT of native rendering, even for a native agent", () => {
+    expect(rendersNativeMirror("muse", false)).toBe(false);
+  });
+
+  it("falls back to the agent bit when the pane has no opinion", () => {
+    expect(rendersNativeMirror("muse", undefined)).toBe(true);
+    expect(rendersNativeMirror("opencode", undefined)).toBe(false);
+  });
+});
+
+describe("trimsRowChrome", () => {
+  it("trims Muse panes: the gutter shape was measured there", () => {
+    expect(trimsRowChrome("muse")).toBe(true);
+  });
+
+  it.each([[undefined], ["opencode"], ["codex"], ["shell"]])(
+    "leaves %s rows byte-faithful: a styled lead elsewhere is content, not chrome",
+    (agent) => {
+      expect(trimsRowChrome(agent)).toBe(false);
+    },
+  );
+});
 
 describe("decorateMuseDisplay", () => {
   it("marks near-white foregrounds, which a native light mirror would lose on white", () => {

@@ -208,6 +208,9 @@ export const en = {
   "settings.display.rawTerminal.label": "Raw terminal",
   "settings.display.rawTerminal.hint":
     "Shows the plain mirror — no tappable prompt buttons, no chrome or status strips. Use it when a dialog renders wrong and you want to drive it by hand from Keys.",
+  "settings.display.noInvert.label": "Render this pane natively",
+  "settings.display.noInvert.hint":
+    "Skips the light-theme inversion for this pane only. Turn it on when an agent is on a LIGHT theme and the mirror renders it dark; leave it off when the pane looks right.",
   "settings.display.textSize.label": "Text size",
   "settings.display.textSize.decrease": "Decrease font size",
   "settings.display.textSize.increase": "Increase font size",

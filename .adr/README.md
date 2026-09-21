@@ -76,7 +76,7 @@ the pointer, it was a supersede.
 | # | Decision | Status |
 | --- | --- | --- |
 | [0001](./0001-one-managed-front-door.md) | Collie manages exactly one front door | Accepted |
-| [0002](./0002-invert-the-light-terminal-mirror.md) | The light terminal mirror is inverted, not re-themed | Accepted |
+| [0002](./0002-invert-the-light-terminal-mirror.md) | The light terminal mirror is inverted, not re-themed (addendum 2026-09-21: a per-pane override lands) | Accepted |
 | [0003](./0003-one-shared-seen.md) | "Seen" is one shared fact, and only Collie's own reads count | Accepted |
 | [0004](./0004-the-statusline-run-is-bounded.md) | The statusline run is bounded, but the bound guards less than it looks | Amended in scope by 0048 |
 | [0005](./0005-a-composed-key-queue-never-outlives-its-dock.md) | A composed key queue never outlives its dock | Accepted |

@@ -156,3 +156,33 @@ be keyed to let that layer on later.
   restores the premise that a re-themed palette can work.
 - **A measured scroll regression on a mid-range phone** — which reopens it in favour of keeping the
   mirror dark, not of re-theming it.
+
+## Addendum — 2026-09-21: a per-pane override lands
+
+Status is unchanged: **Accepted**. Nothing above this line is rewritten. This addendum records the
+fix this ADR reserved: a per-pane "don't invert this one" override, built by @waynehoover in PR
+#241, reported as issue #240.
+
+The override lives in `web/src/lib/mirror-invert.ts`. It stores one localStorage entry per pane,
+keyed by scope and pane id, the same shape drafts use. The value is tri-state: an absent entry
+means no opinion, and the agent bit from ADR 0047 decides. Storage is bounded to 32 decisions, and
+past that bound the oldest entry is evicted. A corrupt entry is dropped rather than kept, so a pane
+simply falls back to the agent bit on the next read.
+
+`rendersNativeMirror(agent, paneOverride)` reads this override, and it wins in both directions: it
+can force the inverting mirror back on for a native agent, or force it off for one that is not.
+Picking the agent's own answer clears the entry instead of pinning it, so "no entry" stays the one
+spelling of "let the agent bit decide."
+
+The switch sits in the display sheet of the pane, so it is set from inside the pane it acts on.
+
+Why per pane, and not per agent: opencode was measured for #241 in both background answers, and it
+is Muse's inverse. Its dark answer body sits at 1.13:1 raw on the light ground and 17.32:1
+inverted; its light answer body sits at 16.91:1 raw and 1.16:1 inverted. Muse is mid-tone in every
+answer and can take one agent-wide bit; opencode wants the opposite answer depending on its own
+theme, so an agent-keyed bit cannot express it. The figures are recorded in
+`web/src/lib/harness/muse/display.ts`.
+
+The row-chrome trim was split off the native-mirror bit into its own predicate, `trimsRowChrome`,
+and stays Muse-only, because it removes visible bytes and no other agent's rows share Muse's chrome
+shape.

@@ -192,6 +192,9 @@ export const es: Dictionary = {
   "settings.display.rawTerminal.label": "Terminal sin formato",
   "settings.display.rawTerminal.hint":
     "Muestra la sesion directa sin botones de interfaz ni barras. Util si un dialogo falla y requiere control manual mediante Teclas.",
+  "settings.display.noInvert.label": "Mostrar este panel de forma nativa",
+  "settings.display.noInvert.hint":
+    "Omite la inversión del tema claro solo en este panel. Actívalo cuando un agente use un tema CLARO y el espejo lo muestre oscuro; déjalo desactivado si el panel se ve bien.",
   "settings.display.textSize.label": "Tamano del texto",
   "settings.display.textSize.decrease": "Reducir fuente",
   "settings.display.textSize.increase": "Aumentar fuente",

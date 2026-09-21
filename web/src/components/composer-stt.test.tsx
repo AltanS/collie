@@ -91,6 +91,8 @@ function baseProps(
     stepFontSize: vi.fn(),
     setRawTerminal: vi.fn(),
     setTapToFocus: vi.fn(),
+    mirrorNative: false,
+    setMirrorNative: vi.fn(),
     setExpandClippedReply: vi.fn(),
     onSent: vi.fn(),
     ...overrides,

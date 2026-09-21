@@ -86,6 +86,7 @@ import type {
   PromptModel,
   WizardModel,
 } from "@/lib/blocks";
+import { paneMirrorOverride, setPaneMirrorOverride } from "@/lib/mirror-invert";
 import type { Scope } from "@/lib/scope";
 
 interface AgentChatProps {
@@ -203,6 +204,31 @@ export function AgentChat({
   // together — dimming only one of them would leave a frozen reading looking half live.
   const connecting = isConnecting({ bridge, error, stalled });
   const { newTab, launch, launching, creatingTab } = useSpaceActions();
+  // The pane's light-theme inversion override (lib/mirror-invert.ts). Read once at mount, which is
+  // enough: DetailRoute keys this component by `paneScopeKey(scope, paneId)` — the full address, not
+  // the id, for the reason that file records — so a walk to another pane, session or host remounts it
+  // and re-reads. Both halves of the stored key therefore change with the mount.
+  const [mirrorOverride, setMirrorOverride] = useState<boolean | undefined>(() =>
+    paneMirrorOverride(scope, paneId),
+  );
+  const chooseMirrorOverride = useCallback(
+    (next: boolean | undefined) => {
+      setMirrorOverride(next);
+      setPaneMirrorOverride(scope, paneId, next);
+    },
+    [scope, paneId],
+  );
+  const agentNative = rendersNativeMirror(agent?.agent);
+  const mirrorNative = rendersNativeMirror(agent?.agent, mirrorOverride);
+  const setMirrorNative = useCallback(
+    (next: boolean) => {
+      // Choosing the agent's own answer CLEARS the override instead of pinning it, so a pane does
+      // not freeze on today's answer if .adr/0047's set changes under it later.
+      chooseMirrorOverride(next === agentNative ? undefined : next);
+    },
+    [chooseMirrorOverride, agentNative],
+  );
+
   const { launchers, home: launchersHome } = useLaunchers(scope);
   // Single display-prefs instance: the View controls (in <Composer>) write it, the mirror reads it.
   const { prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply } =
@@ -1857,10 +1883,20 @@ export function AgentChat({
                     // bypasses block GRAMMARS, and native rendering is display faithfulness, not
                     // a grammar. Dropping the agent here would re-invert a Muse pane (.adr/0047),
                     // so the agent stays and `grammars` is what turns its adapter off.
+                    //
+                    // The AGENT bit only, deliberately, NOT `mirrorOverride`. The override does not
+                    // need to travel this way: `nativeMirror` carries it to the mirror directly and
+                    // AnsiOutput resolves the pair itself, so identity here keeps tracking the agent
+                    // rather than an operator's display choice. Before `grammars` existed this gate
+                    // was also the only thing stopping an opted-in codex pane from getting its
+                    // adapter back under raw terminal (chrome stripped, dialogs lifted) as a side
+                    // effect of a display choice. `grammars` holds that line now; this stays
+                    // agent-only because the two axes are still separate.
                     agent={
                       grammarsOn || rendersNativeMirror(agent?.agent) ? agent?.agent : undefined
                     }
                     grammars={grammarsOn}
+                    nativeMirror={mirrorOverride}
                     onPromptAction={handlePromptAction}
                     onWizardAction={handleWizardAction}
                     onPreviewAction={handlePreviewAction}
@@ -2062,6 +2098,8 @@ export function AgentChat({
                   stepFontSize={stepFontSize}
                   setRawTerminal={setRawTerminal}
                   setTapToFocus={setTapToFocus}
+                  mirrorNative={mirrorNative}
+                  setMirrorNative={setMirrorNative}
                   setExpandClippedReply={setExpandClippedReply}
                   onSent={onSent}
                   // The switcher mark, for the actions belt's top rule — see the condition at

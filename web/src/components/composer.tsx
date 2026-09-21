@@ -111,6 +111,9 @@ interface ComposerProps {
   stepFontSize: (delta: number) => void;
   setRawTerminal: (raw: boolean) => void;
   setTapToFocus: (tapToFocus: boolean) => void;
+  /** This pane's mirror-inversion override, resolved and owned by AgentChat. */
+  mirrorNative: boolean;
+  setMirrorNative: (native: boolean) => void;
   setExpandClippedReply: (expandClippedReply: boolean) => void;
   /** Snap the mirror to the live tail (follow + revalidate + scroll) after a successful send. */
   onSent: () => void;
@@ -209,7 +212,7 @@ function ComposerDock({
 const ATTACH_PRESS_MS = 220;
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, setExpandClippedReply, onSent, pullHandle },
+  { paneId, scope, agent, isShell, gone, readOnly, hostBlock, composing, dialogPresent, text, terminalDraft, rawTerminalDraft, prefs, setWrap, stepFontSize, setRawTerminal, setTapToFocus, mirrorNative, setMirrorNative, setExpandClippedReply, onSent, pullHandle },
   ref,
 ) {
   const revalidator = useRevalidator();
@@ -1107,6 +1110,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           <ComposerDock title={translate("composer.controls.display")} onClose={closeDrawer}>
             <DisplayPrefsContent
               prefs={prefs}
+              mirrorNative={mirrorNative}
+              setMirrorNative={setMirrorNative}
               setWrap={setWrap}
               stepFontSize={stepFontSize}
               setRawTerminal={setRawTerminal}
