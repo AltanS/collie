@@ -180,6 +180,10 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
   // The one artefact a running bridge leaves behind, read once: `restart-pending` takes the pid and
   // the boot stamp out of it, and `storeDrift` below reads the same marker for the roster.
   const runtimeMarker = parseMarker(deps.files.read(crewRuntimePath(deps.ctx.stateDir)));
+  // This bridge's own `/api/snapshot`, read ONCE and handed to the two sections that ask for it: the
+  // history section reads the panes off it, and `restart-pending` reads the bridge's own verdict on
+  // whether it is still running the collie on disk (issue #238). One request, two readers.
+  const ownRead = once(() => ownSnapshot(deps));
   const local: Finding[] = [
     identity(deps),
     configFile(deps),
@@ -204,13 +208,13 @@ export async function cmdDoctor(deps: DoctorDeps, args: readonly string[]): Prom
       ctx: deps.ctx,
       exec: deps.exec,
       files: deps.files,
-      snapshot: () => ownSnapshot(deps),
+      snapshot: ownRead,
     })),
     // Whether the prompt-cache chip is telling the truth: every TTL's date, and the one variable
     // `doctor` can read that the bridge deliberately cannot (ADR 0041). Its own module for the same
     // reason `historyFindings` is one — a section, not a check.
     ...cacheFindings({ ctx: deps.ctx, files: deps.files, env: deps.ctx.env, now: () => Date.now() }),
-    restartPending(deps, install, runtimeMarker),
+    restartPending(deps, install, runtimeMarker, await ownRead()),
     // STAMPED `crew` when it is a comparison at all (ADR 0050), while still PRINTING here, where it
     // always has. `clock` measures this machine against a member's `Date` header and its own remedy
     // says "enable NTP on whichever machine is off", so the machine at fault may be entirely the far
@@ -1018,6 +1022,52 @@ function identityHeader(deps: DoctorDeps): Record<string, string> | undefined {
 /** Long enough for a busy loopback bridge, short enough that a wedged one does not hold the verb. */
 const SNAPSHOT_BUDGET_MS = 3000;
 
+/** A thunk that runs at most once: the first caller pays, every later one shares the same promise. */
+function once<T>(run: () => Promise<T>): () => Promise<T> {
+  let pending: Promise<T> | null = null;
+  return () => (pending ??= run());
+}
+
+/**
+ * The running bridge's own answer to "am I still executing the collie on disk?", read off its
+ * snapshot: `update.restartNeeded`, and the restart command it spells for its install kind.
+ *
+ * `null` when the read carried no such verdict — a refusal, a silence, or a body from a bridge old
+ * enough not to report one — and the caller falls back to reading the process from outside.
+ */
+function bridgeRestartVerdict(read: SnapshotRead): { restartNeeded: boolean; restartCommand: string | null } | null {
+  if (read.kind !== "body") return null;
+  let parsed: RestartWire;
+  try {
+    // SAFETY: the shape `bridge/server.ts` serialises for `/api/snapshot`, of which only the two
+    // `update` fields this check reads are declared, both optional. A body that disagrees yields no
+    // verdict below and the process is read from outside instead — never a pass.
+    parsed = JSON.parse(read.text.trim() === "" ? "{}" : read.text) as RestartWire;
+  } catch {
+    return null;
+  }
+  const restartNeeded = parsed.update?.restartNeeded;
+  if (restartNeeded !== true && restartNeeded !== false) return null;
+  return { restartNeeded, restartCommand: parsed.update?.restartCommand ?? null };
+}
+
+/** The two fields of `UpdateStatus` (bridge/types.ts) this verb reads off the snapshot wire. */
+interface RestartWire {
+  update?: { restartNeeded?: boolean; restartCommand?: string } | null;
+}
+
+/** Why the bridge's own verdict was not available, for the sentence that falls back to the process. */
+function ownAnswerSentence(read: SnapshotRead): string {
+  switch (read.kind) {
+    case "refused":
+      return `the bridge refused this check's own read of \`/api/snapshot\` (${String(read.status)})`;
+    case "silent":
+      return "the bridge did not answer `/api/snapshot`";
+    case "body":
+      return "the bridge's `/api/snapshot` carries no restart verdict";
+  }
+}
+
 /**
  * Is the running bridge still executing the collie that is installed?
  *
@@ -1033,9 +1083,27 @@ const SNAPSHOT_BUDGET_MS = 3000;
  * version the version comparison in `bridge/update.ts` cannot see it at all, because no version
  * string moved.
  *
- * So the executable is read directly: `/proc/<pid>/exe` of the bridge's own pid, judged by
- * {@link classifyExe}. The check was previously skipped here with the sentence "whatever installs
- * the new version restarts it", which is simply false for a package manager.
+ * THE BRIDGE IS ASKED FIRST (issue #238). It already answers this exact question about itself, on
+ * every snapshot, as `update.restartNeeded`: two witnesses, the version files against the version it
+ * booted with, and on Linux `/proc/self/exe` against the file on disk (`selfExeReplaced`,
+ * bridge/index.ts). That answer needs no pid and no `/proc` from this side, which is what a launchd
+ * or unsupervised install on a Mac had neither of — there `bridgePid` had no tier to ask, and even
+ * with a pid there is no `/proc/<pid>/exe` to read, so the check said "no pid" against a bridge that
+ * was up and could have said. The bridge also spells the restart command for its own install kind,
+ * so the remedy is its sentence rather than a guess.
+ *
+ * Asking the process whether it is stale is not circular: neither witness runs new code. Both compare
+ * a value captured at boot (the version, the inode) against a file on disk NOW, and a stale process
+ * reads the disk as well as a fresh one. What it is, on Linux, is a superset of the read below, and
+ * elsewhere the only read there is. Two limits are accepted and said rather than hidden: the bridge
+ * recomputes the answer at most every `STALE_TTL_MS` (5s, bridge/update.ts), so a `doctor` run inside
+ * that window after a swap can still read the previous answer; and off Linux the pass rests on the
+ * version witness alone, which the finding's own sentence states.
+ *
+ * Only when the snapshot carried no verdict — refused, silent, or an older bridge — is the process
+ * read from outside: `/proc/<pid>/exe` of the bridge's own pid, judged by {@link classifyExe}. The
+ * check was once skipped here with the sentence "whatever installs the new version restarts it",
+ * which is simply false for a package manager.
  *
  * ── ON A CHECKOUT IT STILL IS NOT ───────────────────────────────────────────
  * There the process may be behind `bridge/*.ts`, and the running bridge leaves exactly one artefact
@@ -1043,13 +1111,40 @@ const SNAPSHOT_BUDGET_MS = 3000;
  * roster — not a version, and not a source stamp. Answering that would take a new field, a new file
  * or a new route, so it ships `skipped` rather than approximating.
  */
-function restartPending(deps: DoctorDeps, install: InstallKind, marker: CrewRuntimeMarker | null): Finding {
+function restartPending(
+  deps: DoctorDeps,
+  install: InstallKind,
+  marker: CrewRuntimeMarker | null,
+  read: SnapshotRead,
+): Finding {
   if (install.kind !== "binary" && install.kind !== "packaged") {
     return skipped(
       "restart-pending",
       "the running bridge records no version — `crew-runtime.json` carries its boot time, pid, mode and" +
         " roster, and nothing names the code it is executing",
       "`collie restart` after any build if in doubt; `collie logs` dates the running process",
+    );
+  }
+  const own = bridgeRestartVerdict(read);
+  if (own !== null) {
+    const binary = collieBinary(deps.ctx.root);
+    if (own.restartNeeded) {
+      return warn(
+        "restart-pending",
+        `the running bridge reports that ${binary} no longer holds the collie it is executing — the` +
+          " files were replaced under it and nothing restarted it",
+        `\`${own.restartCommand ?? "collie restart"}\``,
+      );
+    }
+    // On Linux the bridge compared both the version files and the executable's inode; elsewhere
+    // there is no `/proc/self/exe`, so only the version witness spoke, and a same-version rebuild
+    // by a package manager would pass unseen. Said, rather than reported as a full pass.
+    return ok(
+      "restart-pending",
+      process.platform === "linux"
+        ? `the running bridge reports it is executing ${binary}, the installed collie`
+        : `the running bridge reports it is executing the version installed at ${binary} — judged by` +
+            " version alone on this platform, where the executable itself cannot be compared",
     );
   }
   const pid = bridgePid(deps, marker);
@@ -1069,8 +1164,8 @@ function restartPending(deps: DoctorDeps, install: InstallKind, marker: CrewRunt
       return skipped(
         "restart-pending",
         pid === null
-          ? "no pid for the bridge — without one there is no executable to compare against the" +
-              " installed collie"
+          ? `${ownAnswerSentence(read)}, and there is no pid for the bridge — without one there is no` +
+              " executable to compare against the installed collie"
           : `the executable behind pid ${String(pid)} could not be read, so it cannot be compared` +
               " against the installed collie",
         "`collie restart` after a package upgrade — a package manager replaces the files and restarts" +

@@ -1544,8 +1544,12 @@ async function plainFindings(): Promise<Finding[]> {
 
 describe("collie doctor — a packaged install", () => {
   /** A Collie with a manifest, no `.git`, in a folder a package manager owns. */
-  function systemOwned(link: Record<string, LinkProbe> = {}, answers: Scripted["answers"] = []) {
-    const h = harness(null, [], {
+  function systemOwned(
+    link: Record<string, LinkProbe> = {},
+    answers: Scripted["answers"] = [],
+    replies: (Response | Error)[] = [],
+  ) {
+    const h = harness(null, replies, {
       link,
       answers: [...answers, [`git -C ${ROOT} rev-parse --show-prefix`, { code: 128 }], ...(HEALTHY_ANSWERS ?? [])],
       // The manifest is what makes this a Collie at all — `hasMarker` is asked before ownership, so
@@ -1639,6 +1643,71 @@ describe("collie doctor — a packaged install", () => {
     expect(f?.detail ?? "").toContain("no pid");
     expect(f?.detail ?? "").not.toContain("restarts it");
     expect(f?.remedy).toContain("collie restart");
+  });
+
+  // ── The bridge's own verdict comes first (issue #238, second half) ─────────
+  // On a Mac under launchd there is no systemd `MainPID`, no pidfile (that tier never writes one),
+  // no crew marker on a solo install, and no `/proc` even with a pid. Every tier above declines,
+  // and the check said "no pid" against a bridge that was up and already knew the answer: it
+  // reports `update.restartNeeded` on every snapshot. So that is read first, off the one snapshot
+  // request `doctor` already makes, and the process is read from outside only when it is silent.
+
+  /** A solo bridge's own `/api/snapshot`, carrying its verdict and nothing else this section reads. */
+  const ownSnapshot = (update: { restartNeeded: boolean; restartCommand?: string }) =>
+    new Response(JSON.stringify({ agents: [], update }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  test("`restart-pending` takes the bridge's own word that it was replaced, with the command it spells", async () => {
+    const h = systemOwned({}, [], [ownSnapshot({ restartNeeded: true, restartCommand: "systemctl --user restart collie" })]);
+    const f = (await findings(h)).byCheck.get("restart-pending");
+    expect(f?.status).toBe("warn");
+    expect(f?.detail ?? "").toContain(BINARY);
+    expect(f?.detail ?? "").toContain("nothing restarted it");
+    expect(f?.remedy).toBe("`systemctl --user restart collie`");
+    // No pid was ever asked for: the bridge answered, so the process was not read from outside.
+    expect(h.calls.some((c) => c.includes("MainPID"))).toBe(false);
+  });
+
+  test("`restart-pending` passes on the bridge's own word, and says how much of it was checked", async () => {
+    const h = systemOwned({}, [], [ownSnapshot({ restartNeeded: false })]);
+    const f = (await findings(h)).byCheck.get("restart-pending");
+    expect(f?.status).toBe("ok");
+    expect(f?.detail ?? "").toContain("the running bridge reports it is executing");
+    if (process.platform === "linux") expect(f?.detail ?? "").not.toContain("version alone");
+    else expect(f?.detail ?? "").toContain("version alone");
+    expect(f?.remedy).toBeNull();
+  });
+
+  test("a refused snapshot falls back to the process, and the skip says the bridge refused", async () => {
+    // The reporter's machine before the first half of #238 shipped: identity required, no pid.
+    const h = systemOwned({}, [], [new Response("identity required", { status: 403 })]);
+    const f = (await findings(h)).byCheck.get("restart-pending");
+    expect(f?.status).toBe("skipped");
+    expect(f?.detail ?? "").toContain("refused");
+    expect(f?.detail ?? "").toContain("403");
+    expect(f?.detail ?? "").toContain("no pid");
+  });
+
+  test("the bridge's verdict does not outrank the process when the process can be read", async () => {
+    // Belt and braces are not the design: the bridge answers first when it answers at all, so a
+    // supervised Linux install with a healthy inode and a bridge saying `restartNeeded: true` reports
+    // the bridge's warning. On Linux the bridge's two witnesses are a superset of this one; elsewhere
+    // this one cannot run at all, so there is no second opinion to weigh.
+    const h = systemOwned({}, [[MAIN_PID, { stdout: `${String(PID)}\n` }]], [ownSnapshot({ restartNeeded: true })]);
+    h.files.links.set(EXE, BINARY);
+    h.files.stats.set(EXE, { inode: 111, mtimeMs: 0 });
+    h.files.stats.set(BINARY, { inode: 111, mtimeMs: 0 });
+    const f = (await findings(h)).byCheck.get("restart-pending");
+    expect(f?.status).toBe("warn");
+    expect(f?.remedy).toBe("`collie restart`");
+  });
+
+  test("a checkout ignores the bridge's verdict: there `bridgeStale` is the answer, and this stays skipped", async () => {
+    const f = (await findings(harness(null, [ownSnapshot({ restartNeeded: true })]))).byCheck.get("restart-pending");
+    expect(f?.status).toBe("skipped");
+    expect(f?.detail).toContain("records no version");
   });
 
   test("a linked clone still gets every one of those answers the old way", async () => {
