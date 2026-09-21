@@ -751,3 +751,40 @@ empty sandbox (output verified); the trust prompt covered a throwaway `/tmp`
 dir; every question was answered with the sandbox's own test data. The dialogs
 left open at the end were dismissed with `Escape`.
 
+
+## opencode corpus (captured 2026-09-20, opencode 2.0.8, sandbox pane)
+
+Captures of **opencode 2.0.8** (Go TUI) driven in a sandbox pane with a scratch config
+(`OPENCODE_CONFIG` pointing at a file whose `permission` block asks for `bash`, `edit` and
+`webfetch`), and run `--standalone` so the pane owns its server and no global permission state. Two
+widths: the full tab (≈190 columns) and a 95-column split. Byte-faithful `format:ansi` captures,
+no substitutions — the sandbox painted only probe strings (`echo fixture-corpus-probe`,
+`hello`), never real work or credentials. The permission dialogs were resolved at the end of the
+run with the pointer moved to `Reject` and confirmed with `Enter`.
+
+The composer is a LEFT VERTICAL BAR run (`┃`, U+2503) with a `╹▀▀▀` rule under it; the agent's
+live run (spinner, tool rows, hint rows without the bar) paints INSIDE the same run above the
+draft. Permission dialogs paint inside the run too — see
+`web/src/lib/grammar/OPENCODE_PERMISSION_NOTES.md` for the probed choreography (Left/Right move,
+Enter confirms, wrap probed, Tab inert).
+
+| Fixture | State / what's in it | Herdr status |
+| --- | --- | --- |
+| `oc--fresh-idle.txt` | Splash logo (empty session), empty composer with the `Ask anything…` placeholder, model row, rule, cwd status row + version row | `idle` |
+| `oc--draft-single.txt` | One draft row on a two-space-gutter interior row | `idle` |
+| `oc--draft-wrapped.txt` | A long draft word-wrapped onto three interior rows | `idle` |
+| `oc--draft-while-working.txt` | A draft typed while the run streamed: the spinner row and the `Press ctrl+b` hint sit above it across MORE blank rows — the case that pins the draft-vs-run boundary | `working` |
+| `oc--working.txt` | A finished tool row (`Command exited with code 0.`) still inside the box, the esc-interrupt status row | `working` |
+| `oc--done--tool-run.txt` | Idle after a completed turn: empty interior, model row, rule, status row | `idle` |
+| `oc--composer-plan.txt` | The agent cycled to `Plan` (`shift+tab`): the model row reads `Plan · …` | `idle` |
+| `oc--slash-palette.txt` | The `/` palette painted INSIDE the box above the input row (rows carry a right bar too) | `idle` |
+| `oc--command-palette.txt` | The ctrl+p palette floating OVER the box's middle; the composer's tail stays intact underneath, which is why the overlay predicate exists | `working` |
+| `oc--permission-bash.txt` | The bash permission dialog, pointer on `Allow once` (the accent chip) | `blocked` |
+| `oc--permission-bash--moved.txt` | After one `Right`: chip on `Always allow`; the dialog's subject row swaps for the always-allow warning + pattern list | `blocked` |
+| `oc--permission-bash--reject.txt` | Chip on `Reject` | `blocked` |
+| `oc--permission-bash--wrap.txt` | `Right` past `Reject` wrapped back to `Allow once` — the wrap the keys arithmetic relies on | `blocked` |
+| `oc--permission-edit.txt` | The edit permission dialog: `→ Edit probe.txt` subject + diff rows | `blocked` |
+| `oc--permission-edit--moved.txt` | Chip on `Always allow` | `blocked` |
+| `oc--narrow--fresh-idle.txt` | The empty composer at ≈95 columns: the hint row truncates, no version row | `idle` |
+| `oc--narrow--permission-bash.txt` | The dialog at narrow width: the footer wraps — options row + hint row separated by a blank | `blocked` |
+| `oc--narrow--draft-wrapped.txt` | A draft wrapped over the edge at narrow width | `idle` |
