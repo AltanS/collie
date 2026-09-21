@@ -364,10 +364,11 @@ export interface Config {
    * The path this collie is mounted under when a proxy gives it one (`COLLIE_BASE_PATH`), always
    * with a leading and a trailing slash: `/` for the root, `/collie/` for `https://host/collie/`.
    *
-   * ONE BUILD SERVES ANY MOUNT (ADR 0052). `web/dist` is built base-relative, and the mount is
-   * applied at serve time: `index.html` goes out with its `./` references rewritten to this path and
-   * with the path in `<meta name="collie-base">`, which is where the app reads it. Nothing else on
-   * disk changes, so the release payload's prebuilt bundle mounts anywhere. A proxy normally strips
+   * ONE BUILD SERVES ANY MOUNT (ADR 0052). Inside `web/dist` nothing names the root (chunks and
+   * stylesheets reference each other relatively), and the mount is applied at serve time: under a
+   * mount `index.html` goes out with its root-absolute references prefixed with this path and with
+   * the path in `<meta name="collie-base">`, which is where the app reads it. Nothing else on disk
+   * changes, so the release payload's prebuilt bundle mounts anywhere. A proxy normally strips
    * the mount before it forwards (`tailscale serve` does); one that does not is tolerated, because
    * the request handler reads an inbound path that still carries the mount as if it had been
    * stripped. `collie serve` publishes at this path instead of the root when it is set.

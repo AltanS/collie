@@ -4,10 +4,10 @@ import { getServerBuild, subscribeServerBuild } from "./server-build";
 
 // Service-worker registration + update wiring, in one place. The worker is registered by hand
 // rather than through `virtual:pwa-register`: that module registers `${import.meta.env.BASE_URL}sw.js`,
-// and the build's base is RELATIVE (ADR 0052, one build serves any mount), so from a deep route it
-// would ask for `/collie/space/w1/sw.js`. The mount is known only at runtime, from the document the
-// bridge served (lib/base-path.ts), and the worker is registered at `<mount>sw.js` with the mount as
-// its scope.
+// and the base is a build-time constant while the mount is not (ADR 0052, one build serves any
+// mount): under `/collie/` it would register the root's worker. The mount is known only at runtime,
+// from the document the bridge served (lib/base-path.ts), and the worker is registered at
+// `<mount>sw.js` with the mount as its scope.
 //
 // The bridge serves a freshly-rebuilt bundle the instant it's built, but a browser only adopts it
 // when the service worker runs an update check. We don't trust vite-plugin-pwa's own auto-reload

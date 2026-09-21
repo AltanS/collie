@@ -35,18 +35,21 @@ SVG components paint with `url(#id)`, whose resolution a `<base>` also moves in 
 
 **The mount is a runtime setting of the bridge, `COLLIE_BASE_PATH`, and one build serves any mount.**
 
-1. **The shell is built base-relative.** Vite's `base` is `./` for the build and `/` for the dev
-   server. Every reference Vite writes into `index.html` is `./…`; chunks resolve each other from
-   `import.meta.url` and stylesheets resolve `url()` from their own address, so nothing inside the
-   bundle knows or needs the mount. The manifest's `start_url` and `scope` are `./`, resolved against
-   the manifest's own address. A build whose shell carries one reference that is not `./` fails
-   (`mountReadyShellPlugin`), because that shell would mount at the root and break under a path, at
-   runtime, on someone else's machine.
+1. **The shell is root-absolute; the bundle is relative.** Vite's `base` stays `/`, so every
+   reference in `index.html` is `/assets/…`, `/theme-init.js`, `/fonts/…`, and `vite preview`, the
+   e2e static server and every other root-serving host keep working as they did. Inside the bundle
+   nothing names the root: `experimental.renderBuiltUrl` makes every chunk and stylesheet reference
+   relative, so a chunk reaches its siblings and assets from `import.meta.url` and a stylesheet from
+   its own address, and the same files work under any path. The manifest's `start_url` and `scope`
+   are `./`, resolved against the manifest's own address. A build whose shell carries one reference
+   that is not root-absolute fails (`mountReadyShellPlugin`), because that shell would mount at the
+   root and break under a path, at runtime, on someone else's machine.
 
-2. **The bridge resolves the shell to the mount when it serves it.** `mountIndexHtml` turns every
-   `="./`, `url("./`, `url('./` and `url(./` into the mount and sets
-   `<meta name="collie-base" content>` to it. At the root the result is the document a root deployment
-   has always served. The gzip cache is keyed by the mount as well as the file.
+2. **Under a mount the bridge resolves the shell when it serves it.** `mountIndexHtml` puts the mount
+   in front of every `="/`, `url("/`, `url('/` and `url(/` (never a protocol-relative `//`) and sets
+   `<meta name="collie-base" content>` to it. At the root the file goes out as built, byte for byte,
+   through the same path as every other file. The gzip cache is keyed by the mount as well as the
+   file.
 
 3. **The app reads the mount from that meta tag, once, synchronously.** `lib/base-path.ts` is the one
    reader; `mounted("/api/x")` is how a root-absolute path is spelled for the mount. The router's
@@ -93,9 +96,10 @@ is fetched from; the app and the worker read it back. That holds because both ar
 bridge; a cache in front of the bridge that served one mount's `index.html` for another would break
 it, and the per-mount gzip key is the bridge's side of that promise.
 
-**Index.html is no longer served byte for byte.** It is served rewritten, deterministically, by a
-function with a test. The release build's `index.html` on disk is still what the build produced; the
-`byte for byte` guarantee ADR 0051 names is about the artefact, not the response.
+**At the root nothing changes on the wire.** `index.html` is served as built, byte for byte, and
+the rewrite runs only under a mount, deterministically, by a function with a test. The bundle's
+internal references are relative where they used to be root-absolute, which no root deployment can
+observe.
 
 **What would justify revisiting this.** A proxy that cannot be made to mount a subtree, or an install
 kind that serves `web/dist` without the bridge. Either would need the mount to be known at build time

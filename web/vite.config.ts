@@ -199,45 +199,49 @@ const channelIconsPlugin: Plugin = {
 
 const channelManifest = manifestFor(channel);
 
-// ADR 0052: ONE BUILD SERVES ANY MOUNT. The production shell is built base-RELATIVE, so every
-// reference Vite writes into index.html is `./…`, and the bridge resolves them to the mount it was
-// started with when it serves the file (bridge/server.ts, `mountIndexHtml`). Inside the bundle a
-// relative base costs nothing: chunks resolve each other from `import.meta.url` and a stylesheet
-// resolves `url()` from its own address. The dev server keeps `/`: it serves index.html itself, for
-// deep routes too, and nothing rewrites `./` there.
-const BASE_FOR = (command: "build" | "serve"): string => (command === "build" ? "./" : "/");
-
-// The guard on that contract. A shell with one root-absolute or bare reference left in it would
-// mount fine at the root and break under a path, at runtime, on someone else's machine; so a build
-// whose index.html carries a reference the bridge cannot resolve fails HERE. External and inline
+// ADR 0052: ONE BUILD SERVES ANY MOUNT. The shell (index.html) is built ROOT-ABSOLUTE, every
+// reference `/…`, and the bridge resolves it to the mount it was started with when it serves the
+// file (bridge/server.ts, `mountIndexHtml`); at the root it is served as it lies on disk. Inside the
+// bundle nothing may name the root: a chunk reaches its siblings and its assets from
+// `import.meta.url`, a stylesheet from its own address, so the same files work under any path.
+// `renderBuiltUrl` is how Vite is told that split: the HTML host keeps the base, every other host
+// gets a relative URL.
+//
+// The guard on the shell's half of that contract. One reference that is not root-absolute — a
+// bare `assets/x.js`, a `./` — would mount at the root and break under a path, at runtime, on
+// someone else's machine; so a build whose index.html carries one fails HERE. External and inline
 // values are not references to this build.
 const mountReadyShellPlugin: Plugin = {
   name: "collie-mount-ready-shell",
   apply: "build",
-  enforce: "post",
-  transformIndexHtml: {
-    order: "post",
-    handler(html, ctx) {
-      if (!ctx.filename.endsWith("/index.html")) return html;
-      const refs = [...html.matchAll(/(?:href|src)="([^"]*)"|url\(["']?([^"')]*)["']?\)/g)].map(
-        (m) => m[1] ?? m[2] ?? "",
+  // Read back from disk once everything is written: the HTML transform hooks still see Vite's
+  // public-asset placeholders in the inline style, which are resolved after them.
+  writeBundle(options) {
+    const dir = options.dir ?? resolve(import.meta.dirname, "dist");
+    const html = readFileSync(resolve(dir, "index.html"), "utf8");
+    const refs = [...html.matchAll(/(?:href|src)="([^"]*)"|url\(["']?([^"')]*)["']?\)/g)].map(
+      (m) => m[1] ?? m[2] ?? "",
+    );
+    const foreign = refs.filter(
+      (ref) => ref !== "" && !/^\/(?!\/)/.test(ref) && !ref.startsWith("#") && !/^(?:https?:|data:|mailto:)/.test(ref),
+    );
+    if (foreign.length > 0) {
+      throw new Error(
+        `index.html carries ${String(foreign.length)} reference(s) that are not root-absolute, so the bridge could` +
+          ` not mount it under a path: ${foreign.join(", ")}`,
       );
-      const foreign = refs.filter(
-        (ref) => ref !== "" && !ref.startsWith("./") && !ref.startsWith("#") && !/^(?:https?:|data:|mailto:)/.test(ref),
-      );
-      if (foreign.length > 0) {
-        throw new Error(
-          `index.html carries ${String(foreign.length)} reference(s) that are not \`./\`-relative, so the bridge could` +
-            ` not mount it under a path: ${foreign.join(", ")}`,
-        );
-      }
-      return html;
-    },
+    }
   },
 };
 
-export default defineConfig(({ command }) => ({
-  base: BASE_FOR(command),
+export default defineConfig({
+  // The shell is root-absolute and the bridge mounts it (ADR 0052, above).
+  base: "/",
+  experimental: {
+    renderBuiltUrl(_filename, { hostType }) {
+      return hostType === "html" ? undefined : { relative: true };
+    },
+  },
   define: { __BUILD_INFO__: JSON.stringify(BUILD_INFO) },
   plugins: [
     react(),
@@ -348,4 +352,4 @@ export default defineConfig(({ command }) => ({
       "/api": { target: BRIDGE, changeOrigin: true },
     },
   },
-}));
+});

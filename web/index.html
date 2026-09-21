@@ -34,8 +34,8 @@
     />
     <meta name="apple-mobile-web-app-title" content="Collie" />
     <!-- Where this document is mounted (ADR 0052). `/` as built; the bridge rewrites it, and every
-         dot-slash reference in this file, to the path a proxy gave Collie when it serves the file. One
-         build serves any mount, so the value is not known here. lib/base-path.ts is the reader. -->
+         root-absolute reference in this file, to the path a proxy gave Collie when it serves the
+         file. One build serves any mount, so the value is not known here. lib/base-path.ts reads it. -->
     <meta name="collie-base" content="/" />
     <title>Collie</title>
     <!-- The UI typeface, fetched in parallel with the CSS that asks for it rather than after it.
@@ -86,7 +86,7 @@
          above, so for most devices this costs no extra request. */
       @font-face {
         font-family: "Space Grotesk";
-        src: url("%BASE_URL%fonts/ui-space-grotesk-2.000-latin.woff2") format("woff2");
+        src: url("/fonts/ui-space-grotesk-2.000-latin.woff2") format("woff2");
         font-weight: 400 700;
         font-display: swap;
       }
@@ -108,7 +108,7 @@
          while Aldrich rides the preload. Keep in step with index.css. */
       @font-face {
         font-family: "Aldrich";
-        src: url("%BASE_URL%fonts/ui-aldrich-1.002-latin.woff2") format("woff2");
+        src: url("/fonts/ui-aldrich-1.002-latin.woff2") format("woff2");
         font-weight: 400;
         font-display: swap;
       }
@@ -166,7 +166,7 @@
         --dog-frames: 6;
         width: var(--dog-size);
         height: var(--dog-size);
-        background: url("%BASE_URL%dog-gallop.png") no-repeat 0 0;
+        background: url("/dog-gallop.png") no-repeat 0 0;
         background-size: calc(var(--dog-frames) * var(--dog-size))
           var(--dog-size);
         animation: boot-dog-gallop 0.6s steps(6) infinite;

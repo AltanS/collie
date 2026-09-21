@@ -1478,26 +1478,22 @@ describe("serveStatic — a text file ships gzipped", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  // ADR 0052: one build serves any mount. The shell on disk is base-relative; what goes out is
-  // resolved to the mount the bridge was started with, raw and gzipped alike, and two mounts served
-  // from one tree in one process never read each other's body out of the gzip cache.
+  // ADR 0052: one build serves any mount. The shell on disk is root-absolute; at the root it goes
+  // out as built, under a mount it is resolved to the mount the bridge was started with, raw and
+  // gzipped alike, and two mounts served from one tree in one process never read each other's body
+  // out of the gzip cache.
   const SHELL =
     '<!doctype html><html><head><meta name="collie-base" content="/" />' +
-    '<script src="./theme-init.js"></script><style>@font-face{src:url("./fonts/a.woff2")}' +
-    ".dog{background:url(./dog-gallop.png)}</style>" +
-    '<script type="module" src="./assets/app.js"></script></head><body></body></html>';
+    '<script src="/theme-init.js"></script><style>@font-face{src:url("/fonts/a.woff2")}' +
+    ".dog{background:url(/dog-gallop.png)}</style>" +
+    '<script type="module" src="/assets/app.js"></script></head><body></body></html>';
 
-  test("index.html goes out resolved to the mount, and the SPA fallback carries the same mount", async () => {
+  test("index.html goes out as built at the root, and resolved to the mount under a path", async () => {
     resetStaticGzipCache();
     const { dir } = await distTree();
     await writeFile(join(dir, "index.html"), SHELL);
 
-    const root = await (await serveStatic("/", null, dir)).text();
-    expect(root).toContain('<meta name="collie-base" content="/" />');
-    expect(root).toContain('src="/theme-init.js"');
-    expect(root).toContain('url("/fonts/a.woff2")');
-    expect(root).toContain("url(/dog-gallop.png)");
-    expect(root).not.toContain("./");
+    expect(await (await serveStatic("/", null, dir)).text()).toBe(SHELL);
 
     const mounted = await (await serveStatic("/space/w1", null, dir, "/collie/")).text();
     expect(mounted).toContain('<meta name="collie-base" content="/collie/" />');
@@ -1505,7 +1501,7 @@ describe("serveStatic — a text file ships gzipped", () => {
     expect(mounted).toContain('src="/collie/assets/app.js"');
     expect(mounted).toContain('url("/collie/fonts/a.woff2")');
     expect(mounted).toContain("url(/collie/dog-gallop.png)");
-    expect(mounted).not.toContain("./");
+    expect(mounted).not.toContain('="/theme');
 
     await rm(dir, { recursive: true, force: true });
   });
@@ -1547,24 +1543,21 @@ describe("stripMount — a proxy that forwards the mount instead of stripping it
 
 describe("mountIndexHtml — the app shell resolved to its mount", () => {
   const shell =
-    '<meta name="collie-base" content="/" /><script src="./t.js"></script>' +
-    '<link href="./f.woff2" /><style>url("./a.png") url(\'./b.png\') url(./c.png)</style>' +
-    '<a href="https://example.com/x">out</a>';
+    '<meta name="collie-base" content="/" /><script src="/t.js"></script>' +
+    '<link href="/f.woff2" /><style>url("/a.png") url(\'/b.png\') url(/c.png)</style>' +
+    '<a href="https://example.com/x">out</a><a href="//cdn.example/y">pr</a>';
 
-  test("rewrites the attribute and url() spellings and the meta tag, nothing else", () => {
+  test("puts the mount in front of every root-absolute reference and the meta tag, nothing else", () => {
     const out = mountIndexHtml(shell, "/collie/");
     expect(out).toBe(
       '<meta name="collie-base" content="/collie/" /><script src="/collie/t.js"></script>' +
         '<link href="/collie/f.woff2" /><style>url("/collie/a.png") url(\'/collie/b.png\') url(/collie/c.png)</style>' +
-        '<a href="https://example.com/x">out</a>',
+        '<a href="https://example.com/x">out</a><a href="//cdn.example/y">pr</a>',
     );
   });
 
-  test("at the root mount the result is the document a root deployment always served", () => {
-    const out = mountIndexHtml(shell, "/");
-    expect(out).toContain('content="/"');
-    expect(out).toContain('src="/t.js"');
-    expect(out).not.toContain("./");
+  test("at the root it is the identity", () => {
+    expect(mountIndexHtml(shell, "/")).toBe(shell);
   });
 });
 

@@ -4067,23 +4067,24 @@ export function stripMount(pathname: string, basePath: string): string {
 }
 
 /**
- * The app shell resolved to its mount (ADR 0052). `web/dist/index.html` is built base-relative:
- * every reference Vite wrote and every one index.html writes itself is `./…`, and the mount is
- * declared as `<meta name="collie-base" content="/">`. A `./` reference is relative to the DOCUMENT,
- * so on a deep route (`/collie/space/w1`) it would resolve under that route; this turns each into
- * the mount-absolute path the build meant, and puts the mount in the meta tag for the app, the
- * router and the service-worker registration to read. At the root mount the result is the document
- * a root deployment has always served, with `/` where `./` stood.
+ * The app shell resolved to its mount (ADR 0052). `web/dist/index.html` is built with every
+ * reference ROOT-ABSOLUTE (`/assets/…`, `/theme-init.js`, `/fonts/…`) and the mount declared as
+ * `<meta name="collie-base" content="/">`; inside the bundle nothing names the root (Vite's
+ * `renderBuiltUrl` makes every chunk and stylesheet reference relative). So the shell is the one
+ * file that has to be told where it is: each root-absolute reference gets the mount in front of it,
+ * and the meta tag carries the mount for the app, the router and the service-worker registration
+ * to read. At the root this is the identity, and `serveStatic` does not even call it there.
  *
- * Three spellings and no more, because the file is ours: an attribute (`href="./`, `src="./`,
- * `content="./`), and a quoted or bare CSS `url(./` in the inline splash style. The CSP forbids a
+ * Four spellings and no more, because the file is ours: an attribute value (`href="/`, `src="/`,
+ * `content="/`), and a double-quoted, single-quoted or bare CSS `url(/` in the inline splash style.
+ * A protocol-relative `//host` is not a root-absolute path and is left alone. The CSP forbids a
  * `<base>` element (`base-uri 'none'`), which is why this is a rewrite and not a tag.
  * Pure + exported for tests.
  */
 export function mountIndexHtml(html: string, basePath: string): string {
+  if (basePath === "/") return html;
   return html
-    .replace(/(="|url\("|url\(')\.\//g, `$1${basePath}`)
-    .replace(/url\(\.\//g, `url(${basePath}`)
+    .replace(/(="|url\("|url\('|url\()\/(?!\/)/g, `$1${basePath}`)
     .replace(/(<meta\s+name="collie-base"\s+content=")[^"]*(")/, `$1${basePath}$2`);
 }
 
@@ -4170,10 +4171,11 @@ export async function serveStatic(
   if (ext === ".html") headers["content-security-policy"] = CSP;
   if (rel === "sw.js") headers["service-worker-allowed"] = "/";
 
-  // The app shell is the one file that is not served as it lies on disk: its `./` references and
-  // its `<meta name="collie-base">` are resolved to the mount here (ADR 0052). Same cache, keyed by
-  // the mount as well, so a test that serves two mounts from one tree never reads the other's body.
-  if (rel === "index.html") {
+  // Under a mount the app shell is the one file not served as it lies on disk: its root-absolute
+  // references and its `<meta name="collie-base">` are resolved to the mount here (ADR 0052). At the
+  // root the file goes out as built, through the same path as every other file. Same cache, keyed
+  // by the mount as well, so two mounts served from one tree never read each other's body.
+  if (rel === "index.html" && basePath !== "/") {
     const body = new TextEncoder().encode(mountIndexHtml(await file.text(), basePath));
     const key = `${full}\0${file.lastModified}\0${file.size}\0mount=${basePath}`;
     const gzHtml = gzippedBytes(key, body, ext, acceptEncoding);
